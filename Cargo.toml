@@ -1,0 +1,69 @@
+[package]
+name = "specify"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Specify CLI — deterministic operations for spec-driven development"
+categories = ["command-line-utilities", "development-tools"]
+keywords = ["specify", "cli", "spec", "workflow", "rfc"]
+readme = "README.md"
+
+[[bin]]
+name = "specify"
+path = "src/main.rs"
+
+[lib]
+name = "specify"
+path = "src/lib.rs"
+
+[dependencies]
+specify-error = { path = "crates/error" }
+specify-drift = { path = "crates/drift" }
+specify-federation = { path = "crates/federation" }
+specify-schema = { path = "crates/schema" }
+specify-spec = { path = "crates/spec" }
+specify-merge = { path = "crates/merge" }
+specify-task = { path = "crates/task" }
+specify-change = { path = "crates/change" }
+specify-validate = { path = "crates/validate" }
+clap = { version = "4", features = ["derive"] }
+serde.workspace = true
+serde_yaml.workspace = true
+serde_json.workspace = true
+semver = "1"
+chrono.workspace = true
+glob.workspace = true
+
+[dev-dependencies]
+assert_cmd = "2"
+tempfile = "3"
+regex.workspace = true
+
+[workspace]
+members = [
+    "crates/error",
+    "crates/schema",
+    "crates/spec",
+    "crates/merge",
+    "crates/task",
+    "crates/validate",
+    "crates/change",
+    "crates/drift",
+    "crates/federation",
+]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/augentic/specify-cli"
+
+[workspace.dependencies]
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+regex = "1"
+glob = "0.3"
+chrono = { version = "0.4", features = ["serde"] }

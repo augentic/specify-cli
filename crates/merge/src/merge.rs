@@ -1,0 +1,343 @@
+//! Pure in-memory delta merge — port of the Python `merge()` from
+//! `scripts/legacy/merge-specs.py` lines 203–291.
+
+use std::collections::{HashMap, HashSet};
+
+use specify_error::Error;
+use specify_spec::{
+    REQUIREMENT_HEADING, RequirementBlock, has_delta_headers, parse_baseline, parse_delta,
+};
+
+/// Result of a successful [`merge`] call.
+///
+/// `output` is the merged baseline text (byte-for-byte parity with the
+/// Python reference). `operations` records every change applied, in the
+/// order `RENAMED → REMOVED → MODIFIED → ADDED` — the same order used
+/// when mutating the underlying block list.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergeResult {
+    pub output: String,
+    pub operations: Vec<MergeOperation>,
+}
+
+/// One structured entry in [`MergeResult::operations`].
+///
+/// `CreatedBaseline` is the "no delta headers, baseline was empty" branch:
+/// the delta text is kept verbatim as the new baseline and we just record
+/// how many `### Requirement:` blocks it contains.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MergeOperation {
+    Renamed {
+        id: String,
+        old_name: String,
+        new_name: String,
+    },
+    Removed {
+        id: String,
+        name: String,
+    },
+    Modified {
+        id: String,
+        name: String,
+    },
+    Added {
+        id: String,
+        name: String,
+    },
+    CreatedBaseline {
+        requirement_count: usize,
+    },
+}
+
+/// Merge a delta spec into an optional baseline.
+///
+/// `baseline == None` (or `Some("")`, or `Some(whitespace-only)`) means
+/// "new capability": the baseline is being created from scratch. In that
+/// case:
+///   * if the delta has **no** delta-section headers (per
+///     [`specify_spec::has_delta_headers`]), the delta text is returned
+///     verbatim and `operations` holds a single
+///     [`MergeOperation::CreatedBaseline`] entry whose `requirement_count`
+///     counts the `### Requirement:` blocks found in the delta body;
+///   * otherwise the `## ADDED Requirements` section is flattened into a
+///     fresh baseline.
+///
+/// `baseline = Some(non-empty)` applies `RENAMED → REMOVED → MODIFIED →
+/// ADDED` in that order. Any delta entry whose id cannot be resolved (or,
+/// for ADDED, whose id collides with a surviving baseline id) becomes an
+/// `Err(Error::Merge(_))` with all failure messages joined by `"\n"`.
+pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> {
+    let baseline_text = baseline.unwrap_or("");
+    let is_new = baseline_text.trim().is_empty();
+
+    let delta_spec = parse_delta(delta);
+
+    if is_new {
+        // `specify_spec::has_delta_headers` uses a full-line match rather
+        // than Python's substring `.lower() in delta_text.lower()`. See
+        // the spec-crate unit test `has_delta_headers_requires_full_line_match`
+        // for the pinning decision.
+        if !has_delta_headers(delta) {
+            let requirement_count = count_requirement_headings(delta);
+            return Ok(MergeResult {
+                output: delta.to_string(),
+                operations: vec![MergeOperation::CreatedBaseline { requirement_count }],
+            });
+        }
+
+        let mut operations: Vec<MergeOperation> = Vec::new();
+        let mut result_blocks: Vec<String> = Vec::new();
+        for block in &delta_spec.added {
+            result_blocks.push(block.body.clone());
+            operations.push(MergeOperation::Added {
+                id: block.id.clone(),
+                name: block.name.clone(),
+            });
+        }
+        let output = if result_blocks.is_empty() {
+            String::new()
+        } else {
+            let mut joined = result_blocks.join("\n\n");
+            joined.push('\n');
+            joined
+        };
+        return Ok(MergeResult { output, operations });
+    }
+
+    // --- Existing-baseline path ---------------------------------------------
+
+    let parsed_baseline = parse_baseline(baseline_text);
+    let mut blocks: Vec<RequirementBlock> = parsed_baseline.requirements;
+    let preamble = parsed_baseline.preamble;
+
+    // Map id → index into `blocks`. Empty ids are excluded so stray
+    // "missing-id" blocks never match against delta lookups.
+    let mut blocks_by_id: HashMap<String, usize> = HashMap::new();
+    for (i, block) in blocks.iter().enumerate() {
+        if !block.id.is_empty() {
+            blocks_by_id.insert(block.id.clone(), i);
+        }
+    }
+
+    let mut errors: Vec<String> = Vec::new();
+    let mut operations: Vec<MergeOperation> = Vec::new();
+
+    // Step 1 — RENAMED.
+    for entry in &delta_spec.renamed {
+        let Some(&idx) = blocks_by_id.get(&entry.id) else {
+            errors.push(format!("RENAMED: ID {} not found in baseline", entry.id));
+            continue;
+        };
+        let old_block = blocks[idx].clone();
+        let new_heading = format!("{} {}", REQUIREMENT_HEADING, entry.new_name);
+        // Python `str.replace(old, new, 1)` = first-occurrence replace.
+        let new_body = replace_first(&old_block.body, &old_block.heading, &new_heading);
+        operations.push(MergeOperation::Renamed {
+            id: old_block.id.clone(),
+            old_name: old_block.name.clone(),
+            new_name: entry.new_name.clone(),
+        });
+        blocks[idx] = RequirementBlock {
+            heading: new_heading,
+            name: entry.new_name.clone(),
+            id: old_block.id,
+            body: new_body,
+            // `specify_spec::parse_scenarios` only looks at body text so
+            // we could recompute; keep the old scenarios since rename
+            // doesn't touch scenario text.
+            scenarios: old_block.scenarios,
+        };
+    }
+
+    // Step 2 — REMOVED (collect ids; deletion happens at the end so
+    // MODIFIED/ADDED still see a stable index map).
+    let mut ids_to_remove: HashSet<String> = HashSet::new();
+    for block in &delta_spec.removed {
+        if !blocks_by_id.contains_key(&block.id) {
+            errors.push(format!("REMOVED: ID {} not found in baseline", block.id));
+        } else {
+            ids_to_remove.insert(block.id.clone());
+            operations.push(MergeOperation::Removed {
+                id: block.id.clone(),
+                name: block.name.clone(),
+            });
+        }
+    }
+
+    // Step 3 — MODIFIED.
+    for mod_block in &delta_spec.modified {
+        let Some(&idx) = blocks_by_id.get(&mod_block.id) else {
+            errors.push(format!(
+                "MODIFIED: ID {} not found in baseline",
+                mod_block.id
+            ));
+            continue;
+        };
+        operations.push(MergeOperation::Modified {
+            id: mod_block.id.clone(),
+            name: mod_block.name.clone(),
+        });
+        blocks[idx] = mod_block.clone();
+    }
+
+    // Step 4 — ADDED.
+    let mut existing_ids: HashSet<String> = blocks_by_id
+        .keys()
+        .filter(|id| !ids_to_remove.contains(*id))
+        .cloned()
+        .collect();
+    for add_block in &delta_spec.added {
+        if !add_block.id.is_empty() && existing_ids.contains(&add_block.id) {
+            errors.push(format!(
+                "ADDED: ID {} already exists in baseline",
+                add_block.id
+            ));
+            continue;
+        }
+        operations.push(MergeOperation::Added {
+            id: add_block.id.clone(),
+            name: add_block.name.clone(),
+        });
+        blocks.push(add_block.clone());
+        if !add_block.id.is_empty() {
+            existing_ids.insert(add_block.id.clone());
+        }
+    }
+
+    if !errors.is_empty() {
+        return Err(Error::Merge(errors.join("\n")));
+    }
+
+    // Assemble result: preamble (if non-empty) + surviving blocks' stripped bodies.
+    let mut parts: Vec<String> = Vec::new();
+    if !preamble.trim().is_empty() {
+        parts.push(rstrip(&preamble).to_string());
+    }
+    for block in &blocks {
+        if ids_to_remove.contains(&block.id) && !block.id.is_empty() {
+            continue;
+        }
+        parts.push(block.body.trim().to_string());
+    }
+    let mut output = parts.join("\n\n");
+    output.push('\n');
+
+    Ok(MergeResult { output, operations })
+}
+
+fn count_requirement_headings(text: &str) -> usize {
+    text.lines()
+        .filter(|line| line.trim_start().starts_with(REQUIREMENT_HEADING))
+        .count()
+}
+
+/// Python's `str.replace(old, new, 1)`: replace only the first occurrence.
+/// If `needle` is empty we mirror Python by returning `haystack` unchanged.
+fn replace_first(haystack: &str, needle: &str, replacement: &str) -> String {
+    if needle.is_empty() {
+        return haystack.to_string();
+    }
+    match haystack.find(needle) {
+        Some(idx) => {
+            let mut out = String::with_capacity(haystack.len() + replacement.len());
+            out.push_str(&haystack[..idx]);
+            out.push_str(replacement);
+            out.push_str(&haystack[idx + needle.len()..]);
+            out
+        }
+        None => haystack.to_string(),
+    }
+}
+
+fn rstrip(s: &str) -> &str {
+    s.trim_end_matches([' ', '\t', '\n', '\r', '\x0b', '\x0c'])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_baseline_without_headers_is_verbatim() {
+        let delta = "# Greenfield spec\n\nJust prose.\n";
+        let result = merge(None, delta).expect("merge ok");
+        assert_eq!(result.output, delta);
+        assert_eq!(
+            result.operations,
+            vec![MergeOperation::CreatedBaseline {
+                requirement_count: 0
+            }]
+        );
+    }
+
+    #[test]
+    fn new_baseline_counts_requirement_blocks_verbatim() {
+        let delta =
+            "# Spec\n\n### Requirement: A\n\nID: REQ-001\n\n### Requirement: B\n\nID: REQ-002\n";
+        let result = merge(None, delta).expect("merge ok");
+        assert_eq!(result.output, delta);
+        assert!(matches!(
+            result.operations.as_slice(),
+            [MergeOperation::CreatedBaseline {
+                requirement_count: 2
+            }]
+        ));
+    }
+
+    #[test]
+    fn missing_modified_id_surfaces_as_merge_error() {
+        let baseline = "# Base\n\n### Requirement: Alpha\n\nID: REQ-001\n\n#### Scenario: ok\n\n- ok\n\n### Requirement: Beta\n\nID: REQ-002\n\n#### Scenario: ok\n\n- ok\n";
+        let delta = "# delta\n\n## MODIFIED Requirements\n\n### Requirement: Ghost\n\nID: REQ-999\n\n#### Scenario: none\n\n- nothing\n";
+        let err = merge(Some(baseline), delta).expect_err("expected merge failure");
+        match err {
+            Error::Merge(msg) => {
+                assert!(
+                    msg.contains("MODIFIED: ID REQ-999 not found in baseline"),
+                    "unexpected merge error: {msg}"
+                );
+            }
+            other => panic!("expected Error::Merge, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn added_id_collision_surfaces_as_merge_error() {
+        let baseline = "### Requirement: A\n\nID: REQ-001\n\n#### Scenario: ok\n\n- ok\n";
+        let delta = "## ADDED Requirements\n\n### Requirement: Another A\n\nID: REQ-001\n\n#### Scenario: ok\n\n- ok\n";
+        let err = merge(Some(baseline), delta).expect_err("expected merge failure");
+        match err {
+            Error::Merge(msg) => {
+                assert!(
+                    msg.contains("ADDED: ID REQ-001 already exists in baseline"),
+                    "unexpected error: {msg}"
+                );
+            }
+            other => panic!("expected Error::Merge, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rename_updates_heading_and_records_operation() {
+        let baseline =
+            "# B\n\n### Requirement: Old name\n\nID: REQ-001\n\n#### Scenario: ok\n\n- ok\n";
+        let delta = "## RENAMED Requirements\n\nID: REQ-001\nTO: Shiny new name\n";
+        let result = merge(Some(baseline), delta).expect("merge ok");
+        assert!(result.output.contains("### Requirement: Shiny new name"));
+        assert!(!result.output.contains("Old name"));
+        assert_eq!(
+            result.operations,
+            vec![MergeOperation::Renamed {
+                id: "REQ-001".to_string(),
+                old_name: "Old name".to_string(),
+                new_name: "Shiny new name".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn replace_first_only_touches_first_occurrence() {
+        assert_eq!(replace_first("abab", "ab", "XY"), "XYab");
+        assert_eq!(replace_first("abc", "z", "Q"), "abc");
+        assert_eq!(replace_first("abc", "", "Q"), "abc");
+    }
+}

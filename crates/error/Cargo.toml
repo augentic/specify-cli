@@ -1,0 +1,13 @@
+[package]
+name = "specify-error"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unified error types for the Specify CLI"
+categories = ["development-tools"]
+keywords = ["specify", "errors"]
+
+[dependencies]
+thiserror.workspace = true
+serde_yaml.workspace = true

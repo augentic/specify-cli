@@ -1,0 +1,22 @@
+[package]
+name = "specify-validate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Hardcoded rule registry and RFC-1a validator for Specify"
+categories = ["development-tools"]
+keywords = ["specify", "validate", "rules"]
+
+[dependencies]
+specify-error = { path = "../error" }
+specify-schema = { path = "../schema" }
+specify-spec = { path = "../spec" }
+specify-task = { path = "../task" }
+serde.workspace = true
+serde_json.workspace = true
+regex.workspace = true
+glob.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

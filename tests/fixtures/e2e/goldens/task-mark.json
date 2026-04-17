@@ -1,0 +1,6 @@
+{
+  "idempotent": true,
+  "marked": "1.1",
+  "new_content_path": ".specify/changes/my-change/tasks.md",
+  "schema_version": 1
+}

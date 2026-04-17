@@ -1,0 +1,23 @@
+[package]
+name = "specify-merge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Deterministic delta-merge engine for Specify"
+categories = ["development-tools"]
+keywords = ["specify", "merge", "delta"]
+
+[dependencies]
+specify-error = { path = "../error" }
+specify-spec = { path = "../spec" }
+specify-schema = { path = "../schema" }
+specify-change = { path = "../change" }
+glob.workspace = true
+chrono.workspace = true
+regex.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+regex.workspace = true
+
