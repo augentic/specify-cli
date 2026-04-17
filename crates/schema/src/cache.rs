@@ -24,10 +24,7 @@ pub struct CacheMeta {
 impl CacheMeta {
     /// Absolute path to `<project_dir>/.specify/.cache/.cache-meta.yaml`.
     pub fn path(project_dir: &Path) -> PathBuf {
-        project_dir
-            .join(".specify")
-            .join(".cache")
-            .join(".cache-meta.yaml")
+        project_dir.join(".specify").join(".cache").join(".cache-meta.yaml")
     }
 
     /// Load `.cache-meta.yaml`:
@@ -40,10 +37,7 @@ impl CacheMeta {
             Ok(contents) => contents,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(err) => {
-                return Err(Error::Config(format!(
-                    "failed to read {}: {err}",
-                    path.display()
-                )));
+                return Err(Error::Config(format!("failed to read {}: {err}", path.display())));
             }
         };
         let meta: CacheMeta = serde_yaml::from_str(&contents).map_err(|err| {

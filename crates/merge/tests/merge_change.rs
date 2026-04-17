@@ -43,26 +43,14 @@ fn build_project() -> Project {
     let root = tmp.path().to_path_buf();
 
     // .specify layout
-    for sub in [
-        ".specify/changes",
-        ".specify/specs",
-        ".specify/archive",
-        "schemas",
-    ] {
+    for sub in [".specify/changes", ".specify/specs", ".specify/archive", "schemas"] {
         fs::create_dir_all(root.join(sub)).expect("mkdir");
     }
 
     // Copy schemas/omnia/ from the real repo into <root>/schemas/omnia/.
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest
-        .parent()
-        .and_then(Path::parent)
-        .expect("repo root")
-        .to_path_buf();
-    copy_dir(
-        &repo_root.join("schemas/omnia"),
-        &root.join("schemas/omnia"),
-    );
+    let repo_root = manifest.parent().and_then(Path::parent).expect("repo root").to_path_buf();
+    copy_dir(&repo_root.join("schemas/omnia"), &root.join("schemas/omnia"));
 
     // The real omnia `merge` brief has no `generates` field; patch it so
     // `merge_change` has something to discover. Overwriting the file is
@@ -79,16 +67,10 @@ fn build_project() -> Project {
     fs::create_dir_all(change_dir.join("specs/login")).expect("mkdir login");
     fs::create_dir_all(change_dir.join("specs/oauth")).expect("mkdir oauth");
     fs::write(change_dir.join("proposal.md"), "# proposal\n").expect("write proposal");
-    fs::write(
-        change_dir.join("specs/login/spec.md"),
-        include_str!("data/delta-login.md"),
-    )
-    .expect("write login delta");
-    fs::write(
-        change_dir.join("specs/oauth/spec.md"),
-        include_str!("data/delta-oauth.md"),
-    )
-    .expect("write oauth delta");
+    fs::write(change_dir.join("specs/login/spec.md"), include_str!("data/delta-login.md"))
+        .expect("write login delta");
+    fs::write(change_dir.join("specs/oauth/spec.md"), include_str!("data/delta-oauth.md"))
+        .expect("write oauth delta");
 
     let metadata = ChangeMetadata {
         schema: "omnia".to_string(),
@@ -139,26 +121,14 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     // Baselines now exist.
     let login_baseline = specs_dir.join("login/spec.md");
     let oauth_baseline = specs_dir.join("oauth/spec.md");
-    assert!(
-        login_baseline.is_file(),
-        "{} missing",
-        login_baseline.display()
-    );
-    assert!(
-        oauth_baseline.is_file(),
-        "{} missing",
-        oauth_baseline.display()
-    );
+    assert!(login_baseline.is_file(), "{} missing", login_baseline.display());
+    assert!(oauth_baseline.is_file(), "{} missing", oauth_baseline.display());
     let login_text = fs::read_to_string(&login_baseline).unwrap();
     assert!(login_text.contains("REQ-001"));
     assert!(login_text.contains("### Requirement:"));
 
     // Change directory has moved under archive/.
-    assert!(
-        !change_dir.exists(),
-        "{} should be gone",
-        change_dir.display()
-    );
+    assert!(!change_dir.exists(), "{} should be gone", change_dir.display());
     let archive_re = Regex::new(r"^\d{4}-\d{2}-\d{2}-feature-x$").unwrap();
     let archived: Vec<_> = fs::read_dir(&archive_dir)
         .unwrap()
@@ -176,10 +146,7 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     let archived_change_dir = archived[0].path();
     let new_meta = ChangeMetadata::load(&archived_change_dir).expect("load archived metadata");
     assert_eq!(new_meta.status, LifecycleStatus::Merged);
-    assert!(
-        new_meta.completed_at.is_some(),
-        "expected completed_at to be set after merge"
-    );
+    assert!(new_meta.completed_at.is_some(), "expected completed_at to be set after merge");
 }
 
 // ---------------------------------------------------------------------------
@@ -211,10 +178,7 @@ fn wrong_precondition_aborts_cleanly() {
     assert!(!project.specs_dir().join("login/spec.md").exists());
     assert!(!project.specs_dir().join("oauth/spec.md").exists());
     assert!(
-        fs::read_dir(project.archive_dir())
-            .unwrap()
-            .next()
-            .is_none(),
+        fs::read_dir(project.archive_dir()).unwrap().next().is_none(),
         "archive dir must still be empty"
     );
 }
@@ -255,10 +219,7 @@ fn coherence_failure_rolls_back_all_writes() {
     assert!(!project.specs_dir().join("login/spec.md").exists());
     assert!(!project.specs_dir().join("oauth/spec.md").exists());
     assert!(
-        fs::read_dir(project.archive_dir())
-            .unwrap()
-            .next()
-            .is_none(),
+        fs::read_dir(project.archive_dir()).unwrap().next().is_none(),
         "archive must remain empty"
     );
 }
@@ -271,12 +232,8 @@ fn coherence_failure_rolls_back_all_writes() {
 #[test]
 fn archive_subdirectory_is_date_prefixed() {
     let project = build_project();
-    merge_change(
-        &project.change_dir(),
-        &project.specs_dir(),
-        &project.archive_dir(),
-    )
-    .expect("merge ok");
+    merge_change(&project.change_dir(), &project.specs_dir(), &project.archive_dir())
+        .expect("merge ok");
 
     let re = Regex::new(r"^\d{4}-\d{2}-\d{2}-feature-x$").unwrap();
     let names: Vec<String> = fs::read_dir(project.archive_dir())

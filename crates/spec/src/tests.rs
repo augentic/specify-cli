@@ -7,11 +7,7 @@ use super::*;
 
 macro_rules! fixture {
     ($rel:literal) => {
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../tests/fixtures/parity/",
-            $rel
-        ))
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures/parity/", $rel))
     };
 }
 
@@ -75,10 +71,7 @@ fn parse_delta_case_07_all_sections() {
 
     assert_eq!(delta.renamed.len(), 1);
     assert_eq!(delta.renamed[0].id, "REQ-001");
-    assert_eq!(
-        delta.renamed[0].new_name,
-        "User authenticates with email and password"
-    );
+    assert_eq!(delta.renamed[0].new_name, "User authenticates with email and password");
 
     assert_eq!(delta.removed.len(), 1);
     assert_eq!(delta.removed[0].id, "REQ-003");
@@ -137,21 +130,15 @@ fn has_delta_headers_is_case_insensitive() {
     assert!(has_delta_headers("## added requirements\n"));
     assert!(has_delta_headers("## ADDED Requirements\n"));
     assert!(has_delta_headers("## Modified Requirements\n"));
-    assert!(has_delta_headers(
-        "# title\n\nsome prose\n\n## REMOVED Requirements\n"
-    ));
-    assert!(!has_delta_headers(
-        "# title\n\njust some prose, no delta headers\n"
-    ));
+    assert!(has_delta_headers("# title\n\nsome prose\n\n## REMOVED Requirements\n"));
+    assert!(!has_delta_headers("# title\n\njust some prose, no delta headers\n"));
 }
 
 #[test]
 fn has_delta_headers_requires_full_line_match() {
     // Prose that merely mentions "## ADDED Requirements" as part of a longer
     // line should not be treated as a delta header.
-    assert!(!has_delta_headers(
-        "we discussed ## ADDED Requirements at standup\n"
-    ));
+    assert!(!has_delta_headers("we discussed ## ADDED Requirements at standup\n"));
 }
 
 #[test]

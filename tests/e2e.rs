@@ -78,20 +78,14 @@ impl Project {
     /// Mirror the in-repo `schemas/` tree into the project so
     /// `Schema::resolve("omnia", …)` succeeds.
     fn with_schemas(self) -> Self {
-        copy_dir(
-            &repo_root().join("schemas/omnia"),
-            &self.root.join("schemas/omnia"),
-        );
+        copy_dir(&repo_root().join("schemas/omnia"), &self.root.join("schemas/omnia"));
         self
     }
 
     /// Populate the schema cache instead of the local `schemas/` tree so
     /// `Schema::resolve` picks the `SchemaSource::Cached` branch.
     fn with_cached_schema(self) -> Self {
-        copy_dir(
-            &repo_root().join("schemas/omnia"),
-            &self.root.join(".specify/.cache/omnia"),
-        );
+        copy_dir(&repo_root().join("schemas/omnia"), &self.root.join(".specify/.cache/omnia"));
         self
     }
 
@@ -258,11 +252,7 @@ fn validate_bad_change_fails_with_exit_two() {
         .args(["--format", "json", "validate", ".specify/changes/my-change"])
         .assert()
         .failure();
-    assert_eq!(
-        assert.get_output().status.code(),
-        Some(2),
-        "validate on bad fixture must exit 2"
-    );
+    assert_eq!(assert.get_output().status.code(), Some(2), "validate on bad fixture must exit 2");
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(actual["schema_version"], 1);
@@ -293,10 +283,8 @@ fn merge_two_spec_change_produces_baselines_and_archive() {
 
     // Change dir moved under archive/<YYYY-MM-DD>-my-change/.
     let archive_root = project.root().join(".specify/archive");
-    let archived: Vec<_> = fs::read_dir(&archive_root)
-        .expect("read archive dir")
-        .filter_map(|e| e.ok())
-        .collect();
+    let archived: Vec<_> =
+        fs::read_dir(&archive_root).expect("read archive dir").filter_map(|e| e.ok()).collect();
     assert_eq!(archived.len(), 1, "expected one archived change");
     let archived_name = archived[0].file_name().to_string_lossy().into_owned();
     assert!(
@@ -324,13 +312,7 @@ fn task_progress_reports_counts_and_items() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "task",
-            "progress",
-            ".specify/changes/my-change",
-        ])
+        .args(["--format", "json", "task", "progress", ".specify/changes/my-change"])
         .assert()
         .success();
 
@@ -353,22 +335,12 @@ fn task_mark_marks_then_is_idempotent() {
     let tasks_path = project.root().join(".specify/changes/my-change/tasks.md");
 
     let before = fs::read_to_string(&tasks_path).expect("read tasks before");
-    assert!(
-        before.contains("- [ ] 1.1"),
-        "fixture must start with task 1.1 incomplete"
-    );
+    assert!(before.contains("- [ ] 1.1"), "fixture must start with task 1.1 incomplete");
 
     // First mark: flips - [ ] -> - [x] and reports idempotent: false.
     let first = specify()
         .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "task",
-            "mark",
-            ".specify/changes/my-change",
-            "1.1",
-        ])
+        .args(["--format", "json", "task", "mark", ".specify/changes/my-change", "1.1"])
         .assert()
         .success();
     let first_value = parse_stdout(&first.get_output().stdout, project.root());
@@ -377,10 +349,7 @@ fn task_mark_marks_then_is_idempotent() {
     assert_eq!(first_value["idempotent"], false);
 
     let after_first = fs::read_to_string(&tasks_path).expect("read tasks after 1st mark");
-    assert!(
-        after_first.contains("- [x] 1.1"),
-        "tasks.md should now show 1.1 complete"
-    );
+    assert!(after_first.contains("- [x] 1.1"), "tasks.md should now show 1.1 complete");
     assert!(
         !after_first.contains("- [ ] 1.1"),
         "tasks.md should no longer have the incomplete form of 1.1"
@@ -389,24 +358,14 @@ fn task_mark_marks_then_is_idempotent() {
     // Second mark: no-op, idempotent: true, file unchanged.
     let second = specify()
         .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "task",
-            "mark",
-            ".specify/changes/my-change",
-            "1.1",
-        ])
+        .args(["--format", "json", "task", "mark", ".specify/changes/my-change", "1.1"])
         .assert()
         .success();
     let second_value = parse_stdout(&second.get_output().stdout, project.root());
     assert_eq!(second_value["idempotent"], true);
 
     let after_second = fs::read_to_string(&tasks_path).expect("read tasks after 2nd mark");
-    assert_eq!(
-        after_first, after_second,
-        "second mark must leave tasks.md byte-identical"
-    );
+    assert_eq!(after_first, after_second, "second mark must leave tasks.md byte-identical");
 
     assert_golden("task-mark.json", second_value);
 }

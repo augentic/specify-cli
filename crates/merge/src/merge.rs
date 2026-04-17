@@ -27,26 +27,11 @@ pub struct MergeResult {
 /// how many `### Requirement:` blocks it contains.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MergeOperation {
-    Renamed {
-        id: String,
-        old_name: String,
-        new_name: String,
-    },
-    Removed {
-        id: String,
-        name: String,
-    },
-    Modified {
-        id: String,
-        name: String,
-    },
-    Added {
-        id: String,
-        name: String,
-    },
-    CreatedBaseline {
-        requirement_count: usize,
-    },
+    Renamed { id: String, old_name: String, new_name: String },
+    Removed { id: String, name: String },
+    Modified { id: String, name: String },
+    Added { id: String, name: String },
+    CreatedBaseline { requirement_count: usize },
 }
 
 /// Merge a delta spec into an optional baseline.
@@ -167,10 +152,7 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
     // Step 3 — MODIFIED.
     for mod_block in &delta_spec.modified {
         let Some(&idx) = blocks_by_id.get(&mod_block.id) else {
-            errors.push(format!(
-                "MODIFIED: ID {} not found in baseline",
-                mod_block.id
-            ));
+            errors.push(format!("MODIFIED: ID {} not found in baseline", mod_block.id));
             continue;
         };
         operations.push(MergeOperation::Modified {
@@ -181,17 +163,11 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
     }
 
     // Step 4 — ADDED.
-    let mut existing_ids: HashSet<String> = blocks_by_id
-        .keys()
-        .filter(|id| !ids_to_remove.contains(*id))
-        .cloned()
-        .collect();
+    let mut existing_ids: HashSet<String> =
+        blocks_by_id.keys().filter(|id| !ids_to_remove.contains(*id)).cloned().collect();
     for add_block in &delta_spec.added {
         if !add_block.id.is_empty() && existing_ids.contains(&add_block.id) {
-            errors.push(format!(
-                "ADDED: ID {} already exists in baseline",
-                add_block.id
-            ));
+            errors.push(format!("ADDED: ID {} already exists in baseline", add_block.id));
             continue;
         }
         operations.push(MergeOperation::Added {
@@ -226,9 +202,7 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
 }
 
 fn count_requirement_headings(text: &str) -> usize {
-    text.lines()
-        .filter(|line| line.trim_start().starts_with(REQUIREMENT_HEADING))
-        .count()
+    text.lines().filter(|line| line.trim_start().starts_with(REQUIREMENT_HEADING)).count()
 }
 
 /// Python's `str.replace(old, new, 1)`: replace only the first occurrence.
@@ -264,9 +238,7 @@ mod tests {
         assert_eq!(result.output, delta);
         assert_eq!(
             result.operations,
-            vec![MergeOperation::CreatedBaseline {
-                requirement_count: 0
-            }]
+            vec![MergeOperation::CreatedBaseline { requirement_count: 0 }]
         );
     }
 
@@ -278,9 +250,7 @@ mod tests {
         assert_eq!(result.output, delta);
         assert!(matches!(
             result.operations.as_slice(),
-            [MergeOperation::CreatedBaseline {
-                requirement_count: 2
-            }]
+            [MergeOperation::CreatedBaseline { requirement_count: 2 }]
         ));
     }
 

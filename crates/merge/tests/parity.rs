@@ -38,11 +38,7 @@ fn case_01_single_req_is_byte_for_byte_identical() {
         fixture!("case-01-single-req", "delta.md"),
         fixture!("case-01-single-req", "expected-merged.md"),
     );
-    assert!(
-        fixture!("case-01-single-req", "expected-merge-errors.txt")
-            .trim()
-            .is_empty()
-    );
+    assert!(fixture!("case-01-single-req", "expected-merge-errors.txt").trim().is_empty());
 }
 
 #[test]
@@ -142,11 +138,7 @@ fn case_08_validation_ok_has_no_failures() {
     let baseline = fixture!("case-08-validation-ok", "baseline.md");
     let expected = fixture!("case-08-validation-ok", "expected-validation.txt");
     let results = validate_baseline(baseline, None);
-    assert!(
-        fails(&results).is_empty(),
-        "expected no fails; got {:?}",
-        fails(&results)
-    );
+    assert!(fails(&results).is_empty(), "expected no fails; got {:?}", fails(&results));
     assert!(expected.trim().is_empty());
 }
 
@@ -157,10 +149,8 @@ fn case_09_validation_fails_produces_expected_failure_set() {
     let results = validate_baseline(baseline, None);
     let actual_details = fails(&results);
 
-    let expected_details: Vec<&str> = expected
-        .lines()
-        .filter_map(|line| line.strip_prefix("FAIL: "))
-        .collect();
+    let expected_details: Vec<&str> =
+        expected.lines().filter_map(|line| line.strip_prefix("FAIL: ")).collect();
 
     for needle in &expected_details {
         assert!(
@@ -186,10 +176,6 @@ fn case_10_design_refs_preserves_python_regex_quirk() {
     let design = fixture!("case-10-design-refs", "design.md");
     let expected = fixture!("case-10-design-refs", "expected-validation.txt");
     let results = validate_baseline(baseline, Some(design));
-    assert!(
-        fails(&results).is_empty(),
-        "got unexpected fails: {:?}",
-        fails(&results)
-    );
+    assert!(fails(&results).is_empty(), "got unexpected fails: {:?}", fails(&results));
     assert!(expected.trim().is_empty());
 }

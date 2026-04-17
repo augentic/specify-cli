@@ -98,12 +98,7 @@ pub fn parse_baseline(text: &str) -> ParsedSpec {
             if in_preamble {
                 in_preamble = false;
             } else {
-                flush_block(
-                    &mut blocks,
-                    &mut current_lines,
-                    &mut current_name,
-                    &mut current_id,
-                );
+                flush_block(&mut blocks, &mut current_lines, &mut current_name, &mut current_id);
             }
             current_name = Some(rest.trim().to_string());
             current_lines.clear();
@@ -128,12 +123,7 @@ pub fn parse_baseline(text: &str) -> ParsedSpec {
             // merge-specs.py drops them.
             if stripped.starts_with("## ") && !stripped.starts_with(heading_prefix) {
                 in_preamble = false;
-                flush_block(
-                    &mut blocks,
-                    &mut current_lines,
-                    &mut current_name,
-                    &mut current_id,
-                );
+                flush_block(&mut blocks, &mut current_lines, &mut current_name, &mut current_id);
                 current_lines.clear();
                 current_lines.push(line);
                 current_name = None;
@@ -144,12 +134,7 @@ pub fn parse_baseline(text: &str) -> ParsedSpec {
             current_lines.push(line);
         }
     }
-    flush_block(
-        &mut blocks,
-        &mut current_lines,
-        &mut current_name,
-        &mut current_id,
-    );
+    flush_block(&mut blocks, &mut current_lines, &mut current_name, &mut current_id);
 
     ParsedSpec {
         preamble: preamble_lines.join("\n"),
@@ -268,10 +253,8 @@ pub fn has_delta_headers(text: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 fn flush_block(
-    blocks: &mut Vec<RequirementBlock>,
-    current_lines: &mut Vec<&str>,
-    current_name: &mut Option<String>,
-    current_id: &mut Option<String>,
+    blocks: &mut Vec<RequirementBlock>, current_lines: &mut Vec<&str>,
+    current_name: &mut Option<String>, current_id: &mut Option<String>,
 ) {
     if let Some(name) = current_name.take() {
         let heading = current_lines.first().copied().unwrap_or("").to_string();
@@ -295,25 +278,19 @@ fn parse_scenarios(body: &str) -> Vec<Scenario> {
     let starts: Vec<usize> = lines
         .iter()
         .enumerate()
-        .filter_map(|(idx, line)| {
-            if line.trim().starts_with(SCENARIO_HEADING) {
-                Some(idx)
-            } else {
-                None
-            }
-        })
+        .filter_map(
+            |(idx, line)| {
+                if line.trim().starts_with(SCENARIO_HEADING) { Some(idx) } else { None }
+            },
+        )
         .collect();
 
     let mut scenarios = Vec::with_capacity(starts.len());
     for (i, &start) in starts.iter().enumerate() {
         let end = starts.get(i + 1).copied().unwrap_or(lines.len());
         let block_lines = &lines[start..end];
-        let name = block_lines[0]
-            .trim()
-            .strip_prefix(SCENARIO_HEADING)
-            .unwrap_or("")
-            .trim()
-            .to_string();
+        let name =
+            block_lines[0].trim().strip_prefix(SCENARIO_HEADING).unwrap_or("").trim().to_string();
         let scenario_body = block_lines.join("\n");
         scenarios.push(Scenario {
             name,

@@ -36,10 +36,7 @@ pub enum Error {
     Config(String),
 
     #[error("validation failed: {count} errors")]
-    Validation {
-        count: usize,
-        results: Vec<ValidationResultSummary>,
-    },
+    Validation { count: usize, results: Vec<ValidationResultSummary> },
 
     #[error("merge failed: {0}")]
     Merge(String),
@@ -66,21 +63,14 @@ mod tests {
             status: status.to_string(),
             rule_id: "rule.example".to_string(),
             rule: "Example rule".to_string(),
-            detail: if status == "pass" {
-                None
-            } else {
-                Some("detail".to_string())
-            },
+            detail: if status == "pass" { None } else { Some("detail".to_string()) },
         }
     }
 
     #[test]
     fn not_initialized_display() {
         let err = Error::NotInitialized;
-        assert_eq!(
-            err.to_string(),
-            "not initialized: .specify/project.yaml not found"
-        );
+        assert_eq!(err.to_string(), "not initialized: .specify/project.yaml not found");
     }
 
     #[test]
@@ -124,10 +114,7 @@ mod tests {
             expected: "Defining".to_string(),
             found: "Merged".to_string(),
         };
-        assert_eq!(
-            err.to_string(),
-            "lifecycle error: expected Defining, found Merged"
-        );
+        assert_eq!(err.to_string(), "lifecycle error: expected Defining, found Merged");
     }
 
     #[test]

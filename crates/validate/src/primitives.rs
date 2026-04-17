@@ -73,11 +73,7 @@ fn leading_hash_count(line: &str) -> usize {
         return 0;
     }
     let rest = &trimmed[count..];
-    if rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t') {
-        count
-    } else {
-        0
-    }
+    if rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t') { count } else { 0 }
 }
 
 pub(crate) fn all_requirements_have_scenarios(spec: &ParsedSpec) -> bool {
@@ -133,9 +129,7 @@ pub(crate) fn tasks_grouped_under_headings(tasks: &TaskProgress) -> bool {
 /// or the section is empty, returns `true` — the sibling
 /// `has-content-after-heading` rule is responsible for that case.
 pub(crate) fn proposal_deliverables_have_specs(
-    proposal: &str,
-    specs_dir: &Path,
-    term: &str,
+    proposal: &str, specs_dir: &Path, term: &str,
 ) -> bool {
     let headings: Vec<&str> = match term {
         "crate" => vec!["## Crates"],
@@ -196,9 +190,8 @@ fn extract_deliverables(proposal: &str, heading: &str) -> Vec<String> {
         // `- **name**`. Split on whitespace and pick the first token,
         // stripping decorations.
         let first_token = rest.split_whitespace().next().unwrap_or("");
-        let cleaned = first_token
-            .trim_matches(|c: char| c == '`' || c == '*' || c == ':' || c == ',')
-            .trim();
+        let cleaned =
+            first_token.trim_matches(|c: char| c == '`' || c == '*' || c == ':' || c == ',').trim();
         if cleaned.is_empty() {
             continue;
         }
@@ -212,10 +205,7 @@ fn extract_deliverables(proposal: &str, heading: &str) -> Vec<String> {
 /// no references are found.
 pub(crate) fn design_references_exist(design: &str, specs_dir: &Path) -> bool {
     let re = Regex::new(r"REQ-[0-9]{3}").expect("req id regex is valid");
-    let mut refs: Vec<String> = re
-        .find_iter(design)
-        .map(|m| m.as_str().to_string())
-        .collect();
+    let mut refs: Vec<String> = re.find_iter(design).map(|m| m.as_str().to_string()).collect();
     refs.sort();
     refs.dedup();
     if refs.is_empty() {
@@ -235,8 +225,7 @@ pub(crate) fn design_references_exist(design: &str, specs_dir: &Path) -> bool {
             spec_bodies.push(contents);
         }
     }
-    refs.iter()
-        .all(|needle| spec_bodies.iter().any(|body| body.contains(needle)))
+    refs.iter().all(|needle| spec_bodies.iter().any(|body| body.contains(needle)))
 }
 
 #[cfg(test)]
@@ -298,10 +287,7 @@ mod tests {
         let bad = specify_spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-1\n\n#### Scenario: Happy\n",
         );
-        assert!(!ids_match_pattern(
-            &bad,
-            specify_spec::REQUIREMENT_ID_PATTERN
-        ));
+        assert!(!ids_match_pattern(&bad, specify_spec::REQUIREMENT_ID_PATTERN));
     }
 
     #[test]
@@ -332,11 +318,7 @@ mod tests {
         fs::write(specs.join("login").join("spec.md"), "# Login\n").unwrap();
 
         let ok_proposal = "## Crates\n\n- login\n";
-        assert!(proposal_deliverables_have_specs(
-            ok_proposal,
-            &specs,
-            "crate"
-        ));
+        assert!(proposal_deliverables_have_specs(ok_proposal, &specs, "crate"));
 
         let missing = "## Crates\n\n- login\n- missing\n";
         assert!(!proposal_deliverables_have_specs(missing, &specs, "crate"));
@@ -361,11 +343,7 @@ mod tests {
         let dir = tmp();
         let specs = dir.path().join("specs");
         fs::create_dir_all(specs.join("a")).unwrap();
-        fs::write(
-            specs.join("a").join("spec.md"),
-            "### Requirement: X\nID: REQ-001\n",
-        )
-        .unwrap();
+        fs::write(specs.join("a").join("spec.md"), "### Requirement: X\nID: REQ-001\n").unwrap();
 
         let ok = "See REQ-001 in the spec.";
         assert!(design_references_exist(ok, &specs));

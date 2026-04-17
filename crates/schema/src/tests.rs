@@ -30,10 +30,7 @@ fn repo_root() -> PathBuf {
 }
 
 fn omnia_schema_path() -> PathBuf {
-    repo_root()
-        .join("schemas")
-        .join("omnia")
-        .join("schema.yaml")
+    repo_root().join("schemas").join("omnia").join("schema.yaml")
 }
 
 // ---------- Schema parsing ----------
@@ -48,21 +45,13 @@ fn parses_omnia_schema_yaml_fields_and_entries() {
     assert_eq!(schema.description, "Omnia Rust WASM workflow");
     assert!(schema.extends.is_none());
     let domain = schema.domain.as_deref().expect("omnia has a domain block");
-    assert!(
-        domain.contains("Rust, WASM"),
-        "unexpected domain body: {domain:?}"
-    );
+    assert!(domain.contains("Rust, WASM"), "unexpected domain body: {domain:?}");
 
     assert_eq!(schema.pipeline.define.len(), 4);
     assert_eq!(schema.pipeline.build.len(), 1);
     assert_eq!(schema.pipeline.merge.len(), 1);
 
-    let define_ids: Vec<&str> = schema
-        .pipeline
-        .define
-        .iter()
-        .map(|e| e.id.as_str())
-        .collect();
+    let define_ids: Vec<&str> = schema.pipeline.define.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(define_ids, vec!["proposal", "specs", "design", "tasks"]);
 
     assert_eq!(schema.pipeline.build[0].id, "build");
@@ -92,9 +81,7 @@ fn validate_structure_valid_for_omnia() {
     let schema: Schema = serde_yaml::from_str(&raw).unwrap();
     let results = schema.validate_structure();
     assert!(
-        results
-            .iter()
-            .all(|r| matches!(r, ValidationResult::Pass { .. })),
+        results.iter().all(|r| matches!(r, ValidationResult::Pass { .. })),
         "expected all passes, got: {results:?}"
     );
 }
@@ -122,9 +109,7 @@ fn validate_structure_fails_when_define_phase_is_empty() {
 
     let results = schema.validate_structure();
     assert!(
-        results
-            .iter()
-            .any(|r| matches!(r, ValidationResult::Fail { .. })),
+        results.iter().any(|r| matches!(r, ValidationResult::Fail { .. })),
         "expected at least one failure, got: {results:?}"
     );
 }
@@ -182,21 +167,10 @@ pipeline:
     assert_eq!(merged.version, 2);
     assert!(merged.extends.is_none(), "extends should be cleared");
 
-    let ids: Vec<&str> = merged
-        .pipeline
-        .define
-        .iter()
-        .map(|e| e.id.as_str())
-        .collect();
+    let ids: Vec<&str> = merged.pipeline.define.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(ids, vec!["proposal", "specs", "review"]);
 
-    let specs = &merged
-        .pipeline
-        .define
-        .iter()
-        .find(|e| e.id == "specs")
-        .unwrap()
-        .brief;
+    let specs = &merged.pipeline.define.iter().find(|e| e.id == "specs").unwrap().brief;
     assert_eq!(specs, "briefs/specs-v2.md", "child override took effect");
 }
 
@@ -222,9 +196,7 @@ fn entries_iterates_in_phase_order_and_entry_lookup_works() {
     ];
     assert_eq!(phases, expected_phases);
 
-    let (phase, entry) = schema
-        .entry("proposal")
-        .expect("proposal is a define entry");
+    let (phase, entry) = schema.entry("proposal").expect("proposal is a define entry");
     assert_eq!(phase, Phase::Define);
     assert_eq!(entry.id, "proposal");
 
@@ -347,22 +319,13 @@ pipeline:
 
 fn valid_briefs() -> Vec<(&'static str, &'static str)> {
     vec![
-        (
-            "briefs/proposal.md",
-            "---\nid: proposal\ndescription: why\n---\nbody\n",
-        ),
-        (
-            "briefs/specs.md",
-            "---\nid: specs\ndescription: what\nneeds: [proposal]\n---\nbody\n",
-        ),
+        ("briefs/proposal.md", "---\nid: proposal\ndescription: why\n---\nbody\n"),
+        ("briefs/specs.md", "---\nid: specs\ndescription: what\nneeds: [proposal]\n---\nbody\n"),
         (
             "briefs/build.md",
             "---\nid: build\ndescription: implement\nneeds: [specs]\ntracks: specs\n---\nbody\n",
         ),
-        (
-            "briefs/merge.md",
-            "---\nid: merge\ndescription: land\nneeds: [build]\n---\nbody\n",
-        ),
+        ("briefs/merge.md", "---\nid: merge\ndescription: land\nneeds: [build]\n---\nbody\n"),
     ]
 }
 
@@ -470,9 +433,7 @@ fn cache_meta_load_roundtrip_and_malformed() {
 
     let results = meta.validate_structure();
     assert!(
-        results
-            .iter()
-            .all(|r| matches!(r, ValidationResult::Pass { .. })),
+        results.iter().all(|r| matches!(r, ValidationResult::Pass { .. })),
         "expected valid, got {results:?}"
     );
 
@@ -508,9 +469,7 @@ fn cache_meta_validate_structure_fails_on_empty_fields() {
     };
     let results = meta.validate_structure();
     assert!(
-        results
-            .iter()
-            .any(|r| matches!(r, ValidationResult::Fail { .. })),
+        results.iter().any(|r| matches!(r, ValidationResult::Fail { .. })),
         "empty strings should fail minLength: {results:?}"
     );
 }

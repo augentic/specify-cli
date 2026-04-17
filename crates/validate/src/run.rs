@@ -19,8 +19,7 @@ use crate::{BriefContext, Classification, CrossContext, RuleOutcome, ValidationR
 /// to inspect — this matches the RFC-1 contract that only define-phase
 /// briefs produce validate-able outputs.
 pub fn validate_change(
-    change_dir: &Path,
-    pipeline: &PipelineView,
+    change_dir: &Path, pipeline: &PipelineView,
 ) -> Result<ValidationReport, Error> {
     let mut brief_results: BTreeMap<String, Vec<ValidationResult>> = BTreeMap::new();
     let specs_dir = change_dir.join("specs");
@@ -42,11 +41,7 @@ pub fn validate_change(
             // no artifact means there is nothing to rule against.
             let missing_path = change_dir.join(generates);
             let key = brief_id.clone();
-            let results = vec![artifact_missing_result(
-                &brief_id,
-                &missing_path,
-                change_dir,
-            )];
+            let results = vec![artifact_missing_result(&brief_id, &missing_path, change_dir)];
             brief_results.insert(key, results);
             continue;
         }
@@ -59,13 +54,8 @@ pub fn validate_change(
                 relative_key(change_dir, &artifact_path)
             };
 
-            let results = run_brief_rules(
-                &brief_id,
-                &artifact_path,
-                change_dir,
-                &specs_dir,
-                terminology,
-            )?;
+            let results =
+                run_brief_rules(&brief_id, &artifact_path, change_dir, &specs_dir, terminology)?;
             brief_results.insert(key, results);
         }
     }
@@ -131,9 +121,7 @@ fn expand_generates(change_dir: &Path, generates: &str) -> Result<Vec<PathBuf>, 
 /// across different tempdir prefixes; unix-style forward slashes are used
 /// so golden fixtures compare identically across platforms.
 fn relative_key(change_dir: &Path, artifact_path: &Path) -> String {
-    let rel = artifact_path
-        .strip_prefix(change_dir)
-        .unwrap_or(artifact_path);
+    let rel = artifact_path.strip_prefix(change_dir).unwrap_or(artifact_path);
     rel.components()
         .map(|c| c.as_os_str().to_string_lossy().into_owned())
         .collect::<Vec<_>>()
@@ -141,9 +129,7 @@ fn relative_key(change_dir: &Path, artifact_path: &Path) -> String {
 }
 
 fn artifact_missing_result(
-    brief_id: &str,
-    artifact_path: &Path,
-    change_dir: &Path,
+    brief_id: &str, artifact_path: &Path, change_dir: &Path,
 ) -> ValidationResult {
     let rel = relative_key(change_dir, artifact_path);
     let rule_id: &'static str = Box::leak(format!("{brief_id}.artifact-exists").into_boxed_str());
@@ -156,34 +142,20 @@ fn artifact_missing_result(
 }
 
 fn run_brief_rules(
-    brief_id: &str,
-    artifact_path: &Path,
-    change_dir: &Path,
-    specs_dir: &Path,
+    brief_id: &str, artifact_path: &Path, change_dir: &Path, specs_dir: &Path,
     terminology: &'static str,
 ) -> Result<Vec<ValidationResult>, Error> {
     let content = match std::fs::read_to_string(artifact_path) {
         Ok(t) => t,
         Err(_) => {
-            return Ok(vec![artifact_missing_result(
-                brief_id,
-                artifact_path,
-                change_dir,
-            )]);
+            return Ok(vec![artifact_missing_result(brief_id, artifact_path, change_dir)]);
         }
     };
 
     // Parse brief-specific structured context.
-    let parsed_spec = if brief_id == "specs" {
-        Some(specify_spec::parse_baseline(&content))
-    } else {
-        None
-    };
-    let tasks = if brief_id == "tasks" {
-        Some(specify_task::parse_tasks(&content))
-    } else {
-        None
-    };
+    let parsed_spec =
+        if brief_id == "specs" { Some(specify_spec::parse_baseline(&content)) } else { None };
+    let tasks = if brief_id == "tasks" { Some(specify_task::parse_tasks(&content)) } else { None };
 
     let ctx = BriefContext {
         brief_id,
@@ -221,10 +193,7 @@ fn run_brief_rules(
 }
 
 fn run_cross_rules(
-    change_dir: &Path,
-    specs_dir: &Path,
-    pipeline: &PipelineView,
-    terminology: &'static str,
+    change_dir: &Path, specs_dir: &Path, pipeline: &PipelineView, terminology: &'static str,
 ) -> Vec<ValidationResult> {
     let ctx = CrossContext {
         change_dir,

@@ -10,11 +10,7 @@ use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("repo root exists")
-        .to_path_buf()
+    manifest.parent().and_then(|p| p.parent()).expect("repo root exists").to_path_buf()
 }
 
 fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
@@ -62,9 +58,7 @@ fn missing_artifact_produces_synth_failure() {
             .unwrap_or_else(|| panic!("missing entry for `{brief}`"));
         assert_eq!(results.len(), 1, "{brief} should have exactly one result");
         match &results[0] {
-            ValidationResult::Fail {
-                rule_id, detail, ..
-            } => {
+            ValidationResult::Fail { rule_id, detail, .. } => {
                 assert!(
                     rule_id.ends_with(".artifact-exists"),
                     "unexpected rule_id for `{brief}`: {rule_id}"
@@ -76,10 +70,7 @@ fn missing_artifact_produces_synth_failure() {
     }
     // `specs` brief uses a glob → empty expansion also routes through the
     // artifact-missing path with key == brief_id.
-    let specs = report
-        .brief_results
-        .get("specs")
-        .expect("specs key present");
+    let specs = report.brief_results.get("specs").expect("specs key present");
     assert_eq!(specs.len(), 1);
     match &specs[0] {
         ValidationResult::Fail { rule_id, .. } => {

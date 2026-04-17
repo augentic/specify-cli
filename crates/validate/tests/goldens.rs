@@ -21,11 +21,7 @@ use tempfile::TempDir;
 fn repo_root() -> PathBuf {
     // `CARGO_MANIFEST_DIR` is `<repo>/crates/validate/` for this crate.
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .parent()
-        .and_then(Path::parent)
-        .expect("repo root exists")
-        .to_path_buf()
+    manifest.parent().and_then(Path::parent).expect("repo root exists").to_path_buf()
 }
 
 /// Copy a directory tree recursively. We don't pull in `fs_extra` just
@@ -48,18 +44,13 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
 /// `(tempdir_guard, change_dir, pipeline_view)`.
 fn stage_fixture(fixture_name: &str) -> (TempDir, PathBuf, PipelineView) {
     let repo = repo_root();
-    let fixture_src = repo
-        .join("crates/validate/tests/fixtures")
-        .join(fixture_name);
+    let fixture_src = repo.join("crates/validate/tests/fixtures").join(fixture_name);
     let schema_src = repo.join("schemas/omnia");
 
     let tempdir = tempfile::tempdir().unwrap();
     let project_dir = tempdir.path().to_path_buf();
 
-    let change_dir = project_dir
-        .join(".specify")
-        .join("changes")
-        .join(fixture_name);
+    let change_dir = project_dir.join(".specify").join("changes").join(fixture_name);
     copy_dir_recursive(&fixture_src, &change_dir);
 
     let schema_dst = project_dir.join("schemas").join("omnia");
@@ -71,9 +62,7 @@ fn stage_fixture(fixture_name: &str) -> (TempDir, PathBuf, PipelineView) {
 }
 
 fn golden_path(fixture_name: &str) -> PathBuf {
-    repo_root()
-        .join("crates/validate/tests/fixtures")
-        .join(format!("{fixture_name}.golden.json"))
+    repo_root().join("crates/validate/tests/fixtures").join(format!("{fixture_name}.golden.json"))
 }
 
 fn run_fixture_and_diff(fixture_name: &str, expected_passed: bool) {
@@ -94,17 +83,11 @@ fn run_fixture_and_diff(fixture_name: &str, expected_passed: bool) {
     }
 
     let expected = fs::read_to_string(&path).unwrap_or_else(|err| {
-        panic!(
-            "missing golden {}: {err}; regenerate with REGENERATE_GOLDENS=1",
-            path.display()
-        )
+        panic!("missing golden {}: {err}; regenerate with REGENERATE_GOLDENS=1", path.display())
     });
 
     let expected_value: serde_json::Value = serde_json::from_str(&expected).unwrap();
-    assert_eq!(
-        value, expected_value,
-        "JSON mismatch for `{fixture_name}`. Actual:\n{serialised}"
-    );
+    assert_eq!(value, expected_value, "JSON mismatch for `{fixture_name}`. Actual:\n{serialised}");
 }
 
 #[test]

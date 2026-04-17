@@ -34,20 +34,9 @@ pub use schema::{Phase, Pipeline, PipelineEntry, ResolvedSchema, Schema, SchemaS
 /// `specify-schema` for `PipelineView`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValidationResult {
-    Pass {
-        rule_id: &'static str,
-        rule: &'static str,
-    },
-    Fail {
-        rule_id: &'static str,
-        rule: &'static str,
-        detail: String,
-    },
-    Deferred {
-        rule_id: &'static str,
-        rule: &'static str,
-        reason: &'static str,
-    },
+    Pass { rule_id: &'static str, rule: &'static str },
+    Fail { rule_id: &'static str, rule: &'static str, detail: String },
+    Deferred { rule_id: &'static str, rule: &'static str, reason: &'static str },
 }
 
 #[cfg(test)]

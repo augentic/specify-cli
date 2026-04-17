@@ -124,10 +124,7 @@ enum TaskAction {
     /// Report task completion counts (total, complete, pending)
     Progress { change_dir: PathBuf },
     /// Mark a task complete (idempotent — no-op if already complete)
-    Mark {
-        change_dir: PathBuf,
-        task_number: String,
-    },
+    Mark { change_dir: PathBuf, task_number: String },
 }
 
 #[derive(Subcommand)]
@@ -182,12 +179,8 @@ fn run(cli: Cli) -> i32 {
 // ---------------------------------------------------------------------------
 
 fn run_init(
-    format: OutputFormat,
-    schema: String,
-    schema_dir: PathBuf,
-    name: Option<String>,
-    domain: Option<String>,
-    upgrade: bool,
+    format: OutputFormat, schema: String, schema_dir: PathBuf, name: Option<String>,
+    domain: Option<String>, upgrade: bool,
 ) -> i32 {
     // `upgrade` toggles future behaviour (Preserve vs WriteCurrent in
     // Change K), but for Change J both fresh and `--upgrade` write the
@@ -276,11 +269,7 @@ fn run_validate(format: OutputFormat, change_dir: PathBuf) -> i32 {
         OutputFormat::Text => print_validation_report_text(&report),
     }
 
-    if report.passed {
-        EXIT_SUCCESS
-    } else {
-        EXIT_VALIDATION_FAILED
-    }
+    if report.passed { EXIT_SUCCESS } else { EXIT_VALIDATION_FAILED }
 }
 
 fn print_validation_report_text(report: &ValidationReport) {
@@ -302,12 +291,10 @@ fn print_validation_report_text(report: &ValidationReport) {
 fn format_result_line(r: &ValidationResult) -> String {
     match r {
         ValidationResult::Pass { rule_id, .. } => format!("[ok] {rule_id}"),
-        ValidationResult::Fail {
-            rule_id, detail, ..
-        } => format!("[fail] {rule_id}: {detail}"),
-        ValidationResult::Deferred {
-            rule_id, reason, ..
-        } => format!("[defer] {rule_id} ({reason})"),
+        ValidationResult::Fail { rule_id, detail, .. } => format!("[fail] {rule_id}: {detail}"),
+        ValidationResult::Deferred { rule_id, reason, .. } => {
+            format!("[defer] {rule_id} ({reason})")
+        }
     }
 }
 
@@ -332,10 +319,8 @@ fn run_merge(format: OutputFormat, change_dir: PathBuf) -> i32 {
     let change_name = match change_dir.file_name().and_then(|s| s.to_str()) {
         Some(name) => name.to_string(),
         None => {
-            let err = Error::Config(format!(
-                "change dir `{}` has no basename",
-                change_dir.display()
-            ));
+            let err =
+                Error::Config(format!("change dir `{}` has no basename", change_dir.display()));
             return emit_error(format, &err);
         }
     };
@@ -441,11 +426,7 @@ fn summarise_operations(ops: &[MergeOperation]) -> String {
     if renamed > 0 {
         parts.push(format!("{renamed} renamed"));
     }
-    if parts.is_empty() {
-        "no-op".to_string()
-    } else {
-        parts.join(", ")
-    }
+    if parts.is_empty() { "no-op".to_string() } else { parts.join(", ") }
 }
 
 // ---------------------------------------------------------------------------
@@ -508,11 +489,8 @@ fn status_entry_to_json(e: &StatusEntry) -> Value {
         Some((complete, total)) => json!({"total": total, "complete": complete}),
         None => Value::Null,
     };
-    let artifacts: serde_json::Map<String, Value> = e
-        .artifacts
-        .iter()
-        .map(|(k, v)| (k.clone(), Value::Bool(*v)))
-        .collect();
+    let artifacts: serde_json::Map<String, Value> =
+        e.artifacts.iter().map(|(k, v)| (k.clone(), Value::Bool(*v))).collect();
     json!({
         "name": e.name,
         "status": e.status,
@@ -523,10 +501,7 @@ fn status_entry_to_json(e: &StatusEntry) -> Value {
 }
 
 fn collect_status(
-    change_dir: &Path,
-    name: &str,
-    pipeline: &PipelineView,
-    project_dir: &Path,
+    change_dir: &Path, name: &str, pipeline: &PipelineView, project_dir: &Path,
 ) -> Result<StatusEntry, Error> {
     let metadata = ChangeMetadata::load(change_dir)?;
     let status_str = format!("{:?}", metadata.status).to_lowercase();
@@ -627,18 +602,8 @@ fn print_status_text(entries: &[StatusEntry]) {
     }
 
     // Multi-change table.
-    let name_w = entries
-        .iter()
-        .map(|e| e.name.len())
-        .max()
-        .unwrap_or(6)
-        .max(6);
-    let status_w = entries
-        .iter()
-        .map(|e| e.status.len())
-        .max()
-        .unwrap_or(6)
-        .max(6);
+    let name_w = entries.iter().map(|e| e.name.len()).max().unwrap_or(6).max(6);
+    let status_w = entries.iter().map(|e| e.status.len()).max().unwrap_or(6).max(6);
     println!(
         "{:<name_w$}  {:<status_w$}  tasks",
         "change",
@@ -779,9 +744,7 @@ fn resolve_tasks_path(project_dir: &Path, change_dir: &Path) -> Result<PathBuf, 
 }
 
 fn resolve_tasks_path_for(
-    change_dir: &Path,
-    schema_value: &str,
-    project_hint: Option<&Path>,
+    change_dir: &Path, schema_value: &str, project_hint: Option<&Path>,
 ) -> Result<PathBuf, Error> {
     // Use the hinted project dir when supplied; otherwise walk up from
     // the change dir — convention is `<project>/.specify/changes/<name>`.
@@ -809,9 +772,7 @@ fn resolve_tasks_path_for(
         .as_deref()
         .ok_or_else(|| Error::Config("`build` brief has no `tracks` field".to_string()))?;
     let tracked = pipeline.brief(tracks_id).ok_or_else(|| {
-        Error::Config(format!(
-            "`build.tracks = {tracks_id}` but no such brief exists"
-        ))
+        Error::Config(format!("`build.tracks = {tracks_id}` but no such brief exists"))
     })?;
     let generates = brief_generates(tracked)?;
     Ok(change_dir.join(generates))
@@ -819,10 +780,7 @@ fn resolve_tasks_path_for(
 
 fn brief_generates(brief: &Brief) -> Result<&str, Error> {
     brief.frontmatter.generates.as_deref().ok_or_else(|| {
-        Error::Config(format!(
-            "brief `{}` has no `generates` field",
-            brief.frontmatter.id
-        ))
+        Error::Config(format!("brief `{}` has no `generates` field", brief.frontmatter.id))
     })
 }
 
@@ -862,9 +820,7 @@ fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> i32 {
         Err(err) => return emit_error(format, &Error::Yaml(err)),
     };
     let results = schema.validate_structure();
-    let passed = !results
-        .iter()
-        .any(|r| matches!(r, ValidationResult::Fail { .. }));
+    let passed = !results.iter().any(|r| matches!(r, ValidationResult::Fail { .. }));
 
     match format {
         OutputFormat::Json => {
@@ -878,27 +834,18 @@ fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> i32 {
             if passed {
                 println!("Schema OK");
             } else {
-                let fail_count = results
-                    .iter()
-                    .filter(|r| matches!(r, ValidationResult::Fail { .. }))
-                    .count();
+                let fail_count =
+                    results.iter().filter(|r| matches!(r, ValidationResult::Fail { .. })).count();
                 println!("Schema invalid: {fail_count} errors");
                 for r in &results {
-                    if let ValidationResult::Fail {
-                        rule_id, detail, ..
-                    } = r
-                    {
+                    if let ValidationResult::Fail { rule_id, detail, .. } = r {
                         println!("  [fail] {rule_id}: {detail}");
                     }
                 }
             }
         }
     }
-    if passed {
-        EXIT_SUCCESS
-    } else {
-        EXIT_VALIDATION_FAILED
-    }
+    if passed { EXIT_SUCCESS } else { EXIT_VALIDATION_FAILED }
 }
 
 fn validation_result_to_json(r: &ValidationResult) -> Value {
@@ -971,10 +918,7 @@ fn emit_json(value: serde_json::Value) {
         }
         other => other,
     };
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&wrapped).expect("JSON serialise")
-    );
+    println!("{}", serde_json::to_string_pretty(&wrapped).expect("JSON serialise"));
 }
 
 fn emit_json_error(err: &Error, code: i32) {

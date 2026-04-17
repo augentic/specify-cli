@@ -158,10 +158,8 @@ mod tests {
         let results = validate_baseline(baseline, None);
         let fails: Vec<_> = results.iter().filter_map(as_fail).collect();
         assert!(
-            fails
-                .iter()
-                .any(|(rid, detail)| *rid == RULE_NO_DUPLICATE_IDS
-                    && detail.contains("Duplicate ID: REQ-001")),
+            fails.iter().any(|(rid, detail)| *rid == RULE_NO_DUPLICATE_IDS
+                && detail.contains("Duplicate ID: REQ-001")),
             "expected duplicate-id fail, got {fails:?}"
         );
     }
@@ -194,9 +192,7 @@ mod tests {
 
     fn as_fail(result: &ValidationResult) -> Option<(&'static str, &str)> {
         match result {
-            ValidationResult::Fail {
-                rule_id, detail, ..
-            } => Some((*rule_id, detail.as_str())),
+            ValidationResult::Fail { rule_id, detail, .. } => Some((*rule_id, detail.as_str())),
             _ => None,
         }
     }

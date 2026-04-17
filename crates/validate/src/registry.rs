@@ -249,10 +249,7 @@ fn cross_proposal_crates_have_specs(ctx: &CrossContext<'_>) -> RuleOutcome {
         Ok(t) => t,
         Err(err) => {
             return RuleOutcome::Fail {
-                detail: format!(
-                    "failed to read proposal `{}`: {err}",
-                    proposal_path.display()
-                ),
+                detail: format!("failed to read proposal `{}`: {err}", proposal_path.display()),
             };
         }
     };

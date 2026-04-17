@@ -81,14 +81,8 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
 
     let view = PipelineView::load(opts.schema_value, opts.schema_source_dir)?;
     let schema_name = view.schema.schema.name.clone();
-    let scaffolded_rule_keys: Vec<String> = view
-        .schema
-        .schema
-        .pipeline
-        .define
-        .iter()
-        .map(|entry| entry.id.clone())
-        .collect();
+    let scaffolded_rule_keys: Vec<String> =
+        view.schema.schema.pipeline.define.iter().map(|entry| entry.id.clone()).collect();
 
     let specify_version = resolve_version(opts.project_dir, opts.version_mode)?;
 
@@ -164,10 +158,7 @@ fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
         Err(err) => return Err(Error::Io(err)),
     };
 
-    if existing
-        .lines()
-        .any(|line| line.trim() == CACHE_GITIGNORE_ENTRY)
-    {
+    if existing.lines().any(|line| line.trim() == CACHE_GITIGNORE_ENTRY) {
         return Ok(());
     }
 
@@ -217,10 +208,7 @@ mod tests {
             ".specify/archive",
             ".specify/.cache",
         ] {
-            assert!(
-                tmp.path().join(sub).is_dir(),
-                "expected directory {sub} to exist"
-            );
+            assert!(tmp.path().join(sub).is_dir(), "expected directory {sub} to exist");
         }
         let config_path = tmp.path().join(".specify/project.yaml");
         assert!(config_path.is_file());
@@ -234,10 +222,7 @@ mod tests {
         let cfg = ProjectConfig::load(tmp.path()).expect("reload ok");
         assert_eq!(cfg.name, "demo");
         assert_eq!(cfg.schema, "omnia");
-        assert_eq!(
-            cfg.specify_version.as_deref(),
-            Some(env!("CARGO_PKG_VERSION"))
-        );
+        assert_eq!(cfg.specify_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
         let mut rule_keys: Vec<_> = cfg.rules.keys().cloned().collect();
         rule_keys.sort();
         assert_eq!(rule_keys, vec!["design", "proposal", "specs", "tasks"]);
@@ -313,11 +298,8 @@ mod tests {
         assert!(!result.cache_present);
 
         let cache_meta = CacheMeta::path(tmp.path());
-        fs::write(
-            cache_meta,
-            "schema_url: local:omnia\nfetched_at: 2025-01-01T00:00:00Z\n",
-        )
-        .expect("write cache meta");
+        fs::write(cache_meta, "schema_url: local:omnia\nfetched_at: 2025-01-01T00:00:00Z\n")
+            .expect("write cache meta");
         let result = init(base_opts(tmp.path(), &repo)).expect("re-init ok");
         assert!(result.cache_present);
     }

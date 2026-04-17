@@ -136,9 +136,7 @@ fn extract_skill_directive(rest: &str) -> (String, Option<SkillDirective>) {
         return (rest.trim().to_string(), None);
     };
 
-    let caps = skill_directive_re()
-        .captures(rest)
-        .expect("find matched; captures must too");
+    let caps = skill_directive_re().captures(rest).expect("find matched; captures must too");
     let directive = SkillDirective {
         plugin: caps[1].to_string(),
         skill: caps[2].to_string(),

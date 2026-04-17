@@ -54,10 +54,51 @@ members = [
 ]
 
 [workspace.package]
+authors = ["Augentic"]
 edition = "2024"
-version = "0.1.0"
+homepage = "https://augentic.io"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/augentic/specify-cli"
+rust-version = "1.93"
+version = "0.1.0"
+
+[workspace.lints.rust]
+# https://dirname.github.io/rust-std-doc/rustc/lints/listing/allowed-by-default.html
+missing_docs = "allow"
+trivial_numeric_casts = "warn"
+unsafe_op_in_unsafe_fn = "warn"
+unused_extern_crates = "warn"
+
+[workspace.lints.clippy]
+# https://doc.rust-lang.org/stable/clippy/index.html
+all = { level = "warn", priority = -1 }      # correctness, suspicious, style, complexity, perf
+cargo = { level = "allow", priority = -1 }
+nursery = { level = "allow", priority = -1 }
+pedantic = { level = "allow", priority = -1 }
+
+# Cherry-picked lints are from the `restriction` lint group in order to drive up
+# consistency, quality, and brevity
+# See https://microsoft.github.io/rust-guidelines/guidelines/universal/index.html
+
+as_pointer_underscore = "warn"
+assertions_on_result_states = "warn"
+clone_on_ref_ptr = "warn"
+deref_by_slicing = "warn"
+disallowed_script_idents = "warn"
+empty_drop = "warn"
+empty_enum_variants_with_brackets = "warn"
+empty_structs_with_brackets = "warn"
+fn_to_numeric_cast_any = "warn"
+if_then_some_else_none = "warn"
+map_err_ignore = "warn"
+redundant_type_annotations = "warn"
+renamed_function_params = "warn"
+semicolon_outside_block = "warn"
+undocumented_unsafe_blocks = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+unneeded_field_pattern = "warn"
+unused_result_ok = "warn"
 
 [workspace.dependencies]
 thiserror = "2"
@@ -67,3 +108,8 @@ serde_json = "1"
 regex = "1"
 glob = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
+
+[profile.release]
+lto = true
+opt-level = "s"
+strip = true

@@ -182,8 +182,7 @@ fn merge_phase(parent: Vec<PipelineEntry>, child: Vec<PipelineEntry>) -> Vec<Pip
 }
 
 fn locate_schema_root(
-    schema_value: &str,
-    project_dir: &Path,
+    schema_value: &str, project_dir: &Path,
 ) -> Result<(PathBuf, SchemaSource), Error> {
     let cache_dir = project_dir.join(".specify").join(".cache");
     if schema_value.contains("://") {
@@ -230,9 +229,7 @@ fn locate_schema_root(
 }
 
 pub(crate) fn validate_against_embedded_schema(
-    schema_source: &str,
-    pass_rule_id: &'static str,
-    pass_rule: &'static str,
+    schema_source: &str, pass_rule_id: &'static str, pass_rule: &'static str,
     instance: &serde_json::Value,
 ) -> Vec<ValidationResult> {
     let meta_schema: serde_json::Value = match serde_json::from_str(schema_source) {
@@ -256,10 +253,8 @@ pub(crate) fn validate_against_embedded_schema(
         }
     };
 
-    let errors: Vec<String> = validator
-        .iter_errors(instance)
-        .map(|e| format!("{}: {}", e.instance_path(), e))
-        .collect();
+    let errors: Vec<String> =
+        validator.iter_errors(instance).map(|e| format!("{}: {}", e.instance_path(), e)).collect();
 
     if errors.is_empty() {
         vec![ValidationResult::Pass {

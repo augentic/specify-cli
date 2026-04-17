@@ -104,11 +104,7 @@ fn version_too_old_exits_three_with_json_envelope() {
         .args(["--format", "json", "validate", "."])
         .assert()
         .failure();
-    let code = assert
-        .get_output()
-        .status
-        .code()
-        .expect("process exited with a code");
+    let code = assert.get_output().status.code().expect("process exited with a code");
     assert_eq!(code, 3, "expected exit code 3 (version too old)");
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");

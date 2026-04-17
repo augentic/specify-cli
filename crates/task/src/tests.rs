@@ -77,14 +77,8 @@ fn mark_complete_flips_checkbox_and_preserves_the_rest() {
         .map(|(i, (a, b))| (i, a, b))
         .collect();
     assert_eq!(changed.len(), 1, "exactly one line must change");
-    assert_eq!(
-        *changed[0].1,
-        "- [ ] 1.2 Configure CI <!-- skill: omnia:crate-writer -->"
-    );
-    assert_eq!(
-        *changed[0].2,
-        "- [x] 1.2 Configure CI <!-- skill: omnia:crate-writer -->"
-    );
+    assert_eq!(*changed[0].1, "- [ ] 1.2 Configure CI <!-- skill: omnia:crate-writer -->");
+    assert_eq!(*changed[0].2, "- [x] 1.2 Configure CI <!-- skill: omnia:crate-writer -->");
 }
 
 // ---------------------------------------------------------------------------
@@ -107,10 +101,7 @@ fn mark_complete_missing_task_returns_config_error() {
     let err = mark_complete(HAPPY_PATH, "9.9").expect_err("9.9 does not exist");
     match err {
         Error::Config(msg) => {
-            assert!(
-                msg.contains("task 9.9 not found"),
-                "unexpected message: {msg}"
-            );
+            assert!(msg.contains("task 9.9 not found"), "unexpected message: {msg}");
         }
         other => panic!("expected Error::Config, got {other:?}"),
     }

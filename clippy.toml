@@ -1,0 +1,10 @@
+# https://doc.rust-lang.org/stable/clippy/index.html
+
+doc-valid-idents = [
+  "OAuth",
+  "OpenTelemetry",
+  "WebAssembly",
+  "YAML",
+]
+
+allowed-duplicate-crates = []

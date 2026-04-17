@@ -47,10 +47,8 @@ impl PipelineView {
             briefs.push((phase, brief));
         }
 
-        let known_ids: HashSet<&str> = briefs
-            .iter()
-            .map(|(_, b)| b.frontmatter.id.as_str())
-            .collect();
+        let known_ids: HashSet<&str> =
+            briefs.iter().map(|(_, b)| b.frontmatter.id.as_str()).collect();
         let mut seen: HashSet<&str> = HashSet::new();
         for (_phase, brief) in &briefs {
             for needed in &brief.frontmatter.needs {
@@ -80,17 +78,11 @@ impl PipelineView {
 
     /// Lookup a brief by its frontmatter id.
     pub fn brief(&self, id: &str) -> Option<&Brief> {
-        self.briefs
-            .iter()
-            .find(|(_, b)| b.frontmatter.id == id)
-            .map(|(_, b)| b)
+        self.briefs.iter().find(|(_, b)| b.frontmatter.id == id).map(|(_, b)| b)
     }
 
     /// Iterator over briefs belonging to `phase`.
     pub fn phase(&self, phase: Phase) -> impl Iterator<Item = &Brief> + '_ {
-        self.briefs
-            .iter()
-            .filter(move |(p, _)| *p == phase)
-            .map(|(_, b)| b)
+        self.briefs.iter().filter(move |(p, _)| *p == phase).map(|(_, b)| b)
     }
 }

@@ -31,9 +31,7 @@ use crate::validate::validate_baseline;
 /// layout differs the function returns `Error::Merge` before touching
 /// disk.
 pub fn merge_change(
-    change_dir: &Path,
-    specs_dir: &Path,
-    archive_dir: &Path,
+    change_dir: &Path, specs_dir: &Path, archive_dir: &Path,
 ) -> Result<Vec<(String, MergeResult)>, Error> {
     // --- 1. Load change metadata and gate on `Complete` ---------------------
 
@@ -50,11 +48,8 @@ pub fn merge_change(
     // Convention: `<project>/.specify/changes/<name>/`. Three `.parent()`
     // hops land us at `<project>`. If the caller points this at some
     // other directory shape, abort cleanly.
-    let project_dir = change_dir
-        .parent()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .ok_or_else(|| {
+    let project_dir =
+        change_dir.parent().and_then(Path::parent).and_then(Path::parent).ok_or_else(|| {
             Error::Merge(format!(
                 "cannot resolve project root from change dir {}",
                 change_dir.display()
@@ -116,10 +111,7 @@ pub fn merge_change(
 
     for spec in delta_specs {
         let delta_text = std::fs::read_to_string(&spec.delta_path).map_err(|err| {
-            Error::Merge(format!(
-                "failed to read delta {}: {err}",
-                spec.delta_path.display()
-            ))
+            Error::Merge(format!("failed to read delta {}: {err}", spec.delta_path.display()))
         })?;
 
         let baseline_text = if spec.baseline_path.is_file() {
@@ -183,31 +175,20 @@ pub fn merge_change(
     }
     metadata.save(change_dir)?;
 
-    let change_name = change_dir
-        .file_name()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| {
-            Error::Merge(format!(
-                "change dir {} has no basename",
-                change_dir.display()
-            ))
-        })?;
+    let change_name = change_dir.file_name().and_then(|s| s.to_str()).ok_or_else(|| {
+        Error::Merge(format!("change dir {} has no basename", change_dir.display()))
+    })?;
     let date = Utc::now().format("%Y-%m-%d").to_string();
     let archive_target = archive_dir.join(format!("{date}-{change_name}"));
     std::fs::create_dir_all(archive_dir).map_err(|err| {
-        Error::Merge(format!(
-            "failed to prepare archive dir {}: {err}",
-            archive_dir.display()
-        ))
+        Error::Merge(format!("failed to prepare archive dir {}: {err}", archive_dir.display()))
     })?;
     move_dir_atomic(change_dir, &archive_target)?;
 
     // --- 7. Return merged results sorted by spec name -----------------------
 
-    let mut output: Vec<(String, MergeResult)> = merged
-        .into_iter()
-        .map(|e| (e.spec_name, e.result))
-        .collect();
+    let mut output: Vec<(String, MergeResult)> =
+        merged.into_iter().map(|e| (e.spec_name, e.result)).collect();
     output.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(output)
 }
@@ -233,11 +214,7 @@ fn derive_spec_name(change_dir: &Path, delta_path: &Path) -> String {
     {
         return name.to_string();
     }
-    delta_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("spec")
-        .to_string()
+    delta_path.file_stem().and_then(|s| s.to_str()).unwrap_or("spec").to_string()
 }
 
 /// Move `src` to `dst`. Uses `rename` first, then falls back to
@@ -299,10 +276,7 @@ fn symlink(original: &Path, link: &Path) -> io::Result<()> {
 
 #[cfg(not(any(unix, windows)))]
 fn symlink(_original: &Path, _link: &Path) -> io::Result<()> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "symlinks unsupported on this platform",
-    ))
+    Err(io::Error::new(io::ErrorKind::Unsupported, "symlinks unsupported on this platform"))
 }
 
 /// EXDEV is "cross-device link" — the exact errno varies by libc but is

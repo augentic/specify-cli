@@ -291,10 +291,7 @@ mod tests {
         let err = ChangeMetadata::load(dir.path()).expect_err("expected error");
         match err {
             Error::Config(msg) => {
-                assert!(
-                    msg.contains(".metadata.yaml not found"),
-                    "unexpected message: {msg}"
-                );
+                assert!(msg.contains(".metadata.yaml not found"), "unexpected message: {msg}");
                 assert!(
                     msg.contains(&dir.path().display().to_string()),
                     "message should include change dir path, got: {msg}"
@@ -307,11 +304,8 @@ mod tests {
     #[test]
     fn load_malformed_yaml_returns_err() {
         let dir = tempdir().expect("tempdir");
-        std::fs::write(
-            ChangeMetadata::path(dir.path()),
-            "not: a\n  valid: yaml\n: structure:",
-        )
-        .expect("write ok");
+        std::fs::write(ChangeMetadata::path(dir.path()), "not: a\n  valid: yaml\n: structure:")
+            .expect("write ok");
         let err = ChangeMetadata::load(dir.path()).expect_err("expected error");
         assert!(
             matches!(err, Error::Yaml(_) | Error::Config(_)),
@@ -336,10 +330,7 @@ touched-specs:
         assert_eq!(meta.status, LifecycleStatus::Building);
         assert_eq!(meta.created_at.as_deref(), Some("2024-08-01T10:00:00Z"));
         assert_eq!(meta.defined_at.as_deref(), Some("2024-08-01T12:00:00Z"));
-        assert_eq!(
-            meta.build_started_at.as_deref(),
-            Some("2024-08-02T09:30:00Z")
-        );
+        assert_eq!(meta.build_started_at.as_deref(), Some("2024-08-02T09:30:00Z"));
         assert_eq!(meta.completed_at, None);
         assert_eq!(meta.touched_specs.len(), 2);
         assert_eq!(meta.touched_specs[0].name, "login");
@@ -363,30 +354,12 @@ touched-specs:
             }],
         };
         let yaml = serde_yaml::to_string(&meta).expect("serialize ok");
-        assert!(
-            yaml.contains("created-at:"),
-            "yaml missing kebab-case created-at:\n{yaml}"
-        );
-        assert!(
-            yaml.contains("build-started-at:"),
-            "yaml missing build-started-at:\n{yaml}"
-        );
-        assert!(
-            yaml.contains("touched-specs:"),
-            "yaml missing touched-specs:\n{yaml}"
-        );
-        assert!(
-            yaml.contains("status: building"),
-            "yaml missing lowercase status:\n{yaml}"
-        );
-        assert!(
-            yaml.contains("type: modified"),
-            "yaml missing lowercase type:\n{yaml}"
-        );
-        assert!(
-            !yaml.contains("defined-at:"),
-            "defined-at should be omitted when None:\n{yaml}"
-        );
+        assert!(yaml.contains("created-at:"), "yaml missing kebab-case created-at:\n{yaml}");
+        assert!(yaml.contains("build-started-at:"), "yaml missing build-started-at:\n{yaml}");
+        assert!(yaml.contains("touched-specs:"), "yaml missing touched-specs:\n{yaml}");
+        assert!(yaml.contains("status: building"), "yaml missing lowercase status:\n{yaml}");
+        assert!(yaml.contains("type: modified"), "yaml missing lowercase type:\n{yaml}");
+        assert!(!yaml.contains("defined-at:"), "defined-at should be omitted when None:\n{yaml}");
         assert!(
             !yaml.contains("completed-at:"),
             "completed-at should be omitted when None:\n{yaml}"
@@ -417,10 +390,7 @@ touched-specs:
                 continue;
             }
             ChangeMetadata::load(&change_path).unwrap_or_else(|e| {
-                panic!(
-                    "existing metadata at {} should parse, got {e:?}",
-                    change_path.display()
-                )
+                panic!("existing metadata at {} should parse, got {e:?}", change_path.display())
             });
             return;
         }
@@ -429,9 +399,6 @@ touched-specs:
     #[test]
     fn path_helper_appends_metadata_yaml() {
         let dir = Path::new("/tmp/some/change");
-        assert_eq!(
-            ChangeMetadata::path(dir),
-            PathBuf::from("/tmp/some/change/.metadata.yaml")
-        );
+        assert_eq!(ChangeMetadata::path(dir), PathBuf::from("/tmp/some/change/.metadata.yaml"));
     }
 }

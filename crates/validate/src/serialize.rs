@@ -21,11 +21,8 @@ pub fn serialize_report(report: &ValidationReport) -> Value {
         let array: Vec<Value> = results.iter().map(validation_result_to_json).collect();
         brief_results.insert(key.clone(), Value::Array(array));
     }
-    let cross_checks: Vec<Value> = report
-        .cross_checks
-        .iter()
-        .map(validation_result_to_json)
-        .collect();
+    let cross_checks: Vec<Value> =
+        report.cross_checks.iter().map(validation_result_to_json).collect();
 
     json!({
         "schema_version": 1,
@@ -104,10 +101,7 @@ mod tests {
         };
         let value = serialize_report(&report);
         assert_eq!(value["cross_checks"][0]["status"], "deferred");
-        assert_eq!(
-            value["cross_checks"][0]["reason"],
-            "Semantic check — requires LLM judgment"
-        );
+        assert_eq!(value["cross_checks"][0]["reason"], "Semantic check — requires LLM judgment");
     }
 
     #[test]
