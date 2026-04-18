@@ -25,7 +25,7 @@ pub mod plan;
 
 pub use actions::{CreateIfExists, CreateOutcome, Overlap};
 pub use journal::{EntryKind, Journal, JournalEntry};
-pub use lock::PlanLockGuard;
+pub use lock::{PlanLockAcquired, PlanLockGuard, PlanLockReleased, PlanLockStamp, PlanLockState};
 pub use plan::*;
 
 /// On-disk representation of `<change_dir>/.metadata.yaml`.

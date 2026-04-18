@@ -33,10 +33,11 @@ use specify::{
     BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Error,
     InitOptions, InitResult, Journal, JournalEntry, LifecycleStatus, MergeEntry, MergeOperation,
     MergeResult, Outcome, Overlap, Phase, PipelineView, Plan, PlanChange, PlanChangePatch,
-    PlanStatus, PlanValidationLevel, PlanValidationResult, ProjectConfig, Schema, SchemaSource,
-    SpecType, Task, TouchedSpec, ValidationReport, ValidationResult, VersionMode, change_actions,
-    conflict_check, init, mark_complete, merge_change, parse_tasks, preview_change,
-    serialize_report, validate_change,
+    PlanLockAcquired, PlanLockReleased, PlanLockStamp, PlanLockState, PlanStatus,
+    PlanValidationLevel, PlanValidationResult, ProjectConfig, Schema, SchemaSource, SpecType, Task,
+    TouchedSpec, ValidationReport, ValidationResult, VersionMode, change_actions, conflict_check,
+    init, mark_complete, merge_change, parse_tasks, preview_change, serialize_report,
+    validate_change,
 };
 
 pub const EXIT_SUCCESS: i32 = 0;
@@ -209,6 +210,44 @@ enum PlanAction {
         #[arg(long)]
         force: bool,
     },
+    /// Driver-lock primitives used by `/spec:execute` (advisory PID stamp).
+    ///
+    /// These verbs manage the `.specify/plan.lock` PID stamp that keeps two
+    /// concurrent `/spec:execute` drivers from racing on `get next change`
+    /// and plan transitions. See RFC-2 §"Driver Concurrency".
+    Lock {
+        #[command(subcommand)]
+        action: LockAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum LockAction {
+    /// Acquire the plan.lock PID stamp.
+    ///
+    /// Fails with `Error::DriverBusy` when another live PID holds it.
+    /// Stale stamps (dead PID / malformed contents) are reclaimed
+    /// silently.
+    Acquire {
+        /// PID to stamp into the lock file. Defaults to `std::process::id()`
+        /// of the `specify` binary. `/spec:execute` passes a stable
+        /// agent-session PID so release can authenticate the holder.
+        #[arg(long)]
+        pid: Option<u32>,
+    },
+    /// Release the stamp when we hold it.
+    ///
+    /// No-op when the file is absent. Refuses to clobber a stamp held
+    /// by a different PID (stale-lock reclaim is the job of the L2.G
+    /// self-heal path, not of release).
+    Release {
+        /// PID that expects to own the stamp. Defaults to
+        /// `std::process::id()`.
+        #[arg(long)]
+        pid: Option<u32>,
+    },
+    /// Report the current lock state (holder PID, stale flag).
+    Status,
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -1877,6 +1916,11 @@ fn run_plan(format: OutputFormat, action: PlanAction) -> i32 {
             run_plan_transition(format, name, target.into(), reason)
         }
         PlanAction::Archive { force } => run_plan_archive(format, force),
+        PlanAction::Lock { action } => match action {
+            LockAction::Acquire { pid } => run_plan_lock_acquire(format, pid),
+            LockAction::Release { pid } => run_plan_lock_release(format, pid),
+            LockAction::Status => run_plan_lock_status(format),
+        },
     }
 }
 
@@ -2576,6 +2620,152 @@ fn run_plan_archive(format: OutputFormat, force: bool) -> i32 {
         }
         Err(err) => emit_error(format, &err),
     }
+}
+
+// ---------------------------------------------------------------------------
+// plan lock {acquire, release, status}
+// ---------------------------------------------------------------------------
+
+fn run_plan_lock_acquire(format: OutputFormat, pid: Option<u32>) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let our_pid = pid.unwrap_or_else(std::process::id);
+
+    match PlanLockStamp::acquire(&project_dir, our_pid) {
+        Ok(acquired) => emit_plan_lock_acquired(format, &acquired),
+        Err(err) => emit_error(format, &err),
+    }
+}
+
+fn emit_plan_lock_acquired(format: OutputFormat, acquired: &PlanLockAcquired) -> i32 {
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "held": true,
+            "pid": acquired.pid,
+            "already-held": acquired.already_held,
+            "reclaimed-stale-pid": acquired.reclaimed_stale_pid,
+        })),
+        OutputFormat::Text => {
+            if acquired.already_held {
+                println!("Lock already held by pid {}; re-stamped.", acquired.pid);
+            } else {
+                println!("Acquired plan lock for pid {}.", acquired.pid);
+            }
+            if let Some(stale) = acquired.reclaimed_stale_pid {
+                println!("  (reclaimed stale stamp from pid {stale})");
+            }
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn run_plan_lock_release(format: OutputFormat, pid: Option<u32>) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let our_pid = pid.unwrap_or_else(std::process::id);
+
+    match PlanLockStamp::release(&project_dir, our_pid) {
+        Ok(outcome) => emit_plan_lock_released(format, our_pid, &outcome),
+        Err(err) => emit_error(format, &err),
+    }
+}
+
+/// Mirrors the four [`PlanLockReleased`] outcomes onto the CLI
+/// response. All four exit 0 — a mismatched holder is a warning, not
+/// an error, per RFC-2 §"Driver Concurrency" (stale reclaim is the
+/// self-heal path's job, not release's).
+fn emit_plan_lock_released(format: OutputFormat, our_pid: u32, outcome: &PlanLockReleased) -> i32 {
+    match format {
+        OutputFormat::Json => {
+            let payload = match outcome {
+                PlanLockReleased::Removed { pid } => json!({
+                    "result": "removed",
+                    "pid": pid,
+                }),
+                PlanLockReleased::WasAbsent => json!({
+                    "result": "was-absent",
+                    "pid": Value::Null,
+                }),
+                PlanLockReleased::HeldByOther { pid } => json!({
+                    "result": "held-by-other",
+                    "pid": pid,
+                    "our-pid": our_pid,
+                }),
+            };
+            emit_json(payload);
+        }
+        OutputFormat::Text => match outcome {
+            PlanLockReleased::Removed { pid } => {
+                println!("Released plan lock held by pid {pid}.");
+            }
+            PlanLockReleased::WasAbsent => {
+                println!("No plan lock to release.");
+            }
+            PlanLockReleased::HeldByOther { pid: Some(other) } => {
+                eprintln!(
+                    "warning: plan lock is held by pid {other}, not {our_pid}; not removing."
+                );
+            }
+            PlanLockReleased::HeldByOther { pid: None } => {
+                eprintln!(
+                    "warning: plan lock contents are malformed; refusing to clobber (run the L2.G self-heal path)."
+                );
+            }
+        },
+    }
+    EXIT_SUCCESS
+}
+
+fn run_plan_lock_status(format: OutputFormat) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    match PlanLockStamp::status(&project_dir) {
+        Ok(state) => emit_plan_lock_state(format, &state),
+        Err(err) => emit_error(format, &err),
+    }
+}
+
+fn emit_plan_lock_state(format: OutputFormat, state: &PlanLockState) -> i32 {
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "held": state.held,
+            "pid": state.pid,
+            "stale": state.stale,
+        })),
+        OutputFormat::Text => match state.pid {
+            Some(pid) => {
+                let stale = state.stale.unwrap_or(false);
+                if stale {
+                    println!("stale (pid {pid} no longer alive)");
+                } else {
+                    println!("held by pid {pid}");
+                }
+            }
+            None => match state.stale {
+                Some(true) => println!("stale (malformed lockfile contents)"),
+                _ => println!("no lock"),
+            },
+        },
+    }
+    EXIT_SUCCESS
 }
 
 // ---------------------------------------------------------------------------

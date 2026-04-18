@@ -1375,4 +1375,141 @@ changes: []
             "stderr should mention 'plan file not found', got: {stderr:?}"
         );
     }
+
+    // -- plan lock {acquire, release, status} (L2.E) ----------------------
+
+    fn lock_path(project: &Project) -> PathBuf {
+        project.root().join(".specify/plan.lock")
+    }
+
+    #[test]
+    fn plan_lock_acquire_then_release_cycles_cleanly() {
+        let project = Project::init();
+
+        // Use a stable agent-session PID so release can authenticate. We
+        // pick the test process's own PID — guaranteed alive for the
+        // duration of the test.
+        let our_pid = std::process::id().to_string();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "lock", "acquire", "--pid", &our_pid])
+            .assert()
+            .success();
+        let acquired = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(acquired["held"], true);
+        assert_eq!(acquired["pid"], std::process::id());
+        assert_eq!(acquired["already-held"], false);
+        assert_eq!(acquired["reclaimed-stale-pid"], Value::Null);
+
+        assert!(lock_path(&project).exists(), "lockfile must exist after acquire");
+        let contents = fs::read_to_string(lock_path(&project)).expect("read lockfile");
+        assert_eq!(contents.trim(), our_pid);
+
+        let release_assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "lock", "release", "--pid", &our_pid])
+            .assert()
+            .success();
+        let released = parse_stdout(&release_assert.get_output().stdout, project.root());
+        assert_eq!(released["result"], "removed");
+        assert_eq!(released["pid"], std::process::id());
+
+        assert!(!lock_path(&project).exists(), "lockfile must be gone after release");
+    }
+
+    #[test]
+    fn plan_lock_acquire_refuses_when_another_live_pid_stamped() {
+        let project = Project::init();
+
+        // Prime with our own PID — the CLI's liveness probe will find it
+        // alive (the test process is still running) and refuse to let a
+        // different PID take over.
+        let live_pid = std::process::id();
+        fs::create_dir_all(project.root().join(".specify")).expect("mkdir .specify");
+        fs::write(lock_path(&project), format!("{live_pid}\n")).expect("seed live stamp");
+
+        // Pick any PID that isn't the test process's own PID.
+        let contender_pid = if live_pid == 1 { 2 } else { 1 }.to_string();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "lock", "acquire", "--pid", &contender_pid])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+
+        let value: Value =
+            serde_json::from_slice(&assert.get_output().stdout).expect("json stdout");
+        assert_eq!(value["error"], "driver_busy");
+        assert_eq!(value["exit_code"], 1, "DriverBusy must surface the generic-failure exit code");
+        let msg = value["message"].as_str().unwrap_or_default();
+        assert!(
+            msg.contains(&format!("pid {live_pid}")),
+            "message should name the holder pid {live_pid}, got: {msg}"
+        );
+
+        // Lockfile contents must be preserved — the acquire failed, so
+        // the live holder stays stamped.
+        let contents = fs::read_to_string(lock_path(&project)).expect("read");
+        assert_eq!(contents.trim(), live_pid.to_string());
+    }
+
+    #[test]
+    fn plan_lock_status_when_held() {
+        let project = Project::init();
+        let our_pid = std::process::id().to_string();
+
+        specify()
+            .current_dir(project.root())
+            .args(["plan", "lock", "acquire", "--pid", &our_pid])
+            .assert()
+            .success();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "lock", "status"])
+            .assert()
+            .success();
+        let value = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(value["held"], true);
+        assert_eq!(value["pid"], std::process::id());
+        assert_eq!(value["stale"], false);
+
+        // Text form for the same state — `held by pid <n>`.
+        let text = specify()
+            .current_dir(project.root())
+            .args(["plan", "lock", "status"])
+            .assert()
+            .success();
+        let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
+        assert!(
+            stdout.contains("held by pid"),
+            "text status should say 'held by pid …', got: {stdout:?}"
+        );
+    }
+
+    #[test]
+    fn plan_lock_status_when_absent() {
+        let project = Project::init();
+        // Deliberately do NOT call acquire — no stamp on disk.
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "lock", "status"])
+            .assert()
+            .success();
+        let value = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(value["held"], false);
+        assert_eq!(value["pid"], Value::Null);
+        assert_eq!(value["stale"], Value::Null);
+
+        let text = specify()
+            .current_dir(project.root())
+            .args(["plan", "lock", "status"])
+            .assert()
+            .success();
+        let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
+        assert_eq!(stdout.trim(), "no lock");
+    }
 }
