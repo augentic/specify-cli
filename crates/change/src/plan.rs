@@ -5,15 +5,26 @@
 //! type surface and `rfcs/rfc-2-plan.md` §"The Plan" for the reference
 //! YAML fixture exercised by the round-trip tests.
 //!
-//! ## Scope of this file
+//! ## Single-writer invariant for `PlanChange::status`
 //!
-//! This Change (L1.A of the RFC-2 plan) only lands the *type surface*:
-//! structs, enums, derives, and stubbed method signatures. Behaviour for
-//! load/save, validation, transitions, topological ordering, and archival
-//! is implemented in subsequent Changes (L1.B through L1.G). Every method
-//! body below is a `todo!("Change L1.X — ...")` sentinel so later
-//! subagents can `rg` for their assigned Change and fill in the bodies
-//! without needing to move or re-shape any types.
+//! The only path that mutates an existing [`PlanChange::status`] is
+//! [`Plan::transition`]. This is not just a convention — it's enforced
+//! by the shape of the API:
+//!
+//!   - [`Plan::create`] appends a new entry and forces its `status` to
+//!     [`PlanStatus::Pending`]; any other value the caller supplied is
+//!     silently overwritten and `status_reason` is cleared.
+//!   - [`Plan::amend`] takes a [`PlanChangePatch`] which structurally
+//!     has no `status` (or `status_reason`) field — a type-system
+//!     guarantee that `amend` cannot mutate lifecycle state.
+//!   - [`Plan::transition`] delegates to [`PlanStatus::transition`]
+//!     for edge-legality and is the only place that writes
+//!     `entry.status` or `entry.status_reason`.
+//!
+//! Any future writer of `status` should route through `Plan::transition`
+//! rather than poking the field directly, or add a new `Plan::*`
+//! method that does. Bypassing this invariant undoes the state-machine
+//! guarantees exercised by the L1.B transition tests.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -145,6 +156,9 @@ pub struct PlanChange {
 /// with v". `status` and `status_reason` are deliberately absent —
 /// status transitions are made via [`Plan::transition`], never through
 /// `amend`, and the reason field travels with the transition.
+///
+/// The absence of a `status` field is a type-system guarantee: `amend`
+/// cannot mutate status. Transitions go via [`Plan::transition`].
 #[derive(Debug, Default, Clone)]
 pub struct PlanChangePatch {
     /// Replace `depends_on` wholesale when `Some`.
@@ -287,22 +301,140 @@ impl Plan {
     /// Transition the named entry to `target`, recording `reason` in
     /// [`PlanChange::status_reason`] per the rules documented in
     /// `rfc-2-plan.md` §Fields.
+    ///
+    /// `reason` is only meaningful when `target` is one of
+    /// `{Failed, Blocked, Skipped}`; passing `Some(_)` with any other
+    /// target returns `Error::Config`. On a legal reason-less
+    /// transition to `Pending`, `InProgress`, or `Done`,
+    /// `status_reason` is cleared.
+    ///
+    /// Does not run `Plan::validate` — a status mutation cannot make a
+    /// previously-valid plan invalid (the state machine has no
+    /// structural side-effects).
     pub fn transition(
-        &mut self, _name: &str, _target: PlanStatus, _reason: Option<&str>,
+        &mut self, name: &str, target: PlanStatus, reason: Option<&str>,
     ) -> Result<(), Error> {
-        todo!("Change L1.B — implement Plan::transition")
+        let entry = self
+            .changes
+            .iter_mut()
+            .find(|c| c.name == name)
+            .ok_or_else(|| Error::Config(format!("no change named '{name}' in plan")))?;
+
+        let new_status = entry.status.transition(target)?;
+
+        match target {
+            PlanStatus::Failed | PlanStatus::Blocked | PlanStatus::Skipped => {
+                if let Some(s) = reason {
+                    entry.status_reason = Some(s.to_string());
+                }
+            }
+            PlanStatus::Pending | PlanStatus::InProgress | PlanStatus::Done => {
+                if reason.is_some() {
+                    return Err(Error::Config(format!(
+                        "--reason is not valid when transitioning to {target:?}"
+                    )));
+                }
+                entry.status_reason = None;
+            }
+        }
+
+        entry.status = new_status;
+        Ok(())
     }
 
     /// Append a new entry to the plan, rejecting duplicate names and
-    /// unknown `depends_on` references.
-    pub fn create(&mut self, _change: PlanChange) -> Result<(), Error> {
-        todo!("Change L1.F — implement Plan::create")
+    /// invalid kebab-case names. The incoming `status` is forced to
+    /// [`PlanStatus::Pending`] (and `status_reason` cleared) so that
+    /// creation cannot introduce a pre-occupied lifecycle state — the
+    /// single-writer-for-status invariant documented at the top of
+    /// this module.
+    ///
+    /// After mutation, the plan is re-validated. Any `Error`-level
+    /// finding (unknown `depends_on`/`affects`/`sources`, cycle
+    /// introduced by the new entry, etc.) rolls back the append and
+    /// returns `Error::Config` containing the first offending
+    /// finding's message. Warnings are tolerated — they're a CLI
+    /// concern, not a library-level hard stop.
+    pub fn create(&mut self, change: PlanChange) -> Result<(), Error> {
+        crate::actions::validate_name(&change.name)?;
+
+        if self.changes.iter().any(|c| c.name == change.name) {
+            return Err(Error::Config(format!(
+                "plan already contains a change named '{}'",
+                change.name
+            )));
+        }
+
+        let mut change = change;
+        change.status = PlanStatus::Pending;
+        change.status_reason = None;
+
+        // Targeted rollback: pop the freshly-appended entry if
+        // validation rejects the resulting plan. Cheaper than cloning
+        // the whole `changes` vector since we know the mutation is a
+        // single trailing push.
+        self.changes.push(change);
+        let errors: Vec<ValidationResult> =
+            self.validate(None).into_iter().filter(|r| r.level == ValidationLevel::Error).collect();
+        if let Some(first) = errors.first() {
+            let msg = first.message.clone();
+            self.changes.pop();
+            return Err(Error::Config(format!("plan validation failed after create: {msg}")));
+        }
+
+        Ok(())
     }
 
     /// Apply `patch` to the entry named `name`. `None` fields on the
-    /// patch leave the corresponding `PlanChange` field unchanged.
-    pub fn amend(&mut self, _name: &str, _patch: PlanChangePatch) -> Result<(), Error> {
-        todo!("Change L1.F — implement Plan::amend")
+    /// patch leave the corresponding [`PlanChange`] field unchanged;
+    /// `Some(v)` replaces wholesale. `description` is three-way:
+    /// `None` = leave, `Some(None)` = clear, `Some(Some(s))` =
+    /// replace. `status` is intentionally not patchable — see
+    /// [`PlanChangePatch`] and the module-level single-writer note.
+    ///
+    /// After mutation, the plan is re-validated. Any `Error`-level
+    /// finding reverts the single-entry mutation (we snapshot the
+    /// pre-mutation entry at the top of the function and write it
+    /// back on failure) and returns `Error::Config`.
+    ///
+    /// `amend` does not consult `PlanChange::status` — it is legal to
+    /// amend the currently-`in-progress` entry's non-status fields,
+    /// per RFC-2 §"Phase Boundary → Rule 2".
+    pub fn amend(&mut self, name: &str, patch: PlanChangePatch) -> Result<(), Error> {
+        let idx = self
+            .changes
+            .iter()
+            .position(|c| c.name == name)
+            .ok_or_else(|| Error::Config(format!("no change named '{name}' in plan")))?;
+
+        // Snapshot for targeted rollback on validation failure.
+        let snapshot = self.changes[idx].clone();
+
+        {
+            let entry = &mut self.changes[idx];
+            if let Some(v) = patch.depends_on {
+                entry.depends_on = v;
+            }
+            if let Some(v) = patch.affects {
+                entry.affects = v;
+            }
+            if let Some(v) = patch.sources {
+                entry.sources = v;
+            }
+            if let Some(v) = patch.description {
+                entry.description = v;
+            }
+        }
+
+        let errors: Vec<ValidationResult> =
+            self.validate(None).into_iter().filter(|r| r.level == ValidationLevel::Error).collect();
+        if let Some(first) = errors.first() {
+            let msg = first.message.clone();
+            self.changes[idx] = snapshot;
+            return Err(Error::Config(format!("plan validation failed after amend: {msg}")));
+        }
+
+        Ok(())
     }
 
     /// Entries in dependency-respecting order. Errors with an
@@ -1434,5 +1566,385 @@ changes:
         let bytes = std::fs::read(&path).expect("read bytes");
         assert!(!bytes.is_empty(), "saved file should not be empty after overwrite");
         assert_eq!(*bytes.last().unwrap(), b'\n', "overwritten file should still end with newline");
+    }
+
+    // --- L1.F: Plan::create / Plan::amend / Plan::transition -----------
+
+    #[test]
+    fn create_appends_with_pending_status_and_clears_reason() {
+        let mut plan = plan_with_changes(vec![]);
+        let incoming = PlanChange {
+            name: "foo".into(),
+            status: PlanStatus::Failed,
+            depends_on: vec![],
+            affects: vec![],
+            sources: vec![],
+            description: None,
+            status_reason: Some("bogus".into()),
+        };
+        plan.create(incoming).expect("create ok");
+        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(plan.changes[0].name, "foo");
+        assert_eq!(
+            plan.changes[0].status,
+            PlanStatus::Pending,
+            "create must force status to Pending regardless of input"
+        );
+        assert_eq!(
+            plan.changes[0].status_reason, None,
+            "create must clear status_reason regardless of input"
+        );
+    }
+
+    #[test]
+    fn create_rejects_duplicate_name() {
+        let mut plan = plan_with_changes(vec![change("foo", PlanStatus::Pending)]);
+        let dup = change("foo", PlanStatus::Pending);
+        let err = plan.create(dup).expect_err("duplicate must be rejected");
+        match err {
+            Error::Config(msg) => {
+                assert!(
+                    msg.contains("already contains") && msg.contains("foo"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+        assert_eq!(plan.changes.len(), 1, "plan must still have exactly one entry");
+    }
+
+    #[test]
+    fn create_rejects_invalid_name() {
+        let mut plan = plan_with_changes(vec![]);
+        let bad = change("Bad-Name", PlanStatus::Pending);
+        let err = plan.create(bad).expect_err("invalid name must be rejected");
+        match err {
+            Error::Config(msg) => {
+                assert!(msg.contains("kebab-case"), "expected kebab-case in message, got: {msg}");
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+        assert!(plan.changes.is_empty(), "plan must remain untouched after invalid name");
+    }
+
+    #[test]
+    fn create_rejects_change_that_introduces_unknown_depends_on() {
+        // We cannot introduce a cycle via a *new* entry alone (a new
+        // entry has no backreferences), but the rollback path is
+        // shared. Exercise it with an unknown-depends-on Error.
+        let mut plan = plan_with_changes(vec![
+            change("a", PlanStatus::Pending),
+            change_with_deps("b", PlanStatus::Pending, &["a"]),
+        ]);
+        let c = change_with_deps("c", PlanStatus::Pending, &["does-not-exist"]);
+        let err = plan.create(c).expect_err("unknown depends-on must roll back");
+        match err {
+            Error::Config(msg) => {
+                assert!(
+                    msg.contains("plan validation failed after create"),
+                    "rollback message missing, got: {msg}"
+                );
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+        assert_eq!(plan.changes.len(), 2, "plan must still have only its original entries");
+        let names: Vec<&str> = plan.changes.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["a", "b"], "existing entries must be untouched");
+    }
+
+    #[test]
+    fn create_rolls_back_on_validation_failure() {
+        let mut plan = plan_with_changes(vec![change("foo", PlanStatus::Pending)]);
+        let bar = change_with_deps("bar", PlanStatus::Pending, &["nonexistent"]);
+        let err = plan.create(bar).expect_err("must Err");
+        assert!(matches!(err, Error::Config(_)));
+        assert_eq!(plan.changes.len(), 1, "plan length unchanged after rollback");
+        assert_eq!(plan.changes[0].name, "foo");
+        assert_eq!(plan.changes[0].status, PlanStatus::Pending);
+        assert!(plan.changes[0].depends_on.is_empty());
+    }
+
+    #[test]
+    fn amend_replaces_depends_on() {
+        let mut plan = plan_with_changes(vec![
+            change("a", PlanStatus::Pending),
+            change_with_deps("b", PlanStatus::Pending, &["a"]),
+        ]);
+        let patch = PlanChangePatch {
+            depends_on: Some(vec![]),
+            ..PlanChangePatch::default()
+        };
+        plan.amend("b", patch).expect("amend ok");
+        let b = plan.changes.iter().find(|c| c.name == "b").unwrap();
+        assert!(b.depends_on.is_empty(), "depends_on should be replaced with empty vec");
+    }
+
+    #[test]
+    fn amend_clear_vs_replace_description() {
+        let mut plan = plan_with_changes(vec![PlanChange {
+            name: "foo".into(),
+            status: PlanStatus::Pending,
+            depends_on: vec![],
+            affects: vec![],
+            sources: vec![],
+            description: Some("original".into()),
+            status_reason: None,
+        }]);
+
+        plan.amend("foo", PlanChangePatch::default()).expect("amend none ok");
+        assert_eq!(
+            plan.changes[0].description.as_deref(),
+            Some("original"),
+            "None description must leave description unchanged"
+        );
+
+        plan.amend(
+            "foo",
+            PlanChangePatch {
+                description: Some(None),
+                ..PlanChangePatch::default()
+            },
+        )
+        .expect("amend clear ok");
+        assert_eq!(
+            plan.changes[0].description, None,
+            "Some(None) description must clear description"
+        );
+
+        plan.amend(
+            "foo",
+            PlanChangePatch {
+                description: Some(Some("new".into())),
+                ..PlanChangePatch::default()
+            },
+        )
+        .expect("amend replace ok");
+        assert_eq!(
+            plan.changes[0].description.as_deref(),
+            Some("new"),
+            "Some(Some(s)) description must replace description"
+        );
+    }
+
+    #[test]
+    fn amend_leaves_unchanged_fields_alone() {
+        // Need plan-level sources so the entry's `sources: ["a"]`
+        // reference resolves.
+        let plan = Plan {
+            name: "test".into(),
+            sources: {
+                let mut m = BTreeMap::new();
+                m.insert("a".to_string(), "/path/a".to_string());
+                m
+            },
+            changes: vec![
+                PlanChange {
+                    name: "foo".into(),
+                    status: PlanStatus::Pending,
+                    depends_on: vec![],
+                    affects: vec!["b".into()],
+                    sources: vec!["a".into()],
+                    description: Some("d".into()),
+                    status_reason: None,
+                },
+                change("b", PlanStatus::Pending),
+                change("x", PlanStatus::Pending),
+            ],
+        };
+        let mut plan = plan;
+        let patch = PlanChangePatch {
+            depends_on: Some(vec!["x".into()]),
+            ..PlanChangePatch::default()
+        };
+        plan.amend("foo", patch).expect("amend ok");
+        let foo = plan.changes.iter().find(|c| c.name == "foo").unwrap();
+        assert_eq!(foo.depends_on, vec!["x".to_string()]);
+        assert_eq!(foo.affects, vec!["b".to_string()], "affects untouched");
+        assert_eq!(foo.sources, vec!["a".to_string()], "sources untouched");
+        assert_eq!(foo.description.as_deref(), Some("d"), "description untouched");
+    }
+
+    #[test]
+    fn amend_rejects_missing_entry() {
+        let mut plan = plan_with_changes(vec![change("foo", PlanStatus::Pending)]);
+        let err = plan
+            .amend("nonexistent", PlanChangePatch::default())
+            .expect_err("missing entry must Err");
+        match err {
+            Error::Config(msg) => {
+                assert!(msg.contains("nonexistent"), "message should mention name, got: {msg}");
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn amend_rejects_patch_that_introduces_cycle() {
+        let mut plan = plan_with_changes(vec![
+            change("a", PlanStatus::Pending),
+            change("b", PlanStatus::Pending),
+        ]);
+
+        plan.amend(
+            "a",
+            PlanChangePatch {
+                depends_on: Some(vec!["b".into()]),
+                ..PlanChangePatch::default()
+            },
+        )
+        .expect("a -> [b] is acyclic; amend ok");
+
+        let err = plan
+            .amend(
+                "b",
+                PlanChangePatch {
+                    depends_on: Some(vec!["a".into()]),
+                    ..PlanChangePatch::default()
+                },
+            )
+            .expect_err("introducing cycle must Err");
+        match err {
+            Error::Config(msg) => {
+                assert!(
+                    msg.contains("plan validation failed after amend"),
+                    "expected amend rollback message, got: {msg}"
+                );
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+
+        let b = plan.changes.iter().find(|c| c.name == "b").unwrap();
+        assert!(
+            b.depends_on.is_empty(),
+            "b.depends_on must be unchanged after failed amend, got {:?}",
+            b.depends_on
+        );
+    }
+
+    #[test]
+    fn patch_has_no_status_field() {
+        // Compile-time invariant: `PlanChangePatch` has no `status`
+        // field, so `amend` literally cannot mutate lifecycle state.
+        // The following line is commented out because it will not
+        // compile — the field does not exist on the struct. Deleting
+        // the comment and uncommenting the line is the only way to
+        // violate the single-writer-for-status invariant, and it
+        // fails to build, which is the entire point.
+        //
+        // let _ = PlanChangePatch { status: PlanStatus::Pending, ..Default::default() };
+        //
+        // Runtime assertion below is a smoke test that the type is
+        // `Default`-constructible and that the four fields we do have
+        // default to `None`.
+        let patch = PlanChangePatch::default();
+        assert!(patch.depends_on.is_none());
+        assert!(patch.affects.is_none());
+        assert!(patch.sources.is_none());
+        assert!(patch.description.is_none());
+    }
+
+    #[test]
+    fn transition_applies_legal_edge_and_clears_reason_on_pending_reentry() {
+        let mut plan = plan_with_changes(vec![PlanChange {
+            name: "a".into(),
+            status: PlanStatus::Failed,
+            depends_on: vec![],
+            affects: vec![],
+            sources: vec![],
+            description: None,
+            status_reason: Some("crashed".into()),
+        }]);
+        plan.transition("a", PlanStatus::Pending, None).expect("failed -> pending ok");
+        let a = plan.changes.iter().find(|c| c.name == "a").unwrap();
+        assert_eq!(a.status, PlanStatus::Pending);
+        assert_eq!(a.status_reason, None, "re-entry to Pending must clear status_reason");
+    }
+
+    #[test]
+    fn transition_writes_reason_on_blocked_failed_skipped() {
+        let mut plan = plan_with_changes(vec![
+            change("a", PlanStatus::Pending),
+            change("b", PlanStatus::InProgress),
+            change("c", PlanStatus::Failed),
+        ]);
+
+        plan.transition("a", PlanStatus::Blocked, Some("needs scope"))
+            .expect("pending -> blocked ok");
+        let a = plan.changes.iter().find(|c| c.name == "a").unwrap();
+        assert_eq!(a.status, PlanStatus::Blocked);
+        assert_eq!(a.status_reason.as_deref(), Some("needs scope"));
+
+        plan.transition("b", PlanStatus::Failed, Some("broken")).expect("in-progress -> failed ok");
+        let b = plan.changes.iter().find(|c| c.name == "b").unwrap();
+        assert_eq!(b.status, PlanStatus::Failed);
+        assert_eq!(b.status_reason.as_deref(), Some("broken"));
+
+        plan.transition("c", PlanStatus::Skipped, Some("abandoned")).expect("failed -> skipped ok");
+        let c = plan.changes.iter().find(|c| c.name == "c").unwrap();
+        assert_eq!(c.status, PlanStatus::Skipped);
+        assert_eq!(c.status_reason.as_deref(), Some("abandoned"));
+    }
+
+    #[test]
+    fn transition_rejects_reason_on_pending_inprogress_done_target() {
+        let mut plan = plan_with_changes(vec![
+            change("a", PlanStatus::Pending),
+            change("b", PlanStatus::InProgress),
+        ]);
+
+        let err = plan
+            .transition("a", PlanStatus::InProgress, Some("why"))
+            .expect_err("reason on InProgress target must Err");
+        match err {
+            Error::Config(msg) => {
+                assert!(msg.contains("--reason"), "message should mention --reason: {msg}");
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+        let a = plan.changes.iter().find(|c| c.name == "a").unwrap();
+        assert_eq!(a.status, PlanStatus::Pending, "a.status must be unchanged");
+
+        let err = plan
+            .transition("b", PlanStatus::Done, Some("why"))
+            .expect_err("reason on Done target must Err");
+        match err {
+            Error::Config(msg) => {
+                assert!(msg.contains("--reason"), "message should mention --reason: {msg}");
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+        let b = plan.changes.iter().find(|c| c.name == "b").unwrap();
+        assert_eq!(b.status, PlanStatus::InProgress, "b.status must be unchanged");
+    }
+
+    #[test]
+    fn transition_rejects_illegal_edge_via_state_machine() {
+        let mut plan = plan_with_changes(vec![change("a", PlanStatus::Done)]);
+        let err = plan
+            .transition("a", PlanStatus::Pending, None)
+            .expect_err("Done -> Pending must Err from state machine");
+        match err {
+            Error::PlanTransition { from, to } => {
+                assert_eq!(from, "Done");
+                assert_eq!(to, "Pending");
+            }
+            other => panic!("expected Error::PlanTransition, got {other:?}"),
+        }
+        let a = plan.changes.iter().find(|c| c.name == "a").unwrap();
+        assert_eq!(a.status, PlanStatus::Done, "status must not be mutated on illegal edge");
+    }
+
+    #[test]
+    fn transition_rejects_missing_entry() {
+        let mut plan = plan_with_changes(vec![change("foo", PlanStatus::Pending)]);
+        let err = plan
+            .transition("nonexistent", PlanStatus::InProgress, None)
+            .expect_err("missing entry must Err");
+        match err {
+            Error::Config(msg) => {
+                assert!(msg.contains("nonexistent"), "message should mention name: {msg}");
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
     }
 }
