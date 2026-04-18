@@ -508,12 +508,76 @@ impl Plan {
         Ok(output)
     }
 
-    /// Move `.specify/plan.yaml` (and its companion state) into the
-    /// archive directory. Refuses to archive plans with outstanding
-    /// non-terminal entries unless `force` is set, in which case those
-    /// entries are summarised in [`Error::PlanHasOutstandingWork`].
-    pub fn archive(_path: &Path, _archive_dir: &Path, _force: bool) -> Result<PathBuf, Error> {
-        todo!("Change L1.G — implement Plan::archive")
+    /// Move `.specify/plan.yaml` into the archive directory.
+    ///
+    /// Semantics (see `rfc-2-plan.md` §L1.G and §"`specify plan
+    /// archive`"):
+    ///
+    /// 1. Load the plan at `path`.
+    /// 2. Collect every entry whose status is non-terminal for archival
+    ///    purposes — anything not in `{Done, Skipped}`. If the list is
+    ///    non-empty and `force == false`, return
+    ///    [`Error::PlanHasOutstandingWork`] carrying those names in
+    ///    plan list order. When `force == true`, proceed; the archived
+    ///    file preserves the statuses verbatim.
+    /// 3. Create `archive_dir` if missing.
+    /// 4. Destination: `<archive_dir>/<plan.name>-<YYYYMMDD>.yaml` using
+    ///    today's UTC date. If it already exists, return an
+    ///    `Error::Config` — archives are never overwritten.
+    /// 5. Move the file via [`move_file_atomic`] (atomic `fs::rename`
+    ///    with `copy + remove` fallback on `EXDEV`).
+    /// 6. Return the destination path.
+    ///
+    /// Takes `&Path` rather than `&self` because it operates on the
+    /// file on disk (it re-loads the plan) — archiving is a filesystem
+    /// operation, not a mutation of an in-memory `Plan`.
+    pub fn archive(path: &Path, archive_dir: &Path, force: bool) -> Result<PathBuf, Error> {
+        let plan = Plan::load(path)?;
+
+        if !force {
+            let entries: Vec<String> = plan
+                .changes
+                .iter()
+                .filter(|c| !matches!(c.status, PlanStatus::Done | PlanStatus::Skipped))
+                .map(|c| c.name.clone())
+                .collect();
+            if !entries.is_empty() {
+                return Err(Error::PlanHasOutstandingWork { entries });
+            }
+        }
+
+        std::fs::create_dir_all(archive_dir)?;
+
+        let today = chrono::Utc::now().format("%Y%m%d");
+        let dest = archive_dir.join(format!("{}-{}.yaml", plan.name, today));
+
+        if dest.exists() {
+            return Err(Error::Config(format!(
+                "archive target '{}' already exists; archive from a different day or remove it first",
+                dest.display()
+            )));
+        }
+
+        move_file_atomic(path, &dest)?;
+        Ok(dest)
+    }
+}
+
+/// Move a single file from `src` to `dst`. Uses `fs::rename` (atomic
+/// within a filesystem); falls back to `copy` + `remove_file` on
+/// `EXDEV` (cross-device) so archives on a different mount from the
+/// working tree still work. Mirrors the shape of
+/// [`crate::actions::move_dir_atomic`] but for a single file — kept
+/// local to `plan.rs` to keep the archive path self-contained.
+fn move_file_atomic(src: &Path, dst: &Path) -> Result<(), Error> {
+    match std::fs::rename(src, dst) {
+        Ok(()) => Ok(()),
+        Err(err) if err.raw_os_error() == Some(18) => {
+            std::fs::copy(src, dst)?;
+            std::fs::remove_file(src)?;
+            Ok(())
+        }
+        Err(err) => Err(Error::Io(err)),
     }
 }
 
@@ -1946,5 +2010,263 @@ changes:
             }
             other => panic!("expected Error::Config, got {other:?}"),
         }
+    }
+
+    // --- L1.G: Plan::archive ---------------------------------------------
+
+    /// Build a plan at `<dir>/plan.yaml` with the given name + entries and
+    /// return the plan path.
+    fn write_plan(dir: &Path, name: &str, changes: Vec<PlanChange>) -> PathBuf {
+        let plan = Plan {
+            name: name.to_string(),
+            sources: BTreeMap::new(),
+            changes,
+        };
+        let path = dir.join("plan.yaml");
+        plan.save(&path).expect("save plan");
+        path
+    }
+
+    fn today_yyyymmdd() -> String {
+        chrono::Utc::now().format("%Y%m%d").to_string()
+    }
+
+    #[test]
+    fn archive_happy_path_with_only_done_and_skipped() {
+        let tmp = tempdir().expect("tempdir");
+        let archive_dir = tmp.path().join("archive");
+        let plan_path = write_plan(
+            tmp.path(),
+            "release-1",
+            vec![
+                change("a", PlanStatus::Done),
+                change("b", PlanStatus::Skipped),
+                change("c", PlanStatus::Done),
+            ],
+        );
+        let pre_bytes = std::fs::read(&plan_path).expect("read pre-archive");
+
+        let dest = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+
+        assert!(!plan_path.exists(), "original plan.yaml must be gone after archive");
+        assert!(dest.exists(), "destination archive file must exist");
+        let expected = archive_dir.join(format!("release-1-{}.yaml", today_yyyymmdd()));
+        assert_eq!(dest, expected);
+
+        let post_bytes = std::fs::read(&dest).expect("read post-archive");
+        assert_eq!(
+            pre_bytes, post_bytes,
+            "archived file must be byte-identical to the pre-archive plan"
+        );
+    }
+
+    #[test]
+    fn archive_creates_missing_archive_dir() {
+        let tmp = tempdir().expect("tempdir");
+        let archive_dir = tmp.path().join("does").join("not").join("exist").join("yet");
+        assert!(!archive_dir.exists());
+        let plan_path = write_plan(tmp.path(), "proj", vec![change("a", PlanStatus::Done)]);
+
+        let dest = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+
+        assert!(archive_dir.is_dir(), "archive_dir must be created");
+        assert!(dest.starts_with(&archive_dir));
+        assert!(dest.exists());
+    }
+
+    #[test]
+    fn archive_refuses_with_pending_entries_without_force() {
+        let tmp = tempdir().expect("tempdir");
+        let archive_dir = tmp.path().join("archive");
+        let plan_path = write_plan(
+            tmp.path(),
+            "p",
+            vec![
+                change("done-one", PlanStatus::Done),
+                change("still-pending", PlanStatus::Pending),
+            ],
+        );
+
+        let err = Plan::archive(&plan_path, &archive_dir, false)
+            .expect_err("must refuse pending entry without force");
+        match err {
+            Error::PlanHasOutstandingWork { entries } => {
+                assert_eq!(entries, vec!["still-pending".to_string()]);
+            }
+            other => panic!("expected PlanHasOutstandingWork, got {other:?}"),
+        }
+
+        assert!(plan_path.exists(), "original plan.yaml must still exist");
+        if archive_dir.exists() {
+            let count =
+                std::fs::read_dir(&archive_dir).expect("read_dir").filter_map(Result::ok).count();
+            assert_eq!(count, 0, "no archived file should have been written");
+        }
+    }
+
+    #[test]
+    fn archive_refuses_with_blocked_failed_in_progress() {
+        let tmp = tempdir().expect("tempdir");
+        let archive_dir = tmp.path().join("archive");
+        let plan_path = write_plan(
+            tmp.path(),
+            "p",
+            vec![
+                change("a", PlanStatus::Done),
+                change("b", PlanStatus::InProgress),
+                change("c", PlanStatus::Blocked),
+                change("d", PlanStatus::Failed),
+                change("e", PlanStatus::Skipped),
+            ],
+        );
+
+        let err = Plan::archive(&plan_path, &archive_dir, false)
+            .expect_err("must refuse non-terminal entries");
+        match err {
+            Error::PlanHasOutstandingWork { entries } => {
+                assert_eq!(
+                    entries,
+                    vec!["b".to_string(), "c".to_string(), "d".to_string()],
+                    "entries must include InProgress/Blocked/Failed in plan list order, \
+                     excluding Done and Skipped"
+                );
+            }
+            other => panic!("expected PlanHasOutstandingWork, got {other:?}"),
+        }
+        assert!(plan_path.exists(), "original plan.yaml must still exist");
+    }
+
+    #[test]
+    fn archive_with_force_succeeds_even_with_outstanding_entries() {
+        let tmp = tempdir().expect("tempdir");
+        let archive_dir = tmp.path().join("archive");
+        let plan_path = write_plan(
+            tmp.path(),
+            "p",
+            vec![
+                change("a", PlanStatus::Done),
+                change("b", PlanStatus::InProgress),
+                change("c", PlanStatus::Blocked),
+                change("d", PlanStatus::Failed),
+                change("e", PlanStatus::Skipped),
+            ],
+        );
+        let pre_bytes = std::fs::read(&plan_path).expect("read pre-archive");
+
+        let dest = Plan::archive(&plan_path, &archive_dir, true).expect("force archive ok");
+
+        assert!(!plan_path.exists(), "original plan.yaml must be gone after forced archive");
+        let post_bytes = std::fs::read(&dest).expect("read archived file");
+        assert_eq!(
+            pre_bytes, post_bytes,
+            "forced archive must preserve every entry (including non-terminal) verbatim"
+        );
+
+        let archived: Plan = serde_yaml::from_slice(&post_bytes).expect("parse archived");
+        let statuses: Vec<PlanStatus> = archived.changes.iter().map(|c| c.status).collect();
+        assert_eq!(
+            statuses,
+            vec![
+                PlanStatus::Done,
+                PlanStatus::InProgress,
+                PlanStatus::Blocked,
+                PlanStatus::Failed,
+                PlanStatus::Skipped,
+            ],
+            "statuses in archive must not be rewritten"
+        );
+    }
+
+    #[test]
+    fn archive_filename_is_kebab_plan_name_plus_yyyymmdd() {
+        let tmp = tempdir().expect("tempdir");
+        let archive_dir = tmp.path().join("archive");
+        let plan_path =
+            write_plan(tmp.path(), "my-initiative", vec![change("a", PlanStatus::Done)]);
+
+        let dest = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+        let basename = dest.file_name().and_then(|s| s.to_str()).expect("basename utf8");
+
+        // Regex: ^my-initiative-\d{8}\.yaml$ — implemented without a
+        // regex crate dep by structural decomposition.
+        let prefix = "my-initiative-";
+        let suffix = ".yaml";
+        assert!(basename.starts_with(prefix), "basename should start with prefix, got {basename}");
+        assert!(basename.ends_with(suffix), "basename should end with .yaml, got {basename}");
+        let middle = &basename[prefix.len()..basename.len() - suffix.len()];
+        assert_eq!(middle.len(), 8, "date segment must be 8 chars, got {middle}");
+        assert!(
+            middle.chars().all(|ch| ch.is_ascii_digit()),
+            "date segment must be all digits, got {middle}"
+        );
+    }
+
+    #[test]
+    fn archive_refuses_when_destination_exists() {
+        let tmp = tempdir().expect("tempdir");
+        let archive_dir = tmp.path().join("archive");
+        std::fs::create_dir_all(&archive_dir).expect("mkdir archive");
+
+        let plan_path = write_plan(tmp.path(), "dup", vec![change("a", PlanStatus::Done)]);
+
+        let existing = archive_dir.join(format!("dup-{}.yaml", today_yyyymmdd()));
+        std::fs::write(&existing, "unrelated pre-existing archive").expect("seed existing");
+
+        let err = Plan::archive(&plan_path, &archive_dir, false)
+            .expect_err("must refuse when destination exists");
+        match err {
+            Error::Config(msg) => {
+                assert!(
+                    msg.contains("already exists"),
+                    "message should say 'already exists', got: {msg}"
+                );
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+
+        assert!(plan_path.exists(), "original plan.yaml must not be moved");
+        let leftover = std::fs::read_to_string(&existing).expect("read existing");
+        assert_eq!(
+            leftover, "unrelated pre-existing archive",
+            "pre-existing archive file must not be overwritten"
+        );
+    }
+
+    #[test]
+    fn archive_returns_destination_path() {
+        let tmp = tempdir().expect("tempdir");
+        let archive_dir = tmp.path().join("archive");
+        let plan_path = write_plan(tmp.path(), "pkg", vec![change("a", PlanStatus::Done)]);
+
+        let dest = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+        let expected = archive_dir.join(format!("pkg-{}.yaml", today_yyyymmdd()));
+        assert_eq!(dest, expected);
+        assert!(dest.exists(), "returned path must point at an existing file");
+    }
+
+    /// Same-device happy path: `fs::rename` is atomic on a single
+    /// filesystem. The `EXDEV` fallback (copy + remove) exercised by
+    /// `move_file_atomic` only fires across filesystems; a single
+    /// `tempdir()` sits on one mount, so the cross-device path is not
+    /// unit-testable here without a platform-specific loopback mount.
+    /// The fallback is covered by the `move_dir_atomic` contract in
+    /// `actions.rs`, which `move_file_atomic` mirrors exactly for
+    /// single files.
+    #[test]
+    fn archive_is_atomic_within_filesystem() {
+        let tmp = tempdir().expect("tempdir");
+        let archive_dir = tmp.path().join("archive");
+        let plan_path = write_plan(tmp.path(), "atomic", vec![change("a", PlanStatus::Done)]);
+        let pre_bytes = std::fs::read(&plan_path).expect("read pre-archive");
+
+        let dest = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+
+        assert!(!plan_path.exists());
+        assert!(dest.exists());
+        assert_eq!(
+            std::fs::read(&dest).expect("read archived"),
+            pre_bytes,
+            "rename-on-same-fs must preserve byte content"
+        );
     }
 }
