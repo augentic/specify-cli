@@ -61,6 +61,14 @@ pub enum Error {
     #[error("plan has outstanding non-terminal work: {entries:?}")]
     PlanHasOutstandingWork { entries: Vec<String> },
 
+    /// `PlanLockGuard::acquire` found another live `/spec:execute`
+    /// driver holding `.specify/plan.lock`. `pid` is the contents of
+    /// the lockfile (confirmed alive via the host-level PID check).
+    /// Stale locks (dead PID / malformed content) are reclaimed
+    /// silently and do not surface this variant.
+    #[error("another /spec:execute driver is running (pid {pid}); refusing to proceed")]
+    DriverBusy { pid: u32 },
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
@@ -160,6 +168,15 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "plan has outstanding non-terminal work: [\"checkout-api\", \"checkout-ui\"]"
+        );
+    }
+
+    #[test]
+    fn driver_busy_display() {
+        let err = Error::DriverBusy { pid: 4242 };
+        assert_eq!(
+            err.to_string(),
+            "another /spec:execute driver is running (pid 4242); refusing to proceed"
         );
     }
 

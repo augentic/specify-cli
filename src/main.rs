@@ -2632,6 +2632,7 @@ fn emit_json_error(err: &Error, code: i32) {
         Error::SpecifyVersionTooOld { .. } => "specify_version_too_old",
         Error::PlanTransition { .. } => "plan_transition",
         Error::PlanHasOutstandingWork { .. } => "plan_has_outstanding_work",
+        Error::DriverBusy { .. } => "driver_busy",
         Error::Io(_) => "io",
         Error::Yaml(_) => "yaml",
     };

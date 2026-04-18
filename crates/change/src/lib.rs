@@ -20,10 +20,12 @@ pub use specify_schema::Phase;
 
 pub mod actions;
 pub mod journal;
+pub mod lock;
 pub mod plan;
 
 pub use actions::{CreateIfExists, CreateOutcome, Overlap};
 pub use journal::{EntryKind, Journal, JournalEntry};
+pub use lock::PlanLockGuard;
 pub use plan::*;
 
 /// On-disk representation of `<change_dir>/.metadata.yaml`.
