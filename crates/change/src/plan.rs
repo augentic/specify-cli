@@ -15,9 +15,11 @@
 //! subagents can `rg` for their assigned Change and fill in the bodies
 //! without needing to move or re-shape any types.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use petgraph::algo::{tarjan_scc, toposort};
+use petgraph::graph::DiGraph;
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
@@ -232,8 +234,29 @@ impl Plan {
     /// Run all structural and semantic checks over the plan. The optional
     /// `changes_dir` points at `.specify/changes/` and enables the
     /// cross-reference checks against on-disk change metadata.
-    pub fn validate(&self, _changes_dir: Option<&Path>) -> Vec<ValidationResult> {
-        todo!("Change L1.D — implement Plan::validate")
+    ///
+    /// Findings are accumulated — no check short-circuits another. Order
+    /// is structural checks first (duplicate names, cycles, unknown
+    /// depends-on / affects / sources, multiple in-progress) followed by
+    /// consistency checks against `changes_dir` when provided.
+    ///
+    /// Note on "well-formed status values": `PlanStatus` is an enum, so
+    /// every in-memory instance is well-formed by construction. serde
+    /// rejects invalid statuses at parse time. The RFC lists this check
+    /// for completeness against hand-edited YAML that bypassed parsing,
+    /// which is not reachable in-process — so nothing is emitted for it.
+    pub fn validate(&self, changes_dir: Option<&Path>) -> Vec<ValidationResult> {
+        let mut results = Vec::new();
+        results.extend(collect_duplicate_names(&self.changes));
+        results.extend(detect_cycles(&self.changes));
+        results.extend(check_unknown_depends_on(&self.changes));
+        results.extend(check_unknown_affects(&self.changes));
+        results.extend(check_unknown_sources(self));
+        results.extend(check_single_in_progress(&self.changes));
+        if let Some(dir) = changes_dir.filter(|d| d.is_dir()) {
+            results.extend(check_changes_dir_consistency(self, dir));
+        }
+        results
     }
 
     /// First entry in topological order whose dependencies are all `done`
@@ -277,6 +300,212 @@ impl Plan {
     pub fn archive(_path: &Path, _archive_dir: &Path, _force: bool) -> Result<PathBuf, Error> {
         todo!("Change L1.G — implement Plan::archive")
     }
+}
+
+/// Emit one `duplicate-name` error per duplicate *occurrence* (every
+/// occurrence after the first).
+fn collect_duplicate_names(changes: &[PlanChange]) -> Vec<ValidationResult> {
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut out = Vec::new();
+    for entry in changes {
+        if !seen.insert(entry.name.as_str()) {
+            out.push(ValidationResult {
+                level: ValidationLevel::Error,
+                code: "duplicate-name",
+                message: format!("duplicate plan entry name '{}'", entry.name),
+                entry: Some(entry.name.clone()),
+            });
+        }
+    }
+    out
+}
+
+/// Build a `depends_on -> self` DAG and emit one `dependency-cycle`
+/// result per cycle (including self-edges). Uses `petgraph::toposort`
+/// to detect the existence of a cycle, then `tarjan_scc` to enumerate
+/// every strongly-connected component larger than one node plus any
+/// self-edges (which are their own SCC of size 1 with a loop).
+fn detect_cycles(changes: &[PlanChange]) -> Vec<ValidationResult> {
+    let mut graph: DiGraph<&str, ()> = DiGraph::new();
+    let mut idx = HashMap::new();
+    for entry in changes {
+        let node = graph.add_node(entry.name.as_str());
+        idx.insert(entry.name.as_str(), node);
+    }
+    let mut has_self_loop = false;
+    for entry in changes {
+        let to = idx[entry.name.as_str()];
+        for dep in &entry.depends_on {
+            if let Some(&from) = idx.get(dep.as_str()) {
+                graph.add_edge(from, to, ());
+                if from == to {
+                    has_self_loop = true;
+                }
+            }
+        }
+    }
+
+    if toposort(&graph, None).is_ok() && !has_self_loop {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    for scc in tarjan_scc(&graph) {
+        if scc.len() > 1 {
+            let mut names: Vec<&str> = scc.iter().map(|&n| graph[n]).collect();
+            names.sort_unstable();
+            let mut path = names.clone();
+            path.push(names[0]);
+            out.push(ValidationResult {
+                level: ValidationLevel::Error,
+                code: "dependency-cycle",
+                message: format!("cycle: {}", path.join(" → ")),
+                entry: None,
+            });
+        } else if scc.len() == 1 {
+            let node = scc[0];
+            if graph.find_edge(node, node).is_some() {
+                let name = graph[node];
+                out.push(ValidationResult {
+                    level: ValidationLevel::Error,
+                    code: "dependency-cycle",
+                    message: format!("cycle: {name} → {name}"),
+                    entry: None,
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Emit one `unknown-depends-on` error per missing target.
+fn check_unknown_depends_on(changes: &[PlanChange]) -> Vec<ValidationResult> {
+    let known: HashSet<&str> = changes.iter().map(|c| c.name.as_str()).collect();
+    let mut out = Vec::new();
+    for entry in changes {
+        for target in &entry.depends_on {
+            if !known.contains(target.as_str()) {
+                out.push(ValidationResult {
+                    level: ValidationLevel::Error,
+                    code: "unknown-depends-on",
+                    message: format!("depends-on references unknown change '{target}'"),
+                    entry: Some(entry.name.clone()),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Emit one `unknown-affects` error per missing target.
+fn check_unknown_affects(changes: &[PlanChange]) -> Vec<ValidationResult> {
+    let known: HashSet<&str> = changes.iter().map(|c| c.name.as_str()).collect();
+    let mut out = Vec::new();
+    for entry in changes {
+        for target in &entry.affects {
+            if !known.contains(target.as_str()) {
+                out.push(ValidationResult {
+                    level: ValidationLevel::Error,
+                    code: "unknown-affects",
+                    message: format!("affects references unknown change '{target}'"),
+                    entry: Some(entry.name.clone()),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Emit one `unknown-source` error per source key not declared at the
+/// plan level.
+fn check_unknown_sources(plan: &Plan) -> Vec<ValidationResult> {
+    let mut out = Vec::new();
+    for entry in &plan.changes {
+        for key in &entry.sources {
+            if !plan.sources.contains_key(key) {
+                out.push(ValidationResult {
+                    level: ValidationLevel::Error,
+                    code: "unknown-source",
+                    message: format!("sources references unknown source key '{key}'"),
+                    entry: Some(entry.name.clone()),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// When more than one entry is `in-progress`, emit one result per
+/// offending entry so every offender is surfaceable in the UI.
+fn check_single_in_progress(changes: &[PlanChange]) -> Vec<ValidationResult> {
+    let offenders: Vec<&PlanChange> =
+        changes.iter().filter(|c| c.status == PlanStatus::InProgress).collect();
+    if offenders.len() <= 1 {
+        return Vec::new();
+    }
+    offenders
+        .into_iter()
+        .map(|c| ValidationResult {
+            level: ValidationLevel::Error,
+            code: "multiple-in-progress",
+            message: "multiple in-progress entries: at most one allowed per plan".to_string(),
+            entry: Some(c.name.clone()),
+        })
+        .collect()
+}
+
+/// Plan-to-change directory consistency:
+///   - Warn on orphan subdirectories (no matching plan entry).
+///   - Warn when an `in-progress` plan entry has no matching directory.
+fn check_changes_dir_consistency(plan: &Plan, changes_dir: &Path) -> Vec<ValidationResult> {
+    let mut out = Vec::new();
+    let declared: HashSet<&str> = plan.changes.iter().map(|c| c.name.as_str()).collect();
+
+    let Ok(read_dir) = std::fs::read_dir(changes_dir) else {
+        return out;
+    };
+    let mut dir_names: Vec<String> = Vec::new();
+    for entry in read_dir.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        dir_names.push(name.to_string());
+    }
+    dir_names.sort();
+
+    for name in &dir_names {
+        if !declared.contains(name.as_str()) {
+            out.push(ValidationResult {
+                level: ValidationLevel::Warning,
+                code: "orphan-change-dir",
+                message: format!("change directory '{name}' has no plan entry"),
+                entry: Some(name.clone()),
+            });
+        }
+    }
+
+    for entry in &plan.changes {
+        if entry.status == PlanStatus::InProgress {
+            let candidate = changes_dir.join(&entry.name);
+            if !candidate.is_dir() {
+                out.push(ValidationResult {
+                    level: ValidationLevel::Warning,
+                    code: "missing-change-dir-for-in-progress",
+                    message: format!(
+                        "in-progress entry '{}' has no change directory (may briefly be absent during phase start-up)",
+                        entry.name
+                    ),
+                    entry: Some(entry.name.clone()),
+                });
+            }
+        }
+    }
+
+    out
 }
 
 #[cfg(test)]
@@ -658,6 +887,214 @@ changes:
             !content.contains("in_progress"),
             "snake_case `in_progress` leaked onto disk, got:\n{content}"
         );
+    }
+
+    fn plan_with_changes(changes: Vec<PlanChange>) -> Plan {
+        Plan {
+            name: "test".into(),
+            sources: BTreeMap::new(),
+            changes,
+        }
+    }
+
+    fn change(name: &str, status: PlanStatus) -> PlanChange {
+        PlanChange {
+            name: name.into(),
+            status,
+            depends_on: vec![],
+            affects: vec![],
+            sources: vec![],
+            description: None,
+            status_reason: None,
+        }
+    }
+
+    #[test]
+    fn clean_plan_returns_no_results() {
+        let plan: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let results = plan.validate(None);
+        assert!(
+            results.is_empty(),
+            "expected a clean RFC fixture to validate with no findings, got: {results:#?}"
+        );
+    }
+
+    #[test]
+    fn duplicate_name_reports_error() {
+        let plan = plan_with_changes(vec![
+            change("foo", PlanStatus::Done),
+            change("foo", PlanStatus::Pending),
+        ]);
+        let results = plan.validate(None);
+        let dupes: Vec<_> = results.iter().filter(|r| r.code == "duplicate-name").collect();
+        assert_eq!(dupes.len(), 1, "expected one duplicate-name result, got {results:#?}");
+        assert_eq!(dupes[0].level, ValidationLevel::Error);
+        assert_eq!(dupes[0].entry.as_deref(), Some("foo"));
+    }
+
+    #[test]
+    fn cycle_reports_error() {
+        let mut a = change("a", PlanStatus::Pending);
+        a.depends_on = vec!["c".into()];
+        let mut b = change("b", PlanStatus::Pending);
+        b.depends_on = vec!["a".into()];
+        let mut c = change("c", PlanStatus::Pending);
+        c.depends_on = vec!["b".into()];
+        let plan = plan_with_changes(vec![a, b, c]);
+        let results = plan.validate(None);
+        let cycles: Vec<_> = results.iter().filter(|r| r.code == "dependency-cycle").collect();
+        assert!(!cycles.is_empty(), "expected at least one dependency-cycle, got {results:#?}");
+        let msg = &cycles[0].message;
+        assert!(msg.contains('a'), "cycle message should name a: {msg}");
+        assert!(msg.contains('b'), "cycle message should name b: {msg}");
+        assert!(msg.contains('c'), "cycle message should name c: {msg}");
+    }
+
+    #[test]
+    fn self_cycle_reports_error() {
+        let mut a = change("a", PlanStatus::Pending);
+        a.depends_on = vec!["a".into()];
+        let plan = plan_with_changes(vec![a]);
+        let results = plan.validate(None);
+        assert!(
+            results.iter().any(|r| r.code == "dependency-cycle"),
+            "expected a dependency-cycle result for self-edge, got: {results:#?}"
+        );
+    }
+
+    #[test]
+    fn unknown_depends_on_reports_error() {
+        let mut a = change("a", PlanStatus::Pending);
+        a.depends_on = vec!["bogus".into()];
+        let plan = plan_with_changes(vec![a]);
+        let results = plan.validate(None);
+        let hits: Vec<_> = results.iter().filter(|r| r.code == "unknown-depends-on").collect();
+        assert_eq!(hits.len(), 1, "expected one unknown-depends-on, got {results:#?}");
+        assert_eq!(hits[0].entry.as_deref(), Some("a"));
+        assert!(hits[0].message.contains("bogus"));
+    }
+
+    #[test]
+    fn unknown_affects_reports_error() {
+        let mut a = change("a", PlanStatus::Pending);
+        a.affects = vec!["ghost".into()];
+        let plan = plan_with_changes(vec![a]);
+        let results = plan.validate(None);
+        let hits: Vec<_> = results.iter().filter(|r| r.code == "unknown-affects").collect();
+        assert_eq!(hits.len(), 1, "expected one unknown-affects, got {results:#?}");
+        assert_eq!(hits[0].entry.as_deref(), Some("a"));
+        assert!(hits[0].message.contains("ghost"));
+    }
+
+    #[test]
+    fn unknown_source_reports_error() {
+        let mut a = change("a", PlanStatus::Pending);
+        a.sources = vec!["monolith".into()];
+        let plan = plan_with_changes(vec![a]);
+        let results = plan.validate(None);
+        let hits: Vec<_> = results.iter().filter(|r| r.code == "unknown-source").collect();
+        assert_eq!(hits.len(), 1, "expected one unknown-source, got {results:#?}");
+        assert_eq!(hits[0].entry.as_deref(), Some("a"));
+        assert!(hits[0].message.contains("monolith"));
+    }
+
+    #[test]
+    fn multiple_in_progress_reports_error_once_per_offender() {
+        let plan = plan_with_changes(vec![
+            change("a", PlanStatus::InProgress),
+            change("b", PlanStatus::InProgress),
+        ]);
+        let results = plan.validate(None);
+        let hits: Vec<_> = results.iter().filter(|r| r.code == "multiple-in-progress").collect();
+        assert_eq!(hits.len(), 2, "expected one result per offender, got {results:#?}");
+        let names: HashSet<&str> = hits.iter().filter_map(|r| r.entry.as_deref()).collect();
+        assert!(names.contains("a") && names.contains("b"), "names = {names:?}");
+    }
+
+    #[test]
+    fn single_in_progress_is_fine() {
+        let plan = plan_with_changes(vec![
+            change("a", PlanStatus::InProgress),
+            change("b", PlanStatus::Pending),
+        ]);
+        let results = plan.validate(None);
+        assert!(
+            !results.iter().any(|r| r.code == "multiple-in-progress"),
+            "single in-progress entry should not trip multiple-in-progress: {results:#?}"
+        );
+    }
+
+    #[test]
+    fn orphan_change_dir_is_warning() {
+        let tmp = tempdir().expect("tempdir");
+        std::fs::create_dir(tmp.path().join("stale-change")).expect("mkdir");
+        let plan = plan_with_changes(vec![change("other", PlanStatus::Pending)]);
+        let results = plan.validate(Some(tmp.path()));
+        let hits: Vec<_> = results.iter().filter(|r| r.code == "orphan-change-dir").collect();
+        assert_eq!(hits.len(), 1, "expected one orphan-change-dir, got {results:#?}");
+        assert_eq!(hits[0].level, ValidationLevel::Warning);
+        assert_eq!(hits[0].entry.as_deref(), Some("stale-change"));
+    }
+
+    #[test]
+    fn missing_dir_for_in_progress_is_warning() {
+        let tmp = tempdir().expect("tempdir");
+        let plan = plan_with_changes(vec![change("alpha", PlanStatus::InProgress)]);
+        let results = plan.validate(Some(tmp.path()));
+        let hits: Vec<_> =
+            results.iter().filter(|r| r.code == "missing-change-dir-for-in-progress").collect();
+        assert_eq!(hits.len(), 1, "expected one missing-dir warning, got {results:#?}");
+        assert_eq!(hits[0].level, ValidationLevel::Warning);
+        assert_eq!(hits[0].entry.as_deref(), Some("alpha"));
+    }
+
+    #[test]
+    fn present_dir_for_in_progress_is_silent() {
+        let tmp = tempdir().expect("tempdir");
+        std::fs::create_dir(tmp.path().join("alpha")).expect("mkdir alpha");
+        let plan = plan_with_changes(vec![change("alpha", PlanStatus::InProgress)]);
+        let results = plan.validate(Some(tmp.path()));
+        assert!(
+            !results.iter().any(|r| r.code.ends_with("-change-dir")
+                || r.code == "orphan-change-dir"
+                || r.code == "missing-change-dir-for-in-progress"),
+            "no directory warnings expected, got: {results:#?}"
+        );
+    }
+
+    #[test]
+    fn changes_dir_none_skips_consistency_checks() {
+        let plan = plan_with_changes(vec![change("alpha", PlanStatus::InProgress)]);
+        let results = plan.validate(None);
+        assert!(
+            !results
+                .iter()
+                .any(|r| r.code == "orphan-change-dir"
+                    || r.code == "missing-change-dir-for-in-progress"),
+            "passing None for changes_dir must skip directory consistency checks: {results:#?}"
+        );
+    }
+
+    #[test]
+    fn accumulates_all_findings_no_short_circuit() {
+        // One plan, three distinct violations:
+        //   - duplicate name `foo`
+        //   - unknown depends-on target
+        //   - unknown source key
+        let mut a = change("foo", PlanStatus::Pending);
+        a.depends_on = vec!["missing".into()];
+        a.sources = vec!["ghost-source".into()];
+        let b = change("foo", PlanStatus::Pending);
+        let plan = plan_with_changes(vec![a, b]);
+        let results = plan.validate(None);
+
+        let codes: HashSet<&'static str> = results.iter().map(|r| r.code).collect();
+        for expected in ["duplicate-name", "unknown-depends-on", "unknown-source"] {
+            assert!(
+                codes.contains(expected),
+                "expected code {expected} in {codes:?} — validate must not short-circuit"
+            );
+        }
     }
 
     #[test]
