@@ -26,16 +26,16 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use chrono::Utc;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
 use specify::{
     BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, Error, InitOptions,
     InitResult, LifecycleStatus, MergeEntry, MergeOperation, MergeResult, Overlap, Phase,
-    PipelineView, Plan, PlanChange, PlanStatus, PlanValidationLevel, PlanValidationResult,
-    ProjectConfig, Schema, SchemaSource, SpecType, Task, TouchedSpec, ValidationReport,
-    ValidationResult, VersionMode, change_actions, conflict_check, init, mark_complete,
-    merge_change, parse_tasks, preview_change, serialize_report, validate_change,
+    PipelineView, Plan, PlanChange, PlanChangePatch, PlanStatus, PlanValidationLevel,
+    PlanValidationResult, ProjectConfig, Schema, SchemaSource, SpecType, Task, TouchedSpec,
+    ValidationReport, ValidationResult, VersionMode, change_actions, conflict_check, init,
+    mark_complete, merge_change, parse_tasks, preview_change, serialize_report, validate_change,
 };
 
 pub const EXIT_SUCCESS: i32 = 0;
@@ -148,6 +148,82 @@ enum PlanAction {
     Next,
     /// Show initiative progress report
     Status,
+    /// Add a new change entry (status: pending)
+    Create {
+        /// Kebab-case change name
+        name: String,
+        /// Ordering dependencies (repeatable). Every value is a change name in the plan.
+        /// Pass `--depends-on` (with no value) to clear the field; omit the flag to
+        /// leave it unchanged.
+        #[arg(long = "depends-on", action = ArgAction::Append)]
+        depends_on: Vec<String>,
+        /// Impact annotations (repeatable). Every value is a change name in the plan.
+        #[arg(long, action = ArgAction::Append)]
+        affects: Vec<String>,
+        /// Named source keys (repeatable). Every value is a key in the top-level
+        /// `sources` map.
+        #[arg(long = "sources", action = ArgAction::Append)]
+        sources: Vec<String>,
+        /// Free-text scoping hint for the define step
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Edit non-status fields on an existing plan entry
+    Amend {
+        /// Kebab-case change name
+        name: String,
+        /// Replace depends-on. Pass `--depends-on` (with no value) to clear the
+        /// field; omit the flag to leave it unchanged. Repeat or comma-separate
+        /// to supply multiple values.
+        #[arg(long = "depends-on", num_args = 0.., value_delimiter = ',')]
+        depends_on: Option<Vec<String>>,
+        /// Replace affects. Pass `--affects` (with no value) to clear the field;
+        /// omit the flag to leave it unchanged.
+        #[arg(long, num_args = 0.., value_delimiter = ',')]
+        affects: Option<Vec<String>>,
+        /// Replace sources. Pass `--sources` (with no value) to clear the field;
+        /// omit the flag to leave it unchanged.
+        #[arg(long = "sources", num_args = 0.., value_delimiter = ',')]
+        sources: Option<Vec<String>>,
+        /// Replace description. Pass `--description ""` to clear; omit the flag
+        /// to leave it unchanged.
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Apply a validated status transition
+    Transition {
+        /// Kebab-case change name
+        name: String,
+        /// Target status
+        target: PlanStatusArg,
+        /// Free-text reason; only valid when transitioning to `failed`,
+        /// `blocked`, or `skipped`.
+        #[arg(long)]
+        reason: Option<String>,
+    },
+}
+
+#[derive(Copy, Clone, ValueEnum)]
+enum PlanStatusArg {
+    Pending,
+    InProgress,
+    Done,
+    Blocked,
+    Failed,
+    Skipped,
+}
+
+impl From<PlanStatusArg> for PlanStatus {
+    fn from(value: PlanStatusArg) -> Self {
+        match value {
+            PlanStatusArg::Pending => PlanStatus::Pending,
+            PlanStatusArg::InProgress => PlanStatus::InProgress,
+            PlanStatusArg::Done => PlanStatus::Done,
+            PlanStatusArg::Blocked => PlanStatus::Blocked,
+            PlanStatusArg::Failed => PlanStatus::Failed,
+            PlanStatusArg::Skipped => PlanStatus::Skipped,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -1578,6 +1654,23 @@ fn run_plan(format: OutputFormat, action: PlanAction) -> i32 {
         PlanAction::Validate => run_plan_validate(format),
         PlanAction::Next => run_plan_next(format),
         PlanAction::Status => run_plan_status(format),
+        PlanAction::Create {
+            name,
+            depends_on,
+            affects,
+            sources,
+            description,
+        } => run_plan_create(format, name, depends_on, affects, sources, description),
+        PlanAction::Amend {
+            name,
+            depends_on,
+            affects,
+            sources,
+            description,
+        } => run_plan_amend(format, name, depends_on, affects, sources, description),
+        PlanAction::Transition { name, target, reason } => {
+            run_plan_transition(format, name, target.into(), reason)
+        }
     }
 }
 
@@ -2056,6 +2149,163 @@ fn print_plan_status_text(
             println!("Impact: {done} is referenced by pending changes: [{}]", refs.join(", "));
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// plan subcommand tree (write-side: create, amend, transition)
+// ---------------------------------------------------------------------------
+
+fn load_plan_for_write(format: OutputFormat) -> Result<(PathBuf, PathBuf, Plan), i32> {
+    let project_dir = current_dir().map_err(|err| emit_error(format, &err))?;
+    ProjectConfig::load(&project_dir).map_err(|err| emit_error(format, &err))?;
+    let plan_path = require_plan_file(&project_dir).map_err(|err| emit_error(format, &err))?;
+    let plan = Plan::load(&plan_path).map_err(|err| emit_error(format, &err))?;
+    Ok((project_dir, plan_path, plan))
+}
+
+fn plan_ref_json(plan: &Plan, plan_path: &Path) -> Value {
+    json!({
+        "name": plan.name,
+        "path": plan_path.display().to_string(),
+    })
+}
+
+/// Serialize a `PlanChange` into the on-the-wire kebab-case JSON shape
+/// (matches the fields emitted by `plan status.entries[]`, minus the
+/// `lifecycle` overlay which is a status-report concern).
+fn plan_change_entry_json(entry: &PlanChange) -> Value {
+    serde_json::to_value(entry).expect("PlanChange serialises as JSON")
+}
+
+fn run_plan_create(
+    format: OutputFormat, name: String, depends_on: Vec<String>, affects: Vec<String>,
+    sources: Vec<String>, description: Option<String>,
+) -> i32 {
+    let (_project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let entry = PlanChange {
+        name: name.clone(),
+        status: PlanStatus::Pending,
+        depends_on,
+        affects,
+        sources,
+        description,
+        status_reason: None,
+    };
+
+    if let Err(err) = plan.create(entry) {
+        return emit_error(format, &err);
+    }
+    if let Err(err) = plan.save(&plan_path) {
+        return emit_error(format, &err);
+    }
+
+    // `Plan::create` forces status to Pending and clears status_reason, so
+    // the freshly-appended entry is always the tail of `plan.changes`.
+    let created = plan.changes.last().expect("Plan::create appended an entry that is now missing");
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "plan": plan_ref_json(&plan, &plan_path),
+            "action": "create",
+            "entry": plan_change_entry_json(created),
+        })),
+        OutputFormat::Text => {
+            println!("Created plan entry '{name}' with status 'pending'.");
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn run_plan_amend(
+    format: OutputFormat, name: String, depends_on: Option<Vec<String>>,
+    affects: Option<Vec<String>>, sources: Option<Vec<String>>, description: Option<String>,
+) -> i32 {
+    let (_project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    // Map clap's `Option<String>` for description into the library's
+    // three-way `Option<Option<String>>`: absent = None, "" = clear,
+    // otherwise replace.
+    let description_patch: Option<Option<String>> =
+        description.map(|s| if s.is_empty() { None } else { Some(s) });
+
+    let patch = PlanChangePatch {
+        depends_on,
+        affects,
+        sources,
+        description: description_patch,
+    };
+
+    if let Err(err) = plan.amend(&name, patch) {
+        return emit_error(format, &err);
+    }
+    if let Err(err) = plan.save(&plan_path) {
+        return emit_error(format, &err);
+    }
+
+    let amended = plan.changes.iter().find(|c| c.name == name).expect("amended entry present");
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "plan": plan_ref_json(&plan, &plan_path),
+            "action": "amend",
+            "entry": plan_change_entry_json(amended),
+        })),
+        OutputFormat::Text => {
+            println!("Amended plan entry '{name}'.");
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn run_plan_transition(
+    format: OutputFormat, name: String, target: PlanStatus, reason: Option<String>,
+) -> i32 {
+    let (_project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let old_status = match plan.changes.iter().find(|c| c.name == name) {
+        Some(c) => c.status,
+        None => {
+            return emit_error(format, &Error::Config(format!("no change named '{name}' in plan")));
+        }
+    };
+
+    if let Err(err) = plan.transition(&name, target, reason.as_deref()) {
+        return emit_error(format, &err);
+    }
+    if let Err(err) = plan.save(&plan_path) {
+        return emit_error(format, &err);
+    }
+
+    let entry = plan.changes.iter().find(|c| c.name == name).expect("transitioned entry present");
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "plan": plan_ref_json(&plan, &plan_path),
+            "entry": {
+                "name": entry.name,
+                "status": plan_status_label(entry.status),
+                "status-reason": entry.status_reason,
+            },
+        })),
+        OutputFormat::Text => {
+            println!(
+                "Transitioned '{name}': {} → {}.",
+                plan_status_label(old_status),
+                plan_status_label(entry.status),
+            );
+        }
+    }
+    EXIT_SUCCESS
 }
 
 // ---------------------------------------------------------------------------

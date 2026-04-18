@@ -727,4 +727,437 @@ changes:
             value["message"]
         );
     }
+
+    // -- create / amend / transition (L1.J write-side commands) -----------
+
+    const EMPTY_PLAN: &str = "\
+name: demo
+changes: []
+";
+
+    const SINGLE_PENDING: &str = "\
+name: demo
+changes:
+  - name: foo
+    status: pending
+";
+
+    const SINGLE_IN_PROGRESS: &str = "\
+name: demo
+changes:
+  - name: foo
+    status: in-progress
+";
+
+    const SINGLE_DONE: &str = "\
+name: demo
+changes:
+  - name: foo
+    status: done
+";
+
+    const WITH_DESCRIPTION: &str = "\
+name: demo
+changes:
+  - name: foo
+    status: pending
+    description: original
+";
+
+    // -- plan create ------------------------------------------------------
+
+    #[test]
+    fn plan_create_adds_pending_entry_json() {
+        let project = Project::init();
+        project.seed_plan(EMPTY_PLAN);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "create", "foo"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(actual["schema_version"], 1);
+        assert_eq!(actual["action"], "create");
+        assert_eq!(actual["entry"]["name"], "foo");
+        assert_eq!(actual["entry"]["status"], "pending");
+        assert_eq!(actual["entry"]["status-reason"], Value::Null);
+        assert_eq!(actual["plan"]["name"], "demo");
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        assert!(saved.contains("name: foo"), "saved plan missing new entry:\n{saved}");
+        assert!(saved.contains("status: pending"), "saved plan missing pending status:\n{saved}");
+
+        assert_golden("create-foo.json", actual);
+    }
+
+    #[test]
+    fn plan_create_rejects_duplicate_name_text() {
+        let project = Project::init();
+        project.seed_plan(EMPTY_PLAN);
+
+        specify().current_dir(project.root()).args(["plan", "create", "foo"]).assert().success();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "create", "foo"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("already contains a change"),
+            "stderr should flag duplicate, got: {stderr:?}"
+        );
+    }
+
+    #[test]
+    fn plan_create_rejects_invalid_name() {
+        let project = Project::init();
+        project.seed_plan(EMPTY_PLAN);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "create", "NotKebab"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        assert!(!saved.contains("NotKebab"), "invalid name must not land in the plan:\n{saved}");
+    }
+
+    #[test]
+    fn plan_create_rejects_when_validation_fails() {
+        let project = Project::init();
+        project.seed_plan(EMPTY_PLAN);
+        let before = fs::read_to_string(project.plan_path()).expect("read");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "create", "foo", "--affects", "nonexistent"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+
+        let after = fs::read_to_string(project.plan_path()).expect("read");
+        assert_eq!(before, after, "failed create must not mutate plan.yaml");
+    }
+
+    // -- plan amend -------------------------------------------------------
+
+    #[test]
+    fn plan_amend_replaces_depends_on() {
+        let project = Project::init();
+        project.seed_plan(
+            "\
+name: demo
+changes:
+  - name: a
+    status: done
+  - name: b
+    status: done
+  - name: foo
+    status: pending
+    depends-on: [a]
+",
+        );
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args([
+                "--format",
+                "json",
+                "plan",
+                "amend",
+                "foo",
+                "--depends-on",
+                "a",
+                "--depends-on",
+                "b",
+            ])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["action"], "amend");
+        assert_eq!(actual["entry"]["name"], "foo");
+        let deps = actual["entry"]["depends-on"].as_array().expect("deps array");
+        let names: Vec<&str> = deps.iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(names, ["a", "b"]);
+
+        assert_golden("amend-replace-depends-on.json", actual);
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read");
+        assert!(saved.contains("- a"), "saved depends-on missing 'a':\n{saved}");
+        assert!(saved.contains("- b"), "saved depends-on missing 'b':\n{saved}");
+    }
+
+    #[test]
+    fn plan_amend_clear_description() {
+        let project = Project::init();
+        project.seed_plan(WITH_DESCRIPTION);
+
+        specify()
+            .current_dir(project.root())
+            .args(["plan", "amend", "foo", "--description", ""])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read");
+        assert!(
+            !saved.contains("description: original"),
+            "original description should be gone:\n{saved}"
+        );
+    }
+
+    #[test]
+    fn plan_amend_leave_field_alone() {
+        let project = Project::init();
+        project.seed_plan(WITH_DESCRIPTION);
+
+        // --depends-on (clear) but no --description; description must stay.
+        specify()
+            .current_dir(project.root())
+            .args(["plan", "amend", "foo", "--depends-on"])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read");
+        assert!(
+            saved.contains("description: original"),
+            "description should be preserved:\n{saved}"
+        );
+    }
+
+    #[test]
+    fn plan_amend_on_missing_entry_fails() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_PENDING);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "amend", "nope", "--description", "x"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+        assert!(
+            stderr.contains("no change named"),
+            "stderr should mention missing change, got: {stderr:?}"
+        );
+    }
+
+    // -- plan transition --------------------------------------------------
+
+    #[test]
+    fn plan_transition_happy_path_text() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_PENDING);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "transition", "foo", "in-progress"])
+            .assert()
+            .success();
+        let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
+        assert!(stdout.contains("pending"), "text output should mention 'pending': {stdout:?}");
+        assert!(
+            stdout.contains("in-progress"),
+            "text output should mention 'in-progress': {stdout:?}"
+        );
+    }
+
+    #[test]
+    fn plan_transition_legal_edge_json() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_IN_PROGRESS);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "transition", "foo", "done"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(actual["schema_version"], 1);
+        assert_eq!(actual["entry"]["name"], "foo");
+        assert_eq!(actual["entry"]["status"], "done");
+        assert_eq!(actual["entry"]["status-reason"], Value::Null);
+
+        assert_golden("transition-in-progress-to-done.json", actual);
+    }
+
+    #[test]
+    fn plan_transition_rejects_illegal_edge() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_DONE);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "transition", "foo", "pending"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+        assert!(
+            stderr.to_lowercase().contains("illegal") || stderr.contains("transition"),
+            "stderr should mention illegal transition, got: {stderr:?}"
+        );
+    }
+
+    #[test]
+    fn plan_transition_happy_path_json_pending_to_in_progress() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_PENDING);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "transition", "foo", "in-progress"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["entry"]["status"], "in-progress");
+        assert_eq!(actual["entry"]["status-reason"], Value::Null);
+
+        assert_golden("transition-pending-to-in-progress.json", actual);
+    }
+
+    #[test]
+    fn plan_transition_reason_on_failed() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_IN_PROGRESS);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "transition", "foo", "failed", "--reason", "boom"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["entry"]["status"], "failed");
+        assert_eq!(actual["entry"]["status-reason"], "boom");
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read");
+        assert!(saved.contains("status-reason: boom"), "saved reason missing:\n{saved}");
+
+        assert_golden("transition-in-progress-to-failed-with-reason.json", actual);
+    }
+
+    #[test]
+    fn plan_transition_rejects_reason_on_in_progress_target() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_PENDING);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "transition", "foo", "in-progress", "--reason", "x"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+        assert!(stderr.contains("--reason"), "stderr should mention '--reason', got: {stderr:?}");
+    }
+
+    #[test]
+    fn plan_transition_clears_reason_on_pending_reentry() {
+        let project = Project::init();
+        project.seed_plan(
+            "\
+name: demo
+changes:
+  - name: foo
+    status: failed
+    status-reason: boom
+",
+        );
+
+        specify()
+            .current_dir(project.root())
+            .args(["plan", "transition", "foo", "pending"])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read");
+        assert!(
+            !saved.contains("status-reason: boom"),
+            "status-reason should be cleared:\n{saved}"
+        );
+        assert!(saved.contains("status: pending"), "status should be pending:\n{saved}");
+    }
+
+    // -- human-driven replay (RFC-2 §"The Loop (Human-Driven)") -----------
+
+    #[test]
+    fn plan_human_replay_matches_fixture() {
+        let project = Project::init();
+        project.seed_plan(
+            "\
+name: demo
+changes:
+  - name: user-registration
+    status: done
+",
+        );
+
+        specify()
+            .current_dir(project.root())
+            .args([
+                "plan",
+                "create",
+                "registration-duplicate-email-crash",
+                "--affects",
+                "user-registration",
+                "--description",
+                "Duplicate email submission returns 500 instead of 409.",
+            ])
+            .assert()
+            .success();
+
+        specify()
+            .current_dir(project.root())
+            .args(["plan", "transition", "registration-duplicate-email-crash", "in-progress"])
+            .assert()
+            .success();
+
+        specify()
+            .current_dir(project.root())
+            .args([
+                "plan",
+                "amend",
+                "registration-duplicate-email-crash",
+                "--description",
+                "Clarified scope",
+            ])
+            .assert()
+            .success();
+
+        specify()
+            .current_dir(project.root())
+            .args(["plan", "transition", "registration-duplicate-email-crash", "done"])
+            .assert()
+            .success();
+
+        let actual = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        let fixture_path = plan_fixtures().join("human-replay-final.yaml");
+
+        if std::env::var_os("REGENERATE_GOLDENS").is_some() {
+            fs::create_dir_all(plan_fixtures()).expect("mkdir plan fixtures");
+            fs::write(&fixture_path, &actual).expect("write fixture");
+            return;
+        }
+
+        let expected = fs::read_to_string(&fixture_path).unwrap_or_else(|err| {
+            panic!(
+                "fixture {} missing ({err}); regenerate via REGENERATE_GOLDENS=1 cargo test --test plan",
+                fixture_path.display()
+            )
+        });
+
+        assert_eq!(
+            actual,
+            expected,
+            "plan.yaml after replay diverged from fixture {}\n--- actual ---\n{actual}\n--- expected ---\n{expected}",
+            fixture_path.display()
+        );
+    }
 }

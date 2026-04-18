@@ -1,0 +1,12 @@
+{
+  "entry": {
+    "name": "foo",
+    "status": "in-progress",
+    "status-reason": null
+  },
+  "plan": {
+    "name": "demo",
+    "path": "<TEMPDIR>/.specify/plan.yaml"
+  },
+  "schema_version": 1
+}

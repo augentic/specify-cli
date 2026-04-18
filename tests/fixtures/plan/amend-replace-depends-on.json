@@ -1,0 +1,20 @@
+{
+  "action": "amend",
+  "entry": {
+    "affects": [],
+    "depends-on": [
+      "a",
+      "b"
+    ],
+    "description": null,
+    "name": "foo",
+    "sources": [],
+    "status": "pending",
+    "status-reason": null
+  },
+  "plan": {
+    "name": "demo",
+    "path": "<TEMPDIR>/.specify/plan.yaml"
+  },
+  "schema_version": 1
+}
