@@ -47,6 +47,20 @@ pub enum Error {
     #[error("specify version {found} is older than the project floor {required}; upgrade the CLI")]
     SpecifyVersionTooOld { required: String, found: String },
 
+    /// Illegal plan entry status transition. Mirrors the `Lifecycle`
+    /// variant in carrying stringified `PlanStatus` values to keep
+    /// `specify-error` at the root of the dependency graph. The caller
+    /// (in `specify-change::plan`) formats the strings via
+    /// `format!("{:?}", status)`.
+    #[error("illegal plan transition: cannot go from {from} to {to}")]
+    PlanTransition { from: String, to: String },
+
+    /// `Plan::archive` refused to archive a plan that still contains
+    /// non-terminal entries, and the caller did not pass `force`.
+    /// `entries` lists the offending entry names.
+    #[error("plan has outstanding non-terminal work: {entries:?}")]
+    PlanHasOutstandingWork { entries: Vec<String> },
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
@@ -126,6 +140,26 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "specify version 0.1.0 is older than the project floor 0.2.0; upgrade the CLI"
+        );
+    }
+
+    #[test]
+    fn plan_transition_display() {
+        let err = Error::PlanTransition {
+            from: "Done".to_string(),
+            to: "InProgress".to_string(),
+        };
+        assert_eq!(err.to_string(), "illegal plan transition: cannot go from Done to InProgress");
+    }
+
+    #[test]
+    fn plan_has_outstanding_work_display() {
+        let err = Error::PlanHasOutstandingWork {
+            entries: vec!["checkout-api".to_string(), "checkout-ui".to_string()],
+        };
+        assert_eq!(
+            err.to_string(),
+            "plan has outstanding non-terminal work: [\"checkout-api\", \"checkout-ui\"]"
         );
     }
 

@@ -18,8 +18,10 @@ use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
 pub mod actions;
+pub mod plan;
 
 pub use actions::{CreateIfExists, CreateOutcome, Overlap};
+pub use plan::*;
 
 /// On-disk representation of `<change_dir>/.metadata.yaml`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
