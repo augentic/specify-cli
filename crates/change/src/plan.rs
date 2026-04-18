@@ -39,6 +39,55 @@ pub enum PlanStatus {
     Skipped,
 }
 
+impl PlanStatus {
+    /// Every variant in declaration order. Used by exhaustive transition
+    /// tests here and by validation/topological code in L1.D/E that
+    /// needs to enumerate states without depending on `strum`.
+    pub const ALL: [PlanStatus; 6] = [
+        PlanStatus::Pending,
+        PlanStatus::InProgress,
+        PlanStatus::Done,
+        PlanStatus::Blocked,
+        PlanStatus::Failed,
+        PlanStatus::Skipped,
+    ];
+
+    /// Whether `self -> target` is a legal edge in the plan-entry state
+    /// machine. See `rfc-2-plan.md` §"Transition Rules" for the canonical
+    /// table; the 10 edges enumerated below are the *only* legal ones.
+    /// `Done` is terminal: every edge with `Done` on the left is `false`.
+    pub fn can_transition_to(&self, target: &PlanStatus) -> bool {
+        use PlanStatus::*;
+        matches!(
+            (self, target),
+            (Pending, InProgress)
+                | (Pending, Blocked)
+                | (Pending, Skipped)
+                | (InProgress, Done)
+                | (InProgress, Failed)
+                | (InProgress, Blocked)
+                | (Blocked, Pending)
+                | (Failed, Pending)
+                | (Failed, Skipped)
+                | (Skipped, Pending)
+        )
+    }
+
+    /// Return `target` if the edge is legal, otherwise an
+    /// `Error::PlanTransition` carrying both endpoints by their `Debug`
+    /// representation. Mirrors `LifecycleStatus::transition`.
+    pub fn transition(&self, target: PlanStatus) -> Result<PlanStatus, Error> {
+        if self.can_transition_to(&target) {
+            Ok(target)
+        } else {
+            Err(Error::PlanTransition {
+                from: format!("{self:?}"),
+                to: format!("{target:?}"),
+            })
+        }
+    }
+}
+
 /// In-memory model of `.specify/plan.yaml`.
 ///
 /// A `Plan` is an ordered, dependency-aware list of [`PlanChange`]s plus
@@ -199,6 +248,113 @@ impl Plan {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
+
+    /// The 10 legal edges from `rfc-2-plan.md` §"Transition Rules".
+    /// Kept here (not on `PlanStatus`) so the production matcher and the
+    /// test oracle are independent representations of the same table.
+    fn allowed_edges() -> HashSet<(PlanStatus, PlanStatus)> {
+        use PlanStatus::*;
+        let mut set = HashSet::new();
+        set.insert((Pending, InProgress));
+        set.insert((Pending, Blocked));
+        set.insert((Pending, Skipped));
+        set.insert((InProgress, Done));
+        set.insert((InProgress, Failed));
+        set.insert((InProgress, Blocked));
+        set.insert((Blocked, Pending));
+        set.insert((Failed, Pending));
+        set.insert((Failed, Skipped));
+        set.insert((Skipped, Pending));
+        set
+    }
+
+    #[test]
+    fn every_legal_edge_transitions_successfully() {
+        for (from, to) in allowed_edges() {
+            assert!(
+                from.can_transition_to(&to),
+                "{from:?} -> {to:?} should be allowed by can_transition_to"
+            );
+            let result = from
+                .transition(to)
+                .unwrap_or_else(|e| panic!("expected {from:?} -> {to:?} to succeed, got {e:?}"));
+            assert_eq!(result, to);
+        }
+    }
+
+    #[test]
+    fn done_is_terminal() {
+        for &t in &PlanStatus::ALL {
+            assert!(!PlanStatus::Done.can_transition_to(&t), "Done must not allow -> {t:?}");
+        }
+    }
+
+    #[test]
+    fn illegal_edges_rejected() {
+        use PlanStatus::*;
+        let cases: &[(PlanStatus, PlanStatus)] = &[
+            (Done, Pending),
+            (Done, InProgress),
+            (Done, Failed),
+            (Pending, Done),
+            (Pending, Failed),
+            (Skipped, Failed),
+            (InProgress, Pending),
+            (InProgress, Skipped),
+            (Blocked, Failed),
+            (Pending, Pending),
+            (InProgress, InProgress),
+            (Done, Done),
+            (Blocked, Blocked),
+            (Failed, Failed),
+            (Skipped, Skipped),
+        ];
+
+        for &(from, to) in cases {
+            assert!(
+                !from.can_transition_to(&to),
+                "{from:?} -> {to:?} must be rejected by can_transition_to"
+            );
+            let err = from.transition(to).expect_err(&format!("{from:?} -> {to:?} should be Err"));
+            match err {
+                Error::PlanTransition { from: f, to: t } => {
+                    assert_eq!(f, format!("{from:?}"), "from payload mismatch");
+                    assert_eq!(t, format!("{to:?}"), "to payload mismatch");
+                }
+                other => panic!("expected Error::PlanTransition, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn exhaustive_table_matches_allowed_set() {
+        let allowed = allowed_edges();
+        for &from in &PlanStatus::ALL {
+            for &to in &PlanStatus::ALL {
+                let expected = allowed.contains(&(from, to));
+                let actual = from.can_transition_to(&to);
+                assert_eq!(
+                    actual, expected,
+                    "({from:?}) -> ({to:?}): expected allowed={expected}, got {actual}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn error_carries_from_and_to() {
+        let err = PlanStatus::Done
+            .transition(PlanStatus::Pending)
+            .expect_err("Done -> Pending must error");
+        match err {
+            Error::PlanTransition { from, to } => {
+                assert_eq!(from, "Done");
+                assert_eq!(to, "Pending");
+            }
+            other => panic!("expected Error::PlanTransition, got {other:?}"),
+        }
+    }
 
     /// Verbatim reproduction of the `rfc-2-plan.md` §"The Plan" fixture.
     const RFC_EXAMPLE_YAML: &str = r#"name: platform-v2
