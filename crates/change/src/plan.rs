@@ -259,11 +259,29 @@ impl Plan {
         results
     }
 
-    /// First entry in topological order whose dependencies are all `done`
-    /// and whose own status is `pending`. Returns `None` when nothing is
-    /// eligible (plan finished, blocked, or empty).
+    /// First entry in list order whose dependencies are all `done` and
+    /// whose own status is `pending`. Returns `None` when nothing is
+    /// eligible (plan finished, blocked, empty) **or when any entry is
+    /// currently `in-progress`** — the driver must not pick a new
+    /// change while one is active. The in-progress check runs before
+    /// any dependency walk, so this function is independent of
+    /// [`Plan::topological_order`] and safe to call on cyclic plans.
+    ///
+    /// An unknown `depends_on` target is treated as "not done", so the
+    /// entry is not eligible. Orphan-reference diagnostics belong to
+    /// [`Plan::validate`].
     pub fn next_eligible(&self) -> Option<&PlanChange> {
-        todo!("Change L1.E — implement Plan::next_eligible")
+        if self.changes.iter().any(|c| c.status == PlanStatus::InProgress) {
+            return None;
+        }
+        let status_by_name: HashMap<&str, PlanStatus> =
+            self.changes.iter().map(|c| (c.name.as_str(), c.status)).collect();
+        self.changes.iter().find(|c| {
+            c.status == PlanStatus::Pending
+                && c.depends_on
+                    .iter()
+                    .all(|dep| status_by_name.get(dep.as_str()).copied() == Some(PlanStatus::Done))
+        })
     }
 
     /// Transition the named entry to `target`, recording `reason` in
@@ -287,10 +305,75 @@ impl Plan {
         todo!("Change L1.F — implement Plan::amend")
     }
 
-    /// Entries in dependency-respecting order. Errors with a cycle
-    /// description when the `depends_on` graph contains a cycle.
+    /// Entries in dependency-respecting order. Errors with an
+    /// `Error::Config` describing the cycle when the `depends_on` graph
+    /// contains one.
+    ///
+    /// Tie-break rule: when two entries are simultaneously "ready"
+    /// (dependencies already emitted), the one earlier in
+    /// [`Plan::changes`] wins. This makes the output deterministic and
+    /// a pure function of list order.
+    ///
+    /// Unknown `depends_on` targets are treated as satisfied for
+    /// ordering purposes so orphan references cannot deadlock the sort;
+    /// surfacing them is [`Plan::validate`]'s job.
+    ///
+    /// Implementation: the plan is small, so we sweep the list
+    /// repeatedly and emit every entry whose dependencies are already
+    /// in the output. This is O(n²) but trivially preserves list-order
+    /// tie-breaking. We use `petgraph::toposort` first only to detect
+    /// cycles and name an offending node.
     pub fn topological_order(&self) -> Result<Vec<&PlanChange>, Error> {
-        todo!("Change L1.E — implement Plan::topological_order")
+        let mut graph: DiGraph<&str, ()> = DiGraph::new();
+        let mut idx = HashMap::new();
+        for entry in &self.changes {
+            let node = graph.add_node(entry.name.as_str());
+            idx.insert(entry.name.as_str(), node);
+        }
+        for entry in &self.changes {
+            let to = idx[entry.name.as_str()];
+            for dep in &entry.depends_on {
+                if let Some(&from) = idx.get(dep.as_str()) {
+                    graph.add_edge(from, to, ());
+                }
+            }
+        }
+        if toposort(&graph, None).is_err() {
+            let offender = tarjan_scc(&graph)
+                .into_iter()
+                .find(|scc| {
+                    scc.len() > 1 || (scc.len() == 1 && graph.find_edge(scc[0], scc[0]).is_some())
+                })
+                .map(|scc| graph[scc[0]].to_string())
+                .unwrap_or_else(|| "<unknown>".to_string());
+            return Err(Error::Config(format!("plan has dependency cycle involving '{offender}'")));
+        }
+
+        let known: HashSet<&str> = self.changes.iter().map(|c| c.name.as_str()).collect();
+        let mut emitted: HashSet<&str> = HashSet::new();
+        let mut output: Vec<&PlanChange> = Vec::with_capacity(self.changes.len());
+        while output.len() < self.changes.len() {
+            let before = output.len();
+            for entry in &self.changes {
+                if emitted.contains(entry.name.as_str()) {
+                    continue;
+                }
+                let deps_ready = entry
+                    .depends_on
+                    .iter()
+                    .all(|dep| !known.contains(dep.as_str()) || emitted.contains(dep.as_str()));
+                if deps_ready {
+                    output.push(entry);
+                    emitted.insert(entry.name.as_str());
+                }
+            }
+            if output.len() == before {
+                return Err(Error::Config(
+                    "plan has dependency cycle (no progress in Kahn sweep)".to_string(),
+                ));
+            }
+        }
+        Ok(output)
     }
 
     /// Move `.specify/plan.yaml` (and its companion state) into the
@@ -1095,6 +1178,226 @@ changes:
                 "expected code {expected} in {codes:?} — validate must not short-circuit"
             );
         }
+    }
+
+    /// Convenience: build a `PlanChange` with an explicit `depends_on`.
+    fn change_with_deps(name: &str, status: PlanStatus, deps: &[&str]) -> PlanChange {
+        PlanChange {
+            name: name.into(),
+            status,
+            depends_on: deps.iter().map(|s| (*s).to_string()).collect(),
+            affects: vec![],
+            sources: vec![],
+            description: None,
+            status_reason: None,
+        }
+    }
+
+    #[test]
+    fn next_eligible_picks_first_pending_with_done_deps_in_list_order() {
+        let plan = plan_with_changes(vec![
+            change("a", PlanStatus::Done),
+            change("b", PlanStatus::Done),
+            change_with_deps("c", PlanStatus::Pending, &["b"]),
+        ]);
+        let eligible = plan.next_eligible().expect("c should be eligible");
+        assert_eq!(eligible.name, "c");
+    }
+
+    #[test]
+    fn next_eligible_skips_pending_with_unmet_deps() {
+        let plan = plan_with_changes(vec![
+            change("a", PlanStatus::Pending),
+            change_with_deps("b", PlanStatus::Pending, &["a"]),
+        ]);
+        let eligible = plan.next_eligible().expect("a should be eligible");
+        assert_eq!(eligible.name, "a", "b's dep 'a' is not done, so a (no deps) wins");
+    }
+
+    #[test]
+    fn next_eligible_returns_none_when_in_progress_exists() {
+        let plan = plan_with_changes(vec![
+            change("a", PlanStatus::InProgress),
+            change("b", PlanStatus::Pending),
+        ]);
+        assert!(
+            plan.next_eligible().is_none(),
+            "an in-progress entry must block any new selection"
+        );
+    }
+
+    #[test]
+    fn next_eligible_returns_none_when_nothing_pending() {
+        let plan = plan_with_changes(vec![
+            change("a", PlanStatus::Done),
+            change("b", PlanStatus::Skipped),
+            change("c", PlanStatus::Failed),
+        ]);
+        assert!(plan.next_eligible().is_none());
+    }
+
+    #[test]
+    fn next_eligible_list_order_tiebreak() {
+        let plan = plan_with_changes(vec![
+            change("alpha", PlanStatus::Pending),
+            change("beta", PlanStatus::Pending),
+        ]);
+        let eligible = plan.next_eligible().expect("alpha should be first");
+        assert_eq!(eligible.name, "alpha", "list-order tie-break must pick the first entry");
+    }
+
+    /// Drive `next_eligible` forward across the RFC-2 example plan,
+    /// marking each returned entry `done`, and assert the exact
+    /// traversal sequence. Ordering is a function of the plan's
+    /// `depends-on` graph plus the list-order tie-break rule:
+    ///
+    ///   round 1: `user-registration` (no deps) — first pending
+    ///   round 2: `email-verification` — its only dep just became done
+    ///            and it precedes `registration-duplicate-email-crash`
+    ///            (which is also eligible) in list order
+    ///   round 3: `registration-duplicate-email-crash` (no deps, now
+    ///            first remaining pending)
+    ///   round 4: `notification-preferences` (dep user-registration done)
+    ///   round 5: `extract-shared-validation` (dep email-verification done)
+    ///   round 6: `product-catalog` (dep extract-shared-validation done)
+    ///   round 7: `shopping-cart` (deps product-catalog + user-registration done)
+    ///   round 8: `checkout-api` (dep shopping-cart done)
+    ///   round 9: `checkout-ui` (dep checkout-api done)
+    #[test]
+    fn next_eligible_walks_rfc_example_forward() {
+        let mut plan: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        for entry in &mut plan.changes {
+            entry.status = PlanStatus::Pending;
+            entry.status_reason = None;
+        }
+
+        let mut traversal = Vec::new();
+        while let Some(next) = plan.next_eligible() {
+            let name = next.name.clone();
+            traversal.push(name.clone());
+            let entry = plan
+                .changes
+                .iter_mut()
+                .find(|c| c.name == name)
+                .expect("returned name must exist in plan");
+            entry.status = PlanStatus::Done;
+        }
+
+        let expected = [
+            "user-registration",
+            "email-verification",
+            "registration-duplicate-email-crash",
+            "notification-preferences",
+            "extract-shared-validation",
+            "product-catalog",
+            "shopping-cart",
+            "checkout-api",
+            "checkout-ui",
+        ];
+        assert_eq!(
+            traversal, expected,
+            "next_eligible traversal should follow the RFC-2 §The Plan expected forward order"
+        );
+    }
+
+    #[test]
+    fn next_eligible_treats_in_progress_block_even_mid_cycle() {
+        let plan = plan_with_changes(vec![
+            change("in-flight", PlanStatus::InProgress),
+            change_with_deps("a", PlanStatus::Pending, &["b"]),
+            change_with_deps("b", PlanStatus::Pending, &["a"]),
+        ]);
+        assert!(
+            plan.next_eligible().is_none(),
+            "in-progress entry must block selection before any dependency walk"
+        );
+    }
+
+    #[test]
+    fn topological_order_rfc_example_matches_known_order() {
+        let plan: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let ordered: Vec<&str> = plan
+            .topological_order()
+            .expect("rfc plan has no cycles")
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        let expected = [
+            "user-registration",
+            "email-verification",
+            "registration-duplicate-email-crash",
+            "notification-preferences",
+            "extract-shared-validation",
+            "product-catalog",
+            "shopping-cart",
+            "checkout-api",
+            "checkout-ui",
+        ];
+        assert_eq!(
+            ordered, expected,
+            "topological_order should match next_eligible forward traversal"
+        );
+    }
+
+    #[test]
+    fn topological_order_on_cycle_returns_err() {
+        let plan = plan_with_changes(vec![
+            change_with_deps("a", PlanStatus::Pending, &["c"]),
+            change_with_deps("b", PlanStatus::Pending, &["a"]),
+            change_with_deps("c", PlanStatus::Pending, &["b"]),
+        ]);
+        let err = plan.topological_order().expect_err("cycle must surface as Err");
+        match err {
+            Error::Config(msg) => {
+                assert!(msg.contains("cycle"), "Config message should mention 'cycle', got: {msg}");
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn topological_order_is_deterministic_under_tiebreak() {
+        let alpha_first = plan_with_changes(vec![
+            change("alpha", PlanStatus::Pending),
+            change("beta", PlanStatus::Pending),
+        ]);
+        let order: Vec<&str> = alpha_first
+            .topological_order()
+            .expect("no cycle")
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(order, ["alpha", "beta"]);
+
+        let beta_first = plan_with_changes(vec![
+            change("beta", PlanStatus::Pending),
+            change("alpha", PlanStatus::Pending),
+        ]);
+        let order: Vec<&str> = beta_first
+            .topological_order()
+            .expect("no cycle")
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(
+            order,
+            ["beta", "alpha"],
+            "swapping list order must swap topo order when no deps constrain it"
+        );
+    }
+
+    /// `next_eligible` must not depend on `topological_order` succeeding:
+    /// even when the plan has a cycle, an in-progress entry short-circuits
+    /// selection to `None` without walking the dependency graph.
+    #[test]
+    fn next_eligible_works_even_when_topological_order_errors() {
+        let plan = plan_with_changes(vec![
+            change("busy", PlanStatus::InProgress),
+            change_with_deps("a", PlanStatus::Pending, &["b"]),
+            change_with_deps("b", PlanStatus::Pending, &["a"]),
+        ]);
+        assert!(plan.next_eligible().is_none());
+        assert!(plan.topological_order().is_err(), "cycle should surface from topological_order");
     }
 
     #[test]
