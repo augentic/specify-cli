@@ -32,9 +32,10 @@ use serde_json::{Value, json};
 use specify::{
     BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, Error, InitOptions,
     InitResult, LifecycleStatus, MergeEntry, MergeOperation, MergeResult, Overlap, Phase,
-    PipelineView, ProjectConfig, Schema, SchemaSource, SpecType, Task, TouchedSpec,
-    ValidationReport, ValidationResult, VersionMode, change_actions, conflict_check, init,
-    mark_complete, merge_change, parse_tasks, preview_change, serialize_report, validate_change,
+    PipelineView, Plan, PlanChange, PlanStatus, PlanValidationLevel, PlanValidationResult,
+    ProjectConfig, Schema, SchemaSource, SpecType, Task, TouchedSpec, ValidationReport,
+    ValidationResult, VersionMode, change_actions, conflict_check, init, mark_complete,
+    merge_change, parse_tasks, preview_change, serialize_report, validate_change,
 };
 
 pub const EXIT_SUCCESS: i32 = 0;
@@ -131,6 +132,22 @@ enum Commands {
         #[command(subcommand)]
         action: SpecAction,
     },
+
+    /// Manage the initiative-level plan at `.specify/plan.yaml`
+    Plan {
+        #[command(subcommand)]
+        action: PlanAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum PlanAction {
+    /// Validate .specify/plan.yaml (structure + plan/change consistency)
+    Validate,
+    /// Return the next eligible plan entry (respects depends-on + in-progress)
+    Next,
+    /// Show initiative progress report
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -348,6 +365,7 @@ fn run(cli: Cli) -> i32 {
                 run_spec_conflict_check(cli.format, change_dir)
             }
         },
+        Commands::Plan { action } => run_plan(cli.format, action),
     }
 }
 
@@ -1548,6 +1566,495 @@ fn spec_type_label(t: SpecType) -> &'static str {
     match t {
         SpecType::New => "new",
         SpecType::Modified => "modified",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// plan subcommand tree (read-only: validate, next, status)
+// ---------------------------------------------------------------------------
+
+fn run_plan(format: OutputFormat, action: PlanAction) -> i32 {
+    match action {
+        PlanAction::Validate => run_plan_validate(format),
+        PlanAction::Next => run_plan_next(format),
+        PlanAction::Status => run_plan_status(format),
+    }
+}
+
+/// `<project_dir>/.specify/plan.yaml`.
+fn plan_file_path(project_dir: &Path) -> PathBuf {
+    ProjectConfig::specify_dir(project_dir).join("plan.yaml")
+}
+
+/// Ensure the plan file exists before we try to load it. Error text is
+/// the stable "plan file not found: .specify/plan.yaml" string that
+/// skill authors match on.
+fn require_plan_file(project_dir: &Path) -> Result<PathBuf, Error> {
+    let path = plan_file_path(project_dir);
+    if !path.exists() {
+        return Err(Error::Config("plan file not found: .specify/plan.yaml".to_string()));
+    }
+    Ok(path)
+}
+
+fn plan_status_label(status: PlanStatus) -> &'static str {
+    match status {
+        PlanStatus::Pending => "pending",
+        PlanStatus::InProgress => "in-progress",
+        PlanStatus::Done => "done",
+        PlanStatus::Blocked => "blocked",
+        PlanStatus::Failed => "failed",
+        PlanStatus::Skipped => "skipped",
+    }
+}
+
+fn plan_validation_level_label(level: &PlanValidationLevel) -> &'static str {
+    match level {
+        PlanValidationLevel::Error => "error",
+        PlanValidationLevel::Warning => "warning",
+    }
+}
+
+fn run_plan_validate(format: OutputFormat) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let plan_path = match require_plan_file(&project_dir) {
+        Ok(p) => p,
+        Err(err) => return emit_error(format, &err),
+    };
+    let plan = match Plan::load(&plan_path) {
+        Ok(p) => p,
+        Err(err) => return emit_error(format, &err),
+    };
+    let changes_dir = ProjectConfig::changes_dir(&project_dir);
+
+    let results = plan.validate(Some(&changes_dir));
+    let has_errors = results.iter().any(|r| matches!(r.level, PlanValidationLevel::Error));
+
+    match format {
+        OutputFormat::Json => {
+            let items: Vec<Value> = results.iter().map(plan_validation_to_json).collect();
+            emit_json(json!({
+                "plan": {
+                    "name": plan.name,
+                    "path": plan_path.display().to_string(),
+                },
+                "results": items,
+                "passed": !has_errors,
+            }));
+        }
+        OutputFormat::Text => {
+            for r in &results {
+                print_plan_validation_line(r);
+            }
+            if results.is_empty() {
+                println!("Plan OK");
+            }
+        }
+    }
+
+    if has_errors { EXIT_VALIDATION_FAILED } else { EXIT_SUCCESS }
+}
+
+fn plan_validation_to_json(r: &PlanValidationResult) -> Value {
+    json!({
+        "level": plan_validation_level_label(&r.level),
+        "code": r.code,
+        "entry": r.entry,
+        "message": r.message,
+    })
+}
+
+/// Roughly-columnar single line per finding. Not golden-tested — skills
+/// that need structure consume `--format json`.
+fn print_plan_validation_line(r: &PlanValidationResult) {
+    let level = match r.level {
+        PlanValidationLevel::Error => "ERROR  ",
+        PlanValidationLevel::Warning => "WARNING",
+    };
+    let entry_col = match &r.entry {
+        Some(e) => format!("[{e}]"),
+        None => String::new(),
+    };
+    println!("{level} {:<32} {:<24} {}", r.code, entry_col, r.message);
+}
+
+/// Emit the stable "go run `specify plan validate`" pointer when
+/// `plan next` or `plan status` is asked to operate on a structurally
+/// broken plan.
+fn emit_plan_structural_error(format: OutputFormat) -> i32 {
+    let msg = "plan has structural errors; run 'specify plan validate' for detail";
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "error": "validation",
+            "message": msg,
+            "exit_code": EXIT_VALIDATION_FAILED,
+        })),
+        OutputFormat::Text => eprintln!("error: {msg}"),
+    }
+    EXIT_VALIDATION_FAILED
+}
+
+fn run_plan_next(format: OutputFormat) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let plan_path = match require_plan_file(&project_dir) {
+        Ok(p) => p,
+        Err(err) => return emit_error(format, &err),
+    };
+    let plan = match Plan::load(&plan_path) {
+        Ok(p) => p,
+        Err(err) => return emit_error(format, &err),
+    };
+    let changes_dir = ProjectConfig::changes_dir(&project_dir);
+
+    let results = plan.validate(Some(&changes_dir));
+    if results.iter().any(|r| matches!(r.level, PlanValidationLevel::Error)) {
+        return emit_plan_structural_error(format);
+    }
+
+    if let Some(active) = plan.changes.iter().find(|c| c.status == PlanStatus::InProgress) {
+        match format {
+            OutputFormat::Json => emit_json(json!({
+                "next": Value::Null,
+                "reason": "in-progress",
+                "active": active.name,
+            })),
+            OutputFormat::Text => println!("Active change in progress: {}", active.name),
+        }
+        return EXIT_SUCCESS;
+    }
+
+    match plan.next_eligible() {
+        Some(entry) => match format {
+            OutputFormat::Json => emit_json(json!({
+                "next": entry.name,
+                "reason": Value::Null,
+                "active": Value::Null,
+            })),
+            OutputFormat::Text => println!("{}", entry.name),
+        },
+        None => {
+            // Classify the "None" branch: fully-finished initiative vs
+            // still-has-work-but-blocked. An empty plan falls out of the
+            // `all` check as "all-done" (vacuously true).
+            let all_terminal = plan
+                .changes
+                .iter()
+                .all(|c| matches!(c.status, PlanStatus::Done | PlanStatus::Skipped));
+            let (reason, text_msg) = if all_terminal {
+                ("all-done", "All changes done.")
+            } else {
+                (
+                    "stuck",
+                    "No eligible changes — remaining entries are blocked, failed, or waiting on unmet dependencies.",
+                )
+            };
+            match format {
+                OutputFormat::Json => emit_json(json!({
+                    "next": Value::Null,
+                    "reason": reason,
+                    "active": Value::Null,
+                })),
+                OutputFormat::Text => println!("{text_msg}"),
+            }
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn run_plan_status(format: OutputFormat) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let plan_path = match require_plan_file(&project_dir) {
+        Ok(p) => p,
+        Err(err) => return emit_error(format, &err),
+    };
+    let plan = match Plan::load(&plan_path) {
+        Ok(p) => p,
+        Err(err) => return emit_error(format, &err),
+    };
+    let changes_dir = ProjectConfig::changes_dir(&project_dir);
+
+    let results = plan.validate(Some(&changes_dir));
+    // Cycle is recoverable (we fall back to list order); any *other*
+    // structural error (duplicate-name / unknown-depends-on / unknown-
+    // affects / unknown-source / multiple-in-progress) is fatal.
+    let has_other_structural_errors = results
+        .iter()
+        .any(|r| matches!(r.level, PlanValidationLevel::Error) && r.code != "dependency-cycle");
+    if has_other_structural_errors {
+        return emit_plan_structural_error(format);
+    }
+
+    let (ordered, order_label) = match plan.topological_order() {
+        Ok(v) => (v, "topological"),
+        Err(_) => {
+            match format {
+                OutputFormat::Json => {
+                    eprintln!(
+                        "warning: dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
+                    );
+                }
+                OutputFormat::Text => {
+                    println!(
+                        "⚠ dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
+                    );
+                }
+            }
+            (plan.changes.iter().collect::<Vec<_>>(), "list")
+        }
+    };
+
+    let counts = count_statuses(&plan.changes);
+
+    let active = plan.changes.iter().find(|c| c.status == PlanStatus::InProgress);
+    let active_lifecycle =
+        active.map(|a| load_lifecycle_label(&changes_dir.join(&a.name))).unwrap_or(None);
+
+    let blocked: Vec<&PlanChange> =
+        plan.changes.iter().filter(|c| c.status == PlanStatus::Blocked).collect();
+    let failed: Vec<&PlanChange> =
+        plan.changes.iter().filter(|c| c.status == PlanStatus::Failed).collect();
+
+    let next_eligible = plan.next_eligible();
+
+    let impact = compute_impact(&plan);
+
+    match format {
+        OutputFormat::Json => {
+            let entries: Vec<Value> = ordered
+                .iter()
+                .map(|entry| {
+                    let lifecycle = if entry.status == PlanStatus::InProgress {
+                        active_lifecycle.clone()
+                    } else {
+                        None
+                    };
+                    plan_entry_to_json(entry, lifecycle)
+                })
+                .collect();
+
+            let blocked_json: Vec<Value> = blocked
+                .iter()
+                .map(|c| json!({"name": c.name, "reason": c.status_reason}))
+                .collect();
+            let failed_json: Vec<Value> =
+                failed.iter().map(|c| json!({"name": c.name, "reason": c.status_reason})).collect();
+
+            let active_json = active.map(|a| {
+                json!({
+                    "name": a.name,
+                    "lifecycle": active_lifecycle,
+                })
+            });
+
+            let impact_json: Vec<Value> = impact
+                .iter()
+                .map(|(done_name, referenced_by)| {
+                    json!({
+                        "done": done_name,
+                        "referenced-by": referenced_by,
+                    })
+                })
+                .collect();
+
+            emit_json(json!({
+                "plan": {
+                    "name": plan.name,
+                    "path": plan_path.display().to_string(),
+                },
+                "counts": {
+                    "done": counts.done,
+                    "in-progress": counts.in_progress,
+                    "pending": counts.pending,
+                    "blocked": counts.blocked,
+                    "failed": counts.failed,
+                    "skipped": counts.skipped,
+                    "total": counts.total(),
+                },
+                "order": order_label,
+                "entries": entries,
+                "in-progress": active_json,
+                "blocked": blocked_json,
+                "failed": failed_json,
+                "next-eligible": next_eligible.map(|e| e.name.clone()),
+                "impact": impact_json,
+            }));
+        }
+        OutputFormat::Text => print_plan_status_text(
+            &plan,
+            &counts,
+            active,
+            active_lifecycle.as_deref(),
+            &blocked,
+            &failed,
+            next_eligible,
+            &impact,
+        ),
+    }
+    EXIT_SUCCESS
+}
+
+struct StatusCounts {
+    done: usize,
+    in_progress: usize,
+    pending: usize,
+    blocked: usize,
+    failed: usize,
+    skipped: usize,
+}
+
+impl StatusCounts {
+    fn total(&self) -> usize {
+        self.done + self.in_progress + self.pending + self.blocked + self.failed + self.skipped
+    }
+}
+
+fn count_statuses(changes: &[PlanChange]) -> StatusCounts {
+    let mut c = StatusCounts {
+        done: 0,
+        in_progress: 0,
+        pending: 0,
+        blocked: 0,
+        failed: 0,
+        skipped: 0,
+    };
+    for entry in changes {
+        match entry.status {
+            PlanStatus::Done => c.done += 1,
+            PlanStatus::InProgress => c.in_progress += 1,
+            PlanStatus::Pending => c.pending += 1,
+            PlanStatus::Blocked => c.blocked += 1,
+            PlanStatus::Failed => c.failed += 1,
+            PlanStatus::Skipped => c.skipped += 1,
+        }
+    }
+    c
+}
+
+/// Best-effort load of `<change_dir>/.metadata.yaml` to surface the
+/// lifecycle state of the in-progress change. Missing metadata returns
+/// `None` — status rendering treats it as "no change dir yet".
+fn load_lifecycle_label(change_dir: &Path) -> Option<String> {
+    if !ChangeMetadata::path(change_dir).exists() {
+        return None;
+    }
+    ChangeMetadata::load(change_dir).ok().map(|m| format!("{:?}", m.status).to_lowercase())
+}
+
+fn plan_entry_to_json(entry: &PlanChange, lifecycle: Option<String>) -> Value {
+    json!({
+        "name": entry.name,
+        "status": plan_status_label(entry.status),
+        "depends-on": entry.depends_on,
+        "affects": entry.affects,
+        "sources": entry.sources,
+        "status-reason": entry.status_reason,
+        "description": entry.description,
+        "lifecycle": lifecycle,
+    })
+}
+
+/// For every `Done` entry, list pending/in-progress/blocked entries
+/// whose `affects` references it. Pairs are emitted in plan list order
+/// (both the outer `done` and the inner `referenced-by` list) so the
+/// report is deterministic regardless of `HashMap` iteration order.
+fn compute_impact(plan: &Plan) -> Vec<(String, Vec<String>)> {
+    let mut out: Vec<(String, Vec<String>)> = Vec::new();
+    for done in plan.changes.iter().filter(|c| c.status == PlanStatus::Done) {
+        let refs: Vec<String> = plan
+            .changes
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c.status,
+                    PlanStatus::Pending | PlanStatus::InProgress | PlanStatus::Blocked
+                )
+            })
+            .filter(|c| c.affects.iter().any(|a| a == &done.name))
+            .map(|c| c.name.clone())
+            .collect();
+        if !refs.is_empty() {
+            out.push((done.name.clone(), refs));
+        }
+    }
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn print_plan_status_text(
+    plan: &Plan, counts: &StatusCounts, active: Option<&PlanChange>,
+    active_lifecycle: Option<&str>, blocked: &[&PlanChange], failed: &[&PlanChange],
+    next_eligible: Option<&PlanChange>, impact: &[(String, Vec<String>)],
+) {
+    println!("## Initiative: {}", plan.name);
+    println!();
+    println!();
+    println!(
+        "Progress: done {}, in-progress {}, pending {}, blocked {}, failed {}, skipped {} (total {})",
+        counts.done,
+        counts.in_progress,
+        counts.pending,
+        counts.blocked,
+        counts.failed,
+        counts.skipped,
+        counts.total(),
+    );
+
+    if let Some(a) = active {
+        let lifecycle_label = active_lifecycle.unwrap_or("<no change dir yet>");
+        println!();
+        println!("In progress: {} (lifecycle: {lifecycle_label})", a.name);
+    }
+
+    if !blocked.is_empty() {
+        println!();
+        println!("Blocked:");
+        for c in blocked {
+            let reason = c.status_reason.as_deref().unwrap_or("-");
+            println!("  - {} (reason: {reason})", c.name);
+        }
+    }
+
+    if !failed.is_empty() {
+        println!();
+        println!("Failed:");
+        for c in failed {
+            let reason = c.status_reason.as_deref().unwrap_or("-");
+            println!("  - {} (reason: {reason})", c.name);
+        }
+    }
+
+    println!();
+    match next_eligible {
+        Some(e) => println!("Next eligible: {}", e.name),
+        None => println!("Next eligible: — (waiting on dependencies / all done)"),
+    }
+
+    if !impact.is_empty() {
+        println!();
+        for (done, refs) in impact {
+            println!("Impact: {done} is referenced by pending changes: [{}]", refs.join(", "));
+        }
     }
 }
 

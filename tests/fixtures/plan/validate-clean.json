@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "plan": {
+    "name": "demo",
+    "path": "<TEMPDIR>/.specify/plan.yaml"
+  },
+  "results": [],
+  "schema_version": 1
+}

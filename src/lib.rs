@@ -8,8 +8,9 @@ pub use config::ProjectConfig;
 pub use init::{InitOptions, InitResult, VersionMode, init};
 
 pub use specify_change::{
-    ChangeMetadata, CreateIfExists, CreateOutcome, LifecycleStatus, Overlap, SpecType, TouchedSpec,
-    actions as change_actions,
+    ChangeMetadata, CreateIfExists, CreateOutcome, LifecycleStatus, Overlap, Plan, PlanChange,
+    PlanStatus, SpecType, TouchedSpec, ValidationLevel as PlanValidationLevel,
+    ValidationResult as PlanValidationResult, actions as change_actions,
 };
 pub use specify_drift::{DriftEntry, DriftStatus, baseline_inventory};
 pub use specify_error::{Error, ValidationResultSummary};
