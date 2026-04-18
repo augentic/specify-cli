@@ -201,6 +201,13 @@ enum PlanAction {
         #[arg(long)]
         reason: Option<String>,
     },
+    /// Archive the current plan to .specify/archive/plans/<name>-<YYYYMMDD>.yaml
+    Archive {
+        /// Archive even when the plan has pending/in-progress/blocked/failed entries.
+        /// Without --force, these outstanding statuses block the archive.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -1671,6 +1678,7 @@ fn run_plan(format: OutputFormat, action: PlanAction) -> i32 {
         PlanAction::Transition { name, target, reason } => {
             run_plan_transition(format, name, target.into(), reason)
         }
+        PlanAction::Archive { force } => run_plan_archive(format, force),
     }
 }
 
@@ -2306,6 +2314,70 @@ fn run_plan_transition(
         }
     }
     EXIT_SUCCESS
+}
+
+// ---------------------------------------------------------------------------
+// plan archive
+// ---------------------------------------------------------------------------
+
+fn run_plan_archive(format: OutputFormat, force: bool) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let plan_path = project_dir.join(".specify/plan.yaml");
+    if !plan_path.exists() {
+        let err = Error::Config("plan file not found: .specify/plan.yaml".to_string());
+        return emit_error(format, &err);
+    }
+    let archive_dir = ProjectConfig::archive_dir(&project_dir).join("plans");
+
+    // Grab the plan name up-front so we can surface it in the
+    // success payload even though `Plan::archive` only returns the
+    // archived path.
+    let plan_name = match Plan::load(&plan_path) {
+        Ok(p) => p.name,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    match Plan::archive(&plan_path, &archive_dir, force) {
+        Ok(archived) => match format {
+            OutputFormat::Json => {
+                emit_json(json!({
+                    "archived": absolute_string(&archived),
+                    "plan": { "name": plan_name },
+                }));
+                EXIT_SUCCESS
+            }
+            OutputFormat::Text => {
+                println!("Archived plan to {}.", archived.display());
+                EXIT_SUCCESS
+            }
+        },
+        Err(Error::PlanHasOutstandingWork { entries }) => {
+            match format {
+                OutputFormat::Json => {
+                    emit_json(json!({
+                        "error": "plan_has_outstanding_work",
+                        "entries": entries,
+                        "exit_code": EXIT_GENERIC_FAILURE,
+                    }));
+                }
+                OutputFormat::Text => {
+                    eprintln!(
+                        "Refusing to archive — outstanding non-terminal entries: {}. Re-run with --force to archive anyway.",
+                        entries.join(", ")
+                    );
+                }
+            }
+            EXIT_GENERIC_FAILURE
+        }
+        Err(err) => emit_error(format, &err),
+    }
 }
 
 // ---------------------------------------------------------------------------

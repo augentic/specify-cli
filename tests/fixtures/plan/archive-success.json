@@ -1,0 +1,7 @@
+{
+  "archived": "<TEMPDIR>/.specify/archive/plans/demo-<YYYYMMDD>.yaml",
+  "plan": {
+    "name": "demo"
+  },
+  "schema_version": 1
+}
