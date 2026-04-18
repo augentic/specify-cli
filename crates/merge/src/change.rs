@@ -1,40 +1,73 @@
-//! Transactional multi-spec merge + archive (`merge_change`).
+//! Transactional multi-spec merge + archive (`merge_change`), plus the
+//! no-write `preview_change` variant and the `conflict_check` baseline
+//! drift detector.
 //!
 //! Everything is computed in memory first. We only touch the filesystem
 //! after every delta has merged cleanly *and* every merged baseline has
-//! passed [`crate::validate_baseline`]. On success we:
+//! passed [`crate::validate_baseline`]. On success `merge_change`:
 //!
-//!   1. Write each merged baseline under `specs_dir`.
-//!   2. Flip `.metadata.yaml.status` from `Complete` to `Merged`.
-//!   3. Move the change directory under `archive_dir` as
-//!      `YYYY-MM-DD-<change-name>/`.
+//!   1. Writes each merged baseline under `specs_dir`.
+//!   2. Flips `.metadata.yaml.status` from `Complete` to `Merged`.
+//!   3. Moves the change directory under `archive_dir` as
+//!      `YYYY-MM-DD-<change-name>/` via `specify_change::actions::archive`.
 //!
 //! Any failure before step 1 returns `Err` with the filesystem untouched.
 
-use std::io;
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
-use chrono::Utc;
-use specify_change::{ChangeMetadata, LifecycleStatus};
+use chrono::{DateTime, Utc};
+use specify_change::{ChangeMetadata, LifecycleStatus, SpecType, actions};
 use specify_error::Error;
 use specify_schema::{Phase, PipelineView};
 
 use crate::merge::{MergeResult, merge};
 use crate::validate::validate_baseline;
 
+/// Merged spec pair kept in memory by both [`preview_change`] and
+/// [`merge_change`]. Public so CLI callers can inspect `baseline_path`
+/// when previewing; the merge path additionally uses it to write.
+#[derive(Debug, Clone)]
+pub struct MergeEntry {
+    pub spec_name: String,
+    pub baseline_path: PathBuf,
+    pub result: MergeResult,
+}
+
+/// One `type: modified` `touched_spec` whose baseline has been modified
+/// after the change's `defined_at` timestamp. The plan skill surfaces
+/// this list to the human so they can confirm or abort the merge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BaselineConflict {
+    pub capability: String,
+    pub defined_at: String,
+    pub baseline_modified_at: DateTime<Utc>,
+}
+
+/// Dry-run of the multi-spec merge: computes every in-memory
+/// [`MergeEntry`] plus runs the baseline coherence validator on each
+/// merged output, **without** writing baselines, transitioning status,
+/// or archiving.
+///
+/// Unlike [`merge_change`] this does not gate on
+/// `LifecycleStatus::Complete` — the define / build / merge skill pipeline
+/// previews while the change is still `building` or `complete` so the
+/// human can confirm operations before the merge skill commits.
+pub fn preview_change(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Error> {
+    let metadata = ChangeMetadata::load(change_dir)?;
+    plan_merge(change_dir, specs_dir, &metadata)
+}
+
 /// Atomic multi-spec merge plus archive.
 ///
-/// See [`crate`] for the step-by-step transactional contract. `change_dir`
-/// is expected to live at `<project>/.specify/changes/<name>/`, so
-/// `PipelineView` resolution walks up three levels to find the project
-/// root — this lets the caller keep the project root implicit. If the
-/// layout differs the function returns `Error::Merge` before touching
-/// disk.
+/// Gates on `LifecycleStatus::Complete`, runs [`preview_change`]'s
+/// in-memory plan, writes each merged baseline, transitions status to
+/// `Merged` with `merged_at`/`completed_at` timestamps, then archives the
+/// change directory via `specify_change::actions::archive`.
 pub fn merge_change(
     change_dir: &Path, specs_dir: &Path, archive_dir: &Path,
 ) -> Result<Vec<(String, MergeResult)>, Error> {
-    // --- 1. Load change metadata and gate on `Complete` ---------------------
-
     let mut metadata = ChangeMetadata::load(change_dir)?;
     if metadata.status != LifecycleStatus::Complete {
         return Err(Error::Lifecycle {
@@ -43,11 +76,101 @@ pub fn merge_change(
         });
     }
 
-    // --- 2. Resolve the pipeline view ---------------------------------------
-    //
+    let merged = plan_merge(change_dir, specs_dir, &metadata)?;
+
+    // --- Commit: write baselines ------------------------------------------
+
+    for entry in &merged {
+        if let Some(parent) = entry.baseline_path.parent() {
+            fs::create_dir_all(parent).map_err(|err| {
+                Error::Merge(format!("failed to create {}: {err}", parent.display()))
+            })?;
+        }
+        fs::write(&entry.baseline_path, &entry.result.output).map_err(|err| {
+            Error::Merge(format!(
+                "failed to write baseline {}: {err}",
+                entry.baseline_path.display()
+            ))
+        })?;
+    }
+
+    // --- Metadata flip + archive move -------------------------------------
+
+    let now = Utc::now();
+    metadata.status = metadata.status.transition(LifecycleStatus::Merged)?;
+    if metadata.completed_at.is_none() {
+        metadata.completed_at = Some(now.format("%Y-%m-%dT%H:%M:%SZ").to_string());
+    }
+    if metadata.merged_at.is_none() {
+        metadata.merged_at = Some(now.format("%Y-%m-%dT%H:%M:%SZ").to_string());
+    }
+    metadata.save(change_dir)?;
+
+    actions::archive(change_dir, archive_dir, now)
+        .map_err(|err| Error::Merge(format!("archive move failed: {err}")))?;
+
+    let mut output: Vec<(String, MergeResult)> =
+        merged.into_iter().map(|e| (e.spec_name, e.result)).collect();
+    output.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(output)
+}
+
+/// For each `type: modified` `touched_spec`, report whether the baseline
+/// under `specs_dir` has been modified after the change's `defined_at`
+/// timestamp. Only `Modified` entries participate — a `New` entry has no
+/// baseline to drift from.
+///
+/// Returns an empty `Vec` when nothing is stale, the change has no
+/// `touched_specs`, or `defined_at` is missing (in which case the call
+/// is a silent no-op — the merge skill should refuse to proceed until
+/// define has run).
+pub fn conflict_check(change_dir: &Path, specs_dir: &Path) -> Result<Vec<BaselineConflict>, Error> {
+    let metadata = ChangeMetadata::load(change_dir)?;
+    let Some(defined_raw) = metadata.defined_at.as_deref() else {
+        return Ok(Vec::new());
+    };
+    let defined_at = parse_rfc3339(defined_raw)
+        .map_err(|err| Error::Merge(format!("cannot parse defined_at `{defined_raw}`: {err}")))?;
+
+    let mut conflicts: Vec<BaselineConflict> = Vec::new();
+    for touched in &metadata.touched_specs {
+        if touched.spec_type != SpecType::Modified {
+            continue;
+        }
+        let baseline = specs_dir.join(&touched.name).join("spec.md");
+        let meta = match fs::metadata(&baseline) {
+            Ok(m) => m,
+            // A missing baseline for a `type: modified` entry is weird
+            // but not a conflict — it's a declaration mismatch for the
+            // skill to surface differently. Skip here.
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => return Err(Error::Io(err)),
+        };
+        let mtime = system_time_to_utc(meta.modified()?)?;
+        if mtime > defined_at {
+            conflicts.push(BaselineConflict {
+                capability: touched.name.clone(),
+                defined_at: defined_raw.to_string(),
+                baseline_modified_at: mtime,
+            });
+        }
+    }
+    conflicts.sort_by(|a, b| a.capability.cmp(&b.capability));
+    Ok(conflicts)
+}
+
+// ---------------------------------------------------------------------------
+// Internals
+// ---------------------------------------------------------------------------
+
+/// Compute the in-memory merge plan for every delta spec discovered via
+/// the merge-phase brief's `generates` glob. Shared by `preview_change`
+/// and `merge_change`.
+fn plan_merge(
+    change_dir: &Path, specs_dir: &Path, metadata: &ChangeMetadata,
+) -> Result<Vec<MergeEntry>, Error> {
     // Convention: `<project>/.specify/changes/<name>/`. Three `.parent()`
-    // hops land us at `<project>`. If the caller points this at some
-    // other directory shape, abort cleanly.
+    // hops land us at `<project>`.
     let project_dir =
         change_dir.parent().and_then(Path::parent).and_then(Path::parent).ok_or_else(|| {
             Error::Merge(format!(
@@ -62,8 +185,6 @@ pub fn merge_change(
             metadata.schema
         ))
     })?;
-
-    // --- 3. Discover delta specs via every `generates` brief under `merge` --
 
     let mut delta_specs: Vec<DeltaSpecRef> = Vec::new();
     for brief in pipeline_view.phase(Phase::Merge) {
@@ -93,29 +214,19 @@ pub fn merge_change(
         }
     }
 
-    // Sort + dedupe by delta_path to keep behaviour deterministic across
-    // overlapping globs.
     delta_specs.sort_by(|a, b| a.delta_path.cmp(&b.delta_path));
     delta_specs.dedup_by(|a, b| a.delta_path == b.delta_path);
 
-    // --- 4. In-memory merge + coherence -------------------------------------
-
-    struct MergedEntry {
-        spec_name: String,
-        baseline_path: PathBuf,
-        result: MergeResult,
-    }
-
-    let mut merged: Vec<MergedEntry> = Vec::with_capacity(delta_specs.len());
+    let mut merged: Vec<MergeEntry> = Vec::with_capacity(delta_specs.len());
     let mut aborts: Vec<String> = Vec::new();
 
     for spec in delta_specs {
-        let delta_text = std::fs::read_to_string(&spec.delta_path).map_err(|err| {
+        let delta_text = fs::read_to_string(&spec.delta_path).map_err(|err| {
             Error::Merge(format!("failed to read delta {}: {err}", spec.delta_path.display()))
         })?;
 
         let baseline_text = if spec.baseline_path.is_file() {
-            Some(std::fs::read_to_string(&spec.baseline_path).map_err(|err| {
+            Some(fs::read_to_string(&spec.baseline_path).map_err(|err| {
                 Error::Merge(format!(
                     "failed to read baseline {}: {err}",
                     spec.baseline_path.display()
@@ -140,7 +251,7 @@ pub fn merge_change(
             }
         }
 
-        merged.push(MergedEntry {
+        merged.push(MergeEntry {
             spec_name: spec.spec_name,
             baseline_path: spec.baseline_path,
             result,
@@ -151,46 +262,8 @@ pub fn merge_change(
         return Err(Error::Merge(aborts.join("\n")));
     }
 
-    // --- 5. Commit: write baselines -----------------------------------------
-
-    for entry in &merged {
-        if let Some(parent) = entry.baseline_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|err| {
-                Error::Merge(format!("failed to create {}: {err}", parent.display()))
-            })?;
-        }
-        std::fs::write(&entry.baseline_path, &entry.result.output).map_err(|err| {
-            Error::Merge(format!(
-                "failed to write baseline {}: {err}",
-                entry.baseline_path.display()
-            ))
-        })?;
-    }
-
-    // --- 6. Metadata flip + archive move -----------------------------------
-
-    metadata.status = metadata.status.transition(LifecycleStatus::Merged)?;
-    if metadata.completed_at.is_none() {
-        metadata.completed_at = Some(Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
-    }
-    metadata.save(change_dir)?;
-
-    let change_name = change_dir.file_name().and_then(|s| s.to_str()).ok_or_else(|| {
-        Error::Merge(format!("change dir {} has no basename", change_dir.display()))
-    })?;
-    let date = Utc::now().format("%Y-%m-%d").to_string();
-    let archive_target = archive_dir.join(format!("{date}-{change_name}"));
-    std::fs::create_dir_all(archive_dir).map_err(|err| {
-        Error::Merge(format!("failed to prepare archive dir {}: {err}", archive_dir.display()))
-    })?;
-    move_dir_atomic(change_dir, &archive_target)?;
-
-    // --- 7. Return merged results sorted by spec name -----------------------
-
-    let mut output: Vec<(String, MergeResult)> =
-        merged.into_iter().map(|e| (e.spec_name, e.result)).collect();
-    output.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(output)
+    merged.sort_by(|a, b| a.spec_name.cmp(&b.spec_name));
+    Ok(merged)
 }
 
 struct DeltaSpecRef {
@@ -217,71 +290,22 @@ fn derive_spec_name(change_dir: &Path, delta_path: &Path) -> String {
     delta_path.file_stem().and_then(|s| s.to_str()).unwrap_or("spec").to_string()
 }
 
-/// Move `src` to `dst`. Uses `rename` first, then falls back to
-/// copy-then-remove when the rename fails with `EXDEV` (cross-device) —
-/// `archive/` can live on a different mount from the working tree.
-fn move_dir_atomic(src: &Path, dst: &Path) -> Result<(), Error> {
-    match std::fs::rename(src, dst) {
-        Ok(()) => Ok(()),
-        Err(err) if err.raw_os_error() == Some(libc_exdev()) => {
-            copy_dir_recursive(src, dst)?;
-            std::fs::remove_dir_all(src).map_err(|err| {
-                Error::Merge(format!(
-                    "failed to remove source {} after cross-device copy: {err}",
-                    src.display()
-                ))
-            })?;
-            Ok(())
-        }
-        Err(err) => Err(Error::Merge(format!(
-            "failed to move {} -> {}: {err}",
-            src.display(),
-            dst.display()
-        ))),
-    }
+fn parse_rfc3339(s: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
+    DateTime::parse_from_rfc3339(s).map(|dt| dt.with_timezone(&Utc))
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), Error> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let target = dst.join(entry.file_name());
-        if file_type.is_dir() {
-            copy_dir_recursive(&entry.path(), &target)?;
-        } else if file_type.is_symlink() {
-            let link_target = std::fs::read_link(entry.path())?;
-            symlink(&link_target, &target)?;
-        } else {
-            std::fs::copy(entry.path(), &target)?;
-        }
-    }
-    Ok(())
+fn system_time_to_utc(t: SystemTime) -> Result<DateTime<Utc>, Error> {
+    let duration = t
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_err(|err| Error::Merge(format!("baseline mtime predates the UNIX epoch: {err}")))?;
+    let secs = i64::try_from(duration.as_secs())
+        .map_err(|err| Error::Merge(format!("baseline mtime overflow: {err}")))?;
+    let nanos = duration.subsec_nanos();
+    DateTime::<Utc>::from_timestamp(secs, nanos)
+        .ok_or_else(|| Error::Merge("baseline mtime out of range".to_string()))
 }
 
-#[cfg(unix)]
-fn symlink(original: &Path, link: &Path) -> io::Result<()> {
-    std::os::unix::fs::symlink(original, link)
-}
-
-#[cfg(windows)]
-fn symlink(original: &Path, link: &Path) -> io::Result<()> {
-    // Directory vs file symlink choice on Windows — target metadata gives
-    // us the hint; fall back to file-symlink if it can't be read.
-    match std::fs::metadata(original) {
-        Ok(meta) if meta.is_dir() => std::os::windows::fs::symlink_dir(original, link),
-        _ => std::os::windows::fs::symlink_file(original, link),
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-fn symlink(_original: &Path, _link: &Path) -> io::Result<()> {
-    Err(io::Error::new(io::ErrorKind::Unsupported, "symlinks unsupported on this platform"))
-}
-
-/// EXDEV is "cross-device link" — the exact errno varies by libc but is
-/// stable across Linux / macOS / BSD as `18`. Kept as a tiny helper so the
-/// call-site above stays readable.
-fn libc_exdev() -> i32 {
-    18
-}
+// Archive move semantics live in `specify_change::actions::archive`; both
+// `specify change archive` and `merge_change` route through that helper
+// so the cross-device-safe `rename → copy-then-remove` fallback has a
+// single implementation.

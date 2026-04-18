@@ -7,11 +7,17 @@
 pub use config::ProjectConfig;
 pub use init::{InitOptions, InitResult, VersionMode, init};
 
-pub use specify_change::{ChangeMetadata, LifecycleStatus, SpecType, TouchedSpec};
+pub use specify_change::{
+    ChangeMetadata, CreateIfExists, CreateOutcome, LifecycleStatus, Overlap, SpecType, TouchedSpec,
+    actions as change_actions,
+};
 pub use specify_drift::{DriftEntry, DriftStatus, baseline_inventory};
 pub use specify_error::{Error, ValidationResultSummary};
 pub use specify_federation::{FederationConfig, PeerRepo, parse_federation_config};
-pub use specify_merge::{MergeOperation, MergeResult, merge, merge_change, validate_baseline};
+pub use specify_merge::{
+    BaselineConflict, MergeEntry, MergeOperation, MergeResult, conflict_check, merge, merge_change,
+    preview_change, validate_baseline,
+};
 pub use specify_schema::{
     Brief, BriefFrontmatter, CacheMeta, Phase, Pipeline, PipelineEntry, PipelineView,
     ResolvedSchema, Schema, SchemaSource,

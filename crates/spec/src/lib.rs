@@ -1,8 +1,8 @@
 //! Spec format parsing — requirement blocks, scenarios, and delta sections.
 //!
-//! This crate is a structural port of the parser half of
-//! `scripts/legacy/merge-specs.py`. The merge and
-//! validation halves live in `specify-merge` (Change D).
+//! This crate is a structural port of the parser half of the archived
+//! Python reference implementation. The merge and validation halves
+//! live in `specify-merge` (Change D).
 //!
 //! All three public functions are pure and infallible. They are deliberately
 //! lenient — malformed input (missing ID lines, orphan blocks, duplicate IDs)
@@ -75,7 +75,7 @@ pub struct RenameEntry {
 
 /// Parse a baseline spec into its preamble and requirement blocks.
 ///
-/// Mirrors `parse_requirement_blocks` in `merge-specs.py` (lines 62–126).
+/// Mirrors `parse_requirement_blocks` from the archived Python reference (lines 62–126).
 /// The preamble is every line before the first `### Requirement:` heading or
 /// `## `-prefixed heading, whichever appears first. Blocks with no `ID:`
 /// line get `id == String::new()` (not `None`, not elided).
@@ -120,7 +120,7 @@ pub fn parse_baseline(text: &str) -> ParsedSpec {
             // pseudo-block with `current_name = None`, which flush_block
             // later discards. We replicate that behaviour so the stray
             // header and its trailing lines are dropped exactly the way
-            // merge-specs.py drops them.
+            // the Python reference dropped them.
             if stripped.starts_with("## ") && !stripped.starts_with(heading_prefix) {
                 in_preamble = false;
                 flush_block(&mut blocks, &mut current_lines, &mut current_name, &mut current_id);
@@ -144,7 +144,7 @@ pub fn parse_baseline(text: &str) -> ParsedSpec {
 
 /// Parse a delta spec into its four operation sections.
 ///
-/// Mirrors `parse_delta_sections` in `merge-specs.py` (lines 138–196).
+/// Mirrors `parse_delta_sections` from the archived Python reference (lines 138–196).
 /// Section headers are matched case-insensitively on the stripped line,
 /// exactly like Python's `stripped.lower() == heading.lower()`.
 pub fn parse_delta(text: &str) -> DeltaSpec {
@@ -229,7 +229,7 @@ pub fn parse_delta(text: &str) -> DeltaSpec {
 /// headings as a full stripped line, case-insensitive.
 ///
 /// This is a slightly stricter contract than the inline check in
-/// `merge-specs.py` lines 214–219 (which uses a substring match via
+/// the archived Python reference lines 214–219 (which used a substring match via
 /// `h.lower() in delta_text.lower()`). Matching stripped whole lines —
 /// the same rule `parse_delta_sections` uses to dispatch on a section
 /// header — avoids false positives from prose like `"## ADDED Requirements

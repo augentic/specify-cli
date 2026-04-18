@@ -30,9 +30,11 @@ use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
 use specify::{
-    Brief, ChangeMetadata, Error, InitOptions, InitResult, MergeOperation, MergeResult, Phase,
-    PipelineView, ProjectConfig, Schema, SchemaSource, Task, ValidationReport, ValidationResult,
-    VersionMode, init, mark_complete, merge_change, parse_tasks, serialize_report, validate_change,
+    BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, Error, InitOptions,
+    InitResult, LifecycleStatus, MergeEntry, MergeOperation, MergeResult, Overlap, Phase,
+    PipelineView, ProjectConfig, Schema, SchemaSource, SpecType, Task, TouchedSpec,
+    ValidationReport, ValidationResult, VersionMode, change_actions, conflict_check, init,
+    mark_complete, merge_change, parse_tasks, preview_change, serialize_report, validate_change,
 };
 
 pub const EXIT_SUCCESS: i32 = 0;
@@ -117,6 +119,32 @@ enum Commands {
         #[command(subcommand)]
         action: SchemaAction,
     },
+
+    /// Change lifecycle operations
+    Change {
+        #[command(subcommand)]
+        action: ChangeAction,
+    },
+
+    /// Spec-level helpers (preview + conflict-check) that complement `merge`
+    Spec {
+        #[command(subcommand)]
+        action: SpecAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum SpecAction {
+    /// Show the merge operations that would be applied, without writing
+    Preview {
+        /// Change directory
+        change_dir: PathBuf,
+    },
+    /// Report `type: modified` baselines modified after this change's `defined_at`
+    ConflictCheck {
+        /// Change directory
+        change_dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -137,6 +165,145 @@ enum SchemaAction {
     },
     /// Validate a schema.yaml file
     Check { schema_dir: PathBuf },
+    /// List the briefs for a phase in topological order (optionally
+    /// with completion status against a specific change)
+    Pipeline {
+        /// Pipeline phase to enumerate
+        phase: PhaseArg,
+        /// Change directory; when supplied, each brief includes a
+        /// `present` boolean reflecting whether its `generates`
+        /// artifact exists under the directory
+        #[arg(long)]
+        change: Option<PathBuf>,
+    },
+}
+
+#[derive(Copy, Clone, ValueEnum)]
+enum PhaseArg {
+    Define,
+    Build,
+    Merge,
+}
+
+impl From<PhaseArg> for Phase {
+    fn from(value: PhaseArg) -> Self {
+        match value {
+            PhaseArg::Define => Phase::Define,
+            PhaseArg::Build => Phase::Build,
+            PhaseArg::Merge => Phase::Merge,
+        }
+    }
+}
+
+impl PhaseArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            PhaseArg::Define => "define",
+            PhaseArg::Build => "build",
+            PhaseArg::Merge => "merge",
+        }
+    }
+}
+
+#[derive(Subcommand)]
+enum ChangeAction {
+    /// Create a new change directory with an initial `.metadata.yaml`
+    Create {
+        /// Kebab-case change name
+        name: String,
+        /// Schema identifier; defaults to the value in `.specify/project.yaml`
+        #[arg(long)]
+        schema: Option<String>,
+        /// Behaviour when `<changes_dir>/<name>/` already exists
+        #[arg(long, value_enum, default_value = "fail")]
+        if_exists: CreateIfExistsArg,
+    },
+    /// List every active change under `.specify/changes/`
+    List,
+    /// Show the status of one change (alias of `specify status <name>`)
+    Status {
+        /// Change name (under `.specify/changes/`)
+        name: String,
+    },
+    /// Transition a change to a new lifecycle status
+    Transition {
+        /// Change name
+        name: String,
+        /// Target status (`defined`, `building`, `complete`, `merged`, `dropped`, or `defining`)
+        target: LifecycleStatusArg,
+    },
+    /// Scan or overwrite `touched_specs` on `.metadata.yaml`
+    TouchedSpecs {
+        /// Change name
+        name: String,
+        /// Scan `specs/` subdirs and classify each as new or modified
+        #[arg(long, conflicts_with = "set")]
+        scan: bool,
+        /// Replace `touched_specs` with the listed capabilities (each `<name>:new|modified`)
+        #[arg(long, value_delimiter = ',')]
+        set: Vec<String>,
+    },
+    /// Report overlapping `touched_specs` with other active changes
+    Overlap {
+        /// Change name
+        name: String,
+    },
+    /// Archive a change directory into `.specify/archive/YYYY-MM-DD-<name>/`
+    Archive {
+        /// Change name
+        name: String,
+    },
+    /// Transition a change to `dropped` and archive it
+    Drop {
+        /// Change name
+        name: String,
+        /// Free-text reason; surfaced in `.metadata.yaml.drop_reason` and the archive path
+        #[arg(long)]
+        reason: Option<String>,
+    },
+}
+
+#[derive(Copy, Clone, ValueEnum)]
+enum CreateIfExistsArg {
+    /// Refuse when the directory exists (default)
+    Fail,
+    /// Reuse the existing directory — requires a valid `.metadata.yaml`
+    Continue,
+    /// Delete and recreate — destructive
+    Restart,
+}
+
+impl From<CreateIfExistsArg> for CreateIfExists {
+    fn from(value: CreateIfExistsArg) -> Self {
+        match value {
+            CreateIfExistsArg::Fail => CreateIfExists::Fail,
+            CreateIfExistsArg::Continue => CreateIfExists::Continue,
+            CreateIfExistsArg::Restart => CreateIfExists::Restart,
+        }
+    }
+}
+
+#[derive(Copy, Clone, ValueEnum)]
+enum LifecycleStatusArg {
+    Defining,
+    Defined,
+    Building,
+    Complete,
+    Merged,
+    Dropped,
+}
+
+impl From<LifecycleStatusArg> for LifecycleStatus {
+    fn from(value: LifecycleStatusArg) -> Self {
+        match value {
+            LifecycleStatusArg::Defining => LifecycleStatus::Defining,
+            LifecycleStatusArg::Defined => LifecycleStatus::Defined,
+            LifecycleStatusArg::Building => LifecycleStatus::Building,
+            LifecycleStatusArg::Complete => LifecycleStatus::Complete,
+            LifecycleStatusArg::Merged => LifecycleStatus::Merged,
+            LifecycleStatusArg::Dropped => LifecycleStatus::Dropped,
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -170,6 +337,16 @@ fn run(cli: Cli) -> i32 {
                 project_dir,
             } => run_schema_resolve(cli.format, schema_value, project_dir),
             SchemaAction::Check { schema_dir } => run_schema_check(cli.format, schema_dir),
+            SchemaAction::Pipeline { phase, change } => {
+                run_schema_pipeline(cli.format, phase, change)
+            }
+        },
+        Commands::Change { action } => run_change(cli.format, action),
+        Commands::Spec { action } => match action {
+            SpecAction::Preview { change_dir } => run_spec_preview(cli.format, change_dir),
+            SpecAction::ConflictCheck { change_dir } => {
+                run_spec_conflict_check(cli.format, change_dir)
+            }
         },
     }
 }
@@ -359,6 +536,127 @@ fn merge_entry_to_json(entry: &(String, MergeResult)) -> Value {
     })
 }
 
+// ---------------------------------------------------------------------------
+// spec preview / conflict-check
+// ---------------------------------------------------------------------------
+
+fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let specs_dir = ProjectConfig::specs_dir(&project_dir);
+    let entries = match preview_change(&change_dir, &specs_dir) {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    match format {
+        OutputFormat::Json => {
+            let specs: Vec<Value> = entries.iter().map(preview_entry_to_json).collect();
+            emit_json(json!({
+                "change_dir": change_dir.display().to_string(),
+                "specs": specs,
+            }));
+        }
+        OutputFormat::Text => {
+            if entries.is_empty() {
+                println!("No delta specs to merge.");
+            } else {
+                for entry in &entries {
+                    println!(
+                        "{}: {}",
+                        entry.spec_name,
+                        summarise_operations(&entry.result.operations)
+                    );
+                    for op in &entry.result.operations {
+                        println!("  {}", operation_label(op));
+                    }
+                }
+            }
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn preview_entry_to_json(entry: &MergeEntry) -> Value {
+    let ops: Vec<Value> = entry.result.operations.iter().map(merge_op_to_json).collect();
+    json!({
+        "name": entry.spec_name,
+        "baseline_path": entry.baseline_path.display().to_string(),
+        "operations": ops,
+    })
+}
+
+fn operation_label(op: &MergeOperation) -> String {
+    match op {
+        MergeOperation::Added { id, name } => format!("ADDING: {id} — {name}"),
+        MergeOperation::Modified { id, name } => format!("MODIFYING: {id} — {name}"),
+        MergeOperation::Removed { id, name } => format!("REMOVING: {id} — {name}"),
+        MergeOperation::Renamed {
+            id,
+            old_name,
+            new_name,
+        } => format!("RENAMING: {id} — {old_name} -> {new_name}"),
+        MergeOperation::CreatedBaseline { requirement_count } => {
+            format!("CREATING baseline with {requirement_count} requirement(s)")
+        }
+    }
+}
+
+fn run_spec_conflict_check(format: OutputFormat, change_dir: PathBuf) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let specs_dir = ProjectConfig::specs_dir(&project_dir);
+    let conflicts = match conflict_check(&change_dir, &specs_dir) {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    match format {
+        OutputFormat::Json => {
+            let items: Vec<Value> = conflicts.iter().map(baseline_conflict_to_json).collect();
+            emit_json(json!({
+                "change_dir": change_dir.display().to_string(),
+                "conflicts": items,
+            }));
+        }
+        OutputFormat::Text => {
+            if conflicts.is_empty() {
+                println!("No baseline conflicts.");
+            } else {
+                for c in &conflicts {
+                    println!(
+                        "{}: baseline modified {} (defined_at {})",
+                        c.capability,
+                        c.baseline_modified_at.format("%Y-%m-%dT%H:%M:%SZ"),
+                        c.defined_at,
+                    );
+                }
+            }
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn baseline_conflict_to_json(c: &BaselineConflict) -> Value {
+    json!({
+        "capability": c.capability,
+        "defined_at": c.defined_at,
+        "baseline_modified_at": c.baseline_modified_at.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+    })
+}
+
 fn merge_op_to_json(op: &MergeOperation) -> Value {
     match op {
         MergeOperation::Added { id, name } => json!({
@@ -506,16 +804,10 @@ fn collect_status(
     let metadata = ChangeMetadata::load(change_dir)?;
     let status_str = format!("{:?}", metadata.status).to_lowercase();
 
-    // Per-brief artifact completion across every define-phase brief that
-    // generates a file.
-    let mut artifacts: std::collections::BTreeMap<String, bool> = std::collections::BTreeMap::new();
-    for brief in pipeline.phase(Phase::Define) {
-        let Some(generates) = brief.frontmatter.generates.as_deref() else {
-            continue;
-        };
-        let present = artifact_present(change_dir, generates);
-        artifacts.insert(brief.frontmatter.id.clone(), present);
-    }
+    // Delegate per-brief artifact completion to `PipelineView` so every
+    // consumer — `specify status`, `specify schema pipeline`, and any
+    // future skill callers — agrees on what "complete" means.
+    let artifacts = pipeline.completion_for(Phase::Define, change_dir);
 
     let tasks = match resolve_tasks_path_for(change_dir, &metadata.schema, Some(project_dir)) {
         Ok(path) => {
@@ -537,21 +829,6 @@ fn collect_status(
         tasks,
         artifacts,
     })
-}
-
-fn artifact_present(change_dir: &Path, generates: &str) -> bool {
-    let joined = change_dir.join(generates);
-    if generates.contains('*') {
-        let Some(pattern) = joined.to_str() else {
-            return false;
-        };
-        match glob::glob(pattern) {
-            Ok(mut entries) => entries.any(|e| matches!(e, Ok(p) if p.is_file())),
-            Err(_) => false,
-        }
-    } else {
-        joined.is_file()
-    }
 }
 
 fn list_change_names(changes_dir: &Path) -> Result<Vec<String>, Error> {
@@ -809,6 +1086,75 @@ fn run_schema_resolve(format: OutputFormat, schema_value: String, project_dir: P
     EXIT_SUCCESS
 }
 
+fn run_schema_pipeline(format: OutputFormat, phase_arg: PhaseArg, change: Option<PathBuf>) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let pipeline = match PipelineView::load(&config.schema, &project_dir) {
+        Ok(view) => view,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    let phase: Phase = phase_arg.into();
+    let order = match pipeline.topo_order(phase) {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let completion = change.as_deref().map(|change_dir| pipeline.completion_for(phase, change_dir));
+
+    match format {
+        OutputFormat::Json => {
+            let briefs: Vec<Value> = order
+                .iter()
+                .map(|b| {
+                    let present = completion.as_ref().and_then(|c| c.get(&b.frontmatter.id));
+                    json!({
+                        "id": b.frontmatter.id,
+                        "description": b.frontmatter.description,
+                        "path": b.path.display().to_string(),
+                        "needs": b.frontmatter.needs,
+                        "generates": b.frontmatter.generates,
+                        "tracks": b.frontmatter.tracks,
+                        "present": present.copied().map(Value::from).unwrap_or(Value::Null),
+                    })
+                })
+                .collect();
+            emit_json(json!({
+                "phase": phase_arg.as_str(),
+                "change": change.as_ref().map(|p| p.display().to_string()),
+                "briefs": briefs,
+            }));
+        }
+        OutputFormat::Text => {
+            println!("phase: {}", phase_arg.as_str());
+            for b in &order {
+                let present_label = completion
+                    .as_ref()
+                    .and_then(|c| c.get(&b.frontmatter.id))
+                    .copied()
+                    .map(|p| if p { " [x]" } else { " [ ]" })
+                    .unwrap_or("");
+                println!("  {}{present_label}", b.frontmatter.id);
+                if let Some(g) = &b.frontmatter.generates {
+                    println!("    generates: {g}");
+                }
+                if !b.frontmatter.needs.is_empty() {
+                    println!("    needs: {}", b.frontmatter.needs.join(", "));
+                }
+                if let Some(t) = &b.frontmatter.tracks {
+                    println!("    tracks: {t}");
+                }
+            }
+        }
+    }
+    EXIT_SUCCESS
+}
+
 fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> i32 {
     let schema_path = schema_dir.join("schema.yaml");
     let text = match std::fs::read_to_string(&schema_path) {
@@ -875,6 +1221,333 @@ fn validation_result_to_json(r: &ValidationResult) -> Value {
             "rule": rule,
             "reason": reason,
         }),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// change subcommand tree
+// ---------------------------------------------------------------------------
+
+fn run_change(format: OutputFormat, action: ChangeAction) -> i32 {
+    match action {
+        ChangeAction::Create {
+            name,
+            schema,
+            if_exists,
+        } => run_change_create(format, name, schema, if_exists.into()),
+        ChangeAction::List => run_status(format, None),
+        ChangeAction::Status { name } => run_status(format, Some(name)),
+        ChangeAction::Transition { name, target } => {
+            run_change_transition(format, name, target.into())
+        }
+        ChangeAction::TouchedSpecs { name, scan, set } => {
+            run_change_touched_specs(format, name, scan, set)
+        }
+        ChangeAction::Overlap { name } => run_change_overlap(format, name),
+        ChangeAction::Archive { name } => run_change_archive(format, name),
+        ChangeAction::Drop { name, reason } => run_change_drop(format, name, reason),
+    }
+}
+
+fn run_change_create(
+    format: OutputFormat, name: String, schema: Option<String>, if_exists: CreateIfExists,
+) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let schema_value = schema.unwrap_or_else(|| config.schema.clone());
+    let changes_dir = ProjectConfig::changes_dir(&project_dir);
+    if let Err(err) = std::fs::create_dir_all(&changes_dir) {
+        return emit_error(format, &Error::Io(err));
+    }
+
+    let outcome =
+        match change_actions::create(&changes_dir, &name, &schema_value, if_exists, Utc::now()) {
+            Ok(outcome) => outcome,
+            Err(err) => return emit_error(format, &err),
+        };
+
+    emit_change_create(format, &outcome)
+}
+
+fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> i32 {
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "name": outcome.change_dir.file_name().and_then(|n| n.to_str()).unwrap_or(""),
+            "change_dir": outcome.change_dir.display().to_string(),
+            "status": format!("{:?}", outcome.metadata.status).to_lowercase(),
+            "schema": outcome.metadata.schema,
+            "created": outcome.created,
+            "restarted": outcome.restarted,
+        })),
+        OutputFormat::Text => {
+            if outcome.created {
+                println!("Created change {}", outcome.change_dir.display());
+            } else {
+                println!("Reusing existing change {}", outcome.change_dir.display());
+            }
+            if outcome.restarted {
+                println!("  (previous directory was removed)");
+            }
+            println!("  schema: {}", outcome.metadata.schema);
+            println!("  status: {}", format!("{:?}", outcome.metadata.status).to_lowercase());
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn run_change_transition(format: OutputFormat, name: String, target: LifecycleStatus) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    let metadata = match change_actions::transition(&change_dir, target, Utc::now()) {
+        Ok(meta) => meta,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "name": name,
+            "status": format!("{:?}", metadata.status).to_lowercase(),
+            "defined_at": metadata.defined_at,
+            "build_started_at": metadata.build_started_at,
+            "completed_at": metadata.completed_at,
+            "merged_at": metadata.merged_at,
+            "dropped_at": metadata.dropped_at,
+        })),
+        OutputFormat::Text => {
+            println!("{name}: status = {}", format!("{:?}", metadata.status).to_lowercase());
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn run_change_touched_specs(
+    format: OutputFormat, name: String, scan: bool, set: Vec<String>,
+) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    let specs_dir = ProjectConfig::specs_dir(&project_dir);
+
+    let entries = if !set.is_empty() {
+        match parse_touched_spec_set(&set) {
+            Ok(v) => {
+                let metadata = match change_actions::write_touched_specs(&change_dir, v.clone()) {
+                    Ok(m) => m,
+                    Err(err) => return emit_error(format, &err),
+                };
+                metadata.touched_specs
+            }
+            Err(err) => return emit_error(format, &err),
+        }
+    } else if scan {
+        let scanned = match change_actions::scan_touched_specs(&change_dir, &specs_dir) {
+            Ok(v) => v,
+            Err(err) => return emit_error(format, &err),
+        };
+        let metadata = match change_actions::write_touched_specs(&change_dir, scanned) {
+            Ok(m) => m,
+            Err(err) => return emit_error(format, &err),
+        };
+        metadata.touched_specs
+    } else {
+        // Read-only: report the current touched_specs without mutating.
+        let metadata = match ChangeMetadata::load(&change_dir) {
+            Ok(m) => m,
+            Err(err) => return emit_error(format, &err),
+        };
+        metadata.touched_specs
+    };
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "name": name,
+            "touched_specs": touched_specs_to_json(&entries),
+        })),
+        OutputFormat::Text => {
+            if entries.is_empty() {
+                println!("{name}: no touched specs");
+            } else {
+                println!("{name}:");
+                for entry in &entries {
+                    println!("  {} ({})", entry.name, spec_type_label(entry.spec_type));
+                }
+            }
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
+    let mut out: Vec<TouchedSpec> = Vec::with_capacity(raw.len());
+    for entry in raw {
+        let (name, kind) = entry.split_once(':').ok_or_else(|| {
+            Error::Config(format!(
+                "touched-specs entry `{entry}` must be `<name>:new` or `<name>:modified`"
+            ))
+        })?;
+        let spec_type = match kind {
+            "new" => SpecType::New,
+            "modified" => SpecType::Modified,
+            other => {
+                return Err(Error::Config(format!(
+                    "touched-specs kind `{other}` must be `new` or `modified`"
+                )));
+            }
+        };
+        out.push(TouchedSpec {
+            name: name.to_string(),
+            spec_type,
+        });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+fn run_change_overlap(format: OutputFormat, name: String) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let changes_dir = ProjectConfig::changes_dir(&project_dir);
+    let overlaps = match change_actions::overlap(&changes_dir, &name) {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "name": name,
+            "overlaps": overlaps.iter().map(overlap_to_json).collect::<Vec<_>>(),
+        })),
+        OutputFormat::Text => {
+            if overlaps.is_empty() {
+                println!("{name}: no overlapping changes");
+            } else {
+                for o in &overlaps {
+                    println!(
+                        "{}: also touched by `{}` ({} vs {})",
+                        o.capability,
+                        o.other_change,
+                        spec_type_label(o.our_spec_type),
+                        spec_type_label(o.other_spec_type),
+                    );
+                }
+            }
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn run_change_archive(format: OutputFormat, name: String) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    let archive_dir = ProjectConfig::archive_dir(&project_dir);
+    let target = match change_actions::archive(&change_dir, &archive_dir, Utc::now()) {
+        Ok(p) => p,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "name": name,
+            "archive_path": target.display().to_string(),
+        })),
+        OutputFormat::Text => {
+            println!("{name}: archived to {}", target.display());
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn run_change_drop(format: OutputFormat, name: String, reason: Option<String>) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    let archive_dir = ProjectConfig::archive_dir(&project_dir);
+    let (metadata, archive_path) =
+        match change_actions::drop(&change_dir, &archive_dir, reason.as_deref(), Utc::now()) {
+            Ok(pair) => pair,
+            Err(err) => return emit_error(format, &err),
+        };
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "name": name,
+            "status": format!("{:?}", metadata.status).to_lowercase(),
+            "archive_path": archive_path.display().to_string(),
+            "drop_reason": metadata.drop_reason,
+        })),
+        OutputFormat::Text => {
+            println!("{name}: dropped and archived to {}", archive_path.display());
+            if let Some(r) = &metadata.drop_reason {
+                println!("  reason: {r}");
+            }
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn overlap_to_json(o: &Overlap) -> Value {
+    json!({
+        "capability": o.capability,
+        "other_change": o.other_change,
+        "our_spec_type": spec_type_label(o.our_spec_type),
+        "other_spec_type": spec_type_label(o.other_spec_type),
+    })
+}
+
+fn touched_specs_to_json(entries: &[TouchedSpec]) -> Vec<Value> {
+    entries
+        .iter()
+        .map(|t| {
+            json!({
+                "name": t.name,
+                "type": spec_type_label(t.spec_type),
+            })
+        })
+        .collect()
+}
+
+fn spec_type_label(t: SpecType) -> &'static str {
+    match t {
+        SpecType::New => "new",
+        SpecType::Modified => "modified",
     }
 }
 

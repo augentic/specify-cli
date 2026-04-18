@@ -12,6 +12,7 @@ keywords = ["specify", "change", "lifecycle"]
 specify-error = { path = "../error" }
 serde.workspace = true
 serde_yaml.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

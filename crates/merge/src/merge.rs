@@ -1,5 +1,5 @@
 //! Pure in-memory delta merge — port of the Python `merge()` from
-//! `scripts/legacy/merge-specs.py` lines 203–291.
+//! archived Python reference, `merge` lines 203–291.
 
 use std::collections::{HashMap, HashSet};
 

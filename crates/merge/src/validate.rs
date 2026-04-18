@@ -1,5 +1,5 @@
 //! Post-merge coherence checks — port of Python `validate_baseline`
-//! (`scripts/legacy/merge-specs.py` lines 298–352).
+//! (archived Python reference, `validate_baseline` lines 298–352).
 
 use std::collections::{HashMap, HashSet};
 

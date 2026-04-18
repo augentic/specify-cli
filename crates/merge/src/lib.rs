@@ -1,4 +1,6 @@
-//! Deterministic delta-merge engine (replaces `merge-specs.py`).
+//! Deterministic delta-merge engine (replaces the archived Python
+//! reference implementation; see `tests/fixtures/parity/` for the
+//! frozen regression fixtures).
 //!
 //! Public surface per RFC-1 §`merge.rs`:
 //!
@@ -10,15 +12,15 @@
 //!   [`specify_schema::PipelineView`], and moves the change directory under
 //!   `archive/` once every merge + validation succeeds.
 //!
-//! Parity with `scripts/legacy/merge-specs.py` is the
+//! Parity with the archived Python reference is the
 //! design goal for [`merge`] and [`validate_baseline`] — see
-//! `tests/fixtures/parity/` for the ground-truth outputs the unit tests
-//! compare against.
+//! `tests/fixtures/parity/` for the frozen regression fixtures the unit
+//! tests compare against.
 
 mod change;
 mod merge;
 mod validate;
 
-pub use change::merge_change;
+pub use change::{BaselineConflict, MergeEntry, conflict_check, merge_change, preview_change};
 pub use merge::{MergeOperation, MergeResult, merge};
 pub use validate::validate_baseline;

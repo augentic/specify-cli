@@ -253,3 +253,81 @@ would otherwise poison the listing with per-change errors. A concrete
 the underlying `Error::Config`, so the "silent skip" only kicks in
 for the bulk listing path.
 
+## Option-2 phase primitives — `specify change`, `specify schema pipeline`, `specify spec`
+
+**Decision.** Move every deterministic operation currently inlined in
+the phase skills (`/spec:define`, `/spec:build`, `/spec:merge`,
+`/spec:drop`) into CLI subcommands backed by shared library functions.
+The skills retain only agent-driven work (brief-body interpretation,
+artifact generation, plugin-skill dispatch, user prompts).
+
+New CLI surface:
+
+- `specify change {create, list, status, transition, touched-specs, overlap, archive, drop}` — lifecycle verbs backed by
+  `specify_change::actions::{create, transition, scan_touched_specs,
+  overlap, archive, drop}`. `ChangeMetadata` gains `merged_at`,
+  `dropped_at`, and `drop_reason` fields. `Change::archive` is the
+  sole implementation of the archive move; `merge_change` calls it
+  instead of duplicating the cross-device-safe rename fallback.
+- `specify schema pipeline <phase> [--change <dir>]` — topo-sorted
+  briefs plus per-brief completion relative to a change, powered by
+  `PipelineView::topo_order(phase)` (Kahn's algorithm over the
+  in-phase `needs` subgraph) and `PipelineView::completion_for(phase,
+  change_dir)`. `collect_status` in `src/main.rs` was refactored to
+  call `completion_for`, so `specify status`, `specify schema pipeline`,
+  and future skill callers agree byte-for-byte on what "complete"
+  means.
+- `specify spec preview <change_dir>` / `specify spec conflict-check
+  <change_dir>` — no-write counterparts to `specify merge`. `preview`
+  is factored out of `merge_change` as `preview_change`; `conflict_check`
+  compares each `type: modified` `touched_spec`'s baseline mtime against
+  `ChangeMetadata::defined_at`.
+
+**Rationale.** The three phase skills were reimplementing roughly the
+same set of deterministic operations — kebab-case validation, YAML
+read/write, schema resolution, pipeline topology, artifact existence
+checks, `.metadata.yaml` status transitions, delta merge, archive
+move — in prose. Moving them into the CLI gives humans, agents, and
+CI one place to reason about lifecycle semantics, one transition state
+machine to maintain, and one archive move implementation. Integration
+tests under `tests/{change,schema,spec}.rs` (favouring assert_cmd +
+golden JSON over unit tests per the Option-2 plan) pin the JSON
+contract for downstream skill callers.
+
+**New integration test files.** `tests/change.rs` (14 tests) covers
+every `specify change` verb; `tests/schema.rs` (3 tests) covers
+`specify schema pipeline`; `tests/spec.rs` (6 tests) covers
+`specify spec preview` and `specify spec conflict-check`. Each stands
+up a tempdir project via `specify init`, exercises the verb under
+test, and asserts both JSON shape and filesystem side effects.
+
+## Option-2 phase primitives — legacy Python retirement
+
+**Decision.** The archived Python reference implementation — formerly at
+`scripts/legacy/merge-specs.py` — is retired. The Rust merge engine
+under `specify-merge` and the parser under `specify-spec` are the sole
+implementations; no skill, CLI invocation, or test calls Python at
+runtime.
+
+**What stayed.** The parity fixtures under
+`tests/fixtures/parity/` remain as a frozen regression baseline for
+both `specify-merge::merge` / `validate_baseline` and
+`specify-spec::{parse_baseline, parse_delta}`. Source-level code
+comments that reference the Python reference have been rephrased to
+describe it as "the archived Python reference" rather than linking to
+the deleted file.
+
+**What was removed.** `scripts/legacy/merge-specs.py`,
+`scripts/legacy/README.md`, and `tests/fixtures/parity/regenerate.sh`
+(the regeneration script that shelled out to the Python binary).
+Changes to the frozen fixtures now land hand-crafted in the same
+commit as the corresponding Rust edit.
+
+**Rationale.** The Python script had been dead code since the Rust
+port landed: no skill, `specify` subcommand, or automated test invoked
+it. Keeping it in-tree added no testable value and, worse, implied a
+dependency (`python3`) that the project no longer has. Retiring it in
+this change alongside the skill rewrites closes the loop on the
+Option-2 phase-primitives consolidation — the CLI is now the single
+implementation of spec merge semantics.
+

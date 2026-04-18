@@ -7,11 +7,19 @@
 //!
 //! See `rfcs/rfc-1-cli.md` §`metadata.rs` for the canonical transition
 //! graph and the `rfcs/rfc-1-plan.md` §"Change F" for scope.
+//!
+//! The [`actions`] submodule layers the verb-level operations
+//! (`create`, `transition`, `archive`, `drop`, `scan_touched_specs`,
+//! `overlap`) that the `specify change` subcommand dispatches to.
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
+
+pub mod actions;
+
+pub use actions::{CreateIfExists, CreateOutcome, Overlap};
 
 /// On-disk representation of `<change_dir>/.metadata.yaml`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -27,6 +35,12 @@ pub struct ChangeMetadata {
     pub build_started_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub completed_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub merged_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub dropped_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub drop_reason: Option<String>,
     #[serde(default)]
     pub touched_specs: Vec<TouchedSpec>,
 }
@@ -263,6 +277,9 @@ mod tests {
             defined_at: Some("2024-08-01T12:00:00Z".to_string()),
             build_started_at: Some("2024-08-02T09:30:00Z".to_string()),
             completed_at: Some("2024-08-03T15:45:00Z".to_string()),
+            merged_at: None,
+            dropped_at: None,
+            drop_reason: None,
             touched_specs: vec![
                 TouchedSpec {
                     name: "login".to_string(),
@@ -348,6 +365,9 @@ touched-specs:
             defined_at: None,
             build_started_at: Some("2024-08-02T09:30:00Z".to_string()),
             completed_at: None,
+            merged_at: None,
+            dropped_at: None,
+            drop_reason: None,
             touched_specs: vec![TouchedSpec {
                 name: "login".to_string(),
                 spec_type: SpecType::Modified,

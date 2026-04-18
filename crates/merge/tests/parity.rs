@@ -1,6 +1,6 @@
-//! Python parity tests — `tests/fixtures/parity/` holds byte-for-byte
-//! outputs captured from `scripts/legacy/merge-specs.py`.
-//! The Rust port must match them exactly.
+//! Parity tests — `tests/fixtures/parity/` holds byte-for-byte
+//! outputs captured from the archived Python reference implementation
+//! (now retired). The Rust port must match them exactly.
 
 use specify_error::Error;
 use specify_merge::{merge, validate_baseline};
