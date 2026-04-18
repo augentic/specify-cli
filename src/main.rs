@@ -30,12 +30,13 @@ use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
 use specify::{
-    BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, Error, InitOptions,
-    InitResult, LifecycleStatus, MergeEntry, MergeOperation, MergeResult, Outcome, Overlap, Phase,
-    PipelineView, Plan, PlanChange, PlanChangePatch, PlanStatus, PlanValidationLevel,
-    PlanValidationResult, ProjectConfig, Schema, SchemaSource, SpecType, Task, TouchedSpec,
-    ValidationReport, ValidationResult, VersionMode, change_actions, conflict_check, init,
-    mark_complete, merge_change, parse_tasks, preview_change, serialize_report, validate_change,
+    BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Error,
+    InitOptions, InitResult, Journal, JournalEntry, LifecycleStatus, MergeEntry, MergeOperation,
+    MergeResult, Outcome, Overlap, Phase, PipelineView, Plan, PlanChange, PlanChangePatch,
+    PlanStatus, PlanValidationLevel, PlanValidationResult, ProjectConfig, Schema, SchemaSource,
+    SpecType, Task, TouchedSpec, ValidationReport, ValidationResult, VersionMode, change_actions,
+    conflict_check, init, mark_complete, merge_change, parse_tasks, preview_change,
+    serialize_report, validate_change,
 };
 
 pub const EXIT_SUCCESS: i32 = 0;
@@ -376,6 +377,48 @@ enum ChangeAction {
         #[arg(long)]
         context: Option<String>,
     },
+    /// Append an entry to the change's `journal.yaml`
+    JournalAppend {
+        /// Change name
+        name: String,
+        /// Phase that produced the entry
+        phase: PhaseArg,
+        /// Entry classification
+        kind: EntryKindArg,
+        /// Short summary
+        #[arg(long)]
+        summary: String,
+        /// Optional verbatim context (multi-line)
+        #[arg(long)]
+        context: Option<String>,
+    },
+}
+
+#[derive(Copy, Clone, ValueEnum)]
+enum EntryKindArg {
+    Question,
+    Failure,
+    Recovery,
+}
+
+impl From<EntryKindArg> for EntryKind {
+    fn from(value: EntryKindArg) -> Self {
+        match value {
+            EntryKindArg::Question => EntryKind::Question,
+            EntryKindArg::Failure => EntryKind::Failure,
+            EntryKindArg::Recovery => EntryKind::Recovery,
+        }
+    }
+}
+
+impl EntryKindArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            EntryKindArg::Question => "question",
+            EntryKindArg::Failure => "failure",
+            EntryKindArg::Recovery => "recovery",
+        }
+    }
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -1396,6 +1439,13 @@ fn run_change(format: OutputFormat, action: ChangeAction) -> i32 {
             summary,
             context,
         } => run_change_phase_outcome(format, name, phase, outcome, summary, context),
+        ChangeAction::JournalAppend {
+            name,
+            phase,
+            kind,
+            summary,
+            context,
+        } => run_change_journal_append(format, name, phase, kind, summary, context),
     }
 }
 
@@ -1719,6 +1769,54 @@ fn run_change_phase_outcome(
         })),
         OutputFormat::Text => {
             println!("Stamped outcome '{outcome_str}' for phase '{phase_str}' on change '{name}'.");
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn run_change_journal_append(
+    format: OutputFormat, name: String, phase: PhaseArg, kind: EntryKindArg, summary: String,
+    context: Option<String>,
+) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
+        let err = Error::Config(format!("change '{name}' not found at {}", change_dir.display()));
+        return emit_error(format, &err);
+    }
+
+    let timestamp = Utc::now().to_rfc3339();
+    let entry = JournalEntry {
+        timestamp: timestamp.clone(),
+        step: phase.into(),
+        kind: kind.into(),
+        summary: summary.clone(),
+        context: context.clone(),
+    };
+
+    if let Err(err) = Journal::append(&change_dir, entry) {
+        return emit_error(format, &err);
+    }
+
+    let phase_str = phase.as_str();
+    let kind_str = kind.as_str();
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "change": name,
+            "phase": phase_str,
+            "kind": kind_str,
+            "timestamp": timestamp,
+        })),
+        OutputFormat::Text => {
+            println!("Appended {kind_str} entry to {name}/journal.yaml.");
         }
     }
     EXIT_SUCCESS

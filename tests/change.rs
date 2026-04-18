@@ -732,6 +732,166 @@ created-at: "2024-08-01T10:00:00Z"
     );
 }
 
+// ---------------------------------------------------------------------------
+// change journal-append (L2.B)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn change_journal_append_appends_to_file() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "change",
+            "journal-append",
+            "foo",
+            "define",
+            "question",
+            "--summary",
+            "scope unclear",
+            "--context",
+            "line one\nline two",
+        ])
+        .assert()
+        .success();
+
+    let value = parse_json(&assert.get_output().stdout);
+    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["change"], "foo");
+    assert_eq!(value["phase"], "define");
+    assert_eq!(value["kind"], "question");
+
+    let journal_path = project.changes_dir().join("foo").join("journal.yaml");
+    assert!(journal_path.is_file(), "journal.yaml must exist after append");
+    let text = fs::read_to_string(&journal_path).expect("read journal");
+    assert!(text.contains("entries:"), "missing entries list in:\n{text}");
+    assert!(text.contains("step: define"), "missing kebab-case step:\n{text}");
+    assert!(text.contains("type: question"), "missing literal `type: question`:\n{text}");
+    assert!(text.contains("summary: scope unclear"), "missing summary:\n{text}");
+    assert!(text.contains("line one"), "missing first context line:\n{text}");
+    assert!(text.contains("line two"), "missing second context line:\n{text}");
+    assert_eq!(
+        *text.as_bytes().last().unwrap(),
+        b'\n',
+        "journal.yaml must end with a trailing newline"
+    );
+
+    let yaml: serde_yaml::Value = serde_yaml::from_str(&text).expect("parse journal");
+    let entries = yaml["entries"].as_sequence().expect("entries seq");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["step"].as_str(), Some("define"));
+    assert_eq!(entries[0]["type"].as_str(), Some("question"));
+    assert_eq!(entries[0]["summary"].as_str(), Some("scope unclear"));
+    assert_eq!(entries[0]["context"].as_str(), Some("line one\nline two"));
+}
+
+#[test]
+fn change_journal_append_stamps_rfc3339_timestamp() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "change",
+            "journal-append",
+            "foo",
+            "build",
+            "failure",
+            "--summary",
+            "task 3 failed",
+        ])
+        .assert()
+        .success();
+
+    let value = parse_json(&assert.get_output().stdout);
+    let stamp = value["timestamp"].as_str().expect("timestamp string");
+    assert!(looks_like_rfc3339(stamp), "CLI-reported timestamp should be RFC3339, got {stamp}");
+
+    // `chrono::DateTime::parse_from_rfc3339` is the authoritative check.
+    chrono::DateTime::parse_from_rfc3339(stamp)
+        .unwrap_or_else(|e| panic!("CLI timestamp {stamp} is not valid RFC3339: {e}"));
+
+    let journal_path = project.changes_dir().join("foo").join("journal.yaml");
+    let text = fs::read_to_string(&journal_path).expect("read journal");
+    let yaml: serde_yaml::Value = serde_yaml::from_str(&text).expect("parse journal");
+    let on_disk = yaml["entries"][0]["timestamp"].as_str().expect("timestamp on disk");
+    chrono::DateTime::parse_from_rfc3339(on_disk)
+        .unwrap_or_else(|e| panic!("on-disk timestamp {on_disk} is not valid RFC3339: {e}"));
+    assert_eq!(on_disk, stamp, "on-disk timestamp must match the JSON payload");
+}
+
+#[test]
+fn change_journal_append_preserves_existing_entries() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    for (phase, kind, summary) in [
+        ("define", "question", "first"),
+        ("build", "failure", "second"),
+        ("build", "recovery", "third"),
+    ] {
+        specify()
+            .current_dir(project.root())
+            .args(["change", "journal-append", "foo", phase, kind, "--summary", summary])
+            .assert()
+            .success();
+    }
+
+    let text =
+        fs::read_to_string(project.changes_dir().join("foo").join("journal.yaml")).expect("read");
+    let yaml: serde_yaml::Value = serde_yaml::from_str(&text).expect("parse");
+    let entries = yaml["entries"].as_sequence().expect("entries seq");
+    assert_eq!(entries.len(), 3, "all three appends must persist");
+    let summaries: Vec<&str> =
+        entries.iter().map(|e| e["summary"].as_str().expect("summary")).collect();
+    assert_eq!(summaries, vec!["first", "second", "third"]);
+}
+
+#[test]
+fn change_journal_append_text_output() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["change", "journal-append", "foo", "define", "question", "--summary", "why"])
+        .assert()
+        .success();
+    let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
+    assert_eq!(stdout.trim_end(), "Appended question entry to foo/journal.yaml.");
+}
+
+#[test]
+fn change_journal_append_on_nonexistent_change_errors() {
+    let project = Project::init();
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "change",
+            "journal-append",
+            "ghost",
+            "define",
+            "question",
+            "--summary",
+            "x",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(1));
+    let value = parse_json(&assert.get_output().stdout);
+    let msg = value["message"].as_str().unwrap_or("");
+    assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
+}
+
 #[test]
 fn phase_outcome_round_trips_through_serde() {
     use specify::{Outcome, Phase, PhaseOutcome};
