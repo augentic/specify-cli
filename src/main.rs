@@ -31,7 +31,7 @@ use serde_json::{Value, json};
 
 use specify::{
     BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, Error, InitOptions,
-    InitResult, LifecycleStatus, MergeEntry, MergeOperation, MergeResult, Overlap, Phase,
+    InitResult, LifecycleStatus, MergeEntry, MergeOperation, MergeResult, Outcome, Overlap, Phase,
     PipelineView, Plan, PlanChange, PlanChangePatch, PlanStatus, PlanValidationLevel,
     PlanValidationResult, ProjectConfig, Schema, SchemaSource, SpecType, Task, TouchedSpec,
     ValidationReport, ValidationResult, VersionMode, change_actions, conflict_check, init,
@@ -361,6 +361,48 @@ enum ChangeAction {
         #[arg(long)]
         reason: Option<String>,
     },
+    /// Record the outcome of a phase (define|build|merge) on `.metadata.yaml`
+    PhaseOutcome {
+        /// Change name
+        name: String,
+        /// Phase this outcome applies to
+        phase: PhaseArg,
+        /// Outcome classification
+        outcome: OutcomeArg,
+        /// Short explanation of what happened (shown in plan status-reason on non-success)
+        #[arg(long)]
+        summary: String,
+        /// Optional verbatim detail (stderr, ambiguous-requirement text, etc.)
+        #[arg(long)]
+        context: Option<String>,
+    },
+}
+
+#[derive(Copy, Clone, ValueEnum)]
+enum OutcomeArg {
+    Success,
+    Failure,
+    Deferred,
+}
+
+impl From<OutcomeArg> for Outcome {
+    fn from(value: OutcomeArg) -> Self {
+        match value {
+            OutcomeArg::Success => Outcome::Success,
+            OutcomeArg::Failure => Outcome::Failure,
+            OutcomeArg::Deferred => Outcome::Deferred,
+        }
+    }
+}
+
+impl OutcomeArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            OutcomeArg::Success => "success",
+            OutcomeArg::Failure => "failure",
+            OutcomeArg::Deferred => "deferred",
+        }
+    }
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -1347,6 +1389,13 @@ fn run_change(format: OutputFormat, action: ChangeAction) -> i32 {
         ChangeAction::Overlap { name } => run_change_overlap(format, name),
         ChangeAction::Archive { name } => run_change_archive(format, name),
         ChangeAction::Drop { name, reason } => run_change_drop(format, name, reason),
+        ChangeAction::PhaseOutcome {
+            name,
+            phase,
+            outcome,
+            summary,
+            context,
+        } => run_change_phase_outcome(format, name, phase, outcome, summary, context),
     }
 }
 
@@ -1619,6 +1668,57 @@ fn run_change_drop(format: OutputFormat, name: String, reason: Option<String>) -
             if let Some(r) = &metadata.drop_reason {
                 println!("  reason: {r}");
             }
+        }
+    }
+    EXIT_SUCCESS
+}
+
+fn run_change_phase_outcome(
+    format: OutputFormat, name: String, phase: PhaseArg, outcome: OutcomeArg, summary: String,
+    context: Option<String>,
+) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
+        let err = Error::Config(format!("change '{name}' not found at {}", change_dir.display()));
+        return emit_error(format, &err);
+    }
+
+    let metadata = match change_actions::phase_outcome(
+        &change_dir,
+        phase.into(),
+        outcome.into(),
+        &summary,
+        context.as_deref(),
+        Utc::now(),
+    ) {
+        Ok(m) => m,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    let stamped = metadata
+        .outcome
+        .as_ref()
+        .expect("phase_outcome action must set metadata.outcome on success");
+    let phase_str = phase.as_str();
+    let outcome_str = outcome.as_str();
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "change": name,
+            "phase": phase_str,
+            "outcome": outcome_str,
+            "at": stamped.at,
+        })),
+        OutputFormat::Text => {
+            println!("Stamped outcome '{outcome_str}' for phase '{phase_str}' on change '{name}'.");
         }
     }
     EXIT_SUCCESS

@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
+pub use specify_schema::Phase;
 
 pub mod actions;
 pub mod plan;
@@ -45,6 +46,50 @@ pub struct ChangeMetadata {
     pub drop_reason: Option<String>,
     #[serde(default)]
     pub touched_specs: Vec<TouchedSpec>,
+    /// Outcome of the most recent phase run recorded by
+    /// `specify change phase-outcome`.
+    ///
+    /// Writer contract: this field is written **only** by the
+    /// `specify change phase-outcome` CLI subcommand (see
+    /// [`actions::phase_outcome`]). Phase skills (`define`, `build`,
+    /// `merge`) must never edit `.metadata.yaml` directly — they go
+    /// through the CLI so the write is atomic and the single-field
+    /// overwrite semantics (latest outcome only — no history) are
+    /// preserved. Consumers:
+    /// `/spec:execute` reads this on phase return to decide the
+    /// next plan transition per RFC-2 §"Phase Outcome Contract".
+    ///
+    /// Stored as a single `Option<PhaseOutcome>` (not a list): a new
+    /// stamp overwrites the previous outcome. Journal/history lives
+    /// elsewhere (`journal.yaml`, L2.B).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<PhaseOutcome>,
+}
+
+/// Result of a phase run (define | build | merge) as recorded in
+/// `.metadata.yaml`. Read by `/spec:execute` on phase return to decide
+/// the next plan transition (see RFC-2 §"Phase Outcome Contract").
+///
+/// Written by the `specify change phase-outcome` subcommand; phases
+/// never edit `.metadata.yaml` directly.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct PhaseOutcome {
+    pub phase: Phase,
+    pub outcome: Outcome,
+    pub at: String,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
+}
+
+/// The three possible outcomes a phase returns to `/spec:execute`.
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum Outcome {
+    Success,
+    Failure,
+    Deferred,
 }
 
 /// Lifecycle states a change passes through.
@@ -143,13 +188,32 @@ impl ChangeMetadata {
 
     /// Write `.metadata.yaml` to a change directory. Overwrites if present.
     ///
-    /// Does **not** create the parent directory — `init`/`define` own that
-    /// responsibility. Returns `Error::Io` on any write failure and
-    /// `Error::Yaml` if serialization fails.
+    /// Atomic: a partial file is never observed by readers. Write goes
+    /// via a temp file in the same directory followed by `fs::rename`.
+    /// This mirrors the exact convention used by [`Plan::save`] — both
+    /// `ChangeMetadata` and `Plan` route their on-disk writes through
+    /// `NamedTempFile::new_in(parent) + persist` so that every
+    /// `.specify/*.yaml` write in the codebase is crash-safe and
+    /// never-partial under concurrent reads.
+    ///
+    /// A trailing newline is always emitted so the on-disk form
+    /// matches the convention used by `Plan::save` and so POSIX
+    /// text-file tools (`wc -l`, `sed`, `grep`) behave predictably.
+    ///
+    /// Does **not** create the parent directory — `init`/`define` own
+    /// that responsibility. Returns `Error::Io` on any write failure
+    /// and `Error::Yaml` if serialization fails.
     pub fn save(&self, change_dir: &Path) -> Result<(), Error> {
         let path = Self::path(change_dir);
-        let content = serde_yaml::to_string(self)?;
-        std::fs::write(&path, content)?;
+        let mut content = serde_yaml::to_string(self)?;
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
+        let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
+        std::io::Write::write_all(tmp.as_file_mut(), content.as_bytes())?;
+        tmp.as_file_mut().sync_all()?;
+        tmp.persist(&path).map_err(|e| Error::Io(e.error))?;
         Ok(())
     }
 }
@@ -292,6 +356,7 @@ mod tests {
                     spec_type: SpecType::New,
                 },
             ],
+            outcome: None,
         }
     }
 
@@ -374,6 +439,7 @@ touched-specs:
                 name: "login".to_string(),
                 spec_type: SpecType::Modified,
             }],
+            outcome: None,
         };
         let yaml = serde_yaml::to_string(&meta).expect("serialize ok");
         assert!(yaml.contains("created-at:"), "yaml missing kebab-case created-at:\n{yaml}");

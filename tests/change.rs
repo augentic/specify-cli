@@ -460,3 +460,297 @@ fn change_status_by_name_returns_single_entry() {
     assert_eq!(items[0]["name"], "only-change");
     assert_eq!(items[0]["status"], "defining");
 }
+
+// ---------------------------------------------------------------------------
+// change phase-outcome (L2.A)
+// ---------------------------------------------------------------------------
+
+/// Parse the `.metadata.yaml` for `name` under `project` as a
+/// `serde_yaml::Value` so tests can assert on the `outcome` subtree
+/// without pulling in the `specify-change` crate directly.
+fn read_metadata_yaml(project: &Project, name: &str) -> serde_yaml::Value {
+    let path = project.changes_dir().join(name).join(".metadata.yaml");
+    let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    serde_yaml::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+}
+
+/// Naive RFC3339 sanity check sufficient for integration tests: `YYYY-MM-DDT...`.
+fn looks_like_rfc3339(s: &str) -> bool {
+    s.len() >= 20
+        && s.chars().nth(4) == Some('-')
+        && s.chars().nth(7) == Some('-')
+        && s.chars().nth(10) == Some('T')
+}
+
+#[test]
+fn change_phase_outcome_stamps_success_on_define_json() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "change",
+            "phase-outcome",
+            "foo",
+            "define",
+            "success",
+            "--summary",
+            "artifacts generated",
+        ])
+        .assert()
+        .success();
+
+    let value = parse_json(&assert.get_output().stdout);
+    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["change"], "foo");
+    assert_eq!(value["phase"], "define");
+    assert_eq!(value["outcome"], "success");
+    let at = value["at"].as_str().expect("at is a string");
+    assert!(looks_like_rfc3339(at), "at should be RFC3339, got {at}");
+
+    let meta = read_metadata_yaml(&project, "foo");
+    let outcome = &meta["outcome"];
+    assert_eq!(outcome["phase"].as_str(), Some("define"));
+    assert_eq!(outcome["outcome"].as_str(), Some("success"));
+    assert_eq!(outcome["summary"].as_str(), Some("artifacts generated"));
+    let at_on_disk = outcome["at"].as_str().expect("at on disk");
+    assert!(looks_like_rfc3339(at_on_disk), "on-disk at should be RFC3339, got {at_on_disk}");
+    assert!(
+        outcome.get("context").map(|v| v.is_null()).unwrap_or(true),
+        "context must be absent when not supplied, got: {outcome:?}"
+    );
+}
+
+#[test]
+fn change_phase_outcome_stamps_failure_with_context() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "change",
+            "phase-outcome",
+            "foo",
+            "build",
+            "failure",
+            "--summary",
+            "build broke",
+            "--context",
+            "task 3 failed",
+        ])
+        .assert()
+        .success();
+
+    let meta = read_metadata_yaml(&project, "foo");
+    assert_eq!(meta["outcome"]["phase"].as_str(), Some("build"));
+    assert_eq!(meta["outcome"]["outcome"].as_str(), Some("failure"));
+    assert_eq!(meta["outcome"]["context"].as_str(), Some("task 3 failed"));
+}
+
+#[test]
+fn change_phase_outcome_stamps_deferred_on_build() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "change",
+            "phase-outcome",
+            "foo",
+            "build",
+            "deferred",
+            "--summary",
+            "channel scope unclear",
+        ])
+        .assert()
+        .success();
+
+    let meta = read_metadata_yaml(&project, "foo");
+    assert_eq!(meta["outcome"]["phase"].as_str(), Some("build"));
+    assert_eq!(meta["outcome"]["outcome"].as_str(), Some("deferred"));
+    assert_eq!(meta["outcome"]["summary"].as_str(), Some("channel scope unclear"));
+}
+
+#[test]
+fn change_phase_outcome_text_output() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["change", "phase-outcome", "foo", "define", "success", "--summary", "ok"])
+        .assert()
+        .success();
+    let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
+    assert_eq!(stdout.trim_end(), "Stamped outcome 'success' for phase 'define' on change 'foo'.");
+}
+
+#[test]
+fn change_phase_outcome_on_nonexistent_change_errors() {
+    let project = Project::init();
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "change",
+            "phase-outcome",
+            "ghost",
+            "define",
+            "success",
+            "--summary",
+            "x",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(1));
+    let value = parse_json(&assert.get_output().stdout);
+    let msg = value["message"].as_str().unwrap_or("");
+    assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
+}
+
+#[test]
+fn change_phase_outcome_writes_trailing_newline() {
+    // Atomicity is an OS-level guarantee (NamedTempFile + rename) so it
+    // is not directly unit-testable. Instead assert the saved file
+    // shape: trailing newline, mirroring the Plan::save atomic-save
+    // tests.
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    specify()
+        .current_dir(project.root())
+        .args(["change", "phase-outcome", "foo", "define", "success", "--summary", "ok"])
+        .assert()
+        .success();
+
+    let path = project.changes_dir().join("foo").join(".metadata.yaml");
+    let bytes = fs::read(&path).expect("read metadata");
+    assert!(!bytes.is_empty(), "metadata should not be empty");
+    assert_eq!(
+        *bytes.last().unwrap(),
+        b'\n',
+        "metadata must end with a trailing newline after atomic stamp"
+    );
+}
+
+#[test]
+fn change_phase_outcome_overwrites_previous_outcome() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    specify()
+        .current_dir(project.root())
+        .args(["change", "phase-outcome", "foo", "define", "success", "--summary", "defined"])
+        .assert()
+        .success();
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "change",
+            "phase-outcome",
+            "foo",
+            "build",
+            "failure",
+            "--summary",
+            "broke",
+            "--context",
+            "stderr blob",
+        ])
+        .assert()
+        .success();
+
+    let meta = read_metadata_yaml(&project, "foo");
+    let outcome = &meta["outcome"];
+    assert_eq!(outcome["phase"].as_str(), Some("build"));
+    assert_eq!(outcome["outcome"].as_str(), Some("failure"));
+    assert_eq!(outcome["summary"].as_str(), Some("broke"));
+    assert_eq!(outcome["context"].as_str(), Some("stderr blob"));
+
+    // Document that outcome is a single field, not a list: the raw
+    // YAML text must contain exactly one top-level `outcome:` key.
+    let path = project.changes_dir().join("foo").join(".metadata.yaml");
+    let text = fs::read_to_string(&path).expect("read metadata");
+    let outcome_lines = text.lines().filter(|l| l.starts_with("outcome:")).count();
+    assert_eq!(
+        outcome_lines, 1,
+        "expected exactly one top-level `outcome:` key, got {outcome_lines} in:\n{text}"
+    );
+}
+
+#[test]
+fn change_phase_outcome_preserves_existing_metadata_fields() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let meta_before = read_metadata_yaml(&project, "foo");
+    let created_at_before =
+        meta_before["created-at"].as_str().expect("created-at populated after create").to_string();
+    let status_before =
+        meta_before["status"].as_str().expect("status populated after create").to_string();
+    let schema_before =
+        meta_before["schema"].as_str().expect("schema populated after create").to_string();
+
+    specify()
+        .current_dir(project.root())
+        .args(["change", "phase-outcome", "foo", "define", "success", "--summary", "ok"])
+        .assert()
+        .success();
+
+    let meta_after = read_metadata_yaml(&project, "foo");
+    assert_eq!(meta_after["created-at"].as_str(), Some(created_at_before.as_str()));
+    assert_eq!(meta_after["status"].as_str(), Some(status_before.as_str()));
+    assert_eq!(meta_after["schema"].as_str(), Some(schema_before.as_str()));
+    assert!(meta_after["outcome"].is_mapping(), "outcome should now be present");
+}
+
+#[test]
+fn pre_existing_metadata_yaml_without_outcome_still_parses() {
+    use specify::ChangeMetadata;
+    // Hand-craft a `.metadata.yaml` that predates the `outcome` field
+    // and assert that ChangeMetadata::load accepts it and leaves
+    // `outcome` as None.
+    let tmp = tempdir().expect("tempdir");
+    let change_dir = tmp.path();
+    let yaml = r#"schema: omnia
+status: defining
+created-at: "2024-08-01T10:00:00Z"
+"#;
+    fs::write(change_dir.join(".metadata.yaml"), yaml).expect("write metadata");
+    let meta = ChangeMetadata::load(change_dir).expect("legacy metadata parses");
+    assert!(
+        meta.outcome.is_none(),
+        "pre-existing metadata without an outcome field must load as None"
+    );
+}
+
+#[test]
+fn phase_outcome_round_trips_through_serde() {
+    use specify::{Outcome, Phase, PhaseOutcome};
+    for outcome in [Outcome::Success, Outcome::Failure, Outcome::Deferred] {
+        for phase in [Phase::Define, Phase::Build, Phase::Merge] {
+            let value = PhaseOutcome {
+                phase,
+                outcome,
+                at: "2024-08-01T10:00:00+00:00".to_string(),
+                summary: "some summary".to_string(),
+                context: if matches!(outcome, Outcome::Success) {
+                    None
+                } else {
+                    Some("verbatim detail".to_string())
+                },
+            };
+            let yaml = serde_yaml::to_string(&value).expect("serialize");
+            let parsed: PhaseOutcome = serde_yaml::from_str(&yaml).expect("parse");
+            assert_eq!(parsed, value, "round-trip failed for yaml:\n{yaml}");
+        }
+    }
+}

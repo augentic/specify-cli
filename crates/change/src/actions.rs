@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use specify_error::Error;
 
-use crate::{ChangeMetadata, LifecycleStatus, SpecType, TouchedSpec};
+use crate::{ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome, SpecType, TouchedSpec};
 
 /// What to do when `Change::create` finds an existing directory at the
 /// target path.
@@ -146,6 +146,7 @@ pub fn create(
         dropped_at: None,
         drop_reason: None,
         touched_specs: Vec::new(),
+        outcome: None,
     };
     metadata.save(&change_dir)?;
 
@@ -329,6 +330,33 @@ pub fn archive(
     std::fs::create_dir_all(archive_dir)?;
     move_dir_atomic(change_dir, &target)?;
     Ok(target)
+}
+
+/// Stamp the outcome of a phase run on `<change_dir>/.metadata.yaml`.
+///
+/// Sole writer of [`ChangeMetadata::outcome`]. The whole metadata file
+/// is rewritten atomically via [`ChangeMetadata::save`] so a concurrent
+/// reader never sees a half-written file. A new stamp replaces any
+/// previous one — history lives in `journal.yaml` (L2.B), not here.
+///
+/// `now` is plumbed in so tests can pin `at` deterministically; the CLI
+/// passes `Utc::now()`.
+///
+/// Returns the updated [`ChangeMetadata`].
+pub fn phase_outcome(
+    change_dir: &Path, phase: Phase, outcome: Outcome, summary: &str, context: Option<&str>,
+    now: DateTime<Utc>,
+) -> Result<ChangeMetadata, Error> {
+    let mut metadata = ChangeMetadata::load(change_dir)?;
+    metadata.outcome = Some(PhaseOutcome {
+        phase,
+        outcome,
+        at: now.to_rfc3339(),
+        summary: summary.to_string(),
+        context: context.map(str::to_string),
+    });
+    metadata.save(change_dir)?;
+    Ok(metadata)
 }
 
 /// Transition a change to `Dropped`, record the optional reason, then

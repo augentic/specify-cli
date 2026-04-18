@@ -83,6 +83,7 @@ fn build_project() -> Project {
         dropped_at: None,
         drop_reason: None,
         touched_specs: vec![],
+        outcome: None,
     };
     metadata.save(&change_dir).expect("save metadata");
 

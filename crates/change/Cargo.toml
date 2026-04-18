@@ -10,6 +10,7 @@ keywords = ["specify", "change", "lifecycle"]
 
 [dependencies]
 specify-error = { path = "../error" }
+specify-schema = { path = "../schema" }
 serde.workspace = true
 serde_yaml.workspace = true
 chrono.workspace = true

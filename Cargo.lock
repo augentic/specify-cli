@@ -1102,6 +1102,7 @@ dependencies = [
  "serde",
  "serde_yaml",
  "specify-error",
+ "specify-schema",
  "tempfile",
 ]
 

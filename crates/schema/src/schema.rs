@@ -52,7 +52,13 @@ pub enum SchemaSource {
     Cached(PathBuf),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+/// The three phases of a schema's pipeline. Serializes as the
+/// lowercase identifiers `define | build | merge` on the wire — this
+/// is the same wire format consumed by `ChangeMetadata.outcome.phase`
+/// and by `schema.yaml::pipeline.*` keys, keeping a single source of
+/// truth for phase naming.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Phase {
     Define,
     Build,
