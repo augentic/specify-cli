@@ -79,6 +79,9 @@ fn build_project() -> Project {
         defined_at: Some("2024-08-01T12:00:00Z".to_string()),
         build_started_at: Some("2024-08-02T09:30:00Z".to_string()),
         completed_at: None,
+        merged_at: None,
+        dropped_at: None,
+        drop_reason: None,
         touched_specs: vec![],
     };
     metadata.save(&change_dir).expect("save metadata");
