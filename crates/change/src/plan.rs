@@ -186,13 +186,47 @@ impl Plan {
     ///   - missing file -> `Error::Config`
     ///   - malformed YAML -> `Error::Yaml`
     ///   - other I/O failure -> `Error::Io`
-    pub fn load(_path: &Path) -> Result<Self, Error> {
-        todo!("Change L1.C — implement Plan::load")
+    ///
+    /// Tolerant of files with or without a trailing newline —
+    /// `serde_yaml::from_str` accepts both.
+    pub fn load(path: &Path) -> Result<Self, Error> {
+        if !path.exists() {
+            return Err(Error::Config(format!("plan.yaml not found at {}", path.display())));
+        }
+        let content = std::fs::read_to_string(path)?;
+        let plan: Plan = serde_yaml::from_str(&content)?;
+        Ok(plan)
     }
 
     /// Serialize and write the plan to `path`, overwriting if present.
-    pub fn save(&self, _path: &Path) -> Result<(), Error> {
-        todo!("Change L1.C — implement Plan::save")
+    ///
+    /// Atomic: a partial file is never observed by readers. Write goes via
+    /// a temp file in the same directory followed by `fs::rename`. Because
+    /// POSIX `rename(2)` (and Windows `MoveFileEx` with `MOVEFILE_REPLACE_EXISTING`)
+    /// are atomic at the filesystem level, any concurrent reader of `path`
+    /// sees either the previous complete contents or the new complete
+    /// contents — never a half-written or empty file. Placing the temp
+    /// file in `path.parent()` keeps the rename on the same filesystem,
+    /// which is the precondition that makes the rename atomic rather than
+    /// a copy-then-unlink.
+    ///
+    /// Always emits a trailing newline so the on-disk form matches the
+    /// convention used elsewhere in the project and so POSIX text-file
+    /// tools (`wc -l`, `sed`, `grep`) behave predictably.
+    ///
+    /// Returns `Error::Io` on any I/O failure and `Error::Yaml` if
+    /// serialization fails.
+    pub fn save(&self, path: &Path) -> Result<(), Error> {
+        let mut content = serde_yaml::to_string(self)?;
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
+        let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
+        std::io::Write::write_all(tmp.as_file_mut(), content.as_bytes())?;
+        tmp.as_file_mut().sync_all()?;
+        tmp.persist(path).map_err(|e| Error::Io(e.error))?;
+        Ok(())
     }
 
     /// Run all structural and semantic checks over the plan. The optional
@@ -249,6 +283,7 @@ impl Plan {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+    use tempfile::tempdir;
 
     /// The 10 legal edges from `rfc-2-plan.md` §"Transition Rules".
     /// Kept here (not on `PlanStatus`) so the production matcher and the
@@ -492,5 +527,172 @@ changes:
             reparsed.changes[0].status_reason, entry.status_reason,
             "status_reason should be byte-identical after round-trip"
         );
+    }
+
+    #[test]
+    fn save_then_load_roundtrips_rfc_example() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("plan.yaml");
+        let original: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        original.save(&path).expect("save ok");
+        let loaded = Plan::load(&path).expect("load ok");
+        assert_eq!(loaded, original, "full plan should round-trip through save -> load");
+    }
+
+    #[test]
+    fn save_creates_new_file_and_emits_trailing_newline() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("plan.yaml");
+        let plan = Plan {
+            name: "init".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![],
+        };
+        plan.save(&path).expect("save ok");
+
+        let bytes = std::fs::read(&path).expect("read ok");
+        assert!(!bytes.is_empty(), "saved file should not be empty");
+        assert_eq!(*bytes.last().unwrap(), b'\n', "saved file should end with a newline");
+
+        let content = std::str::from_utf8(&bytes).expect("utf8");
+        assert!(
+            content.contains("name: init"),
+            "file should contain `name: init`, got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn save_overwrites_existing_file_atomically() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("plan.yaml");
+        std::fs::write(&path, "garbage that should be overwritten").expect("write garbage");
+
+        let plan = Plan {
+            name: "fresh".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![PlanChange {
+                name: "only-entry".to_string(),
+                status: PlanStatus::Pending,
+                depends_on: vec![],
+                affects: vec![],
+                sources: vec![],
+                description: None,
+                status_reason: None,
+            }],
+        };
+        plan.save(&path).expect("save ok");
+
+        let loaded = Plan::load(&path).expect("load ok");
+        assert_eq!(loaded, plan, "loaded plan should equal saved plan");
+
+        let raw = std::fs::read_to_string(&path).expect("read ok");
+        assert!(
+            !raw.contains("garbage"),
+            "pre-existing garbage content should be gone, got:\n{raw}"
+        );
+    }
+
+    #[test]
+    fn load_missing_file_returns_config_error() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("does-not-exist.yaml");
+        let err = Plan::load(&path).expect_err("expected error on missing file");
+        match err {
+            Error::Config(msg) => {
+                assert!(
+                    msg.contains("plan.yaml not found"),
+                    "message should mention `plan.yaml not found`, got: {msg}"
+                );
+                assert!(
+                    msg.contains(&path.display().to_string()),
+                    "message should include the missing path, got: {msg}"
+                );
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn load_tolerates_missing_trailing_newline() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("plan.yaml");
+        std::fs::write(&path, "name: foo\nchanges: []").expect("write without trailing newline");
+        let plan = Plan::load(&path).expect("load ok");
+        assert_eq!(plan.name, "foo");
+        assert!(plan.changes.is_empty());
+    }
+
+    #[test]
+    fn save_writes_kebab_case_on_disk() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("plan.yaml");
+        let plan = Plan {
+            name: "demo".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![PlanChange {
+                name: "entry-one".to_string(),
+                status: PlanStatus::InProgress,
+                depends_on: vec!["foo".to_string()],
+                affects: vec![],
+                sources: vec![],
+                description: None,
+                status_reason: None,
+            }],
+        };
+        plan.save(&path).expect("save ok");
+
+        let content = std::fs::read_to_string(&path).expect("read ok");
+        assert!(
+            content.contains("depends-on:"),
+            "expected kebab-case `depends-on:`, got:\n{content}"
+        );
+        assert!(
+            content.contains("status: in-progress"),
+            "expected kebab-case enum value `in-progress`, got:\n{content}"
+        );
+        assert!(
+            !content.contains("depends_on"),
+            "snake_case `depends_on` leaked onto disk, got:\n{content}"
+        );
+        assert!(
+            !content.contains("in_progress"),
+            "snake_case `in_progress` leaked onto disk, got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn save_leaves_no_intermediate_state_observable_after_success() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("plan.yaml");
+
+        let first = Plan {
+            name: "first".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![],
+        };
+        first.save(&path).expect("save first ok");
+
+        let second = Plan {
+            name: "second".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![PlanChange {
+                name: "new-entry".to_string(),
+                status: PlanStatus::Pending,
+                depends_on: vec![],
+                affects: vec![],
+                sources: vec![],
+                description: None,
+                status_reason: None,
+            }],
+        };
+        second.save(&path).expect("save second ok");
+
+        let loaded = Plan::load(&path).expect("load ok");
+        assert_eq!(loaded, second, "after a successful save, only the new content is observable");
+        assert_ne!(loaded, first, "the previous plan should no longer be on disk");
+
+        let bytes = std::fs::read(&path).expect("read bytes");
+        assert!(!bytes.is_empty(), "saved file should not be empty after overwrite");
+        assert_eq!(*bytes.last().unwrap(), b'\n', "overwritten file should still end with newline");
     }
 }

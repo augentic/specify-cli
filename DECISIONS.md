@@ -331,3 +331,34 @@ this change alongside the skill rewrites closes the loop on the
 Option-2 phase-primitives consolidation — the CLI is now the single
 implementation of spec merge semantics.
 
+## Change L1.C — tempfile promotion to runtime dependency
+
+**Decision.** `tempfile` moves from `[dev-dependencies]` to
+`[dependencies]` in `crates/change/Cargo.toml` (pinned to `tempfile = "3"`,
+matching the root workspace). The dev-dependency entry stays so that the
+existing unit tests continue to pull it in under `cfg(test)` without any
+new feature flag.
+
+**Rationale.** `Plan::save` uses `tempfile::NamedTempFile::new_in(parent)`
++ `persist(path)` to make the on-disk update atomic: the YAML is written
+to a temp file in the same directory as the target, then renamed over the
+target. Because `rename(2)` is atomic only within a single filesystem,
+the temp file must live in the target's parent directory — which is
+exactly what `NamedTempFile::new_in` guarantees. Alternatives considered:
+
+- Hand-rolling the temp-name + `fs::rename` pattern: rejected because we
+  would have to reimplement collision-safe random naming, cleanup-on-drop,
+  and cross-platform persist semantics that `tempfile` already has.
+- Using `fs::write` directly (the pattern `ChangeMetadata::save` uses):
+  rejected because `plan.yaml` is the authoritative driver for a
+  multi-change pipeline. A reader racing a writer mid-`write` would
+  observe a truncated YAML and either fail to parse or, worse, parse a
+  partial structure; atomicity at the filesystem level is the simplest
+  way to pin that invariant. `ChangeMetadata::save` can be upgraded to
+  the same pattern in a later change, but L1.C's scope is `Plan` only.
+
+Promoting the crate costs one extra dependency in the release build of
+`specify-change`. `tempfile` is already transitively in the dependency
+tree (every test binary pulls it in), and it is a small, well-maintained
+crate with no additional transitive cost in practice.
+
