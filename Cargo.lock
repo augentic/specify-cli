@@ -1075,6 +1075,7 @@ dependencies = [
  "chrono",
  "clap",
  "glob",
+ "jsonschema",
  "regex",
  "semver",
  "serde",

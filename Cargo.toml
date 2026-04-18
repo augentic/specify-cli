@@ -39,6 +39,7 @@ glob.workspace = true
 assert_cmd = "2"
 tempfile = "3"
 regex.workspace = true
+jsonschema = { version = "0.46", default-features = false }
 
 [workspace]
 members = [
