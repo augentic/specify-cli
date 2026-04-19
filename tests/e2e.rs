@@ -225,10 +225,8 @@ fn strip_iso8601(value: &mut Value) {
         .expect("regex compiles");
     fn visit(re: &regex::Regex, v: &mut Value) {
         match v {
-            Value::String(s) => {
-                if re.is_match(s) {
-                    *s = re.replace_all(s, "<ISO8601>").into_owned();
-                }
+            Value::String(s) if re.is_match(s) => {
+                *s = re.replace_all(s, "<ISO8601>").into_owned();
             }
             Value::Array(items) => {
                 for item in items {

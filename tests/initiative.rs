@@ -105,7 +105,7 @@ mod cli {
                 to: TEMPDIR_PLACEHOLDER,
             });
         }
-        subs.sort_by(|a, b| b.from.len().cmp(&a.from.len()));
+        subs.sort_by_key(|b| std::cmp::Reverse(b.from.len()));
         subs
     }
 
@@ -1255,10 +1255,8 @@ changes:
         let re = regex::Regex::new(r"-\d{8}\b").expect("regex compiles");
         fn visit(re: &regex::Regex, v: &mut Value) {
             match v {
-                Value::String(s) => {
-                    if re.is_match(s) {
-                        *s = re.replace_all(s, "-<YYYYMMDD>").into_owned();
-                    }
+                Value::String(s) if re.is_match(s) => {
+                    *s = re.replace_all(s, "-<YYYYMMDD>").into_owned();
                 }
                 Value::Array(items) => {
                     for item in items {
