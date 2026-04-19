@@ -27,6 +27,12 @@ pub struct Schema {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Pipeline {
+    /// Optional Layer 3 authoring-phase briefs for `/spec:plan`.
+    /// Absent in pre-existing schemas; present ones expose briefs such
+    /// as `discovery.md` → `propose.md` that run before the
+    /// define→build→merge execution loop.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plan: Vec<PipelineEntry>,
     pub define: Vec<PipelineEntry>,
     pub build: Vec<PipelineEntry>,
     pub merge: Vec<PipelineEntry>,
@@ -52,14 +58,20 @@ pub enum SchemaSource {
     Cached(PathBuf),
 }
 
-/// The three phases of a schema's pipeline. Serializes as the
-/// lowercase identifiers `define | build | merge` on the wire — this
-/// is the same wire format consumed by `ChangeMetadata.outcome.phase`
+/// The phases of a schema's pipeline. Serializes as the lowercase
+/// identifiers `plan | define | build | merge` on the wire — this is
+/// the same wire format consumed by `ChangeMetadata.outcome.phase`
 /// and by `schema.yaml::pipeline.*` keys, keeping a single source of
 /// truth for phase naming.
+///
+/// `Plan` is the Layer 3 authoring phase (`/spec:plan`) that runs
+/// ahead of the define→build→merge execution loop. It is intentionally
+/// omitted from `Schema::entries()` (see that iterator's docs) — call
+/// `Schema::plan_entries()` to enumerate plan-phase briefs.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Phase {
+    Plan,
     Define,
     Build,
     Merge,
@@ -128,8 +140,16 @@ impl Schema {
         )
     }
 
-    /// Iterator over every pipeline entry in execution order
+    /// Iterator over every execution-loop pipeline entry in order
     /// (define → build → merge), paired with its phase.
+    ///
+    /// This intentionally skips `pipeline.plan`: the plan phase is an
+    /// authoring-time step driven by `/spec:plan` and is not part of
+    /// the per-change execution loop that `specify change status`,
+    /// `specify change outcome`, and the define/build/merge skills
+    /// iterate over. Plan briefs are exposed via
+    /// [`Schema::plan_entries`] instead so existing callers keep their
+    /// current semantics.
     pub fn entries(&self) -> impl Iterator<Item = (Phase, &PipelineEntry)> + '_ {
         self.pipeline
             .define
@@ -139,9 +159,23 @@ impl Schema {
             .chain(self.pipeline.merge.iter().map(|e| (Phase::Merge, e)))
     }
 
-    /// Look up a pipeline entry by id across all phases.
+    /// Plan-phase (Layer 3 authoring) pipeline entries in declared
+    /// order. Returns an empty slice for schemas that don't declare a
+    /// `pipeline.plan` block.
+    pub fn plan_entries(&self) -> &[PipelineEntry] {
+        &self.pipeline.plan
+    }
+
+    /// Look up a pipeline entry by id. Searches the plan phase first so
+    /// authoring briefs are discoverable, then the define→build→merge
+    /// execution loop.
     pub fn entry(&self, id: &str) -> Option<(Phase, &PipelineEntry)> {
-        self.entries().find(|(_, e)| e.id == id)
+        self.pipeline
+            .plan
+            .iter()
+            .map(|e| (Phase::Plan, e))
+            .chain(self.entries())
+            .find(|(_, e)| e.id == id)
     }
 
     /// Merge `child` on top of `parent`. Per schema-resolution.md:
@@ -162,6 +196,7 @@ impl Schema {
             extends: None,
             domain: child.domain.or(parent.domain),
             pipeline: Pipeline {
+                plan: merge_phase(parent.pipeline.plan, child.pipeline.plan),
                 define: merge_phase(parent.pipeline.define, child.pipeline.define),
                 build: merge_phase(parent.pipeline.build, child.pipeline.build),
                 merge: merge_phase(parent.pipeline.merge, child.pipeline.merge),

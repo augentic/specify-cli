@@ -95,6 +95,7 @@ fn validate_structure_fails_when_define_phase_is_empty() {
         extends: None,
         domain: None,
         pipeline: crate::schema::Pipeline {
+            plan: vec![],
             define: vec![],
             build: vec![crate::schema::PipelineEntry {
                 id: "build".into(),
@@ -125,6 +126,142 @@ fn yaml_parse_error_surface_for_missing_required_field() {
     assert!(
         message.contains("description"),
         "expected parse error to mention missing field, got: {message}"
+    );
+}
+
+// ---------- pipeline.plan (Layer 3 authoring) ----------
+
+#[test]
+fn pipeline_plan_parses_when_present() {
+    let yaml = r#"
+name: demo
+version: 1
+description: demo with plan
+pipeline:
+  plan:
+    - { id: discovery, brief: briefs/plan/discovery.md }
+    - { id: propose,   brief: briefs/plan/propose.md }
+  define:
+    - { id: proposal, brief: briefs/proposal.md }
+  build:
+    - { id: build, brief: briefs/build.md }
+  merge:
+    - { id: merge, brief: briefs/merge.md }
+"#;
+    let schema: Schema = serde_yaml::from_str(yaml).expect("parses");
+    let plan = schema.plan_entries();
+    assert_eq!(plan.len(), 2);
+    assert_eq!(plan[0].id, "discovery");
+    assert_eq!(plan[0].brief, "briefs/plan/discovery.md");
+    assert_eq!(plan[1].id, "propose");
+    assert_eq!(plan[1].brief, "briefs/plan/propose.md");
+
+    // `entries()` stays the execution loop only — plan briefs do not
+    // leak into define/build/merge iteration.
+    let phases: Vec<Phase> = schema.entries().map(|(p, _)| p).collect();
+    assert!(!phases.contains(&Phase::Plan));
+
+    // Plan briefs are still discoverable via `entry()`.
+    let (phase, entry) = schema.entry("discovery").expect("discovery visible via entry()");
+    assert_eq!(phase, Phase::Plan);
+    assert_eq!(entry.id, "discovery");
+
+    // Structure validation accepts the schema end-to-end.
+    let results = schema.validate_structure();
+    assert!(
+        results.iter().all(|r| matches!(r, ValidationResult::Pass { .. })),
+        "plan-bearing schema should validate: {results:?}"
+    );
+}
+
+#[test]
+fn pipeline_without_plan_parses_unchanged() {
+    let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
+    let schema: Schema = serde_yaml::from_str(&raw).unwrap();
+    assert!(schema.pipeline.plan.is_empty());
+    assert!(schema.plan_entries().is_empty());
+
+    // Serializing back out must not introduce a `plan: []` key — we
+    // skip-serialize empty plan vectors so round-trips of legacy
+    // schemas are byte-stable for the plan field.
+    let written = serde_yaml::to_string(&schema).unwrap();
+    assert!(
+        !written.contains("plan:"),
+        "expected no plan key in re-serialized omnia schema, got:\n{written}"
+    );
+}
+
+#[test]
+fn plan_entries_merge_overrides_by_id_and_appends_new_entries() {
+    let parent_yaml = r#"
+name: parent
+version: 1
+description: parent
+pipeline:
+  plan:
+    - { id: discovery, brief: briefs/plan/discovery.md }
+    - { id: propose,   brief: briefs/plan/propose.md }
+  define:
+    - { id: proposal, brief: briefs/proposal.md }
+  build:
+    - { id: build, brief: briefs/build.md }
+  merge:
+    - { id: merge, brief: briefs/merge.md }
+"#;
+    let child_yaml = r#"
+name: child
+version: 1
+description: child
+pipeline:
+  plan:
+    - { id: propose, brief: briefs/plan/propose-v2.md }
+    - { id: record,  brief: briefs/plan/record.md }
+  define:
+    - { id: proposal, brief: briefs/proposal.md }
+  build:
+    - { id: build, brief: briefs/build.md }
+  merge:
+    - { id: merge, brief: briefs/merge.md }
+"#;
+    let parent: Schema = serde_yaml::from_str(parent_yaml).unwrap();
+    let child: Schema = serde_yaml::from_str(child_yaml).unwrap();
+    let merged = Schema::merge(parent, child);
+
+    let ids: Vec<&str> = merged.plan_entries().iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(ids, vec!["discovery", "propose", "record"]);
+    let propose = merged.plan_entries().iter().find(|e| e.id == "propose").unwrap();
+    assert_eq!(propose.brief, "briefs/plan/propose-v2.md");
+}
+
+#[test]
+fn json_schema_rejects_missing_define_even_with_plan_present() {
+    // `pipeline.plan` is allowed but `define` is still required.
+    let schema = Schema {
+        name: "broken".into(),
+        version: 1,
+        description: "no define".into(),
+        extends: None,
+        domain: None,
+        pipeline: crate::schema::Pipeline {
+            plan: vec![crate::schema::PipelineEntry {
+                id: "discovery".into(),
+                brief: "briefs/plan/discovery.md".into(),
+            }],
+            define: vec![],
+            build: vec![crate::schema::PipelineEntry {
+                id: "build".into(),
+                brief: "briefs/build.md".into(),
+            }],
+            merge: vec![crate::schema::PipelineEntry {
+                id: "merge".into(),
+                brief: "briefs/merge.md".into(),
+            }],
+        },
+    };
+    let results = schema.validate_structure();
+    assert!(
+        results.iter().any(|r| matches!(r, ValidationResult::Fail { .. })),
+        "empty define must still fail even with plan present: {results:?}"
     );
 }
 
@@ -327,6 +464,75 @@ fn valid_briefs() -> Vec<(&'static str, &'static str)> {
         ),
         ("briefs/merge.md", "---\nid: merge\ndescription: land\nneeds: [build]\n---\nbody\n"),
     ]
+}
+
+const PLAN_SCHEMA_YAML: &str = "\
+name: demo
+version: 1
+description: demo with plan
+pipeline:
+  plan:
+    - { id: discovery, brief: briefs/plan/discovery.md }
+    - { id: propose,   brief: briefs/plan/propose.md }
+  define:
+    - { id: proposal, brief: briefs/proposal.md }
+    - { id: specs,    brief: briefs/specs.md }
+  build:
+    - { id: build, brief: briefs/build.md }
+  merge:
+    - { id: merge, brief: briefs/merge.md }
+";
+
+fn plan_briefs() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (
+            "briefs/plan/discovery.md",
+            "---\nid: discovery\ndescription: explore\ngenerates: discovery.md\n---\nbody\n",
+        ),
+        (
+            "briefs/plan/propose.md",
+            "---\nid: propose\ndescription: propose\nneeds: [discovery]\ngenerates: propose.md\n---\nbody\n",
+        ),
+        ("briefs/proposal.md", "---\nid: proposal\ndescription: why\n---\nbody\n"),
+        ("briefs/specs.md", "---\nid: specs\ndescription: what\nneeds: [proposal]\n---\nbody\n"),
+        (
+            "briefs/build.md",
+            "---\nid: build\ndescription: impl\nneeds: [specs]\ntracks: specs\n---\nbody\n",
+        ),
+        ("briefs/merge.md", "---\nid: merge\ndescription: land\nneeds: [build]\n---\nbody\n"),
+    ]
+}
+
+#[test]
+fn pipeline_view_load_includes_plan_briefs_in_topo_order() {
+    let tmp = scaffold_schema_project("demo", PLAN_SCHEMA_YAML, &plan_briefs());
+    let view = PipelineView::load("demo", tmp.path()).expect("loads with plan briefs");
+
+    assert_eq!(view.phase(Phase::Plan).count(), 2);
+    assert!(view.brief("discovery").is_some());
+    assert!(view.brief("propose").is_some());
+
+    // Topological order respects the plan-phase `needs: [discovery]` edge.
+    let order: Vec<&str> = view
+        .topo_order(Phase::Plan)
+        .expect("plan topo order")
+        .iter()
+        .map(|b| b.frontmatter.id.as_str())
+        .collect();
+    assert_eq!(order, vec!["discovery", "propose"]);
+
+    // Completion relative to an empty change dir: both briefs declare
+    // `generates` and neither is present.
+    let change_dir = tmp.path().join("change");
+    std::fs::create_dir_all(&change_dir).unwrap();
+    let completion = view.completion_for(Phase::Plan, &change_dir);
+    assert_eq!(completion.get("discovery"), Some(&false));
+    assert_eq!(completion.get("propose"), Some(&false));
+
+    std::fs::write(change_dir.join("discovery.md"), "body").unwrap();
+    let completion = view.completion_for(Phase::Plan, &change_dir);
+    assert_eq!(completion.get("discovery"), Some(&true));
+    assert_eq!(completion.get("propose"), Some(&false));
 }
 
 #[test]

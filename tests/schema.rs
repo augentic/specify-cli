@@ -58,6 +58,24 @@ impl Project {
         Project { _tmp: tmp, root }
     }
 
+    /// Initialise a project backed by a local fixture schema dir. The
+    /// fixture is mirrored into `<tmp>/schemas/<schema_name>/` so that
+    /// subsequent `specify` invocations resolve it via the usual
+    /// `schemas/<name>/` probe.
+    fn init_from_fixture(schema_name: &str, fixture_dir: &Path) -> Self {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path().to_path_buf();
+        copy_dir(fixture_dir, &root.join("schemas").join(schema_name));
+        specify()
+            .current_dir(&root)
+            .args(["init", schema_name, "--schema-dir"])
+            .arg(&root)
+            .args(["--name", "test-proj"])
+            .assert()
+            .success();
+        Project { _tmp: tmp, root }
+    }
+
     fn root(&self) -> &Path {
         &self.root
     }
@@ -116,6 +134,70 @@ fn schema_pipeline_build_and_merge_each_have_their_brief() {
     let ids: Vec<&str> =
         value["briefs"].as_array().unwrap().iter().map(|b| b["id"].as_str().unwrap()).collect();
     assert_eq!(ids, vec!["merge"]);
+}
+
+#[test]
+fn schema_pipeline_phase_plan_lists_plan_briefs_in_topo_order() {
+    let fixture = repo_root().join("tests/fixtures/schema/plan-pipeline");
+    let project = Project::init_from_fixture("plan-pipeline", &fixture);
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "schema", "pipeline", "plan"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    assert_eq!(value["phase"], "plan");
+    assert_eq!(value["change"], Value::Null);
+
+    let briefs = value["briefs"].as_array().expect("briefs array");
+    let ids: Vec<&str> = briefs.iter().map(|b| b["id"].as_str().unwrap()).collect();
+    // discovery feeds propose (needs: [discovery]), so topo order is
+    // discovery → propose and must match the declared pipeline.plan
+    // order in schema.yaml.
+    assert_eq!(ids, vec!["discovery", "propose"]);
+
+    assert_eq!(briefs[0]["generates"], "discovery.md");
+    assert_eq!(briefs[1]["generates"], "propose.md");
+    assert_eq!(briefs[1]["needs"].as_array().unwrap()[0], "discovery");
+}
+
+#[test]
+fn schema_pipeline_phase_plan_is_empty_for_schemas_without_plan_block() {
+    // Omnia (the in-repo schema) does not declare pipeline.plan at all.
+    // Asking for --phase plan must succeed and return an empty briefs
+    // list rather than erroring out, so callers can probe for plan
+    // support without conditional logic.
+    let project = Project::init();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "schema", "pipeline", "plan"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    assert_eq!(value["phase"], "plan");
+    assert_eq!(value["briefs"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn schema_pipeline_phase_plan_does_not_perturb_define_output() {
+    // Regression: adding pipeline.plan (with briefs before the define
+    // phase in load order) must not change what `--phase define`
+    // returns. This is the explicit "Do NOT change the default
+    // iteration order of Schema::entries()" constraint in L3.C.
+    let fixture = repo_root().join("tests/fixtures/schema/plan-pipeline");
+    let project = Project::init_from_fixture("plan-pipeline", &fixture);
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "schema", "pipeline", "define"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    let ids: Vec<&str> =
+        value["briefs"].as_array().unwrap().iter().map(|b| b["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, vec!["proposal"]);
 }
 
 #[test]

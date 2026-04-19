@@ -328,6 +328,7 @@ enum SchemaAction {
 
 #[derive(Copy, Clone, ValueEnum)]
 enum PhaseArg {
+    Plan,
     Define,
     Build,
     Merge,
@@ -336,6 +337,7 @@ enum PhaseArg {
 impl From<PhaseArg> for Phase {
     fn from(value: PhaseArg) -> Self {
         match value {
+            PhaseArg::Plan => Phase::Plan,
             PhaseArg::Define => Phase::Define,
             PhaseArg::Build => Phase::Build,
             PhaseArg::Merge => Phase::Merge,
@@ -346,6 +348,7 @@ impl From<PhaseArg> for Phase {
 impl PhaseArg {
     fn as_str(self) -> &'static str {
         match self {
+            PhaseArg::Plan => "plan",
             PhaseArg::Define => "define",
             PhaseArg::Build => "build",
             PhaseArg::Merge => "merge",
