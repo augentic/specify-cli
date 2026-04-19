@@ -362,3 +362,40 @@ Promoting the crate costs one extra dependency in the release build of
 tree (every test binary pulls it in), and it is a small, well-maintained
 crate with no additional transitive cost in practice.
 
+## RFC-2 milestone — Layer 1 / 2 / 3 delivered
+
+Summary of the RFC-2 build (29 Changes across two repos). Layer 1
+delivers the plan format and CLI primitives (`specify plan
+{init, validate, next, status, create, amend, transition, archive}`)
+plus the JSON Schema. Layer 2 delivers /spec:execute — phase outcome
+contract on .metadata.yaml, journal.yaml append-only audit log,
+.specify/plan.lock advisory driver lock, self-heal on startup,
+--loop mode, and sources/affects execution wiring. Layer 3 delivers
+/spec:plan — pipeline.plan briefs for Omnia and Vectis, discovery
+via /spec:extract, interactive propose with accept/edit/reject, and
+a working-directory under .specify/plans/<name>/ archived alongside
+the plan.
+
+Key technical decisions locked during the build (see individual
+Change SHAs on the rfc-2 branch for detail):
+
+- PlanStatus state machine uses matches! over (self, target) tuples
+  mirroring LifecycleStatus.
+- Plan::save uses NamedTempFile::new_in(parent) + persist for
+  atomic writes; ChangeMetadata::save was migrated to the same
+  pattern in L2.A.
+- petgraph backs validate / topological_order; next_eligible uses
+  a list-order tie-break and is independent of topo sort (works
+  even on cyclic plans).
+- PlanLockStamp is a PID-file-only lock (no flock) because the
+  driver runs across multiple short-lived CLI invocations;
+  PlanLockGuard remains for in-process long-lived use.
+- Phase outcome transport: .metadata.yaml:outcome field; journal.yaml
+  is a pure audit log never consumed by the driver.
+- specify-change depends on specify-schema (for Phase) — one-direction
+  edge, no cycle.
+- Phase::Plan added ahead of Define/Build/Merge; Schema::plan_entries
+  is a separate accessor so existing Schema::entries() iteration
+  is unchanged.
+- --dry-run on /spec:execute runs self-heal in REPORT-ONLY mode
+  (resolved the L2.G/L2.H tension).
