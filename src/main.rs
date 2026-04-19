@@ -144,6 +144,14 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum PlanAction {
+    /// Scaffold an empty .specify/plan.yaml
+    Init {
+        /// Kebab-case initiative name
+        name: String,
+        /// Named source, repeated: --source <key>=<path-or-url>
+        #[arg(long = "source", value_parser = parse_source_kv)]
+        sources: Vec<(String, String)>,
+    },
     /// Validate .specify/plan.yaml (structure + plan/change consistency)
     Validate,
     /// Return the next eligible plan entry (respects depends-on + in-progress)
@@ -1895,6 +1903,7 @@ fn spec_type_label(t: SpecType) -> &'static str {
 
 fn run_plan(format: OutputFormat, action: PlanAction) -> i32 {
     match action {
+        PlanAction::Init { name, sources } => run_plan_init(format, name, sources),
         PlanAction::Validate => run_plan_validate(format),
         PlanAction::Next => run_plan_next(format),
         PlanAction::Status => run_plan_status(format),
@@ -1956,6 +1965,72 @@ fn plan_validation_level_label(level: &PlanValidationLevel) -> &'static str {
         PlanValidationLevel::Error => "error",
         PlanValidationLevel::Warning => "warning",
     }
+}
+
+/// Parse a single `--source <key>=<path-or-url>` CLI value into a
+/// `(key, value)` pair. Returns a `String` error on malformed input so
+/// clap surfaces a standard usage diagnostic (exit code 2).
+fn parse_source_kv(s: &str) -> Result<(String, String), String> {
+    let (k, v) = s
+        .split_once('=')
+        .ok_or_else(|| format!("--source must be <key>=<path-or-url>, got `{s}`"))?;
+    if k.is_empty() || v.is_empty() {
+        return Err(format!("--source key and value must be non-empty, got `{s}`"));
+    }
+    Ok((k.to_string(), v.to_string()))
+}
+
+fn run_plan_init(format: OutputFormat, name: String, sources: Vec<(String, String)>) -> i32 {
+    let project_dir = match current_dir() {
+        Ok(dir) => dir,
+        Err(err) => return emit_error(format, &err),
+    };
+    let _config = match ProjectConfig::load(&project_dir) {
+        Ok(cfg) => cfg,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    let plan_path = plan_file_path(&project_dir);
+    if plan_path.exists() {
+        let err = Error::Config(format!(
+            "plan already exists at {}; run `specify plan archive` first",
+            plan_path.display()
+        ));
+        return emit_error(format, &err);
+    }
+
+    // Fold the CLI vector into a BTreeMap, rejecting duplicate keys
+    // before they silently clobber earlier values.
+    let mut source_map: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+    for (k, v) in sources {
+        if source_map.contains_key(&k) {
+            let err = Error::Config(format!("duplicate key `{k}` in --source arguments"));
+            return emit_error(format, &err);
+        }
+        source_map.insert(k, v);
+    }
+
+    let plan = match Plan::init(&name, source_map) {
+        Ok(p) => p,
+        Err(err) => return emit_error(format, &err),
+    };
+    if let Err(err) = plan.save(&plan_path) {
+        return emit_error(format, &err);
+    }
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "plan": {
+                "name": name,
+                "path": absolute_string(&plan_path),
+            },
+        })),
+        OutputFormat::Text => {
+            println!("Initialised plan '{name}' at {}.", plan_path.display());
+        }
+    }
+    EXIT_SUCCESS
 }
 
 fn run_plan_validate(format: OutputFormat) -> i32 {

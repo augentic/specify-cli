@@ -1161,6 +1161,165 @@ changes:
         );
     }
 
+    // -- plan init (L3.A) -------------------------------------------------
+
+    /// Build a blank `Project` via `specify init` and then delete the
+    /// auto-created `.specify/plan.yaml` (if any) so `specify plan init`
+    /// is exercised against a clean slate.
+    fn init_without_plan() -> Project {
+        let project = Project::init();
+        let _ = fs::remove_file(project.plan_path());
+        project
+    }
+
+    #[test]
+    fn plan_init_creates_empty_plan_json() {
+        let project = init_without_plan();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "init", "my-initiative"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(actual["schema_version"], 1);
+        assert_eq!(actual["plan"]["name"], "my-initiative");
+        let path_str = actual["plan"]["path"].as_str().expect("plan.path string");
+        assert!(
+            path_str.ends_with(".specify/plan.yaml"),
+            "plan.path should end with .specify/plan.yaml, got: {path_str}"
+        );
+
+        assert!(project.plan_path().exists(), "plan.yaml should be created");
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        assert!(saved.contains("name: my-initiative"), "plan missing name:\n{saved}");
+        // Empty maps/vecs serialise with either `{}`/`[]` or are omitted
+        // via serde's default — either way, no actual source/change entries.
+        assert!(!saved.contains("- name:"), "plan should have no change entries:\n{saved}");
+
+        assert_golden("init-success.json", actual);
+    }
+
+    #[test]
+    fn plan_init_with_sources_roundtrips() {
+        let project = init_without_plan();
+
+        specify()
+            .current_dir(project.root())
+            .args([
+                "plan",
+                "init",
+                "big",
+                "--source",
+                "monolith=/tmp/legacy",
+                "--source",
+                "orders=git@github.com:org/orders.git",
+            ])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        assert!(saved.contains("name: big"), "plan missing name:\n{saved}");
+        assert!(saved.contains("monolith: /tmp/legacy"), "plan missing monolith source:\n{saved}");
+        assert!(
+            saved.contains("orders: git@github.com:org/orders.git"),
+            "plan missing orders source:\n{saved}"
+        );
+    }
+
+    #[test]
+    fn plan_init_refuses_when_plan_exists() {
+        let project = Project::init();
+        project.seed_plan(EMPTY_PLAN);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "init", "other"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("specify plan archive"),
+            "stderr should suggest `specify plan archive`, got: {stderr:?}"
+        );
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        assert!(
+            saved.contains("name: demo"),
+            "existing plan.yaml must not be overwritten:\n{saved}"
+        );
+    }
+
+    #[test]
+    fn plan_init_rejects_invalid_name() {
+        let project = init_without_plan();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "init", "BadName"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(stderr.contains("kebab-case"), "stderr should mention kebab-case, got: {stderr:?}");
+        assert!(!project.plan_path().exists(), "no plan.yaml on invalid name");
+    }
+
+    #[test]
+    fn plan_init_rejects_duplicate_source_key() {
+        let project = init_without_plan();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "init", "x", "--source", "a=/p1", "--source", "a=/p2"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("duplicate key"),
+            "stderr should mention duplicate key, got: {stderr:?}"
+        );
+        assert!(!project.plan_path().exists(), "no plan.yaml on duplicate key");
+    }
+
+    #[test]
+    fn plan_init_rejects_malformed_source() {
+        let project = init_without_plan();
+
+        // No `=` in the --source value → clap's value_parser rejects
+        // the argument at parse time (exit code 2).
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "init", "x", "--source", "badkey"])
+            .assert()
+            .failure();
+        assert_eq!(
+            assert.get_output().status.code(),
+            Some(2),
+            "clap parse errors must surface as exit code 2"
+        );
+        assert!(!project.plan_path().exists(), "no plan.yaml on malformed --source");
+    }
+
+    #[test]
+    fn plan_init_validates_the_result() {
+        let project = init_without_plan();
+
+        specify().current_dir(project.root()).args(["plan", "init", "fresh"]).assert().success();
+
+        let assert =
+            specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+        assert_eq!(assert.get_output().status.code(), Some(0));
+        let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
+        assert!(
+            !stdout.contains("ERROR"),
+            "freshly-init'd plan must pass `specify plan validate` with no errors, got:\n{stdout}"
+        );
+    }
+
     // -- plan archive (L1.K) ----------------------------------------------
 
     fn today_yyyymmdd() -> String {

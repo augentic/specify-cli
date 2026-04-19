@@ -196,6 +196,23 @@ pub struct ValidationResult {
 }
 
 impl Plan {
+    /// Create an empty plan with the given name and optional named sources.
+    ///
+    /// Every entry starts with `status: pending`; this just initialises the
+    /// top-level struct. The name is validated with
+    /// [`crate::actions::validate_name`] so it obeys the same kebab-case
+    /// rules as change names (RFC-1 §"Naming Rules").
+    ///
+    /// Does NOT write anything to disk. Call [`Plan::save`] afterwards.
+    pub fn init(name: &str, sources: BTreeMap<String, String>) -> Result<Plan, Error> {
+        crate::actions::validate_name(name)?;
+        Ok(Plan {
+            name: name.to_string(),
+            sources,
+            changes: vec![],
+        })
+    }
+
     /// Load `.specify/plan.yaml` from disk.
     ///
     /// Errors mirror [`crate::ChangeMetadata::load`]:
@@ -2242,6 +2259,55 @@ changes:
         let expected = archive_dir.join(format!("pkg-{}.yaml", today_yyyymmdd()));
         assert_eq!(dest, expected);
         assert!(dest.exists(), "returned path must point at an existing file");
+    }
+
+    // --- L3.A: Plan::init ------------------------------------------------
+
+    #[test]
+    fn init_returns_empty_plan_with_given_name() {
+        let plan = Plan::init("platform-v2", BTreeMap::new()).expect("init ok");
+        assert_eq!(plan.name, "platform-v2");
+        assert!(plan.sources.is_empty(), "sources should default to empty");
+        assert!(plan.changes.is_empty(), "changes should default to empty");
+    }
+
+    #[test]
+    fn init_preserves_sources_map() {
+        let mut sources = BTreeMap::new();
+        sources.insert("monolith".to_string(), "/path/to/legacy".to_string());
+        sources.insert("orders".to_string(), "git@github.com:org/orders.git".to_string());
+        sources.insert("payments".to_string(), "git@github.com:org/payments.git".to_string());
+
+        let plan = Plan::init("big", sources.clone()).expect("init ok");
+        assert_eq!(plan.sources, sources, "init must preserve the sources map verbatim");
+        assert_eq!(plan.sources.len(), 3);
+    }
+
+    #[test]
+    fn init_rejects_invalid_name() {
+        let err = Plan::init("BAD_NAME", BTreeMap::new()).expect_err("invalid name must Err");
+        match err {
+            Error::Config(msg) => {
+                assert!(msg.contains("kebab-case"), "expected kebab-case in message, got: {msg}");
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn init_accepts_kebab_case() {
+        let plan = Plan::init("a-b-c", BTreeMap::new()).expect("kebab name accepted");
+        assert_eq!(plan.name, "a-b-c");
+    }
+
+    #[test]
+    fn init_output_passes_validation() {
+        let plan = Plan::init("foo", BTreeMap::new()).expect("init ok");
+        let findings = plan.validate(None);
+        assert!(
+            findings.is_empty(),
+            "freshly-scaffolded plan must pass validation, got: {findings:#?}"
+        );
     }
 
     /// Same-device happy path: `fs::rename` is atomic on a single
