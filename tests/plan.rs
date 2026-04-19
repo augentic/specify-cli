@@ -1535,6 +1535,119 @@ changes: []
         );
     }
 
+    // -- plan archive co-move of working directory (L3.B) ---------------
+
+    /// Seed `.specify/plans/<name>/` with the given files and return
+    /// the directory path.
+    fn seed_working_dir(project: &Project, plan_name: &str, files: &[(&str, &[u8])]) -> PathBuf {
+        let dir = project.root().join(".specify/plans").join(plan_name);
+        fs::create_dir_all(&dir).expect("mkdir plans working dir");
+        for (name, bytes) in files {
+            fs::write(dir.join(name), bytes).expect("seed working file");
+        }
+        dir
+    }
+
+    #[test]
+    fn plan_archive_co_moves_working_dir_json() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+        let working_dir = seed_working_dir(
+            &project,
+            "demo",
+            &[("discovery.md", b"# discovery\n"), ("proposal.md", b"# proposal\n")],
+        );
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "archive"])
+            .assert()
+            .success();
+        let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(actual["schema_version"], 1);
+        assert_eq!(actual["plan"]["name"], "demo");
+        assert!(
+            actual["archived"].as_str().unwrap_or_default().contains("demo-"),
+            "archived path should contain the plan name"
+        );
+        assert!(
+            actual["archived_plans_dir"].as_str().unwrap_or_default().contains("demo-"),
+            "archived_plans_dir should contain the plan name, got: {}",
+            actual["archived_plans_dir"]
+        );
+
+        assert!(!working_dir.exists(), ".specify/plans/demo/ must be gone after archive");
+        let archived_dir = archive_dir(&project).join(format!("demo-{}", today_yyyymmdd()));
+        assert!(archived_dir.is_dir(), "co-moved dir missing at {}", archived_dir.display());
+        assert_eq!(
+            fs::read_to_string(archived_dir.join("discovery.md")).expect("read"),
+            "# discovery\n"
+        );
+        assert_eq!(
+            fs::read_to_string(archived_dir.join("proposal.md")).expect("read"),
+            "# proposal\n"
+        );
+
+        strip_date_stamps(&mut actual);
+        assert_golden("archive-success-with-working-dir.json", actual);
+    }
+
+    #[test]
+    fn plan_archive_no_working_dir_json() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "plan", "archive"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(
+            actual["archived_plans_dir"],
+            Value::Null,
+            "no working dir must surface archived_plans_dir: null, got: {}",
+            actual["archived_plans_dir"]
+        );
+    }
+
+    #[test]
+    fn plan_archive_co_move_destination_collision_halts_before_moving_plan() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+        let working_dir = seed_working_dir(&project, "demo", &[("notes.md", b"# notes\n")]);
+
+        // Pre-create the co-move destination only; the plan.yaml
+        // archive destination is clear, so this hits the working-dir
+        // preflight specifically.
+        let dest_dir = archive_dir(&project).join(format!("demo-{}", today_yyyymmdd()));
+        fs::create_dir_all(&dest_dir).expect("seed collision dir");
+
+        let assert =
+            specify().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("already exists"),
+            "stderr should name 'already exists', got: {stderr:?}"
+        );
+
+        // Preflight contract: plan.yaml must be untouched on collision.
+        assert!(
+            project.plan_path().exists(),
+            "plan.yaml MUST be untouched when working-dir preflight fails"
+        );
+        assert!(working_dir.is_dir(), "source working dir must be untouched on collision");
+        let plan_archive = archive_dir(&project).join(format!("demo-{}.yaml", today_yyyymmdd()));
+        assert!(!plan_archive.exists(), "plan.yaml must not have been archived on collision");
+        assert!(
+            dest_dir.is_dir() && fs::read_dir(&dest_dir).expect("read").next().is_none(),
+            "pre-existing collision dir must remain empty"
+        );
+    }
+
     // -- plan lock {acquire, release, status} (L2.E) ----------------------
 
     fn lock_path(project: &Project) -> PathBuf {

@@ -2662,16 +2662,26 @@ fn run_plan_archive(format: OutputFormat, force: bool) -> i32 {
     };
 
     match Plan::archive(&plan_path, &archive_dir, force) {
-        Ok(archived) => match format {
+        Ok((archived, archived_plans_dir)) => match format {
             OutputFormat::Json => {
                 emit_json(json!({
                     "archived": absolute_string(&archived),
+                    "archived_plans_dir": archived_plans_dir
+                        .as_deref()
+                        .map(absolute_string),
                     "plan": { "name": plan_name },
                 }));
                 EXIT_SUCCESS
             }
             OutputFormat::Text => {
-                println!("Archived plan to {}.", archived.display());
+                match archived_plans_dir {
+                    Some(dir) => println!(
+                        "Archived plan to {}. Working directory moved to {}.",
+                        archived.display(),
+                        dir.display()
+                    ),
+                    None => println!("Archived plan to {}.", archived.display()),
+                }
                 EXIT_SUCCESS
             }
         },
