@@ -61,10 +61,16 @@ pub const EXIT_VERSION_TOO_OLD: i32 = 3;
 ///   `specify-validate::serialize_report` helper with the same rule.
 /// - New read verb `specify change outcome <name>` (added in RFC-2 §1.1 /
 ///   L0.A1) shipped under the v2 contract.
+/// - Error variant identifiers surfaced as the `"error"` value in failure
+///   payloads are kebab-case too: `not_initialized` → `not-initialized`,
+///   `schema_resolution` → `schema-resolution`, `specify_version_too_old`
+///   → `specify-version-too-old`, `plan_transition` → `plan-transition`,
+///   `plan_has_outstanding_work` → `plan-has-outstanding-work`, and
+///   `driver_busy` → `driver-busy`. Single-word variants (`io`, `yaml`,
+///   `config`, `merge`, `lifecycle`, `validation`) were already kebab-safe
+///   and are unchanged.
 /// - No shape changes beyond the casing: key sets, nesting, and value
-///   types are frozen. Error variant identifiers (`io`, `yaml`,
-///   `plan_has_outstanding_work`, etc.) are values not keys and stay
-///   unchanged.
+///   types are frozen.
 const JSON_SCHEMA_VERSION: u64 = 2;
 
 #[derive(Parser)]
@@ -2571,7 +2577,7 @@ fn run_initiative_archive(format: OutputFormat, force: bool) -> i32 {
             match format {
                 OutputFormat::Json => {
                     emit_json(json!({
-                        "error": "plan_has_outstanding_work",
+                        "error": "plan-has-outstanding-work",
                         "entries": entries,
                         "exit-code": EXIT_GENERIC_FAILURE,
                     }));
@@ -2777,17 +2783,21 @@ fn emit_json(value: serde_json::Value) {
 }
 
 fn emit_json_error(err: &Error, code: i32) {
+    // Variant identifiers are rendered as kebab-case on the wire so the
+    // `error` value matches the kebab-everywhere convention of the v2
+    // JSON contract (RFC-2 §2). Single-word variants (`io`, `yaml`,
+    // `config`, `merge`, `lifecycle`, `validation`) are unchanged.
     let variant = match err {
-        Error::NotInitialized => "not_initialized",
-        Error::SchemaResolution(_) => "schema_resolution",
+        Error::NotInitialized => "not-initialized",
+        Error::SchemaResolution(_) => "schema-resolution",
         Error::Config(_) => "config",
         Error::Validation { .. } => "validation",
         Error::Merge(_) => "merge",
         Error::Lifecycle { .. } => "lifecycle",
-        Error::SpecifyVersionTooOld { .. } => "specify_version_too_old",
-        Error::PlanTransition { .. } => "plan_transition",
-        Error::PlanHasOutstandingWork { .. } => "plan_has_outstanding_work",
-        Error::DriverBusy { .. } => "driver_busy",
+        Error::SpecifyVersionTooOld { .. } => "specify-version-too-old",
+        Error::PlanTransition { .. } => "plan-transition",
+        Error::PlanHasOutstandingWork { .. } => "plan-has-outstanding-work",
+        Error::DriverBusy { .. } => "driver-busy",
         Error::Io(_) => "io",
         Error::Yaml(_) => "yaml",
     };

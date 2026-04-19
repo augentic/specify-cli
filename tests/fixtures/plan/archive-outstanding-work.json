@@ -2,7 +2,7 @@
   "entries": [
     "b"
   ],
-  "error": "plan_has_outstanding_work",
+  "error": "plan-has-outstanding-work",
   "exit-code": 1,
   "schema-version": 2
 }

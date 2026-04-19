@@ -110,7 +110,7 @@ fn version_too_old_exits_three_with_json_envelope() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
     assert_eq!(value["schema-version"], 2);
-    assert_eq!(value["error"], "specify_version_too_old");
+    assert_eq!(value["error"], "specify-version-too-old");
     assert_eq!(value["exit-code"], 3);
 }
 

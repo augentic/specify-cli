@@ -1365,7 +1365,7 @@ changes:
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
         assert_eq!(actual["schema-version"], 2);
-        assert_eq!(actual["error"], "plan_has_outstanding_work");
+        assert_eq!(actual["error"], "plan-has-outstanding-work");
         let entries = actual["entries"].as_array().expect("entries array");
         let names: Vec<&str> = entries.iter().map(|v| v.as_str().unwrap()).collect();
         assert_eq!(names, ["b"]);
@@ -1651,7 +1651,7 @@ changes: []
 
         let value: Value =
             serde_json::from_slice(&assert.get_output().stdout).expect("json stdout");
-        assert_eq!(value["error"], "driver_busy");
+        assert_eq!(value["error"], "driver-busy");
         assert_eq!(value["exit-code"], 1, "DriverBusy must surface the generic-failure exit code");
         let msg = value["message"].as_str().unwrap_or_default();
         assert!(
