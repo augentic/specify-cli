@@ -22,6 +22,7 @@
 //! - A successful `Commands::Validate` where `report.passed == false` →
 //!   `2` (even though no `Error` is produced).
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -36,8 +37,8 @@ use specify::{
     PlanLockAcquired, PlanLockReleased, PlanLockStamp, PlanLockState, PlanStatus,
     PlanValidationLevel, PlanValidationResult, ProjectConfig, Schema, SchemaSource, SpecType, Task,
     TouchedSpec, ValidationReport, ValidationResult, VersionMode, change_actions, conflict_check,
-    init, mark_complete, merge_change, parse_tasks, preview_change, serialize_report,
-    validate_change,
+    format_rfc3339, init, mark_complete, merge_change, parse_tasks, preview_change,
+    serialize_report, validate_change,
 };
 
 pub const EXIT_SUCCESS: i32 = 0;
@@ -48,7 +49,23 @@ pub const EXIT_VERSION_TOO_OLD: i32 = 3;
 /// JSON contract version emitted on every structured response. Bumping
 /// this field is a breaking change for skill authors — see RFC-1
 /// §"JSON Contract Versioning".
-const JSON_SCHEMA_VERSION: u64 = 1;
+///
+/// # v1 → v2 diff (RFC-2 §2)
+///
+/// - Every JSON key is now kebab-case. `schema_version` → `schema-version`,
+///   `change_dir` → `change-dir`, `defined_at` → `defined-at`, and so on for
+///   every snake-case key that was ever emitted by the CLI (see RFC-2 §2.1
+///   for the full rename table). Library-derived types were already kebab
+///   via `#[serde(rename_all = "kebab-case")]`; v2 aligns the hand-built
+///   `json!({...})` blocks in `src/main.rs` and the
+///   `specify-validate::serialize_report` helper with the same rule.
+/// - New read verb `specify change outcome <name>` (added in RFC-2 §1.1 /
+///   L0.A1) shipped under the v2 contract.
+/// - No shape changes beyond the casing: key sets, nesting, and value
+///   types are frozen. Error variant identifiers (`io`, `yaml`,
+///   `plan_has_outstanding_work`, etc.) are values not keys and stay
+///   unchanged.
+const JSON_SCHEMA_VERSION: u64 = 2;
 
 #[derive(Parser)]
 #[command(
@@ -136,14 +153,14 @@ enum Commands {
     },
 
     /// Manage the initiative-level plan at `.specify/plan.yaml`
-    Plan {
+    Initiative {
         #[command(subcommand)]
-        action: PlanAction,
+        action: InitiativeAction,
     },
 }
 
 #[derive(Subcommand)]
-enum PlanAction {
+enum InitiativeAction {
     /// Scaffold an empty .specify/plan.yaml
     Init {
         /// Kebab-case initiative name
@@ -205,7 +222,8 @@ enum PlanAction {
         /// Kebab-case change name
         name: String,
         /// Target status
-        target: PlanStatusArg,
+        #[arg(value_enum)]
+        target: PlanStatus,
         /// Free-text reason; only valid when transitioning to `failed`,
         /// `blocked`, or `skipped`.
         #[arg(long)]
@@ -258,29 +276,6 @@ enum LockAction {
     Status,
 }
 
-#[derive(Copy, Clone, ValueEnum)]
-enum PlanStatusArg {
-    Pending,
-    InProgress,
-    Done,
-    Blocked,
-    Failed,
-    Skipped,
-}
-
-impl From<PlanStatusArg> for PlanStatus {
-    fn from(value: PlanStatusArg) -> Self {
-        match value {
-            PlanStatusArg::Pending => PlanStatus::Pending,
-            PlanStatusArg::InProgress => PlanStatus::InProgress,
-            PlanStatusArg::Done => PlanStatus::Done,
-            PlanStatusArg::Blocked => PlanStatus::Blocked,
-            PlanStatusArg::Failed => PlanStatus::Failed,
-            PlanStatusArg::Skipped => PlanStatus::Skipped,
-        }
-    }
-}
-
 #[derive(Subcommand)]
 enum SpecAction {
     /// Show the merge operations that would be applied, without writing
@@ -317,43 +312,14 @@ enum SchemaAction {
     /// with completion status against a specific change)
     Pipeline {
         /// Pipeline phase to enumerate
-        phase: PhaseArg,
+        #[arg(value_enum)]
+        phase: Phase,
         /// Change directory; when supplied, each brief includes a
         /// `present` boolean reflecting whether its `generates`
         /// artifact exists under the directory
         #[arg(long)]
         change: Option<PathBuf>,
     },
-}
-
-#[derive(Copy, Clone, ValueEnum)]
-enum PhaseArg {
-    Plan,
-    Define,
-    Build,
-    Merge,
-}
-
-impl From<PhaseArg> for Phase {
-    fn from(value: PhaseArg) -> Self {
-        match value {
-            PhaseArg::Plan => Phase::Plan,
-            PhaseArg::Define => Phase::Define,
-            PhaseArg::Build => Phase::Build,
-            PhaseArg::Merge => Phase::Merge,
-        }
-    }
-}
-
-impl PhaseArg {
-    fn as_str(self) -> &'static str {
-        match self {
-            PhaseArg::Plan => "plan",
-            PhaseArg::Define => "define",
-            PhaseArg::Build => "build",
-            PhaseArg::Merge => "merge",
-        }
-    }
 }
 
 #[derive(Subcommand)]
@@ -381,7 +347,8 @@ enum ChangeAction {
         /// Change name
         name: String,
         /// Target status (`defined`, `building`, `complete`, `merged`, `dropped`, or `defining`)
-        target: LifecycleStatusArg,
+        #[arg(value_enum)]
+        target: LifecycleStatus,
     },
     /// Scan or overwrite `touched_specs` on `.metadata.yaml`
     TouchedSpecs {
@@ -417,9 +384,11 @@ enum ChangeAction {
         /// Change name
         name: String,
         /// Phase this outcome applies to
-        phase: PhaseArg,
+        #[arg(value_enum)]
+        phase: Phase,
         /// Outcome classification
-        outcome: OutcomeArg,
+        #[arg(value_enum)]
+        outcome: Outcome,
         /// Short explanation of what happened (shown in plan status-reason on non-success)
         #[arg(long)]
         summary: String,
@@ -427,14 +396,27 @@ enum ChangeAction {
         #[arg(long)]
         context: Option<String>,
     },
+    /// Read the stamped `.metadata.yaml.outcome` for a change
+    ///
+    /// Symmetric read verb for `phase-outcome`: emits the current
+    /// `outcome` subtree for consumers like `/spec:execute` that
+    /// classify a phase return without needing the rest of the
+    /// lifecycle-status payload. Exits 0 both when an outcome is
+    /// present and when the change is unstamped (`outcome: null`).
+    Outcome {
+        /// Change name
+        name: String,
+    },
     /// Append an entry to the change's `journal.yaml`
     JournalAppend {
         /// Change name
         name: String,
         /// Phase that produced the entry
-        phase: PhaseArg,
+        #[arg(value_enum)]
+        phase: Phase,
         /// Entry classification
-        kind: EntryKindArg,
+        #[arg(value_enum)]
+        kind: EntryKind,
         /// Short summary
         #[arg(long)]
         summary: String,
@@ -442,60 +424,6 @@ enum ChangeAction {
         #[arg(long)]
         context: Option<String>,
     },
-}
-
-#[derive(Copy, Clone, ValueEnum)]
-enum EntryKindArg {
-    Question,
-    Failure,
-    Recovery,
-}
-
-impl From<EntryKindArg> for EntryKind {
-    fn from(value: EntryKindArg) -> Self {
-        match value {
-            EntryKindArg::Question => EntryKind::Question,
-            EntryKindArg::Failure => EntryKind::Failure,
-            EntryKindArg::Recovery => EntryKind::Recovery,
-        }
-    }
-}
-
-impl EntryKindArg {
-    fn as_str(self) -> &'static str {
-        match self {
-            EntryKindArg::Question => "question",
-            EntryKindArg::Failure => "failure",
-            EntryKindArg::Recovery => "recovery",
-        }
-    }
-}
-
-#[derive(Copy, Clone, ValueEnum)]
-enum OutcomeArg {
-    Success,
-    Failure,
-    Deferred,
-}
-
-impl From<OutcomeArg> for Outcome {
-    fn from(value: OutcomeArg) -> Self {
-        match value {
-            OutcomeArg::Success => Outcome::Success,
-            OutcomeArg::Failure => Outcome::Failure,
-            OutcomeArg::Deferred => Outcome::Deferred,
-        }
-    }
-}
-
-impl OutcomeArg {
-    fn as_str(self) -> &'static str {
-        match self {
-            OutcomeArg::Success => "success",
-            OutcomeArg::Failure => "failure",
-            OutcomeArg::Deferred => "deferred",
-        }
-    }
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -514,29 +442,6 @@ impl From<CreateIfExistsArg> for CreateIfExists {
             CreateIfExistsArg::Fail => CreateIfExists::Fail,
             CreateIfExistsArg::Continue => CreateIfExists::Continue,
             CreateIfExistsArg::Restart => CreateIfExists::Restart,
-        }
-    }
-}
-
-#[derive(Copy, Clone, ValueEnum)]
-enum LifecycleStatusArg {
-    Defining,
-    Defined,
-    Building,
-    Complete,
-    Merged,
-    Dropped,
-}
-
-impl From<LifecycleStatusArg> for LifecycleStatus {
-    fn from(value: LifecycleStatusArg) -> Self {
-        match value {
-            LifecycleStatusArg::Defining => LifecycleStatus::Defining,
-            LifecycleStatusArg::Defined => LifecycleStatus::Defined,
-            LifecycleStatusArg::Building => LifecycleStatus::Building,
-            LifecycleStatusArg::Complete => LifecycleStatus::Complete,
-            LifecycleStatusArg::Merged => LifecycleStatus::Merged,
-            LifecycleStatusArg::Dropped => LifecycleStatus::Dropped,
         }
     }
 }
@@ -583,7 +488,7 @@ fn run(cli: Cli) -> i32 {
                 run_spec_conflict_check(cli.format, change_dir)
             }
         },
-        Commands::Plan { action } => run_plan(cli.format, action),
+        Commands::Initiative { action } => run_initiative(cli.format, action),
     }
 }
 
@@ -621,15 +526,15 @@ fn emit_init_result(format: OutputFormat, result: &InitResult) -> i32 {
     match format {
         OutputFormat::Json => {
             let value = json!({
-                "config_path": absolute_string(&result.config_path),
-                "schema_name": result.schema_name,
-                "cache_present": result.cache_present,
-                "directories_created": result.directories_created
+                "config-path": absolute_string(&result.config_path),
+                "schema-name": result.schema_name,
+                "cache-present": result.cache_present,
+                "directories-created": result.directories_created
                     .iter()
                     .map(|p| absolute_string(p))
                     .collect::<Vec<_>>(),
-                "scaffolded_rule_keys": result.scaffolded_rule_keys,
-                "specify_version": result.specify_version,
+                "scaffolded-rule-keys": result.scaffolded_rule_keys,
+                "specify-version": result.specify_version,
             });
             emit_json(value);
         }
@@ -660,12 +565,8 @@ fn emit_init_result(format: OutputFormat, result: &InitResult) -> i32 {
 // ---------------------------------------------------------------------------
 
 fn run_validate(format: OutputFormat, change_dir: PathBuf) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let pipeline = match PipelineView::load(&config.schema, &project_dir) {
@@ -716,12 +617,8 @@ fn format_result_line(r: &ValidationResult) -> String {
 // ---------------------------------------------------------------------------
 
 fn run_merge(format: OutputFormat, change_dir: PathBuf) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let specs_dir = ProjectConfig::specs_dir(&project_dir);
@@ -750,7 +647,7 @@ fn run_merge(format: OutputFormat, change_dir: PathBuf) -> i32 {
         OutputFormat::Json => {
             let specs: Vec<Value> = merged.iter().map(merge_entry_to_json).collect();
             emit_json(json!({
-                "merged_specs": specs,
+                "merged-specs": specs,
             }));
         }
         OutputFormat::Text => {
@@ -777,12 +674,8 @@ fn merge_entry_to_json(entry: &(String, MergeResult)) -> Value {
 // ---------------------------------------------------------------------------
 
 fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let specs_dir = ProjectConfig::specs_dir(&project_dir);
@@ -795,7 +688,7 @@ fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> i32 {
         OutputFormat::Json => {
             let specs: Vec<Value> = entries.iter().map(preview_entry_to_json).collect();
             emit_json(json!({
-                "change_dir": change_dir.display().to_string(),
+                "change-dir": change_dir.display().to_string(),
                 "specs": specs,
             }));
         }
@@ -823,7 +716,7 @@ fn preview_entry_to_json(entry: &MergeEntry) -> Value {
     let ops: Vec<Value> = entry.result.operations.iter().map(merge_op_to_json).collect();
     json!({
         "name": entry.spec_name,
-        "baseline_path": entry.baseline_path.display().to_string(),
+        "baseline-path": entry.baseline_path.display().to_string(),
         "operations": ops,
     })
 }
@@ -845,12 +738,8 @@ fn operation_label(op: &MergeOperation) -> String {
 }
 
 fn run_spec_conflict_check(format: OutputFormat, change_dir: PathBuf) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let specs_dir = ProjectConfig::specs_dir(&project_dir);
@@ -863,7 +752,7 @@ fn run_spec_conflict_check(format: OutputFormat, change_dir: PathBuf) -> i32 {
         OutputFormat::Json => {
             let items: Vec<Value> = conflicts.iter().map(baseline_conflict_to_json).collect();
             emit_json(json!({
-                "change_dir": change_dir.display().to_string(),
+                "change-dir": change_dir.display().to_string(),
                 "conflicts": items,
             }));
         }
@@ -888,8 +777,8 @@ fn run_spec_conflict_check(format: OutputFormat, change_dir: PathBuf) -> i32 {
 fn baseline_conflict_to_json(c: &BaselineConflict) -> Value {
     json!({
         "capability": c.capability,
-        "defined_at": c.defined_at,
-        "baseline_modified_at": c.baseline_modified_at.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        "defined-at": c.defined_at,
+        "baseline-modified-at": c.baseline_modified_at.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
     })
 }
 
@@ -917,12 +806,12 @@ fn merge_op_to_json(op: &MergeOperation) -> Value {
         } => json!({
             "kind": "renamed",
             "id": id,
-            "old_name": old_name,
-            "new_name": new_name,
+            "old-name": old_name,
+            "new-name": new_name,
         }),
         MergeOperation::CreatedBaseline { requirement_count } => json!({
             "kind": "created_baseline",
-            "requirement_count": requirement_count,
+            "requirement-count": requirement_count,
         }),
     }
 }
@@ -968,12 +857,8 @@ fn summarise_operations(ops: &[MergeOperation]) -> String {
 // ---------------------------------------------------------------------------
 
 fn run_status(format: OutputFormat, change: Option<String>) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let pipeline = match PipelineView::load(&config.schema, &project_dir) {
@@ -1145,12 +1030,8 @@ fn print_status_text(entries: &[StatusEntry]) {
 // ---------------------------------------------------------------------------
 
 fn run_task_progress(format: OutputFormat, change_dir: PathBuf) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let tasks_path = match resolve_tasks_path(&project_dir, &change_dir) {
@@ -1196,17 +1077,13 @@ fn task_to_json(t: &Task) -> Value {
         "number": t.number,
         "description": t.description,
         "complete": t.complete,
-        "skill_directive": skill,
+        "skill-directive": skill,
     })
 }
 
 fn run_task_mark(format: OutputFormat, change_dir: PathBuf, task_number: String) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let tasks_path = match resolve_tasks_path(&project_dir, &change_dir) {
@@ -1230,7 +1107,7 @@ fn run_task_mark(format: OutputFormat, change_dir: PathBuf, task_number: String)
         OutputFormat::Json => {
             emit_json(json!({
                 "marked": task_number,
-                "new_content_path": tasks_path.display().to_string(),
+                "new-content-path": tasks_path.display().to_string(),
                 "idempotent": idempotent,
             }));
         }
@@ -1313,8 +1190,8 @@ fn run_schema_resolve(format: OutputFormat, schema_value: String, project_dir: P
 
     match format {
         OutputFormat::Json => emit_json(json!({
-            "schema_value": schema_value,
-            "resolved_path": path.display().to_string(),
+            "schema-value": schema_value,
+            "resolved-path": path.display().to_string(),
             "source": source,
         })),
         OutputFormat::Text => println!("{}", path.display()),
@@ -1322,13 +1199,9 @@ fn run_schema_resolve(format: OutputFormat, schema_value: String, project_dir: P
     EXIT_SUCCESS
 }
 
-fn run_schema_pipeline(format: OutputFormat, phase_arg: PhaseArg, change: Option<PathBuf>) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+fn run_schema_pipeline(format: OutputFormat, phase: Phase, change: Option<PathBuf>) -> i32 {
+    let (project_dir, config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let pipeline = match PipelineView::load(&config.schema, &project_dir) {
@@ -1336,7 +1209,6 @@ fn run_schema_pipeline(format: OutputFormat, phase_arg: PhaseArg, change: Option
         Err(err) => return emit_error(format, &err),
     };
 
-    let phase: Phase = phase_arg.into();
     let order = match pipeline.topo_order(phase) {
         Ok(v) => v,
         Err(err) => return emit_error(format, &err),
@@ -1361,13 +1233,13 @@ fn run_schema_pipeline(format: OutputFormat, phase_arg: PhaseArg, change: Option
                 })
                 .collect();
             emit_json(json!({
-                "phase": phase_arg.as_str(),
+                "phase": phase_label(phase),
                 "change": change.as_ref().map(|p| p.display().to_string()),
                 "briefs": briefs,
             }));
         }
         OutputFormat::Text => {
-            println!("phase: {}", phase_arg.as_str());
+            println!("phase: {}", phase_label(phase));
             for b in &order {
                 let present_label = completion
                     .as_ref()
@@ -1434,7 +1306,7 @@ fn validation_result_to_json(r: &ValidationResult) -> Value {
     match r {
         ValidationResult::Pass { rule_id, rule } => json!({
             "status": "pass",
-            "rule_id": rule_id,
+            "rule-id": rule_id,
             "rule": rule,
         }),
         ValidationResult::Fail {
@@ -1443,7 +1315,7 @@ fn validation_result_to_json(r: &ValidationResult) -> Value {
             detail,
         } => json!({
             "status": "fail",
-            "rule_id": rule_id,
+            "rule-id": rule_id,
             "rule": rule,
             "detail": detail,
         }),
@@ -1453,7 +1325,7 @@ fn validation_result_to_json(r: &ValidationResult) -> Value {
             reason,
         } => json!({
             "status": "deferred",
-            "rule_id": rule_id,
+            "rule-id": rule_id,
             "rule": rule,
             "reason": reason,
         }),
@@ -1473,9 +1345,7 @@ fn run_change(format: OutputFormat, action: ChangeAction) -> i32 {
         } => run_change_create(format, name, schema, if_exists.into()),
         ChangeAction::List => run_status(format, None),
         ChangeAction::Status { name } => run_status(format, Some(name)),
-        ChangeAction::Transition { name, target } => {
-            run_change_transition(format, name, target.into())
-        }
+        ChangeAction::Transition { name, target } => run_change_transition(format, name, target),
         ChangeAction::TouchedSpecs { name, scan, set } => {
             run_change_touched_specs(format, name, scan, set)
         }
@@ -1489,6 +1359,7 @@ fn run_change(format: OutputFormat, action: ChangeAction) -> i32 {
             summary,
             context,
         } => run_change_phase_outcome(format, name, phase, outcome, summary, context),
+        ChangeAction::Outcome { name } => run_change_outcome(format, name),
         ChangeAction::JournalAppend {
             name,
             phase,
@@ -1502,12 +1373,8 @@ fn run_change(format: OutputFormat, action: ChangeAction) -> i32 {
 fn run_change_create(
     format: OutputFormat, name: String, schema: Option<String>, if_exists: CreateIfExists,
 ) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let schema_value = schema.unwrap_or_else(|| config.schema.clone());
@@ -1529,7 +1396,7 @@ fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> i32 {
     match format {
         OutputFormat::Json => emit_json(json!({
             "name": outcome.change_dir.file_name().and_then(|n| n.to_str()).unwrap_or(""),
-            "change_dir": outcome.change_dir.display().to_string(),
+            "change-dir": outcome.change_dir.display().to_string(),
             "status": format!("{:?}", outcome.metadata.status).to_lowercase(),
             "schema": outcome.metadata.schema,
             "created": outcome.created,
@@ -1552,12 +1419,8 @@ fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> i32 {
 }
 
 fn run_change_transition(format: OutputFormat, name: String, target: LifecycleStatus) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
@@ -1570,11 +1433,11 @@ fn run_change_transition(format: OutputFormat, name: String, target: LifecycleSt
         OutputFormat::Json => emit_json(json!({
             "name": name,
             "status": format!("{:?}", metadata.status).to_lowercase(),
-            "defined_at": metadata.defined_at,
-            "build_started_at": metadata.build_started_at,
-            "completed_at": metadata.completed_at,
-            "merged_at": metadata.merged_at,
-            "dropped_at": metadata.dropped_at,
+            "defined-at": metadata.defined_at,
+            "build-started-at": metadata.build_started_at,
+            "completed-at": metadata.completed_at,
+            "merged-at": metadata.merged_at,
+            "dropped-at": metadata.dropped_at,
         })),
         OutputFormat::Text => {
             println!("{name}: status = {}", format!("{:?}", metadata.status).to_lowercase());
@@ -1586,12 +1449,8 @@ fn run_change_transition(format: OutputFormat, name: String, target: LifecycleSt
 fn run_change_touched_specs(
     format: OutputFormat, name: String, scan: bool, set: Vec<String>,
 ) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
@@ -1630,7 +1489,7 @@ fn run_change_touched_specs(
     match format {
         OutputFormat::Json => emit_json(json!({
             "name": name,
-            "touched_specs": touched_specs_to_json(&entries),
+            "touched-specs": touched_specs_to_json(&entries),
         })),
         OutputFormat::Text => {
             if entries.is_empty() {
@@ -1673,12 +1532,8 @@ fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
 }
 
 fn run_change_overlap(format: OutputFormat, name: String) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let changes_dir = ProjectConfig::changes_dir(&project_dir);
@@ -1712,12 +1567,8 @@ fn run_change_overlap(format: OutputFormat, name: String) -> i32 {
 }
 
 fn run_change_archive(format: OutputFormat, name: String) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
@@ -1730,7 +1581,7 @@ fn run_change_archive(format: OutputFormat, name: String) -> i32 {
     match format {
         OutputFormat::Json => emit_json(json!({
             "name": name,
-            "archive_path": target.display().to_string(),
+            "archive-path": target.display().to_string(),
         })),
         OutputFormat::Text => {
             println!("{name}: archived to {}", target.display());
@@ -1740,12 +1591,8 @@ fn run_change_archive(format: OutputFormat, name: String) -> i32 {
 }
 
 fn run_change_drop(format: OutputFormat, name: String, reason: Option<String>) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
@@ -1760,8 +1607,8 @@ fn run_change_drop(format: OutputFormat, name: String, reason: Option<String>) -
         OutputFormat::Json => emit_json(json!({
             "name": name,
             "status": format!("{:?}", metadata.status).to_lowercase(),
-            "archive_path": archive_path.display().to_string(),
-            "drop_reason": metadata.drop_reason,
+            "archive-path": archive_path.display().to_string(),
+            "drop-reason": metadata.drop_reason,
         })),
         OutputFormat::Text => {
             println!("{name}: dropped and archived to {}", archive_path.display());
@@ -1774,15 +1621,11 @@ fn run_change_drop(format: OutputFormat, name: String, reason: Option<String>) -
 }
 
 fn run_change_phase_outcome(
-    format: OutputFormat, name: String, phase: PhaseArg, outcome: OutcomeArg, summary: String,
+    format: OutputFormat, name: String, phase: Phase, outcome: Outcome, summary: String,
     context: Option<String>,
 ) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
@@ -1793,8 +1636,8 @@ fn run_change_phase_outcome(
 
     let metadata = match change_actions::phase_outcome(
         &change_dir,
-        phase.into(),
-        outcome.into(),
+        phase,
+        outcome,
         &summary,
         context.as_deref(),
         Utc::now(),
@@ -1807,8 +1650,8 @@ fn run_change_phase_outcome(
         .outcome
         .as_ref()
         .expect("phase_outcome action must set metadata.outcome on success");
-    let phase_str = phase.as_str();
-    let outcome_str = outcome.as_str();
+    let phase_str = phase_label(phase);
+    let outcome_str = outcome_label(outcome);
 
     match format {
         OutputFormat::Json => emit_json(json!({
@@ -1824,16 +1667,16 @@ fn run_change_phase_outcome(
     EXIT_SUCCESS
 }
 
-fn run_change_journal_append(
-    format: OutputFormat, name: String, phase: PhaseArg, kind: EntryKindArg, summary: String,
-    context: Option<String>,
-) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+/// Report the stamped `.metadata.yaml.outcome` for `name`.
+///
+/// Symmetric with [`run_change_phase_outcome`] (the writer): this is
+/// the read verb `/spec:execute` consumes after a phase returns.
+/// Emits `"outcome": null` when the change exists but nothing has
+/// been stamped; exits `EXIT_SUCCESS` in both cases — an unstamped
+/// change is not an error, just an absence.
+fn run_change_outcome(format: OutputFormat, name: String) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
@@ -1842,11 +1685,83 @@ fn run_change_journal_append(
         return emit_error(format, &err);
     }
 
-    let timestamp = Utc::now().to_rfc3339();
+    let metadata = match ChangeMetadata::load(&change_dir) {
+        Ok(m) => m,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    match format {
+        OutputFormat::Json => {
+            // Build the outcome payload explicitly so `context` is
+            // emitted as `null` when absent (the canonical shape
+            // `/spec:execute` pattern-matches on). `PhaseOutcome`'s
+            // serde derive skips `None` contexts on disk; the CLI
+            // contract is the stable null.
+            let outcome_json = match &metadata.outcome {
+                Some(o) => json!({
+                    "phase": phase_label(o.phase),
+                    "outcome": outcome_label(o.outcome),
+                    "at": o.at,
+                    "summary": o.summary,
+                    "context": o.context.clone().map(Value::from).unwrap_or(Value::Null),
+                }),
+                None => Value::Null,
+            };
+            emit_json(json!({
+                "name": name,
+                "outcome": outcome_json,
+            }));
+        }
+        OutputFormat::Text => match &metadata.outcome {
+            Some(o) => {
+                let phase = phase_label(o.phase);
+                let outcome = outcome_label(o.outcome);
+                println!("{name}: {phase}/{outcome} — {}", o.summary);
+            }
+            None => {
+                println!("{name}: no outcome stamped");
+            }
+        },
+    }
+    EXIT_SUCCESS
+}
+
+fn phase_label(phase: Phase) -> &'static str {
+    match phase {
+        Phase::Plan => "plan",
+        Phase::Define => "define",
+        Phase::Build => "build",
+        Phase::Merge => "merge",
+    }
+}
+
+fn outcome_label(outcome: Outcome) -> &'static str {
+    match outcome {
+        Outcome::Success => "success",
+        Outcome::Failure => "failure",
+        Outcome::Deferred => "deferred",
+    }
+}
+
+fn run_change_journal_append(
+    format: OutputFormat, name: String, phase: Phase, kind: EntryKind, summary: String,
+    context: Option<String>,
+) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
+        let err = Error::Config(format!("change '{name}' not found at {}", change_dir.display()));
+        return emit_error(format, &err);
+    }
+
+    let timestamp = format_rfc3339(Utc::now());
     let entry = JournalEntry {
         timestamp: timestamp.clone(),
-        step: phase.into(),
-        kind: kind.into(),
+        step: phase,
+        r#type: kind,
         summary: summary.clone(),
         context: context.clone(),
     };
@@ -1855,8 +1770,8 @@ fn run_change_journal_append(
         return emit_error(format, &err);
     }
 
-    let phase_str = phase.as_str();
-    let kind_str = kind.as_str();
+    let phase_str = phase_label(phase);
+    let kind_str = entry_kind_label(kind);
 
     match format {
         OutputFormat::Json => emit_json(json!({
@@ -1872,12 +1787,20 @@ fn run_change_journal_append(
     EXIT_SUCCESS
 }
 
+fn entry_kind_label(kind: EntryKind) -> &'static str {
+    match kind {
+        EntryKind::Question => "question",
+        EntryKind::Failure => "failure",
+        EntryKind::Recovery => "recovery",
+    }
+}
+
 fn overlap_to_json(o: &Overlap) -> Value {
     json!({
         "capability": o.capability,
-        "other_change": o.other_change,
-        "our_spec_type": spec_type_label(o.our_spec_type),
-        "other_spec_type": spec_type_label(o.other_spec_type),
+        "other-change": o.other_change,
+        "our-spec-type": spec_type_label(o.our_spec_type),
+        "other-spec-type": spec_type_label(o.other_spec_type),
     })
 }
 
@@ -1901,37 +1824,37 @@ fn spec_type_label(t: SpecType) -> &'static str {
 }
 
 // ---------------------------------------------------------------------------
-// plan subcommand tree (read-only: validate, next, status)
+// initiative subcommand tree (read-only: validate, next, status)
 // ---------------------------------------------------------------------------
 
-fn run_plan(format: OutputFormat, action: PlanAction) -> i32 {
+fn run_initiative(format: OutputFormat, action: InitiativeAction) -> i32 {
     match action {
-        PlanAction::Init { name, sources } => run_plan_init(format, name, sources),
-        PlanAction::Validate => run_plan_validate(format),
-        PlanAction::Next => run_plan_next(format),
-        PlanAction::Status => run_plan_status(format),
-        PlanAction::Create {
+        InitiativeAction::Init { name, sources } => run_initiative_init(format, name, sources),
+        InitiativeAction::Validate => run_initiative_validate(format),
+        InitiativeAction::Next => run_initiative_next(format),
+        InitiativeAction::Status => run_initiative_status(format),
+        InitiativeAction::Create {
             name,
             depends_on,
             affects,
             sources,
             description,
-        } => run_plan_create(format, name, depends_on, affects, sources, description),
-        PlanAction::Amend {
+        } => run_initiative_create(format, name, depends_on, affects, sources, description),
+        InitiativeAction::Amend {
             name,
             depends_on,
             affects,
             sources,
             description,
-        } => run_plan_amend(format, name, depends_on, affects, sources, description),
-        PlanAction::Transition { name, target, reason } => {
-            run_plan_transition(format, name, target.into(), reason)
+        } => run_initiative_amend(format, name, depends_on, affects, sources, description),
+        InitiativeAction::Transition { name, target, reason } => {
+            run_initiative_transition(format, name, target, reason)
         }
-        PlanAction::Archive { force } => run_plan_archive(format, force),
-        PlanAction::Lock { action } => match action {
-            LockAction::Acquire { pid } => run_plan_lock_acquire(format, pid),
-            LockAction::Release { pid } => run_plan_lock_release(format, pid),
-            LockAction::Status => run_plan_lock_status(format),
+        InitiativeAction::Archive { force } => run_initiative_archive(format, force),
+        InitiativeAction::Lock { action } => match action {
+            LockAction::Acquire { pid } => run_initiative_lock_acquire(format, pid),
+            LockAction::Release { pid } => run_initiative_lock_release(format, pid),
+            LockAction::Status => run_initiative_lock_status(format),
         },
     }
 }
@@ -1983,20 +1906,16 @@ fn parse_source_kv(s: &str) -> Result<(String, String), String> {
     Ok((k.to_string(), v.to_string()))
 }
 
-fn run_plan_init(format: OutputFormat, name: String, sources: Vec<(String, String)>) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+fn run_initiative_init(format: OutputFormat, name: String, sources: Vec<(String, String)>) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
 
     let plan_path = plan_file_path(&project_dir);
     if plan_path.exists() {
         let err = Error::Config(format!(
-            "plan already exists at {}; run `specify plan archive` first",
+            "plan already exists at {}; run `specify initiative archive` first",
             plan_path.display()
         ));
         return emit_error(format, &err);
@@ -2036,13 +1955,9 @@ fn run_plan_init(format: OutputFormat, name: String, sources: Vec<(String, Strin
     EXIT_SUCCESS
 }
 
-fn run_plan_validate(format: OutputFormat) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+fn run_initiative_validate(format: OutputFormat) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let plan_path = match require_plan_file(&project_dir) {
@@ -2106,29 +2021,25 @@ fn print_plan_validation_line(r: &PlanValidationResult) {
     println!("{level} {:<32} {:<24} {}", r.code, entry_col, r.message);
 }
 
-/// Emit the stable "go run `specify plan validate`" pointer when
-/// `plan next` or `plan status` is asked to operate on a structurally
-/// broken plan.
+/// Emit the stable "go run `specify initiative validate`" pointer when
+/// `initiative next` or `initiative status` is asked to operate on a
+/// structurally broken plan.
 fn emit_plan_structural_error(format: OutputFormat) -> i32 {
-    let msg = "plan has structural errors; run 'specify plan validate' for detail";
+    let msg = "plan has structural errors; run 'specify initiative validate' for detail";
     match format {
         OutputFormat::Json => emit_json(json!({
             "error": "validation",
             "message": msg,
-            "exit_code": EXIT_VALIDATION_FAILED,
+            "exit-code": EXIT_VALIDATION_FAILED,
         })),
         OutputFormat::Text => eprintln!("error: {msg}"),
     }
     EXIT_VALIDATION_FAILED
 }
 
-fn run_plan_next(format: OutputFormat) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+fn run_initiative_next(format: OutputFormat) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let plan_path = match require_plan_file(&project_dir) {
@@ -2196,13 +2107,9 @@ fn run_plan_next(format: OutputFormat) -> i32 {
     EXIT_SUCCESS
 }
 
-fn run_plan_status(format: OutputFormat) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+fn run_initiative_status(format: OutputFormat) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let plan_path = match require_plan_file(&project_dir) {
@@ -2232,12 +2139,12 @@ fn run_plan_status(format: OutputFormat) -> i32 {
             match format {
                 OutputFormat::Json => {
                     eprintln!(
-                        "warning: dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
+                        "warning: dependency cycle detected — falling back to list order. Run 'specify initiative validate' for detail."
                     );
                 }
                 OutputFormat::Text => {
                     println!(
-                        "⚠ dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
+                        "⚠ dependency cycle detected — falling back to list order. Run 'specify initiative validate' for detail."
                     );
                 }
             }
@@ -2245,7 +2152,11 @@ fn run_plan_status(format: OutputFormat) -> i32 {
         }
     };
 
-    let counts = count_statuses(&plan.changes);
+    let mut counts: BTreeMap<PlanStatus, usize> = PlanStatus::ALL.iter().map(|&s| (s, 0)).collect();
+    for entry in &plan.changes {
+        *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
+    }
+    let total: usize = counts.values().sum();
 
     let active = plan.changes.iter().find(|c| c.status == PlanStatus::InProgress);
     let active_lifecycle =
@@ -2304,13 +2215,13 @@ fn run_plan_status(format: OutputFormat) -> i32 {
                     "path": plan_path.display().to_string(),
                 },
                 "counts": {
-                    "done": counts.done,
-                    "in-progress": counts.in_progress,
-                    "pending": counts.pending,
-                    "blocked": counts.blocked,
-                    "failed": counts.failed,
-                    "skipped": counts.skipped,
-                    "total": counts.total(),
+                    "done": counts[&PlanStatus::Done],
+                    "in-progress": counts[&PlanStatus::InProgress],
+                    "pending": counts[&PlanStatus::Pending],
+                    "blocked": counts[&PlanStatus::Blocked],
+                    "failed": counts[&PlanStatus::Failed],
+                    "skipped": counts[&PlanStatus::Skipped],
+                    "total": total,
                 },
                 "order": order_label,
                 "entries": entries,
@@ -2321,55 +2232,32 @@ fn run_plan_status(format: OutputFormat) -> i32 {
                 "impact": impact_json,
             }));
         }
-        OutputFormat::Text => print_plan_status_text(
-            &plan,
-            &counts,
+        OutputFormat::Text => print_plan_status_text(&PlanStatusView {
+            plan: &plan,
+            counts: &counts,
             active,
-            active_lifecycle.as_deref(),
-            &blocked,
-            &failed,
+            active_lifecycle: active_lifecycle.as_deref(),
+            blocked: &blocked,
+            failed: &failed,
             next_eligible,
-            &impact,
-        ),
+            impact: &impact,
+        }),
     }
     EXIT_SUCCESS
 }
 
-struct StatusCounts {
-    done: usize,
-    in_progress: usize,
-    pending: usize,
-    blocked: usize,
-    failed: usize,
-    skipped: usize,
-}
-
-impl StatusCounts {
-    fn total(&self) -> usize {
-        self.done + self.in_progress + self.pending + self.blocked + self.failed + self.skipped
-    }
-}
-
-fn count_statuses(changes: &[PlanChange]) -> StatusCounts {
-    let mut c = StatusCounts {
-        done: 0,
-        in_progress: 0,
-        pending: 0,
-        blocked: 0,
-        failed: 0,
-        skipped: 0,
-    };
-    for entry in changes {
-        match entry.status {
-            PlanStatus::Done => c.done += 1,
-            PlanStatus::InProgress => c.in_progress += 1,
-            PlanStatus::Pending => c.pending += 1,
-            PlanStatus::Blocked => c.blocked += 1,
-            PlanStatus::Failed => c.failed += 1,
-            PlanStatus::Skipped => c.skipped += 1,
-        }
-    }
-    c
+/// All the slices `print_plan_status_text` needs. Bundled so the
+/// function takes one `&PlanStatusView` instead of eight positional
+/// arguments.
+struct PlanStatusView<'a> {
+    plan: &'a Plan,
+    counts: &'a BTreeMap<PlanStatus, usize>,
+    active: Option<&'a PlanChange>,
+    active_lifecycle: Option<&'a str>,
+    blocked: &'a [&'a PlanChange],
+    failed: &'a [&'a PlanChange],
+    next_eligible: Option<&'a PlanChange>,
+    impact: &'a [(String, Vec<String>)],
 }
 
 /// Best-effort load of `<change_dir>/.metadata.yaml` to surface the
@@ -2421,71 +2309,66 @@ fn compute_impact(plan: &Plan) -> Vec<(String, Vec<String>)> {
     out
 }
 
-#[allow(clippy::too_many_arguments)]
-fn print_plan_status_text(
-    plan: &Plan, counts: &StatusCounts, active: Option<&PlanChange>,
-    active_lifecycle: Option<&str>, blocked: &[&PlanChange], failed: &[&PlanChange],
-    next_eligible: Option<&PlanChange>, impact: &[(String, Vec<String>)],
-) {
-    println!("## Initiative: {}", plan.name);
+fn print_plan_status_text(view: &PlanStatusView) {
+    let counts = view.counts;
+    let total: usize = counts.values().sum();
+    println!("## Initiative: {}", view.plan.name);
     println!();
     println!();
     println!(
-        "Progress: done {}, in-progress {}, pending {}, blocked {}, failed {}, skipped {} (total {})",
-        counts.done,
-        counts.in_progress,
-        counts.pending,
-        counts.blocked,
-        counts.failed,
-        counts.skipped,
-        counts.total(),
+        "Progress: done {}, in-progress {}, pending {}, blocked {}, failed {}, skipped {} (total {total})",
+        counts[&PlanStatus::Done],
+        counts[&PlanStatus::InProgress],
+        counts[&PlanStatus::Pending],
+        counts[&PlanStatus::Blocked],
+        counts[&PlanStatus::Failed],
+        counts[&PlanStatus::Skipped],
     );
 
-    if let Some(a) = active {
-        let lifecycle_label = active_lifecycle.unwrap_or("<no change dir yet>");
+    if let Some(a) = view.active {
+        let lifecycle_label = view.active_lifecycle.unwrap_or("<no change dir yet>");
         println!();
         println!("In progress: {} (lifecycle: {lifecycle_label})", a.name);
     }
 
-    if !blocked.is_empty() {
+    if !view.blocked.is_empty() {
         println!();
         println!("Blocked:");
-        for c in blocked {
+        for c in view.blocked {
             let reason = c.status_reason.as_deref().unwrap_or("-");
             println!("  - {} (reason: {reason})", c.name);
         }
     }
 
-    if !failed.is_empty() {
+    if !view.failed.is_empty() {
         println!();
         println!("Failed:");
-        for c in failed {
+        for c in view.failed {
             let reason = c.status_reason.as_deref().unwrap_or("-");
             println!("  - {} (reason: {reason})", c.name);
         }
     }
 
     println!();
-    match next_eligible {
+    match view.next_eligible {
         Some(e) => println!("Next eligible: {}", e.name),
         None => println!("Next eligible: — (waiting on dependencies / all done)"),
     }
 
-    if !impact.is_empty() {
+    if !view.impact.is_empty() {
         println!();
-        for (done, refs) in impact {
+        for (done, refs) in view.impact {
             println!("Impact: {done} is referenced by pending changes: [{}]", refs.join(", "));
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// plan subcommand tree (write-side: create, amend, transition)
+// initiative subcommand tree (write-side: create, amend, transition)
 // ---------------------------------------------------------------------------
 
 fn load_plan_for_write(format: OutputFormat) -> Result<(PathBuf, PathBuf, Plan), i32> {
-    let project_dir = current_dir().map_err(|err| emit_error(format, &err))?;
-    ProjectConfig::load(&project_dir).map_err(|err| emit_error(format, &err))?;
+    let (project_dir, _config) = require_project().map_err(|err| emit_error(format, &err))?;
     let plan_path = require_plan_file(&project_dir).map_err(|err| emit_error(format, &err))?;
     let plan = Plan::load(&plan_path).map_err(|err| emit_error(format, &err))?;
     Ok((project_dir, plan_path, plan))
@@ -2505,7 +2388,7 @@ fn plan_change_entry_json(entry: &PlanChange) -> Value {
     serde_json::to_value(entry).expect("PlanChange serialises as JSON")
 }
 
-fn run_plan_create(
+fn run_initiative_create(
     format: OutputFormat, name: String, depends_on: Vec<String>, affects: Vec<String>,
     sources: Vec<String>, description: Option<String>,
 ) -> i32 {
@@ -2548,7 +2431,7 @@ fn run_plan_create(
     EXIT_SUCCESS
 }
 
-fn run_plan_amend(
+fn run_initiative_amend(
     format: OutputFormat, name: String, depends_on: Option<Vec<String>>,
     affects: Option<Vec<String>>, sources: Option<Vec<String>>, description: Option<String>,
 ) -> i32 {
@@ -2592,7 +2475,7 @@ fn run_plan_amend(
     EXIT_SUCCESS
 }
 
-fn run_plan_transition(
+fn run_initiative_transition(
     format: OutputFormat, name: String, target: PlanStatus, reason: Option<String>,
 ) -> i32 {
     let (_project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
@@ -2640,13 +2523,9 @@ fn run_plan_transition(
 // plan archive
 // ---------------------------------------------------------------------------
 
-fn run_plan_archive(format: OutputFormat, force: bool) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+fn run_initiative_archive(format: OutputFormat, force: bool) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let plan_path = project_dir.join(".specify/plan.yaml");
@@ -2669,7 +2548,7 @@ fn run_plan_archive(format: OutputFormat, force: bool) -> i32 {
             OutputFormat::Json => {
                 emit_json(json!({
                     "archived": absolute_string(&archived),
-                    "archived_plans_dir": archived_plans_dir
+                    "archived-plans-dir": archived_plans_dir
                         .as_deref()
                         .map(absolute_string),
                     "plan": { "name": plan_name },
@@ -2694,7 +2573,7 @@ fn run_plan_archive(format: OutputFormat, force: bool) -> i32 {
                     emit_json(json!({
                         "error": "plan_has_outstanding_work",
                         "entries": entries,
-                        "exit_code": EXIT_GENERIC_FAILURE,
+                        "exit-code": EXIT_GENERIC_FAILURE,
                     }));
                 }
                 OutputFormat::Text => {
@@ -2714,13 +2593,9 @@ fn run_plan_archive(format: OutputFormat, force: bool) -> i32 {
 // plan lock {acquire, release, status}
 // ---------------------------------------------------------------------------
 
-fn run_plan_lock_acquire(format: OutputFormat, pid: Option<u32>) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+fn run_initiative_lock_acquire(format: OutputFormat, pid: Option<u32>) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let our_pid = pid.unwrap_or_else(std::process::id);
@@ -2753,13 +2628,9 @@ fn emit_plan_lock_acquired(format: OutputFormat, acquired: &PlanLockAcquired) ->
     EXIT_SUCCESS
 }
 
-fn run_plan_lock_release(format: OutputFormat, pid: Option<u32>) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+fn run_initiative_lock_release(format: OutputFormat, pid: Option<u32>) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let our_pid = pid.unwrap_or_else(std::process::id);
@@ -2816,13 +2687,9 @@ fn emit_plan_lock_released(format: OutputFormat, our_pid: u32, outcome: &PlanLoc
     EXIT_SUCCESS
 }
 
-fn run_plan_lock_status(format: OutputFormat) -> i32 {
-    let project_dir = match current_dir() {
-        Ok(dir) => dir,
-        Err(err) => return emit_error(format, &err),
-    };
-    let _config = match ProjectConfig::load(&project_dir) {
-        Ok(cfg) => cfg,
+fn run_initiative_lock_status(format: OutputFormat) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     match PlanLockStamp::status(&project_dir) {
@@ -2864,6 +2731,16 @@ fn current_dir() -> Result<PathBuf, Error> {
     std::env::current_dir().map_err(Error::Io)
 }
 
+/// Load `.specify/project.yaml` from the current directory, running
+/// the CLI version-floor check in the process. Every subcommand that
+/// touches `.specify/` routes through this so the error shape for
+/// "not initialised" / "CLI too old" is uniform.
+fn require_project() -> Result<(PathBuf, ProjectConfig), Error> {
+    let project_dir = current_dir()?;
+    let config = ProjectConfig::load(&project_dir)?;
+    Ok((project_dir, config))
+}
+
 fn emit_error(format: OutputFormat, err: &Error) -> i32 {
     let code = exit_code_for(err);
     match format {
@@ -2885,12 +2762,12 @@ fn exit_code_for(err: &Error) -> i32 {
     }
 }
 
-/// Serialise a JSON payload with `schema_version` automatically set on
+/// Serialise a JSON payload with `schema-version` automatically set on
 /// object-shaped responses.
 fn emit_json(value: serde_json::Value) {
     let wrapped = match value {
         serde_json::Value::Object(mut map) => {
-            map.entry("schema_version".to_string())
+            map.entry("schema-version".to_string())
                 .or_insert(serde_json::Value::from(JSON_SCHEMA_VERSION));
             serde_json::Value::Object(map)
         }
@@ -2917,7 +2794,7 @@ fn emit_json_error(err: &Error, code: i32) {
     emit_json(json!({
         "error": variant,
         "message": err.to_string(),
-        "exit_code": code,
+        "exit-code": code,
     }));
 }
 

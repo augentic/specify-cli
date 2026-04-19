@@ -216,6 +216,36 @@ fn parse_stdout(stdout: &[u8], root: &Path) -> Value {
     value
 }
 
+/// Replace any RFC3339 `YYYY-MM-DDTHH:MM:SS(Z|±HH:MM)` timestamp in JSON
+/// strings with the placeholder `<ISO8601>` so goldens stay stable
+/// across test runs. Mirrors `initiative.rs::strip_date_stamps` for
+/// the timestamp case.
+fn strip_iso8601(value: &mut Value) {
+    let re = regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})")
+        .expect("regex compiles");
+    fn visit(re: &regex::Regex, v: &mut Value) {
+        match v {
+            Value::String(s) => {
+                if re.is_match(s) {
+                    *s = re.replace_all(s, "<ISO8601>").into_owned();
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    visit(re, item);
+                }
+            }
+            Value::Object(map) => {
+                for (_k, v) in map.iter_mut() {
+                    visit(re, v);
+                }
+            }
+            _ => {}
+        }
+    }
+    visit(&re, value);
+}
+
 // ---------------------------------------------------------------------------
 // 1. validate — good fixture
 // ---------------------------------------------------------------------------
@@ -233,7 +263,7 @@ fn validate_good_change_passes() {
     assert_eq!(assert.get_output().status.code(), Some(0));
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema_version"], 1);
+    assert_eq!(actual["schema-version"], 2);
     assert_eq!(actual["passed"], true);
     assert_golden("validate-good.json", actual);
 }
@@ -255,7 +285,7 @@ fn validate_bad_change_fails_with_exit_two() {
     assert_eq!(assert.get_output().status.code(), Some(2), "validate on bad fixture must exit 2");
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema_version"], 1);
+    assert_eq!(actual["schema-version"], 2);
     assert_eq!(actual["passed"], false);
     assert_golden("validate-bad.json", actual);
 }
@@ -297,7 +327,7 @@ fn merge_two_spec_change_produces_baselines_and_archive() {
     );
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema_version"], 1);
+    assert_eq!(actual["schema-version"], 2);
     assert_golden("merge-two-spec.json", actual);
 }
 
@@ -317,7 +347,7 @@ fn task_progress_reports_counts_and_items() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema_version"], 1);
+    assert_eq!(actual["schema-version"], 2);
     assert_eq!(actual["total"], 5);
     assert_eq!(actual["complete"], 2);
     assert_eq!(actual["pending"], 3);
@@ -344,7 +374,7 @@ fn task_mark_marks_then_is_idempotent() {
         .assert()
         .success();
     let first_value = parse_stdout(&first.get_output().stdout, project.root());
-    assert_eq!(first_value["schema_version"], 1);
+    assert_eq!(first_value["schema-version"], 2);
     assert_eq!(first_value["marked"], "1.1");
     assert_eq!(first_value["idempotent"], false);
 
@@ -387,10 +417,10 @@ fn schema_resolve_local_returns_local_source() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema_version"], 1);
-    assert_eq!(actual["schema_value"], "omnia");
+    assert_eq!(actual["schema-version"], 2);
+    assert_eq!(actual["schema-value"], "omnia");
     assert_eq!(actual["source"], "local");
-    let resolved = actual["resolved_path"].as_str().expect("resolved_path str");
+    let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
         resolved.ends_with("schemas/omnia"),
         "resolved_path {resolved} must end with schemas/omnia"
@@ -415,11 +445,88 @@ fn schema_resolve_cached_returns_cached_source() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema_version"], 1);
+    assert_eq!(actual["schema-version"], 2);
     assert_eq!(actual["source"], "cached");
-    let resolved = actual["resolved_path"].as_str().expect("resolved_path str");
+    let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
         resolved.ends_with(".specify/.cache/omnia"),
         "resolved_path {resolved} must end with .specify/.cache/omnia"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 8. change outcome — round-trip through phase-outcome + change-outcome verb
+// ---------------------------------------------------------------------------
+
+/// End-to-end round-trip for the `change outcome` read verb added in
+/// RFC-2 §1.1: stamp an outcome with `phase-outcome`, read it back with
+/// `change outcome --format json`, and assert the full JSON shape. Also
+/// covers the unstamped case where `outcome` must be `null`.
+#[test]
+fn phase_outcome_round_trip_via_change_outcome_verb() {
+    let project = Project::init();
+
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+    specify()
+        .current_dir(project.root())
+        .args([
+            "change",
+            "phase-outcome",
+            "foo",
+            "build",
+            "success",
+            "--summary",
+            "5/5 tasks",
+            "--context",
+            "trailing newline",
+        ])
+        .assert()
+        .success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "outcome", "foo"])
+        .assert()
+        .success();
+    assert_eq!(assert.get_output().status.code(), Some(0));
+
+    let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+    assert_eq!(actual["schema-version"], 2);
+    assert_eq!(actual["name"], "foo");
+    let outcome = &actual["outcome"];
+    assert_eq!(outcome["phase"], "build");
+    assert_eq!(outcome["outcome"], "success");
+    assert_eq!(outcome["summary"], "5/5 tasks");
+    assert_eq!(outcome["context"], "trailing newline");
+    let at = outcome["at"].as_str().expect("at is a string");
+    let at_re =
+        regex::Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$").expect("regex compiles");
+    assert!(
+        at_re.is_match(at),
+        "at must match ^\\d{{4}}-\\d{{2}}-\\d{{2}}T\\d{{2}}:\\d{{2}}:\\d{{2}}Z$, got {at}"
+    );
+
+    strip_iso8601(&mut actual);
+    assert_golden("change-outcome.json", actual);
+
+    let unstamped =
+        specify().current_dir(project.root()).args(["change", "create", "bar"]).assert().success();
+    assert_eq!(unstamped.get_output().status.code(), Some(0));
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "outcome", "bar"])
+        .assert()
+        .success();
+    assert_eq!(assert.get_output().status.code(), Some(0));
+
+    let value = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["name"], "bar");
+    assert!(
+        value["outcome"].is_null(),
+        "unstamped change must emit outcome == null, got: {}",
+        value["outcome"]
     );
 }

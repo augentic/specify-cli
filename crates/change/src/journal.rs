@@ -64,10 +64,12 @@ pub struct JournalEntry {
     pub timestamp: String,
     /// Phase that wrote the entry (`define | build | merge`).
     pub step: Phase,
-    /// Entry classification. Serialised as `type:` on disk per the
-    /// RFC; `kind` is the Rust-side name to avoid the keyword clash.
-    #[serde(rename = "type")]
-    pub kind: EntryKind,
+    /// Entry classification. Named `r#type` because `type` is a
+    /// reserved keyword; the serialised field name is literally
+    /// `type` — no `#[serde(rename)]` needed, since `r#type`'s
+    /// identifier is `type` once the raw-identifier prefix is
+    /// stripped.
+    pub r#type: EntryKind,
     /// Short human-readable summary.
     pub summary: String,
     /// Optional verbatim detail — stderr, ambiguous-requirement text,
@@ -78,7 +80,7 @@ pub struct JournalEntry {
 }
 
 /// Classification of a [`JournalEntry`].
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum EntryKind {
     /// Phase paused to ask a clarifying question.
@@ -115,11 +117,10 @@ impl Journal {
     /// Append a single entry and atomically persist.
     ///
     /// Read-modify-write: loads the existing file (or an empty
-    /// `Journal` when absent), pushes `entry`, serialises the whole
-    /// journal to a temp file via
-    /// [`tempfile::NamedTempFile::new_in`] + [`NamedTempFile::persist`],
-    /// and always emits a trailing newline. Because `persist` bottoms
-    /// out at `fs::rename` (atomic on a single filesystem), a mid-write
+    /// `Journal` when absent), pushes `entry`, and routes the
+    /// serialised journal through the crate's `atomic_yaml_write`
+    /// helper. That emits a trailing newline and bottoms out at
+    /// `fs::rename` (atomic on a single filesystem), so a mid-write
     /// crash leaves the prior file intact.
     ///
     /// Does **not** lock the file. See the module-level `Single-writer`
@@ -129,17 +130,7 @@ impl Journal {
         journal.entries.push(entry);
 
         let path = Self::path(change_dir);
-        let mut content = serde_yaml::to_string(&journal)?;
-        if !content.ends_with('\n') {
-            content.push('\n');
-        }
-        let parent = path.parent().unwrap_or_else(|| Path::new("."));
-        std::fs::create_dir_all(parent)?;
-        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
-        std::io::Write::write_all(tmp.as_file_mut(), content.as_bytes())?;
-        tmp.as_file_mut().sync_all()?;
-        tmp.persist(&path).map_err(|e| Error::Io(e.error))?;
-        Ok(())
+        crate::atomic::atomic_yaml_write(&path, &journal)
     }
 }
 
@@ -152,7 +143,7 @@ mod tests {
         JournalEntry {
             timestamp: "2026-04-16T14:30:00Z".to_string(),
             step: Phase::Build,
-            kind: EntryKind::Question,
+            r#type: EntryKind::Question,
             summary: summary.to_string(),
             context: None,
         }
@@ -210,14 +201,14 @@ mod tests {
         let a = JournalEntry {
             timestamp: "2026-04-16T10:00:00Z".to_string(),
             step: Phase::Define,
-            kind: EntryKind::Question,
+            r#type: EntryKind::Question,
             summary: "A".to_string(),
             context: None,
         };
         let b = JournalEntry {
             timestamp: "2026-04-16T10:05:00Z".to_string(),
             step: Phase::Define,
-            kind: EntryKind::Failure,
+            r#type: EntryKind::Failure,
             summary: "B".to_string(),
             context: Some("stderr blob".to_string()),
         };
@@ -234,7 +225,7 @@ mod tests {
         let c = JournalEntry {
             timestamp: "2026-04-16T10:10:00Z".to_string(),
             step: Phase::Build,
-            kind: EntryKind::Recovery,
+            r#type: EntryKind::Recovery,
             summary: "C".to_string(),
             context: None,
         };
@@ -289,7 +280,7 @@ mod tests {
                 let entry = JournalEntry {
                     timestamp: "2026-04-16T14:30:00+00:00".to_string(),
                     step: phase,
-                    kind,
+                    r#type: kind,
                     summary: "summary text".to_string(),
                     context: Some("verbatim detail".to_string()),
                 };
@@ -306,7 +297,7 @@ mod tests {
         let entry = JournalEntry {
             timestamp: "2026-04-16T14:30:00Z".to_string(),
             step: Phase::Build,
-            kind: EntryKind::Failure,
+            r#type: EntryKind::Failure,
             summary: "multi-line detail".to_string(),
             context: Some("line1\nline2\nline3".to_string()),
         };
@@ -349,7 +340,7 @@ mod tests {
                         let entry = JournalEntry {
                             timestamp: "2026-04-16T14:30:00Z".to_string(),
                             step: Phase::Build,
-                            kind: EntryKind::Question,
+                            r#type: EntryKind::Question,
                             summary: format!("t{t}-i{i}"),
                             context: None,
                         };

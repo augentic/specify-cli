@@ -90,7 +90,7 @@ fn schema_pipeline_define_lists_omnia_define_briefs_in_order() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["schema-version"], 2);
     assert_eq!(value["phase"], "define");
     assert_eq!(value["change"], Value::Null);
 

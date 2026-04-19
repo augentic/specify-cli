@@ -3,6 +3,6 @@
     "b"
   ],
   "error": "plan_has_outstanding_work",
-  "exit_code": 1,
-  "schema_version": 1
+  "exit-code": 1,
+  "schema-version": 2
 }

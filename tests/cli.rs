@@ -62,10 +62,10 @@ fn init_json_format_has_stable_shape() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["schema_version"], 1);
-    assert_eq!(value["schema_name"], "omnia");
-    assert!(value["config_path"].is_string());
-    let config_path = value["config_path"].as_str().unwrap();
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-name"], "omnia");
+    assert!(value["config-path"].is_string());
+    let config_path = value["config-path"].as_str().unwrap();
     // Canonicalized tmp path so substring match handles macOS
     // /private/var symlinks gracefully.
     let canonical_tmp = fs::canonicalize(tmp.path()).expect("canonicalize tmp");
@@ -74,8 +74,8 @@ fn init_json_format_has_stable_shape() {
         "config_path {config_path} should start with {}",
         canonical_tmp.display()
     );
-    assert!(value["specify_version"].is_string());
-    assert!(value["scaffolded_rule_keys"].is_array());
+    assert!(value["specify-version"].is_string());
+    assert!(value["scaffolded-rule-keys"].is_array());
 }
 
 #[test]
@@ -109,9 +109,9 @@ fn version_too_old_exits_three_with_json_envelope() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
-    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["schema-version"], 2);
     assert_eq!(value["error"], "specify_version_too_old");
-    assert_eq!(value["exit_code"], 3);
+    assert_eq!(value["exit-code"], 3);
 }
 
 // Change I's stub-subcommand assertion was retired in Change J; every

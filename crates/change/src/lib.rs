@@ -19,11 +19,12 @@ use specify_error::Error;
 pub use specify_schema::Phase;
 
 pub mod actions;
+mod atomic;
 pub mod journal;
 pub mod lock;
 pub mod plan;
 
-pub use actions::{CreateIfExists, CreateOutcome, Overlap};
+pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339};
 pub use journal::{EntryKind, Journal, JournalEntry};
 pub use lock::{PlanLockAcquired, PlanLockGuard, PlanLockReleased, PlanLockStamp, PlanLockState};
 pub use plan::*;
@@ -88,7 +89,7 @@ pub struct PhaseOutcome {
 }
 
 /// The three possible outcomes a phase returns to `/spec:execute`.
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Outcome {
     Success,
@@ -101,7 +102,7 @@ pub enum Outcome {
 /// `Copy + Eq + Hash` are additive to RFC-1 so the enum can participate in
 /// `HashSet`s (used by the exhaustive transition property test) and match
 /// guards without requiring explicit clones.
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum LifecycleStatus {
     Defining,
@@ -209,16 +210,7 @@ impl ChangeMetadata {
     /// and `Error::Yaml` if serialization fails.
     pub fn save(&self, change_dir: &Path) -> Result<(), Error> {
         let path = Self::path(change_dir);
-        let mut content = serde_yaml::to_string(self)?;
-        if !content.ends_with('\n') {
-            content.push('\n');
-        }
-        let parent = path.parent().unwrap_or_else(|| Path::new("."));
-        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
-        std::io::Write::write_all(tmp.as_file_mut(), content.as_bytes())?;
-        tmp.as_file_mut().sync_all()?;
-        tmp.persist(&path).map_err(|e| Error::Io(e.error))?;
-        Ok(())
+        crate::atomic::atomic_yaml_write(&path, self)
     }
 }
 

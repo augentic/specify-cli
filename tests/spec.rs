@@ -99,7 +99,7 @@ fn spec_preview_reports_operations_without_writing() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["schema-version"], 2);
 
     let specs = value["specs"].as_array().expect("specs array");
     // The two-spec fixture has both `login` and `oauth`; each uses a
@@ -114,7 +114,7 @@ fn spec_preview_reports_operations_without_writing() {
         assert_eq!(ops.len(), 1, "expected one op per spec, got {ops:?}");
         assert_eq!(ops[0]["kind"], "added");
         assert_eq!(ops[0]["id"], "REQ-001");
-        assert!(spec["baseline_path"].is_string());
+        assert!(spec["baseline-path"].is_string());
     }
 
     // No filesystem mutation: no archive, change dir still in place,
@@ -230,8 +230,8 @@ fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
     let conflicts = value["conflicts"].as_array().unwrap();
     assert_eq!(conflicts.len(), 1, "expected one conflict, got {conflicts:?}");
     assert_eq!(conflicts[0]["capability"], "login");
-    assert_eq!(conflicts[0]["defined_at"], "2020-01-01T00:00:00Z");
-    assert!(conflicts[0]["baseline_modified_at"].is_string());
+    assert_eq!(conflicts[0]["defined-at"], "2020-01-01T00:00:00Z");
+    assert!(conflicts[0]["baseline-modified-at"].is_string());
 }
 
 #[test]

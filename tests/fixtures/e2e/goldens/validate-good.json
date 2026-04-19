@@ -1,78 +1,78 @@
 {
-  "brief_results": {
+  "brief-results": {
     "design": [
       {
         "rule": "References only requirement ids present in specs",
-        "rule_id": "design.references-valid-ids",
+        "rule-id": "design.references-valid-ids",
         "status": "pass"
       }
     ],
     "proposal": [
       {
         "rule": "Has a Why section with at least one sentence",
-        "rule_id": "proposal.why-has-content",
+        "rule-id": "proposal.why-has-content",
         "status": "pass"
       },
       {
         "rule": "Has a Crates/Features section listing at least one entry",
-        "rule_id": "proposal.crates-listed",
+        "rule-id": "proposal.crates-listed",
         "status": "pass"
       },
       {
         "reason": "Semantic check — requires LLM judgment",
         "rule": "Uses imperative language for motivation",
-        "rule_id": "proposal.uses-imperative-language",
+        "rule-id": "proposal.uses-imperative-language",
         "status": "deferred"
       }
     ],
     "specs": [
       {
         "rule": "Every requirement has at least one scenario",
-        "rule_id": "specs.requirements-have-scenarios",
+        "rule-id": "specs.requirements-have-scenarios",
         "status": "pass"
       },
       {
         "rule": "Every requirement has an `ID:` line",
-        "rule_id": "specs.requirements-have-ids",
+        "rule-id": "specs.requirements-have-ids",
         "status": "pass"
       },
       {
         "rule": "IDs use the `REQ-[0-9]{3}` format",
-        "rule_id": "specs.ids-match-pattern",
+        "rule-id": "specs.ids-match-pattern",
         "status": "pass"
       },
       {
         "reason": "Semantic check — requires LLM judgment",
         "rule": "Uses SHALL/MUST language for normative requirements",
-        "rule_id": "specs.uses-normative-language",
+        "rule-id": "specs.uses-normative-language",
         "status": "deferred"
       }
     ],
     "tasks": [
       {
         "rule": "All tasks use `- [ ] X.Y` checkbox format",
-        "rule_id": "tasks.use-checkbox-format",
+        "rule-id": "tasks.use-checkbox-format",
         "status": "pass"
       },
       {
         "rule": "Tasks grouped under `## ` headings",
-        "rule_id": "tasks.grouped-under-headings",
+        "rule-id": "tasks.grouped-under-headings",
         "status": "pass"
       }
     ]
   },
-  "cross_checks": [
+  "cross-checks": [
     {
       "rule": "Every crate/feature listed in the proposal has a matching spec file",
-      "rule_id": "cross.proposal-crates-have-specs",
+      "rule-id": "cross.proposal-crates-have-specs",
       "status": "pass"
     },
     {
       "rule": "Every requirement id referenced in design.md exists in specs",
-      "rule_id": "cross.design-references-valid",
+      "rule-id": "cross.design-references-valid",
       "status": "pass"
     }
   ],
   "passed": true,
-  "schema_version": 1
+  "schema-version": 2
 }

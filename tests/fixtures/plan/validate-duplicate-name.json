@@ -12,5 +12,5 @@
       "message": "duplicate plan entry name 'foo'"
     }
   ],
-  "schema_version": 1
+  "schema-version": 2
 }

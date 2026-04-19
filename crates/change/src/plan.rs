@@ -1,8 +1,8 @@
 //! On-disk representation of `.specify/plan.yaml` and the in-memory
 //! [`Plan`] state machine that wraps it.
 //!
-//! See `rfcs/rfc-2-plan.md` §"Library Implementation" for the canonical
-//! type surface and `rfcs/rfc-2-plan.md` §"The Plan" for the reference
+//! See `rfcs/rfc-2-execution.md` §"Library Implementation" for the canonical
+//! type surface and `rfcs/rfc-2-execution.md` §"The Plan" for the reference
 //! YAML fixture exercised by the round-trip tests.
 //!
 //! ## Single-writer invariant for `PlanChange::status`
@@ -26,11 +26,13 @@
 //! method that does. Bypassing this invariant undoes the state-machine
 //! guarantees exercised by the L1.B transition tests.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use petgraph::Direction;
 use petgraph::algo::{tarjan_scc, toposort};
-use petgraph::graph::DiGraph;
+use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
@@ -41,7 +43,19 @@ use specify_error::Error;
 /// the derives already used on `LifecycleStatus` in the parent module.
 /// Transition-table methods (`can_transition_to`, `transition`) land in
 /// Change L1.B and intentionally do not exist yet.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Deserialize,
+    Serialize,
+    clap::ValueEnum,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum PlanStatus {
     Pending,
@@ -66,7 +80,7 @@ impl PlanStatus {
     ];
 
     /// Whether `self -> target` is a legal edge in the plan-entry state
-    /// machine. See `rfc-2-plan.md` §"Transition Rules" for the canonical
+    /// machine. See `rfc-2-execution.md` §"Transition Rules" for the canonical
     /// table; the 10 edges enumerated below are the *only* legal ones.
     /// `Done` is terminal: every edge with `Done` on the left is `false`.
     pub fn can_transition_to(&self, target: &PlanStatus) -> bool {
@@ -174,7 +188,7 @@ pub struct PlanChangePatch {
 
 /// Severity of a validation finding produced by [`Plan::validate`].
 #[derive(Debug, Clone, PartialEq)]
-pub enum ValidationLevel {
+pub enum PlanValidationLevel {
     /// Blocking problem — the plan is not usable as-is.
     Error,
     /// Non-blocking advisory — the plan is usable but something looks
@@ -184,9 +198,9 @@ pub enum ValidationLevel {
 
 /// A single finding reported by [`Plan::validate`].
 #[derive(Debug, Clone)]
-pub struct ValidationResult {
+pub struct PlanValidationResult {
     /// Severity bucket.
-    pub level: ValidationLevel,
+    pub level: PlanValidationLevel,
     /// Stable machine-readable code, e.g. `"plan.cycle"`.
     pub code: &'static str,
     /// Human-readable description.
@@ -250,16 +264,7 @@ impl Plan {
     /// Returns `Error::Io` on any I/O failure and `Error::Yaml` if
     /// serialization fails.
     pub fn save(&self, path: &Path) -> Result<(), Error> {
-        let mut content = serde_yaml::to_string(self)?;
-        if !content.ends_with('\n') {
-            content.push('\n');
-        }
-        let parent = path.parent().unwrap_or_else(|| Path::new("."));
-        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
-        std::io::Write::write_all(tmp.as_file_mut(), content.as_bytes())?;
-        tmp.as_file_mut().sync_all()?;
-        tmp.persist(path).map_err(|e| Error::Io(e.error))?;
-        Ok(())
+        crate::atomic::atomic_yaml_write(path, self)
     }
 
     /// Run all structural and semantic checks over the plan. The optional
@@ -276,7 +281,7 @@ impl Plan {
     /// rejects invalid statuses at parse time. The RFC lists this check
     /// for completeness against hand-edited YAML that bypassed parsing,
     /// which is not reachable in-process — so nothing is emitted for it.
-    pub fn validate(&self, changes_dir: Option<&Path>) -> Vec<ValidationResult> {
+    pub fn validate(&self, changes_dir: Option<&Path>) -> Vec<PlanValidationResult> {
         let mut results = Vec::new();
         results.extend(collect_duplicate_names(&self.changes));
         results.extend(detect_cycles(&self.changes));
@@ -317,7 +322,7 @@ impl Plan {
 
     /// Transition the named entry to `target`, recording `reason` in
     /// [`PlanChange::status_reason`] per the rules documented in
-    /// `rfc-2-plan.md` §Fields.
+    /// `rfc-2-execution.md` §Fields.
     ///
     /// `reason` is only meaningful when `target` is one of
     /// `{Failed, Blocked, Skipped}`; passing `Some(_)` with any other
@@ -391,8 +396,11 @@ impl Plan {
         // the whole `changes` vector since we know the mutation is a
         // single trailing push.
         self.changes.push(change);
-        let errors: Vec<ValidationResult> =
-            self.validate(None).into_iter().filter(|r| r.level == ValidationLevel::Error).collect();
+        let errors: Vec<PlanValidationResult> = self
+            .validate(None)
+            .into_iter()
+            .filter(|r| r.level == PlanValidationLevel::Error)
+            .collect();
         if let Some(first) = errors.first() {
             let msg = first.message.clone();
             self.changes.pop();
@@ -443,8 +451,11 @@ impl Plan {
             }
         }
 
-        let errors: Vec<ValidationResult> =
-            self.validate(None).into_iter().filter(|r| r.level == ValidationLevel::Error).collect();
+        let errors: Vec<PlanValidationResult> = self
+            .validate(None)
+            .into_iter()
+            .filter(|r| r.level == PlanValidationLevel::Error)
+            .collect();
         if let Some(first) = errors.first() {
             let msg = first.message.clone();
             self.changes[idx] = snapshot;
@@ -467,11 +478,13 @@ impl Plan {
     /// ordering purposes so orphan references cannot deadlock the sort;
     /// surfacing them is [`Plan::validate`]'s job.
     ///
-    /// Implementation: the plan is small, so we sweep the list
-    /// repeatedly and emit every entry whose dependencies are already
-    /// in the output. This is O(n²) but trivially preserves list-order
-    /// tie-breaking. We use `petgraph::toposort` first only to detect
-    /// cycles and name an offending node.
+    /// Implementation: we build a `DiGraph`, use `petgraph::toposort`
+    /// (plus `tarjan_scc` on failure) for cycle detection and
+    /// offender-naming, then walk the graph via a priority-queue Kahn
+    /// where the priority is the original `NodeIndex` (which equals
+    /// each entry's list position, since we insert in list order).
+    /// That keeps the list-order tie-break contract while dropping
+    /// the old O(n²) "sweep until fixpoint" fallback.
     pub fn topological_order(&self) -> Result<Vec<&PlanChange>, Error> {
         let mut graph: DiGraph<&str, ()> = DiGraph::new();
         let mut idx = HashMap::new();
@@ -487,6 +500,7 @@ impl Plan {
                 }
             }
         }
+
         if toposort(&graph, None).is_err() {
             let offender = tarjan_scc(&graph)
                 .into_iter()
@@ -498,30 +512,35 @@ impl Plan {
             return Err(Error::Config(format!("plan has dependency cycle involving '{offender}'")));
         }
 
-        let known: HashSet<&str> = self.changes.iter().map(|c| c.name.as_str()).collect();
-        let mut emitted: HashSet<&str> = HashSet::new();
-        let mut output: Vec<&PlanChange> = Vec::with_capacity(self.changes.len());
-        while output.len() < self.changes.len() {
-            let before = output.len();
-            for entry in &self.changes {
-                if emitted.contains(entry.name.as_str()) {
-                    continue;
+        // Priority-queue Kahn: visit 0-indegree nodes in ascending
+        // `NodeIndex` order (== list order, because we inserted the
+        // nodes in list order). `Reverse` turns `BinaryHeap` (max-heap)
+        // into a min-heap keyed by `NodeIndex`.
+        let mut indegree: HashMap<NodeIndex, usize> = graph
+            .node_indices()
+            .map(|n| (n, graph.neighbors_directed(n, Direction::Incoming).count()))
+            .collect();
+        let mut ready: BinaryHeap<Reverse<NodeIndex>> = indegree
+            .iter()
+            .filter_map(|(&n, &d)| if d == 0 { Some(Reverse(n)) } else { None })
+            .collect();
+
+        let mut rank: HashMap<NodeIndex, usize> = HashMap::with_capacity(self.changes.len());
+        let mut next_rank = 0usize;
+        while let Some(Reverse(node)) = ready.pop() {
+            rank.insert(node, next_rank);
+            next_rank += 1;
+            for downstream in graph.neighbors_directed(node, Direction::Outgoing) {
+                let entry = indegree.get_mut(&downstream).expect("indegree init covers every node");
+                *entry -= 1;
+                if *entry == 0 {
+                    ready.push(Reverse(downstream));
                 }
-                let deps_ready = entry
-                    .depends_on
-                    .iter()
-                    .all(|dep| !known.contains(dep.as_str()) || emitted.contains(dep.as_str()));
-                if deps_ready {
-                    output.push(entry);
-                    emitted.insert(entry.name.as_str());
-                }
-            }
-            if output.len() == before {
-                return Err(Error::Config(
-                    "plan has dependency cycle (no progress in Kahn sweep)".to_string(),
-                ));
             }
         }
+
+        let mut output: Vec<&PlanChange> = self.changes.iter().collect();
+        output.sort_by_key(|c| rank[&idx[c.name.as_str()]]);
         Ok(output)
     }
 
@@ -529,7 +548,7 @@ impl Plan {
     /// authoring working directory `.specify/plans/<plan.name>/` —
     /// into the archive directory.
     ///
-    /// Semantics (see `rfc-2-plan.md` §L1.G, §L3.B, and §"`specify
+    /// Semantics (see `rfc-2-execution.md` §L1.G, §L3.B, and §"`specify
     /// plan archive`"):
     ///
     /// 1. Load the plan at `path`.
@@ -547,11 +566,11 @@ impl Plan {
     ///      Any collision errors out before any file or directory is
     ///      moved, so a failure here leaves the working tree untouched.
     /// 4. Create `archive_dir` if missing.
-    /// 5. Execute: move `plan.yaml` via [`move_file_atomic`], then
-    ///    (when present) move the working directory via
-    ///    [`crate::actions::move_dir_atomic`]. Both helpers do an
-    ///    atomic `fs::rename` with a `copy + remove` fallback on
-    ///    `EXDEV` (cross-device).
+    /// 5. Execute: move `plan.yaml` via [`crate::actions::move_atomic`],
+    ///    then (when present) move the working directory via the same
+    ///    helper. It dispatches on `src.is_dir()` and does an atomic
+    ///    `fs::rename` with a `copy + remove` fallback on `EXDEV`
+    ///    (cross-device).
     /// 6. Return `(archived_plan_path, archived_plans_dir)` — the
     ///    second element is `Some` iff a working directory was
     ///    co-moved.
@@ -593,7 +612,7 @@ impl Plan {
         // directory still present or vice versa).
         if dest_plan.exists() {
             return Err(Error::Config(format!(
-                "archive target '{}' already exists; archive from a different day or remove it first",
+                "archive target '{}' already exists; either move it out of the archive dir (`git mv` is safe — the path is not load-bearing) or wait until tomorrow to re-archive",
                 dest_plan.display()
             )));
         }
@@ -601,49 +620,31 @@ impl Plan {
             && dest_dir.exists()
         {
             return Err(Error::Config(format!(
-                "archive target '{}' already exists; archive from a different day or remove it first",
+                "archive target '{}' already exists; either move it out of the archive dir (`git mv` is safe — the path is not load-bearing) or wait until tomorrow to re-archive",
                 dest_dir.display()
             )));
         }
 
         std::fs::create_dir_all(archive_dir)?;
 
-        move_file_atomic(path, &dest_plan)?;
+        crate::actions::move_atomic(path, &dest_plan)?;
         if let (Some(src), Some(dst)) = (co_move.as_ref(), dest_plans_dir.as_ref()) {
-            crate::actions::move_dir_atomic(src, dst)?;
+            crate::actions::move_atomic(src, dst)?;
         }
 
         Ok((dest_plan, dest_plans_dir))
     }
 }
 
-/// Move a single file from `src` to `dst`. Uses `fs::rename` (atomic
-/// within a filesystem); falls back to `copy` + `remove_file` on
-/// `EXDEV` (cross-device) so archives on a different mount from the
-/// working tree still work. Mirrors the shape of
-/// [`crate::actions::move_dir_atomic`] but for a single file — kept
-/// local to `plan.rs` to keep the archive path self-contained.
-fn move_file_atomic(src: &Path, dst: &Path) -> Result<(), Error> {
-    match std::fs::rename(src, dst) {
-        Ok(()) => Ok(()),
-        Err(err) if err.raw_os_error() == Some(18) => {
-            std::fs::copy(src, dst)?;
-            std::fs::remove_file(src)?;
-            Ok(())
-        }
-        Err(err) => Err(Error::Io(err)),
-    }
-}
-
 /// Emit one `duplicate-name` error per duplicate *occurrence* (every
 /// occurrence after the first).
-fn collect_duplicate_names(changes: &[PlanChange]) -> Vec<ValidationResult> {
+fn collect_duplicate_names(changes: &[PlanChange]) -> Vec<PlanValidationResult> {
     let mut seen: HashSet<&str> = HashSet::new();
     let mut out = Vec::new();
     for entry in changes {
         if !seen.insert(entry.name.as_str()) {
-            out.push(ValidationResult {
-                level: ValidationLevel::Error,
+            out.push(PlanValidationResult {
+                level: PlanValidationLevel::Error,
                 code: "duplicate-name",
                 message: format!("duplicate plan entry name '{}'", entry.name),
                 entry: Some(entry.name.clone()),
@@ -658,7 +659,7 @@ fn collect_duplicate_names(changes: &[PlanChange]) -> Vec<ValidationResult> {
 /// to detect the existence of a cycle, then `tarjan_scc` to enumerate
 /// every strongly-connected component larger than one node plus any
 /// self-edges (which are their own SCC of size 1 with a loop).
-fn detect_cycles(changes: &[PlanChange]) -> Vec<ValidationResult> {
+fn detect_cycles(changes: &[PlanChange]) -> Vec<PlanValidationResult> {
     let mut graph: DiGraph<&str, ()> = DiGraph::new();
     let mut idx = HashMap::new();
     for entry in changes {
@@ -689,8 +690,8 @@ fn detect_cycles(changes: &[PlanChange]) -> Vec<ValidationResult> {
             names.sort_unstable();
             let mut path = names.clone();
             path.push(names[0]);
-            out.push(ValidationResult {
-                level: ValidationLevel::Error,
+            out.push(PlanValidationResult {
+                level: PlanValidationLevel::Error,
                 code: "dependency-cycle",
                 message: format!("cycle: {}", path.join(" → ")),
                 entry: None,
@@ -699,8 +700,8 @@ fn detect_cycles(changes: &[PlanChange]) -> Vec<ValidationResult> {
             let node = scc[0];
             if graph.find_edge(node, node).is_some() {
                 let name = graph[node];
-                out.push(ValidationResult {
-                    level: ValidationLevel::Error,
+                out.push(PlanValidationResult {
+                    level: PlanValidationLevel::Error,
                     code: "dependency-cycle",
                     message: format!("cycle: {name} → {name}"),
                     entry: None,
@@ -712,14 +713,14 @@ fn detect_cycles(changes: &[PlanChange]) -> Vec<ValidationResult> {
 }
 
 /// Emit one `unknown-depends-on` error per missing target.
-fn check_unknown_depends_on(changes: &[PlanChange]) -> Vec<ValidationResult> {
+fn check_unknown_depends_on(changes: &[PlanChange]) -> Vec<PlanValidationResult> {
     let known: HashSet<&str> = changes.iter().map(|c| c.name.as_str()).collect();
     let mut out = Vec::new();
     for entry in changes {
         for target in &entry.depends_on {
             if !known.contains(target.as_str()) {
-                out.push(ValidationResult {
-                    level: ValidationLevel::Error,
+                out.push(PlanValidationResult {
+                    level: PlanValidationLevel::Error,
                     code: "unknown-depends-on",
                     message: format!("depends-on references unknown change '{target}'"),
                     entry: Some(entry.name.clone()),
@@ -731,14 +732,14 @@ fn check_unknown_depends_on(changes: &[PlanChange]) -> Vec<ValidationResult> {
 }
 
 /// Emit one `unknown-affects` error per missing target.
-fn check_unknown_affects(changes: &[PlanChange]) -> Vec<ValidationResult> {
+fn check_unknown_affects(changes: &[PlanChange]) -> Vec<PlanValidationResult> {
     let known: HashSet<&str> = changes.iter().map(|c| c.name.as_str()).collect();
     let mut out = Vec::new();
     for entry in changes {
         for target in &entry.affects {
             if !known.contains(target.as_str()) {
-                out.push(ValidationResult {
-                    level: ValidationLevel::Error,
+                out.push(PlanValidationResult {
+                    level: PlanValidationLevel::Error,
                     code: "unknown-affects",
                     message: format!("affects references unknown change '{target}'"),
                     entry: Some(entry.name.clone()),
@@ -751,13 +752,13 @@ fn check_unknown_affects(changes: &[PlanChange]) -> Vec<ValidationResult> {
 
 /// Emit one `unknown-source` error per source key not declared at the
 /// plan level.
-fn check_unknown_sources(plan: &Plan) -> Vec<ValidationResult> {
+fn check_unknown_sources(plan: &Plan) -> Vec<PlanValidationResult> {
     let mut out = Vec::new();
     for entry in &plan.changes {
         for key in &entry.sources {
             if !plan.sources.contains_key(key) {
-                out.push(ValidationResult {
-                    level: ValidationLevel::Error,
+                out.push(PlanValidationResult {
+                    level: PlanValidationLevel::Error,
                     code: "unknown-source",
                     message: format!("sources references unknown source key '{key}'"),
                     entry: Some(entry.name.clone()),
@@ -770,7 +771,7 @@ fn check_unknown_sources(plan: &Plan) -> Vec<ValidationResult> {
 
 /// When more than one entry is `in-progress`, emit one result per
 /// offending entry so every offender is surfaceable in the UI.
-fn check_single_in_progress(changes: &[PlanChange]) -> Vec<ValidationResult> {
+fn check_single_in_progress(changes: &[PlanChange]) -> Vec<PlanValidationResult> {
     let offenders: Vec<&PlanChange> =
         changes.iter().filter(|c| c.status == PlanStatus::InProgress).collect();
     if offenders.len() <= 1 {
@@ -778,8 +779,8 @@ fn check_single_in_progress(changes: &[PlanChange]) -> Vec<ValidationResult> {
     }
     offenders
         .into_iter()
-        .map(|c| ValidationResult {
-            level: ValidationLevel::Error,
+        .map(|c| PlanValidationResult {
+            level: PlanValidationLevel::Error,
             code: "multiple-in-progress",
             message: "multiple in-progress entries: at most one allowed per plan".to_string(),
             entry: Some(c.name.clone()),
@@ -790,7 +791,7 @@ fn check_single_in_progress(changes: &[PlanChange]) -> Vec<ValidationResult> {
 /// Plan-to-change directory consistency:
 ///   - Warn on orphan subdirectories (no matching plan entry).
 ///   - Warn when an `in-progress` plan entry has no matching directory.
-fn check_changes_dir_consistency(plan: &Plan, changes_dir: &Path) -> Vec<ValidationResult> {
+fn check_changes_dir_consistency(plan: &Plan, changes_dir: &Path) -> Vec<PlanValidationResult> {
     let mut out = Vec::new();
     let declared: HashSet<&str> = plan.changes.iter().map(|c| c.name.as_str()).collect();
 
@@ -812,8 +813,8 @@ fn check_changes_dir_consistency(plan: &Plan, changes_dir: &Path) -> Vec<Validat
 
     for name in &dir_names {
         if !declared.contains(name.as_str()) {
-            out.push(ValidationResult {
-                level: ValidationLevel::Warning,
+            out.push(PlanValidationResult {
+                level: PlanValidationLevel::Warning,
                 code: "orphan-change-dir",
                 message: format!("change directory '{name}' has no plan entry"),
                 entry: Some(name.clone()),
@@ -825,8 +826,8 @@ fn check_changes_dir_consistency(plan: &Plan, changes_dir: &Path) -> Vec<Validat
         if entry.status == PlanStatus::InProgress {
             let candidate = changes_dir.join(&entry.name);
             if !candidate.is_dir() {
-                out.push(ValidationResult {
-                    level: ValidationLevel::Warning,
+                out.push(PlanValidationResult {
+                    level: PlanValidationLevel::Warning,
                     code: "missing-change-dir-for-in-progress",
                     message: format!(
                         "in-progress entry '{}' has no change directory (may briefly be absent during phase start-up)",
@@ -847,7 +848,7 @@ mod tests {
     use std::collections::HashSet;
     use tempfile::tempdir;
 
-    /// The 10 legal edges from `rfc-2-plan.md` §"Transition Rules".
+    /// The 10 legal edges from `rfc-2-execution.md` §"Transition Rules".
     /// Kept here (not on `PlanStatus`) so the production matcher and the
     /// test oracle are independent representations of the same table.
     fn allowed_edges() -> HashSet<(PlanStatus, PlanStatus)> {
@@ -953,7 +954,7 @@ mod tests {
         }
     }
 
-    /// Verbatim reproduction of the `rfc-2-plan.md` §"The Plan" fixture.
+    /// Verbatim reproduction of the `rfc-2-execution.md` §"The Plan" fixture.
     const RFC_EXAMPLE_YAML: &str = r#"name: platform-v2
 sources:
   monolith: /path/to/legacy-codebase
@@ -1261,7 +1262,7 @@ changes:
         let results = plan.validate(None);
         let dupes: Vec<_> = results.iter().filter(|r| r.code == "duplicate-name").collect();
         assert_eq!(dupes.len(), 1, "expected one duplicate-name result, got {results:#?}");
-        assert_eq!(dupes[0].level, ValidationLevel::Error);
+        assert_eq!(dupes[0].level, PlanValidationLevel::Error);
         assert_eq!(dupes[0].entry.as_deref(), Some("foo"));
     }
 
@@ -1365,7 +1366,7 @@ changes:
         let results = plan.validate(Some(tmp.path()));
         let hits: Vec<_> = results.iter().filter(|r| r.code == "orphan-change-dir").collect();
         assert_eq!(hits.len(), 1, "expected one orphan-change-dir, got {results:#?}");
-        assert_eq!(hits[0].level, ValidationLevel::Warning);
+        assert_eq!(hits[0].level, PlanValidationLevel::Warning);
         assert_eq!(hits[0].entry.as_deref(), Some("stale-change"));
     }
 
@@ -1377,7 +1378,7 @@ changes:
         let hits: Vec<_> =
             results.iter().filter(|r| r.code == "missing-change-dir-for-in-progress").collect();
         assert_eq!(hits.len(), 1, "expected one missing-dir warning, got {results:#?}");
-        assert_eq!(hits[0].level, ValidationLevel::Warning);
+        assert_eq!(hits[0].level, PlanValidationLevel::Warning);
         assert_eq!(hits[0].entry.as_deref(), Some("alpha"));
     }
 
@@ -2275,6 +2276,11 @@ changes:
                     msg.contains("already exists"),
                     "message should say 'already exists', got: {msg}"
                 );
+                assert!(msg.contains("git mv"), "message should suggest `git mv`, got: {msg}");
+                assert!(
+                    msg.contains("wait until tomorrow to re-archive"),
+                    "message should mention the tomorrow-re-archive fallback, got: {msg}"
+                );
             }
             other => panic!("expected Error::Config, got {other:?}"),
         }
@@ -2460,6 +2466,11 @@ changes:
                     msg.contains(&format!("foo-{today}")),
                     "message should name the colliding path, got: {msg}"
                 );
+                assert!(msg.contains("git mv"), "message should suggest `git mv`, got: {msg}");
+                assert!(
+                    msg.contains("wait until tomorrow to re-archive"),
+                    "message should mention the tomorrow-re-archive fallback, got: {msg}"
+                );
             }
             other => panic!("expected Error::Config, got {other:?}"),
         }
@@ -2529,12 +2540,11 @@ changes:
 
     /// Same-device happy path: `fs::rename` is atomic on a single
     /// filesystem. The `EXDEV` fallback (copy + remove) exercised by
-    /// `move_file_atomic` only fires across filesystems; a single
+    /// `actions::move_atomic` only fires across filesystems; a single
     /// `tempdir()` sits on one mount, so the cross-device path is not
     /// unit-testable here without a platform-specific loopback mount.
-    /// The fallback is covered by the `move_dir_atomic` contract in
-    /// `actions.rs`, which `move_file_atomic` mirrors exactly for
-    /// single files.
+    /// The fallback's directory branch is covered by `actions.rs`
+    /// unit tests; the file branch is the same implementation.
     #[test]
     fn archive_is_atomic_within_filesystem() {
         let tmp = tempdir().expect("tempdir");

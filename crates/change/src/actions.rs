@@ -10,7 +10,7 @@
 //! Every verb is expressed as a free function rather than a struct method
 //! so the CLI can dispatch each subcommand with one import per verb. They
 //! all round-trip through [`ChangeMetadata::save`] for the metadata writes
-//! and share the cross-device-safe [`move_dir_atomic`] helper for archive
+//! and share the cross-device-safe [`move_atomic`] helper for archive
 //! moves.
 
 use std::io;
@@ -66,6 +66,13 @@ pub struct Overlap {
 /// Names must be non-empty, contain only `[a-z0-9-]`, and may not start,
 /// end, or contain consecutive hyphens. Identical contract to the
 /// `specify-change` naming rules in `rfcs/rfc-1-cli.md`.
+///
+/// The same contract is expressed as a JSON Schema regex at
+/// `schemas/plan/plan.schema.json` `$defs.kebabName.pattern`
+/// (currently `^[a-z0-9]+(-[a-z0-9]+)*$`). Any change to the
+/// acceptance rules here MUST be mirrored in that regex — and in the
+/// copy in the `augentic/specify` repo — so that `specify initiative
+/// validate` and `validate_name` never disagree on a name.
 pub fn validate_name(name: &str) -> Result<(), Error> {
     if name.is_empty() {
         return Err(Error::Config("change name cannot be empty".to_string()));
@@ -328,7 +335,7 @@ pub fn archive(
     let date = today.format("%Y-%m-%d").to_string();
     let target = archive_dir.join(format!("{date}-{change_name}"));
     std::fs::create_dir_all(archive_dir)?;
-    move_dir_atomic(change_dir, &target)?;
+    move_atomic(change_dir, &target)?;
     Ok(target)
 }
 
@@ -351,7 +358,7 @@ pub fn phase_outcome(
     metadata.outcome = Some(PhaseOutcome {
         phase,
         outcome,
-        at: now.to_rfc3339(),
+        at: format_rfc3339(now),
         summary: summary.to_string(),
         context: context.map(str::to_string),
     });
@@ -384,22 +391,60 @@ pub fn drop(
 // Internals
 // ---------------------------------------------------------------------------
 
-fn format_rfc3339(now: DateTime<Utc>) -> String {
+/// Canonical RFC3339 timestamp shape used by every `.specify/*` writer in
+/// this crate.
+///
+/// Pinned to the second-precision `%Y-%m-%dT%H:%M:%SZ` form so every
+/// on-disk timestamp matches the regex
+/// `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$` — no sub-second component,
+/// no offset suffix, no `+00:00` form. `chrono::DateTime::to_rfc3339`
+/// is deliberately NOT used because it varies by input (it may
+/// include microseconds on some paths), which would break golden
+/// fixtures that pin the full shape.
+///
+/// Re-exported at the crate root so the `specify` binary can route
+/// its own timestamp writers (e.g. `change journal-append`) through
+/// the same helper.
+pub fn format_rfc3339(now: DateTime<Utc>) -> String {
     now.format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
+
+/// `EXDEV` ("cross-device") errno. The `std::fs::rename` fallback to
+/// copy-then-remove only fires on this code.
+#[cfg(unix)]
+const EXDEV: i32 = libc::EXDEV;
+
+/// Windows uses `ERROR_NOT_SAME_DEVICE` (17) as its cross-volume
+/// signal; `std::fs::rename` surfaces it through `raw_os_error()` the
+/// same way Unix surfaces `EXDEV`. We don't currently test on Windows
+/// but wire the constant so the fallback is consistent.
+#[cfg(windows)]
+const EXDEV: i32 = 17;
+
+#[cfg(not(any(unix, windows)))]
+const EXDEV: i32 = 18;
 
 /// Move `src` to `dst`. Uses `rename` first, then falls back to
 /// copy-then-remove on `EXDEV` (cross-device) so archives on a
 /// different mount from the working tree still work.
 ///
-/// Extracted from `specify_merge::change` — the two callers share a
-/// single implementation so the semantics stay in lockstep.
-pub(crate) fn move_dir_atomic(src: &Path, dst: &Path) -> Result<(), Error> {
+/// Dispatches on `src.is_dir()`: directories copy recursively, files
+/// via a single `std::fs::copy`. The two old helpers
+/// (`move_file_atomic`, `move_dir_atomic`) were identical modulo that
+/// one branch — collapsing them keeps the cross-device semantics in a
+/// single implementation shared by `crates/change/src/plan.rs` and
+/// `specify_merge::change`.
+pub(crate) fn move_atomic(src: &Path, dst: &Path) -> Result<(), Error> {
     match std::fs::rename(src, dst) {
         Ok(()) => Ok(()),
-        Err(err) if err.raw_os_error() == Some(libc_exdev()) => {
-            copy_dir_recursive(src, dst)?;
-            std::fs::remove_dir_all(src)?;
+        Err(err) if err.raw_os_error() == Some(EXDEV) => {
+            if src.is_dir() {
+                copy_dir_recursive(src, dst)?;
+                std::fs::remove_dir_all(src)?;
+            } else {
+                std::fs::copy(src, dst)?;
+                std::fs::remove_file(src)?;
+            }
             Ok(())
         }
         Err(err) => Err(Error::Io(err)),
@@ -440,8 +485,4 @@ fn symlink(original: &Path, link: &Path) -> io::Result<()> {
 #[cfg(not(any(unix, windows)))]
 fn symlink(_original: &Path, _link: &Path) -> io::Result<()> {
     Err(io::Error::new(io::ErrorKind::Unsupported, "symlinks unsupported on this platform"))
-}
-
-fn libc_exdev() -> i32 {
-    18
 }

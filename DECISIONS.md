@@ -365,7 +365,7 @@ crate with no additional transitive cost in practice.
 ## RFC-2 milestone — Layer 1 / 2 / 3 delivered
 
 Summary of the RFC-2 build (29 Changes across two repos). Layer 1
-delivers the plan format and CLI primitives (`specify plan
+delivers the plan format and CLI primitives (`specify initiative
 {init, validate, next, status, create, amend, transition, archive}`)
 plus the JSON Schema. Layer 2 delivers /spec:execute — phase outcome
 contract on .metadata.yaml, journal.yaml append-only audit log,

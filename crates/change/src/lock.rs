@@ -5,9 +5,9 @@
 //! - [`PlanLockGuard`] — RAII guard that holds an OS-level `flock(2)`
 //!   exclusive lock on `.specify/plan.lock` for its entire lifetime,
 //!   removing the lockfile on drop. Sized for in-process, long-lived
-//!   drivers (a future native `specify plan run --loop`).
+//!   drivers (a future native `specify initiative run --loop`).
 //! - [`PlanLockStamp`] — stateless PID-stamp helper used by the short-
-//!   lived `specify plan lock {acquire, release, status}` CLI verbs
+//!   lived `specify initiative lock {acquire, release, status}` CLI verbs
 //!   that drive the `/spec:execute` agent-side loop. Each CLI
 //!   invocation exits within milliseconds, so holding an `flock` is
 //!   not an option; the stamp file persists on disk between calls and
@@ -97,7 +97,12 @@ impl PlanLockGuard {
             }
         }
 
-        let file = OpenOptions::new().write(true).create(true).truncate(true).open(&path)?;
+        // Open without `truncate(true)`: truncation before the flock
+        // would leave a zero-length lockfile observable to any reader
+        // that `open`s between our `set_len(0)` and the `flock`.
+        // Truncation is deferred until we hold the exclusive lock via
+        // the `file.set_len(0)` call below.
+        let file = OpenOptions::new().write(true).create(true).truncate(false).open(&path)?;
 
         // Use fs2's extension method explicitly to avoid ambiguity
         // with std's inherent `File::try_lock_exclusive` (stable
@@ -117,7 +122,10 @@ impl PlanLockGuard {
             Err(e) => return Err(Error::Io(e)),
         }
 
+        // Now that we hold the flock, it is safe to rewrite the PID:
+        // no other writer can observe a partially-written file.
         let pid = std::process::id();
+        file.set_len(0)?;
         let mut writer = &file;
         writer.write_all(pid.to_string().as_bytes())?;
         writer.flush()?;
@@ -186,7 +194,7 @@ pub struct PlanLockAcquired {
 }
 
 /// Outcome of a [`PlanLockStamp::release`] call. The CLI surfaces this
-/// verbatim via `specify plan lock release --format json`.
+/// verbatim via `specify initiative lock release --format json`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanLockReleased {
     /// Stamp file was present and held our PID — now removed.
@@ -201,7 +209,7 @@ pub enum PlanLockReleased {
 }
 
 /// Snapshot of the on-disk `.specify/plan.lock` stamp, as reported by
-/// `specify plan lock status`.
+/// `specify initiative lock status`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlanLockState {
     /// `true` when the stamp file exists and the stamped PID is
@@ -221,13 +229,13 @@ pub struct PlanLockState {
 /// OS-level advisory lock. It manages `.specify/plan.lock` as a
 /// persistent PID marker that survives the process writing it:
 ///
-/// - `specify plan lock acquire --pid <P>` stamps `P` into the file
+/// - `specify initiative lock acquire --pid <P>` stamps `P` into the file
 ///   (failing with [`Error::DriverBusy`] when another live PID holds
 ///   it).
-/// - `specify plan lock release --pid <P>` removes the file when it
+/// - `specify initiative lock release --pid <P>` removes the file when it
 ///   still holds `P`; refuses when it holds another PID (stale locks
 ///   are reclaimed by the L2.G self-heal path, not by release).
-/// - `specify plan lock status` reports the current holder (if any)
+/// - `specify initiative lock status` reports the current holder (if any)
 ///   and whether the stamp is considered stale.
 ///
 /// The `/spec:execute` skill calls these verbs around its agent-side
@@ -288,11 +296,7 @@ impl PlanLockStamp {
         // Atomic write via tempfile + rename, matching the convention
         // used by `Plan::save` and `ChangeMetadata::save`. Readers
         // never observe a partial stamp.
-        let parent = path.parent().unwrap_or_else(|| Path::new("."));
-        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
-        Write::write_all(tmp.as_file_mut(), our_pid.to_string().as_bytes())?;
-        tmp.as_file_mut().sync_all()?;
-        tmp.persist(&path).map_err(|e| Error::Io(e.error))?;
+        crate::atomic::atomic_bytes_write(&path, our_pid.to_string().as_bytes())?;
 
         Ok(PlanLockAcquired {
             pid: our_pid,

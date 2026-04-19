@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
-use specify_change::{ChangeMetadata, LifecycleStatus, SpecType, actions};
+use specify_change::{ChangeMetadata, LifecycleStatus, SpecType, actions, format_rfc3339};
 use specify_error::Error;
 use specify_schema::{Phase, PipelineView};
 
@@ -99,10 +99,10 @@ pub fn merge_change(
     let now = Utc::now();
     metadata.status = metadata.status.transition(LifecycleStatus::Merged)?;
     if metadata.completed_at.is_none() {
-        metadata.completed_at = Some(now.format("%Y-%m-%dT%H:%M:%SZ").to_string());
+        metadata.completed_at = Some(format_rfc3339(now));
     }
     if metadata.merged_at.is_none() {
-        metadata.merged_at = Some(now.format("%Y-%m-%dT%H:%M:%SZ").to_string());
+        metadata.merged_at = Some(format_rfc3339(now));
     }
     metadata.save(change_dir)?;
 

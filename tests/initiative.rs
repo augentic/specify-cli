@@ -1,0 +1,1725 @@
+//! Integration tests for the `specify initiative *` CLI group — the
+//! initiative-level plan verbs that manage `.specify/plan.yaml` (the
+//! on-disk vocabulary is "plan"; the CLI vocabulary is "initiative" —
+//! see RFC-2 §3).
+//!
+//! These CLI tests stand up a fresh `.specify/` project via
+//! `specify init` (mirroring `tests/change.rs` / `tests/e2e.rs`),
+//! seed `.specify/plan.yaml` by writing YAML directly to disk, and
+//! drive `specify initiative *` through `assert_cmd`. JSON shapes
+//! are pinned by checked-in fixtures under `tests/fixtures/plan/`;
+//! regenerate them with
+//! `REGENERATE_GOLDENS=1 cargo test --test initiative`.
+
+#[cfg(test)]
+mod cli {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    use assert_cmd::Command;
+    use serde_json::Value;
+    use tempfile::{TempDir, tempdir};
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    }
+
+    fn plan_fixtures() -> PathBuf {
+        repo_root().join("tests/fixtures/plan")
+    }
+
+    fn specify() -> Command {
+        Command::cargo_bin("specify").expect("cargo_bin(specify)")
+    }
+
+    /// A `.specify/` project rooted in a throwaway tempdir.
+    ///
+    /// Mirrors the harness in `tests/change.rs`: run `specify init` with
+    /// `--schema-dir` pointed at the repo root so `schema.yaml` is
+    /// always resolvable, then let the test body seed whatever
+    /// `plan.yaml` / `changes/` content it needs.
+    struct Project {
+        _tmp: TempDir,
+        root: PathBuf,
+    }
+
+    impl Project {
+        fn init() -> Self {
+            let tmp = tempdir().expect("tempdir");
+            let root = tmp.path().to_path_buf();
+            specify()
+                .current_dir(&root)
+                .args(["init", "omnia", "--schema-dir"])
+                .arg(repo_root())
+                .args(["--name", "test-proj"])
+                .assert()
+                .success();
+            Project { _tmp: tmp, root }
+        }
+
+        fn root(&self) -> &Path {
+            &self.root
+        }
+
+        fn plan_path(&self) -> PathBuf {
+            self.root.join(".specify/plan.yaml")
+        }
+
+        /// Seed `.specify/plan.yaml` with arbitrary YAML. The tests
+        /// drive the file directly (not the library's `Plan::save`)
+        /// because `specify initiative create` is out of scope for L1.I.
+        fn seed_plan(&self, yaml: &str) {
+            fs::write(self.plan_path(), yaml).expect("write plan.yaml");
+        }
+    }
+
+    // -- substitution / golden comparison (mirrors tests/e2e.rs) -------
+
+    const TEMPDIR_PLACEHOLDER: &str = "<TEMPDIR>";
+
+    struct Sub {
+        from: String,
+        to: &'static str,
+    }
+
+    /// Apply the longest candidate first. On macOS the canonical
+    /// tempdir path (`/private/var/folders/...`) is a superstring of
+    /// the raw path (`/var/folders/...`); if we substitute the raw
+    /// path first, we strip *inside* the canonical one and leave the
+    /// stray `/private` prefix in the golden. Sorting by length
+    /// descending avoids that.
+    fn tempdir_subs(root: &Path) -> Vec<Sub> {
+        let mut subs: Vec<Sub> = Vec::new();
+        if let Some(raw) = root.to_str() {
+            subs.push(Sub {
+                from: raw.to_string(),
+                to: TEMPDIR_PLACEHOLDER,
+            });
+        }
+        if let Ok(canonical) = fs::canonicalize(root)
+            && let Some(canonical_str) = canonical.to_str()
+            && Some(canonical_str) != root.to_str()
+        {
+            subs.push(Sub {
+                from: canonical_str.to_string(),
+                to: TEMPDIR_PLACEHOLDER,
+            });
+        }
+        subs.sort_by(|a, b| b.from.len().cmp(&a.from.len()));
+        subs
+    }
+
+    fn strip_substitutions(value: &mut Value, subs: &[Sub]) {
+        match value {
+            Value::String(s) => {
+                for sub in subs {
+                    if s.contains(&sub.from) {
+                        *s = s.replace(&sub.from, sub.to);
+                    }
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    strip_substitutions(item, subs);
+                }
+            }
+            Value::Object(map) => {
+                for (_k, v) in map.iter_mut() {
+                    strip_substitutions(v, subs);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn parse_stdout(stdout: &[u8], root: &Path) -> Value {
+        let text = std::str::from_utf8(stdout).expect("utf8 stdout");
+        let mut value: Value = serde_json::from_str(text)
+            .unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"));
+        strip_substitutions(&mut value, &tempdir_subs(root));
+        value
+    }
+
+    /// Compare `actual` against a checked-in golden, or rewrite it when
+    /// `REGENERATE_GOLDENS=1` is set. Mirrors `tests/e2e.rs`.
+    fn assert_golden(name: &str, actual: Value) {
+        let golden_path = plan_fixtures().join(name);
+        let rendered = serde_json::to_string_pretty(&actual).expect("pretty json");
+
+        if std::env::var_os("REGENERATE_GOLDENS").is_some() {
+            fs::create_dir_all(plan_fixtures()).expect("mkdir plan fixtures");
+            fs::write(&golden_path, format!("{rendered}\n")).expect("write golden");
+            return;
+        }
+
+        let expected_raw = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
+            panic!(
+                "golden {} missing ({err}); regenerate via REGENERATE_GOLDENS=1 cargo test --test initiative",
+                golden_path.display()
+            )
+        });
+        let expected: Value = serde_json::from_str(&expected_raw)
+            .unwrap_or_else(|err| panic!("golden {} is not JSON: {err}", golden_path.display()));
+
+        assert_eq!(
+            actual,
+            expected,
+            "stdout diverged from golden {}\n--- actual ---\n{rendered}\n--- expected ---\n{expected_raw}",
+            golden_path.display()
+        );
+    }
+
+    // -- test seeds --------------------------------------------------------
+
+    const CLEAN_PLAN: &str = "\
+name: demo
+changes:
+  - name: a
+    status: pending
+  - name: b
+    status: pending
+    depends-on: [a]
+";
+
+    const DUPLICATE_NAME_PLAN: &str = "\
+name: demo
+changes:
+  - name: foo
+    status: pending
+  - name: foo
+    status: pending
+";
+
+    const A_DONE_B_PENDING: &str = "\
+name: demo
+changes:
+  - name: a
+    status: done
+  - name: b
+    status: pending
+";
+
+    const A_IN_PROGRESS: &str = "\
+name: demo
+changes:
+  - name: a
+    status: in-progress
+";
+
+    const ALL_DONE: &str = "\
+name: demo
+changes:
+  - name: a
+    status: done
+  - name: b
+    status: done
+";
+
+    /// `a` failed, `b` pending depends-on `a`: neither is eligible but
+    /// not every entry is terminal, so `next` reports `stuck`.
+    const STUCK_PLAN: &str = "\
+name: demo
+changes:
+  - name: a
+    status: failed
+    status-reason: boom
+  - name: b
+    status: pending
+    depends-on: [a]
+";
+
+    const CYCLE_PLAN: &str = "\
+name: demo
+changes:
+  - name: a
+    status: pending
+    depends-on: [c]
+  - name: b
+    status: pending
+    depends-on: [a]
+  - name: c
+    status: pending
+    depends-on: [b]
+";
+
+    const FAILED_WITH_REASON: &str = "\
+name: demo
+changes:
+  - name: a
+    status: failed
+    status-reason: boom
+";
+
+    /// Verbatim RFC-2 §"The Plan" platform-v2 example. Used by the
+    /// status smoke test so status output stays pinned to the RFC
+    /// reference shape across L1.J–L1.L.
+    const PLATFORM_V2_PLAN: &str = r#"name: platform-v2
+
+sources:
+  monolith: /path/to/legacy-codebase
+  orders: git@github.com:org/orders-service.git
+  payments: git@github.com:org/payments-service.git
+  frontend: git@github.com:org/web-app.git
+
+changes:
+  - name: user-registration
+    sources: [monolith]
+    status: done
+
+  - name: email-verification
+    sources: [monolith]
+    depends-on: [user-registration]
+    status: in-progress
+
+  - name: registration-duplicate-email-crash
+    affects: [user-registration]
+    description: >
+      Duplicate email submission returns 500 instead of 409.
+      Discovered during email-verification extraction.
+    status: pending
+
+  - name: notification-preferences
+    depends-on: [user-registration]
+    description: >
+      Greenfield — user-facing notification channel and frequency settings.
+    status: pending
+
+  - name: extract-shared-validation
+    affects: [user-registration, email-verification]
+    description: >
+      Pull duplicated input validation into a shared validation crate
+      before building checkout-flow.
+    depends-on: [email-verification]
+    status: pending
+
+  - name: product-catalog
+    sources: [monolith]
+    depends-on: [extract-shared-validation]
+    status: pending
+
+  - name: shopping-cart
+    sources: [orders]
+    depends-on: [product-catalog, user-registration]
+    status: pending
+
+  - name: checkout-api
+    sources: [payments]
+    depends-on: [shopping-cart]
+    status: failed
+    status-reason: >
+      Type mismatch between cart line-item schema and payment gateway contract.
+      Needs design revision after shopping-cart specs are updated.
+
+  - name: checkout-ui
+    sources: [frontend]
+    depends-on: [checkout-api]
+    status: pending
+"#;
+
+    // -- validate ----------------------------------------------------------
+
+    #[test]
+    fn initiative_validate_clean_plan_text() {
+        let project = Project::init();
+        project.seed_plan(CLEAN_PLAN);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "validate"])
+            .assert()
+            .success();
+        assert_eq!(assert.get_output().status.code(), Some(0));
+
+        let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
+        // No ERROR-level lines on a clean plan.
+        assert!(
+            !stdout.contains("ERROR"),
+            "clean plan must not print any ERROR lines, got:\n{stdout}"
+        );
+    }
+
+    #[test]
+    fn initiative_validate_clean_plan_json() {
+        let project = Project::init();
+        project.seed_plan(CLEAN_PLAN);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "validate"])
+            .assert()
+            .success();
+        assert_eq!(assert.get_output().status.code(), Some(0));
+
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["passed"], true);
+        assert_eq!(actual["results"], Value::Array(vec![]));
+        assert_golden("validate-clean.json", actual);
+    }
+
+    #[test]
+    fn plan_validate_tolerates_in_progress_with_no_change_dir() {
+        // Transient window: `specify change transition <name> in-progress`
+        // can run a moment before `.specify/changes/<name>/` exists.
+        // `specify initiative validate` must surface a *warning* (not an
+        // error) so `passed == true` and skills don't stall on start-up.
+        let project = Project::init();
+        project.seed_plan(A_IN_PROGRESS);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "validate"])
+            .assert()
+            .success();
+        assert_eq!(
+            assert.get_output().status.code(),
+            Some(0),
+            "warning-only validate must exit 0 (EXIT_SUCCESS)"
+        );
+
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(
+            actual["passed"], true,
+            "in-progress-without-change-dir is a warning, so passed must be true: {actual}"
+        );
+        let results = actual["results"].as_array().expect("results array");
+        let matching: Vec<&Value> =
+            results.iter().filter(|r| r["code"] == "missing-change-dir-for-in-progress").collect();
+        assert_eq!(
+            matching.len(),
+            1,
+            "expected exactly one missing-change-dir-for-in-progress result, got: {results:#?}"
+        );
+        assert_eq!(matching[0]["level"], "warning");
+        assert_eq!(matching[0]["entry"], "a");
+    }
+
+    #[test]
+    fn initiative_validate_with_errors_json() {
+        let project = Project::init();
+        project.seed_plan(DUPLICATE_NAME_PLAN);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "validate"])
+            .assert()
+            .failure();
+        assert_eq!(
+            assert.get_output().status.code(),
+            Some(2),
+            "duplicate-name must exit 2 (EXIT_VALIDATION_FAILED)"
+        );
+
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["passed"], false);
+        let results = actual["results"].as_array().expect("results array");
+        assert!(
+            results.iter().any(|r| r["code"] == "duplicate-name" && r["level"] == "error"),
+            "expected a duplicate-name error, got: {results:#?}"
+        );
+        assert_golden("validate-duplicate-name.json", actual);
+    }
+
+    // -- next --------------------------------------------------------------
+
+    #[test]
+    fn initiative_next_picks_first_pending_text() {
+        let project = Project::init();
+        project.seed_plan(A_DONE_B_PENDING);
+
+        let assert =
+            specify().current_dir(project.root()).args(["initiative", "next"]).assert().success();
+        let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
+        assert_eq!(stdout, "b\n", "text next should be bare '<name>\\n', got: {stdout:?}");
+    }
+
+    #[test]
+    fn initiative_next_picks_first_pending_json() {
+        let project = Project::init();
+        project.seed_plan(A_DONE_B_PENDING);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "next"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["next"], "b");
+        assert_eq!(actual["reason"], Value::Null);
+        assert_eq!(actual["active"], Value::Null);
+        assert_golden("next-first-pending.json", actual);
+    }
+
+    #[test]
+    fn initiative_next_reports_in_progress() {
+        let project = Project::init();
+        project.seed_plan(A_IN_PROGRESS);
+
+        let text =
+            specify().current_dir(project.root()).args(["initiative", "next"]).assert().success();
+        let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
+        assert!(stdout.contains("a"), "text output should mention 'a': {stdout:?}");
+
+        let json = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "next"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&json.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["next"], Value::Null);
+        assert_eq!(actual["reason"], "in-progress");
+        assert_eq!(actual["active"], "a");
+        assert_golden("next-in-progress.json", actual);
+    }
+
+    #[test]
+    fn initiative_next_all_done_text() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+
+        let text =
+            specify().current_dir(project.root()).args(["initiative", "next"]).assert().success();
+        let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
+        assert_eq!(stdout, "All changes done.\n");
+
+        let json = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "next"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&json.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["reason"], "all-done");
+        assert_eq!(actual["next"], Value::Null);
+        assert_eq!(actual["active"], Value::Null);
+        assert_golden("next-all-done.json", actual);
+    }
+
+    #[test]
+    fn initiative_next_stuck_when_deps_unmet() {
+        let project = Project::init();
+        project.seed_plan(STUCK_PLAN);
+
+        let json = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "next"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&json.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["reason"], "stuck");
+        assert_eq!(actual["next"], Value::Null);
+        assert_eq!(actual["active"], Value::Null);
+        assert_golden("next-stuck.json", actual);
+    }
+
+    // -- status ------------------------------------------------------------
+
+    #[test]
+    fn initiative_status_renders_counts_and_topo_order_json() {
+        let project = Project::init();
+        project.seed_plan(PLATFORM_V2_PLAN);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "status"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(actual["schema-version"], 2);
+        let counts = actual["counts"].as_object().expect("counts object");
+        for key in ["done", "in-progress", "pending", "blocked", "failed", "skipped", "total"] {
+            assert!(counts.contains_key(key), "counts missing key '{key}': {counts:?}");
+        }
+        assert_eq!(counts["done"], 1);
+        assert_eq!(counts["in-progress"], 1);
+        assert_eq!(counts["pending"], 6);
+        assert_eq!(counts["failed"], 1);
+        assert_eq!(counts["total"], 9);
+
+        assert_eq!(actual["order"], "topological");
+        let entries = actual["entries"].as_array().expect("entries array");
+        let names: Vec<&str> = entries.iter().map(|e| e["name"].as_str().unwrap()).collect();
+        assert_eq!(
+            names,
+            [
+                "user-registration",
+                "email-verification",
+                "registration-duplicate-email-crash",
+                "notification-preferences",
+                "extract-shared-validation",
+                "product-catalog",
+                "shopping-cart",
+                "checkout-api",
+                "checkout-ui",
+            ],
+            "entries should be in RFC-2 topological order"
+        );
+
+        assert_golden("status-platform-v2.json", actual);
+    }
+
+    #[test]
+    fn initiative_status_on_cycle_falls_back_to_list_order() {
+        let project = Project::init();
+        project.seed_plan(CYCLE_PLAN);
+
+        let output = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "status"])
+            .assert()
+            .success();
+
+        let actual = parse_stdout(&output.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["order"], "list", "cycle must trigger list-order fallback");
+
+        let names: Vec<&str> = actual["entries"]
+            .as_array()
+            .expect("entries array")
+            .iter()
+            .map(|e| e["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["a", "b", "c"]);
+
+        let stderr = std::str::from_utf8(&output.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.to_lowercase().contains("cycle"),
+            "stderr should mention 'cycle' on fallback, got: {stderr:?}"
+        );
+    }
+
+    #[test]
+    fn initiative_status_surfaces_status_reason_on_failed_entry() {
+        let project = Project::init();
+        project.seed_plan(FAILED_WITH_REASON);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "status"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        let failed = actual["failed"].as_array().expect("failed array");
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0]["name"], "a");
+        assert_eq!(failed[0]["reason"], "boom");
+    }
+
+    #[test]
+    fn initiative_status_missing_plan_file_errors() {
+        let project = Project::init();
+        // Deliberately do NOT seed plan.yaml.
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "status"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        assert_eq!(value["error"], "config");
+        assert!(
+            value["message"].as_str().unwrap_or_default().contains("plan file not found"),
+            "message should mention 'plan file not found', got: {}",
+            value["message"]
+        );
+    }
+
+    // -- create / amend / transition (L1.J write-side commands) -----------
+
+    const EMPTY_PLAN: &str = "\
+name: demo
+changes: []
+";
+
+    const SINGLE_PENDING: &str = "\
+name: demo
+changes:
+  - name: foo
+    status: pending
+";
+
+    const SINGLE_IN_PROGRESS: &str = "\
+name: demo
+changes:
+  - name: foo
+    status: in-progress
+";
+
+    const SINGLE_DONE: &str = "\
+name: demo
+changes:
+  - name: foo
+    status: done
+";
+
+    const WITH_DESCRIPTION: &str = "\
+name: demo
+changes:
+  - name: foo
+    status: pending
+    description: original
+";
+
+    // -- plan create ------------------------------------------------------
+
+    #[test]
+    fn initiative_create_adds_pending_entry_json() {
+        let project = Project::init();
+        project.seed_plan(EMPTY_PLAN);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "create", "foo"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["action"], "create");
+        assert_eq!(actual["entry"]["name"], "foo");
+        assert_eq!(actual["entry"]["status"], "pending");
+        assert_eq!(actual["entry"]["status-reason"], Value::Null);
+        assert_eq!(actual["plan"]["name"], "demo");
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        assert!(saved.contains("name: foo"), "saved plan missing new entry:\n{saved}");
+        assert!(saved.contains("status: pending"), "saved plan missing pending status:\n{saved}");
+
+        assert_golden("create-foo.json", actual);
+    }
+
+    #[test]
+    fn initiative_create_rejects_duplicate_name_text() {
+        let project = Project::init();
+        project.seed_plan(EMPTY_PLAN);
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "create", "foo"])
+            .assert()
+            .success();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "create", "foo"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("already contains a change"),
+            "stderr should flag duplicate, got: {stderr:?}"
+        );
+    }
+
+    #[test]
+    fn initiative_create_rejects_invalid_name() {
+        let project = Project::init();
+        project.seed_plan(EMPTY_PLAN);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "create", "NotKebab"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        assert!(!saved.contains("NotKebab"), "invalid name must not land in the plan:\n{saved}");
+    }
+
+    #[test]
+    fn initiative_create_rejects_when_validation_fails() {
+        let project = Project::init();
+        project.seed_plan(EMPTY_PLAN);
+        let before = fs::read_to_string(project.plan_path()).expect("read");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "create", "foo", "--affects", "nonexistent"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+
+        let after = fs::read_to_string(project.plan_path()).expect("read");
+        assert_eq!(before, after, "failed create must not mutate plan.yaml");
+    }
+
+    // -- plan amend -------------------------------------------------------
+
+    #[test]
+    fn initiative_amend_replaces_depends_on() {
+        let project = Project::init();
+        project.seed_plan(
+            "\
+name: demo
+changes:
+  - name: a
+    status: done
+  - name: b
+    status: done
+  - name: foo
+    status: pending
+    depends-on: [a]
+",
+        );
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args([
+                "--format",
+                "json",
+                "initiative",
+                "amend",
+                "foo",
+                "--depends-on",
+                "a",
+                "--depends-on",
+                "b",
+            ])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["action"], "amend");
+        assert_eq!(actual["entry"]["name"], "foo");
+        let deps = actual["entry"]["depends-on"].as_array().expect("deps array");
+        let names: Vec<&str> = deps.iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(names, ["a", "b"]);
+
+        assert_golden("amend-replace-depends-on.json", actual);
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read");
+        assert!(saved.contains("- a"), "saved depends-on missing 'a':\n{saved}");
+        assert!(saved.contains("- b"), "saved depends-on missing 'b':\n{saved}");
+    }
+
+    #[test]
+    fn initiative_amend_clear_description() {
+        let project = Project::init();
+        project.seed_plan(WITH_DESCRIPTION);
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "amend", "foo", "--description", ""])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read");
+        assert!(
+            !saved.contains("description: original"),
+            "original description should be gone:\n{saved}"
+        );
+    }
+
+    #[test]
+    fn initiative_amend_leave_field_alone() {
+        let project = Project::init();
+        project.seed_plan(WITH_DESCRIPTION);
+
+        // --depends-on (clear) but no --description; description must stay.
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "amend", "foo", "--depends-on"])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read");
+        assert!(
+            saved.contains("description: original"),
+            "description should be preserved:\n{saved}"
+        );
+    }
+
+    #[test]
+    fn initiative_amend_on_missing_entry_fails() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_PENDING);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "amend", "nope", "--description", "x"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+        assert!(
+            stderr.contains("no change named"),
+            "stderr should mention missing change, got: {stderr:?}"
+        );
+    }
+
+    // -- plan transition --------------------------------------------------
+
+    #[test]
+    fn initiative_transition_happy_path_text() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_PENDING);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "transition", "foo", "in-progress"])
+            .assert()
+            .success();
+        let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
+        assert!(stdout.contains("pending"), "text output should mention 'pending': {stdout:?}");
+        assert!(
+            stdout.contains("in-progress"),
+            "text output should mention 'in-progress': {stdout:?}"
+        );
+    }
+
+    #[test]
+    fn initiative_transition_legal_edge_json() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_IN_PROGRESS);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "transition", "foo", "done"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["entry"]["name"], "foo");
+        assert_eq!(actual["entry"]["status"], "done");
+        assert_eq!(actual["entry"]["status-reason"], Value::Null);
+
+        assert_golden("transition-in-progress-to-done.json", actual);
+    }
+
+    #[test]
+    fn initiative_transition_rejects_illegal_edge() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_DONE);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "transition", "foo", "pending"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+        assert!(
+            stderr.to_lowercase().contains("illegal") || stderr.contains("transition"),
+            "stderr should mention illegal transition, got: {stderr:?}"
+        );
+    }
+
+    #[test]
+    fn initiative_transition_happy_path_json_pending_to_in_progress() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_PENDING);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "transition", "foo", "in-progress"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["entry"]["status"], "in-progress");
+        assert_eq!(actual["entry"]["status-reason"], Value::Null);
+
+        assert_golden("transition-pending-to-in-progress.json", actual);
+    }
+
+    #[test]
+    fn initiative_transition_reason_on_failed() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_IN_PROGRESS);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args([
+                "--format",
+                "json",
+                "initiative",
+                "transition",
+                "foo",
+                "failed",
+                "--reason",
+                "boom",
+            ])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["entry"]["status"], "failed");
+        assert_eq!(actual["entry"]["status-reason"], "boom");
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read");
+        assert!(saved.contains("status-reason: boom"), "saved reason missing:\n{saved}");
+
+        assert_golden("transition-in-progress-to-failed-with-reason.json", actual);
+    }
+
+    #[test]
+    fn initiative_transition_rejects_reason_on_in_progress_target() {
+        let project = Project::init();
+        project.seed_plan(SINGLE_PENDING);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "transition", "foo", "in-progress", "--reason", "x"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+        assert!(stderr.contains("--reason"), "stderr should mention '--reason', got: {stderr:?}");
+    }
+
+    #[test]
+    fn initiative_transition_clears_reason_on_pending_reentry() {
+        let project = Project::init();
+        project.seed_plan(
+            "\
+name: demo
+changes:
+  - name: foo
+    status: failed
+    status-reason: boom
+",
+        );
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "transition", "foo", "pending"])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read");
+        assert!(
+            !saved.contains("status-reason: boom"),
+            "status-reason should be cleared:\n{saved}"
+        );
+        assert!(saved.contains("status: pending"), "status should be pending:\n{saved}");
+    }
+
+    // -- human-driven replay (RFC-2 §"The Loop (Human-Driven)") -----------
+
+    #[test]
+    fn initiative_human_replay_matches_fixture() {
+        let project = Project::init();
+        project.seed_plan(
+            "\
+name: demo
+changes:
+  - name: user-registration
+    status: done
+",
+        );
+
+        specify()
+            .current_dir(project.root())
+            .args([
+                "initiative",
+                "create",
+                "registration-duplicate-email-crash",
+                "--affects",
+                "user-registration",
+                "--description",
+                "Duplicate email submission returns 500 instead of 409.",
+            ])
+            .assert()
+            .success();
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "transition", "registration-duplicate-email-crash", "in-progress"])
+            .assert()
+            .success();
+
+        specify()
+            .current_dir(project.root())
+            .args([
+                "initiative",
+                "amend",
+                "registration-duplicate-email-crash",
+                "--description",
+                "Clarified scope",
+            ])
+            .assert()
+            .success();
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "transition", "registration-duplicate-email-crash", "done"])
+            .assert()
+            .success();
+
+        let actual = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        let fixture_path = plan_fixtures().join("human-replay-final.yaml");
+
+        if std::env::var_os("REGENERATE_GOLDENS").is_some() {
+            fs::create_dir_all(plan_fixtures()).expect("mkdir plan fixtures");
+            fs::write(&fixture_path, &actual).expect("write fixture");
+            return;
+        }
+
+        let expected = fs::read_to_string(&fixture_path).unwrap_or_else(|err| {
+            panic!(
+                "fixture {} missing ({err}); regenerate via REGENERATE_GOLDENS=1 cargo test --test initiative",
+                fixture_path.display()
+            )
+        });
+
+        assert_eq!(
+            actual,
+            expected,
+            "plan.yaml after replay diverged from fixture {}\n--- actual ---\n{actual}\n--- expected ---\n{expected}",
+            fixture_path.display()
+        );
+    }
+
+    // -- plan init (L3.A) -------------------------------------------------
+
+    /// Build a blank `Project` via `specify init` and then delete the
+    /// auto-created `.specify/plan.yaml` (if any) so `specify initiative init`
+    /// is exercised against a clean slate.
+    fn init_without_plan() -> Project {
+        let project = Project::init();
+        let _ = fs::remove_file(project.plan_path());
+        project
+    }
+
+    #[test]
+    fn initiative_init_creates_empty_plan_json() {
+        let project = init_without_plan();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "init", "my-initiative"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["plan"]["name"], "my-initiative");
+        let path_str = actual["plan"]["path"].as_str().expect("plan.path string");
+        assert!(
+            path_str.ends_with(".specify/plan.yaml"),
+            "plan.path should end with .specify/plan.yaml, got: {path_str}"
+        );
+
+        assert!(project.plan_path().exists(), "plan.yaml should be created");
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        assert!(saved.contains("name: my-initiative"), "plan missing name:\n{saved}");
+        // Empty maps/vecs serialise with either `{}`/`[]` or are omitted
+        // via serde's default — either way, no actual source/change entries.
+        assert!(!saved.contains("- name:"), "plan should have no change entries:\n{saved}");
+
+        assert_golden("init-success.json", actual);
+    }
+
+    #[test]
+    fn initiative_init_with_sources_roundtrips() {
+        let project = init_without_plan();
+
+        specify()
+            .current_dir(project.root())
+            .args([
+                "initiative",
+                "init",
+                "big",
+                "--source",
+                "monolith=/tmp/legacy",
+                "--source",
+                "orders=git@github.com:org/orders.git",
+            ])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        assert!(saved.contains("name: big"), "plan missing name:\n{saved}");
+        assert!(saved.contains("monolith: /tmp/legacy"), "plan missing monolith source:\n{saved}");
+        assert!(
+            saved.contains("orders: git@github.com:org/orders.git"),
+            "plan missing orders source:\n{saved}"
+        );
+    }
+
+    #[test]
+    fn initiative_init_refuses_when_plan_exists() {
+        let project = Project::init();
+        project.seed_plan(EMPTY_PLAN);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "init", "other"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("specify initiative archive"),
+            "stderr should suggest `specify initiative archive`, got: {stderr:?}"
+        );
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        assert!(
+            saved.contains("name: demo"),
+            "existing plan.yaml must not be overwritten:\n{saved}"
+        );
+    }
+
+    #[test]
+    fn initiative_init_rejects_invalid_name() {
+        let project = init_without_plan();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "init", "BadName"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(stderr.contains("kebab-case"), "stderr should mention kebab-case, got: {stderr:?}");
+        assert!(!project.plan_path().exists(), "no plan.yaml on invalid name");
+    }
+
+    #[test]
+    fn initiative_init_rejects_duplicate_source_key() {
+        let project = init_without_plan();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "init", "x", "--source", "a=/p1", "--source", "a=/p2"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("duplicate key"),
+            "stderr should mention duplicate key, got: {stderr:?}"
+        );
+        assert!(!project.plan_path().exists(), "no plan.yaml on duplicate key");
+    }
+
+    #[test]
+    fn initiative_init_rejects_malformed_source() {
+        let project = init_without_plan();
+
+        // No `=` in the --source value → clap's value_parser rejects
+        // the argument at parse time (exit code 2).
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "init", "x", "--source", "badkey"])
+            .assert()
+            .failure();
+        assert_eq!(
+            assert.get_output().status.code(),
+            Some(2),
+            "clap parse errors must surface as exit code 2"
+        );
+        assert!(!project.plan_path().exists(), "no plan.yaml on malformed --source");
+    }
+
+    #[test]
+    fn initiative_init_validates_the_result() {
+        let project = init_without_plan();
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "init", "fresh"])
+            .assert()
+            .success();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "validate"])
+            .assert()
+            .success();
+        assert_eq!(assert.get_output().status.code(), Some(0));
+        let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
+        assert!(
+            !stdout.contains("ERROR"),
+            "freshly-init'd plan must pass `specify initiative validate` with no errors, got:\n{stdout}"
+        );
+    }
+
+    // -- plan archive (L1.K) ----------------------------------------------
+
+    fn today_yyyymmdd() -> String {
+        chrono::Utc::now().format("%Y%m%d").to_string()
+    }
+
+    /// Replace any `-YYYYMMDD` date stamp in JSON strings with a stable
+    /// placeholder so the archive-success golden is date-insensitive.
+    fn strip_date_stamps(value: &mut Value) {
+        let re = regex::Regex::new(r"-\d{8}\b").expect("regex compiles");
+        fn visit(re: &regex::Regex, v: &mut Value) {
+            match v {
+                Value::String(s) => {
+                    if re.is_match(s) {
+                        *s = re.replace_all(s, "-<YYYYMMDD>").into_owned();
+                    }
+                }
+                Value::Array(items) => {
+                    for item in items {
+                        visit(re, item);
+                    }
+                }
+                Value::Object(map) => {
+                    for (_k, v) in map.iter_mut() {
+                        visit(re, v);
+                    }
+                }
+                _ => {}
+            }
+        }
+        visit(&re, value);
+    }
+
+    fn archive_dir(project: &Project) -> PathBuf {
+        project.root().join(".specify/archive/plans")
+    }
+
+    #[test]
+    fn initiative_archive_happy_path_text() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "archive"])
+            .assert()
+            .success();
+        let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
+        assert!(
+            stdout.contains("Archived plan to"),
+            "stdout should announce archive path, got: {stdout:?}"
+        );
+
+        assert!(!project.plan_path().exists(), "original plan.yaml must be gone");
+        let archived = archive_dir(&project).join(format!("demo-{}.yaml", today_yyyymmdd()));
+        assert!(archived.exists(), "archived file not found at {}", archived.display());
+    }
+
+    #[test]
+    fn initiative_archive_happy_path_json() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "archive"])
+            .assert()
+            .success();
+        let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["plan"]["name"], "demo");
+        assert!(
+            actual["archived"].as_str().unwrap_or_default().contains("demo-"),
+            "archived path should contain the plan name, got: {}",
+            actual["archived"]
+        );
+
+        strip_date_stamps(&mut actual);
+        assert_golden("archive-success.json", actual);
+    }
+
+    #[test]
+    fn initiative_archive_refuses_without_force_on_pending_entries() {
+        let project = Project::init();
+        project.seed_plan(A_DONE_B_PENDING);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "archive"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("b"),
+            "stderr should mention the pending entry name 'b', got: {stderr:?}"
+        );
+        assert!(stderr.contains("--force"), "stderr should suggest --force, got: {stderr:?}");
+
+        assert!(project.plan_path().exists(), "plan.yaml must still exist");
+        assert!(
+            !archive_dir(&project).exists()
+                || !archive_dir(&project).join(format!("demo-{}.yaml", today_yyyymmdd())).exists(),
+            "no archive file should be written on refusal"
+        );
+    }
+
+    #[test]
+    fn initiative_archive_refuses_json_lists_entries() {
+        let project = Project::init();
+        project.seed_plan(A_DONE_B_PENDING);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "archive"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["error"], "plan_has_outstanding_work");
+        let entries = actual["entries"].as_array().expect("entries array");
+        let names: Vec<&str> = entries.iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(names, ["b"]);
+
+        assert_golden("archive-outstanding-work.json", actual);
+    }
+
+    #[test]
+    fn initiative_archive_with_force_on_pending_succeeds() {
+        let project = Project::init();
+        project.seed_plan(A_DONE_B_PENDING);
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "archive", "--force"])
+            .assert()
+            .success();
+
+        let archived = archive_dir(&project).join(format!("demo-{}.yaml", today_yyyymmdd()));
+        assert!(archived.exists(), "archived file missing at {}", archived.display());
+        let contents = fs::read_to_string(&archived).expect("read archived yaml");
+        assert!(
+            contents.contains("name: b"),
+            "archived yaml should preserve pending entry 'b':\n{contents}"
+        );
+        assert!(
+            contents.contains("status: pending"),
+            "archived yaml should preserve pending status verbatim:\n{contents}"
+        );
+    }
+
+    #[test]
+    fn initiative_archive_filename_is_kebab_plan_name_plus_yyyymmdd() {
+        let project = Project::init();
+        project.seed_plan(
+            "\
+name: my-initiative
+changes: []
+",
+        );
+
+        specify().current_dir(project.root()).args(["initiative", "archive"]).assert().success();
+
+        let re = regex::Regex::new(r"^my-initiative-\d{8}\.yaml$").expect("regex compiles");
+        let entries: Vec<String> = fs::read_dir(archive_dir(&project))
+            .expect("read archive dir")
+            .filter_map(|e| e.ok().and_then(|e| e.file_name().into_string().ok()))
+            .collect();
+        assert_eq!(entries.len(), 1, "expected exactly one archive file, got: {entries:?}");
+        assert!(
+            re.is_match(&entries[0]),
+            "archive filename {} should match `my-initiative-<YYYYMMDD>.yaml`",
+            entries[0]
+        );
+    }
+
+    #[test]
+    fn initiative_archive_refuses_when_destination_exists() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+
+        let dest_dir = archive_dir(&project);
+        fs::create_dir_all(&dest_dir).expect("mkdir archive dir");
+        let dest = dest_dir.join(format!("demo-{}.yaml", today_yyyymmdd()));
+        fs::write(&dest, "prior: content\n").expect("seed prior archive");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "archive"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("already exists"),
+            "stderr should mention 'already exists', got: {stderr:?}"
+        );
+
+        assert!(project.plan_path().exists(), "original plan.yaml must be untouched");
+        let dest_contents = fs::read_to_string(&dest).expect("read prior archive");
+        assert_eq!(
+            dest_contents, "prior: content\n",
+            "pre-existing archive destination must not be overwritten"
+        );
+    }
+
+    #[test]
+    fn initiative_archive_missing_plan_file_errors() {
+        let project = Project::init();
+        // Deliberately do NOT seed plan.yaml.
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "archive"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("plan file not found"),
+            "stderr should mention 'plan file not found', got: {stderr:?}"
+        );
+    }
+
+    // -- plan archive co-move of working directory (L3.B) ---------------
+
+    /// Seed `.specify/plans/<name>/` with the given files and return
+    /// the directory path.
+    fn seed_working_dir(project: &Project, plan_name: &str, files: &[(&str, &[u8])]) -> PathBuf {
+        let dir = project.root().join(".specify/plans").join(plan_name);
+        fs::create_dir_all(&dir).expect("mkdir plans working dir");
+        for (name, bytes) in files {
+            fs::write(dir.join(name), bytes).expect("seed working file");
+        }
+        dir
+    }
+
+    #[test]
+    fn initiative_archive_co_moves_working_dir_json() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+        let working_dir = seed_working_dir(
+            &project,
+            "demo",
+            &[("discovery.md", b"# discovery\n"), ("proposal.md", b"# proposal\n")],
+        );
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "archive"])
+            .assert()
+            .success();
+        let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["plan"]["name"], "demo");
+        assert!(
+            actual["archived"].as_str().unwrap_or_default().contains("demo-"),
+            "archived path should contain the plan name"
+        );
+        assert!(
+            actual["archived-plans-dir"].as_str().unwrap_or_default().contains("demo-"),
+            "archived-plans-dir should contain the plan name, got: {}",
+            actual["archived-plans-dir"]
+        );
+
+        assert!(!working_dir.exists(), ".specify/plans/demo/ must be gone after archive");
+        let archived_dir = archive_dir(&project).join(format!("demo-{}", today_yyyymmdd()));
+        assert!(archived_dir.is_dir(), "co-moved dir missing at {}", archived_dir.display());
+        assert_eq!(
+            fs::read_to_string(archived_dir.join("discovery.md")).expect("read"),
+            "# discovery\n"
+        );
+        assert_eq!(
+            fs::read_to_string(archived_dir.join("proposal.md")).expect("read"),
+            "# proposal\n"
+        );
+
+        strip_date_stamps(&mut actual);
+        assert_golden("archive-success-with-working-dir.json", actual);
+    }
+
+    #[test]
+    fn initiative_archive_no_working_dir_json() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "archive"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+        assert_eq!(
+            actual["archived-plans-dir"],
+            Value::Null,
+            "no working dir must surface archived-plans-dir: null, got: {}",
+            actual["archived-plans-dir"]
+        );
+    }
+
+    #[test]
+    fn initiative_archive_co_move_destination_collision_halts_before_moving_plan() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+        let working_dir = seed_working_dir(&project, "demo", &[("notes.md", b"# notes\n")]);
+
+        // Pre-create the co-move destination only; the plan.yaml
+        // archive destination is clear, so this hits the working-dir
+        // preflight specifically.
+        let dest_dir = archive_dir(&project).join(format!("demo-{}", today_yyyymmdd()));
+        fs::create_dir_all(&dest_dir).expect("seed collision dir");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "archive"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("already exists"),
+            "stderr should name 'already exists', got: {stderr:?}"
+        );
+
+        // Preflight contract: plan.yaml must be untouched on collision.
+        assert!(
+            project.plan_path().exists(),
+            "plan.yaml MUST be untouched when working-dir preflight fails"
+        );
+        assert!(working_dir.is_dir(), "source working dir must be untouched on collision");
+        let plan_archive = archive_dir(&project).join(format!("demo-{}.yaml", today_yyyymmdd()));
+        assert!(!plan_archive.exists(), "plan.yaml must not have been archived on collision");
+        assert!(
+            dest_dir.is_dir() && fs::read_dir(&dest_dir).expect("read").next().is_none(),
+            "pre-existing collision dir must remain empty"
+        );
+    }
+
+    // -- plan lock {acquire, release, status} (L2.E) ----------------------
+
+    fn lock_path(project: &Project) -> PathBuf {
+        project.root().join(".specify/plan.lock")
+    }
+
+    #[test]
+    fn initiative_lock_acquire_then_release_cycles_cleanly() {
+        let project = Project::init();
+
+        // Use a stable agent-session PID so release can authenticate. We
+        // pick the test process's own PID — guaranteed alive for the
+        // duration of the test.
+        let our_pid = std::process::id().to_string();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "lock", "acquire", "--pid", &our_pid])
+            .assert()
+            .success();
+        let acquired = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(acquired["held"], true);
+        assert_eq!(acquired["pid"], std::process::id());
+        assert_eq!(acquired["already-held"], false);
+        assert_eq!(acquired["reclaimed-stale-pid"], Value::Null);
+
+        assert!(lock_path(&project).exists(), "lockfile must exist after acquire");
+        let contents = fs::read_to_string(lock_path(&project)).expect("read lockfile");
+        assert_eq!(contents.trim(), our_pid);
+
+        let release_assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "lock", "release", "--pid", &our_pid])
+            .assert()
+            .success();
+        let released = parse_stdout(&release_assert.get_output().stdout, project.root());
+        assert_eq!(released["result"], "removed");
+        assert_eq!(released["pid"], std::process::id());
+
+        assert!(!lock_path(&project).exists(), "lockfile must be gone after release");
+    }
+
+    #[test]
+    fn initiative_lock_acquire_refuses_when_another_live_pid_stamped() {
+        let project = Project::init();
+
+        // Prime with our own PID — the CLI's liveness probe will find it
+        // alive (the test process is still running) and refuse to let a
+        // different PID take over.
+        let live_pid = std::process::id();
+        fs::create_dir_all(project.root().join(".specify")).expect("mkdir .specify");
+        fs::write(lock_path(&project), format!("{live_pid}\n")).expect("seed live stamp");
+
+        // Pick any PID that isn't the test process's own PID.
+        let contender_pid = if live_pid == 1 { 2 } else { 1 }.to_string();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "lock", "acquire", "--pid", &contender_pid])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+
+        let value: Value =
+            serde_json::from_slice(&assert.get_output().stdout).expect("json stdout");
+        assert_eq!(value["error"], "driver_busy");
+        assert_eq!(value["exit-code"], 1, "DriverBusy must surface the generic-failure exit code");
+        let msg = value["message"].as_str().unwrap_or_default();
+        assert!(
+            msg.contains(&format!("pid {live_pid}")),
+            "message should name the holder pid {live_pid}, got: {msg}"
+        );
+
+        // Lockfile contents must be preserved — the acquire failed, so
+        // the live holder stays stamped.
+        let contents = fs::read_to_string(lock_path(&project)).expect("read");
+        assert_eq!(contents.trim(), live_pid.to_string());
+    }
+
+    #[test]
+    fn initiative_lock_status_when_held() {
+        let project = Project::init();
+        let our_pid = std::process::id().to_string();
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "lock", "acquire", "--pid", &our_pid])
+            .assert()
+            .success();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "lock", "status"])
+            .assert()
+            .success();
+        let value = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(value["held"], true);
+        assert_eq!(value["pid"], std::process::id());
+        assert_eq!(value["stale"], false);
+
+        // Text form for the same state — `held by pid <n>`.
+        let text = specify()
+            .current_dir(project.root())
+            .args(["initiative", "lock", "status"])
+            .assert()
+            .success();
+        let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
+        assert!(
+            stdout.contains("held by pid"),
+            "text status should say 'held by pid …', got: {stdout:?}"
+        );
+    }
+
+    #[test]
+    fn initiative_lock_status_when_absent() {
+        let project = Project::init();
+        // Deliberately do NOT call acquire — no stamp on disk.
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "lock", "status"])
+            .assert()
+            .success();
+        let value = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(value["held"], false);
+        assert_eq!(value["pid"], Value::Null);
+        assert_eq!(value["stale"], Value::Null);
+
+        let text = specify()
+            .current_dir(project.root())
+            .args(["initiative", "lock", "status"])
+            .assert()
+            .success();
+        let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
+        assert_eq!(stdout.trim(), "no lock");
+    }
+}

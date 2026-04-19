@@ -98,7 +98,7 @@ fn change_create_produces_directory_and_metadata() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["schema-version"], 2);
     assert_eq!(value["name"], "my-change");
     assert_eq!(value["status"], "defining");
     assert_eq!(value["schema"], "omnia");
@@ -244,7 +244,7 @@ fn change_touched_specs_scan_classifies_new_vs_modified() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    let items = value["touched_specs"].as_array().expect("touched_specs array");
+    let items = value["touched-specs"].as_array().expect("touched-specs array");
     assert_eq!(items.len(), 2);
     assert_eq!(items[0]["name"], "alpha");
     assert_eq!(items[0]["type"], "new");
@@ -283,7 +283,7 @@ fn change_touched_specs_set_accepts_explicit_list() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    let items = value["touched_specs"].as_array().unwrap();
+    let items = value["touched-specs"].as_array().unwrap();
     assert_eq!(items.len(), 2);
     assert_eq!(items[0]["name"], "alpha");
     assert_eq!(items[1]["type"], "modified");
@@ -319,9 +319,9 @@ fn change_overlap_reports_shared_capabilities() {
     let overlaps = value["overlaps"].as_array().unwrap();
     assert_eq!(overlaps.len(), 1);
     assert_eq!(overlaps[0]["capability"], "login");
-    assert_eq!(overlaps[0]["other_change"], "second");
-    assert_eq!(overlaps[0]["our_spec_type"], "new");
-    assert_eq!(overlaps[0]["other_spec_type"], "modified");
+    assert_eq!(overlaps[0]["other-change"], "second");
+    assert_eq!(overlaps[0]["our-spec-type"], "new");
+    assert_eq!(overlaps[0]["other-spec-type"], "modified");
 }
 
 #[test]
@@ -368,7 +368,7 @@ fn change_archive_moves_dir_into_dated_archive() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    let archive_path = value["archive_path"].as_str().unwrap();
+    let archive_path = value["archive-path"].as_str().unwrap();
     assert!(archive_path.contains(".specify/archive/"));
     assert!(archive_path.ends_with("-my-change"));
 
@@ -404,8 +404,8 @@ fn change_drop_transitions_and_archives_with_reason() {
         .success();
     let value = parse_json(&assert.get_output().stdout);
     assert_eq!(value["status"], "dropped");
-    assert_eq!(value["drop_reason"], "Needs design call-out");
-    let archive_path = value["archive_path"].as_str().unwrap();
+    assert_eq!(value["drop-reason"], "Needs design call-out");
+    let archive_path = value["archive-path"].as_str().unwrap();
     assert!(archive_path.ends_with("-my-change"));
 
     // `.metadata.yaml` inside the archive should reflect the drop.
@@ -504,7 +504,7 @@ fn change_phase_outcome_stamps_success_on_define_json() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["schema-version"], 2);
     assert_eq!(value["change"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["outcome"], "success");
@@ -733,6 +733,135 @@ created-at: "2024-08-01T10:00:00Z"
 }
 
 // ---------------------------------------------------------------------------
+// change outcome (read verb symmetric with phase-outcome)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn change_outcome_returns_stamped_outcome_as_json() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+    specify()
+        .current_dir(project.root())
+        .args([
+            "change",
+            "phase-outcome",
+            "foo",
+            "build",
+            "success",
+            "--summary",
+            "5/5 tasks",
+            "--context",
+            "trailing newline",
+        ])
+        .assert()
+        .success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "outcome", "foo"])
+        .assert()
+        .success();
+
+    let value = parse_json(&assert.get_output().stdout);
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["name"], "foo");
+    let outcome = &value["outcome"];
+    assert_eq!(outcome["phase"].as_str(), Some("build"));
+    assert_eq!(outcome["outcome"].as_str(), Some("success"));
+    assert_eq!(outcome["summary"].as_str(), Some("5/5 tasks"));
+    assert_eq!(outcome["context"].as_str(), Some("trailing newline"));
+    let at = outcome["at"].as_str().expect("at is a string");
+    assert!(looks_like_rfc3339(at), "at should be RFC3339, got {at}");
+}
+
+#[test]
+fn change_outcome_emits_null_when_unstamped() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "outcome", "foo"])
+        .assert()
+        .success();
+
+    let value = parse_json(&assert.get_output().stdout);
+    assert_eq!(value["name"], "foo");
+    assert!(
+        value["outcome"].is_null(),
+        "outcome must be null when not yet stamped, got: {}",
+        value["outcome"]
+    );
+    assert_eq!(assert.get_output().status.code(), Some(0));
+}
+
+#[test]
+fn change_outcome_null_context_when_stamped_without_context() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+    specify()
+        .current_dir(project.root())
+        .args(["change", "phase-outcome", "foo", "define", "success", "--summary", "ok"])
+        .assert()
+        .success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "outcome", "foo"])
+        .assert()
+        .success();
+
+    let value = parse_json(&assert.get_output().stdout);
+    let outcome = &value["outcome"];
+    assert!(
+        outcome["context"].is_null(),
+        "context must render as null when absent, got: {}",
+        outcome["context"]
+    );
+}
+
+#[test]
+fn change_outcome_text_output_stamped() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+    specify()
+        .current_dir(project.root())
+        .args(["change", "phase-outcome", "foo", "build", "success", "--summary", "5/5 tasks"])
+        .assert()
+        .success();
+
+    let assert =
+        specify().current_dir(project.root()).args(["change", "outcome", "foo"]).assert().success();
+    let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
+    assert_eq!(stdout.trim_end(), "foo: build/success — 5/5 tasks");
+}
+
+#[test]
+fn change_outcome_text_output_unstamped() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let assert =
+        specify().current_dir(project.root()).args(["change", "outcome", "foo"]).assert().success();
+    let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
+    assert_eq!(stdout.trim_end(), "foo: no outcome stamped");
+}
+
+#[test]
+fn change_outcome_on_nonexistent_change_errors() {
+    let project = Project::init();
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "outcome", "ghost"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(1));
+    let value = parse_json(&assert.get_output().stdout);
+    let msg = value["message"].as_str().unwrap_or("");
+    assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
+}
+
+// ---------------------------------------------------------------------------
 // change journal-append (L2.B)
 // ---------------------------------------------------------------------------
 
@@ -760,7 +889,7 @@ fn change_journal_append_appends_to_file() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["schema-version"], 2);
     assert_eq!(value["change"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["kind"], "question");

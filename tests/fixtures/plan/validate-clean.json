@@ -5,5 +5,5 @@
     "path": "<TEMPDIR>/.specify/plan.yaml"
   },
   "results": [],
-  "schema_version": 1
+  "schema-version": 2
 }

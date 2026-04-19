@@ -3,5 +3,5 @@
     "name": "my-initiative",
     "path": "<TEMPDIR>/.specify/plan.yaml"
   },
-  "schema_version": 1
+  "schema-version": 2
 }

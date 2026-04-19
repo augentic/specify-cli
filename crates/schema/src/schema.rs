@@ -68,7 +68,7 @@ pub enum SchemaSource {
 /// ahead of the define→build→merge execution loop. It is intentionally
 /// omitted from `Schema::entries()` (see that iterator's docs) — call
 /// `Schema::plan_entries()` to enumerate plan-phase briefs.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Phase {
     Plan,
