@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/augentic/specify/schemas/cache-meta.schema.json",
+  "title": "Specify cache-meta.yaml",
+  "description": "Validates the structure of `.specify/.cache/.cache-meta.yaml`. Written by skills (the agent) whenever they populate or refresh the cache; read by the CLI during schema resolution.",
+  "type": "object",
+  "required": ["schema_url", "fetched_at"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_url": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The `schema` value the cache was populated from. Bare-name schemas use `local:<name>` (e.g. `local:omnia`); URL-based schemas use the full URL including `@ref` when present."
+    },
+    "fetched_at": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO-8601 timestamp (UTC) of when the agent wrote the cache."
+    }
+  }
+}

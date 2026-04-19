@@ -1,0 +1,16 @@
+{
+  "passed": false,
+  "plan": {
+    "name": "demo",
+    "path": "<TEMPDIR>/.specify/plan.yaml"
+  },
+  "results": [
+    {
+      "code": "duplicate-name",
+      "entry": "foo",
+      "level": "error",
+      "message": "duplicate plan entry name 'foo'"
+    }
+  ],
+  "schema-version": 2
+}

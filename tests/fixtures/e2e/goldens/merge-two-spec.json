@@ -1,0 +1,25 @@
+{
+  "merged-specs": [
+    {
+      "name": "login",
+      "operations": [
+        {
+          "id": "REQ-001",
+          "kind": "added",
+          "name": "User can log in"
+        }
+      ]
+    },
+    {
+      "name": "oauth",
+      "operations": [
+        {
+          "id": "REQ-001",
+          "kind": "added",
+          "name": "Handle OAuth callback"
+        }
+      ]
+    }
+  ],
+  "schema-version": 2
+}

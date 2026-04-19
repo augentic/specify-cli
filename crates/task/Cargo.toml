@@ -1,0 +1,13 @@
+[package]
+name = "specify-task"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Task list parser and mark-complete helper for Specify"
+categories = ["development-tools", "parser-implementations"]
+keywords = ["specify", "tasks", "parser"]
+
+[dependencies]
+specify-error = { path = "../error" }
+regex.workspace = true

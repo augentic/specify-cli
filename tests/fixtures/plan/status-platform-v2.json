@@ -1,0 +1,162 @@
+{
+  "blocked": [],
+  "counts": {
+    "blocked": 0,
+    "done": 1,
+    "failed": 1,
+    "in-progress": 1,
+    "pending": 6,
+    "skipped": 0,
+    "total": 9
+  },
+  "entries": [
+    {
+      "affects": [],
+      "depends-on": [],
+      "description": null,
+      "lifecycle": null,
+      "name": "user-registration",
+      "sources": [
+        "monolith"
+      ],
+      "status": "done",
+      "status-reason": null
+    },
+    {
+      "affects": [],
+      "depends-on": [
+        "user-registration"
+      ],
+      "description": null,
+      "lifecycle": null,
+      "name": "email-verification",
+      "sources": [
+        "monolith"
+      ],
+      "status": "in-progress",
+      "status-reason": null
+    },
+    {
+      "affects": [
+        "user-registration"
+      ],
+      "depends-on": [],
+      "description": "Duplicate email submission returns 500 instead of 409. Discovered during email-verification extraction.\n",
+      "lifecycle": null,
+      "name": "registration-duplicate-email-crash",
+      "sources": [],
+      "status": "pending",
+      "status-reason": null
+    },
+    {
+      "affects": [],
+      "depends-on": [
+        "user-registration"
+      ],
+      "description": "Greenfield — user-facing notification channel and frequency settings.\n",
+      "lifecycle": null,
+      "name": "notification-preferences",
+      "sources": [],
+      "status": "pending",
+      "status-reason": null
+    },
+    {
+      "affects": [
+        "user-registration",
+        "email-verification"
+      ],
+      "depends-on": [
+        "email-verification"
+      ],
+      "description": "Pull duplicated input validation into a shared validation crate before building checkout-flow.\n",
+      "lifecycle": null,
+      "name": "extract-shared-validation",
+      "sources": [],
+      "status": "pending",
+      "status-reason": null
+    },
+    {
+      "affects": [],
+      "depends-on": [
+        "extract-shared-validation"
+      ],
+      "description": null,
+      "lifecycle": null,
+      "name": "product-catalog",
+      "sources": [
+        "monolith"
+      ],
+      "status": "pending",
+      "status-reason": null
+    },
+    {
+      "affects": [],
+      "depends-on": [
+        "product-catalog",
+        "user-registration"
+      ],
+      "description": null,
+      "lifecycle": null,
+      "name": "shopping-cart",
+      "sources": [
+        "orders"
+      ],
+      "status": "pending",
+      "status-reason": null
+    },
+    {
+      "affects": [],
+      "depends-on": [
+        "shopping-cart"
+      ],
+      "description": null,
+      "lifecycle": null,
+      "name": "checkout-api",
+      "sources": [
+        "payments"
+      ],
+      "status": "failed",
+      "status-reason": "Type mismatch between cart line-item schema and payment gateway contract. Needs design revision after shopping-cart specs are updated.\n"
+    },
+    {
+      "affects": [],
+      "depends-on": [
+        "checkout-api"
+      ],
+      "description": null,
+      "lifecycle": null,
+      "name": "checkout-ui",
+      "sources": [
+        "frontend"
+      ],
+      "status": "pending",
+      "status-reason": null
+    }
+  ],
+  "failed": [
+    {
+      "name": "checkout-api",
+      "reason": "Type mismatch between cart line-item schema and payment gateway contract. Needs design revision after shopping-cart specs are updated.\n"
+    }
+  ],
+  "impact": [
+    {
+      "done": "user-registration",
+      "referenced-by": [
+        "registration-duplicate-email-crash",
+        "extract-shared-validation"
+      ]
+    }
+  ],
+  "in-progress": {
+    "lifecycle": null,
+    "name": "email-verification"
+  },
+  "next-eligible": null,
+  "order": "topological",
+  "plan": {
+    "name": "platform-v2",
+    "path": "<TEMPDIR>/.specify/plan.yaml"
+  },
+  "schema-version": 2
+}

@@ -1,0 +1,25 @@
+[package]
+name = "specify-schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Schema resolution, brief frontmatter, and PipelineView for Specify"
+categories = ["development-tools"]
+keywords = ["specify", "schema", "pipeline"]
+
+[dependencies]
+specify-error = { path = "../error" }
+serde.workspace = true
+serde_yaml.workspace = true
+serde_json.workspace = true
+jsonschema = { version = "0.46", default-features = false }
+glob.workspace = true
+# `derive` pulls `clap_derive` for `#[derive(ValueEnum)]` on `Phase`
+# so the binary can consume it directly as a `#[arg(value_enum)]`
+# without a wrapper enum. `default-features = false` keeps the
+# library's dep footprint minimal — the trait and macro only.
+clap = { version = "4", default-features = false, features = ["derive", "std"] }
+
+[dev-dependencies]
+tempfile = "3"

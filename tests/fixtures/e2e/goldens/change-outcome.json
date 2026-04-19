@@ -1,0 +1,11 @@
+{
+  "name": "foo",
+  "outcome": {
+    "at": "<ISO8601>",
+    "context": "trailing newline",
+    "outcome": "success",
+    "phase": "build",
+    "summary": "5/5 tasks"
+  },
+  "schema-version": 2
+}

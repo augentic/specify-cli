@@ -1,0 +1,17 @@
+[package]
+name = "specify-drift"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Spec-vs-code drift scaffolding for Specify (RFC-2, stubbed)"
+categories = ["development-tools"]
+keywords = ["specify", "drift", "rfc2"]
+
+[dependencies]
+specify-error = { path = "../error" }
+specify-spec = { path = "../spec" }
+serde.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,207 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: false
+          # aarch64 Linux uses `cross` for its portable glibc toolchain.
+          # Rationale: avoids hand-rolling apt-installed gcc-aarch64-linux-gnu
+          # env wiring in every step, and matches rustup's own release workflow.
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: true
+          - target: x86_64-apple-darwin
+            os: macos-13
+            use_cross: false
+          - target: aarch64-apple-darwin
+            os: macos-14
+            use_cross: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            use_cross: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --locked --git https://github.com/cross-rs/cross
+
+      - name: Build (cargo)
+        if: ${{ !matrix.use_cross }}
+        shell: bash
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.use_cross
+        shell: bash
+        run: cross build --release --locked --target ${{ matrix.target }}
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Package (unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCHIVE="specify-${VERSION}-${{ matrix.target }}.tar.gz"
+          tar -czf "${ARCHIVE}" -C "target/${{ matrix.target }}/release" specify
+          shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
+
+      - name: Package (windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $archive = "specify-$version-${{ matrix.target }}.zip"
+          7z a $archive "target\${{ matrix.target }}\release\specify.exe"
+          (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLower() + "  " + $archive | Out-File -FilePath "$archive.sha256" -Encoding ascii
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: specify-${{ matrix.target }}
+          path: |
+            specify-*.tar.gz
+            specify-*.zip
+            specify-*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: specify-*
+          merge-multiple: true
+
+      - name: Compute version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: List artifacts
+        run: ls -la artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: artifacts/**/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+  publish-crates-io:
+    name: Publish to crates.io
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Gate: only run in the canonical repo. Forks and non-augentic clones skip
+    # this job entirely, which means the workflow file stays valid even when
+    # CARGO_REGISTRY_TOKEN is not defined — GitHub only evaluates `secrets.*`
+    # references inside steps that actually run.
+    if: github.repository == 'augentic/specify'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      # Publish in dependency order. Each `cargo publish` verifies the crate
+      # builds against the version it just uploaded; the `sleep` gives the
+      # crates.io index time to propagate before the next dependent crate
+      # tries to resolve it.
+      - name: Publish specify-error
+        run: cargo publish --package specify-error --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish specify-schema
+        run: cargo publish --package specify-schema --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish specify-spec
+        run: cargo publish --package specify-spec --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish specify-task
+        run: cargo publish --package specify-task --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish specify-change
+        run: cargo publish --package specify-change --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish specify-drift
+        run: cargo publish --package specify-drift --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish specify-federation
+        run: cargo publish --package specify-federation --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish specify-merge
+        run: cargo publish --package specify-merge --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish specify-validate
+        run: cargo publish --package specify-validate --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish specify (root)
+        run: cargo publish --package specify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}

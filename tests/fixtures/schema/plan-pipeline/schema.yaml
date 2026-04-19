@@ -1,0 +1,13 @@
+name: plan-pipeline
+version: 1
+description: fixture schema exercising pipeline.plan (Layer 3 authoring)
+pipeline:
+  plan:
+    - { id: discovery, brief: briefs/plan/discovery.md }
+    - { id: propose,   brief: briefs/plan/propose.md }
+  define:
+    - { id: proposal, brief: briefs/proposal.md }
+  build:
+    - { id: build, brief: briefs/build.md }
+  merge:
+    - { id: merge, brief: briefs/merge.md }

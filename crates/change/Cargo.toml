@@ -1,0 +1,31 @@
+[package]
+name = "specify-change"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Change-metadata lifecycle state machine for Specify"
+categories = ["development-tools"]
+keywords = ["specify", "change", "lifecycle"]
+
+[dependencies]
+specify-error = { path = "../error" }
+specify-schema = { path = "../schema" }
+serde.workspace = true
+serde_yaml.workspace = true
+chrono.workspace = true
+tempfile = "3"
+petgraph = "0.6"
+fs2 = "0.4"
+# `derive` pulls `clap_derive` for `#[derive(ValueEnum)]` on
+# library-exported enums (`PlanStatus`, `LifecycleStatus`, `Outcome`,
+# `EntryKind`). `default-features = false` drops the help/suggestions/
+# color features the binary adds back in its own `clap` dep — the
+# library only needs the trait.
+clap = { version = "4", default-features = false, features = ["derive", "std"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,7 @@
+{
+  "plan": {
+    "name": "my-initiative",
+    "path": "<TEMPDIR>/.specify/plan.yaml"
+  },
+  "schema-version": 2
+}

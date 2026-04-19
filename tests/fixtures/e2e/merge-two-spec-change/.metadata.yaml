@@ -1,0 +1,7 @@
+schema: omnia
+status: complete
+touched-specs:
+  - name: login
+    type: new
+  - name: oauth
+    type: new

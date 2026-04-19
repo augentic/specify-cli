@@ -1,0 +1,15 @@
+[package]
+name = "specify-federation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Multi-repo coordination scaffolding for Specify (RFC-3, stubbed)"
+categories = ["development-tools"]
+keywords = ["specify", "federation", "rfc3"]
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_yaml.workspace = true
