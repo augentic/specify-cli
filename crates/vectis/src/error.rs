@@ -5,8 +5,9 @@
 //! the dispatcher serializes [`VectisError::to_json`] to stdout and exits with
 //! the variant's [`VectisError::exit_code`].
 
-use serde::Serialize;
 use std::io;
+
+use serde::Serialize;
 use thiserror::Error;
 
 /// A single missing tool reported by the prerequisite checker.
@@ -34,10 +35,7 @@ pub struct MissingTool {
 #[derive(Debug, Error)]
 pub enum VectisError {
     #[error("missing prerequisites: {message}")]
-    MissingPrerequisites {
-        missing: Vec<MissingTool>,
-        message: String,
-    },
+    MissingPrerequisites { missing: Vec<MissingTool>, message: String },
 
     #[error("io error: {0}")]
     Io(#[from] io::Error),

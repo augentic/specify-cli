@@ -76,12 +76,8 @@ pub struct AndroidScaffold {
 /// `Verify` so the caller can splice the failure into the structured JSON
 /// output. The pipeline can be skipped for unit tests via `run_build`.
 pub fn scaffold(
-    project_dir: &Path,
-    android_package: &str,
-    caps: &[Capability],
-    params: &Params,
-    versions: &Versions,
-    run_build: bool,
+    project_dir: &Path, android_package: &str, caps: &[Capability], params: &Params,
+    versions: &Versions, run_build: bool,
 ) -> Result<AndroidScaffold, VectisError> {
     let android_root = project_dir.join("Android");
     if android_root.exists() {
@@ -177,10 +173,7 @@ fn write_java_home(android_root: &Path) -> Result<(), VectisError> {
 /// Returns `None` on non-macOS hosts (no `java_home` binary) or when no
 /// JDK 21 is registered.
 fn detect_java_home_21() -> Option<String> {
-    let output = Command::new("/usr/libexec/java_home")
-        .args(["-v", "21"])
-        .output()
-        .ok()?;
+    let output = Command::new("/usr/libexec/java_home").args(["-v", "21"]).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -236,9 +229,8 @@ fn resolve_ndk_version(versions: &Versions) -> Result<String, VectisError> {
         });
     }
     versions_found.sort_by(|a, b| {
-        let parse = |s: &str| -> Vec<u64> {
-            s.split('.').map(|c| c.parse::<u64>().unwrap_or(0)).collect()
-        };
+        let parse =
+            |s: &str| -> Vec<u64> { s.split('.').map(|c| c.parse::<u64>().unwrap_or(0)).collect() };
         parse(a).cmp(&parse(b))
     });
     Ok(versions_found.pop().expect("non-empty by check above"))
@@ -273,10 +265,7 @@ fn resolve_ndk_version(versions: &Versions) -> Result<String, VectisError> {
 /// table (`Versions::android.ndk` is `Option<String>` so the user can pin
 /// it; if absent we detect from disk -- both paths land here).
 fn run_pipeline(
-    project_dir: &Path,
-    android_root: &Path,
-    versions: &Versions,
-    _caps: &[Capability],
+    project_dir: &Path, android_root: &Path, versions: &Versions, _caps: &[Capability],
 ) -> Result<Vec<BuildStep>, VectisError> {
     // Resolve and inject the NDK version into the rendered shared
     // build.gradle.kts. Done lazily here (vs. during placeholder
@@ -326,10 +315,8 @@ fn run_pipeline(
 /// `android_root`. The scratch directory is best-effort cleaned up; a
 /// leftover scratch dir is harmless.
 fn bootstrap_wrapper(android_root: &Path, gradle_pin: &str) -> Result<BuildStep, VectisError> {
-    let scratch = std::env::temp_dir().join(format!(
-        "vectis-gradle-wrapper-bootstrap-{}",
-        std::process::id()
-    ));
+    let scratch = std::env::temp_dir()
+        .join(format!("vectis-gradle-wrapper-bootstrap-{}", std::process::id()));
     // Best-effort cleanup of any prior run; ignore errors -- they'll
     // surface via the `create_dir_all` below.
     let _ = fs::remove_dir_all(&scratch);
@@ -355,14 +342,8 @@ fn bootstrap_wrapper(android_root: &Path, gradle_pin: &str) -> Result<BuildStep,
     for (src_rel, dst_rel) in [
         ("gradlew", "gradlew"),
         ("gradlew.bat", "gradlew.bat"),
-        (
-            "gradle/wrapper/gradle-wrapper.jar",
-            "gradle/wrapper/gradle-wrapper.jar",
-        ),
-        (
-            "gradle/wrapper/gradle-wrapper.properties",
-            "gradle/wrapper/gradle-wrapper.properties",
-        ),
+        ("gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.jar"),
+        ("gradle/wrapper/gradle-wrapper.properties", "gradle/wrapper/gradle-wrapper.properties"),
     ] {
         let src = scratch.join(src_rel);
         let dst = android_root.join(dst_rel);
@@ -385,32 +366,26 @@ fn bootstrap_wrapper(android_root: &Path, gradle_pin: &str) -> Result<BuildStep,
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Mutex, MutexGuard, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
 
     /// Tests in this module mutate `ANDROID_HOME`. cargo runs unit tests
     /// in parallel by default; serialize through this mutex so two tests
     /// don't observe each other's `ANDROID_HOME` mid-scaffold.
     fn android_home_lock() -> MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn scratch_dir(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        std::env::temp_dir().join(format!(
-            "vectis-init-android-{label}-{}-{nanos}-{n}",
-            std::process::id(),
-        ))
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        std::env::temp_dir()
+            .join(format!("vectis-init-android-{label}-{}-{nanos}-{n}", std::process::id(),))
     }
 
     fn sample_versions() -> Versions {
@@ -467,10 +442,7 @@ mod tests {
 
     #[test]
     fn android_package_to_path_translates_dots() {
-        assert_eq!(
-            android_package_to_path("com.vectis.counter"),
-            "com/vectis/counter"
-        );
+        assert_eq!(android_package_to_path("com.vectis.counter"), "com/vectis/counter");
         assert_eq!(android_package_to_path("com.example"), "com/example");
         assert_eq!(android_package_to_path("single"), "single");
     }
@@ -494,8 +466,7 @@ mod tests {
             // 19 templates - 1 cap-conditional (network_security_config) = 18.
             assert_eq!(result.files.len(), android::TEMPLATES.len() - 1);
             assert!(
-                !dir.join("Android/app/src/main/res/xml/network_security_config.xml")
-                    .exists(),
+                !dir.join("Android/app/src/main/res/xml/network_security_config.xml").exists(),
                 "network_security_config.xml must be skipped for render-only builds"
             );
             assert!(dir.join("Android/Makefile").is_file());
@@ -505,29 +476,20 @@ mod tests {
             assert!(dir.join("Android/gradle/libs.versions.toml").is_file());
             assert!(dir.join("Android/app/build.gradle.kts").is_file());
             assert!(dir.join("Android/shared/build.gradle.kts").is_file());
+            assert!(dir.join("Android/app/src/main/AndroidManifest.xml").is_file());
             assert!(
-                dir.join("Android/app/src/main/AndroidManifest.xml")
+                dir.join("Android/app/src/main/java/com/vectis/counter/CounterApplication.kt")
                     .is_file()
             );
             assert!(
-                dir.join(
-                    "Android/app/src/main/java/com/vectis/counter/CounterApplication.kt"
-                )
-                .is_file()
+                dir.join("Android/app/src/main/java/com/vectis/counter/MainActivity.kt").is_file()
             );
             assert!(
-                dir.join("Android/app/src/main/java/com/vectis/counter/MainActivity.kt")
+                dir.join("Android/app/src/main/java/com/vectis/counter/core/Core.kt").is_file()
+            );
+            assert!(
+                dir.join("Android/app/src/main/java/com/vectis/counter/ui/screens/HomeScreen.kt")
                     .is_file()
-            );
-            assert!(
-                dir.join("Android/app/src/main/java/com/vectis/counter/core/Core.kt")
-                    .is_file()
-            );
-            assert!(
-                dir.join(
-                    "Android/app/src/main/java/com/vectis/counter/ui/screens/HomeScreen.kt"
-                )
-                .is_file()
             );
             // local.properties must always be written.
             assert!(dir.join("Android/local.properties").is_file());
@@ -551,10 +513,7 @@ mod tests {
             )
             .expect("scaffold must succeed");
             assert_eq!(result.files.len(), android::TEMPLATES.len());
-            assert!(
-                dir.join("Android/app/src/main/res/xml/network_security_config.xml")
-                    .is_file()
-            );
+            assert!(dir.join("Android/app/src/main/res/xml/network_security_config.xml").is_file());
             // HTTP cap markers should be kept inside libs.versions.toml.
             let libs = fs::read_to_string(dir.join("Android/gradle/libs.versions.toml")).unwrap();
             assert!(libs.contains("ktor = \"3.4.0\""));
@@ -609,12 +568,11 @@ mod tests {
                     .is_file()
             );
             // File-content substitution.
-            let app_kt = fs::read_to_string(
-                dir.join(
+            let app_kt =
+                fs::read_to_string(dir.join(
                     "Android/app/src/main/java/com/example/noteeditor/NoteEditorApplication.kt",
-                ),
-            )
-            .unwrap();
+                ))
+                .unwrap();
             assert!(!app_kt.contains("__APP_NAME__"));
             assert!(!app_kt.contains("__ANDROID_PACKAGE__"));
             assert!(app_kt.contains("package com.example.noteeditor"));
@@ -632,15 +590,8 @@ mod tests {
         let fake_sdk = scratch_dir("fake-sdk-strip");
         fs::create_dir_all(&fake_sdk).unwrap();
         with_android_home(&fake_sdk, |_| {
-            scaffold(
-                &dir,
-                "com.vectis.counter",
-                &[],
-                &sample_params(),
-                &sample_versions(),
-                false,
-            )
-            .unwrap();
+            scaffold(&dir, "com.vectis.counter", &[], &sample_params(), &sample_versions(), false)
+                .unwrap();
             for entry in android::TEMPLATES {
                 if !entry.include_when.should_include(&[]) {
                     continue;
@@ -651,16 +602,13 @@ mod tests {
                     Some("com/vectis/counter"),
                 ));
                 let body = fs::read_to_string(&path).unwrap();
-                assert!(
-                    !body.contains("<<<CAP:"),
-                    "leftover open marker in {}",
-                    entry.target
-                );
+                assert!(!body.contains("<<<CAP:"), "leftover open marker in {}", entry.target);
             }
             // Render-only: Core.kt's HTTP/KV/etc. arms should not appear.
-            let core_kt =
-                fs::read_to_string(dir.join("Android/app/src/main/java/com/vectis/counter/core/Core.kt"))
-                    .unwrap();
+            let core_kt = fs::read_to_string(
+                dir.join("Android/app/src/main/java/com/vectis/counter/core/Core.kt"),
+            )
+            .unwrap();
             assert!(!core_kt.contains("Effect.Http"));
             assert!(!core_kt.contains("Effect.KeyValue"));
             assert!(!core_kt.contains("Effect.Time"));
@@ -679,15 +627,8 @@ mod tests {
         let fake_sdk = scratch_dir("fake-sdk-local");
         fs::create_dir_all(&fake_sdk).unwrap();
         with_android_home(&fake_sdk, |sdk_path| {
-            scaffold(
-                &dir,
-                "com.vectis.counter",
-                &[],
-                &sample_params(),
-                &sample_versions(),
-                false,
-            )
-            .unwrap();
+            scaffold(&dir, "com.vectis.counter", &[], &sample_params(), &sample_versions(), false)
+                .unwrap();
             let local = fs::read_to_string(dir.join("Android/local.properties")).unwrap();
             assert!(
                 local.contains(&format!("sdk.dir={}", sdk_path.display())),

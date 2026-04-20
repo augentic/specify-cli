@@ -93,10 +93,6 @@ mod tests {
         targets.sort_unstable();
         let len_before = targets.len();
         targets.dedup();
-        assert_eq!(
-            targets.len(),
-            len_before,
-            "duplicate target paths in core registry"
-        );
+        assert_eq!(targets.len(), len_before, "duplicate target paths in core registry");
     }
 }

@@ -29,7 +29,6 @@ use std::process::ExitCode;
 use chrono::Utc;
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
-
 use specify::{
     BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Error,
     InitOptions, InitResult, Journal, JournalEntry, LifecycleStatus, MergeEntry, MergeOperation,
@@ -2915,9 +2914,7 @@ fn emit_vectis_error(format: OutputFormat, err: &specify_vectis::VectisError) ->
                 Value::Object(map) => map,
                 _ => unreachable!("VectisError::to_json always returns an object"),
             };
-            payload
-                .entry("exit-code".to_string())
-                .or_insert(Value::from(code));
+            payload.entry("exit-code".to_string()).or_insert(Value::from(code));
             emit_json(Value::Object(payload));
         }
         OutputFormat::Text => match err {
@@ -2961,14 +2958,8 @@ fn vectis_render_text(action: &VectisAction, value: &Value) {
 }
 
 fn vectis_render_init_text(value: &Value) {
-    let app = value
-        .get("app-name")
-        .and_then(Value::as_str)
-        .unwrap_or("<app>");
-    let dir = value
-        .get("project-dir")
-        .and_then(Value::as_str)
-        .unwrap_or("<dir>");
+    let app = value.get("app-name").and_then(Value::as_str).unwrap_or("<app>");
+    let dir = value.get("project-dir").and_then(Value::as_str).unwrap_or("<dir>");
     println!("Created app \"{app}\" at {dir}");
 
     let caps: Vec<&str> = value
@@ -2996,15 +2987,9 @@ fn vectis_render_init_text(value: &Value) {
         });
         for key in keys {
             let assembly = &map[key];
-            let status = assembly
-                .get("status")
-                .and_then(Value::as_str)
-                .unwrap_or("?");
-            let file_count = assembly
-                .get("files")
-                .and_then(Value::as_array)
-                .map(Vec::len)
-                .unwrap_or(0);
+            let status = assembly.get("status").and_then(Value::as_str).unwrap_or("?");
+            let file_count =
+                assembly.get("files").and_then(Value::as_array).map(Vec::len).unwrap_or(0);
             let build = vectis_render_build_steps_summary(assembly.get("build-steps"));
             match build {
                 Some(summary) => println!("  - {key}: {status} ({file_count} files), {summary}"),
@@ -3015,15 +3000,9 @@ fn vectis_render_init_text(value: &Value) {
 }
 
 fn vectis_render_verify_text(value: &Value) {
-    let dir = value
-        .get("project-dir")
-        .and_then(Value::as_str)
-        .unwrap_or("<dir>");
+    let dir = value.get("project-dir").and_then(Value::as_str).unwrap_or("<dir>");
     let passed = value.get("passed").and_then(Value::as_bool).unwrap_or(false);
-    println!(
-        "Verified {dir}: {}",
-        if passed { "PASS" } else { "FAIL" }
-    );
+    println!("Verified {dir}: {}", if passed { "PASS" } else { "FAIL" });
     if let Some(map) = value.get("assemblies").and_then(Value::as_object) {
         let mut keys: Vec<&String> = map.keys().collect();
         keys.sort_by_key(|k| match k.as_str() {
@@ -3034,27 +3013,14 @@ fn vectis_render_verify_text(value: &Value) {
         });
         for key in keys {
             let assembly = &map[key];
-            let assembly_passed = assembly
-                .get("passed")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            println!(
-                "  - {key}: {}",
-                if assembly_passed { "PASS" } else { "FAIL" }
-            );
-            if !assembly_passed
-                && let Some(steps) = assembly.get("steps").and_then(Value::as_array)
+            let assembly_passed = assembly.get("passed").and_then(Value::as_bool).unwrap_or(false);
+            println!("  - {key}: {}", if assembly_passed { "PASS" } else { "FAIL" });
+            if !assembly_passed && let Some(steps) = assembly.get("steps").and_then(Value::as_array)
             {
                 for step in steps {
                     let name = step.get("name").and_then(Value::as_str).unwrap_or("?");
-                    let step_passed = step
-                        .get("passed")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false);
-                    println!(
-                        "      - {name}: {}",
-                        if step_passed { "PASS" } else { "FAIL" }
-                    );
+                    let step_passed = step.get("passed").and_then(Value::as_bool).unwrap_or(false);
+                    println!("      - {name}: {}", if step_passed { "PASS" } else { "FAIL" });
                     if !step_passed
                         && let Some(err) = step.get("error").and_then(Value::as_str)
                         && let Some(first) = err.lines().find(|l| !l.trim().is_empty())
@@ -3068,18 +3034,9 @@ fn vectis_render_verify_text(value: &Value) {
 }
 
 fn vectis_render_add_shell_text(value: &Value) {
-    let app = value
-        .get("app-name")
-        .and_then(Value::as_str)
-        .unwrap_or("<app>");
-    let dir = value
-        .get("project-dir")
-        .and_then(Value::as_str)
-        .unwrap_or("<dir>");
-    let platform = value
-        .get("platform")
-        .and_then(Value::as_str)
-        .unwrap_or("<platform>");
+    let app = value.get("app-name").and_then(Value::as_str).unwrap_or("<app>");
+    let dir = value.get("project-dir").and_then(Value::as_str).unwrap_or("<dir>");
+    let platform = value.get("platform").and_then(Value::as_str).unwrap_or("<platform>");
     println!("Added {platform} shell to \"{app}\" at {dir}");
 
     let detected: Vec<&str> = value
@@ -3102,11 +3059,8 @@ fn vectis_render_add_shell_text(value: &Value) {
     }
 
     let assembly = value.get("assembly");
-    let file_count = assembly
-        .and_then(|a| a.get("files"))
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0);
+    let file_count =
+        assembly.and_then(|a| a.get("files")).and_then(Value::as_array).map(Vec::len).unwrap_or(0);
     let build = vectis_render_build_steps_summary(assembly.and_then(|a| a.get("build-steps")));
     match build {
         Some(summary) => println!("Files: {file_count}, {summary}"),
@@ -3115,10 +3069,7 @@ fn vectis_render_add_shell_text(value: &Value) {
 }
 
 fn vectis_render_update_versions_text(value: &Value) {
-    let target = value
-        .get("version-file")
-        .and_then(Value::as_str)
-        .unwrap_or("<file>");
+    let target = value.get("version-file").and_then(Value::as_str).unwrap_or("<file>");
     let dry_run = value.get("dry-run").and_then(Value::as_bool).unwrap_or(false);
     let written = value.get("written").and_then(Value::as_bool).unwrap_or(false);
     let mode = if dry_run {
@@ -3130,11 +3081,7 @@ fn vectis_render_update_versions_text(value: &Value) {
     };
     println!("Versions file: {target}{mode}");
 
-    let changes = value
-        .get("changes")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let changes = value.get("changes").and_then(Value::as_array).cloned().unwrap_or_default();
     if changes.is_empty() {
         println!("No changes.");
     } else {
@@ -3159,25 +3106,13 @@ fn vectis_render_update_versions_text(value: &Value) {
     }
 
     if let Some(verification) = value.get("verification") {
-        let passed = verification
-            .get("passed")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        println!(
-            "Verify matrix: {}",
-            if passed { "PASS" } else { "FAIL" }
-        );
+        let passed = verification.get("passed").and_then(Value::as_bool).unwrap_or(false);
+        println!("Verify matrix: {}", if passed { "PASS" } else { "FAIL" });
         if let Some(combos) = verification.get("combos").and_then(Value::as_array) {
             for combo in combos {
                 let caps = combo.get("caps").and_then(Value::as_str).unwrap_or("?");
-                let combo_passed = combo
-                    .get("passed")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                println!(
-                    "  - {caps}: {}",
-                    if combo_passed { "PASS" } else { "FAIL" }
-                );
+                let combo_passed = combo.get("passed").and_then(Value::as_bool).unwrap_or(false);
+                println!("  - {caps}: {}", if combo_passed { "PASS" } else { "FAIL" });
             }
         }
     }

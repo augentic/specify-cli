@@ -21,12 +21,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{
-    InitArgs, VerifyArgs,
-    error::VectisError,
-    init, verify,
-    versions::Versions,
-};
+use crate::error::VectisError;
+use crate::versions::Versions;
+use crate::{InitArgs, VerifyArgs, init, verify};
 
 /// The fixed cap matrix the `--verify` gate exercises.
 ///
@@ -122,10 +119,7 @@ fn run_single_combo(caps: &str, project_dir: &Path, pins_file: &Path) -> ComboRe
 
     match verify::run(&verify_args) {
         Ok(crate::CommandOutcome::Success(value)) => {
-            let combo_passed = value
-                .get("passed")
-                .and_then(|p| p.as_bool())
-                .unwrap_or(false);
+            let combo_passed = value.get("passed").and_then(|p| p.as_bool()).unwrap_or(false);
             ComboResult {
                 caps: caps.to_string(),
                 passed: combo_passed,
@@ -163,12 +157,7 @@ pub fn render_pins_toml(v: &Versions) -> String {
     writeln!(&mut out, "crux_time     = \"{}\"", v.crux.crux_time).unwrap();
     writeln!(&mut out, "crux_platform = \"{}\"", v.crux.crux_platform).unwrap();
     writeln!(&mut out, "facet           = \"{}\"", v.crux.facet).unwrap();
-    writeln!(
-        &mut out,
-        "facet_generate  = \"{}\"",
-        v.crux.facet_generate
-    )
-    .unwrap();
+    writeln!(&mut out, "facet_generate  = \"{}\"", v.crux.facet_generate).unwrap();
     writeln!(&mut out, "serde           = \"{}\"", v.crux.serde).unwrap();
     writeln!(&mut out, "serde_json      = \"{}\"", v.crux.serde_json).unwrap();
     writeln!(&mut out, "uniffi      = \"{}\"", v.crux.uniffi).unwrap();
@@ -232,9 +221,7 @@ mod tests {
         // regression gate.
         assert!(CAP_MATRIX.contains(&""), "render-only row missing");
         assert!(
-            CAP_MATRIX
-                .iter()
-                .any(|c| c.contains("sse") && c.contains("platform")),
+            CAP_MATRIX.iter().any(|c| c.contains("sse") && c.contains("platform")),
             "full-cap row missing"
         );
     }

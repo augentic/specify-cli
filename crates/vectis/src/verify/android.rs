@@ -24,10 +24,7 @@ use crate::verify::pipeline::{BuildStep, run_step};
 pub fn run_pipeline(android_root: &Path) -> Result<Vec<BuildStep>, VectisError> {
     let mut steps = Vec::with_capacity(2);
 
-    let make = run_step(
-        "make build",
-        Command::new("make").arg("build").current_dir(android_root),
-    )?;
+    let make = run_step("make build", Command::new("make").arg("build").current_dir(android_root))?;
     let make_passed = make.passed;
     steps.push(make);
     if !make_passed {
@@ -36,9 +33,7 @@ pub fn run_pipeline(android_root: &Path) -> Result<Vec<BuildStep>, VectisError> 
 
     let assemble = run_step(
         "gradlew assembleDebug",
-        Command::new("./gradlew")
-            .arg(":app:assembleDebug")
-            .current_dir(android_root),
+        Command::new("./gradlew").arg(":app:assembleDebug").current_dir(android_root),
     )?;
     steps.push(assemble);
 

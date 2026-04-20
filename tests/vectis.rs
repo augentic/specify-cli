@@ -62,10 +62,7 @@ fn init_success_json_has_kebab_keys_and_schema_version() {
     if value.get("error").and_then(Value::as_str) == Some("missing-prerequisites") {
         eprintln!(
             "skipping init success test: workstation lacks core prereqs ({})",
-            value
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("(no message)")
+            value.get("message").and_then(Value::as_str).unwrap_or("(no message)")
         );
         return;
     }
@@ -102,17 +99,13 @@ fn init_success_json_has_kebab_keys_and_schema_version() {
 
     assert_eq!(value["app-name"], "Foo");
     assert_eq!(value["app-struct"], "Foo");
-    let project_dir = value["project-dir"]
-        .as_str()
-        .expect("project-dir is a string");
+    let project_dir = value["project-dir"].as_str().expect("project-dir is a string");
     let canonical_tmp = std::fs::canonicalize(tmp.path()).expect("canonicalize tmp");
-    let canonical_project = std::fs::canonicalize(PathBuf::from(project_dir))
-        .expect("canonicalize project-dir");
+    let canonical_project =
+        std::fs::canonicalize(PathBuf::from(project_dir)).expect("canonicalize project-dir");
     assert_eq!(canonical_project, canonical_tmp);
 
-    let core = value["assemblies"]
-        .get("core")
-        .expect("`core` assembly present");
+    let core = value["assemblies"].get("core").expect("`core` assembly present");
     assert_eq!(core["status"], "created");
     assert!(core["files"].is_array(), "core.files is an array");
 }
@@ -137,10 +130,7 @@ fn init_invalid_project_json_shape() {
     assert_eq!(value["exit-code"], 1);
     assert_eq!(value["schema-version"], 2);
     assert!(
-        value["message"]
-            .as_str()
-            .unwrap_or("")
-            .contains("version file not found"),
+        value["message"].as_str().unwrap_or("").contains("version file not found"),
         "unexpected message: {value}"
     );
     assert_eq!(output.status.code(), Some(1));
@@ -167,13 +157,8 @@ fn init_missing_prereqs_json_shape() {
     assert_eq!(value["error"], "missing-prerequisites");
     assert_eq!(value["exit-code"], 2);
     assert_eq!(value["schema-version"], 2);
-    let missing = value["missing"]
-        .as_array()
-        .expect("missing is an array");
-    assert!(
-        !missing.is_empty(),
-        "expected at least one missing tool with PATH cleared: {value}"
-    );
+    let missing = value["missing"].as_array().expect("missing is an array");
+    assert!(!missing.is_empty(), "expected at least one missing tool with PATH cleared: {value}");
     let first = &missing[0];
     for field in ["tool", "assembly", "check", "install"] {
         assert!(

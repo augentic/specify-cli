@@ -13,10 +13,11 @@
 //! No partial work is performed -- a missing toolchain is a hard stop, not a
 //! warning.
 
-use crate::error::{MissingTool, VectisError};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Command;
+
+use crate::error::{MissingTool, VectisError};
 
 /// Which assembly a tool belongs to. Each subcommand selects a subset of these
 /// before calling [`check`].
@@ -95,17 +96,10 @@ enum ToolCheck {
     /// Run a command and require it to exit successfully. If `min_version` is
     /// set, also extract a `M.m[.p]` token from combined stdout+stderr and
     /// require it to be at least that version.
-    Cmd {
-        program: &'static str,
-        args: &'static [&'static str],
-        min_version: Option<Version>,
-    },
+    Cmd { program: &'static str, args: &'static [&'static str], min_version: Option<Version> },
     /// Environment variable must be set; if `must_exist`, its value must
     /// resolve to an existing directory.
-    Env {
-        var: &'static str,
-        must_exist: bool,
-    },
+    Env { var: &'static str, must_exist: bool },
     /// `rustup target list --installed` output must contain every listed
     /// target.
     RustupTargets(&'static [&'static str]),
@@ -119,139 +113,138 @@ fn all_tools() -> &'static [Tool] {
 
 // Sourced verbatim from RFC-6 § Workstation Requirements.
 static TOOLS: &[Tool] = &[
-        // ---- Core --------------------------------------------------------
-        Tool {
-            name: "rustup",
-            assembly: AssemblyKind::Core,
-            check_display: "rustup show active-toolchain",
-            install: "https://rustup.rs",
-            check: ToolCheck::Cmd {
-                program: "rustup",
-                args: &["show", "active-toolchain"],
-                min_version: None,
-            },
+    // ---- Core --------------------------------------------------------
+    Tool {
+        name: "rustup",
+        assembly: AssemblyKind::Core,
+        check_display: "rustup show active-toolchain",
+        install: "https://rustup.rs",
+        check: ToolCheck::Cmd {
+            program: "rustup",
+            args: &["show", "active-toolchain"],
+            min_version: None,
         },
-        Tool {
-            name: "cargo-deny",
-            assembly: AssemblyKind::Core,
-            check_display: "cargo deny --version",
-            install: "cargo install cargo-deny",
-            check: ToolCheck::Cmd {
-                program: "cargo",
-                args: &["deny", "--version"],
-                min_version: None,
-            },
+    },
+    Tool {
+        name: "cargo-deny",
+        assembly: AssemblyKind::Core,
+        check_display: "cargo deny --version",
+        install: "cargo install cargo-deny",
+        check: ToolCheck::Cmd {
+            program: "cargo",
+            args: &["deny", "--version"],
+            min_version: None,
         },
-        Tool {
-            name: "cargo-vet",
-            assembly: AssemblyKind::Core,
-            check_display: "cargo vet --version",
-            install: "cargo install cargo-vet",
-            check: ToolCheck::Cmd {
-                program: "cargo",
-                args: &["vet", "--version"],
-                min_version: None,
-            },
+    },
+    Tool {
+        name: "cargo-vet",
+        assembly: AssemblyKind::Core,
+        check_display: "cargo vet --version",
+        install: "cargo install cargo-vet",
+        check: ToolCheck::Cmd {
+            program: "cargo",
+            args: &["vet", "--version"],
+            min_version: None,
         },
-        // ---- iOS ---------------------------------------------------------
-        Tool {
-            name: "xcode",
-            assembly: AssemblyKind::Ios,
-            check_display: "xcode-select -p",
-            install: "Install Xcode + Command Line Tools from the Mac App Store",
-            check: ToolCheck::Cmd {
-                program: "xcode-select",
-                args: &["-p"],
-                min_version: None,
-            },
+    },
+    // ---- iOS ---------------------------------------------------------
+    Tool {
+        name: "xcode",
+        assembly: AssemblyKind::Ios,
+        check_display: "xcode-select -p",
+        install: "Install Xcode + Command Line Tools from the Mac App Store",
+        check: ToolCheck::Cmd {
+            program: "xcode-select",
+            args: &["-p"],
+            min_version: None,
         },
-        Tool {
-            name: "xcodegen",
-            assembly: AssemblyKind::Ios,
-            check_display: "xcodegen --version",
-            install: "brew install xcodegen",
-            check: ToolCheck::Cmd {
-                program: "xcodegen",
-                args: &["--version"],
-                min_version: None,
-            },
+    },
+    Tool {
+        name: "xcodegen",
+        assembly: AssemblyKind::Ios,
+        check_display: "xcodegen --version",
+        install: "brew install xcodegen",
+        check: ToolCheck::Cmd {
+            program: "xcodegen",
+            args: &["--version"],
+            min_version: None,
         },
-        Tool {
-            name: "cargo-swift",
-            assembly: AssemblyKind::Ios,
-            check_display: "cargo swift --version",
-            install: "cargo install cargo-swift",
-            check: ToolCheck::Cmd {
-                program: "cargo",
-                args: &["swift", "--version"],
-                min_version: None,
-            },
+    },
+    Tool {
+        name: "cargo-swift",
+        assembly: AssemblyKind::Ios,
+        check_display: "cargo swift --version",
+        install: "cargo install cargo-swift",
+        check: ToolCheck::Cmd {
+            program: "cargo",
+            args: &["swift", "--version"],
+            min_version: None,
         },
-        Tool {
-            name: "xcbeautify",
-            assembly: AssemblyKind::Ios,
-            check_display: "xcbeautify --version",
-            install: "brew install xcbeautify",
-            check: ToolCheck::Cmd {
-                program: "xcbeautify",
-                args: &["--version"],
-                min_version: None,
-            },
+    },
+    Tool {
+        name: "xcbeautify",
+        assembly: AssemblyKind::Ios,
+        check_display: "xcbeautify --version",
+        install: "brew install xcbeautify",
+        check: ToolCheck::Cmd {
+            program: "xcbeautify",
+            args: &["--version"],
+            min_version: None,
         },
-        // ---- Android -----------------------------------------------------
-        Tool {
-            name: "android-sdk",
-            assembly: AssemblyKind::Android,
-            check_display: "echo $ANDROID_HOME",
-            install: "Install Android Studio from https://developer.android.com/studio",
-            check: ToolCheck::Env {
-                var: "ANDROID_HOME",
-                must_exist: true,
-            },
+    },
+    // ---- Android -----------------------------------------------------
+    Tool {
+        name: "android-sdk",
+        assembly: AssemblyKind::Android,
+        check_display: "echo $ANDROID_HOME",
+        install: "Install Android Studio from https://developer.android.com/studio",
+        check: ToolCheck::Env {
+            var: "ANDROID_HOME",
+            must_exist: true,
         },
-        Tool {
-            name: "java",
-            assembly: AssemblyKind::Android,
-            check_display: "java --version",
-            install:
-                "Install JDK 21+ from https://adoptium.net or `brew install openjdk@21`",
-            check: ToolCheck::Cmd {
-                program: "java",
-                args: &["--version"],
-                min_version: Some(Version::new(21, 0, 0)),
-            },
+    },
+    Tool {
+        name: "java",
+        assembly: AssemblyKind::Android,
+        check_display: "java --version",
+        install: "Install JDK 21+ from https://adoptium.net or `brew install openjdk@21`",
+        check: ToolCheck::Cmd {
+            program: "java",
+            args: &["--version"],
+            min_version: Some(Version::new(21, 0, 0)),
         },
-        Tool {
-            name: "rustup-android-targets",
-            assembly: AssemblyKind::Android,
-            check_display: "rustup target list --installed",
-            install: "rustup target add aarch64-linux-android armv7-linux-androideabi \
+    },
+    Tool {
+        name: "rustup-android-targets",
+        assembly: AssemblyKind::Android,
+        check_display: "rustup target list --installed",
+        install: "rustup target add aarch64-linux-android armv7-linux-androideabi \
                       x86_64-linux-android i686-linux-android",
-            check: ToolCheck::RustupTargets(&[
-                "aarch64-linux-android",
-                "armv7-linux-androideabi",
-                "x86_64-linux-android",
-                "i686-linux-android",
-            ]),
+        check: ToolCheck::RustupTargets(&[
+            "aarch64-linux-android",
+            "armv7-linux-androideabi",
+            "x86_64-linux-android",
+            "i686-linux-android",
+        ]),
+    },
+    Tool {
+        name: "android-ndk",
+        assembly: AssemblyKind::Android,
+        check_display: "ls $ANDROID_HOME/ndk/",
+        install: "Install the NDK via Android Studio's SDK Manager",
+        check: ToolCheck::AndroidNdk,
+    },
+    Tool {
+        name: "gradle",
+        assembly: AssemblyKind::Android,
+        check_display: "gradle --version",
+        install: "brew install gradle",
+        check: ToolCheck::Cmd {
+            program: "gradle",
+            args: &["--version"],
+            min_version: None,
         },
-        Tool {
-            name: "android-ndk",
-            assembly: AssemblyKind::Android,
-            check_display: "ls $ANDROID_HOME/ndk/",
-            install: "Install the NDK via Android Studio's SDK Manager",
-            check: ToolCheck::AndroidNdk,
-        },
-        Tool {
-            name: "gradle",
-            assembly: AssemblyKind::Android,
-            check_display: "gradle --version",
-            install: "brew install gradle",
-            check: ToolCheck::Cmd {
-                program: "gradle",
-                args: &["--version"],
-                min_version: None,
-            },
-        },
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -271,21 +264,14 @@ fn run_check(check: &ToolCheck) -> Result<(), String> {
     }
 }
 
-fn run_cmd_check(
-    program: &str,
-    args: &[&str],
-    min_version: Option<Version>,
-) -> Result<(), String> {
+fn run_cmd_check(program: &str, args: &[&str], min_version: Option<Version>) -> Result<(), String> {
     let output = Command::new(program)
         .args(args)
         .output()
         .map_err(|e| format!("failed to invoke {program}: {e}"))?;
 
     if !output.status.success() {
-        return Err(format!(
-            "{program} exited with status {:?}",
-            output.status.code()
-        ));
+        return Err(format!("{program} exited with status {:?}", output.status.code()));
     }
 
     if let Some(min) = min_version {
@@ -324,16 +310,9 @@ fn run_rustup_targets_check(targets: &[&str]) -> Result<(), String> {
         return Err("rustup target list --installed failed".into());
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let installed: HashSet<&str> = stdout
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .collect();
-    let missing: Vec<&str> = targets
-        .iter()
-        .copied()
-        .filter(|t| !installed.contains(t))
-        .collect();
+    let installed: HashSet<&str> =
+        stdout.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let missing: Vec<&str> = targets.iter().copied().filter(|t| !installed.contains(t)).collect();
     if missing.is_empty() {
         Ok(())
     } else {
@@ -342,8 +321,7 @@ fn run_rustup_targets_check(targets: &[&str]) -> Result<(), String> {
 }
 
 fn run_android_ndk_check() -> Result<(), String> {
-    let home = std::env::var("ANDROID_HOME")
-        .map_err(|_| "ANDROID_HOME not set".to_string())?;
+    let home = std::env::var("ANDROID_HOME").map_err(|_| "ANDROID_HOME not set".to_string())?;
     let ndk = PathBuf::from(home).join("ndk");
     if !ndk.is_dir() {
         return Err(format!("{} not found", ndk.display()));
@@ -373,11 +351,7 @@ pub(crate) struct Version {
 
 impl Version {
     pub const fn new(major: u32, minor: u32, patch: u32) -> Self {
-        Self {
-            major,
-            minor,
-            patch,
-        }
+        Self { major, minor, patch }
     }
 
     /// Parse a strict `M.m[.p]` token. Returns `None` if the leading component
@@ -390,9 +364,7 @@ impl Version {
         let minor_raw = parts.next()?;
         let minor: u32 = leading_digits(minor_raw)?.parse().ok()?;
         let patch = match parts.next() {
-            Some(p) => leading_digits(p)
-                .map(|s| s.parse().unwrap_or(0))
-                .unwrap_or(0),
+            Some(p) => leading_digits(p).map(|s| s.parse().unwrap_or(0)).unwrap_or(0),
             None => 0,
         };
         Some(Self::new(major, minor, patch))
@@ -406,11 +378,8 @@ impl std::fmt::Display for Version {
 }
 
 fn leading_digits(s: &str) -> Option<&str> {
-    let end = s
-        .char_indices()
-        .find(|(_, c)| !c.is_ascii_digit())
-        .map(|(i, _)| i)
-        .unwrap_or(s.len());
+    let end =
+        s.char_indices().find(|(_, c)| !c.is_ascii_digit()).map(|(i, _)| i).unwrap_or(s.len());
     if end == 0 { None } else { Some(&s[..end]) }
 }
 
@@ -554,8 +523,8 @@ mod tests {
 
     #[test]
     fn cmd_check_missing_program_fails() {
-        let err = run_cmd_check("vectis-tool-that-does-not-exist", &["--version"], None)
-            .unwrap_err();
+        let err =
+            run_cmd_check("vectis-tool-that-does-not-exist", &["--version"], None).unwrap_err();
         assert!(err.contains("vectis-tool-that-does-not-exist"));
     }
 

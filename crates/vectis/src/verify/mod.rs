@@ -20,19 +20,13 @@ pub mod pipeline;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{
-    CommandOutcome, VerifyArgs,
-    error::VectisError,
-    prerequisites::{self, AssemblyKind},
-    versions::Versions,
-};
+use crate::error::VectisError;
+use crate::prerequisites::{self, AssemblyKind};
+use crate::versions::Versions;
+use crate::{CommandOutcome, VerifyArgs};
 
 pub fn run(args: &VerifyArgs) -> Result<CommandOutcome, VectisError> {
-    let project_dir = args
-        .dir
-        .clone()
-        .map(Ok)
-        .unwrap_or_else(std::env::current_dir)?;
+    let project_dir = args.dir.clone().map(Ok).unwrap_or_else(std::env::current_dir)?;
 
     let mut assemblies = vec![AssemblyKind::Core];
     if project_dir.join("iOS").is_dir() {
@@ -129,10 +123,9 @@ struct VerifyCache {
 impl VerifyCache {
     fn new(pid: u32) -> Result<Self, VectisError> {
         let root = match std::env::var_os("HOME") {
-            Some(home) => PathBuf::from(home)
-                .join(".cache")
-                .join("vectis")
-                .join(format!("verify-{pid}")),
+            Some(home) => {
+                PathBuf::from(home).join(".cache").join("vectis").join(format!("verify-{pid}"))
+            }
             None => std::env::temp_dir().join(format!("vectis-verify-{pid}")),
         };
         // Best-effort cleanup of any leftover from a prior run (same
@@ -142,11 +135,7 @@ impl VerifyCache {
         let kotlin = root.join("kotlin");
         fs::create_dir_all(&swift)?;
         fs::create_dir_all(&kotlin)?;
-        Ok(Self {
-            root,
-            swift,
-            kotlin,
-        })
+        Ok(Self { root, swift, kotlin })
     }
 
     fn swift_dir(&self) -> &Path {

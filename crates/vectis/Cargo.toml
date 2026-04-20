@@ -8,11 +8,11 @@ description = "Vectis bootstrap CLI for scaffolding and verifying Crux cross-pla
 publish = false
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
-roxmltree = "0.20"
+clap.workspace = true
+roxmltree = "0.21"
 serde.workspace = true
 serde_json.workspace = true
 syn = { version = "2", features = ["full"] }
 thiserror.workspace = true
-toml = "0.8"
-ureq = { version = "2", features = ["json", "tls"] }
+toml = "1"
+ureq = { version = "3", features = ["json"] }

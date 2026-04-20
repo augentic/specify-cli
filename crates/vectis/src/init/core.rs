@@ -87,10 +87,7 @@ pub fn default_android_package(app_name: &str) -> String {
 /// kept. Chunk 6 wires this through from `--caps`; pass `&[]` for the
 /// render-only baseline.
 pub fn scaffold(
-    project_dir: &Path,
-    app_name: &str,
-    android_package: &str,
-    versions: &Versions,
+    project_dir: &Path, app_name: &str, android_package: &str, versions: &Versions,
     caps: &[Capability],
 ) -> Result<CoreScaffold, VectisError> {
     validate_app_name(app_name)?;
@@ -135,21 +132,17 @@ pub fn scaffold(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
 
     fn scratch_dir(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!(
-            "vectis-init-{label}-{}-{nanos}-{n}",
-            std::process::id(),
-        ));
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let dir = std::env::temp_dir()
+            .join(format!("vectis-init-{label}-{}-{nanos}-{n}", std::process::id(),));
         // Deliberately do not create the dir -- some tests want to prove
         // scaffold() will create it itself.
         dir
@@ -163,7 +156,9 @@ mod tests {
     fn rejects_empty_app_name() {
         let err = validate_app_name("").expect_err("empty name must fail");
         match err {
-            VectisError::InvalidProject { message } => assert!(message.contains("must not be empty")),
+            VectisError::InvalidProject { message } => {
+                assert!(message.contains("must not be empty"))
+            }
             other => panic!("unexpected: {other:?}"),
         }
     }
@@ -217,34 +212,18 @@ mod tests {
         .expect("scaffold must succeed");
         assert_eq!(result.files.len(), core::TEMPLATES.len());
         for entry in core::TEMPLATES {
-            assert!(
-                dir.join(entry.target).is_file(),
-                "missing rendered file: {}",
-                entry.target
-            );
+            assert!(dir.join(entry.target).is_file(), "missing rendered file: {}", entry.target);
         }
     }
 
     #[test]
     fn scaffold_substitutes_placeholders_in_rendered_files() {
         let dir = scratch_dir("substitute");
-        scaffold(
-            &dir,
-            "Counter",
-            &default_android_package("Counter"),
-            &embedded_versions(),
-            &[],
-        )
-        .unwrap();
+        scaffold(&dir, "Counter", &default_android_package("Counter"), &embedded_versions(), &[])
+            .unwrap();
         let app_rs = fs::read_to_string(dir.join("shared/src/app.rs")).unwrap();
-        assert!(
-            !app_rs.contains("__APP_STRUCT__"),
-            "placeholder still present in app.rs"
-        );
-        assert!(
-            app_rs.contains("Hello from Counter"),
-            "expected substituted message in app.rs"
-        );
+        assert!(!app_rs.contains("__APP_STRUCT__"), "placeholder still present in app.rs");
+        assert!(app_rs.contains("Hello from Counter"), "expected substituted message in app.rs");
         let codegen = fs::read_to_string(dir.join("shared/src/bin/codegen.rs")).unwrap();
         assert!(
             !codegen.contains("__ANDROID_PACKAGE__"),
@@ -259,21 +238,11 @@ mod tests {
     #[test]
     fn scaffold_strips_cap_blocks_for_render_only() {
         let dir = scratch_dir("render-only");
-        scaffold(
-            &dir,
-            "Counter",
-            &default_android_package("Counter"),
-            &embedded_versions(),
-            &[],
-        )
-        .unwrap();
+        scaffold(&dir, "Counter", &default_android_package("Counter"), &embedded_versions(), &[])
+            .unwrap();
         for entry in core::TEMPLATES {
             let body = fs::read_to_string(dir.join(entry.target)).unwrap();
-            assert!(
-                !body.contains("<<<CAP:"),
-                "leftover open marker in {}",
-                entry.target
-            );
+            assert!(!body.contains("<<<CAP:"), "leftover open marker in {}", entry.target);
             assert!(
                 !body.contains("CAP:") || !body.contains(">>>"),
                 "leftover close marker in {}",
@@ -299,31 +268,19 @@ mod tests {
             workspace.contains("crux_http = \""),
             "workspace dep missing for http: {workspace}"
         );
-        assert!(
-            workspace.contains("crux_kv = \""),
-            "workspace dep missing for kv: {workspace}"
-        );
+        assert!(workspace.contains("crux_kv = \""), "workspace dep missing for kv: {workspace}");
         assert!(
             !workspace.contains("crux_time"),
             "time dep leaked when not requested: {workspace}"
         );
 
         let app_rs = fs::read_to_string(dir.join("shared/src/app.rs")).unwrap();
-        assert!(
-            app_rs.contains("FetchData"),
-            "http event missing from app.rs"
-        );
+        assert!(app_rs.contains("FetchData"), "http event missing from app.rs");
         assert!(app_rs.contains("LoadData"), "kv event missing from app.rs");
-        assert!(
-            !app_rs.contains("PlatformRequest"),
-            "platform leaked when not requested"
-        );
+        assert!(!app_rs.contains("PlatformRequest"), "platform leaked when not requested");
 
         let shared_cargo = fs::read_to_string(dir.join("shared/Cargo.toml")).unwrap();
-        assert!(
-            shared_cargo.contains("async-sse"),
-            "sse dep missing from shared Cargo.toml"
-        );
+        assert!(shared_cargo.contains("async-sse"), "sse dep missing from shared Cargo.toml");
 
         // Cap markers must never survive into rendered output, regardless
         // of whether the cap was selected or stripped.
@@ -362,10 +319,7 @@ mod tests {
         // Crucially, no other files should have been written.
         assert!(!dir.join("shared/src/app.rs").exists());
         // And the pre-existing file is untouched.
-        assert_eq!(
-            fs::read_to_string(dir.join("Cargo.toml")).unwrap(),
-            "pre-existing"
-        );
+        assert_eq!(fs::read_to_string(dir.join("Cargo.toml")).unwrap(), "pre-existing");
     }
 
     #[test]

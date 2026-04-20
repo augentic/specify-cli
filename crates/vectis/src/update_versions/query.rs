@@ -27,11 +27,8 @@ use crate::error::VectisError;
 
 /// User-Agent header sent on every request so rate-limit diagnostics
 /// can identify the caller. crates.io explicitly requires a UA.
-const USER_AGENT: &str = concat!(
-    "vectis-cli/",
-    env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/augentic/specify)"
-);
+const USER_AGENT: &str =
+    concat!("vectis-cli/", env!("CARGO_PKG_VERSION"), " (+https://github.com/augentic/specify)");
 
 /// Per-request timeout. Registry calls should resolve in well under a
 /// second in steady state; anything slower is a sign of a flaky mirror
@@ -41,10 +38,11 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Build a shared ureq agent with sensible timeouts + our UA.
 fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout(REQUEST_TIMEOUT)
+    ureq::Agent::config_builder()
+        .timeout_global(Some(REQUEST_TIMEOUT))
         .user_agent(USER_AGENT)
         .build()
+        .into()
 }
 
 /// Result of a latest-version query: a plain version string plus the
@@ -102,30 +100,25 @@ pub fn crates_io_latest_stable(crate_name: &str) -> Result<VersionHit, VectisErr
         .get(&url)
         .call()
         .map_err(|e| query_error(&url, &e.to_string()))?
-        .into_json()
+        .body_mut()
+        .read_json()
         .map_err(|e| query_error(&url, &e.to_string()))?;
-    let version = body
-        .krate
-        .max_stable_version
-        .unwrap_or(body.krate.max_version);
-    Ok(VersionHit {
-        version,
-        source: url,
-    })
+    let version = body.krate.max_stable_version.unwrap_or(body.krate.max_version);
+    Ok(VersionHit { version, source: url })
 }
 
 /// Query the `[dependencies]` block of a specific crate version and
 /// return them verbatim (caller filters by `crate_id` / `kind`).
 pub fn crates_io_dependencies(
-    crate_name: &str,
-    version: &str,
+    crate_name: &str, version: &str,
 ) -> Result<Vec<CratesIoDep>, VectisError> {
     let url = format!("https://crates.io/api/v1/crates/{crate_name}/{version}/dependencies");
     let body: CratesIoDepsResponse = agent()
         .get(&url)
         .call()
         .map_err(|e| query_error(&url, &e.to_string()))?
-        .into_json()
+        .body_mut()
+        .read_json()
         .map_err(|e| query_error(&url, &e.to_string()))?;
     Ok(body.dependencies)
 }
@@ -133,18 +126,14 @@ pub fn crates_io_dependencies(
 /// Convenience: find a single normal dep by `crate_id` and return its
 /// `req` string (e.g. `"=0.31.0"`, `"^1.0"`).
 pub fn crates_io_normal_dep_req(
-    crate_name: &str,
-    version: &str,
-    dep_name: &str,
+    crate_name: &str, version: &str, dep_name: &str,
 ) -> Result<String, VectisError> {
     let deps = crates_io_dependencies(crate_name, version)?;
     deps.into_iter()
         .find(|d| d.kind == "normal" && d.crate_id == dep_name)
         .map(|d| d.req)
         .ok_or_else(|| VectisError::Internal {
-            message: format!(
-                "crates.io: {crate_name}@{version} has no normal dep on {dep_name:?}"
-            ),
+            message: format!("crates.io: {crate_name}@{version} has no normal dep on {dep_name:?}"),
         })
 }
 
@@ -156,8 +145,7 @@ pub fn crates_io_normal_dep_req(
 /// `maven-metadata.xml` for the given group + artifact. Filters to
 /// stable versions (no `-alpha`, `-beta`, `-rc`, `-dev`).
 pub fn google_maven_latest_stable(
-    group_id: &str,
-    artifact_id: &str,
+    group_id: &str, artifact_id: &str,
 ) -> Result<VersionHit, VectisError> {
     let group_path = group_id.replace('.', "/");
     let url = format!("https://maven.google.com/{group_path}/{artifact_id}/maven-metadata.xml");
@@ -165,7 +153,8 @@ pub fn google_maven_latest_stable(
         .get(&url)
         .call()
         .map_err(|e| query_error(&url, &e.to_string()))?
-        .into_string()
+        .body_mut()
+        .read_to_string()
         .map_err(|e| query_error(&url, &e.to_string()))?;
     let doc = roxmltree::Document::parse(&body)
         .map_err(|e| query_error(&url, &format!("roxmltree parse: {e}")))?;
@@ -182,10 +171,7 @@ pub fn google_maven_latest_stable(
     }
     versions.sort_by(|a, b| version_cmp(a, b));
     let version = versions.pop().unwrap();
-    Ok(VersionHit {
-        version,
-        source: url,
-    })
+    Ok(VersionHit { version, source: url })
 }
 
 // -------------------------------------------------------------------
@@ -210,8 +196,7 @@ struct MavenCentralDoc {
 /// Query Maven Central solrsearch for stable versions of a given GAV,
 /// return the highest stable one.
 pub fn maven_central_latest_stable(
-    group_id: &str,
-    artifact_id: &str,
+    group_id: &str, artifact_id: &str,
 ) -> Result<VersionHit, VectisError> {
     let query = format!("g:{group_id} AND a:{artifact_id}");
     let encoded_query = url_encode(&query);
@@ -222,15 +207,11 @@ pub fn maven_central_latest_stable(
         .get(&url)
         .call()
         .map_err(|e| query_error(&url, &e.to_string()))?
-        .into_json()
+        .body_mut()
+        .read_json()
         .map_err(|e| query_error(&url, &e.to_string()))?;
-    let mut versions: Vec<String> = body
-        .response
-        .docs
-        .into_iter()
-        .map(|d| d.v)
-        .filter(|v| is_stable_version(v))
-        .collect();
+    let mut versions: Vec<String> =
+        body.response.docs.into_iter().map(|d| d.v).filter(|v| is_stable_version(v)).collect();
     if versions.is_empty() {
         return Err(VectisError::Internal {
             message: format!("maven central: no stable versions for {group_id}:{artifact_id}"),
@@ -238,10 +219,7 @@ pub fn maven_central_latest_stable(
     }
     versions.sort_by(|a, b| version_cmp(a, b));
     let version = versions.pop().unwrap();
-    Ok(VersionHit {
-        version,
-        source: url,
-    })
+    Ok(VersionHit { version, source: url })
 }
 
 // -------------------------------------------------------------------
@@ -259,16 +237,14 @@ pub fn github_latest_release(owner: &str, repo: &str) -> Result<VersionHit, Vect
     let url = format!("https://api.github.com/repos/{owner}/{repo}/releases/latest");
     let body: GithubRelease = agent()
         .get(&url)
-        .set("Accept", "application/vnd.github+json")
+        .header("Accept", "application/vnd.github+json")
         .call()
         .map_err(|e| query_error(&url, &e.to_string()))?
-        .into_json()
+        .body_mut()
+        .read_json()
         .map_err(|e| query_error(&url, &e.to_string()))?;
     let version = body.tag_name.trim_start_matches('v').to_string();
-    Ok(VersionHit {
-        version,
-        source: url,
-    })
+    Ok(VersionHit { version, source: url })
 }
 
 // -------------------------------------------------------------------
@@ -361,10 +337,7 @@ mod tests {
         assert_eq!(version_cmp("1.9.0", "1.10.0"), std::cmp::Ordering::Less);
         assert_eq!(version_cmp("1.9", "1.9.0"), std::cmp::Ordering::Equal);
         assert_eq!(version_cmp("2.0.0", "2.0.0"), std::cmp::Ordering::Equal);
-        assert_eq!(
-            version_cmp("2026.01.01", "2025.12.31"),
-            std::cmp::Ordering::Greater
-        );
+        assert_eq!(version_cmp("2026.01.01", "2025.12.31"), std::cmp::Ordering::Greater);
     }
 
     #[test]

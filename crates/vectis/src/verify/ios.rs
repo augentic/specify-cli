@@ -29,17 +29,13 @@ use crate::verify::pipeline::{BuildStep, run_step};
 /// `make xcode`. init uses `false` (the Xcode project is proof enough
 /// that the templates rendered coherently); verify uses `true`.
 pub fn run_pipeline(
-    ios_root: &Path,
-    include_xcodebuild: bool,
+    ios_root: &Path, include_xcodebuild: bool,
 ) -> Result<Vec<BuildStep>, VectisError> {
     let mut steps = Vec::with_capacity(if include_xcodebuild { 4 } else { 3 });
 
     for name in ["make typegen", "make package", "make xcode"] {
         let target = &name["make ".len()..];
-        let step = run_step(
-            name,
-            Command::new("make").arg(target).current_dir(ios_root),
-        )?;
+        let step = run_step(name, Command::new("make").arg(target).current_dir(ios_root))?;
         let passed = step.passed;
         steps.push(step);
         if !passed {

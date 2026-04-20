@@ -38,12 +38,10 @@ mod query;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{
-    CommandOutcome, UpdateVersionsArgs,
-    error::VectisError,
-    prerequisites::{self, AssemblyKind},
-    versions::{Android, Crux, Ios, Tooling, Versions},
-};
+use crate::error::VectisError;
+use crate::prerequisites::{self, AssemblyKind};
+use crate::versions::{Android, Crux, Ios, Tooling, Versions};
+use crate::{CommandOutcome, UpdateVersionsArgs};
 
 /// Result of proposing one version field. When the registry probe
 /// fails we keep the current value and surface the error; the diff
@@ -146,27 +144,15 @@ pub fn run(args: &UpdateVersionsArgs) -> Result<CommandOutcome, VectisError> {
     );
     json.insert("dry-run".to_string(), serde_json::Value::Bool(args.dry_run));
     json.insert("verify".to_string(), serde_json::Value::Bool(args.verify));
-    json.insert(
-        "passed".to_string(),
-        serde_json::Value::Bool(overall_passed),
-    );
+    json.insert("passed".to_string(), serde_json::Value::Bool(overall_passed));
     json.insert("written".to_string(), serde_json::Value::Bool(written));
-    json.insert(
-        "changes".to_string(),
-        serde_json::to_value(&changes).unwrap(),
-    );
-    json.insert(
-        "unchanged".to_string(),
-        serde_json::to_value(&unchanged).unwrap(),
-    );
+    json.insert("changes".to_string(), serde_json::to_value(&changes).unwrap());
+    json.insert("unchanged".to_string(), serde_json::to_value(&unchanged).unwrap());
     if !errors.is_empty() {
         json.insert("errors".to_string(), serde_json::to_value(&errors).unwrap());
     }
     if let Some(ver) = verification {
-        json.insert(
-            "verification".to_string(),
-            serde_json::to_value(&ver).unwrap(),
-        );
+        json.insert("verification".to_string(), serde_json::to_value(&ver).unwrap());
     }
 
     Ok(CommandOutcome::Success(serde_json::Value::Object(json)))
@@ -183,10 +169,7 @@ fn resolve_write_target(override_path: Option<&Path>) -> Result<PathBuf, VectisE
     let home = std::env::var_os("HOME").ok_or_else(|| VectisError::Internal {
         message: "$HOME is unset; pass --version-file <path> explicitly".to_string(),
     })?;
-    Ok(PathBuf::from(home)
-        .join(".config")
-        .join("vectis")
-        .join("versions.toml"))
+    Ok(PathBuf::from(home).join(".config").join("vectis").join("versions.toml"))
 }
 
 /// Read the pins currently recorded at the write target.
@@ -214,9 +197,11 @@ fn read_current_pins(target: &Path) -> Result<Versions, VectisError> {
 /// current value.
 fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
     // Crux block ----------------------------------------------------
-    let crux_core =
-        try_query(&current.crux.crux_core, || query::crates_io_latest_stable("crux_core"),
-            "crates.io: crux_core");
+    let crux_core = try_query(
+        &current.crux.crux_core,
+        || query::crates_io_latest_stable("crux_core"),
+        "crates.io: crux_core",
+    );
     record_err(errors, &crux_core.probe_error);
 
     // For each capability crate, query latest stable. When crux_core
@@ -224,23 +209,32 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
     // crux_core dep req; we skip that here because the --verify
     // matrix is the authoritative coherence gate and a parse-level
     // semver check is more complex than it's worth at MVP.
-    let crux_http =
-        try_query(&current.crux.crux_http, || query::crates_io_latest_stable("crux_http"),
-            "crates.io: crux_http");
+    let crux_http = try_query(
+        &current.crux.crux_http,
+        || query::crates_io_latest_stable("crux_http"),
+        "crates.io: crux_http",
+    );
     record_err(errors, &crux_http.probe_error);
 
-    let crux_kv = try_query(&current.crux.crux_kv, || query::crates_io_latest_stable("crux_kv"),
-            "crates.io: crux_kv");
+    let crux_kv = try_query(
+        &current.crux.crux_kv,
+        || query::crates_io_latest_stable("crux_kv"),
+        "crates.io: crux_kv",
+    );
     record_err(errors, &crux_kv.probe_error);
 
-    let crux_time =
-        try_query(&current.crux.crux_time, || query::crates_io_latest_stable("crux_time"),
-            "crates.io: crux_time");
+    let crux_time = try_query(
+        &current.crux.crux_time,
+        || query::crates_io_latest_stable("crux_time"),
+        "crates.io: crux_time",
+    );
     record_err(errors, &crux_time.probe_error);
 
-    let crux_platform =
-        try_query(&current.crux.crux_platform, || query::crates_io_latest_stable("crux_platform"),
-            "crates.io: crux_platform");
+    let crux_platform = try_query(
+        &current.crux.crux_platform,
+        || query::crates_io_latest_stable("crux_platform"),
+        "crates.io: crux_platform",
+    );
     record_err(errors, &crux_platform.probe_error);
 
     // Hard-pinned Rust deps derived from crux_core's own Cargo.toml.
@@ -269,21 +263,27 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
     };
     record_err(errors, &facet_generate.probe_error);
 
-    let serde =
-        try_query(&current.crux.serde, || query::crates_io_latest_stable("serde"),
-            "crates.io: serde");
+    let serde = try_query(
+        &current.crux.serde,
+        || query::crates_io_latest_stable("serde"),
+        "crates.io: serde",
+    );
     record_err(errors, &serde.probe_error);
 
-    let serde_json =
-        try_query(&current.crux.serde_json, || query::crates_io_latest_stable("serde_json"),
-            "crates.io: serde_json");
+    let serde_json = try_query(
+        &current.crux.serde_json,
+        || query::crates_io_latest_stable("serde_json"),
+        "crates.io: serde_json",
+    );
     record_err(errors, &serde_json.probe_error);
 
     // uniffi + cargo-swift move as a pair: cargo-swift's dep on
     // uniffi_bindgen drives which uniffi runtime pin we use.
-    let cargo_swift =
-        try_query(&current.crux.cargo_swift, || query::crates_io_latest_stable("cargo-swift"),
-            "crates.io: cargo-swift");
+    let cargo_swift = try_query(
+        &current.crux.cargo_swift,
+        || query::crates_io_latest_stable("cargo-swift"),
+        "crates.io: cargo-swift",
+    );
     record_err(errors, &cargo_swift.probe_error);
 
     let uniffi = if cargo_swift.probe_error.is_none() {
@@ -296,11 +296,7 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
                 // pin into versions.toml for the runtime `uniffi`
                 // crate, because cargo-swift locks the bindgen and
                 // runtime to the same version.
-                query::crates_io_normal_dep_req(
-                    "cargo-swift",
-                    &cargo_swift.value,
-                    "uniffi_bindgen",
-                )
+                query::crates_io_normal_dep_req("cargo-swift", &cargo_swift.value, "uniffi_bindgen")
             },
             "crates.io: cargo-swift deps (uniffi_bindgen)",
         )
@@ -516,10 +512,9 @@ fn write_atomic(target: &Path, contents: &str) -> Result<(), VectisError> {
 /// minutes).
 fn verify_scratch_dir(pid: u32) -> PathBuf {
     match std::env::var_os("HOME") {
-        Some(home) => PathBuf::from(home)
-            .join(".cache")
-            .join("vectis")
-            .join(format!("update-versions-{pid}")),
+        Some(home) => {
+            PathBuf::from(home).join(".cache").join("vectis").join(format!("update-versions-{pid}"))
+        }
         None => std::env::temp_dir().join(format!("vectis-update-versions-{pid}")),
     }
 }

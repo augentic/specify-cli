@@ -31,14 +31,11 @@ pub mod parser;
 
 use std::path::{Path, PathBuf};
 
-use crate::{
-    AddShellArgs, CommandOutcome,
-    error::VectisError,
-    init,
-    prerequisites::{self, AssemblyKind},
-    verify::pipeline::BuildStep,
-    versions::Versions,
-};
+use crate::error::VectisError;
+use crate::prerequisites::{self, AssemblyKind};
+use crate::verify::pipeline::BuildStep;
+use crate::versions::Versions;
+use crate::{AddShellArgs, CommandOutcome, init};
 
 pub fn run(args: &AddShellArgs) -> Result<CommandOutcome, VectisError> {
     let shell = match args.platform.as_str() {
@@ -143,10 +140,7 @@ pub fn run(args: &AddShellArgs) -> Result<CommandOutcome, VectisError> {
     let passed = build_steps.iter().all(|s| s.passed);
 
     let mut assembly = serde_json::Map::new();
-    assembly.insert(
-        "status".to_string(),
-        serde_json::Value::String("created".into()),
-    );
+    assembly.insert("status".to_string(), serde_json::Value::String("created".into()));
     assembly.insert(
         "files".to_string(),
         serde_json::Value::Array(files.into_iter().map(serde_json::Value::String).collect()),
@@ -193,21 +187,17 @@ fn resolve_project_dir(dir: Option<&Path>) -> Result<PathBuf, VectisError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
 
     fn scratch_dir(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        std::env::temp_dir().join(format!(
-            "vectis-add-shell-{label}-{}-{nanos}-{n}",
-            std::process::id(),
-        ))
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        std::env::temp_dir()
+            .join(format!("vectis-add-shell-{label}-{}-{nanos}-{n}", std::process::id(),))
     }
 
     #[test]
@@ -252,11 +242,7 @@ mod tests {
     fn rejects_when_shell_already_present() {
         let dir = scratch_dir("shell-exists");
         std::fs::create_dir_all(dir.join("shared/src")).unwrap();
-        std::fs::write(
-            dir.join("shared/src/app.rs"),
-            "impl App for Counter {}\n",
-        )
-        .unwrap();
+        std::fs::write(dir.join("shared/src/app.rs"), "impl App for Counter {}\n").unwrap();
         std::fs::create_dir_all(dir.join("iOS")).unwrap();
 
         let args = AddShellArgs {

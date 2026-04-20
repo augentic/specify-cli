@@ -17,13 +17,11 @@ pub mod ios;
 
 use std::path::PathBuf;
 
-use crate::{
-    CommandOutcome, InitArgs,
-    error::VectisError,
-    prerequisites::{self, AssemblyKind},
-    templates::{Capability, Params},
-    versions::Versions,
-};
+use crate::error::VectisError;
+use crate::prerequisites::{self, AssemblyKind};
+use crate::templates::{Capability, Params};
+use crate::versions::Versions;
+use crate::{CommandOutcome, InitArgs};
 
 pub fn run(args: &InitArgs) -> Result<CommandOutcome, VectisError> {
     let mut assemblies = vec![AssemblyKind::Core];
@@ -47,13 +45,8 @@ pub fn run(args: &InitArgs) -> Result<CommandOutcome, VectisError> {
         .clone()
         .unwrap_or_else(|| core::default_android_package(&args.app_name));
 
-    let core_result = core::scaffold(
-        &project_dir,
-        &args.app_name,
-        &android_package,
-        &versions,
-        &caps,
-    )?;
+    let core_result =
+        core::scaffold(&project_dir, &args.app_name, &android_package, &versions, &caps)?;
 
     let mut assemblies_json = serde_json::Map::new();
     assemblies_json.insert(
@@ -76,8 +69,7 @@ pub fn run(args: &InitArgs) -> Result<CommandOutcome, VectisError> {
     for shell in &shells {
         match shell {
             AssemblyKind::Ios => {
-                let ios_result =
-                    ios::scaffold(&project_dir, &args.app_name, &caps, &params, true)?;
+                let ios_result = ios::scaffold(&project_dir, &args.app_name, &caps, &params, true)?;
                 assemblies_json.insert(
                     "ios".to_string(),
                     serde_json::json!({
@@ -253,10 +245,7 @@ mod tests {
     #[test]
     fn parse_caps_dedupes_in_input_order() {
         let caps = parse_caps(Some("kv,http,kv,http,time")).unwrap();
-        assert_eq!(
-            caps,
-            vec![Capability::Kv, Capability::Http, Capability::Time]
-        );
+        assert_eq!(caps, vec![Capability::Kv, Capability::Http, Capability::Time]);
     }
 
     #[test]

@@ -5,11 +5,12 @@
 //! every later drift-detection routine will feed from. The actual "does the
 //! generated code still match the baseline?" comparison lands with RFC-2.
 
+use std::fs;
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 use specify_spec::{RequirementBlock, parse_baseline};
-use std::fs;
-use std::path::Path;
 
 /// One row in a drift report: the status of a single requirement relative
 /// to the source artefacts it claims to cover.
@@ -101,9 +102,11 @@ pub fn baseline_inventory(specs_dir: &Path) -> Result<Vec<(String, Vec<Requireme
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
+
     use tempfile::tempdir;
+
+    use super::*;
 
     const MINIMAL_SPEC: &str = "\
 # Example

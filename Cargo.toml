@@ -18,17 +18,17 @@ name = "specify"
 path = "src/lib.rs"
 
 [dependencies]
-specify-error = { path = "crates/error" }
-specify-drift = { path = "crates/drift" }
-specify-federation = { path = "crates/federation" }
-specify-schema = { path = "crates/schema" }
-specify-spec = { path = "crates/spec" }
-specify-merge = { path = "crates/merge" }
-specify-task = { path = "crates/task" }
-specify-change = { path = "crates/change" }
-specify-validate = { path = "crates/validate" }
-specify-vectis = { path = "crates/vectis" }
-clap = { version = "4", features = ["derive"] }
+specify-error.workspace = true
+specify-drift.workspace = true
+specify-federation.workspace = true
+specify-schema.workspace = true
+specify-spec.workspace = true
+specify-merge.workspace = true
+specify-task.workspace = true
+specify-change.workspace = true
+specify-validate.workspace = true
+specify-vectis.workspace = true
+clap.workspace = true
 serde.workspace = true
 serde_yaml.workspace = true
 serde_json.workspace = true
@@ -38,9 +38,9 @@ glob.workspace = true
 
 [dev-dependencies]
 assert_cmd = "2"
-tempfile = "3"
+tempfile.workspace = true
 regex.workspace = true
-jsonschema = { version = "0.46", default-features = false }
+jsonschema.workspace = true
 
 [workspace]
 members = [
@@ -104,6 +104,17 @@ unneeded_field_pattern = "warn"
 unused_result_ok = "warn"
 
 [workspace.dependencies]
+specify-error = { path = "crates/error" }
+specify-drift = { path = "crates/drift" }
+specify-federation = { path = "crates/federation" }
+specify-schema = { path = "crates/schema" }
+specify-spec = { path = "crates/spec" }
+specify-merge = { path = "crates/merge" }
+specify-task = { path = "crates/task" }
+specify-change = { path = "crates/change" }
+specify-validate = { path = "crates/validate" }
+specify-vectis = { path = "crates/vectis" }
+clap = { version = "4", features = ["derive"] }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
@@ -111,6 +122,8 @@ serde_json = "1"
 regex = "1"
 glob = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
+jsonschema = { version = "0.46", default-features = false }
+tempfile = "3"
 
 [profile.release]
 lto = true

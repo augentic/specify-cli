@@ -47,11 +47,7 @@ pub struct IosScaffold {
 /// `Verify` so the caller can splice the failure into the structured JSON
 /// output. The pipeline can be skipped for unit tests via `run_build`.
 pub fn scaffold(
-    project_dir: &Path,
-    app_name: &str,
-    caps: &[Capability],
-    params: &Params,
-    run_build: bool,
+    project_dir: &Path, app_name: &str, caps: &[Capability], params: &Params, run_build: bool,
 ) -> Result<IosScaffold, VectisError> {
     let ios_root = project_dir.join("iOS");
     if ios_root.exists() {
@@ -117,22 +113,18 @@ pub fn scaffold(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::versions::Versions;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
+    use crate::versions::Versions;
 
     fn scratch_dir(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        std::env::temp_dir().join(format!(
-            "vectis-init-ios-{label}-{}-{nanos}-{n}",
-            std::process::id(),
-        ))
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        std::env::temp_dir()
+            .join(format!("vectis-init-ios-{label}-{}-{nanos}-{n}", std::process::id(),))
     }
 
     fn sample_params() -> Params {
@@ -163,8 +155,8 @@ mod tests {
     fn scaffold_writes_every_ios_file_with_substituted_paths() {
         let dir = scratch_dir("substitute");
         fs::create_dir_all(&dir).unwrap();
-        let result = scaffold(&dir, "Counter", &[], &sample_params(), false)
-            .expect("scaffold must succeed");
+        let result =
+            scaffold(&dir, "Counter", &[], &sample_params(), false).expect("scaffold must succeed");
         assert_eq!(result.files.len(), ios::TEMPLATES.len());
         // Spot-check the substituted paths.
         assert!(dir.join("iOS/project.yml").is_file());
@@ -208,10 +200,7 @@ mod tests {
         scaffold(&dir, "Counter", &[], &sample_params(), false).unwrap();
 
         let core_swift = fs::read_to_string(dir.join("iOS/Counter/Core.swift")).unwrap();
-        assert!(
-            !core_swift.contains("<<<CAP:"),
-            "leftover open marker in Core.swift"
-        );
+        assert!(!core_swift.contains("<<<CAP:"), "leftover open marker in Core.swift");
         // Render-only: no cap-specific case arms should remain.
         assert!(!core_swift.contains("performHttpRequest"));
         assert!(!core_swift.contains("case .http"));

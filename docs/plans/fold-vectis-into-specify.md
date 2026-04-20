@@ -21,7 +21,7 @@ vectis-plugin references to point at the new home.
 | chunk-3-dispatch | Add `specify-vectis` as a dependency, extend `Commands` with a `Vectis { action }` variant + `VectisAction` subcommand enum in `src/main.rs`, and dispatch through to the library handlers (legacy snake_case payload, kebab-case error variants only). | completed |
 | chunk-4-v2 | Rewrite every `serde_json::json!` literal in `crates/vectis/src/{init,verify,add_shell,update_versions}/*.rs` and `error.rs` to kebab-case keys/error variants; update unit tests; rely on `emit_json` to inject `schema-version: 2`. | completed |
 | chunk-5-text-tests | Add `--format text` renderers for the four vectis verbs in `src/main.rs` and write `tests/vectis.rs` integration tests covering help, success JSON shape, invalid-project error, and missing-prerequisites error. | completed |
-| chunk-6-clean-specify | In `../specify`: delete `crates/vectis-cli/`, `templates/vectis/`, and the prebuilt `vectis` binary; drop the workspace member from `Cargo.toml` (and the file/`[workspace]` block if empty); remove `Makefile` `build-vectis` target; remove `/vectis` from `.gitignore`; regenerate or delete `Cargo.lock`. | pending |
+| chunk-6-clean-specify | In `../specify`: delete `crates/vectis-cli/`, `templates/vectis/`, and the prebuilt `vectis` binary; drop the workspace member from `Cargo.toml` (and the file/`[workspace]` block if empty); remove `Makefile` `build-vectis` target; remove `/vectis` from `.gitignore`; regenerate or delete `Cargo.lock`. | completed |
 | chunk-7-plugin-docs | In `../specify`: rewrite `plugins/vectis/skills/template-updater/{SKILL.md,references/known-drift.md}` and the writer SKILLs to use `specify vectis ...` and `<specify-cli>/crates/vectis/...` paths; refresh `docs/vectis.md`, `docs/architecture.md`, `README.md`; banner-mark `rfcs/rfc-6-*.md` as superseded; verify grep is clean. | pending |
 
 When you complete a chunk, flip its status (`pending` → `in_progress` →
@@ -160,12 +160,23 @@ Goal: leave `../specify` with no source, no build wiring, and no committed binar
 - Edit `../specify/.gitignore`: remove the `/vectis` line.
 - Delete the prebuilt `../specify/vectis` binary.
 - Run `cargo update --workspace` (or just delete `../specify/Cargo.lock` if no Rust crates remain) so the lockfile no longer references `vectis-cli`.
-- Verify: `rg -l 'vectis-cli|target/release/vectis|build-vectis|crates/vectis-cli' ../specify` returns matches **only** inside `rfcs/rfc-6-*.md` (historical) — every other hit must have been resolved.
+- Verify: `rg -l 'vectis-cli|target/release/vectis|build-vectis|crates/vectis-cli' ../specify` returns matches inside `rfcs/rfc-6-*.md` (historical) **and** inside `plugins/vectis/skills/{template-updater,ios-writer,core-writer,android-writer}/...` — the latter set is chunk 7's responsibility, not chunk 6's. After chunk 6, the only files chunk 7 still needs to touch for these tokens are those five SKILL paths plus `references/known-drift.md`. Confirm that no Rust source, build wiring, or committed binary in `../specify` references vectis any longer.
 
 ### Chunk 7 — Update plugin & doc references in `../specify`
 
 Goal: the `vectis` plugin and surrounding docs work against the new `specify vectis ...` invocation, and grep is clean of stale paths.
 
+- **Exact set of remaining files (chunk-6 discovery)**: after chunk 6, a `vectis-cli|target/release/vectis|build-vectis|crates/vectis-cli` grep across `../specify` returns hits **only** in:
+  - `plugins/vectis/skills/template-updater/SKILL.md`
+  - `plugins/vectis/skills/template-updater/references/known-drift.md`
+  - `plugins/vectis/skills/template-updater/references/playbook.md` (if present)
+  - `plugins/vectis/skills/ios-writer/SKILL.md`
+  - `plugins/vectis/skills/core-writer/SKILL.md`
+  - `plugins/vectis/skills/android-writer/SKILL.md`
+  - `rfcs/rfc-6-vectis-bootstrap.md` (banner-mark only, body intact)
+  - `rfcs/rfc-6-tasks.md` (banner-mark only, body intact)
+
+  Outside this set, `../specify` is already clean: `Cargo.toml`/`Cargo.lock` are gone (no Rust crates remain in the repo), `Makefile`'s `build-vectis` target is removed, `.gitignore` no longer carries `/vectis`, and the prebuilt binary is deleted. `docs/vectis.md`, `docs/architecture.md`, and `README.md` did **not** appear in the post-chunk-6 grep — re-check before editing them; they may need only minor wording updates rather than a full rewrite. (`docs/architecture.md` may not even exist; `glob ../specify/docs/**/*.md` to see the actual doc surface before assuming the bullets below apply verbatim.)
 - `../specify/plugins/vectis/skills/template-updater/SKILL.md` and its `references/known-drift.md`:
   - Replace every `./target/release/vectis ...` and bare `vectis ...` invocation with `specify vectis ...`.
   - Replace repo-relative paths so they refer to the `specify-cli` repo:
@@ -426,6 +437,72 @@ Goal: the `vectis` plugin and surrounding docs work against the new `specify vec
     placeholder pretty-print fallback to clean up. The text path is
     now the public face of `specify vectis ...` and matches the
     shapes the plugin's docs (chunk 7) will reference.
+- **chunk-6-clean-specify (completed)**: From `../specify` (branch
+  `move-vectis`):
+  - `rm -rf crates/vectis-cli templates/vectis` and removed the
+    now-empty parent dirs (`crates/`, `templates/`) since no other
+    siblings remained.
+  - Deleted the prebuilt `vectis` binary (untracked — it lived only on
+    disk thanks to the `.gitignore` `/vectis` entry, never committed).
+  - Deleted `Cargo.toml` and `Cargo.lock` outright. The workspace
+    manifest only declared `members = ["crates/vectis-cli"]` and a
+    `glob ../specify/**/Cargo.toml` confirmed no other Rust crates
+    exist anywhere in the repo (the `*.rs` files left under
+    `plugins/spec/skills/plan/fixtures/discovery/legacy/src/` and
+    under what *was* `templates/vectis/core/` were not part of any
+    `Cargo.toml` — the latter set is now gone, the former is fixture
+    data not built by Cargo). With the workspace gone there is no
+    lockfile to maintain. Both deletions were the chunk-plan's
+    "delete the entire `[workspace]` block (and likely the file)"
+    branch.
+  - Rewrote `Makefile`: dropped the `.PHONY: build-vectis` declaration
+    and the `build-vectis: cargo build --release --package vectis-cli
+    && cp target/release/vectis .` recipe. Kept `checks`,
+    `dev-plugins`, `prod-plugins` exactly as they were.
+  - Edited `.gitignore`: removed the `/vectis` line. Left the
+    pre-existing `/target` line in place — the `target/` dir on disk
+    is stale post-deletion but harmless and untracked, and removing
+    `/target` was outside the chunk's scope (operator can `rm -rf
+    target/` at leisure).
+  - Did not touch any of the eight files listed in chunk 7's "exact
+    set of remaining files" subsection (the four `plugins/vectis/skills`
+    SKILL.md files plus `template-updater/references/known-drift.md`,
+    plus the two `rfcs/rfc-6-*.md` files); chunk 7 owns those.
+  Verification:
+  - `git status` after the chunk lists: modified `.gitignore`, deleted
+    `Cargo.lock`, deleted `Cargo.toml`, modified `Makefile`, plus the
+    full set of deleted `crates/vectis-cli/**` and `templates/vectis/**`
+    paths. No untracked files added.
+  - `grep 'vectis-cli|target/release/vectis|build-vectis|crates/vectis-cli'
+    ../specify` returns hits only in
+    `rfcs/rfc-6-{vectis-bootstrap,tasks}.md` (historical, intentionally
+    preserved) and in
+    `plugins/vectis/skills/{template-updater/{SKILL.md,references/known-drift.md},
+    {ios,core,android}-writer/SKILL.md}` (chunk 7's responsibility).
+    Every other file in the repo is now clean of these tokens.
+  - `grep 'vectis (init|verify|add-shell|update-versions)|target/release/vectis|cargo .* vectis|crates/vectis|build-vectis|templates/vectis|\\./vectis'`
+    against `../specify/docs/` and `../specify/README.md` returns no
+    matches — neither file references the CLI binary or its build
+    commands, only the conceptual `vectis` plugin/schema.
+  **Plan deviations / forward impact**:
+  - The chunk's verification bullet originally claimed "matches **only**
+    inside `rfcs/rfc-6-*.md`" — that was optimistic; it overlooked
+    `plugins/vectis/skills/...` references, which are chunk 7's
+    responsibility. The chunk-6 verification bullet has been rewritten
+    to acknowledge this and the chunk-7 section now opens with the
+    exact list of files that still need editing (saving the next
+    agent a grep round-trip).
+  - Chunk 7 currently lists `docs/architecture.md`, `docs/vectis.md`,
+    and `README.md` as needing structure-diagram / usage-snippet
+    refreshes. A post-chunk-6 grep against those three files turned
+    up zero `vectis-cli` / build-command / path mentions; their
+    `vectis` references are all conceptual (plugin schema URL, plugin
+    description, doc cross-link). The chunk-7 plan note has been
+    softened accordingly: the next agent should re-grep before
+    assuming edits are required.
+  - The `target/` dir under `../specify` is now stale (no Rust crates
+    to populate it) but is `.gitignore`d so it's not in `git status`.
+    Deleting it is outside chunk 6/7 scope; flagged here for awareness.
 - **chunk-2-lib (completed)**: Created `crates/vectis/src/lib.rs`
   containing the four arg structs (now `pub struct …Args` with `pub`
   fields, were `pub(crate)`), the `pub enum CommandOutcome` (already

@@ -132,9 +132,7 @@ pub fn substitute_path(target: &str, params: &Params) -> String {
 /// package path (`.` -> `/`) and pass `Some(...)` so the engine can splice
 /// it into `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/...` targets.
 pub fn substitute_path_with(
-    target: &str,
-    params: &Params,
-    android_package_path: Option<&str>,
+    target: &str, params: &Params, android_package_path: Option<&str>,
 ) -> String {
     let mut out = target.to_string();
     if let Some(pkg_path) = android_package_path {
@@ -315,10 +313,7 @@ mod tests {
     fn substitutes_known_placeholders_only() {
         let input = "name=__APP_NAME__ struct=__APP_STRUCT__ unknown=__NOT_A_PLACEHOLDER__";
         let out = substitute_placeholders(input, &sample_params());
-        assert_eq!(
-            out,
-            "name=Counter struct=Counter unknown=__NOT_A_PLACEHOLDER__"
-        );
+        assert_eq!(out, "name=Counter struct=Counter unknown=__NOT_A_PLACEHOLDER__");
     }
 
     #[test]
@@ -333,7 +328,8 @@ mod tests {
 
     #[test]
     fn render_only_strips_every_cap_block() {
-        let input = "before\n<<<CAP:http\nhttp_only\nCAP:http>>>\n<<<CAP:kv\nkv_only\nCAP:kv>>>\nafter\n";
+        let input =
+            "before\n<<<CAP:http\nhttp_only\nCAP:http>>>\n<<<CAP:kv\nkv_only\nCAP:kv>>>\nafter\n";
         let out = render(input, &sample_params(), &[]);
         assert_eq!(out, "before\nafter\n");
     }
@@ -359,10 +355,7 @@ mod tests {
     fn preserves_indentation_inside_markers() {
         let input = "[features]\ncodegen = [\n    <<<CAP:http\n    \"crux_http/facet_typegen\",\n    CAP:http>>>\n]\n";
         let out = render(input, &sample_params(), &[Capability::Http]);
-        assert_eq!(
-            out,
-            "[features]\ncodegen = [\n    \"crux_http/facet_typegen\",\n]\n"
-        );
+        assert_eq!(out, "[features]\ncodegen = [\n    \"crux_http/facet_typegen\",\n]\n");
     }
 
     #[test]
@@ -419,10 +412,7 @@ mod tests {
         let target =
             "Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/__APP_NAME__Application.kt";
         let out = substitute_path_with(target, &sample_params(), Some("com/vectis/counter"));
-        assert_eq!(
-            out,
-            "Android/app/src/main/java/com/vectis/counter/CounterApplication.kt"
-        );
+        assert_eq!(out, "Android/app/src/main/java/com/vectis/counter/CounterApplication.kt");
     }
 
     #[test]

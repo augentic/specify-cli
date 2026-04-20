@@ -117,9 +117,7 @@ pub const TEMPLATES: &[AndroidTemplate] = &[
     },
     AndroidTemplate {
         target: "Android/app/src/main/res/xml/network_security_config.xml",
-        contents: include_str!(
-            "../../../../templates/vectis/android/network-security-config.xml"
-        ),
+        contents: include_str!("../../../../templates/vectis/android/network-security-config.xml"),
         // Only meaningful when HTTP or SSE is on (the manifest only
         // references `@xml/network_security_config` from inside its own
         // `<<<CAP:http` block). Leaving the file in render-only / kv-only
@@ -185,11 +183,7 @@ mod tests {
         targets.sort_unstable();
         let len_before = targets.len();
         targets.dedup();
-        assert_eq!(
-            targets.len(),
-            len_before,
-            "duplicate target paths in Android registry"
-        );
+        assert_eq!(targets.len(), len_before, "duplicate target paths in Android registry");
     }
 
     #[test]

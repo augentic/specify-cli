@@ -268,12 +268,7 @@ impl App for Counter {{
         let parsed = parse_app_rs(&src).unwrap();
         assert_eq!(
             parsed.capabilities,
-            vec![
-                Capability::Http,
-                Capability::Kv,
-                Capability::Time,
-                Capability::Platform,
-            ]
+            vec![Capability::Http, Capability::Kv, Capability::Time, Capability::Platform,]
         );
     }
 
@@ -360,12 +355,7 @@ impl App for Counter {
         assert_eq!(parsed.app_name, "Counter");
         assert_eq!(
             parsed.capabilities,
-            vec![
-                Capability::Http,
-                Capability::Kv,
-                Capability::Time,
-                Capability::Platform,
-            ]
+            vec![Capability::Http, Capability::Kv, Capability::Time, Capability::Platform,]
         );
     }
 }

@@ -45,16 +45,12 @@ use crate::verify::pipeline::{BuildStep, run_step};
 /// depend on the earlier ones; re-running them against a known-broken
 /// tree only muddies the output).
 pub fn run_pipeline(
-    project_dir: &Path,
-    codegen_swift_dir: &Path,
-    codegen_kotlin_dir: &Path,
+    project_dir: &Path, codegen_swift_dir: &Path, codegen_kotlin_dir: &Path,
 ) -> Result<Vec<BuildStep>, VectisError> {
     let mut steps: Vec<BuildStep> = Vec::with_capacity(7);
 
-    let check = run_step(
-        "cargo check",
-        Command::new("cargo").arg("check").current_dir(project_dir),
-    )?;
+    let check =
+        run_step("cargo check", Command::new("cargo").arg("check").current_dir(project_dir))?;
     let check_passed = check.passed;
     steps.push(check);
     if !check_passed {
@@ -75,9 +71,7 @@ pub fn run_pipeline(
 
     let deny = run_step(
         "cargo deny",
-        Command::new("cargo")
-            .args(["deny", "check"])
-            .current_dir(project_dir),
+        Command::new("cargo").args(["deny", "check"]).current_dir(project_dir),
     )?;
     let deny_passed = deny.passed;
     steps.push(deny);
@@ -104,10 +98,7 @@ pub fn run_pipeline(
         }
     }
 
-    let vet = run_step(
-        "cargo vet",
-        Command::new("cargo").arg("vet").current_dir(project_dir),
-    )?;
+    let vet = run_step("cargo vet", Command::new("cargo").arg("vet").current_dir(project_dir))?;
     let vet_passed = vet.passed;
     steps.push(vet);
     if !vet_passed {

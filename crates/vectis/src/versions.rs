@@ -100,8 +100,7 @@ impl Versions {
     /// the file MUST exist and parse, otherwise a structured
     /// `InvalidProject` error is returned.
     pub fn resolve(
-        project_dir: &Path,
-        override_path: Option<&Path>,
+        project_dir: &Path, override_path: Option<&Path>,
     ) -> Result<Versions, VectisError> {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         Self::resolve_with(project_dir, override_path, home.as_deref())
@@ -110,9 +109,7 @@ impl Versions {
     /// Inner resolver with an explicit `home_dir` for testability. The
     /// public `resolve` delegates here after reading `$HOME`.
     fn resolve_with(
-        project_dir: &Path,
-        override_path: Option<&Path>,
-        home_dir: Option<&Path>,
+        project_dir: &Path, override_path: Option<&Path>, home_dir: Option<&Path>,
     ) -> Result<Versions, VectisError> {
         if let Some(path) = override_path {
             return load_required(path);
@@ -162,11 +159,12 @@ fn parse(contents: &str) -> Result<Versions, toml::de::Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
 
     /// Returns a unique scratch directory inside `std::env::temp_dir()`.
     /// Process-pid + monotonic counter + nanosecond-grained time keeps
@@ -174,14 +172,9 @@ mod tests {
     fn scratch_dir(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!(
-            "vectis-versions-{label}-{}-{nanos}-{n}",
-            std::process::id(),
-        ));
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let dir = std::env::temp_dir()
+            .join(format!("vectis-versions-{label}-{}-{nanos}-{n}", std::process::id(),));
         fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -250,8 +243,7 @@ xcodegen = "0.0.0"
     fn embedded_layer_used_when_no_files_or_overrides() {
         let project = scratch_dir("embedded-only");
         let home = scratch_dir("embedded-only-home");
-        let v =
-            Versions::resolve_with(&project, None, Some(&home)).expect("embedded must resolve");
+        let v = Versions::resolve_with(&project, None, Some(&home)).expect("embedded must resolve");
         let baseline = Versions::embedded().unwrap();
         assert_eq!(v, baseline);
     }
@@ -262,11 +254,7 @@ xcodegen = "0.0.0"
         let home = scratch_dir("override-home");
         // Plant a project-local versions.toml that should be ignored
         // because the override takes precedence.
-        fs::write(
-            project.join("versions.toml"),
-            minimal_versions_toml("9.9.9"),
-        )
-        .unwrap();
+        fs::write(project.join("versions.toml"), minimal_versions_toml("9.9.9")).unwrap();
         let override_path = scratch_dir("override-file").join("pins.toml");
         fs::write(&override_path, minimal_versions_toml("1.2.3")).unwrap();
 
@@ -278,11 +266,7 @@ xcodegen = "0.0.0"
     fn project_layer_takes_precedence_over_user_and_embedded() {
         let project = scratch_dir("project");
         let home = scratch_dir("project-home");
-        fs::write(
-            project.join("versions.toml"),
-            minimal_versions_toml("4.5.6"),
-        )
-        .unwrap();
+        fs::write(project.join("versions.toml"), minimal_versions_toml("4.5.6")).unwrap();
         // Plant a user file that should be ignored.
         let user = home.join(".config").join("vectis");
         fs::create_dir_all(&user).unwrap();
@@ -338,10 +322,7 @@ xcodegen = "0.0.0"
             .expect_err("malformed override must error");
         match err {
             VectisError::InvalidProject { message } => {
-                assert!(
-                    message.contains("failed to parse"),
-                    "unexpected message: {message}"
-                );
+                assert!(message.contains("failed to parse"), "unexpected message: {message}");
                 assert!(
                     message.contains(bad.to_string_lossy().as_ref()),
                     "message must include the path: {message}"

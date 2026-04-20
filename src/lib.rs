@@ -6,7 +6,6 @@
 
 pub use config::ProjectConfig;
 pub use init::{InitOptions, InitResult, VersionMode, init};
-
 pub use specify_change::{
     ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry,
     LifecycleStatus, Outcome, Overlap, PhaseOutcome, Plan, PlanChange, PlanChangePatch,
