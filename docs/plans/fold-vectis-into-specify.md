@@ -22,7 +22,7 @@ vectis-plugin references to point at the new home.
 | chunk-4-v2 | Rewrite every `serde_json::json!` literal in `crates/vectis/src/{init,verify,add_shell,update_versions}/*.rs` and `error.rs` to kebab-case keys/error variants; update unit tests; rely on `emit_json` to inject `schema-version: 2`. | completed |
 | chunk-5-text-tests | Add `--format text` renderers for the four vectis verbs in `src/main.rs` and write `tests/vectis.rs` integration tests covering help, success JSON shape, invalid-project error, and missing-prerequisites error. | completed |
 | chunk-6-clean-specify | In `../specify`: delete `crates/vectis-cli/`, `templates/vectis/`, and the prebuilt `vectis` binary; drop the workspace member from `Cargo.toml` (and the file/`[workspace]` block if empty); remove `Makefile` `build-vectis` target; remove `/vectis` from `.gitignore`; regenerate or delete `Cargo.lock`. | completed |
-| chunk-7-plugin-docs | In `../specify`: rewrite `plugins/vectis/skills/template-updater/{SKILL.md,references/known-drift.md}` and the writer SKILLs to use `specify vectis ...` and `<specify-cli>/crates/vectis/...` paths; refresh `docs/vectis.md`, `docs/architecture.md`, `README.md`; banner-mark `rfcs/rfc-6-*.md` as superseded; verify grep is clean. | pending |
+| chunk-7-plugin-docs | In `../specify`: rewrite `plugins/vectis/skills/template-updater/{SKILL.md,references/known-drift.md}` and the writer SKILLs to use `specify vectis ...` and `<specify-cli>/crates/vectis/...` paths; refresh `docs/vectis.md`, `docs/architecture.md`, `README.md`; banner-mark `rfcs/rfc-6-*.md` as superseded; verify grep is clean. | completed |
 
 When you complete a chunk, flip its status (`pending` → `in_progress` →
 `completed`) and add a short note under "Notes" at the bottom if anything
@@ -503,6 +503,118 @@ Goal: the `vectis` plugin and surrounding docs work against the new `specify vec
   - The `target/` dir under `../specify` is now stale (no Rust crates
     to populate it) but is `.gitignore`d so it's not in `git status`.
     Deleting it is outside chunk 6/7 scope; flagged here for awareness.
+- **chunk-7-plugin-docs (completed)**: Edited the eight files chunk 6
+  flagged, confined to `../specify` (branch `move-vectis`):
+  - `plugins/vectis/skills/template-updater/SKILL.md`: every
+    `./target/release/vectis ...` and bare `vectis <verb>` invocation
+    rewritten to `{repo-dir}/target/debug/specify --format json vectis
+    <verb> ...` (the `--format json` flag is global and must precede the
+    `vectis` subcommand — chunk 3 wired it on `Cli`, chunk 5's
+    `tests/vectis.rs` uses the same ordering, so the SKILL stays in
+    lock-step). All `crates/vectis-cli/...` paths repointed at
+    `<specify-cli>/crates/vectis/...`; all `templates/vectis/...`
+    references repointed at `<specify-cli>/templates/vectis/...`.
+    `cargo build --release -p vectis-cli` was replaced with `cargo build
+    -p specify` (the `specify` binary is what the SKILL needs to run end
+    to end), while `cargo test -p vectis-cli` and `cargo clippy ... -p
+    vectis-cli` became `-p specify-vectis` (the library carve-out from
+    chunk 2 — same crate, narrower scope). The "prerequisites" section
+    now spells out that `{repo-dir}` refers to the `specify-cli`
+    checkout, not `../specify`. Reference table at the bottom lists
+    paths under `<specify-cli>/crates/vectis/` and
+    `<specify-cli>/templates/vectis/`.
+  - `plugins/vectis/skills/template-updater/references/known-drift.md`:
+    same path repointing (`crates/vectis-cli/embedded/versions.toml` →
+    `<specify-cli>/crates/vectis/embedded/versions.toml`,
+    `crates/vectis-cli/src/update_versions/query.rs` →
+    `<specify-cli>/crates/vectis/src/update_versions/query.rs`); every
+    `vectis update-versions ...` invocation became `specify vectis
+    update-versions ...`.
+  - `plugins/vectis/skills/{ios,core,android}-writer/SKILL.md`: every
+    `vectis init`, `vectis verify`, and `vectis add-shell {ios,android}`
+    invocation became `specify vectis ...`. Embedded-template path
+    references (`crates/vectis-cli/embedded/`,
+    `crates/vectis-cli/src/...`) now point at
+    `<specify-cli>/crates/vectis/embedded/` and
+    `<specify-cli>/crates/vectis/src/...`; every
+    `templates/vectis/{core,ios,android}/...` reference picked up the
+    `<specify-cli>/` prefix.
+  - `rfcs/rfc-6-vectis-bootstrap.md` and `rfcs/rfc-6-tasks.md`:
+    prepended a four-line "Status: superseded" banner referencing
+    `augentic/specify-cli` (`crates/vectis/` library +
+    `templates/vectis/`) and pointing readers at the four
+    `plugins/vectis/skills/...` SKILLs for the current invocation, paths,
+    and JSON contract. Bodies were not rewritten — both files are
+    preserved verbatim as historical record.
+  - `rfcs/roadmap.md`: the RFC-6 entry already says "Status: " for every
+    other RFC; I added a `**Status:** Superseded — folded into the
+    `specify` CLI ...` line to its RFC-6 paragraph and rewrote its
+    "Solution" sentence so the four bullet examples use `specify vectis
+    init|verify|add-shell|update-versions` (instead of bare `vectis ...`).
+    This was outside chunk 7's original file list but came up in the
+    verification grep — leaving the paragraph's bare invocations in
+    place would have left a non-banner-marked file failing the
+    `\bvectis\s+(init|verify|add-shell|update-versions)\b` rule. Banner
+    treatment matches the two `rfc-6-*.md` files (history preserved,
+    superseded status flagged).
+  - **No edits required** to `docs/vectis.md`, `docs/architecture.md`,
+    or `README.md` — chunk 6's note already flagged them as
+    conceptually-only references; a re-grep at the start of chunk 7
+    confirmed zero `vectis-cli` / `target/release/vectis` /
+    `cargo .* vectis-cli` / `crates/vectis-cli` /
+    `templates/vectis/{core,ios,android}/` / build-command mentions in
+    those files. The pre-existing `vectis` mentions are all conceptual
+    (plugin schema URL, plugin description, doc cross-link) and remain
+    accurate under the folded layout.
+
+  Verification (both grep suites from chunk 7's plan section, run from
+  `../specify`):
+  - `grep -rEn '\bvectis[[:space:]]+(init|verify|add-shell|update-versions)\b' --include='*.md' . | grep -vE 'specify[[:space:]]+(--[a-z]+([[:space:]]+[^[:space:]]+)?[[:space:]]+)?vectis|specify$|:[[:space:]]*$|^\./rfcs/rfc-6-'`
+    returns a single match —
+    `plugins/vectis/skills/template-updater/SKILL.md:190` — which is the
+    tail of a hard-wrapped `specify\nvectis update-versions --verify`
+    sentence (the word "specify" sits at the end of line 189). The
+    plan's published filter `rg -v 'specify\s+vectis'` is too narrow to
+    catch `specify --format json vectis ...` (the SKILL's actual
+    invocation shape) or this line wrap; semantically the file is clean.
+    All other `vectis (verb)` hits live inside `rfcs/rfc-6-*.md` (under
+    their banners) and inside the rewritten `roadmap.md` paragraph
+    (`specify vectis init`, etc., which the filter correctly skips).
+  - `grep -rEn 'vectis-cli|target/release/vectis|cargo .* vectis-cli|build-vectis|crates/vectis-cli|^/vectis$' --include='*.md' --include='Makefile' --include='*.toml' --include='*.gitignore' .`
+    returns hits **only** inside `rfcs/rfc-6-vectis-bootstrap.md` and
+    `rfcs/rfc-6-tasks.md` (now under their "superseded" banners). Every
+    other file in the repo — including the four rewritten SKILL.md
+    files, the rewritten `known-drift.md`, `roadmap.md`, `Makefile`, and
+    `.gitignore` — is clean of these tokens.
+
+  **Plan deviations / forward impact**:
+  - `rfcs/roadmap.md` was not in the chunk's "exact set of remaining
+    files" list (chunk 6's grep only inspected
+    `vectis-cli|target/release/vectis|build-vectis|crates/vectis-cli`,
+    none of which `roadmap.md` carried). Chunk 7's
+    `\bvectis\s+(init|verify|add-shell|update-versions)\b` grep
+    surfaced its RFC-6 paragraph as a fresh hit. The fix was a
+    surgical paragraph-level rewrite + status banner; the broader
+    roadmap structure was left intact. Future chunks adding new
+    superseded RFCs should remember to either banner-mark the roadmap
+    paragraph or update its example invocations alongside the RFC body.
+  - The published verification regex (`rg -v ':\s*$|specify\s+vectis'`)
+    is too tight to catch the SKILL files' `specify --format json
+    vectis` invocations and any `specify\nvectis` line wraps. A more
+    accurate filter is `grep -vE 'specify[[:space:]]+(--[a-z]+([[:space:]]+[^[:space:]]+)?[[:space:]]+)?vectis|specify$|:[[:space:]]*$'`,
+    used here. Future "fold X into specify" plans that allow `--global
+    flag` between `specify` and the subcommand should publish the
+    looser filter from the start.
+  - The plan is now end-to-end complete; no follow-up chunk is needed.
+    The two repos are independently buildable: `specify-cli` produces
+    the `specify` binary that satisfies every step the rewritten
+    plugin SKILLs reference (verified via chunk 5's `tests/vectis.rs`),
+    and `../specify` carries no Rust source, no build wiring, no
+    committed binary, and no stale `vectis-cli` references outside the
+    explicitly-banner-marked RFCs. If a future agent wants to clean up
+    the stale `../specify/target/` directory left behind by chunk 6, it
+    can `rm -rf target/` from that checkout — out of scope for this
+    plan.
 - **chunk-2-lib (completed)**: Created `crates/vectis/src/lib.rs`
   containing the four arg structs (now `pub struct …Args` with `pub`
   fields, were `pub(crate)`), the `pub enum CommandOutcome` (already
