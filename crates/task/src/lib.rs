@@ -10,9 +10,10 @@
 //! Phase 1 ships only `parse_tasks` and `mark_complete`; selection helpers
 //! (`next_pending`, etc.) are deferred per RFC-1 plan line 134.
 
+use std::sync::OnceLock;
+
 use regex::Regex;
 use specify_error::Error;
-use std::sync::OnceLock;
 
 /// A single task entry parsed from `tasks.md`.
 #[derive(Debug, Clone, PartialEq)]

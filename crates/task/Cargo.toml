@@ -9,5 +9,5 @@ categories = ["development-tools", "parser-implementations"]
 keywords = ["specify", "tasks", "parser"]
 
 [dependencies]
-specify-error = { path = "../error" }
+specify-error.workspace = true
 regex.workspace = true

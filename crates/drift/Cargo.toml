@@ -9,9 +9,9 @@ categories = ["development-tools"]
 keywords = ["specify", "drift", "rfc2"]
 
 [dependencies]
-specify-error = { path = "../error" }
-specify-spec = { path = "../spec" }
+specify-error.workspace = true
+specify-spec.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
-tempfile = "3"
+tempfile.workspace = true

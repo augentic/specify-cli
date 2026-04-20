@@ -1,5 +1,6 @@
-use super::*;
 use specify_error::Error;
+
+use super::*;
 
 // ---------------------------------------------------------------------------
 // Test 1: happy path — two groups, four tasks, mixed completion.

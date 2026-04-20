@@ -4,8 +4,7 @@
 //! Semantic rules declare a `check` function that panics; the runner in
 //! [`crate::run`] never invokes those checkers and a test enforces it.
 
-use crate::primitives;
-use crate::{BriefContext, Classification, CrossContext, CrossRule, Rule, RuleOutcome};
+use crate::{BriefContext, Classification, CrossContext, CrossRule, Rule, RuleOutcome, primitives};
 
 // ---------------------------------------------------------------------------
 // Proposal

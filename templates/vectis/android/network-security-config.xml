@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext (HTTP) traffic is denied in release builds and only
+  permitted under `<debug-overrides>` so a developer can talk to
+  localhost / staging endpoints during `./gradlew :app:assembleDebug`
+  without that permission leaking into the shipped APK. Apps that
+  legitimately need cleartext in release builds should restrict it
+  to specific `<domain-config>` entries here rather than flipping
+  the base config.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <debug-overrides>
+        <base-config cleartextTrafficPermitted="true">
+            <trust-anchors>
+                <certificates src="system" />
+            </trust-anchors>
+        </base-config>
+    </debug-overrides>
+</network-security-config>

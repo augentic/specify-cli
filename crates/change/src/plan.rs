@@ -844,9 +844,11 @@ fn check_changes_dir_consistency(plan: &Plan, changes_dir: &Path) -> Vec<PlanVal
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::HashSet;
+
     use tempfile::tempdir;
+
+    use super::*;
 
     /// The 10 legal edges from `rfc-2-execution.md` §"Transition Rules".
     /// Kept here (not on `PlanStatus`) so the production matcher and the
