@@ -7,10 +7,6 @@ repository.workspace = true
 description = "Vectis bootstrap CLI for scaffolding and verifying Crux cross-platform projects (RFC-6)"
 publish = false
 
-[[bin]]
-name = "vectis"
-path = "src/main.rs"
-
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 roxmltree = "0.20"

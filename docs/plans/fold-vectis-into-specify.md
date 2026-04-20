@@ -17,7 +17,7 @@ vectis-plugin references to point at the new home.
 | ID | Chunk | Status |
 | --- | --- | --- |
 | chunk-1-move | Move `../specify/crates/vectis-cli/` and `../specify/templates/vectis/` into `specify-cli` verbatim; rename crate to `specify-vectis`; add to workspace; verify it still builds and tests as a binary. | completed |
-| chunk-2-lib | Convert `specify-vectis` from binary to library: lift arg structs and `CommandOutcome` into `lib.rs`, re-export the four `run` handlers, drop `[[bin]]` and delete `main.rs`. | pending |
+| chunk-2-lib | Convert `specify-vectis` from binary to library: lift arg structs and `CommandOutcome` into `lib.rs`, re-export the four `run` handlers, drop `[[bin]]` and delete `main.rs`. | completed |
 | chunk-3-dispatch | Add `specify-vectis` as a dependency, extend `Commands` with a `Vectis { action }` variant + `VectisAction` subcommand enum in `src/main.rs`, and dispatch through to the library handlers (legacy snake_case payload, kebab-case error variants only). | pending |
 | chunk-4-v2 | Rewrite every `serde_json::json!` literal in `crates/vectis/src/{init,verify,add_shell,update_versions}/*.rs` and `error.rs` to kebab-case keys/error variants; update unit tests; rely on `emit_json` to inject `schema-version: 2`. | pending |
 | chunk-5-text-tests | Add `--format text` renderers for the four vectis verbs in `src/main.rs` and write `tests/vectis.rs` integration tests covering help, success JSON shape, invalid-project error, and missing-prerequisites error. | pending |
@@ -112,7 +112,9 @@ Vectis {
     - `Ok(CommandOutcome::Success(value))` → `emit_json(value)` then `EXIT_SUCCESS`.
     - `Ok(CommandOutcome::Stub { command })` → emit a `not-implemented` error and return `EXIT_GENERIC_FAILURE`. **Note (chunk-1 discovery)**: today's `main.rs` in vectis emits this as snake_case `not_implemented` (line 161 of `crates/vectis/src/main.rs` before deletion in chunk 2). Chunk 3 emits the kebab-case form directly; do **not** route the stub through the library — synthesize the JSON in the dispatcher.
     - `Err(VectisError)` → call a new `emit_vectis_error(format, &err)` that mirrors the existing `emit_error`/`emit_json_error` pattern (`src/main.rs:2750-2809`): pick the kebab-case variant string, attach `message` + `exit-code`, exit `2` for `MissingPrerequisites`, `1` otherwise.
-  - **Don't reuse `emit_json_error` (chunk-1 discovery)**: the existing helper is hard-coded against the `Error` enum from `specify_error`. Add a sibling `emit_vectis_error(format, &VectisError)` (or a small generic helper that takes a kebab variant + message + code).
+  - **Don't reuse `emit_json_error` (chunk-1 discovery)**: the existing helper is hard-coded against the `Error` enum from `specify_error` (`src/main.rs:2785-2809`). Add a sibling `emit_vectis_error(format, &VectisError)` (or a small generic helper that takes a kebab variant + message + code). Mirror the existing `emit_json` helper at `src/main.rs:2773-2783`, which already auto-injects `"schema-version": 2` on object responses.
+  - **`Cli`/`Command` clap roots are gone (chunk-2 discovery)**: chunk 2 deleted `crates/vectis/src/main.rs` outright, including its `#[derive(Parser)] struct Cli` and `#[derive(Subcommand)] enum Command` (with `name = "vectis"`). Chunk 3 must define `VectisAction` from scratch under the existing `specify` `Cli`; there is nothing to copy across, only the four arg structs to flatten in.
+  - **Library shape (chunk-2 discovery)**: `CommandOutcome` and the four arg structs (`InitArgs`, `VerifyArgs`, `AddShellArgs`, `UpdateVersionsArgs`) live directly at the `specify_vectis` crate root (defined inline in `crates/vectis/src/lib.rs`, no `args` submodule). `pub use error::{MissingTool, VectisError};` is already in place. Reference them from `src/main.rs` as `specify_vectis::InitArgs`, `specify_vectis::CommandOutcome`, `specify_vectis::VectisError`, etc.
 - Define a sibling exit-code constant if needed; reusing `EXIT_VALIDATION_FAILED = 2` for "missing prerequisites" is acceptable because the meaning is local to the `vectis` subtree (document this in the module-level doc comment).
 - Verify: `specify vectis --help` lists four subcommands; `specify vectis init Foo --dir <tmpdir>` runs end-to-end against the embedded version pins; `cargo test --workspace` is green.
 
@@ -218,3 +220,20 @@ Goal: the `vectis` plugin and surrounding docs work against the new `specify vec
     `CommandOutcome::Stub` rendering at all.
   - Chunk 4 anchors the kebab-case rewrite on the exact line range in
     `error.rs` and notes the two existing snake_case test assertions.
+- **chunk-2-lib (completed)**: Created `crates/vectis/src/lib.rs`
+  containing the four arg structs (now `pub struct …Args` with `pub`
+  fields, were `pub(crate)`), the `pub enum CommandOutcome` (already
+  `pub` previously), `pub use error::{MissingTool, VectisError};`, and
+  `pub mod` declarations for `add_shell`/`error`/`init`/
+  `update_versions`/`verify` (with `prerequisites`, `templates`,
+  `versions` left private). `CommandOutcome` and the arg structs are
+  defined inline at the crate root rather than in a separate `args`
+  module — chunk 3 should refer to them as `specify_vectis::InitArgs`
+  etc. directly. Dropped the `[[bin]] name = "vectis"` block from
+  `crates/vectis/Cargo.toml` and deleted `crates/vectis/src/main.rs`
+  (including its `Cli`/`Command` clap roots — chunk 3 must define
+  `VectisAction` from scratch). Verification: `cargo build -p
+  specify-vectis` (lib only), `cargo test -p specify-vectis` (118
+  passed), and `cargo build -p specify` and `cargo test --workspace`
+  all green; `target/debug/vectis` is gone (cargo removed the binary
+  on rebuild — no `cargo clean` needed).
