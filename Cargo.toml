@@ -52,6 +52,7 @@ members = [
     "crates/change",
     "crates/drift",
     "crates/federation",
+    "crates/vectis",
 ]
 
 [workspace.package]

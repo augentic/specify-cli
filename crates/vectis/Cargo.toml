@@ -1,0 +1,22 @@
+[package]
+name = "specify-vectis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Vectis bootstrap CLI for scaffolding and verifying Crux cross-platform projects (RFC-6)"
+publish = false
+
+[[bin]]
+name = "vectis"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+roxmltree = "0.20"
+serde.workspace = true
+serde_json.workspace = true
+syn = { version = "2", features = ["full"] }
+thiserror.workspace = true
+toml = "0.8"
+ureq = { version = "2", features = ["json", "tls"] }
