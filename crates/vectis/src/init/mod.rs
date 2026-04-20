@@ -30,15 +30,18 @@ pub fn run(args: &InitArgs) -> Result<CommandOutcome, VectisError> {
         assemblies.push(*shell);
     }
 
-    prerequisites::check(&assemblies)?;
+    let caps = parse_caps(args.caps.as_deref())?;
 
     // Resolve version pins up-front so a bad `--version-file` is reported
-    // before we touch the filesystem (chunk 4 wired this in for the smoke
-    // test; chunk 5 starts actually consuming the resolved struct).
+    // before we probe the workstation toolchain or touch the filesystem.
+    // The version-file shape is independent of `rustup`/`cargo-deny`/etc.,
+    // and the integration test `init_invalid_project_json_shape` runs on
+    // CI hosts that legitimately lack those tools -- ordering this ahead
+    // of `prerequisites::check` keeps `invalid-project` reachable there.
     let project_dir = resolve_project_dir(args.dir.as_deref())?;
     let versions = Versions::resolve(&project_dir, args.version_file.as_deref())?;
 
-    let caps = parse_caps(args.caps.as_deref())?;
+    prerequisites::check(&assemblies)?;
 
     let android_package = args
         .android_package
