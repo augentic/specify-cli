@@ -27,6 +27,7 @@ specify-merge = { path = "crates/merge" }
 specify-task = { path = "crates/task" }
 specify-change = { path = "crates/change" }
 specify-validate = { path = "crates/validate" }
+specify-vectis = { path = "crates/vectis" }
 clap = { version = "4", features = ["derive"] }
 serde.workspace = true
 serde_yaml.workspace = true

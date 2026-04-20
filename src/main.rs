@@ -163,6 +163,39 @@ enum Commands {
         #[command(subcommand)]
         action: InitiativeAction,
     },
+
+    /// Bootstrap and verify Crux cross-platform projects (RFC-6).
+    ///
+    /// The four verbs route to handlers in the `specify-vectis` library
+    /// crate. They reuse the global `--format text|json` flag and emit
+    /// kebab-case error variants today; the success payloads still ship
+    /// the legacy snake_case keys until chunk 4 of
+    /// `docs/plans/fold-vectis-into-specify.md` rewrites them.
+    ///
+    /// Exit codes reuse the binary's contract: missing prerequisites
+    /// reports back as [`EXIT_VALIDATION_FAILED`] (`2`) — locally
+    /// "your workstation is incomplete", which slots cleanly into the
+    /// existing "validation failed" bucket — and every other failure
+    /// returns [`EXIT_GENERIC_FAILURE`] (`1`).
+    Vectis {
+        #[command(subcommand)]
+        action: VectisAction,
+    },
+}
+
+/// Subcommands under `specify vectis`. Each variant flattens the
+/// matching `clap::Args` struct from the `specify-vectis` library so
+/// flag parsing stays in lock-step with the library definition.
+#[derive(Subcommand)]
+enum VectisAction {
+    /// Scaffold a new Crux project (core + optional shells).
+    Init(specify_vectis::InitArgs),
+    /// Verify that a Crux project still builds end-to-end.
+    Verify(specify_vectis::VerifyArgs),
+    /// Add an iOS or Android shell to an existing core.
+    AddShell(specify_vectis::AddShellArgs),
+    /// Refresh pinned tool/crate versions and (optionally) verify them.
+    UpdateVersions(specify_vectis::UpdateVersionsArgs),
 }
 
 #[derive(Subcommand)]
@@ -495,6 +528,7 @@ fn run(cli: Cli) -> i32 {
             }
         },
         Commands::Initiative { action } => run_initiative(cli.format, action),
+        Commands::Vectis { action } => run_vectis(cli.format, &action),
     }
 }
 
@@ -2806,6 +2840,94 @@ fn emit_json_error(err: &Error, code: i32) {
         "message": err.to_string(),
         "exit-code": code,
     }));
+}
+
+// ---------------------------------------------------------------------------
+// vectis dispatcher
+// ---------------------------------------------------------------------------
+
+/// Dispatch one of the four `specify vectis` verbs to the
+/// `specify-vectis` library and translate the outcome into the v2 JSON
+/// contract.
+///
+/// Chunk 3 of `docs/plans/fold-vectis-into-specify.md` only handles the
+/// dispatcher wiring: success payloads still carry whatever snake_case
+/// keys the library hands back, and chunk 4 will rewrite them. Error
+/// variants and the synthesised `not-implemented` shape are already
+/// kebab-case at this point so they do not need a second pass.
+fn run_vectis(format: OutputFormat, action: &VectisAction) -> i32 {
+    let result = match action {
+        VectisAction::Init(args) => specify_vectis::init::run(args),
+        VectisAction::Verify(args) => specify_vectis::verify::run(args),
+        VectisAction::AddShell(args) => specify_vectis::add_shell::run(args),
+        VectisAction::UpdateVersions(args) => specify_vectis::update_versions::run(args),
+    };
+    match result {
+        Ok(specify_vectis::CommandOutcome::Success(value)) => {
+            match format {
+                OutputFormat::Json => emit_json(value),
+                OutputFormat::Text => println!(
+                    "{}",
+                    serde_json::to_string_pretty(&value).expect("JSON serialise")
+                ),
+            }
+            EXIT_SUCCESS
+        }
+        Ok(specify_vectis::CommandOutcome::Stub { command }) => {
+            let message = format!("`vectis {command}` is not implemented yet");
+            match format {
+                OutputFormat::Json => emit_json(json!({
+                    "error": "not-implemented",
+                    "command": command,
+                    "message": message,
+                    "exit-code": EXIT_GENERIC_FAILURE,
+                })),
+                OutputFormat::Text => eprintln!("error: {message}"),
+            }
+            EXIT_GENERIC_FAILURE
+        }
+        Err(err) => emit_vectis_error(format, &err),
+    }
+}
+
+/// Render a [`specify_vectis::VectisError`] using the v2 contract:
+/// kebab-case `error` variant, `message`, and the binary's mapped
+/// `exit-code`.
+///
+/// We can't reuse [`emit_json_error`] because that helper is hard-coded
+/// against the `specify_error::Error` enum; this is the vectis-shaped
+/// sibling.
+fn emit_vectis_error(format: OutputFormat, err: &specify_vectis::VectisError) -> i32 {
+    let code = match err {
+        specify_vectis::VectisError::MissingPrerequisites { .. } => EXIT_VALIDATION_FAILED,
+        _ => EXIT_GENERIC_FAILURE,
+    };
+    match format {
+        OutputFormat::Json => {
+            let variant = match err {
+                specify_vectis::VectisError::MissingPrerequisites { .. } => "missing-prerequisites",
+                specify_vectis::VectisError::Io(_) => "io",
+                specify_vectis::VectisError::InvalidProject { .. } => "invalid-project",
+                specify_vectis::VectisError::Verify { .. } => "verify",
+                specify_vectis::VectisError::Internal { .. } => "internal",
+            };
+            let mut payload = serde_json::Map::new();
+            payload.insert("error".into(), Value::String(variant.into()));
+            payload.insert("message".into(), Value::String(err.to_string()));
+            payload.insert("exit-code".into(), Value::from(code));
+            if let specify_vectis::VectisError::MissingPrerequisites { missing, .. } = err {
+                payload.insert(
+                    "missing".into(),
+                    serde_json::to_value(missing).expect("MissingTool serialise"),
+                );
+            }
+            emit_json(Value::Object(payload));
+        }
+        OutputFormat::Text => {
+            eprintln!("error: {err}");
+        }
+    }
+    code
 }
 
 fn absolute_string(path: &Path) -> String {

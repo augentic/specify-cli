@@ -1231,6 +1231,7 @@ dependencies = [
  "specify-spec",
  "specify-task",
  "specify-validate",
+ "specify-vectis",
  "tempfile",
 ]
 
