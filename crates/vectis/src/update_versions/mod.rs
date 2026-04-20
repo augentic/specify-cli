@@ -141,10 +141,10 @@ pub fn run(args: &UpdateVersionsArgs) -> Result<CommandOutcome, VectisError> {
 
     let mut json = serde_json::Map::new();
     json.insert(
-        "version_file".to_string(),
+        "version-file".to_string(),
         serde_json::Value::String(target.display().to_string()),
     );
-    json.insert("dry_run".to_string(), serde_json::Value::Bool(args.dry_run));
+    json.insert("dry-run".to_string(), serde_json::Value::Bool(args.dry_run));
     json.insert("verify".to_string(), serde_json::Value::Bool(args.verify));
     json.insert(
         "passed".to_string(),

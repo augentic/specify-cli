@@ -152,23 +152,23 @@ pub fn run(args: &AddShellArgs) -> Result<CommandOutcome, VectisError> {
         serde_json::Value::Array(files.into_iter().map(serde_json::Value::String).collect()),
     );
     assembly.insert(
-        "build_steps".to_string(),
+        "build-steps".to_string(),
         serde_json::to_value(&build_steps).map_err(|e| VectisError::Internal {
             message: format!("failed to serialize build steps: {e}"),
         })?,
     );
 
     let value = serde_json::json!({
-        "app_name": parsed.app_name,
-        "project_dir": project_dir.display().to_string(),
+        "app-name": parsed.app_name,
+        "project-dir": project_dir.display().to_string(),
         "platform": written_shell,
         "source": "app.rs",
-        "detected_capabilities": parsed
+        "detected-capabilities": parsed
             .capabilities
             .iter()
             .map(|c| c.marker_tag())
             .collect::<Vec<_>>(),
-        "unrecognized_capabilities": parsed.unrecognized_capabilities,
+        "unrecognized-capabilities": parsed.unrecognized_capabilities,
         "assembly": assembly,
         "passed": passed,
     });

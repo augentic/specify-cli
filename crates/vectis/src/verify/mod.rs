@@ -95,7 +95,7 @@ pub fn run(args: &VerifyArgs) -> Result<CommandOutcome, VectisError> {
     }
 
     let value = serde_json::json!({
-        "project_dir": project_dir.display().to_string(),
+        "project-dir": project_dir.display().to_string(),
         "passed": overall_passed,
         "assemblies": assemblies_json,
     });

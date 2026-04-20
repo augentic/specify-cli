@@ -64,28 +64,45 @@ impl VectisError {
         }
     }
 
+    /// Kebab-case identifier for the variant, used as the `error` value
+    /// in the structured JSON shape and by the dispatcher when
+    /// synthesising the `exit-code`/`message` envelope.
+    pub fn variant_str(&self) -> &'static str {
+        match self {
+            VectisError::MissingPrerequisites { .. } => "missing-prerequisites",
+            VectisError::Io(_) => "io",
+            VectisError::InvalidProject { .. } => "invalid-project",
+            VectisError::Verify { .. } => "verify",
+            VectisError::Internal { .. } => "internal",
+        }
+    }
+
     /// Render the error as the structured JSON shape defined in RFC-6.
+    ///
+    /// Keys and the `error` variant are kebab-case to match the v2 JSON
+    /// contract enforced by the `specify` binary; the dispatcher's
+    /// `emit_json` helper auto-injects `schema-version: 2` on top.
     pub fn to_json(&self) -> serde_json::Value {
         match self {
             VectisError::MissingPrerequisites { missing, message } => serde_json::json!({
-                "error": "missing_prerequisites",
+                "error": self.variant_str(),
                 "missing": missing,
                 "message": message,
             }),
             VectisError::Io(err) => serde_json::json!({
-                "error": "io",
+                "error": self.variant_str(),
                 "message": err.to_string(),
             }),
             VectisError::InvalidProject { message } => serde_json::json!({
-                "error": "invalid_project",
+                "error": self.variant_str(),
                 "message": message,
             }),
             VectisError::Verify { message } => serde_json::json!({
-                "error": "verify",
+                "error": self.variant_str(),
                 "message": message,
             }),
             VectisError::Internal { message } => serde_json::json!({
-                "error": "internal",
+                "error": self.variant_str(),
                 "message": message,
             }),
         }
@@ -108,7 +125,7 @@ mod tests {
             message: "Install the missing tools above and re-run the command.".into(),
         };
         let v = err.to_json();
-        assert_eq!(v["error"], "missing_prerequisites");
+        assert_eq!(v["error"], "missing-prerequisites");
         assert_eq!(v["missing"][0]["tool"], "xcodegen");
         assert_eq!(err.exit_code(), 2);
     }
@@ -119,7 +136,7 @@ mod tests {
             message: "version file not found: /nonexistent.toml".into(),
         };
         let v = err.to_json();
-        assert_eq!(v["error"], "invalid_project");
+        assert_eq!(v["error"], "invalid-project");
         assert_eq!(v["message"], "version file not found: /nonexistent.toml");
         assert_eq!(err.exit_code(), 1);
     }

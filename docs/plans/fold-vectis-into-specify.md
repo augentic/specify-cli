@@ -19,7 +19,7 @@ vectis-plugin references to point at the new home.
 | chunk-1-move | Move `../specify/crates/vectis-cli/` and `../specify/templates/vectis/` into `specify-cli` verbatim; rename crate to `specify-vectis`; add to workspace; verify it still builds and tests as a binary. | completed |
 | chunk-2-lib | Convert `specify-vectis` from binary to library: lift arg structs and `CommandOutcome` into `lib.rs`, re-export the four `run` handlers, drop `[[bin]]` and delete `main.rs`. | completed |
 | chunk-3-dispatch | Add `specify-vectis` as a dependency, extend `Commands` with a `Vectis { action }` variant + `VectisAction` subcommand enum in `src/main.rs`, and dispatch through to the library handlers (legacy snake_case payload, kebab-case error variants only). | completed |
-| chunk-4-v2 | Rewrite every `serde_json::json!` literal in `crates/vectis/src/{init,verify,add_shell,update_versions}/*.rs` and `error.rs` to kebab-case keys/error variants; update unit tests; rely on `emit_json` to inject `schema-version: 2`. | pending |
+| chunk-4-v2 | Rewrite every `serde_json::json!` literal in `crates/vectis/src/{init,verify,add_shell,update_versions}/*.rs` and `error.rs` to kebab-case keys/error variants; update unit tests; rely on `emit_json` to inject `schema-version: 2`. | completed |
 | chunk-5-text-tests | Add `--format text` renderers for the four vectis verbs in `src/main.rs` and write `tests/vectis.rs` integration tests covering help, success JSON shape, invalid-project error, and missing-prerequisites error. | pending |
 | chunk-6-clean-specify | In `../specify`: delete `crates/vectis-cli/`, `templates/vectis/`, and the prebuilt `vectis` binary; drop the workspace member from `Cargo.toml` (and the file/`[workspace]` block if empty); remove `Makefile` `build-vectis` target; remove `/vectis` from `.gitignore`; regenerate or delete `Cargo.lock`. | pending |
 | chunk-7-plugin-docs | In `../specify`: rewrite `plugins/vectis/skills/template-updater/{SKILL.md,references/known-drift.md}` and the writer SKILLs to use `specify vectis ...` and `<specify-cli>/crates/vectis/...` paths; refresh `docs/vectis.md`, `docs/architecture.md`, `README.md`; banner-mark `rfcs/rfc-6-*.md` as superseded; verify grep is clean. | pending |
@@ -144,7 +144,7 @@ Goal: round out the v2 contract by giving `--format text` (the default) a humani
 - Humanise `emit_vectis_error` for the text path too — at minimum the `MissingPrerequisites` variant should list each missing tool's `tool`, `check`, and `install` (one per line) instead of the single-line `Display` impl, so operators can act on it without re-running with `--format json`.
 - Add `tests/vectis.rs` covering at minimum:
   - `--help` for `specify vectis` lists four subcommands. (Verified live in chunk 3 — the four expected commands `init`, `verify`, `add-shell`, `update-versions` are present.)
-  - Success JSON for `init` contains `"schema-version": 2` and kebab-case keys. **Depends on chunk 4 — do not author this assertion until the kebab-case rewrite has landed**, otherwise it will pass against snake_case payloads.
+  - Success JSON for `init` contains `"schema-version": 2` and kebab-case keys. **Chunk 4 has landed (verified live)**: `specify --format json vectis init Foo --dir <tmp>` (no `--shells`) returns exactly the top-level key set `["app-name", "app-struct", "assemblies", "capabilities", "project-dir", "schema-version", "shells"]`. The nested `assemblies.<name>` objects use single-word kebab-safe keys (`status`, `files`); when a shell is present its assembly object also carries `build-steps` (renamed from `build_steps`). Test should assert on this exact key set rather than spot-checking a single field, so a future regression that re-introduces a snake_case key fails loudly.
   - Error JSON for a `--version-file` pointing at a missing path emits `"error": "invalid-project"` and `"exit-code": 1`. (Verified live in chunk 3 with the chunk-3 dispatcher: `specify --format json vectis init Foo --dir /tmp/x --version-file /tmp/does-not-exist.toml` already returns exactly this shape, so this test can be authored at any time.)
   - Error JSON when prerequisites are missing emits `"error": "missing-prerequisites"`, `"exit-code": 2`. (Use a guard such as gating this test behind a `VECTIS_PREREQ_TEST` env var if making prereqs reliably absent in CI is hard — note this in the test.)
 - **Test harness convention (chunk-3 discovery)**: the existing `tests/` directory uses `assert_cmd` + `tempfile` (see `Cargo.toml` `[dev-dependencies]`); reuse them. The chunk-3 dispatcher is invoked as `specify [--format json] vectis <verb> ...`, with `--format` placed before the subcommand because it is a global flag on `Cli`. Tests should follow the same ordering.
@@ -176,6 +176,7 @@ Goal: the `vectis` plugin and surrounding docs work against the new `specify vec
     - `templates/vectis/{core,ios,android}/...` → `<specify-cli>/templates/vectis/...`.
   - Replace `cargo build --release -p vectis-cli`, `cargo test -p vectis-cli`, `cargo clippy ... -p vectis-cli` with the `-p specify-vectis` equivalents and add a one-liner that the build runs inside the `specify-cli` checkout.
 - `../specify/plugins/vectis/skills/{ios-writer,core-writer,android-writer}/SKILL.md`: rewrite any residual `vectis-cli` / `cargo run --package vectis-cli` mentions discovered via grep.
+- **No JSON-key churn required (chunk-4 discovery)**: a `grep -rEn '"app_name"|"project_dir"|"build_steps"|"version_file"|"dry_run"|"detected_capabilities"|"unrecognized_capabilities"|"missing_prerequisites"|"invalid_project"|"not_implemented"' ../specify/plugins/vectis ../specify/docs ../specify/README.md` after chunk 4 returned no hits — the snake_case JSON examples only live inside `../specify/rfcs/rfc-6-*.md`, which this chunk explicitly leaves intact under a "superseded" banner. Plugin and doc rewrites are command-line and path-only.
 - `../specify/docs/vectis.md`: replace any "build the vectis CLI" instructions with `cargo install --path <specify-cli> --bin specify` (or `brew install augentic/specify` if the Formula is the canonical install path) and use `specify vectis ...` throughout.
 - `../specify/docs/architecture.md` and `../specify/README.md`: refresh the structure diagrams + usage snippets.
 - `../specify/rfcs/rfc-6-vectis-bootstrap.md` and `../specify/rfcs/rfc-6-tasks.md`: prepend a short banner ("Status: superseded by the `specify vectis` subcommand in augentic/specify-cli; this RFC documents the original standalone-binary design.") rather than rewriting history. Leave the body intact.
@@ -266,6 +267,75 @@ Goal: the `vectis` plugin and surrounding docs work against the new `specify vec
   vectis init Foo --dir /tmp/x --version-file /tmp/does-not-exist.toml`
   exits 1 with `{ "error": "invalid-project", "exit-code": 1, "message":
   "...", "schema-version": 2 }` exactly as chunk 5's test plan expects.
+- **chunk-4-v2 (completed)**: Rewrote every `serde_json::json!` and
+  `serde_json::Map::insert` literal in `crates/vectis/src/{init,verify,
+  add_shell,update_versions}/*.rs` and `error.rs` to kebab-case keys
+  and kebab-case error variants. Concrete renames:
+  - `init/mod.rs` (success payload): `app_name` → `app-name`,
+    `app_struct` → `app-struct`, `project_dir` → `project-dir`; per-shell
+    `assemblies.{ios,android}.build_steps` → `build-steps`.
+  - `verify/mod.rs`: top-level `project_dir` → `project-dir`. The nested
+    `assemblies.<name>.{passed, steps}` and `BuildStep`'s
+    `{name, passed, error}` were already kebab-safe (single-word).
+  - `add_shell/mod.rs`: `app_name` → `app-name`, `project_dir` →
+    `project-dir`, `detected_capabilities` → `detected-capabilities`,
+    `unrecognized_capabilities` → `unrecognized-capabilities`; the
+    inner `assembly.build_steps` insert key flipped to `build-steps`.
+  - `update_versions/mod.rs`: `version_file` → `version-file`,
+    `dry_run` → `dry-run`. The other top-level keys (`verify`,
+    `passed`, `written`, `changes`, `unchanged`, `errors`,
+    `verification`) and the `Change`/`Unchanged`/`ComboResult`/
+    `MatrixResult` struct fields (`key`, `current`, `proposed`,
+    `value`, `caps`, `passed`, `combos`, `error`, `verify`) are
+    single-word and survived untouched. `update_versions/matrix.rs`
+    needed no edits (the per-combo `ComboResult` is `Serialize`-derived
+    on single-word fields and the `value.get("passed")` lookup against
+    the verify JSON is a single-word kebab-safe key).
+  - `error.rs` `VectisError::to_json`: `error` value flipped to kebab
+    (`missing-prerequisites`, `io`, `invalid-project`, `verify`,
+    `internal`); the `MissingTool` payload (`tool`, `assembly`, `check`,
+    `install`) is single-word and survives untouched. Added a new
+    `pub fn variant_str(&self) -> &'static str` so the kebab variant
+    string is a single source of truth (`to_json` calls it). The two
+    `error::tests` JSON-shape assertions were flipped from
+    `missing_prerequisites` / `invalid_project` to the kebab forms.
+    Also fixed the `prerequisites.rs` doc-comment reference to
+    `missing_prerequisites` → `missing-prerequisites` so grep stays
+    clean of the snake form.
+  - `src/main.rs`: `emit_vectis_error`'s hand-built JSON map was
+    replaced with a thin wrapper over `VectisError::to_json` that
+    splices `exit-code` on top via `entry().or_insert(...)`. This is
+    the "wire `to_json` through `emit_vectis_error` so the two code
+    paths can't drift" step the chunk plan called out — there is now
+    a single kebab-variant table (`VectisError::variant_str`) used by
+    both the dispatcher and any future direct caller of `to_json`.
+  Verification (all green): `cargo build -p specify-vectis`,
+  `cargo test -p specify-vectis` (118 passed), `cargo clippy -p
+  specify-vectis -p specify --all-targets`, `cargo test --workspace`
+  (all targets, 0 failed). Manual sanity:
+  `specify --format json vectis init Foo --dir <tmp>` returns the
+  exact top-level key set
+  `["app-name", "app-struct", "assemblies", "capabilities",
+  "project-dir", "schema-version", "shells"]` with `schema-version: 2`
+  auto-injected by `emit_json`. Manual error sanity:
+  `specify --format json vectis init Foo --dir <tmp>
+  --version-file /tmp/does-not-exist.toml` exits 1 with
+  `{"error": "invalid-project", "exit-code": 1, "message":
+  "version file not found: ...", "schema-version": 2}` — exact shape
+  chunk 5's test plan asserts.
+  **Forward impact**: chunk 5 may now author the JSON-shape
+  assertions immediately (no further blockers); the plan's chunk-5
+  "Success JSON for init" bullet has been updated to spell out the
+  exact key set so the test does not have to spot-check. Chunk 7's
+  plugin/docs rewrite has no JSON-key churn — a grep across
+  `../specify/{plugins/vectis,docs,README.md}` for the old snake_case
+  keys returned no hits; the only snake_case JSON examples live in
+  `../specify/rfcs/rfc-6-*.md`, which chunk 7 explicitly leaves
+  intact under a "superseded" banner. The chunk-5 humanised text
+  renderer for `MissingPrerequisites` should pull `tool`, `check`,
+  `install` directly off `VectisError::missing` rather than off
+  `to_json`'s payload, since the `MissingTool` struct is `pub` and
+  reachable as `specify_vectis::MissingTool` from the dispatcher.
 - **chunk-2-lib (completed)**: Created `crates/vectis/src/lib.rs`
   containing the four arg structs (now `pub struct …Args` with `pub`
   fields, were `pub(crate)`), the `pub enum CommandOutcome` (already

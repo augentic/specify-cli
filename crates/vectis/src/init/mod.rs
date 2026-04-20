@@ -83,7 +83,7 @@ pub fn run(args: &InitArgs) -> Result<CommandOutcome, VectisError> {
                     serde_json::json!({
                         "status": "created",
                         "files": ios_result.files,
-                        "build_steps": ios_result.build_steps,
+                        "build-steps": ios_result.build_steps,
                     }),
                 );
                 shells_emitted.push("ios");
@@ -102,7 +102,7 @@ pub fn run(args: &InitArgs) -> Result<CommandOutcome, VectisError> {
                     serde_json::json!({
                         "status": "created",
                         "files": android_result.files,
-                        "build_steps": android_result.build_steps,
+                        "build-steps": android_result.build_steps,
                     }),
                 );
                 shells_emitted.push("android");
@@ -116,9 +116,9 @@ pub fn run(args: &InitArgs) -> Result<CommandOutcome, VectisError> {
     }
 
     let value = serde_json::json!({
-        "app_name": args.app_name,
-        "app_struct": args.app_name,
-        "project_dir": project_dir.display().to_string(),
+        "app-name": args.app_name,
+        "app-struct": args.app_name,
+        "project-dir": project_dir.display().to_string(),
         "assemblies": assemblies_json,
         "capabilities": caps.iter().map(|c| c.marker_tag()).collect::<Vec<_>>(),
         "shells": shells_emitted,

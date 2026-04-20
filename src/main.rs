@@ -2904,23 +2904,18 @@ fn emit_vectis_error(format: OutputFormat, err: &specify_vectis::VectisError) ->
     };
     match format {
         OutputFormat::Json => {
-            let variant = match err {
-                specify_vectis::VectisError::MissingPrerequisites { .. } => "missing-prerequisites",
-                specify_vectis::VectisError::Io(_) => "io",
-                specify_vectis::VectisError::InvalidProject { .. } => "invalid-project",
-                specify_vectis::VectisError::Verify { .. } => "verify",
-                specify_vectis::VectisError::Internal { .. } => "internal",
+            // Single source of truth for the kebab-case `error` variant
+            // and per-variant payload shape lives in
+            // `VectisError::to_json`; we just splice in the dispatcher's
+            // `exit-code` mapping on top so both callers (this helper
+            // and any future direct caller of `to_json`) cannot drift.
+            let mut payload = match err.to_json() {
+                Value::Object(map) => map,
+                _ => unreachable!("VectisError::to_json always returns an object"),
             };
-            let mut payload = serde_json::Map::new();
-            payload.insert("error".into(), Value::String(variant.into()));
-            payload.insert("message".into(), Value::String(err.to_string()));
-            payload.insert("exit-code".into(), Value::from(code));
-            if let specify_vectis::VectisError::MissingPrerequisites { missing, .. } = err {
-                payload.insert(
-                    "missing".into(),
-                    serde_json::to_value(missing).expect("MissingTool serialise"),
-                );
-            }
+            payload
+                .entry("exit-code".to_string())
+                .or_insert(Value::from(code));
             emit_json(Value::Object(payload));
         }
         OutputFormat::Text => {

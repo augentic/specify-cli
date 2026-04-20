@@ -9,7 +9,7 @@
 //!
 //! When any tool is missing the function returns
 //! [`VectisError::MissingPrerequisites`], which the dispatcher renders as the
-//! RFC's structured `missing_prerequisites` JSON shape and exits with code 2.
+//! RFC's structured `missing-prerequisites` JSON shape and exits with code 2.
 //! No partial work is performed -- a missing toolchain is a hard stop, not a
 //! warning.
 
