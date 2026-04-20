@@ -109,13 +109,7 @@ pub fn run(args: &AddShellArgs) -> Result<CommandOutcome, VectisError> {
     let (files, build_steps, written_shell): (Vec<String>, Vec<BuildStep>, &'static str) =
         match shell {
             AssemblyKind::Ios => {
-                let s = init::ios::scaffold(
-                    &project_dir,
-                    &parsed.app_name,
-                    &parsed.capabilities,
-                    &params,
-                    true,
-                )?;
+                let s = init::ios::scaffold(&project_dir, &parsed.capabilities, &params, true)?;
                 (s.files, s.build_steps, "ios")
             }
             AssemblyKind::Android => {

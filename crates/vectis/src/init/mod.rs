@@ -72,7 +72,7 @@ pub fn run(args: &InitArgs) -> Result<CommandOutcome, VectisError> {
     for shell in &shells {
         match shell {
             AssemblyKind::Ios => {
-                let ios_result = ios::scaffold(&project_dir, &args.app_name, &caps, &params, true)?;
+                let ios_result = ios::scaffold(&project_dir, &caps, &params, true)?;
                 assemblies_json.insert(
                     "ios".to_string(),
                     serde_json::json!({
@@ -181,13 +181,20 @@ fn parse_caps(raw: Option<&str>) -> Result<Vec<Capability>, VectisError> {
     Ok(out)
 }
 
+/// Parse the `--shells` flag into the canonical `AssemblyKind` set.
+///
+/// Duplicate entries are deduplicated in input order so `--shells
+/// ios,ios` is treated as `--shells ios` rather than scaffolding the
+/// iOS shell once and then failing on the second pass with the
+/// "refusing to overwrite existing iOS shell" guard. This mirrors the
+/// dedup behaviour in `parse_caps`.
 fn parse_shells(raw: Option<&str>) -> Result<Vec<AssemblyKind>, VectisError> {
     let mut out = Vec::new();
     let Some(raw) = raw else { return Ok(out) };
     for shell in raw.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-        match shell {
-            "ios" => out.push(AssemblyKind::Ios),
-            "android" => out.push(AssemblyKind::Android),
+        let kind = match shell {
+            "ios" => AssemblyKind::Ios,
+            "android" => AssemblyKind::Android,
             other => {
                 return Err(VectisError::InvalidProject {
                     message: format!(
@@ -195,6 +202,9 @@ fn parse_shells(raw: Option<&str>) -> Result<Vec<AssemblyKind>, VectisError> {
                     ),
                 });
             }
+        };
+        if !out.contains(&kind) {
+            out.push(kind);
         }
     }
     Ok(out)
@@ -249,6 +259,29 @@ mod tests {
     fn parse_caps_dedupes_in_input_order() {
         let caps = parse_caps(Some("kv,http,kv,http,time")).unwrap();
         assert_eq!(caps, vec![Capability::Kv, Capability::Http, Capability::Time]);
+    }
+
+    #[test]
+    fn parse_shells_dedupes_in_input_order() {
+        // `--shells ios,ios` must collapse to a single entry; otherwise
+        // the scaffold loop would write the iOS shell on the first
+        // iteration and then trip the "refusing to overwrite existing
+        // iOS shell" guard on the second, leaving the project in a
+        // half-written state.
+        let shells = parse_shells(Some("ios,android,ios,android")).unwrap();
+        assert_eq!(shells, vec![AssemblyKind::Ios, AssemblyKind::Android]);
+    }
+
+    #[test]
+    fn parse_shells_rejects_unknown_platform() {
+        let err = parse_shells(Some("ios,wasm")).expect_err("unknown shell must error");
+        match err {
+            VectisError::InvalidProject { message } => {
+                assert!(message.contains("\"wasm\""), "{message}");
+                assert!(message.contains("ios"), "{message}");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     #[test]

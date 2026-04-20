@@ -47,7 +47,7 @@ pub struct IosScaffold {
 /// `Verify` so the caller can splice the failure into the structured JSON
 /// output. The pipeline can be skipped for unit tests via `run_build`.
 pub fn scaffold(
-    project_dir: &Path, app_name: &str, caps: &[Capability], params: &Params, run_build: bool,
+    project_dir: &Path, caps: &[Capability], params: &Params, run_build: bool,
 ) -> Result<IosScaffold, VectisError> {
     let ios_root = project_dir.join("iOS");
     if ios_root.exists() {
@@ -86,8 +86,10 @@ pub fn scaffold(
 
     // The iOS shell uses `Info.plist` keys generated inline by xcodegen
     // from `project.yml`; chunk 7 deliberately does not pre-write a
-    // `Info.plist`. xcodegen will materialize one at build time.
-    let _ = app_name;
+    // `Info.plist`. xcodegen will materialize one at build time. The
+    // app name is carried in `params` (and substituted into the
+    // template targets / contents above), so this function does not
+    // need a separate `app_name` parameter.
 
     let build_steps = if run_build {
         let steps = verify::ios::run_pipeline(&ios_root, false)?;
@@ -155,8 +157,7 @@ mod tests {
     fn scaffold_writes_every_ios_file_with_substituted_paths() {
         let dir = scratch_dir("substitute");
         fs::create_dir_all(&dir).unwrap();
-        let result =
-            scaffold(&dir, "Counter", &[], &sample_params(), false).expect("scaffold must succeed");
+        let result = scaffold(&dir, &[], &sample_params(), false).expect("scaffold must succeed");
         assert_eq!(result.files.len(), ios::TEMPLATES.len());
         // Spot-check the substituted paths.
         assert!(dir.join("iOS/project.yml").is_file());
@@ -174,7 +175,7 @@ mod tests {
     fn scaffold_substitutes_app_name_in_file_contents() {
         let dir = scratch_dir("contents");
         fs::create_dir_all(&dir).unwrap();
-        scaffold(&dir, "Counter", &[], &sample_params(), false).unwrap();
+        scaffold(&dir, &[], &sample_params(), false).unwrap();
 
         let app_swift = fs::read_to_string(dir.join("iOS/Counter/CounterApp.swift")).unwrap();
         assert!(
@@ -197,7 +198,7 @@ mod tests {
     fn scaffold_strips_cap_blocks_for_render_only() {
         let dir = scratch_dir("render-only");
         fs::create_dir_all(&dir).unwrap();
-        scaffold(&dir, "Counter", &[], &sample_params(), false).unwrap();
+        scaffold(&dir, &[], &sample_params(), false).unwrap();
 
         let core_swift = fs::read_to_string(dir.join("iOS/Counter/Core.swift")).unwrap();
         assert!(!core_swift.contains("<<<CAP:"), "leftover open marker in Core.swift");
@@ -213,7 +214,7 @@ mod tests {
     fn scaffold_includes_selected_cap_blocks() {
         let dir = scratch_dir("with-http");
         fs::create_dir_all(&dir).unwrap();
-        scaffold(&dir, "Counter", &[Capability::Http], &sample_params(), false).unwrap();
+        scaffold(&dir, &[Capability::Http], &sample_params(), false).unwrap();
 
         let core_swift = fs::read_to_string(dir.join("iOS/Counter/Core.swift")).unwrap();
         assert!(!core_swift.contains("<<<CAP:"));
@@ -231,7 +232,7 @@ mod tests {
         let dir = scratch_dir("no-overwrite");
         fs::create_dir_all(dir.join("iOS")).unwrap();
 
-        let err = scaffold(&dir, "Counter", &[], &sample_params(), false)
+        let err = scaffold(&dir, &[], &sample_params(), false)
             .expect_err("must refuse to overwrite iOS/");
         match err {
             VectisError::InvalidProject { message } => {

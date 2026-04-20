@@ -86,7 +86,7 @@ pub fn run_pipeline(
     // is not silently exempted.
     if needs_supply_chain_bootstrap(project_dir) {
         let prep = run_step(
-            "cargo vet",
+            "cargo vet regenerate exemptions",
             Command::new("cargo")
                 .args(["vet", "regenerate", "exemptions"])
                 .current_dir(project_dir),

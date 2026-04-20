@@ -326,12 +326,18 @@ fn run_android_ndk_check() -> Result<(), String> {
     if !ndk.is_dir() {
         return Err(format!("{} not found", ndk.display()));
     }
-    let any_entry = std::fs::read_dir(&ndk)
+    // `init::android::resolve_ndk_version` filters strictly for
+    // sub-directories (each NDK install is a versioned directory like
+    // `27.0.12077973/`). Mirror that filter here so a `ndk/` populated
+    // only with files (e.g. macOS `.DS_Store`) doesn't pass the prereq
+    // check and then surface as the "prereq check should have caught
+    // this" Internal error from the resolver.
+    let any_dir = std::fs::read_dir(&ndk)
         .map_err(|e| format!("could not read {}: {e}", ndk.display()))?
-        .next()
-        .is_some();
-    if !any_entry {
-        return Err(format!("{} is empty", ndk.display()));
+        .filter_map(Result::ok)
+        .any(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false));
+    if !any_dir {
+        return Err(format!("{} contains no NDK install directories", ndk.display()));
     }
     Ok(())
 }

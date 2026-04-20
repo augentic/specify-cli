@@ -117,10 +117,15 @@ fn init_success_json_has_kebab_keys_and_schema_version() {
 #[test]
 fn init_invalid_project_json_shape() {
     let tmp = tempdir().unwrap();
+    // Build the bogus version-file path *inside* `tempdir` so it's
+    // guaranteed nonexistent on every platform (Windows, sandboxed
+    // CI, etc.) without colliding with anything else under `/tmp`.
+    let missing = tmp.path().join("definitely-not-there.toml");
     let assert = specify()
         .args(["--format", "json", "vectis", "init", "Foo", "--dir"])
         .arg(tmp.path())
-        .args(["--version-file", "/tmp/specify-vectis-does-not-exist.toml"])
+        .arg("--version-file")
+        .arg(&missing)
         .assert()
         .failure();
     let output = assert.get_output();
