@@ -422,6 +422,254 @@ changes:
         assert_golden("validate-duplicate-name.json", actual);
     }
 
+    #[test]
+    fn initiative_validate_reports_scope_path_missing_via_json() {
+        // RFC-3a C04: `specify initiative validate` surfaces
+        // `scope-path-missing` as a structured error-level finding
+        // when a scope include glob resolves to a non-existent
+        // directory. The plan references `legacy/src/ghost/**` but
+        // we only ever create `legacy/`, so the glob root is gone.
+        let project = Project::init();
+        fs::create_dir_all(project.root().join("legacy")).expect("seed source root");
+        project.seed_plan(
+            "\
+name: demo
+sources:
+  monolith: legacy
+changes:
+  - name: ingest
+    status: pending
+    sources: [monolith]
+    scope:
+      monolith:
+        include:
+          - src/ghost/**
+",
+        );
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "validate"])
+            .assert()
+            .failure();
+        assert_eq!(
+            assert.get_output().status.code(),
+            Some(2),
+            "scope-path-missing is an error — must exit 2 (EXIT_VALIDATION_FAILED)"
+        );
+
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["passed"], false);
+        let results = actual["results"].as_array().expect("results array");
+        let hits: Vec<&Value> =
+            results.iter().filter(|r| r["code"] == "scope-path-missing").collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "expected exactly one scope-path-missing finding, got: {results:#?}"
+        );
+        assert_eq!(hits[0]["level"], "error");
+        assert_eq!(hits[0]["entry"], "ingest");
+        let message = hits[0]["message"].as_str().expect("message string");
+        assert!(
+            message.contains("src/ghost/**"),
+            "message must reference the offending include glob: {message}"
+        );
+    }
+
+    #[test]
+    fn initiative_validate_reports_scope_overlap_via_json() {
+        // RFC-3a C05: two changes claim the same file under `monolith`
+        // via distinct globs that collapse to `src/a.ts`. Surfaced as
+        // a Warning-level `scope-overlap`; exit code stays 0 because
+        // warnings are not blocking.
+        let project = Project::init();
+        fs::create_dir_all(project.root().join("legacy/src")).expect("seed source tree");
+        fs::write(project.root().join("legacy/src/a.ts"), b"// fixture\n").expect("a.ts");
+        project.seed_plan(
+            "\
+name: demo
+sources:
+  monolith: legacy
+changes:
+  - name: alpha
+    status: pending
+    sources: [monolith]
+    scope:
+      monolith:
+        include:
+          - src/a.ts
+  - name: beta
+    status: pending
+    sources: [monolith]
+    scope:
+      monolith:
+        include:
+          - src/*.ts
+",
+        );
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "validate"])
+            .assert()
+            .success();
+        assert_eq!(
+            assert.get_output().status.code(),
+            Some(0),
+            "warning-only validate must exit 0 (EXIT_SUCCESS)"
+        );
+
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(
+            actual["passed"], true,
+            "scope-overlap is a warning so passed must stay true: {actual}"
+        );
+        let results = actual["results"].as_array().expect("results array");
+        let hits: Vec<&Value> = results.iter().filter(|r| r["code"] == "scope-overlap").collect();
+        assert_eq!(hits.len(), 1, "expected exactly one scope-overlap finding, got: {results:#?}");
+        assert_eq!(hits[0]["level"], "warning");
+        assert_eq!(hits[0]["entry"], Value::Null, "overlap is cross-entry; `entry` must be null");
+        let message = hits[0]["message"].as_str().expect("message string");
+        assert!(
+            message.contains("monolith:src/a.ts"),
+            "must prefix with `<src-key>:<path>`: {message}"
+        );
+        assert!(
+            message.contains("alpha") && message.contains("beta"),
+            "must name both claimants: {message}"
+        );
+    }
+
+    #[test]
+    fn initiative_validate_reports_scope_orphan_via_json() {
+        // RFC-3a C05: with one change claiming only `src/a.ts`, the
+        // sibling `src/b.ts` is orphan. Exit code stays 0 because
+        // orphan is warning-level.
+        let project = Project::init();
+        fs::create_dir_all(project.root().join("legacy/src")).expect("seed source tree");
+        fs::write(project.root().join("legacy/src/a.ts"), b"// fixture\n").expect("a.ts");
+        fs::write(project.root().join("legacy/src/b.ts"), b"// fixture\n").expect("b.ts");
+        project.seed_plan(
+            "\
+name: demo
+sources:
+  monolith: legacy
+changes:
+  - name: alpha
+    status: pending
+    sources: [monolith]
+    scope:
+      monolith:
+        include:
+          - src/a.ts
+",
+        );
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "validate"])
+            .assert()
+            .success();
+        assert_eq!(
+            assert.get_output().status.code(),
+            Some(0),
+            "warning-only validate must exit 0 (EXIT_SUCCESS)"
+        );
+
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["passed"], true);
+        let results = actual["results"].as_array().expect("results array");
+        let orphans: Vec<&Value> = results.iter().filter(|r| r["code"] == "scope-orphan").collect();
+        assert_eq!(
+            orphans.len(),
+            1,
+            "expected exactly one scope-orphan for src/b.ts, got: {results:#?}"
+        );
+        assert_eq!(orphans[0]["level"], "warning");
+        assert_eq!(orphans[0]["entry"], Value::Null);
+        let message = orphans[0]["message"].as_str().expect("message string");
+        assert!(
+            message.contains("monolith:src/b.ts"),
+            "must identify orphan as `<src-key>:<path>`: {message}"
+        );
+    }
+
+    #[test]
+    fn initiative_validate_reports_scope_missing_on_monolith_via_json() {
+        // RFC-3a C25: when `.specify/plans/<plan>/analyze/<key>/metadata.json`
+        // classifies a source as monolith-scale AND the change draws
+        // from that key with no `scope.<key>` entry, `specify initiative
+        // validate` emits a Warning-level `scope-missing-on-monolith`.
+        // Exit code is 0 because the finding is non-blocking.
+        let project = Project::init();
+        let meta_dir = project.root().join(".specify/plans/demo/analyze/monolith");
+        fs::create_dir_all(&meta_dir).expect("seed analyze dir");
+        fs::write(
+            meta_dir.join("metadata.json"),
+            r#"{
+  "version": 1,
+  "source_key": "monolith",
+  "language": "typescript",
+  "loc": 87000,
+  "module_count": 42,
+  "top_level_modules": []
+}"#,
+        )
+        .expect("write metadata.json");
+        // Seed the source root so no `scope-path-missing` / coverage
+        // noise confounds the target diagnostic.
+        fs::create_dir_all(project.root().join("legacy/src")).expect("seed legacy src");
+        project.seed_plan(
+            "\
+name: demo
+sources:
+  monolith: legacy
+changes:
+  - name: ingest-pipeline
+    status: pending
+    sources: [monolith]
+",
+        );
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "validate"])
+            .assert()
+            .success();
+        assert_eq!(
+            assert.get_output().status.code(),
+            Some(0),
+            "scope-missing-on-monolith is a warning — must exit 0 (EXIT_SUCCESS)"
+        );
+
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["schema-version"], 2);
+        assert_eq!(actual["passed"], true, "warning-only validate must stay passed=true: {actual}");
+        let results = actual["results"].as_array().expect("results array");
+        let hits: Vec<&Value> =
+            results.iter().filter(|r| r["code"] == "scope-missing-on-monolith").collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "expected exactly one scope-missing-on-monolith finding, got: {results:#?}"
+        );
+        assert_eq!(hits[0]["level"], "warning");
+        assert_eq!(hits[0]["entry"], "ingest-pipeline");
+        let message = hits[0]["message"].as_str().expect("message string");
+        assert!(message.contains("ingest-pipeline"), "must name the change: {message}");
+        assert!(message.contains("`monolith`"), "must name the source key: {message}");
+        assert!(message.contains("42 modules"), "must cite module count: {message}");
+        assert!(message.contains("87k LOC"), "must cite LOC rounded to thousands: {message}");
+        assert!(
+            message.contains("--scope-include monolith="),
+            "remediation must use `--scope-include <key>=<glob>` (C03): {message}"
+        );
+    }
+
     // -- next --------------------------------------------------------------
 
     #[test]
@@ -853,6 +1101,256 @@ changes:
             stderr.contains("no change named"),
             "stderr should mention missing change, got: {stderr:?}"
         );
+    }
+
+    // -- RFC-3a scope flags (C03) -----------------------------------------
+
+    const PLAN_WITH_MONOLITH_SOURCE: &str = "\
+name: demo
+sources:
+  monolith: /tmp/legacy
+changes: []
+";
+
+    /// Scripted authoring sequence from RFC-3a §*How `scope` travels
+    /// through the pipeline* — the RFC YAML fixture verbatim
+    /// (modulo serde field order). Parses the saved plan back
+    /// through the library and asserts value-level equality.
+    #[test]
+    fn initiative_create_with_scope_matches_rfc_fixture() {
+        let project = Project::init();
+        project.seed_plan(PLAN_WITH_MONOLITH_SOURCE);
+
+        specify()
+            .current_dir(project.root())
+            .args([
+                "initiative",
+                "create",
+                "ingest-pipeline",
+                "--sources",
+                "monolith",
+                "--scope-include",
+                "monolith=src/ingest/**",
+                "--scope-include",
+                "monolith=src/kafka/**",
+                "--scope-exclude",
+                "monolith=src/ingest/_deprecated/**",
+            ])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        let plan: specify::Plan = serde_yaml::from_str(&saved).expect("parse saved plan");
+        let entry = plan
+            .changes
+            .iter()
+            .find(|c| c.name == "ingest-pipeline")
+            .expect("ingest-pipeline landed");
+        assert_eq!(entry.sources, vec!["monolith".to_string()]);
+        let scope = entry.scope.get("monolith").expect("scope entry for monolith");
+        assert_eq!(scope.include, vec!["src/ingest/**".to_string(), "src/kafka/**".to_string()]);
+        assert_eq!(scope.exclude, vec!["src/ingest/_deprecated/**".to_string()]);
+        assert!(scope.manifest.is_none());
+    }
+
+    #[test]
+    fn initiative_create_with_manifest_scope_round_trips() {
+        let project = Project::init();
+        project.seed_plan(PLAN_WITH_MONOLITH_SOURCE);
+
+        specify()
+            .current_dir(project.root())
+            .args([
+                "initiative",
+                "create",
+                "manifest-only",
+                "--sources",
+                "monolith",
+                "--scope-manifest",
+                "monolith=slices/c.yaml",
+            ])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        let plan: specify::Plan = serde_yaml::from_str(&saved).expect("parse saved plan");
+        let entry =
+            plan.changes.iter().find(|c| c.name == "manifest-only").expect("manifest-only landed");
+        let scope = entry.scope.get("monolith").expect("scope entry for monolith");
+        assert!(scope.include.is_empty());
+        assert!(scope.exclude.is_empty());
+        assert_eq!(scope.manifest.as_deref(), Some("slices/c.yaml"));
+    }
+
+    #[test]
+    fn initiative_create_rejects_manifest_plus_include_for_same_key() {
+        let project = Project::init();
+        project.seed_plan(PLAN_WITH_MONOLITH_SOURCE);
+        let before = fs::read_to_string(project.plan_path()).expect("read");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args([
+                "--format",
+                "json",
+                "initiative",
+                "create",
+                "bad",
+                "--sources",
+                "monolith",
+                "--scope-manifest",
+                "monolith=slices/c.yaml",
+                "--scope-include",
+                "monolith=src/**",
+            ])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+
+        let value: Value =
+            serde_json::from_slice(&assert.get_output().stdout).expect("json stdout");
+        assert_eq!(value["error"], "invalid-plan-scope");
+
+        let after = fs::read_to_string(project.plan_path()).expect("read");
+        assert_eq!(before, after, "failed create must not mutate plan.yaml");
+    }
+
+    #[test]
+    fn initiative_create_rejects_scope_key_not_in_sources() {
+        let project = Project::init();
+        project.seed_plan(PLAN_WITH_MONOLITH_SOURCE);
+        let before = fs::read_to_string(project.plan_path()).expect("read");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args([
+                "--format",
+                "json",
+                "initiative",
+                "create",
+                "orphan",
+                "--sources",
+                "monolith",
+                "--scope-include",
+                "other=src/**",
+            ])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+
+        let value: Value =
+            serde_json::from_slice(&assert.get_output().stdout).expect("json stdout");
+        assert_eq!(
+            value["error"], "scope-key-not-in-sources",
+            "stable wire kind must be scope-key-not-in-sources, got: {value}"
+        );
+
+        let after = fs::read_to_string(project.plan_path()).expect("read");
+        assert_eq!(before, after, "failed create must not mutate plan.yaml");
+    }
+
+    #[test]
+    fn initiative_amend_replaces_scope_for_a_key() {
+        let project = Project::init();
+        project.seed_plan(
+            "\
+name: demo
+sources:
+  monolith: /tmp/legacy
+changes:
+  - name: foo
+    status: pending
+    sources: [monolith]
+    scope:
+      monolith:
+        include:
+          - src/old/**
+",
+        );
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "amend", "foo", "--scope-include", "monolith=src/new/**"])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        let plan: specify::Plan = serde_yaml::from_str(&saved).expect("parse saved plan");
+        let entry = plan.changes.iter().find(|c| c.name == "foo").expect("foo entry");
+        let scope = entry.scope.get("monolith").expect("scope entry");
+        assert_eq!(
+            scope.include,
+            vec!["src/new/**".to_string()],
+            "amend must wholesale-replace the key's scope"
+        );
+    }
+
+    #[test]
+    fn initiative_amend_scope_rm_drops_entry_and_yaml_key() {
+        let project = Project::init();
+        project.seed_plan(
+            "\
+name: demo
+sources:
+  monolith: /tmp/legacy
+changes:
+  - name: foo
+    status: pending
+    sources: [monolith]
+    scope:
+      monolith:
+        include:
+          - src/**
+",
+        );
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "amend", "foo", "--scope-rm", "monolith"])
+            .assert()
+            .success();
+
+        let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+        assert!(
+            !saved.contains("scope:"),
+            "scope map should be absent when the last key is removed:\n{saved}"
+        );
+        let plan: specify::Plan = serde_yaml::from_str(&saved).expect("parse saved plan");
+        let entry = plan.changes.iter().find(|c| c.name == "foo").expect("foo entry");
+        assert!(entry.scope.is_empty(), "scope should be empty after --scope-rm");
+    }
+
+    #[test]
+    fn initiative_transition_preserves_scope_byte_for_byte() {
+        let project = Project::init();
+        let seed = "\
+name: demo
+sources:
+  monolith: /tmp/legacy
+changes:
+  - name: foo
+    status: pending
+    sources:
+    - monolith
+    scope:
+      monolith:
+        include:
+        - src/ingest/**
+";
+        project.seed_plan(seed);
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "transition", "foo", "in-progress"])
+            .assert()
+            .success();
+
+        let after = fs::read_to_string(project.plan_path()).expect("read");
+        let plan: specify::Plan = serde_yaml::from_str(&after).expect("parse after transition");
+        let entry = plan.changes.iter().find(|c| c.name == "foo").expect("foo entry");
+        assert_eq!(entry.status, specify::PlanStatus::InProgress);
+        let scope = entry.scope.get("monolith").expect("scope must be preserved across transition");
+        assert_eq!(scope.include, vec!["src/ingest/**".to_string()]);
     }
 
     // -- plan transition --------------------------------------------------
@@ -1719,5 +2217,698 @@ changes: []
             .success();
         let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
         assert_eq!(stdout.trim(), "no lock");
+    }
+
+    // ---- Registry (RFC-3a C12) ----
+
+    #[test]
+    fn registry_load_from_tempdir() {
+        use specify::Registry;
+
+        let project = Project::init();
+        let registry_path = project.root().join(".specify/registry.yaml");
+        fs::write(
+            &registry_path,
+            "version: 1\n\
+             projects:\n\
+             \x20\x20- name: traffic\n\
+             \x20\x20\x20\x20url: .\n\
+             \x20\x20\x20\x20schema: omnia@v1\n",
+        )
+        .expect("write registry.yaml");
+
+        let loaded =
+            Registry::load(project.root()).expect("registry parses").expect("registry present");
+        assert_eq!(loaded.version, 1);
+        assert_eq!(loaded.projects.len(), 1);
+        assert_eq!(loaded.projects[0].name, "traffic");
+        assert_eq!(loaded.projects[0].url, ".");
+        assert_eq!(loaded.projects[0].schema, "omnia@v1");
+        assert!(loaded.is_single_repo());
+    }
+
+    // ---- Registry CLI verbs (RFC-3a C13) ----
+    //
+    // `specify initiative registry {show, validate}` — dedicated verbs
+    // that isolate the same shape check the C12 hook drives through
+    // `specify initiative validate`. The tests below cover the full
+    // matrix: absent / well-formed / malformed × show / validate ×
+    // text / json.
+
+    const REGISTRY_SINGLE: &str = "\
+version: 1
+projects:
+  - name: traffic
+    url: .
+    schema: omnia@v1
+";
+
+    const REGISTRY_THREE: &str = "\
+version: 1
+projects:
+  - name: monolith
+    url: .
+    schema: omnia@v1
+  - name: orders
+    url: ../orders
+    schema: omnia@v1
+  - name: payments
+    url: git@github.com:org/payments.git
+    schema: omnia@v1
+";
+
+    fn write_registry(project: &Project, body: &str) {
+        fs::write(project.root().join(".specify/registry.yaml"), body).expect("write registry");
+    }
+
+    #[test]
+    fn registry_show_absent() {
+        let project = Project::init();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "registry", "show"])
+            .assert()
+            .success();
+        assert_eq!(assert.get_output().status.code(), Some(0));
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["registry"], Value::Null);
+        let path = actual["path"].as_str().expect("path");
+        assert!(
+            path.ends_with(".specify/registry.yaml"),
+            "path should point at .specify/registry.yaml, got: {path}"
+        );
+    }
+
+    #[test]
+    fn registry_show_valid() {
+        let project = Project::init();
+        write_registry(&project, REGISTRY_SINGLE);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "registry", "show"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        let registry = actual["registry"].as_object().expect("registry object");
+        assert_eq!(registry["version"], 1);
+        let projects = registry["projects"].as_array().expect("projects array");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0]["name"], "traffic");
+        assert_eq!(projects[0]["url"], ".");
+        assert_eq!(projects[0]["schema"], "omnia@v1");
+    }
+
+    #[test]
+    fn registry_show_text_mode() {
+        let project = Project::init();
+        write_registry(&project, REGISTRY_SINGLE);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "registry", "show"])
+            .assert()
+            .success();
+        let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
+        for fragment in ["version: 1", "name: traffic", "url: .", "schema: omnia@v1"] {
+            assert!(
+                stdout.contains(fragment),
+                "text show output should mention `{fragment}`, got:\n{stdout}"
+            );
+        }
+    }
+
+    #[test]
+    fn registry_show_malformed() {
+        let project = Project::init();
+        write_registry(&project, "version: 2\nprojects: []\n");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "registry", "show"])
+            .assert()
+            .failure();
+        assert_ne!(assert.get_output().status.code(), Some(0));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+        assert!(
+            stderr.contains("registry.yaml"),
+            "stderr should mention registry.yaml, got: {stderr:?}"
+        );
+    }
+
+    #[test]
+    fn registry_validate_absent() {
+        let project = Project::init();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "registry", "validate"])
+            .assert()
+            .success();
+        assert_eq!(assert.get_output().status.code(), Some(0));
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["registry"], Value::Null);
+        assert_eq!(actual["ok"], true);
+
+        let text = specify()
+            .current_dir(project.root())
+            .args(["initiative", "registry", "validate"])
+            .assert()
+            .success();
+        let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
+        assert!(
+            stdout.contains("no registry declared"),
+            "text validate should say 'no registry declared', got: {stdout:?}"
+        );
+    }
+
+    #[test]
+    fn registry_validate_well_formed() {
+        let project = Project::init();
+        write_registry(&project, REGISTRY_SINGLE);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "registry", "validate"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["ok"], true);
+        let registry = actual["registry"].as_object().expect("registry object");
+        assert_eq!(registry["version"], 1);
+    }
+
+    #[test]
+    fn registry_validate_multi_project_well_formed() {
+        let project = Project::init();
+        write_registry(&project, REGISTRY_THREE);
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "registry", "validate"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["ok"], true);
+        let projects = actual["registry"]["projects"].as_array().expect("projects array");
+        assert_eq!(projects.len(), 3);
+    }
+
+    #[test]
+    fn registry_validate_malformed_version() {
+        let project = Project::init();
+        write_registry(&project, "version: 2\nprojects: []\n");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "registry", "validate"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(2));
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["ok"], false);
+        assert_eq!(actual["kind"], "config");
+        let msg = actual["error"].as_str().expect("error string");
+        assert!(msg.contains("version"), "error should mention version, got: {msg}");
+        assert!(msg.contains("registry.yaml"), "error should mention registry.yaml, got: {msg}");
+    }
+
+    #[test]
+    fn registry_validate_malformed_duplicate_name() {
+        let project = Project::init();
+        write_registry(
+            &project,
+            "\
+version: 1
+projects:
+  - name: dup
+    url: .
+    schema: omnia@v1
+  - name: dup
+    url: ../other
+    schema: omnia@v1
+",
+        );
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "registry", "validate"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(2));
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["ok"], false);
+        let msg = actual["error"].as_str().expect("error string");
+        assert!(msg.contains("duplicate"), "error should mention duplicate, got: {msg}");
+    }
+
+    #[test]
+    fn registry_validate_malformed_non_kebab() {
+        let project = Project::init();
+        write_registry(
+            &project,
+            "\
+version: 1
+projects:
+  - name: NotKebab
+    url: .
+    schema: omnia@v1
+",
+        );
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "registry", "validate"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(2));
+    }
+
+    #[test]
+    fn registry_validate_unknown_top_level_key() {
+        let project = Project::init();
+        write_registry(&project, "version: 1\nversions: 2\nprojects: []\n");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "registry", "validate"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(2));
+    }
+
+    /// Plan "Done when" criterion: on a scaffolded project with no
+    /// registry, `specify initiative registry validate` is exit 0.
+    #[test]
+    fn registry_validate_on_bare_repo_green() {
+        let project = Project::init();
+        assert!(
+            !project.root().join(".specify/registry.yaml").exists(),
+            "bare repo must not have a registry"
+        );
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "registry", "validate"])
+            .assert()
+            .success();
+    }
+
+    // ---- Initiative brief CLI verbs (RFC-3a C14) ----
+    //
+    // `specify initiative brief {init, show}` — scaffolds or prints
+    // `.specify/initiative.md`. The template byte-stability is the
+    // key contract: `init` must produce the same bytes every time so
+    // operators can diff against the RFC-matching golden.
+
+    /// Byte-for-byte golden for `specify initiative brief init
+    /// traffic-modernisation`. Kept in-source (not a fixture file) so
+    /// the assertion is a trivial `assert_eq!` against literal bytes
+    /// — the plan's "Done when" criterion.
+    const TRAFFIC_BRIEF_GOLDEN: &str = "\
+---
+name: traffic-modernisation
+inputs: []
+---
+
+# Traffic modernisation
+
+<!-- One-paragraph framing of what this initiative is trying to
+     achieve. Plans reference this brief via `.specify/initiative.md`. -->
+";
+
+    fn brief_path(project: &Project) -> PathBuf {
+        project.root().join(".specify/initiative.md")
+    }
+
+    fn write_brief(project: &Project, body: &str) {
+        fs::write(brief_path(project), body).expect("write initiative.md");
+    }
+
+    #[test]
+    fn brief_init_scaffolds_canonical_file() {
+        let project = Project::init();
+        assert!(!brief_path(&project).exists(), "bare project must not have initiative.md");
+
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "brief", "init", "traffic-modernisation"])
+            .assert()
+            .success();
+
+        let on_disk = fs::read_to_string(brief_path(&project)).expect("read initiative.md");
+        assert_eq!(on_disk, TRAFFIC_BRIEF_GOLDEN);
+    }
+
+    #[test]
+    fn brief_init_json_response() {
+        let project = Project::init();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "brief", "init", "my-initiative"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["action"], "init");
+        assert_eq!(actual["ok"], true);
+        assert_eq!(actual["name"], "my-initiative");
+        assert!(
+            actual["path"].as_str().expect("path string").ends_with(".specify/initiative.md"),
+            "path should point at the brief, got: {}",
+            actual["path"]
+        );
+    }
+
+    #[test]
+    fn brief_init_refuses_when_file_exists() {
+        let project = Project::init();
+        write_brief(&project, "---\nname: pre-existing\n---\n\nhands off\n");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "brief", "init", "pre-existing"])
+            .assert()
+            .failure();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["action"], "init");
+        assert_eq!(actual["ok"], false);
+        assert_eq!(actual["error"], "already-exists");
+
+        // And the file must be untouched.
+        let on_disk = fs::read_to_string(brief_path(&project)).expect("read");
+        assert_eq!(on_disk, "---\nname: pre-existing\n---\n\nhands off\n");
+    }
+
+    #[test]
+    fn brief_init_rejects_non_kebab_name() {
+        let project = Project::init();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "brief", "init", "NotKebab"])
+            .assert()
+            .failure();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["error"], "config");
+        let msg = actual["message"].as_str().expect("message");
+        assert!(msg.contains("kebab-case"), "msg should mention kebab-case: {msg}");
+        assert!(msg.contains("NotKebab"), "msg should mention the bad name: {msg}");
+        assert!(!brief_path(&project).exists(), "no file should have been created");
+    }
+
+    #[test]
+    fn brief_show_absent() {
+        let project = Project::init();
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "brief", "show"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["brief"], Value::Null);
+        let path = actual["path"].as_str().expect("path");
+        assert!(
+            path.ends_with(".specify/initiative.md"),
+            "path should point at initiative.md, got: {path}"
+        );
+
+        let text = specify()
+            .current_dir(project.root())
+            .args(["initiative", "brief", "show"])
+            .assert()
+            .success();
+        let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
+        assert!(
+            stdout.contains("no initiative brief declared"),
+            "text show should say 'no initiative brief declared', got: {stdout:?}"
+        );
+    }
+
+    #[test]
+    fn brief_show_valid_text_and_json() {
+        let project = Project::init();
+        write_brief(
+            &project,
+            "---\n\
+             name: traffic-modernisation\n\
+             inputs:\n\
+             \x20\x20- path: ./inputs/legacy/\n\
+             \x20\x20\x20\x20kind: legacy-code\n\
+             ---\n\
+             \n\
+             # Traffic modernisation\n\
+             \n\
+             Prose goes here.\n",
+        );
+
+        // JSON
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "brief", "show"])
+            .assert()
+            .success();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        let brief = actual["brief"].as_object().expect("brief object");
+        assert_eq!(brief["frontmatter"]["name"], "traffic-modernisation");
+        let inputs = brief["frontmatter"]["inputs"].as_array().expect("inputs array");
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0]["path"], "./inputs/legacy/");
+        assert_eq!(inputs[0]["kind"], "legacy-code");
+        assert!(
+            brief["body"].as_str().expect("body").contains("# Traffic modernisation"),
+            "body should contain the heading, got: {:?}",
+            brief["body"]
+        );
+
+        // Text
+        let text = specify()
+            .current_dir(project.root())
+            .args(["initiative", "brief", "show"])
+            .assert()
+            .success();
+        let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
+        for fragment in
+            ["name: traffic-modernisation", "path: ./inputs/legacy/", "kind: legacy-code"]
+        {
+            assert!(
+                stdout.contains(fragment),
+                "text show should mention `{fragment}`, got:\n{stdout}"
+            );
+        }
+    }
+
+    #[test]
+    fn brief_show_malformed_returns_error() {
+        let project = Project::init();
+        write_brief(&project, "---\nname: BadName\n---\n\nbody\n");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["initiative", "brief", "show"])
+            .assert()
+            .failure();
+        assert_ne!(assert.get_output().status.code(), Some(0));
+        let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+        assert!(
+            stderr.contains("initiative.md"),
+            "stderr should mention initiative.md, got: {stderr:?}"
+        );
+        assert!(
+            stderr.contains("kebab-case"),
+            "stderr should mention the kebab-case rule, got: {stderr:?}"
+        );
+    }
+
+    /// RFC-3a C14 archive-sweep hook: `.specify/initiative.md` travels
+    /// with the archive. Real C33 sweep adds `workspace.md` +
+    /// `slices/`; this test pins the `initiative.md` half.
+    #[test]
+    fn archive_includes_initiative_md() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+        write_brief(&project, TRAFFIC_BRIEF_GOLDEN);
+
+        specify().current_dir(project.root()).args(["initiative", "archive"]).assert().success();
+
+        assert!(!brief_path(&project).exists(), "initiative.md must leave .specify/");
+
+        let archived_dir = project
+            .root()
+            .join(".specify/archive/plans")
+            .join(format!("demo-{}", today_yyyymmdd()));
+        let archived_brief = archived_dir.join("initiative.md");
+        assert!(
+            archived_brief.exists(),
+            "archived initiative.md missing at {}",
+            archived_brief.display()
+        );
+        let contents = fs::read_to_string(&archived_brief).expect("read archived brief");
+        assert_eq!(contents, TRAFFIC_BRIEF_GOLDEN, "archived bytes must match source bytes");
+    }
+
+    /// `specify initiative validate` surfaces a malformed `registry.yaml`
+    /// alongside plan validation results — the C12 shape-validation hook
+    /// that C13 will lift into a dedicated `registry validate` verb.
+    #[test]
+    fn initiative_validate_surfaces_registry_shape_errors() {
+        let project = Project::init();
+        // Seed a minimal, structurally-valid plan so `initiative validate`
+        // doesn't exit on the plan load itself.
+        project.seed_plan("name: demo\nchanges: []\n");
+        // Then stomp the registry with an illegal version.
+        fs::write(project.root().join(".specify/registry.yaml"), "version: 2\nprojects: []\n")
+            .expect("write bad registry");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "validate"])
+            .assert()
+            .failure();
+        let value = parse_stdout(&assert.get_output().stdout, project.root());
+        let results = value["results"].as_array().expect("results array");
+        let registry_findings: Vec<&Value> =
+            results.iter().filter(|r| r["code"] == "registry-shape").collect();
+        assert_eq!(
+            registry_findings.len(),
+            1,
+            "expected one registry-shape finding, got: {results:#?}"
+        );
+        assert_eq!(registry_findings[0]["level"], "error");
+        let msg = registry_findings[0]["message"].as_str().expect("message string");
+        assert!(msg.contains("version"), "expected version in message, got: {msg}");
+        assert_eq!(value["passed"], false);
+    }
+
+    // ---- RFC-3a C35 — planning-path smoke (Stage A/B, manifest, Layer 2) ----
+
+    #[test]
+    fn rfc3a_c35_stage_ab_initiative_brief_and_plan_validate() {
+        let project = Project::init();
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "brief", "init", "rfc3a-planning"])
+            .assert()
+            .success();
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "init", "rfc3a-planning", "--source", "app=."])
+            .assert()
+            .success();
+        specify()
+            .current_dir(project.root())
+            .args(["initiative", "validate"])
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn rfc3a_c35_workspace_sync_absent_registry_exits_zero() {
+        let project = Project::init();
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "initiative", "workspace", "sync"])
+            .assert()
+            .success();
+        let v = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(v["synced"], false);
+        assert!(v["message"].as_str().unwrap().contains("no registry"));
+    }
+
+    #[test]
+    fn rfc3a_c35_workspace_sync_two_local_symlink_peers() {
+        let tmp = tempdir().expect("tempdir");
+        let peer = tmp.path().join("peer-proj");
+        fs::create_dir_all(peer.join(".specify")).expect("peer .specify");
+        let root = tmp.path().join("root");
+        fs::create_dir_all(&root).expect("root");
+        specify()
+            .current_dir(&root)
+            .args(["init", "omnia", "--schema-dir"])
+            .arg(repo_root())
+            .args(["--name", "rfc3a-ws"])
+            .assert()
+            .success();
+
+        let reg = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    schema: omnia@v1
+  - name: beta
+    url: ../peer-proj
+    schema: omnia@v1
+";
+        fs::write(root.join(".specify/registry.yaml"), reg).expect("registry");
+
+        specify()
+            .current_dir(&root)
+            .args(["initiative", "workspace", "sync"])
+            .assert()
+            .success();
+
+        assert!(root.join(".specify/workspace/alpha").exists());
+        assert!(root.join(".specify/workspace/beta").exists());
+
+        let assert_st = specify()
+            .current_dir(&root)
+            .args(["--format", "json", "initiative", "workspace", "status"])
+            .assert()
+            .success();
+        let v = parse_stdout(&assert_st.get_output().stdout, &root);
+        let slots = v["slots"].as_array().expect("slots array");
+        assert_eq!(slots.len(), 2);
+        let kinds: Vec<&str> = slots
+            .iter()
+            .map(|s| s["kind"].as_str().expect("kind"))
+            .collect();
+        assert!(kinds.contains(&"symlink"), "expected symlink slots, got {kinds:?}");
+    }
+
+    #[test]
+    fn rfc3a_c35_manifest_scope_plan_validates_clean() {
+        let project = Project::init();
+        let root = project.root();
+        let legacy = root.join("legacy");
+        fs::create_dir_all(legacy.join("src")).expect("legacy tree");
+        fs::write(legacy.join("src/x.ts"), b"export const x = 1;\n").expect("source file");
+        let slices = root.join(".specify/plans/demo/slices");
+        fs::create_dir_all(&slices).expect("slices dir");
+        fs::write(
+            slices.join("m.yaml"),
+            "version: 1\ninclude:\n  - src/x.ts\n",
+        )
+        .expect("manifest");
+
+        project.seed_plan(
+            "\
+name: demo
+sources:
+  monolith: legacy
+changes: []
+",
+        );
+
+        specify()
+            .current_dir(root)
+            .args([
+                "initiative",
+                "create",
+                "slice-a",
+                "--sources",
+                "monolith",
+                "--scope-manifest",
+                "monolith=.specify/plans/demo/slices/m.yaml",
+            ])
+            .assert()
+            .success();
+
+        specify()
+            .current_dir(root)
+            .args(["initiative", "validate"])
+            .assert()
+            .success();
     }
 }

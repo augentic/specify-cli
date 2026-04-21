@@ -1,0 +1,8 @@
+name: smoke-proj
+schema: omnia
+specify_version: 0.1.0
+rules:
+  design: ''
+  proposal: ''
+  specs: ''
+  tasks: ''

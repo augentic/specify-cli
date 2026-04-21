@@ -3,7 +3,8 @@
 //! Creates `.specify/{changes,specs,archive,.cache}/`, writes
 //! `.specify/project.yaml` with a `rules:` key scaffolded from the
 //! resolved schema's `pipeline.define` briefs, and upserts the
-//! `.specify/.cache/` line into the project `.gitignore`. Two calls with
+//! `.specify/.cache/` and `.specify/workspace/` lines into the project
+//! `.gitignore`. Two calls with
 //! identical options are safe — the only effect of the second call is
 //! overwriting `project.yaml` with byte-identical content.
 
@@ -148,9 +149,15 @@ fn resolve_version(project_dir: &Path, mode: VersionMode) -> Result<String, Erro
     Ok(existing.specify_version.unwrap_or(current))
 }
 
-const CACHE_GITIGNORE_ENTRY: &str = ".specify/.cache/";
+const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/workspace/"];
 
-fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
+/// Idempotent: ensure each line in [`SPECIFY_GITIGNORE_ENTRIES`] appears
+/// exactly once (matched with `trim()` per line) in the project
+/// `.gitignore`, appending missing lines with a trailing newline.
+///
+/// Used by [`init`] and by `specify initiative workspace sync` (RFC-3a
+/// C29).
+pub fn ensure_specify_gitignore_entries(project_dir: &Path) -> Result<(), Error> {
     let path = project_dir.join(".gitignore");
     let existing = match fs::read_to_string(&path) {
         Ok(text) => text,
@@ -158,19 +165,28 @@ fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
         Err(err) => return Err(Error::Io(err)),
     };
 
-    if existing.lines().any(|line| line.trim() == CACHE_GITIGNORE_ENTRY) {
-        return Ok(());
-    }
-
     let mut updated = existing.clone();
-    if !updated.is_empty() && !updated.ends_with('\n') {
+    let mut changed = false;
+    for entry in SPECIFY_GITIGNORE_ENTRIES {
+        if updated.lines().any(|line| line.trim() == *entry) {
+            continue;
+        }
+        if !updated.is_empty() && !updated.ends_with('\n') {
+            updated.push('\n');
+        }
+        updated.push_str(entry);
         updated.push('\n');
+        changed = true;
     }
-    updated.push_str(CACHE_GITIGNORE_ENTRY);
-    updated.push('\n');
 
-    fs::write(&path, updated)?;
+    if changed {
+        fs::write(&path, updated)?;
+    }
     Ok(())
+}
+
+fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
+    ensure_specify_gitignore_entries(project_dir)
 }
 
 #[cfg(test)]
@@ -254,12 +270,14 @@ mod tests {
         init(base_opts(tmp.path(), &repo)).expect("init ok");
         let text = fs::read_to_string(&gitignore).expect("read gitignore");
         assert!(text.contains(".specify/.cache/"));
+        assert!(text.contains(".specify/workspace/"));
 
         // Re-init must not duplicate the entry.
         init(base_opts(tmp.path(), &repo)).expect("re-init ok");
         let text = fs::read_to_string(&gitignore).expect("reread gitignore");
         let occurrences = text.matches(".specify/.cache/").count();
         assert_eq!(occurrences, 1);
+        assert_eq!(text.matches(".specify/workspace/").count(), 1);
     }
 
     #[test]
@@ -273,12 +291,31 @@ mod tests {
         let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read gitignore");
         assert!(text.contains("target/"));
         assert!(text.contains(".specify/.cache/"));
+        assert!(text.contains(".specify/workspace/"));
         // Exactly one occurrence even after the upsert.
         assert_eq!(text.matches(".specify/.cache/").count(), 1);
+        assert_eq!(text.matches(".specify/workspace/").count(), 1);
     }
 
     #[test]
     fn gitignore_upsert_leaves_existing_entry_alone() {
+        let tmp = tempdir().unwrap();
+        let repo = repo_root();
+        fs::write(
+            tmp.path().join(".gitignore"),
+            "target/\n.specify/.cache/\n.specify/workspace/\n",
+        )
+        .expect("seed gitignore");
+
+        init(base_opts(tmp.path(), &repo)).expect("init ok");
+
+        let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
+        assert_eq!(text.matches(".specify/.cache/").count(), 1);
+        assert_eq!(text.matches(".specify/workspace/").count(), 1);
+    }
+
+    #[test]
+    fn gitignore_upsert_appends_workspace_when_only_cache_present() {
         let tmp = tempdir().unwrap();
         let repo = repo_root();
         fs::write(tmp.path().join(".gitignore"), "target/\n.specify/.cache/\n")
@@ -288,6 +325,7 @@ mod tests {
 
         let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
         assert_eq!(text.matches(".specify/.cache/").count(), 1);
+        assert_eq!(text.matches(".specify/workspace/").count(), 1);
     }
 
     #[test]
