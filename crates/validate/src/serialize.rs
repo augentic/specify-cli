@@ -64,8 +64,9 @@ fn validation_result_to_json(r: &ValidationResult) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::BTreeMap;
+
+    use super::*;
 
     #[test]
     fn serializes_passed_report_with_schema_version() {

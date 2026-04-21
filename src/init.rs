@@ -191,10 +191,12 @@ fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
     use std::path::PathBuf;
+
     use tempfile::tempdir;
+
+    use super::*;
 
     fn repo_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))

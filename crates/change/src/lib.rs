@@ -216,9 +216,11 @@ impl ChangeMetadata {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::HashSet;
+
     use tempfile::tempdir;
+
+    use super::*;
 
     const ALL_STATUSES: [LifecycleStatus; 6] = [
         LifecycleStatus::Defining,

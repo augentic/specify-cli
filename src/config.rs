@@ -136,9 +136,11 @@ fn version_is_older(current: &str, required: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
+
     use tempfile::tempdir;
+
+    use super::*;
 
     fn write_config(dir: &Path, yaml: &str) {
         let specify = dir.join(".specify");

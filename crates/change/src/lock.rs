@@ -387,11 +387,13 @@ fn is_pid_alive(_pid: u32) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
+
     use tempfile::tempdir;
+
+    use super::*;
 
     fn read_lock_pid(dir: &Path) -> String {
         fs::read_to_string(dir.join(".specify").join("plan.lock")).expect("read lockfile")

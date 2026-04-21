@@ -9,25 +9,23 @@ categories = ["development-tools"]
 keywords = ["specify", "change", "lifecycle"]
 
 [dependencies]
-specify-error = { path = "../error" }
-specify-schema = { path = "../schema" }
+specify-error.workspace = true
+specify-schema.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 chrono.workspace = true
-tempfile = "3"
-petgraph = "0.6"
+tempfile.workspace = true
+petgraph = "0.8"
 fs2 = "0.4"
 glob = "0.3"
 # `derive` pulls `clap_derive` for `#[derive(ValueEnum)]` on
 # library-exported enums (`PlanStatus`, `LifecycleStatus`, `Outcome`,
-# `EntryKind`). `default-features = false` drops the help/suggestions/
-# color features the binary adds back in its own `clap` dep — the
-# library only needs the trait.
-clap = { version = "4", default-features = false, features = ["derive", "std"] }
+# `EntryKind`).
+clap.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [dev-dependencies]
-tempfile = "3"
+tempfile.workspace = true

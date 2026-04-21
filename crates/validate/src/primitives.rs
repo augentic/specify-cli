@@ -230,9 +230,11 @@ pub(crate) fn design_references_exist(design: &str, specs_dir: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
+
     use tempfile::TempDir;
+
+    use super::*;
 
     fn tmp() -> TempDir {
         tempfile::tempdir().expect("tempdir")
