@@ -173,7 +173,13 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Er
             Error::Merge(format!("failed to read {}: {err}", specs_root.display()))
         })? {
             let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
-            if !entry.file_type().is_ok_and(|ft| ft.is_dir()) {
+            let file_type = entry.file_type().map_err(|err| {
+                Error::Merge(format!(
+                    "failed to read file type for {}: {err}",
+                    entry.path().display()
+                ))
+            })?;
+            if !file_type.is_dir() {
                 continue;
             }
             let delta_path = entry.path().join("spec.md");
