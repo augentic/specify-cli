@@ -92,11 +92,8 @@ fn describe_slot(name: &str, slot: &Path) -> WorkspaceSlotStatus {
     };
 
     if meta.file_type().is_symlink() {
-        let (head_sha, dirty) = if slot.exists() {
-            git_head_and_dirty_for_tree(slot)
-        } else {
-            (None, None)
-        };
+        let (head_sha, dirty) =
+            if slot.exists() { git_head_and_dirty_for_tree(slot) } else { (None, None) };
         return WorkspaceSlotStatus {
             name: name.to_string(),
             kind: WorkspaceSlotKind::Symlink,
@@ -170,21 +167,19 @@ fn materialise_symlink(project_dir: &Path, url: &str, dest: &Path) -> Result<(),
     };
 
     match std::fs::symlink_metadata(dest) {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            match std::fs::canonicalize(dest) {
-                Ok(resolved) if resolved == target => return Ok(()),
-                Ok(_) => {
-                    return Err(Error::Config(format!(
-                        ".specify/workspace/{} already exists as a symlink pointing elsewhere (expected {})",
-                        dest.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
-                        target.display()
-                    )));
-                }
-                Err(_) => {
-                    std::fs::remove_file(dest).map_err(Error::Io)?;
-                }
+        Ok(meta) if meta.file_type().is_symlink() => match std::fs::canonicalize(dest) {
+            Ok(resolved) if resolved == target => return Ok(()),
+            Ok(_) => {
+                return Err(Error::Config(format!(
+                    ".specify/workspace/{} already exists as a symlink pointing elsewhere (expected {})",
+                    dest.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
+                    target.display()
+                )));
             }
-        }
+            Err(_) => {
+                std::fs::remove_file(dest).map_err(Error::Io)?;
+            }
+        },
         Ok(_) => {
             return Err(Error::Config(format!(
                 ".specify/workspace/{} already exists and is not a symlink; remove it before re-syncing",

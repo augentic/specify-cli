@@ -2796,11 +2796,7 @@ inputs: []
             .args(["initiative", "init", "rfc3a-planning", "--source", "app=."])
             .assert()
             .success();
-        specify()
-            .current_dir(project.root())
-            .args(["initiative", "validate"])
-            .assert()
-            .success();
+        specify().current_dir(project.root()).args(["initiative", "validate"]).assert().success();
     }
 
     #[test]
@@ -2843,11 +2839,7 @@ projects:
 ";
         fs::write(root.join(".specify/registry.yaml"), reg).expect("registry");
 
-        specify()
-            .current_dir(&root)
-            .args(["initiative", "workspace", "sync"])
-            .assert()
-            .success();
+        specify().current_dir(&root).args(["initiative", "workspace", "sync"]).assert().success();
 
         assert!(root.join(".specify/workspace/alpha").exists());
         assert!(root.join(".specify/workspace/beta").exists());
@@ -2860,10 +2852,7 @@ projects:
         let v = parse_stdout(&assert_st.get_output().stdout, &root);
         let slots = v["slots"].as_array().expect("slots array");
         assert_eq!(slots.len(), 2);
-        let kinds: Vec<&str> = slots
-            .iter()
-            .map(|s| s["kind"].as_str().expect("kind"))
-            .collect();
+        let kinds: Vec<&str> = slots.iter().map(|s| s["kind"].as_str().expect("kind")).collect();
         assert!(kinds.contains(&"symlink"), "expected symlink slots, got {kinds:?}");
     }
 
@@ -2876,11 +2865,7 @@ projects:
         fs::write(legacy.join("src/x.ts"), b"export const x = 1;\n").expect("source file");
         let slices = root.join(".specify/plans/demo/slices");
         fs::create_dir_all(&slices).expect("slices dir");
-        fs::write(
-            slices.join("m.yaml"),
-            "version: 1\ninclude:\n  - src/x.ts\n",
-        )
-        .expect("manifest");
+        fs::write(slices.join("m.yaml"), "version: 1\ninclude:\n  - src/x.ts\n").expect("manifest");
 
         project.seed_plan(
             "\
@@ -2905,10 +2890,6 @@ changes: []
             .assert()
             .success();
 
-        specify()
-            .current_dir(root)
-            .args(["initiative", "validate"])
-            .assert()
-            .success();
+        specify().current_dir(root).args(["initiative", "validate"]).assert().success();
     }
 }
