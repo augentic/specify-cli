@@ -8,8 +8,8 @@
 //! - [`validate_baseline`] — post-merge coherence checks, ported from the
 //!   Python `validate_baseline` (preserves one documented regex quirk).
 //! - [`merge_change`] — transactional multi-spec merge + archive that consumes
-//!   [`specify_change::ChangeMetadata`], discovers delta specs through
-//!   [`specify_schema::PipelineView`], and moves the change directory under
+//!   [`specify_change::ChangeMetadata`], discovers delta specs by convention
+//!   (`<change_dir>/specs/*/spec.md`), and moves the change directory under
 //!   `archive/` once every merge + validation succeeds.
 //!
 //! Parity with the archived Python reference is the

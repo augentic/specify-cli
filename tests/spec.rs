@@ -59,15 +59,6 @@ impl Project {
             .success();
         copy_dir(&repo_root().join("schemas/omnia"), &root.join("schemas/omnia"));
 
-        // Omnia's `merge` brief has no `generates` field. Patch it the
-        // same way `tests/e2e.rs` does so the merge engine has a glob to
-        // discover delta specs under.
-        fs::write(
-            root.join("schemas/omnia/briefs/merge.md"),
-            "---\nid: merge\ndescription: Merge the change into the repository\ngenerates: specs/*/spec.md\nneeds: [build]\n---\n\nPatched for spec tests.\n",
-        )
-        .expect("write patched merge brief");
-
         Project { _tmp: tmp, root }
     }
 
