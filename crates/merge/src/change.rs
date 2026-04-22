@@ -164,9 +164,7 @@ pub fn conflict_check(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Baselin
 /// Compute the in-memory merge plan for every delta spec discovered
 /// under `<change_dir>/specs/*/spec.md`. Shared by `preview_change`
 /// and `merge_change`.
-fn plan_merge(
-    change_dir: &Path, specs_dir: &Path,
-) -> Result<Vec<MergeEntry>, Error> {
+fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Error> {
     let mut delta_specs: Vec<DeltaSpecRef> = Vec::new();
 
     let specs_root = change_dir.join("specs");
@@ -174,9 +172,8 @@ fn plan_merge(
         for entry in fs::read_dir(&specs_root).map_err(|err| {
             Error::Merge(format!("failed to read {}: {err}", specs_root.display()))
         })? {
-            let entry =
-                entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
-            if !entry.file_type().map_or(false, |ft| ft.is_dir()) {
+            let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
+            if !entry.file_type().is_ok_and(|ft| ft.is_dir()) {
                 continue;
             }
             let delta_path = entry.path().join("spec.md");
@@ -189,7 +186,11 @@ fn plan_merge(
                 .ok_or_else(|| Error::Merge("non-UTF8 spec directory name".into()))?
                 .to_string();
             let baseline_path = specs_dir.join(&spec_name).join("spec.md");
-            delta_specs.push(DeltaSpecRef { spec_name, delta_path, baseline_path });
+            delta_specs.push(DeltaSpecRef {
+                spec_name,
+                delta_path,
+                baseline_path,
+            });
         }
     }
 
