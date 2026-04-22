@@ -79,20 +79,24 @@ pub fn workspace_status(project_dir: &Path) -> Result<Option<Vec<WorkspaceSlotSt
 }
 
 fn describe_slot(name: &str, slot: &Path) -> WorkspaceSlotStatus {
-    if !slot.exists() {
-        return WorkspaceSlotStatus {
-            name: name.to_string(),
-            kind: WorkspaceSlotKind::Missing,
-            head_sha: None,
-            dirty: None,
+    let meta = match std::fs::symlink_metadata(slot) {
+        Ok(m) => m,
+        Err(_) => {
+            return WorkspaceSlotStatus {
+                name: name.to_string(),
+                kind: WorkspaceSlotKind::Missing,
+                head_sha: None,
+                dirty: None,
+            };
+        }
+    };
+
+    if meta.file_type().is_symlink() {
+        let (head_sha, dirty) = if slot.exists() {
+            git_head_and_dirty_for_tree(slot)
+        } else {
+            (None, None)
         };
-    }
-
-    let meta = std::fs::symlink_metadata(slot).ok();
-    let is_symlink = meta.is_some_and(|m| m.file_type().is_symlink());
-
-    if is_symlink {
-        let (head_sha, dirty) = git_head_and_dirty_for_tree(slot);
         return WorkspaceSlotStatus {
             name: name.to_string(),
             kind: WorkspaceSlotKind::Symlink,
@@ -101,7 +105,7 @@ fn describe_slot(name: &str, slot: &Path) -> WorkspaceSlotStatus {
         };
     }
 
-    if slot.is_dir() && slot.join(".git").exists() {
+    if meta.is_dir() && slot.join(".git").exists() {
         let (head_sha, dirty) = git_head_and_dirty_for_tree(slot);
         return WorkspaceSlotStatus {
             name: name.to_string(),
@@ -165,23 +169,30 @@ fn materialise_symlink(project_dir: &Path, url: &str, dest: &Path) -> Result<(),
         })?
     };
 
-    if dest.exists() {
-        let meta = std::fs::symlink_metadata(dest).map_err(Error::Io)?;
-        if meta.file_type().is_symlink() {
-            let resolved = std::fs::canonicalize(dest).map_err(Error::Io)?;
-            if resolved == target {
-                return Ok(());
+    match std::fs::symlink_metadata(dest) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            match std::fs::canonicalize(dest) {
+                Ok(resolved) if resolved == target => return Ok(()),
+                Ok(_) => {
+                    return Err(Error::Config(format!(
+                        ".specify/workspace/{} already exists as a symlink pointing elsewhere (expected {})",
+                        dest.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
+                        target.display()
+                    )));
+                }
+                Err(_) => {
+                    std::fs::remove_file(dest).map_err(Error::Io)?;
+                }
             }
+        }
+        Ok(_) => {
             return Err(Error::Config(format!(
-                ".specify/workspace/{} already exists as a symlink pointing elsewhere (expected {})",
-                dest.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
-                target.display()
+                ".specify/workspace/{} already exists and is not a symlink; remove it before re-syncing",
+                dest.file_name().and_then(|s| s.to_str()).unwrap_or("?")
             )));
         }
-        return Err(Error::Config(format!(
-            ".specify/workspace/{} already exists and is not a symlink; remove it before re-syncing",
-            dest.file_name().and_then(|s| s.to_str()).unwrap_or("?")
-        )));
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(Error::Io(e)),
     }
 
     if let Some(parent) = dest.parent() {

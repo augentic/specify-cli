@@ -16,6 +16,9 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
+use crate::brief::split_on_closing_delimiter;
+use crate::registry::is_kebab_case;
+
 /// In-memory representation of `.specify/initiative.md`.
 ///
 /// Structured frontmatter (YAML) + free-form body (markdown). The
@@ -153,25 +156,6 @@ inputs: []
      achieve. Plans reference this brief via `.specify/initiative.md`. -->
 ";
 
-/// Given the text *after* the leading `---\n`, return `(frontmatter,
-/// body)` split at the first closing `---` on its own line. Mirror of
-/// the helper in `brief.rs`; duplicated because that helper is private
-/// to its module and hard-codes the `Brief` error shape.
-fn split_on_closing_delimiter(after_open: &str) -> Option<(&str, &str)> {
-    let mut offset = 0;
-    for line in after_open.split_inclusive('\n') {
-        let trimmed = line.trim_end_matches(['\n', '\r']);
-        if trimmed == "---" {
-            let frontmatter = &after_open[..offset];
-            let body_start = offset + line.len();
-            let body = &after_open[body_start..];
-            return Some((frontmatter, body));
-        }
-        offset += line.len();
-    }
-    None
-}
-
 /// Title-case transform used by [`InitiativeBrief::template`]:
 /// `traffic-modernisation` → `Traffic modernisation`. Dashes become
 /// spaces, the very first ASCII character is uppercased, everything
@@ -183,21 +167,4 @@ fn title_case(name: &str) -> String {
         Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
         None => String::new(),
     }
-}
-
-/// Local kebab-case predicate. Same contract as the helper in
-/// `registry.rs`; duplicated because the two modules share no
-/// sub-module and the predicate is trivial — a third home would be
-/// over-engineered for two callers.
-fn is_kebab_case(s: &str) -> bool {
-    if s.is_empty() {
-        return false;
-    }
-    if s.starts_with('-') || s.ends_with('-') {
-        return false;
-    }
-    if s.contains("--") {
-        return false;
-    }
-    s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }

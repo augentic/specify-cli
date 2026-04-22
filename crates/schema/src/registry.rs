@@ -225,11 +225,11 @@ fn looks_like_windows_drive_path(url: &str) -> bool {
     c.is_ascii_alphabetic() && chars.next() == Some(':')
 }
 
-/// Local kebab-case predicate. Identical contract to
-/// `specify_change::actions::validate_name`; duplicated because
-/// `specify-schema` is upstream of `specify-change` in the crate
-/// dep graph and cannot call through.
-fn is_kebab_case(s: &str) -> bool {
+/// Kebab-case predicate shared within `specify-schema`. Identical
+/// contract to `specify_change::actions::validate_name`; duplicated
+/// because `specify-schema` is upstream of `specify-change` in the
+/// crate dep graph and cannot call through.
+pub(crate) fn is_kebab_case(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
