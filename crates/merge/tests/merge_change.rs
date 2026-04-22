@@ -1,12 +1,12 @@
 //! End-to-end filesystem tests for `merge_change`.
 //!
-//! Each test builds a throw-away project under `tempfile::TempDir`, copies
-//! the real `schemas/omnia/` tree in (so `PipelineView::load` actually
-//! resolves), seeds a change directory with delta specs, and drives
-//! `merge_change` through its happy + sad paths.
+//! Each test builds a throw-away project under `tempfile::TempDir`, seeds a
+//! change directory with delta specs at `specs/<name>/spec.md`, and drives
+//! `merge_change` through its happy + sad paths. Discovery is
+//! convention-based — no schema or `generates` directive is needed.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use regex::Regex;
 use specify_change::{ChangeMetadata, LifecycleStatus};
@@ -17,7 +17,6 @@ use tempfile::TempDir;
 const CHANGE_NAME: &str = "feature-x";
 
 struct Project {
-    // Keep the guard so the directory lives until end-of-test.
     _tmp: TempDir,
     root: PathBuf,
 }
@@ -36,33 +35,17 @@ impl Project {
     }
 }
 
-/// Build the fixture project with a schema that actually declares a merge
-/// brief with a `generates` glob.
+/// Build a fixture project with delta specs at the conventional path.
+/// No schema directory or merge brief is needed — discovery scans
+/// `<change_dir>/specs/*/spec.md` directly.
 fn build_project() -> Project {
     let tmp = TempDir::new().expect("tempdir");
     let root = tmp.path().to_path_buf();
 
-    // .specify layout
-    for sub in [".specify/changes", ".specify/specs", ".specify/archive", "schemas"] {
+    for sub in [".specify/changes", ".specify/specs", ".specify/archive"] {
         fs::create_dir_all(root.join(sub)).expect("mkdir");
     }
 
-    // Copy schemas/omnia/ from the real repo into <root>/schemas/omnia/.
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest.parent().and_then(Path::parent).expect("repo root").to_path_buf();
-    copy_dir(&repo_root.join("schemas/omnia"), &root.join("schemas/omnia"));
-
-    // The real omnia `merge` brief has no `generates` field; patch it so
-    // `merge_change` has something to discover. Overwriting the file is
-    // cheaper than maintaining a separate test schema on disk.
-    let merge_brief_path = root.join("schemas/omnia/briefs/merge.md");
-    fs::write(
-        &merge_brief_path,
-        "---\nid: merge\ndescription: Merge the change into the repository\ngenerates: specs/*/spec.md\nneeds: [build]\n---\n\nTest brief for merge_change integration tests.\n",
-    )
-    .expect("write merge brief");
-
-    // Change directory with delta specs.
     let change_dir = root.join(".specify/changes").join(CHANGE_NAME);
     fs::create_dir_all(change_dir.join("specs/login")).expect("mkdir login");
     fs::create_dir_all(change_dir.join("specs/oauth")).expect("mkdir oauth");
@@ -88,20 +71,6 @@ fn build_project() -> Project {
     metadata.save(&change_dir).expect("save metadata");
 
     Project { _tmp: tmp, root }
-}
-
-fn copy_dir(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create dst");
-    for entry in fs::read_dir(src).expect("readdir") {
-        let entry = entry.expect("direntry");
-        let ty = entry.file_type().expect("file type");
-        let target = dst.join(entry.file_name());
-        if ty.is_dir() {
-            copy_dir(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), &target).expect("copy");
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

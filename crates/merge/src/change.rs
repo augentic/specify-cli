@@ -20,7 +20,6 @@ use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 use specify_change::{ChangeMetadata, LifecycleStatus, SpecType, actions, format_rfc3339};
 use specify_error::Error;
-use specify_schema::{Phase, PipelineView};
 
 use crate::merge::{MergeResult, merge};
 use crate::validate::validate_baseline;
@@ -55,8 +54,7 @@ pub struct BaselineConflict {
 /// previews while the change is still `building` or `complete` so the
 /// human can confirm operations before the merge skill commits.
 pub fn preview_change(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Error> {
-    let metadata = ChangeMetadata::load(change_dir)?;
-    plan_merge(change_dir, specs_dir, &metadata)
+    plan_merge(change_dir, specs_dir)
 }
 
 /// Atomic multi-spec merge plus archive.
@@ -76,7 +74,7 @@ pub fn merge_change(
         });
     }
 
-    let merged = plan_merge(change_dir, specs_dir, &metadata)?;
+    let merged = plan_merge(change_dir, specs_dir)?;
 
     // --- Commit: write baselines ------------------------------------------
 
@@ -163,48 +161,36 @@ pub fn conflict_check(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Baselin
 // Internals
 // ---------------------------------------------------------------------------
 
-/// Compute the in-memory merge plan for every delta spec discovered via
-/// the merge-phase brief's `generates` glob. Shared by `preview_change`
+/// Compute the in-memory merge plan for every delta spec discovered
+/// under `<change_dir>/specs/*/spec.md`. Shared by `preview_change`
 /// and `merge_change`.
-fn plan_merge(
-    change_dir: &Path, specs_dir: &Path, metadata: &ChangeMetadata,
-) -> Result<Vec<MergeEntry>, Error> {
-    // Convention: `<project>/.specify/changes/<name>/`. Three `.parent()`
-    // hops land us at `<project>`.
-    let project_dir =
-        change_dir.parent().and_then(Path::parent).and_then(Path::parent).ok_or_else(|| {
-            Error::Merge(format!(
-                "cannot resolve project root from change dir {}",
-                change_dir.display()
-            ))
-        })?;
-
-    let pipeline_view = PipelineView::load(&metadata.schema, project_dir).map_err(|err| {
-        Error::Merge(format!(
-            "failed to load pipeline view for schema `{}`: {err}",
-            metadata.schema
-        ))
-    })?;
-
+fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Error> {
     let mut delta_specs: Vec<DeltaSpecRef> = Vec::new();
-    for brief in pipeline_view.phase(Phase::Merge) {
-        let Some(glob_pattern) = brief.frontmatter.generates.as_deref() else {
-            continue;
-        };
-        let full_glob = change_dir.join(glob_pattern);
-        let pattern_str = full_glob
-            .to_str()
-            .ok_or_else(|| Error::Merge(format!("non-UTF8 glob path: {}", full_glob.display())))?;
 
-        let entries = glob::glob(pattern_str)
-            .map_err(|err| Error::Merge(format!("invalid glob `{pattern_str}`: {err}")))?;
-        for entry in entries {
-            let delta_path =
-                entry.map_err(|err| Error::Merge(format!("glob traversal failure: {err}")))?;
+    let specs_root = change_dir.join("specs");
+    if specs_root.is_dir() {
+        for entry in fs::read_dir(&specs_root).map_err(|err| {
+            Error::Merge(format!("failed to read {}: {err}", specs_root.display()))
+        })? {
+            let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
+            let file_type = entry.file_type().map_err(|err| {
+                Error::Merge(format!(
+                    "failed to read file type for {}: {err}",
+                    entry.path().display()
+                ))
+            })?;
+            if !file_type.is_dir() {
+                continue;
+            }
+            let delta_path = entry.path().join("spec.md");
             if !delta_path.is_file() {
                 continue;
             }
-            let spec_name = derive_spec_name(change_dir, &delta_path);
+            let spec_name = entry
+                .file_name()
+                .to_str()
+                .ok_or_else(|| Error::Merge("non-UTF8 spec directory name".into()))?
+                .to_string();
             let baseline_path = specs_dir.join(&spec_name).join("spec.md");
             delta_specs.push(DeltaSpecRef {
                 spec_name,
@@ -215,7 +201,6 @@ fn plan_merge(
     }
 
     delta_specs.sort_by(|a, b| a.delta_path.cmp(&b.delta_path));
-    delta_specs.dedup_by(|a, b| a.delta_path == b.delta_path);
 
     let mut merged: Vec<MergeEntry> = Vec::with_capacity(delta_specs.len());
     let mut aborts: Vec<String> = Vec::new();
@@ -270,24 +255,6 @@ struct DeltaSpecRef {
     spec_name: String,
     delta_path: PathBuf,
     baseline_path: PathBuf,
-}
-
-/// Derive the logical spec name from a discovered delta path.
-///
-/// For the expected shape `<change_dir>/specs/<name>/spec.md` we return
-/// `<name>`. For anything weirder we fall back to the file stem so the
-/// caller still gets something deterministic to key on.
-fn derive_spec_name(change_dir: &Path, delta_path: &Path) -> String {
-    let rel = delta_path.strip_prefix(change_dir).unwrap_or(delta_path);
-    let components: Vec<&std::ffi::OsStr> = rel.iter().collect();
-    if components.len() >= 3
-        && components[0] == std::ffi::OsStr::new("specs")
-        && components[components.len() - 1] == std::ffi::OsStr::new("spec.md")
-        && let Some(name) = components[components.len() - 2].to_str()
-    {
-        return name.to_string();
-    }
-    delta_path.file_stem().and_then(|s| s.to_str()).unwrap_or("spec").to_string()
 }
 
 fn parse_rfc3339(s: &str) -> Result<DateTime<Utc>, chrono::ParseError> {

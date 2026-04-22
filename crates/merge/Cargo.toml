@@ -13,7 +13,6 @@ specify-error.workspace = true
 specify-spec.workspace = true
 specify-schema.workspace = true
 specify-change.workspace = true
-glob.workspace = true
 chrono.workspace = true
 regex.workspace = true
 

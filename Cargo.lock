@@ -1376,7 +1376,6 @@ name = "specify-merge"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "glob",
  "regex",
  "specify-change",
  "specify-error",

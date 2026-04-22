@@ -89,20 +89,6 @@ impl Project {
         self
     }
 
-    /// The real omnia `merge` brief has no `generates` field, so the merge
-    /// engine has no glob to discover delta specs. Patch the copied-in
-    /// brief to add one — mirrors the workaround in the `specify-merge`
-    /// integration tests.
-    fn patch_merge_brief(self) -> Self {
-        let path = self.root.join("schemas/omnia/briefs/merge.md");
-        fs::write(
-            &path,
-            "---\nid: merge\ndescription: Merge the change into the repository\ngenerates: specs/*/spec.md\nneeds: [build]\n---\n\nPatched for e2e tests.\n",
-        )
-        .expect("write patched merge brief");
-        self
-    }
-
     /// Copy a fixture subtree into `.specify/changes/my-change/`.
     fn stage_change(&self, fixture: &str) -> PathBuf {
         let dst = self.root.join(".specify/changes/my-change");
@@ -294,7 +280,7 @@ fn validate_bad_change_fails_with_exit_two() {
 
 #[test]
 fn merge_two_spec_change_produces_baselines_and_archive() {
-    let project = Project::init().with_schemas().patch_merge_brief();
+    let project = Project::init().with_schemas();
     project.stage_change("merge-two-spec-change");
 
     let assert = specify()
