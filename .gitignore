@@ -7,3 +7,7 @@ target/
 
 **/*.rs.bk
 rustc-ice-*
+.specify/.cache/
+.specify/project.yaml
+stderr.log
+stdout.log

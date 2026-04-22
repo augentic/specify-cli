@@ -13,15 +13,23 @@
 //!   subcommand (see [`PipelineView`]).
 //! - The on-disk `.cache-meta.yaml` format written by the agent
 //!   (see [`CacheMeta`]).
+//! - The on-disk `.specify/registry.yaml` platform catalogue
+//!   (see [`Registry`]) introduced by RFC-3a.
+//! - The on-disk `.specify/initiative.md` operator-authored brief
+//!   (see [`InitiativeBrief`]) introduced by RFC-3a.
 
 mod brief;
 mod cache;
+mod initiative_brief;
 mod pipeline;
+mod registry;
 mod schema;
 
 pub use brief::{Brief, BriefFrontmatter};
 pub use cache::CacheMeta;
+pub use initiative_brief::{InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind};
 pub use pipeline::PipelineView;
+pub use registry::{Registry, RegistryProject};
 pub use schema::{Phase, Pipeline, PipelineEntry, ResolvedSchema, Schema, SchemaSource};
 
 /// Outcome of a structural validation rule.

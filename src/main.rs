@@ -31,13 +31,14 @@ use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 use specify::{
     BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Error,
-    InitOptions, InitResult, Journal, JournalEntry, LifecycleStatus, MergeEntry, MergeOperation,
-    MergeResult, Outcome, Overlap, Phase, PipelineView, Plan, PlanChange, PlanChangePatch,
-    PlanLockAcquired, PlanLockReleased, PlanLockStamp, PlanLockState, PlanStatus,
-    PlanValidationLevel, PlanValidationResult, ProjectConfig, Schema, SchemaSource, SpecType, Task,
-    TouchedSpec, ValidationReport, ValidationResult, VersionMode, change_actions, conflict_check,
-    format_rfc3339, init, mark_complete, merge_change, parse_tasks, preview_change,
-    serialize_report, validate_change,
+    InitOptions, InitResult, InitiativeBrief, Journal, JournalEntry, LifecycleStatus, MergeEntry,
+    MergeOperation, MergeResult, Outcome, Overlap, Phase, PipelineView, Plan, PlanChange,
+    PlanChangePatch, PlanLockAcquired, PlanLockReleased, PlanLockStamp, PlanLockState, PlanStatus,
+    PlanValidationLevel, PlanValidationResult, ProjectConfig, Registry, Schema, SchemaSource,
+    Scope, SpecType, Task, TouchedSpec, ValidationReport, ValidationResult, VersionMode,
+    WorkspaceSlotKind, WorkspaceSlotStatus, change_actions, conflict_check, format_rfc3339, init,
+    mark_complete, merge_change, parse_tasks, preview_change, serialize_report,
+    sync_registry_workspace, validate_change, workspace_status,
 };
 
 pub const EXIT_SUCCESS: i32 = 0;
@@ -229,6 +230,17 @@ enum InitiativeAction {
         /// `sources` map.
         #[arg(long = "sources", action = ArgAction::Append)]
         sources: Vec<String>,
+        /// Per-source include glob, repeatable: `--scope-include <key>=<glob>`.
+        /// `<key>` must also appear in `--sources`.
+        #[arg(long = "scope-include", value_parser = parse_source_kv, action = ArgAction::Append)]
+        scope_include: Vec<(String, String)>,
+        /// Per-source exclude glob, repeatable: `--scope-exclude <key>=<glob>`.
+        #[arg(long = "scope-exclude", value_parser = parse_source_kv, action = ArgAction::Append)]
+        scope_exclude: Vec<(String, String)>,
+        /// Per-source manifest pointer: `--scope-manifest <key>=<path>`. Mutually
+        /// exclusive with `--scope-include`/`--scope-exclude` for the same key.
+        #[arg(long = "scope-manifest", value_parser = parse_source_kv, action = ArgAction::Append)]
+        scope_manifest: Vec<(String, String)>,
         /// Free-text scoping hint for the define step
         #[arg(long)]
         description: Option<String>,
@@ -250,6 +262,25 @@ enum InitiativeAction {
         /// omit the flag to leave it unchanged.
         #[arg(long = "sources", num_args = 0.., value_delimiter = ',')]
         sources: Option<Vec<String>>,
+        /// Per-source include glob, repeatable: `--scope-include <key>=<glob>`.
+        /// For each touched key, all `--scope-include`/`--scope-exclude`/
+        /// `--scope-manifest` values on this invocation fold into one
+        /// [`Scope`] that wholesale-replaces the key's existing entry.
+        #[arg(long = "scope-include", value_parser = parse_source_kv, action = ArgAction::Append)]
+        scope_include: Vec<(String, String)>,
+        /// Per-source exclude glob, repeatable: `--scope-exclude <key>=<glob>`.
+        #[arg(long = "scope-exclude", value_parser = parse_source_kv, action = ArgAction::Append)]
+        scope_exclude: Vec<(String, String)>,
+        /// Per-source manifest pointer: `--scope-manifest <key>=<path>`. Mutually
+        /// exclusive with `--scope-include`/`--scope-exclude` for the same key.
+        #[arg(long = "scope-manifest", value_parser = parse_source_kv, action = ArgAction::Append)]
+        scope_manifest: Vec<(String, String)>,
+        /// Remove the scope entry for `<key>` from this change. Repeatable. A
+        /// key appearing in both `--scope-rm` and `--scope-include`/
+        /// `--scope-exclude`/`--scope-manifest` on the same invocation is
+        /// a conflict and the command exits with `invalid-plan-scope`.
+        #[arg(long = "scope-rm", action = ArgAction::Append)]
+        scope_rm: Vec<String>,
         /// Replace description. Pass `--description ""` to clear; omit the flag
         /// to leave it unchanged.
         #[arg(long)]
@@ -283,6 +314,44 @@ enum InitiativeAction {
         #[command(subcommand)]
         action: LockAction,
     },
+    /// Registry operations (RFC-3a §"The Registry").
+    ///
+    /// `.specify/registry.yaml` is the platform-level catalogue of peer
+    /// projects. It's optional: an absent file is equivalent to single-repo
+    /// mode. These verbs expose the shape-validation already used by
+    /// `initiative validate` as dedicated read/validate entry points.
+    Registry {
+        #[command(subcommand)]
+        action: RegistryAction,
+    },
+
+    /// Initiative brief operations (RFC-3a §"The Initiative Brief").
+    ///
+    /// `.specify/initiative.md` is the operator-authored brief: a YAML
+    /// frontmatter block (`name`, optional `inputs`) plus free-form
+    /// markdown body. It's optional — `init` scaffolds a canonical
+    /// template; `show` prints the parsed brief.
+    Brief {
+        #[command(subcommand)]
+        action: BriefAction,
+    },
+
+    /// Materialise registry peers under `.specify/workspace/` (RFC-3a C29).
+    Workspace {
+        #[command(subcommand)]
+        action: WorkspaceAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorkspaceAction {
+    /// Create symlinks or git clones under `.specify/workspace/<name>/`.
+    ///
+    /// No-op with exit 0 when `.specify/registry.yaml` is absent. Updates
+    /// `.gitignore` to ignore `.specify/workspace/` when a registry exists.
+    Sync,
+    /// Report symlink vs git clone, `HEAD`, and dirty working tree per entry.
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -312,6 +381,41 @@ enum LockAction {
     },
     /// Report the current lock state (holder PID, stale flag).
     Status,
+}
+
+#[derive(Subcommand)]
+enum RegistryAction {
+    /// Print the parsed `.specify/registry.yaml` (text or JSON).
+    ///
+    /// Prints a clear "no registry declared" message when the file is
+    /// absent (exit 0). Malformed files fail loud with a non-zero exit —
+    /// the operator asked to show something unparseable.
+    Show,
+    /// Validate `.specify/registry.yaml` shape. Non-zero exit on any error.
+    ///
+    /// Absent registry is not an error: exit 0 with a "none declared"
+    /// message. Well-formed registry exits 0. Malformed registry exits
+    /// with `EXIT_VALIDATION_FAILED` and a diagnostic that names
+    /// `registry.yaml`.
+    Validate,
+}
+
+#[derive(Subcommand)]
+enum BriefAction {
+    /// Scaffold `.specify/initiative.md` from the canonical template.
+    ///
+    /// Refuses to overwrite an existing file — mirrors the
+    /// `initiative init` posture for `plan.yaml`.
+    Init {
+        /// Kebab-case initiative name (baked into the frontmatter).
+        name: String,
+    },
+    /// Print the parsed `.specify/initiative.md` (text or JSON).
+    ///
+    /// Absent file is not an error: exit 0 with "no initiative brief
+    /// declared". Malformed file fails loud with a non-zero exit — the
+    /// operator asked to show something unparseable.
+    Show,
 }
 
 #[derive(Subcommand)]
@@ -1877,15 +1981,43 @@ fn run_initiative(format: OutputFormat, action: InitiativeAction) -> i32 {
             depends_on,
             affects,
             sources,
+            scope_include,
+            scope_exclude,
+            scope_manifest,
             description,
-        } => run_initiative_create(format, name, depends_on, affects, sources, description),
+        } => run_initiative_create(
+            format,
+            name,
+            depends_on,
+            affects,
+            sources,
+            scope_include,
+            scope_exclude,
+            scope_manifest,
+            description,
+        ),
         InitiativeAction::Amend {
             name,
             depends_on,
             affects,
             sources,
+            scope_include,
+            scope_exclude,
+            scope_manifest,
+            scope_rm,
             description,
-        } => run_initiative_amend(format, name, depends_on, affects, sources, description),
+        } => run_initiative_amend(
+            format,
+            name,
+            depends_on,
+            affects,
+            sources,
+            scope_include,
+            scope_exclude,
+            scope_manifest,
+            scope_rm,
+            description,
+        ),
         InitiativeAction::Transition { name, target, reason } => {
             run_initiative_transition(format, name, target, reason)
         }
@@ -1894,6 +2026,18 @@ fn run_initiative(format: OutputFormat, action: InitiativeAction) -> i32 {
             LockAction::Acquire { pid } => run_initiative_lock_acquire(format, pid),
             LockAction::Release { pid } => run_initiative_lock_release(format, pid),
             LockAction::Status => run_initiative_lock_status(format),
+        },
+        InitiativeAction::Registry { action } => match action {
+            RegistryAction::Show => run_initiative_registry_show(format),
+            RegistryAction::Validate => run_initiative_registry_validate(format),
+        },
+        InitiativeAction::Brief { action } => match action {
+            BriefAction::Init { name } => run_initiative_brief_init(format, name),
+            BriefAction::Show => run_initiative_brief_show(format),
+        },
+        InitiativeAction::Workspace { action } => match action {
+            WorkspaceAction::Sync => run_initiative_workspace_sync(format),
+            WorkspaceAction::Status => run_initiative_workspace_status(format),
         },
     }
 }
@@ -1943,6 +2087,53 @@ fn parse_source_kv(s: &str) -> Result<(String, String), String> {
         return Err(format!("--source key and value must be non-empty, got `{s}`"));
     }
     Ok((k.to_string(), v.to_string()))
+}
+
+/// Fold repeated `--scope-include`, `--scope-exclude`, and
+/// `--scope-manifest` flags into one [`Scope`] per source key.
+///
+/// The three input vectors are pre-parsed `(key, value)` pairs
+/// (clap's `value_parser = parse_source_kv`). Keys land in the
+/// returned map in BTree order; values within a key preserve the
+/// command-line order (natural for `--scope-include` glob lists).
+/// Manifest values cannot repeat for the same key — the second one
+/// is rejected with `Error::InvalidPlanScope`. [`Scope::try_new`]
+/// enforces the `manifest` ⊕ `(include|exclude)` invariant per
+/// key; violations bubble up through the same variant.
+fn collect_scope_flags(
+    includes: Vec<(String, String)>, excludes: Vec<(String, String)>,
+    manifests: Vec<(String, String)>,
+) -> Result<BTreeMap<String, Scope>, Error> {
+    let mut inc: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut exc: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut man: BTreeMap<String, String> = BTreeMap::new();
+    for (k, v) in includes {
+        inc.entry(k).or_default().push(v);
+    }
+    for (k, v) in excludes {
+        exc.entry(k).or_default().push(v);
+    }
+    for (k, v) in manifests {
+        if man.insert(k.clone(), v).is_some() {
+            return Err(Error::InvalidPlanScope(format!(
+                "scope key `{k}` cannot carry multiple --scope-manifest values"
+            )));
+        }
+    }
+
+    let mut keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    keys.extend(inc.keys().cloned());
+    keys.extend(exc.keys().cloned());
+    keys.extend(man.keys().cloned());
+
+    let mut out: BTreeMap<String, Scope> = BTreeMap::new();
+    for k in keys {
+        let include = inc.remove(&k).unwrap_or_default();
+        let exclude = exc.remove(&k).unwrap_or_default();
+        let manifest = man.remove(&k);
+        out.insert(k, Scope::try_new(include, exclude, manifest)?);
+    }
+    Ok(out)
 }
 
 fn run_initiative_init(format: OutputFormat, name: String, sources: Vec<(String, String)>) -> i32 {
@@ -2009,7 +2200,19 @@ fn run_initiative_validate(format: OutputFormat) -> i32 {
     };
     let changes_dir = ProjectConfig::changes_dir(&project_dir);
 
-    let results = plan.validate(Some(&changes_dir));
+    let mut results = plan.validate(Some(&changes_dir), Some(&project_dir));
+    // RFC-3a shape-validation hook: surface malformed `.specify/registry.yaml`
+    // through the same report that `Plan::validate` already drives. A
+    // dedicated `specify initiative registry validate` verb lands in C13;
+    // this keeps `initiative validate` honest until then.
+    if let Err(err) = Registry::load(&project_dir) {
+        results.push(PlanValidationResult {
+            level: PlanValidationLevel::Error,
+            code: "registry-shape",
+            message: err.to_string(),
+            entry: None,
+        });
+    }
     let has_errors = results.iter().any(|r| matches!(r.level, PlanValidationLevel::Error));
 
     match format {
@@ -2060,6 +2263,374 @@ fn print_plan_validation_line(r: &PlanValidationResult) {
     println!("{level} {:<32} {:<24} {}", r.code, entry_col, r.message);
 }
 
+/// `specify initiative registry show` — print the parsed registry in
+/// text or JSON. `Err` on malformed YAML (fail loud; the user asked to
+/// show something unparseable). `Ok(None)` is not an error.
+fn run_initiative_registry_show(format: OutputFormat) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let registry_path = Registry::path(&project_dir);
+    match Registry::load(&project_dir) {
+        Ok(None) => match format {
+            OutputFormat::Json => {
+                emit_json(json!({
+                    "registry": Value::Null,
+                    "path": registry_path.display().to_string(),
+                }));
+                EXIT_SUCCESS
+            }
+            OutputFormat::Text => {
+                println!("no registry declared at .specify/registry.yaml");
+                EXIT_SUCCESS
+            }
+        },
+        Ok(Some(registry)) => {
+            match format {
+                OutputFormat::Json => {
+                    emit_json(json!({
+                        "registry": registry,
+                        "path": registry_path.display().to_string(),
+                    }));
+                }
+                OutputFormat::Text => {
+                    print_registry_text(&registry, &registry_path);
+                }
+            }
+            EXIT_SUCCESS
+        }
+        Err(err) => emit_error(format, &err),
+    }
+}
+
+/// `specify initiative registry validate` — dedicated verb for the same
+/// shape check `initiative validate` runs via its C12 hook. Exits
+/// `EXIT_VALIDATION_FAILED` (2) on malformed input; 0 otherwise,
+/// including when `.specify/registry.yaml` is absent.
+fn run_initiative_registry_validate(format: OutputFormat) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let registry_path = Registry::path(&project_dir);
+    match Registry::load(&project_dir) {
+        Ok(None) => {
+            match format {
+                OutputFormat::Json => emit_json(json!({
+                    "registry": Value::Null,
+                    "path": registry_path.display().to_string(),
+                    "ok": true,
+                })),
+                OutputFormat::Text => {
+                    println!("no registry declared at .specify/registry.yaml");
+                }
+            }
+            EXIT_SUCCESS
+        }
+        Ok(Some(registry)) => {
+            let count = registry.projects.len();
+            match format {
+                OutputFormat::Json => emit_json(json!({
+                    "registry": registry,
+                    "path": registry_path.display().to_string(),
+                    "ok": true,
+                })),
+                OutputFormat::Text => {
+                    println!("registry.yaml is well-formed ({count} project(s))");
+                }
+            }
+            EXIT_SUCCESS
+        }
+        Err(err) => {
+            match format {
+                OutputFormat::Json => emit_json(json!({
+                    "path": registry_path.display().to_string(),
+                    "ok": false,
+                    "error": err.to_string(),
+                    "kind": "config",
+                    "exit-code": EXIT_VALIDATION_FAILED,
+                })),
+                OutputFormat::Text => eprintln!("error: {err}"),
+            }
+            EXIT_VALIDATION_FAILED
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// initiative workspace {sync, status} — RFC-3a C29
+// ---------------------------------------------------------------------------
+
+fn run_initiative_workspace_sync(format: OutputFormat) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    match Registry::load(&project_dir) {
+        Ok(None) => {
+            match format {
+                OutputFormat::Json => emit_json(json!({
+                    "registry": Value::Null,
+                    "synced": false,
+                    "message": "no registry declared at .specify/registry.yaml; nothing to sync",
+                })),
+                OutputFormat::Text => {
+                    println!("no registry declared at .specify/registry.yaml; nothing to sync");
+                }
+            }
+            EXIT_SUCCESS
+        }
+        Ok(Some(registry)) => {
+            if let Err(err) = sync_registry_workspace(&project_dir) {
+                return emit_error(format, &err);
+            }
+            match format {
+                OutputFormat::Json => emit_json(json!({
+                    "registry": registry,
+                    "synced": true,
+                })),
+                OutputFormat::Text => println!("workspace sync complete"),
+            }
+            EXIT_SUCCESS
+        }
+        Err(err) => emit_error(format, &err),
+    }
+}
+
+fn run_initiative_workspace_status(format: OutputFormat) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    match workspace_status(&project_dir) {
+        Ok(None) => {
+            match format {
+                OutputFormat::Json => emit_json(json!({
+                    "registry": Value::Null,
+                    "slots": Value::Null,
+                })),
+                OutputFormat::Text => {
+                    println!("no registry declared at .specify/registry.yaml");
+                }
+            }
+            EXIT_SUCCESS
+        }
+        Ok(Some(slots)) => {
+            match format {
+                OutputFormat::Json => {
+                    let items: Vec<Value> = slots.iter().map(workspace_slot_to_json).collect();
+                    emit_json(json!({ "slots": items }));
+                }
+                OutputFormat::Text => {
+                    for slot in &slots {
+                        print_workspace_slot_line(slot);
+                    }
+                }
+            }
+            EXIT_SUCCESS
+        }
+        Err(err) => emit_error(format, &err),
+    }
+}
+
+fn workspace_slot_kind_label(kind: WorkspaceSlotKind) -> &'static str {
+    match kind {
+        WorkspaceSlotKind::Missing => "missing",
+        WorkspaceSlotKind::Symlink => "symlink",
+        WorkspaceSlotKind::GitClone => "git-clone",
+        WorkspaceSlotKind::Other => "other",
+    }
+}
+
+fn workspace_slot_to_json(slot: &WorkspaceSlotStatus) -> Value {
+    json!({
+        "name": slot.name,
+        "kind": workspace_slot_kind_label(slot.kind),
+        "head-sha": slot.head_sha,
+        "dirty": slot.dirty,
+    })
+}
+
+fn print_workspace_slot_line(slot: &WorkspaceSlotStatus) {
+    let kind = workspace_slot_kind_label(slot.kind);
+    let head = slot.head_sha.as_deref().unwrap_or("-");
+    let dirty = match slot.dirty {
+        None => "-",
+        Some(true) => "yes",
+        Some(false) => "no",
+    };
+    println!("{}: kind={kind} head={head} dirty={dirty}", slot.name);
+}
+
+// ---------------------------------------------------------------------------
+// initiative brief {init, show} — RFC-3a §"The Initiative Brief"
+// ---------------------------------------------------------------------------
+
+/// `specify initiative brief init <name>` — scaffold
+/// `.specify/initiative.md` from the canonical template. Refuses to
+/// overwrite an existing file; rejects non-kebab-case names before
+/// touching disk.
+fn run_initiative_brief_init(format: OutputFormat, name: String) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    if !is_kebab_case_name(&name) {
+        let err = Error::Config(format!(
+            "initiative.md: name `{name}` must be kebab-case \
+             (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
+        ));
+        return emit_error(format, &err);
+    }
+
+    let brief_path = InitiativeBrief::path(&project_dir);
+    if brief_path.exists() {
+        match format {
+            OutputFormat::Json => {
+                emit_json(json!({
+                    "action": "init",
+                    "ok": false,
+                    "error": "already-exists",
+                    "path": brief_path.display().to_string(),
+                    "exit-code": EXIT_GENERIC_FAILURE,
+                }));
+            }
+            OutputFormat::Text => {
+                eprintln!(
+                    "initiative.md already exists at {}; refusing to overwrite",
+                    brief_path.display()
+                );
+            }
+        }
+        return EXIT_GENERIC_FAILURE;
+    }
+
+    if let Some(parent) = brief_path.parent()
+        && let Err(err) = std::fs::create_dir_all(parent)
+    {
+        return emit_error(format, &Error::Io(err));
+    }
+    let rendered = InitiativeBrief::template(&name);
+    if let Err(err) = std::fs::write(&brief_path, &rendered) {
+        return emit_error(format, &Error::Io(err));
+    }
+
+    match format {
+        OutputFormat::Json => emit_json(json!({
+            "action": "init",
+            "ok": true,
+            "name": name,
+            "path": absolute_string(&brief_path),
+        })),
+        OutputFormat::Text => {
+            println!("Created .specify/initiative.md for {name}");
+        }
+    }
+    EXIT_SUCCESS
+}
+
+/// `specify initiative brief show` — print the parsed brief in text or
+/// JSON. Absent file exits 0 with a "no initiative brief declared"
+/// message; malformed files fail loud — the operator asked to show
+/// something unparseable.
+fn run_initiative_brief_show(format: OutputFormat) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let brief_path = InitiativeBrief::path(&project_dir);
+    match InitiativeBrief::load(&project_dir) {
+        Ok(None) => {
+            match format {
+                OutputFormat::Json => emit_json(json!({
+                    "brief": Value::Null,
+                    "path": brief_path.display().to_string(),
+                })),
+                OutputFormat::Text => {
+                    println!("no initiative brief declared at .specify/initiative.md");
+                }
+            }
+            EXIT_SUCCESS
+        }
+        Ok(Some(brief)) => {
+            match format {
+                OutputFormat::Json => emit_json(json!({
+                    "brief": {
+                        "frontmatter": brief.frontmatter,
+                        "body": brief.body,
+                    },
+                    "path": brief_path.display().to_string(),
+                })),
+                OutputFormat::Text => print_initiative_brief_text(&brief, &brief_path),
+            }
+            EXIT_SUCCESS
+        }
+        Err(err) => emit_error(format, &err),
+    }
+}
+
+/// Plain text dump for `specify initiative brief show`. Not
+/// golden-tested — structured consumers use `--format json`.
+fn print_initiative_brief_text(brief: &InitiativeBrief, brief_path: &Path) {
+    println!("initiative.md: {}", brief_path.display());
+    println!("name: {}", brief.frontmatter.name);
+    if brief.frontmatter.inputs.is_empty() {
+        println!("inputs: (none)");
+    } else {
+        println!("inputs:");
+        for input in &brief.frontmatter.inputs {
+            let kind = match input.kind {
+                specify::InputKind::LegacyCode => "legacy-code",
+                specify::InputKind::Documentation => "documentation",
+            };
+            println!("  - path: {}", input.path);
+            println!("    kind: {kind}");
+        }
+    }
+    println!();
+    print!("{}", brief.body);
+}
+
+/// Local kebab-case predicate for the `initiative brief init` guard.
+/// Mirrors `specify_change::actions::validate_name` and the private
+/// helpers in `registry.rs`/`initiative_brief.rs` — duplicated here
+/// because the `main` binary is downstream of those crates and a
+/// dedicated exported helper would widen their public surface just
+/// for this one call site.
+fn is_kebab_case_name(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    if s.starts_with('-') || s.ends_with('-') {
+        return false;
+    }
+    if s.contains("--") {
+        return false;
+    }
+    s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// Plain, two-space-indented registry summary for `--format text`. Not
+/// golden-tested — structured consumers use `--format json`.
+fn print_registry_text(registry: &Registry, registry_path: &Path) {
+    println!("registry.yaml: {}", registry_path.display());
+    println!("version: {}", registry.version);
+    if registry.projects.is_empty() {
+        println!("projects: (none)");
+        return;
+    }
+    println!("projects:");
+    for project in &registry.projects {
+        println!("  - name: {}", project.name);
+        println!("    url: {}", project.url);
+        println!("    schema: {}", project.schema);
+    }
+}
+
 /// Emit the stable "go run `specify initiative validate`" pointer when
 /// `initiative next` or `initiative status` is asked to operate on a
 /// structurally broken plan.
@@ -2091,7 +2662,12 @@ fn run_initiative_next(format: OutputFormat) -> i32 {
     };
     let changes_dir = ProjectConfig::changes_dir(&project_dir);
 
-    let results = plan.validate(Some(&changes_dir));
+    // `initiative next` deliberately skips the filesystem-aware
+    // `scope-path-missing` sweep (project_dir = None): a scope path
+    // may be transiently absent during a rename or partial checkout
+    // and should not block driver progression. `initiative validate`
+    // is the place to surface those.
+    let results = plan.validate(Some(&changes_dir), None);
     if results.iter().any(|r| matches!(r.level, PlanValidationLevel::Error)) {
         return emit_plan_structural_error(format);
     }
@@ -2161,7 +2737,12 @@ fn run_initiative_status(format: OutputFormat) -> i32 {
     };
     let changes_dir = ProjectConfig::changes_dir(&project_dir);
 
-    let results = plan.validate(Some(&changes_dir));
+    // `initiative status` stays permissive by design — see the
+    // `dependency-cycle` fallback below. Running the
+    // `scope-path-missing` sweep here would add a second class of
+    // error that has to be tolerated; defer filesystem-aware
+    // diagnostics to `initiative validate`.
+    let results = plan.validate(Some(&changes_dir), None);
     // Cycle is recoverable (we fall back to list order); any *other*
     // structural error (duplicate-name / unknown-depends-on / unknown-
     // affects / unknown-source / multiple-in-progress) is fatal.
@@ -2427,13 +3008,24 @@ fn plan_change_entry_json(entry: &PlanChange) -> Value {
     serde_json::to_value(entry).expect("PlanChange serialises as JSON")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_initiative_create(
     format: OutputFormat, name: String, depends_on: Vec<String>, affects: Vec<String>,
-    sources: Vec<String>, description: Option<String>,
+    sources: Vec<String>, scope_include: Vec<(String, String)>,
+    scope_exclude: Vec<(String, String)>, scope_manifest: Vec<(String, String)>,
+    description: Option<String>,
 ) -> i32 {
     let (_project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
         Ok(v) => v,
         Err(code) => return code,
+    };
+
+    // Fold per-source scope flags into one `Scope` per key. Surfaces
+    // the `invalid-plan-scope` kind when a key mixes `--scope-manifest`
+    // with `--scope-include`/`--scope-exclude` (via `Scope::try_new`).
+    let scope = match collect_scope_flags(scope_include, scope_exclude, scope_manifest) {
+        Ok(m) => m,
+        Err(err) => return emit_error(format, &err),
     };
 
     let entry = PlanChange {
@@ -2442,6 +3034,7 @@ fn run_initiative_create(
         depends_on,
         affects,
         sources,
+        scope,
         description,
         status_reason: None,
     };
@@ -2470,9 +3063,12 @@ fn run_initiative_create(
     EXIT_SUCCESS
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_initiative_amend(
     format: OutputFormat, name: String, depends_on: Option<Vec<String>>,
-    affects: Option<Vec<String>>, sources: Option<Vec<String>>, description: Option<String>,
+    affects: Option<Vec<String>>, sources: Option<Vec<String>>,
+    scope_include: Vec<(String, String)>, scope_exclude: Vec<(String, String)>,
+    scope_manifest: Vec<(String, String)>, scope_rm: Vec<String>, description: Option<String>,
 ) -> i32 {
     let (_project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
         Ok(v) => v,
@@ -2485,11 +3081,36 @@ fn run_initiative_amend(
     let description_patch: Option<Option<String>> =
         description.map(|s| if s.is_empty() { None } else { Some(s) });
 
+    // Per-key wholesale replacements (`--scope-include/-exclude/-manifest`)
+    // collide with per-key removals (`--scope-rm`) on the same
+    // invocation — rejecting upfront keeps patch semantics
+    // unambiguous.
+    let scope_set = match collect_scope_flags(scope_include, scope_exclude, scope_manifest) {
+        Ok(m) => m,
+        Err(err) => return emit_error(format, &err),
+    };
+    let mut scope_patch: BTreeMap<String, Option<Scope>> = BTreeMap::new();
+    for key in &scope_rm {
+        if scope_set.contains_key(key) {
+            let err = Error::InvalidPlanScope(format!(
+                "scope key `{key}` cannot appear in both --scope-rm and \
+                 --scope-include/--scope-exclude/--scope-manifest on the \
+                 same amend invocation"
+            ));
+            return emit_error(format, &err);
+        }
+        scope_patch.insert(key.clone(), None);
+    }
+    for (k, v) in scope_set {
+        scope_patch.insert(k, Some(v));
+    }
+
     let patch = PlanChangePatch {
         depends_on,
         affects,
         sources,
         description: description_patch,
+        scope: scope_patch,
     };
 
     if let Err(err) = plan.amend(&name, patch) {
@@ -2830,6 +3451,8 @@ fn emit_json_error(err: &Error, code: i32) {
         Error::SpecifyVersionTooOld { .. } => "specify-version-too-old",
         Error::PlanTransition { .. } => "plan-transition",
         Error::PlanHasOutstandingWork { .. } => "plan-has-outstanding-work",
+        Error::InvalidPlanScope(_) => "invalid-plan-scope",
+        Error::InvalidPlanScopeKey { .. } => "scope-key-not-in-sources",
         Error::DriverBusy { .. } => "driver-busy",
         Error::Io(_) => "io",
         Error::Yaml(_) => "yaml",

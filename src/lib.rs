@@ -5,13 +5,13 @@
 //! `crates/` for the underlying logic.
 
 pub use config::ProjectConfig;
-pub use init::{InitOptions, InitResult, VersionMode, init};
+pub use init::{InitOptions, InitResult, VersionMode, ensure_specify_gitignore_entries, init};
 pub use specify_change::{
     ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry,
     LifecycleStatus, Outcome, Overlap, PhaseOutcome, Plan, PlanChange, PlanChangePatch,
     PlanLockAcquired, PlanLockReleased, PlanLockStamp, PlanLockState, PlanStatus,
-    PlanValidationLevel, PlanValidationResult, SpecType, TouchedSpec, actions as change_actions,
-    format_rfc3339,
+    PlanValidationLevel, PlanValidationResult, Scope, SpecType, TouchedSpec,
+    actions as change_actions, format_rfc3339,
 };
 pub use specify_drift::{DriftEntry, DriftStatus, baseline_inventory};
 pub use specify_error::{Error, ValidationResultSummary};
@@ -21,7 +21,8 @@ pub use specify_merge::{
     preview_change, validate_baseline,
 };
 pub use specify_schema::{
-    Brief, BriefFrontmatter, CacheMeta, Phase, Pipeline, PipelineEntry, PipelineView,
+    Brief, BriefFrontmatter, CacheMeta, InitiativeBrief, InitiativeFrontmatter, InitiativeInput,
+    InputKind, Phase, Pipeline, PipelineEntry, PipelineView, Registry, RegistryProject,
     ResolvedSchema, Schema, SchemaSource,
 };
 pub use specify_spec::{
@@ -36,3 +37,8 @@ pub use specify_validate::{
 
 mod config;
 mod init;
+mod workspace;
+
+pub use workspace::{
+    WorkspaceSlotKind, WorkspaceSlotStatus, sync_registry_workspace, workspace_status,
+};

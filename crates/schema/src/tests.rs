@@ -15,7 +15,9 @@ use tempfile::TempDir;
 use crate::ValidationResult;
 use crate::brief::Brief;
 use crate::cache::CacheMeta;
+use crate::initiative_brief::{InitiativeBrief, InputKind};
 use crate::pipeline::PipelineView;
+use crate::registry::{Registry, RegistryProject};
 use crate::schema::{Phase, Schema, SchemaSource};
 
 /// Absolute path to the repo root (the Cargo workspace root).
@@ -677,5 +679,751 @@ fn cache_meta_validate_structure_fails_on_empty_fields() {
     assert!(
         results.iter().any(|r| matches!(r, ValidationResult::Fail { .. })),
         "empty strings should fail minLength: {results:?}"
+    );
+}
+
+// ---------- Registry (RFC-3a §"The Registry") ----------
+
+/// Scaffold `.specify/registry.yaml` with `contents` and return the
+/// containing project directory.
+fn scaffold_registry(contents: &str) -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    let specify_dir = tmp.path().join(".specify");
+    std::fs::create_dir_all(&specify_dir).unwrap();
+    std::fs::write(Registry::path(tmp.path()), contents).unwrap();
+    tmp
+}
+
+const CANONICAL_REGISTRY_YAML: &str = "\
+version: 1
+projects:
+  - name: traffic
+    url: .
+    schema: omnia@v1
+";
+
+const MULTI_PROJECT_REGISTRY_YAML: &str = "\
+version: 1
+projects:
+  - name: traffic
+    url: .
+    schema: omnia@v1
+  - name: ingest
+    url: git@github.com:augentic/ingest.git
+    schema: omnia@v1
+  - name: ops-runbook
+    url: https://github.com/augentic/ops-runbook
+    schema: omnia@v1
+";
+
+#[test]
+fn registry_absent_returns_none() {
+    let tmp = TempDir::new().unwrap();
+    let loaded = Registry::load(tmp.path()).expect("absent registry is not an error");
+    assert!(loaded.is_none());
+}
+
+#[test]
+fn registry_parses_canonical_rfc_example() {
+    let tmp = scaffold_registry(CANONICAL_REGISTRY_YAML);
+    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
+    assert_eq!(registry.version, 1);
+    assert_eq!(registry.projects.len(), 1);
+    assert_eq!(registry.projects[0].name, "traffic");
+    assert_eq!(registry.projects[0].url, ".");
+    assert_eq!(registry.projects[0].schema, "omnia@v1");
+}
+
+#[test]
+fn registry_parses_multi_project() {
+    let tmp = scaffold_registry(MULTI_PROJECT_REGISTRY_YAML);
+    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
+    let round_tripped_yaml = serde_yaml::to_string(&registry).unwrap();
+    let re_parsed: Registry = serde_yaml::from_str(&round_tripped_yaml).unwrap();
+    assert_eq!(registry, re_parsed);
+}
+
+#[test]
+fn registry_rejects_unknown_top_level_key() {
+    let yaml = "\
+version: 1
+foo: bar
+projects: []
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("unknown top-level key");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("foo"), "msg: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_unknown_project_key() {
+    let yaml = "\
+version: 1
+projects:
+  - name: traffic
+    url: .
+    schema: omnia@v1
+    foo: bar
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("unknown project key");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("foo"), "msg: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_version_not_one() {
+    let yaml = "\
+version: 2
+projects: []
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("version != 1");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("version"), "msg should mention version: {msg}");
+            assert!(msg.contains('2'), "msg should mention the offending value: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_missing_version() {
+    let yaml = "projects: []\n";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("missing version");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("version"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_missing_name() {
+    let yaml = "\
+version: 1
+projects:
+  - url: .
+    schema: omnia@v1
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("missing name");
+    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+}
+
+#[test]
+fn registry_rejects_missing_url() {
+    let yaml = "\
+version: 1
+projects:
+  - name: traffic
+    schema: omnia@v1
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("missing url");
+    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+}
+
+#[test]
+fn registry_rejects_missing_schema() {
+    let yaml = "\
+version: 1
+projects:
+  - name: traffic
+    url: .
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("missing schema");
+    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+}
+
+#[test]
+fn registry_rejects_non_kebab_case_name() {
+    for bad in ["TrafficSystem", "traffic_system", "traffic--system", "-traffic", "traffic-"] {
+        let yaml =
+            format!("version: 1\nprojects:\n  - name: {bad}\n    url: .\n    schema: omnia@v1\n");
+        let tmp = scaffold_registry(&yaml);
+        let err = Registry::load(tmp.path()).expect_err(&format!("bad name `{bad}`"));
+        match err {
+            Error::Config(msg) => {
+                assert!(msg.contains("kebab-case"), "msg for `{bad}`: {msg}");
+                assert!(msg.contains(bad), "msg for `{bad}`: {msg}");
+            }
+            other => panic!("wrong variant for `{bad}`: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn registry_rejects_empty_string_name() {
+    let yaml = "\
+version: 1
+projects:
+  - name: \"\"
+    url: .
+    schema: omnia@v1
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("empty name");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("empty") || msg.contains("kebab-case"), "msg: {msg}")
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_empty_string_url() {
+    let yaml = "\
+version: 1
+projects:
+  - name: traffic
+    url: \"\"
+    schema: omnia@v1
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("empty url");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("url"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_empty_string_schema() {
+    let yaml = "\
+version: 1
+projects:
+  - name: traffic
+    url: .
+    schema: \"\"
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("empty schema");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("schema"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_duplicate_project_names() {
+    let yaml = "\
+version: 1
+projects:
+  - name: traffic
+    url: .
+    schema: omnia@v1
+  - name: traffic
+    url: ../other
+    schema: omnia@v1
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("duplicate name");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("duplicate"), "msg: {msg}");
+            assert!(msg.contains("traffic"), "msg: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_accepts_empty_projects_list() {
+    let yaml = "version: 1\nprojects: []\n";
+    let tmp = scaffold_registry(yaml);
+    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
+    assert!(registry.projects.is_empty());
+    assert!(registry.is_single_repo());
+}
+
+#[test]
+fn registry_accepts_single_project_and_is_single_repo() {
+    let tmp = scaffold_registry(CANONICAL_REGISTRY_YAML);
+    let registry = Registry::load(tmp.path()).unwrap().unwrap();
+    assert_eq!(registry.projects.len(), 1);
+    assert!(registry.is_single_repo());
+}
+
+#[test]
+fn registry_accepts_multi_project_and_is_single_repo_false() {
+    let tmp = scaffold_registry(MULTI_PROJECT_REGISTRY_YAML);
+    let registry = Registry::load(tmp.path()).unwrap().unwrap();
+    assert_eq!(registry.projects.len(), 3);
+    assert!(!registry.is_single_repo());
+}
+
+#[test]
+fn registry_round_trip_serialize() {
+    let original = Registry {
+        version: 1,
+        projects: vec![
+            RegistryProject {
+                name: "traffic".into(),
+                url: ".".into(),
+                schema: "omnia@v1".into(),
+            },
+            RegistryProject {
+                name: "ingest".into(),
+                url: "git@github.com:augentic/ingest.git".into(),
+                schema: "omnia@v1".into(),
+            },
+        ],
+    };
+    let yaml = serde_yaml::to_string(&original).expect("serialize");
+    let round_tripped: Registry = serde_yaml::from_str(&yaml).expect("re-parse");
+    assert_eq!(round_tripped, original);
+    round_tripped.validate_shape().expect("valid shape");
+}
+
+#[test]
+fn registry_project_order_preserved() {
+    let tmp = scaffold_registry(MULTI_PROJECT_REGISTRY_YAML);
+    let registry = Registry::load(tmp.path()).unwrap().unwrap();
+    let names: Vec<&str> = registry.projects.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, vec!["traffic", "ingest", "ops-runbook"]);
+}
+
+#[test]
+fn registry_path_helper_points_at_specify_dir() {
+    let dir = Path::new("/tmp/some/project");
+    assert_eq!(Registry::path(dir), PathBuf::from("/tmp/some/project/.specify/registry.yaml"));
+}
+
+// ---------- Registry URL validation (RFC-3a C28) ----------
+
+fn registry_with_one_url(url: &str) -> Registry {
+    Registry {
+        version: 1,
+        projects: vec![RegistryProject {
+            name: "traffic".into(),
+            url: url.into(),
+            schema: "omnia@v1".into(),
+        }],
+    }
+}
+
+#[test]
+fn registry_project_url_materialises_as_symlink_classification() {
+    for (url, symlink) in [
+        (".", true),
+        ("../peer", true),
+        ("./foo", true),
+        ("pkg/sub", true),
+        ("git@github.com:augentic/ingest.git", false),
+        ("https://github.com/augentic/ops-runbook", false),
+        ("http://example.com/repo.git", false),
+        ("ssh://git@github.com/augentic/specify.git", false),
+        ("git+https://example.com/org/repo.git", false),
+        ("git+http://example.com/org/repo.git", false),
+        ("git+ssh://git@github.com/org/repo.git", false),
+    ] {
+        let p = RegistryProject {
+            name: "traffic".into(),
+            url: url.into(),
+            schema: "omnia@v1".into(),
+        };
+        assert_eq!(p.url_materialises_as_symlink(), symlink, "url={url:?}");
+    }
+}
+
+#[test]
+fn registry_accepts_url_shapes_for_c28() {
+    for url in [
+        "https://github.com/a/b",
+        "http://github.com/a/b",
+        "git@github.com:org/repo.git",
+        "ssh://git@github.com/org/repo.git",
+        "git+https://github.com/org/repo.git",
+        "../peer-repo",
+        "./inputs/legacy",
+        "inputs/runbook",
+    ] {
+        registry_with_one_url(url).validate_shape().unwrap_or_else(|e| {
+            panic!("expected url {url:?} to validate, got: {e}");
+        });
+    }
+}
+
+#[test]
+fn registry_rejects_unsupported_url_scheme() {
+    let err = registry_with_one_url("ftp://example.com/repo")
+        .validate_shape()
+        .expect_err("ftp must be rejected");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("ftp"), "msg: {msg}");
+            assert!(msg.contains("scheme"), "msg: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_file_url_scheme() {
+    let err = registry_with_one_url("file:///tmp/repo")
+        .validate_shape()
+        .expect_err("file:// must be rejected");
+    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+}
+
+#[test]
+fn registry_rejects_colon_without_scheme_or_git_at() {
+    let err = registry_with_one_url("weird:path")
+        .validate_shape()
+        .expect_err("colon form must be rejected");
+    match err {
+        Error::Config(msg) => assert!(msg.contains(':'), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_absolute_unix_path_as_url() {
+    let err = registry_with_one_url("/absolute/path")
+        .validate_shape()
+        .expect_err("absolute path must be rejected");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("relative"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_whitespace_only_url() {
+    let err =
+        registry_with_one_url("   ").validate_shape().expect_err("whitespace url must be rejected");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("whitespace"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_url_with_leading_whitespace() {
+    let err = registry_with_one_url(" https://example.com/a")
+        .validate_shape()
+        .expect_err("leading space must be rejected");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("whitespace"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+// ---------- Initiative brief (RFC-3a §"The Initiative Brief") ----------
+
+/// Scaffold `.specify/initiative.md` with `contents` and return the
+/// containing project directory.
+fn scaffold_initiative_brief(contents: &str) -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    let specify_dir = tmp.path().join(".specify");
+    std::fs::create_dir_all(&specify_dir).unwrap();
+    std::fs::write(InitiativeBrief::path(tmp.path()), contents).unwrap();
+    tmp
+}
+
+/// Byte-for-byte golden for [`InitiativeBrief::template`] applied to
+/// the RFC's `traffic-modernisation` example. The CLI test in
+/// `tests/initiative.rs` pins the exact same bytes against
+/// `specify initiative brief init traffic-modernisation`.
+const TRAFFIC_TEMPLATE_GOLDEN: &str = "\
+---
+name: traffic-modernisation
+inputs: []
+---
+
+# Traffic modernisation
+
+<!-- One-paragraph framing of what this initiative is trying to
+     achieve. Plans reference this brief via `.specify/initiative.md`. -->
+";
+
+/// The RFC's canonical example, with frontmatter inputs + prose body.
+const CANONICAL_INITIATIVE_MD: &str = "\
+---
+name: traffic-modernisation
+inputs:
+  - path: ./inputs/legacy-traffic/
+    kind: legacy-code
+  - path: ./inputs/ops-runbook.pdf
+    kind: documentation
+---
+
+# Traffic modernisation
+
+Move the legacy traffic system onto Omnia, preserving…
+";
+
+#[test]
+fn initiative_brief_absent_returns_none() {
+    let tmp = TempDir::new().unwrap();
+    let loaded = InitiativeBrief::load(tmp.path()).expect("absent is not an error");
+    assert!(loaded.is_none());
+}
+
+#[test]
+fn initiative_brief_parses_canonical_rfc_example() {
+    let tmp = scaffold_initiative_brief(CANONICAL_INITIATIVE_MD);
+    let brief = InitiativeBrief::load(tmp.path()).expect("parses").expect("present");
+
+    assert_eq!(brief.frontmatter.name, "traffic-modernisation");
+    assert_eq!(brief.frontmatter.inputs.len(), 2);
+    assert_eq!(brief.frontmatter.inputs[0].path, "./inputs/legacy-traffic/");
+    assert_eq!(brief.frontmatter.inputs[0].kind, InputKind::LegacyCode);
+    assert_eq!(brief.frontmatter.inputs[1].path, "./inputs/ops-runbook.pdf");
+    assert_eq!(brief.frontmatter.inputs[1].kind, InputKind::Documentation);
+
+    assert_eq!(
+        brief.body,
+        "\n# Traffic modernisation\n\nMove the legacy traffic system onto Omnia, preserving…\n"
+    );
+}
+
+#[test]
+fn initiative_brief_parses_no_inputs() {
+    let yaml = "---\nname: solo\n---\n\n# Solo\n\nA brief without an inputs key.\n";
+    let tmp = scaffold_initiative_brief(yaml);
+    let brief = InitiativeBrief::load(tmp.path()).unwrap().unwrap();
+    assert_eq!(brief.frontmatter.name, "solo");
+    assert!(brief.frontmatter.inputs.is_empty());
+    assert_eq!(brief.body, "\n# Solo\n\nA brief without an inputs key.\n");
+}
+
+#[test]
+fn initiative_brief_parses_empty_inputs() {
+    let yaml = "---\nname: solo\ninputs: []\n---\n\nbody\n";
+    let tmp = scaffold_initiative_brief(yaml);
+    let brief = InitiativeBrief::load(tmp.path()).unwrap().unwrap();
+    assert!(brief.frontmatter.inputs.is_empty());
+}
+
+#[test]
+fn initiative_brief_rejects_missing_frontmatter() {
+    let tmp = scaffold_initiative_brief("# Just markdown, no frontmatter\n");
+    let err = InitiativeBrief::load(tmp.path()).expect_err("missing frontmatter");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("initiative.md"), "msg: {msg}");
+            assert!(msg.contains("frontmatter"), "msg: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn initiative_brief_rejects_unclosed_frontmatter() {
+    let tmp = scaffold_initiative_brief("---\nname: solo\n# body has no closing ---\n");
+    let err = InitiativeBrief::load(tmp.path()).expect_err("no closing delimiter");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("closing"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn initiative_brief_rejects_missing_name() {
+    let tmp = scaffold_initiative_brief("---\ninputs: []\n---\n\nbody\n");
+    let err = InitiativeBrief::load(tmp.path()).expect_err("missing name");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("name"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn initiative_brief_rejects_non_kebab_name() {
+    for bad in ["TrafficModern", "traffic_modern", "traffic--modern", "-bad", "bad-"] {
+        let yaml = format!("---\nname: {bad}\n---\n\nbody\n");
+        let tmp = scaffold_initiative_brief(&yaml);
+        let err = InitiativeBrief::load(tmp.path()).expect_err(&format!("bad name `{bad}`"));
+        match err {
+            Error::Config(msg) => {
+                assert!(msg.contains("kebab-case"), "msg for `{bad}`: {msg}");
+                assert!(msg.contains(bad), "msg for `{bad}`: {msg}");
+            }
+            other => panic!("wrong variant for `{bad}`: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn initiative_brief_rejects_unknown_top_level_frontmatter_key() {
+    let yaml = "---\nname: solo\nfoo: bar\n---\n\nbody\n";
+    let tmp = scaffold_initiative_brief(yaml);
+    let err = InitiativeBrief::load(tmp.path()).expect_err("unknown top-level key");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("foo"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn initiative_brief_rejects_unknown_input_key() {
+    let yaml = "\
+---
+name: solo
+inputs:
+  - path: ./x
+    kind: legacy-code
+    extra: nope
+---
+
+body
+";
+    let tmp = scaffold_initiative_brief(yaml);
+    let err = InitiativeBrief::load(tmp.path()).expect_err("unknown input key");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("extra"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn initiative_brief_rejects_unknown_kind() {
+    let yaml = "\
+---
+name: solo
+inputs:
+  - path: ./x
+    kind: whatever
+---
+
+body
+";
+    let tmp = scaffold_initiative_brief(yaml);
+    let err = InitiativeBrief::load(tmp.path()).expect_err("unknown kind");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("whatever"), "msg should mention bad value: {msg}");
+            assert!(
+                msg.contains("legacy-code")
+                    || msg.contains("documentation")
+                    || msg.contains("variant"),
+                "msg should hint at closed enum: {msg}"
+            );
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn initiative_brief_rejects_missing_path() {
+    let yaml = "\
+---
+name: solo
+inputs:
+  - kind: legacy-code
+---
+
+body
+";
+    let tmp = scaffold_initiative_brief(yaml);
+    let err = InitiativeBrief::load(tmp.path()).expect_err("missing path");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("path"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn initiative_brief_rejects_missing_kind() {
+    let yaml = "\
+---
+name: solo
+inputs:
+  - path: ./x
+---
+
+body
+";
+    let tmp = scaffold_initiative_brief(yaml);
+    let err = InitiativeBrief::load(tmp.path()).expect_err("missing kind");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("kind"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn initiative_brief_rejects_empty_path_string() {
+    let yaml = "\
+---
+name: solo
+inputs:
+  - path: \"\"
+    kind: legacy-code
+---
+
+body
+";
+    let tmp = scaffold_initiative_brief(yaml);
+    let err = InitiativeBrief::load(tmp.path()).expect_err("empty path");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("path"), "msg: {msg}");
+            assert!(msg.contains("empty"), "msg: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn initiative_brief_template_matches_golden() {
+    let rendered = InitiativeBrief::template("traffic-modernisation");
+    assert_eq!(rendered, TRAFFIC_TEMPLATE_GOLDEN);
+}
+
+#[test]
+fn initiative_brief_template_title_cases_multi_word_name() {
+    let rendered = InitiativeBrief::template("auth-token-refresh");
+    assert!(
+        rendered.contains("# Auth token refresh\n"),
+        "expected title-cased heading, got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("name: auth-token-refresh\n"),
+        "frontmatter name must be the raw kebab form, got:\n{rendered}"
+    );
+}
+
+#[test]
+fn initiative_brief_rendered_template_round_trips() {
+    let rendered = InitiativeBrief::template("my-initiative");
+    let parsed = InitiativeBrief::parse_str(&rendered).expect("template parses");
+    assert_eq!(parsed.frontmatter.name, "my-initiative");
+    assert!(parsed.frontmatter.inputs.is_empty());
+    assert!(parsed.body.contains("# My initiative"));
+}
+
+#[test]
+fn initiative_brief_roundtrip_preserves_body() {
+    // The closing `---\n` line itself is consumed by the delimiter
+    // split; the body is *everything after* that line. Subsequent
+    // `---` runs inside the body are preserved verbatim.
+    let body = "\n# Title\n\nArbitrary prose\nwith multiple lines.\n\n---\n\nEven an embedded --- is fine once past the closing delimiter.\n";
+    let raw = format!("---\nname: solo\n---\n{body}");
+    let tmp = scaffold_initiative_brief(&raw);
+    let brief = InitiativeBrief::load(tmp.path()).unwrap().unwrap();
+    assert_eq!(brief.body, body);
+}
+
+#[test]
+fn initiative_brief_path_helper_points_at_specify_dir() {
+    let dir = Path::new("/tmp/some/project");
+    assert_eq!(
+        InitiativeBrief::path(dir),
+        PathBuf::from("/tmp/some/project/.specify/initiative.md")
     );
 }
