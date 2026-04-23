@@ -422,7 +422,6 @@ changes:
         assert_golden("validate-duplicate-name.json", actual);
     }
 
-
     // -- next --------------------------------------------------------------
 
     #[test]
@@ -2339,5 +2338,4 @@ projects:
         let kinds: Vec<&str> = slots.iter().map(|s| s["kind"].as_str().expect("kind")).collect();
         assert!(kinds.contains(&"symlink"), "expected symlink slots, got {kinds:?}");
     }
-
 }

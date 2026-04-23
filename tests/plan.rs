@@ -39,7 +39,6 @@ changes:
     status: in-progress
 
   - name: registration-duplicate-email-crash
-    affects: [user-registration]
     description: >
       Duplicate email submission returns 500 instead of 409.
       Discovered during email-verification extraction.
@@ -52,7 +51,6 @@ changes:
     status: pending
 
   - name: extract-shared-validation
-    affects: [user-registration, email-verification]
     description: >
       Pull duplicated input validation into a shared validation crate
       before building checkout-flow.

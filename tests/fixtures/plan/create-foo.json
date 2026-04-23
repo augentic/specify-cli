@@ -1,7 +1,6 @@
 {
   "action": "create",
   "entry": {
-    "affects": [],
     "depends-on": [],
     "description": null,
     "name": "foo",

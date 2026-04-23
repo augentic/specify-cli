@@ -2818,7 +2818,6 @@ fn print_plan_status_text(view: &PlanStatusView) {
         Some(e) => println!("Next eligible: {}", e.name),
         None => println!("Next eligible: — (waiting on dependencies / all done)"),
     }
-
 }
 
 // ---------------------------------------------------------------------------
