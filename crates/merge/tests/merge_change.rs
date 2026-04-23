@@ -125,11 +125,7 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     let outcome = new_meta.outcome.expect("expected outcome to be stamped by merge_change");
     assert_eq!(outcome.phase, Phase::Merge);
     assert_eq!(outcome.outcome, Outcome::Success);
-    assert!(
-        outcome.summary.contains("2 spec(s)"),
-        "unexpected summary: {}",
-        outcome.summary
-    );
+    assert!(outcome.summary.contains("2 spec(s)"), "unexpected summary: {}", outcome.summary);
 }
 
 // ---------------------------------------------------------------------------

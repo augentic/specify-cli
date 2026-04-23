@@ -1846,24 +1846,28 @@ fn run_change_outcome(format: OutputFormat, name: String) -> i32 {
 /// candidate's `.metadata.yaml`, and return the most recent by
 /// `created-at`. Used by `run_change_outcome` as a fallback when the
 /// active change directory has been archived by `specify merge`.
-fn resolve_archived_metadata(project_dir: &Path, change_name: &str) -> Result<ChangeMetadata, Error> {
+fn resolve_archived_metadata(
+    project_dir: &Path, change_name: &str,
+) -> Result<ChangeMetadata, Error> {
     let archive_dir = ProjectConfig::archive_dir(project_dir);
     let suffix = format!("-{change_name}");
     let mut candidates: Vec<(String, ChangeMetadata)> = Vec::new();
 
     if archive_dir.is_dir()
-        && let Ok(entries) = std::fs::read_dir(&archive_dir) {
-            for entry in entries.flatten() {
-                let fname = entry.file_name().to_string_lossy().to_string();
-                if !fname.ends_with(&suffix) || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    continue;
-                }
-                if let Ok(meta) = ChangeMetadata::load(&entry.path()) {
-                    let created = meta.created_at.clone().unwrap_or_default();
-                    candidates.push((created, meta));
-                }
+        && let Ok(entries) = std::fs::read_dir(&archive_dir)
+    {
+        for entry in entries.flatten() {
+            let fname = entry.file_name().to_string_lossy().to_string();
+            if !fname.ends_with(&suffix) || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+            {
+                continue;
+            }
+            if let Ok(meta) = ChangeMetadata::load(&entry.path()) {
+                let created = meta.created_at.clone().unwrap_or_default();
+                candidates.push((created, meta));
             }
         }
+    }
 
     if candidates.is_empty() {
         return Err(Error::Config(format!(

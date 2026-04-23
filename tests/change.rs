@@ -897,10 +897,7 @@ fn change_outcome_falls_back_to_archive() {
     let outcome = &value["outcome"];
     assert_eq!(outcome["phase"].as_str(), Some("merge"));
     assert_eq!(outcome["outcome"].as_str(), Some("success"));
-    assert_eq!(
-        outcome["summary"].as_str(),
-        Some("Merged 2 spec(s) into baseline")
-    );
+    assert_eq!(outcome["summary"].as_str(), Some("Merged 2 spec(s) into baseline"));
 }
 
 #[test]
