@@ -35,7 +35,7 @@ use specify::{
     MergeOperation, MergeResult, Outcome, Overlap, Phase, PipelineView, Plan, PlanChange,
     PlanChangePatch, PlanLockAcquired, PlanLockReleased, PlanLockStamp, PlanLockState, PlanStatus,
     PlanValidationLevel, PlanValidationResult, ProjectConfig, Registry, Schema, SchemaSource,
-    Scope, SpecType, Task, TouchedSpec, ValidationReport, ValidationResult, VersionMode,
+    SpecType, Task, TouchedSpec, ValidationReport, ValidationResult, VersionMode,
     WorkspaceSlotKind, WorkspaceSlotStatus, change_actions, conflict_check, format_rfc3339, init,
     mark_complete, merge_change, parse_tasks, preview_change, serialize_report,
     sync_registry_workspace, validate_change, workspace_status,
@@ -223,24 +223,10 @@ enum InitiativeAction {
         /// leave it unchanged.
         #[arg(long = "depends-on", action = ArgAction::Append)]
         depends_on: Vec<String>,
-        /// Impact annotations (repeatable). Every value is a change name in the plan.
-        #[arg(long, action = ArgAction::Append)]
-        affects: Vec<String>,
         /// Named source keys (repeatable). Every value is a key in the top-level
         /// `sources` map.
         #[arg(long = "sources", action = ArgAction::Append)]
         sources: Vec<String>,
-        /// Per-source include glob, repeatable: `--scope-include <key>=<glob>`.
-        /// `<key>` must also appear in `--sources`.
-        #[arg(long = "scope-include", value_parser = parse_source_kv, action = ArgAction::Append)]
-        scope_include: Vec<(String, String)>,
-        /// Per-source exclude glob, repeatable: `--scope-exclude <key>=<glob>`.
-        #[arg(long = "scope-exclude", value_parser = parse_source_kv, action = ArgAction::Append)]
-        scope_exclude: Vec<(String, String)>,
-        /// Per-source manifest pointer: `--scope-manifest <key>=<path>`. Mutually
-        /// exclusive with `--scope-include`/`--scope-exclude` for the same key.
-        #[arg(long = "scope-manifest", value_parser = parse_source_kv, action = ArgAction::Append)]
-        scope_manifest: Vec<(String, String)>,
         /// Free-text scoping hint for the define step
         #[arg(long)]
         description: Option<String>,
@@ -254,33 +240,10 @@ enum InitiativeAction {
         /// to supply multiple values.
         #[arg(long = "depends-on", num_args = 0.., value_delimiter = ',')]
         depends_on: Option<Vec<String>>,
-        /// Replace affects. Pass `--affects` (with no value) to clear the field;
-        /// omit the flag to leave it unchanged.
-        #[arg(long, num_args = 0.., value_delimiter = ',')]
-        affects: Option<Vec<String>>,
         /// Replace sources. Pass `--sources` (with no value) to clear the field;
         /// omit the flag to leave it unchanged.
         #[arg(long = "sources", num_args = 0.., value_delimiter = ',')]
         sources: Option<Vec<String>>,
-        /// Per-source include glob, repeatable: `--scope-include <key>=<glob>`.
-        /// For each touched key, all `--scope-include`/`--scope-exclude`/
-        /// `--scope-manifest` values on this invocation fold into one
-        /// [`Scope`] that wholesale-replaces the key's existing entry.
-        #[arg(long = "scope-include", value_parser = parse_source_kv, action = ArgAction::Append)]
-        scope_include: Vec<(String, String)>,
-        /// Per-source exclude glob, repeatable: `--scope-exclude <key>=<glob>`.
-        #[arg(long = "scope-exclude", value_parser = parse_source_kv, action = ArgAction::Append)]
-        scope_exclude: Vec<(String, String)>,
-        /// Per-source manifest pointer: `--scope-manifest <key>=<path>`. Mutually
-        /// exclusive with `--scope-include`/`--scope-exclude` for the same key.
-        #[arg(long = "scope-manifest", value_parser = parse_source_kv, action = ArgAction::Append)]
-        scope_manifest: Vec<(String, String)>,
-        /// Remove the scope entry for `<key>` from this change. Repeatable. A
-        /// key appearing in both `--scope-rm` and `--scope-include`/
-        /// `--scope-exclude`/`--scope-manifest` on the same invocation is
-        /// a conflict and the command exits with `invalid-plan-scope`.
-        #[arg(long = "scope-rm", action = ArgAction::Append)]
-        scope_rm: Vec<String>,
         /// Replace description. Pass `--description ""` to clear; omit the flag
         /// to leave it unchanged.
         #[arg(long)]
@@ -1979,45 +1942,15 @@ fn run_initiative(format: OutputFormat, action: InitiativeAction) -> i32 {
         InitiativeAction::Create {
             name,
             depends_on,
-            affects,
             sources,
-            scope_include,
-            scope_exclude,
-            scope_manifest,
             description,
-        } => run_initiative_create(
-            format,
-            name,
-            depends_on,
-            affects,
-            sources,
-            scope_include,
-            scope_exclude,
-            scope_manifest,
-            description,
-        ),
+        } => run_initiative_create(format, name, depends_on, sources, description),
         InitiativeAction::Amend {
             name,
             depends_on,
-            affects,
             sources,
-            scope_include,
-            scope_exclude,
-            scope_manifest,
-            scope_rm,
             description,
-        } => run_initiative_amend(
-            format,
-            name,
-            depends_on,
-            affects,
-            sources,
-            scope_include,
-            scope_exclude,
-            scope_manifest,
-            scope_rm,
-            description,
-        ),
+        } => run_initiative_amend(format, name, depends_on, sources, description),
         InitiativeAction::Transition { name, target, reason } => {
             run_initiative_transition(format, name, target, reason)
         }
@@ -2087,53 +2020,6 @@ fn parse_source_kv(s: &str) -> Result<(String, String), String> {
         return Err(format!("--source key and value must be non-empty, got `{s}`"));
     }
     Ok((k.to_string(), v.to_string()))
-}
-
-/// Fold repeated `--scope-include`, `--scope-exclude`, and
-/// `--scope-manifest` flags into one [`Scope`] per source key.
-///
-/// The three input vectors are pre-parsed `(key, value)` pairs
-/// (clap's `value_parser = parse_source_kv`). Keys land in the
-/// returned map in BTree order; values within a key preserve the
-/// command-line order (natural for `--scope-include` glob lists).
-/// Manifest values cannot repeat for the same key — the second one
-/// is rejected with `Error::InvalidPlanScope`. [`Scope::try_new`]
-/// enforces the `manifest` ⊕ `(include|exclude)` invariant per
-/// key; violations bubble up through the same variant.
-fn collect_scope_flags(
-    includes: Vec<(String, String)>, excludes: Vec<(String, String)>,
-    manifests: Vec<(String, String)>,
-) -> Result<BTreeMap<String, Scope>, Error> {
-    let mut inc: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut exc: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut man: BTreeMap<String, String> = BTreeMap::new();
-    for (k, v) in includes {
-        inc.entry(k).or_default().push(v);
-    }
-    for (k, v) in excludes {
-        exc.entry(k).or_default().push(v);
-    }
-    for (k, v) in manifests {
-        if man.insert(k.clone(), v).is_some() {
-            return Err(Error::InvalidPlanScope(format!(
-                "scope key `{k}` cannot carry multiple --scope-manifest values"
-            )));
-        }
-    }
-
-    let mut keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    keys.extend(inc.keys().cloned());
-    keys.extend(exc.keys().cloned());
-    keys.extend(man.keys().cloned());
-
-    let mut out: BTreeMap<String, Scope> = BTreeMap::new();
-    for k in keys {
-        let include = inc.remove(&k).unwrap_or_default();
-        let exclude = exc.remove(&k).unwrap_or_default();
-        let manifest = man.remove(&k);
-        out.insert(k, Scope::try_new(include, exclude, manifest)?);
-    }
-    Ok(out)
 }
 
 fn run_initiative_init(format: OutputFormat, name: String, sources: Vec<(String, String)>) -> i32 {
@@ -2744,8 +2630,8 @@ fn run_initiative_status(format: OutputFormat) -> i32 {
     // diagnostics to `initiative validate`.
     let results = plan.validate(Some(&changes_dir), None);
     // Cycle is recoverable (we fall back to list order); any *other*
-    // structural error (duplicate-name / unknown-depends-on / unknown-
-    // affects / unknown-source / multiple-in-progress) is fatal.
+    // structural error (duplicate-name / unknown-depends-on /
+    // unknown-source / multiple-in-progress) is fatal.
     let has_other_structural_errors = results
         .iter()
         .any(|r| matches!(r.level, PlanValidationLevel::Error) && r.code != "dependency-cycle");
@@ -2789,8 +2675,6 @@ fn run_initiative_status(format: OutputFormat) -> i32 {
 
     let next_eligible = plan.next_eligible();
 
-    let impact = compute_impact(&plan);
-
     match format {
         OutputFormat::Json => {
             let entries: Vec<Value> = ordered
@@ -2819,16 +2703,6 @@ fn run_initiative_status(format: OutputFormat) -> i32 {
                 })
             });
 
-            let impact_json: Vec<Value> = impact
-                .iter()
-                .map(|(done_name, referenced_by)| {
-                    json!({
-                        "done": done_name,
-                        "referenced-by": referenced_by,
-                    })
-                })
-                .collect();
-
             emit_json(json!({
                 "plan": {
                     "name": plan.name,
@@ -2849,7 +2723,6 @@ fn run_initiative_status(format: OutputFormat) -> i32 {
                 "blocked": blocked_json,
                 "failed": failed_json,
                 "next-eligible": next_eligible.map(|e| e.name.clone()),
-                "impact": impact_json,
             }));
         }
         OutputFormat::Text => print_plan_status_text(&PlanStatusView {
@@ -2860,7 +2733,6 @@ fn run_initiative_status(format: OutputFormat) -> i32 {
             blocked: &blocked,
             failed: &failed,
             next_eligible,
-            impact: &impact,
         }),
     }
     EXIT_SUCCESS
@@ -2877,7 +2749,6 @@ struct PlanStatusView<'a> {
     blocked: &'a [&'a PlanChange],
     failed: &'a [&'a PlanChange],
     next_eligible: Option<&'a PlanChange>,
-    impact: &'a [(String, Vec<String>)],
 }
 
 /// Best-effort load of `<change_dir>/.metadata.yaml` to surface the
@@ -2895,38 +2766,11 @@ fn plan_entry_to_json(entry: &PlanChange, lifecycle: Option<String>) -> Value {
         "name": entry.name,
         "status": plan_status_label(entry.status),
         "depends-on": entry.depends_on,
-        "affects": entry.affects,
         "sources": entry.sources,
         "status-reason": entry.status_reason,
         "description": entry.description,
         "lifecycle": lifecycle,
     })
-}
-
-/// For every `Done` entry, list pending/in-progress/blocked entries
-/// whose `affects` references it. Pairs are emitted in plan list order
-/// (both the outer `done` and the inner `referenced-by` list) so the
-/// report is deterministic regardless of `HashMap` iteration order.
-fn compute_impact(plan: &Plan) -> Vec<(String, Vec<String>)> {
-    let mut out: Vec<(String, Vec<String>)> = Vec::new();
-    for done in plan.changes.iter().filter(|c| c.status == PlanStatus::Done) {
-        let refs: Vec<String> = plan
-            .changes
-            .iter()
-            .filter(|c| {
-                matches!(
-                    c.status,
-                    PlanStatus::Pending | PlanStatus::InProgress | PlanStatus::Blocked
-                )
-            })
-            .filter(|c| c.affects.iter().any(|a| a == &done.name))
-            .map(|c| c.name.clone())
-            .collect();
-        if !refs.is_empty() {
-            out.push((done.name.clone(), refs));
-        }
-    }
-    out
 }
 
 fn print_plan_status_text(view: &PlanStatusView) {
@@ -2975,12 +2819,6 @@ fn print_plan_status_text(view: &PlanStatusView) {
         None => println!("Next eligible: — (waiting on dependencies / all done)"),
     }
 
-    if !view.impact.is_empty() {
-        println!();
-        for (done, refs) in view.impact {
-            println!("Impact: {done} is referenced by pending changes: [{}]", refs.join(", "));
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -3008,11 +2846,8 @@ fn plan_change_entry_json(entry: &PlanChange) -> Value {
     serde_json::to_value(entry).expect("PlanChange serialises as JSON")
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_initiative_create(
-    format: OutputFormat, name: String, depends_on: Vec<String>, affects: Vec<String>,
-    sources: Vec<String>, scope_include: Vec<(String, String)>,
-    scope_exclude: Vec<(String, String)>, scope_manifest: Vec<(String, String)>,
+    format: OutputFormat, name: String, depends_on: Vec<String>, sources: Vec<String>,
     description: Option<String>,
 ) -> i32 {
     let (_project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
@@ -3020,21 +2855,11 @@ fn run_initiative_create(
         Err(code) => return code,
     };
 
-    // Fold per-source scope flags into one `Scope` per key. Surfaces
-    // the `invalid-plan-scope` kind when a key mixes `--scope-manifest`
-    // with `--scope-include`/`--scope-exclude` (via `Scope::try_new`).
-    let scope = match collect_scope_flags(scope_include, scope_exclude, scope_manifest) {
-        Ok(m) => m,
-        Err(err) => return emit_error(format, &err),
-    };
-
     let entry = PlanChange {
         name: name.clone(),
         status: PlanStatus::Pending,
         depends_on,
-        affects,
         sources,
-        scope,
         description,
         status_reason: None,
     };
@@ -3063,54 +2888,22 @@ fn run_initiative_create(
     EXIT_SUCCESS
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_initiative_amend(
     format: OutputFormat, name: String, depends_on: Option<Vec<String>>,
-    affects: Option<Vec<String>>, sources: Option<Vec<String>>,
-    scope_include: Vec<(String, String)>, scope_exclude: Vec<(String, String)>,
-    scope_manifest: Vec<(String, String)>, scope_rm: Vec<String>, description: Option<String>,
+    sources: Option<Vec<String>>, description: Option<String>,
 ) -> i32 {
     let (_project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
         Ok(v) => v,
         Err(code) => return code,
     };
 
-    // Map clap's `Option<String>` for description into the library's
-    // three-way `Option<Option<String>>`: absent = None, "" = clear,
-    // otherwise replace.
     let description_patch: Option<Option<String>> =
         description.map(|s| if s.is_empty() { None } else { Some(s) });
 
-    // Per-key wholesale replacements (`--scope-include/-exclude/-manifest`)
-    // collide with per-key removals (`--scope-rm`) on the same
-    // invocation — rejecting upfront keeps patch semantics
-    // unambiguous.
-    let scope_set = match collect_scope_flags(scope_include, scope_exclude, scope_manifest) {
-        Ok(m) => m,
-        Err(err) => return emit_error(format, &err),
-    };
-    let mut scope_patch: BTreeMap<String, Option<Scope>> = BTreeMap::new();
-    for key in &scope_rm {
-        if scope_set.contains_key(key) {
-            let err = Error::InvalidPlanScope(format!(
-                "scope key `{key}` cannot appear in both --scope-rm and \
-                 --scope-include/--scope-exclude/--scope-manifest on the \
-                 same amend invocation"
-            ));
-            return emit_error(format, &err);
-        }
-        scope_patch.insert(key.clone(), None);
-    }
-    for (k, v) in scope_set {
-        scope_patch.insert(k, Some(v));
-    }
-
     let patch = PlanChangePatch {
         depends_on,
-        affects,
         sources,
         description: description_patch,
-        scope: scope_patch,
     };
 
     if let Err(err) = plan.amend(&name, patch) {
@@ -3451,8 +3244,6 @@ fn emit_json_error(err: &Error, code: i32) {
         Error::SpecifyVersionTooOld { .. } => "specify-version-too-old",
         Error::PlanTransition { .. } => "plan-transition",
         Error::PlanHasOutstandingWork { .. } => "plan-has-outstanding-work",
-        Error::InvalidPlanScope(_) => "invalid-plan-scope",
-        Error::InvalidPlanScopeKey { .. } => "scope-key-not-in-sources",
         Error::DriverBusy { .. } => "driver-busy",
         Error::Io(_) => "io",
         Error::Yaml(_) => "yaml",
