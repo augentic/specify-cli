@@ -1793,7 +1793,7 @@ fn run_change_outcome(format: OutputFormat, name: String) -> i32 {
         Err(err) => return emit_error(format, &err),
     };
     let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
-    let metadata = if change_dir.is_dir() && ChangeMetadata::path(&change_dir).exists() {
+    let metadata = if change_dir.is_dir() {
         match ChangeMetadata::load(&change_dir) {
             Ok(m) => m,
             Err(err) => return emit_error(format, &err),
@@ -1853,10 +1853,10 @@ fn resolve_archived_metadata(
     let suffix = format!("-{change_name}");
     let mut candidates: Vec<(String, ChangeMetadata)> = Vec::new();
 
-    if archive_dir.is_dir()
-        && let Ok(entries) = std::fs::read_dir(&archive_dir)
-    {
-        for entry in entries.flatten() {
+    if archive_dir.is_dir() {
+        let entries = std::fs::read_dir(&archive_dir)?;
+        for entry in entries {
+            let entry = entry?;
             let fname = entry.file_name().to_string_lossy().to_string();
             if !fname.ends_with(&suffix) || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
             {
