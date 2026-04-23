@@ -4,15 +4,12 @@ changes:
 - name: user-registration
   status: done
   depends-on: []
-  affects: []
   sources: []
   description: null
   status-reason: null
 - name: registration-duplicate-email-crash
   status: done
   depends-on: []
-  affects:
-  - user-registration
   sources: []
   description: Clarified scope
   status-reason: null

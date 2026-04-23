@@ -11,7 +11,6 @@
   },
   "entries": [
     {
-      "affects": [],
       "depends-on": [],
       "description": null,
       "lifecycle": null,
@@ -23,7 +22,6 @@
       "status-reason": null
     },
     {
-      "affects": [],
       "depends-on": [
         "user-registration"
       ],
@@ -37,11 +35,8 @@
       "status-reason": null
     },
     {
-      "affects": [
-        "user-registration"
-      ],
       "depends-on": [],
-      "description": "Duplicate email submission returns 500 instead of 409. Discovered during email-verification extraction.\n",
+      "description": "Duplicate email submission returns 500 instead of 409. Discovered during email-verification extraction. Modifies user-registration.\n",
       "lifecycle": null,
       "name": "registration-duplicate-email-crash",
       "sources": [],
@@ -49,7 +44,6 @@
       "status-reason": null
     },
     {
-      "affects": [],
       "depends-on": [
         "user-registration"
       ],
@@ -61,14 +55,10 @@
       "status-reason": null
     },
     {
-      "affects": [
-        "user-registration",
-        "email-verification"
-      ],
       "depends-on": [
         "email-verification"
       ],
-      "description": "Pull duplicated input validation into a shared validation crate before building checkout-flow.\n",
+      "description": "Pull duplicated input validation into a shared validation crate before building checkout-flow. Delta-targets user-registration and email-verification.\n",
       "lifecycle": null,
       "name": "extract-shared-validation",
       "sources": [],
@@ -76,7 +66,6 @@
       "status-reason": null
     },
     {
-      "affects": [],
       "depends-on": [
         "extract-shared-validation"
       ],
@@ -90,7 +79,6 @@
       "status-reason": null
     },
     {
-      "affects": [],
       "depends-on": [
         "product-catalog",
         "user-registration"
@@ -105,7 +93,6 @@
       "status-reason": null
     },
     {
-      "affects": [],
       "depends-on": [
         "shopping-cart"
       ],
@@ -119,7 +106,6 @@
       "status-reason": "Type mismatch between cart line-item schema and payment gateway contract. Needs design revision after shopping-cart specs are updated.\n"
     },
     {
-      "affects": [],
       "depends-on": [
         "checkout-api"
       ],
@@ -137,15 +123,6 @@
     {
       "name": "checkout-api",
       "reason": "Type mismatch between cart line-item schema and payment gateway contract. Needs design revision after shopping-cart specs are updated.\n"
-    }
-  ],
-  "impact": [
-    {
-      "done": "user-registration",
-      "referenced-by": [
-        "registration-duplicate-email-crash",
-        "extract-shared-validation"
-      ]
     }
   ],
   "in-progress": {

@@ -61,30 +61,6 @@ pub enum Error {
     #[error("plan has outstanding non-terminal work: {entries:?}")]
     PlanHasOutstandingWork { entries: Vec<String> },
 
-    /// A `planChange.scope` entry violated the `manifest` XOR
-    /// `(include|exclude)` invariant enforced by RFC-3a §*The `scope`
-    /// field*. Surfaced both by programmatic constructors
-    /// (`Scope::try_new`) and by the `serde` `try_from` deserialization
-    /// hook (in which case the message gets wrapped into
-    /// `serde_yaml::Error` and re-surfaced as [`Error::Yaml`] at the
-    /// outer call site). The payload is a human-readable explanation
-    /// naming the offending field combination.
-    #[error("invalid plan scope: {0}")]
-    InvalidPlanScope(String),
-
-    /// A `planChange.scope` map carried a key that does not appear in
-    /// the entry's declared `sources` list. Surfaced pre-write by the
-    /// CLI's `specify initiative create`/`amend` paths (via the
-    /// post-mutation `Plan::validate` sweep in
-    /// `specify-change::plan`) so a plan with an orphan scope key
-    /// never hits disk, and by `specify-validate` (RFC-3a §*How
-    /// `scope` travels through the pipeline*) at validation time.
-    /// The stable diagnostic ID on the wire is
-    /// `scope-key-not-in-sources`; see `emit_json_error` in
-    /// `main.rs`.
-    #[error("scope key '{key}' on change '{change}' is not declared in sources")]
-    InvalidPlanScopeKey { change: String, key: String },
-
     /// `PlanLockGuard::acquire` found another live `/spec:execute`
     /// driver holding `.specify/plan.lock`. `pid` is the contents of
     /// the lockfile (confirmed alive via the host-level PID check).
@@ -192,18 +168,6 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "plan has outstanding non-terminal work: [\"checkout-api\", \"checkout-ui\"]"
-        );
-    }
-
-    #[test]
-    fn invalid_plan_scope_key_display() {
-        let err = Error::InvalidPlanScopeKey {
-            change: "ingest-pipeline".to_string(),
-            key: "orders".to_string(),
-        };
-        assert_eq!(
-            err.to_string(),
-            "scope key 'orders' on change 'ingest-pipeline' is not declared in sources"
         );
     }
 
