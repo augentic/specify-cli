@@ -7,7 +7,8 @@
 //! passed [`crate::validate_baseline`]. On success `merge_change`:
 //!
 //!   1. Writes each merged baseline under `specs_dir`.
-//!   2. Flips `.metadata.yaml.status` from `Complete` to `Merged`.
+//!   2. Flips `.metadata.yaml.status` from `Complete` to `Merged` and
+//!      stamps `PhaseOutcome { phase: Merge, outcome: Success }`.
 //!   3. Moves the change directory under `archive_dir` as
 //!      `YYYY-MM-DD-<change-name>/` via `specify_change::actions::archive`.
 //!
@@ -18,7 +19,10 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
-use specify_change::{ChangeMetadata, LifecycleStatus, SpecType, actions, format_rfc3339};
+use specify_change::{
+    ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome, SpecType, actions,
+    format_rfc3339,
+};
 use specify_error::Error;
 
 use crate::merge::{MergeResult, merge};
@@ -61,8 +65,16 @@ pub fn preview_change(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEn
 ///
 /// Gates on `LifecycleStatus::Complete`, runs [`preview_change`]'s
 /// in-memory plan, writes each merged baseline, transitions status to
-/// `Merged` with `merged_at`/`completed_at` timestamps, then archives the
-/// change directory via `specify_change::actions::archive`.
+/// `Merged` with `merged_at`/`completed_at` timestamps, stamps a
+/// `PhaseOutcome { phase: Merge, outcome: Success }` into
+/// `.metadata.yaml`, then archives the change directory via
+/// `specify_change::actions::archive`.
+///
+/// The outcome stamp is written atomically with the status transition,
+/// before the archive move. This ensures the archived `.metadata.yaml`
+/// carries the merge-success outcome so that `/spec:execute` can read
+/// it via `specify change outcome` (which falls back to the archive
+/// when the active change directory no longer exists).
 pub fn merge_change(
     change_dir: &Path, specs_dir: &Path, archive_dir: &Path,
 ) -> Result<Vec<(String, MergeResult)>, Error> {
@@ -102,6 +114,13 @@ pub fn merge_change(
     if metadata.merged_at.is_none() {
         metadata.merged_at = Some(format_rfc3339(now));
     }
+    metadata.outcome = Some(PhaseOutcome {
+        phase: Phase::Merge,
+        outcome: Outcome::Success,
+        at: format_rfc3339(now),
+        summary: format!("Merged {} spec(s) into baseline", merged.len()),
+        context: None,
+    });
     metadata.save(change_dir)?;
 
     actions::archive(change_dir, archive_dir, now)

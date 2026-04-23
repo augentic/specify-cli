@@ -341,10 +341,17 @@ pub fn archive(
 
 /// Stamp the outcome of a phase run on `<change_dir>/.metadata.yaml`.
 ///
-/// Sole writer of [`ChangeMetadata::outcome`]. The whole metadata file
-/// is rewritten atomically via [`ChangeMetadata::save`] so a concurrent
-/// reader never sees a half-written file. A new stamp replaces any
-/// previous one — history lives in `journal.yaml` (L2.B), not here.
+/// Primary writer of [`ChangeMetadata::outcome`] for the define and
+/// build phases, and for merge failure/deferred outcomes. The merge
+/// success path is handled by `specify_merge::merge_change`, which
+/// stamps the outcome atomically before archiving (the archive move
+/// removes `change_dir` from `.specify/changes/`, so a post-merge call
+/// to this function would fail with "not found").
+///
+/// The whole metadata file is rewritten atomically via
+/// [`ChangeMetadata::save`] so a concurrent reader never sees a
+/// half-written file. A new stamp replaces any previous one — history
+/// lives in `journal.yaml` (L2.B), not here.
 ///
 /// `now` is plumbed in so tests can pin `at` deterministically; the CLI
 /// passes `Utc::now()`.
