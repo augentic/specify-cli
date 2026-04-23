@@ -1780,20 +1780,29 @@ fn run_change_phase_outcome(
 /// Emits `"outcome": null` when the change exists but nothing has
 /// been stamped; exits `EXIT_SUCCESS` in both cases — an unstamped
 /// change is not an error, just an absence.
+///
+/// Falls back to `.specify/archive/` when the change is not found under
+/// `.specify/changes/`. This handles the post-merge case: `specify merge`
+/// stamps the outcome into `.metadata.yaml` and then archives the change
+/// directory, so the active path no longer exists. The fallback scans
+/// archive entries matching `*-<name>` and picks the most recent by
+/// `created-at` timestamp.
 fn run_change_outcome(format: OutputFormat, name: String) -> i32 {
     let (project_dir, _config) = match require_project() {
         Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
     let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
-    if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
-        let err = Error::Config(format!("change '{name}' not found at {}", change_dir.display()));
-        return emit_error(format, &err);
-    }
-
-    let metadata = match ChangeMetadata::load(&change_dir) {
-        Ok(m) => m,
-        Err(err) => return emit_error(format, &err),
+    let metadata = if change_dir.is_dir() && ChangeMetadata::path(&change_dir).exists() {
+        match ChangeMetadata::load(&change_dir) {
+            Ok(m) => m,
+            Err(err) => return emit_error(format, &err),
+        }
+    } else {
+        match resolve_archived_metadata(&project_dir, &name) {
+            Ok(m) => m,
+            Err(err) => return emit_error(format, &err),
+        }
     };
 
     match format {
@@ -1830,6 +1839,40 @@ fn run_change_outcome(format: OutputFormat, name: String) -> i32 {
         },
     }
     EXIT_SUCCESS
+}
+
+/// Scan `.specify/archive/` for directories whose name ends with
+/// `-<change_name>` (the `YYYY-MM-DD-<name>` convention), load each
+/// candidate's `.metadata.yaml`, and return the most recent by
+/// `created-at`. Used by `run_change_outcome` as a fallback when the
+/// active change directory has been archived by `specify merge`.
+fn resolve_archived_metadata(project_dir: &Path, change_name: &str) -> Result<ChangeMetadata, Error> {
+    let archive_dir = ProjectConfig::archive_dir(project_dir);
+    let suffix = format!("-{change_name}");
+    let mut candidates: Vec<(String, ChangeMetadata)> = Vec::new();
+
+    if archive_dir.is_dir()
+        && let Ok(entries) = std::fs::read_dir(&archive_dir) {
+            for entry in entries.flatten() {
+                let fname = entry.file_name().to_string_lossy().to_string();
+                if !fname.ends_with(&suffix) || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    continue;
+                }
+                if let Ok(meta) = ChangeMetadata::load(&entry.path()) {
+                    let created = meta.created_at.clone().unwrap_or_default();
+                    candidates.push((created, meta));
+                }
+            }
+        }
+
+    if candidates.is_empty() {
+        return Err(Error::Config(format!(
+            "change '{change_name}' not found in changes or archive"
+        )));
+    }
+
+    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(candidates.into_iter().next().unwrap().1)
 }
 
 fn phase_label(phase: Phase) -> &'static str {

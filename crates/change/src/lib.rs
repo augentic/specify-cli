@@ -51,16 +51,23 @@ pub struct ChangeMetadata {
     pub drop_reason: Option<String>,
     #[serde(default)]
     pub touched_specs: Vec<TouchedSpec>,
-    /// Outcome of the most recent phase run recorded by
-    /// `specify change phase-outcome`.
+    /// Outcome of the most recent phase run.
     ///
-    /// Writer contract: this field is written **only** by the
-    /// `specify change phase-outcome` CLI subcommand (see
-    /// [`actions::phase_outcome`]). Phase skills (`define`, `build`,
-    /// `merge`) must never edit `.metadata.yaml` directly — they go
-    /// through the CLI so the write is atomic and the single-field
-    /// overwrite semantics (latest outcome only — no history) are
-    /// preserved. Consumers:
+    /// Writer contract: this field is written by two code paths:
+    ///
+    /// 1. `specify change phase-outcome` (see [`actions::phase_outcome`]) —
+    ///    used by phase skills for `failure` and `deferred` outcomes
+    ///    (and by `define`/`build` for `success`).
+    /// 2. `specify_merge::merge_change` — stamps `Success` atomically
+    ///    with the `Merged` status transition, before the archive move.
+    ///    This is necessary because the archive move removes the change
+    ///    from `.specify/changes/`, making a subsequent `phase-outcome`
+    ///    call impossible.
+    ///
+    /// Phase skills (`define`, `build`, `merge`) must never edit
+    /// `.metadata.yaml` directly — they go through the CLI so the write
+    /// is atomic and the single-field overwrite semantics (latest
+    /// outcome only — no history) are preserved. Consumers:
     /// `/spec:execute` reads this on phase return to decide the
     /// next plan transition per RFC-2 §"Phase Outcome Contract".
     ///
@@ -75,8 +82,9 @@ pub struct ChangeMetadata {
 /// `.metadata.yaml`. Read by `/spec:execute` on phase return to decide
 /// the next plan transition (see RFC-2 §"Phase Outcome Contract").
 ///
-/// Written by the `specify change phase-outcome` subcommand; phases
-/// never edit `.metadata.yaml` directly.
+/// Written by `specify change phase-outcome` (for define/build phases
+/// and merge failure/deferred) and by `merge_change` (for merge
+/// success, stamped atomically before the archive move).
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct PhaseOutcome {

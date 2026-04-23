@@ -9,7 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use regex::Regex;
-use specify_change::{ChangeMetadata, LifecycleStatus};
+use specify_change::{ChangeMetadata, LifecycleStatus, Outcome, Phase};
 use specify_error::Error;
 use specify_merge::merge_change;
 use tempfile::TempDir;
@@ -120,6 +120,16 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     let new_meta = ChangeMetadata::load(&archived_change_dir).expect("load archived metadata");
     assert_eq!(new_meta.status, LifecycleStatus::Merged);
     assert!(new_meta.completed_at.is_some(), "expected completed_at to be set after merge");
+
+    // merge_change stamps the phase outcome before archiving.
+    let outcome = new_meta.outcome.expect("expected outcome to be stamped by merge_change");
+    assert_eq!(outcome.phase, Phase::Merge);
+    assert_eq!(outcome.outcome, Outcome::Success);
+    assert!(
+        outcome.summary.contains("2 spec(s)"),
+        "unexpected summary: {}",
+        outcome.summary
+    );
 }
 
 // ---------------------------------------------------------------------------

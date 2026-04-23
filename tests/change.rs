@@ -861,6 +861,84 @@ fn change_outcome_on_nonexistent_change_errors() {
     assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
 }
 
+#[test]
+fn change_outcome_falls_back_to_archive() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "bar"]).assert().success();
+    specify()
+        .current_dir(project.root())
+        .args([
+            "change",
+            "phase-outcome",
+            "bar",
+            "merge",
+            "success",
+            "--summary",
+            "Merged 2 spec(s) into baseline",
+        ])
+        .assert()
+        .success();
+
+    // Simulate the archive move that `specify merge` performs.
+    let changes_dir = project.root().join(".specify/changes");
+    let archive_dir = project.root().join(".specify/archive");
+    fs::create_dir_all(&archive_dir).unwrap();
+    fs::rename(changes_dir.join("bar"), archive_dir.join("2026-04-24-bar")).unwrap();
+
+    // The active change directory is gone; outcome should resolve from archive.
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "outcome", "bar"])
+        .assert()
+        .success();
+
+    let value = parse_json(&assert.get_output().stdout);
+    assert_eq!(value["name"], "bar");
+    let outcome = &value["outcome"];
+    assert_eq!(outcome["phase"].as_str(), Some("merge"));
+    assert_eq!(outcome["outcome"].as_str(), Some("success"));
+    assert_eq!(
+        outcome["summary"].as_str(),
+        Some("Merged 2 spec(s) into baseline")
+    );
+}
+
+#[test]
+fn change_outcome_archive_fallback_picks_most_recent() {
+    let project = Project::init();
+
+    // Create and stamp two archived versions with different created-at timestamps.
+    let archive_dir = project.root().join(".specify/archive");
+    fs::create_dir_all(&archive_dir).unwrap();
+
+    for (date, summary) in [("2026-01-01-baz", "old run"), ("2026-04-24-baz", "latest run")] {
+        let dir = archive_dir.join(date);
+        fs::create_dir_all(&dir).unwrap();
+        let created_at = if date.starts_with("2026-01") {
+            "2026-01-01T00:00:00Z"
+        } else {
+            "2026-04-24T00:00:00Z"
+        };
+        let yaml = format!(
+            "schema: omnia\nstatus: merged\ncreated-at: \"{created_at}\"\noutcome:\n  phase: merge\n  outcome: success\n  at: \"{created_at}\"\n  summary: \"{summary}\"\n"
+        );
+        fs::write(dir.join(".metadata.yaml"), yaml).unwrap();
+    }
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "outcome", "baz"])
+        .assert()
+        .success();
+
+    let value = parse_json(&assert.get_output().stdout);
+    assert_eq!(
+        value["outcome"]["summary"].as_str(),
+        Some("latest run"),
+        "should pick the most recent archive entry"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // change journal-append (L2.B)
 // ---------------------------------------------------------------------------
