@@ -1,6 +1,9 @@
 {
   "active": null,
+  "description": null,
   "next": "b",
+  "project": null,
   "reason": null,
-  "schema-version": 2
+  "schema-version": 2,
+  "sources": []
 }

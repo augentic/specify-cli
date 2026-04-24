@@ -155,7 +155,7 @@ const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/works
 /// exactly once (matched with `trim()` per line) in the project
 /// `.gitignore`, appending missing lines with a trailing newline.
 ///
-/// Used by [`init`] and by `specify initiative workspace sync` (RFC-3a
+/// Used by [`init`] and by `specify workspace sync` (RFC-3a
 /// C29).
 pub fn ensure_specify_gitignore_entries(project_dir: &Path) -> Result<(), Error> {
     let path = project_dir.join(".gitignore");

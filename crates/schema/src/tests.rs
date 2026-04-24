@@ -708,12 +708,15 @@ projects:
   - name: traffic
     url: .
     schema: omnia@v1
+    description: Real-time traffic routing service
   - name: ingest
     url: git@github.com:augentic/ingest.git
     schema: omnia@v1
+    description: Data ingestion pipeline
   - name: ops-runbook
     url: https://github.com/augentic/ops-runbook
     schema: omnia@v1
+    description: Operational runbook reference
 ";
 
 #[test]
@@ -974,11 +977,13 @@ fn registry_round_trip_serialize() {
                 name: "traffic".into(),
                 url: ".".into(),
                 schema: "omnia@v1".into(),
+                description: Some("Real-time traffic routing".into()),
             },
             RegistryProject {
                 name: "ingest".into(),
                 url: "git@github.com:augentic/ingest.git".into(),
                 schema: "omnia@v1".into(),
+                description: Some("Data ingestion pipeline".into()),
             },
         ],
     };
@@ -997,6 +1002,97 @@ fn registry_project_order_preserved() {
 }
 
 #[test]
+fn registry_multi_project_with_descriptions_validates() {
+    let yaml = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    schema: omnia@v1
+    description: The alpha service
+  - name: beta
+    url: ../beta
+    schema: omnia@v1
+    description: The beta service
+";
+    let tmp = scaffold_registry(yaml);
+    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
+    assert_eq!(registry.projects.len(), 2);
+    assert_eq!(registry.projects[0].description.as_deref(), Some("The alpha service"));
+    assert_eq!(registry.projects[1].description.as_deref(), Some("The beta service"));
+}
+
+#[test]
+fn registry_multi_project_missing_description_rejected() {
+    let yaml = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    schema: omnia@v1
+    description: The alpha service
+  - name: beta
+    url: ../beta
+    schema: omnia@v1
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("missing description in multi-project");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("description-missing-multi-repo"), "msg: {msg}");
+            assert!(msg.contains("beta"), "msg should mention project name: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_multi_project_empty_description_rejected() {
+    let yaml = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    schema: omnia@v1
+    description: \"  \"
+  - name: beta
+    url: ../beta
+    schema: omnia@v1
+    description: The beta service
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("whitespace-only description in multi-project");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("description-missing-multi-repo"), "msg: {msg}");
+            assert!(msg.contains("alpha"), "msg should mention project name: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_single_project_without_description_ok() {
+    let tmp = scaffold_registry(CANONICAL_REGISTRY_YAML);
+    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
+    assert_eq!(registry.projects.len(), 1);
+    assert!(registry.projects[0].description.is_none());
+}
+
+#[test]
+fn registry_description_round_trips_through_serde() {
+    let original = RegistryProject {
+        name: "traffic".into(),
+        url: ".".into(),
+        schema: "omnia@v1".into(),
+        description: Some("Real-time traffic routing".into()),
+    };
+    let yaml = serde_yaml::to_string(&original).expect("serialize");
+    let round_tripped: RegistryProject = serde_yaml::from_str(&yaml).expect("re-parse");
+    assert_eq!(round_tripped, original);
+}
+
+#[test]
 fn registry_path_helper_points_at_specify_dir() {
     let dir = Path::new("/tmp/some/project");
     assert_eq!(Registry::path(dir), PathBuf::from("/tmp/some/project/.specify/registry.yaml"));
@@ -1011,6 +1107,7 @@ fn registry_with_one_url(url: &str) -> Registry {
             name: "traffic".into(),
             url: url.into(),
             schema: "omnia@v1".into(),
+            description: None,
         }],
     }
 }
@@ -1034,6 +1131,7 @@ fn registry_project_url_materialises_as_symlink_classification() {
             name: "traffic".into(),
             url: url.into(),
             schema: "omnia@v1".into(),
+            description: None,
         };
         assert_eq!(p.url_materialises_as_symlink(), symlink, "url={url:?}");
     }
