@@ -760,15 +760,25 @@ fn format_result_line(r: &ValidationResult) -> String {
 // ---------------------------------------------------------------------------
 
 /// RFC-3b: Detect whether a project directory is inside a workspace clone.
-/// Primary signal: the path contains `/.specify/workspace/*/` as an ancestor.
+/// Two-part heuristic: (1) the path contains `/.specify/workspace/*/` as an
+/// ancestor, and (2) `.specify/project.yaml` exists in the project directory.
+/// The secondary guard — CWD does not contain `.specify/plan.yaml` — is
+/// retained as a safety check but is not sufficient on its own because
+/// `plan.yaml` may be absent after `specify plan archive`.
 fn is_workspace_clone(project_dir: &Path) -> bool {
-    project_dir
+    let in_workspace = project_dir
         .to_str()
         .map(|s| {
             s.contains("/.specify/workspace/")
                 || s.contains("\\.specify\\workspace\\")
         })
-        .unwrap_or(false)
+        .unwrap_or(false);
+    if !in_workspace {
+        return false;
+    }
+    let has_project_yaml = project_dir.join(".specify").join("project.yaml").exists();
+    let has_plan_yaml = project_dir.join(".specify").join("plan.yaml").exists();
+    has_project_yaml && !has_plan_yaml
 }
 
 fn run_merge(format: OutputFormat, change_dir: PathBuf) -> i32 {
@@ -2233,9 +2243,10 @@ fn run_initiative_validate(format: OutputFormat) -> i32 {
     let registry = Registry::load(&project_dir).ok().flatten();
     let mut results = plan.validate(Some(&changes_dir), registry.as_ref());
     // RFC-3a shape-validation hook: surface malformed `.specify/registry.yaml`
-    // through the same report that `Plan::validate` already drives. A
-    // dedicated `specify initiative registry validate` verb lands in C13;
-    // this keeps `plan validate` honest until then.
+    // through the same report that `Plan::validate` already drives. The
+    // dedicated `specify initiative registry validate` verb is available
+    // for standalone registry checks; this keeps `plan validate` honest
+    // as a one-stop validation entry point.
     if let Err(err) = Registry::load(&project_dir) {
         results.push(PlanValidationResult {
             level: PlanValidationLevel::Error,
@@ -2822,10 +2833,10 @@ fn run_initiative_next(format: OutputFormat) -> i32 {
     };
     let changes_dir = ProjectConfig::changes_dir(&project_dir);
 
-    // `initiative next` deliberately skips the filesystem-aware
+    // `plan next` deliberately skips the filesystem-aware
     // `scope-path-missing` sweep (project_dir = None): a scope path
     // may be transiently absent during a rename or partial checkout
-    // and should not block driver progression. `initiative validate`
+    // and should not block driver progression. `plan validate`
     // is the place to surface those.
     let results = plan.validate(Some(&changes_dir), None);
     if results.iter().any(|r| matches!(r.level, PlanValidationLevel::Error)) {
@@ -2900,11 +2911,11 @@ fn run_initiative_status(format: OutputFormat) -> i32 {
     };
     let changes_dir = ProjectConfig::changes_dir(&project_dir);
 
-    // `initiative status` stays permissive by design — see the
+    // `plan status` stays permissive by design — see the
     // `dependency-cycle` fallback below. Running the
     // `scope-path-missing` sweep here would add a second class of
     // error that has to be tolerated; defer filesystem-aware
-    // diagnostics to `initiative validate`.
+    // diagnostics to `plan validate`.
     let results = plan.validate(Some(&changes_dir), None);
     // Cycle is recoverable (we fall back to list order); any *other*
     // structural error (duplicate-name / unknown-depends-on /

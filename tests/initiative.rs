@@ -67,7 +67,7 @@ mod cli {
 
         /// Seed `.specify/plan.yaml` with arbitrary YAML. The tests
         /// drive the file directly (not the library's `Plan::save`)
-        /// because `specify plan create` is out of scope for L1.I.
+        /// for convenience and isolation from the `create` verb.
         fn seed_plan(&self, yaml: &str) {
             fs::write(self.plan_path(), yaml).expect("write plan.yaml");
         }
@@ -450,6 +450,9 @@ changes:
         assert_eq!(actual["next"], "b");
         assert_eq!(actual["reason"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
+        assert_eq!(actual["project"], Value::Null, "project should be present (null for single-repo)");
+        assert_eq!(actual["description"], Value::Null, "description should be present");
+        assert!(actual.get("sources").is_some(), "sources field should be present in plan next response");
         assert_golden("next-first-pending.json", actual);
     }
 
@@ -2235,8 +2238,9 @@ inputs: []
     }
 
     /// `specify plan validate` surfaces a malformed `registry.yaml`
-    /// alongside plan validation results — the C12 shape-validation hook
-    /// that C13 will lift into a dedicated `registry validate` verb.
+    /// alongside plan validation results — the shape-validation hook
+    /// complementing the dedicated `specify initiative registry validate`
+    /// verb.
     #[test]
     fn initiative_validate_surfaces_registry_shape_errors() {
         let project = Project::init();

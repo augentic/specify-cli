@@ -399,3 +399,42 @@ Change SHAs on the rfc-2 branch for detail):
   is unchanged.
 - --dry-run on /spec:execute runs self-heal in REPORT-ONLY mode
   (resolved the L2.G/L2.H tension).
+
+## RFC-3b milestone — multi-repo platform routing
+
+RFC-3b extends the plan and registry for multi-repo execution
+routing. Key additions and decisions:
+
+- RegistryProject gains `description: Option<String>` with
+  `#[serde(default)]`. Required when `projects.len() > 1`;
+  validated by `Registry::validate_shape`.
+- PlanChange gains `project: Option<String>` with
+  `#[serde(default)]`. Required for multi-project registries;
+  optional for single-project. `plan.schema.json` updated.
+- PlanChangePatch gains `project: Option<Option<String>>` with
+  the same three-way semantics as `description` (None = leave,
+  Some(None) = clear, Some(Some(s)) = replace).
+- `specify plan create` and `specify plan amend` gain `--project`
+  flag, validated against the loaded registry at write time.
+- `specify plan next --format json` gains `project`, `description`,
+  and `sources` in the response when an eligible entry is found.
+  Fields are absent when `reason` is non-null.
+- `Plan::validate` signature changed from unused `_project_dir` to
+  `registry: Option<&Registry>`, enabling cross-validation.
+- Four new validation codes: `project-not-in-registry`,
+  `project-missing-multi-repo`, `description-missing-multi-repo`
+  (on the registry side), and `schema-mismatch-workspace` (warning).
+- `specify merge` auto-commits `.specify/specs/` and
+  `.specify/archive/` in workspace clones. Detection heuristic:
+  CWD under `*/.specify/workspace/*/` with `.specify/project.yaml`
+  present and no `.specify/plan.yaml`. Commit failure is a warning.
+- `specify workspace push` is a new verb: creates
+  `specify/<initiative-name>` branch per dirty clone, pushes to
+  remote (creating GitHub repo via `gh` if needed for greenfield),
+  opens PR. `--dry-run` mode performs no writes.
+- `specify workspace sync` gains greenfield bootstrapping: when a
+  clone fails (repo not found), creates the workspace slot via
+  `git init` + `specify init` using the initiating repo's
+  `.specify/.cache/` for schema resolution.
+- `extract_github_slug` utility function for URL → `org/repo`
+  extraction, with unit tests covering six URL forms.

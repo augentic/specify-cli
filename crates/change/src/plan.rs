@@ -272,8 +272,9 @@ impl Plan {
     ///
     /// `changes_dir` (when `Some`) points at `.specify/changes/` and
     /// enables the cross-reference checks against on-disk change
-    /// metadata. `project_dir` is accepted for API compatibility but
-    /// currently unused.
+    /// metadata. `registry` (when `Some`) enables the RFC-3b
+    /// cross-registry checks (`project-not-in-registry`,
+    /// `project-missing-multi-repo`).
     ///
     /// Findings are accumulated — no check short-circuits another. Order
     /// is structural checks first (duplicate names, cycles, unknown
