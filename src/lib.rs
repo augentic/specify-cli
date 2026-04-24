@@ -40,5 +40,6 @@ mod init;
 mod workspace;
 
 pub use workspace::{
-    WorkspaceSlotKind, WorkspaceSlotStatus, sync_registry_workspace, workspace_status,
+    WorkspacePushResult, WorkspaceSlotKind, WorkspaceSlotStatus, extract_github_slug,
+    run_workspace_push_impl, sync_registry_workspace, workspace_status,
 };

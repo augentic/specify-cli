@@ -4,6 +4,7 @@
     "depends-on": [],
     "description": null,
     "name": "foo",
+    "project": null,
     "sources": [],
     "status": "pending",
     "status-reason": null

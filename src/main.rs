@@ -29,6 +29,7 @@ use std::process::ExitCode;
 use chrono::Utc;
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
+use serde_yaml;
 use specify::{
     BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Error,
     InitOptions, InitResult, InitiativeBrief, Journal, JournalEntry, LifecycleStatus, MergeEntry,
@@ -164,6 +165,12 @@ enum Commands {
         action: InitiativeAction,
     },
 
+    /// Materialise and manage registry peers under `.specify/workspace/` (RFC-3a/3b).
+    Workspace {
+        #[command(subcommand)]
+        action: WorkspaceAction,
+    },
+
     /// Bootstrap and verify Crux cross-platform projects (RFC-6).
     ///
     /// The four verbs route to handlers in the `specify-vectis` library
@@ -230,6 +237,9 @@ enum InitiativeAction {
         /// Free-text scoping hint for the define step
         #[arg(long)]
         description: Option<String>,
+        /// Target registry project name (RFC-3b)
+        #[arg(long)]
+        project: Option<String>,
     },
     /// Edit non-status fields on an existing plan entry
     Amend {
@@ -248,6 +258,9 @@ enum InitiativeAction {
         /// to leave it unchanged.
         #[arg(long)]
         description: Option<String>,
+        /// Replace project. Pass `--project ""` to clear; omit the flag to leave it unchanged.
+        #[arg(long)]
+        project: Option<String>,
     },
     /// Apply a validated status transition
     Transition {
@@ -299,11 +312,6 @@ enum InitiativeAction {
         action: BriefAction,
     },
 
-    /// Materialise registry peers under `.specify/workspace/` (RFC-3a C29).
-    Workspace {
-        #[command(subcommand)]
-        action: WorkspaceAction,
-    },
 }
 
 #[derive(Subcommand)]
@@ -315,6 +323,18 @@ enum WorkspaceAction {
     Sync,
     /// Report symlink vs git clone, `HEAD`, and dirty working tree per entry.
     Status,
+    /// Push workspace clones to their remote repositories (RFC-3b).
+    Push {
+        /// Specific project(s) to push; omit to push all dirty clones.
+        #[arg()]
+        projects: Vec<String>,
+        /// Show what would happen without making changes.
+        #[arg(long)]
+        dry_run: bool,
+        /// Output format for push results (reserved for future use).
+        #[arg(long, default_value = "text")]
+        push_format: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -594,6 +614,13 @@ fn run(cli: Cli) -> i32 {
             }
         },
         Commands::Initiative { action } => run_initiative(cli.format, action),
+        Commands::Workspace { action } => match action {
+            WorkspaceAction::Sync => run_initiative_workspace_sync(cli.format),
+            WorkspaceAction::Status => run_initiative_workspace_status(cli.format),
+            WorkspaceAction::Push { projects, dry_run, push_format: _ } => {
+                run_workspace_push(cli.format, projects, dry_run)
+            }
+        },
         Commands::Vectis { action } => run_vectis(cli.format, &action),
     }
 }
@@ -722,6 +749,18 @@ fn format_result_line(r: &ValidationResult) -> String {
 // merge
 // ---------------------------------------------------------------------------
 
+/// RFC-3b: Detect whether a project directory is inside a workspace clone.
+/// Primary signal: the path contains `/.specify/workspace/*/` as an ancestor.
+fn is_workspace_clone(project_dir: &Path) -> bool {
+    project_dir
+        .to_str()
+        .map(|s| {
+            s.contains("/.specify/workspace/")
+                || s.contains("\\.specify\\workspace\\")
+        })
+        .unwrap_or(false)
+}
+
 fn run_merge(format: OutputFormat, change_dir: PathBuf) -> i32 {
     let (project_dir, _config) = match require_project() {
         Ok(v) => v,
@@ -745,6 +784,51 @@ fn run_merge(format: OutputFormat, change_dir: PathBuf) -> i32 {
         Ok(m) => m,
         Err(err) => return emit_error(format, &err),
     };
+
+    // RFC-3b: auto-commit merged specs when running inside a workspace clone.
+    if is_workspace_clone(&project_dir) {
+        let specs_path = ProjectConfig::specs_dir(&project_dir);
+        let archive_path_for_git = ProjectConfig::archive_dir(&project_dir);
+
+        let git_add = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&project_dir)
+            .args(["add"])
+            .arg(&specs_path)
+            .arg(&archive_path_for_git)
+            .output();
+
+        match git_add {
+            Ok(output) if output.status.success() => {
+                let commit_msg = format!("specify: merge {change_name}");
+                let git_commit = std::process::Command::new("git")
+                    .arg("-C")
+                    .arg(&project_dir)
+                    .args(["commit", "-m", &commit_msg])
+                    .output();
+
+                match git_commit {
+                    Ok(output) if output.status.success() => {}
+                    Ok(output) => {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        eprintln!(
+                            "warning: workspace auto-commit failed (non-zero exit): {stderr}"
+                        );
+                    }
+                    Err(err) => {
+                        eprintln!("warning: workspace auto-commit failed: {err}");
+                    }
+                }
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!("warning: workspace git-add failed (non-zero exit): {stderr}");
+            }
+            Err(err) => {
+                eprintln!("warning: workspace git-add failed: {err}");
+            }
+        }
+    }
 
     let today = Utc::now().format("%Y-%m-%d").to_string();
     let archive_path = archive_dir.join(format!("{today}-{change_name}"));
@@ -1991,13 +2075,15 @@ fn run_initiative(format: OutputFormat, action: InitiativeAction) -> i32 {
             depends_on,
             sources,
             description,
-        } => run_initiative_create(format, name, depends_on, sources, description),
+            project,
+        } => run_initiative_create(format, name, depends_on, sources, description, project),
         InitiativeAction::Amend {
             name,
             depends_on,
             sources,
             description,
-        } => run_initiative_amend(format, name, depends_on, sources, description),
+            project,
+        } => run_initiative_amend(format, name, depends_on, sources, description, project),
         InitiativeAction::Transition { name, target, reason } => {
             run_initiative_transition(format, name, target, reason)
         }
@@ -2014,10 +2100,6 @@ fn run_initiative(format: OutputFormat, action: InitiativeAction) -> i32 {
         InitiativeAction::Brief { action } => match action {
             BriefAction::Init { name } => run_initiative_brief_init(format, name),
             BriefAction::Show => run_initiative_brief_show(format),
-        },
-        InitiativeAction::Workspace { action } => match action {
-            WorkspaceAction::Sync => run_initiative_workspace_sync(format),
-            WorkspaceAction::Status => run_initiative_workspace_status(format),
         },
     }
 }
@@ -2133,7 +2215,8 @@ fn run_initiative_validate(format: OutputFormat) -> i32 {
     };
     let changes_dir = ProjectConfig::changes_dir(&project_dir);
 
-    let mut results = plan.validate(Some(&changes_dir), Some(&project_dir));
+    let registry = Registry::load(&project_dir).ok().flatten();
+    let mut results = plan.validate(Some(&changes_dir), registry.as_ref());
     // RFC-3a shape-validation hook: surface malformed `.specify/registry.yaml`
     // through the same report that `Plan::validate` already drives. A
     // dedicated `specify initiative registry validate` verb lands in C13;
@@ -2146,6 +2229,35 @@ fn run_initiative_validate(format: OutputFormat) -> i32 {
             entry: None,
         });
     }
+
+    // RFC-3b: schema-mismatch-workspace warning
+    if let Some(ref reg) = registry {
+        let workspace_base = ProjectConfig::specify_dir(&project_dir).join("workspace");
+        for rp in &reg.projects {
+            let slot_project_yaml = workspace_base.join(&rp.name).join(".specify").join("project.yaml");
+            if slot_project_yaml.exists() {
+                if let Ok(content) = std::fs::read_to_string(&slot_project_yaml) {
+                    if let Ok(config) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
+                        if let Some(schema_val) = config.get("schema").and_then(|v| v.as_str()) {
+                            if schema_val != rp.schema {
+                                results.push(PlanValidationResult {
+                                    level: PlanValidationLevel::Warning,
+                                    code: "schema-mismatch-workspace",
+                                    message: format!(
+                                        "workspace clone '{}' has schema '{}' but registry declares '{}'; \
+                                         the clone's project.yaml is authoritative at execution time",
+                                        rp.name, schema_val, rp.schema
+                                    ),
+                                    entry: None,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let has_errors = results.iter().any(|r| matches!(r.level, PlanValidationLevel::Error));
 
     match format {
@@ -2398,6 +2510,106 @@ fn print_workspace_slot_line(slot: &WorkspaceSlotStatus) {
     println!("{}: kind={kind} head={head} dirty={dirty}", slot.name);
 }
 
+fn run_workspace_push(format: OutputFormat, projects: Vec<String>, dry_run: bool) -> i32 {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    let plan_path = match require_plan_file(&project_dir) {
+        Ok(p) => p,
+        Err(_) => {
+            let err = Error::Config(
+                "No active plan found at .specify/plan.yaml. Run 'specify initiative init' \
+                 to create one, or check whether the plan was already archived."
+                    .to_string(),
+            );
+            return emit_error(format, &err);
+        }
+    };
+    let plan = match Plan::load(&plan_path) {
+        Ok(p) => p,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    let registry = match Registry::load(&project_dir) {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            let err = Error::Config(
+                "No registry.yaml found; workspace push requires a registry".to_string(),
+            );
+            return emit_error(format, &err);
+        }
+        Err(err) => return emit_error(format, &err),
+    };
+
+    match specify::run_workspace_push_impl(&project_dir, &plan, &registry, &projects, dry_run) {
+        Ok(results) => {
+            match format {
+                OutputFormat::Json => {
+                    let items: Vec<Value> = results
+                        .iter()
+                        .map(|r| {
+                            let mut obj = json!({
+                                "name": r.name,
+                                "status": r.status,
+                            });
+                            if let Some(ref b) = r.branch {
+                                obj["branch"] = json!(b);
+                            }
+                            if let Some(pr) = r.pr_number {
+                                obj["pr"] = json!(pr);
+                            }
+                            obj
+                        })
+                        .collect();
+                    let mut response = json!({ "projects": items });
+                    if dry_run {
+                        response["dry_run"] = json!(true);
+                    }
+                    emit_json(response);
+                }
+                OutputFormat::Text => {
+                    if dry_run {
+                        println!("[dry-run] specify: workspace push — {}", plan.name);
+                    } else {
+                        println!("specify: workspace push — {}", plan.name);
+                    }
+                    println!();
+                    for r in &results {
+                        let status_label =
+                            if dry_run && (r.status == "pushed" || r.status == "created") {
+                                format!("would-{}", r.status)
+                            } else {
+                                r.status.clone()
+                            };
+                        let branch_part = r.branch.as_deref().unwrap_or("");
+                        let pr_part =
+                            r.pr_number.map(|n| format!("PR #{n}")).unwrap_or_default();
+                        println!(
+                            "  {:<20} {:<14} {} {}",
+                            r.name, status_label, branch_part, pr_part
+                        );
+                    }
+                    let created = results.iter().filter(|r| r.status == "created").count();
+                    let pushed = results.iter().filter(|r| r.status == "pushed").count();
+                    let up_to_date =
+                        results.iter().filter(|r| r.status == "up-to-date").count();
+                    let failed = results.iter().filter(|r| r.status == "failed").count();
+                    println!();
+                    println!(
+                        "{created} created, {pushed} pushed, {up_to_date} up-to-date. \
+                         {failed} failed."
+                    );
+                }
+            }
+            let any_failed = results.iter().any(|r| r.status == "failed");
+            if any_failed { EXIT_GENERIC_FAILURE } else { EXIT_SUCCESS }
+        }
+        Err(err) => emit_error(format, &err),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // initiative brief {init, show} — RFC-3a §"The Initiative Brief"
 // ---------------------------------------------------------------------------
@@ -2623,6 +2835,9 @@ fn run_initiative_next(format: OutputFormat) -> i32 {
                 "next": entry.name,
                 "reason": Value::Null,
                 "active": Value::Null,
+                "project": entry.project,
+                "description": entry.description,
+                "sources": entry.sources,
             })),
             OutputFormat::Text => println!("{}", entry.name),
         },
@@ -2894,15 +3109,36 @@ fn plan_change_entry_json(entry: &PlanChange) -> Value {
 
 fn run_initiative_create(
     format: OutputFormat, name: String, depends_on: Vec<String>, sources: Vec<String>,
-    description: Option<String>,
+    description: Option<String>, project: Option<String>,
 ) -> i32 {
-    let (_project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
+    let (project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
         Ok(v) => v,
         Err(code) => return code,
     };
 
+    if let Some(ref proj) = project {
+        match Registry::load(&project_dir) {
+            Ok(Some(registry)) => {
+                if !registry.projects.iter().any(|p| p.name == *proj) {
+                    let err = Error::Config(format!(
+                        "--project '{proj}' does not match any project in registry.yaml"
+                    ));
+                    return emit_error(format, &err);
+                }
+            }
+            Ok(None) => {
+                let err = Error::Config(
+                    "--project was specified but no registry.yaml exists".to_string(),
+                );
+                return emit_error(format, &err);
+            }
+            Err(err) => return emit_error(format, &err),
+        }
+    }
+
     let entry = PlanChange {
         name: name.clone(),
+        project,
         status: PlanStatus::Pending,
         depends_on,
         sources,
@@ -2936,19 +3172,44 @@ fn run_initiative_create(
 
 fn run_initiative_amend(
     format: OutputFormat, name: String, depends_on: Option<Vec<String>>,
-    sources: Option<Vec<String>>, description: Option<String>,
+    sources: Option<Vec<String>>, description: Option<String>, project: Option<String>,
 ) -> i32 {
-    let (_project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
+    let (project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
         Ok(v) => v,
         Err(code) => return code,
     };
 
+    if let Some(ref proj) = project {
+        if !proj.is_empty() {
+            match Registry::load(&project_dir) {
+                Ok(Some(registry)) => {
+                    if !registry.projects.iter().any(|p| p.name == *proj) {
+                        let err = Error::Config(format!(
+                            "--project '{proj}' does not match any project in registry.yaml"
+                        ));
+                        return emit_error(format, &err);
+                    }
+                }
+                Ok(None) => {
+                    let err = Error::Config(
+                        "--project was specified but no registry.yaml exists".to_string(),
+                    );
+                    return emit_error(format, &err);
+                }
+                Err(err) => return emit_error(format, &err),
+            }
+        }
+    }
+
     let description_patch: Option<Option<String>> =
         description.map(|s| if s.is_empty() { None } else { Some(s) });
+    let project_patch: Option<Option<String>> =
+        project.map(|s| if s.is_empty() { None } else { Some(s) });
 
     let patch = PlanChangePatch {
         depends_on,
         sources,
+        project: project_patch,
         description: description_patch,
     };
 
@@ -3602,4 +3863,34 @@ fn absolute_string(path: &Path) -> String {
         .ok()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod merge_workspace_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn detects_workspace_clone_unix_path() {
+        let path = Path::new("/home/user/project/.specify/workspace/traffic/");
+        assert!(is_workspace_clone(path));
+    }
+
+    #[test]
+    fn rejects_normal_project_root() {
+        let path = Path::new("/home/user/project/");
+        assert!(!is_workspace_clone(path));
+    }
+
+    #[test]
+    fn rejects_initiating_repo_with_specify_dir() {
+        let path = Path::new("/home/user/project/.specify/");
+        assert!(!is_workspace_clone(path));
+    }
+
+    #[test]
+    fn detects_deeply_nested_workspace_clone() {
+        let path = Path::new("/home/user/monorepo/.specify/workspace/mobile/sub/dir");
+        assert!(is_workspace_clone(path));
+    }
 }

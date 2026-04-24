@@ -54,6 +54,10 @@ pub struct RegistryProject {
     /// Schema identifier — e.g. `omnia@v1`. Opaque at this layer;
     /// the `name@version` suffix is **not** parsed here.
     pub schema: String,
+    /// Domain-level characterisation of the project (RFC-3b).
+    /// Required when `len(projects) > 1`; optional for single-project registries.
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 impl Registry {
@@ -131,6 +135,22 @@ impl Registry {
                 )));
             }
         }
+
+        if self.projects.len() > 1 {
+            for (idx, project) in self.projects.iter().enumerate() {
+                let missing = match &project.description {
+                    None => true,
+                    Some(s) => s.trim().is_empty(),
+                };
+                if missing {
+                    return Err(Error::Config(format!(
+                        "registry.yaml: projects[{idx}] (`{}`).description is required when the registry declares more than one project (description-missing-multi-repo)",
+                        project.name
+                    )));
+                }
+            }
+        }
+
         Ok(())
     }
 

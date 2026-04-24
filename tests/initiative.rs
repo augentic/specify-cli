@@ -1752,12 +1752,15 @@ projects:
   - name: monolith
     url: .
     schema: omnia@v1
+    description: Core monolith service
   - name: orders
     url: ../orders
     schema: omnia@v1
+    description: Order management service
   - name: payments
     url: git@github.com:org/payments.git
     schema: omnia@v1
+    description: Payment processing service
 ";
 
     fn write_registry(project: &Project, body: &str) {
@@ -2287,7 +2290,7 @@ inputs: []
         let project = Project::init();
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "workspace", "sync"])
+            .args(["--format", "json", "workspace", "sync"])
             .assert()
             .success();
         let v = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2316,20 +2319,22 @@ projects:
   - name: alpha
     url: .
     schema: omnia@v1
+    description: Root project
   - name: beta
     url: ../peer-proj
     schema: omnia@v1
+    description: Peer project
 ";
         fs::write(root.join(".specify/registry.yaml"), reg).expect("registry");
 
-        specify().current_dir(&root).args(["initiative", "workspace", "sync"]).assert().success();
+        specify().current_dir(&root).args(["workspace", "sync"]).assert().success();
 
         assert!(root.join(".specify/workspace/alpha").exists());
         assert!(root.join(".specify/workspace/beta").exists());
 
         let assert_st = specify()
             .current_dir(&root)
-            .args(["--format", "json", "initiative", "workspace", "status"])
+            .args(["--format", "json", "workspace", "status"])
             .assert()
             .success();
         let v = parse_stdout(&assert_st.get_output().stdout, &root);

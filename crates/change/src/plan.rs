@@ -35,6 +35,7 @@ use petgraph::algo::{tarjan_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
+use specify_schema::Registry;
 
 /// Lifecycle state of a single entry in [`Plan::changes`].
 ///
@@ -141,6 +142,9 @@ pub struct Plan {
 pub struct PlanChange {
     /// Stable identifier (kebab-case) unique within the plan.
     pub name: String,
+    /// Target registry project (RFC-3b). Required for multi-project registries.
+    #[serde(default)]
+    pub project: Option<String>,
     /// Current lifecycle state of this entry.
     pub status: PlanStatus,
     /// Names of other plan entries that must reach `done` before this
@@ -175,6 +179,9 @@ pub struct PlanChangePatch {
     pub depends_on: Option<Vec<String>>,
     /// Replace `sources` wholesale when `Some`.
     pub sources: Option<Vec<String>>,
+    /// Replace `project` when `Some(Some(..))`; clear when
+    /// `Some(None)`; leave unchanged when `None`.
+    pub project: Option<Option<String>>,
     /// Replace `description` when `Some(Some(..))`; clear when
     /// `Some(None)`; leave unchanged when `None`.
     pub description: Option<Option<String>>,
@@ -279,7 +286,7 @@ impl Plan {
     /// for completeness against hand-edited YAML that bypassed parsing,
     /// which is not reachable in-process — so nothing is emitted for it.
     pub fn validate(
-        &self, changes_dir: Option<&Path>, _project_dir: Option<&Path>,
+        &self, changes_dir: Option<&Path>, registry: Option<&Registry>,
     ) -> Vec<PlanValidationResult> {
         let mut results = Vec::new();
         results.extend(collect_duplicate_names(&self.changes));
@@ -287,6 +294,10 @@ impl Plan {
         results.extend(check_unknown_depends_on(&self.changes));
         results.extend(check_unknown_sources(self));
         results.extend(check_single_in_progress(&self.changes));
+        if let Some(reg) = registry {
+            results.extend(check_project_in_registry(&self.changes, reg));
+            results.extend(check_project_required_multi_repo(&self.changes, reg));
+        }
         if let Some(dir) = changes_dir.filter(|d| d.is_dir()) {
             results.extend(check_changes_dir_consistency(self, dir));
         }
@@ -440,6 +451,9 @@ impl Plan {
             }
             if let Some(v) = patch.sources {
                 entry.sources = v;
+            }
+            if let Some(v) = patch.project {
+                entry.project = v;
             }
             if let Some(v) = patch.description {
                 entry.description = v;
@@ -782,6 +796,55 @@ fn check_single_in_progress(changes: &[PlanChange]) -> Vec<PlanValidationResult>
         .collect()
 }
 
+/// RFC-3b: Every non-None `project` on a change must match a `projects[].name` in the registry.
+fn check_project_in_registry(
+    changes: &[PlanChange], registry: &Registry,
+) -> Vec<PlanValidationResult> {
+    let project_names: HashSet<&str> =
+        registry.projects.iter().map(|p| p.name.as_str()).collect();
+    let mut out = Vec::new();
+    for entry in changes {
+        if let Some(project) = &entry.project {
+            if !project_names.contains(project.as_str()) {
+                out.push(PlanValidationResult {
+                    level: PlanValidationLevel::Error,
+                    code: "project-not-in-registry",
+                    message: format!(
+                        "project '{}' on change '{}' does not match any project in registry.yaml",
+                        project, entry.name
+                    ),
+                    entry: Some(entry.name.clone()),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// RFC-3b: When registry has >1 project, every change must have a `project` field.
+fn check_project_required_multi_repo(
+    changes: &[PlanChange], registry: &Registry,
+) -> Vec<PlanValidationResult> {
+    if registry.projects.len() <= 1 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for entry in changes {
+        if entry.project.is_none() {
+            out.push(PlanValidationResult {
+                level: PlanValidationLevel::Error,
+                code: "project-missing-multi-repo",
+                message: format!(
+                    "change '{}' has no project; every change must specify a project when the registry declares more than one project",
+                    entry.name
+                ),
+                entry: Some(entry.name.clone()),
+            });
+        }
+    }
+    out
+}
+
 /// Plan-to-change directory consistency:
 ///   - Warn on orphan subdirectories (no matching plan entry).
 ///   - Warn when an `in-progress` plan entry has no matching directory.
@@ -840,6 +903,7 @@ fn check_changes_dir_consistency(plan: &Plan, changes_dir: &Path) -> Vec<PlanVal
 mod tests {
     use std::collections::HashSet;
 
+    use specify_schema::RegistryProject;
     use tempfile::tempdir;
 
     use super::*;
@@ -1026,6 +1090,7 @@ changes:
             sources: BTreeMap::new(),
             changes: vec![PlanChange {
                 name: "entry-one".to_string(),
+                project: None,
                 status: PlanStatus::InProgress,
                 depends_on: vec!["entry-zero".to_string()],
                 sources: vec![],
@@ -1129,6 +1194,7 @@ changes:
             sources: BTreeMap::new(),
             changes: vec![PlanChange {
                 name: "only-entry".to_string(),
+                project: None,
                 status: PlanStatus::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -1187,6 +1253,7 @@ changes:
             sources: BTreeMap::new(),
             changes: vec![PlanChange {
                 name: "entry-one".to_string(),
+                project: None,
                 status: PlanStatus::InProgress,
                 depends_on: vec!["foo".to_string()],
                 sources: vec![],
@@ -1226,6 +1293,7 @@ changes:
     fn change(name: &str, status: PlanStatus) -> PlanChange {
         PlanChange {
             name: name.into(),
+            project: None,
             status,
             depends_on: vec![],
             sources: vec![],
@@ -1414,6 +1482,7 @@ changes:
     fn change_with_deps(name: &str, status: PlanStatus, deps: &[&str]) -> PlanChange {
         PlanChange {
             name: name.into(),
+            project: None,
             status,
             depends_on: deps.iter().map(|s| (*s).to_string()).collect(),
             sources: vec![],
@@ -1646,6 +1715,7 @@ changes:
             sources: BTreeMap::new(),
             changes: vec![PlanChange {
                 name: "new-entry".to_string(),
+                project: None,
                 status: PlanStatus::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -1671,6 +1741,7 @@ changes:
         let mut plan = plan_with_changes(vec![]);
         let incoming = PlanChange {
             name: "foo".into(),
+            project: None,
             status: PlanStatus::Failed,
             depends_on: vec![],
             sources: vec![],
@@ -1778,6 +1849,7 @@ changes:
     fn amend_clear_vs_replace_description() {
         let mut plan = plan_with_changes(vec![PlanChange {
             name: "foo".into(),
+            project: None,
             status: PlanStatus::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -1834,6 +1906,7 @@ changes:
             changes: vec![
                 PlanChange {
                     name: "foo".into(),
+                    project: None,
                     status: PlanStatus::Pending,
                     depends_on: vec![],
                     sources: vec!["a".into()],
@@ -1931,6 +2004,7 @@ changes:
         let patch = PlanChangePatch::default();
         assert!(patch.depends_on.is_none());
         assert!(patch.sources.is_none());
+        assert!(patch.project.is_none());
         assert!(patch.description.is_none());
     }
 
@@ -1938,6 +2012,7 @@ changes:
     fn transition_applies_legal_edge_and_clears_reason_on_pending_reentry() {
         let mut plan = plan_with_changes(vec![PlanChange {
             name: "a".into(),
+            project: None,
             status: PlanStatus::Failed,
             depends_on: vec![],
             sources: vec![],
@@ -2621,5 +2696,207 @@ changes:
             pre_bytes,
             "rename-on-same-fs must preserve byte content"
         );
+    }
+
+    // ---------- RFC-3b: PlanChange.project ----------
+
+    #[test]
+    fn plan_change_project_round_trips_with_value() {
+        let yaml = "\
+name: foo
+project: traffic
+status: pending
+";
+        let parsed: PlanChange = serde_yaml::from_str(yaml).expect("parses with project");
+        assert_eq!(parsed.project.as_deref(), Some("traffic"));
+        let round_tripped = serde_yaml::to_string(&parsed).expect("serialize");
+        let re_parsed: PlanChange = serde_yaml::from_str(&round_tripped).expect("re-parse");
+        assert_eq!(re_parsed.project, parsed.project);
+    }
+
+    #[test]
+    fn plan_change_project_defaults_to_none() {
+        let yaml = "\
+name: foo
+status: pending
+";
+        let parsed: PlanChange = serde_yaml::from_str(yaml).expect("parses without project");
+        assert_eq!(parsed.project, None);
+    }
+
+    #[test]
+    fn amend_project_three_way_semantics() {
+        let mut plan = plan_with_changes(vec![PlanChange {
+            name: "foo".into(),
+            project: Some("alpha".into()),
+            status: PlanStatus::Pending,
+            depends_on: vec![],
+            sources: vec![],
+            description: None,
+            status_reason: None,
+        }]);
+
+        // None leaves project unchanged.
+        plan.amend("foo", PlanChangePatch::default()).expect("amend none ok");
+        assert_eq!(
+            plan.changes[0].project.as_deref(),
+            Some("alpha"),
+            "None must leave project unchanged"
+        );
+
+        // Some(Some(s)) replaces project.
+        plan.amend(
+            "foo",
+            PlanChangePatch {
+                project: Some(Some("beta".into())),
+                ..PlanChangePatch::default()
+            },
+        )
+        .expect("amend replace ok");
+        assert_eq!(
+            plan.changes[0].project.as_deref(),
+            Some("beta"),
+            "Some(Some(s)) must replace project"
+        );
+
+        // Some(None) clears project.
+        plan.amend(
+            "foo",
+            PlanChangePatch {
+                project: Some(None),
+                ..PlanChangePatch::default()
+            },
+        )
+        .expect("amend clear ok");
+        assert_eq!(plan.changes[0].project, None, "Some(None) must clear project");
+    }
+
+    #[test]
+    fn project_not_in_registry_error() {
+        let plan = Plan {
+            name: "test".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![PlanChange {
+                name: "a".to_string(),
+                project: Some("nonexistent".to_string()),
+                status: PlanStatus::Pending,
+                depends_on: vec![],
+                sources: vec![],
+                description: None,
+                status_reason: None,
+            }],
+        };
+        let registry = Registry {
+            version: 1,
+            projects: vec![RegistryProject {
+                name: "real-project".to_string(),
+                url: ".".to_string(),
+                schema: "omnia@v1".to_string(),
+                description: None,
+            }],
+        };
+        let results = plan.validate(None, Some(&registry));
+        assert!(results.iter().any(|r| r.code == "project-not-in-registry"));
+    }
+
+    #[test]
+    fn project_missing_multi_repo_error() {
+        let plan = Plan {
+            name: "test".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![PlanChange {
+                name: "a".to_string(),
+                project: None,
+                status: PlanStatus::Pending,
+                depends_on: vec![],
+                sources: vec![],
+                description: None,
+                status_reason: None,
+            }],
+        };
+        let registry = Registry {
+            version: 1,
+            projects: vec![
+                RegistryProject {
+                    name: "alpha".to_string(),
+                    url: ".".to_string(),
+                    schema: "omnia@v1".to_string(),
+                    description: Some("Alpha project".to_string()),
+                },
+                RegistryProject {
+                    name: "beta".to_string(),
+                    url: "git@github.com:org/beta.git".to_string(),
+                    schema: "omnia@v1".to_string(),
+                    description: Some("Beta project".to_string()),
+                },
+            ],
+        };
+        let results = plan.validate(None, Some(&registry));
+        assert!(results.iter().any(|r| r.code == "project-missing-multi-repo"));
+    }
+
+    #[test]
+    fn project_valid_in_single_repo_no_error() {
+        let plan = Plan {
+            name: "test".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![PlanChange {
+                name: "a".to_string(),
+                project: None,
+                status: PlanStatus::Pending,
+                depends_on: vec![],
+                sources: vec![],
+                description: None,
+                status_reason: None,
+            }],
+        };
+        let registry = Registry {
+            version: 1,
+            projects: vec![RegistryProject {
+                name: "solo".to_string(),
+                url: ".".to_string(),
+                schema: "omnia@v1".to_string(),
+                description: None,
+            }],
+        };
+        let results = plan.validate(None, Some(&registry));
+        assert!(!results.iter().any(|r| r.code == "project-missing-multi-repo"));
+        assert!(!results.iter().any(|r| r.code == "project-not-in-registry"));
+    }
+
+    #[test]
+    fn project_matches_registry_no_error() {
+        let plan = Plan {
+            name: "test".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![PlanChange {
+                name: "a".to_string(),
+                project: Some("alpha".to_string()),
+                status: PlanStatus::Pending,
+                depends_on: vec![],
+                sources: vec![],
+                description: None,
+                status_reason: None,
+            }],
+        };
+        let registry = Registry {
+            version: 1,
+            projects: vec![
+                RegistryProject {
+                    name: "alpha".to_string(),
+                    url: ".".to_string(),
+                    schema: "omnia@v1".to_string(),
+                    description: Some("Alpha".to_string()),
+                },
+                RegistryProject {
+                    name: "beta".to_string(),
+                    url: "git@github.com:org/beta.git".to_string(),
+                    schema: "omnia@v1".to_string(),
+                    description: Some("Beta".to_string()),
+                },
+            ],
+        };
+        let results = plan.validate(None, Some(&registry));
+        assert!(!results.iter().any(|r| r.level == PlanValidationLevel::Error));
     }
 }
