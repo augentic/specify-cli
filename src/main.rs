@@ -29,7 +29,6 @@ use std::process::ExitCode;
 use chrono::Utc;
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
-use serde_yaml;
 use specify::{
     BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Error,
     InitOptions, InitResult, InitiativeBrief, Journal, JournalEntry, LifecycleStatus, MergeEntry,
@@ -627,9 +626,11 @@ fn run(cli: Cli) -> i32 {
         Commands::Workspace { action } => match action {
             WorkspaceAction::Sync => run_initiative_workspace_sync(cli.format),
             WorkspaceAction::Status => run_initiative_workspace_status(cli.format),
-            WorkspaceAction::Push { projects, dry_run, push_format: _ } => {
-                run_workspace_push(cli.format, projects, dry_run)
-            }
+            WorkspaceAction::Push {
+                projects,
+                dry_run,
+                push_format: _,
+            } => run_workspace_push(cli.format, projects, dry_run),
         },
         Commands::Vectis { action } => run_vectis(cli.format, &action),
     }
@@ -768,10 +769,7 @@ fn format_result_line(r: &ValidationResult) -> String {
 fn is_workspace_clone(project_dir: &Path) -> bool {
     let in_workspace = project_dir
         .to_str()
-        .map(|s| {
-            s.contains("/.specify/workspace/")
-                || s.contains("\\.specify\\workspace\\")
-        })
+        .map(|s| s.contains("/.specify/workspace/") || s.contains("\\.specify\\workspace\\"))
         .unwrap_or(false);
     if !in_workspace {
         return false;
@@ -2260,26 +2258,24 @@ fn run_initiative_validate(format: OutputFormat) -> i32 {
     if let Some(ref reg) = registry {
         let workspace_base = ProjectConfig::specify_dir(&project_dir).join("workspace");
         for rp in &reg.projects {
-            let slot_project_yaml = workspace_base.join(&rp.name).join(".specify").join("project.yaml");
-            if slot_project_yaml.exists() {
-                if let Ok(content) = std::fs::read_to_string(&slot_project_yaml) {
-                    if let Ok(config) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
-                        if let Some(schema_val) = config.get("schema").and_then(|v| v.as_str()) {
-                            if schema_val != rp.schema {
-                                results.push(PlanValidationResult {
-                                    level: PlanValidationLevel::Warning,
-                                    code: "schema-mismatch-workspace",
-                                    message: format!(
-                                        "workspace clone '{}' has schema '{}' but registry declares '{}'; \
-                                         the clone's project.yaml is authoritative at execution time",
-                                        rp.name, schema_val, rp.schema
-                                    ),
-                                    entry: None,
-                                });
-                            }
-                        }
-                    }
-                }
+            let slot_project_yaml =
+                workspace_base.join(&rp.name).join(".specify").join("project.yaml");
+            if slot_project_yaml.exists()
+                && let Ok(content) = std::fs::read_to_string(&slot_project_yaml)
+                && let Ok(config) = serde_yaml::from_str::<serde_yaml::Value>(&content)
+                && let Some(schema_val) = config.get("schema").and_then(|v| v.as_str())
+                && schema_val != rp.schema
+            {
+                results.push(PlanValidationResult {
+                    level: PlanValidationLevel::Warning,
+                    code: "schema-mismatch-workspace",
+                    message: format!(
+                        "workspace clone '{}' has schema '{}' but registry declares '{}'; \
+                         the clone's project.yaml is authoritative at execution time",
+                        rp.name, schema_val, rp.schema
+                    ),
+                    entry: None,
+                });
             }
         }
     }
@@ -2610,8 +2606,7 @@ fn run_workspace_push(format: OutputFormat, projects: Vec<String>, dry_run: bool
                                 r.status.clone()
                             };
                         let branch_part = r.branch.as_deref().unwrap_or("");
-                        let pr_part =
-                            r.pr_number.map(|n| format!("PR #{n}")).unwrap_or_default();
+                        let pr_part = r.pr_number.map(|n| format!("PR #{n}")).unwrap_or_default();
                         println!(
                             "  {:<20} {:<14} {} {}",
                             r.name, status_label, branch_part, pr_part
@@ -2619,8 +2614,7 @@ fn run_workspace_push(format: OutputFormat, projects: Vec<String>, dry_run: bool
                     }
                     let created = results.iter().filter(|r| r.status == "created").count();
                     let pushed = results.iter().filter(|r| r.status == "pushed").count();
-                    let up_to_date =
-                        results.iter().filter(|r| r.status == "up-to-date").count();
+                    let up_to_date = results.iter().filter(|r| r.status == "up-to-date").count();
                     let failed = results.iter().filter(|r| r.status == "failed").count();
                     println!();
                     println!(
@@ -3205,25 +3199,25 @@ fn run_initiative_amend(
         Err(code) => return code,
     };
 
-    if let Some(ref proj) = project {
-        if !proj.is_empty() {
-            match Registry::load(&project_dir) {
-                Ok(Some(registry)) => {
-                    if !registry.projects.iter().any(|p| p.name == *proj) {
-                        let err = Error::Config(format!(
-                            "--project '{proj}' does not match any project in registry.yaml"
-                        ));
-                        return emit_error(format, &err);
-                    }
-                }
-                Ok(None) => {
-                    let err = Error::Config(
-                        "--project was specified but no registry.yaml exists".to_string(),
-                    );
+    if let Some(ref proj) = project
+        && !proj.is_empty()
+    {
+        match Registry::load(&project_dir) {
+            Ok(Some(registry)) => {
+                if !registry.projects.iter().any(|p| p.name == *proj) {
+                    let err = Error::Config(format!(
+                        "--project '{proj}' does not match any project in registry.yaml"
+                    ));
                     return emit_error(format, &err);
                 }
-                Err(err) => return emit_error(format, &err),
             }
+            Ok(None) => {
+                let err = Error::Config(
+                    "--project was specified but no registry.yaml exists".to_string(),
+                );
+                return emit_error(format, &err);
+            }
+            Err(err) => return emit_error(format, &err),
         }
     }
 
@@ -3896,10 +3890,19 @@ mod merge_workspace_tests {
     use super::*;
     use std::path::Path;
 
+    fn workspace_clone_dir(suffix: &str) -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot = tmp.path().join(".specify").join("workspace").join(suffix);
+        std::fs::create_dir_all(slot.join(".specify")).unwrap();
+        std::fs::write(slot.join(".specify").join("project.yaml"), "name: stub\n").unwrap();
+        tmp
+    }
+
     #[test]
     fn detects_workspace_clone_unix_path() {
-        let path = Path::new("/home/user/project/.specify/workspace/traffic/");
-        assert!(is_workspace_clone(path));
+        let tmp = workspace_clone_dir("traffic");
+        let path = tmp.path().join(".specify").join("workspace").join("traffic");
+        assert!(is_workspace_clone(&path));
     }
 
     #[test]
@@ -3916,7 +3919,11 @@ mod merge_workspace_tests {
 
     #[test]
     fn detects_deeply_nested_workspace_clone() {
-        let path = Path::new("/home/user/monorepo/.specify/workspace/mobile/sub/dir");
-        assert!(is_workspace_clone(path));
+        let tmp = workspace_clone_dir("mobile");
+        let path =
+            tmp.path().join(".specify").join("workspace").join("mobile").join("sub").join("dir");
+        std::fs::create_dir_all(path.join(".specify")).unwrap();
+        std::fs::write(path.join(".specify").join("project.yaml"), "name: stub\n").unwrap();
+        assert!(is_workspace_clone(&path));
     }
 }

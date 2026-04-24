@@ -224,17 +224,12 @@ fn symlink(target: &Path, link: &Path) -> Result<(), Error> {
     #[cfg(not(any(unix, windows)))]
     {
         let _ = (target, link);
-        Err(Error::Config(
-            "platform does not support symlinks for `specify workspace sync`".into(),
-        ))
+        Err(Error::Config("platform does not support symlinks for `specify workspace sync`".into()))
     }
 }
 
 fn materialise_git_remote(
-    url: &str,
-    dest: &Path,
-    schema: &str,
-    initiating_project_dir: &Path,
+    url: &str, dest: &Path, schema: &str, initiating_project_dir: &Path,
 ) -> Result<(), Error> {
     if dest.exists() {
         if dest.join(".git").is_dir() {
@@ -245,10 +240,7 @@ fn materialise_git_remote(
                     &["fetch", "--depth", "1"],
                     &format!("git fetch in {}", dest.display()),
                 )
-                .or_else(|_| {
-                    // fetch may fail for greenfield (no remote tracking branch) — not an error
-                    Ok(())
-                })
+                .or(Ok(()))
             } else {
                 // Partial greenfield bootstrap: .git/ present but .specify/project.yaml absent
                 greenfield_init(dest, schema, initiating_project_dir, true)
@@ -286,19 +278,12 @@ fn materialise_git_remote(
 
 /// Full greenfield bootstrap: mkdir, git init, git remote add, specify init, git add+commit.
 fn greenfield_bootstrap(
-    url: &str,
-    dest: &Path,
-    schema: &str,
-    initiating_project_dir: &Path,
+    url: &str, dest: &Path, schema: &str, initiating_project_dir: &Path,
 ) -> Result<(), Error> {
     std::fs::create_dir_all(dest).map_err(Error::Io)?;
 
     run_git(dest, &["init"], &format!("git init in {}", dest.display()))?;
-    run_git(
-        dest,
-        &["remote", "add", "origin", url],
-        &format!("git remote add origin {url}"),
-    )?;
+    run_git(dest, &["remote", "add", "origin", url], &format!("git remote add origin {url}"))?;
 
     greenfield_init(dest, schema, initiating_project_dir, false)?;
 
@@ -308,10 +293,7 @@ fn greenfield_bootstrap(
 /// Run `specify init` in a greenfield slot, then git add + commit.
 /// `is_rerun` controls whether we amend the commit or create a new one.
 fn greenfield_init(
-    dest: &Path,
-    schema: &str,
-    initiating_project_dir: &Path,
-    is_rerun: bool,
+    dest: &Path, schema: &str, initiating_project_dir: &Path, is_rerun: bool,
 ) -> Result<(), Error> {
     let schema_dir = locate_schema_cache(schema, initiating_project_dir)?;
 
@@ -353,8 +335,7 @@ fn greenfield_init(
 /// For a bare identifier like `omnia@v1`, the path is `<initiating>/.specify/.cache/omnia@v1/`.
 /// For a URL-shaped identifier, use the last non-empty path segment before any `@ref`.
 fn locate_schema_cache(
-    schema: &str,
-    initiating_project_dir: &Path,
+    schema: &str, initiating_project_dir: &Path,
 ) -> Result<std::path::PathBuf, Error> {
     let cache_base = initiating_project_dir.join(".specify").join(".cache");
 
@@ -430,11 +411,7 @@ pub fn extract_github_slug(url: &str) -> Option<String> {
 
 /// Core implementation of `specify workspace push`.
 pub fn run_workspace_push_impl(
-    project_dir: &Path,
-    plan: &Plan,
-    registry: &Registry,
-    filter_projects: &[String],
-    dry_run: bool,
+    project_dir: &Path, plan: &Plan, registry: &Registry, filter_projects: &[String], dry_run: bool,
 ) -> Result<Vec<WorkspacePushResult>, Error> {
     let initiative_name = &plan.name;
     let branch_name = format!("specify/{initiative_name}");
@@ -443,11 +420,7 @@ pub fn run_workspace_push_impl(
     let target_projects: Vec<&specify_schema::RegistryProject> = if filter_projects.is_empty() {
         registry.projects.iter().collect()
     } else {
-        registry
-            .projects
-            .iter()
-            .filter(|p| filter_projects.contains(&p.name))
-            .collect()
+        registry.projects.iter().filter(|p| filter_projects.contains(&p.name)).collect()
     };
 
     let mut results = Vec::new();
@@ -468,19 +441,11 @@ pub fn run_workspace_push_impl(
 }
 
 fn push_single_project(
-    project_dir: &Path,
-    workspace_base: &Path,
-    rp: &specify_schema::RegistryProject,
-    branch_name: &str,
-    initiative_name: &str,
-    dry_run: bool,
+    project_dir: &Path, workspace_base: &Path, rp: &specify_schema::RegistryProject,
+    branch_name: &str, initiative_name: &str, dry_run: bool,
 ) -> WorkspacePushResult {
     let project_path = if rp.url_materialises_as_symlink() {
-        if rp.url == "." {
-            project_dir.to_path_buf()
-        } else {
-            project_dir.join(&rp.url)
-        }
+        if rp.url == "." { project_dir.to_path_buf() } else { project_dir.join(&rp.url) }
     } else {
         workspace_base.join(&rp.name)
     };
@@ -552,9 +517,7 @@ fn push_single_project(
     let mut is_created = false;
 
     if let Some(ref slug) = slug {
-        let repo_check = Command::new("gh")
-            .args(["repo", "view", slug, "--json", "name"])
-            .output();
+        let repo_check = Command::new("gh").args(["repo", "view", slug, "--json", "name"]).output();
 
         match repo_check {
             Ok(output) if !output.status.success() => {
@@ -572,9 +535,7 @@ fn push_single_project(
                             status: "failed".to_string(),
                             branch: Some(branch_name.to_string()),
                             pr_number: None,
-                            error: Some(
-                                "failed to create remote repo via gh".to_string(),
-                            ),
+                            error: Some("failed to create remote repo via gh".to_string()),
                         };
                     }
                 }
@@ -601,20 +562,18 @@ fn push_single_project(
     let mut pr_number = None;
     if let Some(ref _slug) = slug {
         let pr_check = Command::new("gh")
-            .args([
-                "pr", "list", "--head", branch_name, "--json", "number", "--limit", "1",
-            ])
+            .args(["pr", "list", "--head", branch_name, "--json", "number", "--limit", "1"])
             .current_dir(&project_path)
             .output();
 
-        if let Ok(output) = pr_check {
-            if output.status.success() {
-                let text = String::from_utf8_lossy(&output.stdout);
-                if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {
-                    if let Some(first) = parsed.first() {
-                        pr_number = first.get("number").and_then(|n| n.as_u64());
-                    }
-                }
+        if let Ok(output) = pr_check
+            && output.status.success()
+        {
+            let text = String::from_utf8_lossy(&output.stdout);
+            if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(&text)
+                && let Some(first) = parsed.first()
+            {
+                pr_number = first.get("number").and_then(|n| n.as_u64());
             }
         }
 
@@ -629,12 +588,12 @@ fn push_single_project(
                 .current_dir(&project_path)
                 .output();
 
-            if let Ok(output) = pr_create {
-                if output.status.success() {
-                    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if let Some(num_str) = url.rsplit('/').next() {
-                        pr_number = num_str.parse().ok();
-                    }
+            if let Ok(output) = pr_create
+                && output.status.success()
+            {
+                let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if let Some(num_str) = url.rsplit('/').next() {
+                    pr_number = num_str.parse().ok();
                 }
             }
         }

@@ -801,22 +801,21 @@ fn check_single_in_progress(changes: &[PlanChange]) -> Vec<PlanValidationResult>
 fn check_project_in_registry(
     changes: &[PlanChange], registry: &Registry,
 ) -> Vec<PlanValidationResult> {
-    let project_names: HashSet<&str> =
-        registry.projects.iter().map(|p| p.name.as_str()).collect();
+    let project_names: HashSet<&str> = registry.projects.iter().map(|p| p.name.as_str()).collect();
     let mut out = Vec::new();
     for entry in changes {
-        if let Some(project) = &entry.project {
-            if !project_names.contains(project.as_str()) {
-                out.push(PlanValidationResult {
-                    level: PlanValidationLevel::Error,
-                    code: "project-not-in-registry",
-                    message: format!(
-                        "project '{}' on change '{}' does not match any project in registry.yaml",
-                        project, entry.name
-                    ),
-                    entry: Some(entry.name.clone()),
-                });
-            }
+        if let Some(project) = &entry.project
+            && !project_names.contains(project.as_str())
+        {
+            out.push(PlanValidationResult {
+                level: PlanValidationLevel::Error,
+                code: "project-not-in-registry",
+                message: format!(
+                    "project '{}' on change '{}' does not match any project in registry.yaml",
+                    project, entry.name
+                ),
+                entry: Some(entry.name.clone()),
+            });
         }
     }
     out
