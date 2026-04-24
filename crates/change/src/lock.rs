@@ -5,9 +5,9 @@
 //! - [`PlanLockGuard`] — RAII guard that holds an OS-level `flock(2)`
 //!   exclusive lock on `.specify/plan.lock` for its entire lifetime,
 //!   removing the lockfile on drop. Sized for in-process, long-lived
-//!   drivers (a future native `specify initiative run --loop`).
+//!   drivers (a future native `specify plan run --loop`).
 //! - [`PlanLockStamp`] — stateless PID-stamp helper used by the short-
-//!   lived `specify initiative lock {acquire, release, status}` CLI verbs
+//!   lived `specify plan lock {acquire, release, status}` CLI verbs
 //!   that drive the `/spec:execute` agent-side loop. Each CLI
 //!   invocation exits within milliseconds, so holding an `flock` is
 //!   not an option; the stamp file persists on disk between calls and
@@ -194,7 +194,7 @@ pub struct PlanLockAcquired {
 }
 
 /// Outcome of a [`PlanLockStamp::release`] call. The CLI surfaces this
-/// verbatim via `specify initiative lock release --format json`.
+/// verbatim via `specify plan lock release --format json`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanLockReleased {
     /// Stamp file was present and held our PID — now removed.
@@ -209,7 +209,7 @@ pub enum PlanLockReleased {
 }
 
 /// Snapshot of the on-disk `.specify/plan.lock` stamp, as reported by
-/// `specify initiative lock status`.
+/// `specify plan lock status`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlanLockState {
     /// `true` when the stamp file exists and the stamped PID is
@@ -229,13 +229,13 @@ pub struct PlanLockState {
 /// OS-level advisory lock. It manages `.specify/plan.lock` as a
 /// persistent PID marker that survives the process writing it:
 ///
-/// - `specify initiative lock acquire --pid <P>` stamps `P` into the file
+/// - `specify plan lock acquire --pid <P>` stamps `P` into the file
 ///   (failing with [`Error::DriverBusy`] when another live PID holds
 ///   it).
-/// - `specify initiative lock release --pid <P>` removes the file when it
+/// - `specify plan lock release --pid <P>` removes the file when it
 ///   still holds `P`; refuses when it holds another PID (stale locks
 ///   are reclaimed by the L2.G self-heal path, not by release).
-/// - `specify initiative lock status` reports the current holder (if any)
+/// - `specify plan lock status` reports the current holder (if any)
 ///   and whether the stamp is considered stale.
 ///
 /// The `/spec:execute` skill calls these verbs around its agent-side

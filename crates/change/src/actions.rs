@@ -71,7 +71,7 @@ pub struct Overlap {
 /// `schemas/plan/plan.schema.json` `$defs.kebabName.pattern`
 /// (currently `^[a-z0-9]+(-[a-z0-9]+)*$`). Any change to the
 /// acceptance rules here MUST be mirrored in that regex — and in the
-/// copy in the `augentic/specify` repo — so that `specify initiative
+/// copy in the `augentic/specify` repo — so that `specify plan
 /// validate` and `validate_name` never disagree on a name.
 pub fn validate_name(name: &str) -> Result<(), Error> {
     if name.is_empty() {

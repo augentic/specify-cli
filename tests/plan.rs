@@ -3,7 +3,7 @@
 //!
 //! The schema tests are pure-library: they compile the bundled JSON
 //! Schema and feed it YAML fixtures converted to `serde_json::Value`.
-//! CLI integration tests for the `specify initiative *` group that
+//! CLI integration tests for the `specify plan *` group that
 //! used to live alongside these schema tests have moved to
 //! `tests/initiative.rs` (see RFC-2 §3 — CLI namespace rename).
 

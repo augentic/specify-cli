@@ -160,6 +160,12 @@ enum Commands {
     },
 
     /// Manage the initiative-level plan at `.specify/plan.yaml`
+    Plan {
+        #[command(subcommand)]
+        action: PlanAction,
+    },
+
+    /// Initiative metadata: operator brief and platform registry.
     Initiative {
         #[command(subcommand)]
         action: InitiativeAction,
@@ -206,7 +212,7 @@ enum VectisAction {
 }
 
 #[derive(Subcommand)]
-enum InitiativeAction {
+enum PlanAction {
     /// Scaffold an empty .specify/plan.yaml
     Init {
         /// Kebab-case initiative name
@@ -290,12 +296,16 @@ enum InitiativeAction {
         #[command(subcommand)]
         action: LockAction,
     },
+}
+
+#[derive(Subcommand)]
+enum InitiativeAction {
     /// Registry operations (RFC-3a §"The Registry").
     ///
     /// `.specify/registry.yaml` is the platform-level catalogue of peer
     /// projects. It's optional: an absent file is equivalent to single-repo
     /// mode. These verbs expose the shape-validation already used by
-    /// `initiative validate` as dedicated read/validate entry points.
+    /// `plan validate` as dedicated read/validate entry points.
     Registry {
         #[command(subcommand)]
         action: RegistryAction,
@@ -311,7 +321,6 @@ enum InitiativeAction {
         #[command(subcommand)]
         action: BriefAction,
     },
-
 }
 
 #[derive(Subcommand)]
@@ -613,6 +622,7 @@ fn run(cli: Cli) -> i32 {
                 run_spec_conflict_check(cli.format, change_dir)
             }
         },
+        Commands::Plan { action } => run_plan(cli.format, action),
         Commands::Initiative { action } => run_initiative(cli.format, action),
         Commands::Workspace { action } => match action {
             WorkspaceAction::Sync => run_initiative_workspace_sync(cli.format),
@@ -2064,35 +2074,40 @@ fn spec_type_label(t: SpecType) -> &'static str {
 // initiative subcommand tree (read-only: validate, next, status)
 // ---------------------------------------------------------------------------
 
-fn run_initiative(format: OutputFormat, action: InitiativeAction) -> i32 {
+fn run_plan(format: OutputFormat, action: PlanAction) -> i32 {
     match action {
-        InitiativeAction::Init { name, sources } => run_initiative_init(format, name, sources),
-        InitiativeAction::Validate => run_initiative_validate(format),
-        InitiativeAction::Next => run_initiative_next(format),
-        InitiativeAction::Status => run_initiative_status(format),
-        InitiativeAction::Create {
+        PlanAction::Init { name, sources } => run_initiative_init(format, name, sources),
+        PlanAction::Validate => run_initiative_validate(format),
+        PlanAction::Next => run_initiative_next(format),
+        PlanAction::Status => run_initiative_status(format),
+        PlanAction::Create {
             name,
             depends_on,
             sources,
             description,
             project,
         } => run_initiative_create(format, name, depends_on, sources, description, project),
-        InitiativeAction::Amend {
+        PlanAction::Amend {
             name,
             depends_on,
             sources,
             description,
             project,
         } => run_initiative_amend(format, name, depends_on, sources, description, project),
-        InitiativeAction::Transition { name, target, reason } => {
+        PlanAction::Transition { name, target, reason } => {
             run_initiative_transition(format, name, target, reason)
         }
-        InitiativeAction::Archive { force } => run_initiative_archive(format, force),
-        InitiativeAction::Lock { action } => match action {
+        PlanAction::Archive { force } => run_initiative_archive(format, force),
+        PlanAction::Lock { action } => match action {
             LockAction::Acquire { pid } => run_initiative_lock_acquire(format, pid),
             LockAction::Release { pid } => run_initiative_lock_release(format, pid),
             LockAction::Status => run_initiative_lock_status(format),
         },
+    }
+}
+
+fn run_initiative(format: OutputFormat, action: InitiativeAction) -> i32 {
+    match action {
         InitiativeAction::Registry { action } => match action {
             RegistryAction::Show => run_initiative_registry_show(format),
             RegistryAction::Validate => run_initiative_registry_validate(format),
@@ -2160,7 +2175,7 @@ fn run_initiative_init(format: OutputFormat, name: String, sources: Vec<(String,
     let plan_path = plan_file_path(&project_dir);
     if plan_path.exists() {
         let err = Error::Config(format!(
-            "plan already exists at {}; run `specify initiative archive` first",
+            "plan already exists at {}; run `specify plan archive` first",
             plan_path.display()
         ));
         return emit_error(format, &err);
@@ -2220,7 +2235,7 @@ fn run_initiative_validate(format: OutputFormat) -> i32 {
     // RFC-3a shape-validation hook: surface malformed `.specify/registry.yaml`
     // through the same report that `Plan::validate` already drives. A
     // dedicated `specify initiative registry validate` verb lands in C13;
-    // this keeps `initiative validate` honest until then.
+    // this keeps `plan validate` honest until then.
     if let Err(err) = Registry::load(&project_dir) {
         results.push(PlanValidationResult {
             level: PlanValidationLevel::Error,
@@ -2350,7 +2365,7 @@ fn run_initiative_registry_show(format: OutputFormat) -> i32 {
 }
 
 /// `specify initiative registry validate` — dedicated verb for the same
-/// shape check `initiative validate` runs via its C12 hook. Exits
+/// shape check `plan validate` runs via its C12 hook. Exits
 /// `EXIT_VALIDATION_FAILED` (2) on malformed input; 0 otherwise,
 /// including when `.specify/registry.yaml` is absent.
 fn run_initiative_registry_validate(format: OutputFormat) -> i32 {
@@ -2520,7 +2535,7 @@ fn run_workspace_push(format: OutputFormat, projects: Vec<String>, dry_run: bool
         Ok(p) => p,
         Err(_) => {
             let err = Error::Config(
-                "No active plan found at .specify/plan.yaml. Run 'specify initiative init' \
+                "No active plan found at .specify/plan.yaml. Run 'specify plan init' \
                  to create one, or check whether the plan was already archived."
                     .to_string(),
             );
@@ -2776,11 +2791,11 @@ fn print_registry_text(registry: &Registry, registry_path: &Path) {
     }
 }
 
-/// Emit the stable "go run `specify initiative validate`" pointer when
-/// `initiative next` or `initiative status` is asked to operate on a
+/// Emit the stable "go run `specify plan validate`" pointer when
+/// `plan next` or `plan status` is asked to operate on a
 /// structurally broken plan.
 fn emit_plan_structural_error(format: OutputFormat) -> i32 {
-    let msg = "plan has structural errors; run 'specify initiative validate' for detail";
+    let msg = "plan has structural errors; run 'specify plan validate' for detail";
     match format {
         OutputFormat::Json => emit_json(json!({
             "error": "validation",
@@ -2907,12 +2922,12 @@ fn run_initiative_status(format: OutputFormat) -> i32 {
             match format {
                 OutputFormat::Json => {
                     eprintln!(
-                        "warning: dependency cycle detected — falling back to list order. Run 'specify initiative validate' for detail."
+                        "warning: dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
                     );
                 }
                 OutputFormat::Text => {
                     println!(
-                        "⚠ dependency cycle detected — falling back to list order. Run 'specify initiative validate' for detail."
+                        "⚠ dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
                     );
                 }
             }
