@@ -322,9 +322,9 @@ fn greenfield_init(
     run_git(dest, &["add", "."], &format!("git add in {}", dest.display()))?;
 
     let commit_args = if is_rerun {
-        vec!["commit", "--amend", "-m", "Initial Specify scaffold"]
+        vec!["commit", "--amend", "--no-gpg-sign", "-m", "Initial Specify scaffold"]
     } else {
-        vec!["commit", "-m", "Initial Specify scaffold"]
+        vec!["commit", "--no-gpg-sign", "-m", "Initial Specify scaffold"]
     };
     run_git(dest, &commit_args, &format!("git commit in {}", dest.display()))?;
 
