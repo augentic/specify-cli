@@ -36,11 +36,8 @@ pub fn merge_composition(
     let has_delta = delta_doc.get("delta").is_some();
 
     if has_screens && !has_delta {
-        let screen_count = delta_doc
-            .get("screens")
-            .and_then(|s| s.as_mapping())
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let screen_count =
+            delta_doc.get("screens").and_then(|s| s.as_mapping()).map(|m| m.len()).unwrap_or(0);
         return Ok(CompositionMergeResult {
             output: delta_text.to_string(),
             operations: vec![CompositionMergeOp::CreatedBaseline { screen_count }],
@@ -68,16 +65,15 @@ pub fn merge_composition(
 
     let screens = baseline_doc
         .as_mapping_mut()
-        .and_then(|m| m.get_mut(&Value::String("screens".to_string())))
+        .and_then(|m| m.get_mut(Value::String("screens".to_string())))
         .and_then(|s| s.as_mapping_mut())
         .ok_or_else(|| Error::Merge("baseline has no `screens` mapping".to_string()))?;
 
     let mut operations: Vec<CompositionMergeOp> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
 
-    if let Some(removed) = delta
-        .get(&Value::String("removed".to_string()))
-        .and_then(|r| r.as_mapping())
+    if let Some(removed) =
+        delta.get(Value::String("removed".to_string())).and_then(|r| r.as_mapping())
     {
         for (slug_val, _) in removed {
             let slug = slug_val
@@ -91,9 +87,7 @@ pub fn merge_composition(
         }
     }
 
-    if let Some(added) = delta
-        .get(&Value::String("added".to_string()))
-        .and_then(|a| a.as_mapping())
+    if let Some(added) = delta.get(Value::String("added".to_string())).and_then(|a| a.as_mapping())
     {
         for (slug_val, screen_entry) in added {
             let slug = slug_val
@@ -113,9 +107,8 @@ pub fn merge_composition(
         }
     }
 
-    if let Some(modified) = delta
-        .get(&Value::String("modified".to_string()))
-        .and_then(|m| m.as_mapping())
+    if let Some(modified) =
+        delta.get(Value::String("modified".to_string())).and_then(|m| m.as_mapping())
     {
         for (slug_val, screen_entry) in modified {
             let slug = slug_val
@@ -151,7 +144,8 @@ mod tests {
 
     #[test]
     fn full_document_creates_baseline() {
-        let delta = "version: 1\nscreens:\n  home:\n    title: Home\n  settings:\n    title: Settings\n";
+        let delta =
+            "version: 1\nscreens:\n  home:\n    title: Home\n  settings:\n    title: Settings\n";
         let result = merge_composition(None, delta).unwrap();
         assert_eq!(result.output, delta);
         assert_eq!(
@@ -169,7 +163,9 @@ mod tests {
         assert!(result.output.contains("home"));
         assert_eq!(
             result.operations,
-            vec![CompositionMergeOp::Added { slug: "settings".to_string() }]
+            vec![CompositionMergeOp::Added {
+                slug: "settings".to_string()
+            }]
         );
     }
 
@@ -181,20 +177,25 @@ mod tests {
         assert!(result.output.contains("Home v2"));
         assert_eq!(
             result.operations,
-            vec![CompositionMergeOp::Modified { slug: "home".to_string() }]
+            vec![CompositionMergeOp::Modified {
+                slug: "home".to_string()
+            }]
         );
     }
 
     #[test]
     fn delta_removes_screen() {
-        let baseline = "version: 1\nscreens:\n  home:\n    title: Home\n  settings:\n    title: Settings\n";
+        let baseline =
+            "version: 1\nscreens:\n  home:\n    title: Home\n  settings:\n    title: Settings\n";
         let delta = "delta:\n  removed:\n    settings:\n      reason: deprecated\n";
         let result = merge_composition(Some(baseline), delta).unwrap();
         assert!(!result.output.contains("settings"));
         assert!(result.output.contains("home"));
         assert_eq!(
             result.operations,
-            vec![CompositionMergeOp::Removed { slug: "settings".to_string() }]
+            vec![CompositionMergeOp::Removed {
+                slug: "settings".to_string()
+            }]
         );
     }
 
@@ -237,7 +238,9 @@ mod tests {
         assert!(result.output.contains("home"));
         assert_eq!(
             result.operations,
-            vec![CompositionMergeOp::Added { slug: "home".to_string() }]
+            vec![CompositionMergeOp::Added {
+                slug: "home".to_string()
+            }]
         );
     }
 }

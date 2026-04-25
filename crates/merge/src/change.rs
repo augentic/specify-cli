@@ -309,13 +309,22 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Er
                         .iter()
                         .map(|op| match op {
                             crate::composition::CompositionMergeOp::Added { slug } => {
-                                MergeOperation::Added { id: slug.clone(), name: slug.clone() }
+                                MergeOperation::Added {
+                                    id: slug.clone(),
+                                    name: slug.clone(),
+                                }
                             }
                             crate::composition::CompositionMergeOp::Modified { slug } => {
-                                MergeOperation::Modified { id: slug.clone(), name: slug.clone() }
+                                MergeOperation::Modified {
+                                    id: slug.clone(),
+                                    name: slug.clone(),
+                                }
                             }
                             crate::composition::CompositionMergeOp::Removed { slug } => {
-                                MergeOperation::Removed { id: slug.clone(), name: slug.clone() }
+                                MergeOperation::Removed {
+                                    id: slug.clone(),
+                                    name: slug.clone(),
+                                }
                             }
                             crate::composition::CompositionMergeOp::CreatedBaseline {
                                 screen_count,

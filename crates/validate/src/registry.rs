@@ -234,7 +234,7 @@ fn composition_has_version(ctx: &BriefContext<'_>) -> RuleOutcome {
         Err(_) => {
             return RuleOutcome::Fail {
                 detail: "not valid YAML".to_string(),
-            }
+            };
         }
     };
     match doc.get("version") {
@@ -254,7 +254,7 @@ fn composition_screens_or_delta(ctx: &BriefContext<'_>) -> RuleOutcome {
         Err(_) => {
             return RuleOutcome::Fail {
                 detail: "not valid YAML".to_string(),
-            }
+            };
         }
     };
     let has_screens = doc.get("screens").is_some();
@@ -278,7 +278,7 @@ fn composition_screen_slugs_kebab(ctx: &BriefContext<'_>) -> RuleOutcome {
         Err(_) => {
             return RuleOutcome::Fail {
                 detail: "not valid YAML".to_string(),
-            }
+            };
         }
     };
     let slug_re = regex::Regex::new(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$").unwrap();
@@ -448,7 +448,7 @@ fn cross_composition_maps_to_consistent(ctx: &CrossContext<'_>) -> RuleOutcome {
         let mut maps_to_issues: Vec<String> = Vec::new();
         for section_key in &["added", "modified"] {
             if let Some(section) = delta
-                .get(&serde_yaml::Value::String(section_key.to_string()))
+                .get(serde_yaml::Value::String(section_key.to_string()))
                 .and_then(|s| s.as_mapping())
             {
                 for (slug_val, screen) in section {
