@@ -16,6 +16,7 @@ specify-task.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 regex.workspace = true
+serde_yaml.workspace = true
 glob.workspace = true
 
 [dev-dependencies]

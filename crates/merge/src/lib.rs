@@ -18,6 +18,7 @@
 //! tests compare against.
 
 mod change;
+pub mod composition;
 mod merge;
 mod validate;
 

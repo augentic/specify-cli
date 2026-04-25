@@ -78,6 +78,11 @@
       "rule": "Every requirement id referenced in design.md exists in specs",
       "rule-id": "cross.design-references-valid",
       "status": "fail"
+    },
+    {
+      "rule": "composition.yaml maps_to values are well-formed",
+      "rule-id": "cross.composition-maps-to-consistent",
+      "status": "pass"
     }
   ],
   "passed": false,

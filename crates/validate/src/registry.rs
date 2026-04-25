@@ -216,6 +216,146 @@ const TASKS_RULES: &[Rule] = &[
 ];
 
 // ---------------------------------------------------------------------------
+// Composition
+// ---------------------------------------------------------------------------
+
+fn composition_valid_yaml(ctx: &BriefContext<'_>) -> RuleOutcome {
+    match serde_yaml::from_str::<serde_yaml::Value>(ctx.content) {
+        Ok(_) => RuleOutcome::Pass,
+        Err(err) => RuleOutcome::Fail {
+            detail: format!("composition.yaml is not valid YAML: {err}"),
+        },
+    }
+}
+
+fn composition_has_version(ctx: &BriefContext<'_>) -> RuleOutcome {
+    let doc: serde_yaml::Value = match serde_yaml::from_str(ctx.content) {
+        Ok(v) => v,
+        Err(_) => {
+            return RuleOutcome::Fail {
+                detail: "not valid YAML".to_string(),
+            }
+        }
+    };
+    match doc.get("version") {
+        Some(serde_yaml::Value::Number(n)) if n.as_u64() == Some(1) => RuleOutcome::Pass,
+        Some(_) => RuleOutcome::Fail {
+            detail: "`version` must be 1".to_string(),
+        },
+        None => RuleOutcome::Fail {
+            detail: "`version` key is missing".to_string(),
+        },
+    }
+}
+
+fn composition_screens_or_delta(ctx: &BriefContext<'_>) -> RuleOutcome {
+    let doc: serde_yaml::Value = match serde_yaml::from_str(ctx.content) {
+        Ok(v) => v,
+        Err(_) => {
+            return RuleOutcome::Fail {
+                detail: "not valid YAML".to_string(),
+            }
+        }
+    };
+    let has_screens = doc.get("screens").is_some();
+    let has_delta = doc.get("delta").is_some();
+    match (has_screens, has_delta) {
+        (true, false) | (false, true) => RuleOutcome::Pass,
+        (true, true) => RuleOutcome::Fail {
+            detail: "document has both `screens` and `delta` — exactly one must be present"
+                .to_string(),
+        },
+        (false, false) => RuleOutcome::Fail {
+            detail: "document has neither `screens` nor `delta` — exactly one must be present"
+                .to_string(),
+        },
+    }
+}
+
+fn composition_screen_slugs_kebab(ctx: &BriefContext<'_>) -> RuleOutcome {
+    let doc: serde_yaml::Value = match serde_yaml::from_str(ctx.content) {
+        Ok(v) => v,
+        Err(_) => {
+            return RuleOutcome::Fail {
+                detail: "not valid YAML".to_string(),
+            }
+        }
+    };
+    let slug_re = regex::Regex::new(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$").unwrap();
+
+    let screens_map = if let Some(screens) = doc.get("screens").and_then(|s| s.as_mapping()) {
+        screens
+    } else if let Some(delta) = doc.get("delta").and_then(|d| d.as_mapping()) {
+        let mut bad: Vec<String> = Vec::new();
+        for section_key in &["added", "modified", "removed"] {
+            if let Some(section) = delta
+                .get(serde_yaml::Value::String(section_key.to_string()))
+                .and_then(|s| s.as_mapping())
+            {
+                for key in section.keys() {
+                    if let Some(slug) = key.as_str()
+                        && !slug_re.is_match(slug)
+                    {
+                        bad.push(slug.to_string());
+                    }
+                }
+            }
+        }
+        if bad.is_empty() {
+            return RuleOutcome::Pass;
+        }
+        return RuleOutcome::Fail {
+            detail: format!("non-kebab-case screen slugs in delta: {}", bad.join(", ")),
+        };
+    } else {
+        return RuleOutcome::Pass;
+    };
+
+    let mut bad: Vec<String> = Vec::new();
+    for key in screens_map.keys() {
+        if let Some(slug) = key.as_str()
+            && !slug_re.is_match(slug)
+        {
+            bad.push(slug.to_string());
+        }
+    }
+    if bad.is_empty() {
+        RuleOutcome::Pass
+    } else {
+        RuleOutcome::Fail {
+            detail: format!("non-kebab-case screen slugs: {}", bad.join(", ")),
+        }
+    }
+}
+
+const COMPOSITION_RULES: &[Rule] = &[
+    Rule {
+        id: "composition.valid-yaml",
+        description: "composition.yaml is valid YAML",
+        classification: Classification::Structural,
+        check: composition_valid_yaml,
+    },
+    Rule {
+        id: "composition.has-version",
+        description: "composition.yaml has `version: 1`",
+        classification: Classification::Structural,
+        check: composition_has_version,
+    },
+    Rule {
+        id: "composition.screens-or-delta",
+        description: "Document has exactly one of `screens` or `delta`",
+        classification: Classification::Structural,
+        check: composition_screens_or_delta,
+    },
+    Rule {
+        id: "composition.screen-slugs-kebab",
+        description: "Screen slugs are kebab-case",
+        classification: Classification::Structural,
+        check: composition_screen_slugs_kebab,
+    },
+];
+
+// ---------------------------------------------------------------------------
 // Registry lookup
 // ---------------------------------------------------------------------------
 
@@ -226,6 +366,7 @@ pub fn rules_for(brief_id: &str) -> &'static [Rule] {
         "specs" => SPECS_RULES,
         "design" => DESIGN_RULES,
         "tasks" => TASKS_RULES,
+        "composition" => COMPOSITION_RULES,
         _ => &[],
     }
 }
@@ -289,6 +430,75 @@ fn cross_design_references_valid(ctx: &CrossContext<'_>) -> RuleOutcome {
     }
 }
 
+fn cross_composition_maps_to_consistent(ctx: &CrossContext<'_>) -> RuleOutcome {
+    let comp_path = ctx.change_dir.join("composition.yaml");
+    let comp_text = match std::fs::read_to_string(&comp_path) {
+        Ok(t) => t,
+        Err(_) => return RuleOutcome::Pass,
+    };
+
+    let doc: serde_yaml::Value = match serde_yaml::from_str(&comp_text) {
+        Ok(v) => v,
+        Err(_) => return RuleOutcome::Pass,
+    };
+
+    let screens = if let Some(s) = doc.get("screens").and_then(|s| s.as_mapping()) {
+        s
+    } else if let Some(delta) = doc.get("delta").and_then(|d| d.as_mapping()) {
+        let mut maps_to_issues: Vec<String> = Vec::new();
+        for section_key in &["added", "modified"] {
+            if let Some(section) = delta
+                .get(&serde_yaml::Value::String(section_key.to_string()))
+                .and_then(|s| s.as_mapping())
+            {
+                for (slug_val, screen) in section {
+                    let slug = slug_val.as_str().unwrap_or("?");
+                    if let Some(maps_to) = screen.get("maps_to") {
+                        if let Some(val) = maps_to.as_str() {
+                            if val.is_empty() {
+                                maps_to_issues.push(format!("screen `{slug}` has empty `maps_to`"));
+                            }
+                        } else {
+                            maps_to_issues
+                                .push(format!("screen `{slug}` has non-string `maps_to`"));
+                        }
+                    }
+                }
+            }
+        }
+        if maps_to_issues.is_empty() {
+            return RuleOutcome::Pass;
+        }
+        return RuleOutcome::Fail {
+            detail: maps_to_issues.join("; "),
+        };
+    } else {
+        return RuleOutcome::Pass;
+    };
+
+    let mut issues: Vec<String> = Vec::new();
+    for (slug_val, screen) in screens {
+        let slug = slug_val.as_str().unwrap_or("?");
+        if let Some(maps_to) = screen.get("maps_to") {
+            if let Some(val) = maps_to.as_str() {
+                if val.is_empty() {
+                    issues.push(format!("screen `{slug}` has empty `maps_to`"));
+                }
+            } else {
+                issues.push(format!("screen `{slug}` has non-string `maps_to`"));
+            }
+        }
+    }
+
+    if issues.is_empty() {
+        RuleOutcome::Pass
+    } else {
+        RuleOutcome::Fail {
+            detail: issues.join("; "),
+        }
+    }
+}
+
 const CROSS_RULES: &[CrossRule] = &[
     CrossRule {
         id: "cross.proposal-crates-have-specs",
@@ -301,6 +511,12 @@ const CROSS_RULES: &[CrossRule] = &[
         description: "Every requirement id referenced in design.md exists in specs",
         classification: Classification::Structural,
         check: cross_design_references_valid,
+    },
+    CrossRule {
+        id: "cross.composition-maps-to-consistent",
+        description: "composition.yaml maps_to values are well-formed",
+        classification: Classification::Structural,
+        check: cross_composition_maps_to_consistent,
     },
 ];
 
