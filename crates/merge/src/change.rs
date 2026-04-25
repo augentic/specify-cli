@@ -25,7 +25,7 @@ use specify_change::{
 };
 use specify_error::Error;
 
-use crate::merge::{MergeResult, merge};
+use crate::merge::{MergeOperation, MergeResult, merge};
 use crate::validate::validate_baseline;
 
 /// Merged spec pair kept in memory by both [`preview_change`] and
@@ -172,6 +172,22 @@ pub fn conflict_check(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Baselin
             });
         }
     }
+    // Check composition baseline for drift
+    let composition_delta = change_dir.join("composition.yaml");
+    if composition_delta.is_file() {
+        let comp_baseline = specs_dir.join("composition.yaml");
+        if let Ok(meta) = fs::metadata(&comp_baseline) {
+            let mtime = system_time_to_utc(meta.modified()?)?;
+            if mtime > defined_at {
+                conflicts.push(BaselineConflict {
+                    capability: "composition".to_string(),
+                    defined_at: defined_raw.to_string(),
+                    baseline_modified_at: mtime,
+                });
+            }
+        }
+    }
+
     conflicts.sort_by(|a, b| a.capability.cmp(&b.capability));
     Ok(conflicts)
 }
@@ -260,6 +276,75 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Er
             baseline_path: spec.baseline_path,
             result,
         });
+    }
+
+    // --- Composition delta (if present) ------------------------------------
+    let composition_delta_path = change_dir.join("composition.yaml");
+    if composition_delta_path.is_file() {
+        let delta_text = fs::read_to_string(&composition_delta_path).map_err(|err| {
+            Error::Merge(format!(
+                "failed to read composition delta {}: {err}",
+                composition_delta_path.display()
+            ))
+        })?;
+
+        let baseline_path = specs_dir.join("composition.yaml");
+        let baseline_text = if baseline_path.is_file() {
+            Some(fs::read_to_string(&baseline_path).map_err(|err| {
+                Error::Merge(format!(
+                    "failed to read composition baseline {}: {err}",
+                    baseline_path.display()
+                ))
+            })?)
+        } else {
+            None
+        };
+
+        match crate::composition::merge_composition(baseline_text.as_deref(), &delta_text) {
+            Ok(comp_result) => {
+                let spec_merge_result = MergeResult {
+                    output: comp_result.output,
+                    operations: comp_result
+                        .operations
+                        .iter()
+                        .map(|op| match op {
+                            crate::composition::CompositionMergeOp::Added { slug } => {
+                                MergeOperation::Added {
+                                    id: slug.clone(),
+                                    name: slug.clone(),
+                                }
+                            }
+                            crate::composition::CompositionMergeOp::Modified { slug } => {
+                                MergeOperation::Modified {
+                                    id: slug.clone(),
+                                    name: slug.clone(),
+                                }
+                            }
+                            crate::composition::CompositionMergeOp::Removed { slug } => {
+                                MergeOperation::Removed {
+                                    id: slug.clone(),
+                                    name: slug.clone(),
+                                }
+                            }
+                            crate::composition::CompositionMergeOp::CreatedBaseline {
+                                screen_count,
+                            } => MergeOperation::CreatedBaseline {
+                                requirement_count: *screen_count,
+                            },
+                        })
+                        .collect(),
+                };
+                merged.push(MergeEntry {
+                    spec_name: "composition".to_string(),
+                    baseline_path,
+                    result: spec_merge_result,
+                });
+            }
+            Err(Error::Merge(msg)) => {
+                aborts.push(format!("composition: {msg}"));
+            }
+            Err(other) => return Err(other),
+        }
     }
 
     if !aborts.is_empty() {

@@ -15,6 +15,7 @@ specify-schema.workspace = true
 specify-change.workspace = true
 chrono.workspace = true
 regex.workspace = true
+serde_yaml.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
