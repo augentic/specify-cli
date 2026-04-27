@@ -265,19 +265,15 @@ pub fn conflict_check(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Baselin
 /// `defined_at`. Files that exist only in the change (not yet in baseline)
 /// are skipped — they represent new contracts, not drifted ones.
 fn check_contract_drift(
-    base: &Path,
-    current: &Path,
-    baseline_dir: &Path,
-    defined_raw: &str,
-    defined_at: DateTime<Utc>,
+    base: &Path, current: &Path, baseline_dir: &Path, defined_raw: &str, defined_at: DateTime<Utc>,
     conflicts: &mut Vec<BaselineConflict>,
 ) -> Result<(), Error> {
     if !current.is_dir() {
         return Ok(());
     }
-    for entry in fs::read_dir(current).map_err(|err| {
-        Error::Merge(format!("failed to read {}: {err}", current.display()))
-    })? {
+    for entry in fs::read_dir(current)
+        .map_err(|err| Error::Merge(format!("failed to read {}: {err}", current.display())))?
+    {
         let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
         let path = entry.path();
         if path.is_dir() {
@@ -488,12 +484,11 @@ fn preview_contracts(
 }
 
 fn collect_contract_entries(
-    base: &Path, current: &Path, baseline_dir: &Path,
-    entries: &mut Vec<ContractPreviewEntry>,
+    base: &Path, current: &Path, baseline_dir: &Path, entries: &mut Vec<ContractPreviewEntry>,
 ) -> Result<(), Error> {
-    for entry in fs::read_dir(current).map_err(|err| {
-        Error::Merge(format!("failed to read {}: {err}", current.display()))
-    })? {
+    for entry in fs::read_dir(current)
+        .map_err(|err| Error::Merge(format!("failed to read {}: {err}", current.display())))?
+    {
         let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
         let path = entry.path();
         if path.is_dir() {
@@ -553,14 +548,11 @@ fn copy_contracts(src: &Path, dest: &Path) -> Result<Vec<String>, Error> {
 }
 
 fn copy_contracts_recursive(
-    base: &Path,
-    dest_base: &Path,
-    current: &Path,
-    copied: &mut Vec<String>,
+    base: &Path, dest_base: &Path, current: &Path, copied: &mut Vec<String>,
 ) -> Result<(), Error> {
-    for entry in fs::read_dir(current).map_err(|err| {
-        Error::Merge(format!("failed to read {}: {err}", current.display()))
-    })? {
+    for entry in fs::read_dir(current)
+        .map_err(|err| Error::Merge(format!("failed to read {}: {err}", current.display())))?
+    {
         let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
         let path = entry.path();
         let relative = path

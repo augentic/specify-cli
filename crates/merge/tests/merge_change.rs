@@ -298,8 +298,7 @@ fn merge_leaves_untouched_baseline_contract_files() {
         .expect("write existing");
 
     fs::create_dir_all(change_dir.join("contracts/schemas")).expect("mkdir change schemas");
-    fs::write(change_dir.join("contracts/schemas/new.yaml"), "new content\n")
-        .expect("write new");
+    fs::write(change_dir.join("contracts/schemas/new.yaml"), "new content\n").expect("write new");
 
     merge_change(&change_dir, &project.specs_dir(), &project.archive_dir()).expect("merge ok");
 
@@ -375,8 +374,7 @@ fn preview_new_contract_files_reported_as_added() {
     fs::write(change_dir.join("contracts/schemas/user.yaml"), "schema: user\n").expect("write");
     fs::write(change_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write");
 
-    let result =
-        preview_change(&change_dir, &project.specs_dir()).expect("preview should succeed");
+    let result = preview_change(&change_dir, &project.specs_dir()).expect("preview should succeed");
 
     assert_eq!(result.contracts.len(), 2);
     // Sorted by relative_path.
@@ -399,8 +397,7 @@ fn preview_existing_baseline_contracts_reported_as_replaced() {
     fs::write(change_dir.join("contracts/schemas/user.yaml"), "new\n").expect("write change");
     fs::write(change_dir.join("contracts/schemas/order.yaml"), "new\n").expect("write change");
 
-    let result =
-        preview_change(&change_dir, &project.specs_dir()).expect("preview should succeed");
+    let result = preview_change(&change_dir, &project.specs_dir()).expect("preview should succeed");
 
     assert_eq!(result.contracts.len(), 2);
     let order = result.contracts.iter().find(|c| c.relative_path == "schemas/order.yaml").unwrap();

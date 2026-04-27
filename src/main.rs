@@ -37,8 +37,8 @@ use specify::{
     PlanLockStamp, PlanLockState, PlanStatus, PlanValidationLevel, PlanValidationResult,
     ProjectConfig, Registry, Schema, SchemaSource, SpecType, Task, TouchedSpec, ValidationReport,
     ValidationResult, VersionMode, WorkspaceSlotKind, WorkspaceSlotStatus, change_actions,
-    conflict_check, format_rfc3339, init, mark_complete, merge_change, parse_tasks,
-    preview_change, serialize_report, sync_registry_workspace, validate_change, workspace_status,
+    conflict_check, format_rfc3339, init, mark_complete, merge_change, parse_tasks, preview_change,
+    serialize_report, sync_registry_workspace, validate_change, workspace_status,
 };
 
 pub const EXIT_SUCCESS: i32 = 0;
@@ -908,11 +908,8 @@ fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> i32 {
     match format {
         OutputFormat::Json => {
             let specs: Vec<Value> = result.specs.iter().map(preview_entry_to_json).collect();
-            let contracts: Vec<Value> = result
-                .contracts
-                .iter()
-                .map(contract_preview_entry_to_json)
-                .collect();
+            let contracts: Vec<Value> =
+                result.contracts.iter().map(contract_preview_entry_to_json).collect();
             emit_json(json!({
                 "change-dir": change_dir.display().to_string(),
                 "specs": specs,
@@ -2136,7 +2133,16 @@ fn run_plan(format: OutputFormat, action: PlanAction) -> i32 {
             project,
             schema,
             context,
-        } => run_initiative_create(format, name, depends_on, sources, description, project, schema, context),
+        } => run_initiative_create(
+            format,
+            name,
+            depends_on,
+            sources,
+            description,
+            project,
+            schema,
+            context,
+        ),
         PlanAction::Amend {
             name,
             depends_on,
@@ -2145,7 +2151,16 @@ fn run_plan(format: OutputFormat, action: PlanAction) -> i32 {
             project,
             schema,
             context,
-        } => run_initiative_amend(format, name, depends_on, sources, description, project, schema, context),
+        } => run_initiative_amend(
+            format,
+            name,
+            depends_on,
+            sources,
+            description,
+            project,
+            schema,
+            context,
+        ),
         PlanAction::Transition { name, target, reason } => {
             run_initiative_transition(format, name, target, reason)
         }
@@ -3175,6 +3190,7 @@ fn plan_change_entry_json(entry: &PlanChange) -> Value {
     serde_json::to_value(entry).expect("PlanChange serialises as JSON")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_initiative_create(
     format: OutputFormat, name: String, depends_on: Vec<String>, sources: Vec<String>,
     description: Option<String>, project: Option<String>, schema: Option<String>,
@@ -3241,6 +3257,7 @@ fn run_initiative_create(
     EXIT_SUCCESS
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_initiative_amend(
     format: OutputFormat, name: String, depends_on: Option<Vec<String>>,
     sources: Option<Vec<String>>, description: Option<String>, project: Option<String>,

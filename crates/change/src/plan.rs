@@ -3049,10 +3049,8 @@ changes:
         };
         let results = plan.validate(None, None);
         assert!(
-            results
-                .iter()
-                .any(|r| r.code == "plan.entry-needs-project-or-schema"
-                    && r.level == PlanValidationLevel::Error),
+            results.iter().any(|r| r.code == "plan.entry-needs-project-or-schema"
+                && r.level == PlanValidationLevel::Error),
             "expected entry-needs-project-or-schema error, got: {results:#?}"
         );
     }
@@ -3076,9 +3074,7 @@ changes:
         };
         let results = plan.validate(None, None);
         assert!(
-            !results
-                .iter()
-                .any(|r| r.code == "plan.entry-needs-project-or-schema"),
+            !results.iter().any(|r| r.code == "plan.entry-needs-project-or-schema"),
             "schema-only entry must not trigger project-or-schema error"
         );
     }
@@ -3102,9 +3098,7 @@ changes:
         };
         let results = plan.validate(None, None);
         assert!(
-            !results
-                .iter()
-                .any(|r| r.code == "plan.entry-needs-project-or-schema"),
+            !results.iter().any(|r| r.code == "plan.entry-needs-project-or-schema"),
             "entry with both project and schema must pass"
         );
     }
@@ -3250,10 +3244,8 @@ changes:
     #[test]
     fn validate_accepts_valid_context_paths() {
         let mut entry = change("foo", PlanStatus::Pending);
-        entry.context = vec![
-            "contracts/http/user-api.yaml".into(),
-            "specs/user-registration/spec.md".into(),
-        ];
+        entry.context =
+            vec!["contracts/http/user-api.yaml".into(), "specs/user-registration/spec.md".into()];
         let plan = plan_with_changes(vec![entry]);
         let errors: Vec<_> = plan
             .validate(None, None)

@@ -363,18 +363,12 @@ mod tests {
 
     #[test]
     fn extract_ref_captures_single_quoted() {
-        assert_eq!(
-            extract_ref("    $ref: '../schemas/user.yaml'"),
-            Some("../schemas/user.yaml")
-        );
+        assert_eq!(extract_ref("    $ref: '../schemas/user.yaml'"), Some("../schemas/user.yaml"));
     }
 
     #[test]
     fn extract_ref_captures_unquoted() {
-        assert_eq!(
-            extract_ref("  $ref: ../schemas/user.yaml"),
-            Some("../schemas/user.yaml")
-        );
+        assert_eq!(extract_ref("  $ref: ../schemas/user.yaml"), Some("../schemas/user.yaml"));
     }
 
     #[test]
@@ -384,10 +378,7 @@ mod tests {
 
     #[test]
     fn extract_ref_skips_urls() {
-        assert_eq!(
-            extract_ref("$ref: \"https://example.com/schemas/user.yaml\""),
-            None
-        );
+        assert_eq!(extract_ref("$ref: \"https://example.com/schemas/user.yaml\""), None);
     }
 
     #[test]

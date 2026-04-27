@@ -370,9 +370,9 @@ fn contracts_schemas_dir_has_files(ctx: &BriefContext<'_>) -> RuleOutcome {
     let has_yaml = std::fs::read_dir(&schemas_dir)
         .ok()
         .map(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .any(|e| matches!(e.path().extension().and_then(|x| x.to_str()), Some("yaml" | "yml")))
+            entries.filter_map(|e| e.ok()).any(|e| {
+                matches!(e.path().extension().and_then(|x| x.to_str()), Some("yaml" | "yml"))
+            })
         })
         .unwrap_or(false);
 
@@ -456,18 +456,10 @@ fn contracts_schema_metadata(ctx: &BriefContext<'_>) -> RuleOutcome {
         if doc.get("$id").is_none() {
             failures.push(format!("{filename}: missing $id"));
         }
-        if doc
-            .get("title")
-            .and_then(|v| v.as_str())
-            .is_none_or(|s| s.is_empty())
-        {
+        if doc.get("title").and_then(|v| v.as_str()).is_none_or(|s| s.is_empty()) {
             failures.push(format!("{filename}: missing or empty title"));
         }
-        if doc
-            .get("description")
-            .and_then(|v| v.as_str())
-            .is_none_or(|s| s.is_empty())
-        {
+        if doc.get("description").and_then(|v| v.as_str()).is_none_or(|s| s.is_empty()) {
             failures.push(format!("{filename}: missing or empty description"));
         }
     }
@@ -791,7 +783,8 @@ mod tests {
         fs::write(
             schemas.join("user.yaml"),
             "title: User\ndescription: A user entity.\ntype: object\n",
-        ).unwrap();
+        )
+        .unwrap();
 
         let ctx = brief_ctx(dir.path(), "");
         match contracts_schema_metadata(&ctx) {
@@ -810,7 +803,8 @@ mod tests {
         fs::write(
             schemas.join("user.yaml"),
             "$id: urn:test\ntitle: \"\"\ndescription: A user.\ntype: object\n",
-        ).unwrap();
+        )
+        .unwrap();
 
         let ctx = brief_ctx(dir.path(), "");
         match contracts_schema_metadata(&ctx) {

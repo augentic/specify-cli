@@ -389,23 +389,19 @@ fn locate_schema_cache(
 fn distribute_contracts(src: &Path, dest: &Path) -> Result<(), Error> {
     if dest.exists() {
         std::fs::remove_dir_all(dest).map_err(|e| {
-            Error::Config(format!(
-                "failed to remove old contracts at {}: {e}",
-                dest.display()
-            ))
+            Error::Config(format!("failed to remove old contracts at {}: {e}", dest.display()))
         })?;
     }
     copy_dir_recursive(src, dest)
 }
 
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), Error> {
-    std::fs::create_dir_all(dest).map_err(|e| {
-        Error::Config(format!("failed to create {}: {e}", dest.display()))
-    })?;
+    std::fs::create_dir_all(dest)
+        .map_err(|e| Error::Config(format!("failed to create {}: {e}", dest.display())))?;
 
-    for entry in std::fs::read_dir(src).map_err(|e| {
-        Error::Config(format!("failed to read {}: {e}", src.display()))
-    })? {
+    for entry in std::fs::read_dir(src)
+        .map_err(|e| Error::Config(format!("failed to read {}: {e}", src.display())))?
+    {
         let entry = entry.map_err(|e| Error::Config(format!("dir entry error: {e}")))?;
         let src_path = entry.path();
         let dest_path = dest.join(entry.file_name());
@@ -736,10 +732,7 @@ mod tests {
         distribute_contracts(&src, &dest).unwrap();
 
         assert!(dest.join("openapi.yaml").is_file());
-        assert_eq!(
-            std::fs::read_to_string(dest.join("openapi.yaml")).unwrap(),
-            "openapi: 3.1"
-        );
+        assert_eq!(std::fs::read_to_string(dest.join("openapi.yaml")).unwrap(), "openapi: 3.1");
         assert!(dest.join("schemas").join("order.yaml").is_file());
         assert_eq!(
             std::fs::read_to_string(dest.join("schemas").join("order.yaml")).unwrap(),

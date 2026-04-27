@@ -471,10 +471,7 @@ changes:
         assert_eq!(actual["next"], "b");
         assert_eq!(actual["reason"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
-        assert_eq!(
-            actual["project"], "default",
-            "project should match seeded value"
-        );
+        assert_eq!(actual["project"], "default", "project should match seeded value");
         assert_eq!(actual["description"], Value::Null, "description should be present");
         assert!(
             actual.get("sources").is_some(),

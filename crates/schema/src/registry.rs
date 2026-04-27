@@ -180,11 +180,8 @@ impl Registry {
         // Invariant 3: Path validity — no absolute or `..` paths.
         for project in &self.projects {
             if let Some(ref roles) = project.contracts {
-                for path in roles
-                    .produces
-                    .iter()
-                    .chain(roles.consumes.iter())
-                    .chain(roles.imports.iter())
+                for path in
+                    roles.produces.iter().chain(roles.consumes.iter()).chain(roles.imports.iter())
                 {
                     if path.starts_with('/') || path.contains("..") {
                         return Err(Error::Config(format!(
@@ -200,8 +197,7 @@ impl Registry {
         // same path in both `produces` and `consumes`.
         for project in &self.projects {
             if let Some(ref roles) = project.contracts {
-                let produced: HashSet<&str> =
-                    roles.produces.iter().map(|s| s.as_str()).collect();
+                let produced: HashSet<&str> = roles.produces.iter().map(|s| s.as_str()).collect();
                 for path in &roles.consumes {
                     if produced.contains(path.as_str()) {
                         return Err(Error::Config(format!(
@@ -240,7 +236,7 @@ impl Registry {
                 }
             }
         }
-        for (path, _) in &producers {
+        for path in producers.keys() {
             if imported.contains(path) {
                 return Err(Error::Config(format!(
                     "registry.yaml: contract path '{}' appears in both 'produces' and 'imports'",
