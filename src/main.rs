@@ -835,7 +835,7 @@ fn run_merge(format: OutputFormat, change_dir: PathBuf) -> i32 {
                 let git_commit = std::process::Command::new("git")
                     .arg("-C")
                     .arg(&project_dir)
-                    .args(["commit", "-m", &commit_msg])
+                    .args(["commit", "--no-gpg-sign", "-m", &commit_msg])
                     .output();
 
                 match git_commit {
