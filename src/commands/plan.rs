@@ -1,4 +1,4 @@
-#![allow(clippy::needless_pass_by_value, clippy::items_after_statements)]
+#![allow(clippy::items_after_statements)]
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -11,16 +11,16 @@ use specify::{
     ProjectConfig, Registry,
 };
 
-use super::require_project;
 use crate::cli::{LockAction, OutputFormat, PlanAction};
-use crate::output::{CliResult, absolute_string, emit_error, emit_response};
+use crate::context::CommandContext;
+use crate::output::{CliResult, absolute_string, emit_response};
 
-pub fn run_plan(format: OutputFormat, action: PlanAction) -> CliResult {
+pub fn run_plan(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, Error> {
     match action {
-        PlanAction::Init { name, sources } => run_initiative_init(format, name, sources),
-        PlanAction::Validate => run_initiative_validate(format),
-        PlanAction::Next => run_initiative_next(format),
-        PlanAction::Status => run_initiative_status(format),
+        PlanAction::Init { name, sources } => run_initiative_init(ctx, name, sources),
+        PlanAction::Validate => run_initiative_validate(ctx),
+        PlanAction::Next => run_initiative_next(ctx),
+        PlanAction::Status => run_initiative_status(ctx),
         PlanAction::Create {
             name,
             depends_on,
@@ -29,16 +29,7 @@ pub fn run_plan(format: OutputFormat, action: PlanAction) -> CliResult {
             project,
             schema,
             context,
-        } => run_initiative_create(
-            format,
-            name,
-            depends_on,
-            sources,
-            description,
-            project,
-            schema,
-            context,
-        ),
+        } => run_initiative_create(ctx, name, depends_on, sources, description, project, schema, context),
         PlanAction::Amend {
             name,
             depends_on,
@@ -47,24 +38,15 @@ pub fn run_plan(format: OutputFormat, action: PlanAction) -> CliResult {
             project,
             schema,
             context,
-        } => run_initiative_amend(
-            format,
-            name,
-            depends_on,
-            sources,
-            description,
-            project,
-            schema,
-            context,
-        ),
+        } => run_initiative_amend(ctx, name, depends_on, sources, description, project, schema, context),
         PlanAction::Transition { name, target, reason } => {
-            run_initiative_transition(format, name, target, reason)
+            run_initiative_transition(ctx, name, target, reason)
         }
-        PlanAction::Archive { force } => run_initiative_archive(format, force),
+        PlanAction::Archive { force } => run_initiative_archive(ctx, force),
         PlanAction::Lock { action } => match action {
-            LockAction::Acquire { pid } => run_initiative_lock_acquire(format, pid),
-            LockAction::Release { pid } => run_initiative_lock_release(format, pid),
-            LockAction::Status => run_initiative_lock_status(format),
+            LockAction::Acquire { pid } => run_initiative_lock_acquire(ctx, pid),
+            LockAction::Release { pid } => run_initiative_lock_release(ctx, pid),
+            LockAction::Status => run_initiative_lock_status(ctx),
         },
     }
 }
@@ -96,20 +78,14 @@ const fn plan_validation_level_label(level: &PlanValidationLevel) -> &'static st
 }
 
 fn run_initiative_init(
-    format: OutputFormat, name: String, sources: Vec<(String, String)>,
-) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-
-    let plan_path = plan_file_path(&project_dir);
+    ctx: &CommandContext, name: String, sources: Vec<(String, String)>,
+) -> Result<CliResult, Error> {
+    let plan_path = plan_file_path(&ctx.project_dir);
     if plan_path.exists() {
-        let err = Error::Config(format!(
+        return Err(Error::Config(format!(
             "plan already exists at {}; run `specify plan archive` first",
             plan_path.display()
-        ));
-        return emit_error(format, &err);
+        )));
     }
 
     // Fold the CLI vector into a BTreeMap, rejecting duplicate keys
@@ -118,19 +94,15 @@ fn run_initiative_init(
         std::collections::BTreeMap::new();
     for (k, v) in sources {
         if source_map.contains_key(&k) {
-            let err = Error::Config(format!("duplicate key `{k}` in --source arguments"));
-            return emit_error(format, &err);
+            return Err(Error::Config(format!(
+                "duplicate key `{k}` in --source arguments"
+            )));
         }
         source_map.insert(k, v);
     }
 
-    let plan = match Plan::init(&name, source_map) {
-        Ok(p) => p,
-        Err(err) => return emit_error(format, &err),
-    };
-    if let Err(err) = plan.save(&plan_path) {
-        return emit_error(format, &err);
-    }
+    let plan = Plan::init(&name, source_map)?;
+    plan.save(&plan_path)?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -138,7 +110,7 @@ fn run_initiative_init(
         plan: PlanRef,
     }
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => emit_response(PlanInitResponse {
             plan: PlanRef {
                 name,
@@ -149,32 +121,17 @@ fn run_initiative_init(
             println!("Initialised plan '{name}' at {}.", plan_path.display());
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
-fn run_initiative_validate(format: OutputFormat) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let plan_path = match require_plan_file(&project_dir) {
-        Ok(p) => p,
-        Err(err) => return emit_error(format, &err),
-    };
-    let plan = match Plan::load(&plan_path) {
-        Ok(p) => p,
-        Err(err) => return emit_error(format, &err),
-    };
-    let changes_dir = ProjectConfig::changes_dir(&project_dir);
+fn run_initiative_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
+    let plan_path = require_plan_file(&ctx.project_dir)?;
+    let plan = Plan::load(&plan_path)?;
+    let changes_dir = ProjectConfig::changes_dir(&ctx.project_dir);
 
-    let registry = Registry::load(&project_dir).ok().flatten();
+    let registry = Registry::load(&ctx.project_dir).ok().flatten();
     let mut results = plan.validate(Some(&changes_dir), registry.as_ref());
-    // RFC-3a shape-validation hook: surface malformed `.specify/registry.yaml`
-    // through the same report that `Plan::validate` already drives. The
-    // dedicated `specify initiative registry validate` verb is available
-    // for standalone registry checks; this keeps `plan validate` honest
-    // as a one-stop validation entry point.
-    if let Err(err) = Registry::load(&project_dir) {
+    if let Err(err) = Registry::load(&ctx.project_dir) {
         results.push(PlanValidationResult {
             level: PlanValidationLevel::Error,
             code: "registry-shape",
@@ -183,9 +140,8 @@ fn run_initiative_validate(format: OutputFormat) -> CliResult {
         });
     }
 
-    // RFC-3b: schema-mismatch-workspace warning
     if let Some(ref reg) = registry {
-        let workspace_base = ProjectConfig::specify_dir(&project_dir).join("workspace");
+        let workspace_base = ProjectConfig::specify_dir(&ctx.project_dir).join("workspace");
         for rp in &reg.projects {
             let slot_project_yaml =
                 workspace_base.join(&rp.name).join(".specify").join("project.yaml");
@@ -211,7 +167,7 @@ fn run_initiative_validate(format: OutputFormat) -> CliResult {
 
     let has_errors = results.iter().any(|r| matches!(r.level, PlanValidationLevel::Error));
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
@@ -240,7 +196,7 @@ fn run_initiative_validate(format: OutputFormat) -> CliResult {
         }
     }
 
-    if has_errors { CliResult::ValidationFailed } else { CliResult::Success }
+    Ok(if has_errors { CliResult::ValidationFailed } else { CliResult::Success })
 }
 
 #[derive(Serialize)]
@@ -301,20 +257,10 @@ struct PlanNextResponse {
     sources: Option<Vec<String>>,
 }
 
-fn run_initiative_next(format: OutputFormat) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let plan_path = match require_plan_file(&project_dir) {
-        Ok(p) => p,
-        Err(err) => return emit_error(format, &err),
-    };
-    let plan = match Plan::load(&plan_path) {
-        Ok(p) => p,
-        Err(err) => return emit_error(format, &err),
-    };
-    let changes_dir = ProjectConfig::changes_dir(&project_dir);
+fn run_initiative_next(ctx: &CommandContext) -> Result<CliResult, Error> {
+    let plan_path = require_plan_file(&ctx.project_dir)?;
+    let plan = Plan::load(&plan_path)?;
+    let changes_dir = ProjectConfig::changes_dir(&ctx.project_dir);
 
     // `plan next` deliberately skips the filesystem-aware
     // `scope-path-missing` sweep (project_dir = None): a scope path
@@ -323,11 +269,11 @@ fn run_initiative_next(format: OutputFormat) -> CliResult {
     // is the place to surface those.
     let results = plan.validate(Some(&changes_dir), None);
     if results.iter().any(|r| matches!(r.level, PlanValidationLevel::Error)) {
-        return emit_plan_structural_error(format);
+        return Ok(emit_plan_structural_error(ctx.format));
     }
 
     if let Some(active) = plan.changes.iter().find(|c| c.status == PlanStatus::InProgress) {
-        match format {
+        match ctx.format {
             OutputFormat::Json => emit_response(PlanNextResponse {
                 next: None,
                 reason: Some("in-progress".to_string()),
@@ -339,11 +285,11 @@ fn run_initiative_next(format: OutputFormat) -> CliResult {
             }),
             OutputFormat::Text => println!("Active change in progress: {}", active.name),
         }
-        return CliResult::Success;
+        return Ok(CliResult::Success);
     }
 
     if let Some(entry) = plan.next_eligible() {
-        match format {
+        match ctx.format {
             OutputFormat::Json => emit_response(PlanNextResponse {
                 next: Some(entry.name.clone()),
                 reason: None,
@@ -369,7 +315,7 @@ fn run_initiative_next(format: OutputFormat) -> CliResult {
                 "No eligible changes — remaining entries are blocked, failed, or waiting on unmet dependencies.",
             )
         };
-        match format {
+        match ctx.format {
             OutputFormat::Json => emit_response(PlanNextResponse {
                 next: None,
                 reason: Some(reason.to_string()),
@@ -382,24 +328,14 @@ fn run_initiative_next(format: OutputFormat) -> CliResult {
             OutputFormat::Text => println!("{text_msg}"),
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 #[allow(clippy::too_many_lines)]
-fn run_initiative_status(format: OutputFormat) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let plan_path = match require_plan_file(&project_dir) {
-        Ok(p) => p,
-        Err(err) => return emit_error(format, &err),
-    };
-    let plan = match Plan::load(&plan_path) {
-        Ok(p) => p,
-        Err(err) => return emit_error(format, &err),
-    };
-    let changes_dir = ProjectConfig::changes_dir(&project_dir);
+fn run_initiative_status(ctx: &CommandContext) -> Result<CliResult, Error> {
+    let plan_path = require_plan_file(&ctx.project_dir)?;
+    let plan = Plan::load(&plan_path)?;
+    let changes_dir = ProjectConfig::changes_dir(&ctx.project_dir);
 
     // `plan status` stays permissive by design — see the
     // `dependency-cycle` fallback below. Running the
@@ -414,13 +350,13 @@ fn run_initiative_status(format: OutputFormat) -> CliResult {
         .iter()
         .any(|r| matches!(r.level, PlanValidationLevel::Error) && r.code != "dependency-cycle");
     if has_other_structural_errors {
-        return emit_plan_structural_error(format);
+        return Ok(emit_plan_structural_error(ctx.format));
     }
 
     let (ordered, order_label) = if let Ok(v) = plan.topological_order() {
         (v, "topological")
     } else {
-        match format {
+        match ctx.format {
             OutputFormat::Json => {
                 eprintln!(
                     "warning: dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
@@ -451,7 +387,7 @@ fn run_initiative_status(format: OutputFormat) -> CliResult {
 
     let next_eligible = plan.next_eligible();
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
@@ -553,7 +489,7 @@ fn run_initiative_status(format: OutputFormat) -> CliResult {
             next_eligible,
         }),
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 /// All the slices `print_plan_status_text` needs. Bundled so the
@@ -654,11 +590,10 @@ fn print_plan_status_text(view: &PlanStatusView) {
     }
 }
 
-fn load_plan_for_write(format: OutputFormat) -> Result<(PathBuf, PathBuf, Plan), CliResult> {
-    let (project_dir, _config) = require_project().map_err(|err| emit_error(format, &err))?;
-    let plan_path = require_plan_file(&project_dir).map_err(|err| emit_error(format, &err))?;
-    let plan = Plan::load(&plan_path).map_err(|err| emit_error(format, &err))?;
-    Ok((project_dir, plan_path, plan))
+fn load_plan_for_write(ctx: &CommandContext) -> Result<(PathBuf, Plan), Error> {
+    let plan_path = require_plan_file(&ctx.project_dir)?;
+    let plan = Plan::load(&plan_path)?;
+    Ok((plan_path, plan))
 }
 
 #[derive(Serialize)]
@@ -682,34 +617,28 @@ fn plan_change_entry_json(entry: &PlanChange) -> Value {
     serde_json::to_value(entry).expect("PlanChange serialises as JSON")
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_initiative_create(
-    format: OutputFormat, name: String, depends_on: Vec<String>, sources: Vec<String>,
+    ctx: &CommandContext, name: String, depends_on: Vec<String>, sources: Vec<String>,
     description: Option<String>, project: Option<String>, schema: Option<String>,
     context: Vec<String>,
-) -> CliResult {
-    let (project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+) -> Result<CliResult, Error> {
+    let (plan_path, mut plan) = load_plan_for_write(ctx)?;
 
     if let Some(ref proj) = project {
-        match Registry::load(&project_dir) {
+        match Registry::load(&ctx.project_dir) {
             Ok(Some(registry)) => {
                 if !registry.projects.iter().any(|p| p.name == *proj) {
-                    let err = Error::Config(format!(
+                    return Err(Error::Config(format!(
                         "--project '{proj}' does not match any project in registry.yaml"
-                    ));
-                    return emit_error(format, &err);
+                    )));
                 }
             }
             Ok(None) => {
-                let err = Error::Config(
+                return Err(Error::Config(
                     "--project was specified but no registry.yaml exists".to_string(),
-                );
-                return emit_error(format, &err);
+                ));
             }
-            Err(err) => return emit_error(format, &err),
+            Err(err) => return Err(err),
         }
     }
 
@@ -725,12 +654,8 @@ fn run_initiative_create(
         status_reason: None,
     };
 
-    if let Err(err) = plan.create(entry) {
-        return emit_error(format, &err);
-    }
-    if let Err(err) = plan.save(&plan_path) {
-        return emit_error(format, &err);
-    }
+    plan.create(entry)?;
+    plan.save(&plan_path)?;
 
     // `Plan::create` forces status to Pending and clears status_reason, so
     // the freshly-appended entry is always the tail of `plan.changes`.
@@ -743,7 +668,7 @@ fn run_initiative_create(
         action: &'static str,
         entry: Value,
     }
-    match format {
+    match ctx.format {
         OutputFormat::Json => emit_response(PlanCreateResponse {
             plan: plan_ref_from(&plan, &plan_path),
             action: "create",
@@ -753,39 +678,33 @@ fn run_initiative_create(
             println!("Created plan entry '{name}' with status 'pending'.");
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_initiative_amend(
-    format: OutputFormat, name: String, depends_on: Option<Vec<String>>,
+    ctx: &CommandContext, name: String, depends_on: Option<Vec<String>>,
     sources: Option<Vec<String>>, description: Option<String>, project: Option<String>,
     schema: Option<String>, context: Option<Vec<String>>,
-) -> CliResult {
-    let (project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+) -> Result<CliResult, Error> {
+    let (plan_path, mut plan) = load_plan_for_write(ctx)?;
 
     if let Some(ref proj) = project
         && !proj.is_empty()
     {
-        match Registry::load(&project_dir) {
+        match Registry::load(&ctx.project_dir) {
             Ok(Some(registry)) => {
                 if !registry.projects.iter().any(|p| p.name == *proj) {
-                    let err = Error::Config(format!(
+                    return Err(Error::Config(format!(
                         "--project '{proj}' does not match any project in registry.yaml"
-                    ));
-                    return emit_error(format, &err);
+                    )));
                 }
             }
             Ok(None) => {
-                let err = Error::Config(
+                return Err(Error::Config(
                     "--project was specified but no registry.yaml exists".to_string(),
-                );
-                return emit_error(format, &err);
+                ));
             }
-            Err(err) => return emit_error(format, &err),
+            Err(err) => return Err(err),
         }
     }
 
@@ -805,12 +724,8 @@ fn run_initiative_amend(
         context,
     };
 
-    if let Err(err) = plan.amend(&name, patch) {
-        return emit_error(format, &err);
-    }
-    if let Err(err) = plan.save(&plan_path) {
-        return emit_error(format, &err);
-    }
+    plan.amend(&name, patch)?;
+    plan.save(&plan_path)?;
 
     let amended = plan.changes.iter().find(|c| c.name == name).expect("amended entry present");
 
@@ -821,7 +736,7 @@ fn run_initiative_amend(
         action: &'static str,
         entry: Value,
     }
-    match format {
+    match ctx.format {
         OutputFormat::Json => emit_response(PlanAmendResponse {
             plan: plan_ref_from(&plan, &plan_path),
             action: "amend",
@@ -831,30 +746,23 @@ fn run_initiative_amend(
             println!("Amended plan entry '{name}'.");
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 fn run_initiative_transition(
-    format: OutputFormat, name: String, target: PlanStatus, reason: Option<String>,
-) -> CliResult {
-    let (_project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    ctx: &CommandContext, name: String, target: PlanStatus, reason: Option<String>,
+) -> Result<CliResult, Error> {
+    let (plan_path, mut plan) = load_plan_for_write(ctx)?;
 
-    let old_status = match plan.changes.iter().find(|c| c.name == name) {
-        Some(c) => c.status,
-        None => {
-            return emit_error(format, &Error::Config(format!("no change named '{name}' in plan")));
-        }
-    };
+    let old_status = plan
+        .changes
+        .iter()
+        .find(|c| c.name == name)
+        .ok_or_else(|| Error::Config(format!("no change named '{name}' in plan")))?
+        .status;
 
-    if let Err(err) = plan.transition(&name, target, reason.as_deref()) {
-        return emit_error(format, &err);
-    }
-    if let Err(err) = plan.save(&plan_path) {
-        return emit_error(format, &err);
-    }
+    plan.transition(&name, target, reason.as_deref())?;
+    plan.save(&plan_path)?;
 
     let entry = plan.changes.iter().find(|c| c.name == name).expect("transitioned entry present");
 
@@ -871,7 +779,7 @@ fn run_initiative_transition(
         status: String,
         status_reason: Option<String>,
     }
-    match format {
+    match ctx.format {
         OutputFormat::Json => emit_response(PlanTransitionResponse {
             plan: plan_ref_from(&plan, &plan_path),
             entry: PlanTransitionEntry {
@@ -884,68 +792,59 @@ fn run_initiative_transition(
             println!("Transitioned '{name}': {} → {}.", old_status, entry.status);
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
-fn run_initiative_archive(format: OutputFormat, force: bool) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let plan_path = project_dir.join(".specify/plan.yaml");
+fn run_initiative_archive(ctx: &CommandContext, force: bool) -> Result<CliResult, Error> {
+    let plan_path = ctx.project_dir.join(".specify/plan.yaml");
     if !plan_path.exists() {
-        let err = Error::ArtifactNotFound {
+        return Err(Error::ArtifactNotFound {
             kind: "plan.yaml",
             path: plan_path,
-        };
-        return emit_error(format, &err);
+        });
     }
-    let archive_dir = ProjectConfig::archive_dir(&project_dir).join("plans");
+    let archive_dir = ProjectConfig::archive_dir(&ctx.project_dir).join("plans");
 
     // Grab the plan name up-front so we can surface it in the
     // success payload even though `Plan::archive` only returns the
     // archived path.
-    let plan_name = match Plan::load(&plan_path) {
-        Ok(p) => p.name,
-        Err(err) => return emit_error(format, &err),
-    };
+    let plan_name = Plan::load(&plan_path)?.name;
 
     match Plan::archive(&plan_path, &archive_dir, force) {
-        Ok((archived, archived_plans_dir)) => match format {
-            OutputFormat::Json => {
-                #[derive(Serialize)]
-                #[serde(rename_all = "kebab-case")]
-                struct PlanArchiveResponse {
-                    archived: String,
-                    archived_plans_dir: Option<String>,
-                    plan: PlanArchiveName,
+        Ok((archived, archived_plans_dir)) => {
+            match ctx.format {
+                OutputFormat::Json => {
+                    #[derive(Serialize)]
+                    #[serde(rename_all = "kebab-case")]
+                    struct PlanArchiveResponse {
+                        archived: String,
+                        archived_plans_dir: Option<String>,
+                        plan: PlanArchiveName,
+                    }
+                    #[derive(Serialize)]
+                    #[serde(rename_all = "kebab-case")]
+                    struct PlanArchiveName {
+                        name: String,
+                    }
+                    emit_response(PlanArchiveResponse {
+                        archived: absolute_string(&archived),
+                        archived_plans_dir: archived_plans_dir.as_deref().map(absolute_string),
+                        plan: PlanArchiveName { name: plan_name },
+                    });
                 }
-                #[derive(Serialize)]
-                #[serde(rename_all = "kebab-case")]
-                struct PlanArchiveName {
-                    name: String,
-                }
-                emit_response(PlanArchiveResponse {
-                    archived: absolute_string(&archived),
-                    archived_plans_dir: archived_plans_dir.as_deref().map(absolute_string),
-                    plan: PlanArchiveName { name: plan_name },
-                });
-                CliResult::Success
-            }
-            OutputFormat::Text => {
-                match archived_plans_dir {
+                OutputFormat::Text => match archived_plans_dir {
                     Some(dir) => println!(
                         "Archived plan to {}. Working directory moved to {}.",
                         archived.display(),
                         dir.display()
                     ),
                     None => println!("Archived plan to {}.", archived.display()),
-                }
-                CliResult::Success
+                },
             }
-        },
+            Ok(CliResult::Success)
+        }
         Err(Error::PlanHasOutstandingWork { entries }) => {
-            match format {
+            match ctx.format {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
@@ -967,23 +866,16 @@ fn run_initiative_archive(format: OutputFormat, force: bool) -> CliResult {
                     );
                 }
             }
-            CliResult::GenericFailure
+            Ok(CliResult::GenericFailure)
         }
-        Err(err) => emit_error(format, &err),
+        Err(err) => Err(err),
     }
 }
 
-fn run_initiative_lock_acquire(format: OutputFormat, pid: Option<u32>) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
+fn run_initiative_lock_acquire(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
     let our_pid = pid.unwrap_or_else(std::process::id);
-
-    match PlanLockStamp::acquire(&project_dir, our_pid) {
-        Ok(acquired) => emit_plan_lock_acquired(format, &acquired),
-        Err(err) => emit_error(format, &err),
-    }
+    let acquired = PlanLockStamp::acquire(&ctx.project_dir, our_pid)?;
+    Ok(emit_plan_lock_acquired(ctx.format, &acquired))
 }
 
 fn emit_plan_lock_acquired(format: OutputFormat, acquired: &PlanLockAcquired) -> CliResult {
@@ -1016,17 +908,10 @@ fn emit_plan_lock_acquired(format: OutputFormat, acquired: &PlanLockAcquired) ->
     CliResult::Success
 }
 
-fn run_initiative_lock_release(format: OutputFormat, pid: Option<u32>) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
+fn run_initiative_lock_release(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
     let our_pid = pid.unwrap_or_else(std::process::id);
-
-    match PlanLockStamp::release(&project_dir, our_pid) {
-        Ok(outcome) => emit_plan_lock_released(format, our_pid, &outcome),
-        Err(err) => emit_error(format, &err),
-    }
+    let outcome = PlanLockStamp::release(&ctx.project_dir, our_pid)?;
+    Ok(emit_plan_lock_released(ctx.format, our_pid, &outcome))
 }
 
 /// Mirrors the four [`PlanLockReleased`] outcomes onto the CLI
@@ -1087,15 +972,9 @@ fn emit_plan_lock_released(
     CliResult::Success
 }
 
-fn run_initiative_lock_status(format: OutputFormat) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    match PlanLockStamp::status(&project_dir) {
-        Ok(state) => emit_plan_lock_state(format, &state),
-        Err(err) => emit_error(format, &err),
-    }
+fn run_initiative_lock_status(ctx: &CommandContext) -> Result<CliResult, Error> {
+    let state = PlanLockStamp::status(&ctx.project_dir)?;
+    Ok(emit_plan_lock_state(ctx.format, &state))
 }
 
 fn emit_plan_lock_state(format: OutputFormat, state: &PlanLockState) -> CliResult {

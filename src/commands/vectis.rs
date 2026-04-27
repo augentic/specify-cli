@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::cli::{OutputFormat, VectisAction};
-use crate::output::{CliResult, emit_json};
+use crate::output::{CliResult, emit_response};
 
 /// Dispatch one of the four `specify vectis` verbs to the
 /// `specify-vectis` library and translate the outcome into the v2
@@ -25,7 +25,7 @@ pub fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
     match result {
         Ok(specify_vectis::CommandOutcome::Success(value)) => {
             match format {
-                OutputFormat::Json => emit_json(value),
+                OutputFormat::Json => emit_response(value),
                 OutputFormat::Text => vectis_render_text(action, &value),
             }
             CliResult::Success
@@ -54,7 +54,7 @@ pub fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
             CliResult::GenericFailure
         }
         Err(err) => emit_vectis_error(format, &err),
-        _ => unreachable!(),
+        Ok(_) => CliResult::GenericFailure,
     }
 }
 
@@ -84,7 +84,7 @@ fn emit_vectis_error(format: OutputFormat, err: &specify_vectis::VectisError) ->
                 unreachable!("VectisError::to_json always returns an object")
             };
             payload.entry("exit-code".to_string()).or_insert(Value::from(code.code()));
-            emit_json(Value::Object(payload));
+            emit_response(Value::Object(payload));
         }
         OutputFormat::Text => match err {
             specify_vectis::VectisError::MissingPrerequisites { missing, message } => {

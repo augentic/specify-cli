@@ -116,6 +116,17 @@ pub enum Error {
         path: std::path::PathBuf,
     },
 
+    /// A change directory was expected but not found.
+    #[error("change '{name}' not found")]
+    ChangeNotFound {
+        /// Kebab-case change name.
+        name: String,
+    },
+
+    /// `.specify/registry.yaml` was expected but is absent.
+    #[error("no registry declared at .specify/registry.yaml")]
+    RegistryMissing,
+
     /// A name failed kebab-case validation.
     #[error("invalid name: {0}")]
     InvalidName(String),

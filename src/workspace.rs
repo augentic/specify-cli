@@ -513,7 +513,81 @@ pub fn run_workspace_push_impl(
     Ok(results)
 }
 
-#[allow(clippy::too_many_lines)]
+/// Check whether a GitHub repo exists via `gh repo view`; create it with
+/// `gh repo create` when absent. Returns `Ok(true)` if the repo was
+/// freshly created, `Ok(false)` if it already existed.
+fn ensure_remote_repo(slug: &str, project_path: &Path) -> Result<bool, Error> {
+    let repo_check = Command::new("gh").args(["repo", "view", slug, "--json", "name"]).output();
+
+    match repo_check {
+        Ok(output) if !output.status.success() => {
+            let create_result = Command::new("gh")
+                .args(["repo", "create", slug, "--private", "--source", "."])
+                .current_dir(project_path)
+                .output();
+            match create_result {
+                Ok(o) if o.status.success() => Ok(true),
+                _ => Err(Error::Config("failed to create remote repo via gh".to_string())),
+            }
+        }
+        _ => Ok(false),
+    }
+}
+
+/// Force-push a branch to `origin` with lease protection.
+fn push_branch(project_path: &Path, branch_name: &str) -> Result<(), Error> {
+    run_git(
+        project_path,
+        &["push", "--force-with-lease", "-u", "origin", branch_name],
+        &format!("git push to {branch_name}"),
+    )
+}
+
+/// Return the PR number for an existing PR on `branch_name`, or create a
+/// new one and return its number. Returns `None` when both lookups fail.
+fn ensure_pull_request(
+    project_path: &Path, branch_name: &str, initiative_name: &str,
+) -> Option<u64> {
+    let pr_check = Command::new("gh")
+        .args(["pr", "list", "--head", branch_name, "--json", "number", "--limit", "1"])
+        .current_dir(project_path)
+        .output();
+
+    if let Ok(output) = pr_check
+        && output.status.success()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(&text)
+            && let Some(first) = parsed.first()
+        {
+            if let Some(num) = first.get("number").and_then(serde_json::Value::as_u64) {
+                return Some(num);
+            }
+        }
+    }
+
+    let pr_title = format!("specify: {initiative_name}");
+    let pr_body = format!(
+        "Automated push from specify workspace push for initiative \
+         `{initiative_name}`."
+    );
+    let pr_create = Command::new("gh")
+        .args(["pr", "create", "--title", &pr_title, "--body", &pr_body])
+        .current_dir(project_path)
+        .output();
+
+    if let Ok(output) = pr_create
+        && output.status.success()
+    {
+        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if let Some(num_str) = url.rsplit('/').next() {
+            return num_str.parse().ok();
+        }
+    }
+
+    None
+}
+
 fn push_single_project(
     project_dir: &Path, workspace_base: &Path, rp: &specify_schema::RegistryProject,
     branch_name: &str, initiative_name: &str, dry_run: bool,
@@ -572,12 +646,11 @@ fn push_single_project(
         };
     }
 
-    let branch_result = run_git(
+    if let Err(e) = run_git(
         &project_path,
         &["checkout", "-B", branch_name],
         &format!("checkout -B {branch_name} in {}", rp.name),
-    );
-    if let Err(e) = branch_result {
+    ) {
         return WorkspacePushResult {
             name: rp.name.clone(),
             status: "failed".to_string(),
@@ -591,39 +664,21 @@ fn push_single_project(
     let mut is_created = false;
 
     if let Some(ref slug) = slug {
-        let repo_check = Command::new("gh").args(["repo", "view", slug, "--json", "name"]).output();
-
-        match repo_check {
-            Ok(output) if !output.status.success() => {
-                let create_result = Command::new("gh")
-                    .args(["repo", "create", slug, "--private", "--source", "."])
-                    .current_dir(&project_path)
-                    .output();
-                match create_result {
-                    Ok(output) if output.status.success() => {
-                        is_created = true;
-                    }
-                    _ => {
-                        return WorkspacePushResult {
-                            name: rp.name.clone(),
-                            status: "failed".to_string(),
-                            branch: Some(branch_name.to_string()),
-                            pr_number: None,
-                            error: Some("failed to create remote repo via gh".to_string()),
-                        };
-                    }
-                }
+        match ensure_remote_repo(slug, &project_path) {
+            Ok(created) => is_created = created,
+            Err(e) => {
+                return WorkspacePushResult {
+                    name: rp.name.clone(),
+                    status: "failed".to_string(),
+                    branch: Some(branch_name.to_string()),
+                    pr_number: None,
+                    error: Some(e.to_string()),
+                };
             }
-            _ => {}
         }
     }
 
-    let push_result = run_git(
-        &project_path,
-        &["push", "--force-with-lease", "-u", "origin", branch_name],
-        &format!("git push in {}", rp.name),
-    );
-    if let Err(e) = push_result {
+    if let Err(e) = push_branch(&project_path, branch_name) {
         return WorkspacePushResult {
             name: rp.name.clone(),
             status: "failed".to_string(),
@@ -633,45 +688,8 @@ fn push_single_project(
         };
     }
 
-    let mut pr_number = None;
-    if let Some(ref _slug) = slug {
-        let pr_check = Command::new("gh")
-            .args(["pr", "list", "--head", branch_name, "--json", "number", "--limit", "1"])
-            .current_dir(&project_path)
-            .output();
-
-        if let Ok(output) = pr_check
-            && output.status.success()
-        {
-            let text = String::from_utf8_lossy(&output.stdout);
-            if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(&text)
-                && let Some(first) = parsed.first()
-            {
-                pr_number = first.get("number").and_then(serde_json::Value::as_u64);
-            }
-        }
-
-        if pr_number.is_none() {
-            let pr_title = format!("specify: {initiative_name}");
-            let pr_body = format!(
-                "Automated push from specify workspace push for initiative \
-                 `{initiative_name}`."
-            );
-            let pr_create = Command::new("gh")
-                .args(["pr", "create", "--title", &pr_title, "--body", &pr_body])
-                .current_dir(&project_path)
-                .output();
-
-            if let Ok(output) = pr_create
-                && output.status.success()
-            {
-                let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if let Some(num_str) = url.rsplit('/').next() {
-                    pr_number = num_str.parse().ok();
-                }
-            }
-        }
-    }
+    let pr_number =
+        slug.as_ref().and_then(|_| ensure_pull_request(&project_path, branch_name, initiative_name));
 
     let status = if is_created { "created" } else { "pushed" };
 

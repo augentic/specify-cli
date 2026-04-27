@@ -1,33 +1,21 @@
-#![allow(clippy::needless_pass_by_value)]
-
 use std::path::PathBuf;
 
-use specify::{ValidationReport, ValidationResult, serialize_report, validate_change};
+use specify::{Error, ValidationReport, ValidationResult, serialize_report, validate_change};
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
-use crate::output::{CliResult, emit_json};
+use crate::output::{CliResult, emit_response};
 
-pub fn run_validate(format: OutputFormat, change_dir: PathBuf) -> CliResult {
-    let ctx = match CommandContext::require(format) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
-    let pipeline = match ctx.load_pipeline() {
-        Ok(view) => view,
-        Err(code) => return code,
-    };
-    let report = match validate_change(&change_dir, &pipeline) {
-        Ok(report) => report,
-        Err(err) => return ctx.emit_error(&err),
-    };
+pub fn run_validate(ctx: &CommandContext, change_dir: PathBuf) -> Result<CliResult, Error> {
+    let pipeline = ctx.load_pipeline()?;
+    let report = validate_change(&change_dir, &pipeline)?;
 
-    match format {
-        OutputFormat::Json => emit_json(serialize_report(&report)),
+    match ctx.format {
+        OutputFormat::Json => emit_response(serialize_report(&report)),
         OutputFormat::Text => print_validation_report_text(&report),
     }
 
-    if report.passed { CliResult::Success } else { CliResult::ValidationFailed }
+    Ok(if report.passed { CliResult::Success } else { CliResult::ValidationFailed })
 }
 
 fn print_validation_report_text(report: &ValidationReport) {
@@ -53,6 +41,6 @@ fn format_result_line(r: &ValidationResult) -> String {
         ValidationResult::Deferred { rule_id, reason, .. } => {
             format!("[defer] {rule_id} ({reason})")
         }
-        _ => unreachable!(),
+        _ => "[?] unknown validation result".to_string(),
     }
 }

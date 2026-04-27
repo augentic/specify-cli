@@ -1,5 +1,3 @@
-#![allow(clippy::needless_pass_by_value)]
-
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -13,13 +11,17 @@ use crate::output::{CliResult, emit_response};
 
 /// RFC-3b: Detect whether a project directory is inside a workspace clone.
 /// Two-part heuristic: (1) the path contains `/.specify/workspace/*/` as an
-/// ancestor, and (2) `.specify/project.yaml` exists in the project directory.
-/// The secondary guard — CWD does not contain `.specify/plan.yaml` — is
-/// retained as a safety check but is not sufficient on its own because
-/// `plan.yaml` may be absent after `specify plan archive`.
+/// ancestor via structural component walk, and (2) `.specify/project.yaml`
+/// exists in the project directory. The secondary guard — CWD does not
+/// contain `.specify/plan.yaml` — is retained as a safety check but is not
+/// sufficient on its own because `plan.yaml` may be absent after
+/// `specify plan archive`.
 fn is_workspace_clone(project_dir: &Path) -> bool {
-    let in_workspace = project_dir.to_str().is_some_and(|s| {
-        s.contains("/.specify/workspace/") || s.contains("\\.specify\\workspace\\")
+    let components: Vec<_> = project_dir.components().collect();
+    let in_workspace = components.windows(3).any(|w| {
+        w[0].as_os_str() == ".specify"
+            && w[1].as_os_str() == "workspace"
+            && !w[2].as_os_str().is_empty()
     });
     if !in_workspace {
         return false;
@@ -29,25 +31,19 @@ fn is_workspace_clone(project_dir: &Path) -> bool {
     has_project_yaml && !has_plan_yaml
 }
 
-pub fn run_merge(format: OutputFormat, change_dir: PathBuf) -> CliResult {
-    let ctx = match CommandContext::require(format) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+pub fn run_merge(ctx: &CommandContext, change_dir: PathBuf) -> Result<CliResult, Error> {
     let specs_dir = ctx.specs_dir();
     let archive_dir = ctx.archive_dir();
 
-    let change_name = if let Some(name) = change_dir.file_name().and_then(|s| s.to_str()) {
-        name.to_string()
-    } else {
-        let err = Error::Config(format!("change dir `{}` has no basename", change_dir.display()));
-        return ctx.emit_error(&err);
-    };
+    let change_name = change_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            Error::Config(format!("change dir `{}` has no basename", change_dir.display()))
+        })?;
 
-    let merged = match merge_change(&change_dir, &specs_dir, &archive_dir) {
-        Ok(m) => m,
-        Err(err) => return ctx.emit_error(&err),
-    };
+    let merged = merge_change(&change_dir, &specs_dir, &archive_dir)?;
 
     // RFC-3b: auto-commit merged specs when running inside a workspace clone.
     if is_workspace_clone(&ctx.project_dir) {
@@ -97,7 +93,7 @@ pub fn run_merge(format: OutputFormat, change_dir: PathBuf) -> CliResult {
     let today = Utc::now().format("%Y-%m-%d").to_string();
     let archive_path = archive_dir.join(format!("{today}-{change_name}"));
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
@@ -114,7 +110,7 @@ pub fn run_merge(format: OutputFormat, change_dir: PathBuf) -> CliResult {
             println!("Archived to {}", archive_path.display());
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 #[derive(Serialize)]
@@ -147,7 +143,7 @@ pub fn operation_label(op: &MergeOperation) -> String {
         MergeOperation::CreatedBaseline { requirement_count } => {
             format!("CREATING baseline with {requirement_count} requirement(s)")
         }
-        _ => unreachable!(),
+        _ => "UNKNOWN operation".to_string(),
     }
 }
 
@@ -193,7 +189,8 @@ pub fn merge_op_to_json(op: &MergeOperation) -> Value {
         MergeOperation::CreatedBaseline { requirement_count } => MergeOpJson::CreatedBaseline {
             requirement_count: *requirement_count,
         },
-        _ => unreachable!(),
+        _ => return serde_json::to_value(serde_json::json!({"kind": "unknown"}))
+            .expect("fallback JSON serialises"),
     };
     serde_json::to_value(typed).expect("MergeOpJson serialises")
 }
@@ -213,7 +210,7 @@ pub fn summarise_operations(ops: &[MergeOperation]) -> String {
             MergeOperation::CreatedBaseline { requirement_count } => {
                 created_baseline = Some(*requirement_count);
             }
-            _ => unreachable!(),
+            _ => {}
         }
     }
     if let Some(count) = created_baseline {

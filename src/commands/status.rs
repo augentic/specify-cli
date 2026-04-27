@@ -1,5 +1,3 @@
-#![allow(clippy::needless_pass_by_value)]
-
 use std::path::Path;
 
 use serde::Serialize;
@@ -11,36 +9,23 @@ use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_status(format: OutputFormat, change: Option<String>) -> CliResult {
-    let ctx = match CommandContext::require(format) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
-    let pipeline = match ctx.load_pipeline() {
-        Ok(view) => view,
-        Err(code) => return code,
-    };
+pub fn run_status(ctx: &CommandContext, change: Option<String>) -> Result<CliResult, Error> {
+    let pipeline = ctx.load_pipeline()?;
     let changes_dir = ctx.changes_dir();
 
     let names: Vec<String> = match &change {
         Some(n) => vec![n.clone()],
-        None => match list_change_names(&changes_dir) {
-            Ok(v) => v,
-            Err(err) => return ctx.emit_error(&err),
-        },
+        None => list_change_names(&changes_dir)?,
     };
 
     let mut entries: Vec<StatusEntry> = Vec::new();
     for name in names {
         let dir = changes_dir.join(&name);
-        let entry = match collect_status(&dir, &name, &pipeline, &ctx.project_dir) {
-            Ok(entry) => entry,
-            Err(err) => return ctx.emit_error(&err),
-        };
+        let entry = collect_status(&dir, &name, &pipeline, &ctx.project_dir)?;
         entries.push(entry);
     }
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
@@ -52,7 +37,7 @@ pub fn run_status(format: OutputFormat, change: Option<String>) -> CliResult {
         }
         OutputFormat::Text => print_status_text(&entries),
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 struct StatusEntry {

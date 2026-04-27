@@ -1,11 +1,11 @@
-#![allow(clippy::needless_pass_by_value, clippy::items_after_statements)]
+#![allow(clippy::items_after_statements)]
 
 use std::path::PathBuf;
 
 use serde::Serialize;
 use serde_json::Value;
 use specify::{
-    BaselineConflict, ContractAction, ContractPreviewEntry, MergeEntry, conflict_check,
+    BaselineConflict, ContractAction, ContractPreviewEntry, Error, MergeEntry, conflict_check,
     preview_change,
 };
 
@@ -14,17 +14,10 @@ use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> CliResult {
-    let ctx = match CommandContext::require(format) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
-    let result = match preview_change(&change_dir, &ctx.specs_dir()) {
-        Ok(v) => v,
-        Err(err) => return ctx.emit_error(&err),
-    };
+pub fn run_spec_preview(ctx: &CommandContext, change_dir: PathBuf) -> Result<CliResult, Error> {
+    let result = preview_change(&change_dir, &ctx.specs_dir())?;
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => {
             let specs: Vec<Value> = result.specs.iter().map(preview_entry_to_json).collect();
             let contracts: Vec<Value> =
@@ -63,14 +56,14 @@ pub fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> CliResult 
                     let (sigil, label) = match c.action {
                         ContractAction::Added => ("+", "added"),
                         ContractAction::Replaced => ("~", "replaced"),
-                        _ => unreachable!(),
+                        _ => ("?", "unknown"),
                     };
                     println!("  {sigil} contracts/{} ({label})", c.relative_path);
                 }
             }
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 #[derive(Serialize)]
@@ -102,7 +95,7 @@ pub fn contract_preview_entry_to_json(entry: &ContractPreviewEntry) -> Value {
     let action = match entry.action {
         ContractAction::Added => "added",
         ContractAction::Replaced => "replaced",
-        _ => unreachable!(),
+        _ => "unknown",
     };
     serde_json::to_value(ContractPreviewJson {
         path: entry.relative_path.clone(),
@@ -111,17 +104,12 @@ pub fn contract_preview_entry_to_json(entry: &ContractPreviewEntry) -> Value {
     .expect("ContractPreviewJson serialises")
 }
 
-pub fn run_spec_conflict_check(format: OutputFormat, change_dir: PathBuf) -> CliResult {
-    let ctx = match CommandContext::require(format) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
-    let conflicts = match conflict_check(&change_dir, &ctx.specs_dir()) {
-        Ok(v) => v,
-        Err(err) => return ctx.emit_error(&err),
-    };
+pub fn run_spec_conflict_check(
+    ctx: &CommandContext, change_dir: PathBuf,
+) -> Result<CliResult, Error> {
+    let conflicts = conflict_check(&change_dir, &ctx.specs_dir())?;
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
@@ -150,7 +138,7 @@ pub fn run_spec_conflict_check(format: OutputFormat, change_dir: PathBuf) -> Cli
             }
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 #[derive(Serialize)]

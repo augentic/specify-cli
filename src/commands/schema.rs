@@ -1,26 +1,23 @@
-#![allow(clippy::needless_pass_by_value, clippy::items_after_statements)]
+#![allow(clippy::items_after_statements)]
 
 use std::path::PathBuf;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, Phase, PipelineView, Schema, SchemaSource, ValidationResult};
+use specify::{Error, Phase, Schema, SchemaSource, ValidationResult};
 
-use super::require_project;
 use crate::cli::OutputFormat;
-use crate::output::{CliResult, emit_error, emit_response};
+use crate::context::CommandContext;
+use crate::output::{CliResult, emit_response};
 
 pub fn run_schema_resolve(
     format: OutputFormat, schema_value: String, project_dir: PathBuf,
-) -> CliResult {
-    let resolved = match Schema::resolve(&schema_value, &project_dir) {
-        Ok(r) => r,
-        Err(err) => return emit_error(format, &err),
-    };
+) -> Result<CliResult, Error> {
+    let resolved = Schema::resolve(&schema_value, &project_dir)?;
     let (source, path) = match &resolved.source {
         SchemaSource::Local(p) => ("local", p.clone()),
         SchemaSource::Cached(p) => ("cached", p.clone()),
-        _ => unreachable!(),
+        _ => ("unknown", PathBuf::new()),
     };
 
     #[derive(Serialize)]
@@ -38,7 +35,7 @@ pub fn run_schema_resolve(
         }),
         OutputFormat::Text => println!("{}", path.display()),
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 #[derive(Serialize)]
@@ -62,24 +59,14 @@ struct SchemaPipelineResponse {
 }
 
 pub fn run_schema_pipeline(
-    format: OutputFormat, phase: Phase, change: Option<PathBuf>,
-) -> CliResult {
-    let (project_dir, config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let pipeline = match PipelineView::load(&config.schema, &project_dir) {
-        Ok(view) => view,
-        Err(err) => return emit_error(format, &err),
-    };
+    ctx: &CommandContext, phase: Phase, change: Option<PathBuf>,
+) -> Result<CliResult, Error> {
+    let pipeline = ctx.load_pipeline()?;
 
-    let order = match pipeline.topo_order(phase) {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
+    let order = pipeline.topo_order(phase)?;
     let completion = change.as_deref().map(|change_dir| pipeline.completion_for(phase, change_dir));
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => {
             let briefs: Vec<Value> = order
                 .iter()
@@ -124,19 +111,13 @@ pub fn run_schema_pipeline(
             }
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
-pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> CliResult {
+pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> Result<CliResult, Error> {
     let schema_path = schema_dir.join("schema.yaml");
-    let text = match std::fs::read_to_string(&schema_path) {
-        Ok(t) => t,
-        Err(err) => return emit_error(format, &Error::Io(err)),
-    };
-    let schema: Schema = match serde_saphyr::from_str(&text) {
-        Ok(s) => s,
-        Err(err) => return emit_error(format, &Error::Yaml(err)),
-    };
+    let text = std::fs::read_to_string(&schema_path)?;
+    let schema: Schema = serde_saphyr::from_str(&text)?;
     let results = schema.validate_structure();
     let passed = !results.iter().any(|r| matches!(r, ValidationResult::Fail { .. }));
 
@@ -169,7 +150,7 @@ pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> CliResult 
             }
         }
     }
-    if passed { CliResult::Success } else { CliResult::ValidationFailed }
+    Ok(if passed { CliResult::Success } else { CliResult::ValidationFailed })
 }
 
 #[derive(Serialize)]
@@ -205,7 +186,10 @@ fn validation_result_to_json(r: &ValidationResult) -> Value {
             rule,
             reason,
         },
-        _ => unreachable!(),
+        _ => {
+            return serde_json::to_value(serde_json::json!({"status": "unknown"}))
+                .expect("fallback JSON serialises");
+        }
     };
     serde_json::to_value(typed).expect("ValidationResultJson serialises")
 }

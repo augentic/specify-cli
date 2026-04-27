@@ -1,4 +1,4 @@
-#![allow(clippy::needless_pass_by_value, clippy::items_after_statements)]
+#![allow(clippy::items_after_statements)]
 
 use std::path::Path;
 
@@ -11,66 +11,56 @@ use specify::{
     change_actions, format_rfc3339,
 };
 
-use super::require_project;
 use super::status::run_status;
 use crate::cli::{ChangeAction, OutputFormat};
 use crate::context::CommandContext;
-use crate::output::{CliResult, emit_error, emit_response};
+use crate::output::{CliResult, emit_response};
 
-pub fn run_change(format: OutputFormat, action: ChangeAction) -> CliResult {
+pub fn run_change(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult, Error> {
     match action {
         ChangeAction::Create {
             name,
             schema,
             if_exists,
-        } => run_change_create(format, name, schema, if_exists.into()),
-        ChangeAction::List => run_status(format, None),
-        ChangeAction::Status { name } => run_status(format, Some(name)),
-        ChangeAction::Transition { name, target } => run_change_transition(format, name, target),
+        } => run_change_create(ctx, name, schema, if_exists.into()),
+        ChangeAction::List => run_status(ctx, None),
+        ChangeAction::Status { name } => run_status(ctx, Some(name)),
+        ChangeAction::Transition { name, target } => run_change_transition(ctx, name, target),
         ChangeAction::TouchedSpecs { name, scan, set } => {
-            run_change_touched_specs(format, name, scan, set)
+            run_change_touched_specs(ctx, name, scan, set)
         }
-        ChangeAction::Overlap { name } => run_change_overlap(format, name),
-        ChangeAction::Archive { name } => run_change_archive(format, name),
-        ChangeAction::Drop { name, reason } => run_change_drop(format, name, reason),
+        ChangeAction::Overlap { name } => run_change_overlap(ctx, name),
+        ChangeAction::Archive { name } => run_change_archive(ctx, name),
+        ChangeAction::Drop { name, reason } => run_change_drop(ctx, name, reason),
         ChangeAction::PhaseOutcome {
             name,
             phase,
             outcome,
             summary,
             context,
-        } => run_change_phase_outcome(format, name, phase, outcome, summary, context),
-        ChangeAction::Outcome { name } => run_change_outcome(format, name),
+        } => run_change_phase_outcome(ctx, name, phase, outcome, summary, context),
+        ChangeAction::Outcome { name } => run_change_outcome(ctx, name),
         ChangeAction::JournalAppend {
             name,
             phase,
             kind,
             summary,
             context,
-        } => run_change_journal_append(format, name, phase, kind, summary, context),
+        } => run_change_journal_append(ctx, name, phase, kind, summary, context),
     }
 }
 
 fn run_change_create(
-    format: OutputFormat, name: String, schema: Option<String>, if_exists: CreateIfExists,
-) -> CliResult {
-    let ctx = match CommandContext::require(format) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    ctx: &CommandContext, name: String, schema: Option<String>, if_exists: CreateIfExists,
+) -> Result<CliResult, Error> {
     let schema_value = schema.unwrap_or_else(|| ctx.config.schema.clone());
     let changes_dir = ctx.changes_dir();
-    if let Err(err) = std::fs::create_dir_all(&changes_dir) {
-        return ctx.emit_error(&Error::Io(err));
-    }
+    std::fs::create_dir_all(&changes_dir)?;
 
     let outcome =
-        match change_actions::create(&changes_dir, &name, &schema_value, if_exists, Utc::now()) {
-            Ok(outcome) => outcome,
-            Err(err) => return ctx.emit_error(&err),
-        };
+        change_actions::create(&changes_dir, &name, &schema_value, if_exists, Utc::now())?;
 
-    emit_change_create(format, &outcome)
+    Ok(emit_change_create(ctx.format, &outcome))
 }
 
 #[derive(Serialize)]
@@ -110,16 +100,11 @@ fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResul
     CliResult::Success
 }
 
-fn run_change_transition(format: OutputFormat, name: String, target: LifecycleStatus) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
-    let metadata = match change_actions::transition(&change_dir, target, Utc::now()) {
-        Ok(meta) => meta,
-        Err(err) => return emit_error(format, &err),
-    };
+fn run_change_transition(
+    ctx: &CommandContext, name: String, target: LifecycleStatus,
+) -> Result<CliResult, Error> {
+    let change_dir = ctx.changes_dir().join(&name);
+    let metadata = change_actions::transition(&change_dir, target, Utc::now())?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -132,7 +117,7 @@ fn run_change_transition(format: OutputFormat, name: String, target: LifecycleSt
         merged_at: Option<Rfc3339Stamp>,
         dropped_at: Option<Rfc3339Stamp>,
     }
-    match format {
+    match ctx.format {
         OutputFormat::Json => emit_response(TransitionResponse {
             name,
             status: metadata.status.to_string(),
@@ -146,46 +131,25 @@ fn run_change_transition(format: OutputFormat, name: String, target: LifecycleSt
             println!("{name}: status = {}", metadata.status);
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 fn run_change_touched_specs(
-    format: OutputFormat, name: String, scan: bool, set: Vec<String>,
-) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
-    let specs_dir = ProjectConfig::specs_dir(&project_dir);
+    ctx: &CommandContext, name: String, scan: bool, set: Vec<String>,
+) -> Result<CliResult, Error> {
+    let change_dir = ctx.changes_dir().join(&name);
+    let specs_dir = ctx.specs_dir();
 
     let entries = if !set.is_empty() {
-        match parse_touched_spec_set(&set) {
-            Ok(v) => {
-                let metadata = match change_actions::write_touched_specs(&change_dir, v) {
-                    Ok(m) => m,
-                    Err(err) => return emit_error(format, &err),
-                };
-                metadata.touched_specs
-            }
-            Err(err) => return emit_error(format, &err),
-        }
+        let v = parse_touched_spec_set(&set)?;
+        let metadata = change_actions::write_touched_specs(&change_dir, v)?;
+        metadata.touched_specs
     } else if scan {
-        let scanned = match change_actions::scan_touched_specs(&change_dir, &specs_dir) {
-            Ok(v) => v,
-            Err(err) => return emit_error(format, &err),
-        };
-        let metadata = match change_actions::write_touched_specs(&change_dir, scanned) {
-            Ok(m) => m,
-            Err(err) => return emit_error(format, &err),
-        };
+        let scanned = change_actions::scan_touched_specs(&change_dir, &specs_dir)?;
+        let metadata = change_actions::write_touched_specs(&change_dir, scanned)?;
         metadata.touched_specs
     } else {
-        // Read-only: report the current touched_specs without mutating.
-        let metadata = match ChangeMetadata::load(&change_dir) {
-            Ok(m) => m,
-            Err(err) => return emit_error(format, &err),
-        };
+        let metadata = ChangeMetadata::load(&change_dir)?;
         metadata.touched_specs
     };
 
@@ -195,7 +159,7 @@ fn run_change_touched_specs(
         name: String,
         touched_specs: Vec<TouchedSpecJson>,
     }
-    match format {
+    match ctx.format {
         OutputFormat::Json => emit_response(TouchedSpecsResponse {
             name,
             touched_specs: entries
@@ -217,7 +181,7 @@ fn run_change_touched_specs(
             }
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
@@ -246,16 +210,9 @@ fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
     Ok(out)
 }
 
-fn run_change_overlap(format: OutputFormat, name: String) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let changes_dir = ProjectConfig::changes_dir(&project_dir);
-    let overlaps = match change_actions::overlap(&changes_dir, &name) {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
+fn run_change_overlap(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+    let changes_dir = ctx.changes_dir();
+    let overlaps = change_actions::overlap(&changes_dir, &name)?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -263,7 +220,7 @@ fn run_change_overlap(format: OutputFormat, name: String) -> CliResult {
         name: String,
         overlaps: Vec<OverlapJson>,
     }
-    match format {
+    match ctx.format {
         OutputFormat::Json => emit_response(OverlapResponse {
             name,
             overlaps: overlaps
@@ -289,20 +246,13 @@ fn run_change_overlap(format: OutputFormat, name: String) -> CliResult {
             }
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
-fn run_change_archive(format: OutputFormat, name: String) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
-    let archive_dir = ProjectConfig::archive_dir(&project_dir);
-    let target = match change_actions::archive(&change_dir, &archive_dir, Utc::now()) {
-        Ok(p) => p,
-        Err(err) => return emit_error(format, &err),
-    };
+fn run_change_archive(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+    let change_dir = ctx.changes_dir().join(&name);
+    let archive_dir = ctx.archive_dir();
+    let target = change_actions::archive(&change_dir, &archive_dir, Utc::now())?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -310,7 +260,7 @@ fn run_change_archive(format: OutputFormat, name: String) -> CliResult {
         name: String,
         archive_path: String,
     }
-    match format {
+    match ctx.format {
         OutputFormat::Json => emit_response(ArchiveResponse {
             name,
             archive_path: target.display().to_string(),
@@ -319,21 +269,16 @@ fn run_change_archive(format: OutputFormat, name: String) -> CliResult {
             println!("{name}: archived to {}", target.display());
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
-fn run_change_drop(format: OutputFormat, name: String, reason: Option<String>) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
-    let archive_dir = ProjectConfig::archive_dir(&project_dir);
+fn run_change_drop(
+    ctx: &CommandContext, name: String, reason: Option<String>,
+) -> Result<CliResult, Error> {
+    let change_dir = ctx.changes_dir().join(&name);
+    let archive_dir = ctx.archive_dir();
     let (metadata, archive_path) =
-        match change_actions::drop(&change_dir, &archive_dir, reason.as_deref(), Utc::now()) {
-            Ok(pair) => pair,
-            Err(err) => return emit_error(format, &err),
-        };
+        change_actions::drop(&change_dir, &archive_dir, reason.as_deref(), Utc::now())?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -343,7 +288,7 @@ fn run_change_drop(format: OutputFormat, name: String, reason: Option<String>) -
         archive_path: String,
         drop_reason: Option<String>,
     }
-    match format {
+    match ctx.format {
         OutputFormat::Json => emit_response(DropResponse {
             name,
             status: metadata.status.to_string(),
@@ -357,34 +302,26 @@ fn run_change_drop(format: OutputFormat, name: String, reason: Option<String>) -
             }
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 fn run_change_phase_outcome(
-    format: OutputFormat, name: String, phase: Phase, outcome: Outcome, summary: String,
+    ctx: &CommandContext, name: String, phase: Phase, outcome: Outcome, summary: String,
     context: Option<String>,
-) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+) -> Result<CliResult, Error> {
+    let change_dir = ctx.changes_dir().join(&name);
     if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
-        let err = Error::Config(format!("change '{name}' not found at {}", change_dir.display()));
-        return emit_error(format, &err);
+        return Err(Error::ChangeNotFound { name });
     }
 
-    let metadata = match change_actions::phase_outcome(
+    let metadata = change_actions::phase_outcome(
         &change_dir,
         phase,
         outcome,
         &summary,
         context.as_deref(),
         Utc::now(),
-    ) {
-        Ok(m) => m,
-        Err(err) => return emit_error(format, &err),
-    };
+    )?;
 
     let stamped = metadata
         .outcome
@@ -398,7 +335,7 @@ fn run_change_phase_outcome(
         outcome: String,
         at: String,
     }
-    match format {
+    match ctx.format {
         OutputFormat::Json => emit_response(PhaseOutcomeResponse {
             change: name,
             phase: phase.to_string(),
@@ -409,7 +346,7 @@ fn run_change_phase_outcome(
             println!("Stamped outcome '{outcome}' for phase '{phase}' on change '{name}'.");
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 /// Report the stamped `.metadata.yaml.outcome` for `name`.
@@ -426,25 +363,15 @@ fn run_change_phase_outcome(
 /// directory, so the active path no longer exists. The fallback scans
 /// archive entries matching `*-<name>` and picks the most recent by
 /// `created-at` timestamp.
-fn run_change_outcome(format: OutputFormat, name: String) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+fn run_change_outcome(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+    let change_dir = ctx.changes_dir().join(&name);
     let metadata = if change_dir.is_dir() {
-        match ChangeMetadata::load(&change_dir) {
-            Ok(m) => m,
-            Err(err) => return emit_error(format, &err),
-        }
+        ChangeMetadata::load(&change_dir)?
     } else {
-        match resolve_archived_metadata(&project_dir, &name) {
-            Ok(m) => m,
-            Err(err) => return emit_error(format, &err),
-        }
+        resolve_archived_metadata(&ctx.project_dir, &name)?
     };
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => {
             // Build the outcome payload explicitly so `context` is
             // emitted as `null` when absent (the canonical shape
@@ -487,7 +414,7 @@ fn run_change_outcome(format: OutputFormat, name: String) -> CliResult {
             }
         },
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 /// Scan `.specify/archive/` for directories whose name ends with
@@ -518,9 +445,9 @@ fn resolve_archived_metadata(
     }
 
     if candidates.is_empty() {
-        return Err(Error::Config(format!(
-            "change '{change_name}' not found in changes or archive"
-        )));
+        return Err(Error::ChangeNotFound {
+            name: change_name.to_string(),
+        });
     }
 
     candidates.sort_by(|a, b| b.0.cmp(&a.0));
@@ -528,17 +455,12 @@ fn resolve_archived_metadata(
 }
 
 fn run_change_journal_append(
-    format: OutputFormat, name: String, phase: Phase, kind: EntryKind, summary: String,
+    ctx: &CommandContext, name: String, phase: Phase, kind: EntryKind, summary: String,
     context: Option<String>,
-) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+) -> Result<CliResult, Error> {
+    let change_dir = ctx.changes_dir().join(&name);
     if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
-        let err = Error::Config(format!("change '{name}' not found at {}", change_dir.display()));
-        return emit_error(format, &err);
+        return Err(Error::ChangeNotFound { name });
     }
 
     let timestamp = format_rfc3339(Utc::now());
@@ -550,9 +472,7 @@ fn run_change_journal_append(
         context,
     };
 
-    if let Err(err) = Journal::append(&change_dir, entry) {
-        return emit_error(format, &err);
-    }
+    Journal::append(&change_dir, entry)?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -562,7 +482,7 @@ fn run_change_journal_append(
         kind: String,
         timestamp: Rfc3339Stamp,
     }
-    match format {
+    match ctx.format {
         OutputFormat::Json => emit_response(JournalAppendResponse {
             change: name,
             phase: phase.to_string(),
@@ -573,7 +493,7 @@ fn run_change_journal_append(
             println!("Appended {kind} entry to {name}/journal.yaml.");
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 #[derive(Serialize)]

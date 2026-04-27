@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use specify::{Error, PipelineView, ProjectConfig};
 
 use crate::cli::OutputFormat;
-use crate::output::CliResult;
 
+/// Shared context for every subcommand that operates inside an
+/// initialised `.specify/` project. Created once at the top of each
+/// command handler via [`CommandContext::require`].
 pub struct CommandContext {
     pub format: OutputFormat,
     pub project_dir: PathBuf,
@@ -13,14 +15,14 @@ pub struct CommandContext {
 
 impl CommandContext {
     /// Resolve the current directory, load `.specify/project.yaml`, and
-    /// bundle everything into a `CommandContext`. On failure the error is
-    /// emitted (JSON or text, depending on `format`) and the appropriate
-    /// exit code is returned as `Err`.
-    pub fn require(format: OutputFormat) -> Result<Self, CliResult> {
-        let project_dir = std::env::current_dir()
-            .map_err(|e| crate::output::emit_error(format, &Error::Io(e)))?;
-        let config =
-            ProjectConfig::load(&project_dir).map_err(|e| crate::output::emit_error(format, &e))?;
+    /// bundle everything into a `CommandContext`.
+    ///
+    /// Returns `Err(Error)` on failure so callers can propagate with `?`.
+    /// The top-level dispatcher (`run_with_project`) converts `Error` to
+    /// the format-aware exit code.
+    pub fn require(format: OutputFormat) -> Result<Self, Error> {
+        let project_dir = std::env::current_dir().map_err(Error::Io)?;
+        let config = ProjectConfig::load(&project_dir)?;
         Ok(Self {
             format,
             project_dir,
@@ -28,12 +30,9 @@ impl CommandContext {
         })
     }
 
-    pub fn emit_error(&self, err: &Error) -> CliResult {
-        crate::output::emit_error(self.format, err)
-    }
-
-    pub fn load_pipeline(&self) -> Result<PipelineView, CliResult> {
-        PipelineView::load(&self.config.schema, &self.project_dir).map_err(|e| self.emit_error(&e))
+    /// Load the schema pipeline for this project.
+    pub fn load_pipeline(&self) -> Result<PipelineView, Error> {
+        PipelineView::load(&self.config.schema, &self.project_dir)
     }
 
     pub fn changes_dir(&self) -> PathBuf {

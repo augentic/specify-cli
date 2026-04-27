@@ -101,6 +101,14 @@ pub enum Commands {
         action: WorkspaceAction,
     },
 
+    /// Generate shell completions for the given shell.
+    #[command(hide = true)]
+    Completions {
+        /// Target shell
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
+
     /// Bootstrap and verify Crux cross-platform projects (RFC-6).
     ///
     /// The four verbs route to handlers in the `specify-vectis` library

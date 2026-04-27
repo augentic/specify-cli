@@ -1,31 +1,19 @@
-#![allow(clippy::needless_pass_by_value)]
-
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
 use specify::{Brief, ChangeMetadata, Error, PipelineView, Task, mark_complete, parse_tasks};
 
-use super::require_project;
 use crate::cli::OutputFormat;
-use crate::output::{CliResult, emit_error, emit_response};
+use crate::context::CommandContext;
+use crate::output::{CliResult, emit_response};
 
-pub fn run_task_progress(format: OutputFormat, change_dir: PathBuf) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let tasks_path = match resolve_tasks_path(&project_dir, &change_dir) {
-        Ok(p) => p,
-        Err(err) => return emit_error(format, &err),
-    };
-    let content = match std::fs::read_to_string(&tasks_path) {
-        Ok(t) => t,
-        Err(err) => return emit_error(format, &Error::Io(err)),
-    };
+pub fn run_task_progress(ctx: &CommandContext, change_dir: PathBuf) -> Result<CliResult, Error> {
+    let tasks_path = resolve_tasks_path(&ctx.project_dir, &change_dir)?;
+    let content = std::fs::read_to_string(&tasks_path)?;
     let progress = parse_tasks(&content);
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
@@ -51,7 +39,7 @@ pub fn run_task_progress(format: OutputFormat, change_dir: PathBuf) -> CliResult
             }
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 #[derive(Serialize)]
@@ -86,29 +74,18 @@ fn task_to_json(t: &Task) -> Value {
     .expect("TaskJson serialises")
 }
 
-pub fn run_task_mark(format: OutputFormat, change_dir: PathBuf, task_number: String) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let tasks_path = match resolve_tasks_path(&project_dir, &change_dir) {
-        Ok(p) => p,
-        Err(err) => return emit_error(format, &err),
-    };
-    let original = match std::fs::read_to_string(&tasks_path) {
-        Ok(t) => t,
-        Err(err) => return emit_error(format, &Error::Io(err)),
-    };
-    let updated = match mark_complete(&original, &task_number) {
-        Ok(s) => s,
-        Err(err) => return emit_error(format, &err),
-    };
+pub fn run_task_mark(
+    ctx: &CommandContext, change_dir: PathBuf, task_number: String,
+) -> Result<CliResult, Error> {
+    let tasks_path = resolve_tasks_path(&ctx.project_dir, &change_dir)?;
+    let original = std::fs::read_to_string(&tasks_path)?;
+    let updated = mark_complete(&original, &task_number)?;
     let idempotent = updated == original;
-    if !idempotent && let Err(err) = std::fs::write(&tasks_path, &updated) {
-        return emit_error(format, &Error::Io(err));
+    if !idempotent {
+        std::fs::write(&tasks_path, &updated)?;
     }
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
@@ -131,7 +108,7 @@ pub fn run_task_mark(format: OutputFormat, change_dir: PathBuf, task_number: Str
             }
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 /// Resolve the `tasks.md` path for a change.
