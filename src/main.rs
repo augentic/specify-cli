@@ -22,12 +22,15 @@
 //! - A successful `Commands::Validate` where `report.passed == false` →
 //!   `2` (even though no `Error` is produced).
 
+mod context;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use chrono::Utc;
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
+use context::CommandContext;
 use serde_json::{Value, json};
 use specify::{
     BaselineConflict, Brief, ChangeMetadata, ContractAction, ContractPreviewEntry, CreateIfExists,
@@ -90,7 +93,7 @@ struct Cli {
 }
 
 #[derive(Copy, Clone, ValueEnum, PartialEq, Eq)]
-enum OutputFormat {
+pub(crate) enum OutputFormat {
     Text,
     Json,
 }
@@ -723,17 +726,17 @@ fn emit_init_result(format: OutputFormat, result: &InitResult) -> i32 {
 // ---------------------------------------------------------------------------
 
 fn run_validate(format: OutputFormat, change_dir: PathBuf) -> i32 {
-    let (project_dir, config) = match require_project() {
+    let ctx = match CommandContext::require(format) {
         Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
+        Err(code) => return code,
     };
-    let pipeline = match PipelineView::load(&config.schema, &project_dir) {
+    let pipeline = match ctx.load_pipeline() {
         Ok(view) => view,
-        Err(err) => return emit_error(format, &err),
+        Err(code) => return code,
     };
     let report = match validate_change(&change_dir, &pipeline) {
         Ok(report) => report,
-        Err(err) => return emit_error(format, &err),
+        Err(err) => return ctx.emit_error(&err),
     };
 
     match format {
@@ -794,37 +797,35 @@ fn is_workspace_clone(project_dir: &Path) -> bool {
 }
 
 fn run_merge(format: OutputFormat, change_dir: PathBuf) -> i32 {
-    let (project_dir, _config) = match require_project() {
+    let ctx = match CommandContext::require(format) {
         Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
+        Err(code) => return code,
     };
-    let specs_dir = ProjectConfig::specs_dir(&project_dir);
-    let archive_dir = ProjectConfig::archive_dir(&project_dir);
+    let specs_dir = ctx.specs_dir();
+    let archive_dir = ctx.archive_dir();
 
-    // Capture the change basename before `merge_change` moves the
-    // directory under archive/.
     let change_name = match change_dir.file_name().and_then(|s| s.to_str()) {
         Some(name) => name.to_string(),
         None => {
             let err =
                 Error::Config(format!("change dir `{}` has no basename", change_dir.display()));
-            return emit_error(format, &err);
+            return ctx.emit_error(&err);
         }
     };
 
     let merged = match merge_change(&change_dir, &specs_dir, &archive_dir) {
         Ok(m) => m,
-        Err(err) => return emit_error(format, &err),
+        Err(err) => return ctx.emit_error(&err),
     };
 
     // RFC-3b: auto-commit merged specs when running inside a workspace clone.
-    if is_workspace_clone(&project_dir) {
-        let specs_path = ProjectConfig::specs_dir(&project_dir);
-        let archive_path_for_git = ProjectConfig::archive_dir(&project_dir);
+    if is_workspace_clone(&ctx.project_dir) {
+        let specs_path = ctx.specs_dir();
+        let archive_path_for_git = ctx.archive_dir();
 
         let git_add = std::process::Command::new("git")
             .arg("-C")
-            .arg(&project_dir)
+            .arg(&ctx.project_dir)
             .args(["add"])
             .arg(&specs_path)
             .arg(&archive_path_for_git)
@@ -835,7 +836,7 @@ fn run_merge(format: OutputFormat, change_dir: PathBuf) -> i32 {
                 let commit_msg = format!("specify: merge {change_name}");
                 let git_commit = std::process::Command::new("git")
                     .arg("-C")
-                    .arg(&project_dir)
+                    .arg(&ctx.project_dir)
                     .args(["commit", "-m", &commit_msg])
                     .output();
 
@@ -896,14 +897,13 @@ fn merge_entry_to_json(entry: &(String, MergeResult)) -> Value {
 // ---------------------------------------------------------------------------
 
 fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> i32 {
-    let (project_dir, _config) = match require_project() {
+    let ctx = match CommandContext::require(format) {
         Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
+        Err(code) => return code,
     };
-    let specs_dir = ProjectConfig::specs_dir(&project_dir);
-    let result = match preview_change(&change_dir, &specs_dir) {
+    let result = match preview_change(&change_dir, &ctx.specs_dir()) {
         Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
+        Err(err) => return ctx.emit_error(&err),
     };
 
     match format {
@@ -984,14 +984,13 @@ fn operation_label(op: &MergeOperation) -> String {
 }
 
 fn run_spec_conflict_check(format: OutputFormat, change_dir: PathBuf) -> i32 {
-    let (project_dir, _config) = match require_project() {
+    let ctx = match CommandContext::require(format) {
         Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
+        Err(code) => return code,
     };
-    let specs_dir = ProjectConfig::specs_dir(&project_dir);
-    let conflicts = match conflict_check(&change_dir, &specs_dir) {
+    let conflicts = match conflict_check(&change_dir, &ctx.specs_dir()) {
         Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
+        Err(err) => return ctx.emit_error(&err),
     };
 
     match format {
@@ -1103,30 +1102,30 @@ fn summarise_operations(ops: &[MergeOperation]) -> String {
 // ---------------------------------------------------------------------------
 
 fn run_status(format: OutputFormat, change: Option<String>) -> i32 {
-    let (project_dir, config) = match require_project() {
+    let ctx = match CommandContext::require(format) {
         Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
+        Err(code) => return code,
     };
-    let pipeline = match PipelineView::load(&config.schema, &project_dir) {
+    let pipeline = match ctx.load_pipeline() {
         Ok(view) => view,
-        Err(err) => return emit_error(format, &err),
+        Err(code) => return code,
     };
-    let changes_dir = ProjectConfig::changes_dir(&project_dir);
+    let changes_dir = ctx.changes_dir();
 
     let names: Vec<String> = match &change {
         Some(n) => vec![n.clone()],
         None => match list_change_names(&changes_dir) {
             Ok(v) => v,
-            Err(err) => return emit_error(format, &err),
+            Err(err) => return ctx.emit_error(&err),
         },
     };
 
     let mut entries: Vec<StatusEntry> = Vec::new();
     for name in names {
         let dir = changes_dir.join(&name);
-        let entry = match collect_status(&dir, &name, &pipeline, &project_dir) {
+        let entry = match collect_status(&dir, &name, &pipeline, &ctx.project_dir) {
             Ok(entry) => entry,
-            Err(err) => return emit_error(format, &err),
+            Err(err) => return ctx.emit_error(&err),
         };
         entries.push(entry);
     }
@@ -1619,20 +1618,20 @@ fn run_change(format: OutputFormat, action: ChangeAction) -> i32 {
 fn run_change_create(
     format: OutputFormat, name: String, schema: Option<String>, if_exists: CreateIfExists,
 ) -> i32 {
-    let (project_dir, config) = match require_project() {
+    let ctx = match CommandContext::require(format) {
         Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
+        Err(code) => return code,
     };
-    let schema_value = schema.unwrap_or_else(|| config.schema.clone());
-    let changes_dir = ProjectConfig::changes_dir(&project_dir);
+    let schema_value = schema.unwrap_or_else(|| ctx.config.schema.clone());
+    let changes_dir = ctx.changes_dir();
     if let Err(err) = std::fs::create_dir_all(&changes_dir) {
-        return emit_error(format, &Error::Io(err));
+        return ctx.emit_error(&Error::Io(err));
     }
 
     let outcome =
         match change_actions::create(&changes_dir, &name, &schema_value, if_exists, Utc::now()) {
             Ok(outcome) => outcome,
-            Err(err) => return emit_error(format, &err),
+            Err(err) => return ctx.emit_error(&err),
         };
 
     emit_change_create(format, &outcome)
@@ -1679,11 +1678,11 @@ fn run_change_transition(format: OutputFormat, name: String, target: LifecycleSt
         OutputFormat::Json => emit_json(json!({
             "name": name,
             "status": metadata.status.to_string(),
-            "defined-at": metadata.defined_at,
-            "build-started-at": metadata.build_started_at,
-            "completed-at": metadata.completed_at,
-            "merged-at": metadata.merged_at,
-            "dropped-at": metadata.dropped_at,
+            "defined-at": metadata.defined_at.as_deref(),
+            "build-started-at": metadata.build_started_at.as_deref(),
+            "completed-at": metadata.completed_at.as_deref(),
+            "merged-at": metadata.merged_at.as_deref(),
+            "dropped-at": metadata.dropped_at.as_deref(),
         })),
         OutputFormat::Text => {
             println!("{name}: status = {}", metadata.status);
@@ -1901,7 +1900,7 @@ fn run_change_phase_outcome(
             "change": name,
             "phase": phase.to_string(),
             "outcome": outcome.to_string(),
-            "at": stamped.at,
+            "at": stamped.at.to_string(),
         })),
         OutputFormat::Text => {
             println!("Stamped outcome '{outcome}' for phase '{phase}' on change '{name}'.");
@@ -3526,7 +3525,7 @@ fn require_project() -> Result<(PathBuf, ProjectConfig), Error> {
     Ok((project_dir, config))
 }
 
-fn emit_error(format: OutputFormat, err: &Error) -> i32 {
+pub(crate) fn emit_error(format: OutputFormat, err: &Error) -> i32 {
     let code = exit_code_for(err);
     match format {
         OutputFormat::Json => emit_json_error(err, code),
