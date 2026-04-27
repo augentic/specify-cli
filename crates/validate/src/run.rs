@@ -157,7 +157,7 @@ fn run_brief_rules(
     let tasks = (brief_id == "tasks").then(|| specify_task::parse_tasks(&content));
 
     let ctx = BriefContext {
-        brief_id,
+        id: brief_id,
         content: &content,
         parsed_spec: parsed_spec.as_ref(),
         tasks: tasks.as_ref(),

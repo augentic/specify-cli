@@ -33,8 +33,8 @@ pub mod timestamp;
 
 pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339, is_valid_kebab_name};
 pub use journal::{EntryKind, Journal, JournalEntry};
-pub use lock::{PlanLockAcquired, PlanLockGuard, PlanLockReleased, PlanLockStamp, PlanLockState};
-pub use plan::*;
+pub use lock::{Acquired, Guard, PlanLockReleased, PlanLockState, Stamp};
+pub use plan::{Entry, EntryPatch, Finding, Plan, Severity, Status};
 pub use timestamp::Rfc3339Stamp;
 
 /// On-disk representation of `<change_dir>/.metadata.yaml`.
@@ -163,7 +163,7 @@ pub struct TouchedSpec {
     pub name: String,
     /// Whether this spec is new or modifies an existing baseline.
     #[serde(rename = "type")]
-    pub spec_type: SpecType,
+    pub kind: SpecType,
 }
 
 /// Whether a touched spec is new or a modification of an existing baseline.
@@ -360,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn exhaustive_transition_table_matches_allowed_set() {
+    fn transition_table_matches_oracle() {
         let allowed = allowed_edges();
         for &from in &ALL_STATUSES {
             for &to in &ALL_STATUSES {
@@ -375,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_states_have_no_outgoing_edges() {
+    fn terminal_states_no_outgoing_edges() {
         for &from in &ALL_STATUSES {
             if !from.is_terminal() {
                 continue;
@@ -390,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn every_legal_edge_round_trips_through_transition() {
+    fn legal_edges_round_trip() {
         for (from, to) in allowed_edges() {
             let result = from
                 .transition(to)
@@ -400,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn every_illegal_edge_returns_lifecycle_error() {
+    fn illegal_edges_return_lifecycle_error() {
         let allowed = allowed_edges();
         for &from in &ALL_STATUSES {
             for &to in &ALL_STATUSES {
@@ -443,11 +443,11 @@ mod tests {
             touched_specs: vec![
                 TouchedSpec {
                     name: "login".to_string(),
-                    spec_type: SpecType::Modified,
+                    kind: SpecType::Modified,
                 },
                 TouchedSpec {
                     name: "oauth".to_string(),
-                    spec_type: SpecType::New,
+                    kind: SpecType::New,
                 },
             ],
             outcome: None,
@@ -455,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn save_then_load_round_trips_all_fields() {
+    fn save_load_round_trips() {
         let dir = tempdir().expect("tempdir");
         let meta = sample_metadata();
         meta.save(dir.path()).expect("save ok");
@@ -464,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn load_missing_file_returns_artifact_not_found() {
+    fn load_missing_returns_not_found() {
         let dir = tempdir().expect("tempdir");
         let err = ChangeMetadata::load(dir.path()).expect_err("expected error");
         match err {
@@ -481,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn load_malformed_yaml_returns_err() {
+    fn load_malformed_yaml_errors() {
         let dir = tempdir().expect("tempdir");
         std::fs::write(ChangeMetadata::path(dir.path()), "not: a\n  valid: yaml\n: structure:")
             .expect("write ok");
@@ -493,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn deserializes_representative_yaml_sample() {
+    fn deserializes_yaml_sample() {
         let yaml = r#"schema: omnia
 status: building
 created-at: "2024-08-01T10:00:00Z"
@@ -513,13 +513,13 @@ touched-specs:
         assert_eq!(meta.completed_at, None);
         assert_eq!(meta.touched_specs.len(), 2);
         assert_eq!(meta.touched_specs[0].name, "login");
-        assert_eq!(meta.touched_specs[0].spec_type, SpecType::Modified);
+        assert_eq!(meta.touched_specs[0].kind, SpecType::Modified);
         assert_eq!(meta.touched_specs[1].name, "oauth");
-        assert_eq!(meta.touched_specs[1].spec_type, SpecType::New);
+        assert_eq!(meta.touched_specs[1].kind, SpecType::New);
     }
 
     #[test]
-    fn serializes_kebab_case_fields_and_lowercase_enums() {
+    fn serializes_kebab_case_and_lowercase_enums() {
         let meta = ChangeMetadata {
             schema: "omnia".to_string(),
             status: LifecycleStatus::Building,
@@ -532,7 +532,7 @@ touched-specs:
             drop_reason: None,
             touched_specs: vec![TouchedSpec {
                 name: "login".to_string(),
-                spec_type: SpecType::Modified,
+                kind: SpecType::Modified,
             }],
             outcome: None,
         };
@@ -550,7 +550,7 @@ touched-specs:
     }
 
     #[test]
-    fn real_world_change_file_is_parseable_if_present() {
+    fn real_world_change_file_parses() {
         let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
         let changes_dir = manifest
             .parent()
@@ -578,13 +578,13 @@ touched-specs:
     }
 
     #[test]
-    fn path_helper_appends_metadata_yaml() {
+    fn path_appends_metadata_yaml() {
         let dir = Path::new("/tmp/some/change");
         assert_eq!(ChangeMetadata::path(dir), PathBuf::from("/tmp/some/change/.metadata.yaml"));
     }
 
     #[test]
-    fn lifecycle_status_display_matches_serde_wire_format() {
+    fn lifecycle_status_display_matches_serde() {
         assert_eq!(LifecycleStatus::Defining.to_string(), "defining");
         assert_eq!(LifecycleStatus::Defined.to_string(), "defined");
         assert_eq!(LifecycleStatus::Building.to_string(), "building");
@@ -594,14 +594,14 @@ touched-specs:
     }
 
     #[test]
-    fn outcome_display_matches_serde_wire_format() {
+    fn outcome_display_matches_serde() {
         assert_eq!(Outcome::Success.to_string(), "success");
         assert_eq!(Outcome::Failure.to_string(), "failure");
         assert_eq!(Outcome::Deferred.to_string(), "deferred");
     }
 
     #[test]
-    fn spec_type_display_matches_serde_wire_format() {
+    fn spec_type_display_matches_serde() {
         assert_eq!(SpecType::New.to_string(), "new");
         assert_eq!(SpecType::Modified.to_string(), "modified");
     }

@@ -256,14 +256,14 @@ mod tests {
     }
 
     #[test]
-    fn has_section_matches_exact_line() {
+    fn section_exact_line() {
         assert!(has_section("## Why\nbecause", "## Why"));
         assert!(!has_section("## why\nbecause", "## Why"));
         assert!(!has_section("prose without heading", "## Why"));
     }
 
     #[test]
-    fn has_content_after_heading_detects_prose() {
+    fn content_after_heading_prose() {
         let ok = "## Why\n\nbecause the problem exists\n\n## Next\n";
         assert!(has_content_after_heading(ok, "## Why"));
         let empty = "## Why\n\n## Next\nstuff\n";
@@ -275,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn all_requirements_have_scenarios_ok_and_fail() {
+    fn requirements_need_scenarios() {
         let ok = specify_spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n- WHEN foo\n- THEN bar\n",
         );
@@ -286,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn all_requirements_have_ids_ok_and_fail() {
+    fn requirements_need_ids() {
         let ok = specify_spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n",
         );
@@ -296,7 +296,7 @@ mod tests {
     }
 
     #[test]
-    fn ids_match_pattern_enforced_strictly() {
+    fn req_id_pattern() {
         let ok = specify_spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n",
         );
@@ -308,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn all_tasks_use_checkbox_rejects_bare_bullets() {
+    fn checkbox_rejects_bare_bullets() {
         let ok = "## 1. Setup\n- [ ] 1.1 Do thing\n- [ ] 1.2 Do other\n";
         let progress = specify_task::parse_tasks(ok);
         assert!(all_tasks_use_checkbox(&progress, ok));
@@ -318,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn tasks_grouped_under_headings_checks_groups() {
+    fn tasks_require_group_headings() {
         let ok = "## 1. Setup\n- [ ] 1.1 Do thing\n";
         let progress = specify_task::parse_tasks(ok);
         assert!(tasks_grouped_under_headings(&progress));
@@ -328,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn proposal_deliverables_have_specs_checks_disk() {
+    fn deliverable_specs_on_disk() {
         let dir = tmp();
         let specs = dir.path().join("specs");
         fs::create_dir_all(specs.join("login")).unwrap();
@@ -346,7 +346,7 @@ mod tests {
     }
 
     #[test]
-    fn proposal_deliverables_handles_backticked_names() {
+    fn deliverables_backticked_names() {
         let dir = tmp();
         let specs = dir.path().join("specs");
         fs::create_dir_all(specs.join("user-auth")).unwrap();
@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_ref_captures_double_quoted() {
+    fn extract_ref_double_quoted() {
         assert_eq!(
             extract_ref(r#"              $ref: "../schemas/user.yaml""#),
             Some("../schemas/user.yaml")
@@ -364,33 +364,33 @@ mod tests {
     }
 
     #[test]
-    fn extract_ref_captures_single_quoted() {
+    fn extract_ref_single_quoted() {
         assert_eq!(extract_ref("    $ref: '../schemas/user.yaml'"), Some("../schemas/user.yaml"));
     }
 
     #[test]
-    fn extract_ref_captures_unquoted() {
+    fn extract_ref_unquoted() {
         assert_eq!(extract_ref("  $ref: ../schemas/user.yaml"), Some("../schemas/user.yaml"));
     }
 
     #[test]
-    fn extract_ref_skips_fragment_only() {
+    fn extract_ref_fragment() {
         assert_eq!(extract_ref("$ref: \"#/components/schemas/Error\""), None);
     }
 
     #[test]
-    fn extract_ref_skips_urls() {
+    fn extract_ref_http_url() {
         assert_eq!(extract_ref("$ref: \"https://example.com/schemas/user.yaml\""), None);
     }
 
     #[test]
-    fn extract_ref_returns_none_for_non_ref_lines() {
+    fn extract_ref_non_ref_line() {
         assert_eq!(extract_ref("  type: string"), None);
         assert_eq!(extract_ref("  description: a $ref example"), None);
     }
 
     #[test]
-    fn design_references_exist_requires_backing_specs() {
+    fn design_refs_backed_by_specs() {
         let dir = tmp();
         let specs = dir.path().join("specs");
         fs::create_dir_all(specs.join("a")).unwrap();

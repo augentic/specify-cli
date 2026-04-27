@@ -160,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn path_helpers_return_expected_subpaths() {
+    fn specify_subpaths() {
         let base = Path::new("/a/b");
         assert_eq!(ProjectConfig::specify_dir(base), PathBuf::from("/a/b/.specify"));
         assert_eq!(ProjectConfig::config_path(base), PathBuf::from("/a/b/.specify/project.yaml"));
@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn load_permits_equal_or_older_specify_version() {
+    fn load_accepts_floor_lte_current() {
         let tmp = tempdir().unwrap();
         write_config(tmp.path(), "name: demo\nschema: omnia\nspecify_version: \"0.0.1\"\n");
         ProjectConfig::load(tmp.path()).expect("older version loads");
@@ -242,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn load_ignores_unparseable_pinned_version() {
+    fn load_allows_invalid_pinned_version() {
         let tmp = tempdir().unwrap();
         write_config(tmp.path(), "name: demo\nschema: omnia\nspecify_version: not-a-semver\n");
         let cfg = ProjectConfig::load(tmp.path()).expect("unparseable version is permissive");

@@ -1,4 +1,4 @@
-#![allow(clippy::items_after_statements)]
+#![allow(clippy::items_after_statements, clippy::option_if_let_else, clippy::unnecessary_wraps)]
 
 use std::path::Path;
 
@@ -6,62 +6,56 @@ use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, InitiativeBrief, Registry, is_valid_kebab_name};
 
-use super::require_project;
 use crate::cli::{BriefAction, InitiativeAction, OutputFormat, RegistryAction};
-use crate::output::{CliResult, absolute_string, emit_error, emit_response};
+use crate::context::CommandContext;
+use crate::output::{CliResult, absolute_string, emit_response};
 
-pub fn run_initiative(format: OutputFormat, action: InitiativeAction) -> CliResult {
+pub fn run_initiative(ctx: &CommandContext, action: InitiativeAction) -> Result<CliResult, Error> {
     match action {
         InitiativeAction::Registry { action } => match action {
-            RegistryAction::Show => run_initiative_registry_show(format),
-            RegistryAction::Validate => run_initiative_registry_validate(format),
+            RegistryAction::Show => show_registry(ctx),
+            RegistryAction::Validate => validate_registry(ctx),
         },
         InitiativeAction::Brief { action } => match action {
-            BriefAction::Init { name } => run_initiative_brief_init(format, name),
-            BriefAction::Show => run_initiative_brief_show(format),
+            BriefAction::Init { name } => brief_init(ctx, name),
+            BriefAction::Show => brief_show(ctx),
         },
     }
 }
 
-/// `specify initiative registry show` — print the parsed registry in
-/// text or JSON. `Err` on malformed YAML (fail loud; the user asked to
-/// show something unparseable). `Ok(None)` is not an error.
-fn run_initiative_registry_show(format: OutputFormat) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let registry_path = Registry::path(&project_dir);
-    match Registry::load(&project_dir) {
-        Ok(None) => match format {
-            OutputFormat::Json => {
-                #[derive(Serialize)]
-                #[serde(rename_all = "kebab-case")]
-                struct RegistryShowResponse {
-                    registry: Value,
-                    path: String,
-                }
-                emit_response(RegistryShowResponse {
-                    registry: Value::Null,
-                    path: registry_path.display().to_string(),
-                });
-                CliResult::Success
-            }
-            OutputFormat::Text => {
-                println!("no registry declared at .specify/registry.yaml");
-                CliResult::Success
-            }
-        },
-        Ok(Some(registry)) => {
-            match format {
+fn show_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
+    let registry_path = Registry::path(&ctx.project_dir);
+    match Registry::load(&ctx.project_dir)? {
+        None => {
+            match ctx.format {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
-                    struct RegistryShowFullResponse {
+                    struct RegistryBody {
+                        registry: Value,
+                        path: String,
+                    }
+                    emit_response(RegistryBody {
+                        registry: Value::Null,
+                        path: registry_path.display().to_string(),
+                    });
+                }
+                OutputFormat::Text => {
+                    println!("no registry declared at .specify/registry.yaml");
+                }
+            }
+            Ok(CliResult::Success)
+        }
+        Some(registry) => {
+            match ctx.format {
+                OutputFormat::Json => {
+                    #[derive(Serialize)]
+                    #[serde(rename_all = "kebab-case")]
+                    struct RegistryFullBody {
                         registry: Registry,
                         path: String,
                     }
-                    emit_response(RegistryShowFullResponse {
+                    emit_response(RegistryFullBody {
                         registry,
                         path: registry_path.display().to_string(),
                     });
@@ -70,33 +64,24 @@ fn run_initiative_registry_show(format: OutputFormat) -> CliResult {
                     print_registry_text(&registry, &registry_path);
                 }
             }
-            CliResult::Success
+            Ok(CliResult::Success)
         }
-        Err(err) => emit_error(format, &err),
     }
 }
 
-/// `specify initiative registry validate` — dedicated verb for the same
-/// shape check `plan validate` runs via its C12 hook. Exits
-/// `CliResult::ValidationFailed` (2) on malformed input; 0 otherwise,
-/// including when `.specify/registry.yaml` is absent.
-fn run_initiative_registry_validate(format: OutputFormat) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let registry_path = Registry::path(&project_dir);
-    match Registry::load(&project_dir) {
+fn validate_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
+    let registry_path = Registry::path(&ctx.project_dir);
+    match Registry::load(&ctx.project_dir) {
         Ok(None) => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct RegistryValidateResponse {
+            struct ValidateEmpty {
                 registry: Value,
                 path: String,
                 ok: bool,
             }
-            match format {
-                OutputFormat::Json => emit_response(RegistryValidateResponse {
+            match ctx.format {
+                OutputFormat::Json => emit_response(ValidateEmpty {
                     registry: Value::Null,
                     path: registry_path.display().to_string(),
                     ok: true,
@@ -105,19 +90,19 @@ fn run_initiative_registry_validate(format: OutputFormat) -> CliResult {
                     println!("no registry declared at .specify/registry.yaml");
                 }
             }
-            CliResult::Success
+            Ok(CliResult::Success)
         }
         Ok(Some(registry)) => {
             let count = registry.projects.len();
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct RegistryValidateFullResponse {
+            struct ValidateBody {
                 registry: Registry,
                 path: String,
                 ok: bool,
             }
-            match format {
-                OutputFormat::Json => emit_response(RegistryValidateFullResponse {
+            match ctx.format {
+                OutputFormat::Json => emit_response(ValidateBody {
                     registry,
                     path: registry_path.display().to_string(),
                     ok: true,
@@ -126,7 +111,7 @@ fn run_initiative_registry_validate(format: OutputFormat) -> CliResult {
                     println!("registry.yaml is well-formed ({count} project(s))");
                 }
             }
-            CliResult::Success
+            Ok(CliResult::Success)
         }
         Err(err) => {
             #[derive(Serialize)]
@@ -138,7 +123,7 @@ fn run_initiative_registry_validate(format: OutputFormat) -> CliResult {
                 kind: &'static str,
                 exit_code: u8,
             }
-            match format {
+            match ctx.format {
                 OutputFormat::Json => emit_response(RegistryValidateErrorResponse {
                     path: registry_path.display().to_string(),
                     ok: false,
@@ -148,43 +133,33 @@ fn run_initiative_registry_validate(format: OutputFormat) -> CliResult {
                 }),
                 OutputFormat::Text => eprintln!("error: {err}"),
             }
-            CliResult::ValidationFailed
+            Ok(CliResult::ValidationFailed)
         }
     }
 }
 
-/// `specify initiative brief init <name>` — scaffold
-/// `.specify/initiative.md` from the canonical template. Refuses to
-/// overwrite an existing file; rejects non-kebab-case names before
-/// touching disk.
-fn run_initiative_brief_init(format: OutputFormat, name: String) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-
+fn brief_init(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     if !is_valid_kebab_name(&name) {
-        let err = Error::Config(format!(
+        return Err(Error::Config(format!(
             "initiative.md: name `{name}` must be kebab-case \
              (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
-        ));
-        return emit_error(format, &err);
+        )));
     }
 
-    let brief_path = InitiativeBrief::path(&project_dir);
+    let brief_path = InitiativeBrief::path(&ctx.project_dir);
     if brief_path.exists() {
-        match format {
+        match ctx.format {
             OutputFormat::Json => {
                 #[derive(Serialize)]
                 #[serde(rename_all = "kebab-case")]
-                struct BriefInitErrorResponse {
+                struct BriefInitErr {
                     action: &'static str,
                     ok: bool,
                     error: &'static str,
                     path: String,
                     exit_code: u8,
                 }
-                emit_response(BriefInitErrorResponse {
+                emit_response(BriefInitErr {
                     action: "init",
                     ok: false,
                     error: "already-exists",
@@ -199,29 +174,25 @@ fn run_initiative_brief_init(format: OutputFormat, name: String) -> CliResult {
                 );
             }
         }
-        return CliResult::GenericFailure;
+        return Ok(CliResult::GenericFailure);
     }
 
-    if let Some(parent) = brief_path.parent()
-        && let Err(err) = std::fs::create_dir_all(parent)
-    {
-        return emit_error(format, &Error::Io(err));
+    if let Some(parent) = brief_path.parent() {
+        std::fs::create_dir_all(parent).map_err(Error::Io)?;
     }
     let rendered = InitiativeBrief::template(&name);
-    if let Err(err) = std::fs::write(&brief_path, &rendered) {
-        return emit_error(format, &Error::Io(err));
-    }
+    std::fs::write(&brief_path, &rendered).map_err(Error::Io)?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct BriefInitResponse {
+    struct BriefInitOk {
         action: &'static str,
         ok: bool,
         name: String,
         path: String,
     }
-    match format {
-        OutputFormat::Json => emit_response(BriefInitResponse {
+    match ctx.format {
+        OutputFormat::Json => emit_response(BriefInitOk {
             action: "init",
             ok: true,
             name,
@@ -231,29 +202,21 @@ fn run_initiative_brief_init(format: OutputFormat, name: String) -> CliResult {
             println!("Created .specify/initiative.md for {name}");
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
-/// `specify initiative brief show` — print the parsed brief in text or
-/// JSON. Absent file exits 0 with a "no initiative brief declared"
-/// message; malformed files fail loud — the operator asked to show
-/// something unparseable.
-fn run_initiative_brief_show(format: OutputFormat) -> CliResult {
-    let (project_dir, _config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let brief_path = InitiativeBrief::path(&project_dir);
-    match InitiativeBrief::load(&project_dir) {
-        Ok(None) => {
+fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
+    let brief_path = InitiativeBrief::path(&ctx.project_dir);
+    match InitiativeBrief::load(&ctx.project_dir)? {
+        None => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct BriefShowAbsentResponse {
+            struct BriefAbsent {
                 brief: Value,
                 path: String,
             }
-            match format {
-                OutputFormat::Json => emit_response(BriefShowAbsentResponse {
+            match ctx.format {
+                OutputFormat::Json => emit_response(BriefAbsent {
                     brief: Value::Null,
                     path: brief_path.display().to_string(),
                 }),
@@ -261,12 +224,12 @@ fn run_initiative_brief_show(format: OutputFormat) -> CliResult {
                     println!("no initiative brief declared at .specify/initiative.md");
                 }
             }
-            CliResult::Success
+            Ok(CliResult::Success)
         }
-        Ok(Some(brief)) => {
+        Some(brief) => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct BriefShowResponse {
+            struct BriefBody {
                 brief: BriefJson,
                 path: String,
             }
@@ -276,8 +239,8 @@ fn run_initiative_brief_show(format: OutputFormat) -> CliResult {
                 frontmatter: specify::InitiativeFrontmatter,
                 body: String,
             }
-            match format {
-                OutputFormat::Json => emit_response(BriefShowResponse {
+            match ctx.format {
+                OutputFormat::Json => emit_response(BriefBody {
                     brief: BriefJson {
                         frontmatter: brief.frontmatter.clone(),
                         body: brief.body,
@@ -286,14 +249,11 @@ fn run_initiative_brief_show(format: OutputFormat) -> CliResult {
                 }),
                 OutputFormat::Text => print_initiative_brief_text(&brief, &brief_path),
             }
-            CliResult::Success
+            Ok(CliResult::Success)
         }
-        Err(err) => emit_error(format, &err),
     }
 }
 
-/// Plain text dump for `specify initiative brief show`. Not
-/// golden-tested — structured consumers use `--format json`.
 fn print_initiative_brief_text(brief: &InitiativeBrief, brief_path: &Path) {
     println!("initiative.md: {}", brief_path.display());
     println!("name: {}", brief.frontmatter.name);
@@ -314,8 +274,6 @@ fn print_initiative_brief_text(brief: &InitiativeBrief, brief_path: &Path) {
     print!("{}", brief.body);
 }
 
-/// Plain, two-space-indented registry summary for `--format text`. Not
-/// golden-tested — structured consumers use `--format json`.
 fn print_registry_text(registry: &Registry, registry_path: &Path) {
     println!("registry.yaml: {}", registry_path.display());
     println!("version: {}", registry.version);

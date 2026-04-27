@@ -153,13 +153,13 @@ mod tests {
     }
 
     #[test]
-    fn ok_baseline_yields_no_failures() {
+    fn clean_baseline_ok() {
         let baseline = "### Requirement: A\n\nID: REQ-001\n\n#### Scenario: x\n\n- ok\n";
         assert!(validate_baseline(baseline, None).is_empty());
     }
 
     #[test]
-    fn duplicate_ids_produce_single_fail() {
+    fn duplicate_ids_fail() {
         let baseline = "### Requirement: A\n\nID: REQ-001\n\n#### Scenario: x\n\n- ok\n\n### Requirement: B\n\nID: REQ-001\n\n#### Scenario: y\n\n- ok\n";
         let results = validate_baseline(baseline, None);
         let fails: Vec<_> = results.iter().filter_map(as_fail).collect();
@@ -171,7 +171,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_id_and_invalid_pattern_rules_fire() {
+    fn missing_id_and_bad_id_fail() {
         let invalid = "### Requirement: A\n\nID: NOT-AN-ID\n\n#### Scenario: x\n\n- ok\n\n### Requirement: B\n\n#### Scenario: y\n\n- ok\n";
         let results = validate_baseline(invalid, None);
         let fails: Vec<_> = results.iter().filter_map(as_fail).collect();
@@ -186,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn design_refs_parity_quirk_never_matches_multiline() {
+    fn design_refs_multiline_quirk() {
         // Python's un-anchored-but-no-MULTILINE regex never fires on a
         // multi-line string; we must preserve that behaviour here. When
         // Change G lands `cross.design-references-valid`, that *will*

@@ -7,6 +7,7 @@ use specify::Error;
 use crate::cli::OutputFormat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use]
 pub enum CliResult {
     Success,
     GenericFailure,
@@ -98,22 +99,7 @@ impl<T: Serialize> JsonEnvelope<T> {
 
 pub fn emit_response<T: Serialize>(payload: T) {
     let envelope = JsonEnvelope::wrap(payload);
-    let value = serde_json::to_value(&envelope).expect("Serialize to Value");
-    println!("{}", serde_json::to_string_pretty(&value).expect("JSON serialise"));
-}
-
-/// Serialise a JSON payload with `schema-version` automatically set on
-/// object-shaped responses.
-pub fn emit_json(value: serde_json::Value) {
-    let wrapped = match value {
-        serde_json::Value::Object(mut map) => {
-            map.entry("schema-version".to_string())
-                .or_insert(serde_json::Value::from(JSON_SCHEMA_VERSION));
-            serde_json::Value::Object(map)
-        }
-        other => other,
-    };
-    println!("{}", serde_json::to_string_pretty(&wrapped).expect("JSON serialise"));
+    println!("{}", serde_json::to_string_pretty(&envelope).expect("JSON serialise"));
 }
 
 #[derive(Serialize)]
@@ -137,10 +123,15 @@ pub fn emit_json_error(err: &Error, code: CliResult) {
         Error::PlanHasOutstandingWork { .. } => "plan-has-outstanding-work",
         Error::DriverBusy { .. } => "driver-busy",
         Error::ArtifactNotFound { .. } => "artifact-not-found",
+        Error::ChangeNotFound { .. } => "change-not-found",
+        Error::RegistryMissing => "registry-missing",
         Error::InvalidName(_) => "invalid-name",
         Error::Io(_) => "io",
         Error::Yaml(_) => "yaml",
-        _ => unreachable!(),
+        Error::YamlSer(_) => "yaml-ser",
+        // `Error` is #[non_exhaustive]; keep this arm but update when
+        // adding new variants to `specify_error::Error`.
+        _ => "unknown",
     };
     emit_response(ErrorResponse {
         error: variant.to_string(),

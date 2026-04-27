@@ -2,11 +2,11 @@
 //!
 //! See RFC-2 §"Driver Concurrency". Two primitives live here:
 //!
-//! - [`PlanLockGuard`] — RAII guard that holds an OS-level `flock(2)`
+//! - [`Guard`] — RAII guard that holds an OS-level `flock(2)`
 //!   exclusive lock on `.specify/plan.lock` for its entire lifetime,
 //!   removing the lockfile on drop. Sized for in-process, long-lived
 //!   drivers (a future native `specify plan run --loop`).
-//! - [`PlanLockStamp`] — stateless PID-stamp helper used by the short-
+//! - [`Stamp`] — stateless PID-stamp helper used by the short-
 //!   lived `specify plan lock {acquire, release, status}` CLI verbs
 //!   that drive the `/spec:execute` agent-side loop. Each CLI
 //!   invocation exits within milliseconds, so holding an `flock` is
@@ -42,10 +42,10 @@ use specify_error::Error;
 ///
 /// Holds an exclusive `flock` on the lockfile for the lifetime of the
 /// guard, and removes the lockfile on `Drop`. Construct via
-/// [`PlanLockGuard::acquire`] (production) or
-/// [`PlanLockGuard::acquire_with_liveness_check`] (tests).
+/// [`Guard::acquire`] (production) or
+/// [`Guard::acquire_with_liveness_check`] (tests).
 #[derive(Debug)]
-pub struct PlanLockGuard {
+pub struct Guard {
     /// Held open for the lifetime of the guard so the OS-level
     /// `flock` is released when we drop. `Option` so `Drop` can
     /// explicitly take the file before deleting the path.
@@ -55,7 +55,7 @@ pub struct PlanLockGuard {
     reclaimed_stale_pid: Option<u32>,
 }
 
-impl PlanLockGuard {
+impl Guard {
     /// Acquire the lock using the real OS-level PID-liveness probe.
     ///
     /// Returns `Err(Error::DriverBusy { pid })` if another live driver
@@ -171,7 +171,7 @@ impl PlanLockGuard {
     }
 }
 
-impl Drop for PlanLockGuard {
+impl Drop for Guard {
     fn drop(&mut self) {
         // Drop the `File` first so the OS releases the advisory
         // lock before anyone else can observe a file with a missing
@@ -189,9 +189,9 @@ impl Drop for PlanLockGuard {
     }
 }
 
-/// Result of a successful [`PlanLockStamp::acquire`] call.
+/// Result of a successful [`Stamp::acquire`] call.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PlanLockAcquired {
+pub struct Acquired {
     /// PID written into the stamp file.
     pub pid: u32,
     /// If the acquire reclaimed a stale stamp, the PID that had been
@@ -204,7 +204,7 @@ pub struct PlanLockAcquired {
     pub already_held: bool,
 }
 
-/// Outcome of a [`PlanLockStamp::release`] call. The CLI surfaces this
+/// Outcome of a [`Stamp::release`] call. The CLI surfaces this
 /// verbatim via `specify plan lock release --format json`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanLockReleased {
@@ -242,7 +242,7 @@ pub struct PlanLockState {
 
 /// PID-stamp helper for the short-lived CLI driver-lock protocol.
 ///
-/// Unlike [`PlanLockGuard`], this primitive does **not** hold an
+/// Unlike [`Guard`], this primitive does **not** hold an
 /// OS-level advisory lock. It manages `.specify/plan.lock` as a
 /// persistent PID marker that survives the process writing it:
 ///
@@ -259,24 +259,24 @@ pub struct PlanLockState {
 /// loop; no Rust-level process stays alive for the full driver run,
 /// so the stamp is the only signalling channel available. Secondary
 /// protection against genuine same-process racing is provided by
-/// [`PlanLockGuard`], which future long-lived drivers can wrap around
+/// [`Guard`], which future long-lived drivers can wrap around
 /// a stamped run.
 #[derive(Debug)]
-pub struct PlanLockStamp;
+pub struct Stamp;
 
-impl PlanLockStamp {
+impl Stamp {
     fn lockfile_path(project_dir: &Path) -> PathBuf {
         project_dir.join(".specify").join("plan.lock")
     }
 
     /// Acquire the stamp using the real PID-liveness probe. See
-    /// [`PlanLockStamp::acquire_with_liveness_check`] for the full
+    /// [`Stamp::acquire_with_liveness_check`] for the full
     /// semantics.
     ///
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    pub fn acquire(project_dir: &Path, our_pid: u32) -> Result<PlanLockAcquired, Error> {
+    pub fn acquire(project_dir: &Path, our_pid: u32) -> Result<Acquired, Error> {
         Self::acquire_with_liveness_check(project_dir, our_pid, is_pid_alive)
     }
 
@@ -289,7 +289,7 @@ impl PlanLockStamp {
     /// Returns an error if the operation fails.
     pub fn acquire_with_liveness_check<F>(
         project_dir: &Path, our_pid: u32, is_pid_alive: F,
-    ) -> Result<PlanLockAcquired, Error>
+    ) -> Result<Acquired, Error>
     where
         F: Fn(u32) -> bool,
     {
@@ -323,7 +323,7 @@ impl PlanLockStamp {
         // never observe a partial stamp.
         crate::atomic::atomic_bytes_write(&path, our_pid.to_string().as_bytes())?;
 
-        Ok(PlanLockAcquired {
+        Ok(Acquired {
             pid: our_pid,
             reclaimed_stale_pid,
             already_held,
@@ -437,9 +437,9 @@ mod tests {
     }
 
     #[test]
-    fn acquire_and_release_creates_and_removes_lockfile() {
+    fn acquire_and_release() {
         let dir = tempdir().expect("tempdir");
-        let guard = PlanLockGuard::acquire(dir.path()).expect("acquire ok");
+        let guard = Guard::acquire(dir.path()).expect("acquire ok");
 
         let lock_path = dir.path().join(".specify").join("plan.lock");
         assert!(lock_path.exists(), "lockfile should exist while guard is held");
@@ -452,12 +452,11 @@ mod tests {
     }
 
     #[test]
-    fn second_acquire_while_first_held_returns_driver_busy() {
+    fn second_acquire_is_busy() {
         let dir = tempdir().expect("tempdir");
-        let _first =
-            PlanLockGuard::acquire_with_liveness_check(dir.path(), |_| true).expect("first ok");
+        let _first = Guard::acquire_with_liveness_check(dir.path(), |_| true).expect("first ok");
 
-        let err = PlanLockGuard::acquire_with_liveness_check(dir.path(), |_| true)
+        let err = Guard::acquire_with_liveness_check(dir.path(), |_| true)
             .expect_err("second should fail");
         match err {
             Error::DriverBusy { pid } => assert_eq!(pid, std::process::id()),
@@ -466,26 +465,24 @@ mod tests {
     }
 
     #[test]
-    fn stale_lock_with_dead_pid_is_reclaimed() {
+    fn stale_lock_reclaimed() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "99999").expect("prime stale");
 
-        let guard =
-            PlanLockGuard::acquire_with_liveness_check(dir.path(), |_| false).expect("reclaim ok");
+        let guard = Guard::acquire_with_liveness_check(dir.path(), |_| false).expect("reclaim ok");
         assert_eq!(guard.reclaimed_stale_pid(), Some(99999));
         assert_eq!(read_lock_pid(dir.path()).trim(), std::process::id().to_string());
     }
 
     #[test]
-    fn malformed_pid_in_lockfile_is_reclaimed() {
+    fn malformed_pid_reclaimed() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "not-a-number\n")
             .expect("prime malformed");
 
-        let guard =
-            PlanLockGuard::acquire_with_liveness_check(dir.path(), |_| true).expect("reclaim ok");
+        let guard = Guard::acquire_with_liveness_check(dir.path(), |_| true).expect("reclaim ok");
         assert_eq!(
             guard.reclaimed_stale_pid(),
             None,
@@ -495,13 +492,13 @@ mod tests {
     }
 
     #[test]
-    fn guard_drop_removes_lockfile_even_on_panic() {
+    fn drop_removes_on_panic() {
         let dir = tempdir().expect("tempdir");
         let dir_path = dir.path().to_path_buf();
         let lock_path = dir_path.join(".specify").join("plan.lock");
 
         let result = std::panic::catch_unwind(|| {
-            let _guard = PlanLockGuard::acquire(&dir_path).expect("acquire ok");
+            let _guard = Guard::acquire(&dir_path).expect("acquire ok");
             panic!("simulated failure while holding lock");
         });
         assert!(result.is_err(), "inner closure should have panicked");
@@ -509,53 +506,52 @@ mod tests {
     }
 
     #[test]
-    fn reclaim_logs_diagnostic_via_reclaimed_stale_pid() {
+    fn reclaim_diagnostic() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "99999").expect("prime stale");
 
-        let guard =
-            PlanLockGuard::acquire_with_liveness_check(dir.path(), |_| false).expect("reclaim ok");
+        let guard = Guard::acquire_with_liveness_check(dir.path(), |_| false).expect("reclaim ok");
 
         assert_eq!(guard.reclaimed_stale_pid(), Some(99999));
     }
 
     // ------------------------------------------------------------------
-    // PlanLockStamp (PID-only stamp used by the CLI lock verbs)
+    // Stamp (PID-only stamp used by the CLI lock verbs)
     // ------------------------------------------------------------------
 
     #[test]
-    fn stamp_acquire_and_release_cycles_cleanly() {
+    fn stamp_acquire_release() {
         let dir = tempdir().expect("tempdir");
-        let acquired = PlanLockStamp::acquire_with_liveness_check(dir.path(), 4242, |_| true)
-            .expect("acquire ok");
+        let acquired =
+            Stamp::acquire_with_liveness_check(dir.path(), 4242, |_| true).expect("acquire ok");
         assert_eq!(acquired.pid, 4242);
         assert_eq!(acquired.reclaimed_stale_pid, None);
         assert!(!acquired.already_held);
         assert_eq!(read_lock_pid(dir.path()).trim(), "4242");
 
-        let released = PlanLockStamp::release(dir.path(), 4242).expect("release ok");
+        let released = Stamp::release(dir.path(), 4242).expect("release ok");
         assert_eq!(released, PlanLockReleased::Removed { pid: 4242 });
         assert!(!dir.path().join(".specify").join("plan.lock").exists());
     }
 
     #[test]
-    fn stamp_reacquire_by_same_pid_is_idempotent() {
+    fn stamp_reacquire_idempotent() {
         let dir = tempdir().expect("tempdir");
-        PlanLockStamp::acquire_with_liveness_check(dir.path(), 1234, |_| true).expect("first");
-        let again = PlanLockStamp::acquire_with_liveness_check(dir.path(), 1234, |_| true)
-            .expect("reacquire ok");
+        Stamp::acquire_with_liveness_check(dir.path(), 1234, |_| true).expect("first");
+        let again =
+            Stamp::acquire_with_liveness_check(dir.path(), 1234, |_| true).expect("reacquire ok");
         assert!(again.already_held, "same-PID re-stamp must report already_held");
         assert_eq!(again.reclaimed_stale_pid, None);
     }
 
     #[test]
-    fn stamp_acquire_refuses_when_another_live_pid_stamped() {
+    fn stamp_acquire_busy() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "7777").expect("prime");
 
-        let err = PlanLockStamp::acquire_with_liveness_check(dir.path(), 4242, |_| true)
+        let err = Stamp::acquire_with_liveness_check(dir.path(), 4242, |_| true)
             .expect_err("expected DriverBusy");
         assert!(matches!(err, Error::DriverBusy { pid: 7777 }));
         // Contents unchanged — we never clobbered the live holder.
@@ -563,41 +559,40 @@ mod tests {
     }
 
     #[test]
-    fn stamp_acquire_reclaims_stale_stamp() {
+    fn stamp_reclaims_stale() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "99999").expect("prime stale");
 
-        let acquired = PlanLockStamp::acquire_with_liveness_check(dir.path(), 4242, |_| false)
-            .expect("reclaim ok");
+        let acquired =
+            Stamp::acquire_with_liveness_check(dir.path(), 4242, |_| false).expect("reclaim ok");
         assert_eq!(acquired.reclaimed_stale_pid, Some(99999));
         assert_eq!(read_lock_pid(dir.path()).trim(), "4242");
     }
 
     #[test]
-    fn stamp_release_is_noop_when_file_absent() {
+    fn stamp_release_absent() {
         let dir = tempdir().expect("tempdir");
-        let released = PlanLockStamp::release(dir.path(), 4242).expect("release ok");
+        let released = Stamp::release(dir.path(), 4242).expect("release ok");
         assert_eq!(released, PlanLockReleased::WasAbsent);
     }
 
     #[test]
-    fn stamp_release_refuses_to_remove_another_pid() {
+    fn stamp_release_refuses_other() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "7777").expect("prime");
 
-        let released = PlanLockStamp::release(dir.path(), 4242).expect("release ok");
+        let released = Stamp::release(dir.path(), 4242).expect("release ok");
         assert_eq!(released, PlanLockReleased::HeldByOther { pid: Some(7777) });
         // File still there — we refused to clobber.
         assert_eq!(read_lock_pid(dir.path()).trim(), "7777");
     }
 
     #[test]
-    fn stamp_status_when_absent() {
+    fn stamp_status_absent() {
         let dir = tempdir().expect("tempdir");
-        let state =
-            PlanLockStamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
+        let state = Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
         assert_eq!(
             state,
             PlanLockState {
@@ -609,12 +604,11 @@ mod tests {
     }
 
     #[test]
-    fn stamp_status_when_held_by_live_pid() {
+    fn stamp_status_held() {
         let dir = tempdir().expect("tempdir");
-        PlanLockStamp::acquire_with_liveness_check(dir.path(), 4242, |_| true).expect("acquire");
+        Stamp::acquire_with_liveness_check(dir.path(), 4242, |_| true).expect("acquire");
 
-        let state =
-            PlanLockStamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
+        let state = Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
         assert_eq!(
             state,
             PlanLockState {
@@ -626,13 +620,12 @@ mod tests {
     }
 
     #[test]
-    fn stamp_status_when_stale() {
+    fn stamp_status_stale() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "99999").expect("prime stale");
 
-        let state =
-            PlanLockStamp::status_with_liveness_check(dir.path(), |_| false).expect("status ok");
+        let state = Stamp::status_with_liveness_check(dir.path(), |_| false).expect("status ok");
         assert_eq!(
             state,
             PlanLockState {
@@ -644,13 +637,12 @@ mod tests {
     }
 
     #[test]
-    fn stamp_status_when_malformed() {
+    fn stamp_status_malformed() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "not-a-pid\n").expect("prime");
 
-        let state =
-            PlanLockStamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
+        let state = Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
         assert_eq!(
             state,
             PlanLockState {
@@ -662,7 +654,7 @@ mod tests {
     }
 
     #[test]
-    fn second_acquire_in_different_thread_while_first_held_returns_driver_busy() {
+    fn cross_thread_acquire_is_busy() {
         // Cross-thread acquisition is verified via the liveness
         // override rather than raw flock semantics, which per the
         // module-level doc comment we consider belt-plus-PID-file.
@@ -674,7 +666,7 @@ mod tests {
 
         let holder_dir = dir_path.clone();
         let holder = thread::spawn(move || {
-            let guard = PlanLockGuard::acquire_with_liveness_check(&holder_dir, |_| true)
+            let guard = Guard::acquire_with_liveness_check(&holder_dir, |_| true)
                 .expect("holder acquire ok");
             started_tx.send(()).expect("notify started");
             release_rx.recv().expect("await release signal");
@@ -683,7 +675,7 @@ mod tests {
 
         started_rx.recv().expect("holder started");
 
-        let err = PlanLockGuard::acquire_with_liveness_check(&dir_path, |_| true)
+        let err = Guard::acquire_with_liveness_check(&dir_path, |_| true)
             .expect_err("contender should see DriverBusy");
         assert!(matches!(err, Error::DriverBusy { .. }));
 
@@ -692,7 +684,7 @@ mod tests {
 
         // After release, a fresh acquire should succeed.
         thread::sleep(Duration::from_millis(10));
-        let _after = PlanLockGuard::acquire_with_liveness_check(&dir_path, |_| true)
+        let _after = Guard::acquire_with_liveness_check(&dir_path, |_| true)
             .expect("post-release acquire ok");
     }
 }

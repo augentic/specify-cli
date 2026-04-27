@@ -661,7 +661,7 @@ mod tests {
         change_dir: &'a Path, specs_dir: &'a Path, content: &'a str,
     ) -> BriefContext<'a> {
         BriefContext {
-            brief_id: "contracts",
+            id: "contracts",
             content,
             parsed_spec: None,
             tasks: None,
@@ -672,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn schemas_dir_has_files_passes_with_yaml() {
+    fn schemas_dir_has_yaml() {
         let dir = tempfile::tempdir().unwrap();
         let schemas = dir.path().join("contracts").join("schemas");
         fs::create_dir_all(&schemas).unwrap();
@@ -684,7 +684,7 @@ mod tests {
     }
 
     #[test]
-    fn schemas_dir_has_files_fails_with_empty_dir() {
+    fn schemas_dir_empty_fails() {
         let dir = tempfile::tempdir().unwrap();
         let schemas = dir.path().join("contracts").join("schemas");
         fs::create_dir_all(&schemas).unwrap();
@@ -695,7 +695,7 @@ mod tests {
     }
 
     #[test]
-    fn schemas_dir_has_files_fails_with_no_dir() {
+    fn schemas_dir_missing_fails() {
         let dir = tempfile::tempdir().unwrap();
         let specs_dir = dir.path().join("specs");
         let ctx = brief_ctx(dir.path(), &specs_dir, "");
@@ -708,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn refs_resolve_passes_with_valid_refs() {
+    fn refs_resolve_ok() {
         let dir = tempfile::tempdir().unwrap();
         let contracts = dir.path().join("contracts");
         let http = contracts.join("http");
@@ -727,7 +727,7 @@ mod tests {
     }
 
     #[test]
-    fn refs_resolve_fails_with_broken_ref() {
+    fn refs_resolve_broken() {
         let dir = tempfile::tempdir().unwrap();
         let contracts = dir.path().join("contracts");
         let http = contracts.join("http");
@@ -748,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    fn refs_resolve_passes_when_no_http_or_messages_dirs() {
+    fn refs_resolve_no_http_dir() {
         let dir = tempfile::tempdir().unwrap();
         let specs_dir = dir.path().join("specs");
         let ctx = brief_ctx(dir.path(), &specs_dir, "");
@@ -756,7 +756,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_metadata_passes_with_complete_metadata() {
+    fn schema_metadata_complete() {
         let dir = tempfile::tempdir().unwrap();
         let schemas = dir.path().join("contracts").join("schemas");
         fs::create_dir_all(&schemas).unwrap();
@@ -771,7 +771,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_metadata_fails_with_missing_id() {
+    fn schema_metadata_missing_id() {
         let dir = tempfile::tempdir().unwrap();
         let schemas = dir.path().join("contracts").join("schemas");
         fs::create_dir_all(&schemas).unwrap();
@@ -792,7 +792,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_metadata_fails_with_empty_title() {
+    fn schema_metadata_empty_title() {
         let dir = tempfile::tempdir().unwrap();
         let schemas = dir.path().join("contracts").join("schemas");
         fs::create_dir_all(&schemas).unwrap();
@@ -813,7 +813,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_metadata_passes_when_no_schemas_dir() {
+    fn schema_metadata_no_dir() {
         let dir = tempfile::tempdir().unwrap();
         let specs_dir = dir.path().join("specs");
         let ctx = brief_ctx(dir.path(), &specs_dir, "");

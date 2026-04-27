@@ -4,17 +4,40 @@
 //! The variants are structured (rather than string-only) so `main.rs` can
 //! pattern-match them to assign exit codes and pick an output format.
 
+/// Validation outcome for a single rule check.
+///
+/// Kept in `specify-error` (rather than `specify-validate`) so the
+/// `Error::Validation` payload stays dependency-free. See `DECISIONS.md`
+/// ("Change A") for the rationale.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ValidationStatus {
+    /// Rule passed.
+    Pass,
+    /// Rule failed.
+    Fail,
+    /// CLI defers judgment to the agent.
+    Deferred,
+}
+
+impl std::fmt::Display for ValidationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pass => f.write_str("pass"),
+            Self::Fail => f.write_str("fail"),
+            Self::Deferred => f.write_str("deferred"),
+        }
+    }
+}
+
 /// Compact summary of a validation result, embedded in `Error::Validation`.
 ///
 /// The rich `ValidationResult` type lives in `specify-validate`; converting
-/// to this summary is a lossy projection (the enum variant collapses into
-/// a `status` string) but keeps `specify-error` dependency-free from the
-/// rest of the workspace. See `DECISIONS.md` ("Change A — `Error::Validation`
-/// payload") for the rationale.
+/// to this summary is a lossy projection but keeps `specify-error`
+/// dependency-free from the rest of the workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidationResultSummary {
-    /// One of `"pass"`, `"fail"`, or `"deferred"`.
-    pub status: String,
+pub struct ValidationSummary {
+    /// Outcome of this validation check.
+    pub status: ValidationStatus,
     /// Stable rule identifier (e.g. `proposal.why-has-content`).
     pub rule_id: String,
     /// Human-readable rule description.
@@ -49,7 +72,7 @@ pub enum Error {
         /// Number of error-level findings.
         count: usize,
         /// Individual validation results.
-        results: Vec<ValidationResultSummary>,
+        results: Vec<ValidationSummary>,
     },
 
     /// Spec merge failed.
@@ -116,6 +139,17 @@ pub enum Error {
         path: std::path::PathBuf,
     },
 
+    /// A change directory was expected but not found.
+    #[error("change '{name}' not found")]
+    ChangeNotFound {
+        /// Kebab-case change name.
+        name: String,
+    },
+
+    /// `.specify/registry.yaml` was expected but is absent.
+    #[error("no registry declared at .specify/registry.yaml")]
+    RegistryMissing,
+
     /// A name failed kebab-case validation.
     #[error("invalid name: {0}")]
     InvalidName(String),
@@ -137,17 +171,21 @@ pub enum Error {
 mod tests {
     use super::*;
 
-    fn summary(status: &str) -> ValidationResultSummary {
-        ValidationResultSummary {
-            status: status.to_string(),
+    fn summary(status: ValidationStatus) -> ValidationSummary {
+        ValidationSummary {
+            status,
             rule_id: "rule.example".to_string(),
             rule: "Example rule".to_string(),
-            detail: if status == "pass" { None } else { Some("detail".to_string()) },
+            detail: if status == ValidationStatus::Pass {
+                None
+            } else {
+                Some("detail".to_string())
+            },
         }
     }
 
     #[test]
-    fn not_initialized_display() {
+    fn not_init_display() {
         let err = Error::NotInitialized;
         assert_eq!(err.to_string(), "not initialized: .specify/project.yaml not found");
     }
@@ -165,17 +203,17 @@ mod tests {
     }
 
     #[test]
-    fn validation_display_and_payload() {
+    fn validation_display_payload() {
         let err = Error::Validation {
             count: 2,
-            results: vec![summary("fail"), summary("deferred")],
+            results: vec![summary(ValidationStatus::Fail), summary(ValidationStatus::Deferred)],
         };
         assert_eq!(err.to_string(), "validation failed: 2 errors");
         if let Error::Validation { count, results } = err {
             assert_eq!(count, 2);
             assert_eq!(results.len(), 2);
-            assert_eq!(results[0].status, "fail");
-            assert_eq!(results[1].status, "deferred");
+            assert_eq!(results[0].status, ValidationStatus::Fail);
+            assert_eq!(results[1].status, ValidationStatus::Deferred);
         } else {
             panic!("expected Validation variant");
         }
@@ -197,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn specify_version_too_old_display() {
+    fn version_too_old_display() {
         let err = Error::SpecifyVersionTooOld {
             required: "0.2.0".to_string(),
             found: "0.1.0".to_string(),
@@ -218,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_has_outstanding_work_display() {
+    fn plan_outstanding_display() {
         let err = Error::PlanHasOutstandingWork {
             entries: vec!["checkout-api".to_string(), "checkout-ui".to_string()],
         };
@@ -253,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn io_from_conversion() {
+    fn io_from() {
         let io = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
         let err: Error = io.into();
         assert!(matches!(err, Error::Io(_)));
@@ -261,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn yaml_from_conversion() {
+    fn yaml_from() {
         let parse_err: serde_saphyr::Error = serde_saphyr::from_str::<String>(":\n\t- bad")
             .expect_err("expected a YAML parse error");
         let display = parse_err.to_string();

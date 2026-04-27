@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::cli::{OutputFormat, VectisAction};
-use crate::output::{CliResult, emit_json};
+use crate::output::{CliResult, emit_response};
 
 /// Dispatch one of the four `specify vectis` verbs to the
 /// `specify-vectis` library and translate the outcome into the v2
@@ -25,8 +25,8 @@ pub fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
     match result {
         Ok(specify_vectis::CommandOutcome::Success(value)) => {
             match format {
-                OutputFormat::Json => emit_json(value),
-                OutputFormat::Text => vectis_render_text(action, &value),
+                OutputFormat::Json => emit_response(value),
+                OutputFormat::Text => render_text(action, &value),
             }
             CliResult::Success
         }
@@ -36,13 +36,13 @@ pub fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
-                    struct NotImplementedResponse<'a> {
+                    struct NotImpl<'a> {
                         error: &'static str,
                         command: &'a str,
                         message: String,
                         exit_code: u8,
                     }
-                    crate::output::emit_response(NotImplementedResponse {
+                    crate::output::emit_response(NotImpl {
                         error: "not-implemented",
                         command,
                         message,
@@ -53,8 +53,8 @@ pub fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
             }
             CliResult::GenericFailure
         }
-        Err(err) => emit_vectis_error(format, &err),
-        _ => unreachable!(),
+        Err(err) => emit_err(format, &err),
+        Ok(_) => CliResult::GenericFailure,
     }
 }
 
@@ -68,7 +68,7 @@ pub fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
 /// We can't reuse [`emit_json_error`] because that helper is hard-coded
 /// against the `specify_error::Error` enum; this is the vectis-shaped
 /// sibling.
-fn emit_vectis_error(format: OutputFormat, err: &specify_vectis::VectisError) -> CliResult {
+fn emit_err(format: OutputFormat, err: &specify_vectis::VectisError) -> CliResult {
     let code = match err {
         specify_vectis::VectisError::MissingPrerequisites { .. } => CliResult::ValidationFailed,
         _ => CliResult::GenericFailure,
@@ -84,7 +84,7 @@ fn emit_vectis_error(format: OutputFormat, err: &specify_vectis::VectisError) ->
                 unreachable!("VectisError::to_json always returns an object")
             };
             payload.entry("exit-code".to_string()).or_insert(Value::from(code.code()));
-            emit_json(Value::Object(payload));
+            emit_response(Value::Object(payload));
         }
         OutputFormat::Text => match err {
             specify_vectis::VectisError::MissingPrerequisites { missing, message } => {
@@ -113,16 +113,16 @@ fn emit_vectis_error(format: OutputFormat, err: &specify_vectis::VectisError) ->
 /// with the JSON contract by construction. Defensive `as_*` chains
 /// fall back to empty strings/arrays so a future field addition does
 /// not panic the text path.
-fn vectis_render_text(action: &VectisAction, value: &Value) {
+fn render_text(action: &VectisAction, value: &Value) {
     match action {
-        VectisAction::Init(_) => vectis_render_init_text(value),
-        VectisAction::Verify(_) => vectis_render_verify_text(value),
-        VectisAction::AddShell(_) => vectis_render_add_shell_text(value),
-        VectisAction::UpdateVersions(_) => vectis_render_update_versions_text(value),
+        VectisAction::Init(_) => render_init_text(value),
+        VectisAction::Verify(_) => render_verify_text(value),
+        VectisAction::AddShell(_) => render_add_shell_text(value),
+        VectisAction::UpdateVersions(_) => render_update_versions_text(value),
     }
 }
 
-fn vectis_render_init_text(value: &Value) {
+fn render_init_text(value: &Value) {
     let app = value.get("app-name").and_then(Value::as_str).unwrap_or("<app>");
     let dir = value.get("project-dir").and_then(Value::as_str).unwrap_or("<dir>");
     println!("Created app \"{app}\" at {dir}");
@@ -154,7 +154,7 @@ fn vectis_render_init_text(value: &Value) {
             let assembly = &map[key];
             let status = assembly.get("status").and_then(Value::as_str).unwrap_or("?");
             let file_count = assembly.get("files").and_then(Value::as_array).map_or(0, Vec::len);
-            let build = vectis_render_build_steps_summary(assembly.get("build-steps"));
+            let build = render_build_steps_summary(assembly.get("build-steps"));
             match build {
                 Some(summary) => println!("  - {key}: {status} ({file_count} files), {summary}"),
                 None => println!("  - {key}: {status} ({file_count} files)"),
@@ -163,7 +163,7 @@ fn vectis_render_init_text(value: &Value) {
     }
 }
 
-fn vectis_render_verify_text(value: &Value) {
+fn render_verify_text(value: &Value) {
     let dir = value.get("project-dir").and_then(Value::as_str).unwrap_or("<dir>");
     let passed = value.get("passed").and_then(Value::as_bool).unwrap_or(false);
     println!("Verified {dir}: {}", if passed { "PASS" } else { "FAIL" });
@@ -197,7 +197,7 @@ fn vectis_render_verify_text(value: &Value) {
     }
 }
 
-fn vectis_render_add_shell_text(value: &Value) {
+fn render_add_shell_text(value: &Value) {
     let app = value.get("app-name").and_then(Value::as_str).unwrap_or("<app>");
     let dir = value.get("project-dir").and_then(Value::as_str).unwrap_or("<dir>");
     let platform = value.get("platform").and_then(Value::as_str).unwrap_or("<platform>");
@@ -225,14 +225,14 @@ fn vectis_render_add_shell_text(value: &Value) {
     let assembly = value.get("assembly");
     let file_count =
         assembly.and_then(|a| a.get("files")).and_then(Value::as_array).map_or(0, Vec::len);
-    let build = vectis_render_build_steps_summary(assembly.and_then(|a| a.get("build-steps")));
+    let build = render_build_steps_summary(assembly.and_then(|a| a.get("build-steps")));
     match build {
         Some(summary) => println!("Files: {file_count}, {summary}"),
         None => println!("Files: {file_count}"),
     }
 }
 
-fn vectis_render_update_versions_text(value: &Value) {
+fn render_update_versions_text(value: &Value) {
     let target = value.get("version-file").and_then(Value::as_str).unwrap_or("<file>");
     let dry_run = value.get("dry-run").and_then(Value::as_bool).unwrap_or(false);
     let written = value.get("written").and_then(Value::as_bool).unwrap_or(false);
@@ -286,7 +286,7 @@ fn vectis_render_update_versions_text(value: &Value) {
 /// "build PASS" or "build FAIL (<first failing step name>)". Returns
 /// `None` when no `build-steps` field is present (e.g. the `core`
 /// assembly entry from `init`).
-fn vectis_render_build_steps_summary(steps: Option<&Value>) -> Option<String> {
+fn render_build_steps_summary(steps: Option<&Value>) -> Option<String> {
     let arr = steps?.as_array()?;
     if arr.is_empty() {
         return Some("build PASS".to_string());

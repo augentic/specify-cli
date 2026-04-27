@@ -1,49 +1,46 @@
-#![allow(clippy::needless_pass_by_value, clippy::items_after_statements)]
+#![allow(clippy::items_after_statements, clippy::needless_pass_by_value)]
 
 use std::path::PathBuf;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, Phase, PipelineView, Schema, SchemaSource, ValidationResult};
+use specify::{Error, Phase, Schema, SchemaSource, ValidationResult};
 
-use super::require_project;
 use crate::cli::OutputFormat;
-use crate::output::{CliResult, emit_error, emit_response};
+use crate::context::CommandContext;
+use crate::output::{CliResult, emit_response};
 
 pub fn run_schema_resolve(
     format: OutputFormat, schema_value: String, project_dir: PathBuf,
-) -> CliResult {
-    let resolved = match Schema::resolve(&schema_value, &project_dir) {
-        Ok(r) => r,
-        Err(err) => return emit_error(format, &err),
-    };
+) -> Result<CliResult, Error> {
+    let resolved = Schema::resolve(&schema_value, &project_dir)?;
     let (source, path) = match &resolved.source {
         SchemaSource::Local(p) => ("local", p.clone()),
         SchemaSource::Cached(p) => ("cached", p.clone()),
-        _ => unreachable!(),
+        _ => ("unknown", PathBuf::new()),
     };
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct SchemaResolveResponse {
+    struct ResolveBody {
         schema_value: String,
         resolved_path: String,
         source: &'static str,
     }
     match format {
-        OutputFormat::Json => emit_response(SchemaResolveResponse {
+        OutputFormat::Json => emit_response(ResolveBody {
             schema_value,
             resolved_path: path.display().to_string(),
             source,
         }),
         OutputFormat::Text => println!("{}", path.display()),
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct PipelineBriefJson {
+struct BriefRow {
     id: String,
     description: String,
     path: String,
@@ -55,37 +52,27 @@ struct PipelineBriefJson {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct SchemaPipelineResponse {
+struct PipelineBody {
     phase: String,
     change: Option<String>,
     briefs: Vec<Value>,
 }
 
 pub fn run_schema_pipeline(
-    format: OutputFormat, phase: Phase, change: Option<PathBuf>,
-) -> CliResult {
-    let (project_dir, config) = match require_project() {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
-    let pipeline = match PipelineView::load(&config.schema, &project_dir) {
-        Ok(view) => view,
-        Err(err) => return emit_error(format, &err),
-    };
+    ctx: &CommandContext, phase: Phase, change: Option<PathBuf>,
+) -> Result<CliResult, Error> {
+    let pipeline = ctx.load_pipeline()?;
 
-    let order = match pipeline.topo_order(phase) {
-        Ok(v) => v,
-        Err(err) => return emit_error(format, &err),
-    };
+    let order = pipeline.topo_order(phase)?;
     let completion = change.as_deref().map(|change_dir| pipeline.completion_for(phase, change_dir));
 
-    match format {
+    match ctx.format {
         OutputFormat::Json => {
             let briefs: Vec<Value> = order
                 .iter()
                 .map(|b| {
                     let present = completion.as_ref().and_then(|c| c.get(&b.frontmatter.id));
-                    serde_json::to_value(PipelineBriefJson {
+                    serde_json::to_value(BriefRow {
                         id: b.frontmatter.id.clone(),
                         description: b.frontmatter.description.clone(),
                         path: b.path.display().to_string(),
@@ -94,10 +81,10 @@ pub fn run_schema_pipeline(
                         tracks: b.frontmatter.tracks.clone(),
                         present: present.copied().map_or(Value::Null, Value::from),
                     })
-                    .expect("PipelineBriefJson serialises")
+                    .expect("BriefRow serialises")
                 })
                 .collect();
-            emit_response(SchemaPipelineResponse {
+            emit_response(PipelineBody {
                 phase: phase.to_string(),
                 change: change.as_ref().map(|p| p.display().to_string()),
                 briefs,
@@ -124,19 +111,13 @@ pub fn run_schema_pipeline(
             }
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
-pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> CliResult {
+pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> Result<CliResult, Error> {
     let schema_path = schema_dir.join("schema.yaml");
-    let text = match std::fs::read_to_string(&schema_path) {
-        Ok(t) => t,
-        Err(err) => return emit_error(format, &Error::Io(err)),
-    };
-    let schema: Schema = match serde_saphyr::from_str(&text) {
-        Ok(s) => s,
-        Err(err) => return emit_error(format, &Error::Yaml(err)),
-    };
+    let text = std::fs::read_to_string(&schema_path)?;
+    let schema: Schema = serde_saphyr::from_str(&text)?;
     let results = schema.validate_structure();
     let passed = !results.iter().any(|r| matches!(r, ValidationResult::Fail { .. }));
 
@@ -144,12 +125,12 @@ pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> CliResult 
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct SchemaCheckResponse {
+            struct CheckBody {
                 passed: bool,
                 results: Vec<Value>,
             }
             let results_json: Vec<Value> = results.iter().map(validation_result_to_json).collect();
-            emit_response(SchemaCheckResponse {
+            emit_response(CheckBody {
                 passed,
                 results: results_json,
             });
@@ -169,13 +150,13 @@ pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> CliResult 
             }
         }
     }
-    if passed { CliResult::Success } else { CliResult::ValidationFailed }
+    Ok(if passed { CliResult::Success } else { CliResult::ValidationFailed })
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "status")]
-enum ValidationResultJson<'a> {
+enum CheckRow<'a> {
     #[serde(rename = "pass")]
     Pass { rule_id: &'a str, rule: &'a str },
     #[serde(rename = "fail")]
@@ -186,12 +167,12 @@ enum ValidationResultJson<'a> {
 
 fn validation_result_to_json(r: &ValidationResult) -> Value {
     let typed = match r {
-        ValidationResult::Pass { rule_id, rule } => ValidationResultJson::Pass { rule_id, rule },
+        ValidationResult::Pass { rule_id, rule } => CheckRow::Pass { rule_id, rule },
         ValidationResult::Fail {
             rule_id,
             rule,
             detail,
-        } => ValidationResultJson::Fail {
+        } => CheckRow::Fail {
             rule_id,
             rule,
             detail,
@@ -200,12 +181,15 @@ fn validation_result_to_json(r: &ValidationResult) -> Value {
             rule_id,
             rule,
             reason,
-        } => ValidationResultJson::Deferred {
+        } => CheckRow::Deferred {
             rule_id,
             rule,
             reason,
         },
-        _ => unreachable!(),
+        _ => {
+            return serde_json::to_value(serde_json::json!({"status": "unknown"}))
+                .expect("fallback JSON serialises");
+        }
     };
-    serde_json::to_value(typed).expect("ValidationResultJson serialises")
+    serde_json::to_value(typed).expect("CheckRow serialises")
 }

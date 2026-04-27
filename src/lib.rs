@@ -6,18 +6,19 @@
 
 pub use config::ProjectConfig;
 pub use init::{InitOptions, InitResult, VersionMode, ensure_specify_gitignore_entries, init};
+pub use specify_change::plan::{Entry as PlanChange, Status as PlanStatus};
 pub use specify_change::{
-    ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry,
-    LifecycleStatus, Outcome, Overlap, PhaseOutcome, Plan, PlanChange, PlanChangePatch,
-    PlanLockAcquired, PlanLockReleased, PlanLockStamp, PlanLockState, PlanStatus,
-    PlanValidationLevel, PlanValidationResult, Rfc3339Stamp, SpecType, TouchedSpec,
-    actions as change_actions, format_rfc3339, is_valid_kebab_name,
+    Acquired as PlanLockAcquired, ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind,
+    EntryPatch as PlanChangePatch, Finding as PlanValidationResult, Guard as PlanLockGuard,
+    Journal, JournalEntry, LifecycleStatus, Outcome, Overlap, PhaseOutcome, Plan, PlanLockReleased,
+    PlanLockState, Rfc3339Stamp, Severity as PlanValidationLevel, SpecType, Stamp as PlanLockStamp,
+    TouchedSpec, actions as change_actions, format_rfc3339, is_valid_kebab_name,
 };
-pub use specify_drift::{DriftEntry, DriftStatus, baseline_inventory};
-pub use specify_error::{Error, ValidationResultSummary};
+pub use specify_drift::{Entry as DriftEntry, Status as DriftStatus, baseline_inventory};
+pub use specify_error::{Error, ValidationStatus, ValidationSummary};
 pub use specify_federation::{FederationConfig, PeerRepo, parse_federation_config};
 pub use specify_merge::{
-    BaselineConflict, ContractAction, ContractPreviewEntry, MergeEntry, MergeOperation,
+    BaselineConflict, ContractAction, ContractPreviewEntry, Entry as MergeEntry, MergeOperation,
     MergeResult, PreviewResult, conflict_check, merge, merge_change, preview_change,
     validate_baseline,
 };
@@ -41,6 +42,6 @@ mod init;
 mod workspace;
 
 pub use workspace::{
-    WorkspacePushResult, WorkspaceSlotKind, WorkspaceSlotStatus, extract_github_slug,
+    PushOutcome, SlotKind, SlotStatus, WorkspacePushResult, extract_github_slug,
     run_workspace_push_impl, sync_registry_workspace, workspace_status,
 };
