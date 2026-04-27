@@ -13,7 +13,9 @@ use crate::schema::{Phase, ResolvedSchema, Schema};
 /// iterated in pipeline order.
 #[derive(Debug)]
 pub struct PipelineView {
+    /// The resolved (and possibly merged) schema.
     pub schema: ResolvedSchema,
+    /// Briefs in pipeline order, each paired with its phase.
     pub briefs: Vec<(Phase, Brief)>,
 }
 
@@ -80,14 +82,14 @@ impl PipelineView {
             seen.insert(brief.frontmatter.id.as_str());
         }
 
-        Ok(PipelineView {
+        Ok(Self {
             schema: resolved,
             briefs,
         })
     }
 
     /// Lookup a brief by its frontmatter id.
-    #[must_use] 
+    #[must_use]
     pub fn brief(&self, id: &str) -> Option<&Brief> {
         self.briefs.iter().find(|(_, b)| b.frontmatter.id == id).map(|(_, b)| b)
     }
@@ -145,10 +147,8 @@ impl PipelineView {
         let index_of: BTreeMap<&str, usize> =
             briefs.iter().map(|(idx, b)| (b.frontmatter.id.as_str(), *idx)).collect();
 
-        let mut ready: Vec<&str> = in_degree
-            .iter()
-            .filter_map(|(id, deg)| (*deg == 0).then_some(*id))
-            .collect();
+        let mut ready: Vec<&str> =
+            in_degree.iter().filter_map(|(id, deg)| (*deg == 0).then_some(*id)).collect();
         ready.sort_by_key(|id| index_of.get(id).copied().unwrap_or(usize::MAX));
 
         let mut order: Vec<&Brief> = Vec::with_capacity(briefs.len());
@@ -190,7 +190,7 @@ impl PipelineView {
     /// `collect_status` in the CLI binary; consolidating it here is
     /// what lets `specify status`, `specify schema pipeline`, and the
     /// phase skills agree byte-for-byte on what "complete" means.
-    #[must_use] 
+    #[must_use]
     pub fn completion_for(&self, phase: Phase, change_dir: &Path) -> BTreeMap<String, bool> {
         let mut out: BTreeMap<String, bool> = BTreeMap::new();
         for brief in self.phase(phase) {
@@ -211,10 +211,8 @@ pub fn artifact_present(change_dir: &Path, generates: &str) -> bool {
         let Some(pattern) = joined.to_str() else {
             return false;
         };
-        match glob::glob(pattern) {
-            Ok(mut entries) => entries.any(|e| matches!(e, Ok(p) if p.is_file())),
-            Err(_) => false,
-        }
+        glob::glob(pattern)
+            .is_ok_and(|mut entries| entries.any(|e| matches!(e, Ok(p) if p.is_file())))
     } else {
         joined.is_file()
     }

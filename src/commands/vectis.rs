@@ -15,7 +15,7 @@ use crate::output::{CliResult, emit_json};
 /// `docs/plans/fold-vectis-into-specify.md`. Error variants and the
 /// synthesised `not-implemented` shape are kebab-case for JSON and
 /// humanised for text.
-pub(crate) fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
+pub fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
     let result = match action {
         VectisAction::Init(args) => specify_vectis::init::run(args),
         VectisAction::Verify(args) => specify_vectis::verify::run(args),
@@ -45,16 +45,16 @@ pub(crate) fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResu
                     crate::output::emit_response(NotImplementedResponse {
                         error: "not-implemented",
                         command,
-                        message: message.clone(),
+                        message,
                         exit_code: CliResult::GenericFailure.code(),
-                    })
-                },
+                    });
+                }
                 OutputFormat::Text => eprintln!("error: {message}"),
             }
             CliResult::GenericFailure
         }
         Err(err) => emit_vectis_error(format, &err),
-            _ => unreachable!(),
+        _ => unreachable!(),
     }
 }
 
@@ -153,8 +153,7 @@ fn vectis_render_init_text(value: &Value) {
         for key in keys {
             let assembly = &map[key];
             let status = assembly.get("status").and_then(Value::as_str).unwrap_or("?");
-            let file_count =
-                assembly.get("files").and_then(Value::as_array).map(Vec::len).unwrap_or(0);
+            let file_count = assembly.get("files").and_then(Value::as_array).map_or(0, Vec::len);
             let build = vectis_render_build_steps_summary(assembly.get("build-steps"));
             match build {
                 Some(summary) => println!("  - {key}: {status} ({file_count} files), {summary}"),
@@ -225,7 +224,7 @@ fn vectis_render_add_shell_text(value: &Value) {
 
     let assembly = value.get("assembly");
     let file_count =
-        assembly.and_then(|a| a.get("files")).and_then(Value::as_array).map(Vec::len).unwrap_or(0);
+        assembly.and_then(|a| a.get("files")).and_then(Value::as_array).map_or(0, Vec::len);
     let build = vectis_render_build_steps_summary(assembly.and_then(|a| a.get("build-steps")));
     match build {
         Some(summary) => println!("Files: {file_count}, {summary}"),
@@ -301,4 +300,3 @@ fn vectis_render_build_steps_summary(steps: Option<&Value>) -> Option<String> {
     }
     Some("build PASS".to_string())
 }
-

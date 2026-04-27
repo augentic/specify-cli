@@ -215,10 +215,7 @@ fn parse_shells(raw: Option<&str>) -> Result<Vec<AssemblyKind>, VectisError> {
 }
 
 fn resolve_project_dir(dir: Option<&std::path::Path>) -> Result<PathBuf, VectisError> {
-    match dir {
-        Some(p) => Ok(p.to_path_buf()),
-        None => std::env::current_dir().map_err(VectisError::from),
-    }
+    dir.map_or_else(|| std::env::current_dir().map_err(VectisError::from), |p| Ok(p.to_path_buf()))
 }
 
 #[cfg(test)]

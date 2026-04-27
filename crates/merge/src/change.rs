@@ -33,8 +33,11 @@ use crate::validate::validate_baseline;
 /// when previewing; the merge path additionally uses it to write.
 #[derive(Debug, Clone)]
 pub struct MergeEntry {
+    /// Spec directory name (e.g. `"login"`).
     pub spec_name: String,
+    /// Absolute path where the merged baseline will be written.
     pub baseline_path: PathBuf,
+    /// In-memory merge result.
     pub result: MergeResult,
 }
 
@@ -56,6 +59,7 @@ pub struct ContractPreviewEntry {
     pub action: ContractAction,
 }
 
+/// Whether a contract file is new or replaces an existing baseline file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ContractAction {
@@ -70,15 +74,20 @@ pub enum ContractAction {
 /// this list to the human so they can confirm or abort the merge.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaselineConflict {
+    /// Capability (spec directory) name.
     pub capability: String,
+    /// RFC 3339 timestamp when the change was defined.
     pub defined_at: String,
+    /// Baseline file modification time.
     pub baseline_modified_at: DateTime<Utc>,
 }
 
-/// Dry-run of the multi-spec merge: computes every in-memory
-/// [`MergeEntry`] plus runs the baseline coherence validator on each
-/// merged output, **without** writing baselines, transitioning status,
-/// or archiving. Also reports contract files that will be copied.
+/// Dry-run of the multi-spec merge.
+///
+/// Computes every in-memory [`MergeEntry`] plus runs the baseline
+/// coherence validator on each merged output, **without** writing
+/// baselines, transitioning status, or archiving. Also reports contract
+/// files that will be copied.
 ///
 /// Unlike [`merge_change`] this does not gate on
 /// `LifecycleStatus::Complete` — the define / build / merge skill pipeline
@@ -191,6 +200,8 @@ pub fn merge_change(
     Ok(output)
 }
 
+/// Check for baseline drift on `type: modified` touched specs.
+///
 /// For each `type: modified` `touched_spec`, report whether the baseline
 /// under `specs_dir` has been modified after the change's `defined_at`
 /// timestamp. Only `Modified` entries participate — a `New` entry has no
@@ -321,6 +332,7 @@ fn check_contract_drift(
 /// Compute the in-memory merge plan for every delta spec discovered
 /// under `<change_dir>/specs/*/spec.md`. Shared by `preview_change`
 /// and `merge_change`.
+#[allow(clippy::too_many_lines)]
 fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Error> {
     let mut delta_specs: Vec<DeltaSpecRef> = Vec::new();
 

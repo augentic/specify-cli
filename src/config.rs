@@ -17,7 +17,7 @@ use specify_error::Error;
 use specify_federation::FederationConfig;
 
 /// In-memory representation of `.specify/project.yaml`.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProjectConfig {
     /// Project name (defaults to the project directory name at init time).
     pub name: String,
@@ -67,7 +67,7 @@ impl ProjectConfig {
             }
             Err(err) => return Err(Error::Io(err)),
         };
-        let cfg: ProjectConfig = serde_yaml_ng::from_str(&text)?;
+        let cfg: Self = serde_yaml_ng::from_str(&text)?;
 
         let current = env!("CARGO_PKG_VERSION");
         if let Some(required) = &cfg.specify_version
@@ -83,31 +83,31 @@ impl ProjectConfig {
     }
 
     /// Absolute path to `<project_dir>/.specify/project.yaml`.
-    #[must_use] 
+    #[must_use]
     pub fn config_path(project_dir: &Path) -> PathBuf {
         Self::specify_dir(project_dir).join("project.yaml")
     }
 
     /// Absolute path to `<project_dir>/.specify/`.
-    #[must_use] 
+    #[must_use]
     pub fn specify_dir(project_dir: &Path) -> PathBuf {
         project_dir.join(".specify")
     }
 
     /// Absolute path to `<project_dir>/.specify/changes/`.
-    #[must_use] 
+    #[must_use]
     pub fn changes_dir(project_dir: &Path) -> PathBuf {
         Self::specify_dir(project_dir).join("changes")
     }
 
     /// Absolute path to `<project_dir>/.specify/specs/`.
-    #[must_use] 
+    #[must_use]
     pub fn specs_dir(project_dir: &Path) -> PathBuf {
         Self::specify_dir(project_dir).join("specs")
     }
 
     /// Absolute path to `<project_dir>/.specify/.cache/`.
-    #[must_use] 
+    #[must_use]
     pub fn cache_dir(project_dir: &Path) -> PathBuf {
         Self::specify_dir(project_dir).join(".cache")
     }
@@ -115,14 +115,14 @@ impl ProjectConfig {
     /// Absolute path to `<project_dir>/.specify/archive/`. Not listed in
     /// RFC-1 §`config.rs` but needed by the merge engine; centralised
     /// here so there is still exactly one place the convention lives.
-    #[must_use] 
+    #[must_use]
     pub fn archive_dir(project_dir: &Path) -> PathBuf {
         Self::specify_dir(project_dir).join("archive")
     }
 
     /// Resolve a `rules` value to an absolute path under `.specify/`.
     /// Returns `None` when the brief has no override (absent or empty).
-    #[must_use] 
+    #[must_use]
     pub fn rule_path(&self, project_dir: &Path, brief_id: &str) -> Option<PathBuf> {
         let value = self.rules.get(brief_id)?;
         if value.is_empty() {

@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Task list parser and mark-complete helper for Specify"
 categories = ["development-tools", "parser-implementations"]
 keywords = ["specify", "tasks", "parser"]
+readme = "README.md"
 
 [lints]
 workspace = true

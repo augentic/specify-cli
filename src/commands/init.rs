@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value)]
+
 use std::path::PathBuf;
 
 use serde::Serialize;
@@ -6,7 +8,7 @@ use specify::{InitOptions, InitResult, VersionMode, init};
 use crate::cli::OutputFormat;
 use crate::output::{CliResult, absolute_string, emit_error, emit_response};
 
-pub(crate) fn run_init(
+pub fn run_init(
     format: OutputFormat, schema: String, schema_dir: PathBuf, name: Option<String>,
     domain: Option<String>,
 ) -> CliResult {
@@ -49,7 +51,8 @@ fn emit_init_result(format: OutputFormat, result: &InitResult) -> CliResult {
                 config_path: absolute_string(&result.config_path),
                 schema_name: result.schema_name.clone(),
                 cache_present: result.cache_present,
-                directories_created: result.directories_created
+                directories_created: result
+                    .directories_created
                     .iter()
                     .map(|p| absolute_string(p))
                     .collect(),
@@ -78,4 +81,3 @@ fn emit_init_result(format: OutputFormat, result: &InitResult) -> CliResult {
     }
     CliResult::Success
 }
-

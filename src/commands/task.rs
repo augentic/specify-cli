@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value)]
+
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -9,7 +11,7 @@ use crate::output::{CliResult, emit_error, emit_response};
 
 use super::require_project;
 
-pub(crate) fn run_task_progress(format: OutputFormat, change_dir: PathBuf) -> CliResult {
+pub fn run_task_progress(format: OutputFormat, change_dir: PathBuf) -> CliResult {
     let (project_dir, _config) = match require_project() {
         Ok(v) => v,
         Err(err) => return emit_error(format, &err),
@@ -81,10 +83,11 @@ fn task_to_json(t: &Task) -> Value {
         description: t.description.clone(),
         complete: t.complete,
         skill_directive: skill,
-    }).expect("TaskJson serialises")
+    })
+    .expect("TaskJson serialises")
 }
 
-pub(crate) fn run_task_mark(format: OutputFormat, change_dir: PathBuf, task_number: String) -> CliResult {
+pub fn run_task_mark(format: OutputFormat, change_dir: PathBuf, task_number: String) -> CliResult {
     let (project_dir, _config) = match require_project() {
         Ok(v) => v,
         Err(err) => return emit_error(format, &err),
@@ -116,7 +119,7 @@ pub(crate) fn run_task_mark(format: OutputFormat, change_dir: PathBuf, task_numb
                 idempotent: bool,
             }
             emit_response(TaskMarkResponse {
-                marked: task_number.clone(),
+                marked: task_number,
                 new_content_path: tasks_path.display().to_string(),
                 idempotent,
             });
@@ -143,7 +146,7 @@ fn resolve_tasks_path(project_dir: &Path, change_dir: &Path) -> Result<PathBuf, 
     resolve_tasks_path_for(change_dir, &metadata.schema, Some(project_dir))
 }
 
-pub(crate) fn resolve_tasks_path_for(
+pub fn resolve_tasks_path_for(
     change_dir: &Path, schema_value: &str, project_hint: Option<&Path>,
 ) -> Result<PathBuf, Error> {
     // Use the hinted project dir when supplied; otherwise walk up from
@@ -183,4 +186,3 @@ fn brief_generates(brief: &Brief) -> Result<&str, Error> {
         Error::Config(format!("brief `{}` has no `generates` field", brief.frontmatter.id))
     })
 }
-

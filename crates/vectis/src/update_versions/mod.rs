@@ -54,7 +54,7 @@ struct ProposedField {
 }
 
 impl ProposedField {
-    fn current(value: String) -> Self {
+    const fn current(value: String) -> Self {
         Self {
             value,
             probe_error: None,
@@ -102,6 +102,11 @@ where
 /// # Errors
 ///
 /// Returns an error if the operation fails.
+///
+/// # Panics
+///
+/// Panics if `serde_json` fails to serialize plain `Vec<Change>` or
+/// `Vec<Unchanged>` values, which should be infallible.
 pub fn run(args: &UpdateVersionsArgs) -> Result<CommandOutcome, VectisError> {
     let assemblies: Vec<AssemblyKind> = if args.verify {
         vec![AssemblyKind::Core, AssemblyKind::Ios, AssemblyKind::Android]
@@ -131,13 +136,14 @@ pub fn run(args: &UpdateVersionsArgs) -> Result<CommandOutcome, VectisError> {
         None
     };
 
-    let matrix_passed = verification.as_ref().map(|m| m.passed).unwrap_or(true);
+    let matrix_passed = verification.as_ref().is_none_or(|m| m.passed);
 
-    let mut written = false;
-    if !args.dry_run && matrix_passed {
+    let written = if !args.dry_run && matrix_passed {
         write_atomic(&target, &matrix::render_pins_toml(&proposed))?;
-        written = true;
-    }
+        true
+    } else {
+        false
+    };
 
     let overall_passed = matrix_passed;
 
@@ -199,6 +205,7 @@ fn read_current_pins(target: &Path) -> Result<Versions, VectisError> {
 /// Query every registry surface and build a proposed `Versions`. Probe
 /// failures are recorded in `errors` and cause the field to keep its
 /// current value.
+#[allow(clippy::too_many_lines)]
 fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
     // Crux block ----------------------------------------------------
     let crux_core = try_query(
@@ -206,7 +213,7 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
         || query::crates_io_latest_stable("crux_core"),
         "crates.io: crux_core",
     );
-    record_err(errors, &crux_core.probe_error);
+    record_err(errors, crux_core.probe_error.as_ref());
 
     // For each capability crate, query latest stable. When crux_core
     // resolved successfully we could additionally verify the cap's
@@ -218,28 +225,28 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
         || query::crates_io_latest_stable("crux_http"),
         "crates.io: crux_http",
     );
-    record_err(errors, &crux_http.probe_error);
+    record_err(errors, crux_http.probe_error.as_ref());
 
     let crux_kv = try_query(
         &current.crux.crux_kv,
         || query::crates_io_latest_stable("crux_kv"),
         "crates.io: crux_kv",
     );
-    record_err(errors, &crux_kv.probe_error);
+    record_err(errors, crux_kv.probe_error.as_ref());
 
     let crux_time = try_query(
         &current.crux.crux_time,
         || query::crates_io_latest_stable("crux_time"),
         "crates.io: crux_time",
     );
-    record_err(errors, &crux_time.probe_error);
+    record_err(errors, crux_time.probe_error.as_ref());
 
     let crux_platform = try_query(
         &current.crux.crux_platform,
         || query::crates_io_latest_stable("crux_platform"),
         "crates.io: crux_platform",
     );
-    record_err(errors, &crux_platform.probe_error);
+    record_err(errors, crux_platform.probe_error.as_ref());
 
     // Hard-pinned Rust deps derived from crux_core's own Cargo.toml.
     // If crux_core failed to resolve we keep the current values
@@ -254,7 +261,7 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
     } else {
         ProposedField::current(current.crux.facet.clone())
     };
-    record_err(errors, &facet.probe_error);
+    record_err(errors, facet.probe_error.as_ref());
 
     let facet_generate = if crux_core.probe_error.is_none() {
         try_derive(
@@ -265,21 +272,21 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
     } else {
         ProposedField::current(current.crux.facet_generate.clone())
     };
-    record_err(errors, &facet_generate.probe_error);
+    record_err(errors, facet_generate.probe_error.as_ref());
 
     let serde = try_query(
         &current.crux.serde,
         || query::crates_io_latest_stable("serde"),
         "crates.io: serde",
     );
-    record_err(errors, &serde.probe_error);
+    record_err(errors, serde.probe_error.as_ref());
 
     let serde_json = try_query(
         &current.crux.serde_json,
         || query::crates_io_latest_stable("serde_json"),
         "crates.io: serde_json",
     );
-    record_err(errors, &serde_json.probe_error);
+    record_err(errors, serde_json.probe_error.as_ref());
 
     // uniffi + cargo-swift move as a pair: cargo-swift's dep on
     // uniffi_bindgen drives which uniffi runtime pin we use.
@@ -288,7 +295,7 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
         || query::crates_io_latest_stable("cargo-swift"),
         "crates.io: cargo-swift",
     );
-    record_err(errors, &cargo_swift.probe_error);
+    record_err(errors, cargo_swift.probe_error.as_ref());
 
     let uniffi = if cargo_swift.probe_error.is_none() {
         try_derive(
@@ -307,7 +314,7 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
     } else {
         ProposedField::current(current.crux.uniffi.clone())
     };
-    record_err(errors, &uniffi.probe_error);
+    record_err(errors, uniffi.probe_error.as_ref());
 
     // Android block -------------------------------------------------
     // Compose BOM lives on Google Maven. kotlin + AGP are on Maven
@@ -318,14 +325,14 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
         || query::google_maven_latest_stable("androidx.compose", "compose-bom"),
         "google maven: compose-bom",
     );
-    record_err(errors, &compose_bom.probe_error);
+    record_err(errors, compose_bom.probe_error.as_ref());
 
     let kotlin = try_query(
         &current.android.kotlin,
         || query::maven_central_latest_stable("org.jetbrains.kotlin", "kotlin-stdlib"),
         "maven central: kotlin-stdlib",
     );
-    record_err(errors, &kotlin.probe_error);
+    record_err(errors, kotlin.probe_error.as_ref());
 
     // AGP is published as a Gradle plugin marker artefact. The marker
     // artefact version tracks the plugin version directly.
@@ -339,21 +346,21 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
         },
         "google maven: com.android.application",
     );
-    record_err(errors, &agp.probe_error);
+    record_err(errors, agp.probe_error.as_ref());
 
     let koin = try_query(
         &current.android.koin,
         || query::maven_central_latest_stable("io.insert-koin", "koin-bom"),
         "maven central: koin-bom",
     );
-    record_err(errors, &koin.probe_error);
+    record_err(errors, koin.probe_error.as_ref());
 
     let ktor = try_query(
         &current.android.ktor,
         || query::maven_central_latest_stable("io.ktor", "ktor-bom"),
         "maven central: ktor-bom",
     );
-    record_err(errors, &ktor.probe_error);
+    record_err(errors, ktor.probe_error.as_ref());
 
     // Gradle tracks AGP compatibility. We don't auto-bump it here --
     // the compatibility table moves in discrete steps and a bad bump
@@ -366,21 +373,21 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
         || query::crates_io_latest_stable("cargo-deny"),
         "crates.io: cargo-deny",
     );
-    record_err(errors, &cargo_deny.probe_error);
+    record_err(errors, cargo_deny.probe_error.as_ref());
 
     let cargo_vet = try_query(
         &current.tooling.cargo_vet,
         || query::crates_io_latest_stable("cargo-vet"),
         "crates.io: cargo-vet",
     );
-    record_err(errors, &cargo_vet.probe_error);
+    record_err(errors, cargo_vet.probe_error.as_ref());
 
     let xcodegen = try_query(
         &current.tooling.xcodegen,
         || query::github_latest_release("yonaskolb", "XcodeGen"),
         "github: yonaskolb/XcodeGen",
     );
-    record_err(errors, &xcodegen.probe_error);
+    record_err(errors, xcodegen.probe_error.as_ref());
 
     Versions {
         crux: Crux {
@@ -414,7 +421,7 @@ fn compute_proposed(current: &Versions, errors: &mut Vec<String>) -> Versions {
     }
 }
 
-fn record_err(errors: &mut Vec<String>, probe_error: &Option<String>) {
+fn record_err(errors: &mut Vec<String>, probe_error: Option<&String>) {
     if let Some(e) = probe_error {
         errors.push(e.clone());
     }
@@ -468,10 +475,10 @@ fn diff_fields(current: &Versions, proposed: &Versions) -> Vec<Change> {
         .zip(pro)
         .filter_map(|((k, c), (_, p))| {
             (c != p).then(|| Change {
-                    key: k.to_string(),
-                    current: c,
-                    proposed: p,
-                })
+                key: k.to_string(),
+                current: c,
+                proposed: p,
+            })
         })
         .collect()
 }
@@ -483,9 +490,9 @@ fn unchanged_fields(current: &Versions, proposed: &Versions) -> Vec<Unchanged> {
         .zip(pro)
         .filter_map(|((k, c), (_, p))| {
             (c == p).then(|| Unchanged {
-                    key: k.to_string(),
-                    value: c,
-                })
+                key: k.to_string(),
+                value: c,
+            })
         })
         .collect()
 }
@@ -507,12 +514,12 @@ fn write_atomic(target: &Path, contents: &str) -> Result<(), VectisError> {
 /// `/tmp` aggressively and a cap-matrix run can take multiple
 /// minutes).
 fn verify_scratch_dir(pid: u32) -> PathBuf {
-    match std::env::var_os("HOME") {
-        Some(home) => {
+    std::env::var_os("HOME").map_or_else(
+        || std::env::temp_dir().join(format!("vectis-update-versions-{pid}")),
+        |home| {
             PathBuf::from(home).join(".cache").join("vectis").join(format!("update-versions-{pid}"))
-        }
-        None => std::env::temp_dir().join(format!("vectis-update-versions-{pid}")),
-    }
+        },
+    )
 }
 
 #[cfg(test)]
@@ -578,8 +585,7 @@ mod tests {
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
+                .map_or(0, |d| d.as_nanos())
         ));
         let target = scratch.join("nested").join("dir").join("versions.toml");
         write_atomic(&target, "[crux]\ncrux_core = \"x\"\n").unwrap();
@@ -598,8 +604,7 @@ mod tests {
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
+                .map_or(0, |d| d.as_nanos())
         ));
         let target = scratch.join("versions.toml");
         fs::create_dir_all(&scratch).unwrap();

@@ -45,7 +45,7 @@ impl Project {
             .args(["--name", "test-proj"])
             .assert()
             .success();
-        Project { _tmp: tmp, root }
+        Self { _tmp: tmp, root }
     }
 
     /// Copy the in-repo `schemas/omnia` tree into the project so any
@@ -125,7 +125,10 @@ fn change_create_rejects_uppercase_name() {
     assert_eq!(assert.get_output().status.code(), Some(1));
     let value = parse_json(&assert.get_output().stdout);
     assert_eq!(value["error"], "invalid-name");
-    assert!(value["message"].as_str().unwrap().contains("kebab-case") || value["message"].as_str().unwrap().contains("invalid name"));
+    assert!(
+        value["message"].as_str().unwrap().contains("kebab-case")
+            || value["message"].as_str().unwrap().contains("invalid name")
+    );
 }
 
 #[test]
@@ -375,7 +378,8 @@ fn change_archive_moves_dir_into_dated_archive() {
     // Original is gone; archive dir has one dated subdirectory.
     assert!(!project.changes_dir().join("my-change").exists());
     let archive = project.root().join(".specify/archive");
-    let entries: Vec<_> = fs::read_dir(&archive).unwrap().filter_map(|e| e.ok()).collect();
+    let entries: Vec<_> =
+        fs::read_dir(&archive).unwrap().filter_map(std::result::Result::ok).collect();
     assert_eq!(entries.len(), 1);
     assert!(entries[0].file_name().to_string_lossy().ends_with("-my-change"));
 }
@@ -519,7 +523,7 @@ fn change_phase_outcome_stamps_success_on_define_json() {
     let at_on_disk = outcome["at"].as_str().expect("at on disk");
     assert!(looks_like_rfc3339(at_on_disk), "on-disk at should be RFC3339, got {at_on_disk}");
     assert!(
-        outcome.get("context").map(|v| v.is_null()).unwrap_or(true),
+        outcome.get("context").is_none_or(serde_yaml_ng::Value::is_null),
         "context must be absent when not supplied, got: {outcome:?}"
     );
 }

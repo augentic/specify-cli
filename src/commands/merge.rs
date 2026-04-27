@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value)]
+
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -16,10 +18,9 @@ use crate::output::{CliResult, emit_response};
 /// retained as a safety check but is not sufficient on its own because
 /// `plan.yaml` may be absent after `specify plan archive`.
 fn is_workspace_clone(project_dir: &Path) -> bool {
-    let in_workspace = project_dir
-        .to_str()
-        .map(|s| s.contains("/.specify/workspace/") || s.contains("\\.specify\\workspace\\"))
-        .unwrap_or(false);
+    let in_workspace = project_dir.to_str().is_some_and(|s| {
+        s.contains("/.specify/workspace/") || s.contains("\\.specify\\workspace\\")
+    });
     if !in_workspace {
         return false;
     }
@@ -28,7 +29,7 @@ fn is_workspace_clone(project_dir: &Path) -> bool {
     has_project_yaml && !has_plan_yaml
 }
 
-pub(crate) fn run_merge(format: OutputFormat, change_dir: PathBuf) -> CliResult {
+pub fn run_merge(format: OutputFormat, change_dir: PathBuf) -> CliResult {
     let ctx = match CommandContext::require(format) {
         Ok(v) => v,
         Err(code) => return code,
@@ -36,13 +37,11 @@ pub(crate) fn run_merge(format: OutputFormat, change_dir: PathBuf) -> CliResult 
     let specs_dir = ctx.specs_dir();
     let archive_dir = ctx.archive_dir();
 
-    let change_name = match change_dir.file_name().and_then(|s| s.to_str()) {
-        Some(name) => name.to_string(),
-        None => {
-            let err =
-                Error::Config(format!("change dir `{}` has no basename", change_dir.display()));
-            return ctx.emit_error(&err);
-        }
+    let change_name = if let Some(name) = change_dir.file_name().and_then(|s| s.to_str()) {
+        name.to_string()
+    } else {
+        let err = Error::Config(format!("change dir `{}` has no basename", change_dir.display()));
+        return ctx.emit_error(&err);
     };
 
     let merged = match merge_change(&change_dir, &specs_dir, &archive_dir) {
@@ -106,9 +105,7 @@ pub(crate) fn run_merge(format: OutputFormat, change_dir: PathBuf) -> CliResult 
                 merged_specs: Vec<Value>,
             }
             let specs: Vec<Value> = merged.iter().map(merge_entry_to_json).collect();
-            emit_response(MergeResponse {
-                merged_specs: specs,
-            });
+            emit_response(MergeResponse { merged_specs: specs });
         }
         OutputFormat::Text => {
             for (name, result) in &merged {
@@ -127,16 +124,17 @@ struct MergeEntryJson {
     operations: Vec<Value>,
 }
 
-pub(crate) fn merge_entry_to_json(entry: &(String, MergeResult)) -> Value {
+pub fn merge_entry_to_json(entry: &(String, MergeResult)) -> Value {
     let (name, result) = entry;
     let ops: Vec<Value> = result.operations.iter().map(merge_op_to_json).collect();
     serde_json::to_value(MergeEntryJson {
         name: name.clone(),
         operations: ops,
-    }).expect("MergeEntryJson serialises")
+    })
+    .expect("MergeEntryJson serialises")
 }
 
-pub(crate) fn operation_label(op: &MergeOperation) -> String {
+pub fn operation_label(op: &MergeOperation) -> String {
     match op {
         MergeOperation::Added { id, name } => format!("ADDING: {id} — {name}"),
         MergeOperation::Modified { id, name } => format!("MODIFYING: {id} — {name}"),
@@ -149,7 +147,7 @@ pub(crate) fn operation_label(op: &MergeOperation) -> String {
         MergeOperation::CreatedBaseline { requirement_count } => {
             format!("CREATING baseline with {requirement_count} requirement(s)")
         }
-            _ => unreachable!(),
+        _ => unreachable!(),
     }
 }
 
@@ -169,29 +167,38 @@ enum MergeOpJson {
     CreatedBaseline { requirement_count: usize },
 }
 
-pub(crate) fn merge_op_to_json(op: &MergeOperation) -> Value {
+pub fn merge_op_to_json(op: &MergeOperation) -> Value {
     let typed = match op {
         MergeOperation::Added { id, name } => MergeOpJson::Added {
-            id: id.clone(), name: name.clone(),
+            id: id.clone(),
+            name: name.clone(),
         },
         MergeOperation::Modified { id, name } => MergeOpJson::Modified {
-            id: id.clone(), name: name.clone(),
+            id: id.clone(),
+            name: name.clone(),
         },
         MergeOperation::Removed { id, name } => MergeOpJson::Removed {
-            id: id.clone(), name: name.clone(),
+            id: id.clone(),
+            name: name.clone(),
         },
-        MergeOperation::Renamed { id, old_name, new_name } => MergeOpJson::Renamed {
-            id: id.clone(), old_name: old_name.clone(), new_name: new_name.clone(),
+        MergeOperation::Renamed {
+            id,
+            old_name,
+            new_name,
+        } => MergeOpJson::Renamed {
+            id: id.clone(),
+            old_name: old_name.clone(),
+            new_name: new_name.clone(),
         },
         MergeOperation::CreatedBaseline { requirement_count } => MergeOpJson::CreatedBaseline {
             requirement_count: *requirement_count,
         },
-            _ => unreachable!(),
+        _ => unreachable!(),
     };
     serde_json::to_value(typed).expect("MergeOpJson serialises")
 }
 
-pub(crate) fn summarise_operations(ops: &[MergeOperation]) -> String {
+pub fn summarise_operations(ops: &[MergeOperation]) -> String {
     let mut added = 0;
     let mut modified = 0;
     let mut removed = 0;
@@ -206,7 +213,7 @@ pub(crate) fn summarise_operations(ops: &[MergeOperation]) -> String {
             MergeOperation::CreatedBaseline { requirement_count } => {
                 created_baseline = Some(*requirement_count);
             }
-                _ => unreachable!(),
+            _ => unreachable!(),
         }
     }
     if let Some(count) = created_baseline {
@@ -270,4 +277,3 @@ mod merge_workspace_tests {
         assert!(is_workspace_clone(&path));
     }
 }
-

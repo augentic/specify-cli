@@ -1,9 +1,12 @@
+#![allow(clippy::needless_pass_by_value, clippy::items_after_statements)]
+
 use std::path::PathBuf;
 
 use serde::Serialize;
 use serde_json::Value;
 use specify::{
-    BaselineConflict, ContractAction, ContractPreviewEntry, MergeEntry, conflict_check, preview_change,
+    BaselineConflict, ContractAction, ContractPreviewEntry, MergeEntry, conflict_check,
+    preview_change,
 };
 
 use crate::cli::OutputFormat;
@@ -12,7 +15,7 @@ use crate::output::{CliResult, emit_response};
 
 use super::merge::{merge_op_to_json, operation_label, summarise_operations};
 
-pub(crate) fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> CliResult {
+pub fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> CliResult {
     let ctx = match CommandContext::require(format) {
         Ok(v) => v,
         Err(code) => return code,
@@ -61,7 +64,7 @@ pub(crate) fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> Cli
                     let (sigil, label) = match c.action {
                         ContractAction::Added => ("+", "added"),
                         ContractAction::Replaced => ("~", "replaced"),
-                            _ => unreachable!(),
+                        _ => unreachable!(),
                     };
                     println!("  {sigil} contracts/{} ({label})", c.relative_path);
                 }
@@ -79,13 +82,14 @@ struct PreviewEntryJson {
     operations: Vec<Value>,
 }
 
-pub(crate) fn preview_entry_to_json(entry: &MergeEntry) -> Value {
+pub fn preview_entry_to_json(entry: &MergeEntry) -> Value {
     let ops: Vec<Value> = entry.result.operations.iter().map(merge_op_to_json).collect();
     serde_json::to_value(PreviewEntryJson {
         name: entry.spec_name.clone(),
         baseline_path: entry.baseline_path.display().to_string(),
         operations: ops,
-    }).expect("PreviewEntryJson serialises")
+    })
+    .expect("PreviewEntryJson serialises")
 }
 
 #[derive(Serialize)]
@@ -95,19 +99,20 @@ struct ContractPreviewJson {
     action: &'static str,
 }
 
-pub(crate) fn contract_preview_entry_to_json(entry: &ContractPreviewEntry) -> Value {
+pub fn contract_preview_entry_to_json(entry: &ContractPreviewEntry) -> Value {
     let action = match entry.action {
         ContractAction::Added => "added",
         ContractAction::Replaced => "replaced",
-            _ => unreachable!(),
+        _ => unreachable!(),
     };
     serde_json::to_value(ContractPreviewJson {
         path: entry.relative_path.clone(),
         action,
-    }).expect("ContractPreviewJson serialises")
+    })
+    .expect("ContractPreviewJson serialises")
 }
 
-pub(crate) fn run_spec_conflict_check(format: OutputFormat, change_dir: PathBuf) -> CliResult {
+pub fn run_spec_conflict_check(format: OutputFormat, change_dir: PathBuf) -> CliResult {
     let ctx = match CommandContext::require(format) {
         Ok(v) => v,
         Err(code) => return code,
@@ -157,11 +162,11 @@ struct BaselineConflictJson {
     baseline_modified_at: String,
 }
 
-pub(crate) fn baseline_conflict_to_json(c: &BaselineConflict) -> Value {
+pub fn baseline_conflict_to_json(c: &BaselineConflict) -> Value {
     serde_json::to_value(BaselineConflictJson {
         capability: c.capability.clone(),
         defined_at: c.defined_at.clone(),
         baseline_modified_at: c.baseline_modified_at.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-    }).expect("BaselineConflictJson serialises")
+    })
+    .expect("BaselineConflictJson serialises")
 }
-

@@ -21,51 +21,79 @@ use specify_error as _;
 // Hard-coded spec format (matches plugins/spec/references/spec-format.md).
 // ---------------------------------------------------------------------------
 
+/// Markdown heading prefix for requirement blocks.
 pub const REQUIREMENT_HEADING: &str = "### Requirement:";
+/// Line prefix that introduces a requirement's ID.
 pub const REQUIREMENT_ID_PREFIX: &str = "ID:";
+/// Regex pattern for valid requirement IDs (`REQ-NNN`).
 pub const REQUIREMENT_ID_PATTERN: &str = r"^REQ-[0-9]{3}$";
+/// Markdown heading prefix for scenario blocks.
 pub const SCENARIO_HEADING: &str = "#### Scenario:";
+/// Section heading for added requirements in a delta spec.
 pub const DELTA_ADDED: &str = "## ADDED Requirements";
+/// Section heading for modified requirements in a delta spec.
 pub const DELTA_MODIFIED: &str = "## MODIFIED Requirements";
+/// Section heading for removed requirements in a delta spec.
 pub const DELTA_REMOVED: &str = "## REMOVED Requirements";
+/// Section heading for renamed requirements in a delta spec.
 pub const DELTA_RENAMED: &str = "## RENAMED Requirements";
 
 // ---------------------------------------------------------------------------
 // Public data types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq)]
+/// A single requirement block parsed from a spec document.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequirementBlock {
+    /// The full `### Requirement: …` heading line.
     pub heading: String,
+    /// Requirement name extracted from the heading.
     pub name: String,
+    /// Requirement ID (e.g. `REQ-001`), or empty if no `ID:` line was found.
     pub id: String,
+    /// Full body text including heading and scenario lines.
     pub body: String,
+    /// Scenarios parsed from `#### Scenario:` sub-headings.
     pub scenarios: Vec<Scenario>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// A single scenario block within a requirement.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scenario {
+    /// Scenario name extracted from the `#### Scenario:` heading.
     pub name: String,
+    /// Full scenario body including its heading line.
     pub body: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// Result of parsing a baseline spec document.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedSpec {
+    /// Text before the first requirement heading.
     pub preamble: String,
+    /// Requirement blocks in document order.
     pub requirements: Vec<RequirementBlock>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// Result of parsing a delta spec document.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeltaSpec {
+    /// Requirements whose name changed.
     pub renamed: Vec<RenameEntry>,
+    /// Requirements that were removed.
     pub removed: Vec<RequirementBlock>,
+    /// Requirements that were modified.
     pub modified: Vec<RequirementBlock>,
+    /// Requirements that were added.
     pub added: Vec<RequirementBlock>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// An `ID:` / `TO:` pair from the renamed section.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenameEntry {
+    /// Requirement ID being renamed.
     pub id: String,
+    /// New name for the requirement.
     pub new_name: String,
 }
 
@@ -79,7 +107,7 @@ pub struct RenameEntry {
 /// The preamble is every line before the first `### Requirement:` heading or
 /// `## `-prefixed heading, whichever appears first. Blocks with no `ID:`
 /// line get `id == String::new()` (not `None`, not elided).
-#[must_use] 
+#[must_use]
 pub fn parse_baseline(text: &str) -> ParsedSpec {
     let lines: Vec<&str> = text.split('\n').collect();
     let heading_prefix = REQUIREMENT_HEADING;
@@ -148,7 +176,7 @@ pub fn parse_baseline(text: &str) -> ParsedSpec {
 /// Mirrors `parse_delta_sections` from the archived Python reference (lines 138–196).
 /// Section headers are matched case-insensitively on the stripped line,
 /// exactly like Python's `stripped.lower() == heading.lower()`.
-#[must_use] 
+#[must_use]
 pub fn parse_delta(text: &str) -> DeltaSpec {
     #[derive(Copy, Clone)]
     enum Section {
@@ -237,7 +265,7 @@ pub fn parse_delta(text: &str) -> DeltaSpec {
 /// header — avoids false positives from prose like `"## ADDED Requirements
 /// were discussed in the meeting"` while still passing every parity fixture
 /// we ship. Noted as a judgement call in the change report.
-#[must_use] 
+#[must_use]
 pub fn has_delta_headers(text: &str) -> bool {
     let headings = [DELTA_ADDED, DELTA_MODIFIED, DELTA_REMOVED, DELTA_RENAMED];
     for line in text.split('\n') {

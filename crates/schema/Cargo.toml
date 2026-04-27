@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Schema resolution, brief frontmatter, and PipelineView for Specify"
 categories = ["development-tools"]
 keywords = ["specify", "schema", "pipeline"]
+readme = "README.md"
 
 [lints]
 workspace = true

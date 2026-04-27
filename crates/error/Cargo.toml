@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Unified error types for the Specify CLI"
 categories = ["development-tools"]
 keywords = ["specify", "errors"]
+readme = "../../README.md"
 
 [lints]
 workspace = true

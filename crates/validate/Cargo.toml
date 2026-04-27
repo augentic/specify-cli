@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Hardcoded rule registry and RFC-1a validator for Specify"
+readme = "../../README.md"
 categories = ["development-tools"]
 keywords = ["specify", "validate", "rules"]
 

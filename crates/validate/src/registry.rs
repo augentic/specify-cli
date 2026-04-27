@@ -366,14 +366,11 @@ fn contracts_schemas_dir_has_files(ctx: &BriefContext<'_>) -> RuleOutcome {
         };
     }
 
-    let has_yaml = std::fs::read_dir(&schemas_dir)
-        .ok()
-        .map(|entries| {
-            entries.filter_map(std::result::Result::ok).any(|e| {
-                matches!(e.path().extension().and_then(|x| x.to_str()), Some("yaml" | "yml"))
-            })
-        })
-        .unwrap_or(false);
+    let has_yaml = std::fs::read_dir(&schemas_dir).ok().is_some_and(|entries| {
+        entries
+            .filter_map(std::result::Result::ok)
+            .any(|e| matches!(e.path().extension().and_then(|x| x.to_str()), Some("yaml" | "yml")))
+    });
 
     if has_yaml {
         RuleOutcome::Pass
@@ -498,7 +495,7 @@ const CONTRACTS_RULES: &[Rule] = &[
 // ---------------------------------------------------------------------------
 
 /// Return the registered rules for `brief_id`. Unknown ids return `&[]`.
-#[must_use] 
+#[must_use]
 pub fn rules_for(brief_id: &str) -> &'static [Rule] {
     match brief_id {
         "proposal" => PROPOSAL_RULES,
@@ -659,8 +656,9 @@ const CROSS_RULES: &[CrossRule] = &[
     },
 ];
 
-#[must_use] 
-pub fn cross_rules() -> &'static [CrossRule] {
+/// Return the registered cross-brief rules.
+#[must_use]
+pub const fn cross_rules() -> &'static [CrossRule] {
     CROSS_RULES
 }
 
@@ -717,7 +715,7 @@ mod tests {
             RuleOutcome::Fail { detail } => {
                 assert!(detail.contains("not found"), "got: {detail}");
             }
-            other => panic!("expected Fail, got {other:?}"),
+            other @ RuleOutcome::Pass => panic!("expected Fail, got {other:?}"),
         }
     }
 
@@ -757,7 +755,7 @@ mod tests {
             RuleOutcome::Fail { detail } => {
                 assert!(detail.contains("nonexistent.yaml"), "got: {detail}");
             }
-            other => panic!("expected Fail, got {other:?}"),
+            other @ RuleOutcome::Pass => panic!("expected Fail, got {other:?}"),
         }
     }
 
@@ -801,7 +799,7 @@ mod tests {
             RuleOutcome::Fail { detail } => {
                 assert!(detail.contains("missing $id"), "got: {detail}");
             }
-            other => panic!("expected Fail, got {other:?}"),
+            other @ RuleOutcome::Pass => panic!("expected Fail, got {other:?}"),
         }
     }
 
@@ -822,7 +820,7 @@ mod tests {
             RuleOutcome::Fail { detail } => {
                 assert!(detail.contains("missing or empty title"), "got: {detail}");
             }
-            other => panic!("expected Fail, got {other:?}"),
+            other @ RuleOutcome::Pass => panic!("expected Fail, got {other:?}"),
         }
     }
 

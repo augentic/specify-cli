@@ -11,14 +11,19 @@ use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
 /// Parsed frontmatter of a brief markdown file.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BriefFrontmatter {
+    /// Brief identifier matching the pipeline entry `id`.
     pub id: String,
+    /// Human-readable description of this brief's purpose.
     pub description: String,
+    /// Artifact filename or glob this brief produces, if any.
     #[serde(default)]
     pub generates: Option<String>,
+    /// IDs of briefs that must complete before this one.
     #[serde(default)]
     pub needs: Vec<String>,
+    /// ID of the brief this one tracks for completion.
     #[serde(default)]
     pub tracks: Option<String>,
 }
@@ -27,8 +32,11 @@ pub struct BriefFrontmatter {
 /// remaining markdown body.
 #[derive(Debug, Clone)]
 pub struct Brief {
+    /// Filesystem path the brief was loaded from.
     pub path: PathBuf,
+    /// Parsed YAML frontmatter.
     pub frontmatter: BriefFrontmatter,
+    /// Markdown body after the closing `---` delimiter.
     pub body: String,
 }
 
@@ -78,7 +86,7 @@ impl Brief {
                 ))
             })?;
 
-        Ok(Brief {
+        Ok(Self {
             path: path.to_path_buf(),
             frontmatter,
             body: body.to_string(),
@@ -88,7 +96,7 @@ impl Brief {
 
 /// Given the text *after* the leading `---\n`, split it into
 /// `(frontmatter, body)` at the first closing `---` on its own line.
-pub(crate) fn split_on_closing_delimiter(after_open: &str) -> Option<(&str, &str)> {
+pub fn split_on_closing_delimiter(after_open: &str) -> Option<(&str, &str)> {
     let mut offset = 0;
     for line in after_open.split_inclusive('\n') {
         let trimmed = line.trim_end_matches(['\n', '\r']);

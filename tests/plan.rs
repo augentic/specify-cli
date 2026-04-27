@@ -19,7 +19,7 @@ use serde_yaml_ng::Value as YamlValue;
 /// Kept inline (rather than loaded from a fixture) so the test is pinned to
 /// the exact shape the RFC ships; subsequent Changes that touch the RFC must
 /// also touch this constant.
-const RFC_EXAMPLE: &str = r#"
+const RFC_EXAMPLE: &str = r"
 name: platform-v2
 
 sources:
@@ -79,7 +79,7 @@ changes:
     sources: [frontend]
     depends-on: [checkout-api]
     status: pending
-"#;
+";
 
 fn schema_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schemas/plan/plan.schema.json")

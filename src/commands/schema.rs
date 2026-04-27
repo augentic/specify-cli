@@ -1,17 +1,19 @@
+#![allow(clippy::needless_pass_by_value, clippy::items_after_statements)]
+
 use std::path::PathBuf;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{
-    Error, Phase, PipelineView, Schema, SchemaSource, ValidationResult,
-};
+use specify::{Error, Phase, PipelineView, Schema, SchemaSource, ValidationResult};
 
 use crate::cli::OutputFormat;
 use crate::output::{CliResult, emit_error, emit_response};
 
 use super::require_project;
 
-pub(crate) fn run_schema_resolve(format: OutputFormat, schema_value: String, project_dir: PathBuf) -> CliResult {
+pub fn run_schema_resolve(
+    format: OutputFormat, schema_value: String, project_dir: PathBuf,
+) -> CliResult {
     let resolved = match Schema::resolve(&schema_value, &project_dir) {
         Ok(r) => r,
         Err(err) => return emit_error(format, &err),
@@ -19,7 +21,7 @@ pub(crate) fn run_schema_resolve(format: OutputFormat, schema_value: String, pro
     let (source, path) = match &resolved.source {
         SchemaSource::Local(p) => ("local", p.clone()),
         SchemaSource::Cached(p) => ("cached", p.clone()),
-            _ => unreachable!(),
+        _ => unreachable!(),
     };
 
     #[derive(Serialize)]
@@ -31,7 +33,7 @@ pub(crate) fn run_schema_resolve(format: OutputFormat, schema_value: String, pro
     }
     match format {
         OutputFormat::Json => emit_response(SchemaResolveResponse {
-            schema_value: schema_value.clone(),
+            schema_value,
             resolved_path: path.display().to_string(),
             source,
         }),
@@ -60,7 +62,9 @@ struct SchemaPipelineResponse {
     briefs: Vec<Value>,
 }
 
-pub(crate) fn run_schema_pipeline(format: OutputFormat, phase: Phase, change: Option<PathBuf>) -> CliResult {
+pub fn run_schema_pipeline(
+    format: OutputFormat, phase: Phase, change: Option<PathBuf>,
+) -> CliResult {
     let (project_dir, config) = match require_project() {
         Ok(v) => v,
         Err(err) => return emit_error(format, &err),
@@ -89,8 +93,9 @@ pub(crate) fn run_schema_pipeline(format: OutputFormat, phase: Phase, change: Op
                         needs: b.frontmatter.needs.clone(),
                         generates: b.frontmatter.generates.clone(),
                         tracks: b.frontmatter.tracks.clone(),
-                        present: present.copied().map(Value::from).unwrap_or(Value::Null),
-                    }).expect("PipelineBriefJson serialises")
+                        present: present.copied().map_or(Value::Null, Value::from),
+                    })
+                    .expect("PipelineBriefJson serialises")
                 })
                 .collect();
             emit_response(SchemaPipelineResponse {
@@ -106,8 +111,7 @@ pub(crate) fn run_schema_pipeline(format: OutputFormat, phase: Phase, change: Op
                     .as_ref()
                     .and_then(|c| c.get(&b.frontmatter.id))
                     .copied()
-                    .map(|p| if p { " [x]" } else { " [ ]" })
-                    .unwrap_or("");
+                    .map_or("", |p| if p { " [x]" } else { " [ ]" });
                 println!("  {}{present_label}", b.frontmatter.id);
                 if let Some(g) = &b.frontmatter.generates {
                     println!("    generates: {g}");
@@ -124,7 +128,7 @@ pub(crate) fn run_schema_pipeline(format: OutputFormat, phase: Phase, change: Op
     CliResult::Success
 }
 
-pub(crate) fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> CliResult {
+pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> CliResult {
     let schema_path = schema_dir.join("schema.yaml");
     let text = match std::fs::read_to_string(&schema_path) {
         Ok(t) => t,
@@ -183,17 +187,26 @@ enum ValidationResultJson<'a> {
 
 fn validation_result_to_json(r: &ValidationResult) -> Value {
     let typed = match r {
-        ValidationResult::Pass { rule_id, rule } => ValidationResultJson::Pass {
-            rule_id, rule,
+        ValidationResult::Pass { rule_id, rule } => ValidationResultJson::Pass { rule_id, rule },
+        ValidationResult::Fail {
+            rule_id,
+            rule,
+            detail,
+        } => ValidationResultJson::Fail {
+            rule_id,
+            rule,
+            detail,
         },
-        ValidationResult::Fail { rule_id, rule, detail } => ValidationResultJson::Fail {
-            rule_id, rule, detail,
+        ValidationResult::Deferred {
+            rule_id,
+            rule,
+            reason,
+        } => ValidationResultJson::Deferred {
+            rule_id,
+            rule,
+            reason,
         },
-        ValidationResult::Deferred { rule_id, rule, reason } => ValidationResultJson::Deferred {
-            rule_id, rule, reason,
-        },
-            _ => unreachable!(),
+        _ => unreachable!(),
     };
     serde_json::to_value(typed).expect("ValidationResultJson serialises")
 }
-

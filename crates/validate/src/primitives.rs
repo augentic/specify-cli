@@ -20,14 +20,14 @@ use specify_task::TaskProgress;
 /// initial registry only uses [`has_content_after_heading`]; future rules
 /// that care about mere presence (e.g. optional sections) will compose it.
 #[allow(dead_code)]
-pub(crate) fn has_section(content: &str, heading: &str) -> bool {
+pub fn has_section(content: &str, heading: &str) -> bool {
     content.lines().any(|line| line.trim_end() == heading)
 }
 
 /// Return `true` when `heading` appears AND at least one non-empty,
 /// non-whitespace line follows it before the next `##`-or-higher heading.
 /// Blank lines between the heading and prose are fine.
-pub(crate) fn has_content_after_heading(content: &str, heading: &str) -> bool {
+pub fn has_content_after_heading(content: &str, heading: &str) -> bool {
     let mut lines = content.lines();
     while let Some(line) = lines.next() {
         if line.trim_end() != heading {
@@ -76,17 +76,17 @@ fn leading_hash_count(line: &str) -> usize {
     if rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t') { count } else { 0 }
 }
 
-pub(crate) fn all_requirements_have_scenarios(spec: &ParsedSpec) -> bool {
+pub fn all_requirements_have_scenarios(spec: &ParsedSpec) -> bool {
     spec.requirements.iter().all(|r| !r.scenarios.is_empty())
 }
 
-pub(crate) fn all_requirements_have_ids(spec: &ParsedSpec) -> bool {
+pub fn all_requirements_have_ids(spec: &ParsedSpec) -> bool {
     spec.requirements.iter().all(|r| !r.id.is_empty())
 }
 
 /// Compile `pattern` as a regex and return `true` iff every requirement's
 /// `id` fully matches. Invalid patterns (programmer error) return `false`.
-pub(crate) fn ids_match_pattern(spec: &ParsedSpec, pattern: &str) -> bool {
+pub fn ids_match_pattern(spec: &ParsedSpec, pattern: &str) -> bool {
     let Ok(re) = Regex::new(pattern) else {
         return false;
     };
@@ -104,7 +104,7 @@ pub(crate) fn ids_match_pattern(spec: &ParsedSpec, pattern: &str) -> bool {
 ///
 /// Also returns `false` if the parsed total disagrees with the recognised
 /// count (defensive — shouldn't happen by construction).
-pub(crate) fn all_tasks_use_checkbox(tasks: &TaskProgress, content: &str) -> bool {
+pub fn all_tasks_use_checkbox(tasks: &TaskProgress, content: &str) -> bool {
     if tasks.total != tasks.tasks.len() {
         return false;
     }
@@ -119,7 +119,7 @@ pub(crate) fn all_tasks_use_checkbox(tasks: &TaskProgress, content: &str) -> boo
     true
 }
 
-pub(crate) fn tasks_grouped_under_headings(tasks: &TaskProgress) -> bool {
+pub fn tasks_grouped_under_headings(tasks: &TaskProgress) -> bool {
     tasks.tasks.iter().all(|t| !t.group.is_empty())
 }
 
@@ -128,9 +128,7 @@ pub(crate) fn tasks_grouped_under_headings(tasks: &TaskProgress) -> bool {
 /// `specs/<name>/spec.md` on disk. If no deliverable section is present,
 /// or the section is empty, returns `true` — the sibling
 /// `has-content-after-heading` rule is responsible for that case.
-pub(crate) fn proposal_deliverables_have_specs(
-    proposal: &str, specs_dir: &Path, term: &str,
-) -> bool {
+pub fn proposal_deliverables_have_specs(proposal: &str, specs_dir: &Path, term: &str) -> bool {
     let headings: Vec<&str> = match term {
         "crate" => vec!["## Crates"],
         "feature" => vec!["## Features"],
@@ -203,7 +201,7 @@ fn extract_deliverables(proposal: &str, heading: &str) -> Vec<String> {
 /// Extract the `$ref` target path from a YAML line like
 /// `$ref: "../schemas/user.yaml"`. Returns `None` when the line is not a
 /// `$ref:` entry or the value is empty/non-file (fragment-only or URL).
-pub(crate) fn extract_ref(line: &str) -> Option<&str> {
+pub fn extract_ref(line: &str) -> Option<&str> {
     let trimmed = line.trim();
     let rest = trimmed.strip_prefix("$ref:")?;
     let value = rest.trim().trim_matches('"').trim_matches('\'');
@@ -217,10 +215,10 @@ pub(crate) fn extract_ref(line: &str) -> Option<&str> {
     Some(path_part)
 }
 
-/// Match REQ-XXX IDs in the design doc; return `true` iff each is present
+/// Match `REQ-XXX` IDs in the design doc; return `true` iff each is present
 /// in at least one `specs/*/spec.md` under `specs_dir`. Returns `true` if
 /// no references are found.
-pub(crate) fn design_references_exist(design: &str, specs_dir: &Path) -> bool {
+pub fn design_references_exist(design: &str, specs_dir: &Path) -> bool {
     let re = Regex::new(r"REQ-[0-9]{3}").expect("req id regex is valid");
     let mut refs: Vec<String> = re.find_iter(design).map(|m| m.as_str().to_string()).collect();
     refs.sort();

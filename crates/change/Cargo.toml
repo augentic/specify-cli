@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Change-metadata lifecycle state machine for Specify"
 categories = ["development-tools"]
 keywords = ["specify", "change", "lifecycle"]
+readme = "../../README.md"
 
 [lints]
 workspace = true

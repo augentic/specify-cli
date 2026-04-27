@@ -1,9 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
-use specify::{
-    CreateIfExists, EntryKind, LifecycleStatus, Outcome, Phase, PlanStatus,
-};
+use specify::{CreateIfExists, EntryKind, LifecycleStatus, Outcome, Phase, PlanStatus};
 
 #[derive(Parser)]
 #[command(
@@ -11,7 +9,7 @@ use specify::{
     version,
     about = "Specify CLI — deterministic operations for spec-driven development"
 )]
-pub(crate) struct Cli {
+pub struct Cli {
     #[command(subcommand)]
     pub(crate) command: Commands,
 
@@ -21,13 +19,13 @@ pub(crate) struct Cli {
 }
 
 #[derive(Copy, Clone, ValueEnum, PartialEq, Eq)]
-pub(crate) enum OutputFormat {
+pub enum OutputFormat {
     Text,
     Json,
 }
 
 #[derive(Subcommand)]
-pub(crate) enum Commands {
+pub enum Commands {
     /// Initialize .specify/ in a project
     Init {
         /// Schema name or URL
@@ -126,7 +124,7 @@ pub(crate) enum Commands {
 /// matching `clap::Args` struct from the `specify-vectis` library so
 /// flag parsing stays in lock-step with the library definition.
 #[derive(Subcommand)]
-pub(crate) enum VectisAction {
+pub enum VectisAction {
     /// Scaffold a new Crux project (core + optional shells).
     Init(specify_vectis::InitArgs),
     /// Verify that a Crux project still builds end-to-end.
@@ -138,7 +136,7 @@ pub(crate) enum VectisAction {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum PlanAction {
+pub enum PlanAction {
     /// Scaffold an empty .specify/plan.yaml
     Init {
         /// Kebab-case initiative name
@@ -238,7 +236,7 @@ pub(crate) enum PlanAction {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum InitiativeAction {
+pub enum InitiativeAction {
     /// Registry operations (RFC-3a §"The Registry").
     ///
     /// `.specify/registry.yaml` is the platform-level catalogue of peer
@@ -263,7 +261,7 @@ pub(crate) enum InitiativeAction {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum WorkspaceAction {
+pub enum WorkspaceAction {
     /// Create symlinks or git clones under `.specify/workspace/<name>/`.
     ///
     /// No-op with exit 0 when `.specify/registry.yaml` is absent. Updates
@@ -283,7 +281,7 @@ pub(crate) enum WorkspaceAction {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum LockAction {
+pub enum LockAction {
     /// Acquire the plan.lock PID stamp.
     ///
     /// Fails with `Error::DriverBusy` when another live PID holds it.
@@ -312,7 +310,7 @@ pub(crate) enum LockAction {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum RegistryAction {
+pub enum RegistryAction {
     /// Print the parsed `.specify/registry.yaml` (text or JSON).
     ///
     /// Prints a clear "no registry declared" message when the file is
@@ -329,7 +327,7 @@ pub(crate) enum RegistryAction {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum BriefAction {
+pub enum BriefAction {
     /// Scaffold `.specify/initiative.md` from the canonical template.
     ///
     /// Refuses to overwrite an existing file — mirrors the
@@ -347,7 +345,7 @@ pub(crate) enum BriefAction {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum SpecAction {
+pub enum SpecAction {
     /// Show the merge operations that would be applied, without writing
     Preview {
         /// Change directory
@@ -361,7 +359,7 @@ pub(crate) enum SpecAction {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum TaskAction {
+pub enum TaskAction {
     /// Report task completion counts (total, complete, pending)
     Progress { change_dir: PathBuf },
     /// Mark a task complete (idempotent — no-op if already complete)
@@ -369,7 +367,7 @@ pub(crate) enum TaskAction {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum SchemaAction {
+pub enum SchemaAction {
     /// Resolve a schema value to a directory path
     Resolve {
         schema_value: String,
@@ -393,7 +391,7 @@ pub(crate) enum SchemaAction {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChangeAction {
+pub enum ChangeAction {
     /// Create a new change directory with an initial `.metadata.yaml`
     Create {
         /// Kebab-case change name
@@ -497,7 +495,7 @@ pub(crate) enum ChangeAction {
 }
 
 #[derive(Copy, Clone, ValueEnum)]
-pub(crate) enum CreateIfExistsArg {
+pub enum CreateIfExistsArg {
     /// Refuse when the directory exists (default)
     Fail,
     /// Reuse the existing directory — requires a valid `.metadata.yaml`
@@ -509,9 +507,9 @@ pub(crate) enum CreateIfExistsArg {
 impl From<CreateIfExistsArg> for CreateIfExists {
     fn from(value: CreateIfExistsArg) -> Self {
         match value {
-            CreateIfExistsArg::Fail => CreateIfExists::Fail,
-            CreateIfExistsArg::Continue => CreateIfExists::Continue,
-            CreateIfExistsArg::Restart => CreateIfExists::Restart,
+            CreateIfExistsArg::Fail => Self::Fail,
+            CreateIfExistsArg::Continue => Self::Continue,
+            CreateIfExistsArg::Restart => Self::Restart,
         }
     }
 }
@@ -519,7 +517,7 @@ impl From<CreateIfExistsArg> for CreateIfExists {
 /// Parse a single `--source <key>=<path-or-url>` CLI value into a
 /// `(key, value)` pair. Returns a `String` error on malformed input so
 /// clap surfaces a standard usage diagnostic (exit code 2).
-pub(crate) fn parse_source_kv(s: &str) -> Result<(String, String), String> {
+pub fn parse_source_kv(s: &str) -> Result<(String, String), String> {
     let (k, v) = s
         .split_once('=')
         .ok_or_else(|| format!("--source must be <key>=<path-or-url>, got `{s}`"))?;

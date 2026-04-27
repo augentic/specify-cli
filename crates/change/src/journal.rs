@@ -50,16 +50,17 @@ use crate::Phase;
 use crate::timestamp::Rfc3339Stamp;
 
 /// On-disk representation of `<change_dir>/journal.yaml`. Append-only.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Journal {
+    /// Ordered list of audit log entries.
     #[serde(default)]
     pub entries: Vec<JournalEntry>,
 }
 
 /// One line of audit history — a question raised, a failure observed,
 /// or a recovery taken.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct JournalEntry {
     /// RFC3339 UTC timestamp.
@@ -106,7 +107,7 @@ impl fmt::Display for EntryKind {
 
 impl Journal {
     /// Convenience helper: `<change_dir>/journal.yaml`.
-    #[must_use] 
+    #[must_use]
     pub fn path(change_dir: &Path) -> PathBuf {
         change_dir.join("journal.yaml")
     }
@@ -125,10 +126,10 @@ impl Journal {
     pub fn load(change_dir: &Path) -> Result<Self, Error> {
         let path = Self::path(change_dir);
         if !path.exists() {
-            return Ok(Journal { entries: Vec::new() });
+            return Ok(Self { entries: Vec::new() });
         }
         let content = std::fs::read_to_string(&path)?;
-        let journal: Journal = serde_yaml_ng::from_str(&content)?;
+        let journal: Self = serde_yaml_ng::from_str(&content)?;
         Ok(journal)
     }
 
@@ -353,6 +354,8 @@ mod tests {
     #[test]
     #[ignore = "append is not inter-writer atomic; see L2.C plan.lock for the real coordination boundary"]
     fn concurrent_append_simulation_via_threads() {
+        use std::collections::HashSet;
+
         let dir = tempdir().expect("tempdir");
         let path = dir.path();
 
@@ -376,7 +379,6 @@ mod tests {
         let loaded = Journal::load(path).expect("load ok");
         assert_eq!(loaded.entries.len(), 40, "all 40 entries must be present");
 
-        use std::collections::HashSet;
         let summaries: HashSet<&str> = loaded.entries.iter().map(|e| e.summary.as_str()).collect();
         assert_eq!(summaries.len(), 40, "every summary must appear exactly once");
     }

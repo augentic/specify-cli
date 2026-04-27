@@ -11,8 +11,9 @@ use specify_schema::Registry;
 use crate::config::ProjectConfig;
 use crate::init::ensure_specify_gitignore_entries;
 
-/// Materialise `.specify/workspace/<name>/` for every registry entry:
-/// symlinks for `.` / relative URLs, shallow `git clone` or `git fetch`
+/// Materialise `.specify/workspace/<name>/` for every registry entry.
+///
+/// Symlinks for `.` / relative URLs, shallow `git clone` or `git fetch`
 /// for remotes. Ensures `.gitignore` lists `.specify/workspace/` (and
 /// `.specify/.cache/` when missing).
 ///
@@ -191,10 +192,7 @@ fn git_porcelain_non_empty(tree: &Path) -> bool {
 fn materialise_symlink(project_dir: &Path, url: &str, dest: &Path) -> Result<(), Error> {
     let target = if url == "." {
         std::fs::canonicalize(project_dir).map_err(|e| {
-            Error::Config(format!(
-                "could not resolve project directory for registry url `.`: {}",
-                e
-            ))
+            Error::Config(format!("could not resolve project directory for registry url `.`: {e}"))
         })?
     } else {
         let joined = project_dir.join(url);
@@ -447,16 +445,21 @@ fn run_git(cwd: &Path, args: &[&str], label: &str) -> Result<(), Error> {
 
 /// Result of a per-project push operation.
 pub struct WorkspacePushResult {
+    /// Registry project name.
     pub name: String,
+    /// Outcome label (`pushed`, `created`, `failed`, etc.).
     pub status: String,
+    /// Git branch pushed to.
     pub branch: Option<String>,
+    /// `GitHub` PR number when one was created or found.
     pub pr_number: Option<u64>,
+    /// Human-readable error when the push failed.
     pub error: Option<String>,
 }
 
 /// Extract a `GitHub` `org/repo` slug from a git remote URL.
 /// Returns `None` for non-GitHub URLs.
-#[must_use] 
+#[must_use]
 pub fn extract_github_slug(url: &str) -> Option<String> {
     if let Some(rest) = url.strip_prefix("git@github.com:") {
         let slug = rest.strip_suffix(".git").unwrap_or(rest);
@@ -510,6 +513,7 @@ pub fn run_workspace_push_impl(
     Ok(results)
 }
 
+#[allow(clippy::too_many_lines)]
 fn push_single_project(
     project_dir: &Path, workspace_base: &Path, rp: &specify_schema::RegistryProject,
     branch_name: &str, initiative_name: &str, dry_run: bool,

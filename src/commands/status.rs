@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value)]
+
 use std::path::Path;
 
 use serde::Serialize;
@@ -10,7 +12,7 @@ use crate::output::{CliResult, emit_response};
 
 use super::task::resolve_tasks_path_for;
 
-pub(crate) fn run_status(format: OutputFormat, change: Option<String>) -> CliResult {
+pub fn run_status(format: OutputFormat, change: Option<String>) -> CliResult {
     let ctx = match CommandContext::require(format) {
         Ok(v) => v,
         Err(code) => return code,
@@ -87,7 +89,8 @@ fn status_entry_to_json(e: &StatusEntry) -> Value {
         schema: e.schema.clone(),
         tasks: tasks_value,
         artifacts: e.artifacts.clone(),
-    }).expect("StatusEntryJson serialises")
+    })
+    .expect("StatusEntryJson serialises")
 }
 
 fn collect_status(
@@ -195,4 +198,3 @@ fn print_status_text(entries: &[StatusEntry]) {
         );
     }
 }
-

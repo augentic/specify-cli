@@ -23,7 +23,9 @@ use crate::error::VectisError;
 /// keeping it borrowed keeps the struct cheap to clone and move around.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct BuildStep {
+    /// Human-readable step label (e.g. `"cargo check"`).
     pub name: &'static str,
+    /// Whether the step exited successfully.
     pub passed: bool,
     /// Combined stdout+stderr captured when the step fails. `None` on
     /// success keeps the happy-path JSON compact -- the field is

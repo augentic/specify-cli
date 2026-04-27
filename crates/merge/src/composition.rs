@@ -13,12 +13,29 @@ pub struct CompositionMergeResult {
     pub operations: Vec<CompositionMergeOp>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// One screen-level operation applied during a composition merge.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompositionMergeOp {
-    Added { slug: String },
-    Modified { slug: String },
-    Removed { slug: String },
-    CreatedBaseline { screen_count: usize },
+    /// A new screen was added.
+    Added {
+        /// Screen slug.
+        slug: String,
+    },
+    /// An existing screen was replaced.
+    Modified {
+        /// Screen slug.
+        slug: String,
+    },
+    /// A screen was removed from the baseline.
+    Removed {
+        /// Screen slug.
+        slug: String,
+    },
+    /// Baseline created from a full `screens` document.
+    CreatedBaseline {
+        /// Number of screens in the new baseline.
+        screen_count: usize,
+    },
 }
 
 /// Merge a composition delta into an optional baseline.
@@ -26,6 +43,11 @@ pub enum CompositionMergeOp {
 /// `baseline` is the existing `composition.yaml` with a `screens` map (or None for new).
 /// `delta_text` is the per-change `composition.yaml` — may have `screens` (new baseline)
 /// or `delta` (screen-level operations).
+///
+/// # Panics
+///
+/// Panics if the hardcoded fallback YAML literal fails to parse (should
+/// never happen).
 ///
 /// # Errors
 ///
@@ -40,8 +62,10 @@ pub fn merge_composition(
     let has_delta = delta_doc.get("delta").is_some();
 
     if has_screens && !has_delta {
-        let screen_count =
-            delta_doc.get("screens").and_then(|s| s.as_mapping()).map(serde_yaml_ng::Mapping::len).unwrap_or(0);
+        let screen_count = delta_doc
+            .get("screens")
+            .and_then(|s| s.as_mapping())
+            .map_or(0, serde_yaml_ng::Mapping::len);
         return Ok(CompositionMergeResult {
             output: delta_text.to_string(),
             operations: vec![CompositionMergeOp::CreatedBaseline { screen_count }],

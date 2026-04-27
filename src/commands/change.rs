@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value, clippy::items_after_statements)]
+
 use std::path::Path;
 
 use chrono::Utc;
@@ -16,7 +18,7 @@ use crate::output::{CliResult, emit_error, emit_response};
 use super::require_project;
 use super::status::run_status;
 
-pub(crate) fn run_change(format: OutputFormat, action: ChangeAction) -> CliResult {
+pub fn run_change(format: OutputFormat, action: ChangeAction) -> CliResult {
     match action {
         ChangeAction::Create {
             name,
@@ -133,13 +135,13 @@ fn run_change_transition(format: OutputFormat, name: String, target: LifecycleSt
     }
     match format {
         OutputFormat::Json => emit_response(TransitionResponse {
-            name: name.clone(),
+            name,
             status: metadata.status.to_string(),
             defined_at: metadata.defined_at.clone(),
             build_started_at: metadata.build_started_at.clone(),
             completed_at: metadata.completed_at.clone(),
             merged_at: metadata.merged_at.clone(),
-            dropped_at: metadata.dropped_at.clone(),
+            dropped_at: metadata.dropped_at,
         }),
         OutputFormat::Text => {
             println!("{name}: status = {}", metadata.status);
@@ -161,7 +163,7 @@ fn run_change_touched_specs(
     let entries = if !set.is_empty() {
         match parse_touched_spec_set(&set) {
             Ok(v) => {
-                let metadata = match change_actions::write_touched_specs(&change_dir, v.clone()) {
+                let metadata = match change_actions::write_touched_specs(&change_dir, v) {
                     Ok(m) => m,
                     Err(err) => return emit_error(format, &err),
                 };
@@ -196,11 +198,14 @@ fn run_change_touched_specs(
     }
     match format {
         OutputFormat::Json => emit_response(TouchedSpecsResponse {
-            name: name.clone(),
-            touched_specs: entries.iter().map(|t| TouchedSpecJson {
-                name: t.name.clone(),
-                r#type: t.spec_type.to_string(),
-            }).collect(),
+            name,
+            touched_specs: entries
+                .iter()
+                .map(|t| TouchedSpecJson {
+                    name: t.name.clone(),
+                    r#type: t.spec_type.to_string(),
+                })
+                .collect(),
         }),
         OutputFormat::Text => {
             if entries.is_empty() {
@@ -261,13 +266,16 @@ fn run_change_overlap(format: OutputFormat, name: String) -> CliResult {
     }
     match format {
         OutputFormat::Json => emit_response(OverlapResponse {
-            name: name.clone(),
-            overlaps: overlaps.iter().map(|o| OverlapJson {
-                capability: o.capability.clone(),
-                other_change: o.other_change.clone(),
-                our_spec_type: o.our_spec_type.to_string(),
-                other_spec_type: o.other_spec_type.to_string(),
-            }).collect(),
+            name,
+            overlaps: overlaps
+                .iter()
+                .map(|o| OverlapJson {
+                    capability: o.capability.clone(),
+                    other_change: o.other_change.clone(),
+                    our_spec_type: o.our_spec_type.to_string(),
+                    other_spec_type: o.other_spec_type.to_string(),
+                })
+                .collect(),
         }),
         OutputFormat::Text => {
             if overlaps.is_empty() {
@@ -276,10 +284,7 @@ fn run_change_overlap(format: OutputFormat, name: String) -> CliResult {
                 for o in &overlaps {
                     println!(
                         "{}: also touched by `{}` ({} vs {})",
-                        o.capability,
-                        o.other_change,
-                        o.our_spec_type,
-                        o.other_spec_type,
+                        o.capability, o.other_change, o.our_spec_type, o.other_spec_type,
                     );
                 }
             }
@@ -308,7 +313,7 @@ fn run_change_archive(format: OutputFormat, name: String) -> CliResult {
     }
     match format {
         OutputFormat::Json => emit_response(ArchiveResponse {
-            name: name.clone(),
+            name,
             archive_path: target.display().to_string(),
         }),
         OutputFormat::Text => {
@@ -341,10 +346,10 @@ fn run_change_drop(format: OutputFormat, name: String, reason: Option<String>) -
     }
     match format {
         OutputFormat::Json => emit_response(DropResponse {
-            name: name.clone(),
+            name,
             status: metadata.status.to_string(),
             archive_path: archive_path.display().to_string(),
-            drop_reason: metadata.drop_reason.clone(),
+            drop_reason: metadata.drop_reason,
         }),
         OutputFormat::Text => {
             println!("{name}: dropped and archived to {}", archive_path.display());
@@ -396,7 +401,7 @@ fn run_change_phase_outcome(
     }
     match format {
         OutputFormat::Json => emit_response(PhaseOutcomeResponse {
-            change: name.clone(),
+            change: name,
             phase: phase.to_string(),
             outcome: outcome.to_string(),
             at: stamped.at.to_string(),
@@ -467,10 +472,10 @@ fn run_change_outcome(format: OutputFormat, name: String) -> CliResult {
                 outcome: o.outcome.to_string(),
                 at: o.at.clone(),
                 summary: o.summary.clone(),
-                context: o.context.clone().map(Value::from).unwrap_or(Value::Null),
+                context: o.context.clone().map_or(Value::Null, Value::from),
             });
             emit_response(OutcomeResponse {
-                name: name.clone(),
+                name,
                 outcome: outcome_detail,
             });
         }
@@ -503,13 +508,12 @@ fn resolve_archived_metadata(
         for entry in entries {
             let entry = entry?;
             let fname = entry.file_name().to_string_lossy().to_string();
-            if !fname.ends_with(&suffix) || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
-            {
+            if !fname.ends_with(&suffix) || !entry.file_type().is_ok_and(|t| t.is_dir()) {
                 continue;
             }
             if let Ok(meta) = ChangeMetadata::load(&entry.path()) {
                 let created = meta.created_at.as_deref().unwrap_or("").to_string();
-                candidates.push((created.to_string(), meta));
+                candidates.push((created.clone(), meta));
             }
         }
     }
@@ -543,8 +547,8 @@ fn run_change_journal_append(
         timestamp: timestamp.clone(),
         step: phase,
         r#type: kind,
-        summary: summary.clone(),
-        context: context.clone(),
+        summary,
+        context,
     };
 
     if let Err(err) = Journal::append(&change_dir, entry) {
@@ -561,7 +565,7 @@ fn run_change_journal_append(
     }
     match format {
         OutputFormat::Json => emit_response(JournalAppendResponse {
-            change: name.clone(),
+            change: name,
             phase: phase.to_string(),
             kind: kind.to_string(),
             timestamp,
@@ -588,4 +592,3 @@ struct TouchedSpecJson {
     name: String,
     r#type: String,
 }
-

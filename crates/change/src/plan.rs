@@ -61,11 +61,17 @@ use specify_schema::Registry;
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
 pub enum PlanStatus {
+    /// Not yet started.
     Pending,
+    /// Currently being executed.
     InProgress,
+    /// Completed successfully.
     Done,
+    /// Blocked on an external dependency or question.
     Blocked,
+    /// Execution failed.
     Failed,
+    /// Intentionally skipped.
     Skipped,
 }
 
@@ -86,34 +92,22 @@ impl PlanStatus {
     /// Every variant in declaration order. Used by exhaustive transition
     /// tests here and by validation/topological code in L1.D/E that
     /// needs to enumerate states without depending on `strum`.
-    pub const ALL: [PlanStatus; 6] = [
-        PlanStatus::Pending,
-        PlanStatus::InProgress,
-        PlanStatus::Done,
-        PlanStatus::Blocked,
-        PlanStatus::Failed,
-        PlanStatus::Skipped,
-    ];
+    pub const ALL: [Self; 6] =
+        [Self::Pending, Self::InProgress, Self::Done, Self::Blocked, Self::Failed, Self::Skipped];
 
     /// Whether `self -> target` is a legal edge in the plan-entry state
     /// machine. See `rfc-2-execution.md` §"Transition Rules" for the canonical
     /// table; the 10 edges enumerated below are the *only* legal ones.
     /// `Done` is terminal: every edge with `Done` on the left is `false`.
-    #[must_use] 
-    pub fn can_transition_to(&self, target: &PlanStatus) -> bool {
-        use PlanStatus::*;
+    #[must_use]
+    pub const fn can_transition_to(&self, target: &Self) -> bool {
+        use PlanStatus::{Blocked, Done, Failed, InProgress, Pending, Skipped};
         matches!(
             (self, target),
-            (Pending, InProgress)
-                | (Pending, Blocked)
-                | (Pending, Skipped)
-                | (InProgress, Done)
-                | (InProgress, Failed)
-                | (InProgress, Blocked)
-                | (Blocked, Pending)
-                | (Failed, Pending)
+            (Pending, InProgress | Blocked | Skipped)
+                | (InProgress, Done | Failed | Blocked)
+                | (Blocked | Failed | Skipped, Pending)
                 | (Failed, Skipped)
-                | (Skipped, Pending)
         )
     }
 
@@ -124,7 +118,7 @@ impl PlanStatus {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    pub fn transition(&self, target: PlanStatus) -> Result<PlanStatus, Error> {
+    pub fn transition(&self, target: Self) -> Result<Self, Error> {
         if self.can_transition_to(&target) {
             Ok(target)
         } else {
@@ -141,7 +135,7 @@ impl PlanStatus {
 /// A `Plan` is an ordered, dependency-aware list of [`PlanChange`]s plus
 /// a named map of [`Plan::sources`] (local paths or git URLs) that the
 /// entries draw from.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Plan {
     /// Human-readable plan name, e.g. `platform-v2`.
@@ -157,7 +151,7 @@ pub struct Plan {
 }
 
 /// One entry in [`Plan::changes`].
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct PlanChange {
     /// Stable identifier (kebab-case) unique within the plan.
@@ -196,11 +190,12 @@ pub struct PlanChange {
     pub status_reason: Option<String>,
 }
 
-/// Patch applied by [`Plan::amend`] to an existing entry. Every field is
-/// `Option<T>`; `None` means "leave unchanged", `Some(v)` means "replace
-/// with v". `status` and `status_reason` are deliberately absent —
-/// status transitions are made via [`Plan::transition`], never through
-/// `amend`, and the reason field travels with the transition.
+/// Patch applied by [`Plan::amend`] to an existing entry.
+///
+/// Every field is `Option<T>`; `None` means "leave unchanged", `Some(v)`
+/// means "replace with v". `status` and `status_reason` are deliberately
+/// absent — status transitions are made via [`Plan::transition`], never
+/// through `amend`, and the reason field travels with the transition.
 ///
 /// The absence of a `status` field is a type-system guarantee: `amend`
 /// cannot mutate status. Transitions go via [`Plan::transition`].
@@ -224,7 +219,7 @@ pub struct PlanChangePatch {
 }
 
 /// Severity of a validation finding produced by [`Plan::validate`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanValidationLevel {
     /// Blocking problem — the plan is not usable as-is.
     Error,
@@ -259,9 +254,9 @@ impl Plan {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    pub fn init(name: &str, sources: BTreeMap<String, String>) -> Result<Plan, Error> {
+    pub fn init(name: &str, sources: BTreeMap<String, String>) -> Result<Self, Error> {
         crate::actions::validate_name(name)?;
-        Ok(Plan {
+        Ok(Self {
             name: name.to_string(),
             sources,
             changes: vec![],
@@ -289,7 +284,7 @@ impl Plan {
             });
         }
         let content = std::fs::read_to_string(path)?;
-        let plan: Plan = serde_yaml_ng::from_str(&content)?;
+        let plan: Self = serde_yaml_ng::from_str(&content)?;
         Ok(plan)
     }
 
@@ -337,7 +332,7 @@ impl Plan {
     /// rejects invalid statuses at parse time. The RFC lists this check
     /// for completeness against hand-edited YAML that bypassed parsing,
     /// which is not reachable in-process — so nothing is emitted for it.
-    #[must_use] 
+    #[must_use]
     pub fn validate(
         &self, changes_dir: Option<&Path>, registry: Option<&Registry>,
     ) -> Vec<PlanValidationResult> {
@@ -370,7 +365,7 @@ impl Plan {
     /// An unknown `depends_on` target is treated as "not done", so the
     /// entry is not eligible. Orphan-reference diagnostics belong to
     /// [`Plan::validate`].
-    #[must_use] 
+    #[must_use]
     pub fn next_eligible(&self) -> Option<&PlanChange> {
         if self.changes.iter().any(|c| c.status == PlanStatus::InProgress) {
             return None;
@@ -569,9 +564,14 @@ impl Plan {
     /// That keeps the list-order tie-break contract while dropping
     /// the old O(n²) "sweep until fixpoint" fallback.
     ///
+    /// # Panics
+    ///
+    /// Panics if the internal indegree map is inconsistent (should never
+    /// happen in practice since every node is inserted during init).
+    ///
     /// # Errors
     ///
-    /// Returns an error if the operation fails.
+    /// Returns an error if the dependency graph contains a cycle.
     pub fn topological_order(&self) -> Result<Vec<&PlanChange>, Error> {
         let mut graph: DiGraph<&str, ()> = DiGraph::new();
         let mut idx = HashMap::new();
@@ -594,8 +594,7 @@ impl Plan {
                 .find(|scc| {
                     scc.len() > 1 || (scc.len() == 1 && graph.find_edge(scc[0], scc[0]).is_some())
                 })
-                .map(|scc| graph[scc[0]].to_string())
-                .unwrap_or_else(|| "<unknown>".to_string());
+                .map_or_else(|| "<unknown>".to_string(), |scc| graph[scc[0]].to_string());
             return Err(Error::Config(format!("plan has dependency cycle involving '{offender}'")));
         }
 
@@ -607,10 +606,8 @@ impl Plan {
             .node_indices()
             .map(|n| (n, graph.neighbors_directed(n, Direction::Incoming).count()))
             .collect();
-        let mut ready: BinaryHeap<Reverse<NodeIndex>> = indegree
-            .iter()
-            .filter_map(|(&n, &d)| (d == 0).then_some(Reverse(n)))
-            .collect();
+        let mut ready: BinaryHeap<Reverse<NodeIndex>> =
+            indegree.iter().filter_map(|(&n, &d)| (d == 0).then_some(Reverse(n))).collect();
 
         let mut rank: HashMap<NodeIndex, usize> = HashMap::with_capacity(self.changes.len());
         let mut next_rank = 0usize;
@@ -672,7 +669,7 @@ impl Plan {
     pub fn archive(
         path: &Path, archive_dir: &Path, force: bool,
     ) -> Result<(PathBuf, Option<PathBuf>), Error> {
-        let plan = Plan::load(path)?;
+        let plan = Self::load(path)?;
 
         if !force {
             let entries: Vec<String> = plan
@@ -1136,7 +1133,7 @@ mod tests {
 
     /// Verbatim reproduction of the `rfc-2-execution.md` §"The Plan"
     /// fixture, updated to remove `affects` fields.
-    const RFC_EXAMPLE_YAML: &str = r#"name: platform-v2
+    const RFC_EXAMPLE_YAML: &str = r"name: platform-v2
 sources:
   monolith: /path/to/legacy-codebase
   orders: git@github.com:org/orders-service.git
@@ -1194,7 +1191,7 @@ changes:
     sources: [frontend]
     depends-on: [checkout-api]
     status: pending
-"#;
+";
 
     #[test]
     fn plan_roundtrips_rfc_example() {
@@ -1254,7 +1251,7 @@ changes:
 
     #[test]
     fn status_reason_roundtrips_on_failed_entry() {
-        let yaml = r#"name: demo
+        let yaml = r"name: demo
 changes:
   - name: checkout-api
     sources: [payments]
@@ -1263,7 +1260,7 @@ changes:
     status-reason: >
       Type mismatch between cart line-item schema and payment gateway contract.
       Needs design revision after shopping-cart specs are updated.
-"#;
+";
         let plan: Plan = serde_yaml_ng::from_str(yaml).expect("parse");
         let entry = &plan.changes[0];
         assert_eq!(entry.status, PlanStatus::Failed);
@@ -3066,7 +3063,7 @@ status: pending
 
     #[test]
     fn schema_field_roundtrips_yaml() {
-        let yaml = r#"name: test
+        let yaml = r"name: test
 changes:
   - name: define-contracts
     schema: contracts@v1
@@ -3075,7 +3072,7 @@ changes:
     project: auth-service
     schema: omnia@v1
     status: pending
-"#;
+";
         let plan: Plan = serde_yaml_ng::from_str(yaml).expect("parse");
         assert_eq!(plan.changes[0].schema.as_deref(), Some("contracts@v1"));
         assert_eq!(plan.changes[0].project, None);
@@ -3238,7 +3235,7 @@ changes:
 
     #[test]
     fn context_round_trip_through_yaml() {
-        let yaml = r#"
+        let yaml = r"
 name: ctx-test
 changes:
   - name: with-ctx
@@ -3250,7 +3247,7 @@ changes:
   - name: without-ctx
     project: default
     status: pending
-"#;
+";
         let plan: Plan = serde_yaml_ng::from_str(yaml).expect("parse yaml");
         assert_eq!(
             plan.changes[0].context,
@@ -3304,12 +3301,10 @@ changes:
         entry.context =
             vec!["contracts/http/user-api.yaml".into(), "specs/user-registration/spec.md".into()];
         let plan = plan_with_changes(vec![entry]);
-        let errors: Vec<_> = plan
-            .validate(None, None)
-            .into_iter()
-            .filter(|r| r.code == "plan.context-path-invalid")
-            .collect();
-        assert!(errors.is_empty(), "valid relative paths must not produce errors");
+        assert!(
+            !plan.validate(None, None).into_iter().any(|r| r.code == "plan.context-path-invalid"),
+            "valid relative paths must not produce errors"
+        );
     }
 
     #[test]

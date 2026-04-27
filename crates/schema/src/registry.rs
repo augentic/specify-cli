@@ -23,7 +23,7 @@ use specify_error::Error;
 /// `#[serde(deny_unknown_fields)]` — the same posture the `plan.yaml`
 /// `ScopeShape` uses — so typos (e.g. `versions:`, `project:`) fail
 /// fast at parse time rather than silently round-tripping.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Registry {
     /// Schema version. `1` is the only accepted value for this
@@ -38,7 +38,7 @@ pub struct Registry {
 }
 
 /// One entry in [`Registry::projects`].
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegistryProject {
     /// Kebab-case identifier for the project. Obeys the same
@@ -67,7 +67,7 @@ pub struct RegistryProject {
 /// Contract role declarations for a registry project.
 /// All fields are optional — a project may only produce, only consume,
 /// or have no contract relationships at all.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContractRoles {
     /// Contract files this project is the authoritative implementer of.
@@ -87,7 +87,7 @@ pub struct ContractRoles {
 impl Registry {
     /// Absolute path to `.specify/registry.yaml` for a given project
     /// directory.
-    #[must_use] 
+    #[must_use]
     pub fn path(project_dir: &Path) -> PathBuf {
         project_dir.join(".specify").join("registry.yaml")
     }
@@ -110,7 +110,7 @@ impl Registry {
         }
         let content = std::fs::read_to_string(&path)
             .map_err(|err| Error::Config(format!("failed to read {}: {err}", path.display())))?;
-        let registry: Registry = serde_yaml_ng::from_str(&content)
+        let registry: Self = serde_yaml_ng::from_str(&content)
             .map_err(|err| Error::Config(format!("registry.yaml: invalid YAML: {err}")))?;
         registry.validate_shape()?;
         Ok(Some(registry))
@@ -126,6 +126,7 @@ impl Registry {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
+    #[allow(clippy::too_many_lines)]
     pub fn validate_shape(&self) -> Result<(), Error> {
         if self.version != 1 {
             return Err(Error::Config(format!(
@@ -137,9 +138,7 @@ impl Registry {
         let mut seen_names: std::collections::HashSet<&str> = std::collections::HashSet::new();
         for (idx, project) in self.projects.iter().enumerate() {
             if project.name.is_empty() {
-                return Err(Error::Config(
-                    format!("registry.yaml: projects[{idx}].name is empty",),
-                ));
+                return Err(Error::Config(format!("registry.yaml: projects[{idx}].name is empty")));
             }
             if !is_kebab_case(&project.name) {
                 return Err(Error::Config(format!(
@@ -171,10 +170,7 @@ impl Registry {
 
         if self.projects.len() > 1 {
             for (idx, project) in self.projects.iter().enumerate() {
-                let missing = match &project.description {
-                    None => true,
-                    Some(s) => s.trim().is_empty(),
-                };
+                let missing = project.description.as_ref().is_none_or(|s| s.trim().is_empty());
                 if missing {
                     return Err(Error::Config(format!(
                         "registry.yaml: projects[{idx}] (`{}`).description is required when the registry declares more than one project (description-missing-multi-repo)",
@@ -206,7 +202,8 @@ impl Registry {
         // same path in both `produces` and `consumes`.
         for project in &self.projects {
             if let Some(ref roles) = project.contracts {
-                let produced: HashSet<&str> = roles.produces.iter().map(std::string::String::as_str).collect();
+                let produced: HashSet<&str> =
+                    roles.produces.iter().map(std::string::String::as_str).collect();
                 for path in &roles.consumes {
                     if produced.contains(path.as_str()) {
                         return Err(Error::Config(format!(
@@ -248,8 +245,7 @@ impl Registry {
         for path in producers.keys() {
             if imported.contains(path) {
                 return Err(Error::Config(format!(
-                    "registry.yaml: contract path '{}' appears in both 'produces' and 'imports'",
-                    path
+                    "registry.yaml: contract path '{path}' appears in both 'produces' and 'imports'"
                 )));
             }
         }
@@ -263,8 +259,8 @@ impl Registry {
     /// the `/spec:plan` flow (RFC-3a §*When are `registry.yaml` and
     /// `initiative.md` required?*). Useful to C28/C30 where the
     /// *sync peers* phase is gated on `len(projects) > 1`.
-    #[must_use] 
-    pub fn is_single_repo(&self) -> bool {
+    #[must_use]
+    pub const fn is_single_repo(&self) -> bool {
         self.projects.len() <= 1
     }
 }
@@ -277,7 +273,7 @@ impl RegistryProject {
     ///
     /// Callers may assume [`Registry::validate_shape`] has already accepted
     /// the URL — this predicate mirrors the C28 classification rules.
-    #[must_use] 
+    #[must_use]
     pub fn url_materialises_as_symlink(&self) -> bool {
         self.url == "." || (!self.url.contains("://") && !self.url.starts_with("git@"))
     }
@@ -287,6 +283,8 @@ impl RegistryProject {
 /// `.`, repo-relative paths, `http(s)://`, `git@host:path`, `ssh://`,
 /// and `git+http(s)://` / `git+ssh://` forms.
 fn validate_project_url(url: &str, idx: usize, project_name: &str) -> Result<(), Error> {
+    const ALLOWED_SCHEMES: &[&str] = &["http", "https", "ssh", "git+https", "git+http", "git+ssh"];
+
     if url.trim().is_empty() {
         return Err(Error::Config(format!(
             "registry.yaml: projects[{idx}] (`{project_name}`).url is empty or whitespace-only"
@@ -308,8 +306,7 @@ fn validate_project_url(url: &str, idx: usize, project_name: &str) -> Result<(),
 
     if let Some(pos) = url.find("://") {
         let scheme = &url[..pos];
-        const ALLOWED: &[&str] = &["http", "https", "ssh", "git+https", "git+http", "git+ssh"];
-        if !ALLOWED.contains(&scheme) {
+        if !ALLOWED_SCHEMES.contains(&scheme) {
             return Err(Error::Config(format!(
                 "registry.yaml: projects[{idx}] (`{project_name}`).url has unsupported URL scheme `{scheme}`: \
                  expected one of http, https, ssh, git+https, git+http, git+ssh, a `git@host:path` remote, `.`, or a relative path"
@@ -354,7 +351,7 @@ fn looks_like_windows_drive_path(url: &str) -> bool {
 /// contract to `specify_change::actions::validate_name`; duplicated
 /// because `specify-schema` is upstream of `specify-change` in the
 /// crate dep graph and cannot call through.
-pub(crate) fn is_kebab_case(s: &str) -> bool {
+pub fn is_kebab_case(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }

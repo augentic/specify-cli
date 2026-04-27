@@ -54,7 +54,7 @@ mod cli {
                 .args(["--name", "test-proj"])
                 .assert()
                 .success();
-            Project { _tmp: tmp, root }
+            Self { _tmp: tmp, root }
         }
 
         fn root(&self) -> &Path {
@@ -142,6 +142,7 @@ mod cli {
 
     /// Compare `actual` against a checked-in golden, or rewrite it when
     /// `REGENERATE_GOLDENS=1` is set. Mirrors `tests/e2e.rs`.
+    #[allow(clippy::needless_pass_by_value)]
     fn assert_golden(name: &str, actual: Value) {
         let golden_path = plan_fixtures().join(name);
         let rendered = serde_json::to_string_pretty(&actual).expect("pretty json");
@@ -268,7 +269,7 @@ changes:
     /// Verbatim RFC-2 §"The Plan" platform-v2 example. Used by the
     /// status smoke test so status output stays pinned to the RFC
     /// reference shape across L1.J–L1.L.
-    const PLATFORM_V2_PLAN: &str = r#"name: platform-v2
+    const PLATFORM_V2_PLAN: &str = r"name: platform-v2
 
 sources:
   monolith: /path/to/legacy-codebase
@@ -338,7 +339,7 @@ changes:
     sources: [frontend]
     depends-on: [checkout-api]
     status: pending
-"#;
+";
 
     // -- validate ----------------------------------------------------------
 
@@ -487,7 +488,7 @@ changes:
 
         let text = specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
         let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
-        assert!(stdout.contains("a"), "text output should mention 'a': {stdout:?}");
+        assert!(stdout.contains('a'), "text output should mention 'a': {stdout:?}");
 
         let json = specify()
             .current_dir(project.root())
@@ -1253,7 +1254,6 @@ changes:
     /// Replace any `-YYYYMMDD` date stamp in JSON strings with a stable
     /// placeholder so the archive-success golden is date-insensitive.
     fn strip_date_stamps(value: &mut Value) {
-        let re = regex::Regex::new(r"-\d{8}\b").expect("regex compiles");
         fn visit(re: &regex::Regex, v: &mut Value) {
             match v {
                 Value::String(s) if re.is_match(s) => {
@@ -1272,6 +1272,7 @@ changes:
                 _ => {}
             }
         }
+        let re = regex::Regex::new(r"-\d{8}\b").expect("regex compiles");
         visit(&re, value);
     }
 
@@ -1331,7 +1332,7 @@ changes:
         assert_eq!(assert.get_output().status.code(), Some(1));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
         assert!(
-            stderr.contains("b"),
+            stderr.contains('b'),
             "stderr should mention the pending entry name 'b', got: {stderr:?}"
         );
         assert!(stderr.contains("--force"), "stderr should suggest --force, got: {stderr:?}");

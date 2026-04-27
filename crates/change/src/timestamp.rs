@@ -15,8 +15,9 @@ use serde::{Deserialize, Serialize};
 pub struct Rfc3339Stamp(String);
 
 impl Rfc3339Stamp {
-    #[must_use] 
-    pub fn from_raw(s: String) -> Self {
+    /// Wrap a raw string as an `Rfc3339Stamp` without validation.
+    #[must_use]
+    pub const fn from_raw(s: String) -> Self {
         Self(s)
     }
 }

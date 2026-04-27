@@ -30,7 +30,7 @@ use crate::{CommandOutcome, VerifyArgs};
 ///
 /// Returns an error if the operation fails.
 pub fn run(args: &VerifyArgs) -> Result<CommandOutcome, VectisError> {
-    let project_dir = args.dir.clone().map(Ok).unwrap_or_else(std::env::current_dir)?;
+    let project_dir = args.dir.clone().map_or_else(std::env::current_dir, Ok)?;
 
     let mut assemblies = vec![AssemblyKind::Core];
     if project_dir.join("iOS").is_dir() {
@@ -126,12 +126,10 @@ struct VerifyCache {
 
 impl VerifyCache {
     fn new(pid: u32) -> Result<Self, VectisError> {
-        let root = match std::env::var_os("HOME") {
-            Some(home) => {
-                PathBuf::from(home).join(".cache").join("vectis").join(format!("verify-{pid}"))
-            }
-            None => std::env::temp_dir().join(format!("vectis-verify-{pid}")),
-        };
+        let root = std::env::var_os("HOME").map_or_else(
+            || std::env::temp_dir().join(format!("vectis-verify-{pid}")),
+            |home| PathBuf::from(home).join(".cache").join("vectis").join(format!("verify-{pid}")),
+        );
         // Best-effort cleanup of any leftover from a prior run (same
         // pid -- unlikely but possible across forks).
         let _ = fs::remove_dir_all(&root);

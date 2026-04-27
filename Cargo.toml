@@ -70,22 +70,23 @@ version = "0.1.0"
 
 [workspace.lints.rust]
 # https://dirname.github.io/rust-std-doc/rustc/lints/listing/allowed-by-default.html
-missing_docs = "allow"
+missing_docs = "warn"
 trivial_numeric_casts = "warn"
 unsafe_op_in_unsafe_fn = "warn"
 unused_extern_crates = "warn"
 
 [workspace.lints.clippy]
 # https://doc.rust-lang.org/stable/clippy/index.html
-all = { level = "warn", priority = -1 }      # correctness, suspicious, style, complexity, perf
-cargo = { level = "allow", priority = -1 }
-nursery = { level = "allow", priority = -1 }
-pedantic = { level = "allow", priority = -1 }
+all = "warn"      # correctness, suspicious, style, complexity, perf
+cargo = "warn"
+nursery = "warn"
+pedantic = "warn"
 
 # Cherry-picked lints are from the `restriction` lint group in order to drive up
 # consistency, quality, and brevity
 # See https://microsoft.github.io/rust-guidelines/guidelines/universal/index.html
 
+# allow_attributes_without_reason = "warn"
 as_pointer_underscore = "warn"
 assertions_on_result_states = "warn"
 clone_on_ref_ptr = "warn"
@@ -105,13 +106,6 @@ unnecessary_safety_comment = "warn"
 unnecessary_safety_doc = "warn"
 unneeded_field_pattern = "warn"
 unused_result_ok = "warn"
-
-# Cherry-picked pedantic lints
-must_use_candidate = "warn"
-missing_errors_doc = "warn"
-doc_markdown = "warn"
-redundant_closure_for_method_calls = "warn"
-manual_let_else = "warn"
 
 [workspace.dependencies]
 specify-error = { path = "crates/error" }

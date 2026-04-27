@@ -14,19 +14,26 @@ use crate::ValidationResult;
 const SCHEMA_JSON_SCHEMA: &str = include_str!("../../../schemas/schema.schema.json");
 
 /// In-memory representation of a `schema.yaml` file.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Schema {
+    /// Schema name (e.g. `"omnia"`).
     pub name: String,
+    /// Schema version number.
     pub version: u32,
+    /// Human-readable description of this schema.
     pub description: String,
+    /// Parent schema to inherit from, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extends: Option<String>,
+    /// Optional domain block describing the technology context.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
+    /// The pipeline of briefs organised by phase.
     pub pipeline: Pipeline,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+/// Pipeline phases and their brief entries.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Pipeline {
     /// Optional Layer 3 authoring-phase briefs for `/spec:plan`.
     /// Absent in pre-existing schemas; present ones expose briefs such
@@ -34,37 +41,50 @@ pub struct Pipeline {
     /// define→build→merge execution loop.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plan: Vec<PipelineEntry>,
+    /// Define-phase brief entries.
     pub define: Vec<PipelineEntry>,
+    /// Build-phase brief entries.
     pub build: Vec<PipelineEntry>,
+    /// Merge-phase brief entries.
     pub merge: Vec<PipelineEntry>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+/// One entry in a pipeline phase referencing a brief file.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PipelineEntry {
+    /// Unique identifier matching the brief's frontmatter `id`.
     pub id: String,
+    /// Relative path to the brief markdown file.
     pub brief: String,
 }
 
 /// A `Schema` plus the directory it was resolved from and how it got there.
 #[derive(Debug)]
 pub struct ResolvedSchema {
+    /// The parsed and (if extended) merged schema.
     pub schema: Schema,
+    /// Filesystem directory the schema was loaded from.
     pub root_dir: PathBuf,
+    /// How the schema was located (local workspace or agent cache).
     pub source: SchemaSource,
 }
 
+/// How a schema was located on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SchemaSource {
+    /// Resolved from a local `schemas/<name>/` directory.
     Local(PathBuf),
+    /// Resolved from the agent-populated `.specify/.cache/<name>/` directory.
     Cached(PathBuf),
 }
 
-/// The phases of a schema's pipeline. Serializes as the lowercase
-/// identifiers `plan | define | build | merge` on the wire — this is
-/// the same wire format consumed by `ChangeMetadata.outcome.phase`
-/// and by `schema.yaml::pipeline.*` keys, keeping a single source of
-/// truth for phase naming.
+/// The phases of a schema's pipeline.
+///
+/// Serializes as the lowercase identifiers `plan | define | build | merge`
+/// on the wire — this is the same wire format consumed by
+/// `ChangeMetadata.outcome.phase` and by `schema.yaml::pipeline.*` keys,
+/// keeping a single source of truth for phase naming.
 ///
 /// `Plan` is the Layer 3 authoring phase (`/spec:plan`) that runs
 /// ahead of the define→build→merge execution loop. It is intentionally
@@ -74,9 +94,13 @@ pub enum SchemaSource {
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
 pub enum Phase {
+    /// Layer 3 authoring phase (`/spec:plan`).
     Plan,
+    /// Define phase — artifact generation.
     Define,
+    /// Build phase — implementation.
     Build,
+    /// Merge phase — finalisation and landing.
     Merge,
 }
 
@@ -118,13 +142,13 @@ impl Schema {
                 schema_path.display()
             ))
         })?;
-        let schema: Schema = serde_yaml_ng::from_str(&raw).map_err(|err| {
+        let schema: Self = serde_yaml_ng::from_str(&raw).map_err(|err| {
             Error::SchemaResolution(format!("failed to parse {}: {err}", schema_path.display()))
         })?;
 
         let merged = if let Some(parent_value) = schema.extends.clone() {
-            let parent = Schema::resolve(&parent_value, project_dir)?;
-            Schema::merge(parent.schema, schema)
+            let parent = Self::resolve(&parent_value, project_dir)?;
+            Self::merge(parent.schema, schema)
         } else {
             schema
         };
@@ -139,7 +163,7 @@ impl Schema {
     /// Validate this in-memory schema against the embedded
     /// `schemas/schema.schema.json`. Returns one `ValidationResult` per
     /// check performed (empty = fully valid).
-    #[must_use] 
+    #[must_use]
     pub fn validate_structure(&self) -> Vec<ValidationResult> {
         let schema_value: serde_json::Value = match serde_json::to_value(self) {
             Ok(value) => value,
@@ -181,7 +205,7 @@ impl Schema {
     /// Plan-phase (Layer 3 authoring) pipeline entries in declared
     /// order. Returns an empty slice for schemas that don't declare a
     /// `pipeline.plan` block.
-    #[must_use] 
+    #[must_use]
     pub fn plan_entries(&self) -> &[PipelineEntry] {
         &self.pipeline.plan
     }
@@ -189,7 +213,7 @@ impl Schema {
     /// Look up a pipeline entry by id. Searches the plan phase first so
     /// authoring briefs are discoverable, then the define→build→merge
     /// execution loop.
-    #[must_use] 
+    #[must_use]
     pub fn entry(&self, id: &str) -> Option<(Phase, &PipelineEntry)> {
         self.pipeline
             .plan
@@ -209,9 +233,9 @@ impl Schema {
     ///   come from the child.
     /// - `extends` is cleared — the composed schema has no unresolved
     ///   parent.
-    #[must_use] 
-    pub fn merge(parent: Schema, child: Schema) -> Schema {
-        Schema {
+    #[must_use]
+    pub fn merge(parent: Self, child: Self) -> Self {
+        Self {
             name: child.name,
             version: child.version,
             description: child.description,
@@ -291,7 +315,7 @@ fn locate_schema_root(
     )))
 }
 
-pub(crate) fn validate_against_embedded_schema(
+pub fn validate_against_embedded_schema(
     schema_source: &str, pass_rule_id: &'static str, pass_rule: &'static str,
     instance: &serde_json::Value,
 ) -> Vec<ValidationResult> {

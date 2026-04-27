@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Deterministic delta-merge engine for Specify"
+readme = "../../README.md"
 categories = ["development-tools"]
 keywords = ["specify", "merge", "delta"]
 

@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value)]
+
 use std::path::PathBuf;
 
 use specify::{ValidationReport, ValidationResult, serialize_report, validate_change};
@@ -6,7 +8,7 @@ use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_json};
 
-pub(crate) fn run_validate(format: OutputFormat, change_dir: PathBuf) -> CliResult {
+pub fn run_validate(format: OutputFormat, change_dir: PathBuf) -> CliResult {
     let ctx = match CommandContext::require(format) {
         Ok(v) => v,
         Err(code) => return code,
@@ -51,7 +53,6 @@ fn format_result_line(r: &ValidationResult) -> String {
         ValidationResult::Deferred { rule_id, reason, .. } => {
             format!("[defer] {rule_id} ({reason})")
         }
-            _ => unreachable!(),
+        _ => unreachable!(),
     }
 }
-

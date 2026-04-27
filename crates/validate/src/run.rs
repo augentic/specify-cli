@@ -29,7 +29,7 @@ pub fn validate_change(
     let specs_dir = change_dir.join("specs");
     let terminology = infer_terminology(pipeline);
 
-    for (_phase, brief) in pipeline.briefs.iter() {
+    for (_phase, brief) in &pipeline.briefs {
         let Some(generates) = brief.frontmatter.generates.as_deref() else {
             continue;
         };
@@ -59,7 +59,7 @@ pub fn validate_change(
             };
 
             let results =
-                run_brief_rules(&brief_id, &artifact_path, change_dir, &specs_dir, terminology)?;
+                run_brief_rules(&brief_id, &artifact_path, change_dir, &specs_dir, terminology);
             brief_results.insert(key, results);
         }
     }
@@ -80,12 +80,11 @@ pub fn validate_change(
 }
 
 /// Infer whether to use "crate" or "feature" terminology from the schema
-/// name. `omnia` uses "crate"; `vectis` uses "feature"; everything else
-/// defaults to "crate". See `DECISIONS.md` §"Change G — Terminology
-/// inference" for the rationale.
+/// name. `vectis` uses "feature"; everything else defaults to "crate".
+/// See `DECISIONS.md` §"Change G — Terminology inference" for the
+/// rationale.
 fn infer_terminology(pipeline: &PipelineView) -> &'static str {
     match pipeline.schema.schema.name.as_str() {
-        "omnia" => "crate",
         "vectis" => "feature",
         _ => "crate",
     }
@@ -148,14 +147,13 @@ fn artifact_missing_result(
 fn run_brief_rules(
     brief_id: &str, artifact_path: &Path, change_dir: &Path, specs_dir: &Path,
     terminology: &'static str,
-) -> Result<Vec<ValidationResult>, Error> {
+) -> Vec<ValidationResult> {
     let Ok(content) = std::fs::read_to_string(artifact_path) else {
-        return Ok(vec![artifact_missing_result(brief_id, artifact_path, change_dir)]);
+        return vec![artifact_missing_result(brief_id, artifact_path, change_dir)];
     };
 
     // Parse brief-specific structured context.
-    let parsed_spec =
-        (brief_id == "specs").then(|| specify_spec::parse_baseline(&content));
+    let parsed_spec = (brief_id == "specs").then(|| specify_spec::parse_baseline(&content));
     let tasks = (brief_id == "tasks").then(|| specify_task::parse_tasks(&content));
 
     let ctx = BriefContext {
@@ -190,7 +188,7 @@ fn run_brief_rules(
         };
         out.push(result);
     }
-    Ok(out)
+    out
 }
 
 fn run_cross_rules(

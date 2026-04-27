@@ -106,7 +106,7 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     let archived: Vec<_> = fs::read_dir(&archive_dir)
         .unwrap()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
         .collect();
     assert_eq!(archived.len(), 1);
     let archived_name = archived[0].file_name().to_string_lossy().to_string();
@@ -344,7 +344,7 @@ fn find_archived_metadata(project: &Project) -> PhaseOutcome {
     let archived: Vec<_> = fs::read_dir(project.archive_dir())
         .unwrap()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
         .collect();
     assert_eq!(archived.len(), 1, "expected exactly one archived change");
     let meta = ChangeMetadata::load(&archived[0].path()).expect("load archived metadata");

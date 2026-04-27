@@ -16,16 +16,20 @@ use serde::{Deserialize, Serialize};
 /// Field names serialise as `kebab-case` so the YAML shape
 /// (`specs-path: …`) matches the project-config convention established
 /// in RFC-1 §`config.rs`.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct PeerRepo {
+    /// Human-readable peer name.
     pub name: String,
+    /// Repository URL or path.
     pub repo: String,
+    /// Path to the specs directory within the peer repository.
     pub specs_path: String,
 }
 
-/// Marker trait implemented by any project-config type that can describe
-/// federation peers. Intentionally empty in Phase 1 — RFC-3 will extend it
+/// Marker trait for project-config types that describe federation peers.
+///
+/// Intentionally empty in Phase 1 — RFC-3 will extend it
 /// with methods like `fn peers(&self) -> &[…];` once the on-disk shape is
 /// nailed down.
 ///
@@ -42,6 +46,7 @@ pub trait FederationConfig {}
 /// callers — the intent is `src/main.rs` and the future `specify drift`
 /// subcommand wire through this function today and get correct (empty)
 /// results, then automatically pick up real peers once RFC-3 lands.
+#[allow(clippy::missing_const_for_fn)]
 pub fn parse_federation_config<Cfg: FederationConfig>(config: &Cfg) -> Vec<PeerRepo> {
     let _ = config;
     Vec::new()

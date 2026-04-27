@@ -1,3 +1,5 @@
+#![allow(clippy::items_after_statements)]
+
 use std::path::Path;
 
 use serde::Serialize;
@@ -9,7 +11,7 @@ use crate::output::{CliResult, absolute_string, emit_error, emit_response};
 
 use super::require_project;
 
-pub(crate) fn run_initiative(format: OutputFormat, action: InitiativeAction) -> CliResult {
+pub fn run_initiative(format: OutputFormat, action: InitiativeAction) -> CliResult {
     match action {
         InitiativeAction::Registry { action } => match action {
             RegistryAction::Show => run_initiative_registry_show(format),
@@ -223,7 +225,7 @@ fn run_initiative_brief_init(format: OutputFormat, name: String) -> CliResult {
         OutputFormat::Json => emit_response(BriefInitResponse {
             action: "init",
             ok: true,
-            name: name.clone(),
+            name,
             path: absolute_string(&brief_path),
         }),
         OutputFormat::Text => {
@@ -279,7 +281,7 @@ fn run_initiative_brief_show(format: OutputFormat) -> CliResult {
                 OutputFormat::Json => emit_response(BriefShowResponse {
                     brief: BriefJson {
                         frontmatter: brief.frontmatter.clone(),
-                        body: brief.body.clone(),
+                        body: brief.body,
                     },
                     path: brief_path.display().to_string(),
                 }),
@@ -329,4 +331,3 @@ fn print_registry_text(registry: &Registry, registry_path: &Path) {
         println!("    schema: {}", project.schema);
     }
 }
-

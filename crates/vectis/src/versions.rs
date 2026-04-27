@@ -46,6 +46,7 @@ pub struct Versions {
 /// with `crux_core`; chunk 11's `update-versions` is responsible for
 /// proving coherence whenever any of them bumps.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[allow(clippy::struct_field_names)]
 pub struct Crux {
     pub crux_core: String,
     pub crux_http: String,
@@ -80,6 +81,7 @@ pub struct Android {
 /// package); kept as a substruct so external SPM pins can land later
 /// without changing the resolver shape.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[allow(clippy::empty_structs_with_brackets)]
 pub struct Ios {}
 
 /// Tooling pins (CLI binaries the developer installs separately). Mostly
@@ -99,9 +101,7 @@ impl Versions {
     /// is the value of `--version-file` if the user passed one; when set,
     /// the file MUST exist and parse, otherwise a structured
     /// `InvalidProject` error is returned.
-    pub fn resolve(
-        project_dir: &Path, override_path: Option<&Path>,
-    ) -> Result<Versions, VectisError> {
+    pub fn resolve(project_dir: &Path, override_path: Option<&Path>) -> Result<Self, VectisError> {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         Self::resolve_with(project_dir, override_path, home.as_deref())
     }
@@ -110,7 +110,7 @@ impl Versions {
     /// public `resolve` delegates here after reading `$HOME`.
     fn resolve_with(
         project_dir: &Path, override_path: Option<&Path>, home_dir: Option<&Path>,
-    ) -> Result<Versions, VectisError> {
+    ) -> Result<Self, VectisError> {
         if let Some(path) = override_path {
             return load_required(path);
         }
@@ -130,7 +130,7 @@ impl Versions {
     /// Parse the embedded defaults. Public so chunks that legitimately want
     /// the baseline (e.g. `update-versions --dry-run` showing "current"
     /// when no file exists yet) can call it directly.
-    pub fn embedded() -> Result<Versions, VectisError> {
+    pub fn embedded() -> Result<Self, VectisError> {
         load_embedded()
     }
 }
@@ -172,9 +172,9 @@ mod tests {
     fn scratch_dir(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
         let dir = std::env::temp_dir()
-            .join(format!("vectis-versions-{label}-{}-{nanos}-{n}", std::process::id(),));
+            .join(format!("vectis-versions-{label}-{}-{nanos}-{n}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         dir
     }

@@ -55,7 +55,7 @@ impl Project {
             .assert()
             .success();
         copy_dir(&repo_root().join("schemas/omnia"), &root.join("schemas/omnia"));
-        Project { _tmp: tmp, root }
+        Self { _tmp: tmp, root }
     }
 
     /// Initialise a project backed by a local fixture schema dir. The
@@ -73,7 +73,7 @@ impl Project {
             .args(["--name", "test-proj"])
             .assert()
             .success();
-        Project { _tmp: tmp, root }
+        Self { _tmp: tmp, root }
     }
 
     fn root(&self) -> &Path {

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Vectis bootstrap CLI for scaffolding and verifying Crux cross-platform projects (RFC-6)"
+readme = "../../README.md"
 publish = false
 
 [lints]

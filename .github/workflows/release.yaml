@@ -143,7 +143,7 @@ jobs:
     # this job entirely, which means the workflow file stays valid even when
     # CARGO_REGISTRY_TOKEN is not defined — GitHub only evaluates `secrets.*`
     # references inside steps that actually run.
-    if: github.repository == 'augentic/specify'
+    if: github.repository == 'augentic/specify-cli'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -200,6 +200,11 @@ jobs:
 
       - name: Publish specify-validate
         run: cargo publish --package specify-validate --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish specify-vectis
+        run: cargo publish --package specify-vectis --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Wait for index
         run: sleep 30
 

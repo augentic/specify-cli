@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Spec-vs-code drift scaffolding for Specify (RFC-2, stubbed)"
 categories = ["development-tools"]
 keywords = ["specify", "drift", "rfc2"]
+readme = "../../README.md"
 
 [lints]
 workspace = true

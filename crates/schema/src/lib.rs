@@ -40,12 +40,34 @@ pub use schema::{Phase, Pipeline, PipelineEntry, ResolvedSchema, Schema, SchemaS
 /// the rationale — moving the type into `specify-validate` would close a
 /// dependency cycle because `specify-validate` already depends on
 /// `specify-schema` for `PipelineView`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ValidationResult {
-    Pass { rule_id: &'static str, rule: &'static str },
-    Fail { rule_id: &'static str, rule: &'static str, detail: String },
-    Deferred { rule_id: &'static str, rule: &'static str, reason: &'static str },
+    /// Rule passed.
+    Pass {
+        /// Machine-readable rule identifier.
+        rule_id: &'static str,
+        /// Human-readable rule description.
+        rule: &'static str,
+    },
+    /// Rule failed.
+    Fail {
+        /// Machine-readable rule identifier.
+        rule_id: &'static str,
+        /// Human-readable rule description.
+        rule: &'static str,
+        /// Detail message explaining the failure.
+        detail: String,
+    },
+    /// Rule evaluation was deferred.
+    Deferred {
+        /// Machine-readable rule identifier.
+        rule_id: &'static str,
+        /// Human-readable rule description.
+        rule: &'static str,
+        /// Why the rule was deferred.
+        reason: &'static str,
+    },
 }
 
 #[cfg(test)]

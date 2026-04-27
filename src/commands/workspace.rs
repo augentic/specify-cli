@@ -1,9 +1,10 @@
+#![allow(clippy::needless_pass_by_value)]
 
 use serde::Serialize;
 use serde_json::Value;
 use specify::{
-    Error, Plan, Registry, WorkspaceSlotKind, WorkspaceSlotStatus,
-    sync_registry_workspace, workspace_status,
+    Error, Plan, Registry, WorkspaceSlotKind, WorkspaceSlotStatus, sync_registry_workspace,
+    workspace_status,
 };
 
 use crate::cli::OutputFormat;
@@ -12,7 +13,7 @@ use crate::output::{CliResult, emit_error, emit_response};
 use super::plan::require_plan_file;
 use super::require_project;
 
-pub(crate) fn run_initiative_workspace_sync(format: OutputFormat) -> CliResult {
+pub fn run_initiative_workspace_sync(format: OutputFormat) -> CliResult {
     let (project_dir, _config) = match require_project() {
         Ok(v) => v,
         Err(err) => return emit_error(format, &err),
@@ -33,8 +34,8 @@ pub(crate) fn run_initiative_workspace_sync(format: OutputFormat) -> CliResult {
                         registry: Value::Null,
                         synced: false,
                         message: "no registry declared at .specify/registry.yaml; nothing to sync",
-                    })
-                },
+                    });
+                }
                 OutputFormat::Text => {
                     println!("no registry declared at .specify/registry.yaml; nothing to sync");
                 }
@@ -56,8 +57,8 @@ pub(crate) fn run_initiative_workspace_sync(format: OutputFormat) -> CliResult {
                     emit_response(WorkspaceSyncResponse {
                         registry,
                         synced: true,
-                    })
-                },
+                    });
+                }
                 OutputFormat::Text => println!("workspace sync complete"),
             }
             CliResult::Success
@@ -66,7 +67,7 @@ pub(crate) fn run_initiative_workspace_sync(format: OutputFormat) -> CliResult {
     }
 }
 
-pub(crate) fn run_initiative_workspace_status(format: OutputFormat) -> CliResult {
+pub fn run_initiative_workspace_status(format: OutputFormat) -> CliResult {
     let (project_dir, _config) = match require_project() {
         Ok(v) => v,
         Err(err) => return emit_error(format, &err),
@@ -85,8 +86,8 @@ pub(crate) fn run_initiative_workspace_status(format: OutputFormat) -> CliResult
                     emit_response(WorkspaceStatusAbsentResponse {
                         registry: Value::Null,
                         slots: Value::Null,
-                    })
-                },
+                    });
+                }
                 OutputFormat::Text => {
                     println!("no registry declared at .specify/registry.yaml");
                 }
@@ -102,9 +103,7 @@ pub(crate) fn run_initiative_workspace_status(format: OutputFormat) -> CliResult
                         slots: Vec<Value>,
                     }
                     let items: Vec<Value> = slots.iter().map(workspace_slot_to_json).collect();
-                    emit_response(WorkspaceStatusResponse {
-                        slots: items,
-                    });
+                    emit_response(WorkspaceStatusResponse { slots: items });
                 }
                 OutputFormat::Text => {
                     for slot in &slots {
@@ -118,7 +117,7 @@ pub(crate) fn run_initiative_workspace_status(format: OutputFormat) -> CliResult
     }
 }
 
-fn workspace_slot_kind_label(kind: WorkspaceSlotKind) -> &'static str {
+const fn workspace_slot_kind_label(kind: WorkspaceSlotKind) -> &'static str {
     match kind {
         WorkspaceSlotKind::Missing => "missing",
         WorkspaceSlotKind::Symlink => "symlink",
@@ -142,7 +141,8 @@ fn workspace_slot_to_json(slot: &WorkspaceSlotStatus) -> Value {
         kind: workspace_slot_kind_label(slot.kind),
         head_sha: slot.head_sha.clone(),
         dirty: slot.dirty,
-    }).expect("WorkspaceSlotJson serialises")
+    })
+    .expect("WorkspaceSlotJson serialises")
 }
 
 fn print_workspace_slot_line(slot: &WorkspaceSlotStatus) {
@@ -156,7 +156,7 @@ fn print_workspace_slot_line(slot: &WorkspaceSlotStatus) {
     println!("{}: kind={kind} head={head} dirty={dirty}", slot.name);
 }
 
-pub(crate) fn run_workspace_push(format: OutputFormat, projects: Vec<String>, dry_run: bool) -> CliResult {
+pub fn run_workspace_push(format: OutputFormat, projects: Vec<String>, dry_run: bool) -> CliResult {
     let (project_dir, _config) = match require_project() {
         Ok(v) => v,
         Err(err) => return emit_error(format, &err),
@@ -259,4 +259,3 @@ pub(crate) fn run_workspace_push(format: OutputFormat, projects: Vec<String>, dr
         Err(err) => emit_error(format, &err),
     }
 }
-

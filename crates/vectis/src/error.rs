@@ -15,9 +15,13 @@ use thiserror::Error;
 /// Matches the shape documented in RFC-6 § Prerequisite Detection.
 #[derive(Debug, Clone, Serialize)]
 pub struct MissingTool {
+    /// Stable identifier reported in the JSON payload (e.g. `"xcodegen"`).
     pub tool: String,
+    /// Assembly this tool belongs to (`"core"`, `"ios"`, or `"android"`).
     pub assembly: String,
+    /// Human-readable command the user can run to verify the tool.
     pub check: String,
+    /// Install hint shown to the user.
     pub install: String,
 }
 
@@ -35,20 +39,39 @@ pub struct MissingTool {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum VectisError {
+    /// One or more workstation tools are missing.
     #[error("missing prerequisites: {message}")]
-    MissingPrerequisites { missing: Vec<MissingTool>, message: String },
+    MissingPrerequisites {
+        /// Tools that failed their check.
+        missing: Vec<MissingTool>,
+        /// Human-readable summary.
+        message: String,
+    },
 
+    /// Filesystem I/O failure.
     #[error("io error: {0}")]
     Io(#[from] io::Error),
 
+    /// The project structure or configuration is invalid.
     #[error("invalid project: {message}")]
-    InvalidProject { message: String },
+    InvalidProject {
+        /// Diagnostic describing what is wrong.
+        message: String,
+    },
 
+    /// A build or verify step failed.
     #[error("verify failed: {message}")]
-    Verify { message: String },
+    Verify {
+        /// Diagnostic describing the failure.
+        message: String,
+    },
 
+    /// An internal invariant was violated.
     #[error("internal error: {message}")]
-    Internal { message: String },
+    Internal {
+        /// Diagnostic describing what went wrong.
+        message: String,
+    },
 }
 
 impl VectisError {
@@ -56,10 +79,10 @@ impl VectisError {
     ///
     /// Missing prerequisites is `2` so callers can distinguish "your
     /// workstation is incomplete" from generic failure (`1`).
-    #[must_use] 
-    pub fn exit_code(&self) -> i32 {
+    #[must_use]
+    pub const fn exit_code(&self) -> i32 {
         match self {
-            VectisError::MissingPrerequisites { .. } => 2,
+            Self::MissingPrerequisites { .. } => 2,
             _ => 1,
         }
     }
@@ -67,14 +90,14 @@ impl VectisError {
     /// Kebab-case identifier for the variant, used as the `error` value
     /// in the structured JSON shape and by the dispatcher when
     /// synthesising the `exit-code`/`message` envelope.
-    #[must_use] 
-    pub fn variant_str(&self) -> &'static str {
+    #[must_use]
+    pub const fn variant_str(&self) -> &'static str {
         match self {
-            VectisError::MissingPrerequisites { .. } => "missing-prerequisites",
-            VectisError::Io(_) => "io",
-            VectisError::InvalidProject { .. } => "invalid-project",
-            VectisError::Verify { .. } => "verify",
-            VectisError::Internal { .. } => "internal",
+            Self::MissingPrerequisites { .. } => "missing-prerequisites",
+            Self::Io(_) => "io",
+            Self::InvalidProject { .. } => "invalid-project",
+            Self::Verify { .. } => "verify",
+            Self::Internal { .. } => "internal",
         }
     }
 
@@ -83,27 +106,21 @@ impl VectisError {
     /// Keys and the `error` variant are kebab-case to match the v2 JSON
     /// contract enforced by the `specify` binary; the dispatcher's
     /// `emit_json` helper auto-injects `schema-version: 2` on top.
-    #[must_use] 
+    #[must_use]
     pub fn to_json(&self) -> serde_json::Value {
         match self {
-            VectisError::MissingPrerequisites { missing, message } => serde_json::json!({
+            Self::MissingPrerequisites { missing, message } => serde_json::json!({
                 "error": self.variant_str(),
                 "missing": missing,
                 "message": message,
             }),
-            VectisError::Io(err) => serde_json::json!({
+            Self::Io(err) => serde_json::json!({
                 "error": self.variant_str(),
                 "message": err.to_string(),
             }),
-            VectisError::InvalidProject { message } => serde_json::json!({
-                "error": self.variant_str(),
-                "message": message,
-            }),
-            VectisError::Verify { message } => serde_json::json!({
-                "error": self.variant_str(),
-                "message": message,
-            }),
-            VectisError::Internal { message } => serde_json::json!({
+            Self::InvalidProject { message }
+            | Self::Verify { message }
+            | Self::Internal { message } => serde_json::json!({
                 "error": self.variant_str(),
                 "message": message,
             }),

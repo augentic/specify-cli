@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value, clippy::items_after_statements)]
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -5,19 +7,17 @@ use serde::Serialize;
 use serde_json::Value;
 
 use specify::{
-    ChangeMetadata, Error, Plan, PlanChange, PlanChangePatch,
-    PlanLockAcquired, PlanLockReleased, PlanLockStamp, PlanLockState, PlanStatus,
-    PlanValidationLevel, PlanValidationResult, ProjectConfig, Registry,
+    ChangeMetadata, Error, Plan, PlanChange, PlanChangePatch, PlanLockAcquired, PlanLockReleased,
+    PlanLockStamp, PlanLockState, PlanStatus, PlanValidationLevel, PlanValidationResult,
+    ProjectConfig, Registry,
 };
 
 use crate::cli::{LockAction, OutputFormat, PlanAction};
-use crate::output::{
-    CliResult, absolute_string, emit_error, emit_response,
-};
+use crate::output::{CliResult, absolute_string, emit_error, emit_response};
 
 use super::require_project;
 
-pub(crate) fn run_plan(format: OutputFormat, action: PlanAction) -> CliResult {
+pub fn run_plan(format: OutputFormat, action: PlanAction) -> CliResult {
     match action {
         PlanAction::Init { name, sources } => run_initiative_init(format, name, sources),
         PlanAction::Validate => run_initiative_validate(format),
@@ -72,32 +72,34 @@ pub(crate) fn run_plan(format: OutputFormat, action: PlanAction) -> CliResult {
 }
 
 /// `<project_dir>/.specify/plan.yaml`.
-pub(crate) fn plan_file_path(project_dir: &Path) -> PathBuf {
+pub fn plan_file_path(project_dir: &Path) -> PathBuf {
     ProjectConfig::specify_dir(project_dir).join("plan.yaml")
 }
 
 /// Ensure the plan file exists before we try to load it. Error text is
 /// the stable "plan file not found: .specify/plan.yaml" string that
 /// skill authors match on.
-pub(crate) fn require_plan_file(project_dir: &Path) -> Result<PathBuf, Error> {
+pub fn require_plan_file(project_dir: &Path) -> Result<PathBuf, Error> {
     let path = plan_file_path(project_dir);
     if !path.exists() {
         return Err(Error::ArtifactNotFound {
             kind: "plan.yaml",
-            path: path.clone(),
+            path,
         });
     }
     Ok(path)
 }
 
-fn plan_validation_level_label(level: &PlanValidationLevel) -> &'static str {
+const fn plan_validation_level_label(level: &PlanValidationLevel) -> &'static str {
     match level {
         PlanValidationLevel::Error => "error",
         PlanValidationLevel::Warning => "warning",
     }
 }
 
-fn run_initiative_init(format: OutputFormat, name: String, sources: Vec<(String, String)>) -> CliResult {
+fn run_initiative_init(
+    format: OutputFormat, name: String, sources: Vec<(String, String)>,
+) -> CliResult {
     let (project_dir, _config) = match require_project() {
         Ok(v) => v,
         Err(err) => return emit_error(format, &err),
@@ -141,7 +143,7 @@ fn run_initiative_init(format: OutputFormat, name: String, sources: Vec<(String,
     match format {
         OutputFormat::Json => emit_response(PlanInitResponse {
             plan: PlanRef {
-                name: name.clone(),
+                name,
                 path: absolute_string(&plan_path),
             },
         }),
@@ -223,7 +225,7 @@ fn run_initiative_validate(format: OutputFormat) -> CliResult {
             let items: Vec<Value> = results.iter().map(plan_validation_to_json).collect();
             emit_response(PlanValidateResponse {
                 plan: PlanRef {
-                    name: plan.name.clone(),
+                    name: plan.name,
                     path: plan_path.display().to_string(),
                 },
                 results: items,
@@ -258,7 +260,8 @@ fn plan_validation_to_json(r: &PlanValidationResult) -> Value {
         code: r.code,
         entry: &r.entry,
         message: &r.message,
-    }).expect("PlanValidationJson serialises")
+    })
+    .expect("PlanValidationJson serialises")
 }
 
 /// Roughly-columnar single line per finding. Not golden-tested — skills
@@ -268,10 +271,7 @@ fn print_plan_validation_line(r: &PlanValidationResult) {
         PlanValidationLevel::Error => "ERROR  ",
         PlanValidationLevel::Warning => "WARNING",
     };
-    let entry_col = match &r.entry {
-        Some(e) => format!("[{e}]"),
-        None => String::new(),
-    };
+    let entry_col = r.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
     println!("{level} {:<32} {:<24} {}", r.code, entry_col, r.message);
 }
 
@@ -344,8 +344,8 @@ fn run_initiative_next(format: OutputFormat) -> CliResult {
         return CliResult::Success;
     }
 
-    match plan.next_eligible() {
-        Some(entry) => match format {
+    if let Some(entry) = plan.next_eligible() {
+        match format {
             OutputFormat::Json => emit_response(PlanNextResponse {
                 next: Some(entry.name.clone()),
                 reason: None,
@@ -356,40 +356,38 @@ fn run_initiative_next(format: OutputFormat) -> CliResult {
                 sources: Some(entry.sources.clone()),
             }),
             OutputFormat::Text => println!("{}", entry.name),
-        },
-        None => {
-            // Classify the "None" branch: fully-finished initiative vs
-            // still-has-work-but-blocked. An empty plan falls out of the
-            // `all` check as "all-done" (vacuously true).
-            let all_terminal = plan
-                .changes
-                .iter()
-                .all(|c| matches!(c.status, PlanStatus::Done | PlanStatus::Skipped));
-            let (reason, text_msg) = if all_terminal {
-                ("all-done", "All changes done.")
-            } else {
-                (
-                    "stuck",
-                    "No eligible changes — remaining entries are blocked, failed, or waiting on unmet dependencies.",
-                )
-            };
-            match format {
-                OutputFormat::Json => emit_response(PlanNextResponse {
-                    next: None,
-                    reason: Some(reason.to_string()),
-                    active: None,
-                    project: None,
-                    schema: None,
-                    description: None,
-                    sources: None,
-                }),
-                OutputFormat::Text => println!("{text_msg}"),
-            }
+        }
+    } else {
+        // Classify the "None" branch: fully-finished initiative vs
+        // still-has-work-but-blocked. An empty plan falls out of the
+        // `all` check as "all-done" (vacuously true).
+        let all_terminal =
+            plan.changes.iter().all(|c| matches!(c.status, PlanStatus::Done | PlanStatus::Skipped));
+        let (reason, text_msg) = if all_terminal {
+            ("all-done", "All changes done.")
+        } else {
+            (
+                "stuck",
+                "No eligible changes — remaining entries are blocked, failed, or waiting on unmet dependencies.",
+            )
+        };
+        match format {
+            OutputFormat::Json => emit_response(PlanNextResponse {
+                next: None,
+                reason: Some(reason.to_string()),
+                active: None,
+                project: None,
+                schema: None,
+                description: None,
+                sources: None,
+            }),
+            OutputFormat::Text => println!("{text_msg}"),
         }
     }
     CliResult::Success
 }
 
+#[allow(clippy::too_many_lines)]
 fn run_initiative_status(format: OutputFormat) -> CliResult {
     let (project_dir, _config) = match require_project() {
         Ok(v) => v,
@@ -421,23 +419,22 @@ fn run_initiative_status(format: OutputFormat) -> CliResult {
         return emit_plan_structural_error(format);
     }
 
-    let (ordered, order_label) = match plan.topological_order() {
-        Ok(v) => (v, "topological"),
-        Err(_) => {
-            match format {
-                OutputFormat::Json => {
-                    eprintln!(
-                        "warning: dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
-                    );
-                }
-                OutputFormat::Text => {
-                    println!(
-                        "⚠ dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
-                    );
-                }
+    let (ordered, order_label) = if let Ok(v) = plan.topological_order() {
+        (v, "topological")
+    } else {
+        match format {
+            OutputFormat::Json => {
+                eprintln!(
+                    "warning: dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
+                );
             }
-            (plan.changes.iter().collect::<Vec<_>>(), "list")
+            OutputFormat::Text => {
+                println!(
+                    "⚠ dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
+                );
+            }
         }
+        (plan.changes.iter().collect::<Vec<_>>(), "list")
     };
 
     let mut counts: BTreeMap<PlanStatus, usize> = PlanStatus::ALL.iter().map(|&s| (s, 0)).collect();
@@ -447,8 +444,7 @@ fn run_initiative_status(format: OutputFormat) -> CliResult {
     let total: usize = counts.values().sum();
 
     let active = plan.changes.iter().find(|c| c.status == PlanStatus::InProgress);
-    let active_lifecycle =
-        active.map(|a| load_lifecycle_label(&changes_dir.join(&a.name))).unwrap_or(None);
+    let active_lifecycle = active.and_then(|a| load_lifecycle_label(&changes_dir.join(&a.name)));
 
     let blocked: Vec<&PlanChange> =
         plan.changes.iter().filter(|c| c.status == PlanStatus::Blocked).collect();
@@ -509,10 +505,18 @@ fn run_initiative_status(format: OutputFormat) -> CliResult {
 
             let blocked_json: Vec<PlanNameReason> = blocked
                 .iter()
-                .map(|c| PlanNameReason { name: c.name.clone(), reason: c.status_reason.clone() })
+                .map(|c| PlanNameReason {
+                    name: c.name.clone(),
+                    reason: c.status_reason.clone(),
+                })
                 .collect();
-            let failed_json: Vec<PlanNameReason> =
-                failed.iter().map(|c| PlanNameReason { name: c.name.clone(), reason: c.status_reason.clone() }).collect();
+            let failed_json: Vec<PlanNameReason> = failed
+                .iter()
+                .map(|c| PlanNameReason {
+                    name: c.name.clone(),
+                    reason: c.status_reason.clone(),
+                })
+                .collect();
 
             let active_json = active.map(|a| PlanActiveJson {
                 name: a.name.clone(),
@@ -601,7 +605,8 @@ fn plan_entry_to_json(entry: &PlanChange, lifecycle: Option<String>) -> Value {
         description: entry.description.clone(),
         lifecycle,
         context: entry.context.clone(),
-    }).expect("PlanEntryJson serialises")
+    })
+    .expect("PlanEntryJson serialises")
 }
 
 fn print_plan_status_text(view: &PlanStatusView) {
@@ -878,11 +883,7 @@ fn run_initiative_transition(
             },
         }),
         OutputFormat::Text => {
-            println!(
-                "Transitioned '{name}': {} → {}.",
-                old_status,
-                entry.status,
-            );
+            println!("Transitioned '{name}': {} → {}.", old_status, entry.status);
         }
     }
     CliResult::Success
@@ -897,7 +898,7 @@ fn run_initiative_archive(format: OutputFormat, force: bool) -> CliResult {
     if !plan_path.exists() {
         let err = Error::ArtifactNotFound {
             kind: "plan.yaml",
-            path: plan_path.clone(),
+            path: plan_path,
         };
         return emit_error(format, &err);
     }
@@ -929,7 +930,7 @@ fn run_initiative_archive(format: OutputFormat, force: bool) -> CliResult {
                 emit_response(PlanArchiveResponse {
                     archived: absolute_string(&archived),
                     archived_plans_dir: archived_plans_dir.as_deref().map(absolute_string),
-                    plan: PlanArchiveName { name: plan_name.clone() },
+                    plan: PlanArchiveName { name: plan_name },
                 });
                 CliResult::Success
             }
@@ -957,7 +958,7 @@ fn run_initiative_archive(format: OutputFormat, force: bool) -> CliResult {
                     }
                     emit_response(PlanOutstandingError {
                         error: "plan-has-outstanding-work",
-                        entries: entries.clone(),
+                        entries,
                         exit_code: CliResult::GenericFailure.code(),
                     });
                 }
@@ -1034,7 +1035,9 @@ fn run_initiative_lock_release(format: OutputFormat, pid: Option<u32>) -> CliRes
 /// response. All four exit 0 — a mismatched holder is a warning, not
 /// an error, per RFC-2 §"Driver Concurrency" (stale reclaim is the
 /// self-heal path's job, not release's).
-fn emit_plan_lock_released(format: OutputFormat, our_pid: u32, outcome: &PlanLockReleased) -> CliResult {
+fn emit_plan_lock_released(
+    format: OutputFormat, our_pid: u32, outcome: &PlanLockReleased,
+) -> CliResult {
     match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
@@ -1113,8 +1116,8 @@ fn emit_plan_lock_state(format: OutputFormat, state: &PlanLockState) -> CliResul
         }),
         OutputFormat::Text => match state.pid {
             Some(pid) => {
-                let stale = state.stale.unwrap_or(false);
-                if stale {
+                let is_stale = state.stale.unwrap_or(false);
+                if is_stale {
                     println!("stale (pid {pid} no longer alive)");
                 } else {
                     println!("held by pid {pid}");
@@ -1128,4 +1131,3 @@ fn emit_plan_lock_state(format: OutputFormat, state: &PlanLockState) -> CliResul
     }
     CliResult::Success
 }
-

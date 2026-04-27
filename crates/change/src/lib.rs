@@ -19,39 +19,54 @@ use serde::{Deserialize, Serialize};
 use specify_error::Error;
 pub use specify_schema::Phase;
 
+/// Verb-level operations on a Specify change directory.
 pub mod actions;
 mod atomic;
+/// On-disk journal for append-only audit logging.
 pub mod journal;
+/// Advisory PID lock for the Layer 2 executor.
 pub mod lock;
+/// Plan state machine for ordered, dependency-aware change execution.
 pub mod plan;
+/// RFC 3339 timestamp newtype.
 pub mod timestamp;
 
 pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339, is_valid_kebab_name};
-pub use timestamp::Rfc3339Stamp;
 pub use journal::{EntryKind, Journal, JournalEntry};
 pub use lock::{PlanLockAcquired, PlanLockGuard, PlanLockReleased, PlanLockStamp, PlanLockState};
 pub use plan::*;
+pub use timestamp::Rfc3339Stamp;
 
 /// On-disk representation of `<change_dir>/.metadata.yaml`.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct ChangeMetadata {
+    /// Schema identifier for this change (e.g. `omnia`).
     pub schema: String,
+    /// Current lifecycle state.
     pub status: LifecycleStatus,
+    /// When the change was created.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub created_at: Option<Rfc3339Stamp>,
+    /// When the change entered `Defined`.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub defined_at: Option<Rfc3339Stamp>,
+    /// When the build phase started.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub build_started_at: Option<Rfc3339Stamp>,
+    /// When the change reached `Complete`.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub completed_at: Option<Rfc3339Stamp>,
+    /// When the change was merged.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub merged_at: Option<Rfc3339Stamp>,
+    /// When the change was dropped.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub dropped_at: Option<Rfc3339Stamp>,
+    /// Human-readable reason for dropping the change.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub drop_reason: Option<String>,
+    /// Specs affected by this change.
     #[serde(default)]
     pub touched_specs: Vec<TouchedSpec>,
     /// Outcome of the most recent phase run.
@@ -88,13 +103,18 @@ pub struct ChangeMetadata {
 /// Written by `specify change phase-outcome` (for define/build phases
 /// and merge failure/deferred) and by `merge_change` (for merge
 /// success, stamped atomically before the archive move).
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct PhaseOutcome {
+    /// Which phase produced this outcome.
     pub phase: Phase,
+    /// Success, failure, or deferred classification.
     pub outcome: Outcome,
+    /// When the outcome was recorded.
     pub at: Rfc3339Stamp,
+    /// Short human-readable summary.
     pub summary: String,
+    /// Optional additional context (e.g. stderr output).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<String>,
 }
@@ -104,8 +124,11 @@ pub struct PhaseOutcome {
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
 pub enum Outcome {
+    /// Phase completed successfully.
     Success,
+    /// Phase failed.
     Failure,
+    /// Phase deferred (needs human input).
     Deferred,
 }
 
@@ -118,19 +141,27 @@ pub enum Outcome {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum LifecycleStatus {
+    /// Change is being defined (artifacts authored).
     Defining,
+    /// Definition complete, awaiting build.
     Defined,
+    /// Build phase in progress.
     Building,
+    /// Build complete, awaiting merge.
     Complete,
+    /// Specs merged into baseline and change archived.
     Merged,
+    /// Change discarded without merging.
     Dropped,
 }
 
 /// One entry in `ChangeMetadata::touched_specs`.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct TouchedSpec {
+    /// Capability name (kebab-case).
     pub name: String,
+    /// Whether this spec is new or modifies an existing baseline.
     #[serde(rename = "type")]
     pub spec_type: SpecType,
 }
@@ -140,7 +171,9 @@ pub struct TouchedSpec {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum SpecType {
+    /// A brand-new spec not yet in the baseline.
     New,
+    /// A modification of an existing baseline spec.
     Modified,
 }
 
@@ -178,36 +211,37 @@ impl fmt::Display for SpecType {
 
 impl LifecycleStatus {
     /// The creation edge (`START → Defining`). Called by `init`/`define`.
-    #[must_use] 
-    pub fn initial() -> Self {
-        LifecycleStatus::Defining
+    #[must_use]
+    pub const fn initial() -> Self {
+        Self::Defining
     }
 
-    #[must_use] 
-    pub fn is_terminal(&self) -> bool {
-        matches!(self, LifecycleStatus::Merged | LifecycleStatus::Dropped)
+    /// Whether this status is terminal (no further transitions possible).
+    #[must_use]
+    pub const fn is_terminal(&self) -> bool {
+        matches!(self, Self::Merged | Self::Dropped)
     }
 
-    #[must_use] 
-    pub fn can_transition_to(&self, target: &Self) -> bool {
-        use LifecycleStatus::*;
+    /// Whether `self → target` is a legal edge in the lifecycle state machine.
+    #[must_use]
+    pub const fn can_transition_to(&self, target: &Self) -> bool {
+        use LifecycleStatus::{Building, Complete, Defined, Defining, Dropped, Merged};
         matches!(
             (self, target),
-            (Defining, Defined)
-                | (Defined, Defining)
-                | (Defined, Building)
+            (Defining, Defined | Complete)
+                | (Defined, Defining | Building)
                 | (Building, Complete)
                 | (Complete, Merged)
-                | (Defining, Complete)
                 | (Defining | Defined | Building | Complete, Dropped)
         )
     }
 
+    /// Attempt a transition from `self` to `target`.
     ///
     /// # Errors
     ///
-    /// Returns an error if the operation fails.
-    pub fn transition(&self, target: LifecycleStatus) -> Result<LifecycleStatus, Error> {
+    /// Returns `Error::Lifecycle` if the transition is illegal.
+    pub fn transition(&self, target: Self) -> Result<Self, Error> {
         if self.can_transition_to(&target) {
             Ok(target)
         } else {
@@ -221,7 +255,7 @@ impl LifecycleStatus {
 
 impl ChangeMetadata {
     /// Convenience helper: `<change_dir>/.metadata.yaml`.
-    #[must_use] 
+    #[must_use]
     pub fn path(change_dir: &Path) -> PathBuf {
         change_dir.join(".metadata.yaml")
     }
@@ -245,7 +279,7 @@ impl ChangeMetadata {
             });
         }
         let content = std::fs::read_to_string(&path)?;
-        let meta: ChangeMetadata = serde_yaml_ng::from_str(&content)?;
+        let meta: Self = serde_yaml_ng::from_str(&content)?;
         Ok(meta)
     }
 
@@ -517,8 +551,6 @@ touched-specs:
 
     #[test]
     fn real_world_change_file_is_parseable_if_present() {
-        // Look for `<repo>/.specify/changes/<something>/.metadata.yaml`.
-        // `CARGO_MANIFEST_DIR` points at `<repo>/crates/change` at test time.
         let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
         let changes_dir = manifest
             .parent()
@@ -528,7 +560,7 @@ touched-specs:
             return;
         };
         let Ok(read_dir) = std::fs::read_dir(&changes_dir) else {
-            return; // fresh clone — no changes to parse
+            return;
         };
         for entry in read_dir.flatten() {
             let change_path = entry.path();

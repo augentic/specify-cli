@@ -34,8 +34,13 @@ pub use error::{MissingTool, VectisError};
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum CommandOutcome {
+    /// Handler completed normally with a JSON payload.
     Success(serde_json::Value),
-    Stub { command: &'static str },
+    /// Handler is not yet implemented.
+    Stub {
+        /// The subcommand name that produced this stub.
+        command: &'static str,
+    },
 }
 
 /// `vectis init` arguments.

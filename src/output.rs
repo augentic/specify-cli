@@ -7,7 +7,7 @@ use specify::Error;
 use crate::cli::OutputFormat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CliResult {
+pub enum CliResult {
     Success,
     GenericFailure,
     ValidationFailed,
@@ -15,7 +15,7 @@ pub(crate) enum CliResult {
 }
 
 impl CliResult {
-    pub fn code(self) -> u8 {
+    pub const fn code(self) -> u8 {
         match self {
             Self::Success => 0,
             Self::GenericFailure => 1,
@@ -27,16 +27,16 @@ impl CliResult {
 
 impl From<CliResult> for ExitCode {
     fn from(r: CliResult) -> Self {
-        ExitCode::from(r.code())
+        Self::from(r.code())
     }
 }
 
 impl From<&Error> for CliResult {
     fn from(err: &Error) -> Self {
         match err {
-            Error::SpecifyVersionTooOld { .. } => CliResult::VersionTooOld,
-            Error::Validation { .. } => CliResult::ValidationFailed,
-            _ => CliResult::GenericFailure,
+            Error::SpecifyVersionTooOld { .. } => Self::VersionTooOld,
+            Error::Validation { .. } => Self::ValidationFailed,
+            _ => Self::GenericFailure,
         }
     }
 }
@@ -66,9 +66,9 @@ impl From<&Error> for CliResult {
 ///   and are unchanged.
 /// - No shape changes beyond the casing: key sets, nesting, and value
 ///   types are frozen.
-pub(crate) const JSON_SCHEMA_VERSION: u64 = 2;
+pub const JSON_SCHEMA_VERSION: u64 = 2;
 
-pub(crate) fn emit_error(format: OutputFormat, err: &Error) -> CliResult {
+pub fn emit_error(format: OutputFormat, err: &Error) -> CliResult {
     let code = CliResult::from(err);
     match format {
         OutputFormat::Json => emit_json_error(err, code),
@@ -80,7 +80,7 @@ pub(crate) fn emit_error(format: OutputFormat, err: &Error) -> CliResult {
 }
 
 #[derive(Serialize)]
-pub(crate) struct JsonEnvelope<T: Serialize> {
+pub struct JsonEnvelope<T> {
     #[serde(rename = "schema-version")]
     schema_version: u64,
     #[serde(flatten)]
@@ -88,7 +88,7 @@ pub(crate) struct JsonEnvelope<T: Serialize> {
 }
 
 impl<T: Serialize> JsonEnvelope<T> {
-    fn wrap(payload: T) -> Self {
+    const fn wrap(payload: T) -> Self {
         Self {
             schema_version: JSON_SCHEMA_VERSION,
             payload,
@@ -96,7 +96,7 @@ impl<T: Serialize> JsonEnvelope<T> {
     }
 }
 
-pub(crate) fn emit_response<T: Serialize>(payload: T) {
+pub fn emit_response<T: Serialize>(payload: T) {
     let envelope = JsonEnvelope::wrap(payload);
     let value = serde_json::to_value(&envelope).expect("Serialize to Value");
     println!("{}", serde_json::to_string_pretty(&value).expect("JSON serialise"));
@@ -104,7 +104,7 @@ pub(crate) fn emit_response<T: Serialize>(payload: T) {
 
 /// Serialise a JSON payload with `schema-version` automatically set on
 /// object-shaped responses.
-pub(crate) fn emit_json(value: serde_json::Value) {
+pub fn emit_json(value: serde_json::Value) {
     let wrapped = match value {
         serde_json::Value::Object(mut map) => {
             map.entry("schema-version".to_string())
@@ -118,13 +118,13 @@ pub(crate) fn emit_json(value: serde_json::Value) {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) struct ErrorResponse {
+pub struct ErrorResponse {
     pub error: String,
     pub message: String,
     pub exit_code: u8,
 }
 
-pub(crate) fn emit_json_error(err: &Error, code: CliResult) {
+pub fn emit_json_error(err: &Error, code: CliResult) {
     let variant = match err {
         Error::NotInitialized => "not-initialized",
         Error::SchemaResolution(_) => "schema-resolution",
@@ -140,7 +140,7 @@ pub(crate) fn emit_json_error(err: &Error, code: CliResult) {
         Error::InvalidName(_) => "invalid-name",
         Error::Io(_) => "io",
         Error::Yaml(_) => "yaml",
-            _ => unreachable!(),
+        _ => unreachable!(),
     };
     emit_response(ErrorResponse {
         error: variant.to_string(),
@@ -149,9 +149,8 @@ pub(crate) fn emit_json_error(err: &Error, code: CliResult) {
     });
 }
 
-pub(crate) fn absolute_string(path: &Path) -> String {
+pub fn absolute_string(path: &Path) -> String {
     std::fs::canonicalize(path)
         .ok()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.to_string_lossy().into_owned())
+        .map_or_else(|| path.to_string_lossy().into_owned(), |p| p.to_string_lossy().into_owned())
 }

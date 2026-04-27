@@ -43,9 +43,11 @@ pub enum CreateIfExists {
 
 /// Outcome of [`create`], surfacing whether a new directory was written
 /// or an existing one was reused.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateOutcome {
+    /// Path to the change directory.
     pub change_dir: PathBuf,
+    /// Loaded or freshly-created metadata.
     pub metadata: ChangeMetadata,
     /// `true` when the call created a new directory; `false` when an
     /// existing directory was reused (`CreateIfExists::Continue`).
@@ -57,11 +59,15 @@ pub struct CreateOutcome {
 
 /// A capability-level conflict between two active changes both touching
 /// the same spec.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Overlap {
+    /// The shared capability name.
     pub capability: String,
+    /// Name of the other change that touches the same capability.
     pub other_change: String,
+    /// How our change touches the capability.
     pub our_spec_type: SpecType,
+    /// How the other change touches the capability.
     pub other_spec_type: SpecType,
 }
 
@@ -80,7 +86,7 @@ pub struct Overlap {
 ///
 /// # Errors
 ///
-/// Returns an error if the operation fails.
+/// Returns `Error::InvalidName` if the name is not valid kebab-case.
 pub fn validate_name(name: &str) -> Result<(), Error> {
     if name.is_empty() {
         return Err(Error::InvalidName("change name cannot be empty".to_string()));
@@ -105,7 +111,8 @@ pub fn validate_name(name: &str) -> Result<(), Error> {
     Ok(())
 }
 
-#[must_use] 
+/// Returns `true` if `s` is a valid kebab-case name per Specify naming rules.
+#[must_use]
 pub fn is_valid_kebab_name(s: &str) -> bool {
     validate_name(s).is_ok()
 }
@@ -122,6 +129,7 @@ pub fn is_valid_kebab_name(s: &str) -> bool {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
+#[allow(clippy::similar_names)]
 pub fn create(
     changes_dir: &Path, name: &str, schema: &str, if_exists: CreateIfExists, now: DateTime<Utc>,
 ) -> Result<CreateOutcome, Error> {
@@ -457,7 +465,7 @@ pub fn drop(
 /// Re-exported at the crate root so the `specify` binary can route
 /// its own timestamp writers (e.g. `change journal-append`) through
 /// the same helper.
-#[must_use] 
+#[must_use]
 pub fn format_rfc3339(now: DateTime<Utc>) -> Rfc3339Stamp {
     Rfc3339Stamp::from_raw(now.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }

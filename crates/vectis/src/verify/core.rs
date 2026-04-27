@@ -48,6 +48,7 @@ use crate::verify::pipeline::{BuildStep, run_step};
 /// # Errors
 ///
 /// Returns an error if the operation fails.
+#[allow(clippy::too_many_lines)]
 pub fn run_pipeline(
     project_dir: &Path, codegen_swift_dir: &Path, codegen_kotlin_dir: &Path,
 ) -> Result<Vec<BuildStep>, VectisError> {

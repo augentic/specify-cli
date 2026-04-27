@@ -24,6 +24,7 @@ use crate::versions::Versions;
 /// Path mapping order, also matches the RFC's example output).
 #[derive(Debug)]
 pub struct CoreScaffold {
+    /// Relative paths of written files, in template declaration order.
     pub files: Vec<String>,
 }
 
@@ -75,7 +76,7 @@ pub fn validate_app_name(app_name: &str) -> Result<(), VectisError> {
 /// chunk-3a `codegen.rs` template uses `__ANDROID_PACKAGE__` as the Kotlin
 /// namespace -- the binary still has to compile when no Android shell is
 /// requested. See chunk-3a MANIFEST § Android-only placeholder.
-#[must_use] 
+#[must_use]
 pub fn default_android_package(app_name: &str) -> String {
     format!("com.vectis.{}", app_name.to_lowercase())
 }
@@ -149,9 +150,9 @@ mod tests {
     fn scratch_dir(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
         let dir = std::env::temp_dir()
-            .join(format!("vectis-init-{label}-{}-{nanos}-{n}", std::process::id(),));
+            .join(format!("vectis-init-{label}-{}-{nanos}-{n}", std::process::id()));
         // Deliberately do not create the dir -- some tests want to prove
         // scaffold() will create it itself.
         dir
@@ -166,7 +167,7 @@ mod tests {
         let err = validate_app_name("").expect_err("empty name must fail");
         match err {
             VectisError::InvalidProject { message } => {
-                assert!(message.contains("must not be empty"))
+                assert!(message.contains("must not be empty"));
             }
             other => panic!("unexpected: {other:?}"),
         }

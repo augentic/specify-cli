@@ -18,12 +18,16 @@ use specify_spec::{RequirementBlock, parse_baseline};
 /// Serialised with `kebab-case` field names so the JSON/YAML shape is stable
 /// across the Phase-1 CLI (`specify verify`, `specify drift` — to land in
 /// RFC-2) without another serde churn later.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct DriftEntry {
+    /// Stable requirement identifier (e.g. `REQ-001`).
     pub requirement_id: String,
+    /// Human-readable requirement name.
     pub requirement_name: String,
+    /// Drift classification for this requirement.
     pub status: DriftStatus,
+    /// Optional detail about why the requirement drifted or is missing.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub detail: Option<String>,
 }
@@ -35,9 +39,13 @@ pub struct DriftEntry {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum DriftStatus {
+    /// Requirement is fully covered by source artefacts.
     Covered,
+    /// Requirement exists but source artefacts have diverged.
     Drifted,
+    /// Requirement has no corresponding source artefacts.
     Missing,
+    /// Source artefact exists without a corresponding requirement.
     Unspecified,
 }
 

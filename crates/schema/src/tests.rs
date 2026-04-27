@@ -135,7 +135,7 @@ fn yaml_parse_error_surface_for_missing_required_field() {
 
 #[test]
 fn pipeline_plan_parses_when_present() {
-    let yaml = r#"
+    let yaml = r"
 name: demo
 version: 1
 description: demo with plan
@@ -149,7 +149,7 @@ pipeline:
     - { id: build, brief: briefs/build.md }
   merge:
     - { id: merge, brief: briefs/merge.md }
-"#;
+";
     let schema: Schema = serde_yaml_ng::from_str(yaml).expect("parses");
     let plan = schema.plan_entries();
     assert_eq!(plan.len(), 2);
@@ -160,8 +160,7 @@ pipeline:
 
     // `entries()` stays the execution loop only — plan briefs do not
     // leak into define/build/merge iteration.
-    let phases: Vec<Phase> = schema.entries().map(|(p, _)| p).collect();
-    assert!(!phases.contains(&Phase::Plan));
+    assert!(!schema.entries().any(|(p, _)| p == Phase::Plan));
 
     // Plan briefs are still discoverable via `entry()`.
     let (phase, entry) = schema.entry("discovery").expect("discovery visible via entry()");
@@ -195,7 +194,7 @@ fn pipeline_without_plan_parses_unchanged() {
 
 #[test]
 fn plan_entries_merge_overrides_by_id_and_appends_new_entries() {
-    let parent_yaml = r#"
+    let parent_yaml = r"
 name: parent
 version: 1
 description: parent
@@ -209,8 +208,8 @@ pipeline:
     - { id: build, brief: briefs/build.md }
   merge:
     - { id: merge, brief: briefs/merge.md }
-"#;
-    let child_yaml = r#"
+";
+    let child_yaml = r"
 name: child
 version: 1
 description: child
@@ -224,7 +223,7 @@ pipeline:
     - { id: build, brief: briefs/build.md }
   merge:
     - { id: merge, brief: briefs/merge.md }
-"#;
+";
     let parent: Schema = serde_yaml_ng::from_str(parent_yaml).unwrap();
     let child: Schema = serde_yaml_ng::from_str(child_yaml).unwrap();
     let merged = Schema::merge(parent, child);
@@ -271,7 +270,7 @@ fn json_schema_rejects_missing_define_even_with_plan_present() {
 
 #[test]
 fn merge_overrides_by_id_and_appends_new_entries() {
-    let parent_yaml = r#"
+    let parent_yaml = r"
 name: parent
 version: 1
 description: parent schema
@@ -283,8 +282,8 @@ pipeline:
     - { id: build, brief: briefs/build.md }
   merge:
     - { id: merge, brief: briefs/merge.md }
-"#;
-    let child_yaml = r#"
+";
+    let child_yaml = r"
 name: child
 version: 2
 description: child schema
@@ -296,7 +295,7 @@ pipeline:
     - { id: build, brief: briefs/build.md }
   merge:
     - { id: merge, brief: briefs/merge.md }
-"#;
+";
 
     let parent: Schema = serde_yaml_ng::from_str(parent_yaml).unwrap();
     let child: Schema = serde_yaml_ng::from_str(child_yaml).unwrap();
@@ -880,7 +879,7 @@ projects:
     let err = Registry::load(tmp.path()).expect_err("empty name");
     match err {
         Error::Config(msg) => {
-            assert!(msg.contains("empty") || msg.contains("kebab-case"), "msg: {msg}")
+            assert!(msg.contains("empty") || msg.contains("kebab-case"), "msg: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
     }
