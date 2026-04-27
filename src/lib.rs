@@ -6,13 +6,13 @@
 
 pub use config::ProjectConfig;
 pub use init::{InitOptions, InitResult, VersionMode, ensure_specify_gitignore_entries, init};
+pub use specify_change::plan::{Entry as PlanChange, Status as PlanStatus};
 pub use specify_change::{
     Acquired as PlanLockAcquired, ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind,
     EntryPatch as PlanChangePatch, Finding as PlanValidationResult, Guard as PlanLockGuard,
     Journal, JournalEntry, LifecycleStatus, Outcome, Overlap, PhaseOutcome, Plan, PlanLockReleased,
     PlanLockState, Rfc3339Stamp, Severity as PlanValidationLevel, SpecType, Stamp as PlanLockStamp,
     TouchedSpec, actions as change_actions, format_rfc3339, is_valid_kebab_name,
-    plan::Entry as PlanChange, plan::Status as PlanStatus,
 };
 pub use specify_drift::{Entry as DriftEntry, Status as DriftStatus, baseline_inventory};
 pub use specify_error::{Error, ValidationStatus, ValidationSummary};
