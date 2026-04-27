@@ -75,15 +75,15 @@ pub fn run_plan(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, E
 // ---- Shared helpers used across submodules ----
 
 /// `<project_dir>/.specify/plan.yaml`.
-pub fn plan_file_path(project_dir: &Path) -> PathBuf {
+pub fn file_path(project_dir: &Path) -> PathBuf {
     ProjectConfig::specify_dir(project_dir).join("plan.yaml")
 }
 
 /// Ensure the plan file exists before we try to load it. Error text is
 /// the stable "plan file not found: .specify/plan.yaml" string that
 /// skill authors match on.
-pub fn require_plan_file(project_dir: &Path) -> Result<PathBuf, Error> {
-    let path = plan_file_path(project_dir);
+pub fn require_file(project_dir: &Path) -> Result<PathBuf, Error> {
+    let path = file_path(project_dir);
     if !path.exists() {
         return Err(Error::ArtifactNotFound {
             kind: "plan.yaml",
@@ -93,7 +93,7 @@ pub fn require_plan_file(project_dir: &Path) -> Result<PathBuf, Error> {
     Ok(path)
 }
 
-pub(super) const fn plan_validation_level_label(level: &PlanValidationLevel) -> &'static str {
+pub(super) const fn level_label(level: &PlanValidationLevel) -> &'static str {
     match level {
         PlanValidationLevel::Error => "error",
         PlanValidationLevel::Warning => "warning",
@@ -103,7 +103,7 @@ pub(super) const fn plan_validation_level_label(level: &PlanValidationLevel) -> 
 /// Emit the stable "go run `specify plan validate`" pointer when
 /// `plan next` or `plan status` is asked to operate on a
 /// structurally broken plan.
-pub(super) fn emit_plan_structural_error(format: OutputFormat) -> CliResult {
+pub(super) fn emit_structural_error(format: OutputFormat) -> CliResult {
     let msg = "plan has structural errors; run 'specify plan validate' for detail";
     match format {
         OutputFormat::Json => emit_response(crate::output::ErrorResponse {
@@ -116,8 +116,8 @@ pub(super) fn emit_plan_structural_error(format: OutputFormat) -> CliResult {
     CliResult::ValidationFailed
 }
 
-pub(super) fn load_plan_for_write(ctx: &CommandContext) -> Result<(PathBuf, Plan), Error> {
-    let plan_path = require_plan_file(&ctx.project_dir)?;
+pub(super) fn load_for_write(ctx: &CommandContext) -> Result<(PathBuf, Plan), Error> {
+    let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     Ok((plan_path, plan))
 }
@@ -129,7 +129,7 @@ pub(super) struct PlanRef {
     pub path: String,
 }
 
-pub(super) fn plan_ref_from(plan: &Plan, plan_path: &Path) -> PlanRef {
+pub(super) fn plan_ref(plan: &Plan, plan_path: &Path) -> PlanRef {
     PlanRef {
         name: plan.name.clone(),
         path: plan_path.display().to_string(),
@@ -137,12 +137,12 @@ pub(super) fn plan_ref_from(plan: &Plan, plan_path: &Path) -> PlanRef {
 }
 
 /// Serialize a `PlanChange` into the on-the-wire kebab-case JSON shape.
-pub(super) fn plan_change_entry_json(entry: &PlanChange) -> Value {
+pub(super) fn change_entry_json(entry: &PlanChange) -> Value {
     serde_json::to_value(entry).expect("PlanChange serialises as JSON")
 }
 
 /// Verify that `project_name` appears in `.specify/registry.yaml`.
-pub(super) fn validate_project_in_registry(
+pub(super) fn check_project(
     project_dir: &Path, project_name: &str,
 ) -> Result<(), Error> {
     match Registry::load(project_dir) {
@@ -163,24 +163,24 @@ pub(super) fn validate_project_in_registry(
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub(super) struct PlanValidationJson<'a> {
+pub(super) struct ValidationRow<'a> {
     level: &'a str,
     code: &'a str,
     entry: &'a Option<String>,
     message: &'a str,
 }
 
-pub(super) fn plan_validation_to_json(r: &PlanValidationResult) -> Value {
-    serde_json::to_value(PlanValidationJson {
-        level: plan_validation_level_label(&r.level),
+pub(super) fn validation_to_json(r: &PlanValidationResult) -> Value {
+    serde_json::to_value(ValidationRow {
+        level: level_label(&r.level),
         code: r.code,
         entry: &r.entry,
         message: &r.message,
     })
-    .expect("PlanValidationJson serialises")
+    .expect("ValidationRow serialises")
 }
 
-pub(super) fn print_plan_validation_line(r: &PlanValidationResult) {
+pub(super) fn print_validation_line(r: &PlanValidationResult) {
     let level = match r.level {
         PlanValidationLevel::Error => "ERROR  ",
         PlanValidationLevel::Warning => "WARNING",

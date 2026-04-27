@@ -3,11 +3,11 @@
 use serde::Serialize;
 use serde_json::Value;
 use specify::{
-    Error, Plan, PushOutcome, Registry, WorkspaceSlotKind, WorkspaceSlotStatus,
-    sync_registry_workspace, workspace_status,
+    Error, Plan, PushOutcome, Registry, SlotKind, SlotStatus, sync_registry_workspace,
+    workspace_status,
 };
 
-use super::plan::require_plan_file;
+use super::plan::require_file;
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
@@ -19,12 +19,12 @@ pub fn run_workspace_sync(ctx: &CommandContext) -> Result<CliResult, Error> {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
-                    struct WorkspaceSyncAbsentResponse {
+                    struct SyncAbsent {
                         registry: Value,
                         synced: bool,
                         message: &'static str,
                     }
-                    emit_response(WorkspaceSyncAbsentResponse {
+                    emit_response(SyncAbsent {
                         registry: Value::Null,
                         synced: false,
                         message: "no registry declared at .specify/registry.yaml; nothing to sync",
@@ -42,11 +42,11 @@ pub fn run_workspace_sync(ctx: &CommandContext) -> Result<CliResult, Error> {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
-                    struct WorkspaceSyncResponse {
+                    struct SyncBody {
                         registry: Registry,
                         synced: bool,
                     }
-                    emit_response(WorkspaceSyncResponse {
+                    emit_response(SyncBody {
                         registry,
                         synced: true,
                     });
@@ -65,11 +65,11 @@ pub fn run_workspace_status(ctx: &CommandContext) -> Result<CliResult, Error> {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
-                    struct WorkspaceStatusAbsentResponse {
+                    struct StatusAbsent {
                         registry: Value,
                         slots: Value,
                     }
-                    emit_response(WorkspaceStatusAbsentResponse {
+                    emit_response(StatusAbsent {
                         registry: Value::Null,
                         slots: Value::Null,
                     });
@@ -85,15 +85,15 @@ pub fn run_workspace_status(ctx: &CommandContext) -> Result<CliResult, Error> {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
-                    struct WorkspaceStatusResponse {
+                    struct StatusBody {
                         slots: Vec<Value>,
                     }
-                    let items: Vec<Value> = slots.iter().map(workspace_slot_to_json).collect();
-                    emit_response(WorkspaceStatusResponse { slots: items });
+                    let items: Vec<Value> = slots.iter().map(slot_to_json).collect();
+                    emit_response(StatusBody { slots: items });
                 }
                 OutputFormat::Text => {
                     for slot in &slots {
-                        print_workspace_slot_line(slot);
+                        print_slot(slot);
                     }
                 }
             }
@@ -102,36 +102,36 @@ pub fn run_workspace_status(ctx: &CommandContext) -> Result<CliResult, Error> {
     }
 }
 
-const fn workspace_slot_kind_label(kind: WorkspaceSlotKind) -> &'static str {
+const fn kind_label(kind: SlotKind) -> &'static str {
     match kind {
-        WorkspaceSlotKind::Missing => "missing",
-        WorkspaceSlotKind::Symlink => "symlink",
-        WorkspaceSlotKind::GitClone => "git-clone",
-        WorkspaceSlotKind::Other => "other",
+        SlotKind::Missing => "missing",
+        SlotKind::Symlink => "symlink",
+        SlotKind::GitClone => "git-clone",
+        SlotKind::Other => "other",
     }
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct WorkspaceSlotJson {
+struct SlotJson {
     name: String,
     kind: &'static str,
     head_sha: Option<String>,
     dirty: Option<bool>,
 }
 
-fn workspace_slot_to_json(slot: &WorkspaceSlotStatus) -> Value {
-    serde_json::to_value(WorkspaceSlotJson {
+fn slot_to_json(slot: &SlotStatus) -> Value {
+    serde_json::to_value(SlotJson {
         name: slot.name.clone(),
-        kind: workspace_slot_kind_label(slot.kind),
+        kind: kind_label(slot.kind),
         head_sha: slot.head_sha.clone(),
         dirty: slot.dirty,
     })
-    .expect("WorkspaceSlotJson serialises")
+    .expect("SlotJson serialises")
 }
 
-fn print_workspace_slot_line(slot: &WorkspaceSlotStatus) {
-    let kind = workspace_slot_kind_label(slot.kind);
+fn print_slot(slot: &SlotStatus) {
+    let kind = kind_label(slot.kind);
     let head = slot.head_sha.as_deref().unwrap_or("-");
     let dirty = match slot.dirty {
         None => "-",
@@ -144,7 +144,7 @@ fn print_workspace_slot_line(slot: &WorkspaceSlotStatus) {
 pub fn run_workspace_push(
     ctx: &CommandContext, projects: Vec<String>, dry_run: bool,
 ) -> Result<CliResult, Error> {
-    let plan_path = require_plan_file(&ctx.project_dir).map_err(|_err| {
+    let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
         Error::Config(
             "No active plan found at .specify/plan.yaml. Run 'specify plan init' \
              to create one, or check whether the plan was already archived."
@@ -166,14 +166,14 @@ pub fn run_workspace_push(
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct WorkspacePushResponse {
-                projects: Vec<WorkspacePushItem>,
+            struct PushBody {
+                projects: Vec<PushItem>,
                 #[serde(skip_serializing_if = "Option::is_none")]
                 dry_run: Option<bool>,
             }
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct WorkspacePushItem {
+            struct PushItem {
                 name: String,
                 status: String,
                 #[serde(skip_serializing_if = "Option::is_none")]
@@ -181,16 +181,16 @@ pub fn run_workspace_push(
                 #[serde(skip_serializing_if = "Option::is_none")]
                 pr: Option<u64>,
             }
-            let items: Vec<WorkspacePushItem> = results
+            let items: Vec<PushItem> = results
                 .iter()
-                .map(|r| WorkspacePushItem {
+                .map(|r| PushItem {
                     name: r.name.clone(),
                     status: r.status.to_string(),
                     branch: r.branch.clone(),
                     pr: r.pr_number,
                 })
                 .collect();
-            emit_response(WorkspacePushResponse {
+            emit_response(PushBody {
                 projects: items,
                 dry_run: dry_run.then_some(true),
             });

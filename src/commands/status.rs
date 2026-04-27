@@ -52,31 +52,31 @@ struct StatusEntry {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct StatusEntryJson {
+struct EntryJson {
     name: String,
     status: String,
     schema: String,
-    tasks: Option<TasksJson>,
+    tasks: Option<TaskCounts>,
     artifacts: std::collections::BTreeMap<String, bool>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct TasksJson {
+struct TaskCounts {
     total: usize,
     complete: usize,
 }
 
 fn status_entry_to_json(e: &StatusEntry) -> Value {
-    let tasks_value = e.tasks.map(|(complete, total)| TasksJson { total, complete });
-    serde_json::to_value(StatusEntryJson {
+    let tasks_value = e.tasks.map(|(complete, total)| TaskCounts { total, complete });
+    serde_json::to_value(EntryJson {
         name: e.name.clone(),
         status: e.status.clone(),
         schema: e.schema.clone(),
         tasks: tasks_value,
         artifacts: e.artifacts.clone(),
     })
-    .expect("StatusEntryJson serialises")
+    .expect("EntryJson serialises")
 }
 
 fn collect_status(

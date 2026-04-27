@@ -23,8 +23,8 @@ mod merge;
 mod validate;
 
 pub use change::{
-    BaselineConflict, ContractAction, ContractPreviewEntry, MergeEntry, PreviewResult,
-    conflict_check, merge_change, preview_change,
+    BaselineConflict, ContractAction, ContractPreviewEntry, Entry, PreviewResult, conflict_check,
+    merge_change, preview_change,
 };
 pub use merge::{MergeOperation, MergeResult, merge};
 pub use validate::validate_baseline;

@@ -271,7 +271,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_baseline_without_headers_is_verbatim() {
+    fn greenfield_no_headers_verbatim() {
         let delta = "# Greenfield spec\n\nJust prose.\n";
         let result = merge(None, delta).expect("merge ok");
         assert_eq!(result.output, delta);
@@ -282,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn new_baseline_counts_requirement_blocks_verbatim() {
+    fn greenfield_counts_blocks() {
         let delta =
             "# Spec\n\n### Requirement: A\n\nID: REQ-001\n\n### Requirement: B\n\nID: REQ-002\n";
         let result = merge(None, delta).expect("merge ok");
@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_modified_id_surfaces_as_merge_error() {
+    fn modified_unknown_id_errors() {
         let baseline = "# Base\n\n### Requirement: Alpha\n\nID: REQ-001\n\n#### Scenario: ok\n\n- ok\n\n### Requirement: Beta\n\nID: REQ-002\n\n#### Scenario: ok\n\n- ok\n";
         let delta = "# delta\n\n## MODIFIED Requirements\n\n### Requirement: Ghost\n\nID: REQ-999\n\n#### Scenario: none\n\n- nothing\n";
         let err = merge(Some(baseline), delta).expect_err("expected merge failure");
@@ -310,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn added_id_collision_surfaces_as_merge_error() {
+    fn added_id_collision_errors() {
         let baseline = "### Requirement: A\n\nID: REQ-001\n\n#### Scenario: ok\n\n- ok\n";
         let delta = "## ADDED Requirements\n\n### Requirement: Another A\n\nID: REQ-001\n\n#### Scenario: ok\n\n- ok\n";
         let err = merge(Some(baseline), delta).expect_err("expected merge failure");
@@ -326,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn rename_updates_heading_and_records_operation() {
+    fn rename_records_op() {
         let baseline =
             "# B\n\n### Requirement: Old name\n\nID: REQ-001\n\n#### Scenario: ok\n\n- ok\n";
         let delta = "## RENAMED Requirements\n\nID: REQ-001\nTO: Shiny new name\n";
@@ -344,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn replace_first_only_touches_first_occurrence() {
+    fn replace_first_once() {
         assert_eq!(replace_first("abab", "ab", "XY"), "XYab");
         assert_eq!(replace_first("abc", "z", "Q"), "abc");
         assert_eq!(replace_first("abc", "", "Q"), "abc");

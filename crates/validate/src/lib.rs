@@ -88,7 +88,7 @@ pub struct Rule {
 /// Inputs a brief-scoped structural checker needs.
 pub struct BriefContext<'a> {
     /// The brief id being validated.
-    pub brief_id: &'a str,
+    pub id: &'a str,
     /// Artifact file content.
     pub content: &'a str,
     /// Parsed spec (when `brief_id == "specs"`).
@@ -133,13 +133,13 @@ mod tests {
 
     /// `rules_for` returns empty for unknown brief ids.
     #[test]
-    fn rules_for_unknown_returns_empty() {
+    fn unknown_brief_no_rules() {
         assert!(rules_for("unknown-brief-id").is_empty());
         assert!(rules_for("").is_empty());
     }
 
     #[test]
-    fn registry_has_expected_minimum_coverage() {
+    fn min_rules_per_brief() {
         assert!(rules_for("proposal").len() >= 3);
         assert!(rules_for("specs").len() >= 4);
         assert!(!rules_for("design").is_empty());
@@ -178,11 +178,11 @@ mod tests {
     /// every Semantic rule in the registry via a throwaway `BriefContext`
     /// and confirm no panic escapes (the checker panics by construction).
     #[test]
-    fn semantic_rules_are_never_invoked() {
+    fn semantic_checkers_not_called() {
         use std::path::Path;
         let dummy_path = Path::new("/nonexistent");
         let ctx = BriefContext {
-            brief_id: "dummy",
+            id: "dummy",
             content: "",
             parsed_spec: None,
             tasks: None,
@@ -203,6 +203,6 @@ mod tests {
             }
         }
         // Touch ctx so clippy doesn't complain about unused fields.
-        let _ = ctx.brief_id;
+        let _ = ctx.id;
     }
 }

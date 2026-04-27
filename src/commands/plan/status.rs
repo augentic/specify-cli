@@ -7,14 +7,14 @@ use specify::{
     ChangeMetadata, Error, Plan, PlanChange, PlanStatus, PlanValidationLevel, ProjectConfig,
 };
 
-use super::{PlanRef, emit_plan_structural_error, require_plan_file};
+use super::{PlanRef, emit_structural_error, require_file};
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
 #[allow(clippy::too_many_lines)]
 pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
-    let plan_path = require_plan_file(&ctx.project_dir)?;
+    let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let changes_dir = ProjectConfig::changes_dir(&ctx.project_dir);
 
@@ -23,7 +23,7 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
         .iter()
         .any(|r| matches!(r.level, PlanValidationLevel::Error) && r.code != "dependency-cycle");
     if has_other_structural_errors {
-        return Ok(emit_plan_structural_error(ctx.format));
+        return Ok(emit_structural_error(ctx.format));
     }
 
     let (ordered, order_label) = if let Ok(v) = plan.topological_order() {
@@ -51,7 +51,7 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
     let total: usize = counts.values().sum();
 
     let active = plan.changes.iter().find(|c| c.status == PlanStatus::InProgress);
-    let active_lifecycle = active.and_then(|a| load_lifecycle_label(&changes_dir.join(&a.name)));
+    let active_lifecycle = active.and_then(|a| read_lifecycle(&changes_dir.join(&a.name)));
 
     let blocked: Vec<&PlanChange> =
         plan.changes.iter().filter(|c| c.status == PlanStatus::Blocked).collect();
@@ -64,19 +64,19 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct PlanStatusResponse {
+            struct StatusBody {
                 plan: PlanRef,
-                counts: PlanCounts,
+                counts: Counts,
                 order: &'static str,
                 entries: Vec<Value>,
-                in_progress: Option<PlanActiveJson>,
-                blocked: Vec<PlanNameReason>,
-                failed: Vec<PlanNameReason>,
+                in_progress: Option<Active>,
+                blocked: Vec<NameReason>,
+                failed: Vec<NameReason>,
                 next_eligible: Option<String>,
             }
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct PlanCounts {
+            struct Counts {
                 done: usize,
                 in_progress: usize,
                 pending: usize,
@@ -87,13 +87,13 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
             }
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct PlanActiveJson {
+            struct Active {
                 name: String,
                 lifecycle: Option<String>,
             }
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct PlanNameReason {
+            struct NameReason {
                 name: String,
                 reason: Option<String>,
             }
@@ -110,32 +110,32 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
                 })
                 .collect();
 
-            let blocked_json: Vec<PlanNameReason> = blocked
+            let blocked_json: Vec<NameReason> = blocked
                 .iter()
-                .map(|c| PlanNameReason {
+                .map(|c| NameReason {
                     name: c.name.clone(),
                     reason: c.status_reason.clone(),
                 })
                 .collect();
-            let failed_json: Vec<PlanNameReason> = failed
+            let failed_json: Vec<NameReason> = failed
                 .iter()
-                .map(|c| PlanNameReason {
+                .map(|c| NameReason {
                     name: c.name.clone(),
                     reason: c.status_reason.clone(),
                 })
                 .collect();
 
-            let active_json = active.map(|a| PlanActiveJson {
+            let active_json = active.map(|a| Active {
                 name: a.name.clone(),
                 lifecycle: active_lifecycle.clone(),
             });
 
-            emit_response(PlanStatusResponse {
+            emit_response(StatusBody {
                 plan: PlanRef {
                     name: plan.name.clone(),
                     path: plan_path.display().to_string(),
                 },
-                counts: PlanCounts {
+                counts: Counts {
                     done: counts[&PlanStatus::Done],
                     in_progress: counts[&PlanStatus::InProgress],
                     pending: counts[&PlanStatus::Pending],
@@ -152,7 +152,7 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
                 next_eligible: next_eligible.map(|e| e.name.clone()),
             });
         }
-        OutputFormat::Text => print_plan_status_text(&PlanStatusView {
+        OutputFormat::Text => print_status(&StatusView {
             plan: &plan,
             counts: &counts,
             active,
@@ -165,7 +165,7 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
     Ok(CliResult::Success)
 }
 
-struct PlanStatusView<'a> {
+struct StatusView<'a> {
     plan: &'a Plan,
     counts: &'a BTreeMap<PlanStatus, usize>,
     active: Option<&'a PlanChange>,
@@ -175,7 +175,7 @@ struct PlanStatusView<'a> {
     next_eligible: Option<&'a PlanChange>,
 }
 
-fn load_lifecycle_label(change_dir: &Path) -> Option<String> {
+fn read_lifecycle(change_dir: &Path) -> Option<String> {
     if !ChangeMetadata::path(change_dir).exists() {
         return None;
     }
@@ -184,7 +184,7 @@ fn load_lifecycle_label(change_dir: &Path) -> Option<String> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct PlanEntryJson {
+struct EntryRow {
     name: String,
     status: String,
     depends_on: Vec<String>,
@@ -197,7 +197,7 @@ struct PlanEntryJson {
 }
 
 fn plan_entry_to_json(entry: &PlanChange, lifecycle: Option<String>) -> Value {
-    serde_json::to_value(PlanEntryJson {
+    serde_json::to_value(EntryRow {
         name: entry.name.clone(),
         status: entry.status.to_string(),
         depends_on: entry.depends_on.clone(),
@@ -207,10 +207,10 @@ fn plan_entry_to_json(entry: &PlanChange, lifecycle: Option<String>) -> Value {
         lifecycle,
         context: entry.context.clone(),
     })
-    .expect("PlanEntryJson serialises")
+    .expect("EntryRow serialises")
 }
 
-fn print_plan_status_text(view: &PlanStatusView) {
+fn print_status(view: &StatusView) {
     let counts = view.counts;
     let total: usize = counts.values().sum();
     println!("## Initiative: {}", view.plan.name);

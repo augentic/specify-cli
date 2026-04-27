@@ -29,7 +29,7 @@ pub fn run_init(
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct InitResponse {
+struct InitBody {
     config_path: String,
     schema_name: String,
     cache_present: bool,
@@ -41,7 +41,7 @@ struct InitResponse {
 fn emit_init_result(format: OutputFormat, result: &InitResult) -> CliResult {
     match format {
         OutputFormat::Json => {
-            emit_response(InitResponse {
+            emit_response(InitBody {
                 config_path: absolute_string(&result.config_path),
                 schema_name: result.schema_name.clone(),
                 cache_present: result.cache_present,

@@ -35,7 +35,7 @@ impl std::fmt::Display for ValidationStatus {
 /// to this summary is a lossy projection but keeps `specify-error`
 /// dependency-free from the rest of the workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidationResultSummary {
+pub struct ValidationSummary {
     /// Outcome of this validation check.
     pub status: ValidationStatus,
     /// Stable rule identifier (e.g. `proposal.why-has-content`).
@@ -72,7 +72,7 @@ pub enum Error {
         /// Number of error-level findings.
         count: usize,
         /// Individual validation results.
-        results: Vec<ValidationResultSummary>,
+        results: Vec<ValidationSummary>,
     },
 
     /// Spec merge failed.
@@ -171,8 +171,8 @@ pub enum Error {
 mod tests {
     use super::*;
 
-    fn summary(status: ValidationStatus) -> ValidationResultSummary {
-        ValidationResultSummary {
+    fn summary(status: ValidationStatus) -> ValidationSummary {
+        ValidationSummary {
             status,
             rule_id: "rule.example".to_string(),
             rule: "Example rule".to_string(),
@@ -185,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn not_initialized_display() {
+    fn not_init_display() {
         let err = Error::NotInitialized;
         assert_eq!(err.to_string(), "not initialized: .specify/project.yaml not found");
     }
@@ -203,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn validation_display_and_payload() {
+    fn validation_display_payload() {
         let err = Error::Validation {
             count: 2,
             results: vec![summary(ValidationStatus::Fail), summary(ValidationStatus::Deferred)],
@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn specify_version_too_old_display() {
+    fn version_too_old_display() {
         let err = Error::SpecifyVersionTooOld {
             required: "0.2.0".to_string(),
             found: "0.1.0".to_string(),
@@ -256,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_has_outstanding_work_display() {
+    fn plan_outstanding_display() {
         let err = Error::PlanHasOutstandingWork {
             entries: vec!["checkout-api".to_string(), "checkout-ui".to_string()],
         };
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn io_from_conversion() {
+    fn io_from() {
         let io = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
         let err: Error = io.into();
         assert!(matches!(err, Error::Io(_)));
@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn yaml_from_conversion() {
+    fn yaml_from() {
         let parse_err: serde_saphyr::Error = serde_saphyr::from_str::<String>(":\n\t- bad")
             .expect_err("expected a YAML parse error");
         let display = parse_err.to_string();

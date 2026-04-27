@@ -21,15 +21,15 @@ pub fn run_spec_preview(ctx: &CommandContext, change_dir: PathBuf) -> Result<Cli
         OutputFormat::Json => {
             let specs: Vec<Value> = result.specs.iter().map(preview_entry_to_json).collect();
             let contracts: Vec<Value> =
-                result.contracts.iter().map(contract_preview_entry_to_json).collect();
+                result.contracts.iter().map(contract_to_json).collect();
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct SpecPreviewResponse {
+            struct PreviewBody {
                 change_dir: String,
                 specs: Vec<Value>,
                 contracts: Vec<Value>,
             }
-            emit_response(SpecPreviewResponse {
+            emit_response(PreviewBody {
                 change_dir: change_dir.display().to_string(),
                 specs,
                 contracts,
@@ -42,7 +42,7 @@ pub fn run_spec_preview(ctx: &CommandContext, change_dir: PathBuf) -> Result<Cli
                 for entry in &result.specs {
                     println!(
                         "{}: {}",
-                        entry.spec_name,
+                        entry.name,
                         summarise_operations(&entry.result.operations)
                     );
                     for op in &entry.result.operations {
@@ -68,7 +68,7 @@ pub fn run_spec_preview(ctx: &CommandContext, change_dir: PathBuf) -> Result<Cli
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct PreviewEntryJson {
+struct SpecEntry {
     name: String,
     baseline_path: String,
     operations: Vec<Value>,
@@ -76,32 +76,32 @@ struct PreviewEntryJson {
 
 pub fn preview_entry_to_json(entry: &MergeEntry) -> Value {
     let ops: Vec<Value> = entry.result.operations.iter().map(merge_op_to_json).collect();
-    serde_json::to_value(PreviewEntryJson {
-        name: entry.spec_name.clone(),
+    serde_json::to_value(SpecEntry {
+        name: entry.name.clone(),
         baseline_path: entry.baseline_path.display().to_string(),
         operations: ops,
     })
-    .expect("PreviewEntryJson serialises")
+    .expect("SpecEntry serialises")
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct ContractPreviewJson {
+struct ContractItem {
     path: String,
     action: &'static str,
 }
 
-pub fn contract_preview_entry_to_json(entry: &ContractPreviewEntry) -> Value {
+pub fn contract_to_json(entry: &ContractPreviewEntry) -> Value {
     let action = match entry.action {
         ContractAction::Added => "added",
         ContractAction::Replaced => "replaced",
         _ => "unknown",
     };
-    serde_json::to_value(ContractPreviewJson {
+    serde_json::to_value(ContractItem {
         path: entry.relative_path.clone(),
         action,
     })
-    .expect("ContractPreviewJson serialises")
+    .expect("ContractItem serialises")
 }
 
 pub fn run_spec_conflict_check(
@@ -143,17 +143,17 @@ pub fn run_spec_conflict_check(
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct BaselineConflictJson {
+struct ConflictRow {
     capability: String,
     defined_at: String,
     baseline_modified_at: String,
 }
 
 pub fn baseline_conflict_to_json(c: &BaselineConflict) -> Value {
-    serde_json::to_value(BaselineConflictJson {
+    serde_json::to_value(ConflictRow {
         capability: c.capability.clone(),
         defined_at: c.defined_at.clone(),
         baseline_modified_at: c.baseline_modified_at.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
     })
-    .expect("BaselineConflictJson serialises")
+    .expect("ConflictRow serialises")
 }

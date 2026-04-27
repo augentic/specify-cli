@@ -114,7 +114,7 @@ pub fn run_merge(ctx: &CommandContext, change_dir: PathBuf) -> Result<CliResult,
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct MergeEntryJson {
+struct EntryJson {
     name: String,
     operations: Vec<Value>,
 }
@@ -122,11 +122,11 @@ struct MergeEntryJson {
 pub fn merge_entry_to_json(entry: &(String, MergeResult)) -> Value {
     let (name, result) = entry;
     let ops: Vec<Value> = result.operations.iter().map(merge_op_to_json).collect();
-    serde_json::to_value(MergeEntryJson {
+    serde_json::to_value(EntryJson {
         name: name.clone(),
         operations: ops,
     })
-    .expect("MergeEntryJson serialises")
+    .expect("EntryJson serialises")
 }
 
 pub fn operation_label(op: &MergeOperation) -> String {
@@ -250,7 +250,7 @@ mod merge_workspace_tests {
     }
 
     #[test]
-    fn detects_workspace_clone_unix_path() {
+    fn workspace_clone_path() {
         let tmp = workspace_clone_dir("traffic");
         let path = tmp.path().join(".specify").join("workspace").join("traffic");
         assert!(is_workspace_clone(&path));
@@ -263,13 +263,13 @@ mod merge_workspace_tests {
     }
 
     #[test]
-    fn rejects_initiating_repo_with_specify_dir() {
+    fn rejects_bare_specify_dir() {
         let path = Path::new("/home/user/project/.specify/");
         assert!(!is_workspace_clone(path));
     }
 
     #[test]
-    fn detects_deeply_nested_workspace_clone() {
+    fn deeply_nested_workspace_clone() {
         let tmp = workspace_clone_dir("mobile");
         let path =
             tmp.path().join(".specify").join("workspace").join("mobile").join("sub").join("dir");

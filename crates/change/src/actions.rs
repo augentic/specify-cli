@@ -47,7 +47,7 @@ pub enum CreateIfExists {
 #[must_use]
 pub struct CreateOutcome {
     /// Path to the change directory.
-    pub change_dir: PathBuf,
+    pub dir: PathBuf,
     /// Loaded or freshly-created metadata.
     pub metadata: ChangeMetadata,
     /// `true` when the call created a new directory; `false` when an
@@ -65,11 +65,11 @@ pub struct Overlap {
     /// The shared capability name.
     pub capability: String,
     /// Name of the other change that touches the same capability.
-    pub other_change: String,
+    pub other: String,
     /// How our change touches the capability.
-    pub our_spec_type: SpecType,
+    pub ours: SpecType,
     /// How the other change touches the capability.
-    pub other_spec_type: SpecType,
+    pub theirs: SpecType,
 }
 
 /// Validate a kebab-case change name.
@@ -155,7 +155,7 @@ pub fn create(
                 }
                 let metadata = ChangeMetadata::load(&change_dir)?;
                 return Ok(CreateOutcome {
-                    change_dir,
+                    dir: change_dir,
                     metadata,
                     created: false,
                     restarted: false,
@@ -184,7 +184,7 @@ pub fn create(
     metadata.save(&change_dir)?;
 
     Ok(CreateOutcome {
-        change_dir,
+        dir: change_dir,
         metadata,
         created: true,
         restarted: matches!(if_exists, CreateIfExists::Restart),
@@ -278,8 +278,8 @@ pub fn scan_touched_specs(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Tou
             continue;
         }
         let baseline = specs_dir.join(&name).join("spec.md");
-        let spec_type = if baseline.is_file() { SpecType::Modified } else { SpecType::New };
-        entries.push(TouchedSpec { name, spec_type });
+        let kind = if baseline.is_file() { SpecType::Modified } else { SpecType::New };
+        entries.push(TouchedSpec { name, kind });
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(entries)
@@ -348,16 +348,16 @@ pub fn overlap(changes_dir: &Path, change_name: &str) -> Result<Vec<Overlap>, Er
                 if ours.name == theirs.name {
                     overlaps.push(Overlap {
                         capability: ours.name.clone(),
-                        other_change: other_name.to_string(),
-                        our_spec_type: ours.spec_type,
-                        other_spec_type: theirs.spec_type,
+                        other: other_name.to_string(),
+                        ours: ours.kind,
+                        theirs: theirs.kind,
                     });
                 }
             }
         }
     }
     overlaps.sort_by(|a, b| {
-        a.capability.cmp(&b.capability).then_with(|| a.other_change.cmp(&b.other_change))
+        a.capability.cmp(&b.capability).then_with(|| a.other.cmp(&b.other))
     });
     Ok(overlaps)
 }

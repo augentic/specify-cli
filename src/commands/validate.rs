@@ -14,13 +14,13 @@ pub fn run_validate(ctx: &CommandContext, change_dir: PathBuf) -> Result<CliResu
 
     match ctx.format {
         OutputFormat::Json => emit_response(serialize_report(&report)),
-        OutputFormat::Text => print_validation_report_text(&report),
+        OutputFormat::Text => print_report(&report),
     }
 
     Ok(if report.passed { CliResult::Success } else { CliResult::ValidationFailed })
 }
 
-fn print_validation_report_text(report: &ValidationReport) {
+fn print_report(report: &ValidationReport) {
     println!("{}", if report.passed { "PASS" } else { "FAIL" });
     for (key, results) in &report.brief_results {
         println!("{key}:");

@@ -13,17 +13,17 @@ use crate::output::{CliResult, absolute_string, emit_response};
 pub fn run_initiative(ctx: &CommandContext, action: InitiativeAction) -> Result<CliResult, Error> {
     match action {
         InitiativeAction::Registry { action } => match action {
-            RegistryAction::Show => run_initiative_registry_show(ctx),
-            RegistryAction::Validate => run_initiative_registry_validate(ctx),
+            RegistryAction::Show => show_registry(ctx),
+            RegistryAction::Validate => validate_registry(ctx),
         },
         InitiativeAction::Brief { action } => match action {
-            BriefAction::Init { name } => run_initiative_brief_init(ctx, name),
-            BriefAction::Show => run_initiative_brief_show(ctx),
+            BriefAction::Init { name } => brief_init(ctx, name),
+            BriefAction::Show => brief_show(ctx),
         },
     }
 }
 
-fn run_initiative_registry_show(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn show_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
     let registry_path = Registry::path(&ctx.project_dir);
     match Registry::load(&ctx.project_dir)? {
         None => {
@@ -31,11 +31,11 @@ fn run_initiative_registry_show(ctx: &CommandContext) -> Result<CliResult, Error
                 OutputFormat::Json => {
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
-                    struct RegistryShowResponse {
+                    struct RegistryBody {
                         registry: Value,
                         path: String,
                     }
-                    emit_response(RegistryShowResponse {
+                    emit_response(RegistryBody {
                         registry: Value::Null,
                         path: registry_path.display().to_string(),
                     });
@@ -51,11 +51,11 @@ fn run_initiative_registry_show(ctx: &CommandContext) -> Result<CliResult, Error
                 OutputFormat::Json => {
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
-                    struct RegistryShowFullResponse {
+                    struct RegistryFullBody {
                         registry: Registry,
                         path: String,
                     }
-                    emit_response(RegistryShowFullResponse {
+                    emit_response(RegistryFullBody {
                         registry,
                         path: registry_path.display().to_string(),
                     });
@@ -69,19 +69,19 @@ fn run_initiative_registry_show(ctx: &CommandContext) -> Result<CliResult, Error
     }
 }
 
-fn run_initiative_registry_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn validate_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
     let registry_path = Registry::path(&ctx.project_dir);
     match Registry::load(&ctx.project_dir) {
         Ok(None) => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct RegistryValidateResponse {
+            struct ValidateEmpty {
                 registry: Value,
                 path: String,
                 ok: bool,
             }
             match ctx.format {
-                OutputFormat::Json => emit_response(RegistryValidateResponse {
+                OutputFormat::Json => emit_response(ValidateEmpty {
                     registry: Value::Null,
                     path: registry_path.display().to_string(),
                     ok: true,
@@ -96,13 +96,13 @@ fn run_initiative_registry_validate(ctx: &CommandContext) -> Result<CliResult, E
             let count = registry.projects.len();
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct RegistryValidateFullResponse {
+            struct ValidateBody {
                 registry: Registry,
                 path: String,
                 ok: bool,
             }
             match ctx.format {
-                OutputFormat::Json => emit_response(RegistryValidateFullResponse {
+                OutputFormat::Json => emit_response(ValidateBody {
                     registry,
                     path: registry_path.display().to_string(),
                     ok: true,
@@ -138,7 +138,7 @@ fn run_initiative_registry_validate(ctx: &CommandContext) -> Result<CliResult, E
     }
 }
 
-fn run_initiative_brief_init(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn brief_init(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     if !is_valid_kebab_name(&name) {
         return Err(Error::Config(format!(
             "initiative.md: name `{name}` must be kebab-case \
@@ -152,14 +152,14 @@ fn run_initiative_brief_init(ctx: &CommandContext, name: String) -> Result<CliRe
             OutputFormat::Json => {
                 #[derive(Serialize)]
                 #[serde(rename_all = "kebab-case")]
-                struct BriefInitErrorResponse {
+                struct BriefInitErr {
                     action: &'static str,
                     ok: bool,
                     error: &'static str,
                     path: String,
                     exit_code: u8,
                 }
-                emit_response(BriefInitErrorResponse {
+                emit_response(BriefInitErr {
                     action: "init",
                     ok: false,
                     error: "already-exists",
@@ -185,14 +185,14 @@ fn run_initiative_brief_init(ctx: &CommandContext, name: String) -> Result<CliRe
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct BriefInitResponse {
+    struct BriefInitOk {
         action: &'static str,
         ok: bool,
         name: String,
         path: String,
     }
     match ctx.format {
-        OutputFormat::Json => emit_response(BriefInitResponse {
+        OutputFormat::Json => emit_response(BriefInitOk {
             action: "init",
             ok: true,
             name,
@@ -205,18 +205,18 @@ fn run_initiative_brief_init(ctx: &CommandContext, name: String) -> Result<CliRe
     Ok(CliResult::Success)
 }
 
-fn run_initiative_brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
     let brief_path = InitiativeBrief::path(&ctx.project_dir);
     match InitiativeBrief::load(&ctx.project_dir)? {
         None => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct BriefShowAbsentResponse {
+            struct BriefAbsent {
                 brief: Value,
                 path: String,
             }
             match ctx.format {
-                OutputFormat::Json => emit_response(BriefShowAbsentResponse {
+                OutputFormat::Json => emit_response(BriefAbsent {
                     brief: Value::Null,
                     path: brief_path.display().to_string(),
                 }),
@@ -229,7 +229,7 @@ fn run_initiative_brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
         Some(brief) => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct BriefShowResponse {
+            struct BriefBody {
                 brief: BriefJson,
                 path: String,
             }
@@ -240,7 +240,7 @@ fn run_initiative_brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
                 body: String,
             }
             match ctx.format {
-                OutputFormat::Json => emit_response(BriefShowResponse {
+                OutputFormat::Json => emit_response(BriefBody {
                     brief: BriefJson {
                         frontmatter: brief.frontmatter.clone(),
                         body: brief.body,

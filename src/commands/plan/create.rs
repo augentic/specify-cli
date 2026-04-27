@@ -5,8 +5,7 @@ use serde_json::Value;
 use specify::{Error, PlanChange, PlanChangePatch, PlanStatus};
 
 use super::{
-    PlanRef, load_plan_for_write, plan_change_entry_json, plan_ref_from,
-    validate_project_in_registry,
+    PlanRef, change_entry_json, check_project, load_for_write, plan_ref,
 };
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
@@ -17,10 +16,10 @@ pub fn run_plan_create(
     description: Option<String>, project: Option<String>, schema: Option<String>,
     context: Vec<String>,
 ) -> Result<CliResult, Error> {
-    let (plan_path, mut plan) = load_plan_for_write(ctx)?;
+    let (plan_path, mut plan) = load_for_write(ctx)?;
 
     if let Some(ref proj) = project {
-        validate_project_in_registry(&ctx.project_dir, proj)?;
+        check_project(&ctx.project_dir, proj)?;
     }
 
     let entry = PlanChange {
@@ -42,16 +41,16 @@ pub fn run_plan_create(
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct PlanCreateResponse {
+    struct CreateBody {
         plan: PlanRef,
         action: &'static str,
         entry: Value,
     }
     match ctx.format {
-        OutputFormat::Json => emit_response(PlanCreateResponse {
-            plan: plan_ref_from(&plan, &plan_path),
+        OutputFormat::Json => emit_response(CreateBody {
+            plan: plan_ref(&plan, &plan_path),
             action: "create",
-            entry: plan_change_entry_json(created),
+            entry: change_entry_json(created),
         }),
         OutputFormat::Text => {
             println!("Created plan entry '{name}' with status 'pending'.");
@@ -65,12 +64,12 @@ pub fn run_plan_amend(
     sources: Option<Vec<String>>, description: Option<String>, project: Option<String>,
     schema: Option<String>, context: Option<Vec<String>>,
 ) -> Result<CliResult, Error> {
-    let (plan_path, mut plan) = load_plan_for_write(ctx)?;
+    let (plan_path, mut plan) = load_for_write(ctx)?;
 
     if let Some(ref proj) = project
         && !proj.is_empty()
     {
-        validate_project_in_registry(&ctx.project_dir, proj)?;
+        check_project(&ctx.project_dir, proj)?;
     }
 
     let description_patch: Option<Option<String>> =
@@ -96,16 +95,16 @@ pub fn run_plan_amend(
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct PlanAmendResponse {
+    struct AmendBody {
         plan: PlanRef,
         action: &'static str,
         entry: Value,
     }
     match ctx.format {
-        OutputFormat::Json => emit_response(PlanAmendResponse {
-            plan: plan_ref_from(&plan, &plan_path),
+        OutputFormat::Json => emit_response(AmendBody {
+            plan: plan_ref(&plan, &plan_path),
             action: "amend",
-            entry: plan_change_entry_json(amended),
+            entry: change_entry_json(amended),
         }),
         OutputFormat::Text => {
             println!("Amended plan entry '{name}'.");

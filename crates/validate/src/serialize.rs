@@ -70,7 +70,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn serializes_passed_report_with_schema_version() {
+    fn pass_report_schema_v2() {
         let mut brief_results: BTreeMap<String, Vec<ValidationResult>> = BTreeMap::new();
         brief_results.insert(
             "proposal".to_string(),
@@ -91,7 +91,7 @@ mod tests {
     }
 
     #[test]
-    fn serializes_deferred_with_reason() {
+    fn deferred_includes_reason() {
         let report = ValidationReport {
             brief_results: BTreeMap::new(),
             cross_checks: vec![ValidationResult::Deferred {
@@ -107,7 +107,7 @@ mod tests {
     }
 
     #[test]
-    fn serializes_failure_with_detail() {
+    fn fail_includes_detail() {
         let report = ValidationReport {
             brief_results: BTreeMap::new(),
             cross_checks: vec![ValidationResult::Fail {

@@ -1,7 +1,7 @@
 //! Spec-vs-code drift scaffolding (RFC-2, stub-level in Phase 1).
 //!
 //! This crate currently provides only the public types
-//! (`DriftEntry`, `DriftStatus`) and the `baseline_inventory` walker that
+//! (`Entry`, `Status`) and the `baseline_inventory` walker that
 //! every later drift-detection routine will feed from. The actual "does the
 //! generated code still match the baseline?" comparison lands with RFC-2.
 
@@ -21,13 +21,15 @@ use specify_spec::{RequirementBlock, parse_baseline};
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[must_use]
-pub struct DriftEntry {
+pub struct Entry {
     /// Stable requirement identifier (e.g. `REQ-001`).
-    pub requirement_id: String,
+    #[serde(rename = "requirement-id")]
+    pub id: String,
     /// Human-readable requirement name.
-    pub requirement_name: String,
+    #[serde(rename = "requirement-name")]
+    pub name: String,
     /// Drift classification for this requirement.
-    pub status: DriftStatus,
+    pub status: Status,
     /// Optional detail about why the requirement drifted or is missing.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub detail: Option<String>,
@@ -39,7 +41,7 @@ pub struct DriftEntry {
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
-pub enum DriftStatus {
+pub enum Status {
     /// Requirement is fully covered by source artefacts.
     Covered,
     /// Requirement exists but source artefacts have diverged.
@@ -142,7 +144,7 @@ Then they land on the dashboard
     }
 
     #[test]
-    fn empty_repo_returns_empty_vec() {
+    fn missing_specs_dir_empty() {
         let tmp = tempdir().expect("tempdir");
         let specs = tmp.path().join("specs");
         let inventory = baseline_inventory(&specs).expect("inventory");
@@ -150,7 +152,7 @@ Then they land on the dashboard
     }
 
     #[test]
-    fn single_spec_is_parsed() {
+    fn one_spec_parsed() {
         let tmp = tempdir().expect("tempdir");
         write_spec(tmp.path(), "login", MINIMAL_SPEC);
 
@@ -165,7 +167,7 @@ Then they land on the dashboard
     }
 
     #[test]
-    fn multiple_specs_sorted_lexically() {
+    fn specs_sorted() {
         let tmp = tempdir().expect("tempdir");
         // Deliberately out of lexical order.
         write_spec(tmp.path(), "zed", MINIMAL_SPEC);
@@ -178,7 +180,7 @@ Then they land on the dashboard
     }
 
     #[test]
-    fn non_directory_entries_are_ignored() {
+    fn ignores_stray_files() {
         let tmp = tempdir().expect("tempdir");
         write_spec(tmp.path(), "login", MINIMAL_SPEC);
         // Stray file at the top of specs/ — must not count as a spec.
@@ -191,7 +193,7 @@ Then they land on the dashboard
     }
 
     #[test]
-    fn spec_directory_without_spec_md_is_skipped() {
+    fn skips_dir_without_spec_md() {
         let tmp = tempdir().expect("tempdir");
         // Orphan dir — no spec.md inside.
         fs::create_dir_all(tmp.path().join("specs").join("orphan")).expect("create orphan");
@@ -203,7 +205,7 @@ Then they land on the dashboard
     }
 
     #[test]
-    fn malformed_spec_yields_empty_requirements_not_error() {
+    fn malformed_spec_empty_requirements() {
         let tmp = tempdir().expect("tempdir");
         write_spec(
             tmp.path(),

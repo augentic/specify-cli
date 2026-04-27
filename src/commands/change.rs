@@ -65,7 +65,7 @@ fn run_change_create(
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct ChangeCreateResponse {
+struct CreateBody {
     name: String,
     change_dir: String,
     status: String,
@@ -76,9 +76,9 @@ struct ChangeCreateResponse {
 
 fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResult {
     match format {
-        OutputFormat::Json => emit_response(ChangeCreateResponse {
-            name: outcome.change_dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
-            change_dir: outcome.change_dir.display().to_string(),
+        OutputFormat::Json => emit_response(CreateBody {
+            name: outcome.dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
+            change_dir: outcome.dir.display().to_string(),
             status: outcome.metadata.status.to_string(),
             schema: outcome.metadata.schema.clone(),
             created: outcome.created,
@@ -86,9 +86,9 @@ fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResul
         }),
         OutputFormat::Text => {
             if outcome.created {
-                println!("Created change {}", outcome.change_dir.display());
+                println!("Created change {}", outcome.dir.display());
             } else {
-                println!("Reusing existing change {}", outcome.change_dir.display());
+                println!("Reusing existing change {}", outcome.dir.display());
             }
             if outcome.restarted {
                 println!("  (previous directory was removed)");
@@ -166,7 +166,7 @@ fn run_change_touched_specs(
                 .iter()
                 .map(|t| TouchedSpecJson {
                     name: t.name.clone(),
-                    r#type: t.spec_type.to_string(),
+                    r#type: t.kind.to_string(),
                 })
                 .collect(),
         }),
@@ -176,7 +176,7 @@ fn run_change_touched_specs(
             } else {
                 println!("{name}:");
                 for entry in &entries {
-                    println!("  {} ({})", entry.name, entry.spec_type);
+                    println!("  {} ({})", entry.name, entry.kind);
                 }
             }
         }
@@ -192,7 +192,7 @@ fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
                 "touched-specs entry `{entry}` must be `<name>:new` or `<name>:modified`"
             ))
         })?;
-        let spec_type = match kind {
+        let kind = match kind {
             "new" => SpecType::New,
             "modified" => SpecType::Modified,
             other => {
@@ -203,7 +203,7 @@ fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
         };
         out.push(TouchedSpec {
             name: name.to_string(),
-            spec_type,
+            kind,
         });
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
@@ -227,9 +227,9 @@ fn run_change_overlap(ctx: &CommandContext, name: String) -> Result<CliResult, E
                 .iter()
                 .map(|o| OverlapJson {
                     capability: o.capability.clone(),
-                    other_change: o.other_change.clone(),
-                    our_spec_type: o.our_spec_type.to_string(),
-                    other_spec_type: o.other_spec_type.to_string(),
+                    other_change: o.other.clone(),
+                    our_spec_type: o.ours.to_string(),
+                    other_spec_type: o.theirs.to_string(),
                 })
                 .collect(),
         }),
@@ -240,7 +240,7 @@ fn run_change_overlap(ctx: &CommandContext, name: String) -> Result<CliResult, E
                 for o in &overlaps {
                     println!(
                         "{}: also touched by `{}` ({} vs {})",
-                        o.capability, o.other_change, o.our_spec_type, o.other_spec_type,
+                        o.capability, o.other, o.ours, o.theirs,
                     );
                 }
             }
@@ -329,14 +329,14 @@ fn run_change_phase_outcome(
         .expect("phase_outcome action must set metadata.outcome on success");
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct PhaseOutcomeResponse {
+    struct PhaseStamp {
         change: String,
         phase: String,
         outcome: String,
         at: String,
     }
     match ctx.format {
-        OutputFormat::Json => emit_response(PhaseOutcomeResponse {
+        OutputFormat::Json => emit_response(PhaseStamp {
             change: name,
             phase: phase.to_string(),
             outcome: outcome.to_string(),
@@ -382,18 +382,18 @@ fn run_change_outcome(ctx: &CommandContext, name: String) -> Result<CliResult, E
             #[serde(rename_all = "kebab-case")]
             struct OutcomeResponse {
                 name: String,
-                outcome: Option<OutcomeDetail>,
+                outcome: Option<OutcomeRow>,
             }
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct OutcomeDetail {
+            struct OutcomeRow {
                 phase: String,
                 outcome: String,
                 at: Rfc3339Stamp,
                 summary: String,
                 context: Value,
             }
-            let outcome_detail = metadata.outcome.as_ref().map(|o| OutcomeDetail {
+            let outcome_detail = metadata.outcome.as_ref().map(|o| OutcomeRow {
                 phase: o.phase.to_string(),
                 outcome: o.outcome.to_string(),
                 at: o.at.clone(),
@@ -479,14 +479,14 @@ fn run_change_journal_append(
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct JournalAppendResponse {
+    struct JournalBody {
         change: String,
         phase: String,
         kind: String,
         timestamp: Rfc3339Stamp,
     }
     match ctx.format {
-        OutputFormat::Json => emit_response(JournalAppendResponse {
+        OutputFormat::Json => emit_response(JournalBody {
             change: name,
             phase: phase.to_string(),
             kind: kind.to_string(),

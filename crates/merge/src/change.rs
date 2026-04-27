@@ -32,9 +32,9 @@ use crate::validate::validate_baseline;
 /// [`merge_change`]. Public so CLI callers can inspect `baseline_path`
 /// when previewing; the merge path additionally uses it to write.
 #[derive(Debug, Clone)]
-pub struct MergeEntry {
+pub struct Entry {
     /// Spec directory name (e.g. `"login"`).
-    pub spec_name: String,
+    pub name: String,
     /// Absolute path where the merged baseline will be written.
     pub baseline_path: PathBuf,
     /// In-memory merge result.
@@ -46,7 +46,7 @@ pub struct MergeEntry {
 #[must_use]
 pub struct PreviewResult {
     /// Spec merge entries (existing behavior).
-    pub specs: Vec<MergeEntry>,
+    pub specs: Vec<Entry>,
     /// Contract files that will be copied to baseline.
     pub contracts: Vec<ContractPreviewEntry>,
 }
@@ -85,7 +85,7 @@ pub struct BaselineConflict {
 
 /// Dry-run of the multi-spec merge.
 ///
-/// Computes every in-memory [`MergeEntry`] plus runs the baseline
+/// Computes every in-memory [`Entry`] plus runs the baseline
 /// coherence validator on each merged output, **without** writing
 /// baselines, transitioning status, or archiving. Also reports contract
 /// files that will be copied.
@@ -196,7 +196,7 @@ pub fn merge_change(
         .map_err(|err| Error::Merge(format!("archive move failed: {err}")))?;
 
     let mut output: Vec<(String, MergeResult)> =
-        merged.into_iter().map(|e| (e.spec_name, e.result)).collect();
+        merged.into_iter().map(|e| (e.name, e.result)).collect();
     output.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(output)
 }
@@ -226,7 +226,7 @@ pub fn conflict_check(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Baselin
 
     let mut conflicts: Vec<BaselineConflict> = Vec::new();
     for touched in &metadata.touched_specs {
-        if touched.spec_type != SpecType::Modified {
+        if touched.kind != SpecType::Modified {
             continue;
         }
         let baseline = specs_dir.join(&touched.name).join("spec.md");
@@ -334,7 +334,7 @@ fn check_contract_drift(
 /// under `<change_dir>/specs/*/spec.md`. Shared by `preview_change`
 /// and `merge_change`.
 #[allow(clippy::too_many_lines)]
-fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Error> {
+fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Entry>, Error> {
     let mut delta_specs: Vec<DeltaSpecRef> = Vec::new();
 
     let specs_root = change_dir.join("specs");
@@ -372,7 +372,7 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Er
 
     delta_specs.sort_by(|a, b| a.delta_path.cmp(&b.delta_path));
 
-    let mut merged: Vec<MergeEntry> = Vec::with_capacity(delta_specs.len());
+    let mut merged: Vec<Entry> = Vec::with_capacity(delta_specs.len());
     let mut aborts: Vec<String> = Vec::new();
 
     for spec in delta_specs {
@@ -406,8 +406,8 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Er
             }
         }
 
-        merged.push(MergeEntry {
-            spec_name: spec.spec_name,
+        merged.push(Entry {
+            name: spec.spec_name,
             baseline_path: spec.baseline_path,
             result,
         });
@@ -443,25 +443,25 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Er
                         .operations
                         .iter()
                         .map(|op| match op {
-                            crate::composition::CompositionMergeOp::Added { slug } => {
+                            crate::composition::MergeOp::Added { slug } => {
                                 MergeOperation::Added {
                                     id: slug.clone(),
                                     name: slug.clone(),
                                 }
                             }
-                            crate::composition::CompositionMergeOp::Modified { slug } => {
+                            crate::composition::MergeOp::Modified { slug } => {
                                 MergeOperation::Modified {
                                     id: slug.clone(),
                                     name: slug.clone(),
                                 }
                             }
-                            crate::composition::CompositionMergeOp::Removed { slug } => {
+                            crate::composition::MergeOp::Removed { slug } => {
                                 MergeOperation::Removed {
                                     id: slug.clone(),
                                     name: slug.clone(),
                                 }
                             }
-                            crate::composition::CompositionMergeOp::CreatedBaseline {
+                            crate::composition::MergeOp::CreatedBaseline {
                                 screen_count,
                             } => MergeOperation::CreatedBaseline {
                                 requirement_count: *screen_count,
@@ -469,8 +469,8 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Er
                         })
                         .collect(),
                 };
-                merged.push(MergeEntry {
-                    spec_name: "composition".to_string(),
+                merged.push(Entry {
+                    name: "composition".to_string(),
                     baseline_path,
                     result: spec_merge_result,
                 });
@@ -486,7 +486,7 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Er
         return Err(Error::Merge(aborts.join("\n")));
     }
 
-    merged.sort_by(|a, b| a.spec_name.cmp(&b.spec_name));
+    merged.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(merged)
 }
 

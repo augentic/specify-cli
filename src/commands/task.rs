@@ -19,14 +19,14 @@ pub fn run_task_progress(ctx: &CommandContext, change_dir: PathBuf) -> Result<Cl
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct TaskProgressResponse {
+            struct ProgressBody {
                 total: usize,
                 complete: usize,
                 pending: usize,
                 tasks: Vec<Value>,
             }
             let tasks: Vec<Value> = progress.tasks.iter().map(task_to_json).collect();
-            emit_response(TaskProgressResponse {
+            emit_response(ProgressBody {
                 total: progress.total,
                 complete: progress.complete,
                 pending: progress.total.saturating_sub(progress.complete),
@@ -46,34 +46,34 @@ pub fn run_task_progress(ctx: &CommandContext, change_dir: PathBuf) -> Result<Cl
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct TaskJson {
+struct TaskRow {
     group: String,
     number: String,
     description: String,
     complete: bool,
-    skill_directive: Option<SkillDirectiveJson>,
+    skill_directive: Option<DirectiveRow>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct SkillDirectiveJson {
+struct DirectiveRow {
     plugin: String,
     skill: String,
 }
 
 fn task_to_json(t: &Task) -> Value {
-    let skill = t.skill_directive.as_ref().map(|d| SkillDirectiveJson {
+    let skill = t.skill_directive.as_ref().map(|d| DirectiveRow {
         plugin: d.plugin.clone(),
         skill: d.skill.clone(),
     });
-    serde_json::to_value(TaskJson {
+    serde_json::to_value(TaskRow {
         group: t.group.clone(),
         number: t.number.clone(),
         description: t.description.clone(),
         complete: t.complete,
         skill_directive: skill,
     })
-    .expect("TaskJson serialises")
+    .expect("TaskRow serialises")
 }
 
 pub fn run_task_mark(
@@ -91,12 +91,12 @@ pub fn run_task_mark(
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct TaskMarkResponse {
+            struct MarkBody {
                 marked: String,
                 new_content_path: String,
                 idempotent: bool,
             }
-            emit_response(TaskMarkResponse {
+            emit_response(MarkBody {
                 marked: task_number,
                 new_content_path: tasks_path.display().to_string(),
                 idempotent,

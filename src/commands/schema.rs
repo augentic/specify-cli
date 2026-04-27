@@ -22,13 +22,13 @@ pub fn run_schema_resolve(
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct SchemaResolveResponse {
+    struct ResolveBody {
         schema_value: String,
         resolved_path: String,
         source: &'static str,
     }
     match format {
-        OutputFormat::Json => emit_response(SchemaResolveResponse {
+        OutputFormat::Json => emit_response(ResolveBody {
             schema_value,
             resolved_path: path.display().to_string(),
             source,
@@ -40,7 +40,7 @@ pub fn run_schema_resolve(
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct PipelineBriefJson {
+struct BriefRow {
     id: String,
     description: String,
     path: String,
@@ -52,7 +52,7 @@ struct PipelineBriefJson {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct SchemaPipelineResponse {
+struct PipelineBody {
     phase: String,
     change: Option<String>,
     briefs: Vec<Value>,
@@ -72,7 +72,7 @@ pub fn run_schema_pipeline(
                 .iter()
                 .map(|b| {
                     let present = completion.as_ref().and_then(|c| c.get(&b.frontmatter.id));
-                    serde_json::to_value(PipelineBriefJson {
+                    serde_json::to_value(BriefRow {
                         id: b.frontmatter.id.clone(),
                         description: b.frontmatter.description.clone(),
                         path: b.path.display().to_string(),
@@ -81,10 +81,10 @@ pub fn run_schema_pipeline(
                         tracks: b.frontmatter.tracks.clone(),
                         present: present.copied().map_or(Value::Null, Value::from),
                     })
-                    .expect("PipelineBriefJson serialises")
+                    .expect("BriefRow serialises")
                 })
                 .collect();
-            emit_response(SchemaPipelineResponse {
+            emit_response(PipelineBody {
                 phase: phase.to_string(),
                 change: change.as_ref().map(|p| p.display().to_string()),
                 briefs,
@@ -125,12 +125,12 @@ pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> Result<Cli
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct SchemaCheckResponse {
+            struct CheckBody {
                 passed: bool,
                 results: Vec<Value>,
             }
             let results_json: Vec<Value> = results.iter().map(validation_result_to_json).collect();
-            emit_response(SchemaCheckResponse {
+            emit_response(CheckBody {
                 passed,
                 results: results_json,
             });
@@ -156,7 +156,7 @@ pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> Result<Cli
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "status")]
-enum ValidationResultJson<'a> {
+enum CheckRow<'a> {
     #[serde(rename = "pass")]
     Pass { rule_id: &'a str, rule: &'a str },
     #[serde(rename = "fail")]
@@ -167,12 +167,12 @@ enum ValidationResultJson<'a> {
 
 fn validation_result_to_json(r: &ValidationResult) -> Value {
     let typed = match r {
-        ValidationResult::Pass { rule_id, rule } => ValidationResultJson::Pass { rule_id, rule },
+        ValidationResult::Pass { rule_id, rule } => CheckRow::Pass { rule_id, rule },
         ValidationResult::Fail {
             rule_id,
             rule,
             detail,
-        } => ValidationResultJson::Fail {
+        } => CheckRow::Fail {
             rule_id,
             rule,
             detail,
@@ -181,7 +181,7 @@ fn validation_result_to_json(r: &ValidationResult) -> Value {
             rule_id,
             rule,
             reason,
-        } => ValidationResultJson::Deferred {
+        } => CheckRow::Deferred {
             rule_id,
             rule,
             reason,
@@ -191,5 +191,5 @@ fn validation_result_to_json(r: &ValidationResult) -> Value {
                 .expect("fallback JSON serialises");
         }
     };
-    serde_json::to_value(typed).expect("ValidationResultJson serialises")
+    serde_json::to_value(typed).expect("CheckRow serialises")
 }

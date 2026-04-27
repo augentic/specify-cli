@@ -79,11 +79,11 @@ pub fn sync_registry_workspace(project_dir: &Path) -> Result<(), Error> {
 /// One row for `specify workspace status` text/JSON output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
-pub struct WorkspaceSlotStatus {
+pub struct SlotStatus {
     /// Registry project name (`.specify/workspace/<name>/`).
     pub name: String,
     /// How the slot is materialised on disk.
-    pub kind: WorkspaceSlotKind,
+    pub kind: SlotKind,
     /// `git rev-parse HEAD` when the resolved tree is a git checkout.
     pub head_sha: Option<String>,
     /// `true` when `git status --porcelain` is non-empty.
@@ -92,7 +92,7 @@ pub struct WorkspaceSlotStatus {
 
 /// Classification of a workspace slot on disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkspaceSlotKind {
+pub enum SlotKind {
     /// Path missing.
     Missing,
     /// Symlink under `.specify/workspace/<name>/`.
@@ -110,7 +110,7 @@ pub enum WorkspaceSlotKind {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn workspace_status(project_dir: &Path) -> Result<Option<Vec<WorkspaceSlotStatus>>, Error> {
+pub fn workspace_status(project_dir: &Path) -> Result<Option<Vec<SlotStatus>>, Error> {
     let Some(registry) = Registry::load(project_dir)? else {
         return Ok(None);
     };
@@ -124,11 +124,11 @@ pub fn workspace_status(project_dir: &Path) -> Result<Option<Vec<WorkspaceSlotSt
     Ok(Some(out))
 }
 
-fn describe_slot(name: &str, slot: &Path) -> WorkspaceSlotStatus {
+fn describe_slot(name: &str, slot: &Path) -> SlotStatus {
     let Ok(meta) = std::fs::symlink_metadata(slot) else {
-        return WorkspaceSlotStatus {
+        return SlotStatus {
             name: name.to_string(),
-            kind: WorkspaceSlotKind::Missing,
+            kind: SlotKind::Missing,
             head_sha: None,
             dirty: None,
         };
@@ -137,9 +137,9 @@ fn describe_slot(name: &str, slot: &Path) -> WorkspaceSlotStatus {
     if meta.file_type().is_symlink() {
         let (head_sha, dirty) =
             if slot.exists() { git_head_and_dirty_for_tree(slot) } else { (None, None) };
-        return WorkspaceSlotStatus {
+        return SlotStatus {
             name: name.to_string(),
-            kind: WorkspaceSlotKind::Symlink,
+            kind: SlotKind::Symlink,
             head_sha,
             dirty,
         };
@@ -147,17 +147,17 @@ fn describe_slot(name: &str, slot: &Path) -> WorkspaceSlotStatus {
 
     if meta.is_dir() && slot.join(".git").exists() {
         let (head_sha, dirty) = git_head_and_dirty_for_tree(slot);
-        return WorkspaceSlotStatus {
+        return SlotStatus {
             name: name.to_string(),
-            kind: WorkspaceSlotKind::GitClone,
+            kind: SlotKind::GitClone,
             head_sha,
             dirty,
         };
     }
 
-    WorkspaceSlotStatus {
+    SlotStatus {
         name: name.to_string(),
-        kind: WorkspaceSlotKind::Other,
+        kind: SlotKind::Other,
         head_sha: None,
         dirty: None,
     }
@@ -780,7 +780,7 @@ mod tests {
     }
 
     #[test]
-    fn distribute_contracts_copies_files_recursively() {
+    fn distribute_contracts_recursive() {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("contracts");
         let nested = src.join("schemas");
@@ -801,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn distribute_contracts_replaces_existing_destination() {
+    fn distribute_contracts_replaces_dest() {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("contracts");
         std::fs::create_dir_all(&src).unwrap();
@@ -818,7 +818,7 @@ mod tests {
     }
 
     #[test]
-    fn distribute_contracts_noop_when_src_missing() {
+    fn distribute_contracts_missing_src_noop() {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("does-not-exist");
         let dest = tmp.path().join("dest");

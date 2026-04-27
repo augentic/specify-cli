@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn fresh_init_creates_directories_and_config() {
+    fn init_creates_specify_tree() {
         let tmp = tempdir().unwrap();
         let repo = repo_root();
         let result = init(base_opts(tmp.path(), &repo)).expect("init ok");
@@ -267,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn re_init_is_idempotent_and_reports_no_new_dirs() {
+    fn reinit_idempotent() {
         let tmp = tempdir().unwrap();
         let repo = repo_root();
         let first = init(base_opts(tmp.path(), &repo)).expect("first init");
@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn gitignore_upsert_handles_missing_existing_and_duplicate() {
+    fn gitignore_missing_existing_duplicate() {
         let tmp = tempdir().unwrap();
         let repo = repo_root();
         let gitignore = tmp.path().join(".gitignore");
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn gitignore_upsert_appends_to_existing_content() {
+    fn gitignore_appends_to_existing() {
         let tmp = tempdir().unwrap();
         let repo = repo_root();
         fs::write(tmp.path().join(".gitignore"), "target/\n").expect("seed gitignore");
@@ -317,7 +317,7 @@ mod tests {
     }
 
     #[test]
-    fn gitignore_upsert_leaves_existing_entry_alone() {
+    fn gitignore_existing_entry_noop() {
         let tmp = tempdir().unwrap();
         let repo = repo_root();
         fs::write(
@@ -334,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn gitignore_upsert_appends_workspace_when_only_cache_present() {
+    fn gitignore_appends_workspace_only() {
         let tmp = tempdir().unwrap();
         let repo = repo_root();
         fs::write(tmp.path().join(".gitignore"), "target/\n.specify/.cache/\n")
@@ -348,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn cache_present_reflects_cache_meta_presence() {
+    fn cache_present_matches_cache_meta() {
         let tmp = tempdir().unwrap();
         let repo = repo_root();
         let result = init(base_opts(tmp.path(), &repo)).expect("init ok");
@@ -386,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn default_name_falls_back_to_directory_basename() {
+    fn default_name_is_dir_basename() {
         let tmp = tempdir().unwrap();
         let project = tmp.path().join("my-project");
         fs::create_dir_all(&project).expect("create project dir");

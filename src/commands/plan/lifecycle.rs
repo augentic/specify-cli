@@ -7,8 +7,8 @@ use specify::{
 };
 
 use super::{
-    PlanRef, absolute_string, emit_plan_structural_error, load_plan_for_write, plan_file_path,
-    plan_ref_from, plan_validation_to_json, print_plan_validation_line, require_plan_file,
+    PlanRef, absolute_string, emit_structural_error, file_path, load_for_write, plan_ref,
+    print_validation_line, require_file, validation_to_json,
 };
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
@@ -17,7 +17,7 @@ use crate::output::{CliResult, emit_response};
 pub fn run_plan_init(
     ctx: &CommandContext, name: String, sources: Vec<(String, String)>,
 ) -> Result<CliResult, Error> {
-    let plan_path = plan_file_path(&ctx.project_dir);
+    let plan_path = file_path(&ctx.project_dir);
     if plan_path.exists() {
         return Err(Error::Config(format!(
             "plan already exists at {}; run `specify plan archive` first",
@@ -39,12 +39,12 @@ pub fn run_plan_init(
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct PlanInitResponse {
+    struct InitBody {
         plan: PlanRef,
     }
 
     match ctx.format {
-        OutputFormat::Json => emit_response(PlanInitResponse {
+        OutputFormat::Json => emit_response(InitBody {
             plan: PlanRef {
                 name,
                 path: absolute_string(&plan_path),
@@ -58,7 +58,7 @@ pub fn run_plan_init(
 }
 
 pub fn run_plan_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
-    let plan_path = require_plan_file(&ctx.project_dir)?;
+    let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let changes_dir = ProjectConfig::changes_dir(&ctx.project_dir);
 
@@ -112,7 +112,7 @@ pub fn run_plan_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
                 results: Vec<Value>,
                 passed: bool,
             }
-            let items: Vec<Value> = results.iter().map(plan_validation_to_json).collect();
+            let items: Vec<Value> = results.iter().map(validation_to_json).collect();
             emit_response(PlanValidateResponse {
                 plan: PlanRef {
                     name: plan.name,
@@ -124,7 +124,7 @@ pub fn run_plan_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
         }
         OutputFormat::Text => {
             for r in &results {
-                print_plan_validation_line(r);
+                print_validation_line(r);
             }
             if results.is_empty() {
                 println!("Plan OK");
@@ -137,7 +137,7 @@ pub fn run_plan_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct PlanNextResponse {
+struct NextBody {
     next: Option<String>,
     reason: Option<String>,
     active: Option<String>,
@@ -148,18 +148,18 @@ struct PlanNextResponse {
 }
 
 pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
-    let plan_path = require_plan_file(&ctx.project_dir)?;
+    let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let changes_dir = ProjectConfig::changes_dir(&ctx.project_dir);
 
     let results = plan.validate(Some(&changes_dir), None);
     if results.iter().any(|r| matches!(r.level, PlanValidationLevel::Error)) {
-        return Ok(emit_plan_structural_error(ctx.format));
+        return Ok(emit_structural_error(ctx.format));
     }
 
     if let Some(active) = plan.changes.iter().find(|c| c.status == PlanStatus::InProgress) {
         match ctx.format {
-            OutputFormat::Json => emit_response(PlanNextResponse {
+            OutputFormat::Json => emit_response(NextBody {
                 next: None,
                 reason: Some("in-progress".to_string()),
                 active: Some(active.name.clone()),
@@ -175,7 +175,7 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
 
     if let Some(entry) = plan.next_eligible() {
         match ctx.format {
-            OutputFormat::Json => emit_response(PlanNextResponse {
+            OutputFormat::Json => emit_response(NextBody {
                 next: Some(entry.name.clone()),
                 reason: None,
                 active: None,
@@ -198,7 +198,7 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
             )
         };
         match ctx.format {
-            OutputFormat::Json => emit_response(PlanNextResponse {
+            OutputFormat::Json => emit_response(NextBody {
                 next: None,
                 reason: Some(reason.to_string()),
                 active: None,
@@ -216,7 +216,7 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
 pub fn run_plan_transition(
     ctx: &CommandContext, name: String, target: PlanStatus, reason: Option<String>,
 ) -> Result<CliResult, Error> {
-    let (plan_path, mut plan) = load_plan_for_write(ctx)?;
+    let (plan_path, mut plan) = load_for_write(ctx)?;
 
     let old_status = plan
         .changes
@@ -232,21 +232,21 @@ pub fn run_plan_transition(
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct PlanTransitionResponse {
+    struct TransitionBody {
         plan: PlanRef,
-        entry: PlanTransitionEntry,
+        entry: TransitionRow,
     }
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct PlanTransitionEntry {
+    struct TransitionRow {
         name: String,
         status: String,
         status_reason: Option<String>,
     }
     match ctx.format {
-        OutputFormat::Json => emit_response(PlanTransitionResponse {
-            plan: plan_ref_from(&plan, &plan_path),
-            entry: PlanTransitionEntry {
+        OutputFormat::Json => emit_response(TransitionBody {
+            plan: plan_ref(&plan, &plan_path),
+            entry: TransitionRow {
                 name: entry.name.clone(),
                 status: entry.status.to_string(),
                 status_reason: entry.status_reason.clone(),
@@ -277,20 +277,20 @@ pub fn run_plan_archive(ctx: &CommandContext, force: bool) -> Result<CliResult, 
                 OutputFormat::Json => {
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
-                    struct PlanArchiveResponse {
+                    struct ArchiveBody {
                         archived: String,
                         archived_plans_dir: Option<String>,
-                        plan: PlanArchiveName,
+                        plan: ArchiveId,
                     }
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
-                    struct PlanArchiveName {
+                    struct ArchiveId {
                         name: String,
                     }
-                    emit_response(PlanArchiveResponse {
+                    emit_response(ArchiveBody {
                         archived: absolute_string(&archived),
                         archived_plans_dir: archived_plans_dir.as_deref().map(absolute_string),
-                        plan: PlanArchiveName { name: plan_name },
+                        plan: ArchiveId { name: plan_name },
                     });
                 }
                 OutputFormat::Text => match archived_plans_dir {
@@ -309,12 +309,12 @@ pub fn run_plan_archive(ctx: &CommandContext, force: bool) -> Result<CliResult, 
                 OutputFormat::Json => {
                     #[derive(Serialize)]
                     #[serde(rename_all = "kebab-case")]
-                    struct PlanOutstandingError {
+                    struct OutstandingWork {
                         error: &'static str,
                         entries: Vec<String>,
                         exit_code: u8,
                     }
-                    emit_response(PlanOutstandingError {
+                    emit_response(OutstandingWork {
                         error: "plan-has-outstanding-work",
                         entries,
                         exit_code: CliResult::GenericFailure.code(),
