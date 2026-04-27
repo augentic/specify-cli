@@ -142,7 +142,7 @@ impl Schema {
                 schema_path.display()
             ))
         })?;
-        let schema: Self = serde_yaml_ng::from_str(&raw).map_err(|err| {
+        let schema: Self = serde_saphyr::from_str(&raw).map_err(|err| {
             Error::SchemaResolution(format!("failed to parse {}: {err}", schema_path.display()))
         })?;
 

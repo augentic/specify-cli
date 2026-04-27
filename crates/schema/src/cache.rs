@@ -47,7 +47,7 @@ impl CacheMeta {
                 return Err(Error::Config(format!("failed to read {}: {err}", path.display())));
             }
         };
-        let meta: Self = serde_yaml_ng::from_str(&contents).map_err(|err| {
+        let meta: Self = serde_saphyr::from_str(&contents).map_err(|err| {
             Error::Config(format!("invalid cache-meta at {}: {err}", path.display()))
         })?;
         Ok(Some(meta))

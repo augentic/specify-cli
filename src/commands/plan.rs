@@ -193,7 +193,7 @@ fn run_initiative_validate(format: OutputFormat) -> CliResult {
                 workspace_base.join(&rp.name).join(".specify").join("project.yaml");
             if slot_project_yaml.exists()
                 && let Ok(content) = std::fs::read_to_string(&slot_project_yaml)
-                && let Ok(config) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&content)
+                && let Ok(config) = serde_saphyr::from_str::<serde_json::Value>(&content)
                 && let Some(schema_val) = config.get("schema").and_then(|v| v.as_str())
                 && schema_val != rp.schema
             {

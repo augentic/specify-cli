@@ -264,7 +264,7 @@ impl ChangeMetadata {
     ///
     /// Errors:
     ///   - file missing -> `Error::Config` with path context
-    ///   - YAML malformed -> `Error::Yaml` (via `From<serde_yaml_ng::Error>`)
+    ///   - YAML malformed -> `Error::Yaml` (via `From<serde_saphyr::Error>`)
     ///   - other I/O failure -> `Error::Io`
     ///
     /// # Errors
@@ -279,7 +279,7 @@ impl ChangeMetadata {
             });
         }
         let content = std::fs::read_to_string(&path)?;
-        let meta: Self = serde_yaml_ng::from_str(&content)?;
+        let meta: Self = serde_saphyr::from_str(&content)?;
         Ok(meta)
     }
 
@@ -505,7 +505,7 @@ touched-specs:
   - name: oauth
     type: new
 "#;
-        let meta: ChangeMetadata = serde_yaml_ng::from_str(yaml).expect("parse ok");
+        let meta: ChangeMetadata = serde_saphyr::from_str(yaml).expect("parse ok");
         assert_eq!(meta.status, LifecycleStatus::Building);
         assert_eq!(meta.created_at.as_deref(), Some("2024-08-01T10:00:00Z"));
         assert_eq!(meta.defined_at.as_deref(), Some("2024-08-01T12:00:00Z"));
@@ -536,7 +536,7 @@ touched-specs:
             }],
             outcome: None,
         };
-        let yaml = serde_yaml_ng::to_string(&meta).expect("serialize ok");
+        let yaml = serde_saphyr::to_string(&meta).expect("serialize ok");
         assert!(yaml.contains("created-at:"), "yaml missing kebab-case created-at:\n{yaml}");
         assert!(yaml.contains("build-started-at:"), "yaml missing build-started-at:\n{yaml}");
         assert!(yaml.contains("touched-specs:"), "yaml missing touched-specs:\n{yaml}");

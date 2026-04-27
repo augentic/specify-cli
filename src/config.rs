@@ -67,7 +67,7 @@ impl ProjectConfig {
             }
             Err(err) => return Err(Error::Io(err)),
         };
-        let cfg: Self = serde_yaml_ng::from_str(&text)?;
+        let cfg: Self = serde_saphyr::from_str(&text)?;
 
         let current = env!("CARGO_PKG_VERSION");
         if let Some(required) = &cfg.specify_version

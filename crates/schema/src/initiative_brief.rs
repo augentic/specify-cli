@@ -110,7 +110,7 @@ impl InitiativeBrief {
             Error::Config("initiative.md: opening `---` has no closing `---` delimiter".to_string())
         })?;
 
-        let frontmatter: InitiativeFrontmatter = serde_yaml_ng::from_str(frontmatter_text)
+        let frontmatter: InitiativeFrontmatter = serde_saphyr::from_str(frontmatter_text)
             .map_err(|err| Error::Config(format!("initiative.md: invalid frontmatter: {err}")))?;
 
         let brief = Self {

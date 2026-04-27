@@ -470,12 +470,12 @@ fn change_status_by_name_returns_single_entry() {
 // ---------------------------------------------------------------------------
 
 /// Parse the `.metadata.yaml` for `name` under `project` as a
-/// `serde_yaml_ng::Value` so tests can assert on the `outcome` subtree
+/// `serde_json::Value` so tests can assert on the `outcome` subtree
 /// without pulling in the `specify-change` crate directly.
-fn read_metadata_yaml(project: &Project, name: &str) -> serde_yaml_ng::Value {
+fn read_metadata_yaml(project: &Project, name: &str) -> serde_json::Value {
     let path = project.changes_dir().join(name).join(".metadata.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    serde_yaml_ng::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+    serde_saphyr::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
 }
 
 /// Naive RFC3339 sanity check sufficient for integration tests: `YYYY-MM-DDT...`.
@@ -523,7 +523,7 @@ fn change_phase_outcome_stamps_success_on_define_json() {
     let at_on_disk = outcome["at"].as_str().expect("at on disk");
     assert!(looks_like_rfc3339(at_on_disk), "on-disk at should be RFC3339, got {at_on_disk}");
     assert!(
-        outcome.get("context").is_none_or(serde_yaml_ng::Value::is_null),
+        outcome.get("context").is_none_or(serde_json::Value::is_null),
         "context must be absent when not supplied, got: {outcome:?}"
     );
 }
@@ -713,7 +713,7 @@ fn change_phase_outcome_preserves_existing_metadata_fields() {
     assert_eq!(meta_after["created-at"].as_str(), Some(created_at_before.as_str()));
     assert_eq!(meta_after["status"].as_str(), Some(status_before.as_str()));
     assert_eq!(meta_after["schema"].as_str(), Some(schema_before.as_str()));
-    assert!(meta_after["outcome"].is_mapping(), "outcome should now be present");
+    assert!(meta_after["outcome"].is_object(), "outcome should now be present");
 }
 
 #[test]
@@ -988,8 +988,8 @@ fn change_journal_append_appends_to_file() {
         "journal.yaml must end with a trailing newline"
     );
 
-    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("parse journal");
-    let entries = yaml["entries"].as_sequence().expect("entries seq");
+    let yaml: serde_json::Value = serde_saphyr::from_str(&text).expect("parse journal");
+    let entries = yaml["entries"].as_array().expect("entries seq");
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0]["step"].as_str(), Some("define"));
     assert_eq!(entries[0]["type"].as_str(), Some("question"));
@@ -1028,7 +1028,7 @@ fn change_journal_append_stamps_rfc3339_timestamp() {
 
     let journal_path = project.changes_dir().join("foo").join("journal.yaml");
     let text = fs::read_to_string(&journal_path).expect("read journal");
-    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("parse journal");
+    let yaml: serde_json::Value = serde_saphyr::from_str(&text).expect("parse journal");
     let on_disk = yaml["entries"][0]["timestamp"].as_str().expect("timestamp on disk");
     chrono::DateTime::parse_from_rfc3339(on_disk)
         .unwrap_or_else(|e| panic!("on-disk timestamp {on_disk} is not valid RFC3339: {e}"));
@@ -1054,8 +1054,8 @@ fn change_journal_append_preserves_existing_entries() {
 
     let text =
         fs::read_to_string(project.changes_dir().join("foo").join("journal.yaml")).expect("read");
-    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("parse");
-    let entries = yaml["entries"].as_sequence().expect("entries seq");
+    let yaml: serde_json::Value = serde_saphyr::from_str(&text).expect("parse");
+    let entries = yaml["entries"].as_array().expect("entries seq");
     assert_eq!(entries.len(), 3, "all three appends must persist");
     let summaries: Vec<&str> =
         entries.iter().map(|e| e["summary"].as_str().expect("summary")).collect();
@@ -1116,8 +1116,8 @@ fn phase_outcome_round_trips_through_serde() {
                     Some("verbatim detail".to_string())
                 },
             };
-            let yaml = serde_yaml_ng::to_string(&value).expect("serialize");
-            let parsed: PhaseOutcome = serde_yaml_ng::from_str(&yaml).expect("parse");
+            let yaml = serde_saphyr::to_string(&value).expect("serialize");
+            let parsed: PhaseOutcome = serde_saphyr::from_str(&yaml).expect("parse");
             assert_eq!(parsed, value, "round-trip failed for yaml:\n{yaml}");
         }
     }

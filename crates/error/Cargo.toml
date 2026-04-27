@@ -14,4 +14,4 @@ workspace = true
 
 [dependencies]
 thiserror.workspace = true
-serde_yaml_ng.workspace = true
+serde-saphyr.workspace = true

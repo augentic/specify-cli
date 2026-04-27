@@ -134,7 +134,7 @@ pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> CliResult 
         Ok(t) => t,
         Err(err) => return emit_error(format, &Error::Io(err)),
     };
-    let schema: Schema = match serde_yaml_ng::from_str(&text) {
+    let schema: Schema = match serde_saphyr::from_str(&text) {
         Ok(s) => s,
         Err(err) => return emit_error(format, &Error::Yaml(err)),
     };

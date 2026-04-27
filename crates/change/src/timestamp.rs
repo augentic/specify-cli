@@ -70,8 +70,8 @@ mod tests {
     #[test]
     fn serde_round_trip_yaml() {
         let stamp = Rfc3339Stamp::from_raw("2024-08-01T10:00:00Z".to_string());
-        let yaml = serde_yaml_ng::to_string(&stamp).unwrap();
-        let parsed: Rfc3339Stamp = serde_yaml_ng::from_str(yaml.trim()).unwrap();
+        let yaml = serde_saphyr::to_string(&stamp).unwrap();
+        let parsed: Rfc3339Stamp = serde_saphyr::from_str(yaml.trim()).unwrap();
         assert_eq!(parsed, stamp);
     }
 

@@ -114,7 +114,7 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     };
 
     let config_path = ProjectConfig::config_path(opts.project_dir);
-    let serialised = serde_yaml_ng::to_string(&cfg)?;
+    let serialised = serde_saphyr::to_string(&cfg)?;
     fs::write(&config_path, serialised)?;
 
     upsert_gitignore(opts.project_dir)?;
@@ -158,7 +158,7 @@ fn resolve_version(project_dir: &Path, mode: VersionMode) -> Result<String, Erro
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(current),
         Err(err) => return Err(Error::Io(err)),
     };
-    let existing: ProjectConfig = serde_yaml_ng::from_str(&text)?;
+    let existing: ProjectConfig = serde_saphyr::from_str(&text)?;
     Ok(existing.specify_version.unwrap_or(current))
 }
 

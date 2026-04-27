@@ -1,7 +1,7 @@
 //! YAML delta merge for composition.yaml — screen-level operations
 //! (added/modified/removed) applied to a baseline `screens` map.
 
-use serde_yaml_ng::Value;
+use serde_json::Value;
 use specify_error::Error;
 
 /// Result of a successful composition merge.
@@ -55,7 +55,7 @@ pub enum CompositionMergeOp {
 pub fn merge_composition(
     baseline: Option<&str>, delta_text: &str,
 ) -> Result<CompositionMergeResult, Error> {
-    let delta_doc: Value = serde_yaml_ng::from_str(delta_text)
+    let delta_doc: Value = serde_saphyr::from_str(delta_text)
         .map_err(|e| Error::Merge(format!("failed to parse composition delta: {e}")))?;
 
     let has_screens = delta_doc.get("screens").is_some();
@@ -64,8 +64,8 @@ pub fn merge_composition(
     if has_screens && !has_delta {
         let screen_count = delta_doc
             .get("screens")
-            .and_then(|s| s.as_mapping())
-            .map_or(0, serde_yaml_ng::Mapping::len);
+            .and_then(|s| s.as_object())
+            .map_or(0, serde_json::Map::len);
         return Ok(CompositionMergeResult {
             output: delta_text.to_string(),
             operations: vec![CompositionMergeOp::CreatedBaseline { screen_count }],
@@ -80,78 +80,61 @@ pub fn merge_composition(
 
     let delta = delta_doc
         .get("delta")
-        .and_then(|d| d.as_mapping())
+        .and_then(|d| d.as_object())
         .ok_or_else(|| Error::Merge("`delta` is not a mapping".to_string()))?;
 
     let baseline_text = baseline.unwrap_or("");
     let mut baseline_doc: Value = if baseline_text.trim().is_empty() {
-        serde_yaml_ng::from_str("version: 1\nscreens: {}").unwrap()
+        serde_saphyr::from_str("version: 1\nscreens: {}").unwrap()
     } else {
-        serde_yaml_ng::from_str(baseline_text)
+        serde_saphyr::from_str(baseline_text)
             .map_err(|e| Error::Merge(format!("failed to parse composition baseline: {e}")))?
     };
 
     let screens = baseline_doc
-        .as_mapping_mut()
-        .and_then(|m| m.get_mut(Value::String("screens".to_string())))
-        .and_then(|s| s.as_mapping_mut())
+        .as_object_mut()
+        .and_then(|m| m.get_mut("screens"))
+        .and_then(|s| s.as_object_mut())
         .ok_or_else(|| Error::Merge("baseline has no `screens` mapping".to_string()))?;
 
     let mut operations: Vec<CompositionMergeOp> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
 
-    if let Some(removed) =
-        delta.get(Value::String("removed".to_string())).and_then(|r| r.as_mapping())
-    {
-        for (slug_val, _) in removed {
-            let slug = slug_val
-                .as_str()
-                .ok_or_else(|| Error::Merge("removed key is not a string".to_string()))?;
-            let key = Value::String(slug.to_string());
-            screens.remove(&key);
+    if let Some(removed) = delta.get("removed").and_then(|r| r.as_object()) {
+        for (slug, _) in removed {
+            screens.remove(slug.as_str());
             operations.push(CompositionMergeOp::Removed {
-                slug: slug.to_string(),
+                slug: slug.clone(),
             });
         }
     }
 
-    if let Some(added) = delta.get(Value::String("added".to_string())).and_then(|a| a.as_mapping())
-    {
-        for (slug_val, screen_entry) in added {
-            let slug = slug_val
-                .as_str()
-                .ok_or_else(|| Error::Merge("added key is not a string".to_string()))?;
-            let key = Value::String(slug.to_string());
-            if screens.contains_key(&key) {
+    if let Some(added) = delta.get("added").and_then(|a| a.as_object()) {
+        for (slug, screen_entry) in added {
+            if screens.contains_key(slug.as_str()) {
                 errors.push(format!(
                     "screen `{slug}` already exists in baseline; use `modified` to update it"
                 ));
                 continue;
             }
-            screens.insert(key, screen_entry.clone());
+            screens.insert(slug.clone(), screen_entry.clone());
             operations.push(CompositionMergeOp::Added {
-                slug: slug.to_string(),
+                slug: slug.clone(),
             });
         }
     }
 
-    if let Some(modified) =
-        delta.get(Value::String("modified".to_string())).and_then(|m| m.as_mapping())
-    {
-        for (slug_val, screen_entry) in modified {
-            let slug = slug_val
-                .as_str()
-                .ok_or_else(|| Error::Merge("modified key is not a string".to_string()))?;
-            let key = Value::String(slug.to_string());
-            if !screens.contains_key(&key) {
+    if let Some(modified) = delta.get("modified").and_then(|m| m.as_object()) {
+        for (slug, screen_entry) in modified {
+            if !screens.contains_key(slug.as_str()) {
                 errors.push(format!(
                     "screen `{slug}` not found in baseline; use `added` for new screens"
                 ));
                 continue;
             }
-            screens.insert(key, screen_entry.clone());
+            screens.insert(slug.clone(), screen_entry.clone());
             operations.push(CompositionMergeOp::Modified {
-                slug: slug.to_string(),
+                slug: slug.clone(),
             });
         }
     }
@@ -160,7 +143,7 @@ pub fn merge_composition(
         return Err(Error::Merge(errors.join("\n")));
     }
 
-    let output = serde_yaml_ng::to_string(&baseline_doc)
+    let output = serde_saphyr::to_string(&baseline_doc)
         .map_err(|e| Error::Merge(format!("failed to serialize merged composition: {e}")))?;
 
     Ok(CompositionMergeResult { output, operations })

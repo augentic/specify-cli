@@ -110,7 +110,7 @@ impl Registry {
         }
         let content = std::fs::read_to_string(&path)
             .map_err(|err| Error::Config(format!("failed to read {}: {err}", path.display())))?;
-        let registry: Self = serde_yaml_ng::from_str(&content)
+        let registry: Self = serde_saphyr::from_str(&content)
             .map_err(|err| Error::Config(format!("registry.yaml: invalid YAML: {err}")))?;
         registry.validate_shape()?;
         Ok(Some(registry))

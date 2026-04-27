@@ -36,7 +36,7 @@
 //!   multi-writer safety must add their own coordination.
 //!
 //! - **Malformed file rejection**: [`Journal::load`] surfaces a
-//!   `Error::Yaml` (via `From<serde_yaml_ng::Error>`) on malformed
+//!   `Error::Yaml` (via `From<serde_saphyr::Error>`) on malformed
 //!   content; it does **not** silently truncate or recover. The only
 //!   "graceful" branch is "file absent → empty journal".
 
@@ -117,7 +117,7 @@ impl Journal {
     /// Returns an empty [`Journal`] (not `Err`) when the file is
     /// absent — journals are lazily created on first [`Journal::append`].
     /// A malformed file surfaces `Error::Yaml` (via
-    /// `From<serde_yaml_ng::Error>`) with the underlying parser's
+    /// `From<serde_saphyr::Error>`) with the underlying parser's
     /// location hint; load never silently recovers from corruption.
     ///
     /// # Errors
@@ -129,7 +129,7 @@ impl Journal {
             return Ok(Self { entries: Vec::new() });
         }
         let content = std::fs::read_to_string(&path)?;
-        let journal: Self = serde_yaml_ng::from_str(&content)?;
+        let journal: Self = serde_saphyr::from_str(&content)?;
         Ok(journal)
     }
 
@@ -239,7 +239,7 @@ mod tests {
         let seed = Journal {
             entries: vec![a.clone(), b.clone()],
         };
-        let mut seed_bytes = serde_yaml_ng::to_string(&seed).expect("serialise seed");
+        let mut seed_bytes = serde_saphyr::to_string(&seed).expect("serialise seed");
         if !seed_bytes.ends_with('\n') {
             seed_bytes.push('\n');
         }
@@ -261,7 +261,7 @@ mod tests {
             "post-append file must be strictly longer than pre-append snapshot"
         );
 
-        // serde_yaml_ng is deterministic: serialising `[A, B, C]` emits
+        // serde_saphyr is deterministic: serialising `[A, B, C]` emits
         // the exact bytes of `[A, B]` followed by the serialisation of
         // `C`. That means the pre-append bytes (sans trailing newline)
         // are a prefix of the post-append bytes — the A+B region is
@@ -308,8 +308,8 @@ mod tests {
                     summary: "summary text".to_string(),
                     context: Some("verbatim detail".to_string()),
                 };
-                let yaml = serde_yaml_ng::to_string(&entry).expect("serialise");
-                let parsed: JournalEntry = serde_yaml_ng::from_str(&yaml).expect("parse");
+                let yaml = serde_saphyr::to_string(&entry).expect("serialise");
+                let parsed: JournalEntry = serde_saphyr::from_str(&yaml).expect("parse");
                 assert_eq!(parsed, entry, "round-trip failed for {phase:?}/{kind:?}:\n{yaml}");
             }
         }
@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn type_field_name_on_disk_is_literally_type() {
         let entry = sample_entry("example");
-        let yaml = serde_yaml_ng::to_string(&entry).expect("serialise");
+        let yaml = serde_saphyr::to_string(&entry).expect("serialise");
         assert!(yaml.contains("type: question"), "expected literal `type: question`, got:\n{yaml}");
         assert!(!yaml.contains("kind:"), "rust-side `kind` must not leak onto disk:\n{yaml}");
     }

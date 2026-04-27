@@ -16,4 +16,4 @@ workspace = true
 serde.workspace = true
 
 [dev-dependencies]
-serde_yaml_ng.workspace = true
+serde-saphyr.workspace = true

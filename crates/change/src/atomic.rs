@@ -27,7 +27,7 @@ use specify_error::Error;
 /// atomically persist it at `path`. See module-level docs for the
 /// atomicity envelope.
 pub fn atomic_yaml_write<T: Serialize>(path: &Path, value: &T) -> Result<(), Error> {
-    let mut content = serde_yaml_ng::to_string(value)?;
+    let mut content = serde_saphyr::to_string(value)?;
     if !content.ends_with('\n') {
         content.push('\n');
     }

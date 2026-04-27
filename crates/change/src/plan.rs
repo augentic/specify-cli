@@ -271,7 +271,7 @@ impl Plan {
     ///   - other I/O failure -> `Error::Io`
     ///
     /// Tolerant of files with or without a trailing newline —
-    /// `serde_yaml_ng::from_str` accepts both.
+    /// `serde_saphyr::from_str` accepts both.
     ///
     /// # Errors
     ///
@@ -284,7 +284,7 @@ impl Plan {
             });
         }
         let content = std::fs::read_to_string(path)?;
-        let plan: Self = serde_yaml_ng::from_str(&content)?;
+        let plan: Self = serde_saphyr::from_str(&content)?;
         Ok(plan)
     }
 
@@ -1195,9 +1195,9 @@ changes:
 
     #[test]
     fn plan_roundtrips_rfc_example() {
-        let original: Plan = serde_yaml_ng::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
-        let rendered = serde_yaml_ng::to_string(&original).expect("serialize plan");
-        let reparsed: Plan = serde_yaml_ng::from_str(&rendered).expect("reparse rendered plan");
+        let original: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let rendered = serde_saphyr::to_string(&original).expect("serialize plan");
+        let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse rendered plan");
         assert_eq!(original, reparsed, "plan should survive a serialize/parse round-trip");
 
         assert_eq!(original.name, "platform-v2");
@@ -1226,7 +1226,7 @@ changes:
                 status_reason: Some("awaiting upstream fix".to_string()),
             }],
         };
-        let yaml = serde_yaml_ng::to_string(&plan).expect("serialize plan");
+        let yaml = serde_saphyr::to_string(&plan).expect("serialize plan");
         assert!(yaml.contains("depends-on:"), "expected kebab-case depends-on in:\n{yaml}");
         assert!(
             yaml.contains("status: in-progress"),
@@ -1243,7 +1243,7 @@ changes:
     #[test]
     fn missing_optional_fields_deserialize_with_defaults() {
         let yaml = "name: foo\nchanges: []\n";
-        let plan: Plan = serde_yaml_ng::from_str(yaml).expect("parse minimal plan");
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse minimal plan");
         assert_eq!(plan.name, "foo");
         assert!(plan.sources.is_empty(), "sources should default to empty map");
         assert!(plan.changes.is_empty(), "changes should be empty");
@@ -1261,7 +1261,7 @@ changes:
       Type mismatch between cart line-item schema and payment gateway contract.
       Needs design revision after shopping-cart specs are updated.
 ";
-        let plan: Plan = serde_yaml_ng::from_str(yaml).expect("parse");
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
         let entry = &plan.changes[0];
         assert_eq!(entry.status, PlanStatus::Failed);
         let reason = entry.status_reason.as_deref().expect("status_reason populated");
@@ -1270,8 +1270,8 @@ changes:
             "status_reason should preserve folded text, got: {reason:?}"
         );
 
-        let rendered = serde_yaml_ng::to_string(&plan).expect("serialize");
-        let reparsed: Plan = serde_yaml_ng::from_str(&rendered).expect("reparse");
+        let rendered = serde_saphyr::to_string(&plan).expect("serialize");
+        let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
         assert_eq!(plan, reparsed);
         assert_eq!(
             reparsed.changes[0].status_reason, entry.status_reason,
@@ -1283,7 +1283,7 @@ changes:
     fn save_then_load_roundtrips_rfc_example() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("plan.yaml");
-        let original: Plan = serde_yaml_ng::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let original: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         original.save(&path).expect("save ok");
         let loaded = Plan::load(&path).expect("load ok");
         assert_eq!(loaded, original, "full plan should round-trip through save -> load");
@@ -1432,7 +1432,7 @@ changes:
 
     #[test]
     fn clean_plan_returns_no_results() {
-        let plan: Plan = serde_yaml_ng::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let plan: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         let results = plan.validate(None, None);
         assert!(
             results.is_empty(),
@@ -1693,7 +1693,7 @@ changes:
     ///   round 9: `checkout-ui` (dep checkout-api done)
     #[test]
     fn next_eligible_walks_rfc_example_forward() {
-        let mut plan: Plan = serde_yaml_ng::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let mut plan: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         for entry in &mut plan.changes {
             entry.status = PlanStatus::Pending;
             entry.status_reason = None;
@@ -1743,7 +1743,7 @@ changes:
 
     #[test]
     fn topological_order_rfc_example_matches_known_order() {
-        let plan: Plan = serde_yaml_ng::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let plan: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         let ordered: Vec<&str> = plan
             .topological_order()
             .expect("rfc plan has no cycles")
@@ -2405,7 +2405,7 @@ changes:
             "forced archive must preserve every entry (including non-terminal) verbatim"
         );
 
-        let archived: Plan = serde_yaml_ng::from_slice(&post_bytes).expect("parse archived");
+        let archived: Plan = serde_saphyr::from_slice(&post_bytes).expect("parse archived");
         let statuses: Vec<PlanStatus> = archived.changes.iter().map(|c| c.status).collect();
         assert_eq!(
             statuses,
@@ -2848,10 +2848,10 @@ name: foo
 project: traffic
 status: pending
 ";
-        let parsed: PlanChange = serde_yaml_ng::from_str(yaml).expect("parses with project");
+        let parsed: PlanChange = serde_saphyr::from_str(yaml).expect("parses with project");
         assert_eq!(parsed.project.as_deref(), Some("traffic"));
-        let round_tripped = serde_yaml_ng::to_string(&parsed).expect("serialize");
-        let re_parsed: PlanChange = serde_yaml_ng::from_str(&round_tripped).expect("re-parse");
+        let round_tripped = serde_saphyr::to_string(&parsed).expect("serialize");
+        let re_parsed: PlanChange = serde_saphyr::from_str(&round_tripped).expect("re-parse");
         assert_eq!(re_parsed.project, parsed.project);
     }
 
@@ -2861,7 +2861,7 @@ status: pending
 name: foo
 status: pending
 ";
-        let parsed: PlanChange = serde_yaml_ng::from_str(yaml).expect("parses without project");
+        let parsed: PlanChange = serde_saphyr::from_str(yaml).expect("parses without project");
         assert_eq!(parsed.project, None);
     }
 
@@ -3073,14 +3073,14 @@ changes:
     schema: omnia@v1
     status: pending
 ";
-        let plan: Plan = serde_yaml_ng::from_str(yaml).expect("parse");
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
         assert_eq!(plan.changes[0].schema.as_deref(), Some("contracts@v1"));
         assert_eq!(plan.changes[0].project, None);
         assert_eq!(plan.changes[1].schema.as_deref(), Some("omnia@v1"));
         assert_eq!(plan.changes[1].project.as_deref(), Some("auth-service"));
 
-        let rendered = serde_yaml_ng::to_string(&plan).expect("serialize");
-        let reparsed: Plan = serde_yaml_ng::from_str(&rendered).expect("reparse");
+        let rendered = serde_saphyr::to_string(&plan).expect("serialize");
+        let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
         assert_eq!(plan, reparsed, "plan must survive a YAML round-trip");
     }
 
@@ -3248,14 +3248,14 @@ changes:
     project: default
     status: pending
 ";
-        let plan: Plan = serde_yaml_ng::from_str(yaml).expect("parse yaml");
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse yaml");
         assert_eq!(
             plan.changes[0].context,
             vec!["contracts/http/user-api.yaml", "specs/user-registration/spec.md"],
         );
         assert!(plan.changes[1].context.is_empty(), "missing context defaults to empty");
 
-        let serialized = serde_yaml_ng::to_string(&plan).expect("serialize");
+        let serialized = serde_saphyr::to_string(&plan).expect("serialize");
         assert!(
             serialized.contains("contracts/http/user-api.yaml"),
             "populated context must appear in serialized output"

@@ -79,7 +79,7 @@ impl Brief {
         })?;
 
         let frontmatter: BriefFrontmatter =
-            serde_yaml_ng::from_str(frontmatter_text).map_err(|err| {
+            serde_saphyr::from_str(frontmatter_text).map_err(|err| {
                 Error::Config(format!(
                     "brief {} has invalid frontmatter YAML: {err}",
                     path.display()

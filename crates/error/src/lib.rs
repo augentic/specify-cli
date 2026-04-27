@@ -124,9 +124,13 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
-    /// A YAML parsing or serialization error.
+    /// A YAML deserialization error.
     #[error(transparent)]
-    Yaml(#[from] serde_yaml_ng::Error),
+    Yaml(#[from] serde_saphyr::Error),
+
+    /// A YAML serialization error.
+    #[error(transparent)]
+    YamlSer(#[from] serde_saphyr::ser::Error),
 }
 
 #[cfg(test)]
@@ -258,8 +262,8 @@ mod tests {
 
     #[test]
     fn yaml_from_conversion() {
-        let parse_err: serde_yaml_ng::Error =
-            serde_yaml_ng::from_str::<serde_yaml_ng::Value>(":\n\t- bad")
+        let parse_err: serde_saphyr::Error =
+            serde_saphyr::from_str::<String>(":\n\t- bad")
                 .expect_err("expected a YAML parse error");
         let display = parse_err.to_string();
         let err: Error = parse_err.into();

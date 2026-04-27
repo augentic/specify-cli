@@ -30,7 +30,7 @@ specify-validate.workspace = true
 specify-vectis.workspace = true
 clap.workspace = true
 serde.workspace = true
-serde_yaml_ng.workspace = true
+serde-saphyr.workspace = true
 serde_json.workspace = true
 semver = "1"
 chrono.workspace = true
@@ -121,7 +121,7 @@ specify-vectis = { path = "crates/vectis" }
 clap = { version = "4", features = ["derive"] }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
-serde_yaml_ng = "0.9"
+serde-saphyr = "0.0.25"
 serde_json = "1"
 regex = "1"
 glob = "0.3"

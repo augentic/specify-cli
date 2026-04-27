@@ -12,7 +12,6 @@ use std::path::PathBuf;
 
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
-use serde_yaml_ng::Value as YamlValue;
 
 /// RFC-2 §"The Plan" `platform-v2` example, inline.
 ///
@@ -92,8 +91,7 @@ fn load_validator() -> Validator {
 }
 
 fn yaml_to_json(yaml: &str) -> JsonValue {
-    let value: YamlValue = serde_yaml_ng::from_str(yaml).expect("fixture parses as YAML");
-    serde_json::to_value(value).expect("YAML value serialises as JSON")
+    serde_saphyr::from_str(yaml).expect("fixture parses as YAML")
 }
 
 #[test]

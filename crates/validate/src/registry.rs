@@ -220,7 +220,7 @@ const TASKS_RULES: &[Rule] = &[
 // ---------------------------------------------------------------------------
 
 fn composition_valid_yaml(ctx: &BriefContext<'_>) -> RuleOutcome {
-    match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(ctx.content) {
+    match serde_saphyr::from_str::<serde_json::Value>(ctx.content) {
         Ok(_) => RuleOutcome::Pass,
         Err(err) => RuleOutcome::Fail {
             detail: format!("composition.yaml is not valid YAML: {err}"),
@@ -229,7 +229,7 @@ fn composition_valid_yaml(ctx: &BriefContext<'_>) -> RuleOutcome {
 }
 
 fn composition_has_version(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let doc: serde_yaml_ng::Value = match serde_yaml_ng::from_str(ctx.content) {
+    let doc: serde_json::Value = match serde_saphyr::from_str(ctx.content) {
         Ok(v) => v,
         Err(_) => {
             return RuleOutcome::Fail {
@@ -238,7 +238,7 @@ fn composition_has_version(ctx: &BriefContext<'_>) -> RuleOutcome {
         }
     };
     match doc.get("version") {
-        Some(serde_yaml_ng::Value::Number(n)) if n.as_u64() == Some(1) => RuleOutcome::Pass,
+        Some(serde_json::Value::Number(n)) if n.as_u64() == Some(1) => RuleOutcome::Pass,
         Some(_) => RuleOutcome::Fail {
             detail: "`version` must be 1".to_string(),
         },
@@ -249,7 +249,7 @@ fn composition_has_version(ctx: &BriefContext<'_>) -> RuleOutcome {
 }
 
 fn composition_screens_or_delta(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let doc: serde_yaml_ng::Value = match serde_yaml_ng::from_str(ctx.content) {
+    let doc: serde_json::Value = match serde_saphyr::from_str(ctx.content) {
         Ok(v) => v,
         Err(_) => {
             return RuleOutcome::Fail {
@@ -273,7 +273,7 @@ fn composition_screens_or_delta(ctx: &BriefContext<'_>) -> RuleOutcome {
 }
 
 fn composition_screen_slugs_kebab(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let doc: serde_yaml_ng::Value = match serde_yaml_ng::from_str(ctx.content) {
+    let doc: serde_json::Value = match serde_saphyr::from_str(ctx.content) {
         Ok(v) => v,
         Err(_) => {
             return RuleOutcome::Fail {
@@ -283,19 +283,14 @@ fn composition_screen_slugs_kebab(ctx: &BriefContext<'_>) -> RuleOutcome {
     };
     let slug_re = regex::Regex::new(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$").unwrap();
 
-    let Some(screens_map) = doc.get("screens").and_then(|s| s.as_mapping()) else {
-        if let Some(delta) = doc.get("delta").and_then(|d| d.as_mapping()) {
+    let Some(screens_map) = doc.get("screens").and_then(|s| s.as_object()) else {
+        if let Some(delta) = doc.get("delta").and_then(|d| d.as_object()) {
             let mut bad: Vec<String> = Vec::new();
             for section_key in &["added", "modified", "removed"] {
-                if let Some(section) = delta
-                    .get(serde_yaml_ng::Value::String(section_key.to_string()))
-                    .and_then(|s| s.as_mapping())
-                {
-                    for key in section.keys() {
-                        if let Some(slug) = key.as_str()
-                            && !slug_re.is_match(slug)
-                        {
-                            bad.push(slug.to_string());
+                if let Some(section) = delta.get(*section_key).and_then(|s| s.as_object()) {
+                    for slug in section.keys() {
+                        if !slug_re.is_match(slug) {
+                            bad.push(slug.clone());
                         }
                     }
                 }
@@ -311,11 +306,9 @@ fn composition_screen_slugs_kebab(ctx: &BriefContext<'_>) -> RuleOutcome {
     };
 
     let mut bad: Vec<String> = Vec::new();
-    for key in screens_map.keys() {
-        if let Some(slug) = key.as_str()
-            && !slug_re.is_match(slug)
-        {
-            bad.push(slug.to_string());
+    for slug in screens_map.keys() {
+        if !slug_re.is_match(slug) {
+            bad.push(slug.clone());
         }
     }
     if bad.is_empty() {
@@ -446,7 +439,7 @@ fn contracts_schema_metadata(ctx: &BriefContext<'_>) -> RuleOutcome {
             continue;
         };
         let filename = path.file_name().unwrap_or_default().to_string_lossy();
-        let Ok(doc) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&content) else {
+        let Ok(doc) = serde_saphyr::from_str::<serde_json::Value>(&content) else {
             continue;
         };
         if doc.get("$id").is_none() {
@@ -573,21 +566,17 @@ fn cross_composition_maps_to_consistent(ctx: &CrossContext<'_>) -> RuleOutcome {
         return RuleOutcome::Pass;
     };
 
-    let doc: serde_yaml_ng::Value = match serde_yaml_ng::from_str(&comp_text) {
+    let doc: serde_json::Value = match serde_saphyr::from_str(&comp_text) {
         Ok(v) => v,
         Err(_) => return RuleOutcome::Pass,
     };
 
-    let Some(screens) = doc.get("screens").and_then(|s| s.as_mapping()) else {
-        if let Some(delta) = doc.get("delta").and_then(|d| d.as_mapping()) {
+    let Some(screens) = doc.get("screens").and_then(|s| s.as_object()) else {
+        if let Some(delta) = doc.get("delta").and_then(|d| d.as_object()) {
             let mut maps_to_issues: Vec<String> = Vec::new();
             for section_key in &["added", "modified"] {
-                if let Some(section) = delta
-                    .get(serde_yaml_ng::Value::String(section_key.to_string()))
-                    .and_then(|s| s.as_mapping())
-                {
-                    for (slug_val, screen) in section {
-                        let slug = slug_val.as_str().unwrap_or("?");
+                if let Some(section) = delta.get(*section_key).and_then(|s| s.as_object()) {
+                    for (slug, screen) in section {
                         if let Some(maps_to) = screen.get("maps_to") {
                             if let Some(val) = maps_to.as_str() {
                                 if val.is_empty() {
@@ -613,8 +602,7 @@ fn cross_composition_maps_to_consistent(ctx: &CrossContext<'_>) -> RuleOutcome {
     };
 
     let mut issues: Vec<String> = Vec::new();
-    for (slug_val, screen) in screens {
-        let slug = slug_val.as_str().unwrap_or("?");
+    for (slug, screen) in screens {
         if let Some(maps_to) = screen.get("maps_to") {
             if let Some(val) = maps_to.as_str() {
                 if val.is_empty() {
