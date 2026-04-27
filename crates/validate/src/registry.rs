@@ -671,14 +671,16 @@ mod tests {
 
     use super::*;
 
-    fn brief_ctx<'a>(change_dir: &'a Path, content: &'a str) -> BriefContext<'a> {
+    fn brief_ctx<'a>(
+        change_dir: &'a Path, specs_dir: &'a Path, content: &'a str,
+    ) -> BriefContext<'a> {
         BriefContext {
             brief_id: "contracts",
             content,
             parsed_spec: None,
             tasks: None,
             change_dir,
-            specs_dir: &change_dir.join("specs"),
+            specs_dir,
             terminology: "crate",
         }
     }
@@ -690,7 +692,8 @@ mod tests {
         fs::create_dir_all(&schemas).unwrap();
         fs::write(schemas.join("user.yaml"), "$id: urn:test\ntitle: U\ndescription: d\n").unwrap();
 
-        let ctx = brief_ctx(dir.path(), "");
+        let specs_dir = dir.path().join("specs");
+        let ctx = brief_ctx(dir.path(), &specs_dir, "");
         assert_eq!(contracts_schemas_dir_has_files(&ctx), RuleOutcome::Pass);
     }
 
@@ -700,14 +703,16 @@ mod tests {
         let schemas = dir.path().join("contracts").join("schemas");
         fs::create_dir_all(&schemas).unwrap();
 
-        let ctx = brief_ctx(dir.path(), "");
+        let specs_dir = dir.path().join("specs");
+        let ctx = brief_ctx(dir.path(), &specs_dir, "");
         assert!(matches!(contracts_schemas_dir_has_files(&ctx), RuleOutcome::Fail { .. }));
     }
 
     #[test]
     fn schemas_dir_has_files_fails_with_no_dir() {
         let dir = tempfile::tempdir().unwrap();
-        let ctx = brief_ctx(dir.path(), "");
+        let specs_dir = dir.path().join("specs");
+        let ctx = brief_ctx(dir.path(), &specs_dir, "");
         match contracts_schemas_dir_has_files(&ctx) {
             RuleOutcome::Fail { detail } => {
                 assert!(detail.contains("not found"), "got: {detail}");
@@ -730,7 +735,8 @@ mod tests {
             "openapi: '3.1.0'\npaths:\n  /users:\n    get:\n      schema:\n        $ref: \"../schemas/user.yaml\"\n",
         ).unwrap();
 
-        let ctx = brief_ctx(dir.path(), "");
+        let specs_dir = dir.path().join("specs");
+        let ctx = brief_ctx(dir.path(), &specs_dir, "");
         assert_eq!(contracts_refs_resolve(&ctx), RuleOutcome::Pass);
     }
 
@@ -745,7 +751,8 @@ mod tests {
             "openapi: '3.1.0'\npaths:\n  /users:\n    get:\n      schema:\n        $ref: \"../schemas/nonexistent.yaml\"\n",
         ).unwrap();
 
-        let ctx = brief_ctx(dir.path(), "");
+        let specs_dir = dir.path().join("specs");
+        let ctx = brief_ctx(dir.path(), &specs_dir, "");
         match contracts_refs_resolve(&ctx) {
             RuleOutcome::Fail { detail } => {
                 assert!(detail.contains("nonexistent.yaml"), "got: {detail}");
@@ -757,7 +764,8 @@ mod tests {
     #[test]
     fn refs_resolve_passes_when_no_http_or_messages_dirs() {
         let dir = tempfile::tempdir().unwrap();
-        let ctx = brief_ctx(dir.path(), "");
+        let specs_dir = dir.path().join("specs");
+        let ctx = brief_ctx(dir.path(), &specs_dir, "");
         assert_eq!(contracts_refs_resolve(&ctx), RuleOutcome::Pass);
     }
 
@@ -771,7 +779,8 @@ mod tests {
             "$id: urn:specify:schemas/user\ntitle: User\ndescription: A user entity.\ntype: object\n",
         ).unwrap();
 
-        let ctx = brief_ctx(dir.path(), "");
+        let specs_dir = dir.path().join("specs");
+        let ctx = brief_ctx(dir.path(), &specs_dir, "");
         assert_eq!(contracts_schema_metadata(&ctx), RuleOutcome::Pass);
     }
 
@@ -786,7 +795,8 @@ mod tests {
         )
         .unwrap();
 
-        let ctx = brief_ctx(dir.path(), "");
+        let specs_dir = dir.path().join("specs");
+        let ctx = brief_ctx(dir.path(), &specs_dir, "");
         match contracts_schema_metadata(&ctx) {
             RuleOutcome::Fail { detail } => {
                 assert!(detail.contains("missing $id"), "got: {detail}");
@@ -806,7 +816,8 @@ mod tests {
         )
         .unwrap();
 
-        let ctx = brief_ctx(dir.path(), "");
+        let specs_dir = dir.path().join("specs");
+        let ctx = brief_ctx(dir.path(), &specs_dir, "");
         match contracts_schema_metadata(&ctx) {
             RuleOutcome::Fail { detail } => {
                 assert!(detail.contains("missing or empty title"), "got: {detail}");
@@ -818,7 +829,8 @@ mod tests {
     #[test]
     fn schema_metadata_passes_when_no_schemas_dir() {
         let dir = tempfile::tempdir().unwrap();
-        let ctx = brief_ctx(dir.path(), "");
+        let specs_dir = dir.path().join("specs");
+        let ctx = brief_ctx(dir.path(), &specs_dir, "");
         assert_eq!(contracts_schema_metadata(&ctx), RuleOutcome::Pass);
     }
 }

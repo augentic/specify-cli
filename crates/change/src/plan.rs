@@ -2892,6 +2892,7 @@ status: pending
                 url: ".".to_string(),
                 schema: "omnia@v1".to_string(),
                 description: None,
+                contracts: None,
             }],
         };
         let results = plan.validate(None, Some(&registry));
@@ -2923,12 +2924,14 @@ status: pending
                     url: ".".to_string(),
                     schema: "omnia@v1".to_string(),
                     description: Some("Alpha project".to_string()),
+                    contracts: None,
                 },
                 RegistryProject {
                     name: "beta".to_string(),
                     url: "git@github.com:org/beta.git".to_string(),
                     schema: "omnia@v1".to_string(),
                     description: Some("Beta project".to_string()),
+                    contracts: None,
                 },
             ],
         };
@@ -2960,6 +2963,7 @@ status: pending
                 url: ".".to_string(),
                 schema: "omnia@v1".to_string(),
                 description: None,
+                contracts: None,
             }],
         };
         let results = plan.validate(None, Some(&registry));
@@ -2992,12 +2996,14 @@ status: pending
                     url: ".".to_string(),
                     schema: "omnia@v1".to_string(),
                     description: Some("Alpha".to_string()),
+                    contracts: None,
                 },
                 RegistryProject {
                     name: "beta".to_string(),
                     url: "git@github.com:org/beta.git".to_string(),
                     schema: "omnia@v1".to_string(),
                     description: Some("Beta".to_string()),
+                    contracts: None,
                 },
             ],
         };
