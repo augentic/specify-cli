@@ -70,7 +70,7 @@ Goal: get every byte of vectis source into the new repo, preserving relative pat
   - `name = "specify-vectis"` (was `vectis-cli`).
   - Adopt workspace inheritance for `version`/`edition`/`license`/`repository` so it matches the rest of `crates/`.
   - Keep the existing `[[bin]] name = "vectis"` block for now — chunk 2 deletes it.
-- Edit root [`Cargo.toml`](../../Cargo.toml): add `crates/vectis` to `[workspace] members` (already present is `crates/{change,drift,error,federation,merge,schema,spec,task,validate}`).
+- Edit root [`Cargo.toml`](../../Cargo.toml): add `crates/vectis` to `[workspace] members` (already present is `crates/{change,drift,error,platform,merge,schema,spec,task,validate}`).
 - Confirm by ripgrep that all `include_str!("../../../../templates/vectis/...")` paths in `crates/vectis/src/templates/{core,ios,android}.rs` and `include_str!("../embedded/versions.toml")` in `crates/vectis/src/versions.rs` resolve under the new layout (no edits needed — same depth).
 - Verify: `cargo build -p specify-vectis` and `cargo test -p specify-vectis` both green from the `specify-cli` checkout. The `target/debug/vectis` binary still exists at this point — that's fine.
 
@@ -216,7 +216,7 @@ Goal: the `vectis` plugin and surrounding docs work against the new `specify vec
   (`clap`, `roxmltree`, `syn`, `toml`, `ureq`) are not in
   `[workspace.dependencies]` and were left as-is — chunks 2–7 do not
   depend on this. Added `crates/vectis` to the root workspace
-  `members` list (between `crates/federation` and end of array).
+  `members` list (between `crates/platform` and end of array).
   Verification: `cargo build -p specify-vectis` and `cargo test -p
   specify-vectis` both green (118 tests pass), and
   `cargo build --workspace` + `cargo test --workspace` are green

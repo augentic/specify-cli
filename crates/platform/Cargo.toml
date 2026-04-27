@@ -1,12 +1,12 @@
 [package]
-name = "specify-federation"
+name = "specify-platform"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Multi-repo coordination scaffolding for Specify (RFC-3, stubbed)"
 categories = ["development-tools"]
-keywords = ["specify", "federation", "rfc3"]
+keywords = ["specify", "platform", "rfc3"]
 readme = "../../README.md"
 
 [lints]

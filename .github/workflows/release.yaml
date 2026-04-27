@@ -188,8 +188,8 @@ jobs:
       - name: Wait for index
         run: sleep 30
 
-      - name: Publish specify-federation
-        run: cargo publish --package specify-federation --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish specify-platform
+        run: cargo publish --package specify-platform --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Wait for index
         run: sleep 30
 

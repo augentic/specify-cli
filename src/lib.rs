@@ -16,12 +16,12 @@ pub use specify_change::{
 };
 pub use specify_drift::{Entry as DriftEntry, Status as DriftStatus, baseline_inventory};
 pub use specify_error::{Error, ValidationStatus, ValidationSummary};
-pub use specify_federation::{FederationConfig, PeerRepo, parse_federation_config};
 pub use specify_merge::{
     BaselineConflict, ContractAction, ContractPreviewEntry, Entry as MergeEntry, MergeOperation,
     MergeResult, PreviewResult, conflict_check, merge, merge_change, preview_change,
     validate_baseline,
 };
+pub use specify_platform::{PeerRepo, PlatformConfig, parse_platform_config};
 pub use specify_schema::{
     Brief, BriefFrontmatter, CacheMeta, InitiativeBrief, InitiativeFrontmatter, InitiativeInput,
     InputKind, Phase, Pipeline, PipelineEntry, PipelineView, Registry, RegistryProject,

@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
-use specify_federation::FederationConfig;
+use specify_platform::PlatformConfig;
 
 /// In-memory representation of `.specify/project.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -132,7 +132,7 @@ impl ProjectConfig {
     }
 }
 
-impl FederationConfig for ProjectConfig {}
+impl PlatformConfig for ProjectConfig {}
 
 /// Returns `true` when `current < required` under semver ordering.
 /// Unparseable versions are treated as "not older" — we don't want a
