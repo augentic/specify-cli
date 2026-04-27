@@ -38,6 +38,32 @@ pub struct MergeEntry {
     pub result: MergeResult,
 }
 
+/// Complete preview of a change merge: spec merges + contract changes.
+#[derive(Debug, Clone)]
+pub struct PreviewResult {
+    /// Spec merge entries (existing behavior).
+    pub specs: Vec<MergeEntry>,
+    /// Contract files that will be copied to baseline.
+    pub contracts: Vec<ContractPreviewEntry>,
+}
+
+/// A contract file discovered in the change directory.
+#[derive(Debug, Clone)]
+pub struct ContractPreviewEntry {
+    /// Path relative to `contracts/` (e.g. `schemas/user.yaml`).
+    pub relative_path: String,
+    /// Whether this file already exists in the baseline.
+    pub action: ContractAction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContractAction {
+    /// New file — no corresponding baseline file exists.
+    Added,
+    /// Replacement — a baseline file at the same path will be overwritten.
+    Replaced,
+}
+
 /// One `type: modified` `touched_spec` whose baseline has been modified
 /// after the change's `defined_at` timestamp. The plan skill surfaces
 /// this list to the human so they can confirm or abort the merge.
@@ -51,14 +77,16 @@ pub struct BaselineConflict {
 /// Dry-run of the multi-spec merge: computes every in-memory
 /// [`MergeEntry`] plus runs the baseline coherence validator on each
 /// merged output, **without** writing baselines, transitioning status,
-/// or archiving.
+/// or archiving. Also reports contract files that will be copied.
 ///
 /// Unlike [`merge_change`] this does not gate on
 /// `LifecycleStatus::Complete` — the define / build / merge skill pipeline
 /// previews while the change is still `building` or `complete` so the
 /// human can confirm operations before the merge skill commits.
-pub fn preview_change(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Error> {
-    plan_merge(change_dir, specs_dir)
+pub fn preview_change(change_dir: &Path, specs_dir: &Path) -> Result<PreviewResult, Error> {
+    let specs = plan_merge(change_dir, specs_dir)?;
+    let contracts = preview_contracts(change_dir, specs_dir)?;
+    Ok(PreviewResult { specs, contracts })
 }
 
 /// Atomic multi-spec merge plus archive.
@@ -104,6 +132,20 @@ pub fn merge_change(
         })?;
     }
 
+    // --- Copy contract files into baseline ----------------------------------
+
+    let contracts_dir = change_dir.join("contracts");
+    let baseline_contracts_dir = specs_dir
+        .parent()
+        .ok_or_else(|| Error::Merge("specs_dir has no parent".into()))?
+        .join("contracts");
+
+    let contract_files = if contracts_dir.is_dir() {
+        copy_contracts(&contracts_dir, &baseline_contracts_dir)?
+    } else {
+        vec![]
+    };
+
     // --- Metadata flip + archive move -------------------------------------
 
     let now = Utc::now();
@@ -118,7 +160,15 @@ pub fn merge_change(
         phase: Phase::Merge,
         outcome: Outcome::Success,
         at: format_rfc3339(now),
-        summary: format!("Merged {} spec(s) into baseline", merged.len()),
+        summary: if contract_files.is_empty() {
+            format!("Merged {} spec(s) into baseline", merged.len())
+        } else {
+            format!(
+                "Merged {} spec(s) and {} contract file(s) into baseline",
+                merged.len(),
+                contract_files.len()
+            )
+        },
         context: None,
     });
     metadata.save(change_dir)?;
@@ -188,8 +238,71 @@ pub fn conflict_check(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Baselin
         }
     }
 
+    // Check contract baseline for drift
+    let change_contracts_dir = change_dir.join("contracts");
+    if change_contracts_dir.is_dir() {
+        let baseline_contracts_dir = specs_dir
+            .parent()
+            .ok_or_else(|| Error::Merge("specs_dir has no parent".into()))?
+            .join("contracts");
+
+        check_contract_drift(
+            &change_contracts_dir,
+            &change_contracts_dir,
+            &baseline_contracts_dir,
+            defined_raw,
+            defined_at,
+            &mut conflicts,
+        )?;
+    }
+
     conflicts.sort_by(|a, b| a.capability.cmp(&b.capability));
     Ok(conflicts)
+}
+
+/// Recursively walk `current` (rooted at `base`) and check whether each
+/// file's counterpart under `baseline_dir` has been modified after
+/// `defined_at`. Files that exist only in the change (not yet in baseline)
+/// are skipped — they represent new contracts, not drifted ones.
+fn check_contract_drift(
+    base: &Path,
+    current: &Path,
+    baseline_dir: &Path,
+    defined_raw: &str,
+    defined_at: DateTime<Utc>,
+    conflicts: &mut Vec<BaselineConflict>,
+) -> Result<(), Error> {
+    if !current.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(current).map_err(|err| {
+        Error::Merge(format!("failed to read {}: {err}", current.display()))
+    })? {
+        let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
+        let path = entry.path();
+        if path.is_dir() {
+            check_contract_drift(base, &path, baseline_dir, defined_raw, defined_at, conflicts)?;
+        } else {
+            let relative = path
+                .strip_prefix(base)
+                .map_err(|err| Error::Merge(format!("path prefix error: {err}")))?;
+            let baseline_path = baseline_dir.join(relative);
+            let meta = match fs::metadata(&baseline_path) {
+                Ok(m) => m,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(err) => return Err(Error::Io(err)),
+            };
+            let mtime = system_time_to_utc(meta.modified()?)?;
+            if mtime > defined_at {
+                conflicts.push(BaselineConflict {
+                    capability: format!("contracts/{}", relative.to_string_lossy()),
+                    defined_at: defined_raw.to_string(),
+                    baseline_modified_at: mtime,
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +468,55 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Er
     Ok(merged)
 }
 
+fn preview_contracts(
+    change_dir: &Path, specs_dir: &Path,
+) -> Result<Vec<ContractPreviewEntry>, Error> {
+    let contracts_dir = change_dir.join("contracts");
+    if !contracts_dir.is_dir() {
+        return Ok(vec![]);
+    }
+
+    let baseline_dir = specs_dir
+        .parent()
+        .ok_or_else(|| Error::Merge("specs_dir has no parent".into()))?
+        .join("contracts");
+
+    let mut entries = Vec::new();
+    collect_contract_entries(&contracts_dir, &contracts_dir, &baseline_dir, &mut entries)?;
+    entries.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    Ok(entries)
+}
+
+fn collect_contract_entries(
+    base: &Path, current: &Path, baseline_dir: &Path,
+    entries: &mut Vec<ContractPreviewEntry>,
+) -> Result<(), Error> {
+    for entry in fs::read_dir(current).map_err(|err| {
+        Error::Merge(format!("failed to read {}: {err}", current.display()))
+    })? {
+        let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_contract_entries(base, &path, baseline_dir, entries)?;
+        } else {
+            let relative = path
+                .strip_prefix(base)
+                .map_err(|err| Error::Merge(format!("path prefix error: {err}")))?;
+            let baseline_path = baseline_dir.join(relative);
+            let action = if baseline_path.is_file() {
+                ContractAction::Replaced
+            } else {
+                ContractAction::Added
+            };
+            entries.push(ContractPreviewEntry {
+                relative_path: relative.to_string_lossy().to_string(),
+                action,
+            });
+        }
+    }
+    Ok(())
+}
+
 struct DeltaSpecRef {
     spec_name: String,
     delta_path: PathBuf,
@@ -374,6 +536,60 @@ fn system_time_to_utc(t: SystemTime) -> Result<DateTime<Utc>, Error> {
     let nanos = duration.subsec_nanos();
     DateTime::<Utc>::from_timestamp(secs, nanos)
         .ok_or_else(|| Error::Merge("baseline mtime out of range".to_string()))
+}
+
+// ---------------------------------------------------------------------------
+// Contract file copying
+// ---------------------------------------------------------------------------
+
+/// Recursively copy all files from `src` into `dest`, preserving the
+/// relative directory structure. Existing files at the same relative
+/// path are replaced (opaque whole-file replacement, not delta-merge).
+/// Returns the list of relative paths that were copied.
+fn copy_contracts(src: &Path, dest: &Path) -> Result<Vec<String>, Error> {
+    let mut copied = Vec::new();
+    copy_contracts_recursive(src, dest, src, &mut copied)?;
+    Ok(copied)
+}
+
+fn copy_contracts_recursive(
+    base: &Path,
+    dest_base: &Path,
+    current: &Path,
+    copied: &mut Vec<String>,
+) -> Result<(), Error> {
+    for entry in fs::read_dir(current).map_err(|err| {
+        Error::Merge(format!("failed to read {}: {err}", current.display()))
+    })? {
+        let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(base)
+            .map_err(|err| Error::Merge(format!("path prefix error: {err}")))?;
+        let dest_path = dest_base.join(relative);
+
+        if path.is_dir() {
+            fs::create_dir_all(&dest_path).map_err(|err| {
+                Error::Merge(format!("failed to create {}: {err}", dest_path.display()))
+            })?;
+            copy_contracts_recursive(base, dest_base, &path, copied)?;
+        } else {
+            if let Some(parent) = dest_path.parent() {
+                fs::create_dir_all(parent).map_err(|err| {
+                    Error::Merge(format!("failed to create {}: {err}", parent.display()))
+                })?;
+            }
+            fs::copy(&path, &dest_path).map_err(|err| {
+                Error::Merge(format!(
+                    "failed to copy {} to {}: {err}",
+                    path.display(),
+                    dest_path.display()
+                ))
+            })?;
+            copied.push(relative.to_string_lossy().to_string());
+        }
+    }
+    Ok(())
 }
 
 // Archive move semantics live in `specify_change::actions::archive`; both

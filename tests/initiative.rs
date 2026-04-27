@@ -175,8 +175,10 @@ mod cli {
 name: demo
 changes:
   - name: a
+    project: default
     status: pending
   - name: b
+    project: default
     status: pending
     depends-on: [a]
 ";
@@ -185,8 +187,10 @@ changes:
 name: demo
 changes:
   - name: foo
+    project: default
     status: pending
   - name: foo
+    project: default
     status: pending
 ";
 
@@ -194,8 +198,10 @@ changes:
 name: demo
 changes:
   - name: a
+    project: default
     status: done
   - name: b
+    project: default
     status: pending
 ";
 
@@ -203,6 +209,7 @@ changes:
 name: demo
 changes:
   - name: a
+    project: default
     status: in-progress
 ";
 
@@ -210,8 +217,10 @@ changes:
 name: demo
 changes:
   - name: a
+    project: default
     status: done
   - name: b
+    project: default
     status: done
 ";
 
@@ -221,9 +230,11 @@ changes:
 name: demo
 changes:
   - name: a
+    project: default
     status: failed
     status-reason: boom
   - name: b
+    project: default
     status: pending
     depends-on: [a]
 ";
@@ -232,12 +243,15 @@ changes:
 name: demo
 changes:
   - name: a
+    project: default
     status: pending
     depends-on: [c]
   - name: b
+    project: default
     status: pending
     depends-on: [a]
   - name: c
+    project: default
     status: pending
     depends-on: [b]
 ";
@@ -246,6 +260,7 @@ changes:
 name: demo
 changes:
   - name: a
+    project: default
     status: failed
     status-reason: boom
 ";
@@ -263,15 +278,18 @@ sources:
 
 changes:
   - name: user-registration
+    project: platform
     sources: [monolith]
     status: done
 
   - name: email-verification
+    project: platform
     sources: [monolith]
     depends-on: [user-registration]
     status: in-progress
 
   - name: registration-duplicate-email-crash
+    project: platform
     description: >
       Duplicate email submission returns 500 instead of 409.
       Discovered during email-verification extraction.
@@ -279,12 +297,14 @@ changes:
     status: pending
 
   - name: notification-preferences
+    project: platform
     depends-on: [user-registration]
     description: >
       Greenfield — user-facing notification channel and frequency settings.
     status: pending
 
   - name: extract-shared-validation
+    project: platform
     description: >
       Pull duplicated input validation into a shared validation crate
       before building checkout-flow.
@@ -293,16 +313,19 @@ changes:
     status: pending
 
   - name: product-catalog
+    project: platform
     sources: [monolith]
     depends-on: [extract-shared-validation]
     status: pending
 
   - name: shopping-cart
+    project: platform
     sources: [orders]
     depends-on: [product-catalog, user-registration]
     status: pending
 
   - name: checkout-api
+    project: platform
     sources: [payments]
     depends-on: [shopping-cart]
     status: failed
@@ -311,6 +334,7 @@ changes:
       Needs design revision after shopping-cart specs are updated.
 
   - name: checkout-ui
+    project: platform
     sources: [frontend]
     depends-on: [checkout-api]
     status: pending
@@ -448,9 +472,8 @@ changes:
         assert_eq!(actual["reason"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
         assert_eq!(
-            actual["project"],
-            Value::Null,
-            "project should be present (null for single-repo)"
+            actual["project"], "default",
+            "project should match seeded value"
         );
         assert_eq!(actual["description"], Value::Null, "description should be present");
         assert!(
@@ -647,6 +670,7 @@ changes: []
 name: demo
 changes:
   - name: foo
+    project: default
     status: pending
 ";
 
@@ -654,6 +678,7 @@ changes:
 name: demo
 changes:
   - name: foo
+    project: default
     status: in-progress
 ";
 
@@ -661,6 +686,7 @@ changes:
 name: demo
 changes:
   - name: foo
+    project: default
     status: done
 ";
 
@@ -668,6 +694,7 @@ changes:
 name: demo
 changes:
   - name: foo
+    project: default
     status: pending
     description: original
 ";
@@ -681,7 +708,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "create", "foo"])
+            .args(["--format", "json", "plan", "create", "foo", "--schema", "contracts@v1"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -705,11 +732,15 @@ changes:
         let project = Project::init();
         project.seed_plan(EMPTY_PLAN);
 
-        specify().current_dir(project.root()).args(["plan", "create", "foo"]).assert().success();
+        specify()
+            .current_dir(project.root())
+            .args(["plan", "create", "foo", "--schema", "contracts@v1"])
+            .assert()
+            .success();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "create", "foo"])
+            .args(["plan", "create", "foo", "--schema", "contracts@v1"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -727,7 +758,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "create", "NotKebab"])
+            .args(["plan", "create", "NotKebab", "--schema", "contracts@v1"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -746,10 +777,13 @@ changes:
 name: demo
 changes:
   - name: a
+    project: default
     status: done
   - name: b
+    project: default
     status: done
   - name: foo
+    project: default
     status: pending
     depends-on: [a]
 ",
@@ -957,6 +991,7 @@ changes:
 name: demo
 changes:
   - name: foo
+    project: default
     status: failed
     status-reason: boom
 ",
@@ -986,6 +1021,7 @@ changes:
 name: demo
 changes:
   - name: user-registration
+    project: default
     status: done
 ",
         );
@@ -996,6 +1032,8 @@ changes:
                 "plan",
                 "create",
                 "registration-duplicate-email-crash",
+                "--schema",
+                "contracts@v1",
                 "--description",
                 "Duplicate email submission returns 500 instead of 409. Modifies user-registration.",
             ])

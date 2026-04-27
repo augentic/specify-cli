@@ -145,6 +145,12 @@ pub struct PlanChange {
     /// Target registry project (RFC-3b). Required for multi-project registries.
     #[serde(default)]
     pub project: Option<String>,
+    /// Schema identifier for project-less entries (e.g. `contracts@v1`).
+    /// Required when `project` is `None`; optional override when `project`
+    /// is `Some`. Mutually enriching with `project`: `project` identifies
+    /// the target codebase; `schema` identifies the schema directly.
+    #[serde(default)]
+    pub schema: Option<String>,
     /// Current lifecycle state of this entry.
     pub status: PlanStatus,
     /// Names of other plan entries that must reach `done` before this
@@ -154,6 +160,11 @@ pub struct PlanChange {
     /// Source keys (into [`Plan::sources`]) this entry draws from.
     #[serde(default)]
     pub sources: Vec<String>,
+    /// Baseline paths relevant to this change, relative to `.specify/`.
+    /// Briefs use these as a focus hint when scanning baseline directories.
+    /// Populated by `/spec:plan` or manually via `specify plan create --context`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub context: Vec<String>,
     /// Free-form human-readable description.
     #[serde(default)]
     pub description: Option<String>,
@@ -182,9 +193,14 @@ pub struct PlanChangePatch {
     /// Replace `project` when `Some(Some(..))`; clear when
     /// `Some(None)`; leave unchanged when `None`.
     pub project: Option<Option<String>>,
+    /// Replace `schema` when `Some(Some(..))`; clear when
+    /// `Some(None)`; leave unchanged when `None`.
+    pub schema: Option<Option<String>>,
     /// Replace `description` when `Some(Some(..))`; clear when
     /// `Some(None)`; leave unchanged when `None`.
     pub description: Option<Option<String>>,
+    /// Replace `context` wholesale when `Some`.
+    pub context: Option<Vec<String>>,
 }
 
 /// Severity of a validation finding produced by [`Plan::validate`].
@@ -295,6 +311,8 @@ impl Plan {
         results.extend(check_unknown_depends_on(&self.changes));
         results.extend(check_unknown_sources(self));
         results.extend(check_single_in_progress(&self.changes));
+        results.extend(check_entry_needs_project_or_schema(&self.changes));
+        results.extend(check_context_paths(&self.changes));
         if let Some(reg) = registry {
             results.extend(check_project_in_registry(&self.changes, reg));
             results.extend(check_project_required_multi_repo(&self.changes, reg));
@@ -456,8 +474,14 @@ impl Plan {
             if let Some(v) = patch.project {
                 entry.project = v;
             }
+            if let Some(v) = patch.schema {
+                entry.schema = v;
+            }
             if let Some(v) = patch.description {
                 entry.description = v;
+            }
+            if let Some(v) = patch.context {
+                entry.context = v;
             }
         }
 
@@ -845,6 +869,45 @@ fn check_project_required_multi_repo(
     out
 }
 
+/// RFC-8: every plan entry must have at least one of `project` or `schema`.
+fn check_entry_needs_project_or_schema(changes: &[PlanChange]) -> Vec<PlanValidationResult> {
+    let mut out = Vec::new();
+    for entry in changes {
+        if entry.project.is_none() && entry.schema.is_none() {
+            out.push(PlanValidationResult {
+                level: PlanValidationLevel::Error,
+                code: "plan.entry-needs-project-or-schema",
+                message: format!(
+                    "entry '{}' has neither 'project' nor 'schema'; at least one is required",
+                    entry.name
+                ),
+                entry: Some(entry.name.clone()),
+            });
+        }
+    }
+    out
+}
+
+fn check_context_paths(changes: &[PlanChange]) -> Vec<PlanValidationResult> {
+    let mut out = Vec::new();
+    for entry in changes {
+        for path in &entry.context {
+            if path.starts_with('/') || path.contains("..") {
+                out.push(PlanValidationResult {
+                    level: PlanValidationLevel::Error,
+                    code: "plan.context-path-invalid",
+                    message: format!(
+                        "entry '{}': context path '{}' must be relative to .specify/ (no '..' or absolute paths)",
+                        entry.name, path
+                    ),
+                    entry: Some(entry.name.clone()),
+                });
+            }
+        }
+    }
+    out
+}
+
 /// Plan-to-change directory consistency:
 ///   - Warn on orphan subdirectories (no matching plan entry).
 ///   - Warn when an `in-progress` plan entry has no matching directory.
@@ -1024,37 +1087,45 @@ sources:
   frontend: git@github.com:org/web-app.git
 changes:
   - name: user-registration
+    project: platform
     sources: [monolith]
     status: done
   - name: email-verification
+    project: platform
     sources: [monolith]
     depends-on: [user-registration]
     status: in-progress
   - name: registration-duplicate-email-crash
+    project: platform
     description: >
       Duplicate email submission returns 500 instead of 409.
       Discovered during email-verification extraction.
     status: pending
   - name: notification-preferences
+    project: platform
     depends-on: [user-registration]
     description: >
       Greenfield — user-facing notification channel and frequency settings.
     status: pending
   - name: extract-shared-validation
+    project: platform
     description: >
       Pull duplicated input validation into a shared validation crate
       before building checkout-flow.
     depends-on: [email-verification]
     status: pending
   - name: product-catalog
+    project: platform
     sources: [monolith]
     depends-on: [extract-shared-validation]
     status: pending
   - name: shopping-cart
+    project: platform
     sources: [orders]
     depends-on: [product-catalog, user-registration]
     status: pending
   - name: checkout-api
+    project: platform
     sources: [payments]
     depends-on: [shopping-cart]
     status: failed
@@ -1062,6 +1133,7 @@ changes:
       Type mismatch between cart line-item schema and payment gateway contract.
       Needs design revision after shopping-cart specs are updated.
   - name: checkout-ui
+    project: platform
     sources: [frontend]
     depends-on: [checkout-api]
     status: pending
@@ -1090,10 +1162,12 @@ changes:
             sources: BTreeMap::new(),
             changes: vec![PlanChange {
                 name: "entry-one".to_string(),
-                project: None,
+                project: Some("default".into()),
+                schema: None,
                 status: PlanStatus::InProgress,
                 depends_on: vec!["entry-zero".to_string()],
                 sources: vec![],
+                context: vec![],
                 description: None,
                 status_reason: Some("awaiting upstream fix".to_string()),
             }],
@@ -1194,10 +1268,12 @@ changes:
             sources: BTreeMap::new(),
             changes: vec![PlanChange {
                 name: "only-entry".to_string(),
-                project: None,
+                project: Some("default".into()),
+                schema: None,
                 status: PlanStatus::Pending,
                 depends_on: vec![],
                 sources: vec![],
+                context: vec![],
                 description: None,
                 status_reason: None,
             }],
@@ -1253,10 +1329,12 @@ changes:
             sources: BTreeMap::new(),
             changes: vec![PlanChange {
                 name: "entry-one".to_string(),
-                project: None,
+                project: Some("default".into()),
+                schema: None,
                 status: PlanStatus::InProgress,
                 depends_on: vec!["foo".to_string()],
                 sources: vec![],
+                context: vec![],
                 description: None,
                 status_reason: None,
             }],
@@ -1293,10 +1371,12 @@ changes:
     fn change(name: &str, status: PlanStatus) -> PlanChange {
         PlanChange {
             name: name.into(),
-            project: None,
+            project: Some("default".into()),
+            schema: None,
             status,
             depends_on: vec![],
             sources: vec![],
+            context: vec![],
             description: None,
             status_reason: None,
         }
@@ -1482,10 +1562,12 @@ changes:
     fn change_with_deps(name: &str, status: PlanStatus, deps: &[&str]) -> PlanChange {
         PlanChange {
             name: name.into(),
-            project: None,
+            project: Some("default".into()),
+            schema: None,
             status,
             depends_on: deps.iter().map(|s| (*s).to_string()).collect(),
             sources: vec![],
+            context: vec![],
             description: None,
             status_reason: None,
         }
@@ -1715,10 +1797,12 @@ changes:
             sources: BTreeMap::new(),
             changes: vec![PlanChange {
                 name: "new-entry".to_string(),
-                project: None,
+                project: Some("default".into()),
+                schema: None,
                 status: PlanStatus::Pending,
                 depends_on: vec![],
                 sources: vec![],
+                context: vec![],
                 description: None,
                 status_reason: None,
             }],
@@ -1741,10 +1825,12 @@ changes:
         let mut plan = plan_with_changes(vec![]);
         let incoming = PlanChange {
             name: "foo".into(),
-            project: None,
+            project: Some("default".into()),
+            schema: None,
             status: PlanStatus::Failed,
             depends_on: vec![],
             sources: vec![],
+            context: vec![],
             description: None,
             status_reason: Some("bogus".into()),
         };
@@ -1849,10 +1935,12 @@ changes:
     fn amend_clear_vs_replace_description() {
         let mut plan = plan_with_changes(vec![PlanChange {
             name: "foo".into(),
-            project: None,
+            project: Some("default".into()),
+            schema: None,
             status: PlanStatus::Pending,
             depends_on: vec![],
             sources: vec![],
+            context: vec![],
             description: Some("original".into()),
             status_reason: None,
         }]);
@@ -1906,10 +1994,12 @@ changes:
             changes: vec![
                 PlanChange {
                     name: "foo".into(),
-                    project: None,
+                    project: Some("default".into()),
+                    schema: None,
                     status: PlanStatus::Pending,
                     depends_on: vec![],
                     sources: vec!["a".into()],
+                    context: vec![],
                     description: Some("d".into()),
                     status_reason: None,
                 },
@@ -2005,6 +2095,7 @@ changes:
         assert!(patch.depends_on.is_none());
         assert!(patch.sources.is_none());
         assert!(patch.project.is_none());
+        assert!(patch.schema.is_none());
         assert!(patch.description.is_none());
     }
 
@@ -2012,10 +2103,12 @@ changes:
     fn transition_applies_legal_edge_and_clears_reason_on_pending_reentry() {
         let mut plan = plan_with_changes(vec![PlanChange {
             name: "a".into(),
-            project: None,
+            project: Some("default".into()),
+            schema: None,
             status: PlanStatus::Failed,
             depends_on: vec![],
             sources: vec![],
+            context: vec![],
             description: None,
             status_reason: Some("crashed".into()),
         }]);
@@ -2729,9 +2822,11 @@ status: pending
         let mut plan = plan_with_changes(vec![PlanChange {
             name: "foo".into(),
             project: Some("alpha".into()),
+            schema: None,
             status: PlanStatus::Pending,
             depends_on: vec![],
             sources: vec![],
+            context: vec![],
             description: None,
             status_reason: None,
         }]);
@@ -2759,11 +2854,13 @@ status: pending
             "Some(Some(s)) must replace project"
         );
 
-        // Some(None) clears project.
+        // Some(None) clears project — set schema so the entry still has
+        // at least one of project/schema after the clear.
         plan.amend(
             "foo",
             PlanChangePatch {
                 project: Some(None),
+                schema: Some(Some("contracts@v1".into())),
                 ..PlanChangePatch::default()
             },
         )
@@ -2779,9 +2876,11 @@ status: pending
             changes: vec![PlanChange {
                 name: "a".to_string(),
                 project: Some("nonexistent".to_string()),
+                schema: None,
                 status: PlanStatus::Pending,
                 depends_on: vec![],
                 sources: vec![],
+                context: vec![],
                 description: None,
                 status_reason: None,
             }],
@@ -2807,9 +2906,11 @@ status: pending
             changes: vec![PlanChange {
                 name: "a".to_string(),
                 project: None,
+                schema: Some("contracts@v1".into()),
                 status: PlanStatus::Pending,
                 depends_on: vec![],
                 sources: vec![],
+                context: vec![],
                 description: None,
                 status_reason: None,
             }],
@@ -2843,9 +2944,11 @@ status: pending
             changes: vec![PlanChange {
                 name: "a".to_string(),
                 project: None,
+                schema: Some("contracts@v1".into()),
                 status: PlanStatus::Pending,
                 depends_on: vec![],
                 sources: vec![],
+                context: vec![],
                 description: None,
                 status_reason: None,
             }],
@@ -2872,9 +2975,11 @@ status: pending
             changes: vec![PlanChange {
                 name: "a".to_string(),
                 project: Some("alpha".to_string()),
+                schema: None,
                 status: PlanStatus::Pending,
                 depends_on: vec![],
                 sources: vec![],
+                context: vec![],
                 description: None,
                 status_reason: None,
             }],
@@ -2898,5 +3003,347 @@ status: pending
         };
         let results = plan.validate(None, Some(&registry));
         assert!(!results.iter().any(|r| r.level == PlanValidationLevel::Error));
+    }
+
+    // --- RFC-8: schema field -------------------------------------------------
+
+    #[test]
+    fn schema_field_roundtrips_yaml() {
+        let yaml = r#"name: test
+changes:
+  - name: define-contracts
+    schema: contracts@v1
+    status: pending
+  - name: impl-auth
+    project: auth-service
+    schema: omnia@v1
+    status: pending
+"#;
+        let plan: Plan = serde_yaml::from_str(yaml).expect("parse");
+        assert_eq!(plan.changes[0].schema.as_deref(), Some("contracts@v1"));
+        assert_eq!(plan.changes[0].project, None);
+        assert_eq!(plan.changes[1].schema.as_deref(), Some("omnia@v1"));
+        assert_eq!(plan.changes[1].project.as_deref(), Some("auth-service"));
+
+        let rendered = serde_yaml::to_string(&plan).expect("serialize");
+        let reparsed: Plan = serde_yaml::from_str(&rendered).expect("reparse");
+        assert_eq!(plan, reparsed, "plan must survive a YAML round-trip");
+    }
+
+    #[test]
+    fn validation_error_when_neither_project_nor_schema() {
+        let plan = Plan {
+            name: "test".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![PlanChange {
+                name: "orphan".to_string(),
+                project: None,
+                schema: None,
+                status: PlanStatus::Pending,
+                depends_on: vec![],
+                sources: vec![],
+                context: vec![],
+                description: None,
+                status_reason: None,
+            }],
+        };
+        let results = plan.validate(None, None);
+        assert!(
+            results
+                .iter()
+                .any(|r| r.code == "plan.entry-needs-project-or-schema"
+                    && r.level == PlanValidationLevel::Error),
+            "expected entry-needs-project-or-schema error, got: {results:#?}"
+        );
+    }
+
+    #[test]
+    fn validation_passes_with_schema_only() {
+        let plan = Plan {
+            name: "test".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![PlanChange {
+                name: "contracts".to_string(),
+                project: None,
+                schema: Some("contracts@v1".into()),
+                status: PlanStatus::Pending,
+                depends_on: vec![],
+                sources: vec![],
+                context: vec![],
+                description: None,
+                status_reason: None,
+            }],
+        };
+        let results = plan.validate(None, None);
+        assert!(
+            !results
+                .iter()
+                .any(|r| r.code == "plan.entry-needs-project-or-schema"),
+            "schema-only entry must not trigger project-or-schema error"
+        );
+    }
+
+    #[test]
+    fn validation_passes_with_both_project_and_schema() {
+        let plan = Plan {
+            name: "test".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![PlanChange {
+                name: "impl".to_string(),
+                project: Some("auth-service".into()),
+                schema: Some("omnia@v1".into()),
+                status: PlanStatus::Pending,
+                depends_on: vec![],
+                sources: vec![],
+                context: vec![],
+                description: None,
+                status_reason: None,
+            }],
+        };
+        let results = plan.validate(None, None);
+        assert!(
+            !results
+                .iter()
+                .any(|r| r.code == "plan.entry-needs-project-or-schema"),
+            "entry with both project and schema must pass"
+        );
+    }
+
+    #[test]
+    fn create_rejects_entry_without_project_or_schema() {
+        let mut plan = plan_with_changes(vec![]);
+        let entry = PlanChange {
+            name: "bad".into(),
+            project: None,
+            schema: None,
+            status: PlanStatus::Pending,
+            depends_on: vec![],
+            sources: vec![],
+            context: vec![],
+            description: None,
+            status_reason: None,
+        };
+        let err = plan.create(entry).expect_err("must reject entry without project or schema");
+        match err {
+            Error::Config(msg) => {
+                assert!(
+                    msg.contains("project") && msg.contains("schema"),
+                    "error should mention project and schema: {msg}"
+                );
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+        assert!(plan.changes.is_empty(), "plan must remain empty after rejected create");
+    }
+
+    #[test]
+    fn amend_schema_three_way_semantics() {
+        let mut plan = plan_with_changes(vec![PlanChange {
+            name: "foo".into(),
+            project: Some("default".into()),
+            schema: Some("omnia@v1".into()),
+            status: PlanStatus::Pending,
+            depends_on: vec![],
+            sources: vec![],
+            context: vec![],
+            description: None,
+            status_reason: None,
+        }]);
+
+        // None leaves schema unchanged.
+        plan.amend("foo", PlanChangePatch::default()).expect("amend none ok");
+        assert_eq!(
+            plan.changes[0].schema.as_deref(),
+            Some("omnia@v1"),
+            "None must leave schema unchanged"
+        );
+
+        // Some(Some(s)) replaces schema.
+        plan.amend(
+            "foo",
+            PlanChangePatch {
+                schema: Some(Some("contracts@v1".into())),
+                ..PlanChangePatch::default()
+            },
+        )
+        .expect("amend replace ok");
+        assert_eq!(
+            plan.changes[0].schema.as_deref(),
+            Some("contracts@v1"),
+            "Some(Some(s)) must replace schema"
+        );
+
+        // Some(None) clears schema (project is still set, so validation passes).
+        plan.amend(
+            "foo",
+            PlanChangePatch {
+                schema: Some(None),
+                ..PlanChangePatch::default()
+            },
+        )
+        .expect("amend clear ok");
+        assert_eq!(plan.changes[0].schema, None, "Some(None) must clear schema");
+    }
+
+    #[test]
+    fn context_round_trip_through_yaml() {
+        let yaml = r#"
+name: ctx-test
+changes:
+  - name: with-ctx
+    project: default
+    status: pending
+    context:
+      - contracts/http/user-api.yaml
+      - specs/user-registration/spec.md
+  - name: without-ctx
+    project: default
+    status: pending
+"#;
+        let plan: Plan = serde_yaml::from_str(yaml).expect("parse yaml");
+        assert_eq!(
+            plan.changes[0].context,
+            vec!["contracts/http/user-api.yaml", "specs/user-registration/spec.md"],
+        );
+        assert!(plan.changes[1].context.is_empty(), "missing context defaults to empty");
+
+        let serialized = serde_yaml::to_string(&plan).expect("serialize");
+        assert!(
+            serialized.contains("contracts/http/user-api.yaml"),
+            "populated context must appear in serialized output"
+        );
+        assert!(
+            !serialized.contains("without-ctx")
+                || !serialized.split("without-ctx").nth(1).unwrap_or("").contains("context"),
+            "empty context must be omitted from serialized output"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_context_path_with_dotdot() {
+        let mut entry = change("foo", PlanStatus::Pending);
+        entry.context = vec!["../etc/passwd".into()];
+        let plan = plan_with_changes(vec![entry]);
+        let errors: Vec<_> = plan
+            .validate(None, None)
+            .into_iter()
+            .filter(|r| r.code == "plan.context-path-invalid")
+            .collect();
+        assert_eq!(errors.len(), 1, "expected exactly one context-path-invalid error");
+        assert!(errors[0].message.contains(".."), "message should mention '..'");
+    }
+
+    #[test]
+    fn validate_rejects_absolute_context_path() {
+        let mut entry = change("foo", PlanStatus::Pending);
+        entry.context = vec!["/absolute/path".into()];
+        let plan = plan_with_changes(vec![entry]);
+        let errors: Vec<_> = plan
+            .validate(None, None)
+            .into_iter()
+            .filter(|r| r.code == "plan.context-path-invalid")
+            .collect();
+        assert_eq!(errors.len(), 1, "expected exactly one context-path-invalid error");
+        assert!(errors[0].message.contains("/absolute/path"));
+    }
+
+    #[test]
+    fn validate_accepts_valid_context_paths() {
+        let mut entry = change("foo", PlanStatus::Pending);
+        entry.context = vec![
+            "contracts/http/user-api.yaml".into(),
+            "specs/user-registration/spec.md".into(),
+        ];
+        let plan = plan_with_changes(vec![entry]);
+        let errors: Vec<_> = plan
+            .validate(None, None)
+            .into_iter()
+            .filter(|r| r.code == "plan.context-path-invalid")
+            .collect();
+        assert!(errors.is_empty(), "valid relative paths must not produce errors");
+    }
+
+    #[test]
+    fn amend_replaces_context() {
+        let mut entry = change("foo", PlanStatus::Pending);
+        entry.context = vec!["old/path.yaml".into()];
+        let mut plan = plan_with_changes(vec![entry]);
+
+        plan.amend(
+            "foo",
+            PlanChangePatch {
+                context: Some(vec!["new/path.yaml".into(), "another.md".into()]),
+                ..PlanChangePatch::default()
+            },
+        )
+        .expect("amend ok");
+        assert_eq!(
+            plan.changes[0].context,
+            vec!["new/path.yaml", "another.md"],
+            "amend must replace context wholesale"
+        );
+    }
+
+    #[test]
+    fn amend_none_context_leaves_unchanged() {
+        let mut entry = change("foo", PlanStatus::Pending);
+        entry.context = vec!["keep/this.yaml".into()];
+        let mut plan = plan_with_changes(vec![entry]);
+
+        plan.amend("foo", PlanChangePatch::default()).expect("amend ok");
+        assert_eq!(
+            plan.changes[0].context,
+            vec!["keep/this.yaml"],
+            "None context must leave field unchanged"
+        );
+    }
+
+    #[test]
+    fn create_stores_context() {
+        let mut plan = plan_with_changes(vec![]);
+        let entry = PlanChange {
+            name: "with-ctx".into(),
+            project: Some("default".into()),
+            schema: None,
+            status: PlanStatus::Pending,
+            depends_on: vec![],
+            sources: vec![],
+            context: vec!["contracts/http/foo.yaml".into()],
+            description: None,
+            status_reason: None,
+        };
+        plan.create(entry).expect("create ok");
+        assert_eq!(
+            plan.changes[0].context,
+            vec!["contracts/http/foo.yaml"],
+            "create must preserve context"
+        );
+    }
+
+    #[test]
+    fn create_rejects_entry_with_invalid_context_path() {
+        let mut plan = plan_with_changes(vec![]);
+        let entry = PlanChange {
+            name: "bad-ctx".into(),
+            project: Some("default".into()),
+            schema: None,
+            status: PlanStatus::Pending,
+            depends_on: vec![],
+            sources: vec![],
+            context: vec!["../escape".into()],
+            description: None,
+            status_reason: None,
+        };
+        let err = plan.create(entry).expect_err("invalid context path must be rejected");
+        match err {
+            Error::Config(msg) => {
+                assert!(
+                    msg.contains("context-path-invalid") || msg.contains(".."),
+                    "error should mention context path issue, got: {msg}"
+                );
+            }
+            other => panic!("expected Error::Config, got {other:?}"),
+        }
+        assert!(plan.changes.is_empty(), "rollback must remove the entry");
     }
 }

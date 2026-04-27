@@ -9,9 +9,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use regex::Regex;
-use specify_change::{ChangeMetadata, LifecycleStatus, Outcome, Phase};
+use specify_change::{ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome};
 use specify_error::Error;
-use specify_merge::merge_change;
+use specify_merge::{ContractAction, merge_change, preview_change};
 use tempfile::TempDir;
 
 const CHANGE_NAME: &str = "feature-x";
@@ -224,4 +224,187 @@ fn archive_subdirectory_is_date_prefixed() {
         names.iter().any(|n| re.is_match(n)),
         "archive names {names:?} do not include a YYYY-MM-DD-feature-x entry"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Contract file copying
+// ---------------------------------------------------------------------------
+
+#[test]
+fn merge_copies_contract_files_to_baseline() {
+    let project = build_project();
+    let change_dir = project.change_dir();
+
+    fs::create_dir_all(change_dir.join("contracts/schemas")).expect("mkdir schemas");
+    fs::create_dir_all(change_dir.join("contracts/http")).expect("mkdir http");
+    fs::write(change_dir.join("contracts/schemas/test.yaml"), "schema: test\n")
+        .expect("write schema");
+    fs::write(change_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write api");
+
+    let merged =
+        merge_change(&change_dir, &project.specs_dir(), &project.archive_dir()).expect("merge ok");
+
+    let baseline_contracts = project.root.join(".specify/contracts");
+    assert!(
+        baseline_contracts.join("schemas/test.yaml").is_file(),
+        "schemas/test.yaml missing from baseline contracts"
+    );
+    assert!(
+        baseline_contracts.join("http/api.yaml").is_file(),
+        "http/api.yaml missing from baseline contracts"
+    );
+
+    let archived = find_archived_metadata(&project);
+    assert!(
+        archived.summary.contains("2 contract file(s)"),
+        "unexpected summary: {}",
+        archived.summary
+    );
+    assert!(
+        archived.summary.contains(&format!("{} spec(s)", merged.len())),
+        "unexpected summary: {}",
+        archived.summary
+    );
+}
+
+#[test]
+fn merge_replaces_existing_baseline_contract_files() {
+    let project = build_project();
+    let change_dir = project.change_dir();
+
+    let baseline_contracts = project.root.join(".specify/contracts");
+    fs::create_dir_all(baseline_contracts.join("schemas")).expect("mkdir baseline schemas");
+    fs::write(baseline_contracts.join("schemas/test.yaml"), "old content\n")
+        .expect("write old baseline");
+
+    fs::create_dir_all(change_dir.join("contracts/schemas")).expect("mkdir change schemas");
+    fs::write(change_dir.join("contracts/schemas/test.yaml"), "new content\n")
+        .expect("write new change");
+
+    merge_change(&change_dir, &project.specs_dir(), &project.archive_dir()).expect("merge ok");
+
+    let content = fs::read_to_string(baseline_contracts.join("schemas/test.yaml")).unwrap();
+    assert_eq!(content, "new content\n", "contract file should be replaced");
+}
+
+#[test]
+fn merge_leaves_untouched_baseline_contract_files() {
+    let project = build_project();
+    let change_dir = project.change_dir();
+
+    let baseline_contracts = project.root.join(".specify/contracts");
+    fs::create_dir_all(baseline_contracts.join("schemas")).expect("mkdir baseline schemas");
+    fs::write(baseline_contracts.join("schemas/existing.yaml"), "existing content\n")
+        .expect("write existing");
+
+    fs::create_dir_all(change_dir.join("contracts/schemas")).expect("mkdir change schemas");
+    fs::write(change_dir.join("contracts/schemas/new.yaml"), "new content\n")
+        .expect("write new");
+
+    merge_change(&change_dir, &project.specs_dir(), &project.archive_dir()).expect("merge ok");
+
+    assert!(
+        baseline_contracts.join("schemas/existing.yaml").is_file(),
+        "existing contract should still be present"
+    );
+    assert!(
+        baseline_contracts.join("schemas/new.yaml").is_file(),
+        "new contract should be present"
+    );
+    let existing = fs::read_to_string(baseline_contracts.join("schemas/existing.yaml")).unwrap();
+    assert_eq!(existing, "existing content\n", "existing contract should be untouched");
+}
+
+#[test]
+fn merge_without_contracts_dir_works_as_before() {
+    let project = build_project();
+    let change_dir = project.change_dir();
+
+    assert!(!change_dir.join("contracts").exists(), "precondition: no contracts dir");
+
+    let merged =
+        merge_change(&change_dir, &project.specs_dir(), &project.archive_dir()).expect("merge ok");
+    assert!(!merged.is_empty(), "should still merge specs");
+
+    let baseline_contracts = project.root.join(".specify/contracts");
+    assert!(
+        !baseline_contracts.exists(),
+        "no .specify/contracts/ should be created when change has no contracts"
+    );
+
+    let archived = find_archived_metadata(&project);
+    assert!(
+        !archived.summary.contains("contract"),
+        "summary should not mention contracts: {}",
+        archived.summary
+    );
+}
+
+/// Helper: find the archived `.metadata.yaml` and return its phase outcome.
+fn find_archived_metadata(project: &Project) -> PhaseOutcome {
+    let archived: Vec<_> = fs::read_dir(project.archive_dir())
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .collect();
+    assert_eq!(archived.len(), 1, "expected exactly one archived change");
+    let meta = ChangeMetadata::load(&archived[0].path()).expect("load archived metadata");
+    meta.outcome.expect("expected outcome to be stamped")
+}
+
+// ---------------------------------------------------------------------------
+// preview_change — contract entries
+// ---------------------------------------------------------------------------
+
+#[test]
+fn preview_no_contracts_returns_empty_list() {
+    let project = build_project();
+    let result = preview_change(&project.change_dir(), &project.specs_dir())
+        .expect("preview should succeed");
+    assert!(!result.specs.is_empty(), "should have spec entries");
+    assert!(result.contracts.is_empty(), "should have no contract entries");
+}
+
+#[test]
+fn preview_new_contract_files_reported_as_added() {
+    let project = build_project();
+    let change_dir = project.change_dir();
+
+    fs::create_dir_all(change_dir.join("contracts/schemas")).expect("mkdir");
+    fs::create_dir_all(change_dir.join("contracts/http")).expect("mkdir");
+    fs::write(change_dir.join("contracts/schemas/user.yaml"), "schema: user\n").expect("write");
+    fs::write(change_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write");
+
+    let result =
+        preview_change(&change_dir, &project.specs_dir()).expect("preview should succeed");
+
+    assert_eq!(result.contracts.len(), 2);
+    // Sorted by relative_path.
+    assert_eq!(result.contracts[0].relative_path, "http/api.yaml");
+    assert_eq!(result.contracts[0].action, ContractAction::Added);
+    assert_eq!(result.contracts[1].relative_path, "schemas/user.yaml");
+    assert_eq!(result.contracts[1].action, ContractAction::Added);
+}
+
+#[test]
+fn preview_existing_baseline_contracts_reported_as_replaced() {
+    let project = build_project();
+    let change_dir = project.change_dir();
+
+    let baseline_contracts = project.root.join(".specify/contracts");
+    fs::create_dir_all(baseline_contracts.join("schemas")).expect("mkdir baseline");
+    fs::write(baseline_contracts.join("schemas/user.yaml"), "old\n").expect("write baseline");
+
+    fs::create_dir_all(change_dir.join("contracts/schemas")).expect("mkdir change");
+    fs::write(change_dir.join("contracts/schemas/user.yaml"), "new\n").expect("write change");
+    fs::write(change_dir.join("contracts/schemas/order.yaml"), "new\n").expect("write change");
+
+    let result =
+        preview_change(&change_dir, &project.specs_dir()).expect("preview should succeed");
+
+    assert_eq!(result.contracts.len(), 2);
+    let order = result.contracts.iter().find(|c| c.relative_path == "schemas/order.yaml").unwrap();
+    assert_eq!(order.action, ContractAction::Added);
+    let user = result.contracts.iter().find(|c| c.relative_path == "schemas/user.yaml").unwrap();
+    assert_eq!(user.action, ContractAction::Replaced);
 }

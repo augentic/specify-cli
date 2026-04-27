@@ -5,6 +5,7 @@
     "description": null,
     "name": "foo",
     "project": null,
+    "schema": "contracts@v1",
     "sources": [],
     "status": "pending",
     "status-reason": null

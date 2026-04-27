@@ -200,6 +200,19 @@ fn extract_deliverables(proposal: &str, heading: &str) -> Vec<String> {
     out
 }
 
+/// Extract the `$ref` target path from a YAML line like
+/// `$ref: "../schemas/user.yaml"`. Returns `None` when the line is not a
+/// `$ref:` entry or the value is empty/non-file (fragment-only or URL).
+pub(crate) fn extract_ref(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    let rest = trimmed.strip_prefix("$ref:")?;
+    let value = rest.trim().trim_matches('"').trim_matches('\'');
+    if value.is_empty() || value.starts_with('#') || value.contains("://") {
+        return None;
+    }
+    Some(value)
+}
+
 /// Match REQ-XXX IDs in the design doc; return `true` iff each is present
 /// in at least one `specs/*/spec.md` under `specs_dir`. Returns `true` if
 /// no references are found.
@@ -338,6 +351,49 @@ mod tests {
         fs::write(specs.join("user-auth").join("spec.md"), "# Login\n").unwrap();
         let proposal = "## Crates\n\n### New Crates\n\n- `user-auth`\n";
         assert!(proposal_deliverables_have_specs(proposal, &specs, "crate"));
+    }
+
+    #[test]
+    fn extract_ref_captures_double_quoted() {
+        assert_eq!(
+            extract_ref(r#"              $ref: "../schemas/user.yaml""#),
+            Some("../schemas/user.yaml")
+        );
+    }
+
+    #[test]
+    fn extract_ref_captures_single_quoted() {
+        assert_eq!(
+            extract_ref("    $ref: '../schemas/user.yaml'"),
+            Some("../schemas/user.yaml")
+        );
+    }
+
+    #[test]
+    fn extract_ref_captures_unquoted() {
+        assert_eq!(
+            extract_ref("  $ref: ../schemas/user.yaml"),
+            Some("../schemas/user.yaml")
+        );
+    }
+
+    #[test]
+    fn extract_ref_skips_fragment_only() {
+        assert_eq!(extract_ref("$ref: \"#/components/schemas/Error\""), None);
+    }
+
+    #[test]
+    fn extract_ref_skips_urls() {
+        assert_eq!(
+            extract_ref("$ref: \"https://example.com/schemas/user.yaml\""),
+            None
+        );
+    }
+
+    #[test]
+    fn extract_ref_returns_none_for_non_ref_lines() {
+        assert_eq!(extract_ref("  type: string"), None);
+        assert_eq!(extract_ref("  description: a $ref example"), None);
     }
 
     #[test]

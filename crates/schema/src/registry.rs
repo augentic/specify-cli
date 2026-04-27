@@ -11,6 +11,7 @@
 //! No JSON schema file ships for v1 per the RFC — the shape is
 //! enforced directly by [`Registry::validate_shape`].
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -58,6 +59,29 @@ pub struct RegistryProject {
     /// Required when `len(projects) > 1`; optional for single-project registries.
     #[serde(default)]
     pub description: Option<String>,
+    /// Optional contract role declarations for this project (RFC-8 Layer 2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contracts: Option<ContractRoles>,
+}
+
+/// Contract role declarations for a registry project.
+/// All fields are optional — a project may only produce, only consume,
+/// or have no contract relationships at all.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContractRoles {
+    /// Contract files this project is the authoritative implementer of.
+    /// Paths relative to `.specify/contracts/`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub produces: Vec<String>,
+    /// Contract files this project calls or subscribes to as a client.
+    /// Paths relative to `.specify/contracts/`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub consumes: Vec<String>,
+    /// Contract files whose shape is dictated by an external system.
+    /// Paths relative to `.specify/contracts/`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub imports: Vec<String>,
 }
 
 impl Registry {
@@ -148,6 +172,80 @@ impl Registry {
                         project.name
                     )));
                 }
+            }
+        }
+
+        // --- Contract role invariants (RFC-8 Layer 2) ---
+
+        // Invariant 3: Path validity — no absolute or `..` paths.
+        for project in &self.projects {
+            if let Some(ref roles) = project.contracts {
+                for path in roles
+                    .produces
+                    .iter()
+                    .chain(roles.consumes.iter())
+                    .chain(roles.imports.iter())
+                {
+                    if path.starts_with('/') || path.contains("..") {
+                        return Err(Error::Config(format!(
+                            "registry.yaml: contract path '{}' in project '{}' must be relative (no '..' or absolute paths)",
+                            path, project.name
+                        )));
+                    }
+                }
+            }
+        }
+
+        // Invariant 4: Self-consistency — a project must not list the
+        // same path in both `produces` and `consumes`.
+        for project in &self.projects {
+            if let Some(ref roles) = project.contracts {
+                let produced: HashSet<&str> =
+                    roles.produces.iter().map(|s| s.as_str()).collect();
+                for path in &roles.consumes {
+                    if produced.contains(path.as_str()) {
+                        return Err(Error::Config(format!(
+                            "registry.yaml: project '{}' lists '{}' in both 'produces' and 'consumes'",
+                            project.name, path
+                        )));
+                    }
+                }
+            }
+        }
+
+        // Invariant 1: Single producer — each contract path appears in
+        // `produces` for at most one project.
+        let mut producers: HashMap<&str, &str> = HashMap::new();
+        for project in &self.projects {
+            if let Some(ref roles) = project.contracts {
+                for path in &roles.produces {
+                    if let Some(existing) = producers.get(path.as_str()) {
+                        return Err(Error::Config(format!(
+                            "registry.yaml: contract path '{}' is produced by both '{}' and '{}'",
+                            path, existing, project.name
+                        )));
+                    }
+                    producers.insert(path, &project.name);
+                }
+            }
+        }
+
+        // Invariant 2: Produce/import mutual exclusion — a path must
+        // not appear in both `produces` and `imports` across the registry.
+        let mut imported: HashSet<&str> = HashSet::new();
+        for project in &self.projects {
+            if let Some(ref roles) = project.contracts {
+                for path in &roles.imports {
+                    imported.insert(path);
+                }
+            }
+        }
+        for (path, _) in &producers {
+            if imported.contains(path) {
+                return Err(Error::Config(format!(
+                    "registry.yaml: contract path '{}' appears in both 'produces' and 'imports'",
+                    path
+                )));
             }
         }
 

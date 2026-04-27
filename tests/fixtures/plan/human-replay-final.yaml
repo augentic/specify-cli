@@ -2,7 +2,8 @@ name: demo
 sources: {}
 changes:
 - name: user-registration
-  project: null
+  project: default
+  schema: null
   status: done
   depends-on: []
   sources: []
@@ -10,6 +11,7 @@ changes:
   status-reason: null
 - name: registration-duplicate-email-crash
   project: null
+  schema: contracts@v1
   status: done
   depends-on: []
   sources: []

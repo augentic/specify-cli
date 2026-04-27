@@ -30,15 +30,15 @@ use chrono::Utc;
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 use specify::{
-    BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Error,
-    InitOptions, InitResult, InitiativeBrief, Journal, JournalEntry, LifecycleStatus, MergeEntry,
-    MergeOperation, MergeResult, Outcome, Overlap, Phase, PipelineView, Plan, PlanChange,
-    PlanChangePatch, PlanLockAcquired, PlanLockReleased, PlanLockStamp, PlanLockState, PlanStatus,
-    PlanValidationLevel, PlanValidationResult, ProjectConfig, Registry, Schema, SchemaSource,
-    SpecType, Task, TouchedSpec, ValidationReport, ValidationResult, VersionMode,
-    WorkspaceSlotKind, WorkspaceSlotStatus, change_actions, conflict_check, format_rfc3339, init,
-    mark_complete, merge_change, parse_tasks, preview_change, serialize_report,
-    sync_registry_workspace, validate_change, workspace_status,
+    BaselineConflict, Brief, ChangeMetadata, ContractAction, ContractPreviewEntry, CreateIfExists,
+    CreateOutcome, EntryKind, Error, InitOptions, InitResult, InitiativeBrief, Journal,
+    JournalEntry, LifecycleStatus, MergeEntry, MergeOperation, MergeResult, Outcome, Overlap,
+    Phase, PipelineView, Plan, PlanChange, PlanChangePatch, PlanLockAcquired, PlanLockReleased,
+    PlanLockStamp, PlanLockState, PlanStatus, PlanValidationLevel, PlanValidationResult,
+    ProjectConfig, Registry, Schema, SchemaSource, SpecType, Task, TouchedSpec, ValidationReport,
+    ValidationResult, VersionMode, WorkspaceSlotKind, WorkspaceSlotStatus, change_actions,
+    conflict_check, format_rfc3339, init, mark_complete, merge_change, parse_tasks,
+    preview_change, serialize_report, sync_registry_workspace, validate_change, workspace_status,
 };
 
 pub const EXIT_SUCCESS: i32 = 0;
@@ -245,6 +245,12 @@ enum PlanAction {
         /// Target registry project name (RFC-3b)
         #[arg(long)]
         project: Option<String>,
+        /// Schema identifier for project-less entries (e.g. `contracts@v1`)
+        #[arg(long)]
+        schema: Option<String>,
+        /// Baseline paths relevant to this change, relative to `.specify/` (repeatable)
+        #[arg(long)]
+        context: Vec<String>,
     },
     /// Edit non-status fields on an existing plan entry
     Amend {
@@ -266,6 +272,13 @@ enum PlanAction {
         /// Replace project. Pass `--project ""` to clear; omit the flag to leave it unchanged.
         #[arg(long)]
         project: Option<String>,
+        /// Replace schema. Pass `--schema ""` to clear; omit the flag to leave it unchanged.
+        #[arg(long)]
+        schema: Option<String>,
+        /// Replace context paths. Pass `--context` (with no value) to clear; omit the
+        /// flag to leave it unchanged.
+        #[arg(long, num_args = 0.., value_delimiter = ',')]
+        context: Option<Vec<String>>,
     },
     /// Apply a validated status transition
     Transition {
@@ -887,24 +900,30 @@ fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> i32 {
         Err(err) => return emit_error(format, &err),
     };
     let specs_dir = ProjectConfig::specs_dir(&project_dir);
-    let entries = match preview_change(&change_dir, &specs_dir) {
+    let result = match preview_change(&change_dir, &specs_dir) {
         Ok(v) => v,
         Err(err) => return emit_error(format, &err),
     };
 
     match format {
         OutputFormat::Json => {
-            let specs: Vec<Value> = entries.iter().map(preview_entry_to_json).collect();
+            let specs: Vec<Value> = result.specs.iter().map(preview_entry_to_json).collect();
+            let contracts: Vec<Value> = result
+                .contracts
+                .iter()
+                .map(contract_preview_entry_to_json)
+                .collect();
             emit_json(json!({
                 "change-dir": change_dir.display().to_string(),
                 "specs": specs,
+                "contracts": contracts,
             }));
         }
         OutputFormat::Text => {
-            if entries.is_empty() {
+            if result.specs.is_empty() {
                 println!("No delta specs to merge.");
             } else {
-                for entry in &entries {
+                for entry in &result.specs {
                     println!(
                         "{}: {}",
                         entry.spec_name,
@@ -913,6 +932,16 @@ fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> i32 {
                     for op in &entry.result.operations {
                         println!("  {}", operation_label(op));
                     }
+                }
+            }
+            if !result.contracts.is_empty() {
+                println!("\nContract changes:");
+                for c in &result.contracts {
+                    let (sigil, label) = match c.action {
+                        ContractAction::Added => ("+", "added"),
+                        ContractAction::Replaced => ("~", "replaced"),
+                    };
+                    println!("  {sigil} contracts/{} ({label})", c.relative_path);
                 }
             }
         }
@@ -926,6 +955,17 @@ fn preview_entry_to_json(entry: &MergeEntry) -> Value {
         "name": entry.spec_name,
         "baseline-path": entry.baseline_path.display().to_string(),
         "operations": ops,
+    })
+}
+
+fn contract_preview_entry_to_json(entry: &ContractPreviewEntry) -> Value {
+    let action = match entry.action {
+        ContractAction::Added => "added",
+        ContractAction::Replaced => "replaced",
+    };
+    json!({
+        "path": entry.relative_path,
+        "action": action,
     })
 }
 
@@ -2094,14 +2134,18 @@ fn run_plan(format: OutputFormat, action: PlanAction) -> i32 {
             sources,
             description,
             project,
-        } => run_initiative_create(format, name, depends_on, sources, description, project),
+            schema,
+            context,
+        } => run_initiative_create(format, name, depends_on, sources, description, project, schema, context),
         PlanAction::Amend {
             name,
             depends_on,
             sources,
             description,
             project,
-        } => run_initiative_amend(format, name, depends_on, sources, description, project),
+            schema,
+            context,
+        } => run_initiative_amend(format, name, depends_on, sources, description, project, schema, context),
         PlanAction::Transition { name, target, reason } => {
             run_initiative_transition(format, name, target, reason)
         }
@@ -3044,7 +3088,7 @@ fn load_lifecycle_label(change_dir: &Path) -> Option<String> {
 }
 
 fn plan_entry_to_json(entry: &PlanChange, lifecycle: Option<String>) -> Value {
-    json!({
+    let mut obj = json!({
         "name": entry.name,
         "status": plan_status_label(entry.status),
         "depends-on": entry.depends_on,
@@ -3052,7 +3096,11 @@ fn plan_entry_to_json(entry: &PlanChange, lifecycle: Option<String>) -> Value {
         "status-reason": entry.status_reason,
         "description": entry.description,
         "lifecycle": lifecycle,
-    })
+    });
+    if !entry.context.is_empty() {
+        obj["context"] = json!(entry.context);
+    }
+    obj
 }
 
 fn print_plan_status_text(view: &PlanStatusView) {
@@ -3129,7 +3177,8 @@ fn plan_change_entry_json(entry: &PlanChange) -> Value {
 
 fn run_initiative_create(
     format: OutputFormat, name: String, depends_on: Vec<String>, sources: Vec<String>,
-    description: Option<String>, project: Option<String>,
+    description: Option<String>, project: Option<String>, schema: Option<String>,
+    context: Vec<String>,
 ) -> i32 {
     let (project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
         Ok(v) => v,
@@ -3159,9 +3208,11 @@ fn run_initiative_create(
     let entry = PlanChange {
         name: name.clone(),
         project,
+        schema,
         status: PlanStatus::Pending,
         depends_on,
         sources,
+        context,
         description,
         status_reason: None,
     };
@@ -3193,6 +3244,7 @@ fn run_initiative_create(
 fn run_initiative_amend(
     format: OutputFormat, name: String, depends_on: Option<Vec<String>>,
     sources: Option<Vec<String>>, description: Option<String>, project: Option<String>,
+    schema: Option<String>, context: Option<Vec<String>>,
 ) -> i32 {
     let (project_dir, plan_path, mut plan) = match load_plan_for_write(format) {
         Ok(v) => v,
@@ -3225,12 +3277,16 @@ fn run_initiative_amend(
         description.map(|s| if s.is_empty() { None } else { Some(s) });
     let project_patch: Option<Option<String>> =
         project.map(|s| if s.is_empty() { None } else { Some(s) });
+    let schema_patch: Option<Option<String>> =
+        schema.map(|s| if s.is_empty() { None } else { Some(s) });
 
     let patch = PlanChangePatch {
         depends_on,
         sources,
         project: project_patch,
+        schema: schema_patch,
         description: description_patch,
+        context,
     };
 
     if let Err(err) = plan.amend(&name, patch) {

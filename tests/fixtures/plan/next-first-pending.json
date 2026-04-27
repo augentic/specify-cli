@@ -2,7 +2,7 @@
   "active": null,
   "description": null,
   "next": "b",
-  "project": null,
+  "project": "default",
   "reason": null,
   "schema-version": 2,
   "sources": []

@@ -29,7 +29,7 @@ pub use brief::{Brief, BriefFrontmatter};
 pub use cache::CacheMeta;
 pub use initiative_brief::{InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind};
 pub use pipeline::PipelineView;
-pub use registry::{Registry, RegistryProject};
+pub use registry::{ContractRoles, Registry, RegistryProject};
 pub use schema::{Phase, Pipeline, PipelineEntry, ResolvedSchema, Schema, SchemaSource};
 
 /// Outcome of a structural validation rule.

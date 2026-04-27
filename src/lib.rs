@@ -17,8 +17,9 @@ pub use specify_drift::{DriftEntry, DriftStatus, baseline_inventory};
 pub use specify_error::{Error, ValidationResultSummary};
 pub use specify_federation::{FederationConfig, PeerRepo, parse_federation_config};
 pub use specify_merge::{
-    BaselineConflict, MergeEntry, MergeOperation, MergeResult, conflict_check, merge, merge_change,
-    preview_change, validate_baseline,
+    BaselineConflict, ContractAction, ContractPreviewEntry, MergeEntry, MergeOperation,
+    MergeResult, PreviewResult, conflict_check, merge, merge_change, preview_change,
+    validate_baseline,
 };
 pub use specify_schema::{
     Brief, BriefFrontmatter, CacheMeta, InitiativeBrief, InitiativeFrontmatter, InitiativeInput,

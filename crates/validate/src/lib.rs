@@ -118,6 +118,7 @@ mod tests {
         assert!(!rules_for("design").is_empty());
         assert!(rules_for("tasks").len() >= 2);
         assert!(!rules_for("composition").is_empty());
+        assert!(rules_for("contracts").len() >= 3);
         assert!(cross_rules().len() >= 3);
     }
 
@@ -130,6 +131,7 @@ mod tests {
             ("design", "design."),
             ("tasks", "tasks."),
             ("composition", "composition."),
+            ("contracts", "contracts."),
         ] {
             for rule in rules_for(brief) {
                 assert!(

@@ -226,6 +226,143 @@ fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
 }
 
 #[test]
+fn conflict_check_no_contract_drift_when_baseline_is_older() {
+    let project = Project::init();
+    let change_dir = project.stage_change("merge-two-spec-change");
+
+    // Set defined_at to the far future so nothing is "newer".
+    let metadata_path = change_dir.join(".metadata.yaml");
+    fs::write(
+        &metadata_path,
+        "schema: omnia\nstatus: complete\ndefined-at: \"2099-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+    )
+    .unwrap();
+
+    // Seed a baseline contract file (its mtime will be well before 2099).
+    let baseline_contract = project.root().join(".specify/contracts/schemas/test.yaml");
+    fs::create_dir_all(baseline_contract.parent().unwrap()).unwrap();
+    fs::write(&baseline_contract, "type: object\n").unwrap();
+
+    // Seed the corresponding change contract so the drift walker visits it.
+    let change_contract = change_dir.join("contracts/schemas/test.yaml");
+    fs::create_dir_all(change_contract.parent().unwrap()).unwrap();
+    fs::write(&change_contract, "type: object\nproperties: {}\n").unwrap();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "spec", "conflict-check"])
+        .arg(&change_dir)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    let conflicts = value["conflicts"].as_array().unwrap();
+    assert!(
+        conflicts.is_empty(),
+        "baseline is older than defined_at, expected no conflicts, got {conflicts:?}"
+    );
+}
+
+#[test]
+fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
+    let project = Project::init();
+    let change_dir = project.stage_change("merge-two-spec-change");
+
+    // defined_at in the deep past — any real file mtime will be newer.
+    let metadata_path = change_dir.join(".metadata.yaml");
+    fs::write(
+        &metadata_path,
+        "schema: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+    )
+    .unwrap();
+
+    let baseline_contract = project.root().join(".specify/contracts/schemas/test.yaml");
+    fs::create_dir_all(baseline_contract.parent().unwrap()).unwrap();
+    fs::write(&baseline_contract, "type: object\n").unwrap();
+
+    // Nudge mtime forward.
+    sleep(Duration::from_millis(10));
+    fs::write(&baseline_contract, "type: object # touched\n").unwrap();
+
+    let change_contract = change_dir.join("contracts/schemas/test.yaml");
+    fs::create_dir_all(change_contract.parent().unwrap()).unwrap();
+    fs::write(&change_contract, "type: object\nproperties: {}\n").unwrap();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "spec", "conflict-check"])
+        .arg(&change_dir)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    let conflicts = value["conflicts"].as_array().unwrap();
+    assert_eq!(conflicts.len(), 1, "expected one contract conflict, got {conflicts:?}");
+    assert_eq!(conflicts[0]["capability"], "contracts/schemas/test.yaml");
+    assert_eq!(conflicts[0]["defined-at"], "2020-01-01T00:00:00Z");
+}
+
+#[test]
+fn conflict_check_no_drift_for_new_contract_files() {
+    let project = Project::init();
+    let change_dir = project.stage_change("merge-two-spec-change");
+
+    let metadata_path = change_dir.join(".metadata.yaml");
+    fs::write(
+        &metadata_path,
+        "schema: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+    )
+    .unwrap();
+
+    // Change has a contract file, but no corresponding baseline exists.
+    let change_contract = change_dir.join("contracts/schemas/new.yaml");
+    fs::create_dir_all(change_contract.parent().unwrap()).unwrap();
+    fs::write(&change_contract, "type: object\n").unwrap();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "spec", "conflict-check"])
+        .arg(&change_dir)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    let conflicts = value["conflicts"].as_array().unwrap();
+    assert!(
+        conflicts.is_empty(),
+        "new contract files (not in baseline) should not produce conflicts, got {conflicts:?}"
+    );
+}
+
+#[test]
+fn conflict_check_no_drift_when_change_has_no_contracts_dir() {
+    let project = Project::init();
+    let change_dir = project.stage_change("merge-two-spec-change");
+
+    let metadata_path = change_dir.join(".metadata.yaml");
+    fs::write(
+        &metadata_path,
+        "schema: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+    )
+    .unwrap();
+
+    // Seed a baseline contract but do NOT create contracts/ in the change.
+    let baseline_contract = project.root().join(".specify/contracts/schemas/test.yaml");
+    fs::create_dir_all(baseline_contract.parent().unwrap()).unwrap();
+    fs::write(&baseline_contract, "type: object\n").unwrap();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "spec", "conflict-check"])
+        .arg(&change_dir)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    let conflicts = value["conflicts"].as_array().unwrap();
+    assert!(
+        conflicts.is_empty(),
+        "no contracts/ in the change means no contract drift, got {conflicts:?}"
+    );
+}
+
+#[test]
 fn conflict_check_ignores_new_entries_even_with_existing_baseline() {
     // `type: new` baselines are "we're creating this capability" — even
     // if a file already exists at the baseline path, it is not a drift
