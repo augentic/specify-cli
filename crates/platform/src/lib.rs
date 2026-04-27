@@ -1,17 +1,17 @@
 //! Multi-repo coordination scaffolding (RFC-3, stub-level in Phase 1).
 //!
 //! Phase 1 only freezes the public surface: the `PeerRepo` wire shape, the
-//! `FederationConfig` trait that consumer configs implement, and the
-//! `parse_federation_config` entry point. Every call returns `vec![]` until
+//! `PlatformConfig` trait that consumer configs implement, and the
+//! `parse_platform_config` entry point. Every call returns `vec![]` until
 //! RFC-3 defines the concrete config fields.
 //!
-//! See `DECISIONS.md` ("Change H — Federation stub layering") for why the
+//! See `DECISIONS.md` ("Change H — Platform stub layering") for why the
 //! config trait lives here rather than taking a direct `ProjectConfig`
 //! dependency.
 
 use serde::{Deserialize, Serialize};
 
-/// A single federated peer repository entry.
+/// A single peer repository entry in a platform registry.
 ///
 /// Field names serialise as `kebab-case` so the YAML shape
 /// (`specs-path: …`) matches the project-config convention established
@@ -27,19 +27,19 @@ pub struct PeerRepo {
     pub specs_path: String,
 }
 
-/// Marker trait for project-config types that describe federation peers.
+/// Marker trait for project-config types that describe platform peers.
 ///
 /// Intentionally empty in Phase 1 — RFC-3 will extend it
 /// with methods like `fn peers(&self) -> &[…];` once the on-disk shape is
 /// nailed down.
 ///
-/// Keeping the trait in this crate lets `parse_federation_config` accept a
-/// config without `specify-federation` having to depend on the root
+/// Keeping the trait in this crate lets `parse_platform_config` accept a
+/// config without `specify-platform` having to depend on the root
 /// `specify` crate (which depends on this crate, which would cycle). The
 /// root crate satisfies the trait with a zero-method impl in Change I.
-pub trait FederationConfig {}
+pub trait PlatformConfig {}
 
-/// Parse federation peers from a project config.
+/// Parse platform peers from a project config.
 ///
 /// Phase-1 stub: returns `vec![]` unconditionally. The signature is frozen
 /// so RFC-3 can swap in the real implementation without re-threading
@@ -47,7 +47,7 @@ pub trait FederationConfig {}
 /// subcommand wire through this function today and get correct (empty)
 /// results, then automatically pick up real peers once RFC-3 lands.
 #[allow(clippy::missing_const_for_fn)]
-pub fn parse_federation_config<Cfg: FederationConfig>(config: &Cfg) -> Vec<PeerRepo> {
+pub fn parse_platform_config<Cfg: PlatformConfig>(config: &Cfg) -> Vec<PeerRepo> {
     let _ = config;
     Vec::new()
 }
@@ -57,11 +57,11 @@ mod tests {
     use super::*;
 
     struct Cfg;
-    impl FederationConfig for Cfg {}
+    impl PlatformConfig for Cfg {}
 
     #[test]
     fn returns_empty_for_any_config() {
-        let peers = parse_federation_config(&Cfg);
+        let peers = parse_platform_config(&Cfg);
         assert!(peers.is_empty());
     }
 

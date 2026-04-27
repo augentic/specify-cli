@@ -1379,8 +1379,8 @@ dependencies = [
  "specify-change",
  "specify-drift",
  "specify-error",
- "specify-federation",
  "specify-merge",
+ "specify-platform",
  "specify-schema",
  "specify-spec",
  "specify-task",
@@ -1425,14 +1425,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "specify-federation"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde-saphyr",
-]
-
-[[package]]
 name = "specify-merge"
 version = "0.1.0"
 dependencies = [
@@ -1445,6 +1437,14 @@ dependencies = [
  "specify-schema",
  "specify-spec",
  "tempfile",
+]
+
+[[package]]
+name = "specify-platform"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde-saphyr",
 ]
 
 [[package]]

@@ -86,32 +86,32 @@ schemas continue to work without a schema.yaml change. Adding a proper
 `infer_terminology` helper is the single choke point); we've kept the
 surface area minimal until a concrete schema needs it.
 
-## Change H — Federation stub layering
+## Change H — Platform stub layering
 
-**Decision.** `specify-federation::parse_federation_config` takes a generic
-`Cfg: FederationConfig` parameter rather than a concrete `&ProjectConfig`.
-The `FederationConfig` trait is declared (empty) in `specify-federation`;
+**Decision.** `specify-platform::parse_platform_config` takes a generic
+`Cfg: PlatformConfig` parameter rather than a concrete `&ProjectConfig`.
+The `PlatformConfig` trait is declared (empty) in `specify-platform`;
 `ProjectConfig` (defined in the root `specify` crate in Change I) will add
-a zero-method `impl FederationConfig for ProjectConfig {}`. RFC-3 extends
+a zero-method `impl PlatformConfig for ProjectConfig {}`. RFC-3 extends
 the trait with real methods (`fn peers(&self) -> &[…];` and similar).
 
 **Rationale.** RFC-1 §`federation.rs`
 ([rfcs/rfc-1-cli.md](rfcs/rfc-1-cli.md) line 898) shows
-`parse_federation_config(config: &ProjectConfig)`. Implementing that
-signature verbatim would require `specify-federation` to depend on the
-root `specify` crate — but the root crate depends on `specify-federation`
+`parse_platform_config(config: &ProjectConfig)`. Implementing that
+signature verbatim would require `specify-platform` to depend on the
+root `specify` crate — but the root crate depends on `specify-platform`
 (it re-exports the public API per
-[RFC-1 plan line 202](rfcs/rfc-1-plan.md#change-h--stubs-specify-drift-specify-federation)),
+[RFC-1 plan line 202](rfcs/rfc-1-plan.md#change-h--stubs-specify-drift-specify-platform)),
 producing a dependency cycle. Moving `ProjectConfig` down into a leaf
 config crate was considered and rejected: Change I deliberately keeps
 config + init + CLI plumbing in the root crate so the binary has a single
 assembly point, and splitting it would add a fourth "plumbing" crate for
 no payoff.
 
-The trait-in-the-leaf-crate approach keeps `specify-federation` dependency-
+The trait-in-the-leaf-crate approach keeps `specify-platform` dependency-
 free from the root crate while freezing the call-site signature today, so
 Change I and every subsequent Change can wire through
-`parse_federation_config(&config)` without a later refactor. The empty
+`parse_platform_config(&config)` without a later refactor. The empty
 trait costs nothing at the type level — it's a pure capability marker
 until RFC-3 fills it in.
 
