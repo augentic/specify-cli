@@ -437,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn acquire_and_release_creates_and_removes_lockfile() {
+    fn acquire_and_release() {
         let dir = tempdir().expect("tempdir");
         let guard = Guard::acquire(dir.path()).expect("acquire ok");
 
@@ -452,10 +452,9 @@ mod tests {
     }
 
     #[test]
-    fn second_acquire_while_first_held_returns_driver_busy() {
+    fn second_acquire_is_busy() {
         let dir = tempdir().expect("tempdir");
-        let _first =
-            Guard::acquire_with_liveness_check(dir.path(), |_| true).expect("first ok");
+        let _first = Guard::acquire_with_liveness_check(dir.path(), |_| true).expect("first ok");
 
         let err = Guard::acquire_with_liveness_check(dir.path(), |_| true)
             .expect_err("second should fail");
@@ -466,26 +465,24 @@ mod tests {
     }
 
     #[test]
-    fn stale_lock_with_dead_pid_is_reclaimed() {
+    fn stale_lock_reclaimed() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "99999").expect("prime stale");
 
-        let guard =
-            Guard::acquire_with_liveness_check(dir.path(), |_| false).expect("reclaim ok");
+        let guard = Guard::acquire_with_liveness_check(dir.path(), |_| false).expect("reclaim ok");
         assert_eq!(guard.reclaimed_stale_pid(), Some(99999));
         assert_eq!(read_lock_pid(dir.path()).trim(), std::process::id().to_string());
     }
 
     #[test]
-    fn malformed_pid_in_lockfile_is_reclaimed() {
+    fn malformed_pid_reclaimed() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "not-a-number\n")
             .expect("prime malformed");
 
-        let guard =
-            Guard::acquire_with_liveness_check(dir.path(), |_| true).expect("reclaim ok");
+        let guard = Guard::acquire_with_liveness_check(dir.path(), |_| true).expect("reclaim ok");
         assert_eq!(
             guard.reclaimed_stale_pid(),
             None,
@@ -495,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn guard_drop_removes_lockfile_even_on_panic() {
+    fn drop_removes_on_panic() {
         let dir = tempdir().expect("tempdir");
         let dir_path = dir.path().to_path_buf();
         let lock_path = dir_path.join(".specify").join("plan.lock");
@@ -509,13 +506,12 @@ mod tests {
     }
 
     #[test]
-    fn reclaim_logs_diagnostic_via_reclaimed_stale_pid() {
+    fn reclaim_diagnostic() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "99999").expect("prime stale");
 
-        let guard =
-            Guard::acquire_with_liveness_check(dir.path(), |_| false).expect("reclaim ok");
+        let guard = Guard::acquire_with_liveness_check(dir.path(), |_| false).expect("reclaim ok");
 
         assert_eq!(guard.reclaimed_stale_pid(), Some(99999));
     }
@@ -525,10 +521,10 @@ mod tests {
     // ------------------------------------------------------------------
 
     #[test]
-    fn stamp_acquire_and_release_cycles_cleanly() {
+    fn stamp_acquire_release() {
         let dir = tempdir().expect("tempdir");
-        let acquired = Stamp::acquire_with_liveness_check(dir.path(), 4242, |_| true)
-            .expect("acquire ok");
+        let acquired =
+            Stamp::acquire_with_liveness_check(dir.path(), 4242, |_| true).expect("acquire ok");
         assert_eq!(acquired.pid, 4242);
         assert_eq!(acquired.reclaimed_stale_pid, None);
         assert!(!acquired.already_held);
@@ -540,17 +536,17 @@ mod tests {
     }
 
     #[test]
-    fn stamp_reacquire_by_same_pid_is_idempotent() {
+    fn stamp_reacquire_idempotent() {
         let dir = tempdir().expect("tempdir");
         Stamp::acquire_with_liveness_check(dir.path(), 1234, |_| true).expect("first");
-        let again = Stamp::acquire_with_liveness_check(dir.path(), 1234, |_| true)
-            .expect("reacquire ok");
+        let again =
+            Stamp::acquire_with_liveness_check(dir.path(), 1234, |_| true).expect("reacquire ok");
         assert!(again.already_held, "same-PID re-stamp must report already_held");
         assert_eq!(again.reclaimed_stale_pid, None);
     }
 
     #[test]
-    fn stamp_acquire_refuses_when_another_live_pid_stamped() {
+    fn stamp_acquire_busy() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "7777").expect("prime");
@@ -563,26 +559,26 @@ mod tests {
     }
 
     #[test]
-    fn stamp_acquire_reclaims_stale_stamp() {
+    fn stamp_reclaims_stale() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "99999").expect("prime stale");
 
-        let acquired = Stamp::acquire_with_liveness_check(dir.path(), 4242, |_| false)
-            .expect("reclaim ok");
+        let acquired =
+            Stamp::acquire_with_liveness_check(dir.path(), 4242, |_| false).expect("reclaim ok");
         assert_eq!(acquired.reclaimed_stale_pid, Some(99999));
         assert_eq!(read_lock_pid(dir.path()).trim(), "4242");
     }
 
     #[test]
-    fn stamp_release_is_noop_when_file_absent() {
+    fn stamp_release_absent() {
         let dir = tempdir().expect("tempdir");
         let released = Stamp::release(dir.path(), 4242).expect("release ok");
         assert_eq!(released, PlanLockReleased::WasAbsent);
     }
 
     #[test]
-    fn stamp_release_refuses_to_remove_another_pid() {
+    fn stamp_release_refuses_other() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "7777").expect("prime");
@@ -594,10 +590,9 @@ mod tests {
     }
 
     #[test]
-    fn stamp_status_when_absent() {
+    fn stamp_status_absent() {
         let dir = tempdir().expect("tempdir");
-        let state =
-            Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
+        let state = Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
         assert_eq!(
             state,
             PlanLockState {
@@ -609,12 +604,11 @@ mod tests {
     }
 
     #[test]
-    fn stamp_status_when_held_by_live_pid() {
+    fn stamp_status_held() {
         let dir = tempdir().expect("tempdir");
         Stamp::acquire_with_liveness_check(dir.path(), 4242, |_| true).expect("acquire");
 
-        let state =
-            Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
+        let state = Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
         assert_eq!(
             state,
             PlanLockState {
@@ -626,13 +620,12 @@ mod tests {
     }
 
     #[test]
-    fn stamp_status_when_stale() {
+    fn stamp_status_stale() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "99999").expect("prime stale");
 
-        let state =
-            Stamp::status_with_liveness_check(dir.path(), |_| false).expect("status ok");
+        let state = Stamp::status_with_liveness_check(dir.path(), |_| false).expect("status ok");
         assert_eq!(
             state,
             PlanLockState {
@@ -644,13 +637,12 @@ mod tests {
     }
 
     #[test]
-    fn stamp_status_when_malformed() {
+    fn stamp_status_malformed() {
         let dir = tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".specify")).expect("mkdir");
         fs::write(dir.path().join(".specify").join("plan.lock"), "not-a-pid\n").expect("prime");
 
-        let state =
-            Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
+        let state = Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
         assert_eq!(
             state,
             PlanLockState {
@@ -662,7 +654,7 @@ mod tests {
     }
 
     #[test]
-    fn second_acquire_in_different_thread_while_first_held_returns_driver_busy() {
+    fn cross_thread_acquire_is_busy() {
         // Cross-thread acquisition is verified via the liveness
         // override rather than raw flock semantics, which per the
         // module-level doc comment we consider belt-plus-PID-file.

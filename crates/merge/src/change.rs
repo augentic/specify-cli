@@ -443,12 +443,10 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Entry>, Error> 
                         .operations
                         .iter()
                         .map(|op| match op {
-                            crate::composition::MergeOp::Added { slug } => {
-                                MergeOperation::Added {
-                                    id: slug.clone(),
-                                    name: slug.clone(),
-                                }
-                            }
+                            crate::composition::MergeOp::Added { slug } => MergeOperation::Added {
+                                id: slug.clone(),
+                                name: slug.clone(),
+                            },
                             crate::composition::MergeOp::Modified { slug } => {
                                 MergeOperation::Modified {
                                     id: slug.clone(),
@@ -461,11 +459,11 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Entry>, Error> 
                                     name: slug.clone(),
                                 }
                             }
-                            crate::composition::MergeOp::CreatedBaseline {
-                                screen_count,
-                            } => MergeOperation::CreatedBaseline {
-                                requirement_count: *screen_count,
-                            },
+                            crate::composition::MergeOp::CreatedBaseline { screen_count } => {
+                                MergeOperation::CreatedBaseline {
+                                    requirement_count: *screen_count,
+                                }
+                            }
                         })
                         .collect(),
                 };

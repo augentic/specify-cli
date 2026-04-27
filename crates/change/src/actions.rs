@@ -356,9 +356,7 @@ pub fn overlap(changes_dir: &Path, change_name: &str) -> Result<Vec<Overlap>, Er
             }
         }
     }
-    overlaps.sort_by(|a, b| {
-        a.capability.cmp(&b.capability).then_with(|| a.other.cmp(&b.other))
-    });
+    overlaps.sort_by(|a, b| a.capability.cmp(&b.capability).then_with(|| a.other.cmp(&b.other)));
     Ok(overlaps)
 }
 

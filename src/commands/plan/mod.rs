@@ -142,9 +142,7 @@ pub(super) fn change_entry_json(entry: &PlanChange) -> Value {
 }
 
 /// Verify that `project_name` appears in `.specify/registry.yaml`.
-pub(super) fn check_project(
-    project_dir: &Path, project_name: &str,
-) -> Result<(), Error> {
+pub(super) fn check_project(project_dir: &Path, project_name: &str) -> Result<(), Error> {
     match Registry::load(project_dir) {
         Ok(Some(registry)) => {
             if !registry.projects.iter().any(|p| p.name == project_name) {

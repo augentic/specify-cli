@@ -52,9 +52,7 @@ pub enum MergeOp {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn merge_composition(
-    baseline: Option<&str>, delta_text: &str,
-) -> Result<MergeResult, Error> {
+pub fn merge_composition(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Error> {
     let delta_doc: Value = serde_saphyr::from_str(delta_text)
         .map_err(|e| Error::Merge(format!("failed to parse composition delta: {e}")))?;
 
@@ -151,10 +149,7 @@ mod tests {
             "version: 1\nscreens:\n  home:\n    title: Home\n  settings:\n    title: Settings\n";
         let result = merge_composition(None, delta).unwrap();
         assert_eq!(result.output, delta);
-        assert_eq!(
-            result.operations,
-            vec![MergeOp::CreatedBaseline { screen_count: 2 }]
-        );
+        assert_eq!(result.operations, vec![MergeOp::CreatedBaseline { screen_count: 2 }]);
     }
 
     #[test]

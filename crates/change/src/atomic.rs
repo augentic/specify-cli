@@ -15,7 +15,7 @@
 //! private implementation detail of the `change` crate, not part of
 //! its public surface. Downstream library users who need the same
 //! behaviour should call the domain helpers (`ChangeMetadata::save`,
-//! `Plan::save`, `Journal::append`, `PlanLockStamp::acquire`) that
+//! `Plan::save`, `Journal::append`, `lock::Stamp::acquire`) that
 //! route through here.
 
 use std::path::Path;

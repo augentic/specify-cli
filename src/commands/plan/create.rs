@@ -4,9 +4,7 @@ use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, PlanChange, PlanChangePatch, PlanStatus};
 
-use super::{
-    PlanRef, change_entry_json, check_project, load_for_write, plan_ref,
-};
+use super::{PlanRef, change_entry_json, check_project, load_for_write, plan_ref};
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};

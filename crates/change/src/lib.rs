@@ -530,7 +530,7 @@ touched-specs:
             merged_at: None,
             dropped_at: None,
             drop_reason: None,
-            touched_specs: vec![            TouchedSpec {
+            touched_specs: vec![TouchedSpec {
                 name: "login".to_string(),
                 kind: SpecType::Modified,
             }],

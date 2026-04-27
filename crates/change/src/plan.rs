@@ -464,11 +464,8 @@ impl Plan {
         // the whole `changes` vector since we know the mutation is a
         // single trailing push.
         self.changes.push(change);
-        let errors: Vec<Finding> = self
-            .validate(None, None)
-            .into_iter()
-            .filter(|r| r.level == Severity::Error)
-            .collect();
+        let errors: Vec<Finding> =
+            self.validate(None, None).into_iter().filter(|r| r.level == Severity::Error).collect();
         if let Some(first) = errors.first() {
             let msg = first.message.clone();
             self.changes.pop();
@@ -529,11 +526,8 @@ impl Plan {
             }
         }
 
-        let errors: Vec<Finding> = self
-            .validate(None, None)
-            .into_iter()
-            .filter(|r| r.level == Severity::Error)
-            .collect();
+        let errors: Vec<Finding> =
+            self.validate(None, None).into_iter().filter(|r| r.level == Severity::Error).collect();
         if let Some(first) = errors.first() {
             let msg = first.message.clone();
             self.changes[idx] = snapshot;
@@ -876,9 +870,7 @@ fn check_single_in_progress(changes: &[Entry]) -> Vec<Finding> {
 }
 
 /// RFC-3b: Every non-None `project` on a change must match a `projects[].name` in the registry.
-fn check_project_in_registry(
-    changes: &[Entry], registry: &Registry,
-) -> Vec<Finding> {
+fn check_project_in_registry(changes: &[Entry], registry: &Registry) -> Vec<Finding> {
     let project_names: HashSet<&str> = registry.projects.iter().map(|p| p.name.as_str()).collect();
     let mut out = Vec::new();
     for entry in changes {
@@ -900,9 +892,7 @@ fn check_project_in_registry(
 }
 
 /// RFC-3b: When registry has >1 project, every change must have a `project` field.
-fn check_project_required_multi_repo(
-    changes: &[Entry], registry: &Registry,
-) -> Vec<Finding> {
+fn check_project_required_multi_repo(changes: &[Entry], registry: &Registry) -> Vec<Finding> {
     if registry.projects.len() <= 1 {
         return Vec::new();
     }
@@ -1119,9 +1109,7 @@ mod tests {
 
     #[test]
     fn error_carries_endpoints() {
-        let err = Status::Done
-            .transition(Status::Pending)
-            .expect_err("Done -> Pending must error");
+        let err = Status::Done.transition(Status::Pending).expect_err("Done -> Pending must error");
         match err {
             Error::PlanTransition { from, to } => {
                 assert_eq!(from, "Done");
@@ -1442,10 +1430,8 @@ changes:
 
     #[test]
     fn duplicate_name_error() {
-        let plan = plan_with_changes(vec![
-            change("foo", Status::Done),
-            change("foo", Status::Pending),
-        ]);
+        let plan =
+            plan_with_changes(vec![change("foo", Status::Done), change("foo", Status::Pending)]);
         let results = plan.validate(None, None);
         let dupes: Vec<_> = results.iter().filter(|r| r.code == "duplicate-name").collect();
         assert_eq!(dupes.len(), 1, "expected one duplicate-name result, got {results:#?}");
@@ -1522,10 +1508,8 @@ changes:
 
     #[test]
     fn single_in_progress_is_fine() {
-        let plan = plan_with_changes(vec![
-            change("a", Status::InProgress),
-            change("b", Status::Pending),
-        ]);
+        let plan =
+            plan_with_changes(vec![change("a", Status::InProgress), change("b", Status::Pending)]);
         let results = plan.validate(None, None);
         assert!(
             !results.iter().any(|r| r.code == "multiple-in-progress"),
@@ -1644,10 +1628,8 @@ changes:
 
     #[test]
     fn next_eligible_blocked_by_in_progress() {
-        let plan = plan_with_changes(vec![
-            change("a", Status::InProgress),
-            change("b", Status::Pending),
-        ]);
+        let plan =
+            plan_with_changes(vec![change("a", Status::InProgress), change("b", Status::Pending)]);
         assert!(
             plan.next_eligible().is_none(),
             "an in-progress entry must block any new selection"
@@ -2070,9 +2052,8 @@ changes:
     #[test]
     fn amend_missing_entry() {
         let mut plan = plan_with_changes(vec![change("foo", Status::Pending)]);
-        let err = plan
-            .amend("nonexistent", EntryPatch::default())
-            .expect_err("missing entry must Err");
+        let err =
+            plan.amend("nonexistent", EntryPatch::default()).expect_err("missing entry must Err");
         match err {
             Error::Config(msg) => {
                 assert!(msg.contains("nonexistent"), "message should mention name, got: {msg}");
@@ -2083,10 +2064,8 @@ changes:
 
     #[test]
     fn amend_rejects_cycle() {
-        let mut plan = plan_with_changes(vec![
-            change("a", Status::Pending),
-            change("b", Status::Pending),
-        ]);
+        let mut plan =
+            plan_with_changes(vec![change("a", Status::Pending), change("b", Status::Pending)]);
 
         plan.amend(
             "a",
@@ -2174,8 +2153,7 @@ changes:
             change("c", Status::Failed),
         ]);
 
-        plan.transition("a", Status::Blocked, Some("needs scope"))
-            .expect("pending -> blocked ok");
+        plan.transition("a", Status::Blocked, Some("needs scope")).expect("pending -> blocked ok");
         let a = plan.changes.iter().find(|c| c.name == "a").unwrap();
         assert_eq!(a.status, Status::Blocked);
         assert_eq!(a.status_reason.as_deref(), Some("needs scope"));
@@ -2193,10 +2171,8 @@ changes:
 
     #[test]
     fn transition_rejects_reason_on_clean_target() {
-        let mut plan = plan_with_changes(vec![
-            change("a", Status::Pending),
-            change("b", Status::InProgress),
-        ]);
+        let mut plan =
+            plan_with_changes(vec![change("a", Status::Pending), change("b", Status::InProgress)]);
 
         let err = plan
             .transition("a", Status::InProgress, Some("why"))
@@ -2224,7 +2200,7 @@ changes:
     }
 
     #[test]
-    fn transition_rejects_illegal_edge_via_state_machine() {
+    fn transition_rejects_illegal_edge() {
         let mut plan = plan_with_changes(vec![change("a", Status::Done)]);
         let err = plan
             .transition("a", Status::Pending, None)
@@ -2241,7 +2217,7 @@ changes:
     }
 
     #[test]
-    fn transition_rejects_missing_entry() {
+    fn transition_missing_entry() {
         let mut plan = plan_with_changes(vec![change("foo", Status::Pending)]);
         let err = plan
             .transition("nonexistent", Status::InProgress, None)
@@ -2274,7 +2250,7 @@ changes:
     }
 
     #[test]
-    fn archive_happy_path_with_only_done_and_skipped() {
+    fn archive_happy_path() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join("archive");
         let plan_path = write_plan(
@@ -2304,7 +2280,7 @@ changes:
     }
 
     #[test]
-    fn archive_creates_missing_archive_dir() {
+    fn archive_creates_dir() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join("does").join("not").join("exist").join("yet");
         assert!(!archive_dir.exists());
@@ -2318,16 +2294,13 @@ changes:
     }
 
     #[test]
-    fn archive_refuses_with_pending_entries_without_force() {
+    fn archive_refuses_pending() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join("archive");
         let plan_path = write_plan(
             tmp.path(),
             "p",
-            vec![
-                change("done-one", Status::Done),
-                change("still-pending", Status::Pending),
-            ],
+            vec![change("done-one", Status::Done), change("still-pending", Status::Pending)],
         );
 
         let err = Plan::archive(&plan_path, &archive_dir, false)
@@ -2348,7 +2321,7 @@ changes:
     }
 
     #[test]
-    fn archive_refuses_with_blocked_failed_in_progress() {
+    fn archive_refuses_nonterminal() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join("archive");
         let plan_path = write_plan(
@@ -2380,7 +2353,7 @@ changes:
     }
 
     #[test]
-    fn archive_with_force_succeeds_even_with_outstanding_entries() {
+    fn archive_force_succeeds() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join("archive");
         let plan_path = write_plan(
@@ -2421,11 +2394,10 @@ changes:
     }
 
     #[test]
-    fn archive_filename_is_kebab_plan_name_plus_yyyymmdd() {
+    fn archive_filename_format() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join("archive");
-        let plan_path =
-            write_plan(tmp.path(), "my-initiative", vec![change("a", Status::Done)]);
+        let plan_path = write_plan(tmp.path(), "my-initiative", vec![change("a", Status::Done)]);
 
         let (dest, _) = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
         let basename = dest.file_name().and_then(|s| s.to_str()).expect("basename utf8");
@@ -2445,7 +2417,7 @@ changes:
     }
 
     #[test]
-    fn archive_refuses_when_destination_exists() {
+    fn archive_refuses_collision() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join("archive");
         std::fs::create_dir_all(&archive_dir).expect("mkdir archive");
@@ -2481,7 +2453,7 @@ changes:
     }
 
     #[test]
-    fn archive_returns_destination_path() {
+    fn archive_returns_dest() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join("archive");
         let plan_path = write_plan(tmp.path(), "pkg", vec![change("a", Status::Done)]);
@@ -2496,7 +2468,7 @@ changes:
     // --- L3.A: Plan::init ------------------------------------------------
 
     #[test]
-    fn init_returns_empty_plan_with_given_name() {
+    fn init_empty_plan() {
         let plan = Plan::init("platform-v2", BTreeMap::new()).expect("init ok");
         assert_eq!(plan.name, "platform-v2");
         assert!(plan.sources.is_empty(), "sources should default to empty");
@@ -2504,7 +2476,7 @@ changes:
     }
 
     #[test]
-    fn init_preserves_sources_map() {
+    fn init_preserves_sources() {
         let mut sources = BTreeMap::new();
         sources.insert("monolith".to_string(), "/path/to/legacy".to_string());
         sources.insert("orders".to_string(), "git@github.com:org/orders.git".to_string());
@@ -2516,7 +2488,7 @@ changes:
     }
 
     #[test]
-    fn init_rejects_invalid_name() {
+    fn init_rejects_bad_name() {
         let err = Plan::init("BAD_NAME", BTreeMap::new()).expect_err("invalid name must Err");
         match err {
             Error::InvalidName(msg) => {
@@ -2533,7 +2505,7 @@ changes:
     }
 
     #[test]
-    fn init_output_passes_validation() {
+    fn init_validates() {
         let plan = Plan::init("foo", BTreeMap::new()).expect("init ok");
         let findings = plan.validate(None, None);
         assert!(
@@ -2569,7 +2541,7 @@ changes:
     }
 
     #[test]
-    fn archive_with_working_dir_moves_both() {
+    fn archive_co_moves_working_dir() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join(".specify/archive/plans");
         let plan_path = write_plan_with_working_dir(
@@ -2609,7 +2581,7 @@ changes:
     }
 
     #[test]
-    fn archive_without_working_dir_still_succeeds() {
+    fn archive_without_working_dir() {
         let tmp = tempdir().expect("tempdir");
         let specify = tmp.path().join(".specify");
         std::fs::create_dir_all(&specify).expect("mkdir .specify");
@@ -2634,7 +2606,7 @@ changes:
     /// `.specify/plans/<name>/` survive the wholesale co-move (see
     /// `archive_moves_workspace_md_and_slices_with_plan_working_dir`).
     #[test]
-    fn archive_sweeps_initiative_md_alongside_plan() {
+    fn archive_sweeps_initiative_md() {
         let tmp = tempdir().expect("tempdir");
         let specify = tmp.path().join(".specify");
         std::fs::create_dir_all(&specify).expect("mkdir .specify");
@@ -2666,7 +2638,7 @@ changes:
     /// Same sweep, but with a plans working directory also present.
     /// Both files land in the same archived `<name>-<date>/` dir.
     #[test]
-    fn archive_sweeps_initiative_md_and_working_dir_together() {
+    fn archive_sweeps_initiative_md_and_working_dir() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join(".specify/archive/plans");
         let plan_path = write_plan_with_working_dir(
@@ -2690,7 +2662,7 @@ changes:
     /// working directory move with the wholesale `.specify/plans/<name>/`
     /// rename into the archive tree.
     #[test]
-    fn archive_moves_workspace_md_and_slices_with_plan_working_dir() {
+    fn archive_moves_workspace_md_and_slices() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join(".specify/archive/plans");
         let plan_path = write_plan_with_working_dir(
@@ -2712,7 +2684,7 @@ changes:
     }
 
     #[test]
-    fn archive_refuses_when_working_dir_destination_exists() {
+    fn archive_refuses_working_dir_collision() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join(".specify/archive/plans");
         let plan_path = write_plan_with_working_dir(
@@ -2765,7 +2737,7 @@ changes:
     }
 
     #[test]
-    fn archive_preserves_working_dir_contents_byte_for_byte() {
+    fn archive_preserves_bytes() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join(".specify/archive/plans");
         let payload: &[u8] = b"line-1\nline-2\nunicode: caf\xc3\xa9\n";
@@ -2785,16 +2757,13 @@ changes:
     }
 
     #[test]
-    fn archive_with_force_preserves_nonterminal_entries_and_moves_working_dir() {
+    fn archive_force_moves_working_dir() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join(".specify/archive/plans");
         let plan_path = write_plan_with_working_dir(
             tmp.path(),
             "mixed",
-            vec![
-                change("done-one", Status::Done),
-                change("still-pending", Status::Pending),
-            ],
+            vec![change("done-one", Status::Done), change("still-pending", Status::Pending)],
             &[("notes.md", b"# notes\n")],
         );
         let working_dir = tmp.path().join(".specify/plans/mixed");
@@ -2822,7 +2791,7 @@ changes:
     /// The fallback's directory branch is covered by `actions.rs`
     /// unit tests; the file branch is the same implementation.
     #[test]
-    fn archive_is_atomic_within_filesystem() {
+    fn archive_atomic() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join("archive");
         let plan_path = write_plan(tmp.path(), "atomic", vec![change("a", Status::Done)]);
@@ -2842,7 +2811,7 @@ changes:
     // ---------- RFC-3b: Entry.project ----------
 
     #[test]
-    fn plan_change_project_round_trips_with_value() {
+    fn project_round_trips() {
         let yaml = "\
 name: foo
 project: traffic
@@ -2856,7 +2825,7 @@ status: pending
     }
 
     #[test]
-    fn plan_change_project_defaults_to_none() {
+    fn project_defaults_to_none() {
         let yaml = "\
 name: foo
 status: pending
@@ -2866,7 +2835,7 @@ status: pending
     }
 
     #[test]
-    fn amend_project_three_way_semantics() {
+    fn amend_project_three_way() {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("alpha".into()),
@@ -2917,7 +2886,7 @@ status: pending
     }
 
     #[test]
-    fn project_not_in_registry_error() {
+    fn project_not_in_registry() {
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
@@ -2948,7 +2917,7 @@ status: pending
     }
 
     #[test]
-    fn project_missing_multi_repo_error() {
+    fn project_missing_multi_repo() {
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
@@ -2988,7 +2957,7 @@ status: pending
     }
 
     #[test]
-    fn project_valid_in_single_repo_no_error() {
+    fn project_valid_single_repo() {
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
@@ -3020,7 +2989,7 @@ status: pending
     }
 
     #[test]
-    fn project_matches_registry_no_error() {
+    fn project_matches_registry() {
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
@@ -3062,7 +3031,7 @@ status: pending
     // --- RFC-8: schema field -------------------------------------------------
 
     #[test]
-    fn schema_field_roundtrips_yaml() {
+    fn schema_field_round_trips() {
         let yaml = r"name: test
 changes:
   - name: define-contracts
@@ -3085,7 +3054,7 @@ changes:
     }
 
     #[test]
-    fn validation_error_when_neither_project_nor_schema() {
+    fn neither_project_nor_schema_error() {
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
@@ -3103,14 +3072,16 @@ changes:
         };
         let results = plan.validate(None, None);
         assert!(
-            results.iter().any(|r| r.code == "plan.entry-needs-project-or-schema"
-                && r.level == Severity::Error),
+            results
+                .iter()
+                .any(|r| r.code == "plan.entry-needs-project-or-schema"
+                    && r.level == Severity::Error),
             "expected entry-needs-project-or-schema error, got: {results:#?}"
         );
     }
 
     #[test]
-    fn validation_passes_with_schema_only() {
+    fn schema_only_passes() {
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
@@ -3134,7 +3105,7 @@ changes:
     }
 
     #[test]
-    fn validation_passes_with_both_project_and_schema() {
+    fn project_and_schema_passes() {
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
@@ -3158,7 +3129,7 @@ changes:
     }
 
     #[test]
-    fn create_rejects_entry_without_project_or_schema() {
+    fn create_rejects_no_project_or_schema() {
         let mut plan = plan_with_changes(vec![]);
         let entry = Entry {
             name: "bad".into(),
@@ -3185,7 +3156,7 @@ changes:
     }
 
     #[test]
-    fn amend_schema_three_way_semantics() {
+    fn amend_schema_three_way() {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
@@ -3234,7 +3205,7 @@ changes:
     }
 
     #[test]
-    fn context_round_trip_through_yaml() {
+    fn context_round_trips() {
         let yaml = r"
 name: ctx-test
 changes:
@@ -3268,7 +3239,7 @@ changes:
     }
 
     #[test]
-    fn validate_rejects_context_path_with_dotdot() {
+    fn context_rejects_dotdot() {
         let mut entry = change("foo", Status::Pending);
         entry.context = vec!["../etc/passwd".into()];
         let plan = plan_with_changes(vec![entry]);
@@ -3282,7 +3253,7 @@ changes:
     }
 
     #[test]
-    fn validate_rejects_absolute_context_path() {
+    fn context_rejects_absolute() {
         let mut entry = change("foo", Status::Pending);
         entry.context = vec!["/absolute/path".into()];
         let plan = plan_with_changes(vec![entry]);
@@ -3296,7 +3267,7 @@ changes:
     }
 
     #[test]
-    fn validate_accepts_valid_context_paths() {
+    fn context_accepts_valid() {
         let mut entry = change("foo", Status::Pending);
         entry.context =
             vec!["contracts/http/user-api.yaml".into(), "specs/user-registration/spec.md".into()];
@@ -3308,7 +3279,7 @@ changes:
     }
 
     #[test]
-    fn amend_replaces_context() {
+    fn amend_context_replace() {
         let mut entry = change("foo", Status::Pending);
         entry.context = vec!["old/path.yaml".into()];
         let mut plan = plan_with_changes(vec![entry]);
@@ -3329,7 +3300,7 @@ changes:
     }
 
     #[test]
-    fn amend_none_context_leaves_unchanged() {
+    fn amend_context_none_unchanged() {
         let mut entry = change("foo", Status::Pending);
         entry.context = vec!["keep/this.yaml".into()];
         let mut plan = plan_with_changes(vec![entry]);
@@ -3343,7 +3314,7 @@ changes:
     }
 
     #[test]
-    fn create_stores_context() {
+    fn create_preserves_context() {
         let mut plan = plan_with_changes(vec![]);
         let entry = Entry {
             name: "with-ctx".into(),
@@ -3365,7 +3336,7 @@ changes:
     }
 
     #[test]
-    fn create_rejects_entry_with_invalid_context_path() {
+    fn create_rejects_bad_context() {
         let mut plan = plan_with_changes(vec![]);
         let entry = Entry {
             name: "bad-ctx".into(),
@@ -3392,7 +3363,7 @@ changes:
     }
 
     #[test]
-    fn plan_status_display_matches_serde_wire_format() {
+    fn status_display_matches_serde() {
         assert_eq!(Status::Pending.to_string(), "pending");
         assert_eq!(Status::InProgress.to_string(), "in-progress");
         assert_eq!(Status::Done.to_string(), "done");

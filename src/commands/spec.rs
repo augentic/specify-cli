@@ -20,8 +20,7 @@ pub fn run_spec_preview(ctx: &CommandContext, change_dir: PathBuf) -> Result<Cli
     match ctx.format {
         OutputFormat::Json => {
             let specs: Vec<Value> = result.specs.iter().map(preview_entry_to_json).collect();
-            let contracts: Vec<Value> =
-                result.contracts.iter().map(contract_to_json).collect();
+            let contracts: Vec<Value> = result.contracts.iter().map(contract_to_json).collect();
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
             struct PreviewBody {
@@ -40,11 +39,7 @@ pub fn run_spec_preview(ctx: &CommandContext, change_dir: PathBuf) -> Result<Cli
                 println!("No delta specs to merge.");
             } else {
                 for entry in &result.specs {
-                    println!(
-                        "{}: {}",
-                        entry.name,
-                        summarise_operations(&entry.result.operations)
-                    );
+                    println!("{}: {}", entry.name, summarise_operations(&entry.result.operations));
                     for op in &entry.result.operations {
                         println!("  {}", operation_label(op));
                     }

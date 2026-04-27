@@ -47,9 +47,7 @@ pub fn run_plan_lock_release(ctx: &CommandContext, pid: Option<u32>) -> Result<C
     Ok(emit_released(ctx.format, our_pid, &outcome))
 }
 
-fn emit_released(
-    format: OutputFormat, our_pid: u32, outcome: &PlanLockReleased,
-) -> CliResult {
+fn emit_released(format: OutputFormat, our_pid: u32, outcome: &PlanLockReleased) -> CliResult {
     match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
