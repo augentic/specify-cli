@@ -2915,6 +2915,7 @@ fn run_initiative_next(format: OutputFormat) -> i32 {
                 "reason": Value::Null,
                 "active": Value::Null,
                 "project": entry.project,
+                "schema": entry.schema,
                 "description": entry.description,
                 "sources": entry.sources,
             })),

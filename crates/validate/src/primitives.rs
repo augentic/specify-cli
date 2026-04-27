@@ -210,7 +210,11 @@ pub(crate) fn extract_ref(line: &str) -> Option<&str> {
     if value.is_empty() || value.starts_with('#') || value.contains("://") {
         return None;
     }
-    Some(value)
+    let path_part = value.split('#').next().unwrap_or(value);
+    if path_part.is_empty() {
+        return None;
+    }
+    Some(path_part)
 }
 
 /// Match REQ-XXX IDs in the design doc; return `true` iff each is present
