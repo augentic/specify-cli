@@ -18,12 +18,16 @@ use specify_spec::{RequirementBlock, parse_baseline};
 /// Serialised with `kebab-case` field names so the JSON/YAML shape is stable
 /// across the Phase-1 CLI (`specify verify`, `specify drift` — to land in
 /// RFC-2) without another serde churn later.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct DriftEntry {
+    /// Stable requirement identifier (e.g. `REQ-001`).
     pub requirement_id: String,
+    /// Human-readable requirement name.
     pub requirement_name: String,
+    /// Drift classification for this requirement.
     pub status: DriftStatus,
+    /// Optional detail about why the requirement drifted or is missing.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub detail: Option<String>,
 }
@@ -33,10 +37,15 @@ pub struct DriftEntry {
 /// status-column formatting.
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum DriftStatus {
+    /// Requirement is fully covered by source artefacts.
     Covered,
+    /// Requirement exists but source artefacts have diverged.
     Drifted,
+    /// Requirement has no corresponding source artefacts.
     Missing,
+    /// Source artefact exists without a corresponding requirement.
     Unspecified,
 }
 
@@ -65,6 +74,10 @@ pub enum DriftStatus {
 /// The return type is `Result` rather than an infallible `Vec<…>` so RFC-2
 /// can tighten the spec parser without another public-API churn — today the
 /// only failure mode is `Error::Io` bubbling up from the directory walk.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn baseline_inventory(specs_dir: &Path) -> Result<Vec<(String, Vec<RequirementBlock>)>, Error> {
     if !specs_dir.exists() {
         return Ok(Vec::new());
@@ -83,12 +96,11 @@ pub fn baseline_inventory(specs_dir: &Path) -> Result<Vec<(String, Vec<Requireme
             continue;
         }
 
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            // Non-UTF-8 directory names under `specs/` aren't something the
-            // spec format supports; skip them rather than erroring so a
-            // stray weird directory doesn't brick the whole inventory.
-            Err(_) => continue,
+        // Non-UTF-8 directory names under `specs/` aren't something the
+        // spec format supports; skip them rather than erroring so a
+        // stray weird directory doesn't brick the whole inventory.
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
         let text = fs::read_to_string(&spec_path)?;

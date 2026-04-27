@@ -53,16 +53,17 @@ use crate::versions::Versions;
 /// excluded (they were never written).
 #[derive(Debug)]
 pub struct AndroidScaffold {
+    /// Relative paths of written files, in template declaration order.
     pub files: Vec<String>,
     /// Build steps that ran and their per-step pass/fail status. When
     /// `run_build=false` the vector is empty.
     pub build_steps: Vec<BuildStep>,
 }
 
-/// Render and write the Android templates under `project_dir`, then
-/// bootstrap the Gradle wrapper, write `local.properties`, and (when
-/// `run_build` is true) run the `make build` + `./gradlew
-/// :app:assembleDebug` pipeline.
+/// Render and write the Android templates under `project_dir`.
+///
+/// Bootstraps the Gradle wrapper, writes `local.properties`, and (when
+/// `run_build` is true) runs the full build pipeline.
 ///
 /// `caps` selects which capability-marked regions of the Android templates
 /// are kept and which whole-file conditionals are included. Today only
@@ -75,6 +76,10 @@ pub struct AndroidScaffold {
 /// pipeline runs from `project_dir`; non-zero exit from any step yields
 /// `Verify` so the caller can splice the failure into the structured JSON
 /// output. The pipeline can be skipped for unit tests via `run_build`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn scaffold(
     project_dir: &Path, android_package: &str, caps: &[Capability], params: &Params,
     versions: &Versions, run_build: bool,
@@ -156,6 +161,8 @@ fn android_package_to_path(pkg: &str) -> String {
 /// developer's `JAVA_HOME` is then the fallback, and the prereq check has
 /// already verified `java --version` >= 21.
 fn write_java_home(android_root: &Path) -> Result<(), VectisError> {
+    use std::fmt::Write as _;
+
     let Some(java_home) = detect_java_home_21() else {
         return Ok(());
     };
@@ -164,7 +171,7 @@ fn write_java_home(android_root: &Path) -> Result<(), VectisError> {
     if !contents.ends_with('\n') {
         contents.push('\n');
     }
-    contents.push_str(&format!("org.gradle.java.home={java_home}\n"));
+    let _ = writeln!(contents, "org.gradle.java.home={java_home}");
     fs::write(&path, contents)?;
     Ok(())
 }
@@ -188,7 +195,7 @@ fn detect_java_home_21() -> Option<String> {
 /// `Internal` rather than silently producing a project that fails at the
 /// first `gradle` invocation with a confusing error.
 fn write_local_properties(android_root: &Path) -> Result<(), VectisError> {
-    let android_home = std::env::var("ANDROID_HOME").map_err(|_| VectisError::Internal {
+    let android_home = std::env::var("ANDROID_HOME").map_err(|_err| VectisError::Internal {
         message: "ANDROID_HOME is unset after prereq check passed; this should be unreachable"
             .into(),
     })?;
@@ -209,15 +216,15 @@ fn resolve_ndk_version(versions: &Versions) -> Result<String, VectisError> {
     if let Some(pinned) = versions.android.ndk.as_ref() {
         return Ok(pinned.clone());
     }
-    let android_home = std::env::var("ANDROID_HOME").map_err(|_| VectisError::Internal {
+    let android_home = std::env::var("ANDROID_HOME").map_err(|_err| VectisError::Internal {
         message: "ANDROID_HOME is unset after prereq check passed; this should be unreachable"
             .into(),
     })?;
     let ndk_root = PathBuf::from(android_home).join("ndk");
     let mut versions_found: Vec<String> = fs::read_dir(&ndk_root)
         .map_err(VectisError::from)?
-        .filter_map(|entry| entry.ok())
-        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter_map(std::result::Result::ok)
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
         .filter_map(|e| e.file_name().into_string().ok())
         .collect();
     if versions_found.is_empty() {
@@ -358,7 +365,7 @@ fn bootstrap_wrapper(android_root: &Path, gradle_pin: &str) -> Result<BuildStep,
         let mut perms = fs::metadata(&gradlew)?.permissions();
         perms.set_mode(0o755);
         fs::set_permissions(&gradlew, perms)?;
-    }
+    };
 
     let _ = fs::remove_dir_all(&scratch);
     Ok(step)
@@ -377,15 +384,17 @@ mod tests {
     /// don't observe each other's `ANDROID_HOME` mid-scaffold.
     fn android_home_lock() -> MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn scratch_dir(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
         std::env::temp_dir()
-            .join(format!("vectis-init-android-{label}-{}-{nanos}-{n}", std::process::id(),))
+            .join(format!("vectis-init-android-{label}-{}-{nanos}-{n}", std::process::id()))
     }
 
     fn sample_versions() -> Versions {
@@ -428,10 +437,14 @@ mod tests {
     fn with_android_home<F: FnOnce(&Path)>(dir: &Path, f: F) {
         let _guard = android_home_lock();
         let prev = std::env::var_os("ANDROID_HOME");
+        // SAFETY: test helper runs under a mutex guard (`android_home_lock`)
+        // so no concurrent access to this env var within the test suite.
+        #[allow(clippy::semicolon_if_nothing_returned)]
         unsafe {
-            std::env::set_var("ANDROID_HOME", dir);
-        }
+            std::env::set_var("ANDROID_HOME", dir)
+        };
         f(dir);
+        // SAFETY: same mutex guard protects the restore path.
         unsafe {
             match prev {
                 Some(v) => std::env::set_var("ANDROID_HOME", v),

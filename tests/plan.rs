@@ -12,14 +12,13 @@ use std::path::PathBuf;
 
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
-use serde_yaml::Value as YamlValue;
 
 /// RFC-2 §"The Plan" `platform-v2` example, inline.
 ///
 /// Kept inline (rather than loaded from a fixture) so the test is pinned to
 /// the exact shape the RFC ships; subsequent Changes that touch the RFC must
 /// also touch this constant.
-const RFC_EXAMPLE: &str = r#"
+const RFC_EXAMPLE: &str = r"
 name: platform-v2
 
 sources:
@@ -79,7 +78,7 @@ changes:
     sources: [frontend]
     depends-on: [checkout-api]
     status: pending
-"#;
+";
 
 fn schema_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schemas/plan/plan.schema.json")
@@ -92,8 +91,7 @@ fn load_validator() -> Validator {
 }
 
 fn yaml_to_json(yaml: &str) -> JsonValue {
-    let value: YamlValue = serde_yaml::from_str(yaml).expect("fixture parses as YAML");
-    serde_json::to_value(value).expect("YAML value serialises as JSON")
+    serde_saphyr::from_str(yaml).expect("fixture parses as YAML")
 }
 
 #[test]

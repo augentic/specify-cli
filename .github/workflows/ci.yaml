@@ -1,0 +1,12 @@
+name: CI
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: augentic/.github/.github/workflows/ci.yaml@main
+    secrets: inherit

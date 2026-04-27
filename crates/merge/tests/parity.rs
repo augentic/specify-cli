@@ -22,12 +22,11 @@ fn assert_merge_success(case: &str, baseline: Option<&str>, delta: &str, expecte
     let result = merge(baseline, delta).unwrap_or_else(|e| {
         panic!("{case}: merge returned Err: {e:?}");
     });
-    if result.output != expected {
-        panic!(
-            "{case}: merged output mismatch.\n--- expected ---\n{expected}\n--- actual ---\n{}",
-            result.output
-        );
-    }
+    assert!(
+        result.output == expected,
+        "{case}: merged output mismatch.\n--- expected ---\n{expected}\n--- actual ---\n{}",
+        result.output
+    );
 }
 
 #[test]

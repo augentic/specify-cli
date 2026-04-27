@@ -12,43 +12,61 @@
 //! (`create`, `transition`, `archive`, `drop`, `scan_touched_specs`,
 //! `overlap`) that the `specify change` subcommand dispatches to.
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 pub use specify_schema::Phase;
 
+/// Verb-level operations on a Specify change directory.
 pub mod actions;
 mod atomic;
+/// On-disk journal for append-only audit logging.
 pub mod journal;
+/// Advisory PID lock for the Layer 2 executor.
 pub mod lock;
+/// Plan state machine for ordered, dependency-aware change execution.
 pub mod plan;
+/// RFC 3339 timestamp newtype.
+pub mod timestamp;
 
-pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339};
+pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339, is_valid_kebab_name};
 pub use journal::{EntryKind, Journal, JournalEntry};
 pub use lock::{PlanLockAcquired, PlanLockGuard, PlanLockReleased, PlanLockStamp, PlanLockState};
 pub use plan::*;
+pub use timestamp::Rfc3339Stamp;
 
 /// On-disk representation of `<change_dir>/.metadata.yaml`.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct ChangeMetadata {
+    /// Schema identifier for this change (e.g. `omnia`).
     pub schema: String,
+    /// Current lifecycle state.
     pub status: LifecycleStatus,
+    /// When the change was created.
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub created_at: Option<String>,
+    pub created_at: Option<Rfc3339Stamp>,
+    /// When the change entered `Defined`.
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub defined_at: Option<String>,
+    pub defined_at: Option<Rfc3339Stamp>,
+    /// When the build phase started.
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub build_started_at: Option<String>,
+    pub build_started_at: Option<Rfc3339Stamp>,
+    /// When the change reached `Complete`.
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub completed_at: Option<String>,
+    pub completed_at: Option<Rfc3339Stamp>,
+    /// When the change was merged.
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub merged_at: Option<String>,
+    pub merged_at: Option<Rfc3339Stamp>,
+    /// When the change was dropped.
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub dropped_at: Option<String>,
+    pub dropped_at: Option<Rfc3339Stamp>,
+    /// Human-readable reason for dropping the change.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub drop_reason: Option<String>,
+    /// Specs affected by this change.
     #[serde(default)]
     pub touched_specs: Vec<TouchedSpec>,
     /// Outcome of the most recent phase run.
@@ -85,13 +103,18 @@ pub struct ChangeMetadata {
 /// Written by `specify change phase-outcome` (for define/build phases
 /// and merge failure/deferred) and by `merge_change` (for merge
 /// success, stamped atomically before the archive move).
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct PhaseOutcome {
+    /// Which phase produced this outcome.
     pub phase: Phase,
+    /// Success, failure, or deferred classification.
     pub outcome: Outcome,
-    pub at: String,
+    /// When the outcome was recorded.
+    pub at: Rfc3339Stamp,
+    /// Short human-readable summary.
     pub summary: String,
+    /// Optional additional context (e.g. stderr output).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<String>,
 }
@@ -99,9 +122,13 @@ pub struct PhaseOutcome {
 /// The three possible outcomes a phase returns to `/spec:execute`.
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum Outcome {
+    /// Phase completed successfully.
     Success,
+    /// Phase failed.
     Failure,
+    /// Phase deferred (needs human input).
     Deferred,
 }
 
@@ -112,20 +139,29 @@ pub enum Outcome {
 /// guards without requiring explicit clones.
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum LifecycleStatus {
+    /// Change is being defined (artifacts authored).
     Defining,
+    /// Definition complete, awaiting build.
     Defined,
+    /// Build phase in progress.
     Building,
+    /// Build complete, awaiting merge.
     Complete,
+    /// Specs merged into baseline and change archived.
     Merged,
+    /// Change discarded without merging.
     Dropped,
 }
 
 /// One entry in `ChangeMetadata::touched_specs`.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct TouchedSpec {
+    /// Capability name (kebab-case).
     pub name: String,
+    /// Whether this spec is new or modifies an existing baseline.
     #[serde(rename = "type")]
     pub spec_type: SpecType,
 }
@@ -133,36 +169,79 @@ pub struct TouchedSpec {
 /// Whether a touched spec is new or a modification of an existing baseline.
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum SpecType {
+    /// A brand-new spec not yet in the baseline.
     New,
+    /// A modification of an existing baseline spec.
     Modified,
+}
+
+impl fmt::Display for LifecycleStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Defining => "defining",
+            Self::Defined => "defined",
+            Self::Building => "building",
+            Self::Complete => "complete",
+            Self::Merged => "merged",
+            Self::Dropped => "dropped",
+        })
+    }
+}
+
+impl fmt::Display for Outcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Success => "success",
+            Self::Failure => "failure",
+            Self::Deferred => "deferred",
+        })
+    }
+}
+
+impl fmt::Display for SpecType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::New => "new",
+            Self::Modified => "modified",
+        })
+    }
 }
 
 impl LifecycleStatus {
     /// The creation edge (`START → Defining`). Called by `init`/`define`.
-    pub fn initial() -> Self {
-        LifecycleStatus::Defining
+    #[must_use]
+    pub const fn initial() -> Self {
+        Self::Defining
     }
 
-    pub fn is_terminal(&self) -> bool {
-        matches!(self, LifecycleStatus::Merged | LifecycleStatus::Dropped)
+    /// Whether this status is terminal (no further transitions possible).
+    #[must_use]
+    pub const fn is_terminal(&self) -> bool {
+        matches!(self, Self::Merged | Self::Dropped)
     }
 
-    pub fn can_transition_to(&self, target: &Self) -> bool {
-        use LifecycleStatus::*;
+    /// Whether `self → target` is a legal edge in the lifecycle state machine.
+    #[must_use]
+    pub const fn can_transition_to(&self, target: &Self) -> bool {
+        use LifecycleStatus::{Building, Complete, Defined, Defining, Dropped, Merged};
         matches!(
             (self, target),
-            (Defining, Defined)
-                | (Defined, Defining)
-                | (Defined, Building)
+            (Defining, Defined | Complete)
+                | (Defined, Defining | Building)
                 | (Building, Complete)
                 | (Complete, Merged)
-                | (Defining, Complete)
                 | (Defining | Defined | Building | Complete, Dropped)
         )
     }
 
-    pub fn transition(&self, target: LifecycleStatus) -> Result<LifecycleStatus, Error> {
+    /// Attempt a transition from `self` to `target`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Lifecycle` if the transition is illegal.
+    pub fn transition(&self, target: Self) -> Result<Self, Error> {
         if self.can_transition_to(&target) {
             Ok(target)
         } else {
@@ -176,6 +255,7 @@ impl LifecycleStatus {
 
 impl ChangeMetadata {
     /// Convenience helper: `<change_dir>/.metadata.yaml`.
+    #[must_use]
     pub fn path(change_dir: &Path) -> PathBuf {
         change_dir.join(".metadata.yaml")
     }
@@ -184,18 +264,22 @@ impl ChangeMetadata {
     ///
     /// Errors:
     ///   - file missing -> `Error::Config` with path context
-    ///   - YAML malformed -> `Error::Yaml` (via `From<serde_yaml::Error>`)
+    ///   - YAML malformed -> `Error::Yaml` (via `From<serde_saphyr::Error>`)
     ///   - other I/O failure -> `Error::Io`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn load(change_dir: &Path) -> Result<Self, Error> {
         let path = Self::path(change_dir);
         if !path.exists() {
-            return Err(Error::Config(format!(
-                ".metadata.yaml not found in {}",
-                change_dir.display()
-            )));
+            return Err(Error::ArtifactNotFound {
+                kind: ".metadata.yaml",
+                path,
+            });
         }
         let content = std::fs::read_to_string(&path)?;
-        let meta: ChangeMetadata = serde_yaml::from_str(&content)?;
+        let meta: Self = serde_saphyr::from_str(&content)?;
         Ok(meta)
     }
 
@@ -216,6 +300,10 @@ impl ChangeMetadata {
     /// Does **not** create the parent directory — `init`/`define` own
     /// that responsibility. Returns `Error::Io` on any write failure
     /// and `Error::Yaml` if serialization fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn save(&self, change_dir: &Path) -> Result<(), Error> {
         let path = Self::path(change_dir);
         crate::atomic::atomic_yaml_write(&path, self)
@@ -345,10 +433,10 @@ mod tests {
         ChangeMetadata {
             schema: "omnia".to_string(),
             status: LifecycleStatus::Building,
-            created_at: Some("2024-08-01T10:00:00Z".to_string()),
-            defined_at: Some("2024-08-01T12:00:00Z".to_string()),
-            build_started_at: Some("2024-08-02T09:30:00Z".to_string()),
-            completed_at: Some("2024-08-03T15:45:00Z".to_string()),
+            created_at: Some(Rfc3339Stamp::from_raw("2024-08-01T10:00:00Z".to_string())),
+            defined_at: Some(Rfc3339Stamp::from_raw("2024-08-01T12:00:00Z".to_string())),
+            build_started_at: Some(Rfc3339Stamp::from_raw("2024-08-02T09:30:00Z".to_string())),
+            completed_at: Some(Rfc3339Stamp::from_raw("2024-08-03T15:45:00Z".to_string())),
             merged_at: None,
             dropped_at: None,
             drop_reason: None,
@@ -376,18 +464,19 @@ mod tests {
     }
 
     #[test]
-    fn load_missing_file_returns_config_error() {
+    fn load_missing_file_returns_artifact_not_found() {
         let dir = tempdir().expect("tempdir");
         let err = ChangeMetadata::load(dir.path()).expect_err("expected error");
         match err {
-            Error::Config(msg) => {
-                assert!(msg.contains(".metadata.yaml not found"), "unexpected message: {msg}");
+            Error::ArtifactNotFound { kind, path } => {
+                assert_eq!(kind, ".metadata.yaml");
                 assert!(
-                    msg.contains(&dir.path().display().to_string()),
-                    "message should include change dir path, got: {msg}"
+                    path.display().to_string().contains(&dir.path().display().to_string()),
+                    "path should include change dir, got: {}",
+                    path.display()
                 );
             }
-            other => panic!("expected Error::Config, got {other:?}"),
+            other => panic!("expected Error::ArtifactNotFound, got {other:?}"),
         }
     }
 
@@ -416,7 +505,7 @@ touched-specs:
   - name: oauth
     type: new
 "#;
-        let meta: ChangeMetadata = serde_yaml::from_str(yaml).expect("parse ok");
+        let meta: ChangeMetadata = serde_saphyr::from_str(yaml).expect("parse ok");
         assert_eq!(meta.status, LifecycleStatus::Building);
         assert_eq!(meta.created_at.as_deref(), Some("2024-08-01T10:00:00Z"));
         assert_eq!(meta.defined_at.as_deref(), Some("2024-08-01T12:00:00Z"));
@@ -434,9 +523,9 @@ touched-specs:
         let meta = ChangeMetadata {
             schema: "omnia".to_string(),
             status: LifecycleStatus::Building,
-            created_at: Some("2024-08-01T10:00:00Z".to_string()),
+            created_at: Some(Rfc3339Stamp::from_raw("2024-08-01T10:00:00Z".to_string())),
             defined_at: None,
-            build_started_at: Some("2024-08-02T09:30:00Z".to_string()),
+            build_started_at: Some(Rfc3339Stamp::from_raw("2024-08-02T09:30:00Z".to_string())),
             completed_at: None,
             merged_at: None,
             dropped_at: None,
@@ -447,7 +536,7 @@ touched-specs:
             }],
             outcome: None,
         };
-        let yaml = serde_yaml::to_string(&meta).expect("serialize ok");
+        let yaml = serde_saphyr::to_string(&meta).expect("serialize ok");
         assert!(yaml.contains("created-at:"), "yaml missing kebab-case created-at:\n{yaml}");
         assert!(yaml.contains("build-started-at:"), "yaml missing build-started-at:\n{yaml}");
         assert!(yaml.contains("touched-specs:"), "yaml missing touched-specs:\n{yaml}");
@@ -462,8 +551,6 @@ touched-specs:
 
     #[test]
     fn real_world_change_file_is_parseable_if_present() {
-        // Look for `<repo>/.specify/changes/<something>/.metadata.yaml`.
-        // `CARGO_MANIFEST_DIR` points at `<repo>/crates/change` at test time.
         let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
         let changes_dir = manifest
             .parent()
@@ -473,7 +560,7 @@ touched-specs:
             return;
         };
         let Ok(read_dir) = std::fs::read_dir(&changes_dir) else {
-            return; // fresh clone — no changes to parse
+            return;
         };
         for entry in read_dir.flatten() {
             let change_path = entry.path();
@@ -494,5 +581,28 @@ touched-specs:
     fn path_helper_appends_metadata_yaml() {
         let dir = Path::new("/tmp/some/change");
         assert_eq!(ChangeMetadata::path(dir), PathBuf::from("/tmp/some/change/.metadata.yaml"));
+    }
+
+    #[test]
+    fn lifecycle_status_display_matches_serde_wire_format() {
+        assert_eq!(LifecycleStatus::Defining.to_string(), "defining");
+        assert_eq!(LifecycleStatus::Defined.to_string(), "defined");
+        assert_eq!(LifecycleStatus::Building.to_string(), "building");
+        assert_eq!(LifecycleStatus::Complete.to_string(), "complete");
+        assert_eq!(LifecycleStatus::Merged.to_string(), "merged");
+        assert_eq!(LifecycleStatus::Dropped.to_string(), "dropped");
+    }
+
+    #[test]
+    fn outcome_display_matches_serde_wire_format() {
+        assert_eq!(Outcome::Success.to_string(), "success");
+        assert_eq!(Outcome::Failure.to_string(), "failure");
+        assert_eq!(Outcome::Deferred.to_string(), "deferred");
+    }
+
+    #[test]
+    fn spec_type_display_matches_serde_wire_format() {
+        assert_eq!(SpecType::New.to_string(), "new");
+        assert_eq!(SpecType::Modified.to_string(), "modified");
     }
 }

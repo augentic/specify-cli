@@ -9,10 +9,10 @@
 //!
 //! | Registry          | Host                               | Format | Consumers                                          |
 //! |-------------------|------------------------------------|--------|----------------------------------------------------|
-//! | crates.io         | `crates.io/api/v1/crates/<name>`   | JSON   | crux_*, facet, facet_generate, serde, serde_json, uniffi, cargo-swift, cargo-deny, cargo-vet |
+//! | crates.io         | `crates.io/api/v1/crates/<name>`   | JSON   | crux_*, facet, `facet_generate`, serde, `serde_json`, uniffi, cargo-swift, cargo-deny, cargo-vet |
 //! | Google Maven      | `maven.google.com/<group-path>`    | XML    | compose-bom, kotlin (stdlib), AGP                  |
 //! | Maven Central     | `search.maven.org/solrsearch`      | JSON   | koin (io.insert-koin:koin-bom), ktor (io.ktor:ktor-bom) |
-//! | GitHub releases   | `api.github.com/repos/<o/r>/releases/latest` | JSON | xcodegen                                  |
+//! | `GitHub` releases   | `api.github.com/repos/<o/r>/releases/latest` | JSON | xcodegen                                  |
 //!
 //! All queries carry a short timeout so a flaky mirror cannot hang the
 //! CLI indefinitely. On any network/parse error we return
@@ -255,6 +255,7 @@ pub fn github_latest_release(owner: &str, repo: &str) -> Result<VersionHit, Vect
 /// Space becomes `+`, other reserved characters become `%XX`. Keeps us
 /// free of the `url` crate at the dependency level.
 fn url_encode(s: &str) -> String {
+    use std::fmt::Write as _;
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {
@@ -262,7 +263,9 @@ fn url_encode(s: &str) -> String {
                 out.push(b as char);
             }
             b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{b:02X}")),
+            _ => {
+                let _ = write!(out, "%{b:02X}");
+            }
         }
     }
     out
@@ -290,9 +293,9 @@ pub fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     for i in 0..len {
         let av = a_parts.get(i).copied().unwrap_or(0);
         let bv = b_parts.get(i).copied().unwrap_or(0);
-        match av.cmp(&bv) {
-            std::cmp::Ordering::Equal => continue,
-            ord => return ord,
+        let ord = av.cmp(&bv);
+        if ord != std::cmp::Ordering::Equal {
+            return ord;
         }
     }
     std::cmp::Ordering::Equal

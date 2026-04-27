@@ -7,9 +7,13 @@ repository.workspace = true
 description = "Multi-repo coordination scaffolding for Specify (RFC-3, stubbed)"
 categories = ["development-tools"]
 keywords = ["specify", "federation", "rfc3"]
+readme = "../../README.md"
+
+[lints]
+workspace = true
 
 [dependencies]
 serde.workspace = true
 
 [dev-dependencies]
-serde_yaml.workspace = true
+serde-saphyr.workspace = true

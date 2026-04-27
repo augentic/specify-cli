@@ -32,9 +32,15 @@ pub use error::{MissingTool, VectisError};
 /// `not-implemented` shape and exits non-zero. Real failures flow
 /// through `Err(VectisError)`.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum CommandOutcome {
+    /// Handler completed normally with a JSON payload.
     Success(serde_json::Value),
-    Stub { command: &'static str },
+    /// Handler is not yet implemented.
+    Stub {
+        /// The subcommand name that produced this stub.
+        command: &'static str,
+    },
 }
 
 /// `vectis init` arguments.
@@ -46,7 +52,7 @@ pub enum CommandOutcome {
 /// chunk 6 (`caps`). See rfcs/rfc-6-tasks.md.
 #[derive(clap::Args, Debug)]
 pub struct InitArgs {
-    /// App struct name (PascalCase, e.g. "Counter", "TodoApp").
+    /// App struct name (`PascalCase`, e.g. "Counter", "`TodoApp`").
     pub app_name: String,
 
     /// Project directory (defaults to current directory).

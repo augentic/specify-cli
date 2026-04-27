@@ -55,8 +55,8 @@ impl IncludeWhen {
     /// Should this entry be rendered for the given cap selection?
     pub fn should_include(self, caps: &[Capability]) -> bool {
         match self {
-            IncludeWhen::Always => true,
-            IncludeWhen::AnyOf(needed) => needed.iter().any(|c| caps.contains(c)),
+            Self::Always => true,
+            Self::AnyOf(needed) => needed.iter().any(|c| caps.contains(c)),
         }
     }
 }

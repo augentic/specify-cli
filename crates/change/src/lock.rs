@@ -61,6 +61,10 @@ impl PlanLockGuard {
     /// Returns `Err(Error::DriverBusy { pid })` if another live driver
     /// holds the lock. Reclaims the lock silently if the recorded PID
     /// is dead or the lockfile contents are malformed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn acquire(project_dir: &Path) -> Result<Self, Error> {
         Self::acquire_with_liveness_check(project_dir, is_pid_alive)
     }
@@ -68,6 +72,10 @@ impl PlanLockGuard {
     /// Acquire with an injected PID-liveness predicate. Exposed so
     /// tests can force "alive" / "dead" outcomes deterministically
     /// without spawning child processes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn acquire_with_liveness_check<F>(
         project_dir: &Path, is_pid_alive: F,
     ) -> Result<Self, Error>
@@ -131,7 +139,7 @@ impl PlanLockGuard {
         writer.flush()?;
         file.sync_all()?;
 
-        Ok(PlanLockGuard {
+        Ok(Self {
             file: Some(file),
             path,
             pid,
@@ -140,7 +148,8 @@ impl PlanLockGuard {
     }
 
     /// PID written into the lockfile (always `std::process::id()`).
-    pub fn pid(&self) -> u32 {
+    #[must_use]
+    pub const fn pid(&self) -> u32 {
         self.pid
     }
 
@@ -150,11 +159,13 @@ impl PlanLockGuard {
     ///
     /// `/spec:execute` renders this in its preamble as
     /// "reclaimed stale lock from PID X".
-    pub fn reclaimed_stale_pid(&self) -> Option<u32> {
+    #[must_use]
+    pub const fn reclaimed_stale_pid(&self) -> Option<u32> {
         self.reclaimed_stale_pid
     }
 
     /// Absolute path of the lockfile this guard manages.
+    #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -198,14 +209,20 @@ pub struct PlanLockAcquired {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanLockReleased {
     /// Stamp file was present and held our PID — now removed.
-    Removed { pid: u32 },
+    Removed {
+        /// PID that was in the stamp file.
+        pid: u32,
+    },
     /// Stamp file was absent — nothing to do.
     WasAbsent,
     /// Stamp file was present but held a PID that isn't ours. We
     /// refuse to clobber it so a concurrent driver (or a stale stamp
     /// that the self-heal path should reclaim deliberately) stays
     /// intact. `pid` is `None` when the file contents were malformed.
-    HeldByOther { pid: Option<u32> },
+    HeldByOther {
+        /// PID of the other holder, if parseable.
+        pid: Option<u32>,
+    },
 }
 
 /// Snapshot of the on-disk `.specify/plan.lock` stamp, as reported by
@@ -255,6 +272,10 @@ impl PlanLockStamp {
     /// Acquire the stamp using the real PID-liveness probe. See
     /// [`PlanLockStamp::acquire_with_liveness_check`] for the full
     /// semantics.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn acquire(project_dir: &Path, our_pid: u32) -> Result<PlanLockAcquired, Error> {
         Self::acquire_with_liveness_check(project_dir, our_pid, is_pid_alive)
     }
@@ -262,6 +283,10 @@ impl PlanLockStamp {
     /// Acquire with an injected liveness predicate. Exposed so tests
     /// can assert `DriverBusy` vs reclaim without relying on a
     /// particular host PID being alive.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn acquire_with_liveness_check<F>(
         project_dir: &Path, our_pid: u32, is_pid_alive: F,
     ) -> Result<PlanLockAcquired, Error>
@@ -307,6 +332,10 @@ impl PlanLockStamp {
 
     /// Release the stamp if we own it. See [`PlanLockReleased`] for
     /// the four outcomes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn release(project_dir: &Path, our_pid: u32) -> Result<PlanLockReleased, Error> {
         let path = Self::lockfile_path(project_dir);
         if !path.exists() {
@@ -324,11 +353,19 @@ impl PlanLockStamp {
     }
 
     /// Snapshot the current stamp.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn status(project_dir: &Path) -> Result<PlanLockState, Error> {
         Self::status_with_liveness_check(project_dir, is_pid_alive)
     }
 
     /// Snapshot with an injected liveness predicate.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn status_with_liveness_check<F>(
         project_dir: &Path, is_pid_alive: F,
     ) -> Result<PlanLockState, Error>
@@ -344,21 +381,21 @@ impl PlanLockStamp {
             });
         }
         let contents = fs::read_to_string(&path)?;
-        match contents.trim().parse::<u32>() {
-            Ok(pid) => {
+        contents.trim().parse::<u32>().map_or(
+            Ok(PlanLockState {
+                held: false,
+                pid: None,
+                stale: Some(true),
+            }),
+            |pid| {
                 let alive = is_pid_alive(pid);
                 Ok(PlanLockState {
                     held: alive,
                     pid: Some(pid),
                     stale: Some(!alive),
                 })
-            }
-            Err(_) => Ok(PlanLockState {
-                held: false,
-                pid: None,
-                stale: Some(true),
-            }),
-        }
+            },
+        )
     }
 }
 
@@ -369,7 +406,7 @@ fn is_pid_alive(pid: u32) -> bool {
     // caller has permission to signal it. `EPERM` means the
     // process exists but is owned by another user — still alive.
     // `ESRCH` means no such process.
-    let rc = unsafe { libc::kill(pid as i32, 0) };
+    let rc = unsafe { libc::kill(pid.cast_signed(), 0) };
     if rc == 0 {
         return true;
     }

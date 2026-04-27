@@ -31,11 +31,11 @@ pub enum AssemblyKind {
 impl AssemblyKind {
     /// Tag string used in the JSON error payload (`"core"`, `"ios"`,
     /// `"android"`).
-    pub fn tag(self) -> &'static str {
+    pub const fn tag(self) -> &'static str {
         match self {
-            AssemblyKind::Core => "core",
-            AssemblyKind::Ios => "ios",
-            AssemblyKind::Android => "android",
+            Self::Core => "core",
+            Self::Ios => "ios",
+            Self::Android => "android",
         }
     }
 }
@@ -291,7 +291,7 @@ fn run_cmd_check(program: &str, args: &[&str], min_version: Option<Version>) -> 
 }
 
 fn run_env_check(var: &str, must_exist: bool) -> Result<(), String> {
-    let value = std::env::var(var).map_err(|_| format!("{var} not set"))?;
+    let value = std::env::var(var).map_err(|_err| format!("{var} not set"))?;
     if value.is_empty() {
         return Err(format!("{var} is empty"));
     }
@@ -321,7 +321,7 @@ fn run_rustup_targets_check(targets: &[&str]) -> Result<(), String> {
 }
 
 fn run_android_ndk_check() -> Result<(), String> {
-    let home = std::env::var("ANDROID_HOME").map_err(|_| "ANDROID_HOME not set".to_string())?;
+    let home = std::env::var("ANDROID_HOME").map_err(|_err| "ANDROID_HOME not set".to_string())?;
     let ndk = PathBuf::from(home).join("ndk");
     if !ndk.is_dir() {
         return Err(format!("{} not found", ndk.display()));
@@ -335,7 +335,7 @@ fn run_android_ndk_check() -> Result<(), String> {
     let any_dir = std::fs::read_dir(&ndk)
         .map_err(|e| format!("could not read {}: {e}", ndk.display()))?
         .filter_map(Result::ok)
-        .any(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false));
+        .any(|e| e.file_type().is_ok_and(|t| t.is_dir()));
     if !any_dir {
         return Err(format!("{} contains no NDK install directories", ndk.display()));
     }
@@ -349,7 +349,7 @@ fn run_android_ndk_check() -> Result<(), String> {
 /// A simple `major.minor.patch` triple. Sufficient for the floor checks the
 /// CLI performs today (Java 21+); avoids pulling in the full `semver` crate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Version {
+pub struct Version {
     pub major: u32,
     pub minor: u32,
     pub patch: u32,
@@ -369,10 +369,8 @@ impl Version {
         let major: u32 = parts.next()?.parse().ok()?;
         let minor_raw = parts.next()?;
         let minor: u32 = leading_digits(minor_raw)?.parse().ok()?;
-        let patch = match parts.next() {
-            Some(p) => leading_digits(p).map(|s| s.parse().unwrap_or(0)).unwrap_or(0),
-            None => 0,
-        };
+        let patch =
+            parts.next().map_or(0, |p| leading_digits(p).map_or(0, |s| s.parse().unwrap_or(0)));
         Some(Self::new(major, minor, patch))
     }
 }
@@ -384,8 +382,7 @@ impl std::fmt::Display for Version {
 }
 
 fn leading_digits(s: &str) -> Option<&str> {
-    let end =
-        s.char_indices().find(|(_, c)| !c.is_ascii_digit()).map(|(i, _)| i).unwrap_or(s.len());
+    let end = s.char_indices().find(|(_, c)| !c.is_ascii_digit()).map_or(s.len(), |(i, _)| i);
     if end == 0 { None } else { Some(&s[..end]) }
 }
 
@@ -394,7 +391,7 @@ fn leading_digits(s: &str) -> Option<&str> {
 /// Splits on any non-`[0-9.]` character, then keeps tokens that contain a dot
 /// (filters out year/build numbers like `2026`) and tries to parse each as a
 /// [`Version`]. Returns the first successful parse.
-pub(crate) fn extract_version(text: &str) -> Option<Version> {
+pub fn extract_version(text: &str) -> Option<Version> {
     text.split(|c: char| !(c.is_ascii_digit() || c == '.'))
         .filter(|s| !s.is_empty() && s.contains('.'))
         .find_map(|tok| Version::parse(tok.trim_matches('.')))
@@ -517,11 +514,15 @@ mod tests {
         // env vars is racy across threads but cargo test uses a single
         // thread per test by default for unit tests in this crate.
         // We use a reserved name to avoid colliding with anything real.
+        // SAFETY: tests in a binary crate run single-threaded by default;
+        // we use a reserved name to avoid colliding with anything real.
+        #[allow(clippy::semicolon_if_nothing_returned)]
         unsafe {
-            std::env::set_var("VECTIS_TEST_EMPTY", "");
-        }
+            std::env::set_var("VECTIS_TEST_EMPTY", "")
+        };
         let err = run_env_check("VECTIS_TEST_EMPTY", false).unwrap_err();
         assert!(err.contains("empty"));
+        // SAFETY: cleaning up the test-only env var set above.
         unsafe {
             std::env::remove_var("VECTIS_TEST_EMPTY");
         }

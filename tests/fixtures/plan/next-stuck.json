@@ -1,6 +1,10 @@
 {
   "active": null,
+  "description": null,
   "next": null,
+  "project": null,
   "reason": "stuck",
-  "schema-version": 2
+  "schema": null,
+  "schema-version": 2,
+  "sources": null
 }

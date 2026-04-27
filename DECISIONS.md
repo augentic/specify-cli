@@ -19,7 +19,7 @@ offer two options: (a) forward-declare `ValidationResult` in
 `Error::Validation` carry a summary. We picked (b) because it preserves the
 "leaves to root" dependency contract from RFC-1 §Workspace Layout —
 `specify-error` stays dependency-free from every other workspace crate
-(`thiserror` + `serde_yaml` only) — while still giving the CLI enough
+(`thiserror` + `serde-saphyr` only) — while still giving the CLI enough
 structured data (status, rule id, rule description, detail) to render
 sensible failure output without reaching back into `specify-validate`. The
 cost is a lossy projection at the crate boundary (the enum variant collapses
@@ -438,3 +438,37 @@ routing. Key additions and decisions:
   `.specify/.cache/` for schema resolution.
 - `extract_github_slug` utility function for URL → `org/repo`
   extraction, with unit tests covering six URL forms.
+
+## YAML library — serde_yaml_ng → serde-saphyr
+
+**Decision.** Replace `serde_yaml_ng` (0.9) with `serde-saphyr` (0.0.25)
+as the workspace YAML (de)serialization library. Code that previously
+used `serde_yaml_ng::Value` for untyped DOM manipulation now uses
+`serde_json::Value`, which was already in the dependency graph.
+
+**Rationale.** `serde_yaml_ng` is a community fork of the deprecated
+`serde_yaml` and carries forward the same architectural debt.
+`serde-saphyr` is an actively maintained, pure-Rust, panic-free
+library built on `saphyr-parser` and recommended by the Rust community
+as the forward-looking choice.
+
+`serde-saphyr` deliberately omits a `Value` type (it deserializes
+directly into Rust types without an intermediate tree). The four files
+that used `serde_yaml_ng::Value` for dynamic YAML access
+(`crates/merge/src/composition.rs`, `crates/validate/src/registry.rs`,
+`tests/change.rs`, `src/commands/plan.rs`) now deserialize into
+`serde_json::Value` instead. This simplified key handling in the
+composition merge (JSON maps use `String` keys, removing
+`Value::String(...)` constructors) and the validation rules
+(`.get("key")` accepts `&str` directly on `serde_json::Map`).
+
+`serde-saphyr` uses separate error types for deserialization
+(`serde_saphyr::Error`) and serialization (`serde_saphyr::ser::Error`),
+unlike `serde_yaml_ng`'s unified error. `specify-error::Error` carries
+both via `Yaml(#[from] serde_saphyr::Error)` and
+`YamlSer(#[from] serde_saphyr::ser::Error)`.
+
+**Risks.** `serde-saphyr` is pre-1.0 (0.0.x) and its API may shift.
+The dependency is pinned to `0.0.25`. YAML serialization output may
+differ in whitespace or quoting from `serde_yaml_ng`; all existing
+tests pass against the new output.

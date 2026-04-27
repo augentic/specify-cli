@@ -40,7 +40,7 @@ fn omnia_schema_path() -> PathBuf {
 #[test]
 fn parses_omnia_schema_yaml_fields_and_entries() {
     let raw = std::fs::read_to_string(omnia_schema_path()).expect("omnia schema on disk");
-    let schema: Schema = serde_yaml::from_str(&raw).expect("omnia schema is valid YAML");
+    let schema: Schema = serde_saphyr::from_str(&raw).expect("omnia schema is valid YAML");
 
     assert_eq!(schema.name, "omnia");
     assert_eq!(schema.version, 1);
@@ -80,7 +80,7 @@ fn parses_omnia_schema_yaml_fields_and_entries() {
 #[test]
 fn validate_structure_valid_for_omnia() {
     let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
-    let schema: Schema = serde_yaml::from_str(&raw).unwrap();
+    let schema: Schema = serde_saphyr::from_str(&raw).unwrap();
     let results = schema.validate_structure();
     assert!(
         results.iter().all(|r| matches!(r, ValidationResult::Pass { .. })),
@@ -123,7 +123,7 @@ fn yaml_parse_error_surface_for_missing_required_field() {
     // `Error::Yaml` when surfaced through `Schema::resolve`, but here we
     // just exercise the parser directly and assert the Display message.
     let yaml = "name: broken\nversion: 1\npipeline:\n  define: []\n  build: []\n  merge: []\n";
-    let err = serde_yaml::from_str::<Schema>(yaml).expect_err("missing description");
+    let err = serde_saphyr::from_str::<Schema>(yaml).expect_err("missing description");
     let message = err.to_string();
     assert!(
         message.contains("description"),
@@ -135,7 +135,7 @@ fn yaml_parse_error_surface_for_missing_required_field() {
 
 #[test]
 fn pipeline_plan_parses_when_present() {
-    let yaml = r#"
+    let yaml = r"
 name: demo
 version: 1
 description: demo with plan
@@ -149,8 +149,8 @@ pipeline:
     - { id: build, brief: briefs/build.md }
   merge:
     - { id: merge, brief: briefs/merge.md }
-"#;
-    let schema: Schema = serde_yaml::from_str(yaml).expect("parses");
+";
+    let schema: Schema = serde_saphyr::from_str(yaml).expect("parses");
     let plan = schema.plan_entries();
     assert_eq!(plan.len(), 2);
     assert_eq!(plan[0].id, "discovery");
@@ -160,8 +160,7 @@ pipeline:
 
     // `entries()` stays the execution loop only — plan briefs do not
     // leak into define/build/merge iteration.
-    let phases: Vec<Phase> = schema.entries().map(|(p, _)| p).collect();
-    assert!(!phases.contains(&Phase::Plan));
+    assert!(!schema.entries().any(|(p, _)| p == Phase::Plan));
 
     // Plan briefs are still discoverable via `entry()`.
     let (phase, entry) = schema.entry("discovery").expect("discovery visible via entry()");
@@ -179,14 +178,14 @@ pipeline:
 #[test]
 fn pipeline_without_plan_parses_unchanged() {
     let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
-    let schema: Schema = serde_yaml::from_str(&raw).unwrap();
+    let schema: Schema = serde_saphyr::from_str(&raw).unwrap();
     assert!(schema.pipeline.plan.is_empty());
     assert!(schema.plan_entries().is_empty());
 
     // Serializing back out must not introduce a `plan: []` key — we
     // skip-serialize empty plan vectors so round-trips of legacy
     // schemas are byte-stable for the plan field.
-    let written = serde_yaml::to_string(&schema).unwrap();
+    let written = serde_saphyr::to_string(&schema).unwrap();
     assert!(
         !written.contains("plan:"),
         "expected no plan key in re-serialized omnia schema, got:\n{written}"
@@ -195,7 +194,7 @@ fn pipeline_without_plan_parses_unchanged() {
 
 #[test]
 fn plan_entries_merge_overrides_by_id_and_appends_new_entries() {
-    let parent_yaml = r#"
+    let parent_yaml = r"
 name: parent
 version: 1
 description: parent
@@ -209,8 +208,8 @@ pipeline:
     - { id: build, brief: briefs/build.md }
   merge:
     - { id: merge, brief: briefs/merge.md }
-"#;
-    let child_yaml = r#"
+";
+    let child_yaml = r"
 name: child
 version: 1
 description: child
@@ -224,9 +223,9 @@ pipeline:
     - { id: build, brief: briefs/build.md }
   merge:
     - { id: merge, brief: briefs/merge.md }
-"#;
-    let parent: Schema = serde_yaml::from_str(parent_yaml).unwrap();
-    let child: Schema = serde_yaml::from_str(child_yaml).unwrap();
+";
+    let parent: Schema = serde_saphyr::from_str(parent_yaml).unwrap();
+    let child: Schema = serde_saphyr::from_str(child_yaml).unwrap();
     let merged = Schema::merge(parent, child);
 
     let ids: Vec<&str> = merged.plan_entries().iter().map(|e| e.id.as_str()).collect();
@@ -271,7 +270,7 @@ fn json_schema_rejects_missing_define_even_with_plan_present() {
 
 #[test]
 fn merge_overrides_by_id_and_appends_new_entries() {
-    let parent_yaml = r#"
+    let parent_yaml = r"
 name: parent
 version: 1
 description: parent schema
@@ -283,8 +282,8 @@ pipeline:
     - { id: build, brief: briefs/build.md }
   merge:
     - { id: merge, brief: briefs/merge.md }
-"#;
-    let child_yaml = r#"
+";
+    let child_yaml = r"
 name: child
 version: 2
 description: child schema
@@ -296,10 +295,10 @@ pipeline:
     - { id: build, brief: briefs/build.md }
   merge:
     - { id: merge, brief: briefs/merge.md }
-"#;
+";
 
-    let parent: Schema = serde_yaml::from_str(parent_yaml).unwrap();
-    let child: Schema = serde_yaml::from_str(child_yaml).unwrap();
+    let parent: Schema = serde_saphyr::from_str(parent_yaml).unwrap();
+    let child: Schema = serde_saphyr::from_str(child_yaml).unwrap();
     let merged = Schema::merge(parent, child);
 
     assert_eq!(merged.name, "child");
@@ -318,7 +317,7 @@ pipeline:
 #[test]
 fn entries_iterates_in_phase_order_and_entry_lookup_works() {
     let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
-    let schema: Schema = serde_yaml::from_str(&raw).unwrap();
+    let schema: Schema = serde_saphyr::from_str(&raw).unwrap();
 
     let total =
         schema.pipeline.define.len() + schema.pipeline.build.len() + schema.pipeline.merge.len();
@@ -347,7 +346,7 @@ fn entries_iterates_in_phase_order_and_entry_lookup_works() {
 #[test]
 fn parses_every_omnia_brief_and_frontmatter_ids_match_pipeline_ids() {
     let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
-    let schema: Schema = serde_yaml::from_str(&raw).unwrap();
+    let schema: Schema = serde_saphyr::from_str(&raw).unwrap();
     let root = repo_root().join("schemas").join("omnia");
 
     for (_phase, entry) in schema.entries() {
@@ -741,8 +740,8 @@ fn registry_parses_canonical_rfc_example() {
 fn registry_parses_multi_project() {
     let tmp = scaffold_registry(MULTI_PROJECT_REGISTRY_YAML);
     let registry = Registry::load(tmp.path()).expect("parses").expect("present");
-    let round_tripped_yaml = serde_yaml::to_string(&registry).unwrap();
-    let re_parsed: Registry = serde_yaml::from_str(&round_tripped_yaml).unwrap();
+    let round_tripped_yaml = serde_saphyr::to_string(&registry).unwrap();
+    let re_parsed: Registry = serde_saphyr::from_str(&round_tripped_yaml).unwrap();
     assert_eq!(registry, re_parsed);
 }
 
@@ -880,7 +879,7 @@ projects:
     let err = Registry::load(tmp.path()).expect_err("empty name");
     match err {
         Error::Config(msg) => {
-            assert!(msg.contains("empty") || msg.contains("kebab-case"), "msg: {msg}")
+            assert!(msg.contains("empty") || msg.contains("kebab-case"), "msg: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
     }
@@ -989,8 +988,8 @@ fn registry_round_trip_serialize() {
             },
         ],
     };
-    let yaml = serde_yaml::to_string(&original).expect("serialize");
-    let round_tripped: Registry = serde_yaml::from_str(&yaml).expect("re-parse");
+    let yaml = serde_saphyr::to_string(&original).expect("serialize");
+    let round_tripped: Registry = serde_saphyr::from_str(&yaml).expect("re-parse");
     assert_eq!(round_tripped, original);
     round_tripped.validate_shape().expect("valid shape");
 }
@@ -1090,8 +1089,8 @@ fn registry_description_round_trips_through_serde() {
         description: Some("Real-time traffic routing".into()),
         contracts: None,
     };
-    let yaml = serde_yaml::to_string(&original).expect("serialize");
-    let round_tripped: RegistryProject = serde_yaml::from_str(&yaml).expect("re-parse");
+    let yaml = serde_saphyr::to_string(&original).expect("serialize");
+    let round_tripped: RegistryProject = serde_saphyr::from_str(&yaml).expect("re-parse");
     assert_eq!(round_tripped, original);
 }
 
@@ -1294,10 +1293,10 @@ fn registry_contract_roles_round_trip_omits_empty_fields() {
             }),
         }],
     };
-    let yaml = serde_yaml::to_string(&original).expect("serialize");
+    let yaml = serde_saphyr::to_string(&original).expect("serialize");
     assert!(!yaml.contains("consumes"), "empty consumes should be omitted: {yaml}");
     assert!(!yaml.contains("imports"), "empty imports should be omitted: {yaml}");
-    let round_tripped: Registry = serde_yaml::from_str(&yaml).expect("re-parse");
+    let round_tripped: Registry = serde_saphyr::from_str(&yaml).expect("re-parse");
     assert_eq!(round_tripped, original);
 }
 
@@ -1313,7 +1312,7 @@ fn registry_contract_roles_none_omits_contracts_key() {
             contracts: None,
         }],
     };
-    let yaml = serde_yaml::to_string(&original).expect("serialize");
+    let yaml = serde_saphyr::to_string(&original).expect("serialize");
     assert!(!yaml.contains("contracts"), "None contracts should be omitted: {yaml}");
 }
 

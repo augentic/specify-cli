@@ -59,7 +59,7 @@ impl Project {
             .success();
         copy_dir(&repo_root().join("schemas/omnia"), &root.join("schemas/omnia"));
 
-        Project { _tmp: tmp, root }
+        Self { _tmp: tmp, root }
     }
 
     fn root(&self) -> &Path {

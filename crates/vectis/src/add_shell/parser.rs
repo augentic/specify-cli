@@ -50,6 +50,10 @@ pub struct ParsedApp {
 /// - Returns `InvalidProject` if no `impl App for <Name>` is found --
 ///   this is the marker the scaffold writes and its absence means the
 ///   file is not a vectis-scaffolded Crux app.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn parse_app_rs(source: &str) -> Result<ParsedApp, VectisError> {
     let file = syn::parse_file(source).map_err(|e| VectisError::InvalidProject {
         message: format!(
@@ -190,7 +194,7 @@ mod tests {
         // Minimal valid Rust scaffold with the struct + App impl so the
         // parser doesn't short-circuit on "no App impl".
         format!(
-            r#"use crux_core::App;
+            r"use crux_core::App;
 
 {body}
 
@@ -205,7 +209,7 @@ impl App for Counter {{
     fn update(&self, _event: (), _model: &mut ()) -> () {{}}
     fn view(&self, _model: &()) -> () {{}}
 }}
-"#
+"
         )
     }
 
@@ -329,7 +333,7 @@ impl App for Counter {{
         // scaffold emits an `app.rs` with every CAP region present (so
         // what the parser sees here is the "all caps on" shape after
         // the engine drops the marker lines).
-        let src = r#"use crux_core::App;
+        let src = r"use crux_core::App;
 use crux_http::HttpRequest;
 use crux_kv::KeyValueOperation;
 use crux_time::TimeRequest;
@@ -350,7 +354,7 @@ impl App for Counter {
     fn update(&self, _event: (), _model: &mut ()) -> () {}
     fn view(&self, _model: &()) -> () {}
 }
-"#;
+";
         let parsed = parse_app_rs(src).unwrap();
         assert_eq!(parsed.app_name, "Counter");
         assert_eq!(

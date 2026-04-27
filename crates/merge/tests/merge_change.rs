@@ -9,7 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use regex::Regex;
-use specify_change::{ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome};
+use specify_change::{ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome, Rfc3339Stamp};
 use specify_error::Error;
 use specify_merge::{ContractAction, merge_change, preview_change};
 use tempfile::TempDir;
@@ -58,9 +58,9 @@ fn build_project() -> Project {
     let metadata = ChangeMetadata {
         schema: "omnia".to_string(),
         status: LifecycleStatus::Complete,
-        created_at: Some("2024-08-01T10:00:00Z".to_string()),
-        defined_at: Some("2024-08-01T12:00:00Z".to_string()),
-        build_started_at: Some("2024-08-02T09:30:00Z".to_string()),
+        created_at: Some(Rfc3339Stamp::from_raw("2024-08-01T10:00:00Z".to_string())),
+        defined_at: Some(Rfc3339Stamp::from_raw("2024-08-01T12:00:00Z".to_string())),
+        build_started_at: Some(Rfc3339Stamp::from_raw("2024-08-02T09:30:00Z".to_string())),
         completed_at: None,
         merged_at: None,
         dropped_at: None,
@@ -106,7 +106,7 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     let archived: Vec<_> = fs::read_dir(&archive_dir)
         .unwrap()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
         .collect();
     assert_eq!(archived.len(), 1);
     let archived_name = archived[0].file_name().to_string_lossy().to_string();
@@ -344,7 +344,7 @@ fn find_archived_metadata(project: &Project) -> PhaseOutcome {
     let archived: Vec<_> = fs::read_dir(project.archive_dir())
         .unwrap()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
         .collect();
     assert_eq!(archived.len(), 1, "expected exactly one archived change");
     let meta = ChangeMetadata::load(&archived[0].path()).expect("load archived metadata");

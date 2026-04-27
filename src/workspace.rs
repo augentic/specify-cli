@@ -11,10 +11,15 @@ use specify_schema::Registry;
 use crate::config::ProjectConfig;
 use crate::init::ensure_specify_gitignore_entries;
 
-/// Materialise `.specify/workspace/<name>/` for every registry entry:
-/// symlinks for `.` / relative URLs, shallow `git clone` or `git fetch`
+/// Materialise `.specify/workspace/<name>/` for every registry entry.
+///
+/// Symlinks for `.` / relative URLs, shallow `git clone` or `git fetch`
 /// for remotes. Ensures `.gitignore` lists `.specify/workspace/` (and
 /// `.specify/.cache/` when missing).
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn sync_registry_workspace(project_dir: &Path) -> Result<(), Error> {
     let Some(registry) = Registry::load(project_dir)? else {
         return Ok(());
@@ -100,6 +105,10 @@ pub enum WorkspaceSlotKind {
 /// Inspect `.specify/workspace/<name>/` for each registry project.
 ///
 /// Returns `Ok(None)` when `.specify/registry.yaml` is absent.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn workspace_status(project_dir: &Path) -> Result<Option<Vec<WorkspaceSlotStatus>>, Error> {
     let Some(registry) = Registry::load(project_dir)? else {
         return Ok(None);
@@ -115,16 +124,13 @@ pub fn workspace_status(project_dir: &Path) -> Result<Option<Vec<WorkspaceSlotSt
 }
 
 fn describe_slot(name: &str, slot: &Path) -> WorkspaceSlotStatus {
-    let meta = match std::fs::symlink_metadata(slot) {
-        Ok(m) => m,
-        Err(_) => {
-            return WorkspaceSlotStatus {
-                name: name.to_string(),
-                kind: WorkspaceSlotKind::Missing,
-                head_sha: None,
-                dirty: None,
-            };
-        }
+    let Ok(meta) = std::fs::symlink_metadata(slot) else {
+        return WorkspaceSlotStatus {
+            name: name.to_string(),
+            kind: WorkspaceSlotKind::Missing,
+            head_sha: None,
+            dirty: None,
+        };
     };
 
     if meta.file_type().is_symlink() {
@@ -172,11 +178,11 @@ fn git_output_ok(tree: &Path, args: &[&str]) -> Option<String> {
 }
 
 fn git_porcelain_non_empty(tree: &Path) -> bool {
-    let output =
-        match Command::new("git").arg("-C").arg(tree).args(["status", "--porcelain"]).output() {
-            Ok(o) => o,
-            Err(_) => return false,
-        };
+    let Ok(output) =
+        Command::new("git").arg("-C").arg(tree).args(["status", "--porcelain"]).output()
+    else {
+        return false;
+    };
     if !output.status.success() {
         return false;
     }
@@ -186,10 +192,7 @@ fn git_porcelain_non_empty(tree: &Path) -> bool {
 fn materialise_symlink(project_dir: &Path, url: &str, dest: &Path) -> Result<(), Error> {
     let target = if url == "." {
         std::fs::canonicalize(project_dir).map_err(|e| {
-            Error::Config(format!(
-                "could not resolve project directory for registry url `.`: {}",
-                e
-            ))
+            Error::Config(format!("could not resolve project directory for registry url `.`: {e}"))
         })?
     } else {
         let joined = project_dir.join(url);
@@ -442,15 +445,21 @@ fn run_git(cwd: &Path, args: &[&str], label: &str) -> Result<(), Error> {
 
 /// Result of a per-project push operation.
 pub struct WorkspacePushResult {
+    /// Registry project name.
     pub name: String,
+    /// Outcome label (`pushed`, `created`, `failed`, etc.).
     pub status: String,
+    /// Git branch pushed to.
     pub branch: Option<String>,
+    /// `GitHub` PR number when one was created or found.
     pub pr_number: Option<u64>,
+    /// Human-readable error when the push failed.
     pub error: Option<String>,
 }
 
-/// Extract a GitHub `org/repo` slug from a git remote URL.
+/// Extract a `GitHub` `org/repo` slug from a git remote URL.
 /// Returns `None` for non-GitHub URLs.
+#[must_use]
 pub fn extract_github_slug(url: &str) -> Option<String> {
     if let Some(rest) = url.strip_prefix("git@github.com:") {
         let slug = rest.strip_suffix(".git").unwrap_or(rest);
@@ -470,6 +479,10 @@ pub fn extract_github_slug(url: &str) -> Option<String> {
 }
 
 /// Core implementation of `specify workspace push`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run_workspace_push_impl(
     project_dir: &Path, plan: &Plan, registry: &Registry, filter_projects: &[String], dry_run: bool,
 ) -> Result<Vec<WorkspacePushResult>, Error> {
@@ -500,6 +513,7 @@ pub fn run_workspace_push_impl(
     Ok(results)
 }
 
+#[allow(clippy::too_many_lines)]
 fn push_single_project(
     project_dir: &Path, workspace_base: &Path, rp: &specify_schema::RegistryProject,
     branch_name: &str, initiative_name: &str, dry_run: bool,
@@ -633,7 +647,7 @@ fn push_single_project(
             if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(&text)
                 && let Some(first) = parsed.first()
             {
-                pr_number = first.get("number").and_then(|n| n.as_u64());
+                pr_number = first.get("number").and_then(serde_json::Value::as_u64);
             }
         }
 

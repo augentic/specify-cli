@@ -14,9 +14,11 @@ use specify_spec::{
 /// Python reference). `operations` records every change applied, in the
 /// order `RENAMED → REMOVED → MODIFIED → ADDED` — the same order used
 /// when mutating the underlying block list.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MergeResult {
+    /// Merged baseline text.
     pub output: String,
+    /// Ordered list of changes applied during the merge.
     pub operations: Vec<MergeOperation>,
 }
 
@@ -25,13 +27,44 @@ pub struct MergeResult {
 /// `CreatedBaseline` is the "no delta headers, baseline was empty" branch:
 /// the delta text is kept verbatim as the new baseline and we just record
 /// how many `### Requirement:` blocks it contains.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MergeOperation {
-    Renamed { id: String, old_name: String, new_name: String },
-    Removed { id: String, name: String },
-    Modified { id: String, name: String },
-    Added { id: String, name: String },
-    CreatedBaseline { requirement_count: usize },
+    /// A requirement was renamed (ID preserved, heading changed).
+    Renamed {
+        /// Requirement ID.
+        id: String,
+        /// Previous name.
+        old_name: String,
+        /// New name.
+        new_name: String,
+    },
+    /// A requirement was removed from the baseline.
+    Removed {
+        /// Requirement ID.
+        id: String,
+        /// Requirement name.
+        name: String,
+    },
+    /// A requirement body was replaced.
+    Modified {
+        /// Requirement ID.
+        id: String,
+        /// Requirement name.
+        name: String,
+    },
+    /// A new requirement was appended.
+    Added {
+        /// Requirement ID.
+        id: String,
+        /// Requirement name.
+        name: String,
+    },
+    /// Baseline created from scratch (no delta headers present).
+    CreatedBaseline {
+        /// Number of `### Requirement:` blocks found in the verbatim text.
+        requirement_count: usize,
+    },
 }
 
 /// Merge a delta spec into an optional baseline.
@@ -51,6 +84,11 @@ pub enum MergeOperation {
 /// ADDED` in that order. Any delta entry whose id cannot be resolved (or,
 /// for ADDED, whose id collides with a surviving baseline id) becomes an
 /// `Err(Error::Merge(_))` with all failure messages joined by `"\n"`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
+#[allow(clippy::too_many_lines)]
 pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> {
     let baseline_text = baseline.unwrap_or("");
     let is_new = baseline_text.trim().is_empty();
@@ -138,14 +176,14 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
     // MODIFIED/ADDED still see a stable index map).
     let mut ids_to_remove: HashSet<String> = HashSet::new();
     for block in &delta_spec.removed {
-        if !blocks_by_id.contains_key(&block.id) {
-            errors.push(format!("REMOVED: ID {} not found in baseline", block.id));
-        } else {
+        if blocks_by_id.contains_key(&block.id) {
             ids_to_remove.insert(block.id.clone());
             operations.push(MergeOperation::Removed {
                 id: block.id.clone(),
                 name: block.name.clone(),
             });
+        } else {
+            errors.push(format!("REMOVED: ID {} not found in baseline", block.id));
         }
     }
 
@@ -211,16 +249,16 @@ fn replace_first(haystack: &str, needle: &str, replacement: &str) -> String {
     if needle.is_empty() {
         return haystack.to_string();
     }
-    match haystack.find(needle) {
-        Some(idx) => {
+    haystack.find(needle).map_or_else(
+        || haystack.to_string(),
+        |idx| {
             let mut out = String::with_capacity(haystack.len() + replacement.len());
             out.push_str(&haystack[..idx]);
             out.push_str(replacement);
             out.push_str(&haystack[idx + needle.len()..]);
             out
-        }
-        None => haystack.to_string(),
-    }
+        },
+    )
 }
 
 fn rstrip(s: &str) -> &str {

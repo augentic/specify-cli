@@ -13,7 +13,9 @@ use crate::schema::{Phase, ResolvedSchema, Schema};
 /// iterated in pipeline order.
 #[derive(Debug)]
 pub struct PipelineView {
+    /// The resolved (and possibly merged) schema.
     pub schema: ResolvedSchema,
+    /// Briefs in pipeline order, each paired with its phase.
     pub briefs: Vec<(Phase, Brief)>,
 }
 
@@ -32,6 +34,10 @@ impl PipelineView {
     /// so that a define-phase brief legitimately referring back to a
     /// plan-phase brief via `needs` / `tracks` still satisfies the
     /// earlier-in-pipeline-order rule.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn load(schema_value: &str, project_dir: &Path) -> Result<Self, Error> {
         let resolved = Schema::resolve(schema_value, project_dir)?;
 
@@ -76,13 +82,14 @@ impl PipelineView {
             seen.insert(brief.frontmatter.id.as_str());
         }
 
-        Ok(PipelineView {
+        Ok(Self {
             schema: resolved,
             briefs,
         })
     }
 
     /// Lookup a brief by its frontmatter id.
+    #[must_use]
     pub fn brief(&self, id: &str) -> Option<&Brief> {
         self.briefs.iter().find(|(_, b)| b.frontmatter.id == id).map(|(_, b)| b)
     }
@@ -103,12 +110,17 @@ impl PipelineView {
     ///
     /// Ties (two briefs with the same in-degree) are broken by their
     /// original pipeline index so output is deterministic.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn topo_order(&self, phase: Phase) -> Result<Vec<&Brief>, Error> {
         let briefs: Vec<(usize, &Brief)> = self
             .briefs
             .iter()
             .enumerate()
-            .filter_map(|(idx, (p, b))| if *p == phase { Some((idx, b)) } else { None })
+            .filter(|(_, (p, _))| *p == phase)
+            .map(|(idx, (_, b))| (idx, b))
             .collect();
         let ids: HashSet<&str> = briefs.iter().map(|(_, b)| b.frontmatter.id.as_str()).collect();
 
@@ -135,10 +147,8 @@ impl PipelineView {
         let index_of: BTreeMap<&str, usize> =
             briefs.iter().map(|(idx, b)| (b.frontmatter.id.as_str(), *idx)).collect();
 
-        let mut ready: Vec<&str> = in_degree
-            .iter()
-            .filter_map(|(id, deg)| if *deg == 0 { Some(*id) } else { None })
-            .collect();
+        let mut ready: Vec<&str> =
+            in_degree.iter().filter_map(|(id, deg)| (*deg == 0).then_some(*id)).collect();
         ready.sort_by_key(|id| index_of.get(id).copied().unwrap_or(usize::MAX));
 
         let mut order: Vec<&Brief> = Vec::with_capacity(briefs.len());
@@ -180,6 +190,7 @@ impl PipelineView {
     /// `collect_status` in the CLI binary; consolidating it here is
     /// what lets `specify status`, `specify schema pipeline`, and the
     /// phase skills agree byte-for-byte on what "complete" means.
+    #[must_use]
     pub fn completion_for(&self, phase: Phase, change_dir: &Path) -> BTreeMap<String, bool> {
         let mut out: BTreeMap<String, bool> = BTreeMap::new();
         for brief in self.phase(phase) {
@@ -200,10 +211,8 @@ pub fn artifact_present(change_dir: &Path, generates: &str) -> bool {
         let Some(pattern) = joined.to_str() else {
             return false;
         };
-        match glob::glob(pattern) {
-            Ok(mut entries) => entries.any(|e| matches!(e, Ok(p) if p.is_file())),
-            Err(_) => false,
-        }
+        glob::glob(pattern)
+            .is_ok_and(|mut entries| entries.any(|e| matches!(e, Ok(p) if p.is_file())))
     } else {
         joined.is_file()
     }

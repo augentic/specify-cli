@@ -7,12 +7,16 @@ repository.workspace = true
 description = "Change-metadata lifecycle state machine for Specify"
 categories = ["development-tools"]
 keywords = ["specify", "change", "lifecycle"]
+readme = "../../README.md"
+
+[lints]
+workspace = true
 
 [dependencies]
 specify-error.workspace = true
 specify-schema.workspace = true
 serde.workspace = true
-serde_yaml.workspace = true
+serde-saphyr.workspace = true
 chrono.workspace = true
 tempfile.workspace = true
 petgraph = "0.8"
@@ -27,3 +31,4 @@ libc = "0.2"
 
 [dev-dependencies]
 tempfile.workspace = true
+serde_json.workspace = true

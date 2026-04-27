@@ -33,8 +33,11 @@ use crate::validate::validate_baseline;
 /// when previewing; the merge path additionally uses it to write.
 #[derive(Debug, Clone)]
 pub struct MergeEntry {
+    /// Spec directory name (e.g. `"login"`).
     pub spec_name: String,
+    /// Absolute path where the merged baseline will be written.
     pub baseline_path: PathBuf,
+    /// In-memory merge result.
     pub result: MergeResult,
 }
 
@@ -56,7 +59,9 @@ pub struct ContractPreviewEntry {
     pub action: ContractAction,
 }
 
+/// Whether a contract file is new or replaces an existing baseline file.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ContractAction {
     /// New file — no corresponding baseline file exists.
     Added,
@@ -69,20 +74,29 @@ pub enum ContractAction {
 /// this list to the human so they can confirm or abort the merge.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaselineConflict {
+    /// Capability (spec directory) name.
     pub capability: String,
+    /// RFC 3339 timestamp when the change was defined.
     pub defined_at: String,
+    /// Baseline file modification time.
     pub baseline_modified_at: DateTime<Utc>,
 }
 
-/// Dry-run of the multi-spec merge: computes every in-memory
-/// [`MergeEntry`] plus runs the baseline coherence validator on each
-/// merged output, **without** writing baselines, transitioning status,
-/// or archiving. Also reports contract files that will be copied.
+/// Dry-run of the multi-spec merge.
+///
+/// Computes every in-memory [`MergeEntry`] plus runs the baseline
+/// coherence validator on each merged output, **without** writing
+/// baselines, transitioning status, or archiving. Also reports contract
+/// files that will be copied.
 ///
 /// Unlike [`merge_change`] this does not gate on
 /// `LifecycleStatus::Complete` — the define / build / merge skill pipeline
 /// previews while the change is still `building` or `complete` so the
 /// human can confirm operations before the merge skill commits.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn preview_change(change_dir: &Path, specs_dir: &Path) -> Result<PreviewResult, Error> {
     let specs = plan_merge(change_dir, specs_dir)?;
     let contracts = preview_contracts(change_dir, specs_dir)?;
@@ -103,6 +117,10 @@ pub fn preview_change(change_dir: &Path, specs_dir: &Path) -> Result<PreviewResu
 /// carries the merge-success outcome so that `/spec:execute` can read
 /// it via `specify change outcome` (which falls back to the archive
 /// when the active change directory no longer exists).
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn merge_change(
     change_dir: &Path, specs_dir: &Path, archive_dir: &Path,
 ) -> Result<Vec<(String, MergeResult)>, Error> {
@@ -182,6 +200,8 @@ pub fn merge_change(
     Ok(output)
 }
 
+/// Check for baseline drift on `type: modified` touched specs.
+///
 /// For each `type: modified` `touched_spec`, report whether the baseline
 /// under `specs_dir` has been modified after the change's `defined_at`
 /// timestamp. Only `Modified` entries participate — a `New` entry has no
@@ -191,6 +211,10 @@ pub fn merge_change(
 /// `touched_specs`, or `defined_at` is missing (in which case the call
 /// is a silent no-op — the merge skill should refuse to proceed until
 /// define has run).
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn conflict_check(change_dir: &Path, specs_dir: &Path) -> Result<Vec<BaselineConflict>, Error> {
     let metadata = ChangeMetadata::load(change_dir)?;
     let Some(defined_raw) = metadata.defined_at.as_deref() else {
@@ -308,6 +332,7 @@ fn check_contract_drift(
 /// Compute the in-memory merge plan for every delta spec discovered
 /// under `<change_dir>/specs/*/spec.md`. Shared by `preview_change`
 /// and `merge_change`.
+#[allow(clippy::too_many_lines)]
 fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<MergeEntry>, Error> {
     let mut delta_specs: Vec<DeltaSpecRef> = Vec::new();
 

@@ -26,8 +26,8 @@ use specify_error::Error;
 /// Serialise `value` as YAML (with a guaranteed trailing newline) and
 /// atomically persist it at `path`. See module-level docs for the
 /// atomicity envelope.
-pub(crate) fn atomic_yaml_write<T: Serialize>(path: &Path, value: &T) -> Result<(), Error> {
-    let mut content = serde_yaml::to_string(value)?;
+pub fn atomic_yaml_write<T: Serialize>(path: &Path, value: &T) -> Result<(), Error> {
+    let mut content = serde_saphyr::to_string(value)?;
     if !content.ends_with('\n') {
         content.push('\n');
     }
@@ -37,7 +37,7 @@ pub(crate) fn atomic_yaml_write<T: Serialize>(path: &Path, value: &T) -> Result<
 /// Atomically write `bytes` to `path`. Used for non-YAML writers (e.g.
 /// the PID stamp in `.specify/plan.lock`) where the caller has already
 /// produced the exact on-disk bytes.
-pub(crate) fn atomic_bytes_write(path: &Path, bytes: &[u8]) -> Result<(), Error> {
+pub fn atomic_bytes_write(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(parent)?;
     let mut tmp = tempfile::NamedTempFile::new_in(parent)?;

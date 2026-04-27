@@ -24,10 +24,11 @@ use crate::versions::Versions;
 /// Path mapping order, also matches the RFC's example output).
 #[derive(Debug)]
 pub struct CoreScaffold {
+    /// Relative paths of written files, in template declaration order.
     pub files: Vec<String>,
 }
 
-/// Validate `app_name` against the PascalCase pattern documented in
+/// Validate `app_name` against the `PascalCase` pattern documented in
 /// RFC-6 § CLI Surface § `vectis init`.
 ///
 /// A name is valid iff:
@@ -40,6 +41,10 @@ pub struct CoreScaffold {
 /// `_App` (leading underscore). The constraint matches the way the name
 /// is used downstream: a literal Rust struct identifier in `app.rs` /
 /// `ffi.rs` / `codegen.rs`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn validate_app_name(app_name: &str) -> Result<(), VectisError> {
     let mut chars = app_name.chars();
     let first = chars.next().ok_or_else(|| VectisError::InvalidProject {
@@ -71,6 +76,7 @@ pub fn validate_app_name(app_name: &str) -> Result<(), VectisError> {
 /// chunk-3a `codegen.rs` template uses `__ANDROID_PACKAGE__` as the Kotlin
 /// namespace -- the binary still has to compile when no Android shell is
 /// requested. See chunk-3a MANIFEST § Android-only placeholder.
+#[must_use]
 pub fn default_android_package(app_name: &str) -> String {
     format!("com.vectis.{}", app_name.to_lowercase())
 }
@@ -86,6 +92,10 @@ pub fn default_android_package(app_name: &str) -> String {
 /// `caps` selects which capability-marked regions of the templates are
 /// kept. Chunk 6 wires this through from `--caps`; pass `&[]` for the
 /// render-only baseline.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn scaffold(
     project_dir: &Path, app_name: &str, android_package: &str, versions: &Versions,
     caps: &[Capability],
@@ -140,9 +150,9 @@ mod tests {
     fn scratch_dir(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
         let dir = std::env::temp_dir()
-            .join(format!("vectis-init-{label}-{}-{nanos}-{n}", std::process::id(),));
+            .join(format!("vectis-init-{label}-{}-{nanos}-{n}", std::process::id()));
         // Deliberately do not create the dir -- some tests want to prove
         // scaffold() will create it itself.
         dir
@@ -157,7 +167,7 @@ mod tests {
         let err = validate_app_name("").expect_err("empty name must fail");
         match err {
             VectisError::InvalidProject { message } => {
-                assert!(message.contains("must not be empty"))
+                assert!(message.contains("must not be empty"));
             }
             other => panic!("unexpected: {other:?}"),
         }

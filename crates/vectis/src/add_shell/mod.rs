@@ -22,7 +22,7 @@
 //!    shape that `vectis verify` would produce for the just-added
 //!    assembly. This satisfies the RFC's "run verify for the just-added
 //!    assembly" requirement without duplicating the build -- the
-//!    alternative ("scaffold(false) then verify::run(..)") requires
+//!    alternative ("scaffold(false) then `verify::run`(..)") requires
 //!    separately bootstrapping the Android wrapper before verify's
 //!    `./gradlew :app:assembleDebug` can find a `gradlew` binary, and
 //!    doubles every build step when the wrapper *is* present.
@@ -37,6 +37,10 @@ use crate::verify::pipeline::BuildStep;
 use crate::versions::Versions;
 use crate::{AddShellArgs, CommandOutcome, init};
 
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run(args: &AddShellArgs) -> Result<CommandOutcome, VectisError> {
     let shell = match args.platform.as_str() {
         "ios" => AssemblyKind::Ios,
@@ -131,7 +135,7 @@ pub fn run(args: &AddShellArgs) -> Result<CommandOutcome, VectisError> {
     // compute `passed` from the step vector (rather than hard-coding
     // `true`) so a future refactor that returns partial failure via
     // `Ok` without changing this call site is caught.
-    let passed = build_steps.iter().all(|s| s.passed);
+    let all_passed = build_steps.iter().all(|s| s.passed);
 
     let mut assembly = serde_json::Map::new();
     assembly.insert("status".to_string(), serde_json::Value::String("created".into()));
@@ -158,7 +162,7 @@ pub fn run(args: &AddShellArgs) -> Result<CommandOutcome, VectisError> {
             .collect::<Vec<_>>(),
         "unrecognized-capabilities": parsed.unrecognized_capabilities,
         "assembly": assembly,
-        "passed": passed,
+        "passed": all_passed,
     });
 
     Ok(CommandOutcome::Success(value))
@@ -173,10 +177,7 @@ fn shell_dir_name(shell: AssemblyKind) -> &'static str {
 }
 
 fn resolve_project_dir(dir: Option<&Path>) -> Result<PathBuf, VectisError> {
-    match dir {
-        Some(p) => Ok(p.to_path_buf()),
-        None => std::env::current_dir().map_err(VectisError::from),
-    }
+    dir.map_or_else(|| std::env::current_dir().map_err(VectisError::from), |p| Ok(p.to_path_buf()))
 }
 
 #[cfg(test)]
@@ -189,9 +190,9 @@ mod tests {
     fn scratch_dir(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
         std::env::temp_dir()
-            .join(format!("vectis-add-shell-{label}-{}-{nanos}-{n}", std::process::id(),))
+            .join(format!("vectis-add-shell-{label}-{}-{nanos}-{n}", std::process::id()))
     }
 
     #[test]
@@ -218,7 +219,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let args = AddShellArgs {
             platform: "ios".into(),
-            dir: Some(dir.clone()),
+            dir: Some(dir),
             android_package: None,
             version_file: None,
         };
@@ -241,7 +242,7 @@ mod tests {
 
         let args = AddShellArgs {
             platform: "ios".into(),
-            dir: Some(dir.clone()),
+            dir: Some(dir),
             android_package: None,
             version_file: None,
         };

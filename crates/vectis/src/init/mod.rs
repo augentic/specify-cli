@@ -23,6 +23,10 @@ use crate::templates::{Capability, Params};
 use crate::versions::Versions;
 use crate::{CommandOutcome, InitArgs};
 
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run(args: &InitArgs) -> Result<CommandOutcome, VectisError> {
     let mut assemblies = vec![AssemblyKind::Core];
     let shells = parse_shells(args.shells.as_deref())?;
@@ -211,10 +215,7 @@ fn parse_shells(raw: Option<&str>) -> Result<Vec<AssemblyKind>, VectisError> {
 }
 
 fn resolve_project_dir(dir: Option<&std::path::Path>) -> Result<PathBuf, VectisError> {
-    match dir {
-        Some(p) => Ok(p.to_path_buf()),
-        None => std::env::current_dir().map_err(VectisError::from),
-    }
+    dir.map_or_else(|| std::env::current_dir().map_err(VectisError::from), |p| Ok(p.to_path_buf()))
 }
 
 #[cfg(test)]

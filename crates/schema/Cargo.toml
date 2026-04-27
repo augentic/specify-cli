@@ -7,11 +7,15 @@ repository.workspace = true
 description = "Schema resolution, brief frontmatter, and PipelineView for Specify"
 categories = ["development-tools"]
 keywords = ["specify", "schema", "pipeline"]
+readme = "README.md"
+
+[lints]
+workspace = true
 
 [dependencies]
 specify-error.workspace = true
 serde.workspace = true
-serde_yaml.workspace = true
+serde-saphyr.workspace = true
 serde_json.workspace = true
 jsonschema.workspace = true
 glob.workspace = true

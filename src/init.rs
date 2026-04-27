@@ -20,7 +20,9 @@ use crate::config::ProjectConfig;
 /// Inputs to [`init`]. Borrow-shaped so callers (the CLI and tests) can
 /// build the struct without cloning path buffers.
 pub struct InitOptions<'a> {
+    /// Root of the project being initialised.
     pub project_dir: &'a Path,
+    /// Schema identifier (bare name or URL).
     pub schema_value: &'a str,
     /// Directory the CLI walks to discover `pipeline.define` briefs. The
     /// agent typically populates this under `.specify/.cache/` before
@@ -35,7 +37,8 @@ pub struct InitOptions<'a> {
     pub version_mode: VersionMode,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+/// How `init` determines the `specify_version` floor in `project.yaml`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum VersionMode {
     /// Write the running binary's version as the floor (fresh init and
     /// `init --upgrade`).
@@ -49,11 +52,17 @@ pub enum VersionMode {
 /// rendering by both the JSON and text CLI paths.
 #[derive(Debug, Clone)]
 pub struct InitResult {
+    /// Path to the written `project.yaml`.
     pub config_path: PathBuf,
+    /// Resolved schema name from the schema root.
     pub schema_name: String,
+    /// Whether `.specify/.cache/cache_meta.yaml` exists.
     pub cache_present: bool,
+    /// Directories that were newly created (empty on re-init).
     pub directories_created: Vec<PathBuf>,
+    /// Brief IDs scaffolded into the `rules:` map.
     pub scaffolded_rule_keys: Vec<String>,
+    /// The `specify_version` value written into `project.yaml`.
     pub specify_version: String,
 }
 
@@ -62,6 +71,11 @@ pub struct InitResult {
 /// Idempotent: a second call with identical options succeeds, creates no
 /// new directories, doesn't duplicate the `.gitignore` entry, and writes
 /// byte-identical `project.yaml` contents.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
+#[allow(clippy::needless_pass_by_value)]
 pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let name = resolved_name(opts.project_dir, opts.name);
 
@@ -100,7 +114,7 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     };
 
     let config_path = ProjectConfig::config_path(opts.project_dir);
-    let serialised = serde_yaml::to_string(&cfg)?;
+    let serialised = serde_saphyr::to_string(&cfg)?;
     fs::write(&config_path, serialised)?;
 
     upsert_gitignore(opts.project_dir)?;
@@ -124,8 +138,7 @@ fn resolved_name(project_dir: &Path, explicit: Option<&str>) -> String {
     project_dir
         .file_name()
         .and_then(|n| n.to_str())
-        .map(str::to_string)
-        .unwrap_or_else(|| "project".to_string())
+        .map_or_else(|| "project".to_string(), str::to_string)
 }
 
 fn resolve_version(project_dir: &Path, mode: VersionMode) -> Result<String, Error> {
@@ -145,7 +158,7 @@ fn resolve_version(project_dir: &Path, mode: VersionMode) -> Result<String, Erro
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(current),
         Err(err) => return Err(Error::Io(err)),
     };
-    let existing: ProjectConfig = serde_yaml::from_str(&text)?;
+    let existing: ProjectConfig = serde_saphyr::from_str(&text)?;
     Ok(existing.specify_version.unwrap_or(current))
 }
 
@@ -157,6 +170,10 @@ const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/works
 ///
 /// Used by [`init`] and by `specify workspace sync` (RFC-3a
 /// C29).
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn ensure_specify_gitignore_entries(project_dir: &Path) -> Result<(), Error> {
     let path = project_dir.join(".gitignore");
     let existing = match fs::read_to_string(&path) {
@@ -165,7 +182,7 @@ pub fn ensure_specify_gitignore_entries(project_dir: &Path) -> Result<(), Error>
         Err(err) => return Err(Error::Io(err)),
     };
 
-    let mut updated = existing.clone();
+    let mut updated = existing;
     let mut changed = false;
     for entry in SPECIFY_GITIGNORE_ENTRIES {
         if updated.lines().any(|line| line.trim() == *entry) {
@@ -233,7 +250,7 @@ mod tests {
         assert_eq!(result.config_path, config_path);
         assert_eq!(result.schema_name, "omnia");
 
-        let mut keys = result.scaffolded_rule_keys.clone();
+        let mut keys = result.scaffolded_rule_keys;
         keys.sort();
         assert_eq!(keys, vec!["design", "proposal", "specs", "tasks"]);
 

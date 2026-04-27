@@ -39,10 +39,13 @@ pub use specify_schema::ValidationResult;
 /// artifact (e.g. `"proposal"` → `proposal.md`), or by the artifact path
 /// relative to `change_dir` when the brief's `generates` is a glob
 /// matching multiple files (e.g. `"specs/login/spec.md"`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationReport {
+    /// Per-brief validation results, keyed by brief id or artifact path.
     pub brief_results: BTreeMap<String, Vec<ValidationResult>>,
+    /// Cross-brief validation results.
     pub cross_checks: Vec<ValidationResult>,
+    /// `true` when no rule produced a `Fail` outcome.
     pub passed: bool,
 }
 
@@ -57,16 +60,24 @@ pub enum Classification {
 }
 
 /// Outcome of invoking a structural rule's `check` function.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuleOutcome {
+    /// The rule passed.
     Pass,
-    Fail { detail: String },
+    /// The rule failed with an explanation.
+    Fail {
+        /// Human-readable failure detail.
+        detail: String,
+    },
 }
 
 /// A named rule attached to a specific brief id.
 pub struct Rule {
+    /// Stable dot-namespaced identifier (e.g. `proposal.why-has-content`).
     pub id: &'static str,
+    /// Human-readable description of what the rule checks.
     pub description: &'static str,
+    /// Whether the rule is structural or semantic.
     pub classification: Classification,
     /// Only invoked for `Classification::Structural`. For `Semantic`, the
     /// runner always emits `Deferred` without calling this function.
@@ -75,28 +86,43 @@ pub struct Rule {
 
 /// Inputs a brief-scoped structural checker needs.
 pub struct BriefContext<'a> {
+    /// The brief id being validated.
     pub brief_id: &'a str,
+    /// Artifact file content.
     pub content: &'a str,
+    /// Parsed spec (when `brief_id == "specs"`).
     pub parsed_spec: Option<&'a ParsedSpec>,
+    /// Parsed task progress (when `brief_id == "tasks"`).
     pub tasks: Option<&'a TaskProgress>,
+    /// Absolute path to the change directory.
     pub change_dir: &'a Path,
+    /// Absolute path to the specs directory.
     pub specs_dir: &'a Path,
+    /// Schema-inferred terminology (e.g. `"crate"` or `"feature"`).
     pub terminology: &'a str,
 }
 
 /// A rule that spans multiple briefs.
 pub struct CrossRule {
+    /// Stable dot-namespaced identifier (e.g. `cross.proposal-crates-have-specs`).
     pub id: &'static str,
+    /// Human-readable description of what the rule checks.
     pub description: &'static str,
+    /// Whether the rule is structural or semantic.
     pub classification: Classification,
+    /// Checker function — only invoked for structural rules.
     pub check: fn(&CrossContext<'_>) -> RuleOutcome,
 }
 
 /// Inputs a cross-brief checker needs.
 pub struct CrossContext<'a> {
+    /// Absolute path to the change directory.
     pub change_dir: &'a Path,
+    /// Absolute path to the specs directory.
     pub specs_dir: &'a Path,
+    /// Resolved pipeline for the change.
     pub pipeline: &'a PipelineView,
+    /// Schema-inferred terminology.
     pub terminology: &'a str,
 }
 

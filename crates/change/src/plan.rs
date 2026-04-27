@@ -28,6 +28,7 @@
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use petgraph::Direction;
@@ -58,53 +59,66 @@ use specify_schema::Registry;
     clap::ValueEnum,
 )]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum PlanStatus {
+    /// Not yet started.
     Pending,
+    /// Currently being executed.
     InProgress,
+    /// Completed successfully.
     Done,
+    /// Blocked on an external dependency or question.
     Blocked,
+    /// Execution failed.
     Failed,
+    /// Intentionally skipped.
     Skipped,
+}
+
+impl fmt::Display for PlanStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Pending => "pending",
+            Self::InProgress => "in-progress",
+            Self::Done => "done",
+            Self::Blocked => "blocked",
+            Self::Failed => "failed",
+            Self::Skipped => "skipped",
+        })
+    }
 }
 
 impl PlanStatus {
     /// Every variant in declaration order. Used by exhaustive transition
     /// tests here and by validation/topological code in L1.D/E that
     /// needs to enumerate states without depending on `strum`.
-    pub const ALL: [PlanStatus; 6] = [
-        PlanStatus::Pending,
-        PlanStatus::InProgress,
-        PlanStatus::Done,
-        PlanStatus::Blocked,
-        PlanStatus::Failed,
-        PlanStatus::Skipped,
-    ];
+    pub const ALL: [Self; 6] =
+        [Self::Pending, Self::InProgress, Self::Done, Self::Blocked, Self::Failed, Self::Skipped];
 
     /// Whether `self -> target` is a legal edge in the plan-entry state
     /// machine. See `rfc-2-execution.md` §"Transition Rules" for the canonical
     /// table; the 10 edges enumerated below are the *only* legal ones.
     /// `Done` is terminal: every edge with `Done` on the left is `false`.
-    pub fn can_transition_to(&self, target: &PlanStatus) -> bool {
-        use PlanStatus::*;
+    #[must_use]
+    pub const fn can_transition_to(&self, target: &Self) -> bool {
+        use PlanStatus::{Blocked, Done, Failed, InProgress, Pending, Skipped};
         matches!(
             (self, target),
-            (Pending, InProgress)
-                | (Pending, Blocked)
-                | (Pending, Skipped)
-                | (InProgress, Done)
-                | (InProgress, Failed)
-                | (InProgress, Blocked)
-                | (Blocked, Pending)
-                | (Failed, Pending)
+            (Pending, InProgress | Blocked | Skipped)
+                | (InProgress, Done | Failed | Blocked)
+                | (Blocked | Failed | Skipped, Pending)
                 | (Failed, Skipped)
-                | (Skipped, Pending)
         )
     }
 
     /// Return `target` if the edge is legal, otherwise an
     /// `Error::PlanTransition` carrying both endpoints by their `Debug`
     /// representation. Mirrors `LifecycleStatus::transition`.
-    pub fn transition(&self, target: PlanStatus) -> Result<PlanStatus, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    pub fn transition(&self, target: Self) -> Result<Self, Error> {
         if self.can_transition_to(&target) {
             Ok(target)
         } else {
@@ -121,7 +135,7 @@ impl PlanStatus {
 /// A `Plan` is an ordered, dependency-aware list of [`PlanChange`]s plus
 /// a named map of [`Plan::sources`] (local paths or git URLs) that the
 /// entries draw from.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Plan {
     /// Human-readable plan name, e.g. `platform-v2`.
@@ -137,7 +151,7 @@ pub struct Plan {
 }
 
 /// One entry in [`Plan::changes`].
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct PlanChange {
     /// Stable identifier (kebab-case) unique within the plan.
@@ -176,11 +190,12 @@ pub struct PlanChange {
     pub status_reason: Option<String>,
 }
 
-/// Patch applied by [`Plan::amend`] to an existing entry. Every field is
-/// `Option<T>`; `None` means "leave unchanged", `Some(v)` means "replace
-/// with v". `status` and `status_reason` are deliberately absent —
-/// status transitions are made via [`Plan::transition`], never through
-/// `amend`, and the reason field travels with the transition.
+/// Patch applied by [`Plan::amend`] to an existing entry.
+///
+/// Every field is `Option<T>`; `None` means "leave unchanged", `Some(v)`
+/// means "replace with v". `status` and `status_reason` are deliberately
+/// absent — status transitions are made via [`Plan::transition`], never
+/// through `amend`, and the reason field travels with the transition.
 ///
 /// The absence of a `status` field is a type-system guarantee: `amend`
 /// cannot mutate status. Transitions go via [`Plan::transition`].
@@ -204,7 +219,7 @@ pub struct PlanChangePatch {
 }
 
 /// Severity of a validation finding produced by [`Plan::validate`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanValidationLevel {
     /// Blocking problem — the plan is not usable as-is.
     Error,
@@ -235,9 +250,13 @@ impl Plan {
     /// rules as change names (RFC-1 §"Naming Rules").
     ///
     /// Does NOT write anything to disk. Call [`Plan::save`] afterwards.
-    pub fn init(name: &str, sources: BTreeMap<String, String>) -> Result<Plan, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    pub fn init(name: &str, sources: BTreeMap<String, String>) -> Result<Self, Error> {
         crate::actions::validate_name(name)?;
-        Ok(Plan {
+        Ok(Self {
             name: name.to_string(),
             sources,
             changes: vec![],
@@ -252,13 +271,20 @@ impl Plan {
     ///   - other I/O failure -> `Error::Io`
     ///
     /// Tolerant of files with or without a trailing newline —
-    /// `serde_yaml::from_str` accepts both.
+    /// `serde_saphyr::from_str` accepts both.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn load(path: &Path) -> Result<Self, Error> {
         if !path.exists() {
-            return Err(Error::Config(format!("plan.yaml not found at {}", path.display())));
+            return Err(Error::ArtifactNotFound {
+                kind: "plan.yaml",
+                path: path.to_path_buf(),
+            });
         }
         let content = std::fs::read_to_string(path)?;
-        let plan: Plan = serde_yaml::from_str(&content)?;
+        let plan: Self = serde_saphyr::from_str(&content)?;
         Ok(plan)
     }
 
@@ -280,6 +306,10 @@ impl Plan {
     ///
     /// Returns `Error::Io` on any I/O failure and `Error::Yaml` if
     /// serialization fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn save(&self, path: &Path) -> Result<(), Error> {
         crate::atomic::atomic_yaml_write(path, self)
     }
@@ -302,6 +332,7 @@ impl Plan {
     /// rejects invalid statuses at parse time. The RFC lists this check
     /// for completeness against hand-edited YAML that bypassed parsing,
     /// which is not reachable in-process — so nothing is emitted for it.
+    #[must_use]
     pub fn validate(
         &self, changes_dir: Option<&Path>, registry: Option<&Registry>,
     ) -> Vec<PlanValidationResult> {
@@ -334,6 +365,7 @@ impl Plan {
     /// An unknown `depends_on` target is treated as "not done", so the
     /// entry is not eligible. Orphan-reference diagnostics belong to
     /// [`Plan::validate`].
+    #[must_use]
     pub fn next_eligible(&self) -> Option<&PlanChange> {
         if self.changes.iter().any(|c| c.status == PlanStatus::InProgress) {
             return None;
@@ -361,6 +393,10 @@ impl Plan {
     /// Does not run `Plan::validate` — a status mutation cannot make a
     /// previously-valid plan invalid (the state machine has no
     /// structural side-effects).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn transition(
         &mut self, name: &str, target: PlanStatus, reason: Option<&str>,
     ) -> Result<(), Error> {
@@ -405,6 +441,10 @@ impl Plan {
     /// returns `Error::Config` containing the first offending
     /// finding's message. Warnings are tolerated — they're a CLI
     /// concern, not a library-level hard stop.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn create(&mut self, change: PlanChange) -> Result<(), Error> {
         crate::actions::validate_name(&change.name)?;
 
@@ -453,6 +493,10 @@ impl Plan {
     /// `amend` does not consult `PlanChange::status` — it is legal to
     /// amend the currently-`in-progress` entry's non-status fields,
     /// per RFC-2 §"Phase Boundary → Rule 2".
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn amend(&mut self, name: &str, patch: PlanChangePatch) -> Result<(), Error> {
         let idx = self
             .changes
@@ -519,6 +563,15 @@ impl Plan {
     /// each entry's list position, since we insert in list order).
     /// That keeps the list-order tie-break contract while dropping
     /// the old O(n²) "sweep until fixpoint" fallback.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal indegree map is inconsistent (should never
+    /// happen in practice since every node is inserted during init).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the dependency graph contains a cycle.
     pub fn topological_order(&self) -> Result<Vec<&PlanChange>, Error> {
         let mut graph: DiGraph<&str, ()> = DiGraph::new();
         let mut idx = HashMap::new();
@@ -541,8 +594,7 @@ impl Plan {
                 .find(|scc| {
                     scc.len() > 1 || (scc.len() == 1 && graph.find_edge(scc[0], scc[0]).is_some())
                 })
-                .map(|scc| graph[scc[0]].to_string())
-                .unwrap_or_else(|| "<unknown>".to_string());
+                .map_or_else(|| "<unknown>".to_string(), |scc| graph[scc[0]].to_string());
             return Err(Error::Config(format!("plan has dependency cycle involving '{offender}'")));
         }
 
@@ -554,10 +606,8 @@ impl Plan {
             .node_indices()
             .map(|n| (n, graph.neighbors_directed(n, Direction::Incoming).count()))
             .collect();
-        let mut ready: BinaryHeap<Reverse<NodeIndex>> = indegree
-            .iter()
-            .filter_map(|(&n, &d)| if d == 0 { Some(Reverse(n)) } else { None })
-            .collect();
+        let mut ready: BinaryHeap<Reverse<NodeIndex>> =
+            indegree.iter().filter_map(|(&n, &d)| (d == 0).then_some(Reverse(n))).collect();
 
         let mut rank: HashMap<NodeIndex, usize> = HashMap::with_capacity(self.changes.len());
         let mut next_rank = 0usize;
@@ -612,10 +662,14 @@ impl Plan {
     /// Takes `&Path` rather than `&self` because it operates on the
     /// file on disk (it re-loads the plan) — archiving is a filesystem
     /// operation, not a mutation of an in-memory `Plan`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn archive(
         path: &Path, archive_dir: &Path, force: bool,
     ) -> Result<(PathBuf, Option<PathBuf>), Error> {
-        let plan = Plan::load(path)?;
+        let plan = Self::load(path)?;
 
         if !force {
             let entries: Vec<String> = plan
@@ -1079,7 +1133,7 @@ mod tests {
 
     /// Verbatim reproduction of the `rfc-2-execution.md` §"The Plan"
     /// fixture, updated to remove `affects` fields.
-    const RFC_EXAMPLE_YAML: &str = r#"name: platform-v2
+    const RFC_EXAMPLE_YAML: &str = r"name: platform-v2
 sources:
   monolith: /path/to/legacy-codebase
   orders: git@github.com:org/orders-service.git
@@ -1137,13 +1191,13 @@ changes:
     sources: [frontend]
     depends-on: [checkout-api]
     status: pending
-"#;
+";
 
     #[test]
     fn plan_roundtrips_rfc_example() {
-        let original: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
-        let rendered = serde_yaml::to_string(&original).expect("serialize plan");
-        let reparsed: Plan = serde_yaml::from_str(&rendered).expect("reparse rendered plan");
+        let original: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let rendered = serde_saphyr::to_string(&original).expect("serialize plan");
+        let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse rendered plan");
         assert_eq!(original, reparsed, "plan should survive a serialize/parse round-trip");
 
         assert_eq!(original.name, "platform-v2");
@@ -1172,7 +1226,7 @@ changes:
                 status_reason: Some("awaiting upstream fix".to_string()),
             }],
         };
-        let yaml = serde_yaml::to_string(&plan).expect("serialize plan");
+        let yaml = serde_saphyr::to_string(&plan).expect("serialize plan");
         assert!(yaml.contains("depends-on:"), "expected kebab-case depends-on in:\n{yaml}");
         assert!(
             yaml.contains("status: in-progress"),
@@ -1189,7 +1243,7 @@ changes:
     #[test]
     fn missing_optional_fields_deserialize_with_defaults() {
         let yaml = "name: foo\nchanges: []\n";
-        let plan: Plan = serde_yaml::from_str(yaml).expect("parse minimal plan");
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse minimal plan");
         assert_eq!(plan.name, "foo");
         assert!(plan.sources.is_empty(), "sources should default to empty map");
         assert!(plan.changes.is_empty(), "changes should be empty");
@@ -1197,7 +1251,7 @@ changes:
 
     #[test]
     fn status_reason_roundtrips_on_failed_entry() {
-        let yaml = r#"name: demo
+        let yaml = r"name: demo
 changes:
   - name: checkout-api
     sources: [payments]
@@ -1206,8 +1260,8 @@ changes:
     status-reason: >
       Type mismatch between cart line-item schema and payment gateway contract.
       Needs design revision after shopping-cart specs are updated.
-"#;
-        let plan: Plan = serde_yaml::from_str(yaml).expect("parse");
+";
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
         let entry = &plan.changes[0];
         assert_eq!(entry.status, PlanStatus::Failed);
         let reason = entry.status_reason.as_deref().expect("status_reason populated");
@@ -1216,8 +1270,8 @@ changes:
             "status_reason should preserve folded text, got: {reason:?}"
         );
 
-        let rendered = serde_yaml::to_string(&plan).expect("serialize");
-        let reparsed: Plan = serde_yaml::from_str(&rendered).expect("reparse");
+        let rendered = serde_saphyr::to_string(&plan).expect("serialize");
+        let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
         assert_eq!(plan, reparsed);
         assert_eq!(
             reparsed.changes[0].status_reason, entry.status_reason,
@@ -1229,7 +1283,7 @@ changes:
     fn save_then_load_roundtrips_rfc_example() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("plan.yaml");
-        let original: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let original: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         original.save(&path).expect("save ok");
         let loaded = Plan::load(&path).expect("load ok");
         assert_eq!(loaded, original, "full plan should round-trip through save -> load");
@@ -1291,22 +1345,16 @@ changes:
     }
 
     #[test]
-    fn load_missing_file_returns_config_error() {
+    fn load_missing_file_returns_artifact_not_found() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("does-not-exist.yaml");
         let err = Plan::load(&path).expect_err("expected error on missing file");
         match err {
-            Error::Config(msg) => {
-                assert!(
-                    msg.contains("plan.yaml not found"),
-                    "message should mention `plan.yaml not found`, got: {msg}"
-                );
-                assert!(
-                    msg.contains(&path.display().to_string()),
-                    "message should include the missing path, got: {msg}"
-                );
+            Error::ArtifactNotFound { kind, path: p } => {
+                assert_eq!(kind, "plan.yaml");
+                assert_eq!(p, path);
             }
-            other => panic!("expected Error::Config, got {other:?}"),
+            other => panic!("expected Error::ArtifactNotFound, got {other:?}"),
         }
     }
 
@@ -1384,7 +1432,7 @@ changes:
 
     #[test]
     fn clean_plan_returns_no_results() {
-        let plan: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let plan: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         let results = plan.validate(None, None);
         assert!(
             results.is_empty(),
@@ -1645,7 +1693,7 @@ changes:
     ///   round 9: `checkout-ui` (dep checkout-api done)
     #[test]
     fn next_eligible_walks_rfc_example_forward() {
-        let mut plan: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let mut plan: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         for entry in &mut plan.changes {
             entry.status = PlanStatus::Pending;
             entry.status_reason = None;
@@ -1695,7 +1743,7 @@ changes:
 
     #[test]
     fn topological_order_rfc_example_matches_known_order() {
-        let plan: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let plan: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         let ordered: Vec<&str> = plan
             .topological_order()
             .expect("rfc plan has no cycles")
@@ -1871,10 +1919,10 @@ changes:
         let bad = change("Bad-Name", PlanStatus::Pending);
         let err = plan.create(bad).expect_err("invalid name must be rejected");
         match err {
-            Error::Config(msg) => {
+            Error::InvalidName(msg) => {
                 assert!(msg.contains("kebab-case"), "expected kebab-case in message, got: {msg}");
             }
-            other => panic!("expected Error::Config, got {other:?}"),
+            other => panic!("expected Error::InvalidName, got {other:?}"),
         }
         assert!(plan.changes.is_empty(), "plan must remain untouched after invalid name");
     }
@@ -2357,7 +2405,7 @@ changes:
             "forced archive must preserve every entry (including non-terminal) verbatim"
         );
 
-        let archived: Plan = serde_yaml::from_slice(&post_bytes).expect("parse archived");
+        let archived: Plan = serde_saphyr::from_slice(&post_bytes).expect("parse archived");
         let statuses: Vec<PlanStatus> = archived.changes.iter().map(|c| c.status).collect();
         assert_eq!(
             statuses,
@@ -2471,10 +2519,10 @@ changes:
     fn init_rejects_invalid_name() {
         let err = Plan::init("BAD_NAME", BTreeMap::new()).expect_err("invalid name must Err");
         match err {
-            Error::Config(msg) => {
+            Error::InvalidName(msg) => {
                 assert!(msg.contains("kebab-case"), "expected kebab-case in message, got: {msg}");
             }
-            other => panic!("expected Error::Config, got {other:?}"),
+            other => panic!("expected Error::InvalidName, got {other:?}"),
         }
     }
 
@@ -2800,10 +2848,10 @@ name: foo
 project: traffic
 status: pending
 ";
-        let parsed: PlanChange = serde_yaml::from_str(yaml).expect("parses with project");
+        let parsed: PlanChange = serde_saphyr::from_str(yaml).expect("parses with project");
         assert_eq!(parsed.project.as_deref(), Some("traffic"));
-        let round_tripped = serde_yaml::to_string(&parsed).expect("serialize");
-        let re_parsed: PlanChange = serde_yaml::from_str(&round_tripped).expect("re-parse");
+        let round_tripped = serde_saphyr::to_string(&parsed).expect("serialize");
+        let re_parsed: PlanChange = serde_saphyr::from_str(&round_tripped).expect("re-parse");
         assert_eq!(re_parsed.project, parsed.project);
     }
 
@@ -2813,7 +2861,7 @@ status: pending
 name: foo
 status: pending
 ";
-        let parsed: PlanChange = serde_yaml::from_str(yaml).expect("parses without project");
+        let parsed: PlanChange = serde_saphyr::from_str(yaml).expect("parses without project");
         assert_eq!(parsed.project, None);
     }
 
@@ -3015,7 +3063,7 @@ status: pending
 
     #[test]
     fn schema_field_roundtrips_yaml() {
-        let yaml = r#"name: test
+        let yaml = r"name: test
 changes:
   - name: define-contracts
     schema: contracts@v1
@@ -3024,15 +3072,15 @@ changes:
     project: auth-service
     schema: omnia@v1
     status: pending
-"#;
-        let plan: Plan = serde_yaml::from_str(yaml).expect("parse");
+";
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
         assert_eq!(plan.changes[0].schema.as_deref(), Some("contracts@v1"));
         assert_eq!(plan.changes[0].project, None);
         assert_eq!(plan.changes[1].schema.as_deref(), Some("omnia@v1"));
         assert_eq!(plan.changes[1].project.as_deref(), Some("auth-service"));
 
-        let rendered = serde_yaml::to_string(&plan).expect("serialize");
-        let reparsed: Plan = serde_yaml::from_str(&rendered).expect("reparse");
+        let rendered = serde_saphyr::to_string(&plan).expect("serialize");
+        let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
         assert_eq!(plan, reparsed, "plan must survive a YAML round-trip");
     }
 
@@ -3187,7 +3235,7 @@ changes:
 
     #[test]
     fn context_round_trip_through_yaml() {
-        let yaml = r#"
+        let yaml = r"
 name: ctx-test
 changes:
   - name: with-ctx
@@ -3199,15 +3247,15 @@ changes:
   - name: without-ctx
     project: default
     status: pending
-"#;
-        let plan: Plan = serde_yaml::from_str(yaml).expect("parse yaml");
+";
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse yaml");
         assert_eq!(
             plan.changes[0].context,
             vec!["contracts/http/user-api.yaml", "specs/user-registration/spec.md"],
         );
         assert!(plan.changes[1].context.is_empty(), "missing context defaults to empty");
 
-        let serialized = serde_yaml::to_string(&plan).expect("serialize");
+        let serialized = serde_saphyr::to_string(&plan).expect("serialize");
         assert!(
             serialized.contains("contracts/http/user-api.yaml"),
             "populated context must appear in serialized output"
@@ -3253,12 +3301,10 @@ changes:
         entry.context =
             vec!["contracts/http/user-api.yaml".into(), "specs/user-registration/spec.md".into()];
         let plan = plan_with_changes(vec![entry]);
-        let errors: Vec<_> = plan
-            .validate(None, None)
-            .into_iter()
-            .filter(|r| r.code == "plan.context-path-invalid")
-            .collect();
-        assert!(errors.is_empty(), "valid relative paths must not produce errors");
+        assert!(
+            !plan.validate(None, None).into_iter().any(|r| r.code == "plan.context-path-invalid"),
+            "valid relative paths must not produce errors"
+        );
     }
 
     #[test]
@@ -3343,5 +3389,15 @@ changes:
             other => panic!("expected Error::Config, got {other:?}"),
         }
         assert!(plan.changes.is_empty(), "rollback must remove the entry");
+    }
+
+    #[test]
+    fn plan_status_display_matches_serde_wire_format() {
+        assert_eq!(PlanStatus::Pending.to_string(), "pending");
+        assert_eq!(PlanStatus::InProgress.to_string(), "in-progress");
+        assert_eq!(PlanStatus::Done.to_string(), "done");
+        assert_eq!(PlanStatus::Blocked.to_string(), "blocked");
+        assert_eq!(PlanStatus::Failed.to_string(), "failed");
+        assert_eq!(PlanStatus::Skipped.to_string(), "skipped");
     }
 }

@@ -36,32 +36,35 @@
 //!   multi-writer safety must add their own coordination.
 //!
 //! - **Malformed file rejection**: [`Journal::load`] surfaces a
-//!   `Error::Yaml` (via `From<serde_yaml::Error>`) on malformed
+//!   `Error::Yaml` (via `From<serde_saphyr::Error>`) on malformed
 //!   content; it does **not** silently truncate or recover. The only
 //!   "graceful" branch is "file absent → empty journal".
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
 use crate::Phase;
+use crate::timestamp::Rfc3339Stamp;
 
 /// On-disk representation of `<change_dir>/journal.yaml`. Append-only.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Journal {
+    /// Ordered list of audit log entries.
     #[serde(default)]
     pub entries: Vec<JournalEntry>,
 }
 
 /// One line of audit history — a question raised, a failure observed,
 /// or a recovery taken.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct JournalEntry {
     /// RFC3339 UTC timestamp.
-    pub timestamp: String,
+    pub timestamp: Rfc3339Stamp,
     /// Phase that wrote the entry (`define | build | merge`).
     pub step: Phase,
     /// Entry classification. Named `r#type` because `type` is a
@@ -82,6 +85,7 @@ pub struct JournalEntry {
 /// Classification of a [`JournalEntry`].
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum EntryKind {
     /// Phase paused to ask a clarifying question.
     Question,
@@ -91,8 +95,19 @@ pub enum EntryKind {
     Recovery,
 }
 
+impl fmt::Display for EntryKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Question => "question",
+            Self::Failure => "failure",
+            Self::Recovery => "recovery",
+        })
+    }
+}
+
 impl Journal {
     /// Convenience helper: `<change_dir>/journal.yaml`.
+    #[must_use]
     pub fn path(change_dir: &Path) -> PathBuf {
         change_dir.join("journal.yaml")
     }
@@ -102,15 +117,19 @@ impl Journal {
     /// Returns an empty [`Journal`] (not `Err`) when the file is
     /// absent — journals are lazily created on first [`Journal::append`].
     /// A malformed file surfaces `Error::Yaml` (via
-    /// `From<serde_yaml::Error>`) with the underlying parser's
+    /// `From<serde_saphyr::Error>`) with the underlying parser's
     /// location hint; load never silently recovers from corruption.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn load(change_dir: &Path) -> Result<Self, Error> {
         let path = Self::path(change_dir);
         if !path.exists() {
-            return Ok(Journal { entries: Vec::new() });
+            return Ok(Self { entries: Vec::new() });
         }
         let content = std::fs::read_to_string(&path)?;
-        let journal: Journal = serde_yaml::from_str(&content)?;
+        let journal: Self = serde_saphyr::from_str(&content)?;
         Ok(journal)
     }
 
@@ -125,6 +144,10 @@ impl Journal {
     ///
     /// Does **not** lock the file. See the module-level `Single-writer`
     /// note for the safety envelope this operates in.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn append(change_dir: &Path, entry: JournalEntry) -> Result<(), Error> {
         let mut journal = Self::load(change_dir)?;
         journal.entries.push(entry);
@@ -142,7 +165,7 @@ mod tests {
 
     fn sample_entry(summary: &str) -> JournalEntry {
         JournalEntry {
-            timestamp: "2026-04-16T14:30:00Z".to_string(),
+            timestamp: Rfc3339Stamp::from_raw("2026-04-16T14:30:00Z".to_string()),
             step: Phase::Build,
             r#type: EntryKind::Question,
             summary: summary.to_string(),
@@ -200,14 +223,14 @@ mod tests {
         // and assert the on-disk bytes for A and B survive byte-for-byte.
         let dir = tempdir().expect("tempdir");
         let a = JournalEntry {
-            timestamp: "2026-04-16T10:00:00Z".to_string(),
+            timestamp: Rfc3339Stamp::from_raw("2026-04-16T10:00:00Z".to_string()),
             step: Phase::Define,
             r#type: EntryKind::Question,
             summary: "A".to_string(),
             context: None,
         };
         let b = JournalEntry {
-            timestamp: "2026-04-16T10:05:00Z".to_string(),
+            timestamp: Rfc3339Stamp::from_raw("2026-04-16T10:05:00Z".to_string()),
             step: Phase::Define,
             r#type: EntryKind::Failure,
             summary: "B".to_string(),
@@ -216,7 +239,7 @@ mod tests {
         let seed = Journal {
             entries: vec![a.clone(), b.clone()],
         };
-        let mut seed_bytes = serde_yaml::to_string(&seed).expect("serialise seed");
+        let mut seed_bytes = serde_saphyr::to_string(&seed).expect("serialise seed");
         if !seed_bytes.ends_with('\n') {
             seed_bytes.push('\n');
         }
@@ -224,7 +247,7 @@ mod tests {
         let pre_bytes = std::fs::read(Journal::path(dir.path())).expect("read pre");
 
         let c = JournalEntry {
-            timestamp: "2026-04-16T10:10:00Z".to_string(),
+            timestamp: Rfc3339Stamp::from_raw("2026-04-16T10:10:00Z".to_string()),
             step: Phase::Build,
             r#type: EntryKind::Recovery,
             summary: "C".to_string(),
@@ -238,7 +261,7 @@ mod tests {
             "post-append file must be strictly longer than pre-append snapshot"
         );
 
-        // serde_yaml is deterministic: serialising `[A, B, C]` emits
+        // serde_saphyr is deterministic: serialising `[A, B, C]` emits
         // the exact bytes of `[A, B]` followed by the serialisation of
         // `C`. That means the pre-append bytes (sans trailing newline)
         // are a prefix of the post-append bytes — the A+B region is
@@ -279,14 +302,14 @@ mod tests {
         for kind in [EntryKind::Question, EntryKind::Failure, EntryKind::Recovery] {
             for phase in [Phase::Define, Phase::Build, Phase::Merge] {
                 let entry = JournalEntry {
-                    timestamp: "2026-04-16T14:30:00+00:00".to_string(),
+                    timestamp: Rfc3339Stamp::from_raw("2026-04-16T14:30:00+00:00".to_string()),
                     step: phase,
                     r#type: kind,
                     summary: "summary text".to_string(),
                     context: Some("verbatim detail".to_string()),
                 };
-                let yaml = serde_yaml::to_string(&entry).expect("serialise");
-                let parsed: JournalEntry = serde_yaml::from_str(&yaml).expect("parse");
+                let yaml = serde_saphyr::to_string(&entry).expect("serialise");
+                let parsed: JournalEntry = serde_saphyr::from_str(&yaml).expect("parse");
                 assert_eq!(parsed, entry, "round-trip failed for {phase:?}/{kind:?}:\n{yaml}");
             }
         }
@@ -296,7 +319,7 @@ mod tests {
     fn context_survives_multi_line_yaml_block() {
         let dir = tempdir().expect("tempdir");
         let entry = JournalEntry {
-            timestamp: "2026-04-16T14:30:00Z".to_string(),
+            timestamp: Rfc3339Stamp::from_raw("2026-04-16T14:30:00Z".to_string()),
             step: Phase::Build,
             r#type: EntryKind::Failure,
             summary: "multi-line detail".to_string(),
@@ -310,7 +333,7 @@ mod tests {
     #[test]
     fn type_field_name_on_disk_is_literally_type() {
         let entry = sample_entry("example");
-        let yaml = serde_yaml::to_string(&entry).expect("serialise");
+        let yaml = serde_saphyr::to_string(&entry).expect("serialise");
         assert!(yaml.contains("type: question"), "expected literal `type: question`, got:\n{yaml}");
         assert!(!yaml.contains("kind:"), "rust-side `kind` must not leak onto disk:\n{yaml}");
     }
@@ -331,6 +354,8 @@ mod tests {
     #[test]
     #[ignore = "append is not inter-writer atomic; see L2.C plan.lock for the real coordination boundary"]
     fn concurrent_append_simulation_via_threads() {
+        use std::collections::HashSet;
+
         let dir = tempdir().expect("tempdir");
         let path = dir.path();
 
@@ -339,7 +364,7 @@ mod tests {
                 scope.spawn(move || {
                     for i in 0..10 {
                         let entry = JournalEntry {
-                            timestamp: "2026-04-16T14:30:00Z".to_string(),
+                            timestamp: Rfc3339Stamp::from_raw("2026-04-16T14:30:00Z".to_string()),
                             step: Phase::Build,
                             r#type: EntryKind::Question,
                             summary: format!("t{t}-i{i}"),
@@ -354,8 +379,14 @@ mod tests {
         let loaded = Journal::load(path).expect("load ok");
         assert_eq!(loaded.entries.len(), 40, "all 40 entries must be present");
 
-        use std::collections::HashSet;
         let summaries: HashSet<&str> = loaded.entries.iter().map(|e| e.summary.as_str()).collect();
         assert_eq!(summaries.len(), 40, "every summary must appear exactly once");
+    }
+
+    #[test]
+    fn entry_kind_display_matches_serde_wire_format() {
+        assert_eq!(EntryKind::Question.to_string(), "question");
+        assert_eq!(EntryKind::Failure.to_string(), "failure");
+        assert_eq!(EntryKind::Recovery.to_string(), "recovery");
     }
 }

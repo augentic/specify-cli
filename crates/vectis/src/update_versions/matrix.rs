@@ -119,7 +119,8 @@ fn run_single_combo(caps: &str, project_dir: &Path, pins_file: &Path) -> ComboRe
 
     match verify::run(&verify_args) {
         Ok(crate::CommandOutcome::Success(value)) => {
-            let combo_passed = value.get("passed").and_then(|p| p.as_bool()).unwrap_or(false);
+            let combo_passed =
+                value.get("passed").and_then(serde_json::Value::as_bool).unwrap_or(false);
             ComboResult {
                 caps: caps.to_string(),
                 passed: combo_passed,

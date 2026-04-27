@@ -72,7 +72,7 @@ impl Project {
             .args(["--name", "test-proj"])
             .assert()
             .success();
-        Project { _tmp: tmp, root }
+        Self { _tmp: tmp, root }
     }
 
     /// Mirror the in-repo `schemas/` tree into the project so
@@ -116,7 +116,7 @@ struct Sub {
 
 impl Sub {
     fn new(from: impl Into<String>, to: &'static str) -> Self {
-        Sub {
+        Self {
             from: from.into(),
             to,
         }
@@ -166,6 +166,7 @@ fn strip_substitutions(value: &mut Value, subs: &[Sub]) {
 
 /// Compare `actual` against the checked-in golden or, when the
 /// `REGENERATE_GOLDENS` env var is set, rewrite the golden on disk.
+#[allow(clippy::needless_pass_by_value)]
 fn assert_golden(name: &str, actual: Value) {
     let golden_path = goldens_dir().join(name);
     let rendered = serde_json::to_string_pretty(&actual).expect("pretty json");
@@ -207,8 +208,6 @@ fn parse_stdout(stdout: &[u8], root: &Path) -> Value {
 /// across test runs. Mirrors `initiative.rs::strip_date_stamps` for
 /// the timestamp case.
 fn strip_iso8601(value: &mut Value) {
-    let re = regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})")
-        .expect("regex compiles");
     fn visit(re: &regex::Regex, v: &mut Value) {
         match v {
             Value::String(s) if re.is_match(s) => {
@@ -227,6 +226,8 @@ fn strip_iso8601(value: &mut Value) {
             _ => {}
         }
     }
+    let re = regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})")
+        .expect("regex compiles");
     visit(&re, value);
 }
 
@@ -297,8 +298,10 @@ fn merge_two_spec_change_produces_baselines_and_archive() {
 
     // Change dir moved under archive/<YYYY-MM-DD>-my-change/.
     let archive_root = project.root().join(".specify/archive");
-    let archived: Vec<_> =
-        fs::read_dir(&archive_root).expect("read archive dir").filter_map(|e| e.ok()).collect();
+    let archived: Vec<_> = fs::read_dir(&archive_root)
+        .expect("read archive dir")
+        .filter_map(std::result::Result::ok)
+        .collect();
     assert_eq!(archived.len(), 1, "expected one archived change");
     let archived_name = archived[0].file_name().to_string_lossy().into_owned();
     assert!(

@@ -27,13 +27,13 @@ pub enum Capability {
 
 impl Capability {
     /// Marker tag as it appears in the templates (e.g. `<<<CAP:http`).
-    pub fn marker_tag(self) -> &'static str {
+    pub const fn marker_tag(self) -> &'static str {
         match self {
-            Capability::Http => "http",
-            Capability::Kv => "kv",
-            Capability::Time => "time",
-            Capability::Platform => "platform",
-            Capability::Sse => "sse",
+            Self::Http => "http",
+            Self::Kv => "kv",
+            Self::Time => "time",
+            Self::Platform => "platform",
+            Self::Sse => "sse",
         }
     }
 
@@ -42,11 +42,11 @@ impl Capability {
     /// produce a structured error referencing the offending value.
     pub fn from_tag(tag: &str) -> Option<Self> {
         match tag {
-            "http" => Some(Capability::Http),
-            "kv" => Some(Capability::Kv),
-            "time" => Some(Capability::Time),
-            "platform" => Some(Capability::Platform),
-            "sse" => Some(Capability::Sse),
+            "http" => Some(Self::Http),
+            "kv" => Some(Self::Kv),
+            "time" => Some(Self::Time),
+            "platform" => Some(Self::Platform),
+            "sse" => Some(Self::Sse),
             _ => None,
         }
     }
@@ -145,7 +145,7 @@ pub fn substitute_path_with(
 /// Apply substitutions for every placeholder field on `Params`.
 ///
 /// Substitution is a literal `replace()` -- the `__FOO__` delimiter
-/// (double-underscore + UPPER_SNAKE_CASE) was chosen specifically because
+/// (double-underscore + `UPPER_SNAKE_CASE`) was chosen specifically because
 /// it cannot collide with Rust `{}` format strings, Swift `\()`
 /// interpolation, or Kotlin `${}` templates that appear in the generated
 /// source.

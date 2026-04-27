@@ -23,7 +23,9 @@ use crate::error::VectisError;
 /// keeping it borrowed keeps the struct cheap to clone and move around.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct BuildStep {
+    /// Human-readable step label (e.g. `"cargo check"`).
     pub name: &'static str,
+    /// Whether the step exited successfully.
     pub passed: bool,
     /// Combined stdout+stderr captured when the step fails. `None` on
     /// success keeps the happy-path JSON compact -- the field is
@@ -45,6 +47,10 @@ pub struct BuildStep {
 /// be spawned (missing binary, permission error) -- a non-zero exit from
 /// the child is treated as a *step* failure, not a handler failure, so
 /// the dispatcher can continue to the next assembly.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run_step(name: &'static str, cmd: &mut Command) -> Result<BuildStep, VectisError> {
     let output = cmd.output().map_err(|e| VectisError::Verify {
         message: format!("failed to invoke `{name}`: {e}"),

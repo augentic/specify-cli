@@ -9,9 +9,9 @@
 /// The rich `ValidationResult` type lives in `specify-validate`; converting
 /// to this summary is a lossy projection (the enum variant collapses into
 /// a `status` string) but keeps `specify-error` dependency-free from the
-/// rest of the workspace. See `DECISIONS.md` ("Change A — Error::Validation
+/// rest of the workspace. See `DECISIONS.md` ("Change A — `Error::Validation`
 /// payload") for the rationale.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationResultSummary {
     /// One of `"pass"`, `"fail"`, or `"deferred"`.
     pub status: String,
@@ -24,28 +24,55 @@ pub struct ValidationResultSummary {
     pub detail: Option<String>,
 }
 
+/// Structured error type for all `specify-*` crates.
+///
+/// Variants carry enough context for the CLI to assign exit codes and
+/// choose an output format without string-parsing.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
+    /// The `.specify/project.yaml` file is missing.
     #[error("not initialized: .specify/project.yaml not found")]
     NotInitialized,
 
+    /// Schema resolution failed with the given reason.
     #[error("schema resolution failed: {0}")]
     SchemaResolution(String),
 
+    /// A configuration or input error.
     #[error("config error: {0}")]
     Config(String),
 
+    /// Validation failed with one or more findings.
     #[error("validation failed: {count} errors")]
-    Validation { count: usize, results: Vec<ValidationResultSummary> },
+    Validation {
+        /// Number of error-level findings.
+        count: usize,
+        /// Individual validation results.
+        results: Vec<ValidationResultSummary>,
+    },
 
+    /// Spec merge failed.
     #[error("merge failed: {0}")]
     Merge(String),
 
+    /// An illegal lifecycle transition was attempted.
     #[error("lifecycle error: expected {expected}, found {found}")]
-    Lifecycle { expected: String, found: String },
+    Lifecycle {
+        /// Description of the expected state or transition.
+        expected: String,
+        /// The actual state encountered.
+        found: String,
+    },
 
+    /// The installed CLI version is older than the project floor.
     #[error("specify version {found} is older than the project floor {required}; upgrade the CLI")]
-    SpecifyVersionTooOld { required: String, found: String },
+    SpecifyVersionTooOld {
+        /// Minimum version the project requires.
+        required: String,
+        /// Version currently installed.
+        found: String,
+    },
 
     /// Illegal plan entry status transition. Mirrors the `Lifecycle`
     /// variant in carrying stringified `PlanStatus` values to keep
@@ -53,13 +80,21 @@ pub enum Error {
     /// (in `specify-change::plan`) formats the strings via
     /// `format!("{:?}", status)`.
     #[error("illegal plan transition: cannot go from {from} to {to}")]
-    PlanTransition { from: String, to: String },
+    PlanTransition {
+        /// Source status of the attempted transition.
+        from: String,
+        /// Target status of the attempted transition.
+        to: String,
+    },
 
     /// `Plan::archive` refused to archive a plan that still contains
     /// non-terminal entries, and the caller did not pass `force`.
     /// `entries` lists the offending entry names.
     #[error("plan has outstanding non-terminal work: {entries:?}")]
-    PlanHasOutstandingWork { entries: Vec<String> },
+    PlanHasOutstandingWork {
+        /// Names of plan entries not yet in a terminal state.
+        entries: Vec<String>,
+    },
 
     /// `PlanLockGuard::acquire` found another live `/spec:execute`
     /// driver holding `.specify/plan.lock`. `pid` is the contents of
@@ -67,13 +102,35 @@ pub enum Error {
     /// Stale locks (dead PID / malformed content) are reclaimed
     /// silently and do not surface this variant.
     #[error("another /spec:execute driver is running (pid {pid}); refusing to proceed")]
-    DriverBusy { pid: u32 },
+    DriverBusy {
+        /// PID of the process that holds the lock.
+        pid: u32,
+    },
 
+    /// A required artifact was not found at the expected path.
+    #[error("{kind} not found at {}", path.display())]
+    ArtifactNotFound {
+        /// Kind of artifact (e.g. `.metadata.yaml`).
+        kind: &'static str,
+        /// Path where the artifact was expected.
+        path: std::path::PathBuf,
+    },
+
+    /// A name failed kebab-case validation.
+    #[error("invalid name: {0}")]
+    InvalidName(String),
+
+    /// An I/O error propagated from the standard library.
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
+    /// A YAML deserialization error.
     #[error(transparent)]
-    Yaml(#[from] serde_yaml::Error),
+    Yaml(#[from] serde_saphyr::Error),
+
+    /// A YAML serialization error.
+    #[error(transparent)]
+    YamlSer(#[from] serde_saphyr::ser::Error),
 }
 
 #[cfg(test)]
@@ -181,6 +238,21 @@ mod tests {
     }
 
     #[test]
+    fn artifact_not_found_display() {
+        let err = Error::ArtifactNotFound {
+            kind: ".metadata.yaml",
+            path: std::path::PathBuf::from("/tmp/x"),
+        };
+        assert_eq!(err.to_string(), ".metadata.yaml not found at /tmp/x");
+    }
+
+    #[test]
+    fn invalid_name_display() {
+        let err = Error::InvalidName("bad--name".to_string());
+        assert_eq!(err.to_string(), "invalid name: bad--name");
+    }
+
+    #[test]
     fn io_from_conversion() {
         let io = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
         let err: Error = io.into();
@@ -190,7 +262,7 @@ mod tests {
 
     #[test]
     fn yaml_from_conversion() {
-        let parse_err: serde_yaml::Error = serde_yaml::from_str::<serde_yaml::Value>(":\n\t- bad")
+        let parse_err: serde_saphyr::Error = serde_saphyr::from_str::<String>(":\n\t- bad")
             .expect_err("expected a YAML parse error");
         let display = parse_err.to_string();
         let err: Error = parse_err.into();

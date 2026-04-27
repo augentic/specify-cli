@@ -27,6 +27,7 @@ pub use crate::verify::pipeline::BuildStep;
 /// MANIFEST § Path mapping order).
 #[derive(Debug)]
 pub struct IosScaffold {
+    /// Relative paths of written files, in template declaration order.
     pub files: Vec<String>,
     /// Build steps that ran and their per-step pass/fail status. When
     /// `make` is skipped (e.g. prerequisites missing under `--no-build`)
@@ -46,6 +47,10 @@ pub struct IosScaffold {
 /// is invoked from `project_dir/iOS/`; non-zero exit from any step yields
 /// `Verify` so the caller can splice the failure into the structured JSON
 /// output. The pipeline can be skipped for unit tests via `run_build`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn scaffold(
     project_dir: &Path, caps: &[Capability], params: &Params, run_build: bool,
 ) -> Result<IosScaffold, VectisError> {
@@ -124,9 +129,9 @@ mod tests {
     fn scratch_dir(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
         std::env::temp_dir()
-            .join(format!("vectis-init-ios-{label}-{}-{nanos}-{n}", std::process::id(),))
+            .join(format!("vectis-init-ios-{label}-{}-{nanos}-{n}", std::process::id()))
     }
 
     fn sample_params() -> Params {

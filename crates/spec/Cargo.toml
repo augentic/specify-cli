@@ -7,6 +7,10 @@ repository.workspace = true
 description = "Spec-format parser (baseline + delta) for Specify"
 categories = ["development-tools", "parser-implementations"]
 keywords = ["specify", "spec", "parser"]
+readme = "README.md"
+
+[lints]
+workspace = true
 
 [dependencies]
 specify-error.workspace = true

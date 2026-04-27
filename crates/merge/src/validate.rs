@@ -1,7 +1,7 @@
 //! Post-merge coherence checks — port of Python `validate_baseline`
 //! (archived Python reference, `validate_baseline` lines 298–352).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use regex::Regex;
 use specify_schema::ValidationResult;
@@ -34,38 +34,44 @@ const RULE_DESIGN_REFS_EXIST_DESC: &str =
 /// the baseline passes every coherence rule. The `design` argument enables
 /// the orphan-reference rule (`merge.design-references-exist`) — see the
 /// inline parity quirk below.
+///
+/// # Panics
+///
+/// Panics if `REQUIREMENT_ID_PATTERN` is not a valid regex (compile-time
+/// constant — should never happen).
+#[must_use]
 pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<ValidationResult> {
     let parsed = parse_baseline(baseline);
     let blocks = parsed.requirements;
     let mut results: Vec<ValidationResult> = Vec::new();
 
     // (a) Duplicate IDs.
-    let mut seen_ids: HashMap<&str, ()> = HashMap::new();
+    let mut seen_ids: HashSet<&str> = HashSet::new();
     for block in &blocks {
         if block.id.is_empty() {
             continue;
         }
-        if seen_ids.contains_key(block.id.as_str()) {
+        if seen_ids.contains(block.id.as_str()) {
             results.push(ValidationResult::Fail {
                 rule_id: RULE_NO_DUPLICATE_IDS,
                 rule: RULE_NO_DUPLICATE_IDS_DESC,
                 detail: format!("Duplicate ID: {}", block.id),
             });
         }
-        seen_ids.insert(block.id.as_str(), ());
+        seen_ids.insert(block.id.as_str());
     }
 
     // (b) Duplicate names.
-    let mut seen_names: HashMap<&str, ()> = HashMap::new();
+    let mut seen_names: HashSet<&str> = HashSet::new();
     for block in &blocks {
-        if seen_names.contains_key(block.name.as_str()) {
+        if seen_names.contains(block.name.as_str()) {
             results.push(ValidationResult::Fail {
                 rule_id: RULE_NO_DUPLICATE_NAMES,
                 rule: RULE_NO_DUPLICATE_NAMES_DESC,
                 detail: format!("Duplicate requirement name: {}", block.name),
             });
         }
-        seen_names.insert(block.name.as_str(), ());
+        seen_names.insert(block.name.as_str());
     }
 
     // (c) Heading structure — ID present, ID matches pattern, scenario present.
@@ -119,7 +125,7 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
         // byte-for-byte by feeding the constant straight to the engine.
         let ref_pattern =
             Regex::new(REQUIREMENT_ID_PATTERN).expect("REQUIREMENT_ID_PATTERN must compile");
-        let baseline_ids: HashSet<&str> = seen_ids.keys().copied().collect();
+        let baseline_ids: HashSet<&str> = seen_ids.iter().copied().collect();
         for m in ref_pattern.find_iter(design_text) {
             let ref_id = m.as_str();
             if !baseline_ids.contains(ref_id) {
@@ -143,7 +149,7 @@ mod tests {
     fn design_reference_regex_is_compilable() {
         // If this ever fails, the const changed and the expect() inside
         // `validate_baseline` would start panicking in the wild.
-        assert!(Regex::new(REQUIREMENT_ID_PATTERN).is_ok());
+        Regex::new(REQUIREMENT_ID_PATTERN).unwrap();
     }
 
     #[test]

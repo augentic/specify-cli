@@ -44,6 +44,11 @@ use crate::verify::pipeline::{BuildStep, run_step};
 /// lifecycle. The function stops at the first failing step (later steps
 /// depend on the earlier ones; re-running them against a known-broken
 /// tree only muddies the output).
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
+#[allow(clippy::too_many_lines)]
 pub fn run_pipeline(
     project_dir: &Path, codegen_swift_dir: &Path, codegen_kotlin_dir: &Path,
 ) -> Result<Vec<BuildStep>, VectisError> {

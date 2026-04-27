@@ -24,7 +24,7 @@ use crate::registry::is_kebab_case;
 /// Structured frontmatter (YAML) + free-form body (markdown). The
 /// body is preserved byte-for-byte so round-tripping is faithful;
 /// structured body interpretation is explicitly deferred.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InitiativeBrief {
     /// Parsed YAML frontmatter.
     pub frontmatter: InitiativeFrontmatter,
@@ -33,7 +33,7 @@ pub struct InitiativeBrief {
 }
 
 /// Parsed frontmatter of `.specify/initiative.md`.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitiativeFrontmatter {
     /// Kebab-case initiative name.
@@ -44,7 +44,7 @@ pub struct InitiativeFrontmatter {
 }
 
 /// One entry in [`InitiativeFrontmatter::inputs`].
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitiativeInput {
     /// Relative or absolute path. Stored verbatim; resolution happens
@@ -69,6 +69,7 @@ pub enum InputKind {
 
 impl InitiativeBrief {
     /// Absolute path to `.specify/initiative.md` for a project dir.
+    #[must_use]
     pub fn path(project_dir: &Path) -> PathBuf {
         project_dir.join(".specify").join("initiative.md")
     }
@@ -80,6 +81,10 @@ impl InitiativeBrief {
     /// - `Ok(Some(_))` — parsed and shape-validated.
     /// - `Err(_)` — malformed YAML, unknown keys, kebab-case / required-
     ///   field / empty-path violations.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn load(project_dir: &Path) -> Result<Option<Self>, Error> {
         let path = Self::path(project_dir);
         if !path.exists() {
@@ -92,6 +97,10 @@ impl InitiativeBrief {
 
     /// Parse an in-memory brief: YAML frontmatter between `---`
     /// delimiters followed by a verbatim markdown body.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn parse_str(content: &str) -> Result<Self, Error> {
         let after_open = content
             .strip_prefix("---\n")
@@ -101,10 +110,10 @@ impl InitiativeBrief {
             Error::Config("initiative.md: opening `---` has no closing `---` delimiter".to_string())
         })?;
 
-        let frontmatter: InitiativeFrontmatter = serde_yaml::from_str(frontmatter_text)
+        let frontmatter: InitiativeFrontmatter = serde_saphyr::from_str(frontmatter_text)
             .map_err(|err| Error::Config(format!("initiative.md: invalid frontmatter: {err}")))?;
 
-        let brief = InitiativeBrief {
+        let brief = Self {
             frontmatter,
             body: body.to_string(),
         };
@@ -114,6 +123,10 @@ impl InitiativeBrief {
 
     /// Invariants serde cannot express: kebab-case name, non-empty
     /// input paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn validate_shape(&self) -> Result<(), Error> {
         if self.frontmatter.name.is_empty() {
             return Err(Error::Config("initiative.md: name is empty".to_string()));
@@ -136,6 +149,8 @@ impl InitiativeBrief {
     /// Render the canonical `.specify/initiative.md` template for the
     /// given kebab-case initiative name. Byte-stable — the `init` CLI
     /// verb compares against a golden fixture.
+    #[must_use]
+    #[allow(clippy::literal_string_with_formatting_args)]
     pub fn template(name: &str) -> String {
         INITIATIVE_TEMPLATE.replace("{name}", name).replace("{title}", &title_case(name))
     }
@@ -163,8 +178,7 @@ inputs: []
 fn title_case(name: &str) -> String {
     let with_spaces: String = name.chars().map(|c| if c == '-' { ' ' } else { c }).collect();
     let mut chars = with_spaces.chars();
-    match chars.next() {
-        Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
-        None => String::new(),
-    }
+    chars
+        .next()
+        .map_or_else(String::new, |first| first.to_ascii_uppercase().to_string() + chars.as_str())
 }

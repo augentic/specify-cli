@@ -16,7 +16,7 @@ use regex::Regex;
 use specify_error::Error;
 
 /// A single task entry parsed from `tasks.md`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Task {
     /// The `##` heading text without the leading `## `, e.g. `"1. Setup"`.
     /// Empty string if the task appears before any `## ` heading.
@@ -32,17 +32,22 @@ pub struct Task {
 }
 
 /// A `<!-- skill: plugin:skill -->` directive attached to a task line.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillDirective {
+    /// Plugin name (e.g. `"omnia"`).
     pub plugin: String,
+    /// Skill name within the plugin (e.g. `"crate-writer"`).
     pub skill: String,
 }
 
 /// Aggregate task statistics plus the full task list in document order.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskProgress {
+    /// Total number of tasks parsed.
     pub total: usize,
+    /// Number of tasks marked complete.
     pub complete: usize,
+    /// All parsed tasks in document order.
     pub tasks: Vec<Task>,
 }
 
@@ -82,6 +87,7 @@ fn skill_directive_re() -> &'static Regex {
 /// Lenient: unparseable lines are ignored, as are `### …` and deeper
 /// headings. Tasks appearing before the first `## ` heading receive
 /// `group == ""`.
+#[must_use]
 pub fn parse_tasks(content: &str) -> TaskProgress {
     let mut current_group = String::new();
     let mut tasks: Vec<Task> = Vec::new();
@@ -163,6 +169,15 @@ fn extract_skill_directive(rest: &str) -> (String, Option<SkillDirective>) {
 /// targets the first unmarked occurrence; if the first occurrence is already
 /// complete the call is treated as a no-op even if later duplicates are
 /// unmarked.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
+///
+/// # Panics
+///
+/// Panics if the task regex matches a line as unchecked but the line
+/// does not contain `[ ]` — this is structurally unreachable.
 pub fn mark_complete(content: &str, task_number: &str) -> Result<String, Error> {
     let re = task_line_re();
     let mut first_match: Option<(usize, usize, bool)> = None;
