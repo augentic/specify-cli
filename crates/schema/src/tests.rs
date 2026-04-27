@@ -17,7 +17,7 @@ use crate::brief::Brief;
 use crate::cache::CacheMeta;
 use crate::initiative_brief::{InitiativeBrief, InputKind};
 use crate::pipeline::PipelineView;
-use crate::registry::{Registry, RegistryProject};
+use crate::registry::{ContractRoles, Registry, RegistryProject};
 use crate::schema::{Phase, Schema, SchemaSource};
 
 /// Absolute path to the repo root (the Cargo workspace root).
@@ -978,12 +978,14 @@ fn registry_round_trip_serialize() {
                 url: ".".into(),
                 schema: "omnia@v1".into(),
                 description: Some("Real-time traffic routing".into()),
+                contracts: None,
             },
             RegistryProject {
                 name: "ingest".into(),
                 url: "git@github.com:augentic/ingest.git".into(),
                 schema: "omnia@v1".into(),
                 description: Some("Data ingestion pipeline".into()),
+                contracts: None,
             },
         ],
     };
@@ -1086,6 +1088,7 @@ fn registry_description_round_trips_through_serde() {
         url: ".".into(),
         schema: "omnia@v1".into(),
         description: Some("Real-time traffic routing".into()),
+        contracts: None,
     };
     let yaml = serde_yaml::to_string(&original).expect("serialize");
     let round_tripped: RegistryProject = serde_yaml::from_str(&yaml).expect("re-parse");
@@ -1108,6 +1111,7 @@ fn registry_with_one_url(url: &str) -> Registry {
             url: url.into(),
             schema: "omnia@v1".into(),
             description: None,
+            contracts: None,
         }],
     }
 }
@@ -1132,6 +1136,7 @@ fn registry_project_url_materialises_as_symlink_classification() {
             url: url.into(),
             schema: "omnia@v1".into(),
             description: None,
+            contracts: None,
         };
         assert_eq!(p.url_materialises_as_symlink(), symlink, "url={url:?}");
     }
@@ -1216,6 +1221,277 @@ fn registry_rejects_url_with_leading_whitespace() {
         .expect_err("leading space must be rejected");
     match err {
         Error::Config(msg) => assert!(msg.contains("whitespace"), "msg: {msg}"),
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+// ---------- Registry contract roles (RFC-8 Layer 2) ----------
+
+const REGISTRY_WITH_CONTRACT_ROLES_YAML: &str = "\
+version: 1
+projects:
+  - name: traffic
+    url: .
+    schema: omnia@v1
+    description: Real-time traffic routing service
+    contracts:
+      produces:
+        - http/traffic-api.yaml
+      consumes:
+        - http/ingest-api.yaml
+  - name: ingest
+    url: git@github.com:augentic/ingest.git
+    schema: omnia@v1
+    description: Data ingestion pipeline
+    contracts:
+      produces:
+        - http/ingest-api.yaml
+      consumes:
+        - schemas/order-placed.yaml
+";
+
+#[test]
+fn registry_with_contract_roles_parses_and_validates() {
+    let tmp = scaffold_registry(REGISTRY_WITH_CONTRACT_ROLES_YAML);
+    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
+    assert_eq!(registry.projects.len(), 2);
+
+    let traffic = &registry.projects[0];
+    let roles = traffic.contracts.as_ref().expect("traffic has contracts");
+    assert_eq!(roles.produces, vec!["http/traffic-api.yaml"]);
+    assert_eq!(roles.consumes, vec!["http/ingest-api.yaml"]);
+    assert!(roles.imports.is_empty());
+
+    let ingest = &registry.projects[1];
+    let roles = ingest.contracts.as_ref().expect("ingest has contracts");
+    assert_eq!(roles.produces, vec!["http/ingest-api.yaml"]);
+    assert_eq!(roles.consumes, vec!["schemas/order-placed.yaml"]);
+    assert!(roles.imports.is_empty());
+}
+
+#[test]
+fn registry_without_contract_roles_still_parses() {
+    let tmp = scaffold_registry(MULTI_PROJECT_REGISTRY_YAML);
+    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
+    for project in &registry.projects {
+        assert!(project.contracts.is_none());
+    }
+}
+
+#[test]
+fn registry_contract_roles_round_trip_omits_empty_fields() {
+    let original = Registry {
+        version: 1,
+        projects: vec![RegistryProject {
+            name: "traffic".into(),
+            url: ".".into(),
+            schema: "omnia@v1".into(),
+            description: None,
+            contracts: Some(ContractRoles {
+                produces: vec!["http/traffic-api.yaml".into()],
+                consumes: vec![],
+                imports: vec![],
+            }),
+        }],
+    };
+    let yaml = serde_yaml::to_string(&original).expect("serialize");
+    assert!(!yaml.contains("consumes"), "empty consumes should be omitted: {yaml}");
+    assert!(!yaml.contains("imports"), "empty imports should be omitted: {yaml}");
+    let round_tripped: Registry = serde_yaml::from_str(&yaml).expect("re-parse");
+    assert_eq!(round_tripped, original);
+}
+
+#[test]
+fn registry_contract_roles_none_omits_contracts_key() {
+    let original = Registry {
+        version: 1,
+        projects: vec![RegistryProject {
+            name: "traffic".into(),
+            url: ".".into(),
+            schema: "omnia@v1".into(),
+            description: None,
+            contracts: None,
+        }],
+    };
+    let yaml = serde_yaml::to_string(&original).expect("serialize");
+    assert!(!yaml.contains("contracts"), "None contracts should be omitted: {yaml}");
+}
+
+#[test]
+fn registry_rejects_single_producer_violation() {
+    let yaml = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    schema: omnia@v1
+    description: Alpha service
+    contracts:
+      produces:
+        - http/shared-api.yaml
+  - name: beta
+    url: ../beta
+    schema: omnia@v1
+    description: Beta service
+    contracts:
+      produces:
+        - http/shared-api.yaml
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("single producer violation");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("http/shared-api.yaml"), "msg: {msg}");
+            assert!(msg.contains("produced by both"), "msg: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_produce_import_mutual_exclusion_violation() {
+    let yaml = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    schema: omnia@v1
+    description: Alpha service
+    contracts:
+      produces:
+        - http/shared-api.yaml
+  - name: beta
+    url: ../beta
+    schema: omnia@v1
+    description: Beta service
+    contracts:
+      imports:
+        - http/shared-api.yaml
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("produce/import violation");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("http/shared-api.yaml"), "msg: {msg}");
+            assert!(msg.contains("produces"), "msg: {msg}");
+            assert!(msg.contains("imports"), "msg: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_absolute_path_in_contract_role() {
+    let yaml = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    schema: omnia@v1
+    contracts:
+      produces:
+        - /absolute/path.yaml
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("absolute path rejected");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("/absolute/path.yaml"), "msg: {msg}");
+            assert!(msg.contains("relative"), "msg: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_dotdot_in_contract_path() {
+    let yaml = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    schema: omnia@v1
+    contracts:
+      consumes:
+        - ../escape/path.yaml
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err(".. path rejected");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("../escape/path.yaml"), "msg: {msg}");
+            assert!(msg.contains("relative"), "msg: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_rejects_self_consistency_violation() {
+    let yaml = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    schema: omnia@v1
+    contracts:
+      produces:
+        - http/my-api.yaml
+      consumes:
+        - http/my-api.yaml
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("self-consistency violation");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("alpha"), "msg: {msg}");
+            assert!(msg.contains("http/my-api.yaml"), "msg: {msg}");
+            assert!(msg.contains("produces"), "msg: {msg}");
+            assert!(msg.contains("consumes"), "msg: {msg}");
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_allows_imports_and_consumes_overlap() {
+    let yaml = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    schema: omnia@v1
+    contracts:
+      imports:
+        - http/external-api.yaml
+      consumes:
+        - http/external-api.yaml
+";
+    let tmp = scaffold_registry(yaml);
+    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
+    let roles = registry.projects[0].contracts.as_ref().unwrap();
+    assert_eq!(roles.imports, vec!["http/external-api.yaml"]);
+    assert_eq!(roles.consumes, vec!["http/external-api.yaml"]);
+}
+
+#[test]
+fn registry_rejects_unknown_contract_roles_key() {
+    let yaml = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    schema: omnia@v1
+    contracts:
+      produces:
+        - http/api.yaml
+      bogus:
+        - something
+";
+    let tmp = scaffold_registry(yaml);
+    let err = Registry::load(tmp.path()).expect_err("unknown contract key");
+    match err {
+        Error::Config(msg) => assert!(msg.contains("bogus"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }

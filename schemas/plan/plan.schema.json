@@ -45,6 +45,10 @@
           "type": "string",
           "description": "Target registry project name (RFC-3b). Required for multi-project registries; optional for single-project."
         },
+        "schema": {
+          "type": "string",
+          "description": "Schema identifier for project-less entries (e.g. `contracts@v1`). Required when `project` is absent; optional override when `project` is present."
+        },
         "status": {
           "type": "string",
           "enum": [
@@ -67,6 +71,15 @@
           "type": "array",
           "description": "Keys into the plan's top-level `sources` map indicating which source repositories to analyze. Absent or `[]` → greenfield.",
           "items": { "$ref": "#/$defs/kebabName" },
+          "uniqueItems": true
+        },
+        "context": {
+          "type": "array",
+          "description": "Baseline paths relevant to this change, relative to `.specify/`. Briefs use these as a focus hint when scanning baseline directories. Populated by `/spec:plan` or manually via `specify plan create --context`.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "uniqueItems": true
         },
         "description": {
