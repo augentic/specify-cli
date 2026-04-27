@@ -11,7 +11,7 @@ pub use specify_change::{
     LifecycleStatus, Outcome, Overlap, PhaseOutcome, Plan, PlanChange, PlanChangePatch,
     PlanLockAcquired, PlanLockReleased, PlanLockStamp, PlanLockState, PlanStatus,
     PlanValidationLevel, PlanValidationResult, SpecType, TouchedSpec, actions as change_actions,
-    format_rfc3339,
+    format_rfc3339, is_valid_kebab_name,
 };
 pub use specify_drift::{DriftEntry, DriftStatus, baseline_inventory};
 pub use specify_error::{Error, ValidationResultSummary};

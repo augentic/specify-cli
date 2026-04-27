@@ -97,6 +97,10 @@ pub fn validate_name(name: &str) -> Result<(), Error> {
     Ok(())
 }
 
+pub fn is_valid_kebab_name(s: &str) -> bool {
+    validate_name(s).is_ok()
+}
+
 /// Create `<changes_dir>/<name>/` and seed an initial `.metadata.yaml`.
 ///
 /// - `changes_dir` is expected to be `<project>/.specify/changes/`.

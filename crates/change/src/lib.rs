@@ -24,7 +24,7 @@ pub mod journal;
 pub mod lock;
 pub mod plan;
 
-pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339};
+pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339, is_valid_kebab_name};
 pub use journal::{EntryKind, Journal, JournalEntry};
 pub use lock::{PlanLockAcquired, PlanLockGuard, PlanLockReleased, PlanLockStamp, PlanLockState};
 pub use plan::*;

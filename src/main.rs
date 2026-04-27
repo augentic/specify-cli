@@ -37,7 +37,8 @@ use specify::{
     PlanLockStamp, PlanLockState, PlanStatus, PlanValidationLevel, PlanValidationResult,
     ProjectConfig, Registry, Schema, SchemaSource, SpecType, Task, TouchedSpec, ValidationReport,
     ValidationResult, VersionMode, WorkspaceSlotKind, WorkspaceSlotStatus, change_actions,
-    conflict_check, format_rfc3339, init, mark_complete, merge_change, parse_tasks, preview_change,
+    conflict_check, format_rfc3339, init, is_valid_kebab_name, mark_complete, merge_change,
+    parse_tasks, preview_change,
     serialize_report, sync_registry_workspace, validate_change, workspace_status,
 };
 
@@ -2703,7 +2704,7 @@ fn run_initiative_brief_init(format: OutputFormat, name: String) -> i32 {
         Err(err) => return emit_error(format, &err),
     };
 
-    if !is_kebab_case_name(&name) {
+    if !is_valid_kebab_name(&name) {
         let err = Error::Config(format!(
             "initiative.md: name `{name}` must be kebab-case \
              (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
@@ -2817,25 +2818,6 @@ fn print_initiative_brief_text(brief: &InitiativeBrief, brief_path: &Path) {
     }
     println!();
     print!("{}", brief.body);
-}
-
-/// Local kebab-case predicate for the `initiative brief init` guard.
-/// Mirrors `specify_change::actions::validate_name` and the private
-/// helpers in `registry.rs`/`initiative_brief.rs` — duplicated here
-/// because the `main` binary is downstream of those crates and a
-/// dedicated exported helper would widen their public surface just
-/// for this one call site.
-fn is_kebab_case_name(s: &str) -> bool {
-    if s.is_empty() {
-        return false;
-    }
-    if s.starts_with('-') || s.ends_with('-') {
-        return false;
-    }
-    if s.contains("--") {
-        return false;
-    }
-    s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// Plain, two-space-indented registry summary for `--format text`. Not
