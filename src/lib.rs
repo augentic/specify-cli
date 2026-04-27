@@ -14,7 +14,7 @@ pub use specify_change::{
     actions as change_actions, format_rfc3339, is_valid_kebab_name,
 };
 pub use specify_drift::{DriftEntry, DriftStatus, baseline_inventory};
-pub use specify_error::{Error, ValidationResultSummary};
+pub use specify_error::{Error, ValidationResultSummary, ValidationStatus};
 pub use specify_federation::{FederationConfig, PeerRepo, parse_federation_config};
 pub use specify_merge::{
     BaselineConflict, ContractAction, ContractPreviewEntry, MergeEntry, MergeOperation,
@@ -41,6 +41,6 @@ mod init;
 mod workspace;
 
 pub use workspace::{
-    WorkspacePushResult, WorkspaceSlotKind, WorkspaceSlotStatus, extract_github_slug,
+    PushOutcome, WorkspacePushResult, WorkspaceSlotKind, WorkspaceSlotStatus, extract_github_slug,
     run_workspace_push_impl, sync_registry_workspace, workspace_status,
 };

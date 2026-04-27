@@ -7,6 +7,7 @@ use specify::Error;
 use crate::cli::OutputFormat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use]
 pub enum CliResult {
     Success,
     GenericFailure,
@@ -127,6 +128,9 @@ pub fn emit_json_error(err: &Error, code: CliResult) {
         Error::InvalidName(_) => "invalid-name",
         Error::Io(_) => "io",
         Error::Yaml(_) => "yaml",
+        Error::YamlSer(_) => "yaml-ser",
+        // `Error` is #[non_exhaustive]; keep this arm but update when
+        // adding new variants to `specify_error::Error`.
         _ => "unknown",
     };
     emit_response(ErrorResponse {

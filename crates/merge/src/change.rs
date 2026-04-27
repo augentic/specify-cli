@@ -43,6 +43,7 @@ pub struct MergeEntry {
 
 /// Complete preview of a change merge: spec merges + contract changes.
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct PreviewResult {
     /// Spec merge entries (existing behavior).
     pub specs: Vec<MergeEntry>,

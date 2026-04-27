@@ -450,8 +450,11 @@ fn resolve_archived_metadata(
         });
     }
 
-    candidates.sort_by(|a, b| b.0.cmp(&a.0));
-    Ok(candidates.into_iter().next().unwrap().1)
+    let (_, metadata) = candidates
+        .into_iter()
+        .max_by(|a, b| a.0.cmp(&b.0))
+        .expect("candidates is non-empty (checked above)");
+    Ok(metadata)
 }
 
 fn run_change_journal_append(

@@ -20,6 +20,7 @@ use specify_spec::{RequirementBlock, parse_baseline};
 /// RFC-2) without another serde churn later.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[must_use]
 pub struct DriftEntry {
     /// Stable requirement identifier (e.g. `REQ-001`).
     pub requirement_id: String,

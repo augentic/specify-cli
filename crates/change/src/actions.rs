@@ -44,6 +44,7 @@ pub enum CreateIfExists {
 /// Outcome of [`create`], surfacing whether a new directory was written
 /// or an existing one was reused.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct CreateOutcome {
     /// Path to the change directory.
     pub change_dir: PathBuf,

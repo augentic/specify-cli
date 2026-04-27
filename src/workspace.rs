@@ -78,6 +78,7 @@ pub fn sync_registry_workspace(project_dir: &Path) -> Result<(), Error> {
 
 /// One row for `specify workspace status` text/JSON output.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct WorkspaceSlotStatus {
     /// Registry project name (`.specify/workspace/<name>/`).
     pub name: String,
@@ -443,12 +444,39 @@ fn run_git(cwd: &Path, args: &[&str], label: &str) -> Result<(), Error> {
 // workspace push (RFC-3b Change 8)
 // ---------------------------------------------------------------------------
 
+/// Classification of a single project push outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PushOutcome {
+    /// Branch pushed to remote.
+    Pushed,
+    /// Remote repo was created, then pushed.
+    Created,
+    /// Push failed (see `WorkspacePushResult.error`).
+    Failed,
+    /// No changes to push.
+    UpToDate,
+    /// Local-only project (no remote configured).
+    LocalOnly,
+}
+
+impl std::fmt::Display for PushOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pushed => f.write_str("pushed"),
+            Self::Created => f.write_str("created"),
+            Self::Failed => f.write_str("failed"),
+            Self::UpToDate => f.write_str("up-to-date"),
+            Self::LocalOnly => f.write_str("local-only"),
+        }
+    }
+}
+
 /// Result of a per-project push operation.
 pub struct WorkspacePushResult {
     /// Registry project name.
     pub name: String,
-    /// Outcome label (`pushed`, `created`, `failed`, etc.).
-    pub status: String,
+    /// Outcome of this push.
+    pub status: PushOutcome,
     /// Git branch pushed to.
     pub branch: Option<String>,
     /// `GitHub` PR number when one was created or found.
@@ -600,7 +628,7 @@ fn push_single_project(
     if !project_path.join(".git").exists() {
         return WorkspacePushResult {
             name: rp.name.clone(),
-            status: "failed".to_string(),
+            status: PushOutcome::Failed,
             branch: None,
             pr_number: None,
             error: Some(format!("no .git/ found at {}", project_path.display())),
@@ -613,7 +641,7 @@ fn push_single_project(
             None => {
                 return WorkspacePushResult {
                     name: rp.name.clone(),
-                    status: "local-only".to_string(),
+                    status: PushOutcome::LocalOnly,
                     branch: None,
                     pr_number: None,
                     error: None,
@@ -628,7 +656,7 @@ fn push_single_project(
     if !has_commits {
         return WorkspacePushResult {
             name: rp.name.clone(),
-            status: "up-to-date".to_string(),
+            status: PushOutcome::UpToDate,
             branch: None,
             pr_number: None,
             error: None,
@@ -638,7 +666,7 @@ fn push_single_project(
     if dry_run {
         return WorkspacePushResult {
             name: rp.name.clone(),
-            status: "pushed".to_string(),
+            status: PushOutcome::Pushed,
             branch: Some(branch_name.to_string()),
             pr_number: None,
             error: None,
@@ -652,7 +680,7 @@ fn push_single_project(
     ) {
         return WorkspacePushResult {
             name: rp.name.clone(),
-            status: "failed".to_string(),
+            status: PushOutcome::Failed,
             branch: None,
             pr_number: None,
             error: Some(e.to_string()),
@@ -668,7 +696,7 @@ fn push_single_project(
             Err(e) => {
                 return WorkspacePushResult {
                     name: rp.name.clone(),
-                    status: "failed".to_string(),
+                    status: PushOutcome::Failed,
                     branch: Some(branch_name.to_string()),
                     pr_number: None,
                     error: Some(e.to_string()),
@@ -680,7 +708,7 @@ fn push_single_project(
     if let Err(e) = push_branch(&project_path, branch_name) {
         return WorkspacePushResult {
             name: rp.name.clone(),
-            status: "failed".to_string(),
+            status: PushOutcome::Failed,
             branch: Some(branch_name.to_string()),
             pr_number: None,
             error: Some(e.to_string()),
@@ -691,11 +719,11 @@ fn push_single_project(
         .as_ref()
         .and_then(|_| ensure_pull_request(&project_path, branch_name, initiative_name));
 
-    let status = if is_created { "created" } else { "pushed" };
+    let status = if is_created { PushOutcome::Created } else { PushOutcome::Pushed };
 
     WorkspacePushResult {
         name: rp.name.clone(),
-        status: status.to_string(),
+        status,
         branch: Some(branch_name.to_string()),
         pr_number,
         error: None,

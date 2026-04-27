@@ -3,19 +3,15 @@
 use std::path::PathBuf;
 
 use serde::Serialize;
-use specify::{InitOptions, InitResult, VersionMode, init};
+use specify::{Error, InitOptions, InitResult, VersionMode, init};
 
 use crate::cli::OutputFormat;
-use crate::output::{CliResult, absolute_string, emit_error, emit_response};
+use crate::output::{CliResult, absolute_string, emit_response};
 
 pub fn run_init(
     format: OutputFormat, schema: String, schema_dir: PathBuf, name: Option<String>,
     domain: Option<String>,
-) -> CliResult {
-    // `upgrade` toggles future behaviour (Preserve vs WriteCurrent in
-    // Change K), but for Change J both fresh and `--upgrade` write the
-    // running binary's version. Accept the flag today so skills can
-    // migrate to it without a CLI bump.
+) -> Result<CliResult, Error> {
     let project_dir = PathBuf::from(".");
 
     let opts = InitOptions {
@@ -27,10 +23,8 @@ pub fn run_init(
         version_mode: VersionMode::WriteCurrent,
     };
 
-    match init(opts) {
-        Ok(result) => emit_init_result(format, &result),
-        Err(err) => emit_error(format, &err),
-    }
+    let result = init(opts)?;
+    Ok(emit_init_result(format, &result))
 }
 
 #[derive(Serialize)]

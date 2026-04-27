@@ -3,8 +3,8 @@
 use serde::Serialize;
 use serde_json::Value;
 use specify::{
-    Error, Plan, Registry, WorkspaceSlotKind, WorkspaceSlotStatus, sync_registry_workspace,
-    workspace_status,
+    Error, Plan, PushOutcome, Registry, WorkspaceSlotKind, WorkspaceSlotStatus,
+    sync_registry_workspace, workspace_status,
 };
 
 use super::plan::require_plan_file;
@@ -185,7 +185,7 @@ pub fn run_workspace_push(
                 .iter()
                 .map(|r| WorkspacePushItem {
                     name: r.name.clone(),
-                    status: r.status.clone(),
+                    status: r.status.to_string(),
                     branch: r.branch.clone(),
                     pr: r.pr_number,
                 })
@@ -203,19 +203,20 @@ pub fn run_workspace_push(
             }
             println!();
             for r in &results {
-                let status_label = if dry_run && (r.status == "pushed" || r.status == "created") {
-                    format!("would-{}", r.status)
-                } else {
-                    r.status.clone()
-                };
+                let status_label =
+                    if dry_run && matches!(r.status, PushOutcome::Pushed | PushOutcome::Created) {
+                        format!("would-{}", r.status)
+                    } else {
+                        r.status.to_string()
+                    };
                 let branch_part = r.branch.as_deref().unwrap_or("");
                 let pr_part = r.pr_number.map(|n| format!("PR #{n}")).unwrap_or_default();
                 println!("  {:<20} {:<14} {} {}", r.name, status_label, branch_part, pr_part);
             }
-            let created = results.iter().filter(|r| r.status == "created").count();
-            let pushed = results.iter().filter(|r| r.status == "pushed").count();
-            let up_to_date = results.iter().filter(|r| r.status == "up-to-date").count();
-            let failed = results.iter().filter(|r| r.status == "failed").count();
+            let created = results.iter().filter(|r| r.status == PushOutcome::Created).count();
+            let pushed = results.iter().filter(|r| r.status == PushOutcome::Pushed).count();
+            let up_to_date = results.iter().filter(|r| r.status == PushOutcome::UpToDate).count();
+            let failed = results.iter().filter(|r| r.status == PushOutcome::Failed).count();
             println!();
             println!(
                 "{created} created, {pushed} pushed, {up_to_date} up-to-date. \
@@ -223,6 +224,6 @@ pub fn run_workspace_push(
             );
         }
     }
-    let any_failed = results.iter().any(|r| r.status == "failed");
+    let any_failed = results.iter().any(|r| r.status == PushOutcome::Failed);
     Ok(if any_failed { CliResult::GenericFailure } else { CliResult::Success })
 }

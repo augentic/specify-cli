@@ -15,6 +15,7 @@ use specify_spec::{
 /// order `RENAMED → REMOVED → MODIFIED → ADDED` — the same order used
 /// when mutating the underlying block list.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct MergeResult {
     /// Merged baseline text.
     pub output: String,

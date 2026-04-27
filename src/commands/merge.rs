@@ -142,6 +142,7 @@ pub fn operation_label(op: &MergeOperation) -> String {
         MergeOperation::CreatedBaseline { requirement_count } => {
             format!("CREATING baseline with {requirement_count} requirement(s)")
         }
+        // `MergeOperation` is #[non_exhaustive]; update when adding variants.
         _ => "UNKNOWN operation".to_string(),
     }
 }
@@ -188,6 +189,7 @@ pub fn merge_op_to_json(op: &MergeOperation) -> Value {
         MergeOperation::CreatedBaseline { requirement_count } => MergeOpJson::CreatedBaseline {
             requirement_count: *requirement_count,
         },
+        // `MergeOperation` is #[non_exhaustive]; update when adding variants.
         _ => {
             return serde_json::to_value(serde_json::json!({"kind": "unknown"}))
                 .expect("fallback JSON serialises");

@@ -34,7 +34,9 @@ pub mod timestamp;
 pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339, is_valid_kebab_name};
 pub use journal::{EntryKind, Journal, JournalEntry};
 pub use lock::{PlanLockAcquired, PlanLockGuard, PlanLockReleased, PlanLockStamp, PlanLockState};
-pub use plan::*;
+pub use plan::{
+    Plan, PlanChange, PlanChangePatch, PlanStatus, PlanValidationLevel, PlanValidationResult,
+};
 pub use timestamp::Rfc3339Stamp;
 
 /// On-disk representation of `<change_dir>/.metadata.yaml`.

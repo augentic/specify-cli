@@ -40,6 +40,7 @@ pub use specify_schema::ValidationResult;
 /// relative to `change_dir` when the brief's `generates` is a glob
 /// matching multiple files (e.g. `"specs/login/spec.md"`).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct ValidationReport {
     /// Per-brief validation results, keyed by brief id or artifact path.
     pub brief_results: BTreeMap<String, Vec<ValidationResult>>,

@@ -26,7 +26,7 @@ pub fn run(cli: Cli) -> CliResult {
             schema_dir,
             name,
             domain,
-        } => init::run_init(cli.format, schema, schema_dir, name, domain),
+        } => run_bare(cli.format, || init::run_init(cli.format, schema, schema_dir, name, domain)),
         Commands::Validate { change_dir } => {
             run_with_project(cli.format, |ctx| validate::run_validate(ctx, change_dir))
         }
