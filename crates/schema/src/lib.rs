@@ -41,6 +41,7 @@ pub use schema::{Phase, Pipeline, PipelineEntry, ResolvedSchema, Schema, SchemaS
 /// dependency cycle because `specify-validate` already depends on
 /// `specify-schema` for `PipelineView`.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum ValidationResult {
     Pass { rule_id: &'static str, rule: &'static str },
     Fail { rule_id: &'static str, rule: &'static str, detail: String },

@@ -220,7 +220,7 @@ const TASKS_RULES: &[Rule] = &[
 // ---------------------------------------------------------------------------
 
 fn composition_valid_yaml(ctx: &BriefContext<'_>) -> RuleOutcome {
-    match serde_yaml::from_str::<serde_yaml::Value>(ctx.content) {
+    match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(ctx.content) {
         Ok(_) => RuleOutcome::Pass,
         Err(err) => RuleOutcome::Fail {
             detail: format!("composition.yaml is not valid YAML: {err}"),
@@ -229,7 +229,7 @@ fn composition_valid_yaml(ctx: &BriefContext<'_>) -> RuleOutcome {
 }
 
 fn composition_has_version(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let doc: serde_yaml::Value = match serde_yaml::from_str(ctx.content) {
+    let doc: serde_yaml_ng::Value = match serde_yaml_ng::from_str(ctx.content) {
         Ok(v) => v,
         Err(_) => {
             return RuleOutcome::Fail {
@@ -238,7 +238,7 @@ fn composition_has_version(ctx: &BriefContext<'_>) -> RuleOutcome {
         }
     };
     match doc.get("version") {
-        Some(serde_yaml::Value::Number(n)) if n.as_u64() == Some(1) => RuleOutcome::Pass,
+        Some(serde_yaml_ng::Value::Number(n)) if n.as_u64() == Some(1) => RuleOutcome::Pass,
         Some(_) => RuleOutcome::Fail {
             detail: "`version` must be 1".to_string(),
         },
@@ -249,7 +249,7 @@ fn composition_has_version(ctx: &BriefContext<'_>) -> RuleOutcome {
 }
 
 fn composition_screens_or_delta(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let doc: serde_yaml::Value = match serde_yaml::from_str(ctx.content) {
+    let doc: serde_yaml_ng::Value = match serde_yaml_ng::from_str(ctx.content) {
         Ok(v) => v,
         Err(_) => {
             return RuleOutcome::Fail {
@@ -273,7 +273,7 @@ fn composition_screens_or_delta(ctx: &BriefContext<'_>) -> RuleOutcome {
 }
 
 fn composition_screen_slugs_kebab(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let doc: serde_yaml::Value = match serde_yaml::from_str(ctx.content) {
+    let doc: serde_yaml_ng::Value = match serde_yaml_ng::from_str(ctx.content) {
         Ok(v) => v,
         Err(_) => {
             return RuleOutcome::Fail {
@@ -283,31 +283,30 @@ fn composition_screen_slugs_kebab(ctx: &BriefContext<'_>) -> RuleOutcome {
     };
     let slug_re = regex::Regex::new(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$").unwrap();
 
-    let screens_map = if let Some(screens) = doc.get("screens").and_then(|s| s.as_mapping()) {
-        screens
-    } else if let Some(delta) = doc.get("delta").and_then(|d| d.as_mapping()) {
-        let mut bad: Vec<String> = Vec::new();
-        for section_key in &["added", "modified", "removed"] {
-            if let Some(section) = delta
-                .get(serde_yaml::Value::String(section_key.to_string()))
-                .and_then(|s| s.as_mapping())
-            {
-                for key in section.keys() {
-                    if let Some(slug) = key.as_str()
-                        && !slug_re.is_match(slug)
-                    {
-                        bad.push(slug.to_string());
+    let Some(screens_map) = doc.get("screens").and_then(|s| s.as_mapping()) else {
+        if let Some(delta) = doc.get("delta").and_then(|d| d.as_mapping()) {
+            let mut bad: Vec<String> = Vec::new();
+            for section_key in &["added", "modified", "removed"] {
+                if let Some(section) = delta
+                    .get(serde_yaml_ng::Value::String(section_key.to_string()))
+                    .and_then(|s| s.as_mapping())
+                {
+                    for key in section.keys() {
+                        if let Some(slug) = key.as_str()
+                            && !slug_re.is_match(slug)
+                        {
+                            bad.push(slug.to_string());
+                        }
                     }
                 }
             }
+            if bad.is_empty() {
+                return RuleOutcome::Pass;
+            }
+            return RuleOutcome::Fail {
+                detail: format!("non-kebab-case screen slugs in delta: {}", bad.join(", ")),
+            };
         }
-        if bad.is_empty() {
-            return RuleOutcome::Pass;
-        }
-        return RuleOutcome::Fail {
-            detail: format!("non-kebab-case screen slugs in delta: {}", bad.join(", ")),
-        };
-    } else {
         return RuleOutcome::Pass;
     };
 
@@ -370,7 +369,7 @@ fn contracts_schemas_dir_has_files(ctx: &BriefContext<'_>) -> RuleOutcome {
     let has_yaml = std::fs::read_dir(&schemas_dir)
         .ok()
         .map(|entries| {
-            entries.filter_map(|e| e.ok()).any(|e| {
+            entries.filter_map(std::result::Result::ok).any(|e| {
                 matches!(e.path().extension().and_then(|x| x.to_str()), Some("yaml" | "yml"))
             })
         })
@@ -398,7 +397,7 @@ fn contracts_refs_resolve(ctx: &BriefContext<'_>) -> RuleOutcome {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
         };
-        for entry in entries.filter_map(|e| e.ok()) {
+        for entry in entries.filter_map(std::result::Result::ok) {
             let path = entry.path();
             if !matches!(path.extension().and_then(|x| x.to_str()), Some("yaml" | "yml")) {
                 continue;
@@ -441,7 +440,7 @@ fn contracts_schema_metadata(ctx: &BriefContext<'_>) -> RuleOutcome {
     let Ok(entries) = std::fs::read_dir(&schemas_dir) else {
         return RuleOutcome::Pass;
     };
-    for entry in entries.filter_map(|e| e.ok()) {
+    for entry in entries.filter_map(std::result::Result::ok) {
         let path = entry.path();
         if !matches!(path.extension().and_then(|x| x.to_str()), Some("yaml" | "yml")) {
             continue;
@@ -450,16 +449,16 @@ fn contracts_schema_metadata(ctx: &BriefContext<'_>) -> RuleOutcome {
             continue;
         };
         let filename = path.file_name().unwrap_or_default().to_string_lossy();
-        let Ok(doc) = serde_yaml::from_str::<serde_yaml::Value>(&content) else {
+        let Ok(doc) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&content) else {
             continue;
         };
         if doc.get("$id").is_none() {
             failures.push(format!("{filename}: missing $id"));
         }
-        if doc.get("title").and_then(|v| v.as_str()).is_none_or(|s| s.is_empty()) {
+        if doc.get("title").and_then(|v| v.as_str()).is_none_or(str::is_empty) {
             failures.push(format!("{filename}: missing or empty title"));
         }
-        if doc.get("description").and_then(|v| v.as_str()).is_none_or(|s| s.is_empty()) {
+        if doc.get("description").and_then(|v| v.as_str()).is_none_or(str::is_empty) {
             failures.push(format!("{filename}: missing or empty description"));
         }
     }
@@ -499,6 +498,7 @@ const CONTRACTS_RULES: &[Rule] = &[
 // ---------------------------------------------------------------------------
 
 /// Return the registered rules for `brief_id`. Unknown ids return `&[]`.
+#[must_use] 
 pub fn rules_for(brief_id: &str) -> &'static [Rule] {
     match brief_id {
         "proposal" => PROPOSAL_RULES,
@@ -572,47 +572,46 @@ fn cross_design_references_valid(ctx: &CrossContext<'_>) -> RuleOutcome {
 
 fn cross_composition_maps_to_consistent(ctx: &CrossContext<'_>) -> RuleOutcome {
     let comp_path = ctx.change_dir.join("composition.yaml");
-    let comp_text = match std::fs::read_to_string(&comp_path) {
-        Ok(t) => t,
-        Err(_) => return RuleOutcome::Pass,
+    let Ok(comp_text) = std::fs::read_to_string(&comp_path) else {
+        return RuleOutcome::Pass;
     };
 
-    let doc: serde_yaml::Value = match serde_yaml::from_str(&comp_text) {
+    let doc: serde_yaml_ng::Value = match serde_yaml_ng::from_str(&comp_text) {
         Ok(v) => v,
         Err(_) => return RuleOutcome::Pass,
     };
 
-    let screens = if let Some(s) = doc.get("screens").and_then(|s| s.as_mapping()) {
-        s
-    } else if let Some(delta) = doc.get("delta").and_then(|d| d.as_mapping()) {
-        let mut maps_to_issues: Vec<String> = Vec::new();
-        for section_key in &["added", "modified"] {
-            if let Some(section) = delta
-                .get(serde_yaml::Value::String(section_key.to_string()))
-                .and_then(|s| s.as_mapping())
-            {
-                for (slug_val, screen) in section {
-                    let slug = slug_val.as_str().unwrap_or("?");
-                    if let Some(maps_to) = screen.get("maps_to") {
-                        if let Some(val) = maps_to.as_str() {
-                            if val.is_empty() {
-                                maps_to_issues.push(format!("screen `{slug}` has empty `maps_to`"));
+    let Some(screens) = doc.get("screens").and_then(|s| s.as_mapping()) else {
+        if let Some(delta) = doc.get("delta").and_then(|d| d.as_mapping()) {
+            let mut maps_to_issues: Vec<String> = Vec::new();
+            for section_key in &["added", "modified"] {
+                if let Some(section) = delta
+                    .get(serde_yaml_ng::Value::String(section_key.to_string()))
+                    .and_then(|s| s.as_mapping())
+                {
+                    for (slug_val, screen) in section {
+                        let slug = slug_val.as_str().unwrap_or("?");
+                        if let Some(maps_to) = screen.get("maps_to") {
+                            if let Some(val) = maps_to.as_str() {
+                                if val.is_empty() {
+                                    maps_to_issues
+                                        .push(format!("screen `{slug}` has empty `maps_to`"));
+                                }
+                            } else {
+                                maps_to_issues
+                                    .push(format!("screen `{slug}` has non-string `maps_to`"));
                             }
-                        } else {
-                            maps_to_issues
-                                .push(format!("screen `{slug}` has non-string `maps_to`"));
                         }
                     }
                 }
             }
+            if maps_to_issues.is_empty() {
+                return RuleOutcome::Pass;
+            }
+            return RuleOutcome::Fail {
+                detail: maps_to_issues.join("; "),
+            };
         }
-        if maps_to_issues.is_empty() {
-            return RuleOutcome::Pass;
-        }
-        return RuleOutcome::Fail {
-            detail: maps_to_issues.join("; "),
-        };
-    } else {
         return RuleOutcome::Pass;
     };
 
@@ -660,6 +659,7 @@ const CROSS_RULES: &[CrossRule] = &[
     },
 ];
 
+#[must_use] 
 pub fn cross_rules() -> &'static [CrossRule] {
     CROSS_RULES
 }

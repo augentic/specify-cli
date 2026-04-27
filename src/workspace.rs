@@ -15,6 +15,10 @@ use crate::init::ensure_specify_gitignore_entries;
 /// symlinks for `.` / relative URLs, shallow `git clone` or `git fetch`
 /// for remotes. Ensures `.gitignore` lists `.specify/workspace/` (and
 /// `.specify/.cache/` when missing).
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn sync_registry_workspace(project_dir: &Path) -> Result<(), Error> {
     let Some(registry) = Registry::load(project_dir)? else {
         return Ok(());
@@ -100,6 +104,10 @@ pub enum WorkspaceSlotKind {
 /// Inspect `.specify/workspace/<name>/` for each registry project.
 ///
 /// Returns `Ok(None)` when `.specify/registry.yaml` is absent.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn workspace_status(project_dir: &Path) -> Result<Option<Vec<WorkspaceSlotStatus>>, Error> {
     let Some(registry) = Registry::load(project_dir)? else {
         return Ok(None);
@@ -115,16 +123,13 @@ pub fn workspace_status(project_dir: &Path) -> Result<Option<Vec<WorkspaceSlotSt
 }
 
 fn describe_slot(name: &str, slot: &Path) -> WorkspaceSlotStatus {
-    let meta = match std::fs::symlink_metadata(slot) {
-        Ok(m) => m,
-        Err(_) => {
-            return WorkspaceSlotStatus {
-                name: name.to_string(),
-                kind: WorkspaceSlotKind::Missing,
-                head_sha: None,
-                dirty: None,
-            };
-        }
+    let Ok(meta) = std::fs::symlink_metadata(slot) else {
+        return WorkspaceSlotStatus {
+            name: name.to_string(),
+            kind: WorkspaceSlotKind::Missing,
+            head_sha: None,
+            dirty: None,
+        };
     };
 
     if meta.file_type().is_symlink() {
@@ -172,11 +177,11 @@ fn git_output_ok(tree: &Path, args: &[&str]) -> Option<String> {
 }
 
 fn git_porcelain_non_empty(tree: &Path) -> bool {
-    let output =
-        match Command::new("git").arg("-C").arg(tree).args(["status", "--porcelain"]).output() {
-            Ok(o) => o,
-            Err(_) => return false,
-        };
+    let Ok(output) =
+        Command::new("git").arg("-C").arg(tree).args(["status", "--porcelain"]).output()
+    else {
+        return false;
+    };
     if !output.status.success() {
         return false;
     }
@@ -449,8 +454,9 @@ pub struct WorkspacePushResult {
     pub error: Option<String>,
 }
 
-/// Extract a GitHub `org/repo` slug from a git remote URL.
+/// Extract a `GitHub` `org/repo` slug from a git remote URL.
 /// Returns `None` for non-GitHub URLs.
+#[must_use] 
 pub fn extract_github_slug(url: &str) -> Option<String> {
     if let Some(rest) = url.strip_prefix("git@github.com:") {
         let slug = rest.strip_suffix(".git").unwrap_or(rest);
@@ -470,6 +476,10 @@ pub fn extract_github_slug(url: &str) -> Option<String> {
 }
 
 /// Core implementation of `specify workspace push`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run_workspace_push_impl(
     project_dir: &Path, plan: &Plan, registry: &Registry, filter_projects: &[String], dry_run: bool,
 ) -> Result<Vec<WorkspacePushResult>, Error> {
@@ -633,7 +643,7 @@ fn push_single_project(
             if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(&text)
                 && let Some(first) = parsed.first()
             {
-                pr_number = first.get("number").and_then(|n| n.as_u64());
+                pr_number = first.get("number").and_then(serde_json::Value::as_u64);
             }
         }
 

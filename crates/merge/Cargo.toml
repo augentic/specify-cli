@@ -8,6 +8,9 @@ description = "Deterministic delta-merge engine for Specify"
 categories = ["development-tools"]
 keywords = ["specify", "merge", "delta"]
 
+[lints]
+workspace = true
+
 [dependencies]
 specify-error.workspace = true
 specify-spec.workspace = true
@@ -15,7 +18,7 @@ specify-schema.workspace = true
 specify-change.workspace = true
 chrono.workspace = true
 regex.workspace = true
-serde_yaml.workspace = true
+serde_yaml_ng.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

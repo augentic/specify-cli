@@ -18,6 +18,10 @@ use crate::{BriefContext, Classification, CrossContext, RuleOutcome, ValidationR
 /// without a `generates` field are skipped because they have no artifact
 /// to inspect — this matches the RFC-1 contract that only define-phase
 /// briefs produce validate-able outputs.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn validate_change(
     change_dir: &Path, pipeline: &PipelineView,
 ) -> Result<ValidationReport, Error> {
@@ -145,17 +149,14 @@ fn run_brief_rules(
     brief_id: &str, artifact_path: &Path, change_dir: &Path, specs_dir: &Path,
     terminology: &'static str,
 ) -> Result<Vec<ValidationResult>, Error> {
-    let content = match std::fs::read_to_string(artifact_path) {
-        Ok(t) => t,
-        Err(_) => {
-            return Ok(vec![artifact_missing_result(brief_id, artifact_path, change_dir)]);
-        }
+    let Ok(content) = std::fs::read_to_string(artifact_path) else {
+        return Ok(vec![artifact_missing_result(brief_id, artifact_path, change_dir)]);
     };
 
     // Parse brief-specific structured context.
     let parsed_spec =
-        if brief_id == "specs" { Some(specify_spec::parse_baseline(&content)) } else { None };
-    let tasks = if brief_id == "tasks" { Some(specify_task::parse_tasks(&content)) } else { None };
+        (brief_id == "specs").then(|| specify_spec::parse_baseline(&content));
+    let tasks = (brief_id == "tasks").then(|| specify_task::parse_tasks(&content));
 
     let ctx = BriefContext {
         brief_id,

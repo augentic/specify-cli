@@ -33,6 +33,7 @@ pub struct MissingTool {
 /// are ever malformed); chunks 7/8/9 construct `Verify` from the
 /// per-assembly build pipelines.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum VectisError {
     #[error("missing prerequisites: {message}")]
     MissingPrerequisites { missing: Vec<MissingTool>, message: String },
@@ -55,6 +56,7 @@ impl VectisError {
     ///
     /// Missing prerequisites is `2` so callers can distinguish "your
     /// workstation is incomplete" from generic failure (`1`).
+    #[must_use] 
     pub fn exit_code(&self) -> i32 {
         match self {
             VectisError::MissingPrerequisites { .. } => 2,
@@ -65,6 +67,7 @@ impl VectisError {
     /// Kebab-case identifier for the variant, used as the `error` value
     /// in the structured JSON shape and by the dispatcher when
     /// synthesising the `exit-code`/`message` envelope.
+    #[must_use] 
     pub fn variant_str(&self) -> &'static str {
         match self {
             VectisError::MissingPrerequisites { .. } => "missing-prerequisites",
@@ -80,6 +83,7 @@ impl VectisError {
     /// Keys and the `error` variant are kebab-case to match the v2 JSON
     /// contract enforced by the `specify` binary; the dispatcher's
     /// `emit_json` helper auto-injects `schema-version: 2` on top.
+    #[must_use] 
     pub fn to_json(&self) -> serde_json::Value {
         match self {
             VectisError::MissingPrerequisites { missing, message } => serde_json::json!({

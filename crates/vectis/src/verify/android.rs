@@ -21,6 +21,10 @@ use crate::error::VectisError;
 use crate::verify::pipeline::{BuildStep, run_step};
 
 /// Run the Android verify pipeline under `android_root`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run_pipeline(android_root: &Path) -> Result<Vec<BuildStep>, VectisError> {
     let mut steps = Vec::with_capacity(2);
 

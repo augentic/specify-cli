@@ -8,8 +8,11 @@ description = "Multi-repo coordination scaffolding for Specify (RFC-3, stubbed)"
 categories = ["development-tools"]
 keywords = ["specify", "federation", "rfc3"]
 
+[lints]
+workspace = true
+
 [dependencies]
 serde.workspace = true
 
 [dev-dependencies]
-serde_yaml.workspace = true
+serde_yaml_ng.workspace = true

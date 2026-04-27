@@ -45,6 +45,10 @@ pub struct BuildStep {
 /// be spawned (missing binary, permission error) -- a non-zero exit from
 /// the child is treated as a *step* failure, not a handler failure, so
 /// the dispatcher can continue to the next assembly.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run_step(name: &'static str, cmd: &mut Command) -> Result<BuildStep, VectisError> {
     let output = cmd.output().map_err(|e| VectisError::Verify {
         message: format!("failed to invoke `{name}`: {e}"),

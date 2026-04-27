@@ -34,6 +34,7 @@ const RULE_DESIGN_REFS_EXIST_DESC: &str =
 /// the baseline passes every coherence rule. The `design` argument enables
 /// the orphan-reference rule (`merge.design-references-exist`) — see the
 /// inline parity quirk below.
+#[must_use] 
 pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<ValidationResult> {
     let parsed = parse_baseline(baseline);
     let blocks = parsed.requirements;

@@ -19,7 +19,7 @@ offer two options: (a) forward-declare `ValidationResult` in
 `Error::Validation` carry a summary. We picked (b) because it preserves the
 "leaves to root" dependency contract from RFC-1 §Workspace Layout —
 `specify-error` stays dependency-free from every other workspace crate
-(`thiserror` + `serde_yaml` only) — while still giving the CLI enough
+(`thiserror` + `serde_yaml_ng` only) — while still giving the CLI enough
 structured data (status, rule id, rule description, detail) to render
 sensible failure output without reaching back into `specify-validate`. The
 cost is a lossy projection at the crate boundary (the enum variant collapses

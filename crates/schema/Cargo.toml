@@ -8,10 +8,13 @@ description = "Schema resolution, brief frontmatter, and PipelineView for Specif
 categories = ["development-tools"]
 keywords = ["specify", "schema", "pipeline"]
 
+[lints]
+workspace = true
+
 [dependencies]
 specify-error.workspace = true
 serde.workspace = true
-serde_yaml.workspace = true
+serde_yaml_ng.workspace = true
 serde_json.workspace = true
 jsonschema.workspace = true
 glob.workspace = true

@@ -153,7 +153,7 @@ pub(crate) fn proposal_deliverables_have_specs(
 }
 
 /// Parse the proposal for entries under `heading`. Accepts `- name`,
-/// `- `name``, or sub-headings (`### New Crates` / `### Modified Crates`)
+/// `` - `name` ``, or sub-headings (`### New Crates` / `### Modified Crates`)
 /// whose bullets are in turn parsed. Placeholder tokens (values that look
 /// like HTML comments) are skipped.
 fn extract_deliverables(proposal: &str, heading: &str) -> Vec<String> {

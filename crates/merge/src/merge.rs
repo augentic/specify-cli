@@ -26,6 +26,7 @@ pub struct MergeResult {
 /// the delta text is kept verbatim as the new baseline and we just record
 /// how many `### Requirement:` blocks it contains.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum MergeOperation {
     Renamed { id: String, old_name: String, new_name: String },
     Removed { id: String, name: String },
@@ -51,6 +52,10 @@ pub enum MergeOperation {
 /// ADDED` in that order. Any delta entry whose id cannot be resolved (or,
 /// for ADDED, whose id collides with a surviving baseline id) becomes an
 /// `Err(Error::Merge(_))` with all failure messages joined by `"\n"`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> {
     let baseline_text = baseline.unwrap_or("");
     let is_new = baseline_text.trim().is_empty();

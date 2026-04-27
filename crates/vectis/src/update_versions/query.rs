@@ -9,10 +9,10 @@
 //!
 //! | Registry          | Host                               | Format | Consumers                                          |
 //! |-------------------|------------------------------------|--------|----------------------------------------------------|
-//! | crates.io         | `crates.io/api/v1/crates/<name>`   | JSON   | crux_*, facet, facet_generate, serde, serde_json, uniffi, cargo-swift, cargo-deny, cargo-vet |
+//! | crates.io         | `crates.io/api/v1/crates/<name>`   | JSON   | crux_*, facet, `facet_generate`, serde, `serde_json`, uniffi, cargo-swift, cargo-deny, cargo-vet |
 //! | Google Maven      | `maven.google.com/<group-path>`    | XML    | compose-bom, kotlin (stdlib), AGP                  |
 //! | Maven Central     | `search.maven.org/solrsearch`      | JSON   | koin (io.insert-koin:koin-bom), ktor (io.ktor:ktor-bom) |
-//! | GitHub releases   | `api.github.com/repos/<o/r>/releases/latest` | JSON | xcodegen                                  |
+//! | `GitHub` releases   | `api.github.com/repos/<o/r>/releases/latest` | JSON | xcodegen                                  |
 //!
 //! All queries carry a short timeout so a flaky mirror cannot hang the
 //! CLI indefinitely. On any network/parse error we return

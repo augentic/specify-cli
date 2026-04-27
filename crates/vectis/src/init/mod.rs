@@ -23,6 +23,10 @@ use crate::templates::{Capability, Params};
 use crate::versions::Versions;
 use crate::{CommandOutcome, InitArgs};
 
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run(args: &InitArgs) -> Result<CommandOutcome, VectisError> {
     let mut assemblies = vec![AssemblyKind::Core];
     let shells = parse_shells(args.shells.as_deref())?;

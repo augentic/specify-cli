@@ -59,6 +59,7 @@ use specify_schema::Registry;
     clap::ValueEnum,
 )]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum PlanStatus {
     Pending,
     InProgress,
@@ -98,6 +99,7 @@ impl PlanStatus {
     /// machine. See `rfc-2-execution.md` §"Transition Rules" for the canonical
     /// table; the 10 edges enumerated below are the *only* legal ones.
     /// `Done` is terminal: every edge with `Done` on the left is `false`.
+    #[must_use] 
     pub fn can_transition_to(&self, target: &PlanStatus) -> bool {
         use PlanStatus::*;
         matches!(
@@ -118,6 +120,10 @@ impl PlanStatus {
     /// Return `target` if the edge is legal, otherwise an
     /// `Error::PlanTransition` carrying both endpoints by their `Debug`
     /// representation. Mirrors `LifecycleStatus::transition`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn transition(&self, target: PlanStatus) -> Result<PlanStatus, Error> {
         if self.can_transition_to(&target) {
             Ok(target)
@@ -249,6 +255,10 @@ impl Plan {
     /// rules as change names (RFC-1 §"Naming Rules").
     ///
     /// Does NOT write anything to disk. Call [`Plan::save`] afterwards.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn init(name: &str, sources: BTreeMap<String, String>) -> Result<Plan, Error> {
         crate::actions::validate_name(name)?;
         Ok(Plan {
@@ -266,13 +276,20 @@ impl Plan {
     ///   - other I/O failure -> `Error::Io`
     ///
     /// Tolerant of files with or without a trailing newline —
-    /// `serde_yaml::from_str` accepts both.
+    /// `serde_yaml_ng::from_str` accepts both.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn load(path: &Path) -> Result<Self, Error> {
         if !path.exists() {
-            return Err(Error::Config(format!("plan.yaml not found at {}", path.display())));
+            return Err(Error::ArtifactNotFound {
+                kind: "plan.yaml",
+                path: path.to_path_buf(),
+            });
         }
         let content = std::fs::read_to_string(path)?;
-        let plan: Plan = serde_yaml::from_str(&content)?;
+        let plan: Plan = serde_yaml_ng::from_str(&content)?;
         Ok(plan)
     }
 
@@ -294,6 +311,10 @@ impl Plan {
     ///
     /// Returns `Error::Io` on any I/O failure and `Error::Yaml` if
     /// serialization fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn save(&self, path: &Path) -> Result<(), Error> {
         crate::atomic::atomic_yaml_write(path, self)
     }
@@ -316,6 +337,7 @@ impl Plan {
     /// rejects invalid statuses at parse time. The RFC lists this check
     /// for completeness against hand-edited YAML that bypassed parsing,
     /// which is not reachable in-process — so nothing is emitted for it.
+    #[must_use] 
     pub fn validate(
         &self, changes_dir: Option<&Path>, registry: Option<&Registry>,
     ) -> Vec<PlanValidationResult> {
@@ -348,6 +370,7 @@ impl Plan {
     /// An unknown `depends_on` target is treated as "not done", so the
     /// entry is not eligible. Orphan-reference diagnostics belong to
     /// [`Plan::validate`].
+    #[must_use] 
     pub fn next_eligible(&self) -> Option<&PlanChange> {
         if self.changes.iter().any(|c| c.status == PlanStatus::InProgress) {
             return None;
@@ -375,6 +398,10 @@ impl Plan {
     /// Does not run `Plan::validate` — a status mutation cannot make a
     /// previously-valid plan invalid (the state machine has no
     /// structural side-effects).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn transition(
         &mut self, name: &str, target: PlanStatus, reason: Option<&str>,
     ) -> Result<(), Error> {
@@ -419,6 +446,10 @@ impl Plan {
     /// returns `Error::Config` containing the first offending
     /// finding's message. Warnings are tolerated — they're a CLI
     /// concern, not a library-level hard stop.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn create(&mut self, change: PlanChange) -> Result<(), Error> {
         crate::actions::validate_name(&change.name)?;
 
@@ -467,6 +498,10 @@ impl Plan {
     /// `amend` does not consult `PlanChange::status` — it is legal to
     /// amend the currently-`in-progress` entry's non-status fields,
     /// per RFC-2 §"Phase Boundary → Rule 2".
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn amend(&mut self, name: &str, patch: PlanChangePatch) -> Result<(), Error> {
         let idx = self
             .changes
@@ -533,6 +568,10 @@ impl Plan {
     /// each entry's list position, since we insert in list order).
     /// That keeps the list-order tie-break contract while dropping
     /// the old O(n²) "sweep until fixpoint" fallback.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn topological_order(&self) -> Result<Vec<&PlanChange>, Error> {
         let mut graph: DiGraph<&str, ()> = DiGraph::new();
         let mut idx = HashMap::new();
@@ -570,7 +609,7 @@ impl Plan {
             .collect();
         let mut ready: BinaryHeap<Reverse<NodeIndex>> = indegree
             .iter()
-            .filter_map(|(&n, &d)| if d == 0 { Some(Reverse(n)) } else { None })
+            .filter_map(|(&n, &d)| (d == 0).then_some(Reverse(n)))
             .collect();
 
         let mut rank: HashMap<NodeIndex, usize> = HashMap::with_capacity(self.changes.len());
@@ -626,6 +665,10 @@ impl Plan {
     /// Takes `&Path` rather than `&self` because it operates on the
     /// file on disk (it re-loads the plan) — archiving is a filesystem
     /// operation, not a mutation of an in-memory `Plan`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn archive(
         path: &Path, archive_dir: &Path, force: bool,
     ) -> Result<(PathBuf, Option<PathBuf>), Error> {
@@ -1155,9 +1198,9 @@ changes:
 
     #[test]
     fn plan_roundtrips_rfc_example() {
-        let original: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
-        let rendered = serde_yaml::to_string(&original).expect("serialize plan");
-        let reparsed: Plan = serde_yaml::from_str(&rendered).expect("reparse rendered plan");
+        let original: Plan = serde_yaml_ng::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let rendered = serde_yaml_ng::to_string(&original).expect("serialize plan");
+        let reparsed: Plan = serde_yaml_ng::from_str(&rendered).expect("reparse rendered plan");
         assert_eq!(original, reparsed, "plan should survive a serialize/parse round-trip");
 
         assert_eq!(original.name, "platform-v2");
@@ -1186,7 +1229,7 @@ changes:
                 status_reason: Some("awaiting upstream fix".to_string()),
             }],
         };
-        let yaml = serde_yaml::to_string(&plan).expect("serialize plan");
+        let yaml = serde_yaml_ng::to_string(&plan).expect("serialize plan");
         assert!(yaml.contains("depends-on:"), "expected kebab-case depends-on in:\n{yaml}");
         assert!(
             yaml.contains("status: in-progress"),
@@ -1203,7 +1246,7 @@ changes:
     #[test]
     fn missing_optional_fields_deserialize_with_defaults() {
         let yaml = "name: foo\nchanges: []\n";
-        let plan: Plan = serde_yaml::from_str(yaml).expect("parse minimal plan");
+        let plan: Plan = serde_yaml_ng::from_str(yaml).expect("parse minimal plan");
         assert_eq!(plan.name, "foo");
         assert!(plan.sources.is_empty(), "sources should default to empty map");
         assert!(plan.changes.is_empty(), "changes should be empty");
@@ -1221,7 +1264,7 @@ changes:
       Type mismatch between cart line-item schema and payment gateway contract.
       Needs design revision after shopping-cart specs are updated.
 "#;
-        let plan: Plan = serde_yaml::from_str(yaml).expect("parse");
+        let plan: Plan = serde_yaml_ng::from_str(yaml).expect("parse");
         let entry = &plan.changes[0];
         assert_eq!(entry.status, PlanStatus::Failed);
         let reason = entry.status_reason.as_deref().expect("status_reason populated");
@@ -1230,8 +1273,8 @@ changes:
             "status_reason should preserve folded text, got: {reason:?}"
         );
 
-        let rendered = serde_yaml::to_string(&plan).expect("serialize");
-        let reparsed: Plan = serde_yaml::from_str(&rendered).expect("reparse");
+        let rendered = serde_yaml_ng::to_string(&plan).expect("serialize");
+        let reparsed: Plan = serde_yaml_ng::from_str(&rendered).expect("reparse");
         assert_eq!(plan, reparsed);
         assert_eq!(
             reparsed.changes[0].status_reason, entry.status_reason,
@@ -1243,7 +1286,7 @@ changes:
     fn save_then_load_roundtrips_rfc_example() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("plan.yaml");
-        let original: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let original: Plan = serde_yaml_ng::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         original.save(&path).expect("save ok");
         let loaded = Plan::load(&path).expect("load ok");
         assert_eq!(loaded, original, "full plan should round-trip through save -> load");
@@ -1305,22 +1348,16 @@ changes:
     }
 
     #[test]
-    fn load_missing_file_returns_config_error() {
+    fn load_missing_file_returns_artifact_not_found() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("does-not-exist.yaml");
         let err = Plan::load(&path).expect_err("expected error on missing file");
         match err {
-            Error::Config(msg) => {
-                assert!(
-                    msg.contains("plan.yaml not found"),
-                    "message should mention `plan.yaml not found`, got: {msg}"
-                );
-                assert!(
-                    msg.contains(&path.display().to_string()),
-                    "message should include the missing path, got: {msg}"
-                );
+            Error::ArtifactNotFound { kind, path: p } => {
+                assert_eq!(kind, "plan.yaml");
+                assert_eq!(p, path);
             }
-            other => panic!("expected Error::Config, got {other:?}"),
+            other => panic!("expected Error::ArtifactNotFound, got {other:?}"),
         }
     }
 
@@ -1398,7 +1435,7 @@ changes:
 
     #[test]
     fn clean_plan_returns_no_results() {
-        let plan: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let plan: Plan = serde_yaml_ng::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         let results = plan.validate(None, None);
         assert!(
             results.is_empty(),
@@ -1659,7 +1696,7 @@ changes:
     ///   round 9: `checkout-ui` (dep checkout-api done)
     #[test]
     fn next_eligible_walks_rfc_example_forward() {
-        let mut plan: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let mut plan: Plan = serde_yaml_ng::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         for entry in &mut plan.changes {
             entry.status = PlanStatus::Pending;
             entry.status_reason = None;
@@ -1709,7 +1746,7 @@ changes:
 
     #[test]
     fn topological_order_rfc_example_matches_known_order() {
-        let plan: Plan = serde_yaml::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let plan: Plan = serde_yaml_ng::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         let ordered: Vec<&str> = plan
             .topological_order()
             .expect("rfc plan has no cycles")
@@ -1885,10 +1922,10 @@ changes:
         let bad = change("Bad-Name", PlanStatus::Pending);
         let err = plan.create(bad).expect_err("invalid name must be rejected");
         match err {
-            Error::Config(msg) => {
+            Error::InvalidName(msg) => {
                 assert!(msg.contains("kebab-case"), "expected kebab-case in message, got: {msg}");
             }
-            other => panic!("expected Error::Config, got {other:?}"),
+            other => panic!("expected Error::InvalidName, got {other:?}"),
         }
         assert!(plan.changes.is_empty(), "plan must remain untouched after invalid name");
     }
@@ -2371,7 +2408,7 @@ changes:
             "forced archive must preserve every entry (including non-terminal) verbatim"
         );
 
-        let archived: Plan = serde_yaml::from_slice(&post_bytes).expect("parse archived");
+        let archived: Plan = serde_yaml_ng::from_slice(&post_bytes).expect("parse archived");
         let statuses: Vec<PlanStatus> = archived.changes.iter().map(|c| c.status).collect();
         assert_eq!(
             statuses,
@@ -2485,10 +2522,10 @@ changes:
     fn init_rejects_invalid_name() {
         let err = Plan::init("BAD_NAME", BTreeMap::new()).expect_err("invalid name must Err");
         match err {
-            Error::Config(msg) => {
+            Error::InvalidName(msg) => {
                 assert!(msg.contains("kebab-case"), "expected kebab-case in message, got: {msg}");
             }
-            other => panic!("expected Error::Config, got {other:?}"),
+            other => panic!("expected Error::InvalidName, got {other:?}"),
         }
     }
 
@@ -2814,10 +2851,10 @@ name: foo
 project: traffic
 status: pending
 ";
-        let parsed: PlanChange = serde_yaml::from_str(yaml).expect("parses with project");
+        let parsed: PlanChange = serde_yaml_ng::from_str(yaml).expect("parses with project");
         assert_eq!(parsed.project.as_deref(), Some("traffic"));
-        let round_tripped = serde_yaml::to_string(&parsed).expect("serialize");
-        let re_parsed: PlanChange = serde_yaml::from_str(&round_tripped).expect("re-parse");
+        let round_tripped = serde_yaml_ng::to_string(&parsed).expect("serialize");
+        let re_parsed: PlanChange = serde_yaml_ng::from_str(&round_tripped).expect("re-parse");
         assert_eq!(re_parsed.project, parsed.project);
     }
 
@@ -2827,7 +2864,7 @@ status: pending
 name: foo
 status: pending
 ";
-        let parsed: PlanChange = serde_yaml::from_str(yaml).expect("parses without project");
+        let parsed: PlanChange = serde_yaml_ng::from_str(yaml).expect("parses without project");
         assert_eq!(parsed.project, None);
     }
 
@@ -3039,14 +3076,14 @@ changes:
     schema: omnia@v1
     status: pending
 "#;
-        let plan: Plan = serde_yaml::from_str(yaml).expect("parse");
+        let plan: Plan = serde_yaml_ng::from_str(yaml).expect("parse");
         assert_eq!(plan.changes[0].schema.as_deref(), Some("contracts@v1"));
         assert_eq!(plan.changes[0].project, None);
         assert_eq!(plan.changes[1].schema.as_deref(), Some("omnia@v1"));
         assert_eq!(plan.changes[1].project.as_deref(), Some("auth-service"));
 
-        let rendered = serde_yaml::to_string(&plan).expect("serialize");
-        let reparsed: Plan = serde_yaml::from_str(&rendered).expect("reparse");
+        let rendered = serde_yaml_ng::to_string(&plan).expect("serialize");
+        let reparsed: Plan = serde_yaml_ng::from_str(&rendered).expect("reparse");
         assert_eq!(plan, reparsed, "plan must survive a YAML round-trip");
     }
 
@@ -3214,14 +3251,14 @@ changes:
     project: default
     status: pending
 "#;
-        let plan: Plan = serde_yaml::from_str(yaml).expect("parse yaml");
+        let plan: Plan = serde_yaml_ng::from_str(yaml).expect("parse yaml");
         assert_eq!(
             plan.changes[0].context,
             vec!["contracts/http/user-api.yaml", "specs/user-registration/spec.md"],
         );
         assert!(plan.changes[1].context.is_empty(), "missing context defaults to empty");
 
-        let serialized = serde_yaml::to_string(&plan).expect("serialize");
+        let serialized = serde_yaml_ng::to_string(&plan).expect("serialize");
         assert!(
             serialized.contains("contracts/http/user-api.yaml"),
             "populated context must appear in serialized output"

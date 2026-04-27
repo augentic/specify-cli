@@ -25,6 +25,10 @@ use crate::prerequisites::{self, AssemblyKind};
 use crate::versions::Versions;
 use crate::{CommandOutcome, VerifyArgs};
 
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run(args: &VerifyArgs) -> Result<CommandOutcome, VectisError> {
     let project_dir = args.dir.clone().map(Ok).unwrap_or_else(std::env::current_dir)?;
 

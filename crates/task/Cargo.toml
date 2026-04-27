@@ -8,6 +8,9 @@ description = "Task list parser and mark-complete helper for Specify"
 categories = ["development-tools", "parser-implementations"]
 keywords = ["specify", "tasks", "parser"]
 
+[lints]
+workspace = true
+
 [dependencies]
 specify-error.workspace = true
 regex.workspace = true

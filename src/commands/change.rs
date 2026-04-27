@@ -1,0 +1,591 @@
+use std::path::Path;
+
+use chrono::Utc;
+use serde::Serialize;
+use serde_json::Value;
+use specify::{
+    ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Error, Journal, JournalEntry,
+    LifecycleStatus, Outcome, Phase, ProjectConfig, Rfc3339Stamp, SpecType, TouchedSpec,
+    change_actions, format_rfc3339,
+};
+
+use crate::cli::{ChangeAction, OutputFormat};
+use crate::context::CommandContext;
+use crate::output::{CliResult, emit_error, emit_response};
+
+use super::require_project;
+use super::status::run_status;
+
+pub(crate) fn run_change(format: OutputFormat, action: ChangeAction) -> CliResult {
+    match action {
+        ChangeAction::Create {
+            name,
+            schema,
+            if_exists,
+        } => run_change_create(format, name, schema, if_exists.into()),
+        ChangeAction::List => run_status(format, None),
+        ChangeAction::Status { name } => run_status(format, Some(name)),
+        ChangeAction::Transition { name, target } => run_change_transition(format, name, target),
+        ChangeAction::TouchedSpecs { name, scan, set } => {
+            run_change_touched_specs(format, name, scan, set)
+        }
+        ChangeAction::Overlap { name } => run_change_overlap(format, name),
+        ChangeAction::Archive { name } => run_change_archive(format, name),
+        ChangeAction::Drop { name, reason } => run_change_drop(format, name, reason),
+        ChangeAction::PhaseOutcome {
+            name,
+            phase,
+            outcome,
+            summary,
+            context,
+        } => run_change_phase_outcome(format, name, phase, outcome, summary, context),
+        ChangeAction::Outcome { name } => run_change_outcome(format, name),
+        ChangeAction::JournalAppend {
+            name,
+            phase,
+            kind,
+            summary,
+            context,
+        } => run_change_journal_append(format, name, phase, kind, summary, context),
+    }
+}
+
+fn run_change_create(
+    format: OutputFormat, name: String, schema: Option<String>, if_exists: CreateIfExists,
+) -> CliResult {
+    let ctx = match CommandContext::require(format) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let schema_value = schema.unwrap_or_else(|| ctx.config.schema.clone());
+    let changes_dir = ctx.changes_dir();
+    if let Err(err) = std::fs::create_dir_all(&changes_dir) {
+        return ctx.emit_error(&Error::Io(err));
+    }
+
+    let outcome =
+        match change_actions::create(&changes_dir, &name, &schema_value, if_exists, Utc::now()) {
+            Ok(outcome) => outcome,
+            Err(err) => return ctx.emit_error(&err),
+        };
+
+    emit_change_create(format, &outcome)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ChangeCreateResponse {
+    name: String,
+    change_dir: String,
+    status: String,
+    schema: String,
+    created: bool,
+    restarted: bool,
+}
+
+fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResult {
+    match format {
+        OutputFormat::Json => emit_response(ChangeCreateResponse {
+            name: outcome.change_dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
+            change_dir: outcome.change_dir.display().to_string(),
+            status: outcome.metadata.status.to_string(),
+            schema: outcome.metadata.schema.clone(),
+            created: outcome.created,
+            restarted: outcome.restarted,
+        }),
+        OutputFormat::Text => {
+            if outcome.created {
+                println!("Created change {}", outcome.change_dir.display());
+            } else {
+                println!("Reusing existing change {}", outcome.change_dir.display());
+            }
+            if outcome.restarted {
+                println!("  (previous directory was removed)");
+            }
+            println!("  schema: {}", outcome.metadata.schema);
+            println!("  status: {}", outcome.metadata.status);
+        }
+    }
+    CliResult::Success
+}
+
+fn run_change_transition(format: OutputFormat, name: String, target: LifecycleStatus) -> CliResult {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    let metadata = match change_actions::transition(&change_dir, target, Utc::now()) {
+        Ok(meta) => meta,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct TransitionResponse {
+        name: String,
+        status: String,
+        defined_at: Option<Rfc3339Stamp>,
+        build_started_at: Option<Rfc3339Stamp>,
+        completed_at: Option<Rfc3339Stamp>,
+        merged_at: Option<Rfc3339Stamp>,
+        dropped_at: Option<Rfc3339Stamp>,
+    }
+    match format {
+        OutputFormat::Json => emit_response(TransitionResponse {
+            name: name.clone(),
+            status: metadata.status.to_string(),
+            defined_at: metadata.defined_at.clone(),
+            build_started_at: metadata.build_started_at.clone(),
+            completed_at: metadata.completed_at.clone(),
+            merged_at: metadata.merged_at.clone(),
+            dropped_at: metadata.dropped_at.clone(),
+        }),
+        OutputFormat::Text => {
+            println!("{name}: status = {}", metadata.status);
+        }
+    }
+    CliResult::Success
+}
+
+fn run_change_touched_specs(
+    format: OutputFormat, name: String, scan: bool, set: Vec<String>,
+) -> CliResult {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    let specs_dir = ProjectConfig::specs_dir(&project_dir);
+
+    let entries = if !set.is_empty() {
+        match parse_touched_spec_set(&set) {
+            Ok(v) => {
+                let metadata = match change_actions::write_touched_specs(&change_dir, v.clone()) {
+                    Ok(m) => m,
+                    Err(err) => return emit_error(format, &err),
+                };
+                metadata.touched_specs
+            }
+            Err(err) => return emit_error(format, &err),
+        }
+    } else if scan {
+        let scanned = match change_actions::scan_touched_specs(&change_dir, &specs_dir) {
+            Ok(v) => v,
+            Err(err) => return emit_error(format, &err),
+        };
+        let metadata = match change_actions::write_touched_specs(&change_dir, scanned) {
+            Ok(m) => m,
+            Err(err) => return emit_error(format, &err),
+        };
+        metadata.touched_specs
+    } else {
+        // Read-only: report the current touched_specs without mutating.
+        let metadata = match ChangeMetadata::load(&change_dir) {
+            Ok(m) => m,
+            Err(err) => return emit_error(format, &err),
+        };
+        metadata.touched_specs
+    };
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct TouchedSpecsResponse {
+        name: String,
+        touched_specs: Vec<TouchedSpecJson>,
+    }
+    match format {
+        OutputFormat::Json => emit_response(TouchedSpecsResponse {
+            name: name.clone(),
+            touched_specs: entries.iter().map(|t| TouchedSpecJson {
+                name: t.name.clone(),
+                r#type: t.spec_type.to_string(),
+            }).collect(),
+        }),
+        OutputFormat::Text => {
+            if entries.is_empty() {
+                println!("{name}: no touched specs");
+            } else {
+                println!("{name}:");
+                for entry in &entries {
+                    println!("  {} ({})", entry.name, entry.spec_type);
+                }
+            }
+        }
+    }
+    CliResult::Success
+}
+
+fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
+    let mut out: Vec<TouchedSpec> = Vec::with_capacity(raw.len());
+    for entry in raw {
+        let (name, kind) = entry.split_once(':').ok_or_else(|| {
+            Error::Config(format!(
+                "touched-specs entry `{entry}` must be `<name>:new` or `<name>:modified`"
+            ))
+        })?;
+        let spec_type = match kind {
+            "new" => SpecType::New,
+            "modified" => SpecType::Modified,
+            other => {
+                return Err(Error::Config(format!(
+                    "touched-specs kind `{other}` must be `new` or `modified`"
+                )));
+            }
+        };
+        out.push(TouchedSpec {
+            name: name.to_string(),
+            spec_type,
+        });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+fn run_change_overlap(format: OutputFormat, name: String) -> CliResult {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let changes_dir = ProjectConfig::changes_dir(&project_dir);
+    let overlaps = match change_actions::overlap(&changes_dir, &name) {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct OverlapResponse {
+        name: String,
+        overlaps: Vec<OverlapJson>,
+    }
+    match format {
+        OutputFormat::Json => emit_response(OverlapResponse {
+            name: name.clone(),
+            overlaps: overlaps.iter().map(|o| OverlapJson {
+                capability: o.capability.clone(),
+                other_change: o.other_change.clone(),
+                our_spec_type: o.our_spec_type.to_string(),
+                other_spec_type: o.other_spec_type.to_string(),
+            }).collect(),
+        }),
+        OutputFormat::Text => {
+            if overlaps.is_empty() {
+                println!("{name}: no overlapping changes");
+            } else {
+                for o in &overlaps {
+                    println!(
+                        "{}: also touched by `{}` ({} vs {})",
+                        o.capability,
+                        o.other_change,
+                        o.our_spec_type,
+                        o.other_spec_type,
+                    );
+                }
+            }
+        }
+    }
+    CliResult::Success
+}
+
+fn run_change_archive(format: OutputFormat, name: String) -> CliResult {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    let archive_dir = ProjectConfig::archive_dir(&project_dir);
+    let target = match change_actions::archive(&change_dir, &archive_dir, Utc::now()) {
+        Ok(p) => p,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct ArchiveResponse {
+        name: String,
+        archive_path: String,
+    }
+    match format {
+        OutputFormat::Json => emit_response(ArchiveResponse {
+            name: name.clone(),
+            archive_path: target.display().to_string(),
+        }),
+        OutputFormat::Text => {
+            println!("{name}: archived to {}", target.display());
+        }
+    }
+    CliResult::Success
+}
+
+fn run_change_drop(format: OutputFormat, name: String, reason: Option<String>) -> CliResult {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    let archive_dir = ProjectConfig::archive_dir(&project_dir);
+    let (metadata, archive_path) =
+        match change_actions::drop(&change_dir, &archive_dir, reason.as_deref(), Utc::now()) {
+            Ok(pair) => pair,
+            Err(err) => return emit_error(format, &err),
+        };
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct DropResponse {
+        name: String,
+        status: String,
+        archive_path: String,
+        drop_reason: Option<String>,
+    }
+    match format {
+        OutputFormat::Json => emit_response(DropResponse {
+            name: name.clone(),
+            status: metadata.status.to_string(),
+            archive_path: archive_path.display().to_string(),
+            drop_reason: metadata.drop_reason.clone(),
+        }),
+        OutputFormat::Text => {
+            println!("{name}: dropped and archived to {}", archive_path.display());
+            if let Some(r) = &metadata.drop_reason {
+                println!("  reason: {r}");
+            }
+        }
+    }
+    CliResult::Success
+}
+
+fn run_change_phase_outcome(
+    format: OutputFormat, name: String, phase: Phase, outcome: Outcome, summary: String,
+    context: Option<String>,
+) -> CliResult {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
+        let err = Error::Config(format!("change '{name}' not found at {}", change_dir.display()));
+        return emit_error(format, &err);
+    }
+
+    let metadata = match change_actions::phase_outcome(
+        &change_dir,
+        phase,
+        outcome,
+        &summary,
+        context.as_deref(),
+        Utc::now(),
+    ) {
+        Ok(m) => m,
+        Err(err) => return emit_error(format, &err),
+    };
+
+    let stamped = metadata
+        .outcome
+        .as_ref()
+        .expect("phase_outcome action must set metadata.outcome on success");
+    #[derive(Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct PhaseOutcomeResponse {
+        change: String,
+        phase: String,
+        outcome: String,
+        at: String,
+    }
+    match format {
+        OutputFormat::Json => emit_response(PhaseOutcomeResponse {
+            change: name.clone(),
+            phase: phase.to_string(),
+            outcome: outcome.to_string(),
+            at: stamped.at.to_string(),
+        }),
+        OutputFormat::Text => {
+            println!("Stamped outcome '{outcome}' for phase '{phase}' on change '{name}'.");
+        }
+    }
+    CliResult::Success
+}
+
+/// Report the stamped `.metadata.yaml.outcome` for `name`.
+///
+/// Symmetric with [`run_change_phase_outcome`] (the writer): this is
+/// the read verb `/spec:execute` consumes after a phase returns.
+/// Emits `"outcome": null` when the change exists but nothing has
+/// been stamped; exits `CliResult::Success` in both cases — an unstamped
+/// change is not an error, just an absence.
+///
+/// Falls back to `.specify/archive/` when the change is not found under
+/// `.specify/changes/`. This handles the post-merge case: `specify merge`
+/// stamps the outcome into `.metadata.yaml` and then archives the change
+/// directory, so the active path no longer exists. The fallback scans
+/// archive entries matching `*-<name>` and picks the most recent by
+/// `created-at` timestamp.
+fn run_change_outcome(format: OutputFormat, name: String) -> CliResult {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    let metadata = if change_dir.is_dir() {
+        match ChangeMetadata::load(&change_dir) {
+            Ok(m) => m,
+            Err(err) => return emit_error(format, &err),
+        }
+    } else {
+        match resolve_archived_metadata(&project_dir, &name) {
+            Ok(m) => m,
+            Err(err) => return emit_error(format, &err),
+        }
+    };
+
+    match format {
+        OutputFormat::Json => {
+            // Build the outcome payload explicitly so `context` is
+            // emitted as `null` when absent (the canonical shape
+            // `/spec:execute` pattern-matches on). `PhaseOutcome`'s
+            // serde derive skips `None` contexts on disk; the CLI
+            // contract is the stable null.
+            #[derive(Serialize)]
+            #[serde(rename_all = "kebab-case")]
+            struct OutcomeResponse {
+                name: String,
+                outcome: Option<OutcomeDetail>,
+            }
+            #[derive(Serialize)]
+            #[serde(rename_all = "kebab-case")]
+            struct OutcomeDetail {
+                phase: String,
+                outcome: String,
+                at: Rfc3339Stamp,
+                summary: String,
+                context: Value,
+            }
+            let outcome_detail = metadata.outcome.as_ref().map(|o| OutcomeDetail {
+                phase: o.phase.to_string(),
+                outcome: o.outcome.to_string(),
+                at: o.at.clone(),
+                summary: o.summary.clone(),
+                context: o.context.clone().map(Value::from).unwrap_or(Value::Null),
+            });
+            emit_response(OutcomeResponse {
+                name: name.clone(),
+                outcome: outcome_detail,
+            });
+        }
+        OutputFormat::Text => match &metadata.outcome {
+            Some(o) => {
+                println!("{name}: {}/{} — {}", o.phase, o.outcome, o.summary);
+            }
+            None => {
+                println!("{name}: no outcome stamped");
+            }
+        },
+    }
+    CliResult::Success
+}
+
+/// Scan `.specify/archive/` for directories whose name ends with
+/// `-<change_name>` (the `YYYY-MM-DD-<name>` convention), load each
+/// candidate's `.metadata.yaml`, and return the most recent by
+/// `created-at`. Used by `run_change_outcome` as a fallback when the
+/// active change directory has been archived by `specify merge`.
+fn resolve_archived_metadata(
+    project_dir: &Path, change_name: &str,
+) -> Result<ChangeMetadata, Error> {
+    let archive_dir = ProjectConfig::archive_dir(project_dir);
+    let suffix = format!("-{change_name}");
+    let mut candidates: Vec<(String, ChangeMetadata)> = Vec::new();
+
+    if archive_dir.is_dir() {
+        let entries = std::fs::read_dir(&archive_dir)?;
+        for entry in entries {
+            let entry = entry?;
+            let fname = entry.file_name().to_string_lossy().to_string();
+            if !fname.ends_with(&suffix) || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+            {
+                continue;
+            }
+            if let Ok(meta) = ChangeMetadata::load(&entry.path()) {
+                let created = meta.created_at.as_deref().unwrap_or("").to_string();
+                candidates.push((created.to_string(), meta));
+            }
+        }
+    }
+
+    if candidates.is_empty() {
+        return Err(Error::Config(format!(
+            "change '{change_name}' not found in changes or archive"
+        )));
+    }
+
+    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(candidates.into_iter().next().unwrap().1)
+}
+
+fn run_change_journal_append(
+    format: OutputFormat, name: String, phase: Phase, kind: EntryKind, summary: String,
+    context: Option<String>,
+) -> CliResult {
+    let (project_dir, _config) = match require_project() {
+        Ok(v) => v,
+        Err(err) => return emit_error(format, &err),
+    };
+    let change_dir = ProjectConfig::changes_dir(&project_dir).join(&name);
+    if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
+        let err = Error::Config(format!("change '{name}' not found at {}", change_dir.display()));
+        return emit_error(format, &err);
+    }
+
+    let timestamp = format_rfc3339(Utc::now());
+    let entry = JournalEntry {
+        timestamp: timestamp.clone(),
+        step: phase,
+        r#type: kind,
+        summary: summary.clone(),
+        context: context.clone(),
+    };
+
+    if let Err(err) = Journal::append(&change_dir, entry) {
+        return emit_error(format, &err);
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct JournalAppendResponse {
+        change: String,
+        phase: String,
+        kind: String,
+        timestamp: Rfc3339Stamp,
+    }
+    match format {
+        OutputFormat::Json => emit_response(JournalAppendResponse {
+            change: name.clone(),
+            phase: phase.to_string(),
+            kind: kind.to_string(),
+            timestamp,
+        }),
+        OutputFormat::Text => {
+            println!("Appended {kind} entry to {name}/journal.yaml.");
+        }
+    }
+    CliResult::Success
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct OverlapJson {
+    capability: String,
+    other_change: String,
+    our_spec_type: String,
+    other_spec_type: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct TouchedSpecJson {
+    name: String,
+    r#type: String,
+}
+

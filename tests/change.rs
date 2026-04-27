@@ -124,8 +124,8 @@ fn change_create_rejects_uppercase_name() {
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["error"], "config");
-    assert!(value["message"].as_str().unwrap().contains("kebab-case"));
+    assert_eq!(value["error"], "invalid-name");
+    assert!(value["message"].as_str().unwrap().contains("kebab-case") || value["message"].as_str().unwrap().contains("invalid name"));
 }
 
 #[test]
@@ -466,12 +466,12 @@ fn change_status_by_name_returns_single_entry() {
 // ---------------------------------------------------------------------------
 
 /// Parse the `.metadata.yaml` for `name` under `project` as a
-/// `serde_yaml::Value` so tests can assert on the `outcome` subtree
+/// `serde_yaml_ng::Value` so tests can assert on the `outcome` subtree
 /// without pulling in the `specify-change` crate directly.
-fn read_metadata_yaml(project: &Project, name: &str) -> serde_yaml::Value {
+fn read_metadata_yaml(project: &Project, name: &str) -> serde_yaml_ng::Value {
     let path = project.changes_dir().join(name).join(".metadata.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    serde_yaml::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+    serde_yaml_ng::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
 }
 
 /// Naive RFC3339 sanity check sufficient for integration tests: `YYYY-MM-DDT...`.
@@ -984,7 +984,7 @@ fn change_journal_append_appends_to_file() {
         "journal.yaml must end with a trailing newline"
     );
 
-    let yaml: serde_yaml::Value = serde_yaml::from_str(&text).expect("parse journal");
+    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("parse journal");
     let entries = yaml["entries"].as_sequence().expect("entries seq");
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0]["step"].as_str(), Some("define"));
@@ -1024,7 +1024,7 @@ fn change_journal_append_stamps_rfc3339_timestamp() {
 
     let journal_path = project.changes_dir().join("foo").join("journal.yaml");
     let text = fs::read_to_string(&journal_path).expect("read journal");
-    let yaml: serde_yaml::Value = serde_yaml::from_str(&text).expect("parse journal");
+    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("parse journal");
     let on_disk = yaml["entries"][0]["timestamp"].as_str().expect("timestamp on disk");
     chrono::DateTime::parse_from_rfc3339(on_disk)
         .unwrap_or_else(|e| panic!("on-disk timestamp {on_disk} is not valid RFC3339: {e}"));
@@ -1050,7 +1050,7 @@ fn change_journal_append_preserves_existing_entries() {
 
     let text =
         fs::read_to_string(project.changes_dir().join("foo").join("journal.yaml")).expect("read");
-    let yaml: serde_yaml::Value = serde_yaml::from_str(&text).expect("parse");
+    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("parse");
     let entries = yaml["entries"].as_sequence().expect("entries seq");
     assert_eq!(entries.len(), 3, "all three appends must persist");
     let summaries: Vec<&str> =
@@ -1098,13 +1098,13 @@ fn change_journal_append_on_nonexistent_change_errors() {
 
 #[test]
 fn phase_outcome_round_trips_through_serde() {
-    use specify::{Outcome, Phase, PhaseOutcome};
+    use specify::{Outcome, Phase, PhaseOutcome, Rfc3339Stamp};
     for outcome in [Outcome::Success, Outcome::Failure, Outcome::Deferred] {
         for phase in [Phase::Define, Phase::Build, Phase::Merge] {
             let value = PhaseOutcome {
                 phase,
                 outcome,
-                at: "2024-08-01T10:00:00+00:00".to_string(),
+                at: Rfc3339Stamp::from_raw("2024-08-01T10:00:00+00:00".to_string()),
                 summary: "some summary".to_string(),
                 context: if matches!(outcome, Outcome::Success) {
                     None
@@ -1112,8 +1112,8 @@ fn phase_outcome_round_trips_through_serde() {
                     Some("verbatim detail".to_string())
                 },
             };
-            let yaml = serde_yaml::to_string(&value).expect("serialize");
-            let parsed: PhaseOutcome = serde_yaml::from_str(&yaml).expect("parse");
+            let yaml = serde_yaml_ng::to_string(&value).expect("serialize");
+            let parsed: PhaseOutcome = serde_yaml_ng::from_str(&yaml).expect("parse");
             assert_eq!(parsed, value, "round-trip failed for yaml:\n{yaml}");
         }
     }

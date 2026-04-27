@@ -9,7 +9,7 @@
 /// The rich `ValidationResult` type lives in `specify-validate`; converting
 /// to this summary is a lossy projection (the enum variant collapses into
 /// a `status` string) but keeps `specify-error` dependency-free from the
-/// rest of the workspace. See `DECISIONS.md` ("Change A — Error::Validation
+/// rest of the workspace. See `DECISIONS.md` ("Change A — `Error::Validation`
 /// payload") for the rationale.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationResultSummary {
@@ -25,6 +25,7 @@ pub struct ValidationResultSummary {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error("not initialized: .specify/project.yaml not found")]
     NotInitialized,
@@ -69,11 +70,17 @@ pub enum Error {
     #[error("another /spec:execute driver is running (pid {pid}); refusing to proceed")]
     DriverBusy { pid: u32 },
 
+    #[error("{kind} not found at {}", path.display())]
+    ArtifactNotFound { kind: &'static str, path: std::path::PathBuf },
+
+    #[error("invalid name: {0}")]
+    InvalidName(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
     #[error(transparent)]
-    Yaml(#[from] serde_yaml::Error),
+    Yaml(#[from] serde_yaml_ng::Error),
 }
 
 #[cfg(test)]
@@ -181,6 +188,21 @@ mod tests {
     }
 
     #[test]
+    fn artifact_not_found_display() {
+        let err = Error::ArtifactNotFound {
+            kind: ".metadata.yaml",
+            path: std::path::PathBuf::from("/tmp/x"),
+        };
+        assert_eq!(err.to_string(), ".metadata.yaml not found at /tmp/x");
+    }
+
+    #[test]
+    fn invalid_name_display() {
+        let err = Error::InvalidName("bad--name".to_string());
+        assert_eq!(err.to_string(), "invalid name: bad--name");
+    }
+
+    #[test]
     fn io_from_conversion() {
         let io = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
         let err: Error = io.into();
@@ -190,7 +212,7 @@ mod tests {
 
     #[test]
     fn yaml_from_conversion() {
-        let parse_err: serde_yaml::Error = serde_yaml::from_str::<serde_yaml::Value>(":\n\t- bad")
+        let parse_err: serde_yaml_ng::Error = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(":\n\t- bad")
             .expect_err("expected a YAML parse error");
         let display = parse_err.to_string();
         let err: Error = parse_err.into();

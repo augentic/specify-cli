@@ -291,7 +291,7 @@ fn run_cmd_check(program: &str, args: &[&str], min_version: Option<Version>) -> 
 }
 
 fn run_env_check(var: &str, must_exist: bool) -> Result<(), String> {
-    let value = std::env::var(var).map_err(|_| format!("{var} not set"))?;
+    let value = std::env::var(var).map_err(|_err| format!("{var} not set"))?;
     if value.is_empty() {
         return Err(format!("{var} is empty"));
     }
@@ -321,7 +321,7 @@ fn run_rustup_targets_check(targets: &[&str]) -> Result<(), String> {
 }
 
 fn run_android_ndk_check() -> Result<(), String> {
-    let home = std::env::var("ANDROID_HOME").map_err(|_| "ANDROID_HOME not set".to_string())?;
+    let home = std::env::var("ANDROID_HOME").map_err(|_err| "ANDROID_HOME not set".to_string())?;
     let ndk = PathBuf::from(home).join("ndk");
     if !ndk.is_dir() {
         return Err(format!("{} not found", ndk.display()));

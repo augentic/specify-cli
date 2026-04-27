@@ -648,10 +648,10 @@ changes:
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
         let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
-        assert_eq!(value["error"], "config");
+        assert_eq!(value["error"], "artifact-not-found");
         assert!(
-            value["message"].as_str().unwrap_or_default().contains("plan file not found"),
-            "message should mention 'plan file not found', got: {}",
+            value["message"].as_str().unwrap_or_default().contains("plan.yaml not found at"),
+            "message should mention 'plan.yaml not found at', got: {}",
             value["message"]
         );
     }
@@ -1452,8 +1452,8 @@ changes: []
         assert_eq!(assert.get_output().status.code(), Some(1));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
         assert!(
-            stderr.contains("plan file not found"),
-            "stderr should mention 'plan file not found', got: {stderr:?}"
+            stderr.contains("plan.yaml not found at"),
+            "stderr should mention 'plan.yaml not found at', got: {stderr:?}"
         );
     }
 

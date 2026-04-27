@@ -98,6 +98,10 @@ where
     }
 }
 
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run(args: &UpdateVersionsArgs) -> Result<CommandOutcome, VectisError> {
     let assemblies: Vec<AssemblyKind> = if args.verify {
         vec![AssemblyKind::Core, AssemblyKind::Ios, AssemblyKind::Android]
@@ -463,15 +467,11 @@ fn diff_fields(current: &Versions, proposed: &Versions) -> Vec<Change> {
     cur.into_iter()
         .zip(pro)
         .filter_map(|((k, c), (_, p))| {
-            if c != p {
-                Some(Change {
+            (c != p).then(|| Change {
                     key: k.to_string(),
                     current: c,
                     proposed: p,
                 })
-            } else {
-                None
-            }
         })
         .collect()
 }
@@ -482,14 +482,10 @@ fn unchanged_fields(current: &Versions, proposed: &Versions) -> Vec<Unchanged> {
     cur.into_iter()
         .zip(pro)
         .filter_map(|((k, c), (_, p))| {
-            if c == p {
-                Some(Unchanged {
+            (c == p).then(|| Unchanged {
                     key: k.to_string(),
                     value: c,
                 })
-            } else {
-                None
-            }
         })
         .collect()
 }

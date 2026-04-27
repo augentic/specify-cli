@@ -8,6 +8,9 @@ description = "Spec-format parser (baseline + delta) for Specify"
 categories = ["development-tools", "parser-implementations"]
 keywords = ["specify", "spec", "parser"]
 
+[lints]
+workspace = true
+
 [dependencies]
 specify-error.workspace = true
 regex.workspace = true

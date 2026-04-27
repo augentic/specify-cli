@@ -8,6 +8,9 @@ description = "Hardcoded rule registry and RFC-1a validator for Specify"
 categories = ["development-tools"]
 keywords = ["specify", "validate", "rules"]
 
+[lints]
+workspace = true
+
 [dependencies]
 specify-error.workspace = true
 specify-schema.workspace = true
@@ -16,7 +19,7 @@ specify-task.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 regex.workspace = true
-serde_yaml.workspace = true
+serde_yaml_ng.workspace = true
 glob.workspace = true
 
 [dev-dependencies]

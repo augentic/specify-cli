@@ -30,7 +30,7 @@ specify-validate.workspace = true
 specify-vectis.workspace = true
 clap.workspace = true
 serde.workspace = true
-serde_yaml.workspace = true
+serde_yaml_ng.workspace = true
 serde_json.workspace = true
 semver = "1"
 chrono.workspace = true
@@ -41,6 +41,9 @@ assert_cmd = "2"
 tempfile.workspace = true
 regex.workspace = true
 jsonschema.workspace = true
+
+[lints]
+workspace = true
 
 [workspace]
 members = [
@@ -103,6 +106,13 @@ unnecessary_safety_doc = "warn"
 unneeded_field_pattern = "warn"
 unused_result_ok = "warn"
 
+# Cherry-picked pedantic lints
+must_use_candidate = "warn"
+missing_errors_doc = "warn"
+doc_markdown = "warn"
+redundant_closure_for_method_calls = "warn"
+manual_let_else = "warn"
+
 [workspace.dependencies]
 specify-error = { path = "crates/error" }
 specify-drift = { path = "crates/drift" }
@@ -117,7 +127,7 @@ specify-vectis = { path = "crates/vectis" }
 clap = { version = "4", features = ["derive"] }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
+serde_yaml_ng = "0.9"
 serde_json = "1"
 regex = "1"
 glob = "0.3"

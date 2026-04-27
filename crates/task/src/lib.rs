@@ -82,6 +82,7 @@ fn skill_directive_re() -> &'static Regex {
 /// Lenient: unparseable lines are ignored, as are `### …` and deeper
 /// headings. Tasks appearing before the first `## ` heading receive
 /// `group == ""`.
+#[must_use] 
 pub fn parse_tasks(content: &str) -> TaskProgress {
     let mut current_group = String::new();
     let mut tasks: Vec<Task> = Vec::new();
@@ -163,6 +164,10 @@ fn extract_skill_directive(rest: &str) -> (String, Option<SkillDirective>) {
 /// targets the first unmarked occurrence; if the first occurrence is already
 /// complete the call is treated as a no-op even if later duplicates are
 /// unmarked.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn mark_complete(content: &str, task_number: &str) -> Result<String, Error> {
     let re = task_line_re();
     let mut first_match: Option<(usize, usize, bool)> = None;

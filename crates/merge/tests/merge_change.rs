@@ -9,7 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use regex::Regex;
-use specify_change::{ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome};
+use specify_change::{ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome, Rfc3339Stamp};
 use specify_error::Error;
 use specify_merge::{ContractAction, merge_change, preview_change};
 use tempfile::TempDir;
@@ -58,9 +58,9 @@ fn build_project() -> Project {
     let metadata = ChangeMetadata {
         schema: "omnia".to_string(),
         status: LifecycleStatus::Complete,
-        created_at: Some("2024-08-01T10:00:00Z".to_string()),
-        defined_at: Some("2024-08-01T12:00:00Z".to_string()),
-        build_started_at: Some("2024-08-02T09:30:00Z".to_string()),
+        created_at: Some(Rfc3339Stamp::from_raw("2024-08-01T10:00:00Z".to_string())),
+        defined_at: Some(Rfc3339Stamp::from_raw("2024-08-01T12:00:00Z".to_string())),
+        build_started_at: Some(Rfc3339Stamp::from_raw("2024-08-02T09:30:00Z".to_string())),
         completed_at: None,
         merged_at: None,
         dropped_at: None,

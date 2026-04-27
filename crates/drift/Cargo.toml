@@ -8,6 +8,9 @@ description = "Spec-vs-code drift scaffolding for Specify (RFC-2, stubbed)"
 categories = ["development-tools"]
 keywords = ["specify", "drift", "rfc2"]
 
+[lints]
+workspace = true
+
 [dependencies]
 specify-error.workspace = true
 specify-spec.workspace = true

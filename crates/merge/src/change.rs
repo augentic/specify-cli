@@ -57,6 +57,7 @@ pub struct ContractPreviewEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ContractAction {
     /// New file — no corresponding baseline file exists.
     Added,
@@ -83,6 +84,10 @@ pub struct BaselineConflict {
 /// `LifecycleStatus::Complete` — the define / build / merge skill pipeline
 /// previews while the change is still `building` or `complete` so the
 /// human can confirm operations before the merge skill commits.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn preview_change(change_dir: &Path, specs_dir: &Path) -> Result<PreviewResult, Error> {
     let specs = plan_merge(change_dir, specs_dir)?;
     let contracts = preview_contracts(change_dir, specs_dir)?;
@@ -103,6 +108,10 @@ pub fn preview_change(change_dir: &Path, specs_dir: &Path) -> Result<PreviewResu
 /// carries the merge-success outcome so that `/spec:execute` can read
 /// it via `specify change outcome` (which falls back to the archive
 /// when the active change directory no longer exists).
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn merge_change(
     change_dir: &Path, specs_dir: &Path, archive_dir: &Path,
 ) -> Result<Vec<(String, MergeResult)>, Error> {
@@ -191,6 +200,10 @@ pub fn merge_change(
 /// `touched_specs`, or `defined_at` is missing (in which case the call
 /// is a silent no-op — the merge skill should refuse to proceed until
 /// define has run).
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn conflict_check(change_dir: &Path, specs_dir: &Path) -> Result<Vec<BaselineConflict>, Error> {
     let metadata = ChangeMetadata::load(change_dir)?;
     let Some(defined_raw) = metadata.defined_at.as_deref() else {

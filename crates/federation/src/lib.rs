@@ -68,12 +68,12 @@ mod tests {
             specs_path: ".specify/specs".to_string(),
         };
 
-        let yaml = serde_yaml::to_string(&peer).expect("serialise");
+        let yaml = serde_yaml_ng::to_string(&peer).expect("serialise");
         // Kebab-case field naming must appear in the wire format.
         assert!(yaml.contains("specs-path:"), "expected kebab-case field, got:\n{yaml}");
         assert!(!yaml.contains("specs_path:"), "snake_case leaked into yaml:\n{yaml}");
 
-        let round_tripped: PeerRepo = serde_yaml::from_str(&yaml).expect("deserialise");
+        let round_tripped: PeerRepo = serde_yaml_ng::from_str(&yaml).expect("deserialise");
         assert_eq!(round_tripped, peer);
     }
 }

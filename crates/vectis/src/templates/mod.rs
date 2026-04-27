@@ -145,7 +145,7 @@ pub fn substitute_path_with(
 /// Apply substitutions for every placeholder field on `Params`.
 ///
 /// Substitution is a literal `replace()` -- the `__FOO__` delimiter
-/// (double-underscore + UPPER_SNAKE_CASE) was chosen specifically because
+/// (double-underscore + `UPPER_SNAKE_CASE`) was chosen specifically because
 /// it cannot collide with Rust `{}` format strings, Swift `\()`
 /// interpolation, or Kotlin `${}` templates that appear in the generated
 /// source.

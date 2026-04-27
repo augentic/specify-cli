@@ -8,6 +8,9 @@ description = "Unified error types for the Specify CLI"
 categories = ["development-tools"]
 keywords = ["specify", "errors"]
 
+[lints]
+workspace = true
+
 [dependencies]
 thiserror.workspace = true
-serde_yaml.workspace = true
+serde_yaml_ng.workspace = true

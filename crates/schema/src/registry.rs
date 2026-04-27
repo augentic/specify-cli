@@ -87,6 +87,7 @@ pub struct ContractRoles {
 impl Registry {
     /// Absolute path to `.specify/registry.yaml` for a given project
     /// directory.
+    #[must_use] 
     pub fn path(project_dir: &Path) -> PathBuf {
         project_dir.join(".specify").join("registry.yaml")
     }
@@ -98,6 +99,10 @@ impl Registry {
     /// - `Ok(Some(_))` — file parsed and shape-validated.
     /// - `Err(_)` — malformed YAML, unknown keys, wrong `version`,
     ///   kebab-case / required-field / duplicate-name violations.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn load(project_dir: &Path) -> Result<Option<Self>, Error> {
         let path = Self::path(project_dir);
         if !path.exists() {
@@ -105,7 +110,7 @@ impl Registry {
         }
         let content = std::fs::read_to_string(&path)
             .map_err(|err| Error::Config(format!("failed to read {}: {err}", path.display())))?;
-        let registry: Registry = serde_yaml::from_str(&content)
+        let registry: Registry = serde_yaml_ng::from_str(&content)
             .map_err(|err| Error::Config(format!("registry.yaml: invalid YAML: {err}")))?;
         registry.validate_shape()?;
         Ok(Some(registry))
@@ -117,6 +122,10 @@ impl Registry {
     /// values (RFC-3a C28). Returns the first error encountered — the
     /// convention used elsewhere in `specify-schema` for fast-fail shape
     /// validation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn validate_shape(&self) -> Result<(), Error> {
         if self.version != 1 {
             return Err(Error::Config(format!(
@@ -197,7 +206,7 @@ impl Registry {
         // same path in both `produces` and `consumes`.
         for project in &self.projects {
             if let Some(ref roles) = project.contracts {
-                let produced: HashSet<&str> = roles.produces.iter().map(|s| s.as_str()).collect();
+                let produced: HashSet<&str> = roles.produces.iter().map(std::string::String::as_str).collect();
                 for path in &roles.consumes {
                     if produced.contains(path.as_str()) {
                         return Err(Error::Config(format!(
@@ -254,6 +263,7 @@ impl Registry {
     /// the `/spec:plan` flow (RFC-3a §*When are `registry.yaml` and
     /// `initiative.md` required?*). Useful to C28/C30 where the
     /// *sync peers* phase is gated on `len(projects) > 1`.
+    #[must_use] 
     pub fn is_single_repo(&self) -> bool {
         self.projects.len() <= 1
     }
@@ -267,6 +277,7 @@ impl RegistryProject {
     ///
     /// Callers may assume [`Registry::validate_shape`] has already accepted
     /// the URL — this predicate mirrors the C28 classification rules.
+    #[must_use] 
     pub fn url_materialises_as_symlink(&self) -> bool {
         self.url == "." || (!self.url.contains("://") && !self.url.starts_with("git@"))
     }

@@ -79,6 +79,7 @@ pub struct RenameEntry {
 /// The preamble is every line before the first `### Requirement:` heading or
 /// `## `-prefixed heading, whichever appears first. Blocks with no `ID:`
 /// line get `id == String::new()` (not `None`, not elided).
+#[must_use] 
 pub fn parse_baseline(text: &str) -> ParsedSpec {
     let lines: Vec<&str> = text.split('\n').collect();
     let heading_prefix = REQUIREMENT_HEADING;
@@ -147,6 +148,7 @@ pub fn parse_baseline(text: &str) -> ParsedSpec {
 /// Mirrors `parse_delta_sections` from the archived Python reference (lines 138–196).
 /// Section headers are matched case-insensitively on the stripped line,
 /// exactly like Python's `stripped.lower() == heading.lower()`.
+#[must_use] 
 pub fn parse_delta(text: &str) -> DeltaSpec {
     #[derive(Copy, Clone)]
     enum Section {
@@ -235,6 +237,7 @@ pub fn parse_delta(text: &str) -> DeltaSpec {
 /// header — avoids false positives from prose like `"## ADDED Requirements
 /// were discussed in the meeting"` while still passing every parity fixture
 /// we ship. Noted as a judgement call in the change report.
+#[must_use] 
 pub fn has_delta_headers(text: &str) -> bool {
     let headings = [DELTA_ADDED, DELTA_MODIFIED, DELTA_REMOVED, DELTA_RENAMED];
     for line in text.split('\n') {
@@ -278,11 +281,8 @@ fn parse_scenarios(body: &str) -> Vec<Scenario> {
     let starts: Vec<usize> = lines
         .iter()
         .enumerate()
-        .filter_map(
-            |(idx, line)| {
-                if line.trim().starts_with(SCENARIO_HEADING) { Some(idx) } else { None }
-            },
-        )
+        .filter(|(_, line)| line.trim().starts_with(SCENARIO_HEADING))
+        .map(|(idx, _)| idx)
         .collect();
 
     let mut scenarios = Vec::with_capacity(starts.len());

@@ -75,6 +75,10 @@ pub struct AndroidScaffold {
 /// pipeline runs from `project_dir`; non-zero exit from any step yields
 /// `Verify` so the caller can splice the failure into the structured JSON
 /// output. The pipeline can be skipped for unit tests via `run_build`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn scaffold(
     project_dir: &Path, android_package: &str, caps: &[Capability], params: &Params,
     versions: &Versions, run_build: bool,
@@ -188,7 +192,7 @@ fn detect_java_home_21() -> Option<String> {
 /// `Internal` rather than silently producing a project that fails at the
 /// first `gradle` invocation with a confusing error.
 fn write_local_properties(android_root: &Path) -> Result<(), VectisError> {
-    let android_home = std::env::var("ANDROID_HOME").map_err(|_| VectisError::Internal {
+    let android_home = std::env::var("ANDROID_HOME").map_err(|_err| VectisError::Internal {
         message: "ANDROID_HOME is unset after prereq check passed; this should be unreachable"
             .into(),
     })?;
@@ -209,14 +213,14 @@ fn resolve_ndk_version(versions: &Versions) -> Result<String, VectisError> {
     if let Some(pinned) = versions.android.ndk.as_ref() {
         return Ok(pinned.clone());
     }
-    let android_home = std::env::var("ANDROID_HOME").map_err(|_| VectisError::Internal {
+    let android_home = std::env::var("ANDROID_HOME").map_err(|_err| VectisError::Internal {
         message: "ANDROID_HOME is unset after prereq check passed; this should be unreachable"
             .into(),
     })?;
     let ndk_root = PathBuf::from(android_home).join("ndk");
     let mut versions_found: Vec<String> = fs::read_dir(&ndk_root)
         .map_err(VectisError::from)?
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
         .filter_map(|e| e.file_name().into_string().ok())
         .collect();
@@ -357,8 +361,8 @@ fn bootstrap_wrapper(android_root: &Path, gradle_pin: &str) -> Result<BuildStep,
         let gradlew = android_root.join("gradlew");
         let mut perms = fs::metadata(&gradlew)?.permissions();
         perms.set_mode(0o755);
-        fs::set_permissions(&gradlew, perms)?;
-    }
+        fs::set_permissions(&gradlew, perms)?
+    };
 
     let _ = fs::remove_dir_all(&scratch);
     Ok(step)

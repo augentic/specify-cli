@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use specify::{Error, PipelineView, ProjectConfig};
 
-use crate::OutputFormat;
+use crate::cli::OutputFormat;
+use crate::output::CliResult;
 
 pub(crate) struct CommandContext {
     pub format: OutputFormat,
@@ -15,19 +16,19 @@ impl CommandContext {
     /// bundle everything into a `CommandContext`. On failure the error is
     /// emitted (JSON or text, depending on `format`) and the appropriate
     /// exit code is returned as `Err`.
-    pub fn require(format: OutputFormat) -> Result<Self, i32> {
+    pub fn require(format: OutputFormat) -> Result<Self, CliResult> {
         let project_dir =
-            std::env::current_dir().map_err(|e| crate::emit_error(format, &Error::Io(e)))?;
+            std::env::current_dir().map_err(|e| crate::output::emit_error(format, &Error::Io(e)))?;
         let config =
-            ProjectConfig::load(&project_dir).map_err(|e| crate::emit_error(format, &e))?;
+            ProjectConfig::load(&project_dir).map_err(|e| crate::output::emit_error(format, &e))?;
         Ok(Self { format, project_dir, config })
     }
 
-    pub fn emit_error(&self, err: &Error) -> i32 {
-        crate::emit_error(self.format, err)
+    pub fn emit_error(&self, err: &Error) -> CliResult {
+        crate::output::emit_error(self.format, err)
     }
 
-    pub fn load_pipeline(&self) -> Result<PipelineView, i32> {
+    pub fn load_pipeline(&self) -> Result<PipelineView, CliResult> {
         PipelineView::load(&self.config.schema, &self.project_dir)
             .map_err(|e| self.emit_error(&e))
     }

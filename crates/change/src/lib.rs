@@ -24,8 +24,10 @@ mod atomic;
 pub mod journal;
 pub mod lock;
 pub mod plan;
+pub mod timestamp;
 
 pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339, is_valid_kebab_name};
+pub use timestamp::Rfc3339Stamp;
 pub use journal::{EntryKind, Journal, JournalEntry};
 pub use lock::{PlanLockAcquired, PlanLockGuard, PlanLockReleased, PlanLockStamp, PlanLockState};
 pub use plan::*;
@@ -37,17 +39,17 @@ pub struct ChangeMetadata {
     pub schema: String,
     pub status: LifecycleStatus,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub created_at: Option<String>,
+    pub created_at: Option<Rfc3339Stamp>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub defined_at: Option<String>,
+    pub defined_at: Option<Rfc3339Stamp>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub build_started_at: Option<String>,
+    pub build_started_at: Option<Rfc3339Stamp>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub completed_at: Option<String>,
+    pub completed_at: Option<Rfc3339Stamp>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub merged_at: Option<String>,
+    pub merged_at: Option<Rfc3339Stamp>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub dropped_at: Option<String>,
+    pub dropped_at: Option<Rfc3339Stamp>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub drop_reason: Option<String>,
     #[serde(default)]
@@ -91,7 +93,7 @@ pub struct ChangeMetadata {
 pub struct PhaseOutcome {
     pub phase: Phase,
     pub outcome: Outcome,
-    pub at: String,
+    pub at: Rfc3339Stamp,
     pub summary: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<String>,
@@ -100,6 +102,7 @@ pub struct PhaseOutcome {
 /// The three possible outcomes a phase returns to `/spec:execute`.
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum Outcome {
     Success,
     Failure,
@@ -113,6 +116,7 @@ pub enum Outcome {
 /// guards without requiring explicit clones.
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum LifecycleStatus {
     Defining,
     Defined,
@@ -134,6 +138,7 @@ pub struct TouchedSpec {
 /// Whether a touched spec is new or a modification of an existing baseline.
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum SpecType {
     New,
     Modified,
@@ -173,14 +178,17 @@ impl fmt::Display for SpecType {
 
 impl LifecycleStatus {
     /// The creation edge (`START → Defining`). Called by `init`/`define`.
+    #[must_use] 
     pub fn initial() -> Self {
         LifecycleStatus::Defining
     }
 
+    #[must_use] 
     pub fn is_terminal(&self) -> bool {
         matches!(self, LifecycleStatus::Merged | LifecycleStatus::Dropped)
     }
 
+    #[must_use] 
     pub fn can_transition_to(&self, target: &Self) -> bool {
         use LifecycleStatus::*;
         matches!(
@@ -195,6 +203,10 @@ impl LifecycleStatus {
         )
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn transition(&self, target: LifecycleStatus) -> Result<LifecycleStatus, Error> {
         if self.can_transition_to(&target) {
             Ok(target)
@@ -209,6 +221,7 @@ impl LifecycleStatus {
 
 impl ChangeMetadata {
     /// Convenience helper: `<change_dir>/.metadata.yaml`.
+    #[must_use] 
     pub fn path(change_dir: &Path) -> PathBuf {
         change_dir.join(".metadata.yaml")
     }
@@ -217,18 +230,22 @@ impl ChangeMetadata {
     ///
     /// Errors:
     ///   - file missing -> `Error::Config` with path context
-    ///   - YAML malformed -> `Error::Yaml` (via `From<serde_yaml::Error>`)
+    ///   - YAML malformed -> `Error::Yaml` (via `From<serde_yaml_ng::Error>`)
     ///   - other I/O failure -> `Error::Io`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn load(change_dir: &Path) -> Result<Self, Error> {
         let path = Self::path(change_dir);
         if !path.exists() {
-            return Err(Error::Config(format!(
-                ".metadata.yaml not found in {}",
-                change_dir.display()
-            )));
+            return Err(Error::ArtifactNotFound {
+                kind: ".metadata.yaml",
+                path,
+            });
         }
         let content = std::fs::read_to_string(&path)?;
-        let meta: ChangeMetadata = serde_yaml::from_str(&content)?;
+        let meta: ChangeMetadata = serde_yaml_ng::from_str(&content)?;
         Ok(meta)
     }
 
@@ -249,6 +266,10 @@ impl ChangeMetadata {
     /// Does **not** create the parent directory — `init`/`define` own
     /// that responsibility. Returns `Error::Io` on any write failure
     /// and `Error::Yaml` if serialization fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn save(&self, change_dir: &Path) -> Result<(), Error> {
         let path = Self::path(change_dir);
         crate::atomic::atomic_yaml_write(&path, self)
@@ -378,10 +399,10 @@ mod tests {
         ChangeMetadata {
             schema: "omnia".to_string(),
             status: LifecycleStatus::Building,
-            created_at: Some("2024-08-01T10:00:00Z".to_string()),
-            defined_at: Some("2024-08-01T12:00:00Z".to_string()),
-            build_started_at: Some("2024-08-02T09:30:00Z".to_string()),
-            completed_at: Some("2024-08-03T15:45:00Z".to_string()),
+            created_at: Some(Rfc3339Stamp::from_raw("2024-08-01T10:00:00Z".to_string())),
+            defined_at: Some(Rfc3339Stamp::from_raw("2024-08-01T12:00:00Z".to_string())),
+            build_started_at: Some(Rfc3339Stamp::from_raw("2024-08-02T09:30:00Z".to_string())),
+            completed_at: Some(Rfc3339Stamp::from_raw("2024-08-03T15:45:00Z".to_string())),
             merged_at: None,
             dropped_at: None,
             drop_reason: None,
@@ -409,18 +430,19 @@ mod tests {
     }
 
     #[test]
-    fn load_missing_file_returns_config_error() {
+    fn load_missing_file_returns_artifact_not_found() {
         let dir = tempdir().expect("tempdir");
         let err = ChangeMetadata::load(dir.path()).expect_err("expected error");
         match err {
-            Error::Config(msg) => {
-                assert!(msg.contains(".metadata.yaml not found"), "unexpected message: {msg}");
+            Error::ArtifactNotFound { kind, path } => {
+                assert_eq!(kind, ".metadata.yaml");
                 assert!(
-                    msg.contains(&dir.path().display().to_string()),
-                    "message should include change dir path, got: {msg}"
+                    path.display().to_string().contains(&dir.path().display().to_string()),
+                    "path should include change dir, got: {}",
+                    path.display()
                 );
             }
-            other => panic!("expected Error::Config, got {other:?}"),
+            other => panic!("expected Error::ArtifactNotFound, got {other:?}"),
         }
     }
 
@@ -449,7 +471,7 @@ touched-specs:
   - name: oauth
     type: new
 "#;
-        let meta: ChangeMetadata = serde_yaml::from_str(yaml).expect("parse ok");
+        let meta: ChangeMetadata = serde_yaml_ng::from_str(yaml).expect("parse ok");
         assert_eq!(meta.status, LifecycleStatus::Building);
         assert_eq!(meta.created_at.as_deref(), Some("2024-08-01T10:00:00Z"));
         assert_eq!(meta.defined_at.as_deref(), Some("2024-08-01T12:00:00Z"));
@@ -467,9 +489,9 @@ touched-specs:
         let meta = ChangeMetadata {
             schema: "omnia".to_string(),
             status: LifecycleStatus::Building,
-            created_at: Some("2024-08-01T10:00:00Z".to_string()),
+            created_at: Some(Rfc3339Stamp::from_raw("2024-08-01T10:00:00Z".to_string())),
             defined_at: None,
-            build_started_at: Some("2024-08-02T09:30:00Z".to_string()),
+            build_started_at: Some(Rfc3339Stamp::from_raw("2024-08-02T09:30:00Z".to_string())),
             completed_at: None,
             merged_at: None,
             dropped_at: None,
@@ -480,7 +502,7 @@ touched-specs:
             }],
             outcome: None,
         };
-        let yaml = serde_yaml::to_string(&meta).expect("serialize ok");
+        let yaml = serde_yaml_ng::to_string(&meta).expect("serialize ok");
         assert!(yaml.contains("created-at:"), "yaml missing kebab-case created-at:\n{yaml}");
         assert!(yaml.contains("build-started-at:"), "yaml missing build-started-at:\n{yaml}");
         assert!(yaml.contains("touched-specs:"), "yaml missing touched-specs:\n{yaml}");

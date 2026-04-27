@@ -62,6 +62,10 @@ pub struct InitResult {
 /// Idempotent: a second call with identical options succeeds, creates no
 /// new directories, doesn't duplicate the `.gitignore` entry, and writes
 /// byte-identical `project.yaml` contents.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let name = resolved_name(opts.project_dir, opts.name);
 
@@ -100,7 +104,7 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     };
 
     let config_path = ProjectConfig::config_path(opts.project_dir);
-    let serialised = serde_yaml::to_string(&cfg)?;
+    let serialised = serde_yaml_ng::to_string(&cfg)?;
     fs::write(&config_path, serialised)?;
 
     upsert_gitignore(opts.project_dir)?;
@@ -145,7 +149,7 @@ fn resolve_version(project_dir: &Path, mode: VersionMode) -> Result<String, Erro
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(current),
         Err(err) => return Err(Error::Io(err)),
     };
-    let existing: ProjectConfig = serde_yaml::from_str(&text)?;
+    let existing: ProjectConfig = serde_yaml_ng::from_str(&text)?;
     Ok(existing.specify_version.unwrap_or(current))
 }
 
@@ -157,6 +161,10 @@ const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/works
 ///
 /// Used by [`init`] and by `specify workspace sync` (RFC-3a
 /// C29).
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn ensure_specify_gitignore_entries(project_dir: &Path) -> Result<(), Error> {
     let path = project_dir.join(".gitignore");
     let existing = match fs::read_to_string(&path) {

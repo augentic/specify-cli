@@ -19,11 +19,15 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use specify_error::Error;
 
-use crate::{ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome, SpecType, TouchedSpec};
+use crate::{
+    ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome, Rfc3339Stamp, SpecType,
+    TouchedSpec,
+};
 
 /// What to do when `Change::create` finds an existing directory at the
 /// target path.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CreateIfExists {
     /// Default. Refuse and return `Error::Config`.
     Fail,
@@ -73,23 +77,27 @@ pub struct Overlap {
 /// acceptance rules here MUST be mirrored in that regex — and in the
 /// copy in the `augentic/specify` repo — so that `specify plan
 /// validate` and `validate_name` never disagree on a name.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn validate_name(name: &str) -> Result<(), Error> {
     if name.is_empty() {
-        return Err(Error::Config("change name cannot be empty".to_string()));
+        return Err(Error::InvalidName("change name cannot be empty".to_string()));
     }
     if name.starts_with('-') || name.ends_with('-') {
-        return Err(Error::Config(format!(
+        return Err(Error::InvalidName(format!(
             "change name `{name}` cannot start or end with a hyphen"
         )));
     }
     if name.contains("--") {
-        return Err(Error::Config(format!(
+        return Err(Error::InvalidName(format!(
             "change name `{name}` cannot contain consecutive hyphens"
         )));
     }
     for c in name.chars() {
         if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-' {
-            return Err(Error::Config(format!(
+            return Err(Error::InvalidName(format!(
                 "change name `{name}` must be kebab-case (lowercase ascii, digits, hyphens only)"
             )));
         }
@@ -97,6 +105,7 @@ pub fn validate_name(name: &str) -> Result<(), Error> {
     Ok(())
 }
 
+#[must_use] 
 pub fn is_valid_kebab_name(s: &str) -> bool {
     validate_name(s).is_ok()
 }
@@ -109,6 +118,10 @@ pub fn is_valid_kebab_name(s: &str) -> bool {
 /// On success returns a [`CreateOutcome`] with the resolved directory and
 /// loaded metadata. Behaviour when the directory already exists is
 /// governed by `if_exists` — see [`CreateIfExists`].
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn create(
     changes_dir: &Path, name: &str, schema: &str, if_exists: CreateIfExists, now: DateTime<Utc>,
 ) -> Result<CreateOutcome, Error> {
@@ -179,6 +192,10 @@ pub fn create(
 /// timestamp is preserved), and `.metadata.yaml` is rewritten atomically.
 ///
 /// Returns the updated `ChangeMetadata`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn transition(
     change_dir: &Path, target: LifecycleStatus, now: DateTime<Utc>,
 ) -> Result<ChangeMetadata, Error> {
@@ -227,6 +244,10 @@ pub fn transition(
 /// Returns entries sorted by capability name for stable output. The
 /// scan is non-destructive — it does not mutate `.metadata.yaml`. The
 /// caller typically follows up with [`write_touched_specs`].
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn scan_touched_specs(change_dir: &Path, specs_dir: &Path) -> Result<Vec<TouchedSpec>, Error> {
     let specs_root = change_dir.join("specs");
     if !specs_root.is_dir() {
@@ -258,6 +279,10 @@ pub fn scan_touched_specs(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Tou
 /// Overwrite `.metadata.yaml`'s `touched_specs` with `entries`.
 ///
 /// Leaves every other field on the struct untouched, including `status`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn write_touched_specs(
     change_dir: &Path, entries: Vec<TouchedSpec>,
 ) -> Result<ChangeMetadata, Error> {
@@ -275,6 +300,10 @@ pub fn write_touched_specs(
 /// move completes, so we additionally filter by status: only
 /// non-terminal statuses participate. Archive directories under
 /// `changes_dir` (e.g. `<changes_dir>/archive/...`) are not scanned.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn overlap(changes_dir: &Path, change_name: &str) -> Result<Vec<Overlap>, Error> {
     let self_dir = changes_dir.join(change_name);
     let self_meta = ChangeMetadata::load(&self_dir)?;
@@ -330,6 +359,10 @@ pub fn overlap(changes_dir: &Path, change_name: &str) -> Result<Vec<Overlap>, Er
 /// `specify change archive` and the `specify merge` success path route
 /// through it. Does **not** touch `.metadata.yaml` — the caller is
 /// responsible for any status transition before or after.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn archive(
     change_dir: &Path, archive_dir: &Path, today: DateTime<Utc>,
 ) -> Result<PathBuf, Error> {
@@ -361,6 +394,10 @@ pub fn archive(
 /// passes `Utc::now()`.
 ///
 /// Returns the updated [`ChangeMetadata`].
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn phase_outcome(
     change_dir: &Path, phase: Phase, outcome: Outcome, summary: &str, context: Option<&str>,
     now: DateTime<Utc>,
@@ -384,6 +421,10 @@ pub fn phase_outcome(
 /// both failure ("dropped because build broke") and deferral ("blocked
 /// on a design question") — the plan layer above turns the reason into
 /// `failure-reason` or `block-reason`; here it's just free text.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn drop(
     change_dir: &Path, archive_dir: &Path, reason: Option<&str>, now: DateTime<Utc>,
 ) -> Result<(ChangeMetadata, PathBuf), Error> {
@@ -416,8 +457,9 @@ pub fn drop(
 /// Re-exported at the crate root so the `specify` binary can route
 /// its own timestamp writers (e.g. `change journal-append`) through
 /// the same helper.
-pub fn format_rfc3339(now: DateTime<Utc>) -> String {
-    now.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+#[must_use] 
+pub fn format_rfc3339(now: DateTime<Utc>) -> Rfc3339Stamp {
+    Rfc3339Stamp::from_raw(now.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
 /// `EXDEV` ("cross-device") errno. The `std::fs::rename` fallback to

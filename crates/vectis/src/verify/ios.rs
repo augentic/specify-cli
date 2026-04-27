@@ -3,7 +3,7 @@
 //! Four fixed steps, run from `iOS/`, stopping at the first failure:
 //!
 //! 1. `make typegen` — generate the `SharedTypes` Swift package
-//! 2. `make package` — build the `Shared` UniFFI Swift package via `cargo swift`
+//! 2. `make package` — build the `Shared` `UniFFI` Swift package via `cargo swift`
 //! 3. `make xcode` — generate the Xcode project via `xcodegen`
 //! 4. `xcodebuild build` — simulator build of the generated project
 //!
@@ -28,6 +28,10 @@ use crate::verify::pipeline::{BuildStep, run_step};
 /// runs after the `make` chain; when `false` the function stops after
 /// `make xcode`. init uses `false` (the Xcode project is proof enough
 /// that the templates rendered coherently); verify uses `true`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run_pipeline(
     ios_root: &Path, include_xcodebuild: bool,
 ) -> Result<Vec<BuildStep>, VectisError> {
@@ -78,7 +82,7 @@ pub fn run_pipeline(
 fn find_xcodeproj(ios_root: &Path) -> Result<(String, PathBuf), VectisError> {
     let mut found: Vec<PathBuf> = fs::read_dir(ios_root)
         .map_err(VectisError::from)?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("xcodeproj"))
         .collect();

@@ -34,6 +34,10 @@ pub struct Brief {
 
 impl Brief {
     /// Read `path` and parse it via [`Brief::parse`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn load(path: &Path) -> Result<Self, Error> {
         let contents = std::fs::read_to_string(path).map_err(|err| {
             Error::Config(format!("failed to read brief {}: {err}", path.display()))
@@ -44,6 +48,10 @@ impl Brief {
     /// Parse an in-memory brief. The file must begin with `---\n`,
     /// followed by YAML frontmatter, a closing `---` on its own line,
     /// and then the markdown body.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn parse(path: &Path, contents: &str) -> Result<Self, Error> {
         let stripped = contents
             .strip_prefix("---\n")
@@ -63,7 +71,7 @@ impl Brief {
         })?;
 
         let frontmatter: BriefFrontmatter =
-            serde_yaml::from_str(frontmatter_text).map_err(|err| {
+            serde_yaml_ng::from_str(frontmatter_text).map_err(|err| {
                 Error::Config(format!(
                     "brief {} has invalid frontmatter YAML: {err}",
                     path.display()

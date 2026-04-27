@@ -1,7 +1,7 @@
 //! YAML delta merge for composition.yaml — screen-level operations
 //! (added/modified/removed) applied to a baseline `screens` map.
 
-use serde_yaml::Value;
+use serde_yaml_ng::Value;
 use specify_error::Error;
 
 /// Result of a successful composition merge.
@@ -26,10 +26,14 @@ pub enum CompositionMergeOp {
 /// `baseline` is the existing `composition.yaml` with a `screens` map (or None for new).
 /// `delta_text` is the per-change `composition.yaml` — may have `screens` (new baseline)
 /// or `delta` (screen-level operations).
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn merge_composition(
     baseline: Option<&str>, delta_text: &str,
 ) -> Result<CompositionMergeResult, Error> {
-    let delta_doc: Value = serde_yaml::from_str(delta_text)
+    let delta_doc: Value = serde_yaml_ng::from_str(delta_text)
         .map_err(|e| Error::Merge(format!("failed to parse composition delta: {e}")))?;
 
     let has_screens = delta_doc.get("screens").is_some();
@@ -37,7 +41,7 @@ pub fn merge_composition(
 
     if has_screens && !has_delta {
         let screen_count =
-            delta_doc.get("screens").and_then(|s| s.as_mapping()).map(|m| m.len()).unwrap_or(0);
+            delta_doc.get("screens").and_then(|s| s.as_mapping()).map(serde_yaml_ng::Mapping::len).unwrap_or(0);
         return Ok(CompositionMergeResult {
             output: delta_text.to_string(),
             operations: vec![CompositionMergeOp::CreatedBaseline { screen_count }],
@@ -57,9 +61,9 @@ pub fn merge_composition(
 
     let baseline_text = baseline.unwrap_or("");
     let mut baseline_doc: Value = if baseline_text.trim().is_empty() {
-        serde_yaml::from_str("version: 1\nscreens: {}").unwrap()
+        serde_yaml_ng::from_str("version: 1\nscreens: {}").unwrap()
     } else {
-        serde_yaml::from_str(baseline_text)
+        serde_yaml_ng::from_str(baseline_text)
             .map_err(|e| Error::Merge(format!("failed to parse composition baseline: {e}")))?
     };
 
@@ -132,7 +136,7 @@ pub fn merge_composition(
         return Err(Error::Merge(errors.join("\n")));
     }
 
-    let output = serde_yaml::to_string(&baseline_doc)
+    let output = serde_yaml_ng::to_string(&baseline_doc)
         .map_err(|e| Error::Merge(format!("failed to serialize merged composition: {e}")))?;
 
     Ok(CompositionMergeResult { output, operations })

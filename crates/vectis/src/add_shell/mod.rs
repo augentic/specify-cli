@@ -22,7 +22,7 @@
 //!    shape that `vectis verify` would produce for the just-added
 //!    assembly. This satisfies the RFC's "run verify for the just-added
 //!    assembly" requirement without duplicating the build -- the
-//!    alternative ("scaffold(false) then verify::run(..)") requires
+//!    alternative ("scaffold(false) then `verify::run`(..)") requires
 //!    separately bootstrapping the Android wrapper before verify's
 //!    `./gradlew :app:assembleDebug` can find a `gradlew` binary, and
 //!    doubles every build step when the wrapper *is* present.
@@ -37,6 +37,10 @@ use crate::verify::pipeline::BuildStep;
 use crate::versions::Versions;
 use crate::{AddShellArgs, CommandOutcome, init};
 
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn run(args: &AddShellArgs) -> Result<CommandOutcome, VectisError> {
     let shell = match args.platform.as_str() {
         "ios" => AssemblyKind::Ios,

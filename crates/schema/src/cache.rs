@@ -23,6 +23,7 @@ pub struct CacheMeta {
 
 impl CacheMeta {
     /// Absolute path to `<project_dir>/.specify/.cache/.cache-meta.yaml`.
+    #[must_use] 
     pub fn path(project_dir: &Path) -> PathBuf {
         project_dir.join(".specify").join(".cache").join(".cache-meta.yaml")
     }
@@ -31,6 +32,10 @@ impl CacheMeta {
     /// - `Ok(None)` if the file is missing (cache empty).
     /// - `Ok(Some(meta))` on a successful parse.
     /// - `Err(Error::Config(_))` if the file exists but cannot be parsed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn load(project_dir: &Path) -> Result<Option<Self>, Error> {
         let path = Self::path(project_dir);
         let contents = match std::fs::read_to_string(&path) {
@@ -40,7 +45,7 @@ impl CacheMeta {
                 return Err(Error::Config(format!("failed to read {}: {err}", path.display())));
             }
         };
-        let meta: CacheMeta = serde_yaml::from_str(&contents).map_err(|err| {
+        let meta: CacheMeta = serde_yaml_ng::from_str(&contents).map_err(|err| {
             Error::Config(format!("invalid cache-meta at {}: {err}", path.display()))
         })?;
         Ok(Some(meta))
@@ -48,6 +53,7 @@ impl CacheMeta {
 
     /// Validate this `CacheMeta` against the embedded
     /// `schemas/cache-meta.schema.json`.
+    #[must_use] 
     pub fn validate_structure(&self) -> Vec<ValidationResult> {
         let value: serde_json::Value = match serde_json::to_value(self) {
             Ok(v) => v,
@@ -73,6 +79,7 @@ impl CacheMeta {
     /// - Bare names (no `://`) → `schema_url == format!("local:{name}")`.
     /// - URL-shaped values → `schema_url == schema_value` (exact match,
     ///   including `@ref` if present).
+    #[must_use] 
     pub fn matches(&self, schema_value: &str) -> bool {
         if schema_value.contains("://") {
             self.schema_url == schema_value

@@ -27,7 +27,7 @@ pub struct CoreScaffold {
     pub files: Vec<String>,
 }
 
-/// Validate `app_name` against the PascalCase pattern documented in
+/// Validate `app_name` against the `PascalCase` pattern documented in
 /// RFC-6 § CLI Surface § `vectis init`.
 ///
 /// A name is valid iff:
@@ -40,6 +40,10 @@ pub struct CoreScaffold {
 /// `_App` (leading underscore). The constraint matches the way the name
 /// is used downstream: a literal Rust struct identifier in `app.rs` /
 /// `ffi.rs` / `codegen.rs`.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn validate_app_name(app_name: &str) -> Result<(), VectisError> {
     let mut chars = app_name.chars();
     let first = chars.next().ok_or_else(|| VectisError::InvalidProject {
@@ -71,6 +75,7 @@ pub fn validate_app_name(app_name: &str) -> Result<(), VectisError> {
 /// chunk-3a `codegen.rs` template uses `__ANDROID_PACKAGE__` as the Kotlin
 /// namespace -- the binary still has to compile when no Android shell is
 /// requested. See chunk-3a MANIFEST § Android-only placeholder.
+#[must_use] 
 pub fn default_android_package(app_name: &str) -> String {
     format!("com.vectis.{}", app_name.to_lowercase())
 }
@@ -86,6 +91,10 @@ pub fn default_android_package(app_name: &str) -> String {
 /// `caps` selects which capability-marked regions of the templates are
 /// kept. Chunk 6 wires this through from `--caps`; pass `&[]` for the
 /// render-only baseline.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn scaffold(
     project_dir: &Path, app_name: &str, android_package: &str, versions: &Versions,
     caps: &[Capability],

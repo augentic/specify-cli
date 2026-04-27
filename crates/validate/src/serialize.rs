@@ -59,6 +59,7 @@ fn validation_result_to_json(r: &ValidationResult) -> Value {
             "rule": rule,
             "reason": reason,
         }),
+        _ => unreachable!(),
     }
 }
 

@@ -54,6 +54,7 @@ pub struct ResolvedSchema {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SchemaSource {
     Local(PathBuf),
     Cached(PathBuf),
@@ -71,6 +72,7 @@ pub enum SchemaSource {
 /// `Schema::plan_entries()` to enumerate plan-phase briefs.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum Phase {
     Plan,
     Define,
@@ -103,6 +105,10 @@ impl Schema {
     /// When the loaded schema has `extends`, the parent is resolved via
     /// this same function and merged on top of the child via
     /// [`Schema::merge`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
     pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedSchema, Error> {
         let (root_dir, source) = locate_schema_root(schema_value, project_dir)?;
         let schema_path = root_dir.join("schema.yaml");
@@ -112,7 +118,7 @@ impl Schema {
                 schema_path.display()
             ))
         })?;
-        let schema: Schema = serde_yaml::from_str(&raw).map_err(|err| {
+        let schema: Schema = serde_yaml_ng::from_str(&raw).map_err(|err| {
             Error::SchemaResolution(format!("failed to parse {}: {err}", schema_path.display()))
         })?;
 
@@ -133,6 +139,7 @@ impl Schema {
     /// Validate this in-memory schema against the embedded
     /// `schemas/schema.schema.json`. Returns one `ValidationResult` per
     /// check performed (empty = fully valid).
+    #[must_use] 
     pub fn validate_structure(&self) -> Vec<ValidationResult> {
         let schema_value: serde_json::Value = match serde_json::to_value(self) {
             Ok(value) => value,
@@ -174,6 +181,7 @@ impl Schema {
     /// Plan-phase (Layer 3 authoring) pipeline entries in declared
     /// order. Returns an empty slice for schemas that don't declare a
     /// `pipeline.plan` block.
+    #[must_use] 
     pub fn plan_entries(&self) -> &[PipelineEntry] {
         &self.pipeline.plan
     }
@@ -181,6 +189,7 @@ impl Schema {
     /// Look up a pipeline entry by id. Searches the plan phase first so
     /// authoring briefs are discoverable, then the define→build→merge
     /// execution loop.
+    #[must_use] 
     pub fn entry(&self, id: &str) -> Option<(Phase, &PipelineEntry)> {
         self.pipeline
             .plan
@@ -200,6 +209,7 @@ impl Schema {
     ///   come from the child.
     /// - `extends` is cleared — the composed schema has no unresolved
     ///   parent.
+    #[must_use] 
     pub fn merge(parent: Schema, child: Schema) -> Schema {
         Schema {
             name: child.name,

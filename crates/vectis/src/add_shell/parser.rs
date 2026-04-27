@@ -50,6 +50,10 @@ pub struct ParsedApp {
 /// - Returns `InvalidProject` if no `impl App for <Name>` is found --
 ///   this is the marker the scaffold writes and its absence means the
 ///   file is not a vectis-scaffolded Crux app.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn parse_app_rs(source: &str) -> Result<ParsedApp, VectisError> {
     let file = syn::parse_file(source).map_err(|e| VectisError::InvalidProject {
         message: format!(

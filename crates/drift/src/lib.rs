@@ -33,6 +33,7 @@ pub struct DriftEntry {
 /// status-column formatting.
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum DriftStatus {
     Covered,
     Drifted,
@@ -65,6 +66,10 @@ pub enum DriftStatus {
 /// The return type is `Result` rather than an infallible `Vec<…>` so RFC-2
 /// can tighten the spec parser without another public-API churn — today the
 /// only failure mode is `Error::Io` bubbling up from the directory walk.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
 pub fn baseline_inventory(specs_dir: &Path) -> Result<Vec<(String, Vec<RequirementBlock>)>, Error> {
     if !specs_dir.exists() {
         return Ok(Vec::new());
@@ -83,12 +88,11 @@ pub fn baseline_inventory(specs_dir: &Path) -> Result<Vec<(String, Vec<Requireme
             continue;
         }
 
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            // Non-UTF-8 directory names under `specs/` aren't something the
-            // spec format supports; skip them rather than erroring so a
-            // stray weird directory doesn't brick the whole inventory.
-            Err(_) => continue,
+        // Non-UTF-8 directory names under `specs/` aren't something the
+        // spec format supports; skip them rather than erroring so a
+        // stray weird directory doesn't brick the whole inventory.
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
         let text = fs::read_to_string(&spec_path)?;
