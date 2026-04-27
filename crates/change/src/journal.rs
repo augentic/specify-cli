@@ -40,6 +40,7 @@
 //!   content; it does **not** silently truncate or recover. The only
 //!   "graceful" branch is "file absent → empty journal".
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -89,6 +90,16 @@ pub enum EntryKind {
     Failure,
     /// Phase recovered from a previous failure or deferred state.
     Recovery,
+}
+
+impl fmt::Display for EntryKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Question => "question",
+            Self::Failure => "failure",
+            Self::Recovery => "recovery",
+        })
+    }
 }
 
 impl Journal {
@@ -357,5 +368,12 @@ mod tests {
         use std::collections::HashSet;
         let summaries: HashSet<&str> = loaded.entries.iter().map(|e| e.summary.as_str()).collect();
         assert_eq!(summaries.len(), 40, "every summary must appear exactly once");
+    }
+
+    #[test]
+    fn entry_kind_display_matches_serde_wire_format() {
+        assert_eq!(EntryKind::Question.to_string(), "question");
+        assert_eq!(EntryKind::Failure.to_string(), "failure");
+        assert_eq!(EntryKind::Recovery.to_string(), "recovery");
     }
 }

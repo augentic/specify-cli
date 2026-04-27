@@ -1169,7 +1169,7 @@ fn collect_status(
     change_dir: &Path, name: &str, pipeline: &PipelineView, project_dir: &Path,
 ) -> Result<StatusEntry, Error> {
     let metadata = ChangeMetadata::load(change_dir)?;
-    let status_str = format!("{:?}", metadata.status).to_lowercase();
+    let status_str = metadata.status.to_string();
 
     // Delegate per-brief artifact completion to `PipelineView` so every
     // consumer — `specify status`, `specify schema pipeline`, and any
@@ -1479,13 +1479,13 @@ fn run_schema_pipeline(format: OutputFormat, phase: Phase, change: Option<PathBu
                 })
                 .collect();
             emit_json(json!({
-                "phase": phase_label(phase),
+                "phase": phase.to_string(),
                 "change": change.as_ref().map(|p| p.display().to_string()),
                 "briefs": briefs,
             }));
         }
         OutputFormat::Text => {
-            println!("phase: {}", phase_label(phase));
+            println!("phase: {phase}");
             for b in &order {
                 let present_label = completion
                     .as_ref()
@@ -1643,7 +1643,7 @@ fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> i32 {
         OutputFormat::Json => emit_json(json!({
             "name": outcome.change_dir.file_name().and_then(|n| n.to_str()).unwrap_or(""),
             "change-dir": outcome.change_dir.display().to_string(),
-            "status": format!("{:?}", outcome.metadata.status).to_lowercase(),
+            "status": outcome.metadata.status.to_string(),
             "schema": outcome.metadata.schema,
             "created": outcome.created,
             "restarted": outcome.restarted,
@@ -1658,7 +1658,7 @@ fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> i32 {
                 println!("  (previous directory was removed)");
             }
             println!("  schema: {}", outcome.metadata.schema);
-            println!("  status: {}", format!("{:?}", outcome.metadata.status).to_lowercase());
+            println!("  status: {}", outcome.metadata.status);
         }
     }
     EXIT_SUCCESS
@@ -1678,7 +1678,7 @@ fn run_change_transition(format: OutputFormat, name: String, target: LifecycleSt
     match format {
         OutputFormat::Json => emit_json(json!({
             "name": name,
-            "status": format!("{:?}", metadata.status).to_lowercase(),
+            "status": metadata.status.to_string(),
             "defined-at": metadata.defined_at,
             "build-started-at": metadata.build_started_at,
             "completed-at": metadata.completed_at,
@@ -1686,7 +1686,7 @@ fn run_change_transition(format: OutputFormat, name: String, target: LifecycleSt
             "dropped-at": metadata.dropped_at,
         })),
         OutputFormat::Text => {
-            println!("{name}: status = {}", format!("{:?}", metadata.status).to_lowercase());
+            println!("{name}: status = {}", metadata.status);
         }
     }
     EXIT_SUCCESS
@@ -1743,7 +1743,7 @@ fn run_change_touched_specs(
             } else {
                 println!("{name}:");
                 for entry in &entries {
-                    println!("  {} ({})", entry.name, spec_type_label(entry.spec_type));
+                    println!("  {} ({})", entry.name, entry.spec_type);
                 }
             }
         }
@@ -1802,8 +1802,8 @@ fn run_change_overlap(format: OutputFormat, name: String) -> i32 {
                         "{}: also touched by `{}` ({} vs {})",
                         o.capability,
                         o.other_change,
-                        spec_type_label(o.our_spec_type),
-                        spec_type_label(o.other_spec_type),
+                        o.our_spec_type,
+                        o.other_spec_type,
                     );
                 }
             }
@@ -1852,7 +1852,7 @@ fn run_change_drop(format: OutputFormat, name: String, reason: Option<String>) -
     match format {
         OutputFormat::Json => emit_json(json!({
             "name": name,
-            "status": format!("{:?}", metadata.status).to_lowercase(),
+            "status": metadata.status.to_string(),
             "archive-path": archive_path.display().to_string(),
             "drop-reason": metadata.drop_reason,
         })),
@@ -1896,18 +1896,15 @@ fn run_change_phase_outcome(
         .outcome
         .as_ref()
         .expect("phase_outcome action must set metadata.outcome on success");
-    let phase_str = phase_label(phase);
-    let outcome_str = outcome_label(outcome);
-
     match format {
         OutputFormat::Json => emit_json(json!({
             "change": name,
-            "phase": phase_str,
-            "outcome": outcome_str,
+            "phase": phase.to_string(),
+            "outcome": outcome.to_string(),
             "at": stamped.at,
         })),
         OutputFormat::Text => {
-            println!("Stamped outcome '{outcome_str}' for phase '{phase_str}' on change '{name}'.");
+            println!("Stamped outcome '{outcome}' for phase '{phase}' on change '{name}'.");
         }
     }
     EXIT_SUCCESS
@@ -1954,8 +1951,8 @@ fn run_change_outcome(format: OutputFormat, name: String) -> i32 {
             // contract is the stable null.
             let outcome_json = match &metadata.outcome {
                 Some(o) => json!({
-                    "phase": phase_label(o.phase),
-                    "outcome": outcome_label(o.outcome),
+                    "phase": o.phase.to_string(),
+                    "outcome": o.outcome.to_string(),
                     "at": o.at,
                     "summary": o.summary,
                     "context": o.context.clone().map(Value::from).unwrap_or(Value::Null),
@@ -1969,9 +1966,7 @@ fn run_change_outcome(format: OutputFormat, name: String) -> i32 {
         }
         OutputFormat::Text => match &metadata.outcome {
             Some(o) => {
-                let phase = phase_label(o.phase);
-                let outcome = outcome_label(o.outcome);
-                println!("{name}: {phase}/{outcome} — {}", o.summary);
+                println!("{name}: {}/{} — {}", o.phase, o.outcome, o.summary);
             }
             None => {
                 println!("{name}: no outcome stamped");
@@ -2019,23 +2014,6 @@ fn resolve_archived_metadata(
     Ok(candidates.into_iter().next().unwrap().1)
 }
 
-fn phase_label(phase: Phase) -> &'static str {
-    match phase {
-        Phase::Plan => "plan",
-        Phase::Define => "define",
-        Phase::Build => "build",
-        Phase::Merge => "merge",
-    }
-}
-
-fn outcome_label(outcome: Outcome) -> &'static str {
-    match outcome {
-        Outcome::Success => "success",
-        Outcome::Failure => "failure",
-        Outcome::Deferred => "deferred",
-    }
-}
-
 fn run_change_journal_append(
     format: OutputFormat, name: String, phase: Phase, kind: EntryKind, summary: String,
     context: Option<String>,
@@ -2063,37 +2041,26 @@ fn run_change_journal_append(
         return emit_error(format, &err);
     }
 
-    let phase_str = phase_label(phase);
-    let kind_str = entry_kind_label(kind);
-
     match format {
         OutputFormat::Json => emit_json(json!({
             "change": name,
-            "phase": phase_str,
-            "kind": kind_str,
+            "phase": phase.to_string(),
+            "kind": kind.to_string(),
             "timestamp": timestamp,
         })),
         OutputFormat::Text => {
-            println!("Appended {kind_str} entry to {name}/journal.yaml.");
+            println!("Appended {kind} entry to {name}/journal.yaml.");
         }
     }
     EXIT_SUCCESS
-}
-
-fn entry_kind_label(kind: EntryKind) -> &'static str {
-    match kind {
-        EntryKind::Question => "question",
-        EntryKind::Failure => "failure",
-        EntryKind::Recovery => "recovery",
-    }
 }
 
 fn overlap_to_json(o: &Overlap) -> Value {
     json!({
         "capability": o.capability,
         "other-change": o.other_change,
-        "our-spec-type": spec_type_label(o.our_spec_type),
-        "other-spec-type": spec_type_label(o.other_spec_type),
+        "our-spec-type": o.our_spec_type,
+        "other-spec-type": o.other_spec_type,
     })
 }
 
@@ -2103,17 +2070,10 @@ fn touched_specs_to_json(entries: &[TouchedSpec]) -> Vec<Value> {
         .map(|t| {
             json!({
                 "name": t.name,
-                "type": spec_type_label(t.spec_type),
+                "type": t.spec_type.to_string(),
             })
         })
         .collect()
-}
-
-fn spec_type_label(t: SpecType) -> &'static str {
-    match t {
-        SpecType::New => "new",
-        SpecType::Modified => "modified",
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2201,17 +2161,6 @@ fn require_plan_file(project_dir: &Path) -> Result<PathBuf, Error> {
         return Err(Error::Config("plan file not found: .specify/plan.yaml".to_string()));
     }
     Ok(path)
-}
-
-fn plan_status_label(status: PlanStatus) -> &'static str {
-    match status {
-        PlanStatus::Pending => "pending",
-        PlanStatus::InProgress => "in-progress",
-        PlanStatus::Done => "done",
-        PlanStatus::Blocked => "blocked",
-        PlanStatus::Failed => "failed",
-        PlanStatus::Skipped => "skipped",
-    }
 }
 
 fn plan_validation_level_label(level: &PlanValidationLevel) -> &'static str {
@@ -3082,13 +3031,13 @@ fn load_lifecycle_label(change_dir: &Path) -> Option<String> {
     if !ChangeMetadata::path(change_dir).exists() {
         return None;
     }
-    ChangeMetadata::load(change_dir).ok().map(|m| format!("{:?}", m.status).to_lowercase())
+    ChangeMetadata::load(change_dir).ok().map(|m| m.status.to_string())
 }
 
 fn plan_entry_to_json(entry: &PlanChange, lifecycle: Option<String>) -> Value {
     let mut obj = json!({
         "name": entry.name,
-        "status": plan_status_label(entry.status),
+        "status": entry.status.to_string(),
         "depends-on": entry.depends_on,
         "sources": entry.sources,
         "status-reason": entry.status_reason,
@@ -3340,15 +3289,15 @@ fn run_initiative_transition(
             "plan": plan_ref_json(&plan, &plan_path),
             "entry": {
                 "name": entry.name,
-                "status": plan_status_label(entry.status),
+                "status": entry.status.to_string(),
                 "status-reason": entry.status_reason,
             },
         })),
         OutputFormat::Text => {
             println!(
                 "Transitioned '{name}': {} → {}.",
-                plan_status_label(old_status),
-                plan_status_label(entry.status),
+                old_status,
+                entry.status,
             );
         }
     }

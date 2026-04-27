@@ -28,6 +28,7 @@
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use petgraph::Direction;
@@ -65,6 +66,19 @@ pub enum PlanStatus {
     Blocked,
     Failed,
     Skipped,
+}
+
+impl fmt::Display for PlanStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Pending => "pending",
+            Self::InProgress => "in-progress",
+            Self::Done => "done",
+            Self::Blocked => "blocked",
+            Self::Failed => "failed",
+            Self::Skipped => "skipped",
+        })
+    }
 }
 
 impl PlanStatus {
@@ -3343,5 +3357,15 @@ changes:
             other => panic!("expected Error::Config, got {other:?}"),
         }
         assert!(plan.changes.is_empty(), "rollback must remove the entry");
+    }
+
+    #[test]
+    fn plan_status_display_matches_serde_wire_format() {
+        assert_eq!(PlanStatus::Pending.to_string(), "pending");
+        assert_eq!(PlanStatus::InProgress.to_string(), "in-progress");
+        assert_eq!(PlanStatus::Done.to_string(), "done");
+        assert_eq!(PlanStatus::Blocked.to_string(), "blocked");
+        assert_eq!(PlanStatus::Failed.to_string(), "failed");
+        assert_eq!(PlanStatus::Skipped.to_string(), "skipped");
     }
 }

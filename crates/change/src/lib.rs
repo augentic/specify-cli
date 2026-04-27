@@ -12,6 +12,7 @@
 //! (`create`, `transition`, `archive`, `drop`, `scan_touched_specs`,
 //! `overlap`) that the `specify change` subcommand dispatches to.
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -136,6 +137,38 @@ pub struct TouchedSpec {
 pub enum SpecType {
     New,
     Modified,
+}
+
+impl fmt::Display for LifecycleStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Defining => "defining",
+            Self::Defined => "defined",
+            Self::Building => "building",
+            Self::Complete => "complete",
+            Self::Merged => "merged",
+            Self::Dropped => "dropped",
+        })
+    }
+}
+
+impl fmt::Display for Outcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Success => "success",
+            Self::Failure => "failure",
+            Self::Deferred => "deferred",
+        })
+    }
+}
+
+impl fmt::Display for SpecType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::New => "new",
+            Self::Modified => "modified",
+        })
+    }
 }
 
 impl LifecycleStatus {
@@ -494,5 +527,28 @@ touched-specs:
     fn path_helper_appends_metadata_yaml() {
         let dir = Path::new("/tmp/some/change");
         assert_eq!(ChangeMetadata::path(dir), PathBuf::from("/tmp/some/change/.metadata.yaml"));
+    }
+
+    #[test]
+    fn lifecycle_status_display_matches_serde_wire_format() {
+        assert_eq!(LifecycleStatus::Defining.to_string(), "defining");
+        assert_eq!(LifecycleStatus::Defined.to_string(), "defined");
+        assert_eq!(LifecycleStatus::Building.to_string(), "building");
+        assert_eq!(LifecycleStatus::Complete.to_string(), "complete");
+        assert_eq!(LifecycleStatus::Merged.to_string(), "merged");
+        assert_eq!(LifecycleStatus::Dropped.to_string(), "dropped");
+    }
+
+    #[test]
+    fn outcome_display_matches_serde_wire_format() {
+        assert_eq!(Outcome::Success.to_string(), "success");
+        assert_eq!(Outcome::Failure.to_string(), "failure");
+        assert_eq!(Outcome::Deferred.to_string(), "deferred");
+    }
+
+    #[test]
+    fn spec_type_display_matches_serde_wire_format() {
+        assert_eq!(SpecType::New.to_string(), "new");
+        assert_eq!(SpecType::Modified.to_string(), "modified");
     }
 }

@@ -3,6 +3,7 @@
 //! cache resolution algorithm. Remote (HTTP) resolution is explicitly the
 //! agent's job per RFC-1; this crate only walks the filesystem.
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -75,6 +76,17 @@ pub enum Phase {
     Define,
     Build,
     Merge,
+}
+
+impl fmt::Display for Phase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Plan => "plan",
+            Self::Define => "define",
+            Self::Build => "build",
+            Self::Merge => "merge",
+        })
+    }
 }
 
 impl Schema {
@@ -308,5 +320,18 @@ pub(crate) fn validate_against_embedded_schema(
             rule: pass_rule,
             detail: errors.join("; "),
         }]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn phase_display_matches_serde_wire_format() {
+        assert_eq!(Phase::Plan.to_string(), "plan");
+        assert_eq!(Phase::Define.to_string(), "define");
+        assert_eq!(Phase::Build.to_string(), "build");
+        assert_eq!(Phase::Merge.to_string(), "merge");
     }
 }
