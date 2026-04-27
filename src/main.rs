@@ -30,7 +30,6 @@ pub(crate) mod output;
 use std::process::ExitCode;
 
 use clap::Parser;
-
 use cli::Cli;
 
 fn main() -> ExitCode {

@@ -9,11 +9,10 @@ use specify::{
     preview_change,
 };
 
+use super::merge::{merge_op_to_json, operation_label, summarise_operations};
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
-
-use super::merge::{merge_op_to_json, operation_label, summarise_operations};
 
 pub fn run_spec_preview(format: OutputFormat, change_dir: PathBuf) -> CliResult {
     let ctx = match CommandContext::require(format) {

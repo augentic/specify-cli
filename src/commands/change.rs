@@ -11,12 +11,11 @@ use specify::{
     change_actions, format_rfc3339,
 };
 
+use super::require_project;
+use super::status::run_status;
 use crate::cli::{ChangeAction, OutputFormat};
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_error, emit_response};
-
-use super::require_project;
-use super::status::run_status;
 
 pub fn run_change(format: OutputFormat, action: ChangeAction) -> CliResult {
     match action {

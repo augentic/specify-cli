@@ -24,6 +24,7 @@ impl Rfc3339Stamp {
 
 impl Deref for Rfc3339Stamp {
     type Target = str;
+
     fn deref(&self) -> &str {
         &self.0
     }

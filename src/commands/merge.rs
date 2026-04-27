@@ -237,8 +237,9 @@ pub fn summarise_operations(ops: &[MergeOperation]) -> String {
 
 #[cfg(test)]
 mod merge_workspace_tests {
-    use super::*;
     use std::path::Path;
+
+    use super::*;
 
     fn workspace_clone_dir(suffix: &str) -> tempfile::TempDir {
         let tmp = tempfile::tempdir().unwrap();

@@ -5,17 +5,15 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-
 use specify::{
     ChangeMetadata, Error, Plan, PlanChange, PlanChangePatch, PlanLockAcquired, PlanLockReleased,
     PlanLockStamp, PlanLockState, PlanStatus, PlanValidationLevel, PlanValidationResult,
     ProjectConfig, Registry,
 };
 
+use super::require_project;
 use crate::cli::{LockAction, OutputFormat, PlanAction};
 use crate::output::{CliResult, absolute_string, emit_error, emit_response};
-
-use super::require_project;
 
 pub fn run_plan(format: OutputFormat, action: PlanAction) -> CliResult {
     match action {

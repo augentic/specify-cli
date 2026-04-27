@@ -7,11 +7,10 @@ use specify::{
     workspace_status,
 };
 
-use crate::cli::OutputFormat;
-use crate::output::{CliResult, emit_error, emit_response};
-
 use super::plan::require_plan_file;
 use super::require_project;
+use crate::cli::OutputFormat;
+use crate::output::{CliResult, emit_error, emit_response};
 
 pub fn run_initiative_workspace_sync(format: OutputFormat) -> CliResult {
     let (project_dir, _config) = match require_project() {

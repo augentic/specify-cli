@@ -6,11 +6,10 @@ use serde::Serialize;
 use serde_json::Value;
 use specify::{ChangeMetadata, Error, Phase, PipelineView, parse_tasks};
 
+use super::task::resolve_tasks_path_for;
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
-
-use super::task::resolve_tasks_path_for;
 
 pub fn run_status(format: OutputFormat, change: Option<String>) -> CliResult {
     let ctx = match CommandContext::require(format) {

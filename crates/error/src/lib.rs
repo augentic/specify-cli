@@ -262,9 +262,8 @@ mod tests {
 
     #[test]
     fn yaml_from_conversion() {
-        let parse_err: serde_saphyr::Error =
-            serde_saphyr::from_str::<String>(":\n\t- bad")
-                .expect_err("expected a YAML parse error");
+        let parse_err: serde_saphyr::Error = serde_saphyr::from_str::<String>(":\n\t- bad")
+            .expect_err("expected a YAML parse error");
         let display = parse_err.to_string();
         let err: Error = parse_err.into();
         assert!(matches!(err, Error::Yaml(_)));

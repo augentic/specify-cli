@@ -6,10 +6,9 @@ use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, Phase, PipelineView, Schema, SchemaSource, ValidationResult};
 
+use super::require_project;
 use crate::cli::OutputFormat;
 use crate::output::{CliResult, emit_error, emit_response};
-
-use super::require_project;
 
 pub fn run_schema_resolve(
     format: OutputFormat, schema_value: String, project_dir: PathBuf,

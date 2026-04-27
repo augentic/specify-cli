@@ -62,10 +62,8 @@ pub fn merge_composition(
     let has_delta = delta_doc.get("delta").is_some();
 
     if has_screens && !has_delta {
-        let screen_count = delta_doc
-            .get("screens")
-            .and_then(|s| s.as_object())
-            .map_or(0, serde_json::Map::len);
+        let screen_count =
+            delta_doc.get("screens").and_then(|s| s.as_object()).map_or(0, serde_json::Map::len);
         return Ok(CompositionMergeResult {
             output: delta_text.to_string(),
             operations: vec![CompositionMergeOp::CreatedBaseline { screen_count }],
@@ -103,9 +101,7 @@ pub fn merge_composition(
     if let Some(removed) = delta.get("removed").and_then(|r| r.as_object()) {
         for (slug, _) in removed {
             screens.remove(slug.as_str());
-            operations.push(CompositionMergeOp::Removed {
-                slug: slug.clone(),
-            });
+            operations.push(CompositionMergeOp::Removed { slug: slug.clone() });
         }
     }
 
@@ -118,9 +114,7 @@ pub fn merge_composition(
                 continue;
             }
             screens.insert(slug.clone(), screen_entry.clone());
-            operations.push(CompositionMergeOp::Added {
-                slug: slug.clone(),
-            });
+            operations.push(CompositionMergeOp::Added { slug: slug.clone() });
         }
     }
 
@@ -133,9 +127,7 @@ pub fn merge_composition(
                 continue;
             }
             screens.insert(slug.clone(), screen_entry.clone());
-            operations.push(CompositionMergeOp::Modified {
-                slug: slug.clone(),
-            });
+            operations.push(CompositionMergeOp::Modified { slug: slug.clone() });
         }
     }
 

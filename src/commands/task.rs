@@ -6,10 +6,9 @@ use serde::Serialize;
 use serde_json::Value;
 use specify::{Brief, ChangeMetadata, Error, PipelineView, Task, mark_complete, parse_tasks};
 
+use super::require_project;
 use crate::cli::OutputFormat;
 use crate::output::{CliResult, emit_error, emit_response};
-
-use super::require_project;
 
 pub fn run_task_progress(format: OutputFormat, change_dir: PathBuf) -> CliResult {
     let (project_dir, _config) = match require_project() {

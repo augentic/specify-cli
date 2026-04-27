@@ -6,10 +6,9 @@ use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, InitiativeBrief, Registry, is_valid_kebab_name};
 
+use super::require_project;
 use crate::cli::{BriefAction, InitiativeAction, OutputFormat, RegistryAction};
 use crate::output::{CliResult, absolute_string, emit_error, emit_response};
-
-use super::require_project;
 
 pub fn run_initiative(format: OutputFormat, action: InitiativeAction) -> CliResult {
     match action {
