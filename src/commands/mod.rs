@@ -13,7 +13,9 @@ pub mod workspace;
 
 use specify::Error;
 
-use crate::cli::{Cli, Commands, OutputFormat, SchemaAction, SpecAction, TaskAction, WorkspaceAction};
+use crate::cli::{
+    Cli, Commands, OutputFormat, SchemaAction, SpecAction, TaskAction, WorkspaceAction,
+};
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_error};
 
@@ -56,9 +58,7 @@ pub fn run(cli: Cli) -> CliResult {
                 run_bare(cli.format, || schema::run_schema_check(cli.format, schema_dir))
             }
             SchemaAction::Pipeline { phase, change } => {
-                run_with_project(cli.format, |ctx| {
-                    schema::run_schema_pipeline(ctx, phase, change)
-                })
+                run_with_project(cli.format, |ctx| schema::run_schema_pipeline(ctx, phase, change))
             }
         },
         Commands::Change { action } => {
@@ -79,17 +79,13 @@ pub fn run(cli: Cli) -> CliResult {
             run_with_project(cli.format, |ctx| initiative::run_initiative(ctx, action))
         }
         Commands::Workspace { action } => match action {
-            WorkspaceAction::Sync => {
-                run_with_project(cli.format, workspace::run_workspace_sync)
-            }
+            WorkspaceAction::Sync => run_with_project(cli.format, workspace::run_workspace_sync),
             WorkspaceAction::Status => {
                 run_with_project(cli.format, workspace::run_workspace_status)
             }
-            WorkspaceAction::Push { projects, dry_run } => {
-                run_with_project(cli.format, |ctx| {
-                    workspace::run_workspace_push(ctx, projects, dry_run)
-                })
-            }
+            WorkspaceAction::Push { projects, dry_run } => run_with_project(cli.format, |ctx| {
+                workspace::run_workspace_push(ctx, projects, dry_run)
+            }),
         },
         Commands::Completions { shell } => {
             let mut cmd = <crate::cli::Cli as clap::CommandFactory>::command();

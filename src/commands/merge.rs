@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value)]
+
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -35,11 +37,8 @@ pub fn run_merge(ctx: &CommandContext, change_dir: PathBuf) -> Result<CliResult,
     let specs_dir = ctx.specs_dir();
     let archive_dir = ctx.archive_dir();
 
-    let change_name = change_dir
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(str::to_string)
-        .ok_or_else(|| {
+    let change_name =
+        change_dir.file_name().and_then(|s| s.to_str()).map(str::to_string).ok_or_else(|| {
             Error::Config(format!("change dir `{}` has no basename", change_dir.display()))
         })?;
 
@@ -189,8 +188,10 @@ pub fn merge_op_to_json(op: &MergeOperation) -> Value {
         MergeOperation::CreatedBaseline { requirement_count } => MergeOpJson::CreatedBaseline {
             requirement_count: *requirement_count,
         },
-        _ => return serde_json::to_value(serde_json::json!({"kind": "unknown"}))
-            .expect("fallback JSON serialises"),
+        _ => {
+            return serde_json::to_value(serde_json::json!({"kind": "unknown"}))
+                .expect("fallback JSON serialises");
+        }
     };
     serde_json::to_value(typed).expect("MergeOpJson serialises")
 }

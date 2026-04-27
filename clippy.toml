@@ -1,6 +1,7 @@
 # https://doc.rust-lang.org/stable/clippy/index.html
 
 doc-valid-idents = [
+  "GitHub",
   "OAuth",
   "OpenTelemetry",
   "WebAssembly",

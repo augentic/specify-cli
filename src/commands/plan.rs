@@ -1,4 +1,8 @@
-#![allow(clippy::items_after_statements)]
+#![allow(
+    clippy::items_after_statements,
+    clippy::needless_pass_by_value,
+    clippy::too_many_arguments
+)]
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -29,7 +33,16 @@ pub fn run_plan(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, E
             project,
             schema,
             context,
-        } => run_initiative_create(ctx, name, depends_on, sources, description, project, schema, context),
+        } => run_initiative_create(
+            ctx,
+            name,
+            depends_on,
+            sources,
+            description,
+            project,
+            schema,
+            context,
+        ),
         PlanAction::Amend {
             name,
             depends_on,
@@ -38,7 +51,16 @@ pub fn run_plan(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, E
             project,
             schema,
             context,
-        } => run_initiative_amend(ctx, name, depends_on, sources, description, project, schema, context),
+        } => run_initiative_amend(
+            ctx,
+            name,
+            depends_on,
+            sources,
+            description,
+            project,
+            schema,
+            context,
+        ),
         PlanAction::Transition { name, target, reason } => {
             run_initiative_transition(ctx, name, target, reason)
         }
@@ -94,9 +116,7 @@ fn run_initiative_init(
         std::collections::BTreeMap::new();
     for (k, v) in sources {
         if source_map.contains_key(&k) {
-            return Err(Error::Config(format!(
-                "duplicate key `{k}` in --source arguments"
-            )));
+            return Err(Error::Config(format!("duplicate key `{k}` in --source arguments")));
         }
         source_map.insert(k, v);
     }

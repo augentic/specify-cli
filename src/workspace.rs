@@ -559,10 +559,9 @@ fn ensure_pull_request(
         let text = String::from_utf8_lossy(&output.stdout);
         if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(&text)
             && let Some(first) = parsed.first()
+            && let Some(num) = first.get("number").and_then(serde_json::Value::as_u64)
         {
-            if let Some(num) = first.get("number").and_then(serde_json::Value::as_u64) {
-                return Some(num);
-            }
+            return Some(num);
         }
     }
 
@@ -688,8 +687,9 @@ fn push_single_project(
         };
     }
 
-    let pr_number =
-        slug.as_ref().and_then(|_| ensure_pull_request(&project_path, branch_name, initiative_name));
+    let pr_number = slug
+        .as_ref()
+        .and_then(|_| ensure_pull_request(&project_path, branch_name, initiative_name));
 
     let status = if is_created { "created" } else { "pushed" };
 

@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value, clippy::option_if_let_else)]
+
 use serde::Serialize;
 use serde_json::Value;
 use specify::{
@@ -140,11 +142,9 @@ fn print_workspace_slot_line(slot: &WorkspaceSlotStatus) {
 }
 
 pub fn run_workspace_push(
-    ctx: &CommandContext,
-    projects: Vec<String>,
-    dry_run: bool,
+    ctx: &CommandContext, projects: Vec<String>, dry_run: bool,
 ) -> Result<CliResult, Error> {
-    let plan_path = require_plan_file(&ctx.project_dir).map_err(|_| {
+    let plan_path = require_plan_file(&ctx.project_dir).map_err(|_err| {
         Error::Config(
             "No active plan found at .specify/plan.yaml. Run 'specify plan init' \
              to create one, or check whether the plan was already archived."
@@ -153,13 +153,10 @@ pub fn run_workspace_push(
     })?;
     let plan = Plan::load(&plan_path)?;
 
-    let registry = match Registry::load(&ctx.project_dir)? {
-        Some(r) => r,
-        None => {
-            return Err(Error::Config(
-                "No registry.yaml found; workspace push requires a registry".to_string(),
-            ));
-        }
+    let Some(registry) = Registry::load(&ctx.project_dir)? else {
+        return Err(Error::Config(
+            "No registry.yaml found; workspace push requires a registry".to_string(),
+        ));
     };
 
     let results =
@@ -206,18 +203,14 @@ pub fn run_workspace_push(
             }
             println!();
             for r in &results {
-                let status_label =
-                    if dry_run && (r.status == "pushed" || r.status == "created") {
-                        format!("would-{}", r.status)
-                    } else {
-                        r.status.clone()
-                    };
+                let status_label = if dry_run && (r.status == "pushed" || r.status == "created") {
+                    format!("would-{}", r.status)
+                } else {
+                    r.status.clone()
+                };
                 let branch_part = r.branch.as_deref().unwrap_or("");
                 let pr_part = r.pr_number.map(|n| format!("PR #{n}")).unwrap_or_default();
-                println!(
-                    "  {:<20} {:<14} {} {}",
-                    r.name, status_label, branch_part, pr_part
-                );
+                println!("  {:<20} {:<14} {} {}", r.name, status_label, branch_part, pr_part);
             }
             let created = results.iter().filter(|r| r.status == "created").count();
             let pushed = results.iter().filter(|r| r.status == "pushed").count();

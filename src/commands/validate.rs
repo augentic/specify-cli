@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value)]
+
 use std::path::PathBuf;
 
 use specify::{Error, ValidationReport, ValidationResult, serialize_report, validate_change};

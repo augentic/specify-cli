@@ -1,3 +1,5 @@
+#![allow(clippy::items_after_statements, clippy::option_if_let_else, clippy::unnecessary_wraps)]
+
 use std::path::Path;
 
 use serde::Serialize;
@@ -8,10 +10,7 @@ use crate::cli::{BriefAction, InitiativeAction, OutputFormat, RegistryAction};
 use crate::context::CommandContext;
 use crate::output::{CliResult, absolute_string, emit_response};
 
-pub fn run_initiative(
-    ctx: &CommandContext,
-    action: InitiativeAction,
-) -> Result<CliResult, Error> {
+pub fn run_initiative(ctx: &CommandContext, action: InitiativeAction) -> Result<CliResult, Error> {
     match action {
         InitiativeAction::Registry { action } => match action {
             RegistryAction::Show => run_initiative_registry_show(ctx),
@@ -139,10 +138,7 @@ fn run_initiative_registry_validate(ctx: &CommandContext) -> Result<CliResult, E
     }
 }
 
-fn run_initiative_brief_init(
-    ctx: &CommandContext,
-    name: String,
-) -> Result<CliResult, Error> {
+fn run_initiative_brief_init(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     if !is_valid_kebab_name(&name) {
         return Err(Error::Config(format!(
             "initiative.md: name `{name}` must be kebab-case \

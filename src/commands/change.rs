@@ -1,4 +1,4 @@
-#![allow(clippy::items_after_statements)]
+#![allow(clippy::items_after_statements, clippy::needless_pass_by_value)]
 
 use std::path::Path;
 
