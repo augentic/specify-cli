@@ -84,11 +84,6 @@ pub fn run(args: &AddShellArgs) -> Result<CommandOutcome, VectisError> {
         });
     }
 
-    // Prereqs: core + requested shell only (no point checking the
-    // *other* shell's tooling here; verify will run its own scoped
-    // check later if the project also has that other shell).
-    prerequisites::check(&[AssemblyKind::Core, shell])?;
-
     // Parse `app.rs` so we can reuse the user's existing app name and
     // capability set -- the RFC's "don't ask the user to re-specify"
     // contract.
@@ -98,6 +93,10 @@ pub fn run(args: &AddShellArgs) -> Result<CommandOutcome, VectisError> {
     // Resolve version pins. This also validates a bad `--version-file`
     // early, before any byte is written.
     let versions = Versions::resolve(&project_dir, args.version_file.as_deref())?;
+
+    // Prereqs: core + requested shell only. Version-aware so cargo-swift
+    // range is derived from the resolved pin.
+    prerequisites::check(&[AssemblyKind::Core, shell], Some(&versions))?;
 
     let android_package = args
         .android_package

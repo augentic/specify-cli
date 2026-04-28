@@ -32,10 +32,10 @@ fn parse_json(stdout: &[u8]) -> Value {
 }
 
 #[test]
-fn vectis_help_lists_four_subcommands() {
+fn vectis_help_lists_subcommands() {
     let assert = specify().args(["vectis", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    for verb in ["init", "verify", "add-shell", "update-versions"] {
+    for verb in ["init", "verify", "add-shell", "update-versions", "versions"] {
         assert!(
             stdout.contains(verb),
             "expected `vectis --help` to mention {verb}, got:\n{stdout}"

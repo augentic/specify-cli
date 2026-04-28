@@ -141,6 +141,8 @@ pub enum VectisAction {
     AddShell(specify_vectis::AddShellArgs),
     /// Refresh pinned tool/crate versions and (optionally) verify them.
     UpdateVersions(specify_vectis::UpdateVersionsArgs),
+    /// Show the resolved version pins (embedded → user → project).
+    Versions(specify_vectis::VersionsArgs),
 }
 
 #[derive(Subcommand)]

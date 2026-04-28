@@ -113,7 +113,7 @@ pub fn run(args: &UpdateVersionsArgs) -> Result<CommandOutcome, VectisError> {
     } else {
         vec![AssemblyKind::Core]
     };
-    prerequisites::check(&assemblies)?;
+    prerequisites::check(&assemblies, None)?;
 
     let target = resolve_write_target(args.version_file.as_deref())?;
     let current = read_current_pins(&target)?;

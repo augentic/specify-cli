@@ -23,6 +23,9 @@ pub struct MissingTool {
     pub check: String,
     /// Install hint shown to the user.
     pub install: String,
+    /// Why the check failed (e.g. `"found 0.11.0 but need < 0.10.0"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// All terminal failure modes for the CLI.
@@ -140,6 +143,7 @@ mod tests {
                 assembly: "ios".into(),
                 check: "xcodegen --version".into(),
                 install: "brew install xcodegen".into(),
+                reason: None,
             }],
             message: "Install the missing tools above and re-run the command.".into(),
         };
