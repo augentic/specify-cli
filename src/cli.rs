@@ -111,7 +111,7 @@ pub enum Commands {
 
     /// Bootstrap and verify Crux cross-platform projects (RFC-6).
     ///
-    /// The four verbs route to handlers in the `specify-vectis` library
+    /// The five verbs route to handlers in the `specify-vectis` library
     /// crate. They reuse the global `--format text|json` flag: JSON
     /// responses follow the v2 contract (kebab-case keys, auto-injected
     /// `schema-version: 2`, kebab-case error variants); text responses
