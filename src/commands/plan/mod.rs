@@ -1,6 +1,7 @@
 #![allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
 
 mod create;
+mod doctor;
 mod lifecycle;
 mod lock;
 mod status;
@@ -20,11 +21,12 @@ use crate::output::{CliResult, emit_response};
 
 pub fn run_plan(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, Error> {
     match action {
-        PlanAction::Init { name, sources } => lifecycle::run_plan_init(ctx, name, sources),
+        PlanAction::Create { name, sources } => lifecycle::run_plan_create(ctx, name, sources),
         PlanAction::Validate => lifecycle::run_plan_validate(ctx),
+        PlanAction::Doctor => doctor::run_plan_doctor(ctx),
         PlanAction::Next => lifecycle::run_plan_next(ctx),
         PlanAction::Status => status::run_plan_status(ctx),
-        PlanAction::Create {
+        PlanAction::Add {
             name,
             depends_on,
             sources,
@@ -32,7 +34,7 @@ pub fn run_plan(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, E
             project,
             schema,
             context,
-        } => create::run_plan_create(
+        } => create::run_plan_add(
             ctx,
             name,
             depends_on,

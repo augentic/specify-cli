@@ -10,7 +10,7 @@ use crate::output::{CliResult, absolute_string, emit_response};
 
 pub fn run_init(
     format: OutputFormat, schema: String, schema_dir: PathBuf, name: Option<String>,
-    domain: Option<String>,
+    domain: Option<String>, hub: bool,
 ) -> Result<CliResult, Error> {
     let project_dir = PathBuf::from(".");
 
@@ -21,10 +21,11 @@ pub fn run_init(
         name: name.as_deref(),
         domain: domain.as_deref(),
         version_mode: VersionMode::WriteCurrent,
+        hub,
     };
 
     let result = init(opts)?;
-    Ok(emit_init_result(format, &result))
+    Ok(emit_init_result(format, &result, hub))
 }
 
 #[derive(Serialize)]
@@ -36,9 +37,13 @@ struct InitBody {
     directories_created: Vec<String>,
     scaffolded_rule_keys: Vec<String>,
     specify_version: String,
+    /// `true` when this init scaffolded a registry-only platform hub
+    /// (RFC-9 §1D). Always present so consumers can distinguish hub
+    /// from regular initialisations without parsing the schema name.
+    hub: bool,
 }
 
-fn emit_init_result(format: OutputFormat, result: &InitResult) -> CliResult {
+fn emit_init_result(format: OutputFormat, result: &InitResult, hub: bool) -> CliResult {
     match format {
         OutputFormat::Json => {
             emit_response(InitBody {
@@ -52,10 +57,15 @@ fn emit_init_result(format: OutputFormat, result: &InitResult) -> CliResult {
                     .collect(),
                 scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
                 specify_version: result.specify_version.clone(),
+                hub,
             });
         }
         OutputFormat::Text => {
-            println!("Initialized .specify/");
+            if hub {
+                println!("Initialized .specify/ as a registry-only platform hub");
+            } else {
+                println!("Initialized .specify/");
+            }
             println!("  schema: {}", result.schema_name);
             println!("  config: {}", absolute_string(&result.config_path));
             println!("  cache present: {}", result.cache_present);

@@ -28,9 +28,10 @@ pub enum OutputFormat {
 pub enum Commands {
     /// Initialize .specify/ in a project
     Init {
-        /// Schema name or URL
+        /// Schema name or URL. Ignored when `--hub` is set; hubs use
+        /// the `schema: hub` sentinel instead (RFC-9 §1D).
         schema: String,
-        /// Schema source directory (pre-resolved)
+        /// Schema source directory (pre-resolved). Ignored when `--hub` is set.
         #[arg(long)]
         schema_dir: PathBuf,
         /// Project name (defaults to the project directory name)
@@ -39,6 +40,13 @@ pub enum Commands {
         /// Project domain description (tech stack, architecture, testing)
         #[arg(long)]
         domain: Option<String>,
+        /// Scaffold a registry-only **platform hub** (RFC-9 §1D)
+        /// instead of a regular project: writes `registry.yaml`,
+        /// `initiative.md`, and a sentinel `project.yaml { schema:
+        /// hub, hub: true }`. Refuses to run when `.specify/` already
+        /// exists.
+        #[arg(long)]
+        hub: bool,
     },
 
     /// Project dashboard — registry summary, plan progress, active changes
@@ -125,7 +133,7 @@ pub enum VectisAction {
 #[derive(Subcommand)]
 pub enum PlanAction {
     /// Scaffold an empty .specify/plan.yaml
-    Init {
+    Create {
         /// Kebab-case initiative name
         name: String,
         /// Named source, repeated: --source <key>=<path-or-url>
@@ -134,12 +142,33 @@ pub enum PlanAction {
     },
     /// Validate .specify/plan.yaml (structure + plan/change consistency)
     Validate,
+    /// Diagnose plan health (superset of `validate`, RFC-9 §4B).
+    ///
+    /// Runs every check `plan validate` runs, then layers four
+    /// additional health diagnostics on top:
+    ///
+    /// - `cycle-in-depends-on` — dependency cycles in `depends-on`,
+    ///   reported with the cycle path. `next_eligible` silently skips
+    ///   cycles at runtime; doctor is the only place where the cycle
+    ///   structure is surfaced to the operator.
+    /// - `orphan-source-key` — top-level `sources:` keys that no entry
+    ///   references (the inverse of validate's `unknown-source`).
+    /// - `stale-workspace-clone` — `.specify/workspace/<project>/`
+    ///   clones whose registry signature has drifted (or that have
+    ///   no readable signature at all).
+    /// - `unreachable-entry` — pending entries whose dependency
+    ///   closure is rooted in a `failed` or `skipped` predecessor.
+    ///
+    /// Existing `plan validate` codes (`dependency-cycle`,
+    /// `unknown-source`, etc.) are passed through unchanged so doctor
+    /// is a strict superset.
+    Doctor,
     /// Return the next eligible plan entry (respects depends-on + in-progress)
     Next,
     /// Show initiative progress report
     Status,
     /// Add a new change entry (status: pending)
-    Create {
+    Add {
         /// Kebab-case change name
         name: String,
         /// Ordering dependencies (repeatable). Every value is a change name in the plan.
@@ -226,15 +255,15 @@ pub enum PlanAction {
 ///
 /// `.specify/initiative.md` is the operator-authored brief: a YAML
 /// frontmatter block (`name`, optional `inputs`) plus free-form
-/// markdown body. It's optional — `init` scaffolds a canonical
+/// markdown body. It's optional — `create` scaffolds a canonical
 /// template; `show` prints the parsed brief.
 #[derive(Subcommand)]
 pub enum InitiativeAction {
     /// Scaffold `.specify/initiative.md` from the canonical template.
     ///
     /// Refuses to overwrite an existing file — mirrors the
-    /// `plan init` posture for `plan.yaml`.
-    Init {
+    /// `plan create` posture for `plan.yaml`.
+    Create {
         /// Kebab-case initiative name (baked into the frontmatter).
         name: String,
     },
@@ -261,6 +290,29 @@ pub enum WorkspaceAction {
         #[arg()]
         projects: Vec<String>,
         /// Show what would happen without making changes.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Merge open PRs created by `workspace push` after CI passes (RFC-9 §4A).
+    ///
+    /// For every selected registry project, looks up the PR on
+    /// `specify/<initiative-name>` (resolved from `.specify/plan.yaml`),
+    /// inspects `gh pr checks`, and squash-merges via
+    /// `gh pr merge --squash` when all checks pass. Best-effort across
+    /// projects: a single project's failure surfaces in the per-project
+    /// status without aborting the others.
+    ///
+    /// Safety guards (non-negotiable):
+    /// - Refuses to operate on any PR whose `headRefName` does not equal
+    ///   the resolved branch exactly (`branch-pattern-mismatch`).
+    /// - Never force-merges and never overrides failing or pending checks.
+    Merge {
+        /// Optionally restrict to specific projects. Default: all
+        /// projects in `.specify/registry.yaml`.
+        #[arg()]
+        projects: Vec<String>,
+        /// Classify every project's mergeability without invoking
+        /// `gh pr merge`. Mergeable PRs report `would-merge`.
         #[arg(long)]
         dry_run: bool,
     },
@@ -295,12 +347,14 @@ pub enum LockAction {
     Status,
 }
 
-/// Registry operations (RFC-3a §"The Registry").
+/// Registry operations (RFC-3a §"The Registry", RFC-9 §2A).
 ///
 /// `.specify/registry.yaml` is the platform-level catalogue of peer
 /// projects. It's optional: an absent file is equivalent to single-repo
 /// mode. These verbs expose the shape-validation already used by
-/// `plan validate` as dedicated read/validate entry points.
+/// `plan validate` as dedicated read/validate entry points, plus the
+/// dynamic `add`/`remove` mutators introduced by RFC-9 §2A so the
+/// operator no longer has to hand-edit the file.
 #[derive(Subcommand)]
 pub enum RegistryAction {
     /// Print the parsed `.specify/registry.yaml` (text or JSON).
@@ -316,6 +370,48 @@ pub enum RegistryAction {
     /// with `CliResult::ValidationFailed` and a diagnostic that names
     /// `registry.yaml`.
     Validate,
+    /// Append a new project entry to `.specify/registry.yaml`
+    /// (RFC-9 §2A).
+    ///
+    /// Creates the file with `version: 1` when absent, validates the
+    /// candidate shape with `Registry::validate_shape` (or
+    /// `validate_shape_hub` when the project is a registry-only hub),
+    /// and persists the result. Refuses to add a project that already
+    /// exists. Surfaces the `description-missing-multi-repo`
+    /// diagnostic when the addition produces a multi-project registry
+    /// and any existing entry lacks a `description`.
+    Add {
+        /// Kebab-case project name. Must be unique within the registry.
+        name: String,
+        /// Clone target — `.`, a repo-relative path, `git@host:path`,
+        /// or an `http(s)://`, `ssh://`, or `git+http(s)://` /
+        /// `git+ssh://` remote. Validated by the same shape rules
+        /// `registry validate` enforces.
+        #[arg(long)]
+        url: String,
+        /// Schema identifier — e.g. `omnia@v1`. Must be non-empty
+        /// after trim.
+        #[arg(long)]
+        schema: String,
+        /// Domain-level characterisation of the project. Required when
+        /// the registry already declares another project (RFC-3b
+        /// description-missing-multi-repo invariant).
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Remove an existing project entry from `.specify/registry.yaml`
+    /// (RFC-9 §2A).
+    ///
+    /// Loads the registry, removes the named entry, validates the
+    /// remaining shape, and persists the result. Warns on stderr (or
+    /// in the JSON `warnings` array) when `.specify/plan.yaml` exists
+    /// and any plan entry references the removed project — the
+    /// operator must rewire those entries via `specify plan amend
+    /// --project ...` separately. The warning is non-fatal.
+    Remove {
+        /// Kebab-case project name to remove.
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]

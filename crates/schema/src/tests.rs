@@ -1224,6 +1224,137 @@ fn registry_rejects_url_with_leading_whitespace() {
     }
 }
 
+// ---------- Registry hub-mode validation (RFC-9 §1D) ----------
+
+#[test]
+fn registry_validate_shape_hub_accepts_empty_projects() {
+    let reg = Registry {
+        version: 1,
+        projects: vec![],
+    };
+    reg.validate_shape_hub().expect("empty hub registry must pass");
+}
+
+#[test]
+fn registry_validate_shape_hub_accepts_non_dot_urls() {
+    let reg = Registry {
+        version: 1,
+        projects: vec![
+            RegistryProject {
+                name: "alpha".into(),
+                url: "git@github.com:augentic/alpha.git".into(),
+                schema: "omnia@v1".into(),
+                description: Some("Alpha service".into()),
+                contracts: None,
+            },
+            RegistryProject {
+                name: "beta".into(),
+                url: "../beta".into(),
+                schema: "omnia@v1".into(),
+                description: Some("Beta service".into()),
+                contracts: None,
+            },
+        ],
+    };
+    reg.validate_shape_hub().expect("non-`.` urls must pass hub-mode validation");
+}
+
+#[test]
+fn registry_validate_shape_hub_rejects_dot_url_entry() {
+    let reg = Registry {
+        version: 1,
+        projects: vec![RegistryProject {
+            name: "platform".into(),
+            url: ".".into(),
+            schema: "omnia@v1".into(),
+            description: None,
+            contracts: None,
+        }],
+    };
+    let err = reg.validate_shape_hub().expect_err("hub mode must reject url: .");
+    match err {
+        Error::Config(msg) => {
+            assert!(
+                msg.contains("hub-cannot-be-project"),
+                "diagnostic must carry the stable code, got: {msg}"
+            );
+            assert!(msg.contains("platform"), "diagnostic must name the offending project: {msg}");
+            assert!(msg.contains("registry.yaml"), "diagnostic must scope the file: {msg}");
+        }
+        other => panic!("wrong error variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_validate_shape_hub_rejects_dot_url_in_multi_project() {
+    let reg = Registry {
+        version: 1,
+        projects: vec![
+            RegistryProject {
+                name: "alpha".into(),
+                url: "../alpha".into(),
+                schema: "omnia@v1".into(),
+                description: Some("Alpha service".into()),
+                contracts: None,
+            },
+            RegistryProject {
+                name: "self-as-project".into(),
+                url: ".".into(),
+                schema: "omnia@v1".into(),
+                description: Some("Should be the hub, not an entry".into()),
+                contracts: None,
+            },
+        ],
+    };
+    let err = reg.validate_shape_hub().expect_err("hub mode rejects `.` even alongside peers");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("hub-cannot-be-project"), "msg: {msg}");
+            assert!(msg.contains("self-as-project"), "msg should name the offender: {msg}");
+        }
+        other => panic!("wrong error variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_validate_shape_hub_inherits_base_shape_errors() {
+    // version != 1 is a base-shape error; hub mode must surface it
+    // without ever reaching the `hub-cannot-be-project` check.
+    let reg = Registry {
+        version: 2,
+        projects: vec![],
+    };
+    let err = reg.validate_shape_hub().expect_err("base shape error must propagate through");
+    match err {
+        Error::Config(msg) => {
+            assert!(msg.contains("version"), "msg: {msg}");
+            assert!(
+                !msg.contains("hub-cannot-be-project"),
+                "must not short-circuit base-shape errors with the hub diagnostic: {msg}"
+            );
+        }
+        other => panic!("wrong error variant: {other:?}"),
+    }
+}
+
+#[test]
+fn registry_validate_shape_unchanged_for_dot_url() {
+    // The base `validate_shape` continues to accept `url: .` — only
+    // the new hub-only mode rejects it. This pins the additive-API
+    // contract from the RFC.
+    let reg = Registry {
+        version: 1,
+        projects: vec![RegistryProject {
+            name: "platform".into(),
+            url: ".".into(),
+            schema: "omnia@v1".into(),
+            description: None,
+            contracts: None,
+        }],
+    };
+    reg.validate_shape().expect("base shape must still accept `url: .`");
+}
+
 // ---------- Registry contract roles (RFC-8 Layer 2) ----------
 
 const REGISTRY_WITH_CONTRACT_ROLES_YAML: &str = "\

@@ -88,6 +88,12 @@ surface area minimal until a concrete schema needs it.
 
 ## Change H — Platform stub layering
 
+> **Superseded by RFC-9 §1B.** The `specify-platform` crate, the
+> `PlatformConfig` trait, and the `parse_platform_config` entry point have
+> all been retired. `Registry` (in `specify-schema`) is the single peer
+> catalogue; the layering rationale below is preserved for historical
+> context only.
+
 **Decision.** `specify-platform::parse_platform_config` takes a generic
 `Cfg: PlatformConfig` parameter rather than a concrete `&ProjectConfig`.
 The `PlatformConfig` trait is declared (empty) in `specify-platform`;
@@ -414,8 +420,10 @@ routing. Key additions and decisions:
 - PlanChangePatch gains `project: Option<Option<String>>` with
   the same three-way semantics as `description` (None = leave,
   Some(None) = clear, Some(Some(s)) = replace).
-- `specify plan create` and `specify plan amend` gain `--project`
+- `specify plan add` and `specify plan amend` gain `--project`
   flag, validated against the loaded registry at write time.
+  (RFC-3b originally introduced this on `specify plan create`; the
+  entry-append verb was renamed to `add` by RFC-9 §1G.)
 - `specify plan next --format json` gains `project`, `description`,
   and `sources` in the response when an eligible entry is found.
   Fields are absent when `reason` is non-null.

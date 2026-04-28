@@ -188,11 +188,6 @@ jobs:
       - name: Wait for index
         run: sleep 30
 
-      - name: Publish specify-platform
-        run: cargo publish --package specify-platform --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Wait for index
-        run: sleep 30
-
       - name: Publish specify-merge
         run: cargo publish --package specify-merge --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Wait for index

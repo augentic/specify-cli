@@ -21,7 +21,10 @@ pub fn run(cli: Cli) -> CliResult {
             schema_dir,
             name,
             domain,
-        } => run_bare(cli.format, || init::run_init(cli.format, schema, schema_dir, name, domain)),
+            hub,
+        } => run_bare(cli.format, || {
+            init::run_init(cli.format, schema, schema_dir, name, domain, hub)
+        }),
         Commands::Status => run_with_project(cli.format, status::run_status_dashboard),
         Commands::Schema { action } => match action {
             SchemaAction::Resolve {
@@ -56,6 +59,9 @@ pub fn run(cli: Cli) -> CliResult {
             }
             WorkspaceAction::Push { projects, dry_run } => run_with_project(cli.format, |ctx| {
                 workspace::run_workspace_push(ctx, projects, dry_run)
+            }),
+            WorkspaceAction::Merge { projects, dry_run } => run_with_project(cli.format, |ctx| {
+                workspace::run_workspace_merge(ctx, projects, dry_run)
             }),
         },
         Commands::Completions { shell } => {

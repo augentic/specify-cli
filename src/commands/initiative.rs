@@ -12,12 +12,12 @@ use crate::output::{CliResult, absolute_string, emit_response};
 
 pub fn run_initiative(ctx: &CommandContext, action: InitiativeAction) -> Result<CliResult, Error> {
     match action {
-        InitiativeAction::Init { name } => brief_init(ctx, name),
+        InitiativeAction::Create { name } => brief_create(ctx, name),
         InitiativeAction::Show => brief_show(ctx),
     }
 }
 
-fn brief_init(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     if !is_valid_kebab_name(&name) {
         return Err(Error::Config(format!(
             "initiative.md: name `{name}` must be kebab-case \
@@ -31,14 +31,14 @@ fn brief_init(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
             OutputFormat::Json => {
                 #[derive(Serialize)]
                 #[serde(rename_all = "kebab-case")]
-                struct BriefInitErr {
+                struct BriefCreateErr {
                     action: &'static str,
                     ok: bool,
                     error: &'static str,
                     path: String,
                     exit_code: u8,
                 }
-                emit_response(BriefInitErr {
+                emit_response(BriefCreateErr {
                     action: "init",
                     ok: false,
                     error: "already-exists",
@@ -64,14 +64,14 @@ fn brief_init(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct BriefInitOk {
+    struct BriefCreateOk {
         action: &'static str,
         ok: bool,
         name: String,
         path: String,
     }
     match ctx.format {
-        OutputFormat::Json => emit_response(BriefInitOk {
+        OutputFormat::Json => emit_response(BriefCreateOk {
             action: "init",
             ok: true,
             name,

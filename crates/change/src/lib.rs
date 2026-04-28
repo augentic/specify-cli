@@ -28,6 +28,8 @@ pub mod journal;
 pub mod lock;
 /// Plan state machine for ordered, dependency-aware change execution.
 pub mod plan;
+/// `specify plan doctor` — RFC-9 §4B plan-health diagnostics.
+pub mod plan_doctor;
 /// RFC 3339 timestamp newtype.
 pub mod timestamp;
 
@@ -35,6 +37,11 @@ pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339, is_val
 pub use journal::{EntryKind, Journal, JournalEntry};
 pub use lock::{Acquired, Guard, PlanLockReleased, PlanLockState, Stamp};
 pub use plan::{Entry, EntryPatch, Finding, Plan, Severity, Status};
+pub use plan_doctor::{
+    BlockingPredecessor, CODE_CYCLE, CODE_ORPHAN_SOURCE, CODE_STALE_CLONE, CODE_UNREACHABLE,
+    CloneSignature, Diagnostic as PlanDoctorDiagnostic, DiagnosticPayload as PlanDoctorPayload,
+    DiagnosticSeverity as PlanDoctorSeverity, StaleCloneReason, doctor as plan_doctor,
+};
 pub use timestamp::Rfc3339Stamp;
 
 /// On-disk representation of `<change_dir>/.metadata.yaml`.
