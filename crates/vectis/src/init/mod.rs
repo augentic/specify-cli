@@ -45,7 +45,7 @@ pub fn run(args: &InitArgs) -> Result<CommandOutcome, VectisError> {
     let project_dir = resolve_project_dir(args.dir.as_deref())?;
     let versions = Versions::resolve(&project_dir, args.version_file.as_deref())?;
 
-    prerequisites::check(&assemblies)?;
+    prerequisites::check(&assemblies, Some(&versions))?;
 
     let android_package = args
         .android_package

@@ -40,14 +40,8 @@ pub fn run(args: &VerifyArgs) -> Result<CommandOutcome, VectisError> {
         assemblies.push(AssemblyKind::Android);
     }
 
-    prerequisites::check(&assemblies)?;
-
-    // `--version-file` is validated here even though verify does not
-    // consume any pin value today (it does not render templates). This
-    // preserves the resolution-override semantics documented on the
-    // flag: a bad path must fail early with a structured error rather
-    // than be silently ignored.
-    let _versions = Versions::resolve(&project_dir, args.version_file.as_deref())?;
+    let versions = Versions::resolve(&project_dir, args.version_file.as_deref())?;
+    prerequisites::check(&assemblies, Some(&versions))?;
 
     let cache = VerifyCache::new(std::process::id())?;
 

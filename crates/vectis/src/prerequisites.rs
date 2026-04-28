@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::error::{MissingTool, VectisError};
+use crate::versions::Versions;
 
 /// Which assembly a tool belongs to. Each subcommand selects a subset of these
 /// before calling [`check`].
@@ -46,20 +47,40 @@ impl AssemblyKind {
 /// failing tools are collected and returned as a single
 /// [`VectisError::MissingPrerequisites`] -- the user gets one report listing
 /// everything to install rather than fixing them one at a time.
-pub fn check(assemblies: &[AssemblyKind]) -> Result<(), VectisError> {
+///
+/// When `versions` is provided, version-coupled tools (currently cargo-swift)
+/// have their version range derived from the resolved pins rather than being
+/// left unconstrained. This catches "too new" installations at `init` /
+/// `verify` / `add-shell` time instead of producing a binary that panics at
+/// runtime.
+pub fn check(assemblies: &[AssemblyKind], versions: Option<&Versions>) -> Result<(), VectisError> {
     let needed: HashSet<AssemblyKind> = assemblies.iter().copied().collect();
     let mut missing = Vec::new();
+
+    let overrides = versions.map(cargo_swift_overrides);
 
     for tool in all_tools() {
         if !needed.contains(&tool.assembly) {
             continue;
         }
-        if run_check(&tool.check).is_err() {
+
+        let (check, install) = if tool.name == "cargo-swift" {
+            if let Some((ref cs_check, ref cs_install)) = overrides {
+                (cs_check as &ToolCheck, cs_install.as_str())
+            } else {
+                (&tool.check, tool.install)
+            }
+        } else {
+            (&tool.check, tool.install)
+        };
+
+        if let Err(reason) = run_check(check) {
             missing.push(MissingTool {
                 tool: tool.name.into(),
                 assembly: tool.assembly.tag().into(),
                 check: tool.check_display.into(),
-                install: tool.install.into(),
+                install: install.into(),
+                reason: Some(reason),
             });
         }
     }
@@ -72,6 +93,38 @@ pub fn check(assemblies: &[AssemblyKind]) -> Result<(), VectisError> {
             message: "Install the missing tools above and re-run the command.".into(),
         })
     }
+}
+
+/// Derive a cargo-swift version range from the resolved `Versions`.
+///
+/// Parses the `cargo_swift` pin (e.g. `"0.9"`) into `min = 0.9.0`,
+/// `max = 0.10.0` (exclusive upper bound = next minor). This means the
+/// prerequisite check automatically adjusts whenever `versions.toml` is
+/// bumped -- no second edit required.
+fn cargo_swift_overrides(versions: &Versions) -> (ToolCheck, String) {
+    let pin = &versions.crux.cargo_swift;
+    let (min, max) = if let Some(v) = Version::parse(pin) {
+        (v, Version::new(v.major, v.minor + 1, 0))
+    } else {
+        // Unparseable pin: fall back to unconstrained (same as before).
+        return (
+            ToolCheck::Cmd {
+                program: "cargo",
+                args: &["swift", "--version"],
+                min_version: None,
+                max_version: None,
+            },
+            format!("cargo install cargo-swift@{pin}"),
+        );
+    };
+    let check = ToolCheck::Cmd {
+        program: "cargo",
+        args: &["swift", "--version"],
+        min_version: Some(min),
+        max_version: Some(max),
+    };
+    let install = format!("cargo install cargo-swift@{pin}");
+    (check, install)
 }
 
 // ---------------------------------------------------------------------------
@@ -95,8 +148,14 @@ struct Tool {
 enum ToolCheck {
     /// Run a command and require it to exit successfully. If `min_version` is
     /// set, also extract a `M.m[.p]` token from combined stdout+stderr and
-    /// require it to be at least that version.
-    Cmd { program: &'static str, args: &'static [&'static str], min_version: Option<Version> },
+    /// require it to be at least that version. If `max_version` is set, the
+    /// extracted version must be strictly less than the bound.
+    Cmd {
+        program: &'static str,
+        args: &'static [&'static str],
+        min_version: Option<Version>,
+        max_version: Option<Version>,
+    },
     /// Environment variable must be set; if `must_exist`, its value must
     /// resolve to an existing directory.
     Env { var: &'static str, must_exist: bool },
@@ -123,6 +182,7 @@ static TOOLS: &[Tool] = &[
             program: "rustup",
             args: &["show", "active-toolchain"],
             min_version: None,
+            max_version: None,
         },
     },
     Tool {
@@ -134,6 +194,7 @@ static TOOLS: &[Tool] = &[
             program: "cargo",
             args: &["deny", "--version"],
             min_version: None,
+            max_version: None,
         },
     },
     Tool {
@@ -145,6 +206,7 @@ static TOOLS: &[Tool] = &[
             program: "cargo",
             args: &["vet", "--version"],
             min_version: None,
+            max_version: None,
         },
     },
     // ---- iOS ---------------------------------------------------------
@@ -157,6 +219,7 @@ static TOOLS: &[Tool] = &[
             program: "xcode-select",
             args: &["-p"],
             min_version: None,
+            max_version: None,
         },
     },
     Tool {
@@ -168,6 +231,7 @@ static TOOLS: &[Tool] = &[
             program: "xcodegen",
             args: &["--version"],
             min_version: None,
+            max_version: None,
         },
     },
     Tool {
@@ -179,6 +243,7 @@ static TOOLS: &[Tool] = &[
             program: "cargo",
             args: &["swift", "--version"],
             min_version: None,
+            max_version: None,
         },
     },
     Tool {
@@ -190,6 +255,7 @@ static TOOLS: &[Tool] = &[
             program: "xcbeautify",
             args: &["--version"],
             min_version: None,
+            max_version: None,
         },
     },
     // ---- Android -----------------------------------------------------
@@ -212,6 +278,7 @@ static TOOLS: &[Tool] = &[
             program: "java",
             args: &["--version"],
             min_version: Some(Version::new(21, 0, 0)),
+            max_version: None,
         },
     },
     Tool {
@@ -243,6 +310,7 @@ static TOOLS: &[Tool] = &[
             program: "gradle",
             args: &["--version"],
             min_version: None,
+            max_version: None,
         },
     },
 ];
@@ -257,14 +325,17 @@ fn run_check(check: &ToolCheck) -> Result<(), String> {
             program,
             args,
             min_version,
-        } => run_cmd_check(program, args, *min_version),
+            max_version,
+        } => run_cmd_check(program, args, *min_version, *max_version),
         ToolCheck::Env { var, must_exist } => run_env_check(var, *must_exist),
         ToolCheck::RustupTargets(targets) => run_rustup_targets_check(targets),
         ToolCheck::AndroidNdk => run_android_ndk_check(),
     }
 }
 
-fn run_cmd_check(program: &str, args: &[&str], min_version: Option<Version>) -> Result<(), String> {
+fn run_cmd_check(
+    program: &str, args: &[&str], min_version: Option<Version>, max_version: Option<Version>,
+) -> Result<(), String> {
     let output = Command::new(program)
         .args(args)
         .output()
@@ -274,16 +345,21 @@ fn run_cmd_check(program: &str, args: &[&str], min_version: Option<Version>) -> 
         return Err(format!("{program} exited with status {:?}", output.status.code()));
     }
 
-    if let Some(min) = min_version {
-        // Some tools (older javas, gradle) write the version banner to stderr
-        // and stdout interchangeably. Search both.
+    if min_version.is_some() || max_version.is_some() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         let combined = format!("{stdout}\n{stderr}");
         let found = extract_version(&combined)
             .ok_or_else(|| format!("could not parse version from {program} output"))?;
-        if found < min {
+        if let Some(min) = min_version
+            && found < min
+        {
             return Err(format!("found {found} but need >= {min}"));
+        }
+        if let Some(max) = max_version
+            && found >= max
+        {
+            return Err(format!("found {found} but need < {max}"));
         }
     }
 
@@ -530,19 +606,22 @@ mod tests {
 
     #[test]
     fn cmd_check_missing_program_fails() {
-        let err =
-            run_cmd_check("vectis-tool-that-does-not-exist", &["--version"], None).unwrap_err();
+        let err = run_cmd_check("vectis-tool-that-does-not-exist", &["--version"], None, None)
+            .unwrap_err();
         assert!(err.contains("vectis-tool-that-does-not-exist"));
     }
 
     #[test]
     fn cmd_check_min_version_too_low_fails() {
-        // We can't easily mock Command output without an indirection layer;
-        // the version comparison itself is exercised by the extract_* tests.
-        // This test just confirms the wiring: a successful command with
-        // unparseable output and a min_version returns an error.
         // `true` exits 0 with empty output -> "could not parse version".
-        let err = run_cmd_check("true", &[], Some(Version::new(1, 0, 0))).unwrap_err();
+        let err = run_cmd_check("true", &[], Some(Version::new(1, 0, 0)), None).unwrap_err();
+        assert!(err.contains("could not parse version"));
+    }
+
+    #[test]
+    fn cmd_check_max_version_too_high_fails() {
+        // `true` exits 0 with empty output -> "could not parse version".
+        let err = run_cmd_check("true", &[], None, Some(Version::new(1, 0, 0))).unwrap_err();
         assert!(err.contains("could not parse version"));
     }
 }

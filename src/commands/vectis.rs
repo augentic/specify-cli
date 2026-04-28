@@ -21,6 +21,7 @@ pub fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
         VectisAction::Verify(args) => specify_vectis::verify::run(args),
         VectisAction::AddShell(args) => specify_vectis::add_shell::run(args),
         VectisAction::UpdateVersions(args) => specify_vectis::update_versions::run(args),
+        VectisAction::Versions(args) => specify_vectis::versions_cmd::run(args),
     };
     match result {
         Ok(specify_vectis::CommandOutcome::Success(value)) => {
@@ -90,10 +91,17 @@ fn emit_err(format: OutputFormat, err: &specify_vectis::VectisError) -> CliResul
             specify_vectis::VectisError::MissingPrerequisites { missing, message } => {
                 eprintln!("error: missing prerequisites");
                 for tool in missing {
-                    eprintln!(
-                        "  - {} ({}): {} | install: {}",
-                        tool.tool, tool.assembly, tool.check, tool.install
-                    );
+                    if let Some(reason) = &tool.reason {
+                        eprintln!(
+                            "  - {} ({}): {} — {} | install: {}",
+                            tool.tool, tool.assembly, tool.check, reason, tool.install
+                        );
+                    } else {
+                        eprintln!(
+                            "  - {} ({}): {} | install: {}",
+                            tool.tool, tool.assembly, tool.check, tool.install
+                        );
+                    }
                 }
                 eprintln!("{message}");
             }
@@ -119,6 +127,7 @@ fn render_text(action: &VectisAction, value: &Value) {
         VectisAction::Verify(_) => render_verify_text(value),
         VectisAction::AddShell(_) => render_add_shell_text(value),
         VectisAction::UpdateVersions(_) => render_update_versions_text(value),
+        VectisAction::Versions(_) => render_versions_text(value),
     }
 }
 
@@ -277,6 +286,25 @@ fn render_update_versions_text(value: &Value) {
                 let caps = combo.get("caps").and_then(Value::as_str).unwrap_or("?");
                 let combo_passed = combo.get("passed").and_then(Value::as_bool).unwrap_or(false);
                 println!("  - {caps}: {}", if combo_passed { "PASS" } else { "FAIL" });
+            }
+        }
+    }
+}
+
+fn render_versions_text(value: &Value) {
+    println!("Resolved version pins:");
+    let sections = ["crux", "android", "ios", "tooling"];
+    for section in &sections {
+        if let Some(obj) = value.get(section).and_then(Value::as_object) {
+            if obj.is_empty() {
+                continue;
+            }
+            println!("  [{section}]");
+            let mut keys: Vec<&String> = obj.keys().collect();
+            keys.sort();
+            for key in keys {
+                let val = obj.get(key).and_then(Value::as_str).unwrap_or("?");
+                println!("    {key} = {val}");
             }
         }
     }

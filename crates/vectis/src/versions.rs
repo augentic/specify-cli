@@ -16,7 +16,7 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::VectisError;
 
@@ -31,22 +31,23 @@ const EMBEDDED_DEFAULTS: &str = include_str!("../embedded/versions.toml");
 /// Substruct field names match the placeholders the templates substitute
 /// (chunk 3a/3b/3c MANIFESTs); chunks 5/6/7/8/11 read directly off these
 /// fields.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[allow(missing_docs)]
 pub struct Versions {
     pub crux: Crux,
     pub android: Android,
     #[serde(default)]
-    #[allow(dead_code)] // populated for forward compat; no consumers in chunks 4-11
     pub ios: Ios,
     pub tooling: Tooling,
 }
 
-/// Crux + transitive Rust pins. The hard-pinned set (`facet`,
-/// `facet_generate`, `serde*`, `uniffi`, `cargo_swift`) moves in lockstep
-/// with `crux_core`; chunk 11's `update-versions` is responsible for
-/// proving coherence whenever any of them bumps.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(clippy::struct_field_names)]
+/// Crux + transitive Rust pins.
+///
+/// The hard-pinned set (`facet`, `facet_generate`, `serde*`, `uniffi`,
+/// `cargo_swift`) moves in lockstep with `crux_core`; `update-versions`
+/// is responsible for proving coherence whenever any of them bumps.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[allow(clippy::struct_field_names, missing_docs)]
 pub struct Crux {
     pub crux_core: String,
     pub crux_http: String,
@@ -61,11 +62,13 @@ pub struct Crux {
     pub cargo_swift: String,
 }
 
-/// Android toolchain pins. `ndk` is `Option<String>`: when absent, chunk 8
-/// detects the installed version from `$ANDROID_HOME/ndk/<version>/` at
-/// scaffold time rather than failing on a pin the developer does not have
-/// installed.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+/// Android toolchain pins.
+///
+/// `ndk` is `Option<String>`: when absent, the scaffold detects the
+/// installed version from `$ANDROID_HOME/ndk/<version>/` rather than
+/// failing on a pin the developer does not have installed.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[allow(missing_docs)]
 pub struct Android {
     pub compose_bom: String,
     pub koin: String,
@@ -80,13 +83,14 @@ pub struct Android {
 /// iOS pins. Empty today (every dependency is a generated, internal SPM
 /// package); kept as a substruct so external SPM pins can land later
 /// without changing the resolver shape.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[allow(clippy::empty_structs_with_brackets)]
 pub struct Ios {}
 
 /// Tooling pins (CLI binaries the developer installs separately). Mostly
 /// informational today; chunk 11 will use them when querying registries.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[allow(missing_docs)]
 pub struct Tooling {
     pub cargo_deny: String,
     pub cargo_vet: String,
@@ -101,6 +105,11 @@ impl Versions {
     /// is the value of `--version-file` if the user passed one; when set,
     /// the file MUST exist and parse, otherwise a structured
     /// `InvalidProject` error is returned.
+    ///
+    /// # Errors
+    ///
+    /// Returns `VectisError::InvalidProject` when a version file exists but
+    /// is missing or malformed.
     pub fn resolve(project_dir: &Path, override_path: Option<&Path>) -> Result<Self, VectisError> {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         Self::resolve_with(project_dir, override_path, home.as_deref())
@@ -127,9 +136,15 @@ impl Versions {
         load_embedded()
     }
 
-    /// Parse the embedded defaults. Public so chunks that legitimately want
-    /// the baseline (e.g. `update-versions --dry-run` showing "current"
-    /// when no file exists yet) can call it directly.
+    /// Parse the embedded defaults.
+    ///
+    /// Public so callers that legitimately want the baseline (e.g.
+    /// `update-versions --dry-run` showing "current" when no file exists
+    /// yet) can call it directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns `VectisError::Internal` if the compiled-in TOML is malformed.
     pub fn embedded() -> Result<Self, VectisError> {
         load_embedded()
     }

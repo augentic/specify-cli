@@ -17,10 +17,11 @@ pub mod error;
 pub mod init;
 pub mod update_versions;
 pub mod verify;
+pub mod versions_cmd;
 
 mod prerequisites;
 mod templates;
-mod versions;
+pub mod versions;
 
 pub use error::{MissingTool, VectisError};
 
@@ -128,4 +129,17 @@ pub struct UpdateVersionsArgs {
     /// Scaffold a scratch project and run `vectis verify` before committing pins.
     #[arg(long)]
     pub verify: bool,
+}
+
+/// `vectis versions` arguments.
+#[derive(clap::Args, Debug)]
+pub struct VersionsArgs {
+    /// Project directory (defaults to current directory).
+    #[arg(long)]
+    pub dir: Option<std::path::PathBuf>,
+
+    /// Override version pins file. When set, the file MUST exist; see
+    /// `vectis init --help` for the full resolution order.
+    #[arg(long)]
+    pub version_file: Option<std::path::PathBuf>,
 }
