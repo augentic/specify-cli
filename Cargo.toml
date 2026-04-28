@@ -20,7 +20,6 @@ path = "src/lib.rs"
 [dependencies]
 specify-error.workspace = true
 specify-drift.workspace = true
-specify-platform.workspace = true
 specify-schema.workspace = true
 specify-spec.workspace = true
 specify-merge.workspace = true
@@ -56,7 +55,6 @@ members = [
     "crates/validate",
     "crates/change",
     "crates/drift",
-    "crates/platform",
     "crates/vectis",
 ]
 
@@ -111,7 +109,6 @@ unused_result_ok = "warn"
 [workspace.dependencies]
 specify-error = { path = "crates/error" }
 specify-drift = { path = "crates/drift" }
-specify-platform = { path = "crates/platform" }
 specify-schema = { path = "crates/schema" }
 specify-spec = { path = "crates/spec" }
 specify-merge = { path = "crates/merge" }

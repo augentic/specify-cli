@@ -9,7 +9,7 @@ use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_plan_create(
+pub fn run_plan_add(
     ctx: &CommandContext, name: String, depends_on: Vec<String>, sources: Vec<String>,
     description: Option<String>, project: Option<String>, schema: Option<String>,
     context: Vec<String>,
@@ -39,13 +39,13 @@ pub fn run_plan_create(
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct CreateBody {
+    struct AddBody {
         plan: PlanRef,
         action: &'static str,
         entry: Value,
     }
     match ctx.format {
-        OutputFormat::Json => emit_response(CreateBody {
+        OutputFormat::Json => emit_response(AddBody {
             plan: plan_ref(&plan, &plan_path),
             action: "create",
             entry: change_entry_json(created),

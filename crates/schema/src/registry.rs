@@ -263,6 +263,41 @@ impl Registry {
     pub const fn is_single_repo(&self) -> bool {
         self.projects.len() <= 1
     }
+
+    /// Hub-only shape check (RFC-9 §1D).
+    ///
+    /// Runs the base [`Registry::validate_shape`] first, then layers on
+    /// the additional invariant that a **registry-only platform hub**
+    /// must never list itself as a project: any entry with `url: .` is
+    /// rejected with a `hub-cannot-be-project` diagnostic. The hub
+    /// holds platform-level state (registry, initiative brief, plan,
+    /// workspace clones) but is never a code project.
+    ///
+    /// Callers opt in by checking `project.yaml:hub: true` and
+    /// invoking this method in addition to (or instead of) the base
+    /// [`Registry::validate_shape`]. Non-hub callers continue to use
+    /// the base method unchanged — this is a strictly additive API.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first base-shape error if `validate_shape` fails,
+    /// or a `hub-cannot-be-project` config error if any entry's `url`
+    /// equals `.`.
+    pub fn validate_shape_hub(&self) -> Result<(), Error> {
+        self.validate_shape()?;
+        for (idx, project) in self.projects.iter().enumerate() {
+            if project.url == "." {
+                return Err(Error::Config(format!(
+                    "registry.yaml: projects[{idx}] (`{}`).url is `.`; \
+                     a registry-only platform hub must not appear in its own \
+                     registry — code projects always live in their own repos \
+                     (hub-cannot-be-project)",
+                    project.name
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl RegistryProject {

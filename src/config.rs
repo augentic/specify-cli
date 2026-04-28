@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
-use specify_platform::PlatformConfig;
 
 /// In-memory representation of `.specify/project.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -42,6 +41,23 @@ pub struct ProjectConfig {
     /// `pipeline.define` brief by `specify init`.
     #[serde(default)]
     pub rules: BTreeMap<String, String>,
+
+    /// `true` when this project is a registry-only **platform hub**
+    /// (RFC-9 §1D). Hubs hold platform-level state — `registry.yaml`,
+    /// `initiative.md`, `plan.yaml`, `workspace/` — but never appear in
+    /// their own `registry.yaml` and have phase pipelines disabled
+    /// (`schema: hub` is the matching sentinel). Defaults to `false`;
+    /// serialised only when `true` so existing single-repo
+    /// `project.yaml` files round-trip byte-stable.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub hub: bool,
+}
+
+// `serde`'s `skip_serializing_if` requires `Fn(&T) -> bool`, so the
+// `&bool` parameter is forced — we can't take by value.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+const fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 impl ProjectConfig {
@@ -132,8 +148,6 @@ impl ProjectConfig {
     }
 }
 
-impl PlatformConfig for ProjectConfig {}
-
 /// Returns `true` when `current < required` under semver ordering.
 /// Unparseable versions are treated as "not older" — we don't want a
 /// typo in a human-edited `project.yaml` to brick the project.
@@ -177,6 +191,7 @@ mod tests {
             schema: "omnia".to_string(),
             specify_version: None,
             rules,
+            hub: false,
         }
     }
 
@@ -247,5 +262,46 @@ mod tests {
         write_config(tmp.path(), "name: demo\nschema: omnia\nspecify_version: not-a-semver\n");
         let cfg = ProjectConfig::load(tmp.path()).expect("unparseable version is permissive");
         assert_eq!(cfg.specify_version.as_deref(), Some("not-a-semver"));
+    }
+
+    #[test]
+    fn hub_field_defaults_false_and_round_trips_when_true() {
+        let tmp = tempdir().unwrap();
+        write_config(tmp.path(), "name: demo\nschema: omnia\n");
+        let cfg = ProjectConfig::load(tmp.path()).expect("loads");
+        assert!(!cfg.hub, "hub must default to false when absent");
+
+        let tmp = tempdir().unwrap();
+        write_config(tmp.path(), "name: demo\nschema: hub\nhub: true\n");
+        let cfg = ProjectConfig::load(tmp.path()).expect("loads");
+        assert!(cfg.hub, "hub: true must round-trip through deserialize");
+    }
+
+    #[test]
+    fn hub_field_omitted_when_false_in_serialise() {
+        let cfg = ProjectConfig {
+            name: "demo".to_string(),
+            domain: None,
+            schema: "omnia".to_string(),
+            specify_version: None,
+            rules: BTreeMap::new(),
+            hub: false,
+        };
+        let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
+        assert!(!yaml.contains("hub:"), "hub: false should be omitted, got:\n{yaml}");
+    }
+
+    #[test]
+    fn hub_field_serialised_when_true() {
+        let cfg = ProjectConfig {
+            name: "platform".to_string(),
+            domain: None,
+            schema: "hub".to_string(),
+            specify_version: None,
+            rules: BTreeMap::new(),
+            hub: true,
+        };
+        let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
+        assert!(yaml.contains("hub: true"), "hub: true must serialise, got:\n{yaml}");
     }
 }

@@ -7,27 +7,42 @@
 //! `.gitignore`. Two calls with
 //! identical options are safe — the only effect of the second call is
 //! overwriting `project.yaml` with byte-identical content.
+//!
+//! Hub mode (`InitOptions::hub: true`, RFC-9 §1D) takes a different
+//! shape: a registry-only platform hub holds `registry.yaml`,
+//! `initiative.md`, and a sentinel `project.yaml { schema: hub, hub:
+//! true }` but never carries phase-pipeline rules of its own. Hub init
+//! refuses to run when `.specify/` already exists so it never clobbers
+//! a regular single-repo project.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use specify_change::is_valid_kebab_name;
 use specify_error::Error;
-use specify_schema::{CacheMeta, PipelineView};
+use specify_schema::{CacheMeta, InitiativeBrief, PipelineView, Registry};
 
 use crate::config::ProjectConfig;
+
+/// Sentinel value written into `project.yaml:schema` for a hub. Read by
+/// downstream skills/CLI as "phase pipelines disabled" — the hub never
+/// runs define/build/merge against itself.
+pub const HUB_SCHEMA_SENTINEL: &str = "hub";
 
 /// Inputs to [`init`]. Borrow-shaped so callers (the CLI and tests) can
 /// build the struct without cloning path buffers.
 pub struct InitOptions<'a> {
     /// Root of the project being initialised.
     pub project_dir: &'a Path,
-    /// Schema identifier (bare name or URL).
+    /// Schema identifier (bare name or URL). Ignored when
+    /// [`InitOptions::hub`] is `true` — hubs use the [`HUB_SCHEMA_SENTINEL`].
     pub schema_value: &'a str,
     /// Directory the CLI walks to discover `pipeline.define` briefs. The
     /// agent typically populates this under `.specify/.cache/` before
     /// invoking `specify init`, but any readable schema root works —
-    /// `init` never writes into it.
+    /// `init` never writes into it. Ignored when
+    /// [`InitOptions::hub`] is `true`.
     pub schema_source_dir: &'a Path,
     /// Project name; defaults to the project directory name when `None`.
     pub name: Option<&'a str>,
@@ -35,6 +50,12 @@ pub struct InitOptions<'a> {
     pub domain: Option<&'a str>,
     /// Controls what `specify_version` gets written into `project.yaml`.
     pub version_mode: VersionMode,
+    /// When `true`, scaffold a registry-only platform **hub** (RFC-9
+    /// §1D) instead of a regular project: writes `registry.yaml`,
+    /// `initiative.md`, and a sentinel `project.yaml { schema: hub,
+    /// hub: true }`. Hub init refuses to run when `.specify/` already
+    /// exists so it never clobbers a regular single-repo project.
+    pub hub: bool,
 }
 
 /// How `init` determines the `specify_version` floor in `project.yaml`.
@@ -72,11 +93,18 @@ pub struct InitResult {
 /// new directories, doesn't duplicate the `.gitignore` entry, and writes
 /// byte-identical `project.yaml` contents.
 ///
+/// When [`InitOptions::hub`] is `true`, dispatches to [`init_hub`]
+/// instead — see its doc comment for the platform-hub on-disk shape.
+///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
 #[allow(clippy::needless_pass_by_value)]
 pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
+    if opts.hub {
+        return init_hub(opts);
+    }
+
     let name = resolved_name(opts.project_dir, opts.name);
 
     let mut directories_created: Vec<PathBuf> = Vec::new();
@@ -111,6 +139,7 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         schema: opts.schema_value.to_string(),
         specify_version: Some(specify_version.clone()),
         rules,
+        hub: false,
     };
 
     let config_path = ProjectConfig::config_path(opts.project_dir);
@@ -127,6 +156,97 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         cache_present,
         directories_created,
         scaffolded_rule_keys,
+        specify_version,
+    })
+}
+
+/// Hub variant of [`init`] (RFC-9 §1D). Scaffolds a **registry-only
+/// platform hub**: the platform repo holds platform-level state
+/// (`registry.yaml`, `initiative.md`, plans, `workspace/`) but never
+/// appears in its own `registry.yaml` and disables phase pipelines on
+/// itself via the `schema: hub` sentinel.
+///
+/// On-disk shape after success:
+///
+/// ```text
+/// .specify/
+/// ├── project.yaml      # { schema: hub, hub: true, … }
+/// ├── registry.yaml     # { version: 1, projects: [] }
+/// └── initiative.md     # canonical template, named after the project
+/// ```
+///
+/// Refuses to run when `.specify/` already exists so the operator
+/// never accidentally flips an existing single-repo project into a
+/// hub. Schema resolution is intentionally skipped — there is no
+/// `pipeline.define` for a hub to walk.
+///
+/// # Errors
+///
+/// Returns an error if the project name is not kebab-case, if
+/// `.specify/` already exists, or if any filesystem write fails.
+#[allow(clippy::needless_pass_by_value)]
+fn init_hub(opts: InitOptions<'_>) -> Result<InitResult, Error> {
+    let specify_dir = ProjectConfig::specify_dir(opts.project_dir);
+    if specify_dir.exists() {
+        return Err(Error::Config(format!(
+            "init --hub: refusing to scaffold over an existing `.specify/` at {}; \
+             remove it first or run without --hub for a regular project",
+            specify_dir.display()
+        )));
+    }
+
+    let name = resolved_name(opts.project_dir, opts.name);
+    if !is_valid_kebab_name(&name) {
+        return Err(Error::Config(format!(
+            "init --hub: project name `{name}` must be kebab-case \
+             (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens). \
+             Pass --name <kebab-name> to override the directory basename."
+        )));
+    }
+
+    fs::create_dir_all(&specify_dir)?;
+    let directories_created: Vec<PathBuf> = vec![specify_dir];
+
+    let specify_version = resolve_version(opts.project_dir, opts.version_mode)?;
+
+    let cfg = ProjectConfig {
+        name: name.clone(),
+        domain: opts.domain.map(str::to_string),
+        schema: HUB_SCHEMA_SENTINEL.to_string(),
+        specify_version: Some(specify_version.clone()),
+        rules: BTreeMap::new(),
+        hub: true,
+    };
+    let config_path = ProjectConfig::config_path(opts.project_dir);
+    let serialised = serde_saphyr::to_string(&cfg)?;
+    fs::write(&config_path, serialised)?;
+
+    let registry = Registry {
+        version: 1,
+        projects: Vec::new(),
+    };
+    let registry_path = Registry::path(opts.project_dir);
+    let registry_yaml = serde_saphyr::to_string(&registry)?;
+    fs::write(&registry_path, registry_yaml)?;
+    // Trivially passes for an empty list, but exercise the hub-mode
+    // shape check so any future registry-write code paths inherit the
+    // same invariant from this seed.
+    registry.validate_shape_hub()?;
+
+    let brief_path = InitiativeBrief::path(opts.project_dir);
+    let brief_body = InitiativeBrief::template(&name);
+    fs::write(&brief_path, brief_body)?;
+
+    upsert_gitignore(opts.project_dir)?;
+
+    let cache_present = CacheMeta::path(opts.project_dir).exists();
+
+    Ok(InitResult {
+        config_path,
+        schema_name: HUB_SCHEMA_SENTINEL.to_string(),
+        cache_present,
+        directories_created,
+        scaffolded_rule_keys: Vec::new(),
         specify_version,
     })
 }
@@ -227,6 +347,7 @@ mod tests {
             name: Some("demo"),
             domain: None,
             version_mode: VersionMode::WriteCurrent,
+            hub: false,
         }
     }
 
@@ -399,11 +520,104 @@ mod tests {
             name: None,
             domain: None,
             version_mode: VersionMode::WriteCurrent,
+            hub: false,
         })
         .expect("init ok");
 
         let cfg = ProjectConfig::load(&project).expect("reload");
         assert_eq!(cfg.name, "my-project");
         assert_eq!(result.schema_name, "omnia");
+    }
+
+    fn hub_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
+        InitOptions {
+            project_dir,
+            // schema_value / schema_source_dir are intentionally
+            // ignored by hub init — point them at junk so future drift
+            // here blows up loudly rather than silently re-loading the
+            // omnia schema.
+            schema_value: "ignored-by-hub-init",
+            schema_source_dir: Path::new("/does/not/exist"),
+            name: Some(name),
+            domain: None,
+            version_mode: VersionMode::WriteCurrent,
+            hub: true,
+        }
+    }
+
+    #[test]
+    fn hub_init_writes_canonical_on_disk_shape() {
+        let tmp = tempdir().unwrap();
+        let result = init(hub_opts(tmp.path(), "platform-hub")).expect("hub init ok");
+
+        let project_yaml = tmp.path().join(".specify/project.yaml");
+        let registry_yaml = tmp.path().join(".specify/registry.yaml");
+        let initiative_md = tmp.path().join(".specify/initiative.md");
+        assert!(project_yaml.is_file(), "project.yaml missing");
+        assert!(registry_yaml.is_file(), "registry.yaml missing");
+        assert!(initiative_md.is_file(), "initiative.md missing");
+
+        // Phase-pipeline directories MUST NOT be scaffolded for a hub —
+        // the sentinel `schema: hub` disables the define-build-merge
+        // loop on the hub itself.
+        assert!(!tmp.path().join(".specify/changes").exists());
+        assert!(!tmp.path().join(".specify/specs").exists());
+        assert!(!tmp.path().join(".specify/.cache").exists());
+
+        let cfg = ProjectConfig::load(tmp.path()).expect("reload project.yaml");
+        assert_eq!(cfg.schema, HUB_SCHEMA_SENTINEL);
+        assert!(cfg.hub, "project.yaml must carry hub: true");
+        assert!(cfg.rules.is_empty(), "hubs do not scaffold rules");
+        assert_eq!(cfg.name, "platform-hub");
+
+        let registry = Registry::load(tmp.path()).expect("registry parses").expect("present");
+        assert_eq!(registry.version, 1);
+        assert!(registry.projects.is_empty(), "hub registry starts empty");
+
+        let brief = InitiativeBrief::load(tmp.path()).expect("brief parses").expect("present");
+        assert_eq!(brief.frontmatter.name, "platform-hub");
+
+        assert_eq!(result.schema_name, HUB_SCHEMA_SENTINEL);
+        assert!(result.scaffolded_rule_keys.is_empty());
+    }
+
+    #[test]
+    fn hub_init_refuses_when_specify_dir_exists() {
+        let tmp = tempdir().unwrap();
+        // Pre-create `.specify/` with arbitrary content as if a regular
+        // `specify init` had already run here.
+        fs::create_dir_all(tmp.path().join(".specify")).unwrap();
+        fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\nschema: omnia\n")
+            .unwrap();
+
+        let err =
+            init(hub_opts(tmp.path(), "platform-hub")).expect_err("must refuse over existing dir");
+        match err {
+            Error::Config(msg) => {
+                assert!(
+                    msg.contains("refusing to scaffold"),
+                    "diagnostic should explain the refusal, got: {msg}"
+                );
+                assert!(msg.contains(".specify"), "diagnostic should mention .specify, got: {msg}");
+            }
+            other => panic!("wrong error variant: {other:?}"),
+        }
+        // The pre-existing project.yaml must be untouched.
+        let on_disk = fs::read_to_string(tmp.path().join(".specify/project.yaml")).unwrap();
+        assert_eq!(on_disk, "name: existing\nschema: omnia\n");
+    }
+
+    #[test]
+    fn hub_init_rejects_non_kebab_name() {
+        let tmp = tempdir().unwrap();
+        let err = init(hub_opts(tmp.path(), "BadName")).expect_err("non-kebab name");
+        match err {
+            Error::Config(msg) => {
+                assert!(msg.contains("kebab-case"), "diagnostic should cite the rule: {msg}");
+                assert!(msg.contains("BadName"), "diagnostic should echo the bad name: {msg}");
+            }
+            other => panic!("wrong error variant: {other:?}"),
+        }
+        assert!(!tmp.path().join(".specify").exists(), "no .specify on validation failure");
     }
 }
