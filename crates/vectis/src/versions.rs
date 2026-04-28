@@ -108,8 +108,9 @@ impl Versions {
     ///
     /// # Errors
     ///
-    /// Returns `VectisError::InvalidProject` when a version file exists but
-    /// is missing or malformed.
+    /// Returns `VectisError::InvalidProject` if the explicit
+    /// `--version-file` override is missing or malformed, or if a
+    /// discovered project/user `versions.toml` exists but is malformed.
     pub fn resolve(project_dir: &Path, override_path: Option<&Path>) -> Result<Self, VectisError> {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         Self::resolve_with(project_dir, override_path, home.as_deref())

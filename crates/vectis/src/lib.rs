@@ -24,6 +24,7 @@ mod templates;
 pub mod versions;
 
 pub use error::{MissingTool, VectisError};
+pub use versions::Versions;
 
 /// Outcome returned by every subcommand handler.
 ///
