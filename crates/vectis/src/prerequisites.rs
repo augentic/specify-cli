@@ -664,7 +664,11 @@ mod tests {
         let v = versions_with_cargo_swift("0.9");
         let (check, install) = cargo_swift_overrides(&v);
         match check {
-            ToolCheck::Cmd { min_version, max_version, .. } => {
+            ToolCheck::Cmd {
+                min_version,
+                max_version,
+                ..
+            } => {
                 assert_eq!(min_version, Some(Version::new(0, 9, 0)));
                 assert_eq!(max_version, Some(Version::new(0, 10, 0)));
             }
@@ -678,7 +682,11 @@ mod tests {
         let v = versions_with_cargo_swift("1.2.3");
         let (check, _) = cargo_swift_overrides(&v);
         match check {
-            ToolCheck::Cmd { min_version, max_version, .. } => {
+            ToolCheck::Cmd {
+                min_version,
+                max_version,
+                ..
+            } => {
                 assert_eq!(min_version, Some(Version::new(1, 2, 3)));
                 assert_eq!(max_version, Some(Version::new(1, 3, 0)));
             }
@@ -691,7 +699,11 @@ mod tests {
         let v = versions_with_cargo_swift("latest");
         let (check, install) = cargo_swift_overrides(&v);
         match check {
-            ToolCheck::Cmd { min_version, max_version, .. } => {
+            ToolCheck::Cmd {
+                min_version,
+                max_version,
+                ..
+            } => {
                 assert!(min_version.is_none(), "unparseable pin should have no min");
                 assert!(max_version.is_none(), "unparseable pin should have no max");
             }
