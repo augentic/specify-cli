@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
-use specify::{CreateIfExists, EntryKind, LifecycleStatus, Outcome, Phase, PlanStatus};
+use specify::{CreateIfExists, EntryKind, LifecycleStatus, Phase, PlanStatus};
 
 #[derive(Parser)]
 #[command(
@@ -273,6 +273,36 @@ pub enum InitiativeAction {
     /// declared". Malformed file fails loud with a non-zero exit — the
     /// operator asked to show something unparseable.
     Show,
+    /// Close out an initiative once every plan entry is in a terminal
+    /// state and every per-project PR has merged on its remote
+    /// (RFC-9 §4C). Sweeps `plan.yaml`, `initiative.md`, and the
+    /// `.specify/plans/<name>/` authoring trail into
+    /// `.specify/archive/plans/<YYYYMMDD>-<name>/`. With `--clean`
+    /// also removes `.specify/workspace/<peer>/` clones.
+    ///
+    /// Atomic: any guard failure (non-terminal entry, unmerged PR,
+    /// dirty workspace clone) refuses with a per-project status table
+    /// and leaves the on-disk state untouched. The archive write
+    /// preflights both destinations before any move, so a collision
+    /// here also leaves the working tree alone.
+    ///
+    /// Composes with `specify workspace merge` (RFC-9 §4A): the
+    /// autonomous path merges PRs first, then finalizes; the
+    /// supervised path finalizes after manual merges. Either way,
+    /// idempotent — re-run after the operator clears the failing
+    /// guard.
+    Finalize {
+        /// Remove `.specify/workspace/<peer>/` clones after the archive
+        /// completes. Refused when any clone has a dirty working tree
+        /// (the diagnostic flags that `--clean` would drop the
+        /// uncommitted work).
+        #[arg(long)]
+        clean: bool,
+        /// Show what would happen without writing anything. Never
+        /// invokes `gh pr merge` and never moves files.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -569,15 +599,44 @@ pub enum OutcomeAction {
         /// Phase this outcome applies to
         #[arg(value_enum)]
         phase: Phase,
-        /// Outcome classification
+        /// Outcome classification.
+        ///
+        /// `success` / `failure` / `deferred` are the original three;
+        /// `registry-amendment-required` is RFC-9 §2B and requires
+        /// the four `--proposed-*` flags plus `--rationale`.
         #[arg(value_enum)]
-        outcome: Outcome,
-        /// Short explanation of what happened (shown in plan status-reason on non-success)
+        outcome: OutcomeKind,
+        /// Short explanation of what happened (shown in plan
+        /// status-reason on non-success). Optional only for
+        /// `registry-amendment-required` — the CLI synthesises a
+        /// canonical `registry-amendment-required: <name>` summary
+        /// from `--proposed-name` when omitted.
         #[arg(long)]
-        summary: String,
+        summary: Option<String>,
         /// Optional verbatim detail (stderr, ambiguous-requirement text, etc.)
         #[arg(long)]
         context: Option<String>,
+        /// Proposed kebab-case project name. Required (and only
+        /// accepted) when `<outcome>` is `registry-amendment-required`.
+        #[arg(long)]
+        proposed_name: Option<String>,
+        /// Proposed clone URL — same shape as `specify registry add --url`.
+        /// Required when `<outcome>` is `registry-amendment-required`.
+        #[arg(long)]
+        proposed_url: Option<String>,
+        /// Proposed schema identifier (e.g. `omnia@v1`). Required
+        /// when `<outcome>` is `registry-amendment-required`.
+        #[arg(long)]
+        proposed_schema: Option<String>,
+        /// Optional human-readable description of the proposed
+        /// project. Honoured only with `<outcome> = registry-amendment-required`.
+        #[arg(long)]
+        proposed_description: Option<String>,
+        /// Free-form prose explaining why the phase decided this
+        /// amendment was required. Required when `<outcome>` is
+        /// `registry-amendment-required`.
+        #[arg(long)]
+        rationale: Option<String>,
     },
     /// Read the stamped `.metadata.yaml.outcome` for a change
     ///
@@ -590,6 +649,31 @@ pub enum OutcomeAction {
         /// Change name
         name: String,
     },
+}
+
+/// CLI-side discriminant for `change outcome set <outcome>`.
+///
+/// Mirrors the on-disk [`specify::Outcome`] discriminant strings
+/// (kebab-case) but keeps the variants unit-only so clap can derive
+/// `ValueEnum`. The dispatcher in `src/commands/change.rs` reads this
+/// alongside the `--proposed-*` / `--rationale` flags and constructs
+/// the actual `Outcome` enum value.
+///
+/// Adding a new outcome requires extending **both** this enum and the
+/// `specify::Outcome` enum in `crates/change/src/lib.rs` (the wire
+/// type) — the kebab-case spelling MUST match.
+#[derive(Copy, Clone, ValueEnum, PartialEq, Eq, Debug)]
+pub enum OutcomeKind {
+    /// Phase completed successfully.
+    Success,
+    /// Phase failed.
+    Failure,
+    /// Phase deferred (needs human input).
+    Deferred,
+    /// Phase blocked on a registry amendment (RFC-9 §2B). Requires
+    /// the `--proposed-name` / `--proposed-url` / `--proposed-schema`
+    /// / `--rationale` flags.
+    RegistryAmendmentRequired,
 }
 
 /// Journal subcommands grouped under `change journal`.

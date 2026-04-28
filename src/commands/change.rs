@@ -15,7 +15,8 @@ use specify::{
 };
 
 use crate::cli::{
-    ChangeAction, ChangeMergeAction, ChangeTaskAction, JournalAction, OutcomeAction, OutputFormat,
+    ChangeAction, ChangeMergeAction, ChangeTaskAction, JournalAction, OutcomeAction, OutcomeKind,
+    OutputFormat,
 };
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
@@ -48,7 +49,26 @@ pub fn run_change(ctx: &CommandContext, action: ChangeAction) -> Result<CliResul
                 outcome,
                 summary,
                 context,
-            } => run_change_outcome_set(ctx, name, phase, outcome, summary, context),
+                proposed_name,
+                proposed_url,
+                proposed_schema,
+                proposed_description,
+                rationale,
+            } => run_change_outcome_set(
+                ctx,
+                name,
+                phase,
+                OutcomeSetArgs {
+                    kind: outcome,
+                    summary,
+                    context,
+                    proposed_name,
+                    proposed_url,
+                    proposed_schema,
+                    proposed_description,
+                    rationale,
+                },
+            ),
             OutcomeAction::Show { name } => run_change_outcome_show(ctx, name),
         },
         ChangeAction::Journal { action } => match action {
@@ -326,19 +346,37 @@ fn run_change_drop(
     Ok(CliResult::Success)
 }
 
-fn run_change_outcome_set(
-    ctx: &CommandContext, name: String, phase: Phase, outcome: Outcome, summary: String,
+/// Inputs for [`run_change_outcome_set`].
+///
+/// Bundling the `OutcomeAction::Set` flag soup into one struct avoids
+/// the eight-positional-args clippy lint while keeping the dispatcher
+/// in `run_change` flat and readable.
+struct OutcomeSetArgs {
+    kind: OutcomeKind,
+    summary: Option<String>,
     context: Option<String>,
+    proposed_name: Option<String>,
+    proposed_url: Option<String>,
+    proposed_schema: Option<String>,
+    proposed_description: Option<String>,
+    rationale: Option<String>,
+}
+
+fn run_change_outcome_set(
+    ctx: &CommandContext, name: String, phase: Phase, args: OutcomeSetArgs,
 ) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
     if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
         return Err(Error::ChangeNotFound { name });
     }
 
+    let context = args.context.clone();
+    let (outcome, summary) = build_outcome(args)?;
+
     let metadata = change_actions::phase_outcome(
         &change_dir,
         phase,
-        outcome,
+        outcome.clone(),
         &summary,
         context.as_deref(),
         Utc::now(),
@@ -348,6 +386,7 @@ fn run_change_outcome_set(
         .outcome
         .as_ref()
         .expect("phase_outcome action must set metadata.outcome on success");
+    let outcome_str = outcome.discriminant();
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
     struct PhaseStamp {
@@ -360,14 +399,125 @@ fn run_change_outcome_set(
         OutputFormat::Json => emit_response(PhaseStamp {
             change: name,
             phase: phase.to_string(),
-            outcome: outcome.to_string(),
+            outcome: outcome_str.to_string(),
             at: stamped.at.to_string(),
         }),
         OutputFormat::Text => {
-            println!("Stamped outcome '{outcome}' for phase '{phase}' on change '{name}'.");
+            println!("Stamped outcome '{outcome_str}' for phase '{phase}' on change '{name}'.");
         }
     }
     Ok(CliResult::Success)
+}
+
+/// Translate the CLI flag soup (`OutcomeKind` + optional `--proposed-*`
+/// flags) into the wire `Outcome` and the `summary` string written to
+/// `.metadata.yaml`.
+///
+/// The four original variants accept any `--summary`, ignore the
+/// `--proposed-*` flags, and reject them when supplied (they are
+/// outcome-specific). The `registry-amendment-required` variant
+/// requires `--proposed-name`, `--proposed-url`, `--proposed-schema`,
+/// and `--rationale`; `--proposed-description` is optional. When
+/// `--summary` is omitted for the new variant the CLI synthesises a
+/// canonical `registry-amendment-required: <name>` summary so
+/// `/spec:execute` can carry the `<name>` into the journal entry's
+/// `cross-project-warning:`-style prefix.
+fn build_outcome(args: OutcomeSetArgs) -> Result<(Outcome, String), Error> {
+    let OutcomeSetArgs {
+        kind,
+        summary,
+        proposed_name,
+        proposed_url,
+        proposed_schema,
+        proposed_description,
+        rationale,
+        ..
+    } = args;
+
+    match kind {
+        OutcomeKind::Success | OutcomeKind::Failure | OutcomeKind::Deferred => {
+            ensure_no_proposal_flags(
+                kind,
+                proposed_name.as_deref(),
+                proposed_url.as_deref(),
+                proposed_schema.as_deref(),
+                proposed_description.as_deref(),
+                rationale.as_deref(),
+            )?;
+            let summary = summary.ok_or_else(|| {
+                Error::Config(format!("--summary is required for outcome `{}`", cli_kind_str(kind)))
+            })?;
+            let outcome = match kind {
+                OutcomeKind::Success => Outcome::Success,
+                OutcomeKind::Failure => Outcome::Failure,
+                OutcomeKind::Deferred => Outcome::Deferred,
+                OutcomeKind::RegistryAmendmentRequired => unreachable!("guarded above"),
+            };
+            Ok((outcome, summary))
+        }
+        OutcomeKind::RegistryAmendmentRequired => {
+            let proposed_name = required_flag("--proposed-name", proposed_name)?;
+            let proposed_url = required_flag("--proposed-url", proposed_url)?;
+            let proposed_schema = required_flag("--proposed-schema", proposed_schema)?;
+            let rationale = required_flag("--rationale", rationale)?;
+            let summary =
+                summary.unwrap_or_else(|| format!("registry-amendment-required: {proposed_name}"));
+            let outcome = Outcome::RegistryAmendmentRequired {
+                proposed_name,
+                proposed_url,
+                proposed_schema,
+                proposed_description,
+                rationale,
+            };
+            Ok((outcome, summary))
+        }
+    }
+}
+
+fn ensure_no_proposal_flags(
+    kind: OutcomeKind, name: Option<&str>, url: Option<&str>, schema: Option<&str>,
+    description: Option<&str>, rationale: Option<&str>,
+) -> Result<(), Error> {
+    let mut offenders: Vec<&'static str> = Vec::new();
+    if name.is_some() {
+        offenders.push("--proposed-name");
+    }
+    if url.is_some() {
+        offenders.push("--proposed-url");
+    }
+    if schema.is_some() {
+        offenders.push("--proposed-schema");
+    }
+    if description.is_some() {
+        offenders.push("--proposed-description");
+    }
+    if rationale.is_some() {
+        offenders.push("--rationale");
+    }
+    if offenders.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Config(format!(
+            "{} are only valid with `--outcome registry-amendment-required` (got `{}`)",
+            offenders.join(", "),
+            cli_kind_str(kind)
+        )))
+    }
+}
+
+fn required_flag(flag: &str, value: Option<String>) -> Result<String, Error> {
+    value.ok_or_else(|| {
+        Error::Config(format!("{flag} is required when outcome is `registry-amendment-required`"))
+    })
+}
+
+const fn cli_kind_str(kind: OutcomeKind) -> &'static str {
+    match kind {
+        OutcomeKind::Success => "success",
+        OutcomeKind::Failure => "failure",
+        OutcomeKind::Deferred => "deferred",
+        OutcomeKind::RegistryAmendmentRequired => "registry-amendment-required",
+    }
 }
 
 /// Report the stamped `.metadata.yaml.outcome` for `name`.
@@ -393,42 +543,26 @@ fn run_change_outcome_show(ctx: &CommandContext, name: String) -> Result<CliResu
     };
 
     match ctx.format {
-        OutputFormat::Json => {
-            // Build the outcome payload explicitly so `context` is
-            // emitted as `null` when absent (the canonical shape
-            // `/spec:execute` pattern-matches on). `PhaseOutcome`'s
-            // serde derive skips `None` contexts on disk; the CLI
-            // contract is the stable null.
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct OutcomeResponse {
-                name: String,
-                outcome: Option<OutcomeRow>,
-            }
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct OutcomeRow {
-                phase: String,
-                outcome: String,
-                at: Rfc3339Stamp,
-                summary: String,
-                context: Value,
-            }
-            let outcome_detail = metadata.outcome.as_ref().map(|o| OutcomeRow {
-                phase: o.phase.to_string(),
-                outcome: o.outcome.to_string(),
-                at: o.at.clone(),
-                summary: o.summary.clone(),
-                context: o.context.clone().map_or(Value::Null, Value::from),
-            });
-            emit_response(OutcomeResponse {
-                name,
-                outcome: outcome_detail,
-            });
-        }
+        OutputFormat::Json => emit_outcome_show_json(name, &metadata),
         OutputFormat::Text => match &metadata.outcome {
             Some(o) => {
                 println!("{name}: {}/{} — {}", o.phase, o.outcome, o.summary);
+                if let Outcome::RegistryAmendmentRequired {
+                    proposed_name,
+                    proposed_url,
+                    proposed_schema,
+                    proposed_description,
+                    rationale,
+                } = &o.outcome
+                {
+                    println!("  proposed-name: {proposed_name}");
+                    println!("  proposed-url: {proposed_url}");
+                    println!("  proposed-schema: {proposed_schema}");
+                    if let Some(desc) = proposed_description {
+                        println!("  proposed-description: {desc}");
+                    }
+                    println!("  rationale: {rationale}");
+                }
             }
             None => {
                 println!("{name}: no outcome stamped");
@@ -436,6 +570,80 @@ fn run_change_outcome_show(ctx: &CommandContext, name: String) -> Result<CliResu
         },
     }
     Ok(CliResult::Success)
+}
+
+/// JSON serialiser for `change outcome show`.
+///
+/// Splitting the JSON branch out of [`run_change_outcome_show`] keeps
+/// the dispatcher readable and lets the helper own the
+/// `Outcome::RegistryAmendmentRequired` payload-extraction shim that
+/// RFC-9 §2B introduces. The on-disk wire (in `.metadata.yaml`)
+/// nests the proposal under `outcome.outcome.registry-amendment-required.*`;
+/// the CLI shape is flatter — `outcome.outcome` stays a kebab-case
+/// string and the structured payload is hoisted into a sibling
+/// `outcome.proposal` object so existing consumers that only read
+/// `.outcome.outcome` (the historical contract `/spec:execute` pins)
+/// keep working unchanged.
+fn emit_outcome_show_json(name: String, metadata: &ChangeMetadata) {
+    #[derive(Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct OutcomeResponse {
+        name: String,
+        outcome: Option<OutcomeRow>,
+    }
+    #[derive(Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct OutcomeRow {
+        phase: String,
+        outcome: String,
+        at: Rfc3339Stamp,
+        summary: String,
+        context: Value,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        proposal: Option<RegistryProposalRow>,
+    }
+    #[derive(Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct RegistryProposalRow {
+        proposed_name: String,
+        proposed_url: String,
+        proposed_schema: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        proposed_description: Option<String>,
+        rationale: String,
+    }
+    fn proposal_for(outcome: &Outcome) -> Option<RegistryProposalRow> {
+        if let Outcome::RegistryAmendmentRequired {
+            proposed_name,
+            proposed_url,
+            proposed_schema,
+            proposed_description,
+            rationale,
+        } = outcome
+        {
+            Some(RegistryProposalRow {
+                proposed_name: proposed_name.clone(),
+                proposed_url: proposed_url.clone(),
+                proposed_schema: proposed_schema.clone(),
+                proposed_description: proposed_description.clone(),
+                rationale: rationale.clone(),
+            })
+        } else {
+            None
+        }
+    }
+    let outcome_detail = metadata.outcome.as_ref().map(|o| OutcomeRow {
+        phase: o.phase.to_string(),
+        outcome: o.outcome.discriminant().to_string(),
+        at: o.at.clone(),
+        summary: o.summary.clone(),
+        context: o.context.clone().map_or(Value::Null, Value::from),
+        proposal: proposal_for(&o.outcome),
+    });
+    emit_response(OutcomeResponse {
+        name,
+        outcome: outcome_detail,
+    });
 }
 
 /// Scan `.specify/archive/` for directories whose name ends with

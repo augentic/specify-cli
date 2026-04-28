@@ -954,6 +954,157 @@ fn change_outcome_archive_fallback_picks_most_recent() {
 }
 
 // ---------------------------------------------------------------------------
+// change outcome set — registry-amendment-required (RFC-9 §2B)
+// ---------------------------------------------------------------------------
+
+/// Stamping the new outcome variant writes the structured proposal
+/// payload to `.metadata.yaml` under `outcome.outcome.registry-amendment-required.*`
+/// (kebab-case external-tag form). Round-trips through the writer.
+#[test]
+fn change_outcome_registry_amendment_required_writes_payload() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "change",
+            "outcome",
+            "set",
+            "foo",
+            "build",
+            "registry-amendment-required",
+            "--proposed-name",
+            "alpha-gateway",
+            "--proposed-url",
+            "git@github.com:augentic/alpha-gateway.git",
+            "--proposed-schema",
+            "omnia@v1",
+            "--proposed-description",
+            "Gateway for alpha capability.",
+            "--rationale",
+            "build discovered tangled code requiring a split",
+        ])
+        .assert()
+        .success();
+
+    let path = project.changes_dir().join("foo").join(".metadata.yaml");
+    let raw = fs::read_to_string(&path).expect("read metadata");
+    assert!(
+        raw.contains("registry-amendment-required:"),
+        "outcome should use external-tag form, got:\n{raw}"
+    );
+    assert!(
+        raw.contains("proposed-name: alpha-gateway"),
+        "proposal fields should be kebab-case, got:\n{raw}"
+    );
+    assert!(
+        raw.contains("proposed-url: \"git@github.com:augentic/alpha-gateway.git\"")
+            || raw.contains("proposed-url: git@github.com:augentic/alpha-gateway.git"),
+        "proposed-url should round-trip the verbatim URL, got:\n{raw}"
+    );
+    assert!(
+        raw.contains("proposed-schema: \"omnia@v1\"") || raw.contains("proposed-schema: omnia@v1"),
+        "proposed-schema should round-trip, got:\n{raw}"
+    );
+    assert!(raw.contains("rationale:"), "rationale should be emitted, got:\n{raw}");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "outcome", "show", "foo"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    let outcome = &value["outcome"];
+    assert_eq!(outcome["outcome"].as_str(), Some("registry-amendment-required"));
+    let proposal = &outcome["proposal"];
+    assert_eq!(proposal["proposed-name"].as_str(), Some("alpha-gateway"));
+    assert_eq!(
+        proposal["proposed-url"].as_str(),
+        Some("git@github.com:augentic/alpha-gateway.git"),
+    );
+    assert_eq!(proposal["proposed-schema"].as_str(), Some("omnia@v1"));
+    assert_eq!(proposal["proposed-description"].as_str(), Some("Gateway for alpha capability."),);
+    assert_eq!(
+        proposal["rationale"].as_str(),
+        Some("build discovered tangled code requiring a split"),
+    );
+    assert_eq!(
+        outcome["summary"].as_str(),
+        Some("registry-amendment-required: alpha-gateway"),
+        "missing --summary should default to `registry-amendment-required: <name>`",
+    );
+}
+
+/// Missing required flags surface a clear `Error::Config` (exit code 1).
+#[test]
+fn change_outcome_registry_amendment_required_missing_flags_errors() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "change",
+            "outcome",
+            "set",
+            "foo",
+            "build",
+            "registry-amendment-required",
+            "--proposed-name",
+            "alpha-gateway",
+            "--proposed-url",
+            "git@github.com:augentic/alpha-gateway.git",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(1));
+    let value = parse_json(&assert.get_output().stdout);
+    let msg = value["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("--proposed-schema") || msg.contains("--rationale"),
+        "expected diagnostic naming the missing required flag, got: {msg}",
+    );
+}
+
+/// Supplying `--proposed-*` flags with an outcome other than
+/// `registry-amendment-required` is rejected — those flags are
+/// outcome-scoped, and silently dropping them would mask author intent.
+#[test]
+fn change_outcome_proposal_flags_rejected_for_other_kinds() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "change",
+            "outcome",
+            "set",
+            "foo",
+            "build",
+            "success",
+            "--summary",
+            "ok",
+            "--proposed-name",
+            "alpha",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(1));
+    let value = parse_json(&assert.get_output().stdout);
+    let msg = value["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("--proposed-name"),
+        "expected diagnostic naming the offending flag, got: {msg}",
+    );
+}
+
+// ---------------------------------------------------------------------------
 // change journal append (L2.B)
 // ---------------------------------------------------------------------------
 
@@ -1212,16 +1363,17 @@ fn phase_outcome_round_trips_through_serde() {
     use specify::{Outcome, Phase, PhaseOutcome, Rfc3339Stamp};
     for outcome in [Outcome::Success, Outcome::Failure, Outcome::Deferred] {
         for phase in [Phase::Define, Phase::Build, Phase::Merge] {
+            let context = if matches!(outcome, Outcome::Success) {
+                None
+            } else {
+                Some("verbatim detail".to_string())
+            };
             let value = PhaseOutcome {
                 phase,
-                outcome,
+                outcome: outcome.clone(),
                 at: Rfc3339Stamp::from_raw("2024-08-01T10:00:00+00:00".to_string()),
                 summary: "some summary".to_string(),
-                context: if matches!(outcome, Outcome::Success) {
-                    None
-                } else {
-                    Some("verbatim detail".to_string())
-                },
+                context,
             };
             let yaml = serde_saphyr::to_string(&value).expect("serialize");
             let parsed: PhaseOutcome = serde_saphyr::from_str(&yaml).expect("parse");

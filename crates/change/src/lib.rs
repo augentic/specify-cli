@@ -44,10 +44,45 @@ pub use plan_doctor::{
 };
 pub use timestamp::Rfc3339Stamp;
 
+/// On-disk schema version for `.metadata.yaml`.
+///
+/// Bumped by RFC-9 §2B (`rfc9-2b-plan-registry-proposal`) from the
+/// implicit pre-RFC-9 version `1` to `2` when the
+/// [`Outcome::RegistryAmendmentRequired`] variant landed. The version is
+/// **informational** for the reader: the on-disk `outcome` field is
+/// dispatched purely on its serde discriminant (`success` /
+/// `failure` / `deferred` / `registry-amendment-required`), so a v1
+/// file with one of the original three outcomes round-trips cleanly
+/// through a v2 reader without any version-specific branching. New
+/// writes always emit the current version; the constant therefore
+/// pins the value the **writer** stamps, not a gate the **reader**
+/// enforces.
+///
+/// Pre-RFC-9 archived metadata files have no `version` field at all;
+/// `serde(default)` resolves them to `1` on read (see
+/// [`default_metadata_version`]).
+pub const METADATA_VERSION: u32 = 2;
+
+/// Default value for [`ChangeMetadata::version`] when the field is
+/// absent on disk. Pre-RFC-9 archives lack the field entirely; serde's
+/// `default` shim resolves them to the implicit version `1`.
+const fn default_metadata_version() -> u32 {
+    1
+}
+
 /// On-disk representation of `<change_dir>/.metadata.yaml`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct ChangeMetadata {
+    /// On-disk schema version. Pre-RFC-9 archives lack this field;
+    /// `serde(default)` resolves them to `1`. Current writers always
+    /// emit [`METADATA_VERSION`] (`2`). The reader does not gate on
+    /// the value — it is informational, used by tooling that wants
+    /// to surface "this is an old archive" diagnostics. Outcome
+    /// dispatch happens purely on the serde discriminant on the
+    /// `outcome.outcome` field.
+    #[serde(default = "default_metadata_version")]
+    pub version: u32,
     /// Schema identifier for this change (e.g. `omnia`).
     pub schema: String,
     /// Current lifecycle state.
@@ -126,9 +161,45 @@ pub struct PhaseOutcome {
     pub context: Option<String>,
 }
 
-/// The three possible outcomes a phase returns to `/spec:execute`.
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, clap::ValueEnum)]
-#[serde(rename_all = "kebab-case")]
+/// The classifications a phase returns to `/spec:execute`.
+///
+/// The first three variants are unit ones; their on-disk shape is the
+/// bare kebab-case discriminant (`outcome: success`). The fourth
+/// variant — added by RFC-9 §2B (`rfc9-2b-plan-registry-proposal`) —
+/// carries a structured payload describing a registry amendment the
+/// phase wants the operator to apply before the change can land. Its
+/// on-disk shape is therefore an externally-tagged map rather than a
+/// bare string:
+///
+/// ```yaml
+/// outcome:
+///   registry-amendment-required:
+///     proposed-name: alpha-gateway
+///     proposed-url: git@github.com:augentic/alpha-gateway.git
+///     proposed-schema: omnia@v1
+///     proposed-description: "Gateway service for alpha capability."
+///     rationale: "Build discovered tangled code requiring split."
+/// ```
+///
+/// **Wire-format compatibility.** Because serde's external tag
+/// representation deserialises unit and struct variants by the same
+/// discriminant rules, a pre-RFC-9 file with `outcome: success`
+/// continues to round-trip through this enum unchanged. Conversely,
+/// older binaries (without the new variant) error cleanly on
+/// `registry-amendment-required` payloads — they cannot silently mis-
+/// route them as one of the original three. The
+/// [`crate::METADATA_VERSION`] constant is the stamp writers attach so
+/// tooling can surface "this archive predates the new variant"
+/// diagnostics.
+///
+/// Implements `Clone + PartialEq + Eq` (no `Copy` because the new
+/// variant carries `String` fields).
+///
+/// `rename_all = "kebab-case"` discriminantises the variants;
+/// `rename_all_fields = "kebab-case"` does the same for the struct
+/// variant's fields so the on-disk shape stays kebab-case end-to-end.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "kebab-case")]
 #[non_exhaustive]
 pub enum Outcome {
     /// Phase completed successfully.
@@ -137,6 +208,33 @@ pub enum Outcome {
     Failure,
     /// Phase deferred (needs human input).
     Deferred,
+    /// Phase blocked on a registry amendment the operator must apply
+    /// before the change can land. Recorded by phase skills via
+    /// `specify change outcome set <change> <phase> registry-amendment-required ...`.
+    /// `/spec:execute` treats this exactly like `deferred` — it drops
+    /// the change and transitions the plan entry to `blocked` — and
+    /// surfaces the proposal payload via the change's journal so the
+    /// operator can run the canonical recovery sequence (see
+    /// `plugins/spec/skills/execute/SKILL.md` →
+    /// §"Registry amendment required (RFC-9 §2B)").
+    RegistryAmendmentRequired {
+        /// Kebab-case project name proposed for the registry.
+        proposed_name: String,
+        /// Clone URL for the proposed project (git remote, ssh, http,
+        /// or `git+...://`). Same shape rules as
+        /// `specify registry add --url`.
+        proposed_url: String,
+        /// Schema identifier the proposed project should adopt
+        /// (e.g. `omnia@v1`).
+        proposed_schema: String,
+        /// Optional human-readable description of the proposed
+        /// project (RFC-3b `description-missing-multi-repo`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        proposed_description: Option<String>,
+        /// Free-form prose explaining why the phase decided this
+        /// amendment was required. Surfaced verbatim to the operator.
+        rationale: String,
+    },
 }
 
 /// Lifecycle states a change passes through.
@@ -198,12 +296,33 @@ impl fmt::Display for LifecycleStatus {
 }
 
 impl fmt::Display for Outcome {
+    /// Render the kebab-case discriminant only — payload fields are
+    /// not formatted. Callers that need the proposal payload (the
+    /// only variant that carries one) round-trip through serde and
+    /// emit the structured shape directly. Mirrors the on-disk
+    /// discriminant string so `outcome.to_string()` keeps matching
+    /// `outcome:` in YAML.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+        f.write_str(self.discriminant())
+    }
+}
+
+impl Outcome {
+    /// Kebab-case discriminant string for this outcome.
+    ///
+    /// The discriminant matches the on-disk serde tag — the bare
+    /// string used for unit variants and the map key used for the
+    /// struct variant. Stable: tooling that branches on this string
+    /// (e.g. `/spec:execute` classifying `registry-amendment-required`
+    /// as `blocked`) reads from this contract.
+    #[must_use]
+    pub const fn discriminant(&self) -> &'static str {
+        match self {
             Self::Success => "success",
             Self::Failure => "failure",
             Self::Deferred => "deferred",
-        })
+            Self::RegistryAmendmentRequired { .. } => "registry-amendment-required",
+        }
     }
 }
 
@@ -438,6 +557,7 @@ mod tests {
 
     fn sample_metadata() -> ChangeMetadata {
         ChangeMetadata {
+            version: METADATA_VERSION,
             schema: "omnia".to_string(),
             status: LifecycleStatus::Building,
             created_at: Some(Rfc3339Stamp::from_raw("2024-08-01T10:00:00Z".to_string())),
@@ -528,6 +648,7 @@ touched-specs:
     #[test]
     fn serializes_kebab_case_and_lowercase_enums() {
         let meta = ChangeMetadata {
+            version: METADATA_VERSION,
             schema: "omnia".to_string(),
             status: LifecycleStatus::Building,
             created_at: Some(Rfc3339Stamp::from_raw("2024-08-01T10:00:00Z".to_string())),
@@ -605,11 +726,115 @@ touched-specs:
         assert_eq!(Outcome::Success.to_string(), "success");
         assert_eq!(Outcome::Failure.to_string(), "failure");
         assert_eq!(Outcome::Deferred.to_string(), "deferred");
+        let proposal = Outcome::RegistryAmendmentRequired {
+            proposed_name: "alpha-gateway".to_string(),
+            proposed_url: "git@github.com:augentic/alpha-gateway.git".to_string(),
+            proposed_schema: "omnia@v1".to_string(),
+            proposed_description: None,
+            rationale: "build discovered tangled code".to_string(),
+        };
+        assert_eq!(proposal.to_string(), "registry-amendment-required");
     }
 
     #[test]
     fn spec_type_display_matches_serde() {
         assert_eq!(SpecType::New.to_string(), "new");
         assert_eq!(SpecType::Modified.to_string(), "modified");
+    }
+
+    /// RFC-9 §2B back-compat invariant: the implicit pre-RFC-9
+    /// metadata schema (no `version:` field, closed `Outcome`) must
+    /// round-trip through the new reader. Resolved version is `1`.
+    #[test]
+    fn metadata_pre_rfc9_round_trips_with_default_version_one() {
+        let yaml = r#"schema: omnia
+status: complete
+created-at: "2024-08-01T10:00:00Z"
+defined-at: "2024-08-01T12:00:00Z"
+build-started-at: "2024-08-02T09:30:00Z"
+completed-at: "2024-08-03T15:45:00Z"
+touched-specs:
+  - name: login
+    type: modified
+outcome:
+  phase: merge
+  outcome: success
+  at: "2024-08-03T15:45:00Z"
+  summary: "Baseline updated."
+"#;
+        let meta: ChangeMetadata = serde_saphyr::from_str(yaml).expect("parse pre-RFC-9 file");
+        assert_eq!(meta.version, 1, "absent version should default to 1");
+        assert_eq!(meta.status, LifecycleStatus::Complete);
+        let stamped = meta.outcome.expect("outcome should round-trip");
+        assert_eq!(stamped.phase, Phase::Merge);
+        assert_eq!(stamped.outcome, Outcome::Success);
+    }
+
+    /// The new variant round-trips through serde (write → read →
+    /// equal). This is the wire-format proof for the
+    /// `registry-amendment-required` payload introduced by RFC-9 §2B.
+    #[test]
+    fn registry_amendment_required_round_trips_through_serde() {
+        let stamp = Rfc3339Stamp::from_raw("2024-08-04T11:22:33Z".to_string());
+        let original = PhaseOutcome {
+            phase: Phase::Build,
+            outcome: Outcome::RegistryAmendmentRequired {
+                proposed_name: "alpha-gateway".to_string(),
+                proposed_url: "git@github.com:augentic/alpha-gateway.git".to_string(),
+                proposed_schema: "omnia@v1".to_string(),
+                proposed_description: Some("Gateway for alpha capability.".to_string()),
+                rationale: "build discovered tangled code requiring a split".to_string(),
+            },
+            at: stamp,
+            summary: "registry-amendment-required: alpha-gateway".to_string(),
+            context: None,
+        };
+        let yaml = serde_saphyr::to_string(&original).expect("serialise");
+        assert!(
+            yaml.contains("registry-amendment-required:"),
+            "wire shape must use kebab-case external tag, got:\n{yaml}"
+        );
+        assert!(
+            yaml.contains("proposed-name: alpha-gateway"),
+            "wire shape must kebab-case proposal fields, got:\n{yaml}"
+        );
+        let parsed: PhaseOutcome = serde_saphyr::from_str(&yaml).expect("parse");
+        assert_eq!(parsed, original);
+    }
+
+    /// A full `.metadata.yaml` carrying the new variant must
+    /// round-trip end-to-end (load → save → load) — the writer
+    /// stamps [`METADATA_VERSION`], the reader accepts it.
+    #[test]
+    fn metadata_with_registry_amendment_required_round_trips() {
+        let dir = tempdir().expect("tempdir");
+        let mut meta = sample_metadata();
+        meta.outcome = Some(PhaseOutcome {
+            phase: Phase::Build,
+            outcome: Outcome::RegistryAmendmentRequired {
+                proposed_name: "alpha-gateway".to_string(),
+                proposed_url: "git@github.com:augentic/alpha-gateway.git".to_string(),
+                proposed_schema: "omnia@v1".to_string(),
+                proposed_description: Some("Gateway for alpha capability.".to_string()),
+                rationale: "build discovered tangled code requiring a split".to_string(),
+            },
+            at: Rfc3339Stamp::from_raw("2024-08-04T11:22:33Z".to_string()),
+            summary: "registry-amendment-required: alpha-gateway".to_string(),
+            context: None,
+        });
+        meta.save(dir.path()).expect("save ok");
+        let loaded = ChangeMetadata::load(dir.path()).expect("load ok");
+        assert_eq!(loaded.version, METADATA_VERSION);
+        assert_eq!(loaded, meta);
+        let on_disk =
+            std::fs::read_to_string(ChangeMetadata::path(dir.path())).expect("read raw file");
+        assert!(
+            on_disk.contains(&format!("version: {METADATA_VERSION}")),
+            "writer must stamp METADATA_VERSION, got:\n{on_disk}"
+        );
+        assert!(
+            on_disk.contains("registry-amendment-required:"),
+            "outcome must use external-tag form, got:\n{on_disk}"
+        );
     }
 }

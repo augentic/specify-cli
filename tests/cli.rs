@@ -945,3 +945,184 @@ fn plan_doctor_help_documents_superset_relationship() {
         );
     }
 }
+
+// ---- specify initiative finalize (RFC-9 §4C) ----
+//
+// Wire-level integration tests for the precondition diagnostics. The
+// happy-path classifier flow is covered by the in-process `MockProbe`
+// against the orchestrator (see `cargo test --lib initiative_finalize`).
+// The CLI tests below pin: (a) the failure-mode wire shape skill
+// authors will rely on, and (b) the on-disk archive landing when no
+// projects need probing.
+
+#[test]
+fn initiative_help_lists_finalize_subcommand() {
+    let assert = specify().args(["initiative", "--help"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    for verb in ["create", "show", "finalize"] {
+        assert!(
+            stdout.contains(verb),
+            "expected `initiative --help` to mention `{verb}`, got:\n{stdout}",
+        );
+    }
+}
+
+#[test]
+fn initiative_finalize_help_documents_clean_and_dry_run() {
+    let assert = specify().args(["initiative", "finalize", "--help"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    for flag in ["--clean", "--dry-run"] {
+        assert!(stdout.contains(flag), "expected --help to document `{flag}`, got:\n{stdout}");
+    }
+}
+
+#[test]
+fn initiative_finalize_refuses_when_plan_absent() {
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+    assert!(
+        !tmp.path().join(".specify/plan.yaml").exists(),
+        "test precondition: plan.yaml must be absent",
+    );
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "initiative", "finalize"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(1));
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "plan-not-found");
+    let msg = value["message"].as_str().expect("message");
+    assert!(msg.contains("plan.yaml"), "msg should reference plan.yaml: {msg}");
+    // Diagnostic should hint at the recovery sequence.
+    assert!(
+        msg.contains("plan create") || msg.contains("initiative create"),
+        "msg should hint at plan/initiative create, got: {msg}",
+    );
+}
+
+#[test]
+fn initiative_finalize_refuses_on_non_terminal_entries() {
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+    // Seed a plan with one done and one pending entry — pending is
+    // not terminal for finalize.
+    fs::write(
+        tmp.path().join(".specify/plan.yaml"),
+        "name: foo\n\
+         changes:\n\
+         \x20\x20- name: a\n\
+         \x20\x20\x20\x20schema: contracts@v1\n\
+         \x20\x20\x20\x20status: done\n\
+         \x20\x20- name: b\n\
+         \x20\x20\x20\x20schema: contracts@v1\n\
+         \x20\x20\x20\x20status: pending\n",
+    )
+    .unwrap();
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "initiative", "finalize"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(1));
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "non-terminal-entries-present");
+    assert_eq!(value["initiative"], "foo");
+    let entries = value["entries"].as_array().expect("entries array");
+    let names: Vec<&str> = entries.iter().filter_map(|e| e.as_str()).collect();
+    assert_eq!(names, ["b"], "entries must list the offending non-terminal name");
+
+    // Atomicity: plan.yaml must remain on disk on refusal.
+    assert!(tmp.path().join(".specify/plan.yaml").exists(), "plan.yaml must be untouched");
+}
+
+#[test]
+fn initiative_finalize_dry_run_archives_nothing_with_empty_registry() {
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+    // Seed an all-terminal plan and rely on the hub-init's empty
+    // registry — no per-project probes will run.
+    fs::write(tmp.path().join(".specify/plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "initiative", "finalize", "--dry-run"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["initiative"], "foo");
+    assert_eq!(value["finalized"], true);
+    assert_eq!(value["dry-run"], true, "dry-run flag must echo into JSON");
+    assert!(value.get("archived").is_none(), "dry-run must not stamp archived path");
+    let projects = value["projects"].as_array().expect("projects array");
+    assert!(projects.is_empty(), "empty registry → empty projects, got: {projects:?}");
+
+    // On-disk: plan.yaml must remain.
+    assert!(tmp.path().join(".specify/plan.yaml").exists(), "dry-run must not move plan.yaml");
+}
+
+#[test]
+fn initiative_finalize_archives_when_all_terminal_and_no_registry() {
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+    fs::write(tmp.path().join(".specify/plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "initiative", "finalize"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["initiative"], "foo");
+    assert_eq!(value["finalized"], true);
+    let archived = value["archived"].as_str().expect("archived path");
+    assert!(archived.contains("foo-"), "archived path must contain plan name: {archived}");
+    let summary = value["summary"].as_object().expect("summary object");
+    for key in
+        ["merged", "unmerged", "closed", "no-branch", "branch-pattern-mismatch", "dirty", "failed"]
+    {
+        assert!(summary.contains_key(key), "summary missing `{key}`: {summary:?}");
+    }
+
+    // Plan.yaml must have moved into the archive.
+    assert!(!tmp.path().join(".specify/plan.yaml").exists(), "plan.yaml must be archived");
+    let archive_dir = tmp.path().join(".specify/archive/plans");
+    let entries: Vec<String> = fs::read_dir(&archive_dir)
+        .expect("read archive dir")
+        .filter_map(|e| e.ok().and_then(|e| e.file_name().into_string().ok()))
+        .collect();
+    assert!(
+        entries.iter().any(|n| n.starts_with("foo-")),
+        "archive dir should contain a foo-<YYYYMMDD>.yaml: {entries:?}",
+    );
+}
+
+#[test]
+fn initiative_finalize_idempotent_after_archive() {
+    // Idempotency proof: the second `finalize` invocation after the
+    // archive landed produces a clear `plan-not-found` refusal — the
+    // canonical "initiative is already finalized" signal.
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+    fs::write(tmp.path().join(".specify/plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+
+    // First run: archives the plan.
+    specify().current_dir(tmp.path()).args(["initiative", "finalize"]).assert().success();
+    assert!(!tmp.path().join(".specify/plan.yaml").exists());
+
+    // Second run: plan is gone, refused with plan-not-found.
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "initiative", "finalize"])
+        .assert()
+        .failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "plan-not-found");
+}
