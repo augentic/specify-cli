@@ -624,4 +624,79 @@ mod tests {
         let err = run_cmd_check("true", &[], None, Some(Version::new(1, 0, 0))).unwrap_err();
         assert!(err.contains("could not parse version"));
     }
+
+    fn versions_with_cargo_swift(pin: &str) -> Versions {
+        use crate::versions::*;
+        Versions {
+            crux: Crux {
+                crux_core: "0.0.0".into(),
+                crux_http: "0.0.0".into(),
+                crux_kv: "0.0.0".into(),
+                crux_time: "0.0.0".into(),
+                crux_platform: "0.0.0".into(),
+                facet: "=0.0".into(),
+                facet_generate: "=0.0".into(),
+                serde: "0.0".into(),
+                serde_json: "0.0".into(),
+                uniffi: "=0.0.0".into(),
+                cargo_swift: pin.into(),
+            },
+            android: Android {
+                compose_bom: "0000.00.00".into(),
+                koin: "0.0.0".into(),
+                ktor: "0.0.0".into(),
+                kotlin: "0.0.0".into(),
+                agp: "0.0.0".into(),
+                gradle: "0.0".into(),
+                ndk: None,
+            },
+            ios: Ios {},
+            tooling: Tooling {
+                cargo_deny: "0.0.0".into(),
+                cargo_vet: "0.0.0".into(),
+                xcodegen: "0.0.0".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn cargo_swift_overrides_derives_minor_range() {
+        let v = versions_with_cargo_swift("0.9");
+        let (check, install) = cargo_swift_overrides(&v);
+        match check {
+            ToolCheck::Cmd { min_version, max_version, .. } => {
+                assert_eq!(min_version, Some(Version::new(0, 9, 0)));
+                assert_eq!(max_version, Some(Version::new(0, 10, 0)));
+            }
+            other => panic!("expected Cmd, got: {other:?}"),
+        }
+        assert_eq!(install, "cargo install cargo-swift@0.9");
+    }
+
+    #[test]
+    fn cargo_swift_overrides_handles_full_semver_pin() {
+        let v = versions_with_cargo_swift("1.2.3");
+        let (check, _) = cargo_swift_overrides(&v);
+        match check {
+            ToolCheck::Cmd { min_version, max_version, .. } => {
+                assert_eq!(min_version, Some(Version::new(1, 2, 3)));
+                assert_eq!(max_version, Some(Version::new(1, 3, 0)));
+            }
+            other => panic!("expected Cmd, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cargo_swift_overrides_unparseable_falls_back_unconstrained() {
+        let v = versions_with_cargo_swift("latest");
+        let (check, install) = cargo_swift_overrides(&v);
+        match check {
+            ToolCheck::Cmd { min_version, max_version, .. } => {
+                assert!(min_version.is_none(), "unparseable pin should have no min");
+                assert!(max_version.is_none(), "unparseable pin should have no max");
+            }
+            other => panic!("expected Cmd, got: {other:?}"),
+        }
+        assert_eq!(install, "cargo install cargo-swift@latest");
+    }
 }

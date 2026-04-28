@@ -14,10 +14,10 @@ use crate::{CommandOutcome, VersionsArgs};
 /// # Errors
 ///
 /// Returns `VectisError::InvalidProject` when the version file is missing
-/// or malformed, and `VectisError::Internal` if serialization fails.
+/// or malformed, `VectisError::Io` if the current directory is
+/// inaccessible, and `VectisError::Internal` if serialization fails.
 pub fn run(args: &VersionsArgs) -> Result<CommandOutcome, VectisError> {
-    let project_dir =
-        args.dir.clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
+    let project_dir = args.dir.clone().map_or_else(std::env::current_dir, Ok)?;
     let versions = Versions::resolve(&project_dir, args.version_file.as_deref())?;
     let value = serde_json::to_value(&versions).map_err(|e| VectisError::Internal {
         message: format!("failed to serialize versions: {e}"),
