@@ -41,29 +41,8 @@ pub enum Commands {
         domain: Option<String>,
     },
 
-    /// Validate change artifacts against schema rules
-    Validate {
-        /// Change directory (.specify/changes/<name>)
-        change_dir: PathBuf,
-    },
-
-    /// Merge all delta specs for a change into baseline and archive the change
-    Merge {
-        /// Change directory
-        change_dir: PathBuf,
-    },
-
-    /// Show change status and task progress
-    Status {
-        /// Specific change name (optional)
-        change: Option<String>,
-    },
-
-    /// Task operations
-    Task {
-        #[command(subcommand)]
-        action: TaskAction,
-    },
+    /// Project dashboard — registry summary, plan progress, active changes
+    Status,
 
     /// Schema operations
     Schema {
@@ -77,22 +56,22 @@ pub enum Commands {
         action: ChangeAction,
     },
 
-    /// Spec-level helpers (preview + conflict-check) that complement `merge`
-    Spec {
-        #[command(subcommand)]
-        action: SpecAction,
-    },
-
     /// Manage the initiative-level plan at `.specify/plan.yaml`
     Plan {
         #[command(subcommand)]
         action: PlanAction,
     },
 
-    /// Initiative metadata: operator brief and platform registry.
+    /// Operator brief at `.specify/initiative.md`
     Initiative {
         #[command(subcommand)]
         action: InitiativeAction,
+    },
+
+    /// Platform registry at `.specify/registry.yaml`
+    Registry {
+        #[command(subcommand)]
+        action: RegistryAction,
     },
 
     /// Materialise and manage registry peers under `.specify/workspace/` (RFC-3a/3b).
@@ -243,29 +222,28 @@ pub enum PlanAction {
     },
 }
 
+/// Initiative brief operations (RFC-3a §"The Initiative Brief").
+///
+/// `.specify/initiative.md` is the operator-authored brief: a YAML
+/// frontmatter block (`name`, optional `inputs`) plus free-form
+/// markdown body. It's optional — `init` scaffolds a canonical
+/// template; `show` prints the parsed brief.
 #[derive(Subcommand)]
 pub enum InitiativeAction {
-    /// Registry operations (RFC-3a §"The Registry").
+    /// Scaffold `.specify/initiative.md` from the canonical template.
     ///
-    /// `.specify/registry.yaml` is the platform-level catalogue of peer
-    /// projects. It's optional: an absent file is equivalent to single-repo
-    /// mode. These verbs expose the shape-validation already used by
-    /// `plan validate` as dedicated read/validate entry points.
-    Registry {
-        #[command(subcommand)]
-        action: RegistryAction,
+    /// Refuses to overwrite an existing file — mirrors the
+    /// `plan init` posture for `plan.yaml`.
+    Init {
+        /// Kebab-case initiative name (baked into the frontmatter).
+        name: String,
     },
-
-    /// Initiative brief operations (RFC-3a §"The Initiative Brief").
+    /// Print the parsed `.specify/initiative.md` (text or JSON).
     ///
-    /// `.specify/initiative.md` is the operator-authored brief: a YAML
-    /// frontmatter block (`name`, optional `inputs`) plus free-form
-    /// markdown body. It's optional — `init` scaffolds a canonical
-    /// template; `show` prints the parsed brief.
-    Brief {
-        #[command(subcommand)]
-        action: BriefAction,
-    },
+    /// Absent file is not an error: exit 0 with "no initiative brief
+    /// declared". Malformed file fails loud with a non-zero exit — the
+    /// operator asked to show something unparseable.
+    Show,
 }
 
 #[derive(Subcommand)]
@@ -317,6 +295,12 @@ pub enum LockAction {
     Status,
 }
 
+/// Registry operations (RFC-3a §"The Registry").
+///
+/// `.specify/registry.yaml` is the platform-level catalogue of peer
+/// projects. It's optional: an absent file is equivalent to single-repo
+/// mode. These verbs expose the shape-validation already used by
+/// `plan validate` as dedicated read/validate entry points.
 #[derive(Subcommand)]
 pub enum RegistryAction {
     /// Print the parsed `.specify/registry.yaml` (text or JSON).
@@ -332,46 +316,6 @@ pub enum RegistryAction {
     /// with `CliResult::ValidationFailed` and a diagnostic that names
     /// `registry.yaml`.
     Validate,
-}
-
-#[derive(Subcommand)]
-pub enum BriefAction {
-    /// Scaffold `.specify/initiative.md` from the canonical template.
-    ///
-    /// Refuses to overwrite an existing file — mirrors the
-    /// `initiative init` posture for `plan.yaml`.
-    Init {
-        /// Kebab-case initiative name (baked into the frontmatter).
-        name: String,
-    },
-    /// Print the parsed `.specify/initiative.md` (text or JSON).
-    ///
-    /// Absent file is not an error: exit 0 with "no initiative brief
-    /// declared". Malformed file fails loud with a non-zero exit — the
-    /// operator asked to show something unparseable.
-    Show,
-}
-
-#[derive(Subcommand)]
-pub enum SpecAction {
-    /// Show the merge operations that would be applied, without writing
-    Preview {
-        /// Change directory
-        change_dir: PathBuf,
-    },
-    /// Report `type: modified` baselines modified after this change's `defined_at`
-    ConflictCheck {
-        /// Change directory
-        change_dir: PathBuf,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum TaskAction {
-    /// Report task completion counts (total, complete, pending)
-    Progress { change_dir: PathBuf },
-    /// Mark a task complete (idempotent — no-op if already complete)
-    Mark { change_dir: PathBuf, task_number: String },
 }
 
 #[derive(Subcommand)]
@@ -413,10 +357,35 @@ pub enum ChangeAction {
     },
     /// List every active change under `.specify/changes/`
     List,
-    /// Show the status of one change (alias of `specify status <name>`)
+    /// Show the status of one change
     Status {
         /// Change name (under `.specify/changes/`)
         name: String,
+    },
+    /// Validate a change's artifacts against schema rules
+    Validate {
+        /// Change name (under `.specify/changes/`)
+        name: String,
+    },
+    /// Spec-merge operations for a change
+    Merge {
+        #[command(subcommand)]
+        action: ChangeMergeAction,
+    },
+    /// Tasks-list operations for a change
+    Task {
+        #[command(subcommand)]
+        action: ChangeTaskAction,
+    },
+    /// Phase-outcome bookkeeping on `.metadata.yaml`
+    Outcome {
+        #[command(subcommand)]
+        action: OutcomeAction,
+    },
+    /// Append-only audit log at `<change_dir>/journal.yaml`
+    Journal {
+        #[command(subcommand)]
+        action: JournalAction,
     },
     /// Transition a change to a new lifecycle status
     Transition {
@@ -455,8 +424,50 @@ pub enum ChangeAction {
         #[arg(long)]
         reason: Option<String>,
     },
+}
+
+/// Spec-merge subcommands grouped under `change merge`.
+#[derive(Subcommand)]
+pub enum ChangeMergeAction {
+    /// Merge all delta specs for the change into baseline and archive the change
+    Run {
+        /// Change name
+        name: String,
+    },
+    /// Show the merge operations that would be applied, without writing
+    Preview {
+        /// Change name
+        name: String,
+    },
+    /// Report `type: modified` baselines modified after this change's `defined_at`
+    ConflictCheck {
+        /// Change name
+        name: String,
+    },
+}
+
+/// Task-list subcommands grouped under `change task`.
+#[derive(Subcommand)]
+pub enum ChangeTaskAction {
+    /// Report task completion counts (total, complete, pending)
+    Progress {
+        /// Change name
+        name: String,
+    },
+    /// Mark a task complete (idempotent — no-op if already complete)
+    Mark {
+        /// Change name
+        name: String,
+        /// Task number (e.g. `1.1`)
+        task_number: String,
+    },
+}
+
+/// Phase-outcome subcommands grouped under `change outcome`.
+#[derive(Subcommand)]
+pub enum OutcomeAction {
     /// Record the outcome of a phase (define|build|merge) on `.metadata.yaml`
-    PhaseOutcome {
+    Set {
         /// Change name
         name: String,
         /// Phase this outcome applies to
@@ -474,17 +485,22 @@ pub enum ChangeAction {
     },
     /// Read the stamped `.metadata.yaml.outcome` for a change
     ///
-    /// Symmetric read verb for `phase-outcome`: emits the current
+    /// Symmetric read verb for `outcome set`: emits the current
     /// `outcome` subtree for consumers like `/spec:execute` that
     /// classify a phase return without needing the rest of the
     /// lifecycle-status payload. Exits 0 both when an outcome is
     /// present and when the change is unstamped (`outcome: null`).
-    Outcome {
+    Show {
         /// Change name
         name: String,
     },
+}
+
+/// Journal subcommands grouped under `change journal`.
+#[derive(Subcommand)]
+pub enum JournalAction {
     /// Append an entry to the change's `journal.yaml`
-    JournalAppend {
+    Append {
         /// Change name
         name: String,
         /// Phase that produced the entry
@@ -499,6 +515,11 @@ pub enum ChangeAction {
         /// Optional verbatim context (multi-line)
         #[arg(long)]
         context: Option<String>,
+    },
+    /// Print the change's journal entries (text or JSON)
+    Show {
+        /// Change name
+        name: String,
     },
 }
 

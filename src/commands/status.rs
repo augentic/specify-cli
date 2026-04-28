@@ -1,169 +1,158 @@
 #![allow(clippy::needless_pass_by_value)]
 
-use std::path::Path;
+//! Top-level `specify status` — project dashboard.
+//!
+//! Aggregates the registry summary, plan progress counts, and the
+//! active-change list. Single-change status lives in
+//! `super::change::ChangeAction::Status`; this module is dashboard-only.
+
+use std::collections::BTreeMap;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{ChangeMetadata, Error, Phase, PipelineView, parse_tasks};
+use specify::{Error, Plan, PlanStatus, ProjectConfig, Registry};
 
-use super::task::resolve_tasks_path_for;
+use super::change::{collect_status, list_change_names, status_entry_to_json};
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_status(ctx: &CommandContext, change: Option<String>) -> Result<CliResult, Error> {
+pub fn run_status_dashboard(ctx: &CommandContext) -> Result<CliResult, Error> {
     let pipeline = ctx.load_pipeline()?;
     let changes_dir = ctx.changes_dir();
 
-    let names: Vec<String> = match &change {
-        Some(n) => vec![n.clone()],
-        None => list_change_names(&changes_dir)?,
-    };
+    let registry = Registry::load(&ctx.project_dir)?;
+    let plan_summary = load_plan_summary(ctx);
 
-    let mut entries: Vec<StatusEntry> = Vec::new();
+    let names = list_change_names(&changes_dir)?;
+    let mut entries = Vec::with_capacity(names.len());
     for name in names {
         let dir = changes_dir.join(&name);
-        let entry = collect_status(&dir, &name, &pipeline, &ctx.project_dir)?;
-        entries.push(entry);
+        entries.push(collect_status(&dir, &name, &pipeline, &ctx.project_dir)?);
     }
 
     match ctx.format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct StatusResponse {
+            struct DashboardBody {
+                registry: Value,
+                plan: Value,
                 changes: Vec<Value>,
             }
-            let changes: Vec<Value> = entries.iter().map(status_entry_to_json).collect();
-            emit_response(StatusResponse { changes });
+            let registry_json = registry
+                .map_or(Value::Null, |r| serde_json::to_value(r).expect("Registry serialises"));
+            let plan_json = plan_summary
+                .as_ref()
+                .map_or(Value::Null, |p| serde_json::to_value(p).expect("PlanSummary serialises"));
+            let changes_json: Vec<Value> = entries.iter().map(status_entry_to_json).collect();
+            emit_response(DashboardBody {
+                registry: registry_json,
+                plan: plan_json,
+                changes: changes_json,
+            });
         }
-        OutputFormat::Text => print_status_text(&entries),
+        OutputFormat::Text => {
+            print_dashboard_text(registry.as_ref(), plan_summary.as_ref(), &entries);
+        }
     }
     Ok(CliResult::Success)
 }
 
-struct StatusEntry {
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct PlanSummary {
     name: String,
-    schema: String,
-    status: String,
-    tasks: Option<(usize, usize)>,
-    artifacts: std::collections::BTreeMap<String, bool>,
+    counts: PlanCounts,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct EntryJson {
-    name: String,
-    status: String,
-    schema: String,
-    tasks: Option<TaskCounts>,
-    artifacts: std::collections::BTreeMap<String, bool>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct TaskCounts {
+struct PlanCounts {
+    done: usize,
+    in_progress: usize,
+    pending: usize,
+    blocked: usize,
+    failed: usize,
+    skipped: usize,
     total: usize,
-    complete: usize,
 }
 
-fn status_entry_to_json(e: &StatusEntry) -> Value {
-    let tasks_value = e.tasks.map(|(complete, total)| TaskCounts { total, complete });
-    serde_json::to_value(EntryJson {
-        name: e.name.clone(),
-        status: e.status.clone(),
-        schema: e.schema.clone(),
-        tasks: tasks_value,
-        artifacts: e.artifacts.clone(),
+fn load_plan_summary(ctx: &CommandContext) -> Option<PlanSummary> {
+    let plan_path = ProjectConfig::specify_dir(&ctx.project_dir).join("plan.yaml");
+    if !plan_path.exists() {
+        return None;
+    }
+    let plan = Plan::load(&plan_path).ok()?;
+
+    let mut counts: BTreeMap<PlanStatus, usize> = PlanStatus::ALL.iter().map(|&s| (s, 0)).collect();
+    for entry in &plan.changes {
+        *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
+    }
+    let total: usize = counts.values().sum();
+
+    Some(PlanSummary {
+        name: plan.name,
+        counts: PlanCounts {
+            done: counts[&PlanStatus::Done],
+            in_progress: counts[&PlanStatus::InProgress],
+            pending: counts[&PlanStatus::Pending],
+            blocked: counts[&PlanStatus::Blocked],
+            failed: counts[&PlanStatus::Failed],
+            skipped: counts[&PlanStatus::Skipped],
+            total,
+        },
     })
-    .expect("EntryJson serialises")
 }
 
-fn collect_status(
-    change_dir: &Path, name: &str, pipeline: &PipelineView, project_dir: &Path,
-) -> Result<StatusEntry, Error> {
-    let metadata = ChangeMetadata::load(change_dir)?;
-    let status_str = metadata.status.to_string();
-
-    // Delegate per-brief artifact completion to `PipelineView` so every
-    // consumer — `specify status`, `specify schema pipeline`, and any
-    // future skill callers — agrees on what "complete" means.
-    let artifacts = pipeline.completion_for(Phase::Define, change_dir);
-
-    let tasks = match resolve_tasks_path_for(change_dir, &metadata.schema, Some(project_dir)) {
-        Ok(path) => {
-            if path.is_file() {
-                let content = std::fs::read_to_string(&path)?;
-                let progress = parse_tasks(&content);
-                Some((progress.complete, progress.total))
+fn print_dashboard_text(
+    registry: Option<&Registry>, plan: Option<&PlanSummary>, entries: &[super::change::StatusEntry],
+) {
+    println!("## Registry");
+    match registry {
+        None => println!("  (no registry declared)"),
+        Some(r) => {
+            println!("  version: {}", r.version);
+            if r.projects.is_empty() {
+                println!("  projects: (none)");
             } else {
-                None
+                println!("  projects ({}):", r.projects.len());
+                for p in &r.projects {
+                    println!("    - {} ({})", p.name, p.schema);
+                }
             }
         }
-        Err(_) => None,
-    };
-
-    Ok(StatusEntry {
-        name: name.to_string(),
-        schema: metadata.schema,
-        status: status_str,
-        tasks,
-        artifacts,
-    })
-}
-
-fn list_change_names(changes_dir: &Path) -> Result<Vec<String>, Error> {
-    if !changes_dir.exists() {
-        return Ok(Vec::new());
     }
-    let mut names: Vec<String> = Vec::new();
-    for entry in std::fs::read_dir(changes_dir)? {
-        let entry = entry?;
-        if !entry.file_type()?.is_dir() {
-            continue;
-        }
-        let path = entry.path();
-        if !ChangeMetadata::path(&path).exists() {
-            continue;
-        }
-        if let Some(name) = entry.file_name().to_str() {
-            names.push(name.to_string());
+
+    println!();
+    println!("## Plan");
+    match plan {
+        None => println!("  (no plan)"),
+        Some(p) => {
+            println!("  name: {}", p.name);
+            println!(
+                "  progress: done {}, in-progress {}, pending {}, blocked {}, failed {}, skipped {} (total {})",
+                p.counts.done,
+                p.counts.in_progress,
+                p.counts.pending,
+                p.counts.blocked,
+                p.counts.failed,
+                p.counts.skipped,
+                p.counts.total,
+            );
         }
     }
-    names.sort();
-    Ok(names)
-}
 
-fn print_status_text(entries: &[StatusEntry]) {
+    println!();
+    println!("## Active changes");
     if entries.is_empty() {
-        println!("No changes.");
+        println!("  (none)");
         return;
     }
-    // Single-change detailed output.
-    if entries.len() == 1 {
-        let e = &entries[0];
-        println!("{}", e.name);
-        println!("  schema: {}", e.schema);
-        println!("  status: {}", e.status);
-        match e.tasks {
-            Some((complete, total)) => println!("  tasks: {complete}/{total}"),
-            None => println!("  tasks: (no tasks.md)"),
-        }
-        if !e.artifacts.is_empty() {
-            println!("  artifacts:");
-            for (k, present) in &e.artifacts {
-                let mark = if *present { "x" } else { " " };
-                println!("    [{mark}] {k}");
-            }
-        }
-        return;
-    }
-
-    // Multi-change table.
     let name_w = entries.iter().map(|e| e.name.len()).max().unwrap_or(6).max(6);
     let status_w = entries.iter().map(|e| e.status.len()).max().unwrap_or(6).max(6);
     println!(
-        "{:<name_w$}  {:<status_w$}  tasks",
+        "  {:<name_w$}  {:<status_w$}  tasks",
         "change",
         "status",
         name_w = name_w,
@@ -175,7 +164,7 @@ fn print_status_text(entries: &[StatusEntry]) {
             None => "-".to_string(),
         };
         println!(
-            "{:<name_w$}  {:<status_w$}  {}",
+            "  {:<name_w$}  {:<status_w$}  {}",
             e.name,
             e.status,
             tasks,

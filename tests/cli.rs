@@ -101,7 +101,7 @@ fn version_too_old_exits_three_with_json_envelope() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "validate", "."])
+        .args(["--format", "json", "change", "validate", "."])
         .assert()
         .failure();
     let code = assert.get_output().status.code().expect("process exited with a code");

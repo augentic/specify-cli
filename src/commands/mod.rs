@@ -1,21 +1,16 @@
 pub mod change;
 pub mod init;
 pub mod initiative;
-pub mod merge;
 pub mod plan;
+pub mod registry;
 pub mod schema;
-pub mod spec;
 pub mod status;
-pub mod task;
-pub mod validate;
 pub mod vectis;
 pub mod workspace;
 
 use specify::Error;
 
-use crate::cli::{
-    Cli, Commands, OutputFormat, SchemaAction, SpecAction, TaskAction, WorkspaceAction,
-};
+use crate::cli::{Cli, Commands, OutputFormat, SchemaAction, WorkspaceAction};
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_error};
 
@@ -27,26 +22,7 @@ pub fn run(cli: Cli) -> CliResult {
             name,
             domain,
         } => run_bare(cli.format, || init::run_init(cli.format, schema, schema_dir, name, domain)),
-        Commands::Validate { change_dir } => {
-            run_with_project(cli.format, |ctx| validate::run_validate(ctx, change_dir))
-        }
-        Commands::Merge { change_dir } => {
-            run_with_project(cli.format, |ctx| merge::run_merge(ctx, change_dir))
-        }
-        Commands::Status { change } => {
-            run_with_project(cli.format, |ctx| status::run_status(ctx, change))
-        }
-        Commands::Task { action } => match action {
-            TaskAction::Progress { change_dir } => {
-                run_with_project(cli.format, |ctx| task::run_task_progress(ctx, change_dir))
-            }
-            TaskAction::Mark {
-                change_dir,
-                task_number,
-            } => run_with_project(cli.format, |ctx| {
-                task::run_task_mark(ctx, change_dir, task_number)
-            }),
-        },
+        Commands::Status => run_with_project(cli.format, status::run_status_dashboard),
         Commands::Schema { action } => match action {
             SchemaAction::Resolve {
                 schema_value,
@@ -64,19 +40,14 @@ pub fn run(cli: Cli) -> CliResult {
         Commands::Change { action } => {
             run_with_project(cli.format, |ctx| change::run_change(ctx, action))
         }
-        Commands::Spec { action } => match action {
-            SpecAction::Preview { change_dir } => {
-                run_with_project(cli.format, |ctx| spec::run_spec_preview(ctx, change_dir))
-            }
-            SpecAction::ConflictCheck { change_dir } => {
-                run_with_project(cli.format, |ctx| spec::run_spec_conflict_check(ctx, change_dir))
-            }
-        },
         Commands::Plan { action } => {
             run_with_project(cli.format, |ctx| plan::run_plan(ctx, action))
         }
         Commands::Initiative { action } => {
             run_with_project(cli.format, |ctx| initiative::run_initiative(ctx, action))
+        }
+        Commands::Registry { action } => {
+            run_with_project(cli.format, |ctx| registry::run_registry(ctx, action))
         }
         Commands::Workspace { action } => match action {
             WorkspaceAction::Sync => run_with_project(cli.format, workspace::run_workspace_sync),
