@@ -21,7 +21,8 @@ pub mod versions_cmd;
 
 mod prerequisites;
 mod templates;
-mod versions;
+pub mod versions;
+
 pub use error::{MissingTool, VectisError};
 pub use versions::Versions;
 
