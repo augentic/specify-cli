@@ -20,7 +20,6 @@ pub use specify_change::{
     StaleCloneReason, Stamp as PlanLockStamp, TouchedSpec, actions as change_actions,
     format_rfc3339, is_valid_kebab_name, plan_doctor,
 };
-pub use specify_drift::{Entry as DriftEntry, Status as DriftStatus, baseline_inventory};
 pub use specify_error::{Error, ValidationStatus, ValidationSummary};
 pub use specify_merge::{
     BaselineConflict, ContractAction, ContractPreviewEntry, Entry as MergeEntry, MergeOperation,

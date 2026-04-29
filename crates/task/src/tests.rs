@@ -119,7 +119,7 @@ fn skill_directive_parses_multiple_plugins_and_skills() {
 
 - [ ] 1.1 Generate crate <!-- skill: omnia:crate-writer -->
 - [ ] 1.2 Review core <!-- skill: vectis:core-reviewer -->
-- [ ] 1.3 Check drift <!-- skill: spec:verify -->
+- [ ] 1.3 Author contract <!-- skill: contracts:writer -->
 ";
     let progress = parse_tasks(input);
     assert_eq!(progress.tasks.len(), 3);
@@ -142,11 +142,11 @@ fn skill_directive_parses_multiple_plugins_and_skills() {
     assert_eq!(
         progress.tasks[2].skill_directive,
         Some(SkillDirective {
-            plugin: "spec".to_string(),
-            skill: "verify".to_string()
+            plugin: "contracts".to_string(),
+            skill: "writer".to_string()
         })
     );
-    assert_eq!(progress.tasks[2].description, "Check drift");
+    assert_eq!(progress.tasks[2].description, "Author contract");
 }
 
 // ---------------------------------------------------------------------------

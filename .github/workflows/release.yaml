@@ -183,11 +183,6 @@ jobs:
       - name: Wait for index
         run: sleep 30
 
-      - name: Publish specify-drift
-        run: cargo publish --package specify-drift --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Wait for index
-        run: sleep 30
-
       - name: Publish specify-merge
         run: cargo publish --package specify-merge --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Wait for index
