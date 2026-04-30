@@ -28,12 +28,9 @@ pub enum OutputFormat {
 pub enum Commands {
     /// Initialize .specify/ in a project
     Init {
-        /// Schema name or URL. Ignored when `--hub` is set; hubs use
-        /// the `schema: hub` sentinel instead (RFC-9 §1D).
-        schema: String,
-        /// Schema source directory (pre-resolved). Ignored when `--hub` is set.
+        /// Schema URI to fetch or copy before scaffolding. Required unless `--hub` is set.
         #[arg(long)]
-        schema_dir: PathBuf,
+        schema_uri: Option<String>,
         /// Project name (defaults to the project directory name)
         #[arg(long)]
         name: Option<String>,

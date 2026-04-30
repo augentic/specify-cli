@@ -14,6 +14,10 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+fn omnia_schema_dir() -> PathBuf {
+    repo_root().join("schemas").join("omnia")
+}
+
 fn specify() -> Command {
     Command::cargo_bin("specify").expect("cargo_bin(specify)")
 }
@@ -33,8 +37,8 @@ fn init_text_format_succeeds() {
     let tmp = tempdir().unwrap();
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();
@@ -53,8 +57,8 @@ fn init_json_format_has_stable_shape() {
     let tmp = tempdir().unwrap();
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["--format", "json", "init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();
@@ -79,13 +83,41 @@ fn init_json_format_has_stable_shape() {
 }
 
 #[test]
+fn init_rejects_removed_schema_dir_syntax() {
+    let tmp = tempdir().unwrap();
+    specify()
+        .current_dir(tmp.path())
+        .args(["init", "omnia", "--schema-dir"])
+        .arg(repo_root())
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "networked GitHub fetch smoke test"]
+fn init_github_directory_uri_succeeds() {
+    let tmp = tempdir().unwrap();
+    specify()
+        .current_dir(tmp.path())
+        .args([
+            "init",
+            "--schema-uri",
+            "https://github.com/augentic/specify-cli/schemas/omnia",
+            "--name",
+            "demo",
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
 fn version_too_old_exits_three_with_json_envelope() {
     let tmp = tempdir().unwrap();
     // Fresh init to produce a real project.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();
@@ -125,16 +157,7 @@ fn init_hub_writes_canonical_on_disk_shape() {
     let tmp = tempdir().unwrap();
     let assert = specify()
         .current_dir(tmp.path())
-        .args([
-            "--format",
-            "json",
-            "init",
-            // schema arg is required by clap but ignored in hub mode;
-            // pass a value the parser will accept.
-            "hub",
-            "--schema-dir",
-        ])
-        .arg(repo_root())
+        .args(["--format", "json", "init"])
         .args(["--name", "platform-hub", "--hub"])
         .assert()
         .success();
@@ -202,8 +225,7 @@ fn init_hub_refuses_when_specify_dir_already_exists() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["init", "hub", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init"])
         .args(["--name", "platform-hub", "--hub"])
         .assert()
         .failure();
@@ -222,8 +244,7 @@ fn init_hub_then_registry_validate_succeeds_on_empty_projects() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
-        .args(["init", "hub", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init"])
         .args(["--name", "platform-hub", "--hub"])
         .assert()
         .success();
@@ -243,8 +264,7 @@ fn init_hub_then_registry_validate_rejects_dot_url_with_hub_diagnostic() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
-        .args(["init", "hub", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init"])
         .args(["--name", "platform-hub", "--hub"])
         .assert()
         .success();
@@ -299,8 +319,7 @@ fn serde_yaml_to_json(yaml: &str) -> Result<serde_json::Value, String> {
 fn init_hub(tmp: &tempfile::TempDir, name: &str) {
     specify()
         .current_dir(tmp.path())
-        .args(["init", "hub", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init"])
         .args(["--name", name, "--hub"])
         .assert()
         .success();
@@ -529,8 +548,8 @@ fn registry_remove_refuses_when_registry_absent() {
     // by default.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();
@@ -637,8 +656,8 @@ fn workspace_merge_refuses_when_registry_absent() {
     // Plain init (single-repo) — no registry.yaml.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();
@@ -692,8 +711,8 @@ fn workspace_merge_refuses_when_registry_empty() {
 fn init_omnia_project(tmp: &tempfile::TempDir) {
     specify()
         .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();

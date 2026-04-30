@@ -53,8 +53,8 @@ impl Project {
         let root = tmp.path().to_path_buf();
         specify()
             .current_dir(&root)
-            .args(["init", "omnia", "--schema-dir"])
-            .arg(repo_root())
+            .args(["init", "--schema-uri"])
+            .arg(repo_root().join("schemas").join("omnia"))
             .args(["--name", "test-proj"])
             .assert()
             .success();

@@ -40,8 +40,8 @@ impl Project {
         let root = tmp.path().to_path_buf();
         specify()
             .current_dir(&root)
-            .args(["init", "omnia", "--schema-dir"])
-            .arg(repo_root())
+            .args(["init", "--schema-uri"])
+            .arg(repo_root().join("schemas").join("omnia"))
             .args(["--name", "test-proj"])
             .assert()
             .success();
@@ -101,7 +101,9 @@ fn change_create_produces_directory_and_metadata() {
     assert_eq!(value["schema-version"], 2);
     assert_eq!(value["name"], "my-change");
     assert_eq!(value["status"], "defining");
-    assert_eq!(value["schema"], "omnia");
+    let schema = value["schema"].as_str().expect("schema string");
+    assert!(schema.starts_with("file://"));
+    assert!(schema.ends_with("/schemas/omnia"));
     assert_eq!(value["created"], true);
     assert_eq!(value["restarted"], false);
 
@@ -110,7 +112,7 @@ fn change_create_produces_directory_and_metadata() {
     assert!(change_dir.join("specs").is_dir(), "specs/ must exist");
     let meta = fs::read_to_string(change_dir.join(".metadata.yaml")).expect("read metadata");
     assert!(meta.contains("status: defining"));
-    assert!(meta.contains("schema: omnia"));
+    assert!(meta.contains("schema: file://"));
     assert!(meta.contains("created-at:"));
 }
 

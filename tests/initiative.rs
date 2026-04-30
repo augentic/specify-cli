@@ -35,8 +35,7 @@ mod cli {
     /// A `.specify/` project rooted in a throwaway tempdir.
     ///
     /// Mirrors the harness in `tests/change.rs`: run `specify init` with
-    /// `--schema-dir` pointed at the repo root so `schema.yaml` is
-    /// always resolvable, then let the test body seed whatever
+    /// the in-repo Omnia schema URI, then let the test body seed whatever
     /// `plan.yaml` / `changes/` content it needs.
     struct Project {
         _tmp: TempDir,
@@ -49,8 +48,8 @@ mod cli {
             let root = tmp.path().to_path_buf();
             specify()
                 .current_dir(&root)
-                .args(["init", "omnia", "--schema-dir"])
-                .arg(repo_root())
+                .args(["init", "--schema-uri"])
+                .arg(repo_root().join("schemas").join("omnia"))
                 .args(["--name", "test-proj"])
                 .assert()
                 .success();
@@ -2286,8 +2285,8 @@ inputs: []
         fs::create_dir_all(&root).expect("root");
         specify()
             .current_dir(&root)
-            .args(["init", "omnia", "--schema-dir"])
-            .arg(repo_root())
+            .args(["init", "--schema-uri"])
+            .arg(repo_root().join("schemas").join("omnia"))
             .args(["--name", "rfc3a-ws"])
             .assert()
             .success();

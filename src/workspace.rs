@@ -321,13 +321,12 @@ fn greenfield_bootstrap(
 fn greenfield_init(
     dest: &Path, schema: &str, initiating_project_dir: &Path, is_rerun: bool,
 ) -> Result<(), Error> {
-    let schema_dir = locate_schema_cache(schema, initiating_project_dir)?;
+    let schema_uri = resolve_greenfield_schema_uri(schema, initiating_project_dir)?;
 
     let status = Command::new("specify")
         .arg("init")
-        .arg(schema)
-        .arg("--schema-dir")
-        .arg(&schema_dir)
+        .arg("--schema-uri")
+        .arg(&schema_uri)
         .current_dir(dest)
         .status()
         .map_err(|e| {
@@ -339,8 +338,7 @@ fn greenfield_init(
 
     if !status.success() {
         return Err(Error::Config(format!(
-            "`specify init {schema} --schema-dir {}` failed in {}",
-            schema_dir.display(),
+            "`specify init --schema-uri {schema_uri}` failed in {}",
             dest.display()
         )));
     }
@@ -357,26 +355,30 @@ fn greenfield_init(
     Ok(())
 }
 
-/// Resolve the schema cache directory from the initiating repo's `.specify/.cache/`.
-/// For a bare identifier like `omnia@v1`, the path is `<initiating>/.specify/.cache/omnia@v1/`.
-/// For a URL-shaped identifier, use the last non-empty path segment before any `@ref`.
-fn locate_schema_cache(
+/// Resolve the schema URI to pass into a greenfield slot's `specify init`.
+///
+/// URL-shaped schemas are already self-contained. Bare registry schema
+/// identifiers are local to the initiating repo's cache, so convert them
+/// into a file URI that the spawned init can copy directly.
+fn resolve_greenfield_schema_uri(
     schema: &str, initiating_project_dir: &Path,
-) -> Result<std::path::PathBuf, Error> {
+) -> Result<String, Error> {
+    if schema.contains("://") {
+        return Ok(schema.to_string());
+    }
     let cache_base = initiating_project_dir.join(".specify").join(".cache");
 
     let direct = cache_base.join(schema);
     if direct.is_dir() {
-        return Ok(direct);
+        return Ok(format!("file://{}", direct.display()));
     }
 
-    // For URL-shaped identifiers, try the last path segment
-    // (strip any @ref suffix, then take the last non-empty segment)
+    // Try the last path segment before any @ref for older cached layouts.
     let without_ref = schema.split('@').next().unwrap_or(schema);
     if let Some(segment) = without_ref.rsplit('/').find(|s| !s.is_empty()) {
         let by_segment = cache_base.join(segment);
         if by_segment.is_dir() {
-            return Ok(by_segment);
+            return Ok(format!("file://{}", by_segment.display()));
         }
     }
 

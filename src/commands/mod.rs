@@ -17,14 +17,11 @@ use crate::output::{CliResult, emit_error};
 pub fn run(cli: Cli) -> CliResult {
     match cli.command {
         Commands::Init {
-            schema,
-            schema_dir,
+            schema_uri,
             name,
             domain,
             hub,
-        } => run_bare(cli.format, || {
-            init::run_init(cli.format, schema, schema_dir, name, domain, hub)
-        }),
+        } => run_bare(cli.format, || init::run_init(cli.format, schema_uri, name, domain, hub)),
         Commands::Status => run_with_project(cli.format, status::run_status_dashboard),
         Commands::Schema { action } => match action {
             SchemaAction::Resolve {
