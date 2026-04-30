@@ -125,9 +125,21 @@ pub fn tasks_grouped_under_headings(tasks: &TaskProgress) -> bool {
 
 pub fn first_human_only_task(tasks: &TaskProgress) -> Option<String> {
     const FORBIDDEN: &[&str] = &[
-        "manual",
-        "manually",
-        "human",
+        "manually test",
+        "manually verify",
+        "manually check",
+        "manually inspect",
+        "manually confirm",
+        "manually review",
+        "manual testing",
+        "manual verification",
+        "manual review",
+        "manual inspection",
+        "human review",
+        "human verification",
+        "human approval",
+        "human judgment",
+        "human intervention",
         "real api",
         "real-world api",
         "real world api",
@@ -178,11 +190,6 @@ fn task_has_verification_signal(task: &Task) -> bool {
         "clippy",
         "fmt",
         "lint",
-        "cargo",
-        "gradle",
-        "xcode",
-        "swift",
-        "assemble",
     ];
 
     if let Some(directive) = &task.skill_directive {
@@ -424,7 +431,7 @@ mod tests {
         let input = "\
 ## 1. Verify
 
-- [ ] 1.1 Add fixture-backed effect tests for API success and failure responses <!-- skill: vectis:test-writer -->
+- [ ] 1.1 Add fixture-backed effect tests for API success and failure responses <!-- skill: omnia:test-writer -->
 - [ ] 1.2 Verify iOS and Android shells build against the generated core
 ";
         let progress = specify_task::parse_tasks(input);
