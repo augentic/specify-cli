@@ -18,10 +18,9 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use flate2::read::GzDecoder;
 
 use specify_change::is_valid_kebab_name;
 use specify_error::Error;
@@ -316,7 +315,10 @@ impl SchemaUri {
 
     fn from_github(schema_uri: &str) -> Result<Self, Error> {
         let spec = GithubSchemaUri::parse(schema_uri)?;
-        let source_dir = download_github_schema_archive(&spec)?;
+        let repo_url = format!("https://github.com/{}/{}.git", spec.owner, spec.repo);
+        let checkout_dir =
+            sparse_checkout_github(&repo_url, spec.checkout_ref.as_deref(), &spec.schema_path)?;
+        let source_dir = checkout_dir.join(&spec.schema_path);
         ensure_schema_dir(&source_dir, schema_uri)?;
 
         Ok(Self {
@@ -394,119 +396,37 @@ fn split_ref_suffix(schema_uri: &str) -> (&str, Option<&str>) {
     (schema_uri, None)
 }
 
-fn download_github_schema_archive(spec: &GithubSchemaUri) -> Result<PathBuf, Error> {
-    let checkout_ref = match &spec.checkout_ref {
-        Some(checkout_ref) => checkout_ref.clone(),
-        None => fetch_github_default_branch(&spec.owner, &spec.repo)?,
-    };
-    let url =
-        format!("https://codeload.github.com/{}/{}/tar.gz/{}", spec.owner, spec.repo, checkout_ref);
-    let mut response = github_get(&url).map_err(|err| {
-        Error::SchemaResolution(format!("failed to fetch GitHub schema archive `{url}`: {err}"))
-    })?;
-    let source_dir = unique_temp_dir("specify-schema-archive")?;
-    let decoder = GzDecoder::new(response.body_mut().as_reader());
-    let mut archive = tar::Archive::new(decoder);
-    let schema_prefix = Path::new(&spec.schema_path);
-    let mut extracted_any = false;
-
-    for entry in archive.entries().map_err(|err| {
-        Error::SchemaResolution(format!("failed to read GitHub schema archive `{url}`: {err}"))
-    })? {
-        let mut entry = entry.map_err(|err| {
-            Error::SchemaResolution(format!("failed to read archive entry from `{url}`: {err}"))
-        })?;
-        let path = entry
-            .path()
-            .map_err(|err| {
-                Error::SchemaResolution(format!(
-                    "failed to read archive entry path from `{url}`: {err}"
-                ))
-            })?
-            .into_owned();
-        let Some(path_without_root) = strip_archive_root(&path) else {
-            continue;
-        };
-        let Ok(relative) = path_without_root.strip_prefix(schema_prefix) else {
-            continue;
-        };
-        if relative.as_os_str().is_empty() {
-            fs::create_dir_all(&source_dir)?;
-            extracted_any = true;
-            continue;
-        }
-        if !safe_relative_path(relative) {
-            return Err(Error::SchemaResolution(format!(
-                "GitHub schema archive `{url}` contains unsafe path {}",
-                path.display()
-            )));
-        }
-        let destination = source_dir.join(relative);
-        entry.unpack(&destination).map_err(|err| {
-            Error::SchemaResolution(format!(
-                "failed to extract {} from GitHub schema archive `{url}`: {err}",
-                path.display()
-            ))
-        })?;
-        extracted_any = true;
+fn sparse_checkout_github(
+    repo_url: &str, checkout_ref: Option<&str>, schema_path: &str,
+) -> Result<PathBuf, Error> {
+    let checkout_dir = unique_temp_dir("specify-schema-checkout")?;
+    let mut clone_args = vec!["clone", "--depth", "1", "--filter=blob:none", "--sparse"];
+    if let Some(reference) = checkout_ref {
+        clone_args.push("--branch");
+        clone_args.push(reference);
     }
+    clone_args.push(repo_url);
+    let checkout_arg = checkout_dir.to_string_lossy().to_string();
+    clone_args.push(&checkout_arg);
+    run_git(&clone_args, "clone schema repository")?;
 
-    if !extracted_any {
-        return Err(Error::SchemaResolution(format!(
-            "GitHub schema archive `{url}` does not contain `{}`",
-            spec.schema_path
-        )));
+    let checkout_dir_arg = checkout_dir.to_string_lossy().to_string();
+    run_git(
+        &["-C", &checkout_dir_arg, "sparse-checkout", "set", "--", schema_path],
+        "sparse-checkout schema path",
+    )?;
+    Ok(checkout_dir)
+}
+
+fn run_git(args: &[&str], action: &str) -> Result<(), Error> {
+    let output = Command::new("git").args(args).output().map_err(|err| {
+        Error::SchemaResolution(format!("failed to spawn `git` to {action}: {err}"))
+    })?;
+    if output.status.success() {
+        return Ok(());
     }
-    Ok(source_dir)
-}
-
-fn fetch_github_default_branch(owner: &str, repo: &str) -> Result<String, Error> {
-    let url = format!("https://api.github.com/repos/{owner}/{repo}");
-    let mut response = github_get(&url).map_err(|err| {
-        Error::SchemaResolution(format!(
-            "failed to fetch GitHub repository metadata `{url}`: {err}"
-        ))
-    })?;
-    let body = response.body_mut().read_to_string().map_err(|err| {
-        Error::SchemaResolution(format!("failed to read GitHub repository metadata `{url}`: {err}"))
-    })?;
-    let value: serde_json::Value = serde_json::from_str(&body).map_err(|err| {
-        Error::SchemaResolution(format!(
-            "failed to parse GitHub repository metadata `{url}`: {err}"
-        ))
-    })?;
-    value
-        .get("default_branch")
-        .and_then(|branch| branch.as_str())
-        .filter(|branch| !branch.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| {
-            Error::SchemaResolution(format!(
-                "GitHub repository metadata `{url}` did not include default_branch"
-            ))
-        })
-}
-
-fn github_get(url: &str) -> Result<ureq::http::Response<ureq::Body>, ureq::Error> {
-    let request = ureq::get(url)
-        .header("User-Agent", "specify-cli")
-        .header("Accept", "application/vnd.github+json");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN"))
-        && !token.trim().is_empty()
-    {
-        return request.header("Authorization", format!("Bearer {}", token.trim())).call();
-    }
-    request.call()
-}
-
-fn strip_archive_root(path: &Path) -> Option<PathBuf> {
-    let mut components = path.components();
-    components.next()?;
-    Some(components.as_path().to_path_buf())
-}
-
-fn safe_relative_path(path: &Path) -> bool {
-    path.components().all(|component| matches!(component, Component::Normal(_)))
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(Error::SchemaResolution(format!("git failed to {action}: {}", stderr.trim())))
 }
 
 fn unique_temp_dir(prefix: &str) -> Result<PathBuf, Error> {

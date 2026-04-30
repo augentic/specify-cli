@@ -4,8 +4,6 @@
 //! See also: the `specify` binary (`src/main.rs`) and domain crates under
 //! `crates/` for the underlying logic.
 
-#![allow(clippy::multiple_crate_versions)]
-
 pub use config::ProjectConfig;
 pub use init::{
     HUB_SCHEMA_SENTINEL, InitOptions, InitResult, VersionMode, ensure_specify_gitignore_entries,

@@ -34,9 +34,6 @@ serde_json.workspace = true
 semver = "1"
 chrono.workspace = true
 glob.workspace = true
-ureq = "3.3.0"
-flate2 = "1.1.9"
-tar = { version = "0.4.45", default-features = false }
 
 [dev-dependencies]
 assert_cmd = "2"

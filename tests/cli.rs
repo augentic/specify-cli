@@ -102,7 +102,7 @@ fn init_github_directory_uri_succeeds() {
         .args([
             "init",
             "--schema-uri",
-            "https://github.com/augentic/specify-cli/schemas/omnia",
+            "https://github.com/augentic/specify/schemas/omnia",
             "--name",
             "demo",
         ])

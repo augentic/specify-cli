@@ -22,8 +22,6 @@
 //! - A successful `Commands::Validate` where `report.passed == false` →
 //!   `2` (even though no `Error` is produced).
 
-#![allow(clippy::multiple_crate_versions)]
-
 mod cli;
 mod commands;
 mod context;
