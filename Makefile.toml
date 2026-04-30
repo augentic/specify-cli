@@ -119,7 +119,6 @@ echo "=== Tier 3: Mid-level crates ==="
 cargo publish -p specify-spec $DRY_RUN
 cargo publish -p specify-task $DRY_RUN
 cargo publish -p specify-change $DRY_RUN
-cargo publish -p specify-drift $DRY_RUN
 
 echo "=== Tier 4: Higher-level crates ==="
 cargo publish -p specify-merge $DRY_RUN

@@ -11,10 +11,10 @@ First, read the proposal's **Source** section to determine the workflow:
 
 **Repository path** (Source is a repository URL):
 
-  1. Clone the source repository. Invoke `/rt:git-cloner` with
-     arguments:
-       `<repo-url> legacy/ true`
-     This clones the repo into `legacy/<repo-name>` as a detached tree.
+  1. Clone the source repository into `legacy/<repo-name>` as a detached
+     tree using an inlined `git clone` snippet (see the *Cloning a source
+     tree* section in `plugins/spec/skills/analyze/SKILL.md` for the
+     guarded form).
   2. Generate specs and design. Invoke `/spec:extract` with
      arguments:
        `legacy/<repo-name> <change-dir>`

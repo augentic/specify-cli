@@ -1377,7 +1377,6 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "specify-change",
- "specify-drift",
  "specify-error",
  "specify-merge",
  "specify-schema",
@@ -1402,16 +1401,6 @@ dependencies = [
  "serde_json",
  "specify-error",
  "specify-schema",
- "tempfile",
-]
-
-[[package]]
-name = "specify-drift"
-version = "0.1.0"
-dependencies = [
- "serde",
- "specify-error",
- "specify-spec",
  "tempfile",
 ]
 
