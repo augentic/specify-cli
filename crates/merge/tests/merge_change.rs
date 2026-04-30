@@ -9,7 +9,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use regex::Regex;
-use specify_change::{ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome, Rfc3339Stamp};
+use specify_change::{
+    ChangeMetadata, LifecycleStatus, METADATA_VERSION, Outcome, Phase, PhaseOutcome, Rfc3339Stamp,
+};
 use specify_error::Error;
 use specify_merge::{ContractAction, merge_change, preview_change};
 use tempfile::TempDir;
@@ -56,6 +58,7 @@ fn build_project() -> Project {
         .expect("write oauth delta");
 
     let metadata = ChangeMetadata {
+        version: METADATA_VERSION,
         schema: "omnia".to_string(),
         status: LifecycleStatus::Complete,
         created_at: Some(Rfc3339Stamp::from_raw("2024-08-01T10:00:00Z".to_string())),

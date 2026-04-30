@@ -1,9 +1,10 @@
-//! Integration tests for `specify spec preview` and `specify spec conflict-check`.
+//! Integration tests for `specify change merge preview` and
+//! `specify change merge conflict-check`.
 //!
-//! These are the two no-write counterparts to `specify merge` used by the
-//! merge-skill rewrite: `preview` computes the operation list without
-//! touching disk; `conflict-check` flags `type: modified` baselines that
-//! have drifted since `defined_at`.
+//! These are the two no-write counterparts to `specify change merge run`
+//! used by the merge-skill rewrite: `preview` computes the operation
+//! list without touching disk; `conflict-check` flags `type: modified`
+//! baselines that have drifted since `defined_at`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -75,18 +76,17 @@ impl Project {
 }
 
 // ---------------------------------------------------------------------------
-// spec preview
+// change merge preview
 // ---------------------------------------------------------------------------
 
 #[test]
-fn spec_preview_reports_operations_without_writing() {
+fn change_merge_preview_reports_operations_without_writing() {
     let project = Project::init();
     let change_dir = project.stage_change("merge-two-spec-change");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "spec", "preview"])
-        .arg(&change_dir)
+        .args(["--format", "json", "change", "merge", "preview", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -127,11 +127,11 @@ fn spec_preview_reports_operations_without_writing() {
 }
 
 #[test]
-fn spec_preview_does_not_require_complete_status() {
+fn change_merge_preview_does_not_require_complete_status() {
     let project = Project::init();
     let change_dir = project.stage_change("merge-two-spec-change");
-    // Downgrade status to `building` — `specify merge` refuses this but
-    // `specify spec preview` must accept it.
+    // Downgrade status to `building` — `change merge run` refuses this but
+    // `change merge preview` must accept it.
     let metadata_path = change_dir.join(".metadata.yaml");
     let original = fs::read_to_string(&metadata_path).unwrap();
     let downgraded = original.replace("status: complete", "status: building");
@@ -139,21 +139,19 @@ fn spec_preview_does_not_require_complete_status() {
 
     specify()
         .current_dir(project.root())
-        .args(["--format", "json", "spec", "preview"])
-        .arg(&change_dir)
+        .args(["--format", "json", "change", "merge", "preview", "my-change"])
         .assert()
         .success();
 }
 
 #[test]
-fn spec_preview_emits_readable_text_output() {
+fn change_merge_preview_emits_readable_text_output() {
     let project = Project::init();
-    let change_dir = project.stage_change("merge-two-spec-change");
+    project.stage_change("merge-two-spec-change");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["spec", "preview"])
-        .arg(&change_dir)
+        .args(["change", "merge", "preview", "my-change"])
         .assert()
         .success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
@@ -166,18 +164,17 @@ fn spec_preview_emits_readable_text_output() {
 }
 
 // ---------------------------------------------------------------------------
-// spec conflict-check
+// change merge conflict-check
 // ---------------------------------------------------------------------------
 
 #[test]
 fn conflict_check_reports_no_conflicts_when_no_modified_entries() {
     let project = Project::init();
-    let change_dir = project.stage_change("merge-two-spec-change");
+    project.stage_change("merge-two-spec-change");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "spec", "conflict-check"])
-        .arg(&change_dir)
+        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -213,8 +210,7 @@ fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "spec", "conflict-check"])
-        .arg(&change_dir)
+        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -250,8 +246,7 @@ fn conflict_check_no_contract_drift_when_baseline_is_older() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "spec", "conflict-check"])
-        .arg(&change_dir)
+        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -289,8 +284,7 @@ fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "spec", "conflict-check"])
-        .arg(&change_dir)
+        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -319,8 +313,7 @@ fn conflict_check_no_drift_for_new_contract_files() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "spec", "conflict-check"])
-        .arg(&change_dir)
+        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -350,8 +343,7 @@ fn conflict_check_no_drift_when_change_has_no_contracts_dir() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "spec", "conflict-check"])
-        .arg(&change_dir)
+        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -369,7 +361,7 @@ fn conflict_check_ignores_new_entries_even_with_existing_baseline() {
     // conflict in the mtime-vs-defined_at sense, just a different kind
     // of integrity issue the caller should handle separately.
     let project = Project::init();
-    let change_dir = project.stage_change("merge-two-spec-change");
+    project.stage_change("merge-two-spec-change");
     let baseline = project.root().join(".specify/specs/login/spec.md");
     fs::create_dir_all(baseline.parent().unwrap()).unwrap();
     fs::write(&baseline, "# Login baseline\n").unwrap();
@@ -378,8 +370,7 @@ fn conflict_check_ignores_new_entries_even_with_existing_baseline() {
     // `defined_at` means conflict_check returns empty regardless.
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "spec", "conflict-check"])
-        .arg(&change_dir)
+        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);

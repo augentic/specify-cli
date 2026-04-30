@@ -466,7 +466,7 @@ fn change_status_by_name_returns_single_entry() {
 }
 
 // ---------------------------------------------------------------------------
-// change phase-outcome (L2.A)
+// change outcome set (L2.A)
 // ---------------------------------------------------------------------------
 
 /// Parse the `.metadata.yaml` for `name` under `project` as a
@@ -497,7 +497,8 @@ fn change_phase_outcome_stamps_success_on_define_json() {
             "--format",
             "json",
             "change",
-            "phase-outcome",
+            "outcome",
+            "set",
             "foo",
             "define",
             "success",
@@ -539,7 +540,8 @@ fn change_phase_outcome_stamps_failure_with_context() {
             "--format",
             "json",
             "change",
-            "phase-outcome",
+            "outcome",
+            "set",
             "foo",
             "build",
             "failure",
@@ -566,7 +568,8 @@ fn change_phase_outcome_stamps_deferred_on_build() {
         .current_dir(project.root())
         .args([
             "change",
-            "phase-outcome",
+            "outcome",
+            "set",
             "foo",
             "build",
             "deferred",
@@ -589,7 +592,7 @@ fn change_phase_outcome_text_output() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["change", "phase-outcome", "foo", "define", "success", "--summary", "ok"])
+        .args(["change", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
         .assert()
         .success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
@@ -605,7 +608,8 @@ fn change_phase_outcome_on_nonexistent_change_errors() {
             "--format",
             "json",
             "change",
-            "phase-outcome",
+            "outcome",
+            "set",
             "ghost",
             "define",
             "success",
@@ -631,7 +635,7 @@ fn change_phase_outcome_writes_trailing_newline() {
 
     specify()
         .current_dir(project.root())
-        .args(["change", "phase-outcome", "foo", "define", "success", "--summary", "ok"])
+        .args(["change", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
         .assert()
         .success();
 
@@ -652,7 +656,7 @@ fn change_phase_outcome_overwrites_previous_outcome() {
 
     specify()
         .current_dir(project.root())
-        .args(["change", "phase-outcome", "foo", "define", "success", "--summary", "defined"])
+        .args(["change", "outcome", "set", "foo", "define", "success", "--summary", "defined"])
         .assert()
         .success();
 
@@ -660,7 +664,8 @@ fn change_phase_outcome_overwrites_previous_outcome() {
         .current_dir(project.root())
         .args([
             "change",
-            "phase-outcome",
+            "outcome",
+            "set",
             "foo",
             "build",
             "failure",
@@ -705,7 +710,7 @@ fn change_phase_outcome_preserves_existing_metadata_fields() {
 
     specify()
         .current_dir(project.root())
-        .args(["change", "phase-outcome", "foo", "define", "success", "--summary", "ok"])
+        .args(["change", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
         .assert()
         .success();
 
@@ -737,7 +742,7 @@ created-at: "2024-08-01T10:00:00Z"
 }
 
 // ---------------------------------------------------------------------------
-// change outcome (read verb symmetric with phase-outcome)
+// change outcome show (read verb symmetric with `outcome set`)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -748,7 +753,8 @@ fn change_outcome_returns_stamped_outcome_as_json() {
         .current_dir(project.root())
         .args([
             "change",
-            "phase-outcome",
+            "outcome",
+            "set",
             "foo",
             "build",
             "success",
@@ -762,7 +768,7 @@ fn change_outcome_returns_stamped_outcome_as_json() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "foo"])
+        .args(["--format", "json", "change", "outcome", "show", "foo"])
         .assert()
         .success();
 
@@ -785,7 +791,7 @@ fn change_outcome_emits_null_when_unstamped() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "foo"])
+        .args(["--format", "json", "change", "outcome", "show", "foo"])
         .assert()
         .success();
 
@@ -805,13 +811,13 @@ fn change_outcome_null_context_when_stamped_without_context() {
     specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
     specify()
         .current_dir(project.root())
-        .args(["change", "phase-outcome", "foo", "define", "success", "--summary", "ok"])
+        .args(["change", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
         .assert()
         .success();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "foo"])
+        .args(["--format", "json", "change", "outcome", "show", "foo"])
         .assert()
         .success();
 
@@ -830,12 +836,15 @@ fn change_outcome_text_output_stamped() {
     specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
     specify()
         .current_dir(project.root())
-        .args(["change", "phase-outcome", "foo", "build", "success", "--summary", "5/5 tasks"])
+        .args(["change", "outcome", "set", "foo", "build", "success", "--summary", "5/5 tasks"])
         .assert()
         .success();
 
-    let assert =
-        specify().current_dir(project.root()).args(["change", "outcome", "foo"]).assert().success();
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["change", "outcome", "show", "foo"])
+        .assert()
+        .success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
     assert_eq!(stdout.trim_end(), "foo: build/success — 5/5 tasks");
 }
@@ -845,8 +854,11 @@ fn change_outcome_text_output_unstamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
 
-    let assert =
-        specify().current_dir(project.root()).args(["change", "outcome", "foo"]).assert().success();
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["change", "outcome", "show", "foo"])
+        .assert()
+        .success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
     assert_eq!(stdout.trim_end(), "foo: no outcome stamped");
 }
@@ -856,7 +868,7 @@ fn change_outcome_on_nonexistent_change_errors() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "ghost"])
+        .args(["--format", "json", "change", "outcome", "show", "ghost"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -873,7 +885,8 @@ fn change_outcome_falls_back_to_archive() {
         .current_dir(project.root())
         .args([
             "change",
-            "phase-outcome",
+            "outcome",
+            "set",
             "bar",
             "merge",
             "success",
@@ -892,7 +905,7 @@ fn change_outcome_falls_back_to_archive() {
     // The active change directory is gone; outcome should resolve from archive.
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "bar"])
+        .args(["--format", "json", "change", "outcome", "show", "bar"])
         .assert()
         .success();
 
@@ -928,7 +941,7 @@ fn change_outcome_archive_fallback_picks_most_recent() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "baz"])
+        .args(["--format", "json", "change", "outcome", "show", "baz"])
         .assert()
         .success();
 
@@ -941,7 +954,158 @@ fn change_outcome_archive_fallback_picks_most_recent() {
 }
 
 // ---------------------------------------------------------------------------
-// change journal-append (L2.B)
+// change outcome set — registry-amendment-required (RFC-9 §2B)
+// ---------------------------------------------------------------------------
+
+/// Stamping the new outcome variant writes the structured proposal
+/// payload to `.metadata.yaml` under `outcome.outcome.registry-amendment-required.*`
+/// (kebab-case external-tag form). Round-trips through the writer.
+#[test]
+fn change_outcome_registry_amendment_required_writes_payload() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "change",
+            "outcome",
+            "set",
+            "foo",
+            "build",
+            "registry-amendment-required",
+            "--proposed-name",
+            "alpha-gateway",
+            "--proposed-url",
+            "git@github.com:augentic/alpha-gateway.git",
+            "--proposed-schema",
+            "omnia@v1",
+            "--proposed-description",
+            "Gateway for alpha capability.",
+            "--rationale",
+            "build discovered tangled code requiring a split",
+        ])
+        .assert()
+        .success();
+
+    let path = project.changes_dir().join("foo").join(".metadata.yaml");
+    let raw = fs::read_to_string(&path).expect("read metadata");
+    assert!(
+        raw.contains("registry-amendment-required:"),
+        "outcome should use external-tag form, got:\n{raw}"
+    );
+    assert!(
+        raw.contains("proposed-name: alpha-gateway"),
+        "proposal fields should be kebab-case, got:\n{raw}"
+    );
+    assert!(
+        raw.contains("proposed-url: \"git@github.com:augentic/alpha-gateway.git\"")
+            || raw.contains("proposed-url: git@github.com:augentic/alpha-gateway.git"),
+        "proposed-url should round-trip the verbatim URL, got:\n{raw}"
+    );
+    assert!(
+        raw.contains("proposed-schema: \"omnia@v1\"") || raw.contains("proposed-schema: omnia@v1"),
+        "proposed-schema should round-trip, got:\n{raw}"
+    );
+    assert!(raw.contains("rationale:"), "rationale should be emitted, got:\n{raw}");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "outcome", "show", "foo"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    let outcome = &value["outcome"];
+    assert_eq!(outcome["outcome"].as_str(), Some("registry-amendment-required"));
+    let proposal = &outcome["proposal"];
+    assert_eq!(proposal["proposed-name"].as_str(), Some("alpha-gateway"));
+    assert_eq!(
+        proposal["proposed-url"].as_str(),
+        Some("git@github.com:augentic/alpha-gateway.git"),
+    );
+    assert_eq!(proposal["proposed-schema"].as_str(), Some("omnia@v1"));
+    assert_eq!(proposal["proposed-description"].as_str(), Some("Gateway for alpha capability."),);
+    assert_eq!(
+        proposal["rationale"].as_str(),
+        Some("build discovered tangled code requiring a split"),
+    );
+    assert_eq!(
+        outcome["summary"].as_str(),
+        Some("registry-amendment-required: alpha-gateway"),
+        "missing --summary should default to `registry-amendment-required: <name>`",
+    );
+}
+
+/// Missing required flags surface a clear `Error::Config` (exit code 1).
+#[test]
+fn change_outcome_registry_amendment_required_missing_flags_errors() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "change",
+            "outcome",
+            "set",
+            "foo",
+            "build",
+            "registry-amendment-required",
+            "--proposed-name",
+            "alpha-gateway",
+            "--proposed-url",
+            "git@github.com:augentic/alpha-gateway.git",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(1));
+    let value = parse_json(&assert.get_output().stdout);
+    let msg = value["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("--proposed-schema") || msg.contains("--rationale"),
+        "expected diagnostic naming the missing required flag, got: {msg}",
+    );
+}
+
+/// Supplying `--proposed-*` flags with an outcome other than
+/// `registry-amendment-required` is rejected — those flags are
+/// outcome-scoped, and silently dropping them would mask author intent.
+#[test]
+fn change_outcome_proposal_flags_rejected_for_other_kinds() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "change",
+            "outcome",
+            "set",
+            "foo",
+            "build",
+            "success",
+            "--summary",
+            "ok",
+            "--proposed-name",
+            "alpha",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(1));
+    let value = parse_json(&assert.get_output().stdout);
+    let msg = value["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("--proposed-name"),
+        "expected diagnostic naming the offending flag, got: {msg}",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// change journal append (L2.B)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -955,7 +1119,8 @@ fn change_journal_append_appends_to_file() {
             "--format",
             "json",
             "change",
-            "journal-append",
+            "journal",
+            "append",
             "foo",
             "define",
             "question",
@@ -1008,7 +1173,8 @@ fn change_journal_append_stamps_rfc3339_timestamp() {
             "--format",
             "json",
             "change",
-            "journal-append",
+            "journal",
+            "append",
             "foo",
             "build",
             "failure",
@@ -1047,7 +1213,7 @@ fn change_journal_append_preserves_existing_entries() {
     ] {
         specify()
             .current_dir(project.root())
-            .args(["change", "journal-append", "foo", phase, kind, "--summary", summary])
+            .args(["change", "journal", "append", "foo", phase, kind, "--summary", summary])
             .assert()
             .success();
     }
@@ -1069,7 +1235,7 @@ fn change_journal_append_text_output() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["change", "journal-append", "foo", "define", "question", "--summary", "why"])
+        .args(["change", "journal", "append", "foo", "define", "question", "--summary", "why"])
         .assert()
         .success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
@@ -1085,7 +1251,8 @@ fn change_journal_append_on_nonexistent_change_errors() {
             "--format",
             "json",
             "change",
-            "journal-append",
+            "journal",
+            "append",
             "ghost",
             "define",
             "question",
@@ -1100,21 +1267,113 @@ fn change_journal_append_on_nonexistent_change_errors() {
     assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
 }
 
+// ---------------------------------------------------------------------------
+// change journal show
+// ---------------------------------------------------------------------------
+
+#[test]
+fn change_journal_show_empty_then_populated() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+
+    // Empty journal — show must return an empty entries array.
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "journal", "show", "foo"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["name"], "foo");
+    assert!(
+        value["entries"].as_array().unwrap().is_empty(),
+        "expected empty entries on a fresh change, got: {}",
+        value["entries"]
+    );
+
+    // Text mode for the empty case: the per-change "no journal entries" line.
+    let text = specify()
+        .current_dir(project.root())
+        .args(["change", "journal", "show", "foo"])
+        .assert()
+        .success();
+    let stdout = std::str::from_utf8(&text.get_output().stdout).unwrap();
+    assert!(
+        stdout.contains("foo: no journal entries"),
+        "text show on empty journal should announce no entries, got: {stdout:?}"
+    );
+
+    // Append two entries and verify show reports them in order.
+    specify()
+        .current_dir(project.root())
+        .args(["change", "journal", "append", "foo", "define", "question", "--summary", "first"])
+        .assert()
+        .success();
+    specify()
+        .current_dir(project.root())
+        .args([
+            "change",
+            "journal",
+            "append",
+            "foo",
+            "build",
+            "failure",
+            "--summary",
+            "second",
+            "--context",
+            "stderr blob",
+        ])
+        .assert()
+        .success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "journal", "show", "foo"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    let entries = value["entries"].as_array().expect("entries array");
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0]["phase"], "define");
+    assert_eq!(entries[0]["kind"], "question");
+    assert_eq!(entries[0]["summary"], "first");
+    assert!(entries[0]["context"].is_null());
+    assert_eq!(entries[1]["phase"], "build");
+    assert_eq!(entries[1]["kind"], "failure");
+    assert_eq!(entries[1]["summary"], "second");
+    assert_eq!(entries[1]["context"], "stderr blob");
+}
+
+#[test]
+fn change_journal_show_on_nonexistent_change_errors() {
+    let project = Project::init();
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "change", "journal", "show", "ghost"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(1));
+    let value = parse_json(&assert.get_output().stdout);
+    let msg = value["message"].as_str().unwrap_or("");
+    assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
+}
+
 #[test]
 fn phase_outcome_round_trips_through_serde() {
     use specify::{Outcome, Phase, PhaseOutcome, Rfc3339Stamp};
     for outcome in [Outcome::Success, Outcome::Failure, Outcome::Deferred] {
         for phase in [Phase::Define, Phase::Build, Phase::Merge] {
+            let context = if matches!(outcome, Outcome::Success) {
+                None
+            } else {
+                Some("verbatim detail".to_string())
+            };
             let value = PhaseOutcome {
                 phase,
-                outcome,
+                outcome: outcome.clone(),
                 at: Rfc3339Stamp::from_raw("2024-08-01T10:00:00+00:00".to_string()),
                 summary: "some summary".to_string(),
-                context: if matches!(outcome, Outcome::Success) {
-                    None
-                } else {
-                    Some("verbatim detail".to_string())
-                },
+                context,
             };
             let yaml = serde_saphyr::to_string(&value).expect("serialize");
             let parsed: PhaseOutcome = serde_saphyr::from_str(&yaml).expect("parse");

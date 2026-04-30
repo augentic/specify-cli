@@ -1,15 +1,15 @@
-//! Integration tests for the `specify plan *` and `specify initiative *`
-//! CLI groups — `plan` manages `.specify/plan.yaml` (init, create, amend,
-//! validate, next, status, transition, archive, lock); `initiative` owns
-//! brief and registry.
+//! Integration tests for the `specify plan *`, `specify initiative *`,
+//! and `specify registry *` CLI groups — `plan` manages
+//! `.specify/plan.yaml`, `initiative` owns the operator brief at
+//! `.specify/initiative.md`, and `registry` covers
+//! `.specify/registry.yaml`.
 //!
 //! These CLI tests stand up a fresh `.specify/` project via
 //! `specify init` (mirroring `tests/change.rs` / `tests/e2e.rs`),
 //! seed `.specify/plan.yaml` by writing YAML directly to disk, and
-//! drive `specify plan *` / `specify initiative *` through `assert_cmd`. JSON shapes
-//! are pinned by checked-in fixtures under `tests/fixtures/plan/`;
-//! regenerate them with
-//! `REGENERATE_GOLDENS=1 cargo test --test initiative`.
+//! drive the CLI through `assert_cmd`. JSON shapes are pinned by
+//! checked-in fixtures under `tests/fixtures/plan/`; regenerate them
+//! with `REGENERATE_GOLDENS=1 cargo test --test initiative`.
 
 #[cfg(test)]
 mod cli {
@@ -697,16 +697,16 @@ changes:
     description: original
 ";
 
-    // -- plan create ------------------------------------------------------
+    // -- plan add ---------------------------------------------------------
 
     #[test]
-    fn initiative_create_adds_pending_entry_json() {
+    fn plan_add_appends_pending_entry_json() {
         let project = Project::init();
         project.seed_plan(EMPTY_PLAN);
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "create", "foo", "--schema", "contracts@v1"])
+            .args(["--format", "json", "plan", "add", "foo", "--schema", "contracts@v1"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -726,19 +726,19 @@ changes:
     }
 
     #[test]
-    fn initiative_create_rejects_duplicate_name_text() {
+    fn plan_add_rejects_duplicate_name_text() {
         let project = Project::init();
         project.seed_plan(EMPTY_PLAN);
 
         specify()
             .current_dir(project.root())
-            .args(["plan", "create", "foo", "--schema", "contracts@v1"])
+            .args(["plan", "add", "foo", "--schema", "contracts@v1"])
             .assert()
             .success();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "create", "foo", "--schema", "contracts@v1"])
+            .args(["plan", "add", "foo", "--schema", "contracts@v1"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -750,13 +750,13 @@ changes:
     }
 
     #[test]
-    fn initiative_create_rejects_invalid_name() {
+    fn plan_add_rejects_invalid_name() {
         let project = Project::init();
         project.seed_plan(EMPTY_PLAN);
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "create", "NotKebab", "--schema", "contracts@v1"])
+            .args(["plan", "add", "NotKebab", "--schema", "contracts@v1"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1028,7 +1028,7 @@ changes:
             .current_dir(project.root())
             .args([
                 "plan",
-                "create",
+                "add",
                 "registration-duplicate-email-crash",
                 "--schema",
                 "contracts@v1",
@@ -1086,10 +1086,10 @@ changes:
         );
     }
 
-    // -- plan init (L3.A) -------------------------------------------------
+    // -- plan create (L3.A) -----------------------------------------------
 
     /// Build a blank `Project` via `specify init` and then delete the
-    /// auto-created `.specify/plan.yaml` (if any) so `specify plan init`
+    /// auto-created `.specify/plan.yaml` (if any) so `specify plan create`
     /// is exercised against a clean slate.
     fn init_without_plan() -> Project {
         let project = Project::init();
@@ -1098,12 +1098,12 @@ changes:
     }
 
     #[test]
-    fn initiative_init_creates_empty_plan_json() {
+    fn plan_create_creates_empty_plan_json() {
         let project = init_without_plan();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "init", "my-initiative"])
+            .args(["--format", "json", "plan", "create", "my-initiative"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1127,14 +1127,14 @@ changes:
     }
 
     #[test]
-    fn initiative_init_with_sources_roundtrips() {
+    fn plan_create_with_sources_roundtrips() {
         let project = init_without_plan();
 
         specify()
             .current_dir(project.root())
             .args([
                 "plan",
-                "init",
+                "create",
                 "big",
                 "--source",
                 "monolith=/tmp/legacy",
@@ -1154,13 +1154,13 @@ changes:
     }
 
     #[test]
-    fn initiative_init_refuses_when_plan_exists() {
+    fn plan_create_refuses_when_plan_exists() {
         let project = Project::init();
         project.seed_plan(EMPTY_PLAN);
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "init", "other"])
+            .args(["plan", "create", "other"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1178,12 +1178,12 @@ changes:
     }
 
     #[test]
-    fn initiative_init_rejects_invalid_name() {
+    fn plan_create_rejects_invalid_name() {
         let project = init_without_plan();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "init", "BadName"])
+            .args(["plan", "create", "BadName"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1193,12 +1193,12 @@ changes:
     }
 
     #[test]
-    fn initiative_init_rejects_duplicate_source_key() {
+    fn plan_create_rejects_duplicate_source_key() {
         let project = init_without_plan();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "init", "x", "--source", "a=/p1", "--source", "a=/p2"])
+            .args(["plan", "create", "x", "--source", "a=/p1", "--source", "a=/p2"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1211,14 +1211,14 @@ changes:
     }
 
     #[test]
-    fn initiative_init_rejects_malformed_source() {
+    fn plan_create_rejects_malformed_source() {
         let project = init_without_plan();
 
         // No `=` in the --source value → clap's value_parser rejects
         // the argument at parse time (exit code 2).
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "init", "x", "--source", "badkey"])
+            .args(["plan", "create", "x", "--source", "badkey"])
             .assert()
             .failure();
         assert_eq!(
@@ -1230,10 +1230,10 @@ changes:
     }
 
     #[test]
-    fn initiative_init_validates_the_result() {
+    fn plan_create_validates_the_result() {
         let project = init_without_plan();
 
-        specify().current_dir(project.root()).args(["plan", "init", "fresh"]).assert().success();
+        specify().current_dir(project.root()).args(["plan", "create", "fresh"]).assert().success();
 
         let assert =
             specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
@@ -1738,7 +1738,7 @@ changes: []
 
     // ---- Registry CLI verbs (RFC-3a C13) ----
     //
-    // `specify initiative registry {show, validate}` — dedicated verbs
+    // `specify registry {show, validate}` — dedicated verbs
     // that isolate the same shape check the C12 hook drives through
     // `specify plan validate`. The tests below cover the full
     // matrix: absent / well-formed / malformed × show / validate ×
@@ -1779,7 +1779,7 @@ projects:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "registry", "show"])
+            .args(["--format", "json", "registry", "show"])
             .assert()
             .success();
         assert_eq!(assert.get_output().status.code(), Some(0));
@@ -1799,7 +1799,7 @@ projects:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "registry", "show"])
+            .args(["--format", "json", "registry", "show"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1817,11 +1817,8 @@ projects:
         let project = Project::init();
         write_registry(&project, REGISTRY_SINGLE);
 
-        let assert = specify()
-            .current_dir(project.root())
-            .args(["initiative", "registry", "show"])
-            .assert()
-            .success();
+        let assert =
+            specify().current_dir(project.root()).args(["registry", "show"]).assert().success();
         let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
         for fragment in ["version: 1", "name: traffic", "url: .", "schema: omnia@v1"] {
             assert!(
@@ -1836,11 +1833,8 @@ projects:
         let project = Project::init();
         write_registry(&project, "version: 2\nprojects: []\n");
 
-        let assert = specify()
-            .current_dir(project.root())
-            .args(["initiative", "registry", "show"])
-            .assert()
-            .failure();
+        let assert =
+            specify().current_dir(project.root()).args(["registry", "show"]).assert().failure();
         assert_ne!(assert.get_output().status.code(), Some(0));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
         assert!(
@@ -1855,7 +1849,7 @@ projects:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "registry", "validate"])
+            .args(["--format", "json", "registry", "validate"])
             .assert()
             .success();
         assert_eq!(assert.get_output().status.code(), Some(0));
@@ -1863,11 +1857,8 @@ projects:
         assert_eq!(actual["registry"], Value::Null);
         assert_eq!(actual["ok"], true);
 
-        let text = specify()
-            .current_dir(project.root())
-            .args(["initiative", "registry", "validate"])
-            .assert()
-            .success();
+        let text =
+            specify().current_dir(project.root()).args(["registry", "validate"]).assert().success();
         let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
         assert!(
             stdout.contains("no registry declared"),
@@ -1882,7 +1873,7 @@ projects:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "registry", "validate"])
+            .args(["--format", "json", "registry", "validate"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1898,7 +1889,7 @@ projects:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "registry", "validate"])
+            .args(["--format", "json", "registry", "validate"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1914,7 +1905,7 @@ projects:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "registry", "validate"])
+            .args(["--format", "json", "registry", "validate"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(2));
@@ -1945,7 +1936,7 @@ projects:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "registry", "validate"])
+            .args(["--format", "json", "registry", "validate"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(2));
@@ -1969,11 +1960,8 @@ projects:
 ",
         );
 
-        let assert = specify()
-            .current_dir(project.root())
-            .args(["initiative", "registry", "validate"])
-            .assert()
-            .failure();
+        let assert =
+            specify().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
         assert_eq!(assert.get_output().status.code(), Some(2));
     }
 
@@ -1982,16 +1970,13 @@ projects:
         let project = Project::init();
         write_registry(&project, "version: 1\nversions: 2\nprojects: []\n");
 
-        let assert = specify()
-            .current_dir(project.root())
-            .args(["initiative", "registry", "validate"])
-            .assert()
-            .failure();
+        let assert =
+            specify().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
         assert_eq!(assert.get_output().status.code(), Some(2));
     }
 
     /// Plan "Done when" criterion: on a scaffolded project with no
-    /// registry, `specify initiative registry validate` exits 0.
+    /// registry, `specify registry validate` exits 0.
     #[test]
     fn registry_validate_on_bare_repo_green() {
         let project = Project::init();
@@ -1999,21 +1984,17 @@ projects:
             !project.root().join(".specify/registry.yaml").exists(),
             "bare repo must not have a registry"
         );
-        specify()
-            .current_dir(project.root())
-            .args(["initiative", "registry", "validate"])
-            .assert()
-            .success();
+        specify().current_dir(project.root()).args(["registry", "validate"]).assert().success();
     }
 
     // ---- Initiative brief CLI verbs (RFC-3a C14) ----
     //
-    // `specify initiative brief {init, show}` — scaffolds or prints
+    // `specify initiative {create, show}` — scaffolds or prints
     // `.specify/initiative.md`. The template byte-stability is the
-    // key contract: `init` must produce the same bytes every time so
+    // key contract: `create` must produce the same bytes every time so
     // operators can diff against the RFC-matching golden.
 
-    /// Byte-for-byte golden for `specify initiative brief init
+    /// Byte-for-byte golden for `specify initiative create
     /// traffic-modernisation`. Kept in-source (not a fixture file) so
     /// the assertion is a trivial `assert_eq!` against literal bytes
     /// — the plan's "Done when" criterion.
@@ -2038,13 +2019,13 @@ inputs: []
     }
 
     #[test]
-    fn brief_init_scaffolds_canonical_file() {
+    fn initiative_create_scaffolds_canonical_file() {
         let project = Project::init();
         assert!(!brief_path(&project).exists(), "bare project must not have initiative.md");
 
         specify()
             .current_dir(project.root())
-            .args(["initiative", "brief", "init", "traffic-modernisation"])
+            .args(["initiative", "create", "traffic-modernisation"])
             .assert()
             .success();
 
@@ -2053,12 +2034,12 @@ inputs: []
     }
 
     #[test]
-    fn brief_init_json_response() {
+    fn initiative_create_json_response() {
         let project = Project::init();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "brief", "init", "my-initiative"])
+            .args(["--format", "json", "initiative", "create", "my-initiative"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2073,13 +2054,13 @@ inputs: []
     }
 
     #[test]
-    fn brief_init_refuses_when_file_exists() {
+    fn initiative_create_refuses_when_file_exists() {
         let project = Project::init();
         write_brief(&project, "---\nname: pre-existing\n---\n\nhands off\n");
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "brief", "init", "pre-existing"])
+            .args(["--format", "json", "initiative", "create", "pre-existing"])
             .assert()
             .failure();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2093,12 +2074,12 @@ inputs: []
     }
 
     #[test]
-    fn brief_init_rejects_non_kebab_name() {
+    fn initiative_create_rejects_non_kebab_name() {
         let project = Project::init();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "brief", "init", "NotKebab"])
+            .args(["--format", "json", "initiative", "create", "NotKebab"])
             .assert()
             .failure();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2110,12 +2091,12 @@ inputs: []
     }
 
     #[test]
-    fn brief_show_absent() {
+    fn initiative_show_absent() {
         let project = Project::init();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "brief", "show"])
+            .args(["--format", "json", "initiative", "show"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2126,11 +2107,8 @@ inputs: []
             "path should point at initiative.md, got: {path}"
         );
 
-        let text = specify()
-            .current_dir(project.root())
-            .args(["initiative", "brief", "show"])
-            .assert()
-            .success();
+        let text =
+            specify().current_dir(project.root()).args(["initiative", "show"]).assert().success();
         let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
         assert!(
             stdout.contains("no initiative brief declared"),
@@ -2139,7 +2117,7 @@ inputs: []
     }
 
     #[test]
-    fn brief_show_valid_text_and_json() {
+    fn initiative_show_valid_text_and_json() {
         let project = Project::init();
         write_brief(
             &project,
@@ -2158,7 +2136,7 @@ inputs: []
         // JSON
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "brief", "show"])
+            .args(["--format", "json", "initiative", "show"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2175,11 +2153,8 @@ inputs: []
         );
 
         // Text
-        let text = specify()
-            .current_dir(project.root())
-            .args(["initiative", "brief", "show"])
-            .assert()
-            .success();
+        let text =
+            specify().current_dir(project.root()).args(["initiative", "show"]).assert().success();
         let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
         for fragment in
             ["name: traffic-modernisation", "path: ./inputs/legacy/", "kind: legacy-code"]
@@ -2192,15 +2167,12 @@ inputs: []
     }
 
     #[test]
-    fn brief_show_malformed_returns_error() {
+    fn initiative_show_malformed_returns_error() {
         let project = Project::init();
         write_brief(&project, "---\nname: BadName\n---\n\nbody\n");
 
-        let assert = specify()
-            .current_dir(project.root())
-            .args(["initiative", "brief", "show"])
-            .assert()
-            .failure();
+        let assert =
+            specify().current_dir(project.root()).args(["initiative", "show"]).assert().failure();
         assert_ne!(assert.get_output().status.code(), Some(0));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
         assert!(
@@ -2242,7 +2214,7 @@ inputs: []
 
     /// `specify plan validate` surfaces a malformed `registry.yaml`
     /// alongside plan validation results — the shape-validation hook
-    /// complementing the dedicated `specify initiative registry validate`
+    /// complementing the dedicated `specify registry validate`
     /// verb.
     #[test]
     fn initiative_validate_surfaces_registry_shape_errors() {
@@ -2281,12 +2253,12 @@ inputs: []
         let project = Project::init();
         specify()
             .current_dir(project.root())
-            .args(["initiative", "brief", "init", "rfc3a-planning"])
+            .args(["initiative", "create", "rfc3a-planning"])
             .assert()
             .success();
         specify()
             .current_dir(project.root())
-            .args(["plan", "init", "rfc3a-planning", "--source", "app=."])
+            .args(["plan", "create", "rfc3a-planning", "--source", "app=."])
             .assert()
             .success();
         specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();

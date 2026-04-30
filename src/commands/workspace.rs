@@ -3,8 +3,8 @@
 use serde::Serialize;
 use serde_json::Value;
 use specify::{
-    Error, Plan, PushOutcome, Registry, SlotKind, SlotStatus, sync_registry_workspace,
-    workspace_status,
+    Error, MergeProjectResult, MergeStatus, Plan, PushOutcome, RealGhClient, Registry, SlotKind,
+    SlotStatus, run_workspace_merge_impl, sync_registry_workspace, workspace_status,
 };
 
 use super::plan::require_file;
@@ -146,7 +146,7 @@ pub fn run_workspace_push(
 ) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
         Error::Config(
-            "No active plan found at .specify/plan.yaml. Run 'specify plan init' \
+            "No active plan found at .specify/plan.yaml. Run 'specify plan create' \
              to create one, or check whether the plan was already archived."
                 .to_string(),
         )
@@ -226,4 +226,169 @@ pub fn run_workspace_push(
     }
     let any_failed = results.iter().any(|r| r.status == PushOutcome::Failed);
     Ok(if any_failed { CliResult::GenericFailure } else { CliResult::Success })
+}
+
+// ---------------------------------------------------------------------------
+// workspace merge (RFC-9 §4A)
+// ---------------------------------------------------------------------------
+
+pub fn run_workspace_merge(
+    ctx: &CommandContext, projects: Vec<String>, dry_run: bool,
+) -> Result<CliResult, Error> {
+    let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
+        Error::Config(
+            "No active plan found at .specify/plan.yaml. Run 'specify plan create' \
+             to author one (or 'specify initiative create' first if .specify/initiative.md \
+             is also missing) before invoking 'specify workspace merge'."
+                .to_string(),
+        )
+    })?;
+    let plan = Plan::load(&plan_path)?;
+
+    let Some(registry) = Registry::load(&ctx.project_dir)? else {
+        return Err(Error::Config(
+            "No registry.yaml found; workspace merge requires a registry. \
+             Add projects via `specify registry add`."
+                .to_string(),
+        ));
+    };
+
+    let gh = RealGhClient;
+    let results =
+        run_workspace_merge_impl(&ctx.project_dir, &plan, &registry, &gh, &projects, dry_run)?;
+
+    let initiative_name = plan.name.clone();
+    let expected_branch = format!("specify/{initiative_name}");
+
+    match ctx.format {
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            #[serde(rename_all = "kebab-case")]
+            struct MergeBody {
+                initiative: String,
+                expected_branch: String,
+                projects: Vec<MergeItem>,
+                summary: MergeSummaryCounts,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                dry_run: Option<bool>,
+            }
+            #[derive(Serialize)]
+            #[serde(rename_all = "kebab-case")]
+            struct MergeItem {
+                name: String,
+                status: String,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                pr_number: Option<u64>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                url: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                head_ref_name: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                detail: Option<String>,
+            }
+            let summary = summarise(&results);
+            let items: Vec<MergeItem> = results
+                .iter()
+                .map(|r| MergeItem {
+                    name: r.name.clone(),
+                    status: r.status.to_string(),
+                    pr_number: r.pr_number,
+                    url: r.url.clone(),
+                    head_ref_name: r.head_ref_name.clone(),
+                    detail: r.detail.clone(),
+                })
+                .collect();
+            emit_response(MergeBody {
+                initiative: initiative_name,
+                expected_branch,
+                projects: items,
+                summary,
+                dry_run: dry_run.then_some(true),
+            });
+        }
+        OutputFormat::Text => {
+            print_merge_text(&results, &expected_branch, &plan.name, dry_run);
+        }
+    }
+
+    let any_failed = results.iter().any(is_failure_status);
+    Ok(if any_failed { CliResult::GenericFailure } else { CliResult::Success })
+}
+
+/// Statuses that warrant exit 1 (operator action required). `merged`,
+/// `would-merge`, and `no-branch` are normal classifications and exit
+/// 0; the failure-bucket statuses below force a non-zero exit so CI
+/// loops and the 2C umbrella skill can branch on the exit code.
+const fn is_failure_status(r: &MergeProjectResult) -> bool {
+    matches!(
+        r.status,
+        MergeStatus::Failed
+            | MergeStatus::FailedChecks
+            | MergeStatus::PendingChecks
+            | MergeStatus::BranchPatternMismatch
+            | MergeStatus::Closed
+    )
+}
+
+fn summarise(results: &[MergeProjectResult]) -> MergeSummaryCounts {
+    let mut s = MergeSummaryCounts::default();
+    for r in results {
+        match r.status {
+            MergeStatus::Merged => s.merged += 1,
+            MergeStatus::WouldMerge => s.would_merge += 1,
+            MergeStatus::PendingChecks => s.pending_checks += 1,
+            MergeStatus::FailedChecks => s.failed_checks += 1,
+            MergeStatus::Closed => s.closed += 1,
+            MergeStatus::NoBranch => s.no_branch += 1,
+            MergeStatus::BranchPatternMismatch => s.branch_pattern_mismatch += 1,
+            MergeStatus::Failed => s.failed += 1,
+        }
+    }
+    s
+}
+
+#[derive(Default, Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct MergeSummaryCounts {
+    merged: usize,
+    would_merge: usize,
+    pending_checks: usize,
+    failed_checks: usize,
+    closed: usize,
+    no_branch: usize,
+    branch_pattern_mismatch: usize,
+    failed: usize,
+}
+
+fn print_merge_text(
+    results: &[MergeProjectResult], expected_branch: &str, initiative: &str, dry_run: bool,
+) {
+    if dry_run {
+        println!("[dry-run] specify: workspace merge — {initiative} ({expected_branch})");
+    } else {
+        println!("specify: workspace merge — {initiative} ({expected_branch})");
+    }
+    println!();
+    for r in results {
+        let url = r.url.as_deref().unwrap_or("");
+        let pr = r.pr_number.map(|n| format!("PR #{n}")).unwrap_or_default();
+        println!("  {:<20} {:<24} {:<10} {}", r.name, r.status, pr, url);
+        if let Some(detail) = &r.detail {
+            println!("    {detail}");
+        }
+    }
+    let s = summarise(results);
+    println!();
+    println!(
+        "{} merged, {} would-merge, {} pending-checks, {} failed-checks, \
+         {} closed, {} no-branch, {} branch-pattern-mismatch, {} failed.",
+        s.merged,
+        s.would_merge,
+        s.pending_checks,
+        s.failed_checks,
+        s.closed,
+        s.no_branch,
+        s.branch_pattern_mismatch,
+        s.failed,
+    );
 }

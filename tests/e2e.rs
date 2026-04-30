@@ -126,6 +126,12 @@ impl Sub {
 /// Every way the user's tempdir might appear in stdout. macOS canonicalises
 /// `/var/folders/...` to `/private/var/folders/...` whenever a subcommand
 /// touches the filesystem, so we have to strip both spellings.
+///
+/// Apply the longest candidate first. On macOS the canonical tempdir
+/// path (`/private/var/folders/...`) is a superstring of the raw path
+/// (`/var/folders/...`); if we substitute the raw path first, we strip
+/// inside the canonical one and leave a stray `/private` prefix in the
+/// golden. Sorting by length descending avoids that.
 fn tempdir_subs(root: &Path) -> Vec<Sub> {
     let mut subs: Vec<Sub> = Vec::new();
     if let Some(raw) = root.to_str() {
@@ -137,6 +143,7 @@ fn tempdir_subs(root: &Path) -> Vec<Sub> {
     {
         subs.push(Sub::new(canonical_str.to_string(), TEMPDIR_PLACEHOLDER));
     }
+    subs.sort_by_key(|s| std::cmp::Reverse(s.from.len()));
     subs
 }
 
@@ -242,7 +249,7 @@ fn validate_good_change_passes() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "validate", ".specify/changes/my-change"])
+        .args(["--format", "json", "change", "validate", "my-change"])
         .assert()
         .success();
     assert_eq!(assert.get_output().status.code(), Some(0));
@@ -264,7 +271,7 @@ fn validate_bad_change_fails_with_exit_two() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "validate", ".specify/changes/my-change"])
+        .args(["--format", "json", "change", "validate", "my-change"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2), "validate on bad fixture must exit 2");
@@ -320,7 +327,7 @@ fn merge_two_spec_change_produces_baselines_and_archive() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "merge", ".specify/changes/my-change"])
+        .args(["--format", "json", "change", "merge", "run", "my-change"])
         .assert()
         .success();
 
@@ -363,7 +370,7 @@ fn task_progress_reports_counts_and_items() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "task", "progress", ".specify/changes/my-change"])
+        .args(["--format", "json", "change", "task", "progress", "my-change"])
         .assert()
         .success();
 
@@ -391,7 +398,7 @@ fn task_mark_marks_then_is_idempotent() {
     // First mark: flips - [ ] -> - [x] and reports idempotent: false.
     let first = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "task", "mark", ".specify/changes/my-change", "1.1"])
+        .args(["--format", "json", "change", "task", "mark", "my-change", "1.1"])
         .assert()
         .success();
     let first_value = parse_stdout(&first.get_output().stdout, project.root());
@@ -409,7 +416,7 @@ fn task_mark_marks_then_is_idempotent() {
     // Second mark: no-op, idempotent: true, file unchanged.
     let second = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "task", "mark", ".specify/changes/my-change", "1.1"])
+        .args(["--format", "json", "change", "task", "mark", "my-change", "1.1"])
         .assert()
         .success();
     let second_value = parse_stdout(&second.get_output().stdout, project.root());
@@ -476,13 +483,13 @@ fn schema_resolve_cached_returns_cached_source() {
 }
 
 // ---------------------------------------------------------------------------
-// 8. change outcome — round-trip through phase-outcome + change-outcome verb
+// 8. change outcome — round-trip through `outcome set` + `outcome show`
 // ---------------------------------------------------------------------------
 
 /// End-to-end round-trip for the `change outcome` read verb added in
-/// RFC-2 §1.1: stamp an outcome with `phase-outcome`, read it back with
-/// `change outcome --format json`, and assert the full JSON shape. Also
-/// covers the unstamped case where `outcome` must be `null`.
+/// RFC-2 §1.1: stamp an outcome with `change outcome set`, read it back
+/// with `change outcome show --format json`, and assert the full JSON
+/// shape. Also covers the unstamped case where `outcome` must be `null`.
 #[test]
 fn phase_outcome_round_trip_via_change_outcome_verb() {
     let project = Project::init();
@@ -492,7 +499,8 @@ fn phase_outcome_round_trip_via_change_outcome_verb() {
         .current_dir(project.root())
         .args([
             "change",
-            "phase-outcome",
+            "outcome",
+            "set",
             "foo",
             "build",
             "success",
@@ -506,7 +514,7 @@ fn phase_outcome_round_trip_via_change_outcome_verb() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "foo"])
+        .args(["--format", "json", "change", "outcome", "show", "foo"])
         .assert()
         .success();
     assert_eq!(assert.get_output().status.code(), Some(0));
@@ -537,7 +545,7 @@ fn phase_outcome_round_trip_via_change_outcome_verb() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "bar"])
+        .args(["--format", "json", "change", "outcome", "show", "bar"])
         .assert()
         .success();
     assert_eq!(assert.get_output().status.code(), Some(0));

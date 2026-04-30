@@ -169,6 +169,7 @@ pub fn create(
 
     std::fs::create_dir_all(change_dir.join("specs"))?;
     let metadata = ChangeMetadata {
+        version: crate::METADATA_VERSION,
         schema: schema.to_string(),
         status: LifecycleStatus::Defining,
         created_at: Some(format_rfc3339(now)),

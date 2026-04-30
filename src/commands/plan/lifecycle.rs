@@ -14,7 +14,7 @@ use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_plan_init(
+pub fn run_plan_create(
     ctx: &CommandContext, name: String, sources: Vec<(String, String)>,
 ) -> Result<CliResult, Error> {
     let plan_path = file_path(&ctx.project_dir);
@@ -39,12 +39,12 @@ pub fn run_plan_init(
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct InitBody {
+    struct CreateBody {
         plan: PlanRef,
     }
 
     match ctx.format {
-        OutputFormat::Json => emit_response(InitBody {
+        OutputFormat::Json => emit_response(CreateBody {
             plan: PlanRef {
                 name,
                 path: absolute_string(&plan_path),
