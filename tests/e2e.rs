@@ -300,7 +300,7 @@ fn validate_human_only_task_fails_with_exit_two() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "validate", ".specify/changes/my-change"])
+        .args(["--format", "json", "change", "validate", "my-change"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2), "validate must reject human-only tasks");
@@ -309,9 +309,7 @@ fn validate_human_only_task_fails_with_exit_two() {
     assert_eq!(actual["passed"], false);
     let task_results = actual["brief-results"]["tasks"].as_array().expect("tasks results");
     assert!(
-        task_results
-            .iter()
-            .any(|result| result["rule-id"] == "tasks.agent-completable"),
+        task_results.iter().any(|result| result["rule-id"] == "tasks.agent-completable"),
         "tasks.agent-completable should be reported: {task_results:#?}"
     );
 }

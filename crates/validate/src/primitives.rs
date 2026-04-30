@@ -159,17 +159,6 @@ pub fn tasks_have_verification_path(tasks: &TaskProgress) -> bool {
 }
 
 fn task_has_verification_signal(task: &Task) -> bool {
-    if let Some(directive) = &task.skill_directive {
-        let skill = directive.skill.as_str();
-        if skill.contains("test")
-            || skill.contains("review")
-            || skill.contains("validator")
-            || skill.contains("verify")
-        {
-            return true;
-        }
-    }
-
     const SIGNALS: &[&str] = &[
         "test",
         "tests",
@@ -195,6 +184,17 @@ fn task_has_verification_signal(task: &Task) -> bool {
         "swift",
         "assemble",
     ];
+
+    if let Some(directive) = &task.skill_directive {
+        let skill = directive.skill.as_str();
+        if skill.contains("test")
+            || skill.contains("review")
+            || skill.contains("validator")
+            || skill.contains("verify")
+        {
+            return true;
+        }
+    }
 
     let description = task.description.to_ascii_lowercase();
     SIGNALS.iter().any(|signal| description.contains(signal))
@@ -415,9 +415,7 @@ mod tests {
         assert!(!tasks_are_agent_completable(&progress));
         assert_eq!(
             first_human_only_task(&progress),
-            Some(
-                "1.1 Manually test the iOS and Android apps against the real API".to_string()
-            )
+            Some("1.1 Manually test the iOS and Android apps against the real API".to_string())
         );
     }
 

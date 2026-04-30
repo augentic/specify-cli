@@ -209,7 +209,8 @@ fn tasks_agent_completable(ctx: &BriefContext<'_>) -> RuleOutcome {
     if primitives::tasks_are_agent_completable(tasks) {
         RuleOutcome::Pass
     } else {
-        let task = primitives::first_human_only_task(tasks).unwrap_or_else(|| "unknown".to_string());
+        let task =
+            primitives::first_human_only_task(tasks).unwrap_or_else(|| "unknown".to_string());
         RuleOutcome::Fail {
             detail: format!(
                 "human-only task detected: `{task}`; generate an agent-verifiable code, fixture, mock, build, validation, or review task instead"
