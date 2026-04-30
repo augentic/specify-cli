@@ -9,7 +9,7 @@ use std::path::Path;
 
 use regex::Regex;
 use specify_spec::ParsedSpec;
-use specify_task::{Task, TaskProgress};
+use specify_task::TaskProgress;
 
 /// Return `true` if any line (after trimming trailing whitespace) equals
 /// `heading` exactly. Case-sensitive — a spec that writes `## why` instead
@@ -121,90 +121,6 @@ pub fn all_tasks_use_checkbox(tasks: &TaskProgress, content: &str) -> bool {
 
 pub fn tasks_grouped_under_headings(tasks: &TaskProgress) -> bool {
     tasks.tasks.iter().all(|t| !t.group.is_empty())
-}
-
-pub fn first_human_only_task(tasks: &TaskProgress) -> Option<String> {
-    const FORBIDDEN: &[&str] = &[
-        "manually test",
-        "manually verify",
-        "manually check",
-        "manually inspect",
-        "manually confirm",
-        "manually review",
-        "manual testing",
-        "manual verification",
-        "manual review",
-        "manual inspection",
-        "human review",
-        "human verification",
-        "human approval",
-        "human judgment",
-        "human intervention",
-        "real api",
-        "real-world api",
-        "real world api",
-        "production api",
-        "production credential",
-        "physical device",
-        "visual inspection",
-        "visually inspect",
-        "app store",
-        "ask the user",
-        "user confirmation",
-    ];
-
-    tasks.tasks.iter().find_map(|task| {
-        let description = task.description.to_ascii_lowercase();
-        FORBIDDEN
-            .iter()
-            .any(|phrase| description.contains(phrase))
-            .then(|| format!("{} {}", task.number, task.description))
-    })
-}
-
-pub fn tasks_are_agent_completable(tasks: &TaskProgress) -> bool {
-    first_human_only_task(tasks).is_none()
-}
-
-pub fn tasks_have_verification_path(tasks: &TaskProgress) -> bool {
-    tasks.tasks.iter().any(task_has_verification_signal)
-}
-
-fn task_has_verification_signal(task: &Task) -> bool {
-    const SIGNALS: &[&str] = &[
-        "test",
-        "tests",
-        "verify",
-        "verification",
-        "validate",
-        "validator",
-        "review",
-        "reviewer",
-        "fixture",
-        "fixtures",
-        "mock",
-        "mocks",
-        "contract",
-        "build",
-        "check",
-        "clippy",
-        "fmt",
-        "lint",
-    ];
-
-    if let Some(directive) = &task.skill_directive {
-        let skill = directive.skill.as_str();
-        if skill.contains("test")
-            || skill.contains("review")
-            || skill.contains("validator")
-            || skill.contains("verify")
-        {
-            return true;
-        }
-    }
-
-    let description = task.description.to_ascii_lowercase();
-    SIGNALS.iter().any(|signal| description.contains(signal))
 }
 
 /// Return `true` iff every crate/feature entry listed under the
@@ -409,46 +325,6 @@ mod tests {
         let bad = "- [ ] 1.1 Do thing\n";
         let progress = specify_task::parse_tasks(bad);
         assert!(!tasks_grouped_under_headings(&progress));
-    }
-
-    #[test]
-    fn tasks_reject_human_only_mobile_api_checks() {
-        let input = "\
-## 1. Verify
-
-- [ ] 1.1 Manually test the iOS and Android apps against the real API
-";
-        let progress = specify_task::parse_tasks(input);
-        assert!(!tasks_are_agent_completable(&progress));
-        assert_eq!(
-            first_human_only_task(&progress),
-            Some("1.1 Manually test the iOS and Android apps against the real API".to_string())
-        );
-    }
-
-    #[test]
-    fn tasks_accept_fixture_backed_agent_checks() {
-        let input = "\
-## 1. Verify
-
-- [ ] 1.1 Add fixture-backed effect tests for API success and failure responses <!-- skill: omnia:test-writer -->
-- [ ] 1.2 Verify iOS and Android shells build against the generated core
-";
-        let progress = specify_task::parse_tasks(input);
-        assert!(tasks_are_agent_completable(&progress));
-        assert!(tasks_have_verification_path(&progress));
-    }
-
-    #[test]
-    fn tasks_need_an_agent_verification_path() {
-        let input = "\
-## 1. Implement
-
-- [ ] 1.1 Create the login crate skeleton
-- [ ] 1.2 Wire the crate into the workspace
-";
-        let progress = specify_task::parse_tasks(input);
-        assert!(!tasks_have_verification_path(&progress));
     }
 
     #[test]
