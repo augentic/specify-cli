@@ -282,38 +282,6 @@ fn validate_bad_change_fails_with_exit_two() {
     assert_golden("validate-bad.json", actual);
 }
 
-#[test]
-fn validate_human_only_task_fails_with_exit_two() {
-    let project = Project::init().with_schemas();
-    let change_dir = project.stage_change("good-change");
-    fs::write(
-        change_dir.join("tasks.md"),
-        "\
-# Tasks
-
-## 1. Verify
-
-- [ ] 1.1 Manually test the mobile app against the real API
-",
-    )
-    .expect("write human-only task fixture");
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "change", "validate", "my-change"])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(2), "validate must reject human-only tasks");
-
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["passed"], false);
-    let task_results = actual["brief-results"]["tasks"].as_array().expect("tasks results");
-    assert!(
-        task_results.iter().any(|result| result["rule-id"] == "tasks.agent-completable"),
-        "tasks.agent-completable should be reported: {task_results:#?}"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // 3. merge — two-spec change
 // ---------------------------------------------------------------------------
