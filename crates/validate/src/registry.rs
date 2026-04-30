@@ -200,6 +200,40 @@ fn tasks_grouped_under_headings(ctx: &BriefContext<'_>) -> RuleOutcome {
     }
 }
 
+fn tasks_agent_completable(ctx: &BriefContext<'_>) -> RuleOutcome {
+    let Some(tasks) = ctx.tasks else {
+        return RuleOutcome::Fail {
+            detail: "tasks were not parsed".to_string(),
+        };
+    };
+    if primitives::tasks_are_agent_completable(tasks) {
+        RuleOutcome::Pass
+    } else {
+        let task =
+            primitives::first_human_only_task(tasks).unwrap_or_else(|| "unknown".to_string());
+        RuleOutcome::Fail {
+            detail: format!(
+                "human-only task detected: `{task}`; generate an agent-verifiable code, fixture, mock, build, validation, or review task instead"
+            ),
+        }
+    }
+}
+
+fn tasks_have_verification_path(ctx: &BriefContext<'_>) -> RuleOutcome {
+    let Some(tasks) = ctx.tasks else {
+        return RuleOutcome::Fail {
+            detail: "tasks were not parsed".to_string(),
+        };
+    };
+    if primitives::tasks_have_verification_path(tasks) {
+        RuleOutcome::Pass
+    } else {
+        RuleOutcome::Fail {
+            detail: "tasks must include at least one agent-verifiable test, fixture, mock, build, validation, or review step".to_string(),
+        }
+    }
+}
+
 const TASKS_RULES: &[Rule] = &[
     Rule {
         id: "tasks.use-checkbox-format",
@@ -212,6 +246,18 @@ const TASKS_RULES: &[Rule] = &[
         description: "Tasks grouped under `## ` headings",
         classification: Classification::Structural,
         check: tasks_grouped_under_headings,
+    },
+    Rule {
+        id: "tasks.agent-completable",
+        description: "Tasks are completable by an agent and do not require human-only validation",
+        classification: Classification::Structural,
+        check: tasks_agent_completable,
+    },
+    Rule {
+        id: "tasks.has-verification-path",
+        description: "Task list includes an agent-verifiable completion path",
+        classification: Classification::Structural,
+        check: tasks_have_verification_path,
     },
 ];
 
@@ -668,6 +714,77 @@ mod tests {
             change_dir,
             specs_dir,
             terminology: "crate",
+        }
+    }
+
+    fn task_ctx<'a>(
+        change_dir: &'a Path, specs_dir: &'a Path, content: &'a str,
+        tasks: &'a specify_task::TaskProgress,
+    ) -> BriefContext<'a> {
+        BriefContext {
+            id: "tasks",
+            content,
+            parsed_spec: None,
+            tasks: Some(tasks),
+            change_dir,
+            specs_dir,
+            terminology: "crate",
+        }
+    }
+
+    #[test]
+    fn agent_completable_rule_fails_manual_real_api_task() {
+        let dir = tempfile::tempdir().unwrap();
+        let specs_dir = dir.path().join("specs");
+        let content = "\
+## 1. Verify
+
+- [ ] 1.1 Manually test the mobile app against the real API
+";
+        let tasks = specify_task::parse_tasks(content);
+        let ctx = task_ctx(dir.path(), &specs_dir, content, &tasks);
+
+        match tasks_agent_completable(&ctx) {
+            RuleOutcome::Fail { detail } => {
+                assert!(detail.contains("human-only task detected"), "got: {detail}");
+            }
+            other @ RuleOutcome::Pass => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn agent_completable_rule_accepts_fixture_backed_test_task() {
+        let dir = tempfile::tempdir().unwrap();
+        let specs_dir = dir.path().join("specs");
+        let content = "\
+## 1. Verify
+
+- [ ] 1.1 Add fixture-backed API behavior tests <!-- skill: omnia:test-writer -->
+";
+        let tasks = specify_task::parse_tasks(content);
+        let ctx = task_ctx(dir.path(), &specs_dir, content, &tasks);
+
+        assert_eq!(tasks_agent_completable(&ctx), RuleOutcome::Pass);
+        assert_eq!(tasks_have_verification_path(&ctx), RuleOutcome::Pass);
+    }
+
+    #[test]
+    fn verification_path_rule_fails_task_list_without_check() {
+        let dir = tempfile::tempdir().unwrap();
+        let specs_dir = dir.path().join("specs");
+        let content = "\
+## 1. Implement
+
+- [ ] 1.1 Create the login crate skeleton
+";
+        let tasks = specify_task::parse_tasks(content);
+        let ctx = task_ctx(dir.path(), &specs_dir, content, &tasks);
+
+        match tasks_have_verification_path(&ctx) {
+            RuleOutcome::Fail { detail } => {
+                assert!(detail.contains("agent-verifiable"), "got: {detail}");
+            }
+            other @ RuleOutcome::Pass => panic!("expected Fail, got {other:?}"),
         }
     }
 
