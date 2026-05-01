@@ -122,6 +122,12 @@ impl ProjectConfig {
         Self::specify_dir(project_dir).join("specs")
     }
 
+    /// Absolute path to `<project_dir>/contracts/`.
+    #[must_use]
+    pub fn contracts_dir(project_dir: &Path) -> PathBuf {
+        project_dir.join("contracts")
+    }
+
     /// Absolute path to `<project_dir>/.specify/.cache/`.
     #[must_use]
     pub fn cache_dir(project_dir: &Path) -> PathBuf {
@@ -180,6 +186,7 @@ mod tests {
         assert_eq!(ProjectConfig::config_path(base), PathBuf::from("/a/b/.specify/project.yaml"));
         assert_eq!(ProjectConfig::changes_dir(base), PathBuf::from("/a/b/.specify/changes"));
         assert_eq!(ProjectConfig::specs_dir(base), PathBuf::from("/a/b/.specify/specs"));
+        assert_eq!(ProjectConfig::contracts_dir(base), PathBuf::from("/a/b/contracts"));
         assert_eq!(ProjectConfig::cache_dir(base), PathBuf::from("/a/b/.specify/.cache"));
         assert_eq!(ProjectConfig::archive_dir(base), PathBuf::from("/a/b/.specify/archive"));
     }

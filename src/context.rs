@@ -43,6 +43,10 @@ impl CommandContext {
         ProjectConfig::specs_dir(&self.project_dir)
     }
 
+    pub fn contracts_dir(&self) -> PathBuf {
+        ProjectConfig::contracts_dir(&self.project_dir)
+    }
+
     pub fn archive_dir(&self) -> PathBuf {
         ProjectConfig::archive_dir(&self.project_dir)
     }

@@ -43,8 +43,8 @@ pub fn sync_registry_workspace(project_dir: &Path) -> Result<(), Error> {
         }
     }
 
-    // Distribute central contracts to non-symlink workspace clones
-    let central_contracts = ProjectConfig::specify_dir(project_dir).join("contracts");
+    // Distribute central contracts to non-symlink workspace clones.
+    let central_contracts = ProjectConfig::contracts_dir(project_dir);
     if central_contracts.is_dir() {
         for project in &registry.projects {
             if project.url_materialises_as_symlink() {
@@ -54,11 +54,10 @@ pub fn sync_registry_workspace(project_dir: &Path) -> Result<(), Error> {
             if !slot.is_dir() {
                 continue;
             }
-            let dest_specify = slot.join(".specify");
-            if !dest_specify.is_dir() {
+            if !slot.join(".specify").is_dir() {
                 continue;
             }
-            let dest_contracts = dest_specify.join("contracts");
+            let dest_contracts = slot.join("contracts");
             if let Err(err) = distribute_contracts(&central_contracts, &dest_contracts) {
                 errors.push(format!("{} (contracts): {err}", project.name));
             }
@@ -389,9 +388,9 @@ fn resolve_greenfield_schema_uri(
     )))
 }
 
-/// Copy `.specify/contracts/` from the initiating repo into a workspace
-/// slot's `.specify/contracts/`. Removes the destination first for a
-/// clean replacement, then copies recursively.
+/// Copy root `contracts/` from the initiating repo into a workspace slot's
+/// root `contracts/`. Removes the destination first for a clean replacement,
+/// then copies recursively.
 fn distribute_contracts(src: &Path, dest: &Path) -> Result<(), Error> {
     if dest.exists() {
         std::fs::remove_dir_all(dest).map_err(|e| {
@@ -790,7 +789,7 @@ mod tests {
         std::fs::write(src.join("openapi.yaml"), "openapi: 3.1").unwrap();
         std::fs::write(nested.join("order.yaml"), "type: object").unwrap();
 
-        let dest = tmp.path().join("slot").join(".specify").join("contracts");
+        let dest = tmp.path().join("slot").join("contracts");
         distribute_contracts(&src, &dest).unwrap();
 
         assert!(dest.join("openapi.yaml").is_file());

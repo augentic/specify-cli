@@ -71,15 +71,15 @@ pub struct RegistryProject {
 #[serde(deny_unknown_fields)]
 pub struct ContractRoles {
     /// Contract files this project is the authoritative implementer of.
-    /// Paths relative to `.specify/contracts/`.
+    /// Paths relative to root `contracts/`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub produces: Vec<String>,
     /// Contract files this project calls or subscribes to as a client.
-    /// Paths relative to `.specify/contracts/`.
+    /// Paths relative to root `contracts/`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub consumes: Vec<String>,
     /// Contract files whose shape is dictated by an external system.
-    /// Paths relative to `.specify/contracts/`.
+    /// Paths relative to root `contracts/`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub imports: Vec<String>,
 }
