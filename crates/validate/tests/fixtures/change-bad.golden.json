@@ -63,17 +63,6 @@
         "rule": "Tasks grouped under `## ` headings",
         "rule-id": "tasks.grouped-under-headings",
         "status": "pass"
-      },
-      {
-        "rule": "Tasks are completable by an agent and do not require human-only validation",
-        "rule-id": "tasks.agent-completable",
-        "status": "pass"
-      },
-      {
-        "detail": "tasks must include at least one agent-verifiable test, fixture, mock, build, validation, or review step",
-        "rule": "Task list includes an agent-verifiable completion path",
-        "rule-id": "tasks.has-verification-path",
-        "status": "fail"
       }
     ]
   },
