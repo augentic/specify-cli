@@ -1,12 +1,12 @@
 #![allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
 
-//! `specify interface { list, validate }` (RFC-12 §"CLI surface").
+//! `specify contract { list, validate }` (RFC-12 §"CLI surface").
 //!
 //! Both verbs operate over the platform baseline at the path returned
 //! by `ProjectConfig::contracts_dir` (today: `<project>/contracts/`).
 //! They are deliberately read-only: `list` is a deterministic
 //! projection, and `validate` surfaces the
-//! [`specify::InterfaceFinding`] vector produced by the
+//! [`specify::ContractFinding`] vector produced by the
 //! `specify-validate` crate.
 //!
 //! Absent baseline (no `contracts/` directory) is **not** an error —
@@ -24,16 +24,16 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, validate_baseline_interfaces};
+use specify::{Error, validate_baseline_contracts};
 
-use crate::cli::{InterfaceAction, OutputFormat};
+use crate::cli::{ContractAction, OutputFormat};
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_interface(ctx: &CommandContext, action: InterfaceAction) -> Result<CliResult, Error> {
+pub fn run_contract(ctx: &CommandContext, action: ContractAction) -> Result<CliResult, Error> {
     match action {
-        InterfaceAction::List => list_interfaces(ctx),
-        InterfaceAction::Validate => validate_interfaces(ctx),
+        ContractAction::List => list_contracts(ctx),
+        ContractAction::Validate => validate_contracts(ctx),
     }
 }
 
@@ -41,7 +41,7 @@ pub fn run_interface(ctx: &CommandContext, action: InterfaceAction) -> Result<Cl
 /// (RFC-12 §"CLI surface").
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct InterfaceListEntry {
+struct ContractListEntry {
     /// Path to the contract file, relative to the project root.
     path: String,
     /// `openapi` or `asyncapi`.
@@ -49,7 +49,7 @@ struct InterfaceListEntry {
     /// `info.title`, or `null` when absent / non-string.
     title: Option<String>,
     /// `info.version`, or `null` when absent / non-string. Renders the
-    /// raw string verbatim — `interface validate` enforces `SemVer`.
+    /// raw string verbatim — `contract validate` enforces `SemVer`.
     version: Option<String>,
     /// `info.x-specify-id`, or `null` when absent (RFC-12 §"Optional
     /// rename-stable identity").
@@ -57,7 +57,7 @@ struct InterfaceListEntry {
     x_specify_id: Option<String>,
 }
 
-fn list_interfaces(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn list_contracts(ctx: &CommandContext) -> Result<CliResult, Error> {
     let contracts_dir = ctx.contracts_dir();
     let entries = collect_entries(&contracts_dir, &ctx.project_dir);
 
@@ -67,11 +67,11 @@ fn list_interfaces(ctx: &CommandContext) -> Result<CliResult, Error> {
             #[serde(rename_all = "kebab-case")]
             struct ListBody {
                 contracts_dir: String,
-                interfaces: Vec<InterfaceListEntry>,
+                contracts: Vec<ContractListEntry>,
             }
             emit_response(ListBody {
                 contracts_dir: contracts_dir.display().to_string(),
-                interfaces: entries,
+                contracts: entries,
             });
         }
         OutputFormat::Text => {
@@ -85,9 +85,9 @@ fn list_interfaces(ctx: &CommandContext) -> Result<CliResult, Error> {
     Ok(CliResult::Success)
 }
 
-fn validate_interfaces(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn validate_contracts(ctx: &CommandContext) -> Result<CliResult, Error> {
     let contracts_dir = ctx.contracts_dir();
-    let findings = validate_baseline_interfaces(&contracts_dir);
+    let findings = validate_baseline_contracts(&contracts_dir);
     let ok = findings.is_empty();
     let exit_code = if ok { CliResult::Success } else { CliResult::ValidationFailed };
 
@@ -126,7 +126,10 @@ fn validate_interfaces(ctx: &CommandContext) -> Result<CliResult, Error> {
         OutputFormat::Text => {
             if ok {
                 if contracts_dir.is_dir() {
-                    println!("PASS — every top-level contract under {} is well-formed", contracts_dir.display());
+                    println!(
+                        "PASS — every top-level contract under {} is well-formed",
+                        contracts_dir.display()
+                    );
                 } else {
                     println!("no contracts directory at {}", contracts_dir.display());
                 }
@@ -146,7 +149,7 @@ fn validate_interfaces(ctx: &CommandContext) -> Result<CliResult, Error> {
     Ok(exit_code)
 }
 
-fn collect_entries(contracts_dir: &Path, project_dir: &Path) -> Vec<InterfaceListEntry> {
+fn collect_entries(contracts_dir: &Path, project_dir: &Path) -> Vec<ContractListEntry> {
     if !contracts_dir.is_dir() {
         return Vec::new();
     }
@@ -158,7 +161,7 @@ fn collect_entries(contracts_dir: &Path, project_dir: &Path) -> Vec<InterfaceLis
         return Vec::new();
     };
 
-    let mut out: Vec<InterfaceListEntry> = Vec::new();
+    let mut out: Vec<ContractListEntry> = Vec::new();
     for entry in walker.flatten() {
         if !entry.is_file() {
             continue;
@@ -173,7 +176,7 @@ fn collect_entries(contracts_dir: &Path, project_dir: &Path) -> Vec<InterfaceLis
             continue;
         };
         let info = value.get("info");
-        out.push(InterfaceListEntry {
+        out.push(ContractListEntry {
             path: relative_path_string(&entry, project_dir),
             format,
             title: info.and_then(|i| i.get("title")).and_then(|v| v.as_str()).map(str::to_string),
@@ -203,13 +206,10 @@ fn top_level_format(value: &Value) -> Option<&'static str> {
 }
 
 fn relative_path_string(path: &Path, project_dir: &Path) -> String {
-    path.strip_prefix(project_dir)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .into_owned()
+    path.strip_prefix(project_dir).unwrap_or(path).to_string_lossy().into_owned()
 }
 
-fn print_list_table(entries: &[InterfaceListEntry]) {
+fn print_list_table(entries: &[ContractListEntry]) {
     let mut path_w = "PATH".len();
     let mut format_w = "FORMAT".len();
     let mut title_w = "TITLE".len();
@@ -278,7 +278,7 @@ mod tests {
     fn list_no_contracts_dir_is_success() {
         let tmp = TempDir::new().unwrap();
         let ctx = ctx_for(&tmp);
-        let result = list_interfaces(&ctx).expect("list ok");
+        let result = list_contracts(&ctx).expect("list ok");
         assert_eq!(result, CliResult::Success);
     }
 
@@ -296,11 +296,7 @@ mod tests {
             "messages/orders.yaml",
             "asyncapi: '3.0.0'\ninfo:\n  title: Orders\n  version: 1.2.3\n",
         );
-        write_contract(
-            &tmp,
-            "schemas/user.yaml",
-            "$id: urn:test\ntitle: User\ndescription: x\n",
-        );
+        write_contract(&tmp, "schemas/user.yaml", "$id: urn:test\ntitle: User\ndescription: x\n");
 
         let entries = collect_entries(&ctx.contracts_dir(), &ctx.project_dir);
         assert_eq!(entries.len(), 2, "schemas/ excluded");
@@ -318,7 +314,7 @@ mod tests {
     fn validate_no_contracts_dir_is_success() {
         let tmp = TempDir::new().unwrap();
         let ctx = ctx_for(&tmp);
-        let result = validate_interfaces(&ctx).expect("validate ok");
+        let result = validate_contracts(&ctx).expect("validate ok");
         assert_eq!(result, CliResult::Success);
     }
 
@@ -331,7 +327,7 @@ mod tests {
             "http/user-api.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n  x-specify-id: user-api\n",
         );
-        let result = validate_interfaces(&ctx).expect("validate ok");
+        let result = validate_contracts(&ctx).expect("validate ok");
         assert_eq!(result, CliResult::Success);
     }
 
@@ -344,7 +340,7 @@ mod tests {
             "http/user-api.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 2024-01-15\n",
         );
-        let result = validate_interfaces(&ctx).expect("validate ran");
+        let result = validate_contracts(&ctx).expect("validate ran");
         assert_eq!(result, CliResult::ValidationFailed);
     }
 
@@ -362,7 +358,7 @@ mod tests {
             "http/b.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: B\n  version: 1.0.0\n  x-specify-id: shared\n",
         );
-        let result = validate_interfaces(&ctx).expect("validate ran");
+        let result = validate_contracts(&ctx).expect("validate ran");
         assert_eq!(result, CliResult::ValidationFailed);
     }
 }

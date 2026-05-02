@@ -86,9 +86,9 @@ pub enum Commands {
     },
 
     /// Inspect and validate baseline contracts under the project's `contracts/` directory (RFC-12).
-    Interface {
+    Contract {
         #[command(subcommand)]
-        action: InterfaceAction,
+        action: ContractAction,
     },
 
     /// Generate shell completions for the given shell.
@@ -449,18 +449,18 @@ pub enum RegistryAction {
     },
 }
 
-/// Interface (top-level `OpenAPI` / `AsyncAPI` contract) operations
+/// Contract (top-level `OpenAPI` / `AsyncAPI` contract) operations
 /// (RFC-12).
 ///
 /// The project's `contracts/` directory carries the merged platform
 /// baseline. These verbs are the read / validate counterpart to the
-/// per-change `/interfaces:*` skills: `list` projects every top-level
+/// per-change `/contract:*` skills: `list` projects every top-level
 /// contract for inspection, `validate` enforces the RFC-12 §Validation
 /// rules (`SemVer` `info.version`; format + cross-repo uniqueness on
 /// `info.x-specify-id` when present). Both no-op with exit 0 when
 /// `contracts/` is absent.
 #[derive(Subcommand)]
-pub enum InterfaceAction {
+pub enum ContractAction {
     /// Project every top-level contract under `contracts/`
     /// (`(file, format, info.title, info.version, info.x-specify-id)`).
     ///

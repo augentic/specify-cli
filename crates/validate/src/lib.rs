@@ -23,13 +23,13 @@ use specify_schema::PipelineView;
 use specify_spec::ParsedSpec;
 use specify_task::TaskProgress;
 
-pub mod interfaces;
+pub mod contracts;
 mod primitives;
 mod registry;
 mod run;
 mod serialize;
 
-pub use interfaces::{InterfaceFinding, validate_baseline_interfaces};
+pub use contracts::{ContractFinding, validate_baseline_contracts};
 pub use registry::{cross_rules, rules_for};
 pub use run::validate_change;
 pub use serialize::serialize_report;

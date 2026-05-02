@@ -1,4 +1,4 @@
-//! Baseline-contract interface checks (RFC-12 §Validation).
+//! Baseline-contract checks (RFC-12 §Validation).
 //!
 //! Walks the supplied `contracts/` directory (typically the project
 //! baseline at `<project>/contracts/`), projects each top-level
@@ -6,11 +6,11 @@
 //! `asyncapi:` key — format detection per RFC-12 §"Top-level
 //! contracts"), and enforces three rules:
 //!
-//! 1. `interfaces.version-is-semver` — `info.version` must parse as
+//! 1. `contract.version-is-semver` — `info.version` must parse as
 //!    `SemVer` (prerelease labels included; the `semver` crate decides).
-//! 2. `interfaces.id-format` — when `info.x-specify-id` is present,
+//! 2. `contract.id-format` — when `info.x-specify-id` is present,
 //!    matches `^[a-z][a-z0-9-]*$` and is ≤ 64 characters.
-//! 3. `interfaces.id-unique` — every `info.x-specify-id` value is
+//! 3. `contract.id-unique` — every `info.x-specify-id` value is
 //!    unique across the walked set; on duplicates, both offending
 //!    paths are reported.
 //!
@@ -25,25 +25,25 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-/// One validation finding produced by [`validate_baseline_interfaces`].
+/// One validation finding produced by [`validate_baseline_contracts`].
 ///
-/// `rule_id` is one of `interfaces.version-is-semver`,
-/// `interfaces.id-format`, or `interfaces.id-unique`. `path` is the
+/// `rule_id` is one of `contract.version-is-semver`,
+/// `contract.id-format`, or `contract.id-unique`. `path` is the
 /// absolute path to the offending YAML file, suitable to render
 /// verbatim in the operator's terminal.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InterfaceFinding {
+pub struct ContractFinding {
     /// Absolute path to the contract file the finding refers to.
     pub path: PathBuf,
-    /// Stable rule identifier (`interfaces.<rule>`).
+    /// Stable rule identifier (`contract.<rule>`).
     pub rule_id: &'static str,
     /// Human-readable failure detail (file-name-aware).
     pub detail: String,
 }
 
-const RULE_VERSION_IS_SEMVER: &str = "interfaces.version-is-semver";
-const RULE_ID_FORMAT: &str = "interfaces.id-format";
-const RULE_ID_UNIQUE: &str = "interfaces.id-unique";
+const RULE_VERSION_IS_SEMVER: &str = "contract.version-is-semver";
+const RULE_ID_FORMAT: &str = "contract.id-format";
+const RULE_ID_UNIQUE: &str = "contract.id-unique";
 
 /// Run the RFC-12 §Validation checks across `contracts_dir`.
 ///
@@ -53,14 +53,14 @@ const RULE_ID_UNIQUE: &str = "interfaces.id-unique";
 /// listed in the module docs, and files appear in lexicographic path
 /// order (the `glob` crate's natural enumeration).
 #[must_use]
-pub fn validate_baseline_interfaces(contracts_dir: &Path) -> Vec<InterfaceFinding> {
+pub fn validate_baseline_contracts(contracts_dir: &Path) -> Vec<ContractFinding> {
     if !contracts_dir.is_dir() {
         return Vec::new();
     }
 
     let docs = collect_top_level_docs(contracts_dir);
 
-    let mut findings: Vec<InterfaceFinding> = Vec::new();
+    let mut findings: Vec<ContractFinding> = Vec::new();
     let mut id_to_paths: HashMap<String, Vec<PathBuf>> = HashMap::new();
 
     for doc in &docs {
@@ -68,7 +68,7 @@ pub fn validate_baseline_interfaces(contracts_dir: &Path) -> Vec<InterfaceFindin
 
         match version_str(info) {
             Some(v) if semver::Version::parse(v).is_ok() => {}
-            Some(v) => findings.push(InterfaceFinding {
+            Some(v) => findings.push(ContractFinding {
                 path: doc.path.clone(),
                 rule_id: RULE_VERSION_IS_SEMVER,
                 detail: format!(
@@ -76,7 +76,7 @@ pub fn validate_baseline_interfaces(contracts_dir: &Path) -> Vec<InterfaceFindin
                      including optional prerelease labels)"
                 ),
             }),
-            None => findings.push(InterfaceFinding {
+            None => findings.push(ContractFinding {
                 path: doc.path.clone(),
                 rule_id: RULE_VERSION_IS_SEMVER,
                 detail: "info.version is missing or not a string; \
@@ -90,7 +90,7 @@ pub fn validate_baseline_interfaces(contracts_dir: &Path) -> Vec<InterfaceFindin
             if is_valid_specify_id(id) {
                 id_to_paths.entry(id.to_string()).or_default().push(doc.path.clone());
             } else {
-                findings.push(InterfaceFinding {
+                findings.push(ContractFinding {
                     path: doc.path.clone(),
                     rule_id: RULE_ID_FORMAT,
                     detail: format!(
@@ -108,7 +108,7 @@ pub fn validate_baseline_interfaces(contracts_dir: &Path) -> Vec<InterfaceFindin
         }
         let listed: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
         for path in paths {
-            findings.push(InterfaceFinding {
+            findings.push(ContractFinding {
                 path: path.clone(),
                 rule_id: RULE_ID_UNIQUE,
                 detail: format!(
@@ -244,7 +244,7 @@ mod tests {
         tmp.path().join("contracts")
     }
 
-    fn finding_kinds(findings: &[InterfaceFinding]) -> Vec<&'static str> {
+    fn finding_kinds(findings: &[ContractFinding]) -> Vec<&'static str> {
         findings.iter().map(|f| f.rule_id).collect()
     }
 
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn absent_directory_returns_no_findings() {
         let tmp = TempDir::new().unwrap();
-        let findings = validate_baseline_interfaces(&tmp.path().join("contracts"));
+        let findings = validate_baseline_contracts(&tmp.path().join("contracts"));
         assert!(findings.is_empty());
     }
 
@@ -261,7 +261,7 @@ mod tests {
     fn empty_directory_returns_no_findings() {
         let tmp = TempDir::new().unwrap();
         fs::create_dir_all(tmp.path().join("contracts")).unwrap();
-        let findings = validate_baseline_interfaces(&contracts_dir(&tmp));
+        let findings = validate_baseline_contracts(&contracts_dir(&tmp));
         assert!(findings.is_empty());
     }
 
@@ -273,7 +273,7 @@ mod tests {
             "http/user-api.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n",
         );
-        assert!(validate_baseline_interfaces(&contracts_dir(&tmp)).is_empty());
+        assert!(validate_baseline_contracts(&contracts_dir(&tmp)).is_empty());
     }
 
     #[test]
@@ -284,7 +284,7 @@ mod tests {
             "http/user-api.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0-draft.1\n",
         );
-        assert!(validate_baseline_interfaces(&contracts_dir(&tmp)).is_empty());
+        assert!(validate_baseline_contracts(&contracts_dir(&tmp)).is_empty());
     }
 
     #[test]
@@ -295,7 +295,7 @@ mod tests {
             "messages/orders.yaml",
             "asyncapi: '3.0.0'\ninfo:\n  title: Orders\n  version: 2024-01-15\n",
         );
-        let findings = validate_baseline_interfaces(&contracts_dir(&tmp));
+        let findings = validate_baseline_contracts(&contracts_dir(&tmp));
         assert_eq!(finding_kinds(&findings), vec![RULE_VERSION_IS_SEMVER]);
     }
 
@@ -307,14 +307,14 @@ mod tests {
             "schemas/user.yaml",
             "$id: urn:specify:schemas/user\ntitle: User\ndescription: A user.\ntype: object\n",
         );
-        assert!(validate_baseline_interfaces(&contracts_dir(&tmp)).is_empty());
+        assert!(validate_baseline_contracts(&contracts_dir(&tmp)).is_empty());
     }
 
     #[test]
     fn unparseable_yaml_is_skipped() {
         let tmp = TempDir::new().unwrap();
         write_contract(&tmp, "http/broken.yaml", ":this is not yaml: [\n");
-        assert!(validate_baseline_interfaces(&contracts_dir(&tmp)).is_empty());
+        assert!(validate_baseline_contracts(&contracts_dir(&tmp)).is_empty());
     }
 
     // ---------- semver rule ----------
@@ -327,7 +327,7 @@ mod tests {
             "http/user-api.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 2024-01-15\n",
         );
-        let findings = validate_baseline_interfaces(&contracts_dir(&tmp));
+        let findings = validate_baseline_contracts(&contracts_dir(&tmp));
         assert_eq!(finding_kinds(&findings), vec![RULE_VERSION_IS_SEMVER]);
         assert!(findings[0].detail.contains("2024-01-15"));
     }
@@ -340,19 +340,15 @@ mod tests {
             "http/user-api.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: '1'\n",
         );
-        let findings = validate_baseline_interfaces(&contracts_dir(&tmp));
+        let findings = validate_baseline_contracts(&contracts_dir(&tmp));
         assert_eq!(finding_kinds(&findings), vec![RULE_VERSION_IS_SEMVER]);
     }
 
     #[test]
     fn missing_version_fails() {
         let tmp = TempDir::new().unwrap();
-        write_contract(
-            &tmp,
-            "http/user-api.yaml",
-            "openapi: '3.1.0'\ninfo:\n  title: User API\n",
-        );
-        let findings = validate_baseline_interfaces(&contracts_dir(&tmp));
+        write_contract(&tmp, "http/user-api.yaml", "openapi: '3.1.0'\ninfo:\n  title: User API\n");
+        let findings = validate_baseline_contracts(&contracts_dir(&tmp));
         assert_eq!(finding_kinds(&findings), vec![RULE_VERSION_IS_SEMVER]);
         assert!(findings[0].detail.contains("missing"));
     }
@@ -367,7 +363,7 @@ mod tests {
             "http/user-api.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n  x-specify-id: User-API\n",
         );
-        let findings = validate_baseline_interfaces(&contracts_dir(&tmp));
+        let findings = validate_baseline_contracts(&contracts_dir(&tmp));
         assert_eq!(finding_kinds(&findings), vec![RULE_ID_FORMAT]);
     }
 
@@ -379,7 +375,7 @@ mod tests {
             "http/user-api.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n  x-specify-id: -leading\n",
         );
-        let findings = validate_baseline_interfaces(&contracts_dir(&tmp));
+        let findings = validate_baseline_contracts(&contracts_dir(&tmp));
         assert_eq!(finding_kinds(&findings), vec![RULE_ID_FORMAT]);
     }
 
@@ -394,7 +390,7 @@ mod tests {
                 "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n  x-specify-id: {too_long}\n"
             ),
         );
-        let findings = validate_baseline_interfaces(&contracts_dir(&tmp));
+        let findings = validate_baseline_contracts(&contracts_dir(&tmp));
         assert_eq!(finding_kinds(&findings), vec![RULE_ID_FORMAT]);
     }
 
@@ -406,7 +402,7 @@ mod tests {
             "http/user-api.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n  x-specify-id: user-api\n",
         );
-        assert!(validate_baseline_interfaces(&contracts_dir(&tmp)).is_empty());
+        assert!(validate_baseline_contracts(&contracts_dir(&tmp)).is_empty());
     }
 
     // ---------- id-unique rule ----------
@@ -424,7 +420,7 @@ mod tests {
             "http/billing-api.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: Billing API\n  version: 1.0.0\n  x-specify-id: shared\n",
         );
-        let findings = validate_baseline_interfaces(&contracts_dir(&tmp));
+        let findings = validate_baseline_contracts(&contracts_dir(&tmp));
         assert_eq!(findings.len(), 2);
         assert!(findings.iter().all(|f| f.rule_id == RULE_ID_UNIQUE));
         assert!(
@@ -450,6 +446,6 @@ mod tests {
             "http/billing-api.yaml",
             "openapi: '3.1.0'\ninfo:\n  title: Billing API\n  version: 1.0.0\n",
         );
-        assert!(validate_baseline_interfaces(&contracts_dir(&tmp)).is_empty());
+        assert!(validate_baseline_contracts(&contracts_dir(&tmp)).is_empty());
     }
 }
