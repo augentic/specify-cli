@@ -1390,13 +1390,11 @@ fn registry_with_contract_roles_parses_and_validates() {
     let roles = traffic.contracts.as_ref().expect("traffic has contracts");
     assert_eq!(roles.produces, vec!["http/traffic-api.yaml"]);
     assert_eq!(roles.consumes, vec!["http/ingest-api.yaml"]);
-    assert!(roles.imports.is_empty());
 
     let ingest = &registry.projects[1];
     let roles = ingest.contracts.as_ref().expect("ingest has contracts");
     assert_eq!(roles.produces, vec!["http/ingest-api.yaml"]);
     assert_eq!(roles.consumes, vec!["schemas/order-placed.yaml"]);
-    assert!(roles.imports.is_empty());
 }
 
 #[test]
@@ -1420,13 +1418,11 @@ fn registry_contract_roles_round_trip_omits_empty_fields() {
             contracts: Some(ContractRoles {
                 produces: vec!["http/traffic-api.yaml".into()],
                 consumes: vec![],
-                imports: vec![],
             }),
         }],
     };
     let yaml = serde_saphyr::to_string(&original).expect("serialize");
     assert!(!yaml.contains("consumes"), "empty consumes should be omitted: {yaml}");
-    assert!(!yaml.contains("imports"), "empty imports should be omitted: {yaml}");
     let round_tripped: Registry = serde_saphyr::from_str(&yaml).expect("re-parse");
     assert_eq!(round_tripped, original);
 }
@@ -1478,34 +1474,26 @@ projects:
     }
 }
 
+/// RFC-12 dropped `contracts.imports`. Any registry that still
+/// declares the field after the upgrade fails fast at parse time
+/// (`#[serde(deny_unknown_fields)]`) — that diagnostic is the
+/// documented migration trigger from RFC-12 §Migration.
 #[test]
-fn registry_rejects_produce_import_mutual_exclusion_violation() {
+fn registry_rejects_unknown_imports_field() {
     let yaml = "\
 version: 1
 projects:
   - name: alpha
     url: .
     schema: omnia@v1
-    description: Alpha service
-    contracts:
-      produces:
-        - http/shared-api.yaml
-  - name: beta
-    url: ../beta
-    schema: omnia@v1
-    description: Beta service
     contracts:
       imports:
-        - http/shared-api.yaml
+        - http/external-api.yaml
 ";
     let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("produce/import violation");
+    let err = Registry::load(tmp.path()).expect_err("legacy imports field rejected");
     match err {
-        Error::Config(msg) => {
-            assert!(msg.contains("http/shared-api.yaml"), "msg: {msg}");
-            assert!(msg.contains("produces"), "msg: {msg}");
-            assert!(msg.contains("imports"), "msg: {msg}");
-        }
+        Error::Config(msg) => assert!(msg.contains("imports"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -1581,27 +1569,6 @@ projects:
         }
         other => panic!("wrong variant: {other:?}"),
     }
-}
-
-#[test]
-fn registry_allows_imports_and_consumes_overlap() {
-    let yaml = "\
-version: 1
-projects:
-  - name: alpha
-    url: .
-    schema: omnia@v1
-    contracts:
-      imports:
-        - http/external-api.yaml
-      consumes:
-        - http/external-api.yaml
-";
-    let tmp = scaffold_registry(yaml);
-    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
-    let roles = registry.projects[0].contracts.as_ref().unwrap();
-    assert_eq!(roles.imports, vec!["http/external-api.yaml"]);
-    assert_eq!(roles.consumes, vec!["http/external-api.yaml"]);
 }
 
 #[test]

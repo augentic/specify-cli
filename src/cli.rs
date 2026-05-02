@@ -85,6 +85,12 @@ pub enum Commands {
         action: WorkspaceAction,
     },
 
+    /// Inspect and validate baseline contracts under the project's `contracts/` directory (RFC-12).
+    Interface {
+        #[command(subcommand)]
+        action: InterfaceAction,
+    },
+
     /// Generate shell completions for the given shell.
     #[command(hide = true)]
     Completions {
@@ -441,6 +447,35 @@ pub enum RegistryAction {
         /// Kebab-case project name to remove.
         name: String,
     },
+}
+
+/// Interface (top-level `OpenAPI` / `AsyncAPI` contract) operations
+/// (RFC-12).
+///
+/// The project's `contracts/` directory carries the merged platform
+/// baseline. These verbs are the read / validate counterpart to the
+/// per-change `/interfaces:*` skills: `list` projects every top-level
+/// contract for inspection, `validate` enforces the RFC-12 §Validation
+/// rules (`SemVer` `info.version`; format + cross-repo uniqueness on
+/// `info.x-specify-id` when present). Both no-op with exit 0 when
+/// `contracts/` is absent.
+#[derive(Subcommand)]
+pub enum InterfaceAction {
+    /// Project every top-level contract under `contracts/`
+    /// (`(file, format, info.title, info.version, info.x-specify-id)`).
+    ///
+    /// Format detection per RFC-12 §"Top-level contracts": a YAML
+    /// file is top-level iff its root carries `openapi:` or
+    /// `asyncapi:`. Standalone JSON Schemas are payload vocabulary
+    /// and are skipped.
+    List,
+    /// Run the RFC-12 §Validation checks across `contracts/`.
+    ///
+    /// Three rules: `SemVer` `info.version`, kebab-case + ≤64-char
+    /// `info.x-specify-id` when present, cross-repo uniqueness on
+    /// every declared `info.x-specify-id`. Exits
+    /// `CliResult::ValidationFailed` on any finding.
+    Validate,
 }
 
 #[derive(Subcommand)]

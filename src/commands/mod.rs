@@ -1,6 +1,7 @@
 pub mod change;
 pub mod init;
 pub mod initiative;
+pub mod interface;
 pub mod plan;
 pub mod registry;
 pub mod schema;
@@ -61,6 +62,9 @@ pub fn run(cli: Cli) -> CliResult {
                 workspace::run_workspace_merge(ctx, projects, dry_run)
             }),
         },
+        Commands::Interface { action } => {
+            run_with_project(cli.format, |ctx| interface::run_interface(ctx, action))
+        }
         Commands::Completions { shell } => {
             let mut cmd = <crate::cli::Cli as clap::CommandFactory>::command();
             clap_complete::generate(shell, &mut cmd, "specify", &mut std::io::stdout());

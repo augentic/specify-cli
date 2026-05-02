@@ -37,8 +37,9 @@ pub use specify_spec::{
 };
 pub use specify_task::{SkillDirective, Task, TaskProgress, mark_complete, parse_tasks};
 pub use specify_validate::{
-    BriefContext, Classification, CrossContext, CrossRule, Rule, RuleOutcome, ValidationReport,
-    ValidationResult, cross_rules, rules_for, serialize_report, validate_change,
+    BriefContext, Classification, CrossContext, CrossRule, InterfaceFinding, Rule, RuleOutcome,
+    ValidationReport, ValidationResult, cross_rules, rules_for, serialize_report,
+    validate_baseline_interfaces, validate_change,
 };
 
 mod config;
