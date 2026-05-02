@@ -4,7 +4,7 @@
 //! See also: the `specify` binary (`src/main.rs`) and domain crates under
 //! `crates/` for the underlying logic.
 
-pub use config::ProjectConfig;
+pub use config::{ProjectConfig, detect_legacy_layout};
 pub use init::{
     HUB_SCHEMA_SENTINEL, InitOptions, InitResult, VersionMode, ensure_specify_gitignore_entries,
     init,

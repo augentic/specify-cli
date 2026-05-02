@@ -260,7 +260,7 @@ pub fn run_plan_transition(
 }
 
 pub fn run_plan_archive(ctx: &CommandContext, force: bool) -> Result<CliResult, Error> {
-    let plan_path = ctx.project_dir.join(".specify/plan.yaml");
+    let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if !plan_path.exists() {
         return Err(Error::ArtifactNotFound {
             kind: "plan.yaml",
@@ -268,10 +268,11 @@ pub fn run_plan_archive(ctx: &CommandContext, force: bool) -> Result<CliResult, 
         });
     }
     let archive_dir = ProjectConfig::archive_dir(&ctx.project_dir).join("plans");
+    let initiative_path = ProjectConfig::initiative_path(&ctx.project_dir);
 
     let plan_name = Plan::load(&plan_path)?.name;
 
-    match Plan::archive(&plan_path, &archive_dir, force) {
+    match Plan::archive(&plan_path, &initiative_path, &archive_dir, force) {
         Ok((archived, archived_plans_dir)) => {
             match ctx.format {
                 OutputFormat::Json => {

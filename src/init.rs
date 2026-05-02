@@ -10,11 +10,12 @@
 //! overwriting `project.yaml` with byte-identical content.
 //!
 //! Hub mode (`InitOptions::hub: true`, RFC-9 §1D) takes a different
-//! shape: a registry-only platform hub holds `registry.yaml`,
-//! `initiative.md`, and a sentinel `project.yaml { schema: hub, hub:
-//! true }` but never carries phase-pipeline rules of its own. Hub init
-//! refuses to run when `.specify/` already exists so it never clobbers
-//! a regular single-repo project.
+//! shape: a registry-only platform hub holds `registry.yaml` and
+//! `initiative.md` at the repo root and a sentinel `project.yaml {
+//! schema: hub, hub: true }` under `.specify/`, but never carries
+//! phase-pipeline rules of its own. Hub init refuses to run when
+//! `.specify/` already exists so it never clobbers a regular
+//! single-repo project.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -49,10 +50,11 @@ pub struct InitOptions<'a> {
     /// Controls what `specify_version` gets written into `project.yaml`.
     pub version_mode: VersionMode,
     /// When `true`, scaffold a registry-only platform **hub** (RFC-9
-    /// §1D) instead of a regular project: writes `registry.yaml`,
-    /// `initiative.md`, and a sentinel `project.yaml { schema: hub,
-    /// hub: true }`. Hub init refuses to run when `.specify/` already
-    /// exists so it never clobbers a regular single-repo project.
+    /// §1D) instead of a regular project: writes `registry.yaml` and
+    /// `initiative.md` at the repo root and a sentinel `project.yaml
+    /// { schema: hub, hub: true }` under `.specify/`. Hub init refuses
+    /// to run when `.specify/` already exists so it never clobbers a
+    /// regular single-repo project.
     pub hub: bool,
 }
 
@@ -164,17 +166,18 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
 
 /// Hub variant of [`init`] (RFC-9 §1D). Scaffolds a **registry-only
 /// platform hub**: the platform repo holds platform-level state
-/// (`registry.yaml`, `initiative.md`, plans, `workspace/`) but never
-/// appears in its own `registry.yaml` and disables phase pipelines on
-/// itself via the `schema: hub` sentinel.
+/// (`registry.yaml`, `initiative.md`, `plan.yaml`, plans, `workspace/`)
+/// but never appears in its own `registry.yaml` and disables phase
+/// pipelines on itself via the `schema: hub` sentinel.
 ///
 /// On-disk shape after success:
 ///
 /// ```text
-/// .specify/
-/// ├── project.yaml      # { schema: hub, hub: true, … }
+/// <project_dir>/
 /// ├── registry.yaml     # { version: 1, projects: [] }
-/// └── initiative.md     # canonical template, named after the project
+/// ├── initiative.md     # canonical template, named after the project
+/// └── .specify/
+///     └── project.yaml  # { schema: hub, hub: true, … }
 /// ```
 ///
 /// Refuses to run when `.specify/` already exists so the operator
@@ -821,11 +824,11 @@ mod tests {
         let result = init(hub_opts(tmp.path(), "platform-hub")).expect("hub init ok");
 
         let project_yaml = tmp.path().join(".specify/project.yaml");
-        let registry_yaml = tmp.path().join(".specify/registry.yaml");
-        let initiative_md = tmp.path().join(".specify/initiative.md");
+        let registry_yaml = tmp.path().join("registry.yaml");
+        let initiative_md = tmp.path().join("initiative.md");
         assert!(project_yaml.is_file(), "project.yaml missing");
-        assert!(registry_yaml.is_file(), "registry.yaml missing");
-        assert!(initiative_md.is_file(), "initiative.md missing");
+        assert!(registry_yaml.is_file(), "registry.yaml missing at repo root");
+        assert!(initiative_md.is_file(), "initiative.md missing at repo root");
 
         // Phase-pipeline directories MUST NOT be scaffolded for a hub —
         // the sentinel `schema: hub` disables the define-build-merge

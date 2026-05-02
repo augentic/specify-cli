@@ -133,7 +133,7 @@
   "order": "topological",
   "plan": {
     "name": "platform-v2",
-    "path": "<TEMPDIR>/.specify/plan.yaml"
+    "path": "<TEMPDIR>/plan.yaml"
   },
   "schema-version": 2
 }

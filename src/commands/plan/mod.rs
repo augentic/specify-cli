@@ -76,14 +76,14 @@ pub fn run_plan(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, E
 
 // ---- Shared helpers used across submodules ----
 
-/// `<project_dir>/.specify/plan.yaml`.
+/// `<project_dir>/plan.yaml`.
 pub fn file_path(project_dir: &Path) -> PathBuf {
-    ProjectConfig::specify_dir(project_dir).join("plan.yaml")
+    ProjectConfig::plan_path(project_dir)
 }
 
 /// Ensure the plan file exists before we try to load it. Error text is
-/// the stable "plan file not found: .specify/plan.yaml" string that
-/// skill authors match on.
+/// the stable "plan file not found: plan.yaml" string that skill
+/// authors match on.
 pub fn require_file(project_dir: &Path) -> Result<PathBuf, Error> {
     let path = file_path(project_dir);
     if !path.exists() {
@@ -143,7 +143,7 @@ pub(super) fn change_entry_json(entry: &PlanChange) -> Value {
     serde_json::to_value(entry).expect("PlanChange serialises as JSON")
 }
 
-/// Verify that `project_name` appears in `.specify/registry.yaml`.
+/// Verify that `project_name` appears in `registry.yaml`.
 pub(super) fn check_project(project_dir: &Path, project_name: &str) -> Result<(), Error> {
     match Registry::load(project_dir) {
         Ok(Some(registry)) => {

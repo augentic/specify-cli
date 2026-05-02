@@ -856,7 +856,7 @@ fn is_workspace_clone(project_dir: &Path) -> bool {
         return false;
     }
     let has_project_yaml = project_dir.join(".specify").join("project.yaml").exists();
-    let has_plan_yaml = project_dir.join(".specify").join("plan.yaml").exists();
+    let has_plan_yaml = ProjectConfig::plan_path(project_dir).exists();
     has_project_yaml && !has_plan_yaml
 }
 

@@ -1,4 +1,4 @@
-//! On-disk representation of `.specify/plan.yaml` and the in-memory
+//! On-disk representation of `plan.yaml` (at the repo root) and the in-memory
 //! [`Plan`] state machine that wraps it.
 //!
 //! See `rfcs/rfc-2-execution.md` §"Library Implementation" for the canonical
@@ -130,7 +130,7 @@ impl Status {
     }
 }
 
-/// In-memory model of `.specify/plan.yaml`.
+/// In-memory model of `plan.yaml` (at the repo root).
 ///
 /// A `Plan` is an ordered, dependency-aware list of [`Entry`]s plus
 /// a named map of [`Plan::sources`] (local paths or git URLs) that the
@@ -263,7 +263,7 @@ impl Plan {
         })
     }
 
-    /// Load `.specify/plan.yaml` from disk.
+    /// Load `plan.yaml` (at the repo root) from disk.
     ///
     /// Errors mirror [`crate::ChangeMetadata::load`]:
     ///   - missing file -> `Error::Config`
@@ -622,9 +622,9 @@ impl Plan {
         Ok(output)
     }
 
-    /// Move `.specify/plan.yaml` — and, when present, the Layer-3
-    /// authoring working directory `.specify/plans/<plan.name>/` —
-    /// into the archive directory.
+    /// Move `plan.yaml` — and, when present, the Layer-3 authoring
+    /// working directory `.specify/plans/<plan.name>/` and the
+    /// operator brief `initiative.md` — into the archive directory.
     ///
     /// Semantics (see `rfc-2-execution.md` §L1.G, §L3.B, and §"`specify
     /// plan archive`"):
@@ -638,9 +638,9 @@ impl Plan {
     ///    file preserves the statuses verbatim.
     /// 3. Preflight the on-disk destinations (before any mutation):
     ///    - `<archive_dir>/<plan.name>-<YYYYMMDD>.yaml` must not exist.
-    ///    - If `<path>/../plans/<plan.name>/` exists and is a
-    ///      directory, `<archive_dir>/<plan.name>-<YYYYMMDD>/` must
-    ///      not exist either.
+    ///    - If a co-movable working directory or initiative brief
+    ///      exists, `<archive_dir>/<plan.name>-<YYYYMMDD>/` must not
+    ///      exist either.
     ///      Any collision errors out before any file or directory is
     ///      moved, so a failure here leaves the working tree untouched.
     /// 4. Create `archive_dir` if missing.
@@ -650,18 +650,22 @@ impl Plan {
     ///    `fs::rename` with a `copy + remove` fallback on `EXDEV`
     ///    (cross-device).
     /// 6. Return `(archived_plan_path, archived_plans_dir)` — the
-    ///    second element is `Some` iff a working directory was
-    ///    co-moved.
+    ///    second element is `Some` iff a working directory or brief
+    ///    was co-moved.
     ///
-    /// Takes `&Path` rather than `&self` because it operates on the
-    /// file on disk (it re-loads the plan) — archiving is a filesystem
-    /// operation, not a mutation of an in-memory `Plan`.
+    /// `initiative_path` is the absolute location of the operator
+    /// brief (`<project_dir>/initiative.md` after the v2 layout move);
+    /// the archive co-moves it when present so operators do not
+    /// orphan the brief alongside the closed plan. Takes `&Path`
+    /// rather than `&self` because it operates on the file on disk
+    /// (it re-loads the plan) — archiving is a filesystem operation,
+    /// not a mutation of an in-memory `Plan`.
     ///
     /// # Errors
     ///
     /// Returns an error if the operation fails.
     pub fn archive(
-        path: &Path, archive_dir: &Path, force: bool,
+        path: &Path, initiative_path: &Path, archive_dir: &Path, force: bool,
     ) -> Result<(PathBuf, Option<PathBuf>), Error> {
         let plan = Self::load(path)?;
 
@@ -680,22 +684,25 @@ impl Plan {
         let today = chrono::Utc::now().format("%Y%m%d").to_string();
         let dest_plan = archive_dir.join(format!("{}-{}.yaml", plan.name, today));
 
-        // `path` is `.specify/plan.yaml`; `path.parent()` is
-        // `.specify/`, so the working directory sits at
-        // `.specify/plans/<plan.name>/` and the operator-authored
-        // initiative brief at `.specify/initiative.md`.
-        let specify_dir = path.parent();
-        let plans_dir = specify_dir.map(|parent| parent.join("plans").join(&plan.name));
+        // The Layer-3 working directory still sits inside `.specify/`
+        // (it is framework-managed scratch, not an operator artifact);
+        // resolve it relative to the project root by walking the plan
+        // path's parent. After the v2 layout move, `path.parent()` is
+        // the project root, so the working directory sits at
+        // `<project>/.specify/plans/<plan.name>/`.
+        let project_root = path.parent();
+        let plans_dir = project_root
+            .map(|root| root.join(".specify").join("plans").join(&plan.name));
         let co_move_plans = plans_dir.as_ref().filter(|p| p.is_dir()).cloned();
 
         // RFC-3a §"When are `registry.yaml` and `initiative.md`
         // required?": the initiative brief is initiative-scoped so it
         // travels with the archive. `workspace.md` and `slices/` under
         // `.specify/plans/<name>/` are carried by the wholesale working-dir
-        // move above. This hook moves `.specify/initiative.md` so operators
-        // do not orphan the brief in `.specify/` after archival.
-        let initiative_src =
-            specify_dir.map(|parent| parent.join("initiative.md")).filter(|p| p.is_file());
+        // move above. This hook co-moves the operator brief at
+        // `initiative_path` when present so operators do not orphan
+        // it after archival.
+        let initiative_src = Some(initiative_path.to_path_buf()).filter(|p| p.is_file());
 
         // Either the plans working directory OR the initiative brief
         // being present forces us to materialise the archived
@@ -2245,6 +2252,19 @@ changes:
         path
     }
 
+    /// Test wrapper that derives `initiative_path` from the plan path's
+    /// parent directory (the project root), matching the v2 layout
+    /// where both `plan.yaml` and `initiative.md` live at the repo root.
+    fn archive_test(
+        plan_path: &Path, archive_dir: &Path, force: bool,
+    ) -> Result<(PathBuf, Option<PathBuf>), Error> {
+        let initiative = plan_path
+            .parent()
+            .map(|p| p.join("initiative.md"))
+            .unwrap_or_else(|| PathBuf::from("initiative.md"));
+        Plan::archive(plan_path, &initiative, archive_dir, force)
+    }
+
     fn today_yyyymmdd() -> String {
         chrono::Utc::now().format("%Y%m%d").to_string()
     }
@@ -2264,7 +2284,7 @@ changes:
         );
         let pre_bytes = std::fs::read(&plan_path).expect("read pre-archive");
 
-        let (dest, plans_dir) = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+        let (dest, plans_dir) = archive_test(&plan_path, &archive_dir, false).expect("archive ok");
 
         assert!(!plan_path.exists(), "original plan.yaml must be gone after archive");
         assert!(dest.exists(), "destination archive file must exist");
@@ -2286,7 +2306,7 @@ changes:
         assert!(!archive_dir.exists());
         let plan_path = write_plan(tmp.path(), "proj", vec![change("a", Status::Done)]);
 
-        let (dest, _) = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+        let (dest, _) = archive_test(&plan_path, &archive_dir, false).expect("archive ok");
 
         assert!(archive_dir.is_dir(), "archive_dir must be created");
         assert!(dest.starts_with(&archive_dir));
@@ -2303,7 +2323,7 @@ changes:
             vec![change("done-one", Status::Done), change("still-pending", Status::Pending)],
         );
 
-        let err = Plan::archive(&plan_path, &archive_dir, false)
+        let err = archive_test(&plan_path, &archive_dir, false)
             .expect_err("must refuse pending entry without force");
         match err {
             Error::PlanHasOutstandingWork { entries } => {
@@ -2336,7 +2356,7 @@ changes:
             ],
         );
 
-        let err = Plan::archive(&plan_path, &archive_dir, false)
+        let err = archive_test(&plan_path, &archive_dir, false)
             .expect_err("must refuse non-terminal entries");
         match err {
             Error::PlanHasOutstandingWork { entries } => {
@@ -2369,7 +2389,7 @@ changes:
         );
         let pre_bytes = std::fs::read(&plan_path).expect("read pre-archive");
 
-        let (dest, _) = Plan::archive(&plan_path, &archive_dir, true).expect("force archive ok");
+        let (dest, _) = archive_test(&plan_path, &archive_dir, true).expect("force archive ok");
 
         assert!(!plan_path.exists(), "original plan.yaml must be gone after forced archive");
         let post_bytes = std::fs::read(&dest).expect("read archived file");
@@ -2399,7 +2419,7 @@ changes:
         let archive_dir = tmp.path().join("archive");
         let plan_path = write_plan(tmp.path(), "my-initiative", vec![change("a", Status::Done)]);
 
-        let (dest, _) = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+        let (dest, _) = archive_test(&plan_path, &archive_dir, false).expect("archive ok");
         let basename = dest.file_name().and_then(|s| s.to_str()).expect("basename utf8");
 
         // Regex: ^my-initiative-\d{8}\.yaml$ — implemented without a
@@ -2427,7 +2447,7 @@ changes:
         let existing = archive_dir.join(format!("dup-{}.yaml", today_yyyymmdd()));
         std::fs::write(&existing, "unrelated pre-existing archive").expect("seed existing");
 
-        let err = Plan::archive(&plan_path, &archive_dir, false)
+        let err = archive_test(&plan_path, &archive_dir, false)
             .expect_err("must refuse when destination exists");
         match err {
             Error::Config(msg) => {
@@ -2458,7 +2478,7 @@ changes:
         let archive_dir = tmp.path().join("archive");
         let plan_path = write_plan(tmp.path(), "pkg", vec![change("a", Status::Done)]);
 
-        let (dest, plans_dir) = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+        let (dest, plans_dir) = archive_test(&plan_path, &archive_dir, false).expect("archive ok");
         let expected = archive_dir.join(format!("pkg-{}.yaml", today_yyyymmdd()));
         assert_eq!(dest, expected);
         assert!(dest.exists(), "returned path must point at an existing file");
@@ -2516,17 +2536,19 @@ changes:
 
     // --- L3.B: archive co-moves .specify/plans/<name>/ --------------------
 
-    /// Build `<dir>/.specify/plan.yaml` with the given name + entries,
-    /// plus a working directory at `<dir>/.specify/plans/<name>/`
-    /// populated by `files` (filename → bytes). Returns the plan path
-    /// so callers can hand it to `Plan::archive` unchanged.
+    /// Build `<dir>/plan.yaml` with the given name + entries, plus a
+    /// working directory at `<dir>/.specify/plans/<name>/` populated
+    /// by `files` (filename → bytes). After the v2 layout move,
+    /// `plan.yaml` lives at the repo root; the Layer-3 authoring
+    /// scratch dir stays under `.specify/`. Returns the plan path so
+    /// callers can hand it to `Plan::archive` unchanged.
     fn write_plan_with_working_dir(
         dir: &Path, name: &str, changes: Vec<Entry>, files: &[(&str, &[u8])],
     ) -> PathBuf {
+        let plan_path = write_plan(dir, name, changes);
+
         let specify = dir.join(".specify");
         std::fs::create_dir_all(&specify).expect("mkdir .specify");
-        let plan_path = write_plan(&specify, name, changes);
-
         let plans_dir = specify.join("plans").join(name);
         std::fs::create_dir_all(&plans_dir).expect("mkdir plans dir");
         for (filename, bytes) in files {
@@ -2554,7 +2576,7 @@ changes:
         let pre_bytes = std::fs::read(&plan_path).expect("read pre-archive");
 
         let (dest, dest_working) =
-            Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+            archive_test(&plan_path, &archive_dir, false).expect("archive ok");
 
         let today = today_yyyymmdd();
         assert!(!plan_path.exists(), "plan.yaml must be gone");
@@ -2583,13 +2605,11 @@ changes:
     #[test]
     fn archive_without_working_dir() {
         let tmp = tempdir().expect("tempdir");
-        let specify = tmp.path().join(".specify");
-        std::fs::create_dir_all(&specify).expect("mkdir .specify");
-        let archive_dir = specify.join("archive/plans");
-        let plan_path = write_plan(&specify, "solo", vec![change("a", Status::Done)]);
+        let archive_dir = tmp.path().join(".specify/archive/plans");
+        let plan_path = write_plan(tmp.path(), "solo", vec![change("a", Status::Done)]);
 
         let (dest, dest_working) =
-            Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+            archive_test(&plan_path, &archive_dir, false).expect("archive ok");
 
         assert!(dest.exists(), "archived plan.yaml must exist");
         assert!(dest_working.is_none(), "no working dir -> None");
@@ -2598,26 +2618,24 @@ changes:
         assert!(!absent_dir.exists(), "co-move dir must not be created when source absent");
     }
 
-    /// RFC-3a C14 archive-sweep hook. `.specify/initiative.md` is
-    /// initiative-scoped and must travel with the archive. When there
-    /// is no plans working directory, the initiative brief alone
-    /// still forces the archived `<name>-<date>/` directory into
-    /// existence. RFC-3a C33 asserts `workspace.md` + `slices/` under
-    /// `.specify/plans/<name>/` survive the wholesale co-move (see
+    /// RFC-3a C14 archive-sweep hook. `initiative.md` is initiative-
+    /// scoped and must travel with the archive. When there is no plans
+    /// working directory, the initiative brief alone still forces the
+    /// archived `<name>-<date>/` directory into existence. RFC-3a C33
+    /// asserts `workspace.md` + `slices/` under `.specify/plans/<name>/`
+    /// survive the wholesale co-move (see
     /// `archive_moves_workspace_md_and_slices_with_plan_working_dir`).
     #[test]
     fn archive_sweeps_initiative_md() {
         let tmp = tempdir().expect("tempdir");
-        let specify = tmp.path().join(".specify");
-        std::fs::create_dir_all(&specify).expect("mkdir .specify");
-        let archive_dir = specify.join("archive/plans");
-        let plan_path = write_plan(&specify, "solo", vec![change("a", Status::Done)]);
-        let brief_src = specify.join("initiative.md");
+        let archive_dir = tmp.path().join(".specify/archive/plans");
+        let plan_path = write_plan(tmp.path(), "solo", vec![change("a", Status::Done)]);
+        let brief_src = tmp.path().join("initiative.md");
         let brief_bytes = b"---\nname: solo\n---\n\n# Solo\n";
         std::fs::write(&brief_src, brief_bytes).expect("seed initiative.md");
 
         let (dest, dest_working) =
-            Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+            archive_test(&plan_path, &archive_dir, false).expect("archive ok");
 
         assert!(dest.exists(), "archived plan.yaml must exist");
         let dest_dir = dest_working.expect("initiative.md must force the archive dir");
@@ -2647,11 +2665,11 @@ changes:
             vec![change("a", Status::Done)],
             &[("notes.md", b"# notes\n")],
         );
-        let brief_src = tmp.path().join(".specify/initiative.md");
+        let brief_src = tmp.path().join("initiative.md");
         std::fs::write(&brief_src, b"---\nname: both\n---\n\n# Both\n")
             .expect("seed initiative.md");
 
-        let (_, dest_working) = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+        let (_, dest_working) = archive_test(&plan_path, &archive_dir, false).expect("archive ok");
 
         let dest_dir = dest_working.expect("co-moved");
         assert!(dest_dir.join("notes.md").is_file(), "working-dir file must co-move");
@@ -2672,7 +2690,7 @@ changes:
             &[("workspace.md", b"# workspace\n"), ("slices/x.yaml", b"id: slice-x\n")],
         );
 
-        let (_, dest_working) = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+        let (_, dest_working) = archive_test(&plan_path, &archive_dir, false).expect("archive ok");
 
         let dest_dir = dest_working.expect("co-moved plans dir");
         let wm = dest_dir.join("workspace.md");
@@ -2702,7 +2720,7 @@ changes:
         let clash = archive_dir.join(format!("foo-{today}"));
         std::fs::create_dir_all(&clash).expect("seed collision dir");
 
-        let err = Plan::archive(&plan_path, &archive_dir, false)
+        let err = archive_test(&plan_path, &archive_dir, false)
             .expect_err("must refuse when working-dir destination exists");
         match err {
             Error::Config(msg) => {
@@ -2748,7 +2766,7 @@ changes:
             &[("artefact.bin", payload)],
         );
 
-        let (_, dest_working) = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+        let (_, dest_working) = archive_test(&plan_path, &archive_dir, false).expect("archive ok");
 
         let dest_dir = dest_working.expect("co-moved");
         let read_back =
@@ -2770,7 +2788,7 @@ changes:
         let pre_bytes = std::fs::read(&plan_path).expect("read pre-archive");
 
         let (dest, dest_working) =
-            Plan::archive(&plan_path, &archive_dir, true).expect("force archive ok");
+            archive_test(&plan_path, &archive_dir, true).expect("force archive ok");
 
         assert!(!plan_path.exists(), "plan.yaml must be gone");
         assert!(!working_dir.exists(), "working dir must be gone");
@@ -2797,7 +2815,7 @@ changes:
         let plan_path = write_plan(tmp.path(), "atomic", vec![change("a", Status::Done)]);
         let pre_bytes = std::fs::read(&plan_path).expect("read pre-archive");
 
-        let (dest, _) = Plan::archive(&plan_path, &archive_dir, false).expect("archive ok");
+        let (dest, _) = archive_test(&plan_path, &archive_dir, false).expect("archive ok");
 
         assert!(!plan_path.exists());
         assert!(dest.exists());

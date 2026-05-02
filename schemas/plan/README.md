@@ -1,6 +1,6 @@
 # `plan.schema.json`
 
-Canonical JSON Schema (2020-12) for `.specify/plan.yaml`, the initiative plan described in RFC-2.
+Canonical JSON Schema (2020-12) for `plan.yaml` (at the repo root), the initiative plan described in RFC-2.
 
 ## What it validates
 
@@ -17,7 +17,7 @@ The JSON response produced by `specify plan validate --format json` is itself co
 
 ## Editor integration
 
-Add the following header to `.specify/plan.yaml` to opt in to autocomplete and diagnostics in editors with `yaml-language-server` support:
+Add the following header to `plan.yaml` to opt in to autocomplete and diagnostics in editors with `yaml-language-server` support:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/augentic/specify-cli/main/schemas/plan/plan.schema.json

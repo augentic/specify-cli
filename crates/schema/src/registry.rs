@@ -1,12 +1,12 @@
 //! Registry parser — platform-level catalogue of peer projects
 //! (RFC-3a §*The Registry*).
 //!
-//! `.specify/registry.yaml` enumerates the repos that comprise the
-//! platform and the schema each of them uses. The file is optional:
-//! an absent or single-entry registry is equivalent to single-repo
-//! mode. Multi-entry registries activate the `/spec:plan` *sync
-//! peers* phase — but that behaviour lands in C28/C30; this module
-//! only handles shape parsing and validation.
+//! `registry.yaml` (at the repo root) enumerates the repos that
+//! comprise the platform and the schema each of them uses. The file
+//! is optional: an absent or single-entry registry is equivalent to
+//! single-repo mode. Multi-entry registries activate the `/spec:plan`
+//! *sync peers* phase — but that behaviour lands in C28/C30; this
+//! module only handles shape parsing and validation.
 //!
 //! No JSON schema file ships for v1 per the RFC — the shape is
 //! enforced directly by [`Registry::validate_shape`].
@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
-/// In-memory representation of `.specify/registry.yaml`.
+/// In-memory representation of `registry.yaml` (at the repo root).
 ///
 /// `additionalProperties: false` is expressed via
 /// `#[serde(deny_unknown_fields)]` — the same posture the `plan.yaml`
@@ -90,11 +90,11 @@ pub struct ContractRoles {
 }
 
 impl Registry {
-    /// Absolute path to `.specify/registry.yaml` for a given project
-    /// directory.
+    /// Absolute path to `<project_dir>/registry.yaml`. The platform
+    /// catalogue lives at the repo root.
     #[must_use]
     pub fn path(project_dir: &Path) -> PathBuf {
-        project_dir.join(".specify").join("registry.yaml")
+        project_dir.join("registry.yaml")
     }
 
     /// Load + shape-validate the registry.

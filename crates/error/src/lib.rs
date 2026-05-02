@@ -146,9 +146,21 @@ pub enum Error {
         name: String,
     },
 
-    /// `.specify/registry.yaml` was expected but is absent.
-    #[error("no registry declared at .specify/registry.yaml")]
+    /// `registry.yaml` was expected but is absent.
+    #[error("no registry declared at registry.yaml")]
     RegistryMissing,
+
+    /// One or more legacy v1-layout artifacts were found under
+    /// `.specify/`. The CLI moved these to the repo root in the v2
+    /// layout; the operator must run `specify migrate v2-layout` to
+    /// move them in place. `paths` enumerates every offending entry
+    /// the detector saw, in deterministic order.
+    #[error("legacy v1 layout detected; run `specify migrate v2-layout` to upgrade ({paths:?})")]
+    LegacyLayout {
+        /// Repo-relative paths of the legacy artifacts the detector
+        /// found (e.g. `.specify/registry.yaml`).
+        paths: Vec<String>,
+    },
 
     /// A name failed kebab-case validation.
     #[error("invalid name: {0}")]
@@ -288,6 +300,26 @@ mod tests {
     fn invalid_name_display() {
         let err = Error::InvalidName("bad--name".to_string());
         assert_eq!(err.to_string(), "invalid name: bad--name");
+    }
+
+    #[test]
+    fn legacy_layout_display() {
+        let err = Error::LegacyLayout {
+            paths: vec![".specify/registry.yaml".to_string(), ".specify/plan.yaml".to_string()],
+        };
+        let s = err.to_string();
+        assert!(
+            s.contains("legacy v1 layout detected"),
+            "expected legacy-layout banner, got: {s}"
+        );
+        assert!(
+            s.contains("specify migrate v2-layout"),
+            "expected migration command in message, got: {s}"
+        );
+        assert!(
+            s.contains(".specify/registry.yaml") && s.contains(".specify/plan.yaml"),
+            "expected offending paths to surface, got: {s}"
+        );
     }
 
     #[test]

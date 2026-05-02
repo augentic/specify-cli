@@ -683,12 +683,10 @@ fn cache_meta_validate_structure_fails_on_empty_fields() {
 
 // ---------- Registry (RFC-3a §"The Registry") ----------
 
-/// Scaffold `.specify/registry.yaml` with `contents` and return the
-/// containing project directory.
+/// Scaffold `registry.yaml` (at the repo root) with `contents` and
+/// return the containing project directory.
 fn scaffold_registry(contents: &str) -> TempDir {
     let tmp = TempDir::new().unwrap();
-    let specify_dir = tmp.path().join(".specify");
-    std::fs::create_dir_all(&specify_dir).unwrap();
     std::fs::write(Registry::path(tmp.path()), contents).unwrap();
     tmp
 }
@@ -1095,9 +1093,9 @@ fn registry_description_round_trips_through_serde() {
 }
 
 #[test]
-fn registry_path_helper_points_at_specify_dir() {
+fn registry_path_helper_points_at_repo_root() {
     let dir = Path::new("/tmp/some/project");
-    assert_eq!(Registry::path(dir), PathBuf::from("/tmp/some/project/.specify/registry.yaml"));
+    assert_eq!(Registry::path(dir), PathBuf::from("/tmp/some/project/registry.yaml"));
 }
 
 // ---------- Registry URL validation (RFC-3a C28) ----------
@@ -1595,12 +1593,10 @@ projects:
 
 // ---------- Initiative brief (RFC-3a §"The Initiative Brief") ----------
 
-/// Scaffold `.specify/initiative.md` with `contents` and return the
-/// containing project directory.
+/// Scaffold `initiative.md` (at the repo root) with `contents` and
+/// return the containing project directory.
 fn scaffold_initiative_brief(contents: &str) -> TempDir {
     let tmp = TempDir::new().unwrap();
-    let specify_dir = tmp.path().join(".specify");
-    std::fs::create_dir_all(&specify_dir).unwrap();
     std::fs::write(InitiativeBrief::path(tmp.path()), contents).unwrap();
     tmp
 }
@@ -1618,7 +1614,7 @@ inputs: []
 # Traffic modernisation
 
 <!-- One-paragraph framing of what this initiative is trying to
-     achieve. Plans reference this brief via `.specify/initiative.md`. -->
+     achieve. Plans reference this brief via `initiative.md`. -->
 ";
 
 /// The RFC's canonical example, with frontmatter inputs + prose body.
@@ -1891,10 +1887,10 @@ fn initiative_brief_roundtrip_preserves_body() {
 }
 
 #[test]
-fn initiative_brief_path_helper_points_at_specify_dir() {
+fn initiative_brief_path_helper_points_at_repo_root() {
     let dir = Path::new("/tmp/some/project");
     assert_eq!(
         InitiativeBrief::path(dir),
-        PathBuf::from("/tmp/some/project/.specify/initiative.md")
+        PathBuf::from("/tmp/some/project/initiative.md")
     );
 }

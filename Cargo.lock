@@ -1363,7 +1363,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "specify"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -1389,7 +1389,7 @@ dependencies = [
 
 [[package]]
 name = "specify-change"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "clap",
@@ -1406,7 +1406,7 @@ dependencies = [
 
 [[package]]
 name = "specify-error"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde-saphyr",
  "thiserror",
@@ -1414,7 +1414,7 @@ dependencies = [
 
 [[package]]
 name = "specify-merge"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "regex",
@@ -1429,7 +1429,7 @@ dependencies = [
 
 [[package]]
 name = "specify-schema"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "glob",
@@ -1443,7 +1443,7 @@ dependencies = [
 
 [[package]]
 name = "specify-spec"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "regex",
  "specify-error",
@@ -1451,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "specify-task"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "regex",
  "specify-error",
@@ -1459,7 +1459,7 @@ dependencies = [
 
 [[package]]
 name = "specify-validate"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "glob",
  "regex",
@@ -1476,7 +1476,7 @@ dependencies = [
 
 [[package]]
 name = "specify-vectis"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "roxmltree",
