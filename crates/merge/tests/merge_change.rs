@@ -32,6 +32,10 @@ impl Project {
         self.root.join(".specify/specs")
     }
 
+    fn contracts_dir(&self) -> PathBuf {
+        self.root.join("contracts")
+    }
+
     fn archive_dir(&self) -> PathBuf {
         self.root.join(".specify/archive")
     }
@@ -85,10 +89,11 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     let project = build_project();
     let change_dir = project.change_dir();
     let specs_dir = project.specs_dir();
+    let contracts_dir = project.contracts_dir();
     let archive_dir = project.archive_dir();
 
-    let merged =
-        merge_change(&change_dir, &specs_dir, &archive_dir).expect("merge_change should succeed");
+    let merged = merge_change(&change_dir, &specs_dir, &contracts_dir, &archive_dir)
+        .expect("merge_change should succeed");
 
     // Results sorted by spec name.
     let names: Vec<&str> = merged.iter().map(|(n, _)| n.as_str()).collect();
@@ -145,8 +150,13 @@ fn wrong_precondition_aborts_cleanly() {
     meta.status = LifecycleStatus::Building;
     meta.save(&change_dir).unwrap();
 
-    let err = merge_change(&change_dir, &project.specs_dir(), &project.archive_dir())
-        .expect_err("should refuse on Building status");
+    let err = merge_change(
+        &change_dir,
+        &project.specs_dir(),
+        &project.contracts_dir(),
+        &project.archive_dir(),
+    )
+    .expect_err("should refuse on Building status");
     match err {
         Error::Lifecycle { expected, found } => {
             assert_eq!(expected, "Complete");
@@ -182,8 +192,13 @@ fn coherence_failure_rolls_back_all_writes() {
     )
     .unwrap();
 
-    let err = merge_change(&change_dir, &project.specs_dir(), &project.archive_dir())
-        .expect_err("expected coherence failure");
+    let err = merge_change(
+        &change_dir,
+        &project.specs_dir(),
+        &project.contracts_dir(),
+        &project.archive_dir(),
+    )
+    .expect_err("expected coherence failure");
     match err {
         Error::Merge(msg) => {
             assert!(
@@ -214,8 +229,13 @@ fn coherence_failure_rolls_back_all_writes() {
 #[test]
 fn archive_subdirectory_is_date_prefixed() {
     let project = build_project();
-    merge_change(&project.change_dir(), &project.specs_dir(), &project.archive_dir())
-        .expect("merge ok");
+    merge_change(
+        &project.change_dir(),
+        &project.specs_dir(),
+        &project.contracts_dir(),
+        &project.archive_dir(),
+    )
+    .expect("merge ok");
 
     let re = Regex::new(r"^\d{4}-\d{2}-\d{2}-feature-x$").unwrap();
     let names: Vec<String> = fs::read_dir(project.archive_dir())
@@ -244,10 +264,15 @@ fn merge_copies_contract_files_to_baseline() {
         .expect("write schema");
     fs::write(change_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write api");
 
-    let merged =
-        merge_change(&change_dir, &project.specs_dir(), &project.archive_dir()).expect("merge ok");
+    let merged = merge_change(
+        &change_dir,
+        &project.specs_dir(),
+        &project.contracts_dir(),
+        &project.archive_dir(),
+    )
+    .expect("merge ok");
 
-    let baseline_contracts = project.root.join(".specify/contracts");
+    let baseline_contracts = project.contracts_dir();
     assert!(
         baseline_contracts.join("schemas/test.yaml").is_file(),
         "schemas/test.yaml missing from baseline contracts"
@@ -275,7 +300,7 @@ fn merge_replaces_existing_baseline_contract_files() {
     let project = build_project();
     let change_dir = project.change_dir();
 
-    let baseline_contracts = project.root.join(".specify/contracts");
+    let baseline_contracts = project.contracts_dir();
     fs::create_dir_all(baseline_contracts.join("schemas")).expect("mkdir baseline schemas");
     fs::write(baseline_contracts.join("schemas/test.yaml"), "old content\n")
         .expect("write old baseline");
@@ -284,7 +309,13 @@ fn merge_replaces_existing_baseline_contract_files() {
     fs::write(change_dir.join("contracts/schemas/test.yaml"), "new content\n")
         .expect("write new change");
 
-    merge_change(&change_dir, &project.specs_dir(), &project.archive_dir()).expect("merge ok");
+    merge_change(
+        &change_dir,
+        &project.specs_dir(),
+        &project.contracts_dir(),
+        &project.archive_dir(),
+    )
+    .expect("merge ok");
 
     let content = fs::read_to_string(baseline_contracts.join("schemas/test.yaml")).unwrap();
     assert_eq!(content, "new content\n", "contract file should be replaced");
@@ -295,7 +326,7 @@ fn merge_leaves_untouched_baseline_contract_files() {
     let project = build_project();
     let change_dir = project.change_dir();
 
-    let baseline_contracts = project.root.join(".specify/contracts");
+    let baseline_contracts = project.contracts_dir();
     fs::create_dir_all(baseline_contracts.join("schemas")).expect("mkdir baseline schemas");
     fs::write(baseline_contracts.join("schemas/existing.yaml"), "existing content\n")
         .expect("write existing");
@@ -303,7 +334,13 @@ fn merge_leaves_untouched_baseline_contract_files() {
     fs::create_dir_all(change_dir.join("contracts/schemas")).expect("mkdir change schemas");
     fs::write(change_dir.join("contracts/schemas/new.yaml"), "new content\n").expect("write new");
 
-    merge_change(&change_dir, &project.specs_dir(), &project.archive_dir()).expect("merge ok");
+    merge_change(
+        &change_dir,
+        &project.specs_dir(),
+        &project.contracts_dir(),
+        &project.archive_dir(),
+    )
+    .expect("merge ok");
 
     assert!(
         baseline_contracts.join("schemas/existing.yaml").is_file(),
@@ -324,14 +361,23 @@ fn merge_without_contracts_dir_works_as_before() {
 
     assert!(!change_dir.join("contracts").exists(), "precondition: no contracts dir");
 
-    let merged =
-        merge_change(&change_dir, &project.specs_dir(), &project.archive_dir()).expect("merge ok");
+    let merged = merge_change(
+        &change_dir,
+        &project.specs_dir(),
+        &project.contracts_dir(),
+        &project.archive_dir(),
+    )
+    .expect("merge ok");
     assert!(!merged.is_empty(), "should still merge specs");
 
-    let baseline_contracts = project.root.join(".specify/contracts");
+    let baseline_contracts = project.contracts_dir();
     assert!(
         !baseline_contracts.exists(),
-        "no .specify/contracts/ should be created when change has no contracts"
+        "no root contracts/ should be created when change has no contracts"
+    );
+    assert!(
+        !project.root.join(".specify/contracts").exists(),
+        "merge must not create the legacy .specify/contracts/ either"
     );
 
     let archived = find_archived_metadata(&project);
@@ -361,8 +407,9 @@ fn find_archived_metadata(project: &Project) -> PhaseOutcome {
 #[test]
 fn preview_no_contracts_returns_empty_list() {
     let project = build_project();
-    let result = preview_change(&project.change_dir(), &project.specs_dir())
-        .expect("preview should succeed");
+    let result =
+        preview_change(&project.change_dir(), &project.specs_dir(), &project.contracts_dir())
+            .expect("preview should succeed");
     assert!(!result.specs.is_empty(), "should have spec entries");
     assert!(result.contracts.is_empty(), "should have no contract entries");
 }
@@ -377,7 +424,8 @@ fn preview_new_contract_files_reported_as_added() {
     fs::write(change_dir.join("contracts/schemas/user.yaml"), "schema: user\n").expect("write");
     fs::write(change_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write");
 
-    let result = preview_change(&change_dir, &project.specs_dir()).expect("preview should succeed");
+    let result = preview_change(&change_dir, &project.specs_dir(), &project.contracts_dir())
+        .expect("preview should succeed");
 
     assert_eq!(result.contracts.len(), 2);
     // Sorted by relative_path.
@@ -392,7 +440,7 @@ fn preview_existing_baseline_contracts_reported_as_replaced() {
     let project = build_project();
     let change_dir = project.change_dir();
 
-    let baseline_contracts = project.root.join(".specify/contracts");
+    let baseline_contracts = project.contracts_dir();
     fs::create_dir_all(baseline_contracts.join("schemas")).expect("mkdir baseline");
     fs::write(baseline_contracts.join("schemas/user.yaml"), "old\n").expect("write baseline");
 
@@ -400,7 +448,8 @@ fn preview_existing_baseline_contracts_reported_as_replaced() {
     fs::write(change_dir.join("contracts/schemas/user.yaml"), "new\n").expect("write change");
     fs::write(change_dir.join("contracts/schemas/order.yaml"), "new\n").expect("write change");
 
-    let result = preview_change(&change_dir, &project.specs_dir()).expect("preview should succeed");
+    let result = preview_change(&change_dir, &project.specs_dir(), &project.contracts_dir())
+        .expect("preview should succeed");
 
     assert_eq!(result.contracts.len(), 2);
     let order = result.contracts.iter().find(|c| c.relative_path == "schemas/order.yaml").unwrap();

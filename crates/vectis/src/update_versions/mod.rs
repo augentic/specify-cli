@@ -20,7 +20,7 @@
 //!    on a flaky connection.
 //! 5. Compute the diff (key, current, proposed).
 //! 6. When `--verify` is set, scaffold each entry in
-//!    [`matrix::CAP_MATRIX`] with the proposed pins and run
+//!    `matrix::CAP_MATRIX` with the proposed pins and run
 //!    `vectis verify` against each. The matrix passes only if every
 //!    combo does.
 //! 7. Write semantics:

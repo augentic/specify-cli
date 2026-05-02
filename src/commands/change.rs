@@ -856,29 +856,30 @@ fn is_workspace_clone(project_dir: &Path) -> bool {
         return false;
     }
     let has_project_yaml = project_dir.join(".specify").join("project.yaml").exists();
-    let has_plan_yaml = project_dir.join(".specify").join("plan.yaml").exists();
+    let has_plan_yaml = ProjectConfig::plan_path(project_dir).exists();
     has_project_yaml && !has_plan_yaml
 }
 
 fn run_change_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
     let specs_dir = ctx.specs_dir();
+    let contracts_dir = ctx.contracts_dir();
     let archive_dir = ctx.archive_dir();
 
-    let merged = merge_change(&change_dir, &specs_dir, &archive_dir)?;
+    let merged = merge_change(&change_dir, &specs_dir, &contracts_dir, &archive_dir)?;
 
     // RFC-3b: auto-commit merged specs when running inside a workspace clone.
     if is_workspace_clone(&ctx.project_dir) {
         let specs_path = ctx.specs_dir();
+        let contracts_path = ctx.contracts_dir();
         let archive_path_for_git = ctx.archive_dir();
 
-        let git_add = std::process::Command::new("git")
-            .arg("-C")
-            .arg(&ctx.project_dir)
-            .args(["add"])
-            .arg(&specs_path)
-            .arg(&archive_path_for_git)
-            .output();
+        let mut git_add_cmd = std::process::Command::new("git");
+        git_add_cmd.arg("-C").arg(&ctx.project_dir).args(["add"]).arg(&specs_path);
+        if contracts_path.exists() {
+            git_add_cmd.arg(&contracts_path);
+        }
+        let git_add = git_add_cmd.arg(&archive_path_for_git).output();
 
         match git_add {
             Ok(output) if output.status.success() => {
@@ -937,7 +938,7 @@ fn run_change_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult,
 
 fn run_change_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
-    let result = preview_change(&change_dir, &ctx.specs_dir())?;
+    let result = preview_change(&change_dir, &ctx.specs_dir(), &ctx.contracts_dir())?;
 
     match ctx.format {
         OutputFormat::Json => {
@@ -985,7 +986,7 @@ fn run_change_merge_preview(ctx: &CommandContext, name: String) -> Result<CliRes
 
 fn run_change_merge_conflict_check(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
-    let conflicts = conflict_check(&change_dir, &ctx.specs_dir())?;
+    let conflicts = conflict_check(&change_dir, &ctx.specs_dir(), &ctx.contracts_dir())?;
 
     match ctx.format {
         OutputFormat::Json => {

@@ -1,12 +1,12 @@
 //! Registry parser — platform-level catalogue of peer projects
 //! (RFC-3a §*The Registry*).
 //!
-//! `.specify/registry.yaml` enumerates the repos that comprise the
-//! platform and the schema each of them uses. The file is optional:
-//! an absent or single-entry registry is equivalent to single-repo
-//! mode. Multi-entry registries activate the `/spec:plan` *sync
-//! peers* phase — but that behaviour lands in C28/C30; this module
-//! only handles shape parsing and validation.
+//! `registry.yaml` (at the repo root) enumerates the repos that
+//! comprise the platform and the schema each of them uses. The file
+//! is optional: an absent or single-entry registry is equivalent to
+//! single-repo mode. Multi-entry registries activate the `/spec:plan`
+//! *sync peers* phase — but that behaviour lands in C28/C30; this
+//! module only handles shape parsing and validation.
 //!
 //! No JSON schema file ships for v1 per the RFC — the shape is
 //! enforced directly by [`Registry::validate_shape`].
@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
-/// In-memory representation of `.specify/registry.yaml`.
+/// In-memory representation of `registry.yaml` (at the repo root).
 ///
 /// `additionalProperties: false` is expressed via
 /// `#[serde(deny_unknown_fields)]` — the same posture the `plan.yaml`
@@ -67,29 +67,34 @@ pub struct RegistryProject {
 /// Contract role declarations for a registry project.
 /// All fields are optional — a project may only produce, only consume,
 /// or have no contract relationships at all.
+///
+/// RFC-12 collapsed the role set to two: `produces` (this project
+/// authoritatively implements the contract) and `consumes` (this project
+/// calls or subscribes to the contract). A contract that no project
+/// produces is, by definition, externally authored — no separate
+/// `imports` field is needed to mark it. `#[serde(deny_unknown_fields)]`
+/// causes any surviving `imports:` key in `registry.yaml` to fail at
+/// parse time, which is the documented migration trigger (RFC-12
+/// §Migration).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContractRoles {
     /// Contract files this project is the authoritative implementer of.
-    /// Paths relative to `.specify/contracts/`.
+    /// Paths relative to root `contracts/`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub produces: Vec<String>,
     /// Contract files this project calls or subscribes to as a client.
-    /// Paths relative to `.specify/contracts/`.
+    /// Paths relative to root `contracts/`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub consumes: Vec<String>,
-    /// Contract files whose shape is dictated by an external system.
-    /// Paths relative to `.specify/contracts/`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub imports: Vec<String>,
 }
 
 impl Registry {
-    /// Absolute path to `.specify/registry.yaml` for a given project
-    /// directory.
+    /// Absolute path to `<project_dir>/registry.yaml`. The platform
+    /// catalogue lives at the repo root.
     #[must_use]
     pub fn path(project_dir: &Path) -> PathBuf {
-        project_dir.join(".specify").join("registry.yaml")
+        project_dir.join("registry.yaml")
     }
 
     /// Load + shape-validate the registry.
@@ -180,14 +185,14 @@ impl Registry {
             }
         }
 
-        // --- Contract role invariants (RFC-8 Layer 2) ---
+        // --- Contract role invariants (RFC-8 Layer 2; RFC-12 collapsed
+        // the role set to `produces` + `consumes` and dropped the
+        // produce/import mutual-exclusion check) ---
 
         // Invariant 3: Path validity — no absolute or `..` paths.
         for project in &self.projects {
             if let Some(ref roles) = project.contracts {
-                for path in
-                    roles.produces.iter().chain(roles.consumes.iter()).chain(roles.imports.iter())
-                {
+                for path in roles.produces.iter().chain(roles.consumes.iter()) {
                     if path.starts_with('/') || path.contains("..") {
                         return Err(Error::Config(format!(
                             "registry.yaml: contract path '{}' in project '{}' must be relative (no '..' or absolute paths)",
@@ -229,24 +234,6 @@ impl Registry {
                     }
                     producers.insert(path, &project.name);
                 }
-            }
-        }
-
-        // Invariant 2: Produce/import mutual exclusion — a path must
-        // not appear in both `produces` and `imports` across the registry.
-        let mut imported: HashSet<&str> = HashSet::new();
-        for project in &self.projects {
-            if let Some(ref roles) = project.contracts {
-                for path in &roles.imports {
-                    imported.insert(path);
-                }
-            }
-        }
-        for path in producers.keys() {
-            if imported.contains(path) {
-                return Err(Error::Config(format!(
-                    "registry.yaml: contract path '{path}' appears in both 'produces' and 'imports'"
-                )));
             }
         }
 

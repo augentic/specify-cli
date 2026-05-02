@@ -1,7 +1,15 @@
 //! `ProjectConfig` — the in-memory model of `.specify/project.yaml` plus
 //! the family of path helpers every subcommand reaches for when it needs
 //! to locate `.specify/changes/`, `.specify/specs/`, `.specify/.cache/`,
-//! or `.specify/archive/`.
+//! `.specify/archive/`, or the operator-facing platform artifacts at the
+//! repo root (`registry.yaml`, `plan.yaml`, `initiative.md`, `contracts/`).
+//!
+//! Layout boundary: `.specify/` holds framework-managed state that the
+//! CLI owns (configuration, working changes, baseline specs, archive,
+//! cache, workspace clones, plan-authoring scratch, the advisory plan
+//! lock). Operator-facing platform artifacts that are PR-reviewed and
+//! durable live at the repo root. See [`docs/explanation/decision-log.md`](
+//! ../../docs/explanation/decision-log.md) for the full rationale.
 //!
 //! `ProjectConfig::load` is the single choke point for the
 //! `specify_version` floor check: any subcommand that parses
@@ -122,6 +130,33 @@ impl ProjectConfig {
         Self::specify_dir(project_dir).join("specs")
     }
 
+    /// Absolute path to `<project_dir>/contracts/`.
+    #[must_use]
+    pub fn contracts_dir(project_dir: &Path) -> PathBuf {
+        project_dir.join("contracts")
+    }
+
+    /// Absolute path to `<project_dir>/registry.yaml` — the platform
+    /// catalogue. Platform-level artifact, lives at the repo root.
+    #[must_use]
+    pub fn registry_path(project_dir: &Path) -> PathBuf {
+        project_dir.join("registry.yaml")
+    }
+
+    /// Absolute path to `<project_dir>/plan.yaml` — the initiative
+    /// plan. Platform-level artifact, lives at the repo root.
+    #[must_use]
+    pub fn plan_path(project_dir: &Path) -> PathBuf {
+        project_dir.join("plan.yaml")
+    }
+
+    /// Absolute path to `<project_dir>/initiative.md` — the operator
+    /// brief. Platform-level artifact, lives at the repo root.
+    #[must_use]
+    pub fn initiative_path(project_dir: &Path) -> PathBuf {
+        project_dir.join("initiative.md")
+    }
+
     /// Absolute path to `<project_dir>/.specify/.cache/`.
     #[must_use]
     pub fn cache_dir(project_dir: &Path) -> PathBuf {
@@ -146,6 +181,34 @@ impl ProjectConfig {
         }
         Some(Self::specify_dir(project_dir).join(value))
     }
+}
+
+/// Scan `project_dir` for v1-layout artifacts that the CLI no longer reads.
+///
+/// The four legacy paths checked are `.specify/registry.yaml`,
+/// `.specify/plan.yaml`, `.specify/initiative.md`, and
+/// `.specify/contracts/`. Returns the repo-relative paths in
+/// deterministic order so error output is stable. An empty `Vec` means
+/// the project is on the v2 layout (or has neither shape, which is
+/// also fine).
+///
+/// This is the engine behind the hard-cutover detector wired into
+/// every project-aware CLI verb: when this returns non-empty the
+/// dispatcher errors with [`Error::LegacyLayout`] and points the
+/// operator at `specify migrate v2-layout`.
+#[must_use]
+pub fn detect_legacy_layout(project_dir: &Path) -> Vec<String> {
+    let candidates: [(&str, bool); 4] = [
+        (".specify/registry.yaml", project_dir.join(".specify/registry.yaml").is_file()),
+        (".specify/plan.yaml", project_dir.join(".specify/plan.yaml").is_file()),
+        (".specify/initiative.md", project_dir.join(".specify/initiative.md").is_file()),
+        (".specify/contracts", project_dir.join(".specify/contracts").is_dir()),
+    ];
+    candidates
+        .into_iter()
+        .filter(|&(_, present)| present)
+        .map(|(name, _)| name.to_string())
+        .collect()
 }
 
 /// Returns `true` when `current < required` under semver ordering.
@@ -180,6 +243,10 @@ mod tests {
         assert_eq!(ProjectConfig::config_path(base), PathBuf::from("/a/b/.specify/project.yaml"));
         assert_eq!(ProjectConfig::changes_dir(base), PathBuf::from("/a/b/.specify/changes"));
         assert_eq!(ProjectConfig::specs_dir(base), PathBuf::from("/a/b/.specify/specs"));
+        assert_eq!(ProjectConfig::contracts_dir(base), PathBuf::from("/a/b/contracts"));
+        assert_eq!(ProjectConfig::registry_path(base), PathBuf::from("/a/b/registry.yaml"));
+        assert_eq!(ProjectConfig::plan_path(base), PathBuf::from("/a/b/plan.yaml"));
+        assert_eq!(ProjectConfig::initiative_path(base), PathBuf::from("/a/b/initiative.md"));
         assert_eq!(ProjectConfig::cache_dir(base), PathBuf::from("/a/b/.specify/.cache"));
         assert_eq!(ProjectConfig::archive_dir(base), PathBuf::from("/a/b/.specify/archive"));
     }
@@ -303,5 +370,48 @@ mod tests {
         };
         let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
         assert!(yaml.contains("hub: true"), "hub: true must serialise, got:\n{yaml}");
+    }
+
+    // ---- legacy-layout detector ---------------------------------------
+
+    #[test]
+    fn detect_legacy_returns_empty_for_clean_project() {
+        let tmp = tempdir().unwrap();
+        assert!(detect_legacy_layout(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn detect_legacy_finds_each_v1_artifact() {
+        let tmp = tempdir().unwrap();
+        let specify = tmp.path().join(".specify");
+        fs::create_dir_all(&specify).unwrap();
+        fs::write(specify.join("registry.yaml"), "version: 1\nprojects: []\n").unwrap();
+        fs::write(specify.join("plan.yaml"), "name: x\nchanges: []\n").unwrap();
+        fs::write(specify.join("initiative.md"), "---\nname: x\n---\n").unwrap();
+        fs::create_dir_all(specify.join("contracts").join("schemas")).unwrap();
+
+        let found = detect_legacy_layout(tmp.path());
+        assert_eq!(
+            found,
+            vec![
+                ".specify/registry.yaml".to_string(),
+                ".specify/plan.yaml".to_string(),
+                ".specify/initiative.md".to_string(),
+                ".specify/contracts".to_string(),
+            ],
+            "detector must surface every v1 artifact in deterministic order"
+        );
+    }
+
+    #[test]
+    fn detect_legacy_ignores_v2_layout() {
+        let tmp = tempdir().unwrap();
+        // v2: same files, but at the repo root.
+        fs::write(tmp.path().join("registry.yaml"), "version: 1\nprojects: []\n").unwrap();
+        fs::write(tmp.path().join("plan.yaml"), "name: x\nchanges: []\n").unwrap();
+        fs::write(tmp.path().join("initiative.md"), "---\nname: x\n---\n").unwrap();
+        fs::create_dir_all(tmp.path().join("contracts").join("schemas")).unwrap();
+
+        assert!(detect_legacy_layout(tmp.path()).is_empty(), "v2 layout must not trigger");
     }
 }

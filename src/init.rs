@@ -1,23 +1,27 @@
 //! `init` — the orchestration called by `specify init`.
 //!
-//! Creates `.specify/{changes,specs,archive,.cache}/`, writes
+//! Creates `.specify/{changes,specs,archive,.cache}/`, resolves the
+//! requested schema URI into `.specify/.cache/`, writes
 //! `.specify/project.yaml` with a `rules:` key scaffolded from the
 //! resolved schema's `pipeline.define` briefs, and upserts the
 //! `.specify/.cache/` and `.specify/workspace/` lines into the project
-//! `.gitignore`. Two calls with
-//! identical options are safe — the only effect of the second call is
+//! `.gitignore`. Two calls with identical options are safe — the only
+//! effect of the second call is refreshing the schema cache and
 //! overwriting `project.yaml` with byte-identical content.
 //!
 //! Hub mode (`InitOptions::hub: true`, RFC-9 §1D) takes a different
-//! shape: a registry-only platform hub holds `registry.yaml`,
-//! `initiative.md`, and a sentinel `project.yaml { schema: hub, hub:
-//! true }` but never carries phase-pipeline rules of its own. Hub init
-//! refuses to run when `.specify/` already exists so it never clobbers
-//! a regular single-repo project.
+//! shape: a registry-only platform hub holds `registry.yaml` and
+//! `initiative.md` at the repo root and a sentinel `project.yaml {
+//! schema: hub, hub: true }` under `.specify/`, but never carries
+//! phase-pipeline rules of its own. Hub init refuses to run when
+//! `.specify/` already exists so it never clobbers a regular
+//! single-repo project.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use specify_change::is_valid_kebab_name;
 use specify_error::Error;
@@ -35,15 +39,10 @@ pub const HUB_SCHEMA_SENTINEL: &str = "hub";
 pub struct InitOptions<'a> {
     /// Root of the project being initialised.
     pub project_dir: &'a Path,
-    /// Schema identifier (bare name or URL). Ignored when
-    /// [`InitOptions::hub`] is `true` — hubs use the [`HUB_SCHEMA_SENTINEL`].
-    pub schema_value: &'a str,
-    /// Directory the CLI walks to discover `pipeline.define` briefs. The
-    /// agent typically populates this under `.specify/.cache/` before
-    /// invoking `specify init`, but any readable schema root works —
-    /// `init` never writes into it. Ignored when
-    /// [`InitOptions::hub`] is `true`.
-    pub schema_source_dir: &'a Path,
+    /// Schema URI to fetch or copy into `.specify/.cache/`. Required
+    /// for regular init and ignored when [`InitOptions::hub`] is `true`
+    /// — hubs use the [`HUB_SCHEMA_SENTINEL`].
+    pub schema_uri: Option<&'a str>,
     /// Project name; defaults to the project directory name when `None`.
     pub name: Option<&'a str>,
     /// Optional project domain description.
@@ -51,10 +50,11 @@ pub struct InitOptions<'a> {
     /// Controls what `specify_version` gets written into `project.yaml`.
     pub version_mode: VersionMode,
     /// When `true`, scaffold a registry-only platform **hub** (RFC-9
-    /// §1D) instead of a regular project: writes `registry.yaml`,
-    /// `initiative.md`, and a sentinel `project.yaml { schema: hub,
-    /// hub: true }`. Hub init refuses to run when `.specify/` already
-    /// exists so it never clobbers a regular single-repo project.
+    /// §1D) instead of a regular project: writes `registry.yaml` and
+    /// `initiative.md` at the repo root and a sentinel `project.yaml
+    /// { schema: hub, hub: true }` under `.specify/`. Hub init refuses
+    /// to run when `.specify/` already exists so it never clobbers a
+    /// regular single-repo project.
     pub hub: bool,
 }
 
@@ -93,7 +93,7 @@ pub struct InitResult {
 /// new directories, doesn't duplicate the `.gitignore` entry, and writes
 /// byte-identical `project.yaml` contents.
 ///
-/// When [`InitOptions::hub`] is `true`, dispatches to [`init_hub`]
+/// When [`InitOptions::hub`] is `true`, dispatches to `init_hub`
 /// instead — see its doc comment for the platform-hub on-disk shape.
 ///
 /// # Errors
@@ -104,6 +104,9 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.hub {
         return init_hub(opts);
     }
+    let schema_uri = opts.schema_uri.ok_or_else(|| {
+        Error::Config("specify init requires --schema-uri <uri> unless --hub is set".to_string())
+    })?;
 
     let name = resolved_name(opts.project_dir, opts.name);
 
@@ -122,7 +125,8 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         }
     }
 
-    let view = PipelineView::load(opts.schema_value, opts.schema_source_dir)?;
+    let resolved_uri = cache_schema_uri(schema_uri, opts.project_dir)?;
+    let view = PipelineView::load(&resolved_uri.schema_value, opts.project_dir)?;
     let schema_name = view.schema.schema.name.clone();
     let scaffolded_rule_keys: Vec<String> =
         view.schema.schema.pipeline.define.iter().map(|entry| entry.id.clone()).collect();
@@ -136,7 +140,7 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let cfg = ProjectConfig {
         name,
         domain: opts.domain.map(str::to_string),
-        schema: opts.schema_value.to_string(),
+        schema: resolved_uri.schema_value,
         specify_version: Some(specify_version.clone()),
         rules,
         hub: false,
@@ -162,17 +166,18 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
 
 /// Hub variant of [`init`] (RFC-9 §1D). Scaffolds a **registry-only
 /// platform hub**: the platform repo holds platform-level state
-/// (`registry.yaml`, `initiative.md`, plans, `workspace/`) but never
-/// appears in its own `registry.yaml` and disables phase pipelines on
-/// itself via the `schema: hub` sentinel.
+/// (`registry.yaml`, `initiative.md`, `plan.yaml`, plans, `workspace/`)
+/// but never appears in its own `registry.yaml` and disables phase
+/// pipelines on itself via the `schema: hub` sentinel.
 ///
 /// On-disk shape after success:
 ///
 /// ```text
-/// .specify/
-/// ├── project.yaml      # { schema: hub, hub: true, … }
+/// <project_dir>/
 /// ├── registry.yaml     # { version: 1, projects: [] }
-/// └── initiative.md     # canonical template, named after the project
+/// ├── initiative.md     # canonical template, named after the project
+/// └── .specify/
+///     └── project.yaml  # { schema: hub, hub: true, … }
 /// ```
 ///
 /// Refuses to run when `.specify/` already exists so the operator
@@ -251,6 +256,242 @@ fn init_hub(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     })
 }
 
+#[derive(Debug)]
+struct CachedSchema {
+    schema_value: String,
+}
+
+fn cache_schema_uri(schema_uri: &str, project_dir: &Path) -> Result<CachedSchema, Error> {
+    if schema_uri.trim().is_empty() || schema_uri != schema_uri.trim() {
+        return Err(Error::SchemaResolution(
+            "--schema-uri must be non-empty and must not have leading or trailing whitespace"
+                .to_string(),
+        ));
+    }
+
+    let source = SchemaUri::parse(schema_uri, project_dir)?;
+    let cache_dir = ProjectConfig::cache_dir(project_dir);
+    let target = cache_dir.join(&source.schema_name);
+    refresh_cached_schema(&source.source_dir, &target)?;
+    write_cache_meta(project_dir, &source.schema_value)?;
+
+    Ok(CachedSchema {
+        schema_value: source.schema_value,
+    })
+}
+
+#[derive(Debug)]
+struct SchemaUri {
+    schema_value: String,
+    schema_name: String,
+    source_dir: PathBuf,
+}
+
+impl SchemaUri {
+    fn parse(schema_uri: &str, project_dir: &Path) -> Result<Self, Error> {
+        if is_github_url(schema_uri) {
+            return Self::from_github(schema_uri);
+        }
+        Self::from_local(schema_uri, project_dir)
+    }
+
+    fn from_local(schema_uri: &str, project_dir: &Path) -> Result<Self, Error> {
+        let path = schema_uri
+            .strip_prefix("file://")
+            .map_or_else(|| PathBuf::from(schema_uri), PathBuf::from);
+        let source_dir = if path.is_absolute() { path } else { project_dir.join(path) };
+        ensure_schema_dir(&source_dir, schema_uri)?;
+        let canonical = fs::canonicalize(&source_dir).map_err(|err| {
+            Error::SchemaResolution(format!(
+                "failed to canonicalize local schema URI `{schema_uri}` at {}: {err}",
+                source_dir.display()
+            ))
+        })?;
+        let schema_name = schema_name_from_dir(&canonical)?;
+        let schema_value = format!("file://{}", canonical.display());
+        Ok(Self {
+            schema_value,
+            schema_name,
+            source_dir: canonical,
+        })
+    }
+
+    fn from_github(schema_uri: &str) -> Result<Self, Error> {
+        let spec = GithubSchemaUri::parse(schema_uri)?;
+        let repo_url = format!("https://github.com/{}/{}.git", spec.owner, spec.repo);
+        let checkout_dir =
+            sparse_checkout_github(&repo_url, spec.checkout_ref.as_deref(), &spec.schema_path)?;
+        let source_dir = checkout_dir.join(&spec.schema_path);
+        ensure_schema_dir(&source_dir, schema_uri)?;
+
+        Ok(Self {
+            schema_value: schema_uri.to_string(),
+            schema_name: spec.schema_name,
+            source_dir,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct GithubSchemaUri {
+    owner: String,
+    repo: String,
+    checkout_ref: Option<String>,
+    schema_path: String,
+    schema_name: String,
+}
+
+impl GithubSchemaUri {
+    fn parse(schema_uri: &str) -> Result<Self, Error> {
+        let (without_suffix, suffix_ref) = split_ref_suffix(schema_uri);
+        let pathless = without_suffix.strip_prefix("https://github.com/").ok_or_else(|| {
+            Error::SchemaResolution(format!("unsupported GitHub URI `{schema_uri}`"))
+        })?;
+        let mut parts: Vec<&str> = pathless.split('/').filter(|part| !part.is_empty()).collect();
+        if parts.len() < 3 {
+            return Err(Error::SchemaResolution(format!(
+                "GitHub schema URI `{schema_uri}` must include owner, repo, and schema path"
+            )));
+        }
+        let owner = parts.remove(0).to_string();
+        let repo = parts.remove(0).to_string();
+
+        let (tree_ref, schema_parts): (Option<&str>, Vec<&str>) = if parts.first() == Some(&"tree")
+        {
+            if parts.len() < 3 {
+                return Err(Error::SchemaResolution(format!(
+                    "GitHub tree schema URI `{schema_uri}` must include a ref and schema path"
+                )));
+            }
+            (Some(parts[1]), parts[2..].to_vec())
+        } else {
+            (None, parts)
+        };
+
+        let checkout_ref = suffix_ref.or(tree_ref).map(str::to_string);
+        let schema_path = schema_parts.join("/");
+        let schema_name = schema_parts.last().ok_or_else(|| {
+            Error::SchemaResolution(format!("cannot derive a schema name from `{schema_uri}`"))
+        })?;
+
+        Ok(Self {
+            owner,
+            repo,
+            checkout_ref,
+            schema_path,
+            schema_name: (*schema_name).to_string(),
+        })
+    }
+}
+
+fn is_github_url(schema_uri: &str) -> bool {
+    schema_uri.starts_with("https://github.com/")
+}
+
+fn split_ref_suffix(schema_uri: &str) -> (&str, Option<&str>) {
+    let last_slash = schema_uri.rfind('/').unwrap_or(0);
+    if let Some(at) = schema_uri.rfind('@')
+        && at > last_slash
+        && at + 1 < schema_uri.len()
+    {
+        return (&schema_uri[..at], Some(&schema_uri[at + 1..]));
+    }
+    (schema_uri, None)
+}
+
+fn sparse_checkout_github(
+    repo_url: &str, checkout_ref: Option<&str>, schema_path: &str,
+) -> Result<PathBuf, Error> {
+    let checkout_dir = unique_temp_dir("specify-schema-checkout")?;
+    let mut clone_args = vec!["clone", "--depth", "1", "--filter=blob:none", "--sparse"];
+    if let Some(reference) = checkout_ref {
+        clone_args.push("--branch");
+        clone_args.push(reference);
+    }
+    clone_args.push(repo_url);
+    let checkout_arg = checkout_dir.to_string_lossy().to_string();
+    clone_args.push(&checkout_arg);
+    run_git(&clone_args, "clone schema repository")?;
+
+    let checkout_dir_arg = checkout_dir.to_string_lossy().to_string();
+    run_git(
+        &["-C", &checkout_dir_arg, "sparse-checkout", "set", "--", schema_path],
+        "sparse-checkout schema path",
+    )?;
+    Ok(checkout_dir)
+}
+
+fn run_git(args: &[&str], action: &str) -> Result<(), Error> {
+    let output = Command::new("git").args(args).output().map_err(|err| {
+        Error::SchemaResolution(format!("failed to spawn `git` to {action}: {err}"))
+    })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(Error::SchemaResolution(format!("git failed to {action}: {}", stderr.trim())))
+}
+
+fn unique_temp_dir(prefix: &str) -> Result<PathBuf, Error> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| Error::SchemaResolution(format!("system clock before unix epoch: {err}")))?
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("{prefix}-{}-{nonce}", std::process::id()));
+    fs::create_dir_all(&path)?;
+    Ok(path)
+}
+
+fn ensure_schema_dir(path: &Path, original_uri: &str) -> Result<(), Error> {
+    let schema_path = path.join("schema.yaml");
+    if schema_path.is_file() {
+        return Ok(());
+    }
+    Err(Error::SchemaResolution(format!(
+        "schema URI `{original_uri}` did not resolve to a schema directory with schema.yaml at {}",
+        schema_path.display()
+    )))
+}
+
+fn schema_name_from_dir(path: &Path) -> Result<String, Error> {
+    path.file_name().and_then(|name| name.to_str()).map(str::to_string).ok_or_else(|| {
+        Error::SchemaResolution(format!("cannot derive schema name from {}", path.display()))
+    })
+}
+
+fn refresh_cached_schema(source: &Path, target: &Path) -> Result<(), Error> {
+    if target.exists() {
+        fs::remove_dir_all(target)?;
+    }
+    copy_dir_recursive(source, target)
+}
+
+fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), Error> {
+    fs::create_dir_all(target)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&source_path, &target_path)?;
+        } else {
+            fs::copy(&source_path, &target_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn write_cache_meta(project_dir: &Path, schema_value: &str) -> Result<(), Error> {
+    let meta = CacheMeta {
+        schema_url: schema_value.to_string(),
+        fetched_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let meta_path = CacheMeta::path(project_dir);
+    let serialised = serde_saphyr::to_string(&meta)?;
+    fs::write(meta_path, serialised)?;
+    Ok(())
+}
+
 fn resolved_name(project_dir: &Path, explicit: Option<&str>) -> String {
     if let Some(explicit) = explicit {
         return explicit.to_string();
@@ -284,7 +525,7 @@ fn resolve_version(project_dir: &Path, mode: VersionMode) -> Result<String, Erro
 
 const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/workspace/"];
 
-/// Idempotent: ensure each line in [`SPECIFY_GITIGNORE_ENTRIES`] appears
+/// Idempotent: ensure each line in `SPECIFY_GITIGNORE_ENTRIES` appears
 /// exactly once (matched with `trim()` per line) in the project
 /// `.gitignore`, appending missing lines with a trailing newline.
 ///
@@ -339,11 +580,14 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
     }
 
-    fn base_opts<'a>(project_dir: &'a Path, repo: &'a Path) -> InitOptions<'a> {
+    fn omnia_schema_dir() -> PathBuf {
+        repo_root().join("schemas").join("omnia")
+    }
+
+    fn base_opts<'a>(project_dir: &'a Path, schema_dir: &'a Path) -> InitOptions<'a> {
         InitOptions {
             project_dir,
-            schema_value: "omnia",
-            schema_source_dir: repo,
+            schema_uri: Some(schema_dir.to_str().expect("schema path utf8")),
             name: Some("demo"),
             domain: None,
             version_mode: VersionMode::WriteCurrent,
@@ -352,10 +596,45 @@ mod tests {
     }
 
     #[test]
+    fn github_schema_uri_parses_default_main() {
+        let parsed = GithubSchemaUri::parse("https://github.com/owner/repo/schemas/omnia")
+            .expect("parse GitHub URI");
+        assert_eq!(
+            parsed,
+            GithubSchemaUri {
+                owner: "owner".to_string(),
+                repo: "repo".to_string(),
+                checkout_ref: None,
+                schema_path: "schemas/omnia".to_string(),
+                schema_name: "omnia".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn github_schema_uri_parses_suffix_ref() {
+        let parsed = GithubSchemaUri::parse("https://github.com/owner/repo/schemas/omnia@v1")
+            .expect("parse GitHub URI");
+        assert_eq!(parsed.checkout_ref.as_deref(), Some("v1"));
+        assert_eq!(parsed.schema_path, "schemas/omnia");
+        assert_eq!(parsed.schema_name, "omnia");
+    }
+
+    #[test]
+    fn github_schema_uri_parses_tree_ref() {
+        let parsed =
+            GithubSchemaUri::parse("https://github.com/owner/repo/tree/main/schemas/omnia")
+                .expect("parse GitHub URI");
+        assert_eq!(parsed.checkout_ref.as_deref(), Some("main"));
+        assert_eq!(parsed.schema_path, "schemas/omnia");
+        assert_eq!(parsed.schema_name, "omnia");
+    }
+
+    #[test]
     fn init_creates_specify_tree() {
         let tmp = tempdir().unwrap();
-        let repo = repo_root();
-        let result = init(base_opts(tmp.path(), &repo)).expect("init ok");
+        let schema_dir = omnia_schema_dir();
+        let result = init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
 
         for sub in [
             ".specify",
@@ -377,7 +656,8 @@ mod tests {
 
         let cfg = ProjectConfig::load(tmp.path()).expect("reload ok");
         assert_eq!(cfg.name, "demo");
-        assert_eq!(cfg.schema, "omnia");
+        assert!(cfg.schema.starts_with("file://"));
+        assert!(cfg.schema.ends_with("/schemas/omnia"));
         assert_eq!(cfg.specify_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
         let mut rule_keys: Vec<_> = cfg.rules.keys().cloned().collect();
         rule_keys.sort();
@@ -390,11 +670,11 @@ mod tests {
     #[test]
     fn reinit_idempotent() {
         let tmp = tempdir().unwrap();
-        let repo = repo_root();
-        let first = init(base_opts(tmp.path(), &repo)).expect("first init");
+        let schema_dir = omnia_schema_dir();
+        let first = init(base_opts(tmp.path(), &schema_dir)).expect("first init");
         let config = fs::read(&first.config_path).expect("read first config");
 
-        let second = init(base_opts(tmp.path(), &repo)).expect("second init");
+        let second = init(base_opts(tmp.path(), &schema_dir)).expect("second init");
         assert!(second.directories_created.is_empty());
 
         let reread = fs::read(&second.config_path).expect("read second config");
@@ -404,16 +684,16 @@ mod tests {
     #[test]
     fn gitignore_missing_existing_duplicate() {
         let tmp = tempdir().unwrap();
-        let repo = repo_root();
+        let schema_dir = omnia_schema_dir();
         let gitignore = tmp.path().join(".gitignore");
 
-        init(base_opts(tmp.path(), &repo)).expect("init ok");
+        init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
         let text = fs::read_to_string(&gitignore).expect("read gitignore");
         assert!(text.contains(".specify/.cache/"));
         assert!(text.contains(".specify/workspace/"));
 
         // Re-init must not duplicate the entry.
-        init(base_opts(tmp.path(), &repo)).expect("re-init ok");
+        init(base_opts(tmp.path(), &schema_dir)).expect("re-init ok");
         let text = fs::read_to_string(&gitignore).expect("reread gitignore");
         let occurrences = text.matches(".specify/.cache/").count();
         assert_eq!(occurrences, 1);
@@ -423,10 +703,10 @@ mod tests {
     #[test]
     fn gitignore_appends_to_existing() {
         let tmp = tempdir().unwrap();
-        let repo = repo_root();
+        let schema_dir = omnia_schema_dir();
         fs::write(tmp.path().join(".gitignore"), "target/\n").expect("seed gitignore");
 
-        init(base_opts(tmp.path(), &repo)).expect("init ok");
+        init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
 
         let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read gitignore");
         assert!(text.contains("target/"));
@@ -440,14 +720,14 @@ mod tests {
     #[test]
     fn gitignore_existing_entry_noop() {
         let tmp = tempdir().unwrap();
-        let repo = repo_root();
+        let schema_dir = omnia_schema_dir();
         fs::write(
             tmp.path().join(".gitignore"),
             "target/\n.specify/.cache/\n.specify/workspace/\n",
         )
         .expect("seed gitignore");
 
-        init(base_opts(tmp.path(), &repo)).expect("init ok");
+        init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
 
         let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
         assert_eq!(text.matches(".specify/.cache/").count(), 1);
@@ -457,11 +737,11 @@ mod tests {
     #[test]
     fn gitignore_appends_workspace_only() {
         let tmp = tempdir().unwrap();
-        let repo = repo_root();
+        let schema_dir = omnia_schema_dir();
         fs::write(tmp.path().join(".gitignore"), "target/\n.specify/.cache/\n")
             .expect("seed gitignore");
 
-        init(base_opts(tmp.path(), &repo)).expect("init ok");
+        init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
 
         let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
         assert_eq!(text.matches(".specify/.cache/").count(), 1);
@@ -471,22 +751,21 @@ mod tests {
     #[test]
     fn cache_present_matches_cache_meta() {
         let tmp = tempdir().unwrap();
-        let repo = repo_root();
-        let result = init(base_opts(tmp.path(), &repo)).expect("init ok");
-        assert!(!result.cache_present);
+        let schema_dir = omnia_schema_dir();
+        let result = init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
+        assert!(result.cache_present);
 
         let cache_meta = CacheMeta::path(tmp.path());
-        fs::write(cache_meta, "schema_url: local:omnia\nfetched_at: 2025-01-01T00:00:00Z\n")
-            .expect("write cache meta");
-        let result = init(base_opts(tmp.path(), &repo)).expect("re-init ok");
-        assert!(result.cache_present);
+        let meta = CacheMeta::load(tmp.path()).expect("load cache meta").expect("cache meta");
+        assert!(meta.schema_url.starts_with("file://"));
+        assert!(cache_meta.is_file());
     }
 
     #[test]
     fn preserve_mode_keeps_existing_pinned_version() {
         let tmp = tempdir().unwrap();
-        let repo = repo_root();
-        init(base_opts(tmp.path(), &repo)).expect("fresh init");
+        let schema_dir = omnia_schema_dir();
+        init(base_opts(tmp.path(), &schema_dir)).expect("fresh init");
 
         // Manually edit the pinned version to an older one; Preserve
         // should keep it on re-init.
@@ -500,7 +779,7 @@ mod tests {
 
         let result = init(InitOptions {
             version_mode: VersionMode::Preserve,
-            ..base_opts(tmp.path(), &repo)
+            ..base_opts(tmp.path(), &schema_dir)
         })
         .expect("preserve init");
         assert_eq!(result.specify_version, "0.0.1");
@@ -511,12 +790,11 @@ mod tests {
         let tmp = tempdir().unwrap();
         let project = tmp.path().join("my-project");
         fs::create_dir_all(&project).expect("create project dir");
-        let repo = repo_root();
+        let schema_dir = omnia_schema_dir();
 
         let result = init(InitOptions {
             project_dir: &project,
-            schema_value: "omnia",
-            schema_source_dir: &repo,
+            schema_uri: Some(schema_dir.to_str().expect("schema path utf8")),
             name: None,
             domain: None,
             version_mode: VersionMode::WriteCurrent,
@@ -532,12 +810,7 @@ mod tests {
     fn hub_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
         InitOptions {
             project_dir,
-            // schema_value / schema_source_dir are intentionally
-            // ignored by hub init — point them at junk so future drift
-            // here blows up loudly rather than silently re-loading the
-            // omnia schema.
-            schema_value: "ignored-by-hub-init",
-            schema_source_dir: Path::new("/does/not/exist"),
+            schema_uri: None,
             name: Some(name),
             domain: None,
             version_mode: VersionMode::WriteCurrent,
@@ -551,11 +824,11 @@ mod tests {
         let result = init(hub_opts(tmp.path(), "platform-hub")).expect("hub init ok");
 
         let project_yaml = tmp.path().join(".specify/project.yaml");
-        let registry_yaml = tmp.path().join(".specify/registry.yaml");
-        let initiative_md = tmp.path().join(".specify/initiative.md");
+        let registry_yaml = tmp.path().join("registry.yaml");
+        let initiative_md = tmp.path().join("initiative.md");
         assert!(project_yaml.is_file(), "project.yaml missing");
-        assert!(registry_yaml.is_file(), "registry.yaml missing");
-        assert!(initiative_md.is_file(), "initiative.md missing");
+        assert!(registry_yaml.is_file(), "registry.yaml missing at repo root");
+        assert!(initiative_md.is_file(), "initiative.md missing at repo root");
 
         // Phase-pipeline directories MUST NOT be scaffolded for a hub —
         // the sentinel `schema: hub` disables the define-build-merge

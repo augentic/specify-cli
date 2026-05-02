@@ -10,7 +10,7 @@
 //! Every verb is expressed as a free function rather than a struct method
 //! so the CLI can dispatch each subcommand with one import per verb. They
 //! all round-trip through [`ChangeMetadata::save`] for the metadata writes
-//! and share the cross-device-safe [`move_atomic`] helper for archive
+//! and share the cross-device-safe `move_atomic` helper for archive
 //! moves.
 
 use std::io;

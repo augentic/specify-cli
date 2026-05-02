@@ -1,12 +1,12 @@
 //! Initiative brief parser — operator-authored brief
 //! (RFC-3a §*The Initiative Brief*).
 //!
-//! `.specify/initiative.md` is a markdown document with a `---`-delimited
-//! YAML frontmatter block at the top. The frontmatter shape is enforced
-//! here (`#[serde(deny_unknown_fields)]` + [`InitiativeBrief::parse_str`]
-//! invariants); the body is captured verbatim and **not** parsed in v1.
-//! A future RFC may land structured body parsing, but today's consumers
-//! treat the body as prose.
+//! `initiative.md` (at the repo root) is a markdown document with a
+//! `---`-delimited YAML frontmatter block at the top. The frontmatter
+//! shape is enforced here (`#[serde(deny_unknown_fields)]` +
+//! [`InitiativeBrief::parse_str`] invariants); the body is captured
+//! verbatim and **not** parsed in v1. A future RFC may land structured
+//! body parsing, but today's consumers treat the body as prose.
 //!
 //! No JSON schema file ships for v1 per the RFC — the shape is enforced
 //! directly in code.
@@ -19,7 +19,7 @@ use specify_error::Error;
 use crate::brief::split_on_closing_delimiter;
 use crate::registry::is_kebab_case;
 
-/// In-memory representation of `.specify/initiative.md`.
+/// In-memory representation of `initiative.md` (at the repo root).
 ///
 /// Structured frontmatter (YAML) + free-form body (markdown). The
 /// body is preserved byte-for-byte so round-tripping is faithful;
@@ -32,7 +32,7 @@ pub struct InitiativeBrief {
     pub body: String,
 }
 
-/// Parsed frontmatter of `.specify/initiative.md`.
+/// Parsed frontmatter of `initiative.md`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitiativeFrontmatter {
@@ -68,10 +68,11 @@ pub enum InputKind {
 }
 
 impl InitiativeBrief {
-    /// Absolute path to `.specify/initiative.md` for a project dir.
+    /// Absolute path to `<project_dir>/initiative.md`. The operator
+    /// brief lives at the repo root.
     #[must_use]
     pub fn path(project_dir: &Path) -> PathBuf {
-        project_dir.join(".specify").join("initiative.md")
+        project_dir.join("initiative.md")
     }
 
     /// Load + shape-validate the initiative brief.
@@ -146,9 +147,9 @@ impl InitiativeBrief {
         Ok(())
     }
 
-    /// Render the canonical `.specify/initiative.md` template for the
-    /// given kebab-case initiative name. Byte-stable — the `init` CLI
-    /// verb compares against a golden fixture.
+    /// Render the canonical `initiative.md` template for the given
+    /// kebab-case initiative name. Byte-stable — the `init` CLI verb
+    /// compares against a golden fixture.
     #[must_use]
     #[allow(clippy::literal_string_with_formatting_args)]
     pub fn template(name: &str) -> String {
@@ -168,7 +169,7 @@ inputs: []
 # {title}
 
 <!-- One-paragraph framing of what this initiative is trying to
-     achieve. Plans reference this brief via `.specify/initiative.md`. -->
+     achieve. Plans reference this brief via `initiative.md`. -->
 ";
 
 /// Title-case transform used by [`InitiativeBrief::template`]:

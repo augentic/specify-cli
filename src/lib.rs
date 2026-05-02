@@ -4,7 +4,7 @@
 //! See also: the `specify` binary (`src/main.rs`) and domain crates under
 //! `crates/` for the underlying logic.
 
-pub use config::ProjectConfig;
+pub use config::{ProjectConfig, detect_legacy_layout};
 pub use init::{
     HUB_SCHEMA_SENTINEL, InitOptions, InitResult, VersionMode, ensure_specify_gitignore_entries,
     init,
@@ -37,8 +37,9 @@ pub use specify_spec::{
 };
 pub use specify_task::{SkillDirective, Task, TaskProgress, mark_complete, parse_tasks};
 pub use specify_validate::{
-    BriefContext, Classification, CrossContext, CrossRule, Rule, RuleOutcome, ValidationReport,
-    ValidationResult, cross_rules, rules_for, serialize_report, validate_change,
+    BriefContext, Classification, ContractFinding, CrossContext, CrossRule, Rule, RuleOutcome,
+    ValidationReport, ValidationResult, cross_rules, rules_for, serialize_report,
+    validate_baseline_contracts, validate_change,
 };
 
 mod config;

@@ -79,7 +79,7 @@ struct PlanCounts {
 }
 
 fn load_plan_summary(ctx: &CommandContext) -> Option<PlanSummary> {
-    let plan_path = ProjectConfig::specify_dir(&ctx.project_dir).join("plan.yaml");
+    let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if !plan_path.exists() {
         return None;
     }

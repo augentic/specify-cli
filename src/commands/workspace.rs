@@ -27,11 +27,11 @@ pub fn run_workspace_sync(ctx: &CommandContext) -> Result<CliResult, Error> {
                     emit_response(SyncAbsent {
                         registry: Value::Null,
                         synced: false,
-                        message: "no registry declared at .specify/registry.yaml; nothing to sync",
+                        message: "no registry declared at registry.yaml; nothing to sync",
                     });
                 }
                 OutputFormat::Text => {
-                    println!("no registry declared at .specify/registry.yaml; nothing to sync");
+                    println!("no registry declared at registry.yaml; nothing to sync");
                 }
             }
             Ok(CliResult::Success)
@@ -75,7 +75,7 @@ pub fn run_workspace_status(ctx: &CommandContext) -> Result<CliResult, Error> {
                     });
                 }
                 OutputFormat::Text => {
-                    println!("no registry declared at .specify/registry.yaml");
+                    println!("no registry declared at registry.yaml");
                 }
             }
             Ok(CliResult::Success)
@@ -146,7 +146,7 @@ pub fn run_workspace_push(
 ) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
         Error::Config(
-            "No active plan found at .specify/plan.yaml. Run 'specify plan create' \
+            "No active plan found at plan.yaml. Run 'specify plan create' \
              to create one, or check whether the plan was already archived."
                 .to_string(),
         )
@@ -237,8 +237,8 @@ pub fn run_workspace_merge(
 ) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
         Error::Config(
-            "No active plan found at .specify/plan.yaml. Run 'specify plan create' \
-             to author one (or 'specify initiative create' first if .specify/initiative.md \
+            "No active plan found at plan.yaml. Run 'specify plan create' \
+             to author one (or 'specify initiative create' first if initiative.md \
              is also missing) before invoking 'specify workspace merge'."
                 .to_string(),
         )

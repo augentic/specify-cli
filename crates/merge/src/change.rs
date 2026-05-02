@@ -6,7 +6,8 @@
 //! after every delta has merged cleanly *and* every merged baseline has
 //! passed [`crate::validate_baseline`]. On success `merge_change`:
 //!
-//!   1. Writes each merged baseline under `specs_dir`.
+//!   1. Writes each merged spec baseline under `specs_dir` and contract
+//!      baselines under `contracts_dir`.
 //!   2. Flips `.metadata.yaml.status` from `Complete` to `Merged` and
 //!      stamps `PhaseOutcome { phase: Merge, outcome: Success }`.
 //!   3. Moves the change directory under `archive_dir` as
@@ -98,9 +99,11 @@ pub struct BaselineConflict {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn preview_change(change_dir: &Path, specs_dir: &Path) -> Result<PreviewResult, Error> {
+pub fn preview_change(
+    change_dir: &Path, specs_dir: &Path, contracts_dir: &Path,
+) -> Result<PreviewResult, Error> {
     let specs = plan_merge(change_dir, specs_dir)?;
-    let contracts = preview_contracts(change_dir, specs_dir)?;
+    let contracts = preview_contracts(change_dir, contracts_dir)?;
     Ok(PreviewResult { specs, contracts })
 }
 
@@ -123,7 +126,7 @@ pub fn preview_change(change_dir: &Path, specs_dir: &Path) -> Result<PreviewResu
 ///
 /// Returns an error if the operation fails.
 pub fn merge_change(
-    change_dir: &Path, specs_dir: &Path, archive_dir: &Path,
+    change_dir: &Path, specs_dir: &Path, contracts_dir: &Path, archive_dir: &Path,
 ) -> Result<Vec<(String, MergeResult)>, Error> {
     let mut metadata = ChangeMetadata::load(change_dir)?;
     if metadata.status != LifecycleStatus::Complete {
@@ -153,14 +156,10 @@ pub fn merge_change(
 
     // --- Copy contract files into baseline ----------------------------------
 
-    let contracts_dir = change_dir.join("contracts");
-    let baseline_contracts_dir = specs_dir
-        .parent()
-        .ok_or_else(|| Error::Merge("specs_dir has no parent".into()))?
-        .join("contracts");
+    let change_contracts_dir = change_dir.join("contracts");
 
-    let contract_files = if contracts_dir.is_dir() {
-        copy_contracts(&contracts_dir, &baseline_contracts_dir)?
+    let contract_files = if change_contracts_dir.is_dir() {
+        copy_contracts(&change_contracts_dir, contracts_dir)?
     } else {
         vec![]
     };
@@ -216,7 +215,9 @@ pub fn merge_change(
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn conflict_check(change_dir: &Path, specs_dir: &Path) -> Result<Vec<BaselineConflict>, Error> {
+pub fn conflict_check(
+    change_dir: &Path, specs_dir: &Path, contracts_dir: &Path,
+) -> Result<Vec<BaselineConflict>, Error> {
     let metadata = ChangeMetadata::load(change_dir)?;
     let Some(defined_raw) = metadata.defined_at.as_deref() else {
         return Ok(Vec::new());
@@ -266,15 +267,10 @@ pub fn conflict_check(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Baselin
     // Check contract baseline for drift
     let change_contracts_dir = change_dir.join("contracts");
     if change_contracts_dir.is_dir() {
-        let baseline_contracts_dir = specs_dir
-            .parent()
-            .ok_or_else(|| Error::Merge("specs_dir has no parent".into()))?
-            .join("contracts");
-
         check_contract_drift(
             &change_contracts_dir,
             &change_contracts_dir,
-            &baseline_contracts_dir,
+            contracts_dir,
             defined_raw,
             defined_at,
             &mut conflicts,
@@ -489,20 +485,15 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Entry>, Error> 
 }
 
 fn preview_contracts(
-    change_dir: &Path, specs_dir: &Path,
+    change_dir: &Path, baseline_contracts_dir: &Path,
 ) -> Result<Vec<ContractPreviewEntry>, Error> {
     let contracts_dir = change_dir.join("contracts");
     if !contracts_dir.is_dir() {
         return Ok(vec![]);
     }
 
-    let baseline_dir = specs_dir
-        .parent()
-        .ok_or_else(|| Error::Merge("specs_dir has no parent".into()))?
-        .join("contracts");
-
     let mut entries = Vec::new();
-    collect_contract_entries(&contracts_dir, &contracts_dir, &baseline_dir, &mut entries)?;
+    collect_contract_entries(&contracts_dir, &contracts_dir, baseline_contracts_dir, &mut entries)?;
     entries.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
     Ok(entries)
 }

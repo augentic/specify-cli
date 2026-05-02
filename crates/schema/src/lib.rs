@@ -13,10 +13,10 @@
 //!   subcommand (see [`PipelineView`]).
 //! - The on-disk `.cache-meta.yaml` format written by the agent
 //!   (see [`CacheMeta`]).
-//! - The on-disk `.specify/registry.yaml` platform catalogue
+//! - The on-disk `registry.yaml` platform catalogue at the repo root
 //!   (see [`Registry`]) introduced by RFC-3a.
-//! - The on-disk `.specify/initiative.md` operator-authored brief
-//!   (see [`InitiativeBrief`]) introduced by RFC-3a.
+//! - The on-disk `initiative.md` operator-authored brief at the repo
+//!   root (see [`InitiativeBrief`]) introduced by RFC-3a.
 
 mod brief;
 mod cache;

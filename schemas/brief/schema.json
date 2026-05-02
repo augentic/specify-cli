@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/augentic/specify/schemas/brief/schema.json",
+  "$id": "https://github.com/augentic/specify-cli/schemas/brief/schema.json",
   "title": "specify brief frontmatter",
   "description": "Validates the YAML frontmatter block at the top of every brief markdown file under `schemas/*/briefs/**/*.md`. Briefs describe individual skill steps that a schema's pipeline runs; the frontmatter declares identity, narrative, and graph edges (`needs`, `generates`, `tracks`). The JSON Schema applies to the YAML between the opening and closing `---` delimiters, not the markdown body.",
   "type": "object",

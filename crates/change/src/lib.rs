@@ -60,7 +60,7 @@ pub use timestamp::Rfc3339Stamp;
 ///
 /// Pre-RFC-9 archived metadata files have no `version` field at all;
 /// `serde(default)` resolves them to `1` on read (see
-/// [`default_metadata_version`]).
+/// `default_metadata_version`).
 pub const METADATA_VERSION: u32 = 2;
 
 /// Default value for [`ChangeMetadata::version`] when the field is

@@ -459,7 +459,7 @@ fn stale_workspace_clones(registry: &Registry, project_dir: &Path) -> Vec<Diagno
                     severity: DiagnosticSeverity::Warning,
                     code: CODE_STALE_CLONE.to_string(),
                     message: format!(
-                        "workspace clone '{}' has no `.specify-sync.yaml` and no readable git remote; cannot verify it is in sync with `.specify/registry.yaml` — re-run `specify workspace sync` to refresh",
+                        "workspace clone '{}' has no `.specify-sync.yaml` and no readable git remote; cannot verify it is in sync with `registry.yaml` — re-run `specify workspace sync` to refresh",
                         project.name
                     ),
                     entry: None,
@@ -503,7 +503,7 @@ fn diag_signature_changed(
         severity: DiagnosticSeverity::Warning,
         code: CODE_STALE_CLONE.to_string(),
         message: format!(
-            "workspace clone '{project}' is out of sync with `.specify/registry.yaml` ({detail}); re-run `specify workspace sync`"
+            "workspace clone '{project}' is out of sync with `registry.yaml` ({detail}); re-run `specify workspace sync`"
         ),
         entry: None,
         data: Some(DiagnosticPayload::StaleClone {

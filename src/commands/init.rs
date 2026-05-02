@@ -9,15 +9,23 @@ use crate::cli::OutputFormat;
 use crate::output::{CliResult, absolute_string, emit_response};
 
 pub fn run_init(
-    format: OutputFormat, schema: String, schema_dir: PathBuf, name: Option<String>,
-    domain: Option<String>, hub: bool,
+    format: OutputFormat, schema_uri: Option<String>, name: Option<String>, domain: Option<String>,
+    hub: bool,
 ) -> Result<CliResult, Error> {
     let project_dir = PathBuf::from(".");
+    let schema_uri = match (hub, schema_uri) {
+        (true, _) => None,
+        (false, Some(schema_uri)) => Some(schema_uri),
+        (false, None) => {
+            return Err(Error::Config(
+                "specify init requires --schema-uri <uri> unless --hub is set".to_string(),
+            ));
+        }
+    };
 
     let opts = InitOptions {
         project_dir: &project_dir,
-        schema_value: &schema,
-        schema_source_dir: &schema_dir,
+        schema_uri: schema_uri.as_deref(),
         name: name.as_deref(),
         domain: domain.as_deref(),
         version_mode: VersionMode::WriteCurrent,
