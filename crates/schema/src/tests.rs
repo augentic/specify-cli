@@ -1889,8 +1889,5 @@ fn initiative_brief_roundtrip_preserves_body() {
 #[test]
 fn initiative_brief_path_helper_points_at_repo_root() {
     let dir = Path::new("/tmp/some/project");
-    assert_eq!(
-        InitiativeBrief::path(dir),
-        PathBuf::from("/tmp/some/project/initiative.md")
-    );
+    assert_eq!(InitiativeBrief::path(dir), PathBuf::from("/tmp/some/project/initiative.md"));
 }

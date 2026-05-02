@@ -644,7 +644,7 @@ impl Plan {
     ///      Any collision errors out before any file or directory is
     ///      moved, so a failure here leaves the working tree untouched.
     /// 4. Create `archive_dir` if missing.
-    /// 5. Execute: move `plan.yaml` via [`crate::actions::move_atomic`],
+    /// 5. Execute: move `plan.yaml` via `move_atomic`,
     ///    then (when present) move the working directory via the same
     ///    helper. It dispatches on `src.is_dir()` and does an atomic
     ///    `fs::rename` with a `copy + remove` fallback on `EXDEV`
@@ -691,8 +691,8 @@ impl Plan {
         // the project root, so the working directory sits at
         // `<project>/.specify/plans/<plan.name>/`.
         let project_root = path.parent();
-        let plans_dir = project_root
-            .map(|root| root.join(".specify").join("plans").join(&plan.name));
+        let plans_dir =
+            project_root.map(|root| root.join(".specify").join("plans").join(&plan.name));
         let co_move_plans = plans_dir.as_ref().filter(|p| p.is_dir()).cloned();
 
         // RFC-3a §"When are `registry.yaml` and `initiative.md`
@@ -2260,8 +2260,7 @@ changes:
     ) -> Result<(PathBuf, Option<PathBuf>), Error> {
         let initiative = plan_path
             .parent()
-            .map(|p| p.join("initiative.md"))
-            .unwrap_or_else(|| PathBuf::from("initiative.md"));
+            .map_or_else(|| PathBuf::from("initiative.md"), |p| p.join("initiative.md"));
         Plan::archive(plan_path, &initiative, archive_dir, force)
     }
 

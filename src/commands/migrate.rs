@@ -28,7 +28,7 @@ use crate::output::{CliResult, emit_response};
 /// Repo-relative legacy paths the migrator inspects, and the root-
 /// relative destination each maps to. Returned in deterministic
 /// order so JSON output is stable for fixture comparison.
-fn migrations() -> [Migration; 4] {
+const fn migrations() -> [Migration; 4] {
     [
         Migration {
             from: ".specify/registry.yaml",
@@ -148,10 +148,7 @@ pub fn run_migrate_v2_layout(
         }
         any_legacy_present = true;
 
-        let dst_exists = match m.kind {
-            ArtifactKind::File => dst.exists(),
-            ArtifactKind::Directory => dst.exists(),
-        };
+        let dst_exists = dst.exists();
         if dst_exists {
             any_collisions = true;
             rows.push(MoveRow {
@@ -178,10 +175,7 @@ pub fn run_migrate_v2_layout(
         fs::rename(&src, &dst).map_err(|err| {
             Error::Io(std::io::Error::new(
                 err.kind(),
-                format!(
-                    "specify migrate v2-layout: failed to move {} -> {}: {err}",
-                    m.from, m.to
-                ),
+                format!("specify migrate v2-layout: failed to move {} -> {}: {err}", m.from, m.to),
             ))
         })?;
 
@@ -228,9 +222,7 @@ fn print_text(body: &MigrateBody) {
     }
     if body.any_collisions {
         println!();
-        println!(
-            "error: one or more destinations already exist; resolve manually then re-run"
-        );
+        println!("error: one or more destinations already exist; resolve manually then re-run");
     }
 }
 
@@ -242,7 +234,8 @@ fn is_inside_workspace_clone(project_dir: &Path) -> bool {
     // Canonicalise best-effort; if the path doesn't exist yet (the CWD
     // always does in practice), fall back to the input path.
     let path = fs::canonicalize(project_dir).unwrap_or_else(|_| PathBuf::from(project_dir));
-    let parts: Vec<&std::ffi::OsStr> = path.components().map(|c| c.as_os_str()).collect();
+    let parts: Vec<&std::ffi::OsStr> =
+        path.components().map(std::path::Component::as_os_str).collect();
     parts.windows(3).any(|w| {
         w[0] == std::ffi::OsStr::new(".specify")
             && w[1] == std::ffi::OsStr::new("workspace")
@@ -328,8 +321,7 @@ mod tests {
 
         // Source must remain untouched.
         assert!(tmp.path().join(".specify/registry.yaml").is_file());
-        let pre =
-            fs::read_to_string(tmp.path().join("registry.yaml")).expect("read pre-existing");
+        let pre = fs::read_to_string(tmp.path().join("registry.yaml")).expect("read pre-existing");
         assert_eq!(pre, "pre-existing\n", "pre-existing destination must not be clobbered");
     }
 

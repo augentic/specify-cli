@@ -627,10 +627,7 @@ fn workspace_merge_refuses_when_plan_absent() {
         .assert()
         .success();
 
-    assert!(
-        !tmp.path().join("plan.yaml").exists(),
-        "test precondition: plan.yaml must be absent",
-    );
+    assert!(!tmp.path().join("plan.yaml").exists(), "test precondition: plan.yaml must be absent");
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -999,10 +996,7 @@ fn initiative_finalize_help_documents_clean_and_dry_run() {
 fn initiative_finalize_refuses_when_plan_absent() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
-    assert!(
-        !tmp.path().join("plan.yaml").exists(),
-        "test precondition: plan.yaml must be absent",
-    );
+    assert!(!tmp.path().join("plan.yaml").exists(), "test precondition: plan.yaml must be absent");
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -1175,11 +1169,8 @@ fn project_aware_command_refuses_on_v1_layout_with_legacy_layout_error() {
     // `specify status` is the canonical project-aware entry point; the
     // detector wired into `run_with_project` must surface
     // `legacy-layout` before the dashboard even runs.
-    let assert = specify()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "status"])
-        .assert()
-        .failure();
+    let assert =
+        specify().current_dir(tmp.path()).args(["--format", "json", "status"]).assert().failure();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert_eq!(value["error"], "legacy-layout");

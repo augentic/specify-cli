@@ -308,10 +308,7 @@ mod tests {
             paths: vec![".specify/registry.yaml".to_string(), ".specify/plan.yaml".to_string()],
         };
         let s = err.to_string();
-        assert!(
-            s.contains("legacy v1 layout detected"),
-            "expected legacy-layout banner, got: {s}"
-        );
+        assert!(s.contains("legacy v1 layout detected"), "expected legacy-layout banner, got: {s}");
         assert!(
             s.contains("specify migrate v2-layout"),
             "expected migration command in message, got: {s}"

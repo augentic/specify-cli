@@ -183,12 +183,14 @@ impl ProjectConfig {
     }
 }
 
-/// Scan `project_dir` for v1-layout artifacts that the CLI no longer
-/// reads — `.specify/registry.yaml`, `.specify/plan.yaml`,
-/// `.specify/initiative.md`, and `.specify/contracts/`. Returns the
-/// repo-relative paths in deterministic order so error output is
-/// stable. An empty `Vec` means the project is on the v2 layout (or
-/// has neither shape, which is also fine).
+/// Scan `project_dir` for v1-layout artifacts that the CLI no longer reads.
+///
+/// The four legacy paths checked are `.specify/registry.yaml`,
+/// `.specify/plan.yaml`, `.specify/initiative.md`, and
+/// `.specify/contracts/`. Returns the repo-relative paths in
+/// deterministic order so error output is stable. An empty `Vec` means
+/// the project is on the v2 layout (or has neither shape, which is
+/// also fine).
 ///
 /// This is the engine behind the hard-cutover detector wired into
 /// every project-aware CLI verb: when this returns non-empty the
@@ -204,7 +206,8 @@ pub fn detect_legacy_layout(project_dir: &Path) -> Vec<String> {
     ];
     candidates
         .into_iter()
-        .filter_map(|(name, present)| present.then(|| name.to_string()))
+        .filter(|&(_, present)| present)
+        .map(|(name, _)| name.to_string())
         .collect()
 }
 
