@@ -1,4 +1,4 @@
-//! On-disk representation of `<change_dir>/journal.yaml` — the
+//! On-disk representation of `<slice_dir>/journal.yaml` — the
 //! append-only audit log that phase skills (`define`, `build`, `merge`)
 //! write while they run.
 //!
@@ -9,7 +9,7 @@
 //!
 //! - **Append-only**: the module surface exposes `load` and `append`
 //!   and nothing else. There is no `pop`, `truncate`, or delete API —
-//!   `journal.yaml` grows monotonically for the life of the change.
+//!   `journal.yaml` grows monotonically for the life of the slice.
 //!   Callers who genuinely need to prune history edit the file by
 //!   hand.
 //!
@@ -24,7 +24,7 @@
 //! - **Atomic writes**: each [`Journal::append`] is a read-modify-write
 //!   that serialises the whole journal to a temp file in the same
 //!   directory and then `persist`s it via `fs::rename`. Mirrors
-//!   [`crate::ChangeMetadata::save`] and `Plan::save` (in
+//!   [`crate::SliceMetadata::save`] and `Plan::save` (in
 //!   `specify-initiative`) exactly
 //!   so a mid-write crash leaves the prior file intact.
 //!
@@ -50,7 +50,7 @@ use specify_error::Error;
 use crate::Phase;
 use crate::timestamp::Rfc3339Stamp;
 
-/// On-disk representation of `<change_dir>/journal.yaml`. Append-only.
+/// On-disk representation of `<slice_dir>/journal.yaml`. Append-only.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Journal {
@@ -107,10 +107,10 @@ impl fmt::Display for EntryKind {
 }
 
 impl Journal {
-    /// Convenience helper: `<change_dir>/journal.yaml`.
+    /// Convenience helper: `<slice_dir>/journal.yaml`.
     #[must_use]
-    pub fn path(change_dir: &Path) -> PathBuf {
-        change_dir.join("journal.yaml")
+    pub fn path(slice_dir: &Path) -> PathBuf {
+        slice_dir.join("journal.yaml")
     }
 
     /// Load the journal from disk.
@@ -124,8 +124,8 @@ impl Journal {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    pub fn load(change_dir: &Path) -> Result<Self, Error> {
-        let path = Self::path(change_dir);
+    pub fn load(slice_dir: &Path) -> Result<Self, Error> {
+        let path = Self::path(slice_dir);
         if !path.exists() {
             return Ok(Self { entries: Vec::new() });
         }
@@ -149,11 +149,11 @@ impl Journal {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    pub fn append(change_dir: &Path, entry: JournalEntry) -> Result<(), Error> {
-        let mut journal = Self::load(change_dir)?;
+    pub fn append(slice_dir: &Path, entry: JournalEntry) -> Result<(), Error> {
+        let mut journal = Self::load(slice_dir)?;
         journal.entries.push(entry);
 
-        let path = Self::path(change_dir);
+        let path = Self::path(slice_dir);
         crate::atomic::atomic_yaml_write(&path, &journal)
     }
 }

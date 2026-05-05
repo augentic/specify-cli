@@ -89,9 +89,9 @@ impl Project {
         self
     }
 
-    /// Copy a fixture subtree into `.specify/changes/my-change/`.
+    /// Copy a fixture subtree into `.specify/slices/my-change/`.
     fn stage_change(&self, fixture: &str) -> PathBuf {
-        let dst = self.root.join(".specify/changes/my-change");
+        let dst = self.root.join(".specify/slices/my-change");
         fs::create_dir_all(&dst).expect("mkdir change");
         copy_dir(&e2e_fixtures().join(fixture), &dst);
         dst
@@ -316,7 +316,7 @@ fn merge_two_spec_change_produces_baselines_and_archive() {
         "archive dir name must end with -my-change, got {archived_name}"
     );
     assert!(
-        !project.root().join(".specify/changes/my-change").exists(),
+        !project.root().join(".specify/slices/my-change").exists(),
         "original change dir should be gone"
     );
 
@@ -356,7 +356,7 @@ fn task_progress_reports_counts_and_items() {
 fn task_mark_marks_then_is_idempotent() {
     let project = Project::init().with_schemas();
     project.stage_change("good-change");
-    let tasks_path = project.root().join(".specify/changes/my-change/tasks.md");
+    let tasks_path = project.root().join(".specify/slices/my-change/tasks.md");
 
     let before = fs::read_to_string(&tasks_path).expect("read tasks before");
     assert!(before.contains("- [ ] 1.1"), "fixture must start with task 1.1 incomplete");

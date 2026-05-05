@@ -69,17 +69,17 @@ struct BriefRow {
 #[serde(rename_all = "kebab-case")]
 struct PipelineBody {
     phase: String,
-    change: Option<String>,
+    slice: Option<String>,
     briefs: Vec<Value>,
 }
 
 pub fn run_capability_pipeline(
-    ctx: &CommandContext, phase: Phase, change: Option<PathBuf>,
+    ctx: &CommandContext, phase: Phase, slice: Option<PathBuf>,
 ) -> Result<CliResult, Error> {
     let pipeline = ctx.load_pipeline()?;
 
     let order = pipeline.topo_order(phase)?;
-    let completion = change.as_deref().map(|change_dir| pipeline.completion_for(phase, change_dir));
+    let completion = slice.as_deref().map(|slice_dir| pipeline.completion_for(phase, slice_dir));
 
     match ctx.format {
         OutputFormat::Json => {
@@ -101,7 +101,7 @@ pub fn run_capability_pipeline(
                 .collect();
             emit_response(PipelineBody {
                 phase: phase.to_string(),
-                change: change.as_ref().map(|p| p.display().to_string()),
+                slice: slice.as_ref().map(|p| p.display().to_string()),
                 briefs,
             });
         }

@@ -267,7 +267,7 @@ impl Diagnostic {
 /// Run every `Plan::validate` check, then layer the four RFC-9 §4B
 /// diagnostics on top.
 ///
-/// `changes_dir` and `registry` are forwarded to `Plan::validate` so
+/// `slices_dir` and `registry` are forwarded to `Plan::validate` so
 /// the validate-level findings are bit-identical to those emitted by
 /// `specify plan validate`. `project_dir` is consulted only by the
 /// stale-workspace-clone check; pass `None` to skip that check
@@ -282,11 +282,11 @@ impl Diagnostic {
 ///   5. Unreachable-entry diagnostics (sorted by entry name).
 #[must_use]
 pub fn doctor(
-    plan: &Plan, changes_dir: Option<&Path>, registry: Option<&Registry>,
+    plan: &Plan, slices_dir: Option<&Path>, registry: Option<&Registry>,
     project_dir: Option<&Path>,
 ) -> Vec<Diagnostic> {
     let mut out: Vec<Diagnostic> =
-        plan.validate(changes_dir, registry).iter().map(Diagnostic::from_finding).collect();
+        plan.validate(slices_dir, registry).iter().map(Diagnostic::from_finding).collect();
 
     out.extend(detect_cycles_doctor(&plan.changes));
     out.extend(orphan_source_keys(plan));

@@ -16,7 +16,7 @@
 //! their on-disk writes through the same atomic-rename envelope as
 //! the per-loop-unit primitives that remain in this crate. Downstream
 //! library users who need the same behaviour should call the domain
-//! helpers (`ChangeMetadata::save`, `Journal::append`, plus the
+//! helpers (`SliceMetadata::save`, `Journal::append`, plus the
 //! `Plan::save` / `Stamp::acquire` re-exports in `specify-initiative`)
 //! that route through here.
 

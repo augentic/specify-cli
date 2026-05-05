@@ -95,7 +95,7 @@ pub enum CapabilitySource {
 ///
 /// Serializes as the lowercase identifiers `plan | define | build | merge`
 /// on the wire — this is the same wire format consumed by
-/// `ChangeMetadata.outcome.phase` and by `pipeline.*` keys in the
+/// `SliceMetadata.outcome.phase` and by `pipeline.*` keys in the
 /// manifest, keeping a single source of truth for phase naming.
 ///
 /// `Plan` is the Layer 3 authoring phase (`/spec:plan`) that runs

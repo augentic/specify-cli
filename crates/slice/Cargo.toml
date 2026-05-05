@@ -4,9 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Change-metadata lifecycle state machine for Specify"
+description = "Slice-metadata lifecycle state machine for Specify"
 categories = ["development-tools"]
-keywords = ["specify", "change", "lifecycle"]
+keywords = ["specify", "slice", "lifecycle"]
 readme = "../../README.md"
 
 [lints]

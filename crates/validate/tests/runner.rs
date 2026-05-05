@@ -1,11 +1,12 @@
-//! Non-golden integration tests for `validate_change` — synthetic
+//! Non-golden integration tests for `validate_slice` — synthetic
 //! scenarios that don't make sense to pin as static JSON.
 
 use std::fs;
 use std::path::PathBuf;
 
 use specify_capability::{PipelineView, ValidationResult};
-use specify_validate::validate_change;
+use specify_slice::SLICES_DIR_NAME;
+use specify_validate::validate_slice;
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
@@ -27,7 +28,7 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
     }
 }
 
-/// Stage a project dir with omnia's schema but leave the change dir to
+/// Stage a project dir with omnia's schema but leave the slice dir to
 /// the caller.
 fn stage_project() -> (TempDir, PathBuf) {
     let repo = repo_root();
@@ -42,12 +43,13 @@ fn stage_project() -> (TempDir, PathBuf) {
 #[test]
 fn missing_artifact_produces_synth_failure() {
     let (_guard, project_dir) = stage_project();
-    let change_dir = project_dir.join(".specify/changes/synth-missing");
-    fs::create_dir_all(&change_dir).unwrap();
+    let slice_dir =
+        project_dir.join(".specify").join(SLICES_DIR_NAME).join("synth-missing");
+    fs::create_dir_all(&slice_dir).unwrap();
     // Deliberately leave out every artifact.
 
     let pipeline = PipelineView::load("omnia", &project_dir).expect("pipeline loads");
-    let report = validate_change(&change_dir, &pipeline).expect("validate_change ok");
+    let report = validate_slice(&slice_dir, &pipeline).expect("validate_slice ok");
 
     // Every define-phase brief should have synthesised an artifact-exists
     // failure (and nothing else for that brief).
@@ -83,18 +85,18 @@ fn missing_artifact_produces_synth_failure() {
 }
 
 #[test]
-fn validate_change_reports_passed_without_panics_across_semantic_rules() {
+fn validate_slice_reports_passed_without_panics_across_semantic_rules() {
     // Reuses the good fixture to exercise the Semantic-rules-never-called
     // invariant in situ: if any Semantic rule's `check` were invoked the
     // runner would panic (by construction) and this test would fail.
     let repo = repo_root();
     let fixture = repo.join("crates/validate/tests/fixtures/change-good");
     let (_guard, project_dir) = stage_project();
-    let change_dir = project_dir.join(".specify/changes/change-good");
-    copy_dir_recursive(&fixture, &change_dir);
+    let slice_dir = project_dir.join(".specify").join(SLICES_DIR_NAME).join("change-good");
+    copy_dir_recursive(&fixture, &slice_dir);
 
     let pipeline = PipelineView::load("omnia", &project_dir).expect("pipeline loads");
-    let report = validate_change(&change_dir, &pipeline).expect("validate_change ok");
+    let report = validate_slice(&slice_dir, &pipeline).expect("validate_slice ok");
     assert!(report.passed);
 
     // Confirm every Semantic rule surfaced as Deferred.

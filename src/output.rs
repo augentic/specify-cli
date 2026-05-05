@@ -123,7 +123,7 @@ pub fn emit_json_error(err: &Error, code: CliResult) {
         Error::PlanHasOutstandingWork { .. } => "plan-has-outstanding-work",
         Error::DriverBusy { .. } => "driver-busy",
         Error::ArtifactNotFound { .. } => "artifact-not-found",
-        Error::ChangeNotFound { .. } => "change-not-found",
+        Error::SliceNotFound { .. } => "slice-not-found",
         Error::RegistryMissing => "registry-missing",
         Error::LegacyLayout { .. } => "legacy-layout",
         Error::SchemaBecameCapability { .. } => "schema-became-capability",

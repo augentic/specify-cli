@@ -21,15 +21,15 @@ use crate::output::{CliResult, emit_response};
 
 pub fn run_status_dashboard(ctx: &CommandContext) -> Result<CliResult, Error> {
     let pipeline = ctx.load_pipeline()?;
-    let changes_dir = ctx.changes_dir();
+    let slices_dir = ctx.slices_dir();
 
     let registry = Registry::load(&ctx.project_dir)?;
     let plan_summary = load_plan_summary(ctx);
 
-    let names = list_slice_names(&changes_dir)?;
+    let names = list_slice_names(&slices_dir)?;
     let mut entries = Vec::with_capacity(names.len());
     for name in names {
-        let dir = changes_dir.join(&name);
+        let dir = slices_dir.join(&name);
         entries.push(collect_status(&dir, &name, &pipeline, &ctx.project_dir)?);
     }
 
@@ -40,18 +40,18 @@ pub fn run_status_dashboard(ctx: &CommandContext) -> Result<CliResult, Error> {
             struct DashboardBody {
                 registry: Value,
                 plan: Value,
-                changes: Vec<Value>,
+                slices: Vec<Value>,
             }
             let registry_json = registry
                 .map_or(Value::Null, |r| serde_json::to_value(r).expect("Registry serialises"));
             let plan_json = plan_summary
                 .as_ref()
                 .map_or(Value::Null, |p| serde_json::to_value(p).expect("PlanSummary serialises"));
-            let changes_json: Vec<Value> = entries.iter().map(status_entry_to_json).collect();
+            let slices_json: Vec<Value> = entries.iter().map(status_entry_to_json).collect();
             emit_response(DashboardBody {
                 registry: registry_json,
                 plan: plan_json,
-                changes: changes_json,
+                slices: slices_json,
             });
         }
         OutputFormat::Text => {
@@ -146,7 +146,7 @@ fn print_dashboard_text(
     }
 
     println!();
-    println!("## Active changes");
+    println!("## Active slices");
     if entries.is_empty() {
         println!("  (none)");
         return;
@@ -155,7 +155,7 @@ fn print_dashboard_text(
     let status_w = entries.iter().map(|e| e.status.len()).max().unwrap_or(6).max(6);
     println!(
         "  {:<name_w$}  {:<status_w$}  tasks",
-        "change",
+        "slice",
         "status",
         name_w = name_w,
         status_w = status_w

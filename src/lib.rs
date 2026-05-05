@@ -12,15 +12,15 @@ pub use specify_capability::{
     ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, ResolvedCapability,
 };
 pub use specify_slice::{
-    ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry,
-    LifecycleStatus, METADATA_VERSION, Outcome, Overlap, PhaseOutcome, Rfc3339Stamp, SpecType,
-    TouchedSpec, actions as change_actions, format_rfc3339, is_valid_kebab_name,
+    CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry, LifecycleStatus,
+    METADATA_VERSION, Outcome, Overlap, PhaseOutcome, Rfc3339Stamp, SLICES_DIR_NAME, SliceMetadata,
+    SpecType, TouchedSpec, actions as slice_actions, format_rfc3339, is_valid_kebab_name,
 };
 pub use specify_error::{Error, ValidationStatus, ValidationSummary};
 pub use specify_merge::{
     ArtifactClass, BaselineConflict, MergeOperation, MergePreviewEntry as MergeEntry, MergeResult,
     MergeStrategy, OpaqueAction, OpaquePreviewEntry, PreviewResult, conflict_check, merge,
-    merge_change, preview_change, validate_baseline,
+    merge_slice, preview_slice, validate_baseline,
 };
 pub use specify_spec::{
     DeltaSpec, ParsedSpec, RenameEntry, RequirementBlock, Scenario, has_delta_headers,
@@ -28,7 +28,7 @@ pub use specify_spec::{
 };
 pub use specify_task::{SkillDirective, Task, TaskProgress, mark_complete, parse_tasks};
 pub use specify_validate::{
-    ValidationReport, ValidationResult, serialize_report, validate_change,
+    ValidationReport, ValidationResult, serialize_report, validate_slice,
 };
 
 mod config;

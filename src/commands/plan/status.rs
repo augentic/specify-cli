@@ -3,7 +3,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{ChangeMetadata, Error, ProjectConfig};
+use specify::{Error, ProjectConfig, SliceMetadata};
 use specify_initiative::{Entry, Plan, Severity, Status};
 
 use super::{PlanRef, emit_structural_error, require_file};
@@ -15,9 +15,9 @@ use crate::output::{CliResult, emit_response};
 pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let changes_dir = ProjectConfig::changes_dir(&ctx.project_dir);
+    let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
 
-    let results = plan.validate(Some(&changes_dir), None);
+    let results = plan.validate(Some(&slices_dir), None);
     let has_other_structural_errors = results
         .iter()
         .any(|r| matches!(r.level, Severity::Error) && r.code != "dependency-cycle");
@@ -50,7 +50,7 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
     let total: usize = counts.values().sum();
 
     let active = plan.changes.iter().find(|c| c.status == Status::InProgress);
-    let active_lifecycle = active.and_then(|a| read_lifecycle(&changes_dir.join(&a.name)));
+    let active_lifecycle = active.and_then(|a| read_lifecycle(&slices_dir.join(&a.name)));
 
     let blocked: Vec<&Entry> =
         plan.changes.iter().filter(|c| c.status == Status::Blocked).collect();
@@ -174,11 +174,11 @@ struct StatusView<'a> {
     next_eligible: Option<&'a Entry>,
 }
 
-fn read_lifecycle(change_dir: &Path) -> Option<String> {
-    if !ChangeMetadata::path(change_dir).exists() {
+fn read_lifecycle(slice_dir: &Path) -> Option<String> {
+    if !SliceMetadata::path(slice_dir).exists() {
         return None;
     }
-    ChangeMetadata::load(change_dir).ok().map(|m| m.status.to_string())
+    SliceMetadata::load(slice_dir).ok().map(|m| m.status.to_string())
 }
 
 #[derive(Serialize)]
@@ -226,7 +226,7 @@ fn print_status(view: &StatusView) {
     );
 
     if let Some(a) = view.active {
-        let lifecycle_label = view.active_lifecycle.unwrap_or("<no change dir yet>");
+        let lifecycle_label = view.active_lifecycle.unwrap_or("<no slice dir yet>");
         println!();
         println!("In progress: {} (lifecycle: {lifecycle_label})", a.name);
     }

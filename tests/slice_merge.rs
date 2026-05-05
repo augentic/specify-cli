@@ -68,7 +68,7 @@ impl Project {
     }
 
     fn stage_change(&self, fixture: &str) -> PathBuf {
-        let dst = self.root.join(".specify/changes/my-change");
+        let dst = self.root.join(".specify/slices/my-change");
         fs::create_dir_all(&dst).expect("mkdir change");
         copy_dir(&repo_root().join("tests/fixtures/e2e").join(fixture), &dst);
         dst
@@ -82,7 +82,7 @@ impl Project {
 #[test]
 fn change_merge_preview_reports_operations_without_writing() {
     let project = Project::init();
-    let change_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_change("merge-two-spec-change");
 
     let assert = specify()
         .current_dir(project.root())
@@ -110,7 +110,7 @@ fn change_merge_preview_reports_operations_without_writing() {
 
     // No filesystem mutation: no archive, change dir still in place,
     // baselines under .specify/specs/ untouched.
-    assert!(change_dir.is_dir(), "preview must not archive the change");
+    assert!(slice_dir.is_dir(), "preview must not archive the change");
     let archive = project.root().join(".specify/archive");
     assert!(
         !archive.exists() || fs::read_dir(&archive).unwrap().next().is_none(),
@@ -129,10 +129,10 @@ fn change_merge_preview_reports_operations_without_writing() {
 #[test]
 fn change_merge_preview_does_not_require_complete_status() {
     let project = Project::init();
-    let change_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_change("merge-two-spec-change");
     // Downgrade status to `building` — `change merge run` refuses this but
     // `change merge preview` must accept it.
-    let metadata_path = change_dir.join(".metadata.yaml");
+    let metadata_path = slice_dir.join(".metadata.yaml");
     let original = fs::read_to_string(&metadata_path).unwrap();
     let downgraded = original.replace("status: complete", "status: building");
     fs::write(&metadata_path, downgraded).unwrap();
@@ -185,7 +185,7 @@ fn conflict_check_reports_no_conflicts_when_no_modified_entries() {
 #[test]
 fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
     let project = Project::init();
-    let change_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_change("merge-two-spec-change");
 
     // Seed a baseline file under .specify/specs/login/spec.md then rewrite
     // the change's metadata to mark `login` as `modified` with a historic
@@ -195,7 +195,7 @@ fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
     fs::create_dir_all(baseline.parent().unwrap()).unwrap();
     fs::write(&baseline, "# Login baseline\n").unwrap();
 
-    let metadata_path = change_dir.join(".metadata.yaml");
+    let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
         "schema: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: modified\n",
@@ -224,10 +224,10 @@ fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
 #[test]
 fn conflict_check_no_contract_drift_when_baseline_is_older() {
     let project = Project::init();
-    let change_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_change("merge-two-spec-change");
 
     // Set defined_at to the far future so nothing is "newer".
-    let metadata_path = change_dir.join(".metadata.yaml");
+    let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
         "schema: omnia\nstatus: complete\ndefined-at: \"2099-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
@@ -240,7 +240,7 @@ fn conflict_check_no_contract_drift_when_baseline_is_older() {
     fs::write(&baseline_contract, "type: object\n").unwrap();
 
     // Seed the corresponding change contract so the drift walker visits it.
-    let change_contract = change_dir.join("contracts/schemas/test.yaml");
+    let change_contract = slice_dir.join("contracts/schemas/test.yaml");
     fs::create_dir_all(change_contract.parent().unwrap()).unwrap();
     fs::write(&change_contract, "type: object\nproperties: {}\n").unwrap();
 
@@ -260,10 +260,10 @@ fn conflict_check_no_contract_drift_when_baseline_is_older() {
 #[test]
 fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
     let project = Project::init();
-    let change_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_change("merge-two-spec-change");
 
     // defined_at in the deep past — any real file mtime will be newer.
-    let metadata_path = change_dir.join(".metadata.yaml");
+    let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
         "schema: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
@@ -278,7 +278,7 @@ fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
     sleep(Duration::from_millis(10));
     fs::write(&baseline_contract, "type: object # touched\n").unwrap();
 
-    let change_contract = change_dir.join("contracts/schemas/test.yaml");
+    let change_contract = slice_dir.join("contracts/schemas/test.yaml");
     fs::create_dir_all(change_contract.parent().unwrap()).unwrap();
     fs::write(&change_contract, "type: object\nproperties: {}\n").unwrap();
 
@@ -297,9 +297,9 @@ fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
 #[test]
 fn conflict_check_no_drift_for_new_contract_files() {
     let project = Project::init();
-    let change_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_change("merge-two-spec-change");
 
-    let metadata_path = change_dir.join(".metadata.yaml");
+    let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
         "schema: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
@@ -307,7 +307,7 @@ fn conflict_check_no_drift_for_new_contract_files() {
     .unwrap();
 
     // Change has a contract file, but no corresponding baseline exists.
-    let change_contract = change_dir.join("contracts/schemas/new.yaml");
+    let change_contract = slice_dir.join("contracts/schemas/new.yaml");
     fs::create_dir_all(change_contract.parent().unwrap()).unwrap();
     fs::write(&change_contract, "type: object\n").unwrap();
 
@@ -327,9 +327,9 @@ fn conflict_check_no_drift_for_new_contract_files() {
 #[test]
 fn conflict_check_no_drift_when_change_has_no_contracts_dir() {
     let project = Project::init();
-    let change_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_change("merge-two-spec-change");
 
-    let metadata_path = change_dir.join(".metadata.yaml");
+    let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
         "schema: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",

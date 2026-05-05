@@ -33,8 +33,8 @@ pub fn run(cli: Cli) -> CliResult {
             CapabilityAction::Check { capability_dir } => run_bare(cli.format, || {
                 capability::run_capability_check(cli.format, capability_dir)
             }),
-            CapabilityAction::Pipeline { phase, change } => run_with_project(cli.format, |ctx| {
-                capability::run_capability_pipeline(ctx, phase, change)
+            CapabilityAction::Pipeline { phase, slice } => run_with_project(cli.format, |ctx| {
+                capability::run_capability_pipeline(ctx, phase, slice)
             }),
         },
         Commands::Slice { action } => {

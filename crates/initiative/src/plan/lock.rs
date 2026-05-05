@@ -320,7 +320,7 @@ impl Stamp {
         }
 
         // Atomic write via tempfile + rename, matching the convention
-        // used by `Plan::save` and `ChangeMetadata::save`. Readers
+        // used by `Plan::save` and `SliceMetadata::save`. Readers
         // never observe a partial stamp.
         atomic_bytes_write(&path, our_pid.to_string().as_bytes())?;
 

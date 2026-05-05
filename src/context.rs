@@ -48,8 +48,8 @@ impl CommandContext {
         PipelineView::load(capability, &self.project_dir)
     }
 
-    pub fn changes_dir(&self) -> PathBuf {
-        ProjectConfig::changes_dir(&self.project_dir)
+    pub fn slices_dir(&self) -> PathBuf {
+        ProjectConfig::slices_dir(&self.project_dir)
     }
 
     pub fn archive_dir(&self) -> PathBuf {

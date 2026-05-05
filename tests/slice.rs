@@ -61,8 +61,8 @@ impl Project {
         &self.root
     }
 
-    fn changes_dir(&self) -> PathBuf {
-        self.root.join(".specify/changes")
+    fn slices_dir(&self) -> PathBuf {
+        self.root.join(".specify/slices")
     }
 
     fn specs_dir(&self) -> PathBuf {
@@ -107,10 +107,10 @@ fn change_create_produces_directory_and_metadata() {
     assert_eq!(value["created"], true);
     assert_eq!(value["restarted"], false);
 
-    let change_dir = project.changes_dir().join("my-change");
-    assert!(change_dir.is_dir(), "change dir must exist");
-    assert!(change_dir.join("specs").is_dir(), "specs/ must exist");
-    let meta = fs::read_to_string(change_dir.join(".metadata.yaml")).expect("read metadata");
+    let slice_dir = project.slices_dir().join("my-change");
+    assert!(slice_dir.is_dir(), "change dir must exist");
+    assert!(slice_dir.join("specs").is_dir(), "specs/ must exist");
+    let meta = fs::read_to_string(slice_dir.join(".metadata.yaml")).expect("read metadata");
     assert!(meta.contains("status: defining"));
     assert!(meta.contains("schema: file://"));
     assert!(meta.contains("created-at:"));
@@ -193,7 +193,7 @@ fn change_transition_walks_the_happy_path() {
         assert_eq!(value["status"], target);
     }
 
-    let meta = fs::read_to_string(project.changes_dir().join("my-change").join(".metadata.yaml"))
+    let meta = fs::read_to_string(project.slices_dir().join("my-change").join(".metadata.yaml"))
         .expect("read metadata");
     assert!(meta.contains("status: complete"));
     assert!(meta.contains("defined-at:"));
@@ -231,17 +231,17 @@ fn change_touched_specs_scan_classifies_new_vs_modified() {
         .args(["slice", "create", "my-change"])
         .assert()
         .success();
-    let change_dir = project.changes_dir().join("my-change");
+    let slice_dir = project.slices_dir().join("my-change");
 
     // Capability `alpha` — no baseline, should classify as `new`.
-    fs::create_dir_all(change_dir.join("specs/alpha")).unwrap();
-    fs::write(change_dir.join("specs/alpha/spec.md"), "# Alpha\n").unwrap();
+    fs::create_dir_all(slice_dir.join("specs/alpha")).unwrap();
+    fs::write(slice_dir.join("specs/alpha/spec.md"), "# Alpha\n").unwrap();
 
     // Capability `beta` — baseline exists, should classify as `modified`.
     fs::create_dir_all(project.specs_dir().join("beta")).unwrap();
     fs::write(project.specs_dir().join("beta/spec.md"), "# Beta baseline\n").unwrap();
-    fs::create_dir_all(change_dir.join("specs/beta")).unwrap();
-    fs::write(change_dir.join("specs/beta/spec.md"), "# Beta delta\n").unwrap();
+    fs::create_dir_all(slice_dir.join("specs/beta")).unwrap();
+    fs::write(slice_dir.join("specs/beta/spec.md"), "# Beta delta\n").unwrap();
 
     let assert = specify()
         .current_dir(project.root())
@@ -257,7 +257,7 @@ fn change_touched_specs_scan_classifies_new_vs_modified() {
     assert_eq!(items[1]["type"], "modified");
 
     // Scanning must have persisted the list into `.metadata.yaml`.
-    let meta = fs::read_to_string(change_dir.join(".metadata.yaml")).unwrap();
+    let meta = fs::read_to_string(slice_dir.join(".metadata.yaml")).unwrap();
     assert!(meta.contains("touched-specs:"));
     assert!(meta.contains("name: alpha"));
     assert!(meta.contains("type: new"));
@@ -324,7 +324,7 @@ fn change_overlap_reports_shared_capabilities() {
     let overlaps = value["overlaps"].as_array().unwrap();
     assert_eq!(overlaps.len(), 1);
     assert_eq!(overlaps[0]["capability"], "login");
-    assert_eq!(overlaps[0]["other-change"], "second");
+    assert_eq!(overlaps[0]["other-slice"], "second");
     assert_eq!(overlaps[0]["our-spec-type"], "new");
     assert_eq!(overlaps[0]["other-spec-type"], "modified");
 }
@@ -378,7 +378,7 @@ fn change_archive_moves_dir_into_dated_archive() {
     assert!(archive_path.ends_with("-my-change"));
 
     // Original is gone; archive dir has one dated subdirectory.
-    assert!(!project.changes_dir().join("my-change").exists());
+    assert!(!project.slices_dir().join("my-change").exists());
     let archive = project.root().join(".specify/archive");
     let entries: Vec<_> =
         fs::read_dir(&archive).unwrap().filter_map(std::result::Result::ok).collect();
@@ -437,7 +437,7 @@ fn change_list_shows_every_active_change() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    let names: Vec<_> = value["changes"]
+    let names: Vec<_> = value["slices"]
         .as_array()
         .unwrap()
         .iter()
@@ -461,7 +461,7 @@ fn change_status_by_name_returns_single_entry() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    let items = value["changes"].as_array().unwrap();
+    let items = value["slices"].as_array().unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["name"], "only-change");
     assert_eq!(items[0]["status"], "defining");
@@ -475,7 +475,7 @@ fn change_status_by_name_returns_single_entry() {
 /// `serde_json::Value` so tests can assert on the `outcome` subtree
 /// without pulling in the `specify-slice` crate directly.
 fn read_metadata_yaml(project: &Project, name: &str) -> serde_json::Value {
-    let path = project.changes_dir().join(name).join(".metadata.yaml");
+    let path = project.slices_dir().join(name).join(".metadata.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     serde_saphyr::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
 }
@@ -513,7 +513,7 @@ fn change_phase_outcome_stamps_success_on_define_json() {
     let value = parse_json(&assert.get_output().stdout);
     assert_eq!(value["schema-version"], 2);
     // Wire field is still serialized as `change` until chunk 3.3 lands.
-    assert_eq!(value["change"], "foo");
+    assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["outcome"], "success");
     let at = value["at"].as_str().expect("at is a string");
@@ -642,7 +642,7 @@ fn change_phase_outcome_writes_trailing_newline() {
         .assert()
         .success();
 
-    let path = project.changes_dir().join("foo").join(".metadata.yaml");
+    let path = project.slices_dir().join("foo").join(".metadata.yaml");
     let bytes = fs::read(&path).expect("read metadata");
     assert!(!bytes.is_empty(), "metadata should not be empty");
     assert_eq!(
@@ -689,7 +689,7 @@ fn change_phase_outcome_overwrites_previous_outcome() {
 
     // Document that outcome is a single field, not a list: the raw
     // YAML text must contain exactly one top-level `outcome:` key.
-    let path = project.changes_dir().join("foo").join(".metadata.yaml");
+    let path = project.slices_dir().join("foo").join(".metadata.yaml");
     let text = fs::read_to_string(&path).expect("read metadata");
     let outcome_lines = text.lines().filter(|l| l.starts_with("outcome:")).count();
     assert_eq!(
@@ -726,18 +726,18 @@ fn change_phase_outcome_preserves_existing_metadata_fields() {
 
 #[test]
 fn pre_existing_metadata_yaml_without_outcome_still_parses() {
-    use specify::ChangeMetadata;
+    use specify::SliceMetadata;
     // Hand-craft a `.metadata.yaml` that predates the `outcome` field
-    // and assert that ChangeMetadata::load accepts it and leaves
+    // and assert that SliceMetadata::load accepts it and leaves
     // `outcome` as None.
     let tmp = tempdir().expect("tempdir");
-    let change_dir = tmp.path();
+    let slice_dir = tmp.path();
     let yaml = r#"schema: omnia
 status: defining
 created-at: "2024-08-01T10:00:00Z"
 "#;
-    fs::write(change_dir.join(".metadata.yaml"), yaml).expect("write metadata");
-    let meta = ChangeMetadata::load(change_dir).expect("legacy metadata parses");
+    fs::write(slice_dir.join(".metadata.yaml"), yaml).expect("write metadata");
+    let meta = SliceMetadata::load(slice_dir).expect("legacy metadata parses");
     assert!(
         meta.outcome.is_none(),
         "pre-existing metadata without an outcome field must load as None"
@@ -900,10 +900,10 @@ fn change_outcome_falls_back_to_archive() {
         .success();
 
     // Simulate the archive move that `specify merge` performs.
-    let changes_dir = project.root().join(".specify/changes");
+    let slices_dir = project.root().join(".specify/slices");
     let archive_dir = project.root().join(".specify/archive");
     fs::create_dir_all(&archive_dir).unwrap();
-    fs::rename(changes_dir.join("bar"), archive_dir.join("2026-04-24-bar")).unwrap();
+    fs::rename(slices_dir.join("bar"), archive_dir.join("2026-04-24-bar")).unwrap();
 
     // The active change directory is gone; outcome should resolve from archive.
     let assert = specify()
@@ -991,7 +991,7 @@ fn change_outcome_registry_amendment_required_writes_payload() {
         .assert()
         .success();
 
-    let path = project.changes_dir().join("foo").join(".metadata.yaml");
+    let path = project.slices_dir().join("foo").join(".metadata.yaml");
     let raw = fs::read_to_string(&path).expect("read metadata");
     assert!(
         raw.contains("registry-amendment-required:"),
@@ -1138,11 +1138,11 @@ fn change_journal_append_appends_to_file() {
     let value = parse_json(&assert.get_output().stdout);
     assert_eq!(value["schema-version"], 2);
     // Wire field is still serialized as `change` until chunk 3.3 lands.
-    assert_eq!(value["change"], "foo");
+    assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["kind"], "question");
 
-    let journal_path = project.changes_dir().join("foo").join("journal.yaml");
+    let journal_path = project.slices_dir().join("foo").join("journal.yaml");
     assert!(journal_path.is_file(), "journal.yaml must exist after append");
     let text = fs::read_to_string(&journal_path).expect("read journal");
     assert!(text.contains("entries:"), "missing entries list in:\n{text}");
@@ -1196,7 +1196,7 @@ fn change_journal_append_stamps_rfc3339_timestamp() {
     chrono::DateTime::parse_from_rfc3339(stamp)
         .unwrap_or_else(|e| panic!("CLI timestamp {stamp} is not valid RFC3339: {e}"));
 
-    let journal_path = project.changes_dir().join("foo").join("journal.yaml");
+    let journal_path = project.slices_dir().join("foo").join("journal.yaml");
     let text = fs::read_to_string(&journal_path).expect("read journal");
     let yaml: serde_json::Value = serde_saphyr::from_str(&text).expect("parse journal");
     let on_disk = yaml["entries"][0]["timestamp"].as_str().expect("timestamp on disk");
@@ -1223,7 +1223,7 @@ fn change_journal_append_preserves_existing_entries() {
     }
 
     let text =
-        fs::read_to_string(project.changes_dir().join("foo").join("journal.yaml")).expect("read");
+        fs::read_to_string(project.slices_dir().join("foo").join("journal.yaml")).expect("read");
     let yaml: serde_json::Value = serde_saphyr::from_str(&text).expect("parse");
     let entries = yaml["entries"].as_array().expect("entries seq");
     assert_eq!(entries.len(), 3, "all three appends must persist");

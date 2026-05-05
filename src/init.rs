@@ -1,6 +1,6 @@
 //! `init` — the orchestration called by `specify init`.
 //!
-//! Creates `.specify/{changes,specs,archive,.cache}/`, resolves the
+//! Creates `.specify/{slices,specs,archive,.cache}/`, resolves the
 //! requested capability identifier into `.specify/.cache/`, writes
 //! `.specify/project.yaml` with a `rules:` key scaffolded from the
 //! resolved capability's `pipeline.define` briefs, and upserts the
@@ -135,7 +135,7 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     // brief without core involvement.
     for dir in [
         ProjectConfig::specify_dir(opts.project_dir),
-        ProjectConfig::changes_dir(opts.project_dir),
+        ProjectConfig::slices_dir(opts.project_dir),
         ProjectConfig::specify_dir(opts.project_dir).join("specs"),
         ProjectConfig::archive_dir(opts.project_dir),
         ProjectConfig::cache_dir(opts.project_dir),
@@ -647,7 +647,7 @@ mod tests {
 
         for sub in [
             ".specify",
-            ".specify/changes",
+            ".specify/slices",
             ".specify/specs",
             ".specify/archive",
             ".specify/.cache",
@@ -865,7 +865,7 @@ mod tests {
         // the absence of `capability:` (with `hub: true`) is the
         // post-RFC-13 discriminator that disables the
         // define-build-merge loop on the hub itself.
-        assert!(!tmp.path().join(".specify/changes").exists());
+        assert!(!tmp.path().join(".specify/slices").exists());
         assert!(!tmp.path().join(".specify/specs").exists());
         assert!(!tmp.path().join(".specify/.cache").exists());
 

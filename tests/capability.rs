@@ -95,7 +95,7 @@ fn capability_pipeline_define_lists_omnia_define_briefs_in_order() {
     let value = parse_json(&assert.get_output().stdout);
     assert_eq!(value["schema-version"], 2);
     assert_eq!(value["phase"], "define");
-    assert_eq!(value["change"], Value::Null);
+    assert_eq!(value["slice"], Value::Null);
 
     let briefs = value["briefs"].as_array().expect("briefs array");
     let ids: Vec<&str> = briefs.iter().map(|b| b["id"].as_str().unwrap()).collect();
@@ -149,7 +149,7 @@ fn capability_pipeline_phase_plan_lists_plan_briefs_in_topo_order() {
         .success();
     let value = parse_json(&assert.get_output().stdout);
     assert_eq!(value["phase"], "plan");
-    assert_eq!(value["change"], Value::Null);
+    assert_eq!(value["slice"], Value::Null);
 
     let briefs = value["briefs"].as_array().expect("briefs array");
     let ids: Vec<&str> = briefs.iter().map(|b| b["id"].as_str().unwrap()).collect();
@@ -208,8 +208,8 @@ fn capability_pipeline_with_change_reports_completion() {
         .args(["slice", "create", "my-change"])
         .assert()
         .success();
-    let change_dir = project.root().join(".specify/changes/my-change");
-    fs::write(change_dir.join("proposal.md"), "# Proposal\n").unwrap();
+    let slice_dir = project.root().join(".specify/slices/my-change");
+    fs::write(slice_dir.join("proposal.md"), "# Proposal\n").unwrap();
 
     let assert = specify()
         .current_dir(project.root())
@@ -219,8 +219,8 @@ fn capability_pipeline_with_change_reports_completion() {
             "capability",
             "pipeline",
             "define",
-            "--change",
-            change_dir.to_str().unwrap(),
+            "--slice",
+            slice_dir.to_str().unwrap(),
         ])
         .assert()
         .success();

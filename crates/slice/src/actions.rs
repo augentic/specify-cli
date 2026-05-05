@@ -1,15 +1,15 @@
-//! Verb-level operations on a Specify change directory.
+//! Verb-level operations on a Specify slice directory.
 //!
 //! `actions` turns the static lifecycle state machine in the crate root
-//! into transactional filesystem operations: creating a fresh change
+//! into transactional filesystem operations: creating a fresh slice
 //! directory, transitioning its `.metadata.yaml` status with the
 //! associated timestamp write, scanning `specs/` for `touched_specs`,
-//! detecting overlap against other active changes, and archiving
+//! detecting overlap against other active slices, and archiving
 //! (`archive` / `drop`) into `.specify/archive/YYYY-MM-DD-<name>/`.
 //!
 //! Every verb is expressed as a free function rather than a struct method
 //! so the CLI can dispatch each subcommand with one import per verb. They
-//! all round-trip through [`ChangeMetadata::save`] for the metadata writes
+//! all round-trip through [`SliceMetadata::save`] for the metadata writes
 //! and share the cross-device-safe `move_atomic` helper for archive
 //! moves.
 
@@ -20,11 +20,11 @@ use chrono::{DateTime, Utc};
 use specify_error::Error;
 
 use crate::{
-    ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome, Rfc3339Stamp, SpecType,
+    LifecycleStatus, Outcome, Phase, PhaseOutcome, Rfc3339Stamp, SliceMetadata, SpecType,
     TouchedSpec,
 };
 
-/// What to do when `Change::create` finds an existing directory at the
+/// What to do when [`create`] finds an existing directory at the
 /// target path.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -33,7 +33,7 @@ pub enum CreateIfExists {
     Fail,
     /// Reuse the existing directory. The function reloads its
     /// `.metadata.yaml` and returns it without writing. Intended for the
-    /// define skill's "continue in-flight change" flow.
+    /// define skill's "continue in-flight slice" flow.
     Continue,
     /// Delete and recreate. Intended for the define skill's "restart"
     /// flow. The caller is expected to have already archived anything it
@@ -46,10 +46,10 @@ pub enum CreateIfExists {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
 pub struct CreateOutcome {
-    /// Path to the change directory.
+    /// Path to the slice directory.
     pub dir: PathBuf,
     /// Loaded or freshly-created metadata.
-    pub metadata: ChangeMetadata,
+    pub metadata: SliceMetadata,
     /// `true` when the call created a new directory; `false` when an
     /// existing directory was reused (`CreateIfExists::Continue`).
     pub created: bool,
@@ -58,21 +58,21 @@ pub struct CreateOutcome {
     pub restarted: bool,
 }
 
-/// A capability-level conflict between two active changes both touching
+/// A capability-level conflict between two active slices both touching
 /// the same spec.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Overlap {
     /// The shared capability name.
     pub capability: String,
-    /// Name of the other change that touches the same capability.
+    /// Name of the other slice that touches the same capability.
     pub other: String,
-    /// How our change touches the capability.
+    /// How our slice touches the capability.
     pub ours: SpecType,
-    /// How the other change touches the capability.
+    /// How the other slice touches the capability.
     pub theirs: SpecType,
 }
 
-/// Validate a kebab-case change name.
+/// Validate a kebab-case slice name.
 ///
 /// Names must be non-empty, contain only `[a-z0-9-]`, and may not start,
 /// end, or contain consecutive hyphens. Identical contract to the
@@ -90,22 +90,22 @@ pub struct Overlap {
 /// Returns `Error::InvalidName` if the name is not valid kebab-case.
 pub fn validate_name(name: &str) -> Result<(), Error> {
     if name.is_empty() {
-        return Err(Error::InvalidName("change name cannot be empty".to_string()));
+        return Err(Error::InvalidName("slice name cannot be empty".to_string()));
     }
     if name.starts_with('-') || name.ends_with('-') {
         return Err(Error::InvalidName(format!(
-            "change name `{name}` cannot start or end with a hyphen"
+            "slice name `{name}` cannot start or end with a hyphen"
         )));
     }
     if name.contains("--") {
         return Err(Error::InvalidName(format!(
-            "change name `{name}` cannot contain consecutive hyphens"
+            "slice name `{name}` cannot contain consecutive hyphens"
         )));
     }
     for c in name.chars() {
         if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-' {
             return Err(Error::InvalidName(format!(
-                "change name `{name}` must be kebab-case (lowercase ascii, digits, hyphens only)"
+                "slice name `{name}` must be kebab-case (lowercase ascii, digits, hyphens only)"
             )));
         }
     }
@@ -118,9 +118,9 @@ pub fn is_valid_kebab_name(s: &str) -> bool {
     validate_name(s).is_ok()
 }
 
-/// Create `<changes_dir>/<name>/` and seed an initial `.metadata.yaml`.
+/// Create `<slices_dir>/<name>/` and seed an initial `.metadata.yaml`.
 ///
-/// - `changes_dir` is expected to be `<project>/.specify/changes/`.
+/// - `slices_dir` is expected to be `<project>/.specify/slices/`.
 /// - `now` is plumbed in so tests can pin `created_at` deterministically.
 ///
 /// On success returns a [`CreateOutcome`] with the resolved directory and
@@ -132,43 +132,43 @@ pub fn is_valid_kebab_name(s: &str) -> bool {
 /// Returns an error if the operation fails.
 #[allow(clippy::similar_names)]
 pub fn create(
-    changes_dir: &Path, name: &str, schema: &str, if_exists: CreateIfExists, now: DateTime<Utc>,
+    slices_dir: &Path, name: &str, schema: &str, if_exists: CreateIfExists, now: DateTime<Utc>,
 ) -> Result<CreateOutcome, Error> {
     validate_name(name)?;
-    let change_dir = changes_dir.join(name);
-    let metadata_path = ChangeMetadata::path(&change_dir);
+    let slice_dir = slices_dir.join(name);
+    let metadata_path = SliceMetadata::path(&slice_dir);
 
-    if change_dir.exists() {
+    if slice_dir.exists() {
         match if_exists {
             CreateIfExists::Fail => {
                 return Err(Error::Config(format!(
-                    "change `{name}` already exists at {}",
-                    change_dir.display()
+                    "slice `{name}` already exists at {}",
+                    slice_dir.display()
                 )));
             }
             CreateIfExists::Continue => {
                 if !metadata_path.exists() {
                     return Err(Error::Config(format!(
-                        "change dir {} exists but has no .metadata.yaml; refusing to reuse",
-                        change_dir.display()
+                        "slice dir {} exists but has no .metadata.yaml; refusing to reuse",
+                        slice_dir.display()
                     )));
                 }
-                let metadata = ChangeMetadata::load(&change_dir)?;
+                let metadata = SliceMetadata::load(&slice_dir)?;
                 return Ok(CreateOutcome {
-                    dir: change_dir,
+                    dir: slice_dir,
                     metadata,
                     created: false,
                     restarted: false,
                 });
             }
             CreateIfExists::Restart => {
-                std::fs::remove_dir_all(&change_dir)?;
+                std::fs::remove_dir_all(&slice_dir)?;
             }
         }
     }
 
-    std::fs::create_dir_all(change_dir.join("specs"))?;
-    let metadata = ChangeMetadata {
+    std::fs::create_dir_all(slice_dir.join("specs"))?;
+    let metadata = SliceMetadata {
         version: crate::METADATA_VERSION,
         schema: schema.to_string(),
         status: LifecycleStatus::Defining,
@@ -182,17 +182,17 @@ pub fn create(
         touched_specs: Vec::new(),
         outcome: None,
     };
-    metadata.save(&change_dir)?;
+    metadata.save(&slice_dir)?;
 
     Ok(CreateOutcome {
-        dir: change_dir,
+        dir: slice_dir,
         metadata,
         created: true,
         restarted: matches!(if_exists, CreateIfExists::Restart),
     })
 }
 
-/// Transition a change to `target` status and write the matching timestamp.
+/// Transition a slice to `target` status and write the matching timestamp.
 ///
 /// The transition is validated by
 /// [`LifecycleStatus::transition`](crate::LifecycleStatus::transition) —
@@ -201,15 +201,15 @@ pub fn create(
 /// `*_at` timestamp is filled in (idempotent: an existing non-`None`
 /// timestamp is preserved), and `.metadata.yaml` is rewritten atomically.
 ///
-/// Returns the updated `ChangeMetadata`.
+/// Returns the updated `SliceMetadata`.
 ///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
 pub fn transition(
-    change_dir: &Path, target: LifecycleStatus, now: DateTime<Utc>,
-) -> Result<ChangeMetadata, Error> {
-    let mut metadata = ChangeMetadata::load(change_dir)?;
+    slice_dir: &Path, target: LifecycleStatus, now: DateTime<Utc>,
+) -> Result<SliceMetadata, Error> {
+    let mut metadata = SliceMetadata::load(slice_dir)?;
     metadata.status = metadata.status.transition(target)?;
     let stamp = format_rfc3339(now);
     match target {
@@ -244,11 +244,11 @@ pub fn transition(
             }
         }
     }
-    metadata.save(change_dir)?;
+    metadata.save(slice_dir)?;
     Ok(metadata)
 }
 
-/// Scan `<change_dir>/specs/*` and classify each capability as
+/// Scan `<slice_dir>/specs/*` and classify each capability as
 /// `new` or `modified` against `<specs_dir>/<name>/spec.md`.
 ///
 /// Returns entries sorted by capability name for stable output. The
@@ -258,8 +258,8 @@ pub fn transition(
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn scan_touched_specs(change_dir: &Path, specs_dir: &Path) -> Result<Vec<TouchedSpec>, Error> {
-    let specs_root = change_dir.join("specs");
+pub fn scan_touched_specs(slice_dir: &Path, specs_dir: &Path) -> Result<Vec<TouchedSpec>, Error> {
+    let specs_root = slice_dir.join("specs");
     if !specs_root.is_dir() {
         return Ok(Vec::new());
     }
@@ -294,35 +294,35 @@ pub fn scan_touched_specs(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Tou
 ///
 /// Returns an error if the operation fails.
 pub fn write_touched_specs(
-    change_dir: &Path, entries: Vec<TouchedSpec>,
-) -> Result<ChangeMetadata, Error> {
-    let mut metadata = ChangeMetadata::load(change_dir)?;
+    slice_dir: &Path, entries: Vec<TouchedSpec>,
+) -> Result<SliceMetadata, Error> {
+    let mut metadata = SliceMetadata::load(slice_dir)?;
     metadata.touched_specs = entries;
-    metadata.save(change_dir)?;
+    metadata.save(slice_dir)?;
     Ok(metadata)
 }
 
-/// Detect overlap between this change's `touched_specs` and every other
-/// active change's. "Active" means a directory under `changes_dir` that
-/// has a `.metadata.yaml` and is not `change_name` itself.
+/// Detect overlap between this slice's `touched_specs` and every other
+/// active slice's. "Active" means a directory under `slices_dir` that
+/// has a `.metadata.yaml` and is not `slice_name` itself.
 ///
-/// Merged and dropped changes still appear on disk until the archive
+/// Merged and dropped slices still appear on disk until the archive
 /// move completes, so we additionally filter by status: only
 /// non-terminal statuses participate. Archive directories under
-/// `changes_dir` (e.g. `<changes_dir>/archive/...`) are not scanned.
+/// `slices_dir` (e.g. `<slices_dir>/archive/...`) are not scanned.
 ///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn overlap(changes_dir: &Path, change_name: &str) -> Result<Vec<Overlap>, Error> {
-    let self_dir = changes_dir.join(change_name);
-    let self_meta = ChangeMetadata::load(&self_dir)?;
+pub fn overlap(slices_dir: &Path, slice_name: &str) -> Result<Vec<Overlap>, Error> {
+    let self_dir = slices_dir.join(slice_name);
+    let self_meta = SliceMetadata::load(&self_dir)?;
     if self_meta.touched_specs.is_empty() {
         return Ok(Vec::new());
     }
 
     let mut overlaps: Vec<Overlap> = Vec::new();
-    let Ok(entries) = std::fs::read_dir(changes_dir) else {
+    let Ok(entries) = std::fs::read_dir(slices_dir) else {
         return Ok(Vec::new());
     };
     for entry in entries {
@@ -334,13 +334,13 @@ pub fn overlap(changes_dir: &Path, change_name: &str) -> Result<Vec<Overlap>, Er
         let Some(other_name) = other_path.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        if other_name == change_name || other_name == "archive" {
+        if other_name == slice_name || other_name == "archive" {
             continue;
         }
-        if !ChangeMetadata::path(&other_path).exists() {
+        if !SliceMetadata::path(&other_path).exists() {
             continue;
         }
-        let other_meta = ChangeMetadata::load(&other_path)?;
+        let other_meta = SliceMetadata::load(&other_path)?;
         if other_meta.status.is_terminal() {
             continue;
         }
@@ -361,56 +361,56 @@ pub fn overlap(changes_dir: &Path, change_name: &str) -> Result<Vec<Overlap>, Er
     Ok(overlaps)
 }
 
-/// Move `change_dir` to `<archive_dir>/YYYY-MM-DD-<change-name>/`.
+/// Move `slice_dir` to `<archive_dir>/YYYY-MM-DD-<slice-name>/`.
 ///
 /// This is the sole implementation of the archive move semantics; both
-/// `specify change archive` and the `specify merge` success path route
-/// through it. Does **not** touch `.metadata.yaml` — the caller is
+/// `specify slice archive` and the `specify slice merge run` success path
+/// route through it. Does **not** touch `.metadata.yaml` — the caller is
 /// responsible for any status transition before or after.
 ///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
 pub fn archive(
-    change_dir: &Path, archive_dir: &Path, today: DateTime<Utc>,
+    slice_dir: &Path, archive_dir: &Path, today: DateTime<Utc>,
 ) -> Result<PathBuf, Error> {
-    let change_name = change_dir.file_name().and_then(|s| s.to_str()).ok_or_else(|| {
-        Error::Config(format!("change dir {} has no basename", change_dir.display()))
+    let slice_name = slice_dir.file_name().and_then(|s| s.to_str()).ok_or_else(|| {
+        Error::Config(format!("slice dir {} has no basename", slice_dir.display()))
     })?;
     let date = today.format("%Y-%m-%d").to_string();
-    let target = archive_dir.join(format!("{date}-{change_name}"));
+    let target = archive_dir.join(format!("{date}-{slice_name}"));
     std::fs::create_dir_all(archive_dir)?;
-    move_atomic(change_dir, &target)?;
+    move_atomic(slice_dir, &target)?;
     Ok(target)
 }
 
-/// Stamp the outcome of a phase run on `<change_dir>/.metadata.yaml`.
+/// Stamp the outcome of a phase run on `<slice_dir>/.metadata.yaml`.
 ///
-/// Primary writer of [`ChangeMetadata::outcome`] for the define and
+/// Primary writer of [`SliceMetadata::outcome`] for the define and
 /// build phases, and for merge failure/deferred outcomes. The merge
-/// success path is handled by `specify_merge::merge_change`, which
+/// success path is handled by `specify_merge::merge_slice`, which
 /// stamps the outcome atomically before archiving (the archive move
-/// removes `change_dir` from `.specify/changes/`, so a post-merge call
+/// removes `slice_dir` from `.specify/slices/`, so a post-merge call
 /// to this function would fail with "not found").
 ///
 /// The whole metadata file is rewritten atomically via
-/// [`ChangeMetadata::save`] so a concurrent reader never sees a
+/// [`SliceMetadata::save`] so a concurrent reader never sees a
 /// half-written file. A new stamp replaces any previous one — history
 /// lives in `journal.yaml` (L2.B), not here.
 ///
 /// `now` is plumbed in so tests can pin `at` deterministically; the CLI
 /// passes `Utc::now()`.
 ///
-/// Returns the updated [`ChangeMetadata`].
+/// Returns the updated [`SliceMetadata`].
 ///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
 pub fn phase_outcome(
-    change_dir: &Path, phase: Phase, outcome: Outcome, summary: &str, context: Option<&str>,
+    slice_dir: &Path, phase: Phase, outcome: Outcome, summary: &str, context: Option<&str>,
     now: DateTime<Utc>,
-) -> Result<ChangeMetadata, Error> {
-    let mut metadata = ChangeMetadata::load(change_dir)?;
+) -> Result<SliceMetadata, Error> {
+    let mut metadata = SliceMetadata::load(slice_dir)?;
     metadata.outcome = Some(PhaseOutcome {
         phase,
         outcome,
@@ -418,11 +418,11 @@ pub fn phase_outcome(
         summary: summary.to_string(),
         context: context.map(str::to_string),
     });
-    metadata.save(change_dir)?;
+    metadata.save(slice_dir)?;
     Ok(metadata)
 }
 
-/// Transition a change to `Dropped`, record the optional reason, then
+/// Transition a slice to `Dropped`, record the optional reason, then
 /// archive. Returns the final archive path.
 ///
 /// Valid from any non-terminal lifecycle state. Callers use this for
@@ -434,16 +434,16 @@ pub fn phase_outcome(
 ///
 /// Returns an error if the operation fails.
 pub fn drop(
-    change_dir: &Path, archive_dir: &Path, reason: Option<&str>, now: DateTime<Utc>,
-) -> Result<(ChangeMetadata, PathBuf), Error> {
-    let mut metadata = ChangeMetadata::load(change_dir)?;
+    slice_dir: &Path, archive_dir: &Path, reason: Option<&str>, now: DateTime<Utc>,
+) -> Result<(SliceMetadata, PathBuf), Error> {
+    let mut metadata = SliceMetadata::load(slice_dir)?;
     metadata.status = metadata.status.transition(LifecycleStatus::Dropped)?;
     metadata.dropped_at = Some(format_rfc3339(now));
     if let Some(text) = reason {
         metadata.drop_reason = Some(text.to_string());
     }
-    metadata.save(change_dir)?;
-    let target = archive(change_dir, archive_dir, now)?;
+    metadata.save(slice_dir)?;
+    let target = archive(slice_dir, archive_dir, now)?;
     Ok((metadata, target))
 }
 
@@ -463,7 +463,7 @@ pub fn drop(
 /// fixtures that pin the full shape.
 ///
 /// Re-exported at the crate root so the `specify` binary can route
-/// its own timestamp writers (e.g. `change journal-append`) through
+/// its own timestamp writers (e.g. `slice journal append`) through
 /// the same helper.
 #[must_use]
 pub fn format_rfc3339(now: DateTime<Utc>) -> Rfc3339Stamp {
@@ -493,7 +493,7 @@ const EXDEV: i32 = 18;
 /// via a single `std::fs::copy`. The two old helpers
 /// (`move_file_atomic`, `move_dir_atomic`) were identical modulo that
 /// one branch — collapsing them keeps the cross-device semantics in a
-/// single implementation shared by `specify_merge::change` (archive
+/// single implementation shared by `specify_merge::slice` (archive
 /// move) and `specify_initiative::plan` (plan archive move, lifted
 /// out of this crate by RFC-13 chunk 2.4).
 ///

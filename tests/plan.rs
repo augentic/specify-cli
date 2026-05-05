@@ -146,7 +146,7 @@ fn plan_schema_rejects_non_kebab_name() {
 #[test]
 fn kebab_name_regex_matches_validate_name() {
     use regex::Regex;
-    use specify::change_actions;
+    use specify::slice_actions;
 
     // Extract the pattern from the compiled schema to keep this test
     // honest against drift — the schema file is the source of truth.
@@ -162,14 +162,14 @@ fn kebab_name_regex_matches_validate_name() {
 
     for name in accept {
         assert!(regex.is_match(name), "regex `{pattern}` should accept `{name}` but did not");
-        change_actions::validate_name(name).unwrap_or_else(|err| {
+        slice_actions::validate_name(name).unwrap_or_else(|err| {
             panic!("validate_name should accept `{name}`, got error: {err}");
         });
     }
 
     for name in reject {
         assert!(!regex.is_match(name), "regex `{pattern}` should reject `{name}` but accepted it");
-        change_actions::validate_name(name)
+        slice_actions::validate_name(name)
             .err()
             .unwrap_or_else(|| panic!("validate_name should reject `{name}`"));
     }

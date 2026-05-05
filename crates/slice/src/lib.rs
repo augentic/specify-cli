@@ -1,16 +1,18 @@
-//! `.metadata.yaml` lifecycle state machine for Specify changes.
+//! `.metadata.yaml` lifecycle state machine for Specify slices.
 //!
-//! Exposes the on-disk `ChangeMetadata` document that lives at
-//! `<change_dir>/.metadata.yaml`, plus the `LifecycleStatus` state machine
+//! Exposes the on-disk `SliceMetadata` document that lives at
+//! `<slice_dir>/.metadata.yaml`, plus the `LifecycleStatus` state machine
 //! that gates legal transitions between `Defining`, `Defined`, `Building`,
 //! `Complete`, `Merged`, and `Dropped`.
 //!
 //! See `rfcs/rfc-1-cli.md` §`metadata.rs` for the canonical transition
-//! graph and the `rfcs/rfc-1-plan.md` §"Change F" for scope.
+//! graph and the `rfcs/rfc-1-plan.md` §"Change F" for scope (the per-loop
+//! unit was originally called a *change*; RFC-13 chunk 3 renamed it to
+//! *slice* and the umbrella orchestration noun moves into "change").
 //!
 //! The [`actions`] submodule layers the verb-level operations
 //! (`create`, `transition`, `archive`, `drop`, `scan_touched_specs`,
-//! `overlap`) that the `specify change` subcommand dispatches to.
+//! `overlap`) that the `specify slice` subcommand dispatches to.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -19,7 +21,7 @@ use serde::{Deserialize, Serialize};
 pub use specify_capability::Phase;
 use specify_error::Error;
 
-/// Verb-level operations on a Specify change directory.
+/// Verb-level operations on a Specify slice directory.
 pub mod actions;
 /// Crash-safe write helpers shared with `specify-initiative`.
 ///
@@ -37,6 +39,13 @@ pub mod timestamp;
 pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339, is_valid_kebab_name};
 pub use journal::{EntryKind, Journal, JournalEntry};
 pub use timestamp::Rfc3339Stamp;
+
+/// Default basename of the per-project slice working directory under `.specify/`.
+///
+/// Pre-RFC-13 projects used `changes`; the on-disk migration to the
+/// new name lives at `specify migrate slice-layout` (RFC-13 chunk 3.6)
+/// and is not run from this crate.
+pub const SLICES_DIR_NAME: &str = "slices";
 
 /// On-disk schema version for `.metadata.yaml`.
 ///
@@ -57,17 +66,17 @@ pub use timestamp::Rfc3339Stamp;
 /// `default_metadata_version`).
 pub const METADATA_VERSION: u32 = 2;
 
-/// Default value for [`ChangeMetadata::version`] when the field is
+/// Default value for [`SliceMetadata::version`] when the field is
 /// absent on disk. Pre-RFC-9 archives lack the field entirely; serde's
 /// `default` shim resolves them to the implicit version `1`.
 const fn default_metadata_version() -> u32 {
     1
 }
 
-/// On-disk representation of `<change_dir>/.metadata.yaml`.
+/// On-disk representation of `<slice_dir>/.metadata.yaml`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub struct ChangeMetadata {
+pub struct SliceMetadata {
     /// On-disk schema version. Pre-RFC-9 archives lack this field;
     /// `serde(default)` resolves them to `1`. Current writers always
     /// emit [`METADATA_VERSION`] (`2`). The reader does not gate on
@@ -77,46 +86,46 @@ pub struct ChangeMetadata {
     /// `outcome.outcome` field.
     #[serde(default = "default_metadata_version")]
     pub version: u32,
-    /// Schema identifier for this change (e.g. `omnia`).
+    /// Schema identifier for this slice (e.g. `omnia`).
     pub schema: String,
     /// Current lifecycle state.
     pub status: LifecycleStatus,
-    /// When the change was created.
+    /// When the slice was created.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub created_at: Option<Rfc3339Stamp>,
-    /// When the change entered `Defined`.
+    /// When the slice entered `Defined`.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub defined_at: Option<Rfc3339Stamp>,
     /// When the build phase started.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub build_started_at: Option<Rfc3339Stamp>,
-    /// When the change reached `Complete`.
+    /// When the slice reached `Complete`.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub completed_at: Option<Rfc3339Stamp>,
-    /// When the change was merged.
+    /// When the slice was merged.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub merged_at: Option<Rfc3339Stamp>,
-    /// When the change was dropped.
+    /// When the slice was dropped.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub dropped_at: Option<Rfc3339Stamp>,
-    /// Human-readable reason for dropping the change.
+    /// Human-readable reason for dropping the slice.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub drop_reason: Option<String>,
-    /// Specs affected by this change.
+    /// Specs affected by this slice.
     #[serde(default)]
     pub touched_specs: Vec<TouchedSpec>,
     /// Outcome of the most recent phase run.
     ///
     /// Writer contract: this field is written by two code paths:
     ///
-    /// 1. `specify change phase-outcome` (see [`actions::phase_outcome`]) —
+    /// 1. `specify slice outcome set` (see [`actions::phase_outcome`]) —
     ///    used by phase skills for `failure` and `deferred` outcomes
     ///    (and by `define`/`build` for `success`).
-    /// 2. `specify_merge::merge_change` — stamps `Success` atomically
+    /// 2. `specify_merge::merge_slice` — stamps `Success` atomically
     ///    with the `Merged` status transition, before the archive move.
-    ///    This is necessary because the archive move removes the change
-    ///    from `.specify/changes/`, making a subsequent `phase-outcome`
-    ///    call impossible.
+    ///    This is necessary because the archive move removes the slice
+    ///    from `.specify/slices/`, making a subsequent outcome stamp
+    ///    impossible.
     ///
     /// Phase skills (`define`, `build`, `merge`) must never edit
     /// `.metadata.yaml` directly — they go through the CLI so the write
@@ -136,8 +145,8 @@ pub struct ChangeMetadata {
 /// `.metadata.yaml`. Read by `/spec:execute` on phase return to decide
 /// the next plan transition (see RFC-2 §"Phase Outcome Contract").
 ///
-/// Written by `specify change phase-outcome` (for define/build phases
-/// and merge failure/deferred) and by `merge_change` (for merge
+/// Written by `specify slice outcome set` (for define/build phases
+/// and merge failure/deferred) and by `merge_slice` (for merge
 /// success, stamped atomically before the archive move).
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -161,7 +170,7 @@ pub struct PhaseOutcome {
 /// bare kebab-case discriminant (`outcome: success`). The fourth
 /// variant — added by RFC-9 §2B (`rfc9-2b-plan-registry-proposal`) —
 /// carries a structured payload describing a registry amendment the
-/// phase wants the operator to apply before the change can land. Its
+/// phase wants the operator to apply before the slice can land. Its
 /// on-disk shape is therefore an externally-tagged map rather than a
 /// bare string:
 ///
@@ -203,11 +212,11 @@ pub enum Outcome {
     /// Phase deferred (needs human input).
     Deferred,
     /// Phase blocked on a registry amendment the operator must apply
-    /// before the change can land. Recorded by phase skills via
-    /// `specify change outcome set <change> <phase> registry-amendment-required ...`.
+    /// before the slice can land. Recorded by phase skills via
+    /// `specify slice outcome set <slice> <phase> registry-amendment-required ...`.
     /// `/spec:execute` treats this exactly like `deferred` — it drops
-    /// the change and transitions the plan entry to `blocked` — and
-    /// surfaces the proposal payload via the change's journal so the
+    /// the slice and transitions the plan entry to `blocked` — and
+    /// surfaces the proposal payload via the slice's journal so the
     /// operator can run the canonical recovery sequence (see
     /// `plugins/spec/skills/execute/SKILL.md` →
     /// §"Registry amendment required (RFC-9 §2B)").
@@ -231,7 +240,7 @@ pub enum Outcome {
     },
 }
 
-/// Lifecycle states a change passes through.
+/// Lifecycle states a slice passes through.
 ///
 /// `Copy + Eq + Hash` are additive to RFC-1 so the enum can participate in
 /// `HashSet`s (used by the exhaustive transition property test) and match
@@ -240,7 +249,7 @@ pub enum Outcome {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum LifecycleStatus {
-    /// Change is being defined (artifacts authored).
+    /// Slice is being defined (artifacts authored).
     Defining,
     /// Definition complete, awaiting build.
     Defined,
@@ -248,13 +257,13 @@ pub enum LifecycleStatus {
     Building,
     /// Build complete, awaiting merge.
     Complete,
-    /// Specs merged into baseline and change archived.
+    /// Specs merged into baseline and slice archived.
     Merged,
-    /// Change discarded without merging.
+    /// Slice discarded without merging.
     Dropped,
 }
 
-/// One entry in `ChangeMetadata::touched_specs`.
+/// One entry in `SliceMetadata::touched_specs`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct TouchedSpec {
@@ -373,14 +382,14 @@ impl LifecycleStatus {
     }
 }
 
-impl ChangeMetadata {
-    /// Convenience helper: `<change_dir>/.metadata.yaml`.
+impl SliceMetadata {
+    /// Convenience helper: `<slice_dir>/.metadata.yaml`.
     #[must_use]
-    pub fn path(change_dir: &Path) -> PathBuf {
-        change_dir.join(".metadata.yaml")
+    pub fn path(slice_dir: &Path) -> PathBuf {
+        slice_dir.join(".metadata.yaml")
     }
 
-    /// Load `.metadata.yaml` from a change directory.
+    /// Load `.metadata.yaml` from a slice directory.
     ///
     /// Errors:
     ///   - file missing -> `Error::Config` with path context
@@ -390,8 +399,8 @@ impl ChangeMetadata {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    pub fn load(change_dir: &Path) -> Result<Self, Error> {
-        let path = Self::path(change_dir);
+    pub fn load(slice_dir: &Path) -> Result<Self, Error> {
+        let path = Self::path(slice_dir);
         if !path.exists() {
             return Err(Error::ArtifactNotFound {
                 kind: ".metadata.yaml",
@@ -403,12 +412,12 @@ impl ChangeMetadata {
         Ok(meta)
     }
 
-    /// Write `.metadata.yaml` to a change directory. Overwrites if present.
+    /// Write `.metadata.yaml` to a slice directory. Overwrites if present.
     ///
     /// Atomic: a partial file is never observed by readers. Write goes
     /// via a temp file in the same directory followed by `fs::rename`.
     /// This mirrors the exact convention used by `Plan::save` (in
-    /// `specify-initiative`) — both `ChangeMetadata` and `Plan` route
+    /// `specify-initiative`) — both `SliceMetadata` and `Plan` route
     /// their on-disk writes through `NamedTempFile::new_in(parent) +
     /// persist` so that every `.specify/*.yaml` write in the codebase
     /// is crash-safe and never-partial under concurrent reads.
@@ -424,8 +433,8 @@ impl ChangeMetadata {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    pub fn save(&self, change_dir: &Path) -> Result<(), Error> {
-        let path = Self::path(change_dir);
+    pub fn save(&self, slice_dir: &Path) -> Result<(), Error> {
+        let path = Self::path(slice_dir);
         crate::atomic::atomic_yaml_write(&path, self)
     }
 }
@@ -549,8 +558,8 @@ mod tests {
         }
     }
 
-    fn sample_metadata() -> ChangeMetadata {
-        ChangeMetadata {
+    fn sample_metadata() -> SliceMetadata {
+        SliceMetadata {
             version: METADATA_VERSION,
             schema: "omnia".to_string(),
             status: LifecycleStatus::Building,
@@ -580,20 +589,20 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let meta = sample_metadata();
         meta.save(dir.path()).expect("save ok");
-        let loaded = ChangeMetadata::load(dir.path()).expect("load ok");
+        let loaded = SliceMetadata::load(dir.path()).expect("load ok");
         assert_eq!(loaded, meta);
     }
 
     #[test]
     fn load_missing_returns_not_found() {
         let dir = tempdir().expect("tempdir");
-        let err = ChangeMetadata::load(dir.path()).expect_err("expected error");
+        let err = SliceMetadata::load(dir.path()).expect_err("expected error");
         match err {
             Error::ArtifactNotFound { kind, path } => {
                 assert_eq!(kind, ".metadata.yaml");
                 assert!(
                     path.display().to_string().contains(&dir.path().display().to_string()),
-                    "path should include change dir, got: {}",
+                    "path should include slice dir, got: {}",
                     path.display()
                 );
             }
@@ -604,9 +613,9 @@ mod tests {
     #[test]
     fn load_malformed_yaml_errors() {
         let dir = tempdir().expect("tempdir");
-        std::fs::write(ChangeMetadata::path(dir.path()), "not: a\n  valid: yaml\n: structure:")
+        std::fs::write(SliceMetadata::path(dir.path()), "not: a\n  valid: yaml\n: structure:")
             .expect("write ok");
-        let err = ChangeMetadata::load(dir.path()).expect_err("expected error");
+        let err = SliceMetadata::load(dir.path()).expect_err("expected error");
         assert!(
             matches!(err, Error::Yaml(_) | Error::Config(_)),
             "expected Yaml/Config error, got {err:?}"
@@ -626,7 +635,7 @@ touched-specs:
   - name: oauth
     type: new
 "#;
-        let meta: ChangeMetadata = serde_saphyr::from_str(yaml).expect("parse ok");
+        let meta: SliceMetadata = serde_saphyr::from_str(yaml).expect("parse ok");
         assert_eq!(meta.status, LifecycleStatus::Building);
         assert_eq!(meta.created_at.as_deref(), Some("2024-08-01T10:00:00Z"));
         assert_eq!(meta.defined_at.as_deref(), Some("2024-08-01T12:00:00Z"));
@@ -641,7 +650,7 @@ touched-specs:
 
     #[test]
     fn serializes_kebab_case_and_lowercase_enums() {
-        let meta = ChangeMetadata {
+        let meta = SliceMetadata {
             version: METADATA_VERSION,
             schema: "omnia".to_string(),
             status: LifecycleStatus::Building,
@@ -672,37 +681,46 @@ touched-specs:
     }
 
     #[test]
-    fn real_world_change_file_parses() {
+    fn real_world_slice_file_parses() {
         let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let changes_dir = manifest
+        // Walk both the post-RFC-13 layout (`.specify/slices/`) and the
+        // pre-Phase-3 fixture layout (`.specify/changes/`) so this
+        // smoke test keeps working through chunk 3.6 (the on-disk
+        // migration).
+        let candidates: Vec<PathBuf> = manifest
             .parent()
             .and_then(|p| p.parent())
-            .map(|repo_root| repo_root.join(".specify").join("changes"));
-        let Some(changes_dir) = changes_dir else {
-            return;
-        };
-        let Ok(read_dir) = std::fs::read_dir(&changes_dir) else {
-            return;
-        };
-        for entry in read_dir.flatten() {
-            let change_path = entry.path();
-            if !change_path.is_dir() {
+            .map(|repo_root| {
+                vec![
+                    repo_root.join(".specify").join(SLICES_DIR_NAME),
+                    repo_root.join(".specify").join("changes"),
+                ]
+            })
+            .unwrap_or_default();
+        for slices_dir in candidates {
+            let Ok(read_dir) = std::fs::read_dir(&slices_dir) else {
                 continue;
+            };
+            for entry in read_dir.flatten() {
+                let slice_path = entry.path();
+                if !slice_path.is_dir() {
+                    continue;
+                }
+                if !SliceMetadata::path(&slice_path).exists() {
+                    continue;
+                }
+                SliceMetadata::load(&slice_path).unwrap_or_else(|e| {
+                    panic!("existing metadata at {} should parse, got {e:?}", slice_path.display())
+                });
+                return;
             }
-            if !ChangeMetadata::path(&change_path).exists() {
-                continue;
-            }
-            ChangeMetadata::load(&change_path).unwrap_or_else(|e| {
-                panic!("existing metadata at {} should parse, got {e:?}", change_path.display())
-            });
-            return;
         }
     }
 
     #[test]
     fn path_appends_metadata_yaml() {
-        let dir = Path::new("/tmp/some/change");
-        assert_eq!(ChangeMetadata::path(dir), PathBuf::from("/tmp/some/change/.metadata.yaml"));
+        let dir = Path::new("/tmp/some/slice");
+        assert_eq!(SliceMetadata::path(dir), PathBuf::from("/tmp/some/slice/.metadata.yaml"));
     }
 
     #[test]
@@ -756,7 +774,7 @@ outcome:
   at: "2024-08-03T15:45:00Z"
   summary: "Baseline updated."
 "#;
-        let meta: ChangeMetadata = serde_saphyr::from_str(yaml).expect("parse pre-RFC-9 file");
+        let meta: SliceMetadata = serde_saphyr::from_str(yaml).expect("parse pre-RFC-9 file");
         assert_eq!(meta.version, 1, "absent version should default to 1");
         assert_eq!(meta.status, LifecycleStatus::Complete);
         let stamped = meta.outcome.expect("outcome should round-trip");
@@ -817,11 +835,11 @@ outcome:
             context: None,
         });
         meta.save(dir.path()).expect("save ok");
-        let loaded = ChangeMetadata::load(dir.path()).expect("load ok");
+        let loaded = SliceMetadata::load(dir.path()).expect("load ok");
         assert_eq!(loaded.version, METADATA_VERSION);
         assert_eq!(loaded, meta);
         let on_disk =
-            std::fs::read_to_string(ChangeMetadata::path(dir.path())).expect("read raw file");
+            std::fs::read_to_string(SliceMetadata::path(dir.path())).expect("read raw file");
         assert!(
             on_disk.contains(&format!("version: {METADATA_VERSION}")),
             "writer must stamp METADATA_VERSION, got:\n{on_disk}"

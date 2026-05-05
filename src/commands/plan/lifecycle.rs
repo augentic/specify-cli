@@ -60,13 +60,13 @@ pub fn run_plan_create(
 pub fn run_plan_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let changes_dir = ProjectConfig::changes_dir(&ctx.project_dir);
+    let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
 
     let (registry, registry_err) = match Registry::load(&ctx.project_dir) {
         Ok(reg) => (reg, None),
         Err(err) => (None, Some(err)),
     };
-    let mut results = plan.validate(Some(&changes_dir), registry.as_ref());
+    let mut results = plan.validate(Some(&slices_dir), registry.as_ref());
     if let Some(err) = registry_err {
         results.push(Finding {
             level: Severity::Error,
@@ -150,9 +150,9 @@ struct NextBody {
 pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let changes_dir = ProjectConfig::changes_dir(&ctx.project_dir);
+    let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
 
-    let results = plan.validate(Some(&changes_dir), None);
+    let results = plan.validate(Some(&slices_dir), None);
     if results.iter().any(|r| matches!(r.level, Severity::Error)) {
         return Ok(emit_structural_error(ctx.format));
     }

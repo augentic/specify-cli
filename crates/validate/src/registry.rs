@@ -352,10 +352,10 @@ const COMPOSITION_RULES: &[Rule] = &[
 // ---------------------------------------------------------------------------
 
 fn contracts_schemas_dir_has_files(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let schemas_dir = ctx.change_dir.join("contracts").join("schemas");
+    let schemas_dir = ctx.slice_dir.join("contracts").join("schemas");
     if !schemas_dir.is_dir() {
         return RuleOutcome::Fail {
-            detail: "contracts/schemas/ directory not found in change".to_string(),
+            detail: "contracts/schemas/ directory not found in slice".to_string(),
         };
     }
 
@@ -375,7 +375,7 @@ fn contracts_schemas_dir_has_files(ctx: &BriefContext<'_>) -> RuleOutcome {
 }
 
 fn contracts_refs_resolve(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let contracts_dir = ctx.change_dir.join("contracts");
+    let contracts_dir = ctx.slice_dir.join("contracts");
     let mut failures: Vec<String> = Vec::new();
 
     for subdir in &["http", "messages"] {
@@ -420,7 +420,7 @@ fn contracts_refs_resolve(ctx: &BriefContext<'_>) -> RuleOutcome {
 }
 
 fn contracts_schema_metadata(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let schemas_dir = ctx.change_dir.join("contracts").join("schemas");
+    let schemas_dir = ctx.slice_dir.join("contracts").join("schemas");
     if !schemas_dir.is_dir() {
         return RuleOutcome::Pass;
     }
@@ -514,7 +514,7 @@ fn cross_proposal_crates_have_specs(ctx: &CrossContext<'_>) -> RuleOutcome {
     let Some(generates) = proposal_brief.frontmatter.generates.as_deref() else {
         return RuleOutcome::Pass;
     };
-    let proposal_path = ctx.change_dir.join(generates);
+    let proposal_path = ctx.slice_dir.join(generates);
     let proposal_text = match std::fs::read_to_string(&proposal_path) {
         Ok(t) => t,
         Err(err) => {
@@ -541,7 +541,7 @@ fn cross_design_references_valid(ctx: &CrossContext<'_>) -> RuleOutcome {
     let Some(generates) = design_brief.frontmatter.generates.as_deref() else {
         return RuleOutcome::Pass;
     };
-    let design_path = ctx.change_dir.join(generates);
+    let design_path = ctx.slice_dir.join(generates);
     let design_text = match std::fs::read_to_string(&design_path) {
         Ok(t) => t,
         Err(err) => {
@@ -561,7 +561,7 @@ fn cross_design_references_valid(ctx: &CrossContext<'_>) -> RuleOutcome {
 }
 
 fn cross_composition_maps_to_consistent(ctx: &CrossContext<'_>) -> RuleOutcome {
-    let comp_path = ctx.change_dir.join("composition.yaml");
+    let comp_path = ctx.slice_dir.join("composition.yaml");
     let Ok(comp_text) = std::fs::read_to_string(&comp_path) else {
         return RuleOutcome::Pass;
     };
@@ -658,14 +658,14 @@ mod tests {
     use super::*;
 
     fn brief_ctx<'a>(
-        change_dir: &'a Path, specs_dir: &'a Path, content: &'a str,
+        slice_dir: &'a Path, specs_dir: &'a Path, content: &'a str,
     ) -> BriefContext<'a> {
         BriefContext {
             id: "contracts",
             content,
             parsed_spec: None,
             tasks: None,
-            change_dir,
+            slice_dir,
             specs_dir,
             terminology: "crate",
         }

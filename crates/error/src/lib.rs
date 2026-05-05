@@ -139,10 +139,10 @@ pub enum Error {
         path: std::path::PathBuf,
     },
 
-    /// A change directory was expected but not found.
-    #[error("change '{name}' not found")]
-    ChangeNotFound {
-        /// Kebab-case change name.
+    /// A slice directory was expected but not found.
+    #[error("slice '{name}' not found")]
+    SliceNotFound {
+        /// Kebab-case slice name.
         name: String,
     },
 

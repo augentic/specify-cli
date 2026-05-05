@@ -42,7 +42,7 @@ struct DoctorBody {
 pub fn run_plan_doctor(ctx: &CommandContext) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let changes_dir = ProjectConfig::changes_dir(&ctx.project_dir);
+    let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
 
     // We tolerate a malformed registry by surfacing it as a synthetic
     // diagnostic (matching the `plan validate` posture) so doctor
@@ -53,7 +53,7 @@ pub fn run_plan_doctor(ctx: &CommandContext) -> Result<CliResult, Error> {
     };
 
     let mut diagnostics =
-        plan_doctor(&plan, Some(&changes_dir), registry.as_ref(), Some(&ctx.project_dir));
+        plan_doctor(&plan, Some(&slices_dir), registry.as_ref(), Some(&ctx.project_dir));
     if let Some(err) = registry_err {
         diagnostics.push(PlanDoctorDiagnostic {
             severity: PlanDoctorSeverity::Error,

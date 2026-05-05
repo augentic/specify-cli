@@ -475,16 +475,16 @@ pub enum CapabilityAction {
         capability_dir: PathBuf,
     },
     /// List the briefs for a phase in topological order (optionally
-    /// with completion status against a specific change)
+    /// with completion status against a specific slice)
     Pipeline {
         /// Pipeline phase to enumerate
         #[arg(value_enum)]
         phase: Phase,
-        /// Change directory; when supplied, each brief includes a
+        /// Slice directory; when supplied, each brief includes a
         /// `present` boolean reflecting whether its `generates`
         /// artifact exists under the directory
         #[arg(long)]
-        change: Option<PathBuf>,
+        slice: Option<PathBuf>,
     },
 }
 
@@ -501,16 +501,16 @@ pub enum SliceAction {
         #[arg(long, value_enum, default_value = "fail")]
         if_exists: CreateIfExistsArg,
     },
-    /// List every active slice under `.specify/changes/`
+    /// List every active slice under `.specify/slices/`
     List,
     /// Show the status of one slice
     Status {
-        /// Slice name (under `.specify/changes/`)
+        /// Slice name (under `.specify/slices/`)
         name: String,
     },
     /// Validate a slice's artifacts against schema rules
     Validate {
-        /// Slice name (under `.specify/changes/`)
+        /// Slice name (under `.specify/slices/`)
         name: String,
     },
     /// Spec-merge operations for a slice

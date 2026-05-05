@@ -35,9 +35,9 @@ mod cli {
 
     /// A `.specify/` project rooted in a throwaway tempdir.
     ///
-    /// Mirrors the harness in `tests/change.rs`: run `specify init` with
+    /// Mirrors the harness in `tests/slice.rs`: run `specify init` with
     /// the in-repo Omnia schema URI, then let the test body seed whatever
-    /// `plan.yaml` / `changes/` content it needs.
+    /// `plan.yaml` / `slices/` content it needs.
     struct Project {
         _tmp: TempDir,
         root: PathBuf,
@@ -383,7 +383,7 @@ changes:
     #[test]
     fn plan_validate_tolerates_in_progress_with_no_change_dir() {
         // Transient window: `specify change transition <name> in-progress`
-        // can run a moment before `.specify/changes/<name>/` exists.
+        // can run a moment before `.specify/slices/<name>/` exists.
         // `specify plan validate` must surface a *warning* (not an
         // error) so `passed == true` and skills don't stall on start-up.
         let project = Project::init();
@@ -404,15 +404,15 @@ changes:
         assert_eq!(actual["schema-version"], 2);
         assert_eq!(
             actual["passed"], true,
-            "in-progress-without-change-dir is a warning, so passed must be true: {actual}"
+            "in-progress-without-slice-dir is a warning, so passed must be true: {actual}"
         );
         let results = actual["results"].as_array().expect("results array");
         let matching: Vec<&Value> =
-            results.iter().filter(|r| r["code"] == "missing-change-dir-for-in-progress").collect();
+            results.iter().filter(|r| r["code"] == "missing-slice-dir-for-in-progress").collect();
         assert_eq!(
             matching.len(),
             1,
-            "expected exactly one missing-change-dir-for-in-progress result, got: {results:#?}"
+            "expected exactly one missing-slice-dir-for-in-progress result, got: {results:#?}"
         );
         assert_eq!(matching[0]["level"], "warning");
         assert_eq!(matching[0]["entry"], "a");

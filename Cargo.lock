@@ -1501,6 +1501,7 @@ dependencies = [
  "specify-capability",
  "specify-error",
  "specify-registry",
+ "specify-slice",
  "specify-spec",
  "specify-task",
  "tempfile",

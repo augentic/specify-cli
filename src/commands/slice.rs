@@ -7,11 +7,11 @@ use chrono::Utc;
 use serde::Serialize;
 use serde_json::Value;
 use specify::{
-    ArtifactClass, BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome,
+    ArtifactClass, BaselineConflict, Brief, SliceMetadata, CreateIfExists, CreateOutcome,
     EntryKind, Error, Journal, JournalEntry, LifecycleStatus, MergeEntry, MergeOperation,
     MergeStrategy, OpaqueAction, OpaquePreviewEntry, Outcome, Phase, PipelineView, ProjectConfig,
-    Rfc3339Stamp, SpecType, Task, TouchedSpec, change_actions, conflict_check, format_rfc3339,
-    mark_complete, merge_change, parse_tasks, preview_change, serialize_report, validate_change,
+    Rfc3339Stamp, SpecType, Task, TouchedSpec, slice_actions, conflict_check, format_rfc3339,
+    mark_complete, merge_slice, parse_tasks, preview_slice, serialize_report, validate_slice,
 };
 
 use crate::cli::{
@@ -22,7 +22,7 @@ use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
 /// Synthesise the omnia-default [`ArtifactClass`] slice for one
-/// change directory.
+/// slice directory.
 ///
 /// `specify-merge` and `specify-capability` are capability-agnostic
 /// (RFC-13 §"concern-specific behaviour leaves core", invariant #3).
@@ -33,7 +33,7 @@ use crate::output::{CliResult, emit_response};
 /// merge call site routes through it so the literal class names live
 /// in exactly one location.
 ///
-/// Both staged paths are absolute (rooted under `change_dir`), and
+/// Both staged paths are absolute (rooted under `slice_dir`), and
 /// both baseline paths are absolute (rooted under `project_root`),
 /// matching the pre-2.8 path conventions byte-for-byte.
 ///
@@ -41,17 +41,17 @@ use crate::output::{CliResult, emit_response};
 // (`capabilities/omnia/capability.yaml` will grow an `artifact_classes:`
 // field) and read it through `specify-capability`. The pre-2.8 hard-codes
 // have been centralised here so that future move is a one-file edit.
-fn omnia_artifact_classes(project_root: &Path, change_dir: &Path) -> Vec<ArtifactClass> {
+fn omnia_artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<ArtifactClass> {
     vec![
         ArtifactClass {
             name: "specs".to_string(),
-            staged_dir: change_dir.join("specs"),
+            staged_dir: slice_dir.join("specs"),
             baseline_dir: ProjectConfig::specify_dir(project_root).join("specs"),
             strategy: MergeStrategy::ThreeWayMerge,
         },
         ArtifactClass {
             name: "contracts".to_string(),
-            staged_dir: change_dir.join("contracts"),
+            staged_dir: slice_dir.join("contracts"),
             baseline_dir: project_root.join("contracts"),
             strategy: MergeStrategy::OpaqueReplace,
         },
@@ -141,11 +141,11 @@ fn run_slice_create(
             )
         })?,
     };
-    let changes_dir = ctx.changes_dir();
-    std::fs::create_dir_all(&changes_dir)?;
+    let slices_dir = ctx.slices_dir();
+    std::fs::create_dir_all(&slices_dir)?;
 
     let outcome =
-        change_actions::create(&changes_dir, &name, &schema_value, if_exists, Utc::now())?;
+        slice_actions::create(&slices_dir, &name, &schema_value, if_exists, Utc::now())?;
 
     Ok(emit_slice_create(ctx.format, &outcome))
 }
@@ -154,7 +154,7 @@ fn run_slice_create(
 #[serde(rename_all = "kebab-case")]
 struct CreateBody {
     name: String,
-    change_dir: String,
+    slice_dir: String,
     status: String,
     schema: String,
     created: bool,
@@ -165,7 +165,7 @@ fn emit_slice_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResult
     match format {
         OutputFormat::Json => emit_response(CreateBody {
             name: outcome.dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
-            change_dir: outcome.dir.display().to_string(),
+            slice_dir: outcome.dir.display().to_string(),
             status: outcome.metadata.status.to_string(),
             schema: outcome.metadata.schema.clone(),
             created: outcome.created,
@@ -190,8 +190,8 @@ fn emit_slice_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResult
 fn run_slice_transition(
     ctx: &CommandContext, name: String, target: LifecycleStatus,
 ) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
-    let metadata = change_actions::transition(&change_dir, target, Utc::now())?;
+    let slice_dir = ctx.slices_dir().join(&name);
+    let metadata = slice_actions::transition(&slice_dir, target, Utc::now())?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -224,18 +224,18 @@ fn run_slice_transition(
 fn run_slice_touched_specs(
     ctx: &CommandContext, name: String, scan: bool, set: Vec<String>,
 ) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
+    let slice_dir = ctx.slices_dir().join(&name);
 
     let entries = if !set.is_empty() {
         let v = parse_touched_spec_set(&set)?;
-        let metadata = change_actions::write_touched_specs(&change_dir, v)?;
+        let metadata = slice_actions::write_touched_specs(&slice_dir, v)?;
         metadata.touched_specs
     } else if scan {
         // The scan classifies a delta as `new` vs `modified` against
         // the omnia ThreeWayMerge baseline. Reach through the omnia
         // synthesiser so any future change to the baseline location
         // (Phase 4.1) flows through one place.
-        let classes = omnia_artifact_classes(&ctx.project_dir, &change_dir);
+        let classes = omnia_artifact_classes(&ctx.project_dir, &slice_dir);
         let baseline_dir = classes
             .iter()
             .find(|c| matches!(c.strategy, MergeStrategy::ThreeWayMerge))
@@ -243,11 +243,11 @@ fn run_slice_touched_specs(
                 || ProjectConfig::specify_dir(&ctx.project_dir).join("specs"),
                 |c| c.baseline_dir.clone(),
             );
-        let scanned = change_actions::scan_touched_specs(&change_dir, &baseline_dir)?;
-        let metadata = change_actions::write_touched_specs(&change_dir, scanned)?;
+        let scanned = slice_actions::scan_touched_specs(&slice_dir, &baseline_dir)?;
+        let metadata = slice_actions::write_touched_specs(&slice_dir, scanned)?;
         metadata.touched_specs
     } else {
-        let metadata = ChangeMetadata::load(&change_dir)?;
+        let metadata = SliceMetadata::load(&slice_dir)?;
         metadata.touched_specs
     };
 
@@ -309,8 +309,8 @@ fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
 }
 
 fn run_slice_overlap(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
-    let changes_dir = ctx.changes_dir();
-    let overlaps = change_actions::overlap(&changes_dir, &name)?;
+    let slices_dir = ctx.slices_dir();
+    let overlaps = slice_actions::overlap(&slices_dir, &name)?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -325,7 +325,7 @@ fn run_slice_overlap(ctx: &CommandContext, name: String) -> Result<CliResult, Er
                 .iter()
                 .map(|o| OverlapJson {
                     capability: o.capability.clone(),
-                    other_change: o.other.clone(),
+                    other_slice: o.other.clone(),
                     our_spec_type: o.ours.to_string(),
                     other_spec_type: o.theirs.to_string(),
                 })
@@ -348,9 +348,9 @@ fn run_slice_overlap(ctx: &CommandContext, name: String) -> Result<CliResult, Er
 }
 
 fn run_slice_archive(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
+    let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
-    let target = change_actions::archive(&change_dir, &archive_dir, Utc::now())?;
+    let target = slice_actions::archive(&slice_dir, &archive_dir, Utc::now())?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -373,10 +373,10 @@ fn run_slice_archive(ctx: &CommandContext, name: String) -> Result<CliResult, Er
 fn run_slice_drop(
     ctx: &CommandContext, name: String, reason: Option<String>,
 ) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
+    let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let (metadata, archive_path) =
-        change_actions::drop(&change_dir, &archive_dir, reason.as_deref(), Utc::now())?;
+        slice_actions::drop(&slice_dir, &archive_dir, reason.as_deref(), Utc::now())?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -422,16 +422,16 @@ struct OutcomeSetArgs {
 fn run_slice_outcome_set(
     ctx: &CommandContext, name: String, phase: Phase, args: OutcomeSetArgs,
 ) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
-    if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
-        return Err(Error::ChangeNotFound { name });
+    let slice_dir = ctx.slices_dir().join(&name);
+    if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
+        return Err(Error::SliceNotFound { name });
     }
 
     let context = args.context.clone();
     let (outcome, summary) = build_outcome(args)?;
 
-    let metadata = change_actions::phase_outcome(
-        &change_dir,
+    let metadata = slice_actions::phase_outcome(
+        &slice_dir,
         phase,
         outcome.clone(),
         &summary,
@@ -447,14 +447,14 @@ fn run_slice_outcome_set(
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
     struct PhaseStamp {
-        change: String,
+        slice: String,
         phase: String,
         outcome: String,
         at: String,
     }
     match ctx.format {
         OutputFormat::Json => emit_response(PhaseStamp {
-            change: name,
+            slice: name,
             phase: phase.to_string(),
             outcome: outcome_str.to_string(),
             at: stamped.at.to_string(),
@@ -586,15 +586,15 @@ const fn cli_kind_str(kind: OutcomeKind) -> &'static str {
 /// slice is not an error, just an absence.
 ///
 /// Falls back to `.specify/archive/` when the slice is not found under
-/// `.specify/changes/`. This handles the post-merge case: `slice merge run`
+/// `.specify/slices/`. This handles the post-merge case: `slice merge run`
 /// stamps the outcome into `.metadata.yaml` and then archives the slice
 /// directory, so the active path no longer exists. The fallback scans
 /// archive entries matching `*-<name>` and picks the most recent by
 /// `created-at` timestamp.
 fn run_slice_outcome_show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
-    let metadata = if change_dir.is_dir() {
-        ChangeMetadata::load(&change_dir)?
+    let slice_dir = ctx.slices_dir().join(&name);
+    let metadata = if slice_dir.is_dir() {
+        SliceMetadata::load(&slice_dir)?
     } else {
         resolve_archived_metadata(&ctx.project_dir, &name)?
     };
@@ -641,7 +641,7 @@ fn run_slice_outcome_show(ctx: &CommandContext, name: String) -> Result<CliResul
 /// `outcome.proposal` object so existing consumers that only read
 /// `.outcome.outcome` (the historical contract `/spec:execute` pins)
 /// keep working unchanged.
-fn emit_outcome_show_json(name: String, metadata: &ChangeMetadata) {
+fn emit_outcome_show_json(name: String, metadata: &SliceMetadata) {
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
     struct OutcomeResponse {
@@ -704,16 +704,16 @@ fn emit_outcome_show_json(name: String, metadata: &ChangeMetadata) {
 }
 
 /// Scan `.specify/archive/` for directories whose name ends with
-/// `-<change_name>` (the `YYYY-MM-DD-<name>` convention), load each
+/// `-<slice_name>` (the `YYYY-MM-DD-<name>` convention), load each
 /// candidate's `.metadata.yaml`, and return the most recent by
 /// `created-at`. Used by `run_slice_outcome_show` as a fallback when the
 /// active slice directory has been archived by `slice merge run`.
 fn resolve_archived_metadata(
-    project_dir: &Path, change_name: &str,
-) -> Result<ChangeMetadata, Error> {
+    project_dir: &Path, slice_name: &str,
+) -> Result<SliceMetadata, Error> {
     let archive_dir = ProjectConfig::archive_dir(project_dir);
-    let suffix = format!("-{change_name}");
-    let mut candidates: Vec<(String, ChangeMetadata)> = Vec::new();
+    let suffix = format!("-{slice_name}");
+    let mut candidates: Vec<(String, SliceMetadata)> = Vec::new();
 
     if archive_dir.is_dir() {
         let entries = std::fs::read_dir(&archive_dir)?;
@@ -723,7 +723,7 @@ fn resolve_archived_metadata(
             if !fname.ends_with(&suffix) || !entry.file_type().is_ok_and(|t| t.is_dir()) {
                 continue;
             }
-            if let Ok(meta) = ChangeMetadata::load(&entry.path()) {
+            if let Ok(meta) = SliceMetadata::load(&entry.path()) {
                 let created = meta.created_at.as_deref().unwrap_or("").to_string();
                 candidates.push((created.clone(), meta));
             }
@@ -731,8 +731,8 @@ fn resolve_archived_metadata(
     }
 
     if candidates.is_empty() {
-        return Err(Error::ChangeNotFound {
-            name: change_name.to_string(),
+        return Err(Error::SliceNotFound {
+            name: slice_name.to_string(),
         });
     }
 
@@ -747,9 +747,9 @@ fn run_slice_journal_append(
     ctx: &CommandContext, name: String, phase: Phase, kind: EntryKind, summary: String,
     context: Option<String>,
 ) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
-    if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
-        return Err(Error::ChangeNotFound { name });
+    let slice_dir = ctx.slices_dir().join(&name);
+    if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
+        return Err(Error::SliceNotFound { name });
     }
 
     let timestamp = format_rfc3339(Utc::now());
@@ -761,19 +761,19 @@ fn run_slice_journal_append(
         context,
     };
 
-    Journal::append(&change_dir, entry)?;
+    Journal::append(&slice_dir, entry)?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
     struct JournalBody {
-        change: String,
+        slice: String,
         phase: String,
         kind: String,
         timestamp: Rfc3339Stamp,
     }
     match ctx.format {
         OutputFormat::Json => emit_response(JournalBody {
-            change: name,
+            slice: name,
             phase: phase.to_string(),
             kind: kind.to_string(),
             timestamp,
@@ -786,12 +786,12 @@ fn run_slice_journal_append(
 }
 
 fn run_slice_journal_show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
-    if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
-        return Err(Error::ChangeNotFound { name });
+    let slice_dir = ctx.slices_dir().join(&name);
+    if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
+        return Err(Error::SliceNotFound { name });
     }
 
-    let journal = Journal::load(&change_dir)?;
+    let journal = Journal::load(&slice_dir)?;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -851,9 +851,9 @@ fn run_slice_journal_show(ctx: &CommandContext, name: String) -> Result<CliResul
 // ---------------------------------------------------------------------------
 
 fn run_slice_validate(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
+    let slice_dir = ctx.slices_dir().join(&name);
     let pipeline = ctx.load_pipeline()?;
-    let report = validate_change(&change_dir, &pipeline)?;
+    let report = validate_slice(&slice_dir, &pipeline)?;
 
     match ctx.format {
         OutputFormat::Json => emit_response(serialize_report(&report)),
@@ -918,11 +918,11 @@ fn is_workspace_clone(project_dir: &Path) -> bool {
 }
 
 fn run_slice_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
+    let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
-    let classes = omnia_artifact_classes(&ctx.project_dir, &change_dir);
+    let classes = omnia_artifact_classes(&ctx.project_dir, &slice_dir);
 
-    let merged = merge_change(&change_dir, &classes, &archive_dir)?;
+    let merged = merge_slice(&slice_dir, &classes, &archive_dir)?;
 
     // RFC-3b: auto-commit merged baselines when running inside a
     // workspace clone. Loop through every artefact class so the
@@ -996,9 +996,9 @@ fn run_slice_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, 
 }
 
 fn run_slice_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
-    let classes = omnia_artifact_classes(&ctx.project_dir, &change_dir);
-    let result = preview_change(&change_dir, &classes)?;
+    let slice_dir = ctx.slices_dir().join(&name);
+    let classes = omnia_artifact_classes(&ctx.project_dir, &slice_dir);
+    let result = preview_slice(&slice_dir, &classes)?;
 
     // The JSON preview surface keeps its pre-2.8 shape — `specs` and
     // `contracts` arrays — by grouping the engine's class-tagged
@@ -1018,12 +1018,12 @@ fn run_slice_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResu
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
             struct PreviewBody {
-                change_dir: String,
+                slice_dir: String,
                 specs: Vec<Value>,
                 contracts: Vec<Value>,
             }
             emit_response(PreviewBody {
-                change_dir: change_dir.display().to_string(),
+                slice_dir: slice_dir.display().to_string(),
                 specs,
                 contracts,
             });
@@ -1056,21 +1056,21 @@ fn run_slice_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResu
 }
 
 fn run_slice_merge_conflict_check(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
-    let classes = omnia_artifact_classes(&ctx.project_dir, &change_dir);
-    let conflicts = conflict_check(&change_dir, &classes)?;
+    let slice_dir = ctx.slices_dir().join(&name);
+    let classes = omnia_artifact_classes(&ctx.project_dir, &slice_dir);
+    let conflicts = conflict_check(&slice_dir, &classes)?;
 
     match ctx.format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
             struct ConflictCheckResponse {
-                change_dir: String,
+                slice_dir: String,
                 conflicts: Vec<Value>,
             }
             let items: Vec<Value> = conflicts.iter().map(baseline_conflict_to_json).collect();
             emit_response(ConflictCheckResponse {
-                change_dir: change_dir.display().to_string(),
+                slice_dir: slice_dir.display().to_string(),
                 conflicts: items,
             });
         }
@@ -1278,8 +1278,8 @@ fn summarise_operations(ops: &[MergeOperation]) -> String {
 // ---------------------------------------------------------------------------
 
 fn run_slice_task_progress(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
-    let tasks_path = resolve_tasks_path(&ctx.project_dir, &change_dir)?;
+    let slice_dir = ctx.slices_dir().join(&name);
+    let tasks_path = resolve_tasks_path(&ctx.project_dir, &slice_dir)?;
     let content = std::fs::read_to_string(&tasks_path)?;
     let progress = parse_tasks(&content);
 
@@ -1347,8 +1347,8 @@ fn task_to_json(t: &Task) -> Value {
 fn run_slice_task_mark(
     ctx: &CommandContext, name: String, task_number: String,
 ) -> Result<CliResult, Error> {
-    let change_dir = ctx.changes_dir().join(&name);
-    let tasks_path = resolve_tasks_path(&ctx.project_dir, &change_dir)?;
+    let slice_dir = ctx.slices_dir().join(&name);
+    let tasks_path = resolve_tasks_path(&ctx.project_dir, &slice_dir)?;
     let original = std::fs::read_to_string(&tasks_path)?;
     let updated = mark_complete(&original, &task_number)?;
     let idempotent = updated == original;
@@ -1386,29 +1386,29 @@ fn run_slice_task_mark(
 ///
 /// Walks the pipeline view to find the `build` brief's `tracks` value
 /// (the id of the tasks brief), then uses that brief's `generates`
-/// field as the relative path under `change_dir`. This lets the CLI
+/// field as the relative path under `slice_dir`. This lets the CLI
 /// honour schemas that rename `tasks.md` or nest it elsewhere.
-fn resolve_tasks_path(project_dir: &Path, change_dir: &Path) -> Result<PathBuf, Error> {
-    let metadata = ChangeMetadata::load(change_dir)?;
-    resolve_tasks_path_for(change_dir, &metadata.schema, Some(project_dir))
+fn resolve_tasks_path(project_dir: &Path, slice_dir: &Path) -> Result<PathBuf, Error> {
+    let metadata = SliceMetadata::load(slice_dir)?;
+    resolve_tasks_path_for(slice_dir, &metadata.schema, Some(project_dir))
 }
 
 pub fn resolve_tasks_path_for(
-    change_dir: &Path, schema_value: &str, project_hint: Option<&Path>,
+    slice_dir: &Path, schema_value: &str, project_hint: Option<&Path>,
 ) -> Result<PathBuf, Error> {
     // Use the hinted project dir when supplied; otherwise walk up from
-    // the change dir — convention is `<project>/.specify/changes/<name>`.
+    // the slice dir — convention is `<project>/.specify/slices/<name>`.
     let project_dir = match project_hint {
         Some(p) => p.to_path_buf(),
-        None => change_dir
+        None => slice_dir
             .parent()
             .and_then(Path::parent)
             .and_then(Path::parent)
             .map(Path::to_path_buf)
             .ok_or_else(|| {
                 Error::Config(format!(
-                    "cannot resolve project root from change dir {}",
-                    change_dir.display()
+                    "cannot resolve project root from slice dir {}",
+                    slice_dir.display()
                 ))
             })?,
     };
@@ -1425,7 +1425,7 @@ pub fn resolve_tasks_path_for(
         Error::Config(format!("`build.tracks = {tracks_id}` but no such brief exists"))
     })?;
     let generates = brief_generates(tracked)?;
-    Ok(change_dir.join(generates))
+    Ok(slice_dir.join(generates))
 }
 
 fn brief_generates(brief: &Brief) -> Result<&str, Error> {
@@ -1476,17 +1476,17 @@ pub(super) fn status_entry_to_json(e: &StatusEntry) -> Value {
 }
 
 pub(super) fn collect_status(
-    change_dir: &Path, name: &str, pipeline: &PipelineView, project_dir: &Path,
+    slice_dir: &Path, name: &str, pipeline: &PipelineView, project_dir: &Path,
 ) -> Result<StatusEntry, Error> {
-    let metadata = ChangeMetadata::load(change_dir)?;
+    let metadata = SliceMetadata::load(slice_dir)?;
     let status_str = metadata.status.to_string();
 
     // Delegate per-brief artifact completion to `PipelineView` so every
     // consumer — `specify status`, `specify schema pipeline`, and any
     // future skill callers — agrees on what "complete" means.
-    let artifacts = pipeline.completion_for(Phase::Define, change_dir);
+    let artifacts = pipeline.completion_for(Phase::Define, slice_dir);
 
-    let tasks = match resolve_tasks_path_for(change_dir, &metadata.schema, Some(project_dir)) {
+    let tasks = match resolve_tasks_path_for(slice_dir, &metadata.schema, Some(project_dir)) {
         Ok(path) => {
             if path.is_file() {
                 let content = std::fs::read_to_string(&path)?;
@@ -1508,18 +1508,18 @@ pub(super) fn collect_status(
     })
 }
 
-pub(super) fn list_slice_names(changes_dir: &Path) -> Result<Vec<String>, Error> {
-    if !changes_dir.exists() {
+pub(super) fn list_slice_names(slices_dir: &Path) -> Result<Vec<String>, Error> {
+    if !slices_dir.exists() {
         return Ok(Vec::new());
     }
     let mut names: Vec<String> = Vec::new();
-    for entry in std::fs::read_dir(changes_dir)? {
+    for entry in std::fs::read_dir(slices_dir)? {
         let entry = entry?;
         if !entry.file_type()?.is_dir() {
             continue;
         }
         let path = entry.path();
-        if !ChangeMetadata::path(&path).exists() {
+        if !SliceMetadata::path(&path).exists() {
             continue;
         }
         if let Some(name) = entry.file_name().to_str() {
@@ -1532,12 +1532,12 @@ pub(super) fn list_slice_names(changes_dir: &Path) -> Result<Vec<String>, Error>
 
 fn run_slice_list(ctx: &CommandContext) -> Result<CliResult, Error> {
     let pipeline = ctx.load_pipeline()?;
-    let changes_dir = ctx.changes_dir();
-    let names = list_slice_names(&changes_dir)?;
+    let slices_dir = ctx.slices_dir();
+    let names = list_slice_names(&slices_dir)?;
 
     let mut entries: Vec<StatusEntry> = Vec::with_capacity(names.len());
     for name in names {
-        let dir = changes_dir.join(&name);
+        let dir = slices_dir.join(&name);
         let entry = collect_status(&dir, &name, &pipeline, &ctx.project_dir)?;
         entries.push(entry);
     }
@@ -1548,8 +1548,8 @@ fn run_slice_list(ctx: &CommandContext) -> Result<CliResult, Error> {
 
 fn run_slice_status_one(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let pipeline = ctx.load_pipeline()?;
-    let change_dir = ctx.changes_dir().join(&name);
-    let entry = collect_status(&change_dir, &name, &pipeline, &ctx.project_dir)?;
+    let slice_dir = ctx.slices_dir().join(&name);
+    let entry = collect_status(&slice_dir, &name, &pipeline, &ctx.project_dir)?;
 
     emit_slice_list(ctx.format, std::slice::from_ref(&entry));
     Ok(CliResult::Success)
@@ -1561,10 +1561,10 @@ fn emit_slice_list(format: OutputFormat, entries: &[StatusEntry]) {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
             struct StatusResponse {
-                changes: Vec<Value>,
+                slices: Vec<Value>,
             }
-            let changes: Vec<Value> = entries.iter().map(status_entry_to_json).collect();
-            emit_response(StatusResponse { changes });
+            let slices: Vec<Value> = entries.iter().map(status_entry_to_json).collect();
+            emit_response(StatusResponse { slices });
         }
         OutputFormat::Text => print_slice_list_text(entries),
     }
@@ -1623,7 +1623,7 @@ fn print_slice_list_text(entries: &[StatusEntry]) {
 #[serde(rename_all = "kebab-case")]
 struct OverlapJson {
     capability: String,
-    other_change: String,
+    other_slice: String,
     our_spec_type: String,
     other_spec_type: String,
 }

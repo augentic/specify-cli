@@ -26,4 +26,5 @@ semver.workspace = true
 glob.workspace = true
 
 [dev-dependencies]
+specify-slice.workspace = true
 tempfile.workspace = true

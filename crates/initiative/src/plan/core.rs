@@ -267,7 +267,7 @@ impl Plan {
 
     /// Load `plan.yaml` (at the repo root) from disk.
     ///
-    /// Errors mirror [`specify_slice::ChangeMetadata::load`]:
+    /// Errors mirror [`specify_slice::SliceMetadata::load`]:
     ///   - missing file -> `Error::Config`
     ///   - malformed YAML -> `Error::Yaml`
     ///   - other I/O failure -> `Error::Io`
@@ -318,8 +318,8 @@ impl Plan {
 
     /// Run all structural and semantic checks over the plan.
     ///
-    /// `changes_dir` (when `Some`) points at `.specify/changes/` and
-    /// enables the cross-reference checks against on-disk change
+    /// `slices_dir` (when `Some`) points at `.specify/slices/` and
+    /// enables the cross-reference checks against on-disk slice
     /// metadata. `registry` (when `Some`) enables the RFC-3b
     /// cross-registry checks (`project-not-in-registry`,
     /// `project-missing-multi-repo`).
@@ -327,7 +327,7 @@ impl Plan {
     /// Findings are accumulated — no check short-circuits another. Order
     /// is structural checks first (duplicate names, cycles, unknown
     /// depends-on / sources, multiple in-progress) followed by
-    /// consistency checks against `changes_dir` when provided.
+    /// consistency checks against `slices_dir` when provided.
     ///
     /// Note on "well-formed status values": `Status` is an enum, so
     /// every in-memory instance is well-formed by construction. serde
@@ -336,7 +336,7 @@ impl Plan {
     /// which is not reachable in-process — so nothing is emitted for it.
     #[must_use]
     pub fn validate(
-        &self, changes_dir: Option<&Path>, registry: Option<&Registry>,
+        &self, slices_dir: Option<&Path>, registry: Option<&Registry>,
     ) -> Vec<Finding> {
         let mut results = Vec::new();
         results.extend(duplicate_names(&self.changes));
@@ -350,8 +350,8 @@ impl Plan {
             results.extend(check_project_in_registry(&self.changes, reg));
             results.extend(check_project_required_multi_repo(&self.changes, reg));
         }
-        if let Some(dir) = changes_dir.filter(|d| d.is_dir()) {
-            results.extend(changes_dir_consistency(self, dir));
+        if let Some(dir) = slices_dir.filter(|d| d.is_dir()) {
+            results.extend(slices_dir_consistency(self, dir));
         }
         results
     }
@@ -961,14 +961,14 @@ fn check_context_paths(changes: &[Entry]) -> Vec<Finding> {
     out
 }
 
-/// Plan-to-change directory consistency:
+/// Plan-to-slice directory consistency:
 ///   - Warn on orphan subdirectories (no matching plan entry).
 ///   - Warn when an `in-progress` plan entry has no matching directory.
-fn changes_dir_consistency(plan: &Plan, changes_dir: &Path) -> Vec<Finding> {
+fn slices_dir_consistency(plan: &Plan, slices_dir: &Path) -> Vec<Finding> {
     let mut out = Vec::new();
     let declared: HashSet<&str> = plan.changes.iter().map(|c| c.name.as_str()).collect();
 
-    let Ok(read_dir) = std::fs::read_dir(changes_dir) else {
+    let Ok(read_dir) = std::fs::read_dir(slices_dir) else {
         return out;
     };
     let mut dir_names: Vec<String> = Vec::new();
@@ -988,8 +988,8 @@ fn changes_dir_consistency(plan: &Plan, changes_dir: &Path) -> Vec<Finding> {
         if !declared.contains(name.as_str()) {
             out.push(Finding {
                 level: Severity::Warning,
-                code: "orphan-change-dir",
-                message: format!("change directory '{name}' has no plan entry"),
+                code: "orphan-slice-dir",
+                message: format!("slice directory '{name}' has no plan entry"),
                 entry: Some(name.clone()),
             });
         }
@@ -997,13 +997,13 @@ fn changes_dir_consistency(plan: &Plan, changes_dir: &Path) -> Vec<Finding> {
 
     for entry in &plan.changes {
         if entry.status == Status::InProgress {
-            let candidate = changes_dir.join(&entry.name);
+            let candidate = slices_dir.join(&entry.name);
             if !candidate.is_dir() {
                 out.push(Finding {
                     level: Severity::Warning,
-                    code: "missing-change-dir-for-in-progress",
+                    code: "missing-slice-dir-for-in-progress",
                     message: format!(
-                        "in-progress entry '{}' has no change directory (may briefly be absent during phase start-up)",
+                        "in-progress entry '{}' has no slice directory (may briefly be absent during phase start-up)",
                         entry.name
                     ),
                     entry: Some(entry.name.clone()),
@@ -1529,13 +1529,13 @@ changes:
     #[test]
     fn orphan_dir_warning() {
         let tmp = tempdir().expect("tempdir");
-        std::fs::create_dir(tmp.path().join("stale-change")).expect("mkdir");
+        std::fs::create_dir(tmp.path().join("stale-slice")).expect("mkdir");
         let plan = plan_with_changes(vec![change("other", Status::Pending)]);
         let results = plan.validate(Some(tmp.path()), None);
-        let hits: Vec<_> = results.iter().filter(|r| r.code == "orphan-change-dir").collect();
-        assert_eq!(hits.len(), 1, "expected one orphan-change-dir, got {results:#?}");
+        let hits: Vec<_> = results.iter().filter(|r| r.code == "orphan-slice-dir").collect();
+        assert_eq!(hits.len(), 1, "expected one orphan-slice-dir, got {results:#?}");
         assert_eq!(hits[0].level, Severity::Warning);
-        assert_eq!(hits[0].entry.as_deref(), Some("stale-change"));
+        assert_eq!(hits[0].entry.as_deref(), Some("stale-slice"));
     }
 
     #[test]
@@ -1544,7 +1544,7 @@ changes:
         let plan = plan_with_changes(vec![change("alpha", Status::InProgress)]);
         let results = plan.validate(Some(tmp.path()), None);
         let hits: Vec<_> =
-            results.iter().filter(|r| r.code == "missing-change-dir-for-in-progress").collect();
+            results.iter().filter(|r| r.code == "missing-slice-dir-for-in-progress").collect();
         assert_eq!(hits.len(), 1, "expected one missing-dir warning, got {results:#?}");
         assert_eq!(hits[0].level, Severity::Warning);
         assert_eq!(hits[0].entry.as_deref(), Some("alpha"));
@@ -1557,23 +1557,23 @@ changes:
         let plan = plan_with_changes(vec![change("alpha", Status::InProgress)]);
         let results = plan.validate(Some(tmp.path()), None);
         assert!(
-            !results.iter().any(|r| r.code.ends_with("-change-dir")
-                || r.code == "orphan-change-dir"
-                || r.code == "missing-change-dir-for-in-progress"),
+            !results.iter().any(|r| r.code.ends_with("-slice-dir")
+                || r.code == "orphan-slice-dir"
+                || r.code == "missing-slice-dir-for-in-progress"),
             "no directory warnings expected, got: {results:#?}"
         );
     }
 
     #[test]
-    fn no_changes_dir_skips_consistency() {
+    fn no_slices_dir_skips_consistency() {
         let plan = plan_with_changes(vec![change("alpha", Status::InProgress)]);
         let results = plan.validate(None, None);
         assert!(
             !results
                 .iter()
-                .any(|r| r.code == "orphan-change-dir"
-                    || r.code == "missing-change-dir-for-in-progress"),
-            "passing None for changes_dir must skip directory consistency checks: {results:#?}"
+                .any(|r| r.code == "orphan-slice-dir"
+                    || r.code == "missing-slice-dir-for-in-progress"),
+            "passing None for slices_dir must skip directory consistency checks: {results:#?}"
         );
     }
 

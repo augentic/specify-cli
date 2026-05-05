@@ -320,7 +320,7 @@ fn init_hub_writes_canonical_on_disk_shape() {
         );
     }
     // Phase-pipeline directories MUST NOT be present.
-    assert!(!tmp.path().join(".specify/changes").exists());
+    assert!(!tmp.path().join(".specify/slices").exists());
     assert!(!tmp.path().join(".specify/specs").exists());
     assert!(!tmp.path().join(".specify/.cache").exists());
 

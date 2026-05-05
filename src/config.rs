@@ -1,11 +1,11 @@
 //! `ProjectConfig` — the in-memory model of `.specify/project.yaml` plus
 //! the family of path helpers every subcommand reaches for when it needs
-//! to locate `.specify/changes/`, `.specify/.cache/`, `.specify/archive/`,
+//! to locate `.specify/slices/`, `.specify/.cache/`, `.specify/archive/`,
 //! or the operator-facing platform artifacts at the repo root
 //! (`registry.yaml`, `plan.yaml`, `initiative.md`).
 //!
 //! Layout boundary: `.specify/` holds framework-managed state that the
-//! CLI owns (configuration, working changes, archive, cache, workspace
+//! CLI owns (configuration, working slices, archive, cache, workspace
 //! clones, plan-authoring scratch, the advisory plan lock).
 //! Operator-facing platform artifacts that are PR-reviewed and durable
 //! live at the repo root. See [`docs/explanation/decision-log.md`](
@@ -16,7 +16,7 @@
 //! `contracts_dir`) that this module used to expose. Domain-specific
 //! baseline locations are owned by the active capability and are
 //! synthesised at the binary-side merge call site (currently
-//! `src/commands/change.rs::omnia_artifact_classes`). `ProjectConfig`
+//! `src/commands/slice.rs::omnia_artifact_classes`). `ProjectConfig`
 //! stays capability-agnostic.
 //!
 //! `ProjectConfig::load` is the single choke point for the
@@ -144,10 +144,15 @@ impl ProjectConfig {
         project_dir.join(".specify")
     }
 
-    /// Absolute path to `<project_dir>/.specify/changes/`.
+    /// Absolute path to `<project_dir>/.specify/slices/`.
+    ///
+    /// Pre-RFC-13 projects used `.specify/changes/`; the on-disk
+    /// migration to the new name lives at `specify migrate
+    /// slice-layout` (RFC-13 chunk 3.6). Fresh `specify init` writes
+    /// here from chunk 3.3 onward.
     #[must_use]
-    pub fn changes_dir(project_dir: &Path) -> PathBuf {
-        Self::specify_dir(project_dir).join("changes")
+    pub fn slices_dir(project_dir: &Path) -> PathBuf {
+        Self::specify_dir(project_dir).join(specify_slice::SLICES_DIR_NAME)
     }
 
     /// Absolute path to `<project_dir>/registry.yaml` — the platform
@@ -270,7 +275,7 @@ mod tests {
         let base = Path::new("/a/b");
         assert_eq!(ProjectConfig::specify_dir(base), PathBuf::from("/a/b/.specify"));
         assert_eq!(ProjectConfig::config_path(base), PathBuf::from("/a/b/.specify/project.yaml"));
-        assert_eq!(ProjectConfig::changes_dir(base), PathBuf::from("/a/b/.specify/changes"));
+        assert_eq!(ProjectConfig::slices_dir(base), PathBuf::from("/a/b/.specify/slices"));
         assert_eq!(ProjectConfig::registry_path(base), PathBuf::from("/a/b/registry.yaml"));
         assert_eq!(ProjectConfig::plan_path(base), PathBuf::from("/a/b/plan.yaml"));
         assert_eq!(ProjectConfig::initiative_path(base), PathBuf::from("/a/b/initiative.md"));

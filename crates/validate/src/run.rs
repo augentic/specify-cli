@@ -1,4 +1,4 @@
-//! `validate_change` — the top-level runner that walks a `PipelineView`,
+//! `validate_slice` — the top-level runner that walks a `PipelineView`,
 //! locates each brief's artifacts, invokes the registered rules, and
 //! collects a [`ValidationReport`].
 
@@ -11,7 +11,7 @@ use specify_error::Error;
 use crate::registry::{cross_rules, rules_for};
 use crate::{BriefContext, Classification, CrossContext, RuleOutcome, ValidationReport};
 
-/// Run all deterministic validations for a change directory.
+/// Run all deterministic validations for a slice directory.
 ///
 /// Discovers artifacts via the `generates` path on each brief's
 /// frontmatter (expanding `*` via the `glob` crate when present). Briefs
@@ -22,11 +22,11 @@ use crate::{BriefContext, Classification, CrossContext, RuleOutcome, ValidationR
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn validate_change(
-    change_dir: &Path, pipeline: &PipelineView,
+pub fn validate_slice(
+    slice_dir: &Path, pipeline: &PipelineView,
 ) -> Result<ValidationReport, Error> {
     let mut brief_results: BTreeMap<String, Vec<ValidationResult>> = BTreeMap::new();
-    let specs_dir = change_dir.join("specs");
+    let specs_dir = slice_dir.join("specs");
     let terminology = infer_terminology(pipeline);
 
     for (_phase, brief) in &pipeline.briefs {
@@ -34,7 +34,7 @@ pub fn validate_change(
             continue;
         };
 
-        let artifacts = expand_generates(change_dir, generates)?;
+        let artifacts = expand_generates(slice_dir, generates)?;
         let brief_id = brief.frontmatter.id.clone();
 
         if artifacts.is_empty() {
@@ -43,9 +43,9 @@ pub fn validate_change(
             // skill sees the failure. For globs that legitimately match
             // nothing (e.g. an empty `specs/**/*.md`), do the same —
             // no artifact means there is nothing to rule against.
-            let missing_path = change_dir.join(generates);
+            let missing_path = slice_dir.join(generates);
             let key = brief_id.clone();
-            let results = vec![artifact_missing_result(&brief_id, &missing_path, change_dir)];
+            let results = vec![artifact_missing_result(&brief_id, &missing_path, slice_dir)];
             brief_results.insert(key, results);
             continue;
         }
@@ -55,16 +55,16 @@ pub fn validate_change(
             let key = if single_artifact {
                 brief_id.clone()
             } else {
-                relative_key(change_dir, &artifact_path)
+                relative_key(slice_dir, &artifact_path)
             };
 
             let results =
-                run_brief_rules(&brief_id, &artifact_path, change_dir, &specs_dir, terminology);
+                run_brief_rules(&brief_id, &artifact_path, slice_dir, &specs_dir, terminology);
             brief_results.insert(key, results);
         }
     }
 
-    let cross_checks = run_cross_rules(change_dir, &specs_dir, pipeline, terminology);
+    let cross_checks = run_cross_rules(slice_dir, &specs_dir, pipeline, terminology);
 
     let passed = brief_results
         .values()
@@ -91,12 +91,12 @@ fn infer_terminology(pipeline: &PipelineView) -> &'static str {
 }
 
 /// Expand `generates` into a concrete list of absolute paths under
-/// `change_dir`. Plain paths are returned as a singleton (regardless of
+/// `slice_dir`. Plain paths are returned as a singleton (regardless of
 /// existence — the runner checks that separately). Glob patterns
 /// (containing `*`) are expanded via the `glob` crate and only existing
 /// matches are returned.
-fn expand_generates(change_dir: &Path, generates: &str) -> Result<Vec<PathBuf>, Error> {
-    let joined = change_dir.join(generates);
+fn expand_generates(slice_dir: &Path, generates: &str) -> Result<Vec<PathBuf>, Error> {
+    let joined = slice_dir.join(generates);
     if !generates.contains('*') {
         return Ok(vec![joined]);
     }
@@ -120,11 +120,11 @@ fn expand_generates(change_dir: &Path, generates: &str) -> Result<Vec<PathBuf>, 
 }
 
 /// Build the key used to index `ValidationReport.brief_results` for
-/// multi-artifact briefs. We strip `change_dir` to make the key stable
+/// multi-artifact briefs. We strip `slice_dir` to make the key stable
 /// across different tempdir prefixes; unix-style forward slashes are used
 /// so golden fixtures compare identically across platforms.
-fn relative_key(change_dir: &Path, artifact_path: &Path) -> String {
-    let rel = artifact_path.strip_prefix(change_dir).unwrap_or(artifact_path);
+fn relative_key(slice_dir: &Path, artifact_path: &Path) -> String {
+    let rel = artifact_path.strip_prefix(slice_dir).unwrap_or(artifact_path);
     rel.components()
         .map(|c| c.as_os_str().to_string_lossy().into_owned())
         .collect::<Vec<_>>()
@@ -132,24 +132,24 @@ fn relative_key(change_dir: &Path, artifact_path: &Path) -> String {
 }
 
 fn artifact_missing_result(
-    brief_id: &str, artifact_path: &Path, change_dir: &Path,
+    brief_id: &str, artifact_path: &Path, slice_dir: &Path,
 ) -> ValidationResult {
-    let rel = relative_key(change_dir, artifact_path);
+    let rel = relative_key(slice_dir, artifact_path);
     let rule_id: &'static str = Box::leak(format!("{brief_id}.artifact-exists").into_boxed_str());
     let rule: &'static str = Box::leak(format!("Generated artifact {rel} exists").into_boxed_str());
     ValidationResult::Fail {
         rule_id,
         rule,
-        detail: format!("artifact `{rel}` not found under change dir"),
+        detail: format!("artifact `{rel}` not found under slice dir"),
     }
 }
 
 fn run_brief_rules(
-    brief_id: &str, artifact_path: &Path, change_dir: &Path, specs_dir: &Path,
+    brief_id: &str, artifact_path: &Path, slice_dir: &Path, specs_dir: &Path,
     terminology: &'static str,
 ) -> Vec<ValidationResult> {
     let Ok(content) = std::fs::read_to_string(artifact_path) else {
-        return vec![artifact_missing_result(brief_id, artifact_path, change_dir)];
+        return vec![artifact_missing_result(brief_id, artifact_path, slice_dir)];
     };
 
     // Parse brief-specific structured context.
@@ -161,7 +161,7 @@ fn run_brief_rules(
         content: &content,
         parsed_spec: parsed_spec.as_ref(),
         tasks: tasks.as_ref(),
-        change_dir,
+        slice_dir,
         specs_dir,
         terminology,
     };
@@ -192,10 +192,10 @@ fn run_brief_rules(
 }
 
 fn run_cross_rules(
-    change_dir: &Path, specs_dir: &Path, pipeline: &PipelineView, terminology: &'static str,
+    slice_dir: &Path, specs_dir: &Path, pipeline: &PipelineView, terminology: &'static str,
 ) -> Vec<ValidationResult> {
     let ctx = CrossContext {
-        change_dir,
+        slice_dir,
         specs_dir,
         pipeline,
         terminology,

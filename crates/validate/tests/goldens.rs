@@ -1,9 +1,9 @@
-//! Golden JSON tests for `validate_change`.
+//! Golden JSON tests for `validate_slice`.
 //!
-//! Each test stages a fixture change under a tempdir in the expected
-//! layout (`<project>/.specify/changes/<name>/` + a copy of
+//! Each test stages a fixture slice under a tempdir in the expected
+//! layout (`<project>/.specify/slices/<name>/` + a copy of
 //! `schemas/omnia/` under `<project>/schemas/omnia/`), runs
-//! `validate_change`, serialises the report via `serialize_report`, and
+//! `validate_slice`, serialises the report via `serialize_report`, and
 //! compares the pretty-printed JSON against a checked-in golden file.
 //!
 //! The goldens pin `schema_version: 1` and the full shape of a
@@ -15,7 +15,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use specify_capability::PipelineView;
-use specify_validate::{serialize_report, validate_change};
+use specify_slice::SLICES_DIR_NAME;
+use specify_validate::{serialize_report, validate_slice};
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
@@ -41,7 +42,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
 }
 
 /// Stage a fixture + schema into a tempdir and return
-/// `(tempdir_guard, change_dir, pipeline_view)`.
+/// `(tempdir_guard, slice_dir, pipeline_view)`.
 fn stage_fixture(fixture_name: &str) -> (TempDir, PathBuf, PipelineView) {
     let repo = repo_root();
     let fixture_src = repo.join("crates/validate/tests/fixtures").join(fixture_name);
@@ -50,15 +51,15 @@ fn stage_fixture(fixture_name: &str) -> (TempDir, PathBuf, PipelineView) {
     let tempdir = tempfile::tempdir().unwrap();
     let project_dir = tempdir.path().to_path_buf();
 
-    let change_dir = project_dir.join(".specify").join("changes").join(fixture_name);
-    copy_dir_recursive(&fixture_src, &change_dir);
+    let slice_dir = project_dir.join(".specify").join(SLICES_DIR_NAME).join(fixture_name);
+    copy_dir_recursive(&fixture_src, &slice_dir);
 
     let schema_dst = project_dir.join("schemas").join("omnia");
     copy_dir_recursive(&schema_src, &schema_dst);
 
     let pipeline = PipelineView::load("omnia", &project_dir).expect("pipeline loads");
 
-    (tempdir, change_dir, pipeline)
+    (tempdir, slice_dir, pipeline)
 }
 
 fn golden_path(fixture_name: &str) -> PathBuf {
@@ -66,8 +67,8 @@ fn golden_path(fixture_name: &str) -> PathBuf {
 }
 
 fn run_fixture_and_diff(fixture_name: &str, expected_passed: bool) {
-    let (_guard, change_dir, pipeline) = stage_fixture(fixture_name);
-    let report = validate_change(&change_dir, &pipeline).expect("validate_change ok");
+    let (_guard, slice_dir, pipeline) = stage_fixture(fixture_name);
+    let report = validate_slice(&slice_dir, &pipeline).expect("validate_slice ok");
     assert_eq!(
         report.passed, expected_passed,
         "report.passed mismatch for `{fixture_name}`: {report:#?}"

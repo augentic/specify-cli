@@ -1,10 +1,10 @@
-//! Transactional multi-class merge + archive (`merge_change`), plus the
-//! no-write `preview_change` variant and the `conflict_check` baseline
+//! Transactional multi-class merge + archive (`merge_slice`), plus the
+//! no-write `preview_slice` variant and the `conflict_check` baseline
 //! drift detector.
 //!
 //! Everything is computed in memory first. We only touch the filesystem
 //! after every delta has merged cleanly *and* every merged baseline has
-//! passed [`crate::validate_baseline`]. On success `merge_change`:
+//! passed [`crate::validate_baseline`]. On success `merge_slice`:
 //!
 //!   1. Writes each merged baseline under the
 //!      [`MergeStrategy::ThreeWayMerge`] class's `baseline_dir`, and
@@ -13,15 +13,15 @@
 //!      `baseline_dir`.
 //!   2. Flips `.metadata.yaml.status` from `Complete` to `Merged` and
 //!      stamps `PhaseOutcome { phase: Merge, outcome: Success }`.
-//!   3. Moves the change directory under `archive_dir` as
-//!      `YYYY-MM-DD-<change-name>/` via `specify_slice::actions::archive`.
+//!   3. Moves the slice directory under `archive_dir` as
+//!      `YYYY-MM-DD-<slice-name>/` via `specify_slice::actions::archive`.
 //!
 //! Any failure before step 1 returns `Err` with the filesystem untouched.
 //!
 //! RFC-13 §Migration invariant #3 lives here: the engine never branches
 //! on a class name; per-class promotion behaviour comes from
 //! [`MergeStrategy`]. The omnia-default class slice is synthesised at
-//! the binary-side call site (see `src/commands/change.rs`) and will
+//! the binary-side call site (see `src/commands/slice.rs`) and will
 //! migrate into the capability manifest in Phase 4.1.
 
 use std::collections::BTreeMap;
@@ -31,7 +31,7 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
 use specify_slice::{
-    ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome, SpecType, actions,
+    LifecycleStatus, Outcome, Phase, PhaseOutcome, SliceMetadata, SpecType, actions,
     format_rfc3339,
 };
 use specify_error::Error;
@@ -41,13 +41,13 @@ use crate::merge::{MergeOperation, MergeResult, merge};
 use crate::validate::validate_baseline;
 
 /// File name for the optional composition delta that lives at the top
-/// of a change directory (alongside `proposal.md` etc.). Promoted into
+/// of a slice directory (alongside `proposal.md` etc.). Promoted into
 /// the first [`MergeStrategy::ThreeWayMerge`] class's baseline. Phase
 /// 4.1 of RFC-13 moves this convention into the capability manifest.
 const COMPOSITION_FILENAME: &str = "composition.yaml";
 
 /// One 3-way merged spec entry kept in memory by both
-/// [`preview_change`] and [`merge_change`].
+/// [`preview_slice`] and [`merge_slice`].
 ///
 /// `class_name` carries the originating
 /// [`ArtifactClass::name`] so callers can group results without the
@@ -89,7 +89,7 @@ pub enum OpaqueAction {
     Replaced,
 }
 
-/// Complete preview of a change merge: 3-way merge entries grouped by
+/// Complete preview of a slice merge: 3-way merge entries grouped by
 /// class plus opaque-replace pre-images grouped by class.
 #[derive(Debug, Clone)]
 #[must_use]
@@ -103,13 +103,13 @@ pub struct PreviewResult {
 }
 
 /// One `type: modified` `touched_spec` whose baseline has been modified
-/// after the change's `defined_at` timestamp. The plan skill surfaces
+/// after the slice's `defined_at` timestamp. The plan skill surfaces
 /// this list to the human so they can confirm or abort the merge.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaselineConflict {
     /// Capability (spec directory) name.
     pub capability: String,
-    /// RFC 3339 timestamp when the change was defined.
+    /// RFC 3339 timestamp when the slice was defined.
     pub defined_at: String,
     /// Baseline file modification time.
     pub baseline_modified_at: DateTime<Utc>,
@@ -123,44 +123,44 @@ pub struct BaselineConflict {
 /// every file that would be promoted by an
 /// [`MergeStrategy::OpaqueReplace`] class.
 ///
-/// Unlike [`merge_change`] this does not gate on
+/// Unlike [`merge_slice`] this does not gate on
 /// `LifecycleStatus::Complete` — the define / build / merge skill pipeline
-/// previews while the change is still `building` or `complete` so the
+/// previews while the slice is still `building` or `complete` so the
 /// human can confirm operations before the merge skill commits.
 ///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn preview_change(
-    change_dir: &Path, classes: &[ArtifactClass],
+pub fn preview_slice(
+    slice_dir: &Path, classes: &[ArtifactClass],
 ) -> Result<PreviewResult, Error> {
-    let three_way = plan_three_way(change_dir, classes)?;
+    let three_way = plan_three_way(slice_dir, classes)?;
     let opaque = preview_opaque(classes)?;
     Ok(PreviewResult { three_way, opaque })
 }
 
 /// Atomic multi-class merge plus archive.
 ///
-/// Gates on `LifecycleStatus::Complete`, runs [`preview_change`]'s
+/// Gates on `LifecycleStatus::Complete`, runs [`preview_slice`]'s
 /// in-memory plan, writes each merged baseline, transitions status to
 /// `Merged` with `merged_at`/`completed_at` timestamps, stamps a
 /// `PhaseOutcome { phase: Merge, outcome: Success }` into
-/// `.metadata.yaml`, then archives the change directory via
+/// `.metadata.yaml`, then archives the slice directory via
 /// `specify_slice::actions::archive`.
 ///
 /// The outcome stamp is written atomically with the status transition,
 /// before the archive move. This ensures the archived `.metadata.yaml`
 /// carries the merge-success outcome so that `/spec:execute` can read
-/// it via `specify change outcome` (which falls back to the archive
-/// when the active change directory no longer exists).
+/// it via `specify slice outcome show` (which falls back to the archive
+/// when the active slice directory no longer exists).
 ///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn merge_change(
-    change_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path,
+pub fn merge_slice(
+    slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path,
 ) -> Result<Vec<MergePreviewEntry>, Error> {
-    let mut metadata = ChangeMetadata::load(change_dir)?;
+    let mut metadata = SliceMetadata::load(slice_dir)?;
     if metadata.status != LifecycleStatus::Complete {
         return Err(Error::Lifecycle {
             expected: "Complete".to_string(),
@@ -168,7 +168,7 @@ pub fn merge_change(
         });
     }
 
-    let merged = plan_three_way(change_dir, classes)?;
+    let merged = plan_three_way(slice_dir, classes)?;
 
     // --- Commit: write 3-way baselines ------------------------------------
 
@@ -216,9 +216,9 @@ pub fn merge_change(
         summary: build_merge_summary(&merged, &opaque_counts),
         context: None,
     });
-    metadata.save(change_dir)?;
+    metadata.save(slice_dir)?;
 
-    actions::archive(change_dir, archive_dir, now)
+    actions::archive(slice_dir, archive_dir, now)
         .map_err(|err| Error::Merge(format!("archive move failed: {err}")))?;
 
     let mut output: Vec<MergePreviewEntry> = merged;
@@ -233,11 +233,11 @@ pub fn merge_change(
 /// For each `type: modified` `touched_spec`, the check reports whether
 /// the corresponding baseline file under each
 /// [`MergeStrategy::ThreeWayMerge`] class has been modified after the
-/// change's `defined_at` timestamp. For each staged file under a
+/// slice's `defined_at` timestamp. For each staged file under a
 /// [`MergeStrategy::OpaqueReplace`] class, the check reports the same
 /// drift against the matching baseline file.
 ///
-/// Returns an empty `Vec` when nothing is stale, the change has no
+/// Returns an empty `Vec` when nothing is stale, the slice has no
 /// `touched_specs`, or `defined_at` is missing (in which case the call
 /// is a silent no-op — the merge skill should refuse to proceed until
 /// define has run).
@@ -246,9 +246,9 @@ pub fn merge_change(
 ///
 /// Returns an error if the operation fails.
 pub fn conflict_check(
-    change_dir: &Path, classes: &[ArtifactClass],
+    slice_dir: &Path, classes: &[ArtifactClass],
 ) -> Result<Vec<BaselineConflict>, Error> {
-    let metadata = ChangeMetadata::load(change_dir)?;
+    let metadata = SliceMetadata::load(slice_dir)?;
     let Some(defined_raw) = metadata.defined_at.as_deref() else {
         return Ok(Vec::new());
     };
@@ -287,9 +287,9 @@ pub fn conflict_check(
     }
 
     // Composition drift — the convention is exactly one composition
-    // delta per change, promoted into the first ThreeWayMerge class's
+    // delta per slice, promoted into the first ThreeWayMerge class's
     // baseline. See `MergeStrategy::ThreeWayMerge` for the rationale.
-    let composition_delta = change_dir.join(COMPOSITION_FILENAME);
+    let composition_delta = slice_dir.join(COMPOSITION_FILENAME);
     if composition_delta.is_file()
         && let Some(class) = first_three_way(classes)
     {
@@ -382,11 +382,11 @@ fn check_opaque_drift(
 
 /// Compute the in-memory merge plan for every delta spec discovered
 /// under each [`MergeStrategy::ThreeWayMerge`] class's `staged_dir`,
-/// plus the optional `composition.yaml` delta at the top of the change
-/// directory. Shared by `preview_change` and `merge_change`.
+/// plus the optional `composition.yaml` delta at the top of the slice
+/// directory. Shared by `preview_slice` and `merge_slice`.
 #[allow(clippy::too_many_lines)]
 fn plan_three_way(
-    change_dir: &Path, classes: &[ArtifactClass],
+    slice_dir: &Path, classes: &[ArtifactClass],
 ) -> Result<Vec<MergePreviewEntry>, Error> {
     let mut merged: Vec<MergePreviewEntry> = Vec::new();
     let mut aborts: Vec<String> = Vec::new();
@@ -481,7 +481,7 @@ fn plan_three_way(
         // composition means for non-omnia/non-vectis domains.
         if !composition_handled {
             composition_handled = true;
-            let composition_delta_path = change_dir.join(COMPOSITION_FILENAME);
+            let composition_delta_path = slice_dir.join(COMPOSITION_FILENAME);
             if composition_delta_path.is_file() {
                 let delta_text =
                     fs::read_to_string(&composition_delta_path).map_err(|err| {
@@ -712,6 +712,6 @@ fn copy_opaque_recursive(
 }
 
 // Archive move semantics live in `specify_slice::actions::archive`; both
-// `specify change archive` and `merge_change` route through that helper
+// `specify slice archive` and `merge_slice` route through that helper
 // so the cross-device-safe `rename → copy-then-remove` fallback has a
 // single implementation.
