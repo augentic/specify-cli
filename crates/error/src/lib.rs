@@ -207,6 +207,48 @@ pub enum Error {
         slices: std::path::PathBuf,
     },
 
+    /// `specify migrate change-noun` (RFC-13 chunk 3.7) refused to
+    /// run because both `initiative.md` (the pre-Phase-3.7 source) and
+    /// `change.md` (the post-migration destination) are present at the
+    /// repo root. A previous migration was interrupted or someone
+    /// hand-edited the tree; the operator must inspect both files and
+    /// reconcile manually before re-running.
+    #[error(
+        "change-noun-migration-target-exists: both `{}` and `{}` exist at the repo root; \
+         the migration cannot proceed while the destination is already in place. Inspect \
+         both files, move the canonical content into `change.md`, remove the legacy \
+         `initiative.md`, and re-run `specify migrate change-noun`.",
+        initiative.display(),
+        change.display()
+    )]
+    ChangeNounMigrationTargetExists {
+        /// Path to the pre-Phase-3.7 source file (`initiative.md`).
+        initiative: std::path::PathBuf,
+        /// Path to the post-migration destination file (`change.md`).
+        change: std::path::PathBuf,
+    },
+
+    /// A `specify change *` verb encountered the pre-Phase-3.7
+    /// operator brief filename (`initiative.md`) at the repo root
+    /// without the post-RFC-13 `change.md` companion. RFC-13 chunk 3.7
+    /// renamed the umbrella brief filename in place; the post-RFC CLI
+    /// surface refuses to read the legacy filename and points the
+    /// operator at `specify migrate change-noun`. `path` names the
+    /// offending legacy file.
+    ///
+    /// See: <https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration>
+    #[error(
+        "change-brief-became-change-md: found legacy `initiative.md` at {} but expected \
+         `change.md`. RFC-13 renamed the umbrella brief filename: `initiative.md` is now \
+         `change.md`. Run `specify migrate change-noun` to migrate. \
+         See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
+        path.display()
+    )]
+    ChangeBriefBecameChangeMd {
+        /// Path to the pre-Phase-3.7 file the detector found.
+        path: std::path::PathBuf,
+    },
+
     /// The capability resolver found a pre-RFC-13 `schema.yaml` (or a
     /// `project.yaml` carrying the v1 `schema:` field) where it expected
     /// a `capability.yaml` (or `capability:` field). RFC-13 renamed the
@@ -498,6 +540,55 @@ mod tests {
         assert!(
             s.contains("demo (defining)"),
             "diagnostic must surface the offender, got: {s}"
+        );
+    }
+
+    #[test]
+    fn change_noun_migration_target_exists_display() {
+        let err = Error::ChangeNounMigrationTargetExists {
+            initiative: std::path::PathBuf::from("/proj/initiative.md"),
+            change: std::path::PathBuf::from("/proj/change.md"),
+        };
+        let s = err.to_string();
+        assert!(
+            s.starts_with("change-noun-migration-target-exists:"),
+            "diagnostic must carry the kebab-case prefix, got: {s}"
+        );
+        assert!(
+            s.contains("/proj/initiative.md") && s.contains("/proj/change.md"),
+            "diagnostic must surface both colliding paths, got: {s}"
+        );
+        assert!(
+            s.contains("specify migrate change-noun"),
+            "diagnostic must reference the migration verb, got: {s}"
+        );
+    }
+
+    #[test]
+    fn change_brief_became_change_md_display() {
+        let err = Error::ChangeBriefBecameChangeMd {
+            path: std::path::PathBuf::from("/proj/initiative.md"),
+        };
+        let s = err.to_string();
+        assert!(
+            s.starts_with("change-brief-became-change-md:"),
+            "diagnostic must carry the kebab-case prefix, got: {s}"
+        );
+        assert!(
+            s.contains("/proj/initiative.md"),
+            "diagnostic must surface the offending path, got: {s}"
+        );
+        assert!(
+            s.contains("change.md"),
+            "diagnostic must name the post-rename filename, got: {s}"
+        );
+        assert!(
+            s.contains("specify migrate change-noun"),
+            "diagnostic must point operator at the migration verb, got: {s}"
+        );
+        assert!(
+            s.contains("rfcs/rfc-13-extensibility.md#migration"),
+            "diagnostic must link the RFC-13 §Migration anchor, got: {s}"
         );
     }
 

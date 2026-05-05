@@ -104,7 +104,7 @@ pub enum Commands {
 
     /// One-shot layout migrations.
     ///
-    /// Two subcommands:
+    /// Three subcommands:
     ///
     /// - `v2-layout` (RFC-9 §1B / RFC-13 chunk 2.0) moves the
     ///   operator-facing platform artifacts (`registry.yaml`,
@@ -116,8 +116,13 @@ pub enum Commands {
     ///   `$SLICE_DIR`. Refuses to run when a per-loop unit is
     ///   mid-phase (operator must finish or drop the in-progress
     ///   slice first).
+    /// - `change-noun` (RFC-13 chunk 3.7) renames the umbrella
+    ///   operator brief from `initiative.md` to `change.md` at the
+    ///   repo root. No on-disk changes to other platform artifacts
+    ///   (`registry.yaml`, `plan.yaml`, `contracts/` stay put per
+    ///   RFC-9 §1B).
     ///
-    /// Both commands are idempotent — re-running on an already-
+    /// All commands are idempotent — re-running on an already-
     /// migrated project exits 0 with a "nothing to migrate" message.
     /// `v2-layout` additionally refuses to run inside a workspace
     /// clone (`.specify/workspace/<name>/`); migrate the hub repo
@@ -512,6 +517,30 @@ pub enum MigrateAction {
         /// preflight (in-progress detection, target collision check)
         /// still runs and surfaces the same diagnostics it would in a
         /// real run.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Rename the umbrella operator brief from `initiative.md` to
+    /// `change.md` at the repo root (RFC-13 chunk 3.7).
+    ///
+    /// Idempotent: re-running on an already-migrated project (only
+    /// `change.md` present, or neither file present) exits 0 with a
+    /// "nothing to migrate" / "already migrated" message. Refuses
+    /// with `change-noun-migration-target-exists` when both
+    /// `initiative.md` and `change.md` are present at the repo root
+    /// (a previous migration was interrupted or someone hand-edited
+    /// the tree); the operator must reconcile manually before
+    /// re-running. No on-disk changes to other platform artefacts
+    /// (`registry.yaml`, `plan.yaml`, `contracts/` stay put per
+    /// RFC-9 §1B).
+    ///
+    /// Single-shot: this migration does not journal its own progress.
+    /// If interrupted mid-step, the operator simply re-runs; the
+    /// idempotency guard makes the second run safe.
+    ChangeNoun {
+        /// Show what would change without modifying any file. The
+        /// detection (target collision check) still runs and surfaces
+        /// the same diagnostics it would in a real run.
         #[arg(long)]
         dry_run: bool,
     },

@@ -38,12 +38,35 @@
 //! Single-shot: this migration does not journal its own progress. If
 //! interrupted mid-step the operator simply re-runs; the idempotency
 //! guard above makes the second run safe.
+//!
+//! ## `specify migrate change-noun` (RFC-13 chunk 3.7)
+//!
+//! Renames the umbrella operator brief from `initiative.md` to
+//! `change.md` at the repo root. The umbrella brief carries the
+//! "noun" we kept switching on through Phase 3: `initiative` was the
+//! pre-Phase-3 name; `change` is the post-RFC-13 name and the noun
+//! the surface verbs carry (`specify change create`,
+//! `specify change show`, `specify change finalize`,
+//! `specify change plan {add,...}`). Idempotent — a project already
+//! carrying `change.md` (or one with neither file present) exits 0
+//! with a no-op message. Refuses with
+//! `change-noun-migration-target-exists` when both `initiative.md`
+//! and `change.md` are present (a previous migration was interrupted
+//! or someone hand-edited the tree); the operator must reconcile
+//! manually before re-running.
+//!
+//! No on-disk changes to other platform artefacts: `registry.yaml`,
+//! `plan.yaml`, and `contracts/` stay put per RFC-9 §1B. The
+//! migration is purely the noun cut-over from initiative to change.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use specify::{Error, ProjectConfig, SLICES_DIR_NAME, SliceMetadata};
+use specify::{
+    CHANGE_BRIEF_FILENAME, ChangeBrief, Error, LEGACY_CHANGE_BRIEF_FILENAME, ProjectConfig,
+    SLICES_DIR_NAME, SliceMetadata,
+};
 
 use crate::cli::OutputFormat;
 use crate::output::{CliResult, emit_response};
@@ -615,6 +638,200 @@ fn walk_and_rewrite(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// `specify migrate change-noun` (RFC-13 chunk 3.7)
+// ---------------------------------------------------------------------------
+
+/// Result envelope emitted by `specify migrate change-noun`. Mirrors
+/// the v2-layout / slice-layout shapes (kebab-case keys, `dry-run`
+/// echoed) so JSON consumers can branch on a uniform structure across
+/// migrations.
+///
+/// On-disk wire shape:
+///
+/// ```yaml
+/// status: migrated | would-migrate | already-migrated | no-brief
+/// renamed-from: initiative.md            # only when a rename happened
+/// renamed-to:   change.md                # only when a rename happened
+/// dry-run: true                          # only when --dry-run was passed
+/// ```
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ChangeNounBody {
+    /// Pre-state classification — see [`ChangeNounStatus`].
+    status: ChangeNounStatus,
+    /// Source filename when a rename was performed (or would be in
+    /// dry-run); omitted for no-op statuses so JSON consumers can
+    /// branch on presence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    renamed_from: Option<&'static str>,
+    /// Destination filename when a rename was performed (or would be
+    /// in dry-run); omitted for no-op statuses.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    renamed_to: Option<&'static str>,
+    /// Echo of `--dry-run`. Omitted when the run was not a dry run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dry_run: Option<bool>,
+}
+
+/// Pre-state classification stamped on every change-noun response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum ChangeNounStatus {
+    /// `initiative.md` was renamed to `change.md`.
+    Migrated,
+    /// `initiative.md` would be renamed (dry-run mode).
+    WouldMigrate,
+    /// `change.md` already exists and `initiative.md` does not —
+    /// re-running on an already-migrated project.
+    AlreadyMigrated,
+    /// Neither file is present — the project never had an umbrella
+    /// brief on disk (`specify change create <name>` will mint
+    /// `change.md` directly).
+    NoBrief,
+}
+
+/// Run the change-noun migration (RFC-13 chunk 3.7). Renames
+/// `initiative.md` to `change.md` at the repo root.
+///
+/// Algorithm (single-shot, no journal):
+///
+/// 1. Confirm we're in a Specify project (`.specify/project.yaml`
+///    must exist; otherwise [`Error::NotInitialized`]).
+/// 2. Refuse to run inside a `.specify/workspace/<peer>/` clone (the
+///    same guard the v2-layout and slice-layout migrations apply).
+/// 3. Inspect the two filenames at the repo root:
+///    - Both absent: no-op (`no-brief`), exit 0.
+///    - Source absent, destination present: no-op (`already-migrated`),
+///      exit 0.
+///    - Both present: refuse with
+///      [`Error::ChangeNounMigrationTargetExists`].
+///    - Source present, destination absent: continue.
+/// 4. `fs::rename` the file atomically (same-filesystem in the common
+///    case; `fs::rename` collapses to copy + remove on `EXDEV`).
+/// 5. Render the summary (text or JSON) and return [`CliResult::Success`].
+///
+/// Dry-run mode runs the same preflight (steps 1–3) so the operator
+/// sees the same diagnostics they would in a real run, then reports
+/// what *would* happen without writing anything to disk.
+///
+/// No in-progress preflight is needed for this migration: the
+/// umbrella brief is operator-managed prose with no lifecycle on the
+/// file itself.
+///
+/// # Errors
+///
+/// - [`Error::NotInitialized`] when `.specify/project.yaml` is absent.
+/// - [`Error::Config`] when invoked inside `.specify/workspace/<peer>/`.
+/// - [`Error::ChangeNounMigrationTargetExists`] when both
+///   `initiative.md` and `change.md` are on disk at the repo root.
+/// - [`Error::Io`] on filesystem failures during the rename.
+pub fn run_migrate_change_noun(
+    format: OutputFormat, project_dir: &Path, dry_run: bool,
+) -> Result<CliResult, Error> {
+    if !ProjectConfig::config_path(project_dir).is_file() {
+        return Err(Error::NotInitialized);
+    }
+    if is_inside_workspace_clone(project_dir) {
+        return Err(Error::Config(format!(
+            "specify migrate change-noun: refusing to run inside a workspace clone at {}; \
+             migrate the hub repo first, then iterate clones explicitly",
+            project_dir.display()
+        )));
+    }
+
+    let initiative_path = ChangeBrief::legacy_path(project_dir);
+    let change_path = ChangeBrief::path(project_dir);
+
+    let initiative_present = initiative_path.is_file();
+    let change_present = change_path.is_file();
+
+    let body = match (initiative_present, change_present) {
+        (false, true) => ChangeNounBody {
+            status: ChangeNounStatus::AlreadyMigrated,
+            renamed_from: None,
+            renamed_to: None,
+            dry_run: dry_run.then_some(true),
+        },
+        (false, false) => ChangeNounBody {
+            status: ChangeNounStatus::NoBrief,
+            renamed_from: None,
+            renamed_to: None,
+            dry_run: dry_run.then_some(true),
+        },
+        (true, true) => {
+            return Err(Error::ChangeNounMigrationTargetExists {
+                initiative: initiative_path,
+                change: change_path,
+            });
+        }
+        (true, false) => {
+            if !dry_run {
+                fs::rename(&initiative_path, &change_path).map_err(|err| {
+                    Error::Io(std::io::Error::new(
+                        err.kind(),
+                        format!(
+                            "specify migrate change-noun: failed to rename {} -> {}: {err}",
+                            initiative_path.display(),
+                            change_path.display()
+                        ),
+                    ))
+                })?;
+            }
+            ChangeNounBody {
+                status: if dry_run {
+                    ChangeNounStatus::WouldMigrate
+                } else {
+                    ChangeNounStatus::Migrated
+                },
+                renamed_from: Some(LEGACY_CHANGE_BRIEF_FILENAME),
+                renamed_to: Some(CHANGE_BRIEF_FILENAME),
+                dry_run: dry_run.then_some(true),
+            }
+        }
+    };
+
+    match format {
+        OutputFormat::Json => emit_response(&body),
+        OutputFormat::Text => print_change_noun_text(&body),
+    }
+    Ok(CliResult::Success)
+}
+
+fn print_change_noun_text(body: &ChangeNounBody) {
+    let prefix = if body.dry_run == Some(true) {
+        "[dry-run] specify migrate change-noun:"
+    } else {
+        "specify migrate change-noun:"
+    };
+    match body.status {
+        ChangeNounStatus::AlreadyMigrated => {
+            println!(
+                "{prefix} nothing to migrate (already on the post-Phase-3.7 layout — \
+                 `{CHANGE_BRIEF_FILENAME}` is in place)"
+            );
+        }
+        ChangeNounStatus::NoBrief => {
+            println!(
+                "{prefix} nothing to migrate (no `{LEGACY_CHANGE_BRIEF_FILENAME}` and no \
+                 `{CHANGE_BRIEF_FILENAME}` at the repo root)"
+            );
+        }
+        ChangeNounStatus::WouldMigrate => {
+            println!(
+                "{prefix} would rename `{LEGACY_CHANGE_BRIEF_FILENAME}` -> \
+                 `{CHANGE_BRIEF_FILENAME}` at the repo root"
+            );
+        }
+        ChangeNounStatus::Migrated => {
+            println!(
+                "{prefix} renamed `{LEGACY_CHANGE_BRIEF_FILENAME}` -> \
+                 `{CHANGE_BRIEF_FILENAME}` at the repo root. migration complete."
+            );
+        }
+    }
+}
+
 /// Detect whether `project_dir` sits *inside* a `.specify/workspace/<name>/`
 /// path so the migrator refuses to touch peer clones. Conservative:
 /// only true when the chain `.../foo/.specify/workspace/bar/...`
@@ -883,6 +1100,92 @@ mod tests {
         let tmp = tempdir().unwrap();
         // No `.specify/project.yaml` at all.
         let err = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false)
+            .expect_err("missing project must refuse");
+        assert!(matches!(err, Error::NotInitialized));
+    }
+
+    // --- change-noun (RFC-13 chunk 3.7) -------------------------------------
+
+    /// Minimal `initiative.md` body the migrator can rename. The
+    /// migration is a wholesale `fs::rename`, so the body bytes must
+    /// survive verbatim across the rename — the test pins them.
+    const INITIATIVE_BODY: &str = "---\nname: demo\ninputs: []\n---\n\n# demo\n";
+
+    #[test]
+    fn change_noun_renames_initiative_to_change_md() {
+        let tmp = tempdir().unwrap();
+        seed_specify_project(tmp.path());
+        fs::write(tmp.path().join("initiative.md"), INITIATIVE_BODY).unwrap();
+
+        let result = run_migrate_change_noun(OutputFormat::Json, tmp.path(), false).unwrap();
+        assert_eq!(result, CliResult::Success);
+
+        // Source gone; destination present with byte-identical content.
+        assert!(!tmp.path().join("initiative.md").exists());
+        assert!(tmp.path().join("change.md").is_file());
+        let migrated = fs::read_to_string(tmp.path().join("change.md")).unwrap();
+        assert_eq!(migrated, INITIATIVE_BODY);
+    }
+
+    #[test]
+    fn change_noun_is_idempotent_when_already_migrated() {
+        let tmp = tempdir().unwrap();
+        seed_specify_project(tmp.path());
+        fs::write(tmp.path().join("change.md"), INITIATIVE_BODY).unwrap();
+
+        let result = run_migrate_change_noun(OutputFormat::Json, tmp.path(), false).unwrap();
+        assert_eq!(result, CliResult::Success);
+        // The destination must still be there with the original body.
+        let content = fs::read_to_string(tmp.path().join("change.md")).unwrap();
+        assert_eq!(content, INITIATIVE_BODY);
+    }
+
+    #[test]
+    fn change_noun_no_brief_anywhere_is_no_op() {
+        let tmp = tempdir().unwrap();
+        seed_specify_project(tmp.path());
+
+        let result = run_migrate_change_noun(OutputFormat::Json, tmp.path(), false).unwrap();
+        assert_eq!(result, CliResult::Success);
+        assert!(!tmp.path().join("initiative.md").exists());
+        assert!(!tmp.path().join("change.md").exists());
+    }
+
+    #[test]
+    fn change_noun_refuses_when_both_files_present() {
+        let tmp = tempdir().unwrap();
+        seed_specify_project(tmp.path());
+        fs::write(tmp.path().join("initiative.md"), INITIATIVE_BODY).unwrap();
+        fs::write(tmp.path().join("change.md"), "---\nname: other\n---\n\n# other\n").unwrap();
+
+        let err = run_migrate_change_noun(OutputFormat::Json, tmp.path(), false)
+            .expect_err("both files present must refuse");
+        assert!(matches!(err, Error::ChangeNounMigrationTargetExists { .. }));
+        // Neither side should be modified.
+        assert_eq!(fs::read_to_string(tmp.path().join("initiative.md")).unwrap(), INITIATIVE_BODY);
+        assert_eq!(
+            fs::read_to_string(tmp.path().join("change.md")).unwrap(),
+            "---\nname: other\n---\n\n# other\n"
+        );
+    }
+
+    #[test]
+    fn change_noun_dry_run_writes_nothing() {
+        let tmp = tempdir().unwrap();
+        seed_specify_project(tmp.path());
+        fs::write(tmp.path().join("initiative.md"), INITIATIVE_BODY).unwrap();
+
+        let result = run_migrate_change_noun(OutputFormat::Json, tmp.path(), true).unwrap();
+        assert_eq!(result, CliResult::Success);
+        // Source still on disk; destination not yet created.
+        assert!(tmp.path().join("initiative.md").is_file());
+        assert!(!tmp.path().join("change.md").exists());
+    }
+
+    #[test]
+    fn change_noun_requires_specify_project() {
+        let tmp = tempdir().unwrap();
+        let err = run_migrate_change_noun(OutputFormat::Json, tmp.path(), false)
             .expect_err("missing project must refuse");
         assert!(matches!(err, Error::NotInitialized));
     }

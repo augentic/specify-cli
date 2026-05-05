@@ -66,6 +66,10 @@ pub fn run(cli: Cli) -> CliResult {
                 let cwd = std::env::current_dir().map_err(Error::Io)?;
                 migrate::run_migrate_slice_layout(cli.format, &cwd, dry_run)
             }),
+            MigrateAction::ChangeNoun { dry_run } => run_bare(cli.format, || {
+                let cwd = std::env::current_dir().map_err(Error::Io)?;
+                migrate::run_migrate_change_noun(cli.format, &cwd, dry_run)
+            }),
         },
         Commands::Completions { shell } => {
             let mut cmd = <crate::cli::Cli as clap::CommandFactory>::command();

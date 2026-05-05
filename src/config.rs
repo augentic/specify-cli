@@ -169,11 +169,23 @@ impl ProjectConfig {
         project_dir.join("plan.yaml")
     }
 
-    /// Absolute path to `<project_dir>/initiative.md` — the operator
-    /// brief. Platform-level artifact, lives at the repo root.
+    /// Absolute path to `<project_dir>/initiative.md` — the
+    /// pre-Phase-3.7 operator brief filename. Retained so the
+    /// v1-layout detector and `specify migrate change-noun` migrator
+    /// have a single source of truth for the legacy basename;
+    /// post-RFC-13-chunk-3.7 callers should use [`Self::change_brief_path`]
+    /// instead.
     #[must_use]
     pub fn initiative_path(project_dir: &Path) -> PathBuf {
-        project_dir.join("initiative.md")
+        project_dir.join(specify_capability::LEGACY_CHANGE_BRIEF_FILENAME)
+    }
+
+    /// Absolute path to `<project_dir>/change.md` — the umbrella
+    /// operator brief at the repo root after RFC-13 chunk 3.7.
+    /// Platform-level artifact; the post-RFC filename is canonical.
+    #[must_use]
+    pub fn change_brief_path(project_dir: &Path) -> PathBuf {
+        project_dir.join(specify_capability::CHANGE_BRIEF_FILENAME)
     }
 
     /// Absolute path to `<project_dir>/.specify/.cache/`.
@@ -279,6 +291,7 @@ mod tests {
         assert_eq!(ProjectConfig::registry_path(base), PathBuf::from("/a/b/registry.yaml"));
         assert_eq!(ProjectConfig::plan_path(base), PathBuf::from("/a/b/plan.yaml"));
         assert_eq!(ProjectConfig::initiative_path(base), PathBuf::from("/a/b/initiative.md"));
+        assert_eq!(ProjectConfig::change_brief_path(base), PathBuf::from("/a/b/change.md"));
         assert_eq!(ProjectConfig::cache_dir(base), PathBuf::from("/a/b/.specify/.cache"));
         assert_eq!(ProjectConfig::archive_dir(base), PathBuf::from("/a/b/.specify/archive"));
     }

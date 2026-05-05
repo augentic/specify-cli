@@ -12,9 +12,10 @@
 //! Per RFC-13 chunk 2.9 ("Init wires components, not capabilities"),
 //! `init` writes only the per-project skeleton — `project.yaml` plus
 //! the `.specify/` tree. Platform-component artefacts at the repo
-//! root (`registry.yaml`, `initiative.md`, `plan.yaml`) are
+//! root (`registry.yaml`, `change.md`, `plan.yaml`) are
 //! operator-managed: `specify registry add` mints `registry.yaml`,
-//! `specify change create` mints `initiative.md`, and
+//! `specify change create` mints `change.md` (RFC-13 chunk 3.7
+//! renamed it from the pre-Phase-3.7 `initiative.md`), and
 //! `specify change plan create` mints `plan.yaml`. Init never
 //! pre-touches them.
 //!
@@ -23,7 +24,7 @@
 //! exists *to* host a `registry.yaml`, so hub init scaffolds the
 //! empty registry alongside the sentinel `project.yaml { hub: true }`
 //! (with `capability:` omitted) under `.specify/`. It still does not
-//! pre-write `initiative.md` or `plan.yaml` — those are operator
+//! pre-write `change.md` or `plan.yaml` — those are operator
 //! actions on a hub too. Hub init refuses to run when `.specify/`
 //! already exists so it never clobbers a regular single-repo
 //! project.
@@ -58,12 +59,12 @@ pub struct InitOptions<'a> {
     /// Controls what `specify_version` gets written into `project.yaml`.
     pub version_mode: VersionMode,
     /// When `true`, scaffold a registry-only platform **hub** (RFC-9
-    /// §1D) instead of a regular project: writes `registry.yaml` and
-    /// `initiative.md` at the repo root and `project.yaml { hub: true }`
-    /// (with `capability:` omitted — RFC-13 §Migration "Hub project
-    /// shape") under `.specify/`. Hub init refuses to run when
-    /// `.specify/` already exists so it never clobbers a regular
-    /// single-repo project.
+    /// §1D) instead of a regular project: writes `registry.yaml` at
+    /// the repo root and `project.yaml { hub: true }` (with
+    /// `capability:` omitted — RFC-13 §Migration "Hub project shape")
+    /// under `.specify/`. Hub init refuses to run when `.specify/`
+    /// already exists so it never clobbers a regular single-repo
+    /// project.
     pub hub: bool,
 }
 
@@ -126,9 +127,11 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let mut directories_created: Vec<PathBuf> = Vec::new();
     // Per RFC-13 chunk 2.9, the `.specify/` skeleton stays here but
     // platform-component artefacts at the repo root (`registry.yaml`,
-    // `initiative.md`, `plan.yaml`) are not pre-touched — their
-    // owning verbs (`specify registry add`, `specify change create`,
-    // `specify change plan create`) mint them on demand.
+    // `change.md`, `plan.yaml`) are not pre-touched — their owning
+    // verbs (`specify registry add`, `specify change create`, and
+    // `specify change plan create`) mint them on demand. (The brief
+    // filename moved from `initiative.md` to `change.md` in RFC-13
+    // chunk 3.7.)
     // `.specify/specs/` is retained as a per-project convention used
     // by the bundled `omnia` capability; capabilities that need
     // different layouts can mint their own subdirectories from a
@@ -196,8 +199,8 @@ const HUB_INIT_NAME: &str = "hub";
 /// Hub variant of [`init`] (RFC-9 §1D, RFC-13 §Migration). Scaffolds a
 /// **registry-only platform hub**: the platform repo holds
 /// platform-level state (`registry.yaml`, plus the operator-managed
-/// `initiative.md`, `plan.yaml`, and `workspace/` once the operator
-/// asks for them) but never appears in its own `registry.yaml` and
+/// `change.md`, `plan.yaml`, and `workspace/` once the operator asks
+/// for them) but never appears in its own `registry.yaml` and
 /// disables phase pipelines on itself by **omitting** `capability:`
 /// from `project.yaml`. The post-RFC-13 hub project carries only
 /// `hub: true` (no `capability:` field).
@@ -213,9 +216,11 @@ const HUB_INIT_NAME: &str = "hub";
 ///
 /// `registry.yaml` is the one platform-component artefact init
 /// scaffolds — bootstrapping a hub *is* bootstrapping its registry.
-/// `initiative.md` and `plan.yaml` stay operator-managed even on a
-/// hub; the operator runs `specify change create <name>` and
+/// `change.md` and `plan.yaml` stay operator-managed even on a hub;
+/// the operator runs `specify change create <name>` and
 /// `specify change plan create <name>` when the work itself begins.
+/// (Pre-Phase-3.7 the brief filename was `initiative.md`; chunk 3.7
+/// renamed it.)
 ///
 /// Refuses to run when `.specify/` already exists so the operator
 /// never accidentally flips an existing single-repo project into a

@@ -17,8 +17,9 @@
 //!   subcommand (see [`PipelineView`]).
 //! - The on-disk `.cache-meta.yaml` format written by the agent
 //!   (see [`CacheMeta`]).
-//! - The on-disk `initiative.md` operator-authored brief at the repo
-//!   root (see [`ChangeBrief`]) introduced by RFC-3a.
+//! - The on-disk `change.md` operator-authored brief at the repo
+//!   root (see [`ChangeBrief`]) introduced by RFC-3a as `initiative.md`
+//!   and migrated to `change.md` by RFC-13 chunk 3.7.
 //!
 //! Registry parsing and shape validation moved out into
 //! `specify-registry` in RFC-13 chunk 2.1; per the RFC's
@@ -37,7 +38,10 @@ pub use capability::{
     CAPABILITY_FILENAME, Capability, CapabilitySource, LEGACY_SCHEMA_FILENAME, ManifestProbe,
     Phase, Pipeline, PipelineEntry, ResolvedCapability,
 };
-pub use change_brief::{ChangeBrief, ChangeFrontmatter, ChangeInput, InputKind};
+pub use change_brief::{
+    CHANGE_BRIEF_FILENAME, ChangeBrief, ChangeFrontmatter, ChangeInput, InputKind,
+    LEGACY_CHANGE_BRIEF_FILENAME,
+};
 pub use pipeline::PipelineView;
 
 /// Outcome of a structural validation rule.

@@ -626,7 +626,8 @@ impl Plan {
 
     /// Move `plan.yaml` — and, when present, the Layer-3 authoring
     /// working directory `.specify/plans/<plan.name>/` and the
-    /// operator brief `initiative.md` — into the archive directory.
+    /// operator brief (`change.md` after RFC-13 chunk 3.7;
+    /// `initiative.md` before) — into the archive directory.
     ///
     /// Semantics (see `rfc-2-execution.md` §L1.G, §L3.B, and §"`specify
     /// plan archive`"):
@@ -656,12 +657,15 @@ impl Plan {
     ///    was co-moved.
     ///
     /// `initiative_path` is the absolute location of the operator
-    /// brief (`<project_dir>/initiative.md` after the v2 layout move);
-    /// the archive co-moves it when present so operators do not
-    /// orphan the brief alongside the closed plan. Takes `&Path`
-    /// rather than `&self` because it operates on the file on disk
-    /// (it re-loads the plan) — archiving is a filesystem operation,
-    /// not a mutation of an in-memory `Plan`.
+    /// brief — `<project_dir>/change.md` after RFC-13 chunk 3.7, or
+    /// `<project_dir>/initiative.md` for projects still on the
+    /// pre-Phase-3.7 filename. The archive co-moves whichever file is
+    /// passed in, preserving the source's basename inside the
+    /// archived `<name>-<date>/` directory so operators do not orphan
+    /// the brief alongside the closed plan. Takes `&Path` rather than
+    /// `&self` because it operates on the file on disk (it re-loads
+    /// the plan) — archiving is a filesystem operation, not a
+    /// mutation of an in-memory `Plan`.
     ///
     /// # Errors
     ///
@@ -698,12 +702,15 @@ impl Plan {
         let co_move_plans = plans_dir.as_ref().filter(|p| p.is_dir()).cloned();
 
         // RFC-3a §"When are `registry.yaml` and `initiative.md`
-        // required?": the initiative brief is initiative-scoped so it
-        // travels with the archive. `workspace.md` and `slices/` under
-        // `.specify/plans/<name>/` are carried by the wholesale working-dir
-        // move above. This hook co-moves the operator brief at
-        // `initiative_path` when present so operators do not orphan
-        // it after archival.
+        // required?": the operator brief is umbrella-scoped so it
+        // travels with the archive. `workspace.md` and `slices/`
+        // under `.specify/plans/<name>/` are carried by the wholesale
+        // working-dir move above. This hook co-moves the operator
+        // brief at `initiative_path` when present so operators do not
+        // orphan it after archival. The basename is preserved from
+        // the source path so projects on either the post-Phase-3.7
+        // (`change.md`) or pre-Phase-3.7 (`initiative.md`) filename
+        // archive correctly.
         let initiative_src = Some(initiative_path.to_path_buf()).filter(|p| p.is_file());
 
         // Either the plans working directory OR the initiative brief
@@ -740,7 +747,16 @@ impl Plan {
         }
         if let (Some(src), Some(dst)) = (initiative_src.as_ref(), dest_plans_dir.as_ref()) {
             std::fs::create_dir_all(dst)?;
-            move_atomic(src, &dst.join("initiative.md"))?;
+            // Preserve the source filename so the archive reflects
+            // the project's actual on-disk shape (post-Phase-3.7
+            // `change.md` or pre-Phase-3.7 `initiative.md`).
+            let basename = src.file_name().ok_or_else(|| {
+                Error::Config(format!(
+                    "operator brief path `{}` has no filename component",
+                    src.display()
+                ))
+            })?;
+            move_atomic(src, &dst.join(basename))?;
         }
 
         Ok((dest_plan, dest_plans_dir))

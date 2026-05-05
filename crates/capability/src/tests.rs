@@ -807,9 +807,13 @@ fn scaffold_initiative_brief(contents: &str) -> TempDir {
 }
 
 /// Byte-for-byte golden for [`ChangeBrief::template`] applied to
-/// the RFC's `traffic-modernisation` example. The CLI test in
-/// `tests/initiative.rs` pins the exact same bytes against
-/// `specify initiative brief init traffic-modernisation`.
+/// the RFC's `traffic-modernisation` example. The CLI integration
+/// suite (`tests/change_umbrella.rs`) pins the exact same bytes
+/// against `specify change create traffic-modernisation`.
+///
+/// RFC-13 chunk 3.7 refreshed the prose to name the artefact a
+/// "change" (matching the new filename and the surface verbs); the
+/// frontmatter shape is unchanged.
 const TRAFFIC_TEMPLATE_GOLDEN: &str = "\
 ---
 name: traffic-modernisation
@@ -818,8 +822,8 @@ inputs: []
 
 # Traffic modernisation
 
-<!-- One-paragraph framing of what this initiative is trying to
-     achieve. Plans reference this brief via `initiative.md`. -->
+<!-- One-paragraph framing of what this change is trying to
+     achieve. Plans reference this brief via `change.md`. -->
 ";
 
 /// The RFC's canonical example, with frontmatter inputs + prose body.
@@ -887,7 +891,10 @@ fn initiative_brief_rejects_missing_frontmatter() {
     let err = ChangeBrief::load(tmp.path()).expect_err("missing frontmatter");
     match err {
         Error::Config(msg) => {
-            assert!(msg.contains("initiative.md"), "msg: {msg}");
+            // Post-RFC-13 chunk 3.7: parser names the file as
+            // `change.md` since that is the on-disk filename it loads
+            // from.
+            assert!(msg.contains("change.md"), "msg: {msg}");
             assert!(msg.contains("frontmatter"), "msg: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
@@ -1093,6 +1100,66 @@ fn initiative_brief_roundtrip_preserves_body() {
 
 #[test]
 fn initiative_brief_path_helper_points_at_repo_root() {
+    // Post-RFC-13 chunk 3.7: `path()` returns the post-rename
+    // `change.md`. The pre-Phase-3.7 filename is preserved on
+    // [`ChangeBrief::legacy_path`] for the `specify migrate
+    // change-noun` migrator and the `change-brief-became-change-md`
+    // diagnostic.
     let dir = Path::new("/tmp/some/project");
-    assert_eq!(ChangeBrief::path(dir), PathBuf::from("/tmp/some/project/initiative.md"));
+    assert_eq!(ChangeBrief::path(dir), PathBuf::from("/tmp/some/project/change.md"));
+    assert_eq!(
+        ChangeBrief::legacy_path(dir),
+        PathBuf::from("/tmp/some/project/initiative.md")
+    );
+}
+
+#[test]
+fn change_brief_refuse_legacy_passes_when_modern_only() {
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(ChangeBrief::path(tmp.path()), "---\nname: x\n---\n").unwrap();
+    ChangeBrief::refuse_legacy(tmp.path()).expect("modern only must pass");
+}
+
+#[test]
+fn change_brief_refuse_legacy_passes_when_neither_present() {
+    let tmp = TempDir::new().unwrap();
+    ChangeBrief::refuse_legacy(tmp.path()).expect("neither file is allowed");
+}
+
+#[test]
+fn change_brief_refuse_legacy_errors_when_only_legacy_present() {
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(ChangeBrief::legacy_path(tmp.path()), "---\nname: x\n---\n").unwrap();
+    let err = ChangeBrief::refuse_legacy(tmp.path()).expect_err("legacy-only must refuse");
+    match err {
+        Error::ChangeBriefBecameChangeMd { path } => {
+            assert_eq!(path, tmp.path().join("initiative.md"));
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
+#[test]
+fn change_brief_refuse_legacy_passes_when_both_present() {
+    // Both files present is a [`Error::ChangeNounMigrationTargetExists`]
+    // condition resolved by the migration verb, not by the read-side
+    // helper. `refuse_legacy` should silently allow the call so
+    // callers like `specify change show` can still load `change.md`
+    // (the modern, canonical file).
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(ChangeBrief::path(tmp.path()), "---\nname: x\n---\n").unwrap();
+    std::fs::write(ChangeBrief::legacy_path(tmp.path()), "---\nname: y\n---\n").unwrap();
+    ChangeBrief::refuse_legacy(tmp.path()).expect("both present must not refuse here");
+}
+
+#[test]
+fn change_brief_load_errors_with_change_brief_became_change_md_when_only_legacy_present() {
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(ChangeBrief::legacy_path(tmp.path()), "---\nname: x\n---\n").unwrap();
+    // `load` reads `change.md` only; the legacy file alone returns
+    // `Ok(None)`. Callers that want the loud-diagnostic fall-back
+    // call `refuse_legacy` first (see
+    // [`change_brief_refuse_legacy_errors_when_only_legacy_present`]).
+    let loaded = ChangeBrief::load(tmp.path()).expect("legacy-only is not a load failure");
+    assert!(loaded.is_none(), "load must not pick up the pre-Phase-3.7 file");
 }

@@ -2,7 +2,7 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, ProjectConfig};
+use specify::{ChangeBrief, Error, ProjectConfig};
 use specify_change::{Finding, Plan, Severity, Status};
 use specify_registry::Registry;
 
@@ -268,11 +268,16 @@ pub fn run_plan_archive(ctx: &CommandContext, force: bool) -> Result<CliResult, 
         });
     }
     let archive_dir = ProjectConfig::archive_dir(&ctx.project_dir).join("plans");
-    let initiative_path = ProjectConfig::initiative_path(&ctx.project_dir);
+    // RFC-13 chunk 3.7: refuse to archive when the operator brief is
+    // still on the pre-Phase-3.7 filename. The archive co-moves the
+    // brief, so a stale `initiative.md` would land alongside the
+    // `change.md`-shaped surface and confuse downstream consumers.
+    ChangeBrief::refuse_legacy(&ctx.project_dir)?;
+    let brief_path = ChangeBrief::path(&ctx.project_dir);
 
     let plan_name = Plan::load(&plan_path)?.name;
 
-    match Plan::archive(&plan_path, &initiative_path, &archive_dir, force) {
+    match Plan::archive(&plan_path, &brief_path, &archive_dir, force) {
         Ok((archived, archived_plans_dir)) => {
             match ctx.format {
                 OutputFormat::Json => {

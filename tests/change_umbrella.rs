@@ -1989,17 +1989,23 @@ projects:
         specify().current_dir(project.root()).args(["registry", "validate"]).assert().success();
     }
 
-    // ---- Initiative brief CLI verbs (RFC-3a C14) ----
+    // ---- Change brief CLI verbs (RFC-3a C14, RFC-13 chunk 3.7) ----
     //
-    // `specify initiative {create, show}` — scaffolds or prints
-    // `initiative.md` (at the repo root). The template byte-stability
-    // is the key contract: `create` must produce the same bytes every
-    // time so operators can diff against the RFC-matching golden.
+    // `specify change {create, show}` — scaffolds or prints
+    // `change.md` (at the repo root). The on-disk filename was
+    // `initiative.md` pre-RFC-13 chunk 3.7; `specify migrate
+    // change-noun` is the operator's path off the legacy filename.
+    // Template byte-stability is the key contract: `create` must
+    // produce the same bytes every time so operators can diff against
+    // the RFC-matching golden.
 
-    /// Byte-for-byte golden for `specify initiative create
+    /// Byte-for-byte golden for `specify change create
     /// traffic-modernisation`. Kept in-source (not a fixture file) so
     /// the assertion is a trivial `assert_eq!` against literal bytes
     /// — the plan's "Done when" criterion.
+    ///
+    /// RFC-13 chunk 3.7 refreshed the prose to name the artefact a
+    /// "change" (matching the new filename and the surface verbs).
     const TRAFFIC_BRIEF_GOLDEN: &str = "\
 ---
 name: traffic-modernisation
@@ -2008,22 +2014,26 @@ inputs: []
 
 # Traffic modernisation
 
-<!-- One-paragraph framing of what this initiative is trying to
-     achieve. Plans reference this brief via `initiative.md`. -->
+<!-- One-paragraph framing of what this change is trying to
+     achieve. Plans reference this brief via `change.md`. -->
 ";
 
     fn brief_path(project: &Project) -> PathBuf {
+        project.root().join("change.md")
+    }
+
+    fn legacy_brief_path(project: &Project) -> PathBuf {
         project.root().join("initiative.md")
     }
 
     fn write_brief(project: &Project, body: &str) {
-        fs::write(brief_path(project), body).expect("write initiative.md");
+        fs::write(brief_path(project), body).expect("write change.md");
     }
 
     #[test]
     fn initiative_create_scaffolds_canonical_file() {
         let project = Project::init();
-        assert!(!brief_path(&project).exists(), "bare project must not have initiative.md");
+        assert!(!brief_path(&project).exists(), "bare project must not have change.md");
 
         specify()
             .current_dir(project.root())
@@ -2031,7 +2041,7 @@ inputs: []
             .assert()
             .success();
 
-        let on_disk = fs::read_to_string(brief_path(&project)).expect("read initiative.md");
+        let on_disk = fs::read_to_string(brief_path(&project)).expect("read change.md");
         assert_eq!(on_disk, TRAFFIC_BRIEF_GOLDEN);
     }
 
@@ -2049,7 +2059,7 @@ inputs: []
         assert_eq!(actual["ok"], true);
         assert_eq!(actual["name"], "my-initiative");
         assert!(
-            actual["path"].as_str().expect("path string").ends_with("/initiative.md"),
+            actual["path"].as_str().expect("path string").ends_with("/change.md"),
             "path should point at the brief, got: {}",
             actual["path"]
         );
@@ -2073,6 +2083,30 @@ inputs: []
         // And the file must be untouched.
         let on_disk = fs::read_to_string(brief_path(&project)).expect("read");
         assert_eq!(on_disk, "---\nname: pre-existing\n---\n\nhands off\n");
+    }
+
+    /// RFC-13 chunk 3.7: when only the pre-Phase-3.7 `initiative.md`
+    /// exists, `specify change create` refuses with the loud
+    /// `change-brief-became-change-md` diagnostic rather than silently
+    /// minting a `change.md` alongside the legacy file. The operator
+    /// path is `specify migrate change-noun`.
+    #[test]
+    fn change_create_refuses_when_only_legacy_brief_present() {
+        let project = Project::init();
+        fs::write(legacy_brief_path(&project), "---\nname: legacy\n---\n")
+            .expect("seed initiative.md");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "change", "create", "demo"])
+            .assert()
+            .failure();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["error"], "change-brief-became-change-md");
+        // The legacy file must remain untouched and `change.md` must
+        // not have been minted.
+        assert!(legacy_brief_path(&project).exists(), "legacy file must remain");
+        assert!(!brief_path(&project).exists(), "modern file must not be created");
     }
 
     #[test]
@@ -2105,8 +2139,8 @@ inputs: []
         assert_eq!(actual["brief"], Value::Null);
         let path = actual["path"].as_str().expect("path");
         assert!(
-            path.ends_with("/initiative.md"),
-            "path should point at initiative.md, got: {path}"
+            path.ends_with("/change.md"),
+            "path should point at change.md, got: {path}"
         );
 
         let text =
@@ -2116,6 +2150,29 @@ inputs: []
             stdout.contains("no change brief declared"),
             "text show should say 'no change brief declared', got: {stdout:?}"
         );
+    }
+
+    /// RFC-13 chunk 3.7: when only the pre-Phase-3.7 `initiative.md`
+    /// exists, `specify change show` refuses with the loud
+    /// `change-brief-became-change-md` diagnostic and points the
+    /// operator at `specify migrate change-noun`.
+    #[test]
+    fn change_show_refuses_when_only_legacy_brief_present() {
+        let project = Project::init();
+        fs::write(legacy_brief_path(&project), "---\nname: legacy\n---\n\nbody\n")
+            .expect("seed initiative.md");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "change", "show"])
+            .assert()
+            .failure();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["error"], "change-brief-became-change-md");
+        let msg = actual["message"].as_str().expect("message string");
+        assert!(msg.contains("specify migrate change-noun"), "msg: {msg}");
+        assert!(msg.contains("change.md"), "msg: {msg}");
+        assert!(msg.contains("initiative.md"), "msg: {msg}");
     }
 
     #[test]
@@ -2177,9 +2234,13 @@ inputs: []
             specify().current_dir(project.root()).args(["change", "show"]).assert().failure();
         assert_ne!(assert.get_output().status.code(), Some(0));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+        // Post-RFC-13 chunk 3.7: the parser surfaces the on-disk
+        // filename (`change.md`) — `initiative.md` is the legacy
+        // name covered by the `change-brief-became-change-md`
+        // diagnostic, not by the kebab-case rule.
         assert!(
-            stderr.contains("initiative.md"),
-            "stderr should mention initiative.md, got: {stderr:?}"
+            stderr.contains("change.md"),
+            "stderr should mention change.md, got: {stderr:?}"
         );
         assert!(
             stderr.contains("kebab-case"),
@@ -2187,9 +2248,10 @@ inputs: []
         );
     }
 
-    /// RFC-3a C14 archive-sweep hook: `initiative.md` travels with
+    /// RFC-3a C14 archive-sweep hook: the operator brief travels with
     /// the archive. Real C33 sweep adds `workspace.md` + `slices/`;
-    /// this test pins the `initiative.md` half.
+    /// this test pins the brief half. Post-RFC-13 chunk 3.7 the
+    /// brief is `change.md`.
     #[test]
     fn archive_includes_initiative_md() {
         let project = Project::init();
@@ -2198,20 +2260,45 @@ inputs: []
 
         specify().current_dir(project.root()).args(["change", "plan", "archive"]).assert().success();
 
-        assert!(!brief_path(&project).exists(), "initiative.md must leave the repo root");
+        assert!(!brief_path(&project).exists(), "change.md must leave the repo root");
 
         let archived_dir = project
             .root()
             .join(".specify/archive/plans")
             .join(format!("demo-{}", today_yyyymmdd()));
-        let archived_brief = archived_dir.join("initiative.md");
+        let archived_brief = archived_dir.join("change.md");
         assert!(
             archived_brief.exists(),
-            "archived initiative.md missing at {}",
+            "archived change.md missing at {}",
             archived_brief.display()
         );
         let contents = fs::read_to_string(&archived_brief).expect("read archived brief");
         assert_eq!(contents, TRAFFIC_BRIEF_GOLDEN, "archived bytes must match source bytes");
+    }
+
+    /// RFC-13 chunk 3.7: `specify change plan archive` refuses to
+    /// archive when the operator brief is still on the pre-Phase-3.7
+    /// filename. The archive co-moves the brief; refusing keeps the
+    /// archived `<name>-<date>/` directory free of stale legacy
+    /// filenames mixed with post-rename ones.
+    #[test]
+    fn archive_refuses_when_only_legacy_brief_present() {
+        let project = Project::init();
+        project.seed_plan(ALL_DONE);
+        fs::write(legacy_brief_path(&project), TRAFFIC_BRIEF_GOLDEN)
+            .expect("seed initiative.md");
+
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["--format", "json", "change", "plan", "archive"])
+            .assert()
+            .failure();
+        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        assert_eq!(actual["error"], "change-brief-became-change-md");
+        // The plan must remain at the repo root and the archive
+        // directory must not have been created.
+        assert!(project.root().join("plan.yaml").exists(), "plan.yaml must remain");
+        assert!(legacy_brief_path(&project).exists(), "legacy brief must remain");
     }
 
     /// `specify plan validate` surfaces a malformed `registry.yaml`

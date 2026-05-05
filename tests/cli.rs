@@ -1542,3 +1542,162 @@ fn migrate_slice_layout_blocks_when_a_slice_is_in_progress() {
     assert!(tmp.path().join(".specify/changes/alpha/.metadata.yaml").is_file());
     assert!(!tmp.path().join(".specify/slices").exists());
 }
+
+// ---- specify migrate change-noun (RFC-13 chunk 3.7) ----
+
+/// Minimal `initiative.md` body used by the change-noun integration
+/// tests. The migration is a wholesale `fs::rename`, so the body
+/// bytes survive verbatim across the rename.
+const CHANGE_NOUN_BODY: &str =
+    "---\nname: demo\ninputs: []\n---\n\n# demo\n";
+
+#[test]
+fn migrate_change_noun_renames_initiative_to_change_md() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY)
+        .expect("seed initiative.md");
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "change-noun"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["status"], "migrated");
+    assert_eq!(value["renamed-from"], "initiative.md");
+    assert_eq!(value["renamed-to"], "change.md");
+
+    // Source removed, destination present with byte-identical content.
+    assert!(!tmp.path().join("initiative.md").exists(), "v1 source must be removed");
+    assert!(tmp.path().join("change.md").is_file(), "post-rename file must exist");
+    let migrated = fs::read_to_string(tmp.path().join("change.md")).expect("read change.md");
+    assert_eq!(migrated, CHANGE_NOUN_BODY, "rename must preserve the body verbatim");
+}
+
+#[test]
+fn migrate_change_noun_rerun_is_a_noop() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY)
+        .expect("seed initiative.md");
+
+    // First run actually migrates.
+    specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "change-noun"])
+        .assert()
+        .success();
+
+    // Second run on the now-post-Phase-3.7 layout exits 0 with the
+    // `already-migrated` discriminant — idempotency invariant.
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "change-noun"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["status"], "already-migrated");
+    // `renamed-from` / `renamed-to` are omitted on no-op statuses so
+    // JSON consumers can branch on presence.
+    assert!(value.get("renamed-from").is_none(), "got: {value}");
+    assert!(value.get("renamed-to").is_none(), "got: {value}");
+    assert!(tmp.path().join("change.md").is_file());
+    assert!(!tmp.path().join("initiative.md").exists());
+}
+
+#[test]
+fn migrate_change_noun_refuses_when_both_files_present() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY)
+        .expect("seed initiative.md");
+    fs::write(
+        tmp.path().join("change.md"),
+        "---\nname: collision\ninputs: []\n---\n\n# collision\n",
+    )
+    .expect("seed change.md");
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "change-noun"])
+        .assert()
+        .failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "change-noun-migration-target-exists");
+    let message = value["message"].as_str().expect("message string");
+    assert!(
+        message.contains("change-noun-migration-target-exists:"),
+        "diagnostic must lead with the kebab-case prefix, got: {message}"
+    );
+    assert!(
+        message.contains("specify migrate change-noun"),
+        "diagnostic must reference the recovery verb, got: {message}"
+    );
+
+    // The on-disk state must be untouched.
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("initiative.md")).expect("read"),
+        CHANGE_NOUN_BODY
+    );
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("change.md")).expect("read"),
+        "---\nname: collision\ninputs: []\n---\n\n# collision\n"
+    );
+}
+
+/// `specify change show` against a project that still carries the
+/// pre-Phase-3.7 `initiative.md` (and no `change.md`) must refuse
+/// loud with the `change-brief-became-change-md` diagnostic and
+/// point the operator at `specify migrate change-noun`.
+#[test]
+fn change_show_refuses_when_only_legacy_brief_present() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY)
+        .expect("seed initiative.md");
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "change", "show"])
+        .assert()
+        .failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "change-brief-became-change-md");
+    let message = value["message"].as_str().expect("message string");
+    assert!(
+        message.contains("change-brief-became-change-md:"),
+        "diagnostic must lead with the kebab-case prefix, got: {message}"
+    );
+    assert!(
+        message.contains("initiative.md") && message.contains("change.md"),
+        "diagnostic must surface both filenames, got: {message}"
+    );
+    assert!(
+        message.contains("specify migrate change-noun"),
+        "diagnostic must point at the migration verb, got: {message}"
+    );
+    assert!(
+        message.contains("rfcs/rfc-13-extensibility.md#migration"),
+        "diagnostic must link RFC-13 §Migration, got: {message}"
+    );
+    // The on-disk state must be untouched.
+    assert!(tmp.path().join("initiative.md").is_file());
+    assert!(!tmp.path().join("change.md").exists());
+}
+
+/// Help text must list the new migration subcommand so operators can
+/// discover it through `specify migrate --help`.
+#[test]
+fn migrate_change_noun_appears_in_help() {
+    let assert = specify().args(["migrate", "--help"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
+    assert!(
+        stdout.contains("change-noun"),
+        "migrate --help must list change-noun, got:\n{stdout}"
+    );
+}

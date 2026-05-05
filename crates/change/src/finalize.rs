@@ -67,12 +67,13 @@ use crate::plan::core::{Plan, Status};
 // Path helpers
 // ---------------------------------------------------------------------------
 //
-// `crate::config::ProjectConfig::{specify_dir, plan_path, initiative_path,
-// archive_dir}` lived in the binary lib pre-RFC-13 chunk 2.4. The lifted
-// crate must not couple back to the binary; the four path helpers are
-// inlined here as `fn`s. They are pure `Path::join` calls and the
-// canonical layout (`registry.yaml` / `plan.yaml` / `initiative.md` at
-// repo root, `.specify/` for framework-managed state) is fixed by RFC-9.
+// `crate::config::ProjectConfig::{specify_dir, plan_path,
+// change_brief_path, archive_dir}` lived in the binary lib pre-RFC-13
+// chunk 2.4. The lifted crate must not couple back to the binary; the
+// four path helpers are inlined here as `fn`s. They are pure
+// `Path::join` calls and the canonical layout (`registry.yaml` /
+// `plan.yaml` / `change.md` at repo root, `.specify/` for
+// framework-managed state) is fixed by RFC-9 / RFC-13.
 
 fn specify_dir(project_dir: &Path) -> PathBuf {
     project_dir.join(".specify")
@@ -82,8 +83,22 @@ fn plan_path(project_dir: &Path) -> PathBuf {
     project_dir.join("plan.yaml")
 }
 
-fn initiative_path(project_dir: &Path) -> PathBuf {
-    project_dir.join("initiative.md")
+/// Repo-root path of the umbrella operator brief. Returns the
+/// post-RFC-13-chunk-3.7 filename `change.md` when present, falling
+/// back to the pre-RFC-13 `initiative.md` when only the legacy
+/// filename is on disk so projects mid-migration archive cleanly.
+/// Returns the post-RFC filename when neither is present (the
+/// `is_file` check inside `Plan::archive` then no-ops the co-move).
+fn change_brief_path(project_dir: &Path) -> PathBuf {
+    let modern = project_dir.join("change.md");
+    if modern.is_file() {
+        return modern;
+    }
+    let legacy = project_dir.join("initiative.md");
+    if legacy.is_file() {
+        return legacy;
+    }
+    modern
 }
 
 fn archive_dir(project_dir: &Path) -> PathBuf {
@@ -488,9 +503,9 @@ pub fn run_finalize<P: FinalizeProbe>(
 
     // All guards passed — archive (atomic) and optionally clean.
     let plan_file = plan_path(inputs.project_dir);
-    let initiative_file = initiative_path(inputs.project_dir);
+    let brief_file = change_brief_path(inputs.project_dir);
     let archive_root = archive_dir(inputs.project_dir).join("plans");
-    match Plan::archive(&plan_file, &initiative_file, &archive_root, /* force = */ true) {
+    match Plan::archive(&plan_file, &brief_file, &archive_root, /* force = */ true) {
         Ok((archived, archived_plans_dir)) => {
             outcome.archived = Some(archived.display().to_string());
             outcome.archived_plans_dir =

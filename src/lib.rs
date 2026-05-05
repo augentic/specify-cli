@@ -7,9 +7,10 @@
 pub use config::{ProjectConfig, detect_legacy_layout};
 pub use init::{InitOptions, InitResult, VersionMode, init};
 pub use specify_capability::{
-    Brief, BriefFrontmatter, CAPABILITY_FILENAME, CacheMeta, Capability, CapabilitySource,
-    ChangeBrief, ChangeFrontmatter, ChangeInput, InputKind, LEGACY_SCHEMA_FILENAME,
-    ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, ResolvedCapability,
+    Brief, BriefFrontmatter, CAPABILITY_FILENAME, CHANGE_BRIEF_FILENAME, CacheMeta, Capability,
+    CapabilitySource, ChangeBrief, ChangeFrontmatter, ChangeInput, InputKind,
+    LEGACY_CHANGE_BRIEF_FILENAME, LEGACY_SCHEMA_FILENAME, ManifestProbe, Phase, Pipeline,
+    PipelineEntry, PipelineView, ResolvedCapability,
 };
 pub use specify_slice::{
     CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry, LifecycleStatus,
