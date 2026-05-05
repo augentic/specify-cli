@@ -23,11 +23,11 @@ use specify_error::Error;
 
 /// Verb-level operations on a Specify slice directory.
 pub mod actions;
-/// Crash-safe write helpers shared with `specify-initiative`.
+/// Crash-safe write helpers shared with `specify-change`.
 ///
 /// Originally a `pub(crate)` private module; promoted to `pub` by
 /// RFC-13 chunk 2.4 so the lifted plan + lock primitives in
-/// `specify-initiative` can route their on-disk writes through the
+/// `specify-change` can route their on-disk writes through the
 /// same atomic-rename envelope as the per-loop-unit primitives that
 /// remain in this crate.
 pub mod atomic;
@@ -417,7 +417,7 @@ impl SliceMetadata {
     /// Atomic: a partial file is never observed by readers. Write goes
     /// via a temp file in the same directory followed by `fs::rename`.
     /// This mirrors the exact convention used by `Plan::save` (in
-    /// `specify-initiative`) — both `SliceMetadata` and `Plan` route
+    /// `specify-change`) — both `SliceMetadata` and `Plan` route
     /// their on-disk writes through `NamedTempFile::new_in(parent) +
     /// persist` so that every `.specify/*.yaml` write in the codebase
     /// is crash-safe and never-partial under concurrent reads.

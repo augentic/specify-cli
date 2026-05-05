@@ -100,7 +100,7 @@ pub enum Error {
     /// Illegal plan entry status transition. Mirrors the `Lifecycle`
     /// variant in carrying stringified `PlanStatus` values to keep
     /// `specify-error` at the root of the dependency graph. The caller
-    /// (in `specify-initiative::plan`) formats the strings via
+    /// (in `specify-change::plan`) formats the strings via
     /// `format!("{:?}", status)`.
     #[error("illegal plan transition: cannot go from {from} to {to}")]
     PlanTransition {

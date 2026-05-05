@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, ProjectConfig};
-use specify_initiative::{Entry, Finding, Plan, Severity};
+use specify_change::{Entry, Finding, Plan, Severity};
 use specify_registry::Registry;
 
 use crate::cli::{LockAction, OutputFormat, PlanAction};

@@ -494,7 +494,7 @@ const EXDEV: i32 = 18;
 /// (`move_file_atomic`, `move_dir_atomic`) were identical modulo that
 /// one branch — collapsing them keeps the cross-device semantics in a
 /// single implementation shared by `specify_merge::slice` (archive
-/// move) and `specify_initiative::plan` (plan archive move, lifted
+/// move) and `specify_change::plan` (plan archive move, lifted
 /// out of this crate by RFC-13 chunk 2.4).
 ///
 /// # Errors

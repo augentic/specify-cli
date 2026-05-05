@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use specify::{CreateIfExists, EntryKind, LifecycleStatus, Phase};
-use specify_initiative::Status;
+use specify_change::Status;
 
 #[derive(Parser)]
 #[command(

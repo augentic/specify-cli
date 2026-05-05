@@ -4,8 +4,8 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, InitiativeBrief, is_valid_kebab_name};
-use specify_initiative::{
+use specify::{ChangeBrief, Error, is_valid_kebab_name};
+use specify_change::{
     FinalizeError, FinalizeInputs, FinalizeOutcome, FinalizeProjectResult, FinalizeSummaryCounts,
     RealFinalizeProbe, load_plan_or_refuse, run_finalize,
 };
@@ -31,7 +31,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
         )));
     }
 
-    let brief_path = InitiativeBrief::path(&ctx.project_dir);
+    let brief_path = ChangeBrief::path(&ctx.project_dir);
     if brief_path.exists() {
         match ctx.format {
             OutputFormat::Json => {
@@ -65,7 +65,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
     if let Some(parent) = brief_path.parent() {
         std::fs::create_dir_all(parent).map_err(Error::Io)?;
     }
-    let rendered = InitiativeBrief::template(&name);
+    let rendered = ChangeBrief::template(&name);
     std::fs::write(&brief_path, &rendered).map_err(Error::Io)?;
 
     #[derive(Serialize)]
@@ -91,8 +91,8 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
 }
 
 fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
-    let brief_path = InitiativeBrief::path(&ctx.project_dir);
-    match InitiativeBrief::load(&ctx.project_dir)? {
+    let brief_path = ChangeBrief::path(&ctx.project_dir);
+    match ChangeBrief::load(&ctx.project_dir)? {
         None => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
@@ -121,7 +121,7 @@ fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
             struct BriefJson {
-                frontmatter: specify::InitiativeFrontmatter,
+                frontmatter: specify::ChangeFrontmatter,
                 body: String,
             }
             match ctx.format {
@@ -139,7 +139,7 @@ fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
     }
 }
 
-fn print_initiative_brief_text(brief: &InitiativeBrief, brief_path: &Path) {
+fn print_initiative_brief_text(brief: &ChangeBrief, brief_path: &Path) {
     println!("initiative.md: {}", brief_path.display());
     println!("name: {}", brief.frontmatter.name);
     if brief.frontmatter.inputs.is_empty() {
@@ -365,7 +365,7 @@ fn blocked_reason(s: &FinalizeSummaryCounts) -> String {
 
 #[cfg(test)]
 mod tests {
-    use specify_initiative::FinalizeStatus;
+    use specify_change::FinalizeStatus;
 
     #[test]
     fn passing_statuses_only_merged_and_no_branch() {

@@ -12,12 +12,12 @@
 //! `create_dir_all` at every call site.
 //!
 //! Promoted from `pub(crate)` to `pub` by RFC-13 chunk 2.4 so the
-//! lifted plan + lock primitives in `specify-initiative` can route
+//! lifted plan + lock primitives in `specify-change` can route
 //! their on-disk writes through the same atomic-rename envelope as
 //! the per-loop-unit primitives that remain in this crate. Downstream
 //! library users who need the same behaviour should call the domain
 //! helpers (`SliceMetadata::save`, `Journal::append`, plus the
-//! `Plan::save` / `Stamp::acquire` re-exports in `specify-initiative`)
+//! `Plan::save` / `Stamp::acquire` re-exports in `specify-change`)
 //! that route through here.
 
 use std::path::Path;

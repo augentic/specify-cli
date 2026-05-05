@@ -25,7 +25,7 @@
 //!   that serialises the whole journal to a temp file in the same
 //!   directory and then `persist`s it via `fs::rename`. Mirrors
 //!   [`crate::SliceMetadata::save`] and `Plan::save` (in
-//!   `specify-initiative`) exactly
+//!   `specify-change`) exactly
 //!   so a mid-write crash leaves the prior file intact.
 //!
 //! - **Single-writer**: `append` is atomic per call but there is no

@@ -1,12 +1,18 @@
-//! Initiative brief parser — operator-authored brief
-//! (RFC-3a §*The Initiative Brief*).
+//! Change brief parser — operator-authored brief
+//! (RFC-3a §*The Initiative Brief*; renamed to *change brief* by
+//! RFC-13 chunk 3.4).
 //!
 //! `initiative.md` (at the repo root) is a markdown document with a
 //! `---`-delimited YAML frontmatter block at the top. The frontmatter
 //! shape is enforced here (`#[serde(deny_unknown_fields)]` +
-//! [`InitiativeBrief::parse_str`] invariants); the body is captured
+//! [`ChangeBrief::parse_str`] invariants); the body is captured
 //! verbatim and **not** parsed in v1. A future RFC may land structured
 //! body parsing, but today's consumers treat the body as prose.
+//!
+//! The on-disk filename is still `initiative.md`; chunk 3.7 of RFC-13
+//! migrates the file to `change.md`. The Rust types here use the
+//! post-rename `Change*` spelling so the umbrella vocabulary lines up
+//! with the rest of the post-3.4 codebase.
 //!
 //! No JSON schema file ships for v1 per the RFC — the shape is enforced
 //! directly in code.
@@ -43,9 +49,9 @@ fn is_kebab_case(s: &str) -> bool {
 /// body is preserved byte-for-byte so round-tripping is faithful;
 /// structured body interpretation is explicitly deferred.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InitiativeBrief {
+pub struct ChangeBrief {
     /// Parsed YAML frontmatter.
-    pub frontmatter: InitiativeFrontmatter,
+    pub frontmatter: ChangeFrontmatter,
     /// Markdown body captured verbatim. Not parsed further in v1.
     pub body: String,
 }
@@ -53,18 +59,18 @@ pub struct InitiativeBrief {
 /// Parsed frontmatter of `initiative.md`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct InitiativeFrontmatter {
-    /// Kebab-case initiative name.
+pub struct ChangeFrontmatter {
+    /// Kebab-case change name.
     pub name: String,
     /// Seed inputs. Optional — may be absent or empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub inputs: Vec<InitiativeInput>,
+    pub inputs: Vec<ChangeInput>,
 }
 
-/// One entry in [`InitiativeFrontmatter::inputs`].
+/// One entry in [`ChangeFrontmatter::inputs`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct InitiativeInput {
+pub struct ChangeInput {
     /// Relative or absolute path. Stored verbatim; resolution happens
     /// downstream in `/spec:analyze` (not in this crate).
     pub path: String,
@@ -85,7 +91,7 @@ pub enum InputKind {
     Documentation,
 }
 
-impl InitiativeBrief {
+impl ChangeBrief {
     /// Absolute path to `<project_dir>/initiative.md`. The operator
     /// brief lives at the repo root.
     #[must_use]
@@ -93,7 +99,7 @@ impl InitiativeBrief {
         project_dir.join("initiative.md")
     }
 
-    /// Load + shape-validate the initiative brief.
+    /// Load + shape-validate the change brief.
     ///
     /// - `Ok(None)` — the file is absent. The brief is optional and a
     ///   missing file is *not* an error.
@@ -129,7 +135,7 @@ impl InitiativeBrief {
             Error::Config("initiative.md: opening `---` has no closing `---` delimiter".to_string())
         })?;
 
-        let frontmatter: InitiativeFrontmatter = serde_saphyr::from_str(frontmatter_text)
+        let frontmatter: ChangeFrontmatter = serde_saphyr::from_str(frontmatter_text)
             .map_err(|err| Error::Config(format!("initiative.md: invalid frontmatter: {err}")))?;
 
         let brief = Self {
@@ -166,19 +172,19 @@ impl InitiativeBrief {
     }
 
     /// Render the canonical `initiative.md` template for the given
-    /// kebab-case initiative name. Byte-stable — the `init` CLI verb
+    /// kebab-case change name. Byte-stable — the `init` CLI verb
     /// compares against a golden fixture.
     #[must_use]
     #[allow(clippy::literal_string_with_formatting_args)]
     pub fn template(name: &str) -> String {
-        INITIATIVE_TEMPLATE.replace("{name}", name).replace("{title}", &title_case(name))
+        CHANGE_TEMPLATE.replace("{name}", name).replace("{title}", &title_case(name))
     }
 }
 
 /// Canonical template shipped by `specify initiative brief init`. The
 /// golden-fixture test pins this byte-for-byte; any edit here must be
 /// mirrored in the test constant.
-const INITIATIVE_TEMPLATE: &str = "\
+const CHANGE_TEMPLATE: &str = "\
 ---
 name: {name}
 inputs: []
@@ -190,7 +196,7 @@ inputs: []
      achieve. Plans reference this brief via `initiative.md`. -->
 ";
 
-/// Title-case transform used by [`InitiativeBrief::template`]:
+/// Title-case transform used by [`ChangeBrief::template`]:
 /// `traffic-modernisation` → `Traffic modernisation`. Dashes become
 /// spaces, the very first ASCII character is uppercased, everything
 /// else is left as-is.

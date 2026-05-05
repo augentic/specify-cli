@@ -11,7 +11,7 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, ProjectConfig};
-use specify_initiative::Plan;
+use specify_change::Plan;
 use specify_registry::{Registry, RegistryProject};
 
 use crate::cli::{OutputFormat, RegistryAction};
@@ -423,7 +423,7 @@ fn is_kebab_case(s: &str) -> bool {
 mod tests {
     use std::collections::BTreeMap;
 
-    use specify_initiative::{Entry, Status};
+    use specify_change::{Entry, Status};
     use tempfile::TempDir;
 
     use super::*;

@@ -1,16 +1,16 @@
 [package]
-name = "specify-initiative"
+name = "specify-change"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Specify initiative orchestration: change brief, plan, execution, finalization"
+description = "Specify change orchestration: change brief, plan, execution, finalization"
 categories = ["development-tools"]
-keywords = ["specify", "initiative", "plan", "orchestration"]
+keywords = ["specify", "change", "plan", "orchestration"]
 readme = "../../README.md"
 
 [lib]
-name = "specify_initiative"
+name = "specify_change"
 path = "src/lib.rs"
 
 [dependencies]

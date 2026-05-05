@@ -4,7 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, ProjectConfig, SliceMetadata};
-use specify_initiative::{Entry, Plan, Severity, Status};
+use specify_change::{Entry, Plan, Severity, Status};
 
 use super::{PlanRef, emit_structural_error, require_file};
 use crate::cli::OutputFormat;

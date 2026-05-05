@@ -25,7 +25,7 @@ specify-spec.workspace = true
 specify-merge.workspace = true
 specify-task.workspace = true
 specify-slice.workspace = true
-specify-initiative.workspace = true
+specify-change.workspace = true
 specify-validate.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
@@ -55,7 +55,7 @@ members = [
     "crates/task",
     "crates/validate",
     "crates/slice",
-    "crates/initiative",
+    "crates/change",
     "crates/vectis",
 ]
 
@@ -115,7 +115,7 @@ specify-spec = { path = "crates/spec" }
 specify-merge = { path = "crates/merge" }
 specify-task = { path = "crates/task" }
 specify-slice = { path = "crates/slice" }
-specify-initiative = { path = "crates/initiative" }
+specify-change = { path = "crates/change" }
 specify-validate = { path = "crates/validate" }
 specify-vectis = { path = "crates/vectis" }
 clap = { version = "4", features = ["derive"] }

@@ -18,7 +18,7 @@
 //! - The on-disk `.cache-meta.yaml` format written by the agent
 //!   (see [`CacheMeta`]).
 //! - The on-disk `initiative.md` operator-authored brief at the repo
-//!   root (see [`InitiativeBrief`]) introduced by RFC-3a.
+//!   root (see [`ChangeBrief`]) introduced by RFC-3a.
 //!
 //! Registry parsing and shape validation moved out into
 //! `specify-registry` in RFC-13 chunk 2.1; per the RFC's
@@ -28,7 +28,7 @@
 mod brief;
 mod cache;
 mod capability;
-mod initiative_brief;
+mod change_brief;
 mod pipeline;
 
 pub use brief::{Brief, BriefFrontmatter};
@@ -37,7 +37,7 @@ pub use capability::{
     CAPABILITY_FILENAME, Capability, CapabilitySource, LEGACY_SCHEMA_FILENAME, ManifestProbe,
     Phase, Pipeline, PipelineEntry, ResolvedCapability,
 };
-pub use initiative_brief::{InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind};
+pub use change_brief::{ChangeBrief, ChangeFrontmatter, ChangeInput, InputKind};
 pub use pipeline::PipelineView;
 
 /// Outcome of a structural validation rule.

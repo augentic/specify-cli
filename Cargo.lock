@@ -1377,8 +1377,8 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "specify-capability",
+ "specify-change",
  "specify-error",
- "specify-initiative",
  "specify-merge",
  "specify-registry",
  "specify-slice",
@@ -1403,15 +1403,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "specify-error"
-version = "0.2.0"
-dependencies = [
- "serde-saphyr",
- "thiserror",
-]
-
-[[package]]
-name = "specify-initiative"
+name = "specify-change"
 version = "0.2.0"
 dependencies = [
  "chrono",
@@ -1426,6 +1418,14 @@ dependencies = [
  "specify-registry",
  "specify-slice",
  "tempfile",
+]
+
+[[package]]
+name = "specify-error"
+version = "0.2.0"
+dependencies = [
+ "serde-saphyr",
+ "thiserror",
 ]
 
 [[package]]

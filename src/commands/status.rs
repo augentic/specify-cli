@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, ProjectConfig};
-use specify_initiative::{Plan, Status};
+use specify_change::{Plan, Status};
 use specify_registry::Registry;
 
 use super::slice::{collect_status, list_slice_names, status_entry_to_json};

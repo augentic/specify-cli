@@ -3,7 +3,7 @@
 use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, ProjectConfig};
-use specify_initiative::{Finding, Plan, Severity, Status};
+use specify_change::{Finding, Plan, Severity, Status};
 use specify_registry::Registry;
 
 use super::{

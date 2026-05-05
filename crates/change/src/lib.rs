@@ -1,4 +1,4 @@
-//! Specify initiative orchestration.
+//! Specify change orchestration.
 //!
 //! Plan-driven multi-change loops, the operator-facing `initiative.md`
 //! brief, the `plan.yaml` state machine, and the closure verb
@@ -6,16 +6,18 @@
 //!
 //! Lifted out of the binary lib (`src/initiative_finalize.rs`) and
 //! the per-loop unit crate (`crates/slice/src/{plan,plan_doctor,
-//! lock}.rs`) by RFC-13 chunk 2.4. The crate name is a placeholder —
-//! Phase 3.4 will rename it to `specify-change` once the per-loop
-//! unit crate (`crates/slice/`, package `specify-slice`) settles.
+//! lock}.rs`) by RFC-13 chunk 2.4 and renamed from `specify-initiative`
+//! to `specify-change` by RFC-13 chunk 3.4. The on-disk `initiative.md`
+//! and `Commands::Initiative` CLI surface still carry the pre-rename
+//! noun — chunk 3.5 reshapes the action enums and chunk 3.7 migrates
+//! the on-disk file.
 //!
 //! Dependency direction (RFC-13 invariant #4):
 //!
 //! ```text
-//! specify-initiative → specify-registry → specify-capability
-//!                   → specify-slice    (per-loop unit primitives)
-//!                   → specify-error
+//! specify-change → specify-registry → specify-capability
+//!               → specify-slice    (per-loop unit primitives)
+//!               → specify-error
 //! ```
 //!
 //! `specify-slice` MUST NOT depend on this crate; the per-loop unit

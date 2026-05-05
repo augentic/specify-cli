@@ -16,7 +16,7 @@ use crate::ValidationResult;
 use crate::brief::Brief;
 use crate::cache::CacheMeta;
 use crate::capability::{Capability, CapabilitySource, Phase};
-use crate::initiative_brief::{InitiativeBrief, InputKind};
+use crate::change_brief::{ChangeBrief, InputKind};
 use crate::pipeline::PipelineView;
 
 /// Absolute path to the repo root (the Cargo workspace root).
@@ -802,11 +802,11 @@ fn cache_meta_validate_structure_fails_on_empty_fields() {
 /// return the containing project directory.
 fn scaffold_initiative_brief(contents: &str) -> TempDir {
     let tmp = TempDir::new().unwrap();
-    std::fs::write(InitiativeBrief::path(tmp.path()), contents).unwrap();
+    std::fs::write(ChangeBrief::path(tmp.path()), contents).unwrap();
     tmp
 }
 
-/// Byte-for-byte golden for [`InitiativeBrief::template`] applied to
+/// Byte-for-byte golden for [`ChangeBrief::template`] applied to
 /// the RFC's `traffic-modernisation` example. The CLI test in
 /// `tests/initiative.rs` pins the exact same bytes against
 /// `specify initiative brief init traffic-modernisation`.
@@ -841,14 +841,14 @@ Move the legacy traffic system onto Omnia, preserving…
 #[test]
 fn initiative_brief_absent_returns_none() {
     let tmp = TempDir::new().unwrap();
-    let loaded = InitiativeBrief::load(tmp.path()).expect("absent is not an error");
+    let loaded = ChangeBrief::load(tmp.path()).expect("absent is not an error");
     assert!(loaded.is_none());
 }
 
 #[test]
 fn initiative_brief_parses_canonical_rfc_example() {
     let tmp = scaffold_initiative_brief(CANONICAL_INITIATIVE_MD);
-    let brief = InitiativeBrief::load(tmp.path()).expect("parses").expect("present");
+    let brief = ChangeBrief::load(tmp.path()).expect("parses").expect("present");
 
     assert_eq!(brief.frontmatter.name, "traffic-modernisation");
     assert_eq!(brief.frontmatter.inputs.len(), 2);
@@ -867,7 +867,7 @@ fn initiative_brief_parses_canonical_rfc_example() {
 fn initiative_brief_parses_no_inputs() {
     let yaml = "---\nname: solo\n---\n\n# Solo\n\nA brief without an inputs key.\n";
     let tmp = scaffold_initiative_brief(yaml);
-    let brief = InitiativeBrief::load(tmp.path()).unwrap().unwrap();
+    let brief = ChangeBrief::load(tmp.path()).unwrap().unwrap();
     assert_eq!(brief.frontmatter.name, "solo");
     assert!(brief.frontmatter.inputs.is_empty());
     assert_eq!(brief.body, "\n# Solo\n\nA brief without an inputs key.\n");
@@ -877,14 +877,14 @@ fn initiative_brief_parses_no_inputs() {
 fn initiative_brief_parses_empty_inputs() {
     let yaml = "---\nname: solo\ninputs: []\n---\n\nbody\n";
     let tmp = scaffold_initiative_brief(yaml);
-    let brief = InitiativeBrief::load(tmp.path()).unwrap().unwrap();
+    let brief = ChangeBrief::load(tmp.path()).unwrap().unwrap();
     assert!(brief.frontmatter.inputs.is_empty());
 }
 
 #[test]
 fn initiative_brief_rejects_missing_frontmatter() {
     let tmp = scaffold_initiative_brief("# Just markdown, no frontmatter\n");
-    let err = InitiativeBrief::load(tmp.path()).expect_err("missing frontmatter");
+    let err = ChangeBrief::load(tmp.path()).expect_err("missing frontmatter");
     match err {
         Error::Config(msg) => {
             assert!(msg.contains("initiative.md"), "msg: {msg}");
@@ -897,7 +897,7 @@ fn initiative_brief_rejects_missing_frontmatter() {
 #[test]
 fn initiative_brief_rejects_unclosed_frontmatter() {
     let tmp = scaffold_initiative_brief("---\nname: solo\n# body has no closing ---\n");
-    let err = InitiativeBrief::load(tmp.path()).expect_err("no closing delimiter");
+    let err = ChangeBrief::load(tmp.path()).expect_err("no closing delimiter");
     match err {
         Error::Config(msg) => assert!(msg.contains("closing"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
@@ -907,7 +907,7 @@ fn initiative_brief_rejects_unclosed_frontmatter() {
 #[test]
 fn initiative_brief_rejects_missing_name() {
     let tmp = scaffold_initiative_brief("---\ninputs: []\n---\n\nbody\n");
-    let err = InitiativeBrief::load(tmp.path()).expect_err("missing name");
+    let err = ChangeBrief::load(tmp.path()).expect_err("missing name");
     match err {
         Error::Config(msg) => assert!(msg.contains("name"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
@@ -919,7 +919,7 @@ fn initiative_brief_rejects_non_kebab_name() {
     for bad in ["TrafficModern", "traffic_modern", "traffic--modern", "-bad", "bad-"] {
         let yaml = format!("---\nname: {bad}\n---\n\nbody\n");
         let tmp = scaffold_initiative_brief(&yaml);
-        let err = InitiativeBrief::load(tmp.path()).expect_err(&format!("bad name `{bad}`"));
+        let err = ChangeBrief::load(tmp.path()).expect_err(&format!("bad name `{bad}`"));
         match err {
             Error::Config(msg) => {
                 assert!(msg.contains("kebab-case"), "msg for `{bad}`: {msg}");
@@ -934,7 +934,7 @@ fn initiative_brief_rejects_non_kebab_name() {
 fn initiative_brief_rejects_unknown_top_level_frontmatter_key() {
     let yaml = "---\nname: solo\nfoo: bar\n---\n\nbody\n";
     let tmp = scaffold_initiative_brief(yaml);
-    let err = InitiativeBrief::load(tmp.path()).expect_err("unknown top-level key");
+    let err = ChangeBrief::load(tmp.path()).expect_err("unknown top-level key");
     match err {
         Error::Config(msg) => assert!(msg.contains("foo"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
@@ -955,7 +955,7 @@ inputs:
 body
 ";
     let tmp = scaffold_initiative_brief(yaml);
-    let err = InitiativeBrief::load(tmp.path()).expect_err("unknown input key");
+    let err = ChangeBrief::load(tmp.path()).expect_err("unknown input key");
     match err {
         Error::Config(msg) => assert!(msg.contains("extra"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
@@ -975,7 +975,7 @@ inputs:
 body
 ";
     let tmp = scaffold_initiative_brief(yaml);
-    let err = InitiativeBrief::load(tmp.path()).expect_err("unknown kind");
+    let err = ChangeBrief::load(tmp.path()).expect_err("unknown kind");
     match err {
         Error::Config(msg) => {
             assert!(msg.contains("whatever"), "msg should mention bad value: {msg}");
@@ -1002,7 +1002,7 @@ inputs:
 body
 ";
     let tmp = scaffold_initiative_brief(yaml);
-    let err = InitiativeBrief::load(tmp.path()).expect_err("missing path");
+    let err = ChangeBrief::load(tmp.path()).expect_err("missing path");
     match err {
         Error::Config(msg) => assert!(msg.contains("path"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
@@ -1021,7 +1021,7 @@ inputs:
 body
 ";
     let tmp = scaffold_initiative_brief(yaml);
-    let err = InitiativeBrief::load(tmp.path()).expect_err("missing kind");
+    let err = ChangeBrief::load(tmp.path()).expect_err("missing kind");
     match err {
         Error::Config(msg) => assert!(msg.contains("kind"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
@@ -1041,7 +1041,7 @@ inputs:
 body
 ";
     let tmp = scaffold_initiative_brief(yaml);
-    let err = InitiativeBrief::load(tmp.path()).expect_err("empty path");
+    let err = ChangeBrief::load(tmp.path()).expect_err("empty path");
     match err {
         Error::Config(msg) => {
             assert!(msg.contains("path"), "msg: {msg}");
@@ -1053,13 +1053,13 @@ body
 
 #[test]
 fn initiative_brief_template_matches_golden() {
-    let rendered = InitiativeBrief::template("traffic-modernisation");
+    let rendered = ChangeBrief::template("traffic-modernisation");
     assert_eq!(rendered, TRAFFIC_TEMPLATE_GOLDEN);
 }
 
 #[test]
 fn initiative_brief_template_title_cases_multi_word_name() {
-    let rendered = InitiativeBrief::template("auth-token-refresh");
+    let rendered = ChangeBrief::template("auth-token-refresh");
     assert!(
         rendered.contains("# Auth token refresh\n"),
         "expected title-cased heading, got:\n{rendered}"
@@ -1072,8 +1072,8 @@ fn initiative_brief_template_title_cases_multi_word_name() {
 
 #[test]
 fn initiative_brief_rendered_template_round_trips() {
-    let rendered = InitiativeBrief::template("my-initiative");
-    let parsed = InitiativeBrief::parse_str(&rendered).expect("template parses");
+    let rendered = ChangeBrief::template("my-initiative");
+    let parsed = ChangeBrief::parse_str(&rendered).expect("template parses");
     assert_eq!(parsed.frontmatter.name, "my-initiative");
     assert!(parsed.frontmatter.inputs.is_empty());
     assert!(parsed.body.contains("# My initiative"));
@@ -1087,12 +1087,12 @@ fn initiative_brief_roundtrip_preserves_body() {
     let body = "\n# Title\n\nArbitrary prose\nwith multiple lines.\n\n---\n\nEven an embedded --- is fine once past the closing delimiter.\n";
     let raw = format!("---\nname: solo\n---\n{body}");
     let tmp = scaffold_initiative_brief(&raw);
-    let brief = InitiativeBrief::load(tmp.path()).unwrap().unwrap();
+    let brief = ChangeBrief::load(tmp.path()).unwrap().unwrap();
     assert_eq!(brief.body, body);
 }
 
 #[test]
 fn initiative_brief_path_helper_points_at_repo_root() {
     let dir = Path::new("/tmp/some/project");
-    assert_eq!(InitiativeBrief::path(dir), PathBuf::from("/tmp/some/project/initiative.md"));
+    assert_eq!(ChangeBrief::path(dir), PathBuf::from("/tmp/some/project/initiative.md"));
 }
