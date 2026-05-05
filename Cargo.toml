@@ -19,7 +19,7 @@ path = "src/lib.rs"
 
 [dependencies]
 specify-error.workspace = true
-specify-schema.workspace = true
+specify-capability.workspace = true
 specify-spec.workspace = true
 specify-merge.workspace = true
 specify-task.workspace = true
@@ -47,7 +47,7 @@ workspace = true
 [workspace]
 members = [
     "crates/error",
-    "crates/schema",
+    "crates/capability",
     "crates/spec",
     "crates/merge",
     "crates/task",
@@ -106,7 +106,7 @@ unused_result_ok = "warn"
 
 [workspace.dependencies]
 specify-error = { path = "crates/error" }
-specify-schema = { path = "crates/schema" }
+specify-capability = { path = "crates/capability" }
 specify-spec = { path = "crates/spec" }
 specify-merge = { path = "crates/merge" }
 specify-task = { path = "crates/task" }

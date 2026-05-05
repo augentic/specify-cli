@@ -1,7 +1,19 @@
-//! `Schema`, `Pipeline`, `PipelineEntry`, `Phase`, `ResolvedSchema`,
-//! `SchemaSource` — the in-memory model of `schema.yaml` plus the local /
-//! cache resolution algorithm. Remote (HTTP) resolution is explicitly the
-//! agent's job per RFC-1; this crate only walks the filesystem.
+//! `Capability`, `Pipeline`, `PipelineEntry`, `Phase`, `ResolvedCapability`,
+//! `CapabilitySource` — the in-memory model of `schema.yaml` (renamed to
+//! `capability.yaml` in chunk 1.4) plus the local / cache resolution
+//! algorithm. Remote (HTTP) resolution is explicitly the agent's job per
+//! RFC-1; this crate only walks the filesystem.
+//!
+//! Phase 1.1 (RFC-13) renames the extension-primitive types from
+//! `Schema` / `ResolvedSchema` / `SchemaSource` to `Capability` /
+//! `ResolvedCapability` / `CapabilitySource`. The on-disk file is still
+//! `schema.yaml` for one more chunk; the file rename and the loud
+//! diagnostic for the legacy `schema.yaml` shape land in chunks 1.4 and
+//! 1.6+. The parsed type intentionally no longer exposes `domain` or
+//! `extends` even though existing on-disk YAML may still carry them —
+//! the parser is tolerant (no `serde(deny_unknown_fields)`) so those
+//! fields are silently dropped on load until the strict rejection lands
+//! in chunk 1.4.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -11,23 +23,18 @@ use specify_error::Error;
 
 use crate::ValidationResult;
 
-const SCHEMA_JSON_SCHEMA: &str = include_str!("../../../schemas/schema.schema.json");
+const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../schemas/schema.schema.json");
 
-/// In-memory representation of a `schema.yaml` file.
+/// In-memory representation of a capability manifest (`schema.yaml`
+/// pre-chunk-1.4, `capability.yaml` afterwards).
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct Schema {
-    /// Schema name (e.g. `"omnia"`).
+pub struct Capability {
+    /// Capability name (e.g. `"omnia"`).
     pub name: String,
-    /// Schema version number.
+    /// Capability version number.
     pub version: u32,
-    /// Human-readable description of this schema.
+    /// Human-readable description of this capability.
     pub description: String,
-    /// Parent schema to inherit from, if any.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extends: Option<String>,
-    /// Optional domain block describing the technology context.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub domain: Option<String>,
     /// The pipeline of briefs organised by phase.
     pub pipeline: Pipeline,
 }
@@ -36,7 +43,7 @@ pub struct Schema {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Pipeline {
     /// Optional Layer 3 authoring-phase briefs for `/spec:plan`.
-    /// Absent in pre-existing schemas; present ones expose briefs such
+    /// Absent in pre-existing manifests; present ones expose briefs such
     /// as `discovery.md` → `propose.md` that run before the
     /// define→build→merge execution loop.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -58,38 +65,39 @@ pub struct PipelineEntry {
     pub brief: String,
 }
 
-/// A `Schema` plus the directory it was resolved from and how it got there.
+/// A `Capability` plus the directory it was resolved from and how it got
+/// there.
 #[derive(Debug)]
-pub struct ResolvedSchema {
-    /// The parsed and (if extended) merged schema.
-    pub schema: Schema,
-    /// Filesystem directory the schema was loaded from.
+pub struct ResolvedCapability {
+    /// The parsed capability manifest.
+    pub schema: Capability,
+    /// Filesystem directory the manifest was loaded from.
     pub root_dir: PathBuf,
-    /// How the schema was located (local workspace or agent cache).
-    pub source: SchemaSource,
+    /// How the manifest was located (local workspace or agent cache).
+    pub source: CapabilitySource,
 }
 
-/// How a schema was located on disk.
+/// How a capability manifest was located on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum SchemaSource {
+pub enum CapabilitySource {
     /// Resolved from a local `schemas/<name>/` directory.
     Local(PathBuf),
     /// Resolved from the agent-populated `.specify/.cache/<name>/` directory.
     Cached(PathBuf),
 }
 
-/// The phases of a schema's pipeline.
+/// The phases of a capability's pipeline.
 ///
 /// Serializes as the lowercase identifiers `plan | define | build | merge`
 /// on the wire — this is the same wire format consumed by
-/// `ChangeMetadata.outcome.phase` and by `schema.yaml::pipeline.*` keys,
-/// keeping a single source of truth for phase naming.
+/// `ChangeMetadata.outcome.phase` and by `pipeline.*` keys in the
+/// manifest, keeping a single source of truth for phase naming.
 ///
 /// `Plan` is the Layer 3 authoring phase (`/spec:plan`) that runs
 /// ahead of the define→build→merge execution loop. It is intentionally
-/// omitted from `Schema::entries()` (see that iterator's docs) — call
-/// `Schema::plan_entries()` to enumerate plan-phase briefs.
+/// omitted from `Capability::entries()` (see that iterator's docs) —
+/// call `Capability::plan_entries()` to enumerate plan-phase briefs.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
@@ -115,7 +123,7 @@ impl fmt::Display for Phase {
     }
 }
 
-impl Schema {
+impl Capability {
     /// Resolve `schema_value` against `project_dir`.
     ///
     /// - Bare names (no `/`, no `://`) resolve against
@@ -126,19 +134,15 @@ impl Schema {
     ///   `<project_dir>/.specify/.cache/<last-path-segment>/`; HTTP
     ///   fetching is the agent's responsibility.
     ///
-    /// When the loaded schema has `extends`, the parent is resolved via
-    /// this same function and merged on top of the child via
-    /// [`Schema::merge`].
-    ///
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedSchema, Error> {
-        let (root_dir, source) = locate_schema_root(schema_value, project_dir)?;
+    pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedCapability, Error> {
+        let (root_dir, source) = locate_capability_root(schema_value, project_dir)?;
         let schema_path = root_dir.join("schema.yaml");
         let raw = std::fs::read_to_string(&schema_path).map_err(|err| {
             Error::SchemaResolution(format!(
-                "failed to read schema file {}: {err}",
+                "failed to read capability manifest {}: {err}",
                 schema_path.display()
             ))
         })?;
@@ -146,21 +150,14 @@ impl Schema {
             Error::SchemaResolution(format!("failed to parse {}: {err}", schema_path.display()))
         })?;
 
-        let merged = if let Some(parent_value) = schema.extends.clone() {
-            let parent = Self::resolve(&parent_value, project_dir)?;
-            Self::merge(parent.schema, schema)
-        } else {
-            schema
-        };
-
-        Ok(ResolvedSchema {
-            schema: merged,
+        Ok(ResolvedCapability {
+            schema,
             root_dir,
             source,
         })
     }
 
-    /// Validate this in-memory schema against the embedded
+    /// Validate this in-memory capability against the embedded
     /// `schemas/schema.schema.json`. Returns one `ValidationResult` per
     /// check performed (empty = fully valid).
     #[must_use]
@@ -169,16 +166,16 @@ impl Schema {
             Ok(value) => value,
             Err(err) => {
                 return vec![ValidationResult::Fail {
-                    rule_id: "schema.serializable",
-                    rule: "schema is serializable to JSON",
+                    rule_id: "capability.serializable",
+                    rule: "capability is serializable to JSON",
                     detail: err.to_string(),
                 }];
             }
         };
         validate_against_embedded_schema(
-            SCHEMA_JSON_SCHEMA,
-            "schema.valid",
-            "schema.yaml conforms to schemas/schema.schema.json",
+            CAPABILITY_JSON_SCHEMA,
+            "capability.valid",
+            "capability manifest conforms to schemas/schema.schema.json",
             &schema_value,
         )
     }
@@ -191,8 +188,8 @@ impl Schema {
     /// the per-change execution loop that `specify change status`,
     /// `specify change outcome`, and the define/build/merge skills
     /// iterate over. Plan briefs are exposed via
-    /// [`Schema::plan_entries`] instead so existing callers keep their
-    /// current semantics.
+    /// [`Capability::plan_entries`] instead so existing callers keep
+    /// their current semantics.
     pub fn entries(&self) -> impl Iterator<Item = (Phase, &PipelineEntry)> + '_ {
         self.pipeline
             .define
@@ -203,8 +200,8 @@ impl Schema {
     }
 
     /// Plan-phase (Layer 3 authoring) pipeline entries in declared
-    /// order. Returns an empty slice for schemas that don't declare a
-    /// `pipeline.plan` block.
+    /// order. Returns an empty slice for capabilities that don't declare
+    /// a `pipeline.plan` block.
     #[must_use]
     pub fn plan_entries(&self) -> &[PipelineEntry] {
         &self.pipeline.plan
@@ -223,24 +220,20 @@ impl Schema {
             .find(|(_, e)| e.id == id)
     }
 
-    /// Merge `child` on top of `parent`. Per schema-resolution.md:
+    /// Merge `child` on top of `parent`. Per the historical
+    /// schema-resolution rules:
     ///
     /// - `pipeline`: for each phase, child entries with the same `id`
     ///   replace the parent's entry in place; new ids are appended in
     ///   child order.
-    /// - `domain`: child replaces parent if present, else parent is kept.
     /// - All other top-level fields (`name`, `version`, `description`)
     ///   come from the child.
-    /// - `extends` is cleared — the composed schema has no unresolved
-    ///   parent.
     #[must_use]
     pub fn merge(parent: Self, child: Self) -> Self {
         Self {
             name: child.name,
             version: child.version,
             description: child.description,
-            extends: None,
-            domain: child.domain.or(parent.domain),
             pipeline: Pipeline {
                 plan: merge_phase(parent.pipeline.plan, child.pipeline.plan),
                 define: merge_phase(parent.pipeline.define, child.pipeline.define),
@@ -268,9 +261,9 @@ fn merge_phase(parent: Vec<PipelineEntry>, child: Vec<PipelineEntry>) -> Vec<Pip
     out
 }
 
-fn locate_schema_root(
+fn locate_capability_root(
     schema_value: &str, project_dir: &Path,
-) -> Result<(PathBuf, SchemaSource), Error> {
+) -> Result<(PathBuf, CapabilitySource), Error> {
     let cache_dir = project_dir.join(".specify").join(".cache");
     if schema_value.contains("://") {
         let name = schema_value
@@ -279,37 +272,37 @@ fn locate_schema_root(
             .map(|seg| seg.split('@').next().unwrap_or(seg))
             .ok_or_else(|| {
                 Error::SchemaResolution(format!(
-                    "cannot derive a schema name from URL `{schema_value}`"
+                    "cannot derive a capability name from URL `{schema_value}`"
                 ))
             })?;
         let candidate = cache_dir.join(name);
         if candidate.is_dir() {
-            return Ok((candidate.clone(), SchemaSource::Cached(candidate)));
+            return Ok((candidate.clone(), CapabilitySource::Cached(candidate)));
         }
         return Err(Error::SchemaResolution(format!(
-            "schema `{schema_value}` not present under {}; the agent must fetch it before the CLI can resolve",
+            "capability `{schema_value}` not present under {}; the agent must fetch it before the CLI can resolve",
             cache_dir.display()
         )));
     }
 
     if schema_value.contains('/') {
         return Err(Error::SchemaResolution(format!(
-            "schema value `{schema_value}` looks like a path but is not a URL; use a bare name or a full URL"
+            "capability value `{schema_value}` looks like a path but is not a URL; use a bare name or a full URL"
         )));
     }
 
     let cached = cache_dir.join(schema_value);
     if cached.is_dir() {
-        return Ok((cached.clone(), SchemaSource::Cached(cached)));
+        return Ok((cached.clone(), CapabilitySource::Cached(cached)));
     }
 
     let local = project_dir.join("schemas").join(schema_value);
     if local.is_dir() {
-        return Ok((local.clone(), SchemaSource::Local(local)));
+        return Ok((local.clone(), CapabilitySource::Local(local)));
     }
 
     Err(Error::SchemaResolution(format!(
-        "schema `{schema_value}` not found under {} or {}",
+        "capability `{schema_value}` not found under {} or {}",
         cached.display(),
         local.display()
     )))

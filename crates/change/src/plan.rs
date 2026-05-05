@@ -36,7 +36,7 @@ use petgraph::algo::{tarjan_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
-use specify_schema::Registry;
+use specify_capability::Registry;
 
 /// Lifecycle state of a single entry in [`Plan::changes`].
 ///
@@ -1017,7 +1017,7 @@ fn changes_dir_consistency(plan: &Plan, changes_dir: &Path) -> Vec<Finding> {
 mod tests {
     use std::collections::HashSet;
 
-    use specify_schema::RegistryProject;
+    use specify_capability::RegistryProject;
     use tempfile::tempdir;
 
     use super::*;

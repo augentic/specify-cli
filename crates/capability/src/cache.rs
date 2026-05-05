@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
 use crate::ValidationResult;
-use crate::schema::validate_against_embedded_schema;
+use crate::capability::validate_against_embedded_schema;
 
 const CACHE_META_JSON_SCHEMA: &str = include_str!("../../../schemas/cache-meta.schema.json");
 

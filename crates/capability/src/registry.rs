@@ -44,7 +44,7 @@ pub struct RegistryProject {
     /// Kebab-case identifier for the project. Obeys the same
     /// naming rules as change names
     /// (`specify_change::actions::validate_name`) — duplicated here
-    /// because `specify-schema` sits upstream of `specify-change` in
+    /// because `specify-capability` sits upstream of `specify-change` in
     /// the crate graph.
     pub name: String,
     /// Clone target — `.`, a repo-relative path (`../peer`, `./foo`,
@@ -125,8 +125,8 @@ impl Registry {
     /// `version == 1`, kebab-case project names, non-empty required
     /// strings, unique project names, and well-formed [`RegistryProject::url`]
     /// values (RFC-3a C28). Returns the first error encountered — the
-    /// convention used elsewhere in `specify-schema` for fast-fail shape
-    /// validation.
+    /// convention used elsewhere in `specify-capability` for fast-fail
+    /// shape validation.
     ///
     /// # Errors
     ///
@@ -369,9 +369,9 @@ fn looks_like_windows_drive_path(url: &str) -> bool {
     c.is_ascii_alphabetic() && chars.next() == Some(':')
 }
 
-/// Kebab-case predicate shared within `specify-schema`. Identical
+/// Kebab-case predicate shared within `specify-capability`. Identical
 /// contract to `specify_change::actions::validate_name`; duplicated
-/// because `specify-schema` is upstream of `specify-change` in the
+/// because `specify-capability` is upstream of `specify-change` in the
 /// crate dep graph and cannot call through.
 pub fn is_kebab_case(s: &str) -> bool {
     if s.is_empty() {

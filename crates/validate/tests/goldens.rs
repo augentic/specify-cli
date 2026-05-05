@@ -14,7 +14,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_schema::PipelineView;
+use specify_capability::PipelineView;
 use specify_validate::{serialize_report, validate_change};
 use tempfile::TempDir;
 

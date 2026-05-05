@@ -26,10 +26,10 @@ pub use specify_merge::{
     MergeResult, PreviewResult, conflict_check, merge, merge_change, preview_change,
     validate_baseline,
 };
-pub use specify_schema::{
-    Brief, BriefFrontmatter, CacheMeta, InitiativeBrief, InitiativeFrontmatter, InitiativeInput,
-    InputKind, Phase, Pipeline, PipelineEntry, PipelineView, Registry, RegistryProject,
-    ResolvedSchema, Schema, SchemaSource,
+pub use specify_capability::{
+    Brief, BriefFrontmatter, CacheMeta, Capability, CapabilitySource, InitiativeBrief,
+    InitiativeFrontmatter, InitiativeInput, InputKind, Phase, Pipeline, PipelineEntry,
+    PipelineView, Registry, RegistryProject, ResolvedCapability,
 };
 pub use specify_spec::{
     DeltaSpec, ParsedSpec, RenameEntry, RequirementBlock, Scenario, has_delta_headers,

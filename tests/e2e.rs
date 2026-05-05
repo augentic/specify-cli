@@ -76,14 +76,14 @@ impl Project {
     }
 
     /// Mirror the in-repo `schemas/` tree into the project so
-    /// `Schema::resolve("omnia", …)` succeeds.
+    /// `Capability::resolve("omnia", …)` succeeds.
     fn with_schemas(self) -> Self {
         copy_dir(&repo_root().join("schemas/omnia"), &self.root.join("schemas/omnia"));
         self
     }
 
     /// Populate the schema cache instead of the local `schemas/` tree so
-    /// `Schema::resolve` picks the `SchemaSource::Cached` branch.
+    /// `Capability::resolve` picks the `CapabilitySource::Cached` branch.
     fn with_cached_schema(self) -> Self {
         copy_dir(&repo_root().join("schemas/omnia"), &self.root.join(".specify/.cache/omnia"));
         self

@@ -185,7 +185,7 @@ fn schema_pipeline_phase_plan_does_not_perturb_define_output() {
     // Regression: adding pipeline.plan (with briefs before the define
     // phase in load order) must not change what `--phase define`
     // returns. This is the explicit "Do NOT change the default
-    // iteration order of Schema::entries()" constraint in L3.C.
+    // iteration order of Capability::entries()" constraint in L3.C.
     let fixture = repo_root().join("tests/fixtures/schema/plan-pipeline");
     let project = Project::init_from_fixture("plan-pipeline", &fixture);
 

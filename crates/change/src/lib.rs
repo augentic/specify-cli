@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
-pub use specify_schema::Phase;
+pub use specify_capability::Phase;
 
 /// Verb-level operations on a Specify change directory.
 pub mod actions;

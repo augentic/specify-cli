@@ -6,7 +6,7 @@
 //! a new serializer rather than mutating this one.
 
 use serde_json::{Value, json};
-use specify_schema::ValidationResult;
+use specify_capability::ValidationResult;
 
 use crate::ValidationReport;
 

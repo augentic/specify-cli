@@ -14,7 +14,7 @@ workspace = true
 
 [dependencies]
 specify-error.workspace = true
-specify-schema.workspace = true
+specify-capability.workspace = true
 specify-spec.workspace = true
 specify-task.workspace = true
 serde.workspace = true

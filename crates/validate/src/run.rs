@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use specify_error::Error;
-use specify_schema::{PipelineView, ValidationResult};
+use specify_capability::{PipelineView, ValidationResult};
 
 use crate::registry::{cross_rules, rules_for};
 use crate::{BriefContext, Classification, CrossContext, RuleOutcome, ValidationReport};

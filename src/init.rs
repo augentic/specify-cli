@@ -25,7 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use specify_change::is_valid_kebab_name;
 use specify_error::Error;
-use specify_schema::{CacheMeta, InitiativeBrief, PipelineView, Registry};
+use specify_capability::{CacheMeta, InitiativeBrief, PipelineView, Registry};
 
 use crate::config::ProjectConfig;
 
@@ -402,7 +402,7 @@ fn split_ref_suffix(schema_uri: &str) -> (&str, Option<&str>) {
 fn sparse_checkout_github(
     repo_url: &str, checkout_ref: Option<&str>, schema_path: &str,
 ) -> Result<PathBuf, Error> {
-    let checkout_dir = unique_temp_dir("specify-schema-checkout")?;
+    let checkout_dir = unique_temp_dir("specify-capability-checkout")?;
     let mut clone_args = vec!["clone", "--depth", "1", "--filter=blob:none", "--sparse"];
     if let Some(reference) = checkout_ref {
         clone_args.push("--branch");

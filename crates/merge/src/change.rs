@@ -397,7 +397,7 @@ fn plan_merge(change_dir: &Path, specs_dir: &Path) -> Result<Vec<Entry>, Error> 
         };
 
         for vr in validate_baseline(&result.output, None) {
-            if let specify_schema::ValidationResult::Fail { detail, .. } = vr {
+            if let specify_capability::ValidationResult::Fail { detail, .. } = vr {
                 aborts.push(format!("{}: {detail}", spec.spec_name));
             }
         }

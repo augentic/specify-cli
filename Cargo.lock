@@ -1376,14 +1376,28 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
+ "specify-capability",
  "specify-change",
  "specify-error",
  "specify-merge",
- "specify-schema",
  "specify-spec",
  "specify-task",
  "specify-validate",
  "specify-vectis",
+ "tempfile",
+]
+
+[[package]]
+name = "specify-capability"
+version = "0.2.0"
+dependencies = [
+ "clap",
+ "glob",
+ "jsonschema",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "specify-error",
  "tempfile",
 ]
 
@@ -1399,8 +1413,8 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
+ "specify-capability",
  "specify-error",
- "specify-schema",
  "tempfile",
 ]
 
@@ -1420,24 +1434,10 @@ dependencies = [
  "regex",
  "serde-saphyr",
  "serde_json",
+ "specify-capability",
  "specify-change",
  "specify-error",
- "specify-schema",
  "specify-spec",
- "tempfile",
-]
-
-[[package]]
-name = "specify-schema"
-version = "0.2.0"
-dependencies = [
- "clap",
- "glob",
- "jsonschema",
- "serde",
- "serde-saphyr",
- "serde_json",
- "specify-error",
  "tempfile",
 ]
 
@@ -1467,8 +1467,8 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
+ "specify-capability",
  "specify-error",
- "specify-schema",
  "specify-spec",
  "specify-task",
  "tempfile",

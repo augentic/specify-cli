@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, Phase, Schema, SchemaSource, ValidationResult};
+use specify::{Capability, CapabilitySource, Error, Phase, ValidationResult};
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
@@ -13,10 +13,10 @@ use crate::output::{CliResult, emit_response};
 pub fn run_schema_resolve(
     format: OutputFormat, schema_value: String, project_dir: PathBuf,
 ) -> Result<CliResult, Error> {
-    let resolved = Schema::resolve(&schema_value, &project_dir)?;
+    let resolved = Capability::resolve(&schema_value, &project_dir)?;
     let (source, path) = match &resolved.source {
-        SchemaSource::Local(p) => ("local", p.clone()),
-        SchemaSource::Cached(p) => ("cached", p.clone()),
+        CapabilitySource::Local(p) => ("local", p.clone()),
+        CapabilitySource::Cached(p) => ("cached", p.clone()),
         _ => ("unknown", PathBuf::new()),
     };
 
@@ -117,7 +117,7 @@ pub fn run_schema_pipeline(
 pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> Result<CliResult, Error> {
     let schema_path = schema_dir.join("schema.yaml");
     let text = std::fs::read_to_string(&schema_path)?;
-    let schema: Schema = serde_saphyr::from_str(&text)?;
+    let schema: Capability = serde_saphyr::from_str(&text)?;
     let results = schema.validate_structure();
     let passed = !results.iter().any(|r| matches!(r, ValidationResult::Fail { .. }));
 

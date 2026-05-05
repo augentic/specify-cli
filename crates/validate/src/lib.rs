@@ -3,8 +3,8 @@
 //!
 //! The public surface follows RFC-1 §`validate.rs`:
 //!
-//! - [`ValidationResult`] is re-exported from `specify-schema`; that
-//!   crate is the canonical home (see `DECISIONS.md` §"Change G —
+//! - [`ValidationResult`] is re-exported from `specify-capability`;
+//!   that crate is the canonical home (see `DECISIONS.md` §"Change G —
 //!   `ValidationResult` canonical home" for why it doesn't live here).
 //! - [`ValidationReport`] is the structured output produced by
 //!   [`validate_change`].
@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use specify_error as _; // dependency declared; re-exported via `Error` return type
-use specify_schema::PipelineView;
+use specify_capability::PipelineView;
 use specify_spec::ParsedSpec;
 use specify_task::TaskProgress;
 
@@ -33,7 +33,7 @@ pub use contracts::{ContractFinding, validate_baseline_contracts};
 pub use registry::{cross_rules, rules_for};
 pub use run::validate_change;
 pub use serialize::serialize_report;
-pub use specify_schema::ValidationResult;
+pub use specify_capability::ValidationResult;
 
 /// Structured result of running every applicable rule over a change dir.
 ///

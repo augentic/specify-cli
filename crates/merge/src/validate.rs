@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 
 use regex::Regex;
-use specify_schema::ValidationResult;
+use specify_capability::ValidationResult;
 use specify_spec::{
     REQUIREMENT_ID_PATTERN, REQUIREMENT_ID_PREFIX, SCENARIO_HEADING, parse_baseline,
 };

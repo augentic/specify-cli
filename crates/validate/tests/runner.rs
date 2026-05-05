@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use specify_schema::{PipelineView, ValidationResult};
+use specify_capability::{PipelineView, ValidationResult};
 use specify_validate::validate_change;
 use tempfile::TempDir;
 

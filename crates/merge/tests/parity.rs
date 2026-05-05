@@ -4,7 +4,7 @@
 
 use specify_error::Error;
 use specify_merge::{merge, validate_baseline};
-use specify_schema::ValidationResult;
+use specify_capability::ValidationResult;
 
 macro_rules! fixture {
     ($case:literal, $file:literal) => {

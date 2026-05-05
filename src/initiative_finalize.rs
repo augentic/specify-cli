@@ -57,7 +57,7 @@ use serde::{Deserialize, Serialize};
 use specify_change::Plan;
 use specify_change::plan::Status;
 use specify_error::Error;
-use specify_schema::{Registry, RegistryProject};
+use specify_capability::{Registry, RegistryProject};
 
 use crate::config::ProjectConfig;
 use crate::workspace_merge::{
@@ -651,7 +651,7 @@ mod tests {
     use std::path::PathBuf;
 
     use specify_change::plan::Entry;
-    use specify_schema::RegistryProject;
+    use specify_capability::RegistryProject;
     use tempfile::TempDir;
 
     use super::*;

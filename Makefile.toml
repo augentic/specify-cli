@@ -112,8 +112,8 @@ fi
 echo "=== Tier 1: No internal dependencies ==="
 cargo publish -p specify-error $DRY_RUN
 
-echo "=== Tier 2: Schema ==="
-cargo publish -p specify-schema $DRY_RUN
+echo "=== Tier 2: Capability ==="
+cargo publish -p specify-capability $DRY_RUN
 
 echo "=== Tier 3: Mid-level crates ==="
 cargo publish -p specify-spec $DRY_RUN

@@ -163,8 +163,8 @@ jobs:
       - name: Wait for index
         run: sleep 30
 
-      - name: Publish specify-schema
-        run: cargo publish --package specify-schema --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish specify-capability
+        run: cargo publish --package specify-capability --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Wait for index
         run: sleep 30
 

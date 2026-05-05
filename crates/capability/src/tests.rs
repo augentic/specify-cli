@@ -1,4 +1,4 @@
-//! Unit tests for `specify-schema`.
+//! Unit tests for `specify-capability`.
 //!
 //! The "workspace" fixture we test against is the `specify` repo itself:
 //! `schemas/omnia/` and `schemas/omnia/briefs/*.md` are real, hand-edited
@@ -15,10 +15,10 @@ use tempfile::TempDir;
 use crate::ValidationResult;
 use crate::brief::Brief;
 use crate::cache::CacheMeta;
+use crate::capability::{Capability, CapabilitySource, Phase};
 use crate::initiative_brief::{InitiativeBrief, InputKind};
 use crate::pipeline::PipelineView;
 use crate::registry::{ContractRoles, Registry, RegistryProject};
-use crate::schema::{Phase, Schema, SchemaSource};
 
 /// Absolute path to the repo root (the Cargo workspace root).
 fn repo_root() -> PathBuf {
@@ -35,19 +35,17 @@ fn omnia_schema_path() -> PathBuf {
     repo_root().join("schemas").join("omnia").join("schema.yaml")
 }
 
-// ---------- Schema parsing ----------
+// ---------- Capability parsing ----------
 
 #[test]
 fn parses_omnia_schema_yaml_fields_and_entries() {
-    let raw = std::fs::read_to_string(omnia_schema_path()).expect("omnia schema on disk");
-    let schema: Schema = serde_saphyr::from_str(&raw).expect("omnia schema is valid YAML");
+    let raw = std::fs::read_to_string(omnia_schema_path()).expect("omnia capability on disk");
+    let schema: Capability =
+        serde_saphyr::from_str(&raw).expect("omnia capability is valid YAML");
 
     assert_eq!(schema.name, "omnia");
     assert_eq!(schema.version, 1);
     assert_eq!(schema.description, "Omnia Rust WASM workflow");
-    assert!(schema.extends.is_none());
-    let domain = schema.domain.as_deref().expect("omnia has a domain block");
-    assert!(domain.contains("Rust, WASM"), "unexpected domain body: {domain:?}");
 
     assert_eq!(schema.pipeline.define.len(), 4);
     assert_eq!(schema.pipeline.build.len(), 1);
@@ -80,7 +78,7 @@ fn parses_omnia_schema_yaml_fields_and_entries() {
 #[test]
 fn validate_structure_valid_for_omnia() {
     let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
-    let schema: Schema = serde_saphyr::from_str(&raw).unwrap();
+    let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
     let results = schema.validate_structure();
     assert!(
         results.iter().all(|r| matches!(r, ValidationResult::Pass { .. })),
@@ -90,20 +88,18 @@ fn validate_structure_valid_for_omnia() {
 
 #[test]
 fn validate_structure_fails_when_define_phase_is_empty() {
-    let schema = Schema {
+    let schema = Capability {
         name: "broken".into(),
         version: 1,
         description: "empty define phase".into(),
-        extends: None,
-        domain: None,
-        pipeline: crate::schema::Pipeline {
+        pipeline: crate::capability::Pipeline {
             plan: vec![],
             define: vec![],
-            build: vec![crate::schema::PipelineEntry {
+            build: vec![crate::capability::PipelineEntry {
                 id: "build".into(),
                 brief: "briefs/build.md".into(),
             }],
-            merge: vec![crate::schema::PipelineEntry {
+            merge: vec![crate::capability::PipelineEntry {
                 id: "merge".into(),
                 brief: "briefs/merge.md".into(),
             }],
@@ -120,10 +116,11 @@ fn validate_structure_fails_when_define_phase_is_empty() {
 #[test]
 fn yaml_parse_error_surface_for_missing_required_field() {
     // `description` missing -> serde error is propagated as an
-    // `Error::Yaml` when surfaced through `Schema::resolve`, but here we
-    // just exercise the parser directly and assert the Display message.
+    // `Error::Yaml` when surfaced through `Capability::resolve`, but
+    // here we just exercise the parser directly and assert the Display
+    // message.
     let yaml = "name: broken\nversion: 1\npipeline:\n  define: []\n  build: []\n  merge: []\n";
-    let err = serde_saphyr::from_str::<Schema>(yaml).expect_err("missing description");
+    let err = serde_saphyr::from_str::<Capability>(yaml).expect_err("missing description");
     let message = err.to_string();
     assert!(
         message.contains("description"),
@@ -150,7 +147,7 @@ pipeline:
   merge:
     - { id: merge, brief: briefs/merge.md }
 ";
-    let schema: Schema = serde_saphyr::from_str(yaml).expect("parses");
+    let schema: Capability = serde_saphyr::from_str(yaml).expect("parses");
     let plan = schema.plan_entries();
     assert_eq!(plan.len(), 2);
     assert_eq!(plan[0].id, "discovery");
@@ -178,17 +175,17 @@ pipeline:
 #[test]
 fn pipeline_without_plan_parses_unchanged() {
     let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
-    let schema: Schema = serde_saphyr::from_str(&raw).unwrap();
+    let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
     assert!(schema.pipeline.plan.is_empty());
     assert!(schema.plan_entries().is_empty());
 
     // Serializing back out must not introduce a `plan: []` key — we
     // skip-serialize empty plan vectors so round-trips of legacy
-    // schemas are byte-stable for the plan field.
+    // manifests are byte-stable for the plan field.
     let written = serde_saphyr::to_string(&schema).unwrap();
     assert!(
         !written.contains("plan:"),
-        "expected no plan key in re-serialized omnia schema, got:\n{written}"
+        "expected no plan key in re-serialized omnia capability, got:\n{written}"
     );
 }
 
@@ -224,9 +221,9 @@ pipeline:
   merge:
     - { id: merge, brief: briefs/merge.md }
 ";
-    let parent: Schema = serde_saphyr::from_str(parent_yaml).unwrap();
-    let child: Schema = serde_saphyr::from_str(child_yaml).unwrap();
-    let merged = Schema::merge(parent, child);
+    let parent: Capability = serde_saphyr::from_str(parent_yaml).unwrap();
+    let child: Capability = serde_saphyr::from_str(child_yaml).unwrap();
+    let merged = Capability::merge(parent, child);
 
     let ids: Vec<&str> = merged.plan_entries().iter().map(|e| e.id.as_str()).collect();
     assert_eq!(ids, vec!["discovery", "propose", "record"]);
@@ -237,23 +234,21 @@ pipeline:
 #[test]
 fn json_schema_rejects_missing_define_even_with_plan_present() {
     // `pipeline.plan` is allowed but `define` is still required.
-    let schema = Schema {
+    let schema = Capability {
         name: "broken".into(),
         version: 1,
         description: "no define".into(),
-        extends: None,
-        domain: None,
-        pipeline: crate::schema::Pipeline {
-            plan: vec![crate::schema::PipelineEntry {
+        pipeline: crate::capability::Pipeline {
+            plan: vec![crate::capability::PipelineEntry {
                 id: "discovery".into(),
                 brief: "briefs/plan/discovery.md".into(),
             }],
             define: vec![],
-            build: vec![crate::schema::PipelineEntry {
+            build: vec![crate::capability::PipelineEntry {
                 id: "build".into(),
                 brief: "briefs/build.md".into(),
             }],
-            merge: vec![crate::schema::PipelineEntry {
+            merge: vec![crate::capability::PipelineEntry {
                 id: "merge".into(),
                 brief: "briefs/merge.md".into(),
             }],
@@ -266,14 +261,14 @@ fn json_schema_rejects_missing_define_even_with_plan_present() {
     );
 }
 
-// ---------- Composition via extends ----------
+// ---------- Manifest composition ----------
 
 #[test]
 fn merge_overrides_by_id_and_appends_new_entries() {
     let parent_yaml = r"
 name: parent
 version: 1
-description: parent schema
+description: parent capability
 pipeline:
   define:
     - { id: proposal, brief: briefs/proposal.md }
@@ -286,7 +281,7 @@ pipeline:
     let child_yaml = r"
 name: child
 version: 2
-description: child schema
+description: child capability
 pipeline:
   define:
     - { id: specs,   brief: briefs/specs-v2.md }
@@ -297,13 +292,12 @@ pipeline:
     - { id: merge, brief: briefs/merge.md }
 ";
 
-    let parent: Schema = serde_saphyr::from_str(parent_yaml).unwrap();
-    let child: Schema = serde_saphyr::from_str(child_yaml).unwrap();
-    let merged = Schema::merge(parent, child);
+    let parent: Capability = serde_saphyr::from_str(parent_yaml).unwrap();
+    let child: Capability = serde_saphyr::from_str(child_yaml).unwrap();
+    let merged = Capability::merge(parent, child);
 
     assert_eq!(merged.name, "child");
     assert_eq!(merged.version, 2);
-    assert!(merged.extends.is_none(), "extends should be cleared");
 
     let ids: Vec<&str> = merged.pipeline.define.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(ids, vec!["proposal", "specs", "review"]);
@@ -317,7 +311,7 @@ pipeline:
 #[test]
 fn entries_iterates_in_phase_order_and_entry_lookup_works() {
     let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
-    let schema: Schema = serde_saphyr::from_str(&raw).unwrap();
+    let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
 
     let total =
         schema.pipeline.define.len() + schema.pipeline.build.len() + schema.pipeline.merge.len();
@@ -346,7 +340,7 @@ fn entries_iterates_in_phase_order_and_entry_lookup_works() {
 #[test]
 fn parses_every_omnia_brief_and_frontmatter_ids_match_pipeline_ids() {
     let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
-    let schema: Schema = serde_saphyr::from_str(&raw).unwrap();
+    let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
     let root = repo_root().join("schemas").join("omnia");
 
     for (_phase, entry) in schema.entries() {
@@ -407,7 +401,7 @@ fn pipeline_view_loads_omnia_schema_from_workspace() {
     let root = repo_root();
     let view = PipelineView::load("omnia", &root).expect("omnia view loads");
     assert_eq!(view.briefs.len(), 6);
-    assert!(matches!(view.schema.source, SchemaSource::Local(_)));
+    assert!(matches!(view.schema.source, CapabilitySource::Local(_)));
 
     assert!(view.brief("proposal").is_some());
     assert!(view.brief("build").is_some());
@@ -422,9 +416,9 @@ fn pipeline_view_loads_omnia_schema_from_workspace() {
     assert_eq!(build.frontmatter.needs, vec!["specs", "design", "tasks"]);
 }
 
-/// Scaffold a minimal local schema at `<project>/schemas/<name>/` with
-/// the given `schema.yaml` and brief contents. Each brief content map
-/// entry is `(filename, contents)` written under `schemas/<name>/`.
+/// Scaffold a minimal local capability at `<project>/schemas/<name>/`
+/// with the given `schema.yaml` and brief contents. Each brief content
+/// map entry is `(filename, contents)` written under `schemas/<name>/`.
 fn scaffold_schema_project(name: &str, schema_yaml: &str, briefs: &[(&str, &str)]) -> TempDir {
     let tmp = TempDir::new().unwrap();
     let schema_dir = tmp.path().join("schemas").join(name);
@@ -589,7 +583,7 @@ fn pipeline_view_load_rejects_tracks_pointing_at_unknown_brief() {
 #[test]
 fn schema_resolve_errors_when_url_schema_not_in_cache() {
     let tmp = TempDir::new().unwrap();
-    let err = Schema::resolve("https://example.com/schemas/nope", tmp.path())
+    let err = Capability::resolve("https://example.com/schemas/nope", tmp.path())
         .expect_err("url with empty cache fails");
     match err {
         Error::SchemaResolution(msg) => assert!(msg.contains(".cache"), "msg: {msg}"),
@@ -612,8 +606,8 @@ fn schema_resolve_prefers_cache_over_local_for_bare_names() {
     std::fs::write(local.join("schema.yaml"), local_yaml).unwrap();
     std::fs::write(cached.join("schema.yaml"), cached_yaml).unwrap();
 
-    let resolved = Schema::resolve("demo", tmp.path()).unwrap();
-    assert!(matches!(resolved.source, SchemaSource::Cached(_)));
+    let resolved = Capability::resolve("demo", tmp.path()).unwrap();
+    assert!(matches!(resolved.source, CapabilitySource::Cached(_)));
     assert_eq!(resolved.schema.description, "cached");
 }
 
