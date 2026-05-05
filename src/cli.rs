@@ -123,41 +123,6 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
-
-    /// Bootstrap and verify Crux cross-platform projects (RFC-6).
-    ///
-    /// The five verbs route to handlers in the `specify-vectis` library
-    /// crate. They reuse the global `--format text|json` flag: JSON
-    /// responses follow the v2 contract (kebab-case keys, auto-injected
-    /// `schema-version: 2`, kebab-case error variants); text responses
-    /// are humanised per-verb summaries.
-    ///
-    /// Exit codes reuse the binary's contract: missing prerequisites
-    /// reports back as [`CliResult::ValidationFailed`] (`2`) — locally
-    /// "your workstation is incomplete", which slots cleanly into the
-    /// existing "validation failed" bucket — and every other failure
-    /// returns [`CliResult::GenericFailure`] (`1`).
-    Vectis {
-        #[command(subcommand)]
-        action: VectisAction,
-    },
-}
-
-/// Subcommands under `specify vectis`. Each variant flattens the
-/// matching `clap::Args` struct from the `specify-vectis` library so
-/// flag parsing stays in lock-step with the library definition.
-#[derive(Subcommand)]
-pub enum VectisAction {
-    /// Scaffold a new Crux project (core + optional shells).
-    Init(specify_vectis::InitArgs),
-    /// Verify that a Crux project still builds end-to-end.
-    Verify(specify_vectis::VerifyArgs),
-    /// Add an iOS or Android shell to an existing core.
-    AddShell(specify_vectis::AddShellArgs),
-    /// Refresh pinned tool/crate versions and (optionally) verify them.
-    UpdateVersions(specify_vectis::UpdateVersionsArgs),
-    /// Show the resolved version pins (embedded → user → project → override).
-    Versions(specify_vectis::VersionsArgs),
 }
 
 #[derive(Subcommand)]

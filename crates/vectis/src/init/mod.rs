@@ -297,4 +297,43 @@ mod tests {
             other => panic!("unexpected: {other:?}"),
         }
     }
+
+    /// `--version-file` resolution runs ahead of `prerequisites::check`,
+    /// so a missing override path surfaces as `InvalidProject` even on
+    /// CI hosts that lack the core toolchain. The integration smoke
+    /// for this lived under the binary's `tests/vectis.rs` until the
+    /// `Commands::Vectis` dispatcher was retired (RFC-13 phase 2.6);
+    /// keeping it library-side preserves the ordering invariant for
+    /// the eventual standalone `specify-vectis` binary (phase 4.3a).
+    #[test]
+    fn run_with_missing_version_file_returns_invalid_project() {
+        let project_dir = std::env::temp_dir().join("vectis-init-invalid-project");
+        let _ = std::fs::create_dir_all(&project_dir);
+        let missing = project_dir.join("definitely-not-there.toml");
+        let _ = std::fs::remove_file(&missing);
+
+        let args = InitArgs {
+            app_name: "Foo".into(),
+            dir: Some(project_dir.clone()),
+            caps: None,
+            shells: None,
+            android_package: None,
+            version_file: Some(missing.clone()),
+        };
+
+        let err = run(&args).expect_err("missing version file must error");
+        assert_eq!(err.variant_str(), "invalid-project");
+        assert_eq!(err.exit_code(), 1);
+
+        let payload = err.to_json();
+        assert_eq!(payload["error"], "invalid-project");
+        let message = payload["message"].as_str().unwrap_or_default();
+        assert!(message.contains("version file not found"), "unexpected message: {payload}");
+        assert!(
+            message.contains(missing.to_string_lossy().as_ref()),
+            "message must include the missing path: {payload}"
+        );
+
+        let _ = std::fs::remove_dir_all(&project_dir);
+    }
 }

@@ -27,7 +27,6 @@ specify-task.workspace = true
 specify-change.workspace = true
 specify-initiative.workspace = true
 specify-validate.workspace = true
-specify-vectis.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 serde.workspace = true

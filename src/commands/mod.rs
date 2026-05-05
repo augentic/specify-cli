@@ -7,7 +7,6 @@ pub mod migrate;
 pub mod plan;
 pub mod registry;
 pub mod status;
-pub mod vectis;
 pub mod workspace;
 
 use specify::Error;
@@ -77,7 +76,6 @@ pub fn run(cli: Cli) -> CliResult {
             clap_complete::generate(shell, &mut cmd, "specify", &mut std::io::stdout());
             CliResult::Success
         }
-        Commands::Vectis { action } => vectis::run_vectis(cli.format, &action),
     }
 }
 
