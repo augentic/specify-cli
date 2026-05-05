@@ -25,8 +25,12 @@ use crate::ValidationResult;
 
 const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../schemas/capability.schema.json");
 
-/// In-memory representation of a capability manifest (`schema.yaml`
-/// pre-chunk-1.4, `capability.yaml` afterwards).
+/// In-memory representation of a `capability.yaml` manifest.
+///
+/// The resolver still tolerates the pre-RFC-13 `schema.yaml` filename
+/// so internal callers can read older on-disk manifests during the
+/// cut-over; the `specify capability *` CLI surface refuses the legacy
+/// shape with [`Error::SchemaBecameCapability`].
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Capability {
     /// Capability name (e.g. `"omnia"`).

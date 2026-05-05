@@ -31,15 +31,15 @@ fn repo_root() -> PathBuf {
         .expect("CARGO_MANIFEST_DIR should have two ancestors (crates/, repo root)")
 }
 
-fn omnia_schema_path() -> PathBuf {
-    repo_root().join("schemas").join("omnia").join("schema.yaml")
+fn omnia_capability_path() -> PathBuf {
+    repo_root().join("schemas").join("omnia").join("capability.yaml")
 }
 
 // ---------- Capability parsing ----------
 
 #[test]
-fn parses_omnia_schema_yaml_fields_and_entries() {
-    let raw = std::fs::read_to_string(omnia_schema_path()).expect("omnia capability on disk");
+fn parses_omnia_capability_yaml_fields_and_entries() {
+    let raw = std::fs::read_to_string(omnia_capability_path()).expect("omnia capability on disk");
     let schema: Capability = serde_saphyr::from_str(&raw).expect("omnia capability is valid YAML");
 
     assert_eq!(schema.name, "omnia");
@@ -76,12 +76,50 @@ fn parses_omnia_schema_yaml_fields_and_entries() {
 
 #[test]
 fn validate_structure_valid_for_omnia() {
-    let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
+    let raw = std::fs::read_to_string(omnia_capability_path()).unwrap();
     let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
     let results = schema.validate_structure();
     assert!(
         results.iter().all(|r| matches!(r, ValidationResult::Pass { .. })),
         "expected all passes, got: {results:?}"
+    );
+}
+
+/// Phase 1.8 invariant: the canonical omnia `capability.yaml` carries
+/// none of the dropped fields. RFC-13 §Capability manifest and
+/// protocol froze the post-Phase-1 manifest at `name`, `version`,
+/// `description`, and `pipeline { define, build, merge }` only. The
+/// JSON Schema validator already enforces this for arbitrary inputs;
+/// this test pins the bundled fixture itself so a future hand-edit of
+/// `schemas/omnia/capability.yaml` cannot quietly reintroduce the
+/// pre-RFC-13 fields.
+#[test]
+fn omnia_capability_yaml_has_no_dropped_fields() {
+    let raw = std::fs::read_to_string(omnia_capability_path()).unwrap();
+
+    for forbidden in ["domain:", "extends:"] {
+        let starts_at_col_zero =
+            raw.lines().any(|line| line.starts_with(forbidden));
+        assert!(
+            !starts_at_col_zero,
+            "post-RFC-13 omnia capability must not carry top-level `{forbidden}`"
+        );
+    }
+
+    let pipeline_plan_present = raw
+        .lines()
+        .map(str::trim_end)
+        .any(|line| line == "  plan:" || line == "  plan: []");
+    assert!(
+        !pipeline_plan_present,
+        "post-RFC-13 omnia capability must not declare `pipeline.plan` \
+         (planning moves to the change surface in Phase 3)"
+    );
+
+    let parsed: Capability = serde_saphyr::from_str(&raw).expect("omnia capability parses");
+    assert!(
+        parsed.pipeline.plan.is_empty(),
+        "parsed omnia pipeline.plan must be empty after Phase 1"
     );
 }
 
@@ -184,7 +222,7 @@ pipeline:
 
 #[test]
 fn pipeline_without_plan_parses_unchanged() {
-    let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
+    let raw = std::fs::read_to_string(omnia_capability_path()).unwrap();
     let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
     assert!(schema.pipeline.plan.is_empty());
     assert!(schema.plan_entries().is_empty());
@@ -394,7 +432,7 @@ pipeline:
 
 #[test]
 fn entries_iterates_in_phase_order_and_entry_lookup_works() {
-    let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
+    let raw = std::fs::read_to_string(omnia_capability_path()).unwrap();
     let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
 
     let total =
@@ -423,7 +461,7 @@ fn entries_iterates_in_phase_order_and_entry_lookup_works() {
 
 #[test]
 fn parses_every_omnia_brief_and_frontmatter_ids_match_pipeline_ids() {
-    let raw = std::fs::read_to_string(omnia_schema_path()).unwrap();
+    let raw = std::fs::read_to_string(omnia_capability_path()).unwrap();
     let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
     let root = repo_root().join("schemas").join("omnia");
 

@@ -23,7 +23,7 @@ The schema validates the YAML *between* the delimiters. The markdown body is not
 
 | Field | Required | Shape | Notes |
 |---|---|---|---|
-| `id` | yes | non-empty string | Referenced by `needs` in sibling briefs and by `pipeline.*` entries in the owning `schema.yaml`. |
+| `id` | yes | non-empty string | Referenced by `needs` in sibling briefs and by `pipeline.*` entries in the owning `capability.yaml`. |
 | `description` | yes | non-empty string | One-sentence summary surfaced when listing pipeline steps. |
 | `needs` | no | unique array of strings | Briefs whose outputs this brief consumes. Forms the pipeline DAG. |
 | `generates` | no | non-empty string | Output path (optionally glob-shaped) produced by the brief. |

@@ -2,8 +2,9 @@
 //!
 //! This crate is the canonical home for:
 //!
-//! - Parsing capability manifests (still on disk as `schema.yaml`
-//!   pre-chunk-1.4; renamed to `capability.yaml` afterwards) — see
+//! - Parsing capability manifests (`capability.yaml`; the resolver
+//!   still tolerates the pre-RFC-13 `schema.yaml` filename so internal
+//!   callers like `init` keep working during the cut-over) — see
 //!   [`Capability`].
 //! - Resolving a `capability` value from `.specify/project.yaml` to
 //!   either a workspace directory or the agent-populated cache

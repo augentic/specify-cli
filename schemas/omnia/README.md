@@ -1,6 +1,6 @@
-# Omnia Schema
+# Omnia Capability
 
-- **URL**: `https://github.com/augentic/specify/schemas/omnia`
+- **URL**: `https://github.com/augentic/specify/capabilities/omnia`
 - **Purpose**: Rust WASM development (greenfield or migration)
 - **Source**: Git Repository, Source Code, or Manual (all analyzed via `/spec:extract`)
 - **Target**: Rust WASM (Omnia SDK)
@@ -10,7 +10,7 @@
 
 | File | Description |
 |------|-------------|
-| `schema.yaml` | Pipeline stages, domain context, and per-stage brief references |
+| `capability.yaml` | Pipeline phases (`define`, `build`, `merge`) and per-phase brief references |
 | `briefs/proposal.md` | Generation brief for the proposal stage |
 | `briefs/specs.md` | Generation brief for the specs stage |
 | `briefs/design.md` | Generation brief for the design stage |
@@ -18,19 +18,21 @@
 | `briefs/build.md` | Implementation brief for the build stage |
 | `briefs/merge.md` | Merge brief for finalizing a change |
 
-## Blueprints
+## Pipeline
 
-The schema declares four blueprints in dependency order:
+The capability declares four briefs under `pipeline.define` in dependency order:
 
 1. **proposal** — initial proposal document (`proposal.md`)
 2. **specs** — detailed specifications (`specs/**/*.md`), requires proposal
 3. **design** — technical design with implementation details (`design.md`), requires proposal
 4. **tasks** — implementation checklist (`tasks.md`), requires specs + design
 
-Build requires tasks to be complete and is tracked via `tasks.md`.
+`pipeline.build` requires tasks to be complete and is tracked via `tasks.md`.
+`pipeline.merge` finalises the change and runs the merge brief.
 
-## Schema Framework
+## Schema framework
 
-For general schema concepts — directory structure, field reference for
-`schema.yaml`, schema resolution, composition, caching, and rules
-override — see the [Schemas README](../README.md).
+For general capability concepts — directory structure, field reference for
+`capability.yaml`, capability resolution, composition, caching, and rules
+override — see the [Schemas README](../README.md) and the bundled
+[`capability.schema.json`](../capability.schema.json).
