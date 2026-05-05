@@ -113,10 +113,15 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let name = resolved_name(opts.project_dir, opts.name);
 
     let mut directories_created: Vec<PathBuf> = Vec::new();
+    // Phase 2.8 of RFC-13 retired `ProjectConfig::specs_dir` along
+    // with the rest of the per-class baseline helpers. Init still
+    // scaffolds `.specify/specs/` by convention because the omnia
+    // capability expects it; chunk 2.9 will decouple init from
+    // capability-specific layout entirely (per the plan).
     for dir in [
         ProjectConfig::specify_dir(opts.project_dir),
         ProjectConfig::changes_dir(opts.project_dir),
-        ProjectConfig::specs_dir(opts.project_dir),
+        ProjectConfig::specify_dir(opts.project_dir).join("specs"),
         ProjectConfig::archive_dir(opts.project_dir),
         ProjectConfig::cache_dir(opts.project_dir),
     ] {

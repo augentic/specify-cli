@@ -6,14 +6,14 @@
 //! convention-based — no schema or `generates` directive is needed.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use regex::Regex;
 use specify_change::{
     ChangeMetadata, LifecycleStatus, METADATA_VERSION, Outcome, Phase, PhaseOutcome, Rfc3339Stamp,
 };
 use specify_error::Error;
-use specify_merge::{ContractAction, merge_change, preview_change};
+use specify_merge::{ArtifactClass, MergeStrategy, OpaqueAction, merge_change, preview_change};
 use tempfile::TempDir;
 
 const CHANGE_NAME: &str = "feature-x";
@@ -39,6 +39,26 @@ impl Project {
     fn archive_dir(&self) -> PathBuf {
         self.root.join(".specify/archive")
     }
+}
+
+/// Build the omnia-shaped artefact-class slice the engine consumes for
+/// these tests. Tests are allowed to use literal class names per
+/// RFC-13 Phase 2.8 (and `make checks` ignores `#[cfg(test)]` blocks).
+fn omnia_classes(change_dir: &Path, project_root: &Path) -> Vec<ArtifactClass> {
+    vec![
+        ArtifactClass {
+            name: "specs".to_string(),
+            staged_dir: change_dir.join("specs"),
+            baseline_dir: project_root.join(".specify/specs"),
+            strategy: MergeStrategy::ThreeWayMerge,
+        },
+        ArtifactClass {
+            name: "contracts".to_string(),
+            staged_dir: change_dir.join("contracts"),
+            baseline_dir: project_root.join("contracts"),
+            strategy: MergeStrategy::OpaqueReplace,
+        },
+    ]
 }
 
 /// Build a fixture project with delta specs at the conventional path.
@@ -89,14 +109,14 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     let project = build_project();
     let change_dir = project.change_dir();
     let specs_dir = project.specs_dir();
-    let contracts_dir = project.contracts_dir();
     let archive_dir = project.archive_dir();
+    let classes = omnia_classes(&change_dir, &project.root);
 
-    let merged = merge_change(&change_dir, &specs_dir, &contracts_dir, &archive_dir)
+    let merged = merge_change(&change_dir, &classes, &archive_dir)
         .expect("merge_change should succeed");
 
-    // Results sorted by spec name.
-    let names: Vec<&str> = merged.iter().map(|(n, _)| n.as_str()).collect();
+    // Results sorted by (class_name, name).
+    let names: Vec<&str> = merged.iter().map(|e| e.name.as_str()).collect();
     assert_eq!(names, vec!["login", "oauth"]);
 
     // Baselines now exist.
@@ -129,11 +149,13 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     assert_eq!(new_meta.status, LifecycleStatus::Merged);
     assert!(new_meta.completed_at.is_some(), "expected completed_at to be set after merge");
 
-    // merge_change stamps the phase outcome before archiving.
+    // merge_change stamps the phase outcome before archiving. Per
+    // RFC-13 Phase 2.8 the summary is generic — it lists each
+    // contributing class name and entry count.
     let outcome = new_meta.outcome.expect("expected outcome to be stamped by merge_change");
     assert_eq!(outcome.phase, Phase::Merge);
     assert_eq!(outcome.outcome, Outcome::Success);
-    assert!(outcome.summary.contains("2 spec(s)"), "unexpected summary: {}", outcome.summary);
+    assert!(outcome.summary.contains("2 specs"), "unexpected summary: {}", outcome.summary);
 }
 
 // ---------------------------------------------------------------------------
@@ -150,13 +172,9 @@ fn wrong_precondition_aborts_cleanly() {
     meta.status = LifecycleStatus::Building;
     meta.save(&change_dir).unwrap();
 
-    let err = merge_change(
-        &change_dir,
-        &project.specs_dir(),
-        &project.contracts_dir(),
-        &project.archive_dir(),
-    )
-    .expect_err("should refuse on Building status");
+    let classes = omnia_classes(&change_dir, &project.root);
+    let err = merge_change(&change_dir, &classes, &project.archive_dir())
+        .expect_err("should refuse on Building status");
     match err {
         Error::Lifecycle { expected, found } => {
             assert_eq!(expected, "Complete");
@@ -192,13 +210,9 @@ fn coherence_failure_rolls_back_all_writes() {
     )
     .unwrap();
 
-    let err = merge_change(
-        &change_dir,
-        &project.specs_dir(),
-        &project.contracts_dir(),
-        &project.archive_dir(),
-    )
-    .expect_err("expected coherence failure");
+    let classes = omnia_classes(&change_dir, &project.root);
+    let err = merge_change(&change_dir, &classes, &project.archive_dir())
+        .expect_err("expected coherence failure");
     match err {
         Error::Merge(msg) => {
             assert!(
@@ -229,13 +243,8 @@ fn coherence_failure_rolls_back_all_writes() {
 #[test]
 fn archive_subdirectory_is_date_prefixed() {
     let project = build_project();
-    merge_change(
-        &project.change_dir(),
-        &project.specs_dir(),
-        &project.contracts_dir(),
-        &project.archive_dir(),
-    )
-    .expect("merge ok");
+    let classes = omnia_classes(&project.change_dir(), &project.root);
+    merge_change(&project.change_dir(), &classes, &project.archive_dir()).expect("merge ok");
 
     let re = Regex::new(r"^\d{4}-\d{2}-\d{2}-feature-x$").unwrap();
     let names: Vec<String> = fs::read_dir(project.archive_dir())
@@ -264,13 +273,8 @@ fn merge_copies_contract_files_to_baseline() {
         .expect("write schema");
     fs::write(change_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write api");
 
-    let merged = merge_change(
-        &change_dir,
-        &project.specs_dir(),
-        &project.contracts_dir(),
-        &project.archive_dir(),
-    )
-    .expect("merge ok");
+    let classes = omnia_classes(&change_dir, &project.root);
+    let merged = merge_change(&change_dir, &classes, &project.archive_dir()).expect("merge ok");
 
     let baseline_contracts = project.contracts_dir();
     assert!(
@@ -284,12 +288,12 @@ fn merge_copies_contract_files_to_baseline() {
 
     let archived = find_archived_metadata(&project);
     assert!(
-        archived.summary.contains("2 contract file(s)"),
+        archived.summary.contains("2 contracts"),
         "unexpected summary: {}",
         archived.summary
     );
     assert!(
-        archived.summary.contains(&format!("{} spec(s)", merged.len())),
+        archived.summary.contains(&format!("{} specs", merged.len())),
         "unexpected summary: {}",
         archived.summary
     );
@@ -309,13 +313,8 @@ fn merge_replaces_existing_baseline_contract_files() {
     fs::write(change_dir.join("contracts/schemas/test.yaml"), "new content\n")
         .expect("write new change");
 
-    merge_change(
-        &change_dir,
-        &project.specs_dir(),
-        &project.contracts_dir(),
-        &project.archive_dir(),
-    )
-    .expect("merge ok");
+    let classes = omnia_classes(&change_dir, &project.root);
+    merge_change(&change_dir, &classes, &project.archive_dir()).expect("merge ok");
 
     let content = fs::read_to_string(baseline_contracts.join("schemas/test.yaml")).unwrap();
     assert_eq!(content, "new content\n", "contract file should be replaced");
@@ -334,13 +333,8 @@ fn merge_leaves_untouched_baseline_contract_files() {
     fs::create_dir_all(change_dir.join("contracts/schemas")).expect("mkdir change schemas");
     fs::write(change_dir.join("contracts/schemas/new.yaml"), "new content\n").expect("write new");
 
-    merge_change(
-        &change_dir,
-        &project.specs_dir(),
-        &project.contracts_dir(),
-        &project.archive_dir(),
-    )
-    .expect("merge ok");
+    let classes = omnia_classes(&change_dir, &project.root);
+    merge_change(&change_dir, &classes, &project.archive_dir()).expect("merge ok");
 
     assert!(
         baseline_contracts.join("schemas/existing.yaml").is_file(),
@@ -361,13 +355,9 @@ fn merge_without_contracts_dir_works_as_before() {
 
     assert!(!change_dir.join("contracts").exists(), "precondition: no contracts dir");
 
-    let merged = merge_change(
-        &change_dir,
-        &project.specs_dir(),
-        &project.contracts_dir(),
-        &project.archive_dir(),
-    )
-    .expect("merge ok");
+    let classes = omnia_classes(&change_dir, &project.root);
+    let merged =
+        merge_change(&change_dir, &classes, &project.archive_dir()).expect("merge ok");
     assert!(!merged.is_empty(), "should still merge specs");
 
     let baseline_contracts = project.contracts_dir();
@@ -407,11 +397,10 @@ fn find_archived_metadata(project: &Project) -> PhaseOutcome {
 #[test]
 fn preview_no_contracts_returns_empty_list() {
     let project = build_project();
-    let result =
-        preview_change(&project.change_dir(), &project.specs_dir(), &project.contracts_dir())
-            .expect("preview should succeed");
-    assert!(!result.specs.is_empty(), "should have spec entries");
-    assert!(result.contracts.is_empty(), "should have no contract entries");
+    let classes = omnia_classes(&project.change_dir(), &project.root);
+    let result = preview_change(&project.change_dir(), &classes).expect("preview should succeed");
+    assert!(!result.three_way.is_empty(), "should have spec entries");
+    assert!(result.opaque.is_empty(), "should have no opaque-replace entries");
 }
 
 #[test]
@@ -424,15 +413,19 @@ fn preview_new_contract_files_reported_as_added() {
     fs::write(change_dir.join("contracts/schemas/user.yaml"), "schema: user\n").expect("write");
     fs::write(change_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write");
 
-    let result = preview_change(&change_dir, &project.specs_dir(), &project.contracts_dir())
-        .expect("preview should succeed");
+    let classes = omnia_classes(&change_dir, &project.root);
+    let result = preview_change(&change_dir, &classes).expect("preview should succeed");
 
-    assert_eq!(result.contracts.len(), 2);
-    // Sorted by relative_path.
-    assert_eq!(result.contracts[0].relative_path, "http/api.yaml");
-    assert_eq!(result.contracts[0].action, ContractAction::Added);
-    assert_eq!(result.contracts[1].relative_path, "schemas/user.yaml");
-    assert_eq!(result.contracts[1].action, ContractAction::Added);
+    assert_eq!(result.opaque.len(), 2);
+    // Sorted by (class_name, relative_path) — both entries are in the
+    // `contracts` class, so the secondary sort by relative_path takes
+    // over.
+    assert_eq!(result.opaque[0].class_name, "contracts");
+    assert_eq!(result.opaque[0].relative_path, "http/api.yaml");
+    assert_eq!(result.opaque[0].action, OpaqueAction::Added);
+    assert_eq!(result.opaque[1].class_name, "contracts");
+    assert_eq!(result.opaque[1].relative_path, "schemas/user.yaml");
+    assert_eq!(result.opaque[1].action, OpaqueAction::Added);
 }
 
 #[test]
@@ -448,12 +441,12 @@ fn preview_existing_baseline_contracts_reported_as_replaced() {
     fs::write(change_dir.join("contracts/schemas/user.yaml"), "new\n").expect("write change");
     fs::write(change_dir.join("contracts/schemas/order.yaml"), "new\n").expect("write change");
 
-    let result = preview_change(&change_dir, &project.specs_dir(), &project.contracts_dir())
-        .expect("preview should succeed");
+    let classes = omnia_classes(&change_dir, &project.root);
+    let result = preview_change(&change_dir, &classes).expect("preview should succeed");
 
-    assert_eq!(result.contracts.len(), 2);
-    let order = result.contracts.iter().find(|c| c.relative_path == "schemas/order.yaml").unwrap();
-    assert_eq!(order.action, ContractAction::Added);
-    let user = result.contracts.iter().find(|c| c.relative_path == "schemas/user.yaml").unwrap();
-    assert_eq!(user.action, ContractAction::Replaced);
+    assert_eq!(result.opaque.len(), 2);
+    let order = result.opaque.iter().find(|c| c.relative_path == "schemas/order.yaml").unwrap();
+    assert_eq!(order.action, OpaqueAction::Added);
+    let user = result.opaque.iter().find(|c| c.relative_path == "schemas/user.yaml").unwrap();
+    assert_eq!(user.action, OpaqueAction::Replaced);
 }

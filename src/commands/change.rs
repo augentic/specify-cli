@@ -7,11 +7,11 @@ use chrono::Utc;
 use serde::Serialize;
 use serde_json::Value;
 use specify::{
-    BaselineConflict, Brief, ChangeMetadata, ContractAction, ContractPreviewEntry, CreateIfExists,
-    CreateOutcome, EntryKind, Error, Journal, JournalEntry, LifecycleStatus, MergeEntry,
-    MergeOperation, MergeResult, Outcome, Phase, PipelineView, ProjectConfig, Rfc3339Stamp,
-    SpecType, Task, TouchedSpec, change_actions, conflict_check, format_rfc3339, mark_complete,
-    merge_change, parse_tasks, preview_change, serialize_report, validate_change,
+    ArtifactClass, BaselineConflict, Brief, ChangeMetadata, CreateIfExists, CreateOutcome,
+    EntryKind, Error, Journal, JournalEntry, LifecycleStatus, MergeEntry, MergeOperation,
+    MergeStrategy, OpaqueAction, OpaquePreviewEntry, Outcome, Phase, PipelineView, ProjectConfig,
+    Rfc3339Stamp, SpecType, Task, TouchedSpec, change_actions, conflict_check, format_rfc3339,
+    mark_complete, merge_change, parse_tasks, preview_change, serialize_report, validate_change,
 };
 
 use crate::cli::{
@@ -20,6 +20,43 @@ use crate::cli::{
 };
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
+
+/// Synthesise the omnia-default [`ArtifactClass`] slice for one
+/// change directory.
+///
+/// `specify-merge` and `specify-capability` are capability-agnostic
+/// (RFC-13 §"concern-specific behaviour leaves core", invariant #3).
+/// The set of mutable artefact classes that participate in a merge —
+/// today `specs` (3-way merge) and `contracts` (opaque replace) — is
+/// the omnia capability's responsibility, not core's. This synthesiser
+/// is the *only* place in the binary that names those classes; every
+/// merge call site routes through it so the literal class names live
+/// in exactly one location.
+///
+/// Both staged paths are absolute (rooted under `change_dir`), and
+/// both baseline paths are absolute (rooted under `project_root`),
+/// matching the pre-2.8 path conventions byte-for-byte.
+///
+// TODO(RFC-13 Phase 4.1): move this default into the omnia capability manifest
+// (`capabilities/omnia/capability.yaml` will grow an `artifact_classes:`
+// field) and read it through `specify-capability`. The pre-2.8 hard-codes
+// have been centralised here so that future move is a one-file edit.
+fn omnia_artifact_classes(project_root: &Path, change_dir: &Path) -> Vec<ArtifactClass> {
+    vec![
+        ArtifactClass {
+            name: "specs".to_string(),
+            staged_dir: change_dir.join("specs"),
+            baseline_dir: ProjectConfig::specify_dir(project_root).join("specs"),
+            strategy: MergeStrategy::ThreeWayMerge,
+        },
+        ArtifactClass {
+            name: "contracts".to_string(),
+            staged_dir: change_dir.join("contracts"),
+            baseline_dir: project_root.join("contracts"),
+            strategy: MergeStrategy::OpaqueReplace,
+        },
+    ]
+}
 
 pub fn run_change(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult, Error> {
     match action {
@@ -188,14 +225,25 @@ fn run_change_touched_specs(
     ctx: &CommandContext, name: String, scan: bool, set: Vec<String>,
 ) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
-    let specs_dir = ctx.specs_dir();
 
     let entries = if !set.is_empty() {
         let v = parse_touched_spec_set(&set)?;
         let metadata = change_actions::write_touched_specs(&change_dir, v)?;
         metadata.touched_specs
     } else if scan {
-        let scanned = change_actions::scan_touched_specs(&change_dir, &specs_dir)?;
+        // The scan classifies a delta as `new` vs `modified` against
+        // the omnia ThreeWayMerge baseline. Reach through the omnia
+        // synthesiser so any future change to the baseline location
+        // (Phase 4.1) flows through one place.
+        let classes = omnia_artifact_classes(&ctx.project_dir, &change_dir);
+        let baseline_dir = classes
+            .iter()
+            .find(|c| matches!(c.strategy, MergeStrategy::ThreeWayMerge))
+            .map_or_else(
+                || ProjectConfig::specify_dir(&ctx.project_dir).join("specs"),
+                |c| c.baseline_dir.clone(),
+            );
+        let scanned = change_actions::scan_touched_specs(&change_dir, &baseline_dir)?;
         let metadata = change_actions::write_touched_specs(&change_dir, scanned)?;
         metadata.touched_specs
     } else {
@@ -871,22 +919,24 @@ fn is_workspace_clone(project_dir: &Path) -> bool {
 
 fn run_change_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
-    let specs_dir = ctx.specs_dir();
-    let contracts_dir = ctx.contracts_dir();
     let archive_dir = ctx.archive_dir();
+    let classes = omnia_artifact_classes(&ctx.project_dir, &change_dir);
 
-    let merged = merge_change(&change_dir, &specs_dir, &contracts_dir, &archive_dir)?;
+    let merged = merge_change(&change_dir, &classes, &archive_dir)?;
 
-    // RFC-3b: auto-commit merged specs when running inside a workspace clone.
+    // RFC-3b: auto-commit merged baselines when running inside a
+    // workspace clone. Loop through every artefact class so the
+    // workspace push picks up each baseline_dir uniformly — the
+    // engine never branches on class name.
     if is_workspace_clone(&ctx.project_dir) {
-        let specs_path = ctx.specs_dir();
-        let contracts_path = ctx.contracts_dir();
         let archive_path_for_git = ctx.archive_dir();
 
         let mut git_add_cmd = std::process::Command::new("git");
-        git_add_cmd.arg("-C").arg(&ctx.project_dir).args(["add"]).arg(&specs_path);
-        if contracts_path.exists() {
-            git_add_cmd.arg(&contracts_path);
+        git_add_cmd.arg("-C").arg(&ctx.project_dir).args(["add"]);
+        for class in &classes {
+            if class.baseline_dir.exists() {
+                git_add_cmd.arg(&class.baseline_dir);
+            }
         }
         let git_add = git_add_cmd.arg(&archive_path_for_git).output();
 
@@ -936,8 +986,8 @@ fn run_change_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult,
             emit_response(MergeResponse { merged_specs: specs });
         }
         OutputFormat::Text => {
-            for (entry_name, result) in &merged {
-                println!("{entry_name}: {}", summarise_operations(&result.operations));
+            for entry in &merged {
+                println!("{}: {}", entry.name, summarise_operations(&entry.result.operations));
             }
             println!("Archived to {}", archive_path.display());
         }
@@ -947,12 +997,24 @@ fn run_change_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult,
 
 fn run_change_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
-    let result = preview_change(&change_dir, &ctx.specs_dir(), &ctx.contracts_dir())?;
+    let classes = omnia_artifact_classes(&ctx.project_dir, &change_dir);
+    let result = preview_change(&change_dir, &classes)?;
+
+    // The JSON preview surface keeps its pre-2.8 shape — `specs` and
+    // `contracts` arrays — by grouping the engine's class-tagged
+    // entries by their `class_name`. The literal output keys live
+    // here, alongside the omnia-default synthesiser, rather than in
+    // the engine.
+    let specs_entries: Vec<&MergeEntry> =
+        result.three_way.iter().filter(|e| e.class_name == "specs").collect();
+    let contract_entries: Vec<&OpaquePreviewEntry> =
+        result.opaque.iter().filter(|e| e.class_name == "contracts").collect();
 
     match ctx.format {
         OutputFormat::Json => {
-            let specs: Vec<Value> = result.specs.iter().map(preview_entry_to_json).collect();
-            let contracts: Vec<Value> = result.contracts.iter().map(contract_to_json).collect();
+            let specs: Vec<Value> = specs_entries.iter().map(|e| preview_entry_to_json(e)).collect();
+            let contracts: Vec<Value> =
+                contract_entries.iter().map(|c| contract_to_json(c)).collect();
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
             struct PreviewBody {
@@ -967,22 +1029,22 @@ fn run_change_merge_preview(ctx: &CommandContext, name: String) -> Result<CliRes
             });
         }
         OutputFormat::Text => {
-            if result.specs.is_empty() {
+            if specs_entries.is_empty() {
                 println!("No delta specs to merge.");
             } else {
-                for entry in &result.specs {
+                for entry in &specs_entries {
                     println!("{}: {}", entry.name, summarise_operations(&entry.result.operations));
                     for op in &entry.result.operations {
                         println!("  {}", operation_label(op));
                     }
                 }
             }
-            if !result.contracts.is_empty() {
+            if !contract_entries.is_empty() {
                 println!("\nContract changes:");
-                for c in &result.contracts {
+                for c in &contract_entries {
                     let (sigil, label) = match c.action {
-                        ContractAction::Added => ("+", "added"),
-                        ContractAction::Replaced => ("~", "replaced"),
+                        OpaqueAction::Added => ("+", "added"),
+                        OpaqueAction::Replaced => ("~", "replaced"),
                         _ => ("?", "unknown"),
                     };
                     println!("  {sigil} contracts/{} ({label})", c.relative_path);
@@ -995,7 +1057,8 @@ fn run_change_merge_preview(ctx: &CommandContext, name: String) -> Result<CliRes
 
 fn run_change_merge_conflict_check(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
-    let conflicts = conflict_check(&change_dir, &ctx.specs_dir(), &ctx.contracts_dir())?;
+    let classes = omnia_artifact_classes(&ctx.project_dir, &change_dir);
+    let conflicts = conflict_check(&change_dir, &classes)?;
 
     match ctx.format {
         OutputFormat::Json => {
@@ -1040,11 +1103,10 @@ struct MergeEntryJson {
     operations: Vec<Value>,
 }
 
-fn merge_entry_to_json(entry: &(String, MergeResult)) -> Value {
-    let (name, result) = entry;
-    let ops: Vec<Value> = result.operations.iter().map(merge_op_to_json).collect();
+fn merge_entry_to_json(entry: &MergeEntry) -> Value {
+    let ops: Vec<Value> = entry.result.operations.iter().map(merge_op_to_json).collect();
     serde_json::to_value(MergeEntryJson {
-        name: name.clone(),
+        name: entry.name.clone(),
         operations: ops,
     })
     .expect("MergeEntryJson serialises")
@@ -1075,10 +1137,10 @@ struct ContractItem {
     action: &'static str,
 }
 
-fn contract_to_json(entry: &ContractPreviewEntry) -> Value {
+fn contract_to_json(entry: &OpaquePreviewEntry) -> Value {
     let action = match entry.action {
-        ContractAction::Added => "added",
-        ContractAction::Replaced => "replaced",
+        OpaqueAction::Added => "added",
+        OpaqueAction::Replaced => "replaced",
         _ => "unknown",
     };
     serde_json::to_value(ContractItem {

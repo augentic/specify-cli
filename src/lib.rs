@@ -18,9 +18,9 @@ pub use specify_change::{
 };
 pub use specify_error::{Error, ValidationStatus, ValidationSummary};
 pub use specify_merge::{
-    BaselineConflict, ContractAction, ContractPreviewEntry, Entry as MergeEntry, MergeOperation,
-    MergeResult, PreviewResult, conflict_check, merge, merge_change, preview_change,
-    validate_baseline,
+    ArtifactClass, BaselineConflict, MergeOperation, MergePreviewEntry as MergeEntry, MergeResult,
+    MergeStrategy, OpaqueAction, OpaquePreviewEntry, PreviewResult, conflict_check, merge,
+    merge_change, preview_change, validate_baseline,
 };
 pub use specify_spec::{
     DeltaSpec, ParsedSpec, RenameEntry, RequirementBlock, Scenario, has_delta_headers,

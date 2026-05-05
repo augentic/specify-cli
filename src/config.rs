@@ -1,15 +1,23 @@
 //! `ProjectConfig` — the in-memory model of `.specify/project.yaml` plus
 //! the family of path helpers every subcommand reaches for when it needs
-//! to locate `.specify/changes/`, `.specify/specs/`, `.specify/.cache/`,
-//! `.specify/archive/`, or the operator-facing platform artifacts at the
-//! repo root (`registry.yaml`, `plan.yaml`, `initiative.md`, `contracts/`).
+//! to locate `.specify/changes/`, `.specify/.cache/`, `.specify/archive/`,
+//! or the operator-facing platform artifacts at the repo root
+//! (`registry.yaml`, `plan.yaml`, `initiative.md`).
 //!
 //! Layout boundary: `.specify/` holds framework-managed state that the
-//! CLI owns (configuration, working changes, baseline specs, archive,
-//! cache, workspace clones, plan-authoring scratch, the advisory plan
-//! lock). Operator-facing platform artifacts that are PR-reviewed and
-//! durable live at the repo root. See [`docs/explanation/decision-log.md`](
+//! CLI owns (configuration, working changes, archive, cache, workspace
+//! clones, plan-authoring scratch, the advisory plan lock).
+//! Operator-facing platform artifacts that are PR-reviewed and durable
+//! live at the repo root. See [`docs/explanation/decision-log.md`](
 //! ../../docs/explanation/decision-log.md) for the full rationale.
+//!
+//! RFC-13 §Migration invariant #3 ("concern-specific behaviour leaves
+//! core") removed the per-class baseline helpers (`specs_dir`,
+//! `contracts_dir`) that this module used to expose. Domain-specific
+//! baseline locations are owned by the active capability and are
+//! synthesised at the binary-side merge call site (currently
+//! `src/commands/change.rs::omnia_artifact_classes`). `ProjectConfig`
+//! stays capability-agnostic.
 //!
 //! `ProjectConfig::load` is the single choke point for the
 //! `specify_version` floor check: any subcommand that parses
@@ -142,18 +150,6 @@ impl ProjectConfig {
         Self::specify_dir(project_dir).join("changes")
     }
 
-    /// Absolute path to `<project_dir>/.specify/specs/`.
-    #[must_use]
-    pub fn specs_dir(project_dir: &Path) -> PathBuf {
-        Self::specify_dir(project_dir).join("specs")
-    }
-
-    /// Absolute path to `<project_dir>/contracts/`.
-    #[must_use]
-    pub fn contracts_dir(project_dir: &Path) -> PathBuf {
-        project_dir.join("contracts")
-    }
-
     /// Absolute path to `<project_dir>/registry.yaml` — the platform
     /// catalogue. Platform-level artifact, lives at the repo root.
     #[must_use]
@@ -275,8 +271,6 @@ mod tests {
         assert_eq!(ProjectConfig::specify_dir(base), PathBuf::from("/a/b/.specify"));
         assert_eq!(ProjectConfig::config_path(base), PathBuf::from("/a/b/.specify/project.yaml"));
         assert_eq!(ProjectConfig::changes_dir(base), PathBuf::from("/a/b/.specify/changes"));
-        assert_eq!(ProjectConfig::specs_dir(base), PathBuf::from("/a/b/.specify/specs"));
-        assert_eq!(ProjectConfig::contracts_dir(base), PathBuf::from("/a/b/contracts"));
         assert_eq!(ProjectConfig::registry_path(base), PathBuf::from("/a/b/registry.yaml"));
         assert_eq!(ProjectConfig::plan_path(base), PathBuf::from("/a/b/plan.yaml"));
         assert_eq!(ProjectConfig::initiative_path(base), PathBuf::from("/a/b/initiative.md"));
