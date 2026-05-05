@@ -35,7 +35,7 @@ fn parse_json(stdout: &[u8]) -> Value {
 fn vectis_help_lists_subcommands() {
     let assert = specify().args(["vectis", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    for verb in ["init", "verify", "add-shell", "update-versions", "versions"] {
+    for verb in ["init", "verify", "add-shell", "update-versions", "versions", "validate"] {
         assert!(
             stdout.contains(verb),
             "expected `vectis --help` to mention {verb}, got:\n{stdout}"
@@ -139,6 +139,1089 @@ fn init_invalid_project_json_shape() {
         "unexpected message: {value}"
     );
     assert_eq!(output.status.code(), Some(1));
+}
+
+/// `vectis validate --help` MUST list every mode the RFC-11 §H verb
+/// table promises (`layout | composition | tokens | assets | all`)
+/// plus the optional `[PATH]` positional. Phase 1.5 acceptance bullet:
+/// the surface lands now even though every mode is a stub.
+#[test]
+fn vectis_validate_help_lists_every_mode_and_path_positional() {
+    let assert = specify().args(["vectis", "validate", "--help"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    for mode in ["layout", "composition", "tokens", "assets", "all"] {
+        assert!(
+            stdout.contains(mode),
+            "expected `vectis validate --help` to mention `{mode}`, got:\n{stdout}"
+        );
+    }
+    // Positional `[PATH]` (clap renders the value-name in upper-case).
+    assert!(
+        stdout.contains("[PATH]"),
+        "expected `vectis validate --help` to advertise an optional `[PATH]` positional, got:\n{stdout}"
+    );
+}
+
+/// Phase 1.7: a minimal valid `assets.yaml` MUST exit 0 with the
+/// per-mode envelope (`mode`, `path`, empty `errors` and
+/// `warnings` arrays) and the auto-injected `schema-version`.
+#[test]
+fn vectis_validate_assets_clean_run_exits_zero_with_envelope() {
+    // Minimal valid `assets.yaml` (the schema permits an
+    // assets-only manifest with `version` + an empty `assets` map,
+    // because `assets` is required at the document level but
+    // `additionalProperties: { ... }` allows zero entries).
+    let tmp = tempdir().unwrap();
+    let assets_path = tmp.path().join("assets.yaml");
+    std::fs::write(&assets_path, "version: 1\nassets: {}\n").expect("write assets.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "assets"])
+        .arg(&assets_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["mode"], "assets");
+    assert_eq!(
+        value["path"].as_str().expect("path is a string"),
+        assets_path.display().to_string()
+    );
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0), "expected no errors: {value}");
+    assert_eq!(
+        value["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "expected no warnings: {value}"
+    );
+}
+
+/// Phase 1.7: a referenced raster file that is not on disk must
+/// surface as an error pointing at the corresponding density slot
+/// (`/assets/<id>/sources/ios/1x`) and at the missing-file path.
+#[test]
+fn vectis_validate_assets_missing_raster_file_exits_one() {
+    let tmp = tempdir().unwrap();
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    let assets_path = design.join("assets.yaml");
+    // Asset declares a 1x density file that we never create on
+    // disk.
+    std::fs::write(
+        &assets_path,
+        r"version: 1
+assets:
+  hero:
+    kind: raster
+    role: illustration
+    sources:
+      ios:
+        1x: assets/hero.png
+",
+    )
+    .expect("write assets.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "assets"])
+        .arg(&assets_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    assert_eq!(value["mode"], "assets");
+    let errors = value["errors"].as_array().expect("errors array");
+    let any_hits = errors.iter().any(|e| {
+        e.get("path").and_then(Value::as_str) == Some("/assets/hero/sources/ios/1x")
+            && e.get("message").and_then(Value::as_str).unwrap_or("").contains("file not found")
+    });
+    assert!(any_hits, "expected file-not-found error for 1x: {errors:?}");
+}
+
+/// Phase 1.7: when a sibling `composition.yaml` is present at the
+/// canonical path `.specify/specs/composition.yaml`, missing optional
+/// raster densities surface as warnings (not errors) for any asset
+/// the composition references.
+#[test]
+fn vectis_validate_assets_missing_density_emits_warning_when_referenced() {
+    let tmp = tempdir().unwrap();
+    let design = tmp.path().join("design-system");
+    let assets_dir = design.join("assets/android");
+    std::fs::create_dir_all(&assets_dir).expect("mkdir assets/android");
+    std::fs::write(design.join("assets/hero@2x.png"), b"PNGSTUB").expect("write 2x");
+    std::fs::write(design.join("assets/hero@3x.png"), b"PNGSTUB").expect("write 3x");
+    std::fs::write(assets_dir.join("hero-mdpi.png"), b"PNGSTUB").expect("write mdpi");
+    std::fs::write(assets_dir.join("hero-hdpi.png"), b"PNGSTUB").expect("write hdpi");
+    std::fs::write(assets_dir.join("hero-xhdpi.png"), b"PNGSTUB").expect("write xhdpi");
+    std::fs::write(assets_dir.join("hero-xxhdpi.png"), b"PNGSTUB").expect("write xxhdpi");
+    std::fs::write(assets_dir.join("hero-xxxhdpi.png"), b"PNGSTUB").expect("write xxxhdpi");
+
+    let assets_path = design.join("assets.yaml");
+    std::fs::write(
+        &assets_path,
+        r"version: 1
+assets:
+  hero:
+    kind: raster
+    role: illustration
+    sources:
+      ios:
+        2x: assets/hero@2x.png
+        3x: assets/hero@3x.png
+      android:
+        mdpi: assets/android/hero-mdpi.png
+        hdpi: assets/android/hero-hdpi.png
+        xhdpi: assets/android/hero-xhdpi.png
+        xxhdpi: assets/android/hero-xxhdpi.png
+        xxxhdpi: assets/android/hero-xxxhdpi.png
+",
+    )
+    .expect("write assets.yaml");
+
+    let specs = tmp.path().join(".specify/specs");
+    std::fs::create_dir_all(&specs).expect("mkdir .specify/specs");
+    std::fs::write(
+        specs.join("composition.yaml"),
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        item:
+          - image:
+              name: hero
+",
+    )
+    .expect("write composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "assets"])
+        .arg(&assets_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "assets");
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0), "errors unexpected: {value}");
+    let warnings = value["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings.iter().any(|w| w
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .contains("missing optional `1x`")),
+        "expected a missing-1x warning: {warnings:?}"
+    );
+}
+
+/// Phase 1.7: when the sibling `composition.yaml` references an
+/// asset id that is NOT in the manifest, the run errors with an
+/// "unknown asset id" message.
+#[test]
+fn vectis_validate_assets_unresolved_composition_reference_exits_one() {
+    let tmp = tempdir().unwrap();
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    let assets_path = design.join("assets.yaml");
+    std::fs::write(
+        &assets_path,
+        // Manifest declares `gear` but composition references `mystery`.
+        r"version: 1
+assets:
+  gear:
+    kind: symbol
+    role: icon
+    symbols:
+      ios: gearshape
+      android: settings
+",
+    )
+    .expect("write assets.yaml");
+
+    let specs = tmp.path().join(".specify/specs");
+    std::fs::create_dir_all(&specs).expect("mkdir .specify/specs");
+    std::fs::write(
+        specs.join("composition.yaml"),
+        r"version: 1
+screens:
+  s:
+    name: S
+    header:
+      title: T
+      trailing:
+        - icon-button:
+            icon: mystery
+            label: Mystery
+    body:
+      list:
+        item: []
+",
+    )
+    .expect("write composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "assets"])
+        .arg(&assets_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .contains("references unknown asset id `mystery`")),
+        "expected unresolved-reference error: {errors:?}"
+    );
+}
+
+/// Phase 1.7: a missing `assets.yaml` MUST surface as the v2
+/// `invalid-project` error envelope (exit 1) -- distinct from the
+/// validator-reported `errors` array, which is reserved for shape /
+/// reference findings against an actually-loaded document.
+#[test]
+fn vectis_validate_assets_missing_file_surfaces_invalid_project() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("nope-assets.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "assets"])
+        .arg(&missing)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 1);
+    assert_eq!(value["schema-version"], 2);
+    assert!(
+        value["message"].as_str().unwrap_or("").contains("assets.yaml not readable"),
+        "unexpected message: {value}"
+    );
+    assert_eq!(output.status.code(), Some(1));
+}
+
+/// Phase 1.6: the `tokens` mode is now real. A valid Appendix-D-shaped
+/// document MUST exit 0 with the per-mode envelope (`mode`, `path`,
+/// empty `errors` and `warnings` arrays) and the auto-injected
+/// `schema-version`.
+#[test]
+fn vectis_validate_tokens_clean_run_exits_zero_with_envelope() {
+    let tmp = tempdir().unwrap();
+    let tokens_path = tmp.path().join("tokens.yaml");
+    std::fs::write(
+        &tokens_path,
+        // Tiny version-only document: structurally valid against
+        // tokens.schema.json's `additionalProperties: false` because
+        // every category is optional.
+        "version: 1\n",
+    )
+    .expect("write tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "tokens"])
+        .arg(&tokens_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["mode"], "tokens");
+    assert_eq!(
+        value["path"].as_str().expect("path is a string"),
+        tokens_path.display().to_string()
+    );
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0), "expected no errors: {value}");
+    assert_eq!(
+        value["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "expected no warnings: {value}"
+    );
+}
+
+/// Phase 1.6: a deliberately broken `tokens.yaml` MUST exit 1 with at
+/// least one error entry whose `path` points at the offending node
+/// (`/colors/primary/light`). The `error` discriminator is **not**
+/// present on the validate envelope (that's reserved for the v2 error
+/// shape) -- the validator wrote a real report and exited non-zero.
+#[test]
+fn vectis_validate_tokens_broken_hex_exits_one_with_pathful_error() {
+    let tmp = tempdir().unwrap();
+    let tokens_path = tmp.path().join("tokens.yaml");
+    std::fs::write(
+        &tokens_path,
+        "version: 1\ncolors:\n  primary:\n    light: \"#xyz\"\n    dark: \"#000000\"\n",
+    )
+    .expect("write tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "tokens"])
+        .arg(&tokens_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    assert_eq!(value["mode"], "tokens");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(!errors.is_empty(), "expected at least one error: {value}");
+    let any_path_hits_primary_light = errors.iter().any(|e| {
+        e.get("path").and_then(Value::as_str).is_some_and(|p| p.contains("/colors/primary/light"))
+    });
+    assert!(
+        any_path_hits_primary_light,
+        "expected an error pointing at /colors/primary/light, got: {errors:?}"
+    );
+}
+
+/// Phase 1.6: a missing `tokens.yaml` MUST surface as the v2
+/// `invalid-project` error envelope (exit 1) -- distinct from the
+/// validator-reported `errors` array, which is reserved for shape /
+/// reference findings against an actually-loaded document.
+#[test]
+fn vectis_validate_tokens_missing_file_surfaces_invalid_project() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("nope-tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "tokens"])
+        .arg(&missing)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 1);
+    assert_eq!(value["schema-version"], 2);
+    assert!(
+        value["message"].as_str().unwrap_or("").contains("tokens.yaml not readable"),
+        "unexpected message: {value}"
+    );
+    assert_eq!(output.status.code(), Some(1));
+}
+
+/// Phase 1.8: a minimal but realistic `layout.yaml` (single screen,
+/// no `component:` directive, no forbidden wiring keys) MUST exit 0
+/// silently with the per-mode envelope. Asserts the `mode` and
+/// `path` fields plus empty `errors` / `warnings` arrays so any
+/// future drift in the envelope shape surfaces here.
+#[test]
+fn vectis_validate_layout_clean_run_exits_zero_with_envelope() {
+    let tmp = tempdir().unwrap();
+    let layout_path = tmp.path().join("layout.yaml");
+    std::fs::write(
+        &layout_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        each: tasks
+        item:
+          - text:
+              content: hello
+",
+    )
+    .expect("write layout.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .arg(&layout_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["mode"], "layout");
+    assert_eq!(
+        value["path"].as_str().expect("path is a string"),
+        layout_path.display().to_string()
+    );
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0), "expected no errors: {value}");
+    assert_eq!(
+        value["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "expected no warnings: {value}"
+    );
+}
+
+/// Phase 1.8: a `bind:` key anywhere in `layout.yaml` MUST exit 1
+/// with an error pointing at the offending JSON Pointer. Use a
+/// nested `bind:` so the path-precision claim is observable.
+#[test]
+fn vectis_validate_layout_bind_key_exits_one_with_pathful_error() {
+    let tmp = tempdir().unwrap();
+    let layout_path = tmp.path().join("layout.yaml");
+    std::fs::write(
+        &layout_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        each: tasks
+        item:
+          - checkbox:
+              bind: tasks.completed
+",
+    )
+    .expect("write layout.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .arg(&layout_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    assert_eq!(value["mode"], "layout");
+    let errors = value["errors"].as_array().expect("errors array");
+    let any_hits = errors.iter().any(|e| {
+        e["path"].as_str().unwrap_or("").ends_with("/checkbox/bind")
+            && e["message"].as_str().unwrap_or("").contains("`bind` is define-owned")
+    });
+    assert!(any_hits, "expected pathful `bind` rejection: {errors:?}");
+}
+
+/// Phase 1.8: a `delta:`-shaped document MUST be rejected even
+/// though the underlying composition schema's `oneOf` permits it.
+/// Layout is restricted to the `screens` half of the schema (RFC-11
+/// §A unwired-subset rule).
+#[test]
+fn vectis_validate_layout_delta_document_exits_one() {
+    let tmp = tempdir().unwrap();
+    let layout_path = tmp.path().join("layout.yaml");
+    std::fs::write(
+        &layout_path,
+        r"version: 1
+delta:
+  added:
+    new-screen:
+      name: New
+      body:
+        list:
+          each: things
+          item:
+            - text:
+                content: hello
+",
+    )
+    .expect("write layout.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .arg(&layout_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e["path"].as_str().unwrap_or("") == "/delta"
+            && e["message"].as_str().unwrap_or("").contains("MUST NOT use the `delta` shape")),
+        "expected `/delta` rejection: {errors:?}"
+    );
+}
+
+/// Phase 1.8: two groups in different screens carrying the same
+/// `component:` slug with materially different skeletons MUST
+/// produce a structural-identity error (RFC-11 §G).
+#[test]
+fn vectis_validate_layout_structural_identity_violation_exits_one() {
+    let tmp = tempdir().unwrap();
+    let layout_path = tmp.path().join("layout.yaml");
+    std::fs::write(
+        &layout_path,
+        r"version: 1
+screens:
+  one:
+    name: One
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - text:
+                content: body
+  two:
+    name: Two
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - icon:
+                name: chevron-right
+            - text:
+                content: body
+",
+    )
+    .expect("write layout.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .arg(&layout_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("component slug `card` has a different skeleton")),
+        "expected structural-identity rejection for `card`: {errors:?}"
+    );
+}
+
+/// Phase 1.8: a missing `layout.yaml` MUST surface as the v2
+/// `invalid-project` error envelope (exit 1) -- distinct from the
+/// validator-reported `errors` array, which is reserved for shape /
+/// reference / unwired-subset findings against an actually-loaded
+/// document.
+#[test]
+fn vectis_validate_layout_missing_file_surfaces_invalid_project() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("nope-layout.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .arg(&missing)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 1);
+    assert_eq!(value["schema-version"], 2);
+    assert!(
+        value["message"].as_str().unwrap_or("").contains("layout.yaml not readable"),
+        "unexpected message: {value}"
+    );
+    assert_eq!(output.status.code(), Some(1));
+}
+
+/// Phase 1.5 acceptance kept: an explicit `[PATH]` positional MUST be
+/// accepted by clap and threaded through. Phase 1.6 makes it
+/// observable -- the resolved path appears in the validate envelope's
+/// `path` field on a successful run.
+#[test]
+fn vectis_validate_accepts_explicit_path_positional() {
+    let tmp = tempdir().unwrap();
+    let tokens_path = tmp.path().join("custom-tokens.yaml");
+    std::fs::write(&tokens_path, "version: 1\n").expect("write tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "tokens"])
+        .arg(&tokens_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    assert_eq!(value["mode"], "tokens");
+    assert_eq!(
+        value["path"].as_str().expect("path is a string"),
+        tokens_path.display().to_string()
+    );
+}
+
+/// Phase 1.9: a minimal valid composition with no sibling tokens /
+/// assets MUST exit 0 with the per-mode envelope and NO `results`
+/// array (the array is only emitted when auto-invoke folded
+/// something in).
+#[test]
+fn vectis_validate_composition_clean_run_exits_zero_with_envelope() {
+    let tmp = tempdir().unwrap();
+    // Mark the tree as a Specify project so `find_sibling_input`'s
+    // walk-up has a well-defined stop point even though no design
+    // system / change-local files are present.
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let comp_path = tmp.path().join("composition.yaml");
+    std::fs::write(
+        &comp_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        each: tasks
+        item:
+          - text:
+              content: hello
+",
+    )
+    .expect("write composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&comp_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["mode"], "composition");
+    assert_eq!(value["path"].as_str().expect("path is a string"), comp_path.display().to_string());
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0), "expected no errors: {value}");
+    assert_eq!(
+        value["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "expected no warnings: {value}"
+    );
+    assert!(
+        value.get("results").is_none(),
+        "results array MUST be absent without auto-invoke: {value}"
+    );
+}
+
+/// Phase 1.9: a composition that references a token name not in
+/// the sibling `tokens.yaml` MUST exit 1 with an "unknown ... token"
+/// error pointing at the offending JSON Pointer.
+#[test]
+fn vectis_validate_composition_unknown_token_exits_one() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let comp_path = tmp.path().join("composition.yaml");
+    std::fs::write(
+        &comp_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - text:
+          content: hi
+          color: nonexistent
+",
+    )
+    .expect("write composition.yaml");
+    std::fs::write(
+        tmp.path().join("tokens.yaml"),
+        // Single colors entry; `nonexistent` is deliberately
+        // absent.
+        "version: 1\ncolors:\n  primary:\n    light: \"#0066CC\"\n    dark: \"#3399FF\"\n",
+    )
+    .expect("write tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&comp_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    assert_eq!(value["mode"], "composition");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .contains("unknown colors token `nonexistent`")
+            && e.get("path").and_then(Value::as_str).unwrap_or("").ends_with("/text/color")),
+        "expected unknown-color error with pathful pointer: {errors:?}"
+    );
+}
+
+/// Phase 1.9: a composition that references an asset id not in the
+/// sibling `assets.yaml` MUST exit 1 with an "unknown asset id"
+/// error.
+#[test]
+fn vectis_validate_composition_unknown_asset_exits_one() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let comp_path = tmp.path().join("composition.yaml");
+    std::fs::write(
+        &comp_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    header:
+      title: T
+      trailing:
+        - icon-button:
+            icon: mystery
+            label: Mystery
+    body:
+      list:
+        each: tasks
+        item:
+          - text:
+              content: hi
+",
+    )
+    .expect("write composition.yaml");
+    std::fs::write(
+        tmp.path().join("assets.yaml"),
+        // Empty asset map -- every reference is unknown.
+        "version: 1\nassets: {}\n",
+    )
+    .expect("write assets.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&comp_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .contains("unknown asset id `mystery`")),
+        "expected unknown-asset error: {errors:?}"
+    );
+}
+
+/// Phase 1.9: when sibling `tokens.yaml` and `assets.yaml` both
+/// exist, the composition envelope's `results` array MUST contain
+/// folded sub-reports for both modes (in `tokens` → `assets`
+/// order). A broken hex inside the sibling tokens.yaml MUST
+/// surface in `results[0].report.errors` AND drive the dispatcher
+/// to exit 1 via its recursion-aware `validate_exit_code` helper.
+#[test]
+fn vectis_validate_composition_auto_invokes_tokens_and_assets() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let comp_path = tmp.path().join("composition.yaml");
+    std::fs::write(
+        &comp_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - text:
+          content: hi
+",
+    )
+    .expect("write composition.yaml");
+    std::fs::write(
+        tmp.path().join("tokens.yaml"),
+        // `light: \"#xyz\"` is rejected by the colorValue pattern
+        // (`#xxxxxx` only).
+        "version: 1\ncolors:\n  primary:\n    light: \"#xyz\"\n    dark: \"#000000\"\n",
+    )
+    .expect("write tokens.yaml");
+    std::fs::write(tmp.path().join("assets.yaml"), "version: 1\nassets: {}\n")
+        .expect("write assets.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&comp_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let results =
+        value["results"].as_array().unwrap_or_else(|| panic!("results array present: {value}"));
+    assert_eq!(results.len(), 2, "expected tokens + assets sub-reports: {value}");
+    assert_eq!(results[0]["mode"], "tokens");
+    assert_eq!(results[1]["mode"], "assets");
+    let token_errors = results[0]["report"]["errors"].as_array().expect("nested tokens.errors");
+    assert!(!token_errors.is_empty(), "broken hex MUST surface in folded tokens report: {value}");
+}
+
+/// Phase 1.9: structural-identity violation (RFC-11 §G) inside a
+/// composition document MUST exit 1 with the same error message
+/// shape Phase 1.8 lock for layout mode, since the engine is
+/// shared.
+#[test]
+fn vectis_validate_composition_structural_identity_violation_exits_one() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let comp_path = tmp.path().join("composition.yaml");
+    std::fs::write(
+        &comp_path,
+        r"version: 1
+screens:
+  one:
+    name: One
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - text:
+                content: body
+  two:
+    name: Two
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - icon:
+                name: chevron-right
+            - text:
+                content: body
+",
+    )
+    .expect("write composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&comp_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("component slug `card` has a different skeleton")),
+        "expected structural-identity rejection for `card`: {errors:?}"
+    );
+}
+
+/// Phase 1.9: a missing `composition.yaml` MUST surface as the v2
+/// `invalid-project` error envelope (exit 1) -- distinct from the
+/// validator-reported `errors` array.
+#[test]
+fn vectis_validate_composition_missing_file_surfaces_invalid_project() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("nope-composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&missing)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 1);
+    assert_eq!(value["schema-version"], 2);
+    assert!(
+        value["message"].as_str().unwrap_or("").contains("composition.yaml not readable"),
+        "unexpected message: {value}"
+    );
+    assert_eq!(output.status.code(), Some(1));
+}
+
+/// Phase 1.10: `vectis validate all` against a project root that
+/// has every artifact materialised at the canonical project shape
+/// MUST emit a combined envelope with `mode: "all"`, the project
+/// root in `path`, and four sub-reports in `layout` → `composition`
+/// → `tokens` → `assets` order. Every sub-report is a real per-mode
+/// envelope (`skipped` absent) and the run exits 0 because no
+/// errors fire.
+#[test]
+fn vectis_validate_all_runs_every_mode_against_project_root() {
+    let tmp = tempdir().unwrap();
+    // Mark as a Specify project but ship NO project.yaml -- the
+    // resolver falls through to the embedded artifact-paths
+    // defaults (which match the v2 schema.yaml verbatim). This pins
+    // the embedded-fallback contract.
+    std::fs::create_dir_all(tmp.path().join(".specify/specs")).expect("mkdir .specify/specs");
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    std::fs::write(design.join("layout.yaml"), "version: 1\nscreens: {}\n")
+        .expect("write layout.yaml");
+    std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
+    std::fs::write(design.join("assets.yaml"), "version: 1\nassets: {}\n")
+        .expect("write assets.yaml");
+    std::fs::write(tmp.path().join(".specify/specs/composition.yaml"), "version: 1\nscreens: {}\n")
+        .expect("write composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "all"])
+        .arg(tmp.path())
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["mode"], "all");
+    let results = value["results"].as_array().expect("results array");
+    assert_eq!(results.len(), 4, "expected four sub-reports: {value}");
+    assert_eq!(results[0]["mode"], "layout");
+    assert_eq!(results[1]["mode"], "composition");
+    assert_eq!(results[2]["mode"], "tokens");
+    assert_eq!(results[3]["mode"], "assets");
+    for entry in results {
+        assert!(
+            entry["report"].get("skipped").is_none(),
+            "[{}] expected real report (no skipped field): {entry}",
+            entry["mode"]
+        );
+    }
+}
+
+/// Phase 1.10: when a project is missing some inputs, the `all`
+/// envelope marks each missing sub-mode as `skipped: true` rather
+/// than failing the whole run. Exit code stays 0 when no real
+/// errors fire across the entire combined report.
+#[test]
+fn vectis_validate_all_skips_missing_inputs_without_failing() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    // Provide ONLY tokens.yaml at the project shape; the other
+    // three artifacts are absent.
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "all"])
+        .arg(tmp.path())
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "all");
+    let results = value["results"].as_array().expect("results array");
+    let mut by_mode = std::collections::HashMap::new();
+    for entry in results {
+        by_mode.insert(entry["mode"].as_str().expect("mode string").to_string(), entry);
+    }
+    for skipped in ["layout", "composition", "assets"] {
+        let entry = by_mode.get(skipped).unwrap_or_else(|| panic!("missing entry for {skipped}"));
+        assert_eq!(
+            entry["report"]["skipped"],
+            Value::Bool(true),
+            "[{skipped}] expected skipped: {entry}"
+        );
+    }
+    assert!(
+        by_mode["tokens"]["report"].get("skipped").is_none(),
+        "tokens.yaml IS on disk; report MUST NOT be skipped: {value}"
+    );
+}
+
+/// Phase 1.10: a sub-mode error (e.g. broken hex inside
+/// `tokens.yaml`) MUST surface inside `results[*].report.errors`
+/// AND drive the dispatcher's `validate_exit_code` (recursion-aware
+/// since Phase 1.6) to exit 1. This pins the contract that `all`
+/// composes the per-mode exit-code semantics correctly.
+#[test]
+fn vectis_validate_all_propagates_sub_mode_errors_into_exit_code() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    std::fs::write(
+        design.join("tokens.yaml"),
+        "version: 1\ncolors:\n  primary:\n    light: \"#xyz\"\n    dark: \"#000000\"\n",
+    )
+    .expect("write tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "all"])
+        .arg(tmp.path())
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let results = value["results"].as_array().expect("results array");
+    let tokens = results.iter().find(|e| e["mode"] == "tokens").expect("tokens sub-report present");
+    let token_errors = tokens["report"]["errors"].as_array().expect("tokens errors array");
+    assert!(!token_errors.is_empty(), "broken hex MUST surface in nested tokens report: {value}");
+}
+
+/// Phase 1.10: when no `[path]` is supplied, single-mode runs
+/// resolve the default via the artifacts:-block cascade. Pinning
+/// `validate layout` against a fixture that places the file at the
+/// `change_local` shape (`.specify/changes/<active>/layout.yaml`)
+/// asserts the change-local discovery works end-to-end through the
+/// CLI, not just inside the unit-test resolver.
+#[test]
+fn vectis_validate_layout_default_path_discovers_change_local() {
+    let tmp = tempdir().unwrap();
+    let change_dir = tmp.path().join(".specify/changes/active");
+    std::fs::create_dir_all(&change_dir).expect("mkdir change");
+    std::fs::write(change_dir.join("layout.yaml"), "version: 1\nscreens: {}\n")
+        .expect("write change-local layout.yaml");
+
+    // No explicit `[path]` -- the resolver MUST pick up the
+    // change-local file from the project root the test sets via
+    // `current_dir`.
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "layout");
+    let resolved = value["path"].as_str().expect("path is a string");
+    assert!(
+        resolved.ends_with(".specify/changes/active/layout.yaml"),
+        "expected change-local resolution, got: {resolved}"
+    );
+}
+
+/// Phase 1.10: removing the `artifacts:` block from `schema.yaml`
+/// (or, equivalently, having no `schema.yaml` on disk) MUST fall
+/// back to the embedded defaults cleanly. The single-mode default
+/// path should still resolve `design-system/tokens.yaml`.
+#[test]
+fn vectis_validate_tokens_default_path_falls_back_to_embedded_default() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    // No `.specify/project.yaml`, no schema.yaml: the resolver
+    // falls through to the embedded artifact-paths defaults.
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "vectis", "validate", "tokens"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "tokens");
+    let resolved = value["path"].as_str().expect("path is a string");
+    assert!(
+        resolved.ends_with("design-system/tokens.yaml"),
+        "expected embedded-default resolution, got: {resolved}"
+    );
 }
 
 /// Force the `missing-prerequisites` path by clearing PATH so every

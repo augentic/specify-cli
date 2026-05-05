@@ -18,7 +18,7 @@ skip_rust_env_info = true
 dependencies = ["audit", "fmt", "lint", "outdated", "deps"]
 
 [tasks.ci]
-dependencies = ["lint", "test", "test-docs", "vet", "outdated", "deny", "fmt"]
+dependencies = ["lint", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
 
 # -------------------------------------
 # Individual Actions
@@ -75,6 +75,11 @@ env = { RUSTFLAGS = "-Dwarnings" }
 [tasks.test-docs]
 command = "cargo"
 args = ["test", "--doc", "--all-features", "--workspace"]
+
+# Docs
+[tasks.doc]
+command = "cargo"
+args = ["doc", "--no-deps", "--workspace", "--all-features", "--locked"]
 
 # Miri
 [tasks.miri]

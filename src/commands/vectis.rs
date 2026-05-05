@@ -22,14 +22,26 @@ pub fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
         VectisAction::AddShell(args) => specify_vectis::add_shell::run(args),
         VectisAction::UpdateVersions(args) => specify_vectis::update_versions::run(args),
         VectisAction::Versions(args) => specify_vectis::versions_cmd::run(args),
+        VectisAction::Validate(args) => specify_vectis::validate::run(args),
     };
     match result {
         Ok(specify_vectis::CommandOutcome::Success(value)) => {
+            // `vectis validate <mode>` always emits its envelope on
+            // stdout (so the operator sees the report) but exits
+            // non-zero when the envelope carries any `errors`. Every
+            // other verb stays exit 0 on Success — they only fail via
+            // `Err(VectisError)`. RFC-11 §H: "non-zero on errors,
+            // zero with a printed warning report on warnings, zero
+            // silently on a clean run".
+            let exit = match action {
+                VectisAction::Validate(_) => validate_exit_code(&value),
+                _ => CliResult::Success,
+            };
             match format {
                 OutputFormat::Json => emit_response(value),
                 OutputFormat::Text => render_text(action, &value),
             }
-            CliResult::Success
+            exit
         }
         Ok(specify_vectis::CommandOutcome::Stub { command }) => {
             let message = format!("`vectis {command}` is not implemented yet");
@@ -128,6 +140,7 @@ fn render_text(action: &VectisAction, value: &Value) {
         VectisAction::AddShell(_) => render_add_shell_text(value),
         VectisAction::UpdateVersions(_) => render_update_versions_text(value),
         VectisAction::Versions(_) => render_versions_text(value),
+        VectisAction::Validate(_) => render_validate_text(value),
     }
 }
 
@@ -308,6 +321,144 @@ fn render_versions_text(value: &Value) {
             }
         }
     }
+}
+
+/// Map a `vectis validate` envelope to the binary's exit code.
+///
+/// The envelope shape Phase 1.5 fixed has `errors` and `warnings`
+/// arrays at the top level (one mode) and Phase 1.10 will introduce a
+/// nested `mode: "all"` shape with `results: [{ mode, report }, ...]`.
+/// To keep the dispatcher mode-agnostic, this helper:
+///
+/// 1. Looks at the top-level `errors` array first (flat mode shape).
+/// 2. When the envelope has `results` (the `all` shape from Phase
+///    1.10), recurses into every entry's `report` and returns
+///    [`CliResult::GenericFailure`] if any sub-report has errors.
+///
+/// A clean run (no errors anywhere) yields [`CliResult::Success`];
+/// warnings are reported but do not change the exit code, per RFC-11
+/// §H ("zero with a printed warning report on warnings").
+fn validate_exit_code(value: &Value) -> CliResult {
+    fn has_errors(node: &Value) -> bool {
+        if node.get("errors").and_then(Value::as_array).is_some_and(|arr| !arr.is_empty()) {
+            return true;
+        }
+        if let Some(results) = node.get("results").and_then(Value::as_array) {
+            return results
+                .iter()
+                .any(|entry| entry.get("report").is_some_and(has_errors) || has_errors(entry));
+        }
+        false
+    }
+    if has_errors(value) { CliResult::GenericFailure } else { CliResult::Success }
+}
+
+/// Forward-compatible text renderer for `vectis validate <mode>`.
+///
+/// Phase 1.6 wired the `tokens` mode through this renderer; Phases
+/// 1.7 / 1.8 / 1.9 added `assets` / `layout` / `composition`; Phase
+/// 1.10 lands `all`. The shape this function consumes is the
+/// per-mode envelope Phase 1.5 fixed:
+///
+/// ```json
+/// {
+///   "mode": "tokens",
+///   "path": "design-system/tokens.yaml",
+///   "errors":   [{ "path": "/colors/primary/light", "message": "..." }],
+///   "warnings": [{ "path": "/typography/...",       "message": "..." }]
+/// }
+/// ```
+///
+/// And the Phase 1.9 / 1.10 nested shape (auto-invoke + `all`):
+///
+/// ```json
+/// {
+///   "mode": "all",
+///   "path": "<project-root>",
+///   "results": [
+///     { "mode": "layout",      "report": { ... } },
+///     { "mode": "composition", "report": { ... } },
+///     ...
+///   ]
+/// }
+/// ```
+///
+/// `path` may be absent and the two arrays may be missing or empty
+/// on a clean run.
+fn render_validate_text(value: &Value) {
+    render_validate_envelope(value, 0);
+}
+
+/// Render a single validate envelope at the given indent depth. The
+/// `all` shape (and `composition`'s auto-invoke fold) carries
+/// `results: [{ mode, report }]`; the function recurses into each
+/// `report` at one extra indent so operators see a clear two-level
+/// hierarchy in their terminal output.
+fn render_validate_envelope(value: &Value, depth: usize) {
+    let indent = "  ".repeat(depth);
+    let mode = value.get("mode").and_then(Value::as_str).unwrap_or("?");
+    let path = value.get("path").and_then(Value::as_str);
+    let skipped = value.get("skipped").and_then(Value::as_bool).unwrap_or(false);
+
+    let header = path.map_or_else(
+        || format!("{indent}Validate {mode}"),
+        |p| format!("{indent}Validate {mode}: {p}"),
+    );
+    println!("{header}");
+
+    if skipped {
+        let msg = value.get("message").and_then(Value::as_str).unwrap_or("skipped");
+        println!("{indent}  skipped: {msg}");
+        return;
+    }
+
+    let warnings = value.get("warnings").and_then(Value::as_array);
+    let errors = value.get("errors").and_then(Value::as_array);
+    let warn_count = warnings.map_or(0, Vec::len);
+    let err_count = errors.map_or(0, Vec::len);
+
+    if let Some(arr) = warnings {
+        for w in arr {
+            let msg = w.get("message").and_then(Value::as_str).unwrap_or("?");
+            match w.get("path").and_then(Value::as_str) {
+                Some(p) if !p.is_empty() => println!("{indent}  warning: {p}: {msg}"),
+                _ => println!("{indent}  warning: {msg}"),
+            }
+        }
+    }
+    if let Some(arr) = errors {
+        for e in arr {
+            let msg = e.get("message").and_then(Value::as_str).unwrap_or("?");
+            match e.get("path").and_then(Value::as_str) {
+                Some(p) if !p.is_empty() => println!("{indent}  error: {p}: {msg}"),
+                _ => println!("{indent}  error: {msg}"),
+            }
+        }
+    }
+
+    // Phase 1.9 (`composition` auto-invoke) + Phase 1.10 (`all`):
+    // recurse through each `results[i].report` at one more indent so
+    // a `validate all` run renders as a single hierarchical summary.
+    if let Some(results) = value.get("results").and_then(Value::as_array) {
+        for entry in results {
+            if let Some(report) = entry.get("report") {
+                render_validate_envelope(report, depth + 1);
+            }
+        }
+    }
+
+    // The flat-shape summary line still fires for the `all` envelope
+    // even though it has no `errors` / `warnings` of its own; the
+    // per-sub-report lines above it carry the actionable detail.
+    let has_results = value.get("results").is_some();
+    if err_count == 0 && warn_count == 0 && !has_results {
+        println!("{indent}  OK");
+    } else if err_count != 0 || warn_count != 0 {
+        println!("{indent}  ({err_count} error(s), {warn_count} warning(s))");
+    }
+    // `all` / auto-invoke envelopes with `results: []` and no
+    // top-level findings deliberately stop here -- the sub-reports
+    // already printed their own status.
 }
 
 /// Summarise a `build-steps` array (init/add-shell shapes) as either
