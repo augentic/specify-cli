@@ -1,3 +1,4 @@
+pub mod capability;
 pub mod change;
 pub mod contract;
 pub mod init;
@@ -5,14 +6,13 @@ pub mod initiative;
 pub mod migrate;
 pub mod plan;
 pub mod registry;
-pub mod schema;
 pub mod status;
 pub mod vectis;
 pub mod workspace;
 
 use specify::Error;
 
-use crate::cli::{Cli, Commands, MigrateAction, OutputFormat, SchemaAction, WorkspaceAction};
+use crate::cli::{CapabilityAction, Cli, Commands, MigrateAction, OutputFormat, WorkspaceAction};
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_error};
 
@@ -25,19 +25,19 @@ pub fn run(cli: Cli) -> CliResult {
             hub,
         } => run_bare(cli.format, || init::run_init(cli.format, schema_uri, name, domain, hub)),
         Commands::Status => run_with_project(cli.format, status::run_status_dashboard),
-        Commands::Schema { action } => match action {
-            SchemaAction::Resolve {
-                schema_value,
+        Commands::Capability { action } => match action {
+            CapabilityAction::Resolve {
+                capability_value,
                 project_dir,
             } => run_bare(cli.format, || {
-                schema::run_schema_resolve(cli.format, schema_value, project_dir)
+                capability::run_capability_resolve(cli.format, capability_value, project_dir)
             }),
-            SchemaAction::Check { schema_dir } => {
-                run_bare(cli.format, || schema::run_schema_check(cli.format, schema_dir))
-            }
-            SchemaAction::Pipeline { phase, change } => {
-                run_with_project(cli.format, |ctx| schema::run_schema_pipeline(ctx, phase, change))
-            }
+            CapabilityAction::Check { capability_dir } => run_bare(cli.format, || {
+                capability::run_capability_check(cli.format, capability_dir)
+            }),
+            CapabilityAction::Pipeline { phase, change } => run_with_project(cli.format, |ctx| {
+                capability::run_capability_pipeline(ctx, phase, change)
+            }),
         },
         Commands::Change { action } => {
             run_with_project(cli.format, |ctx| change::run_change(ctx, action))
@@ -110,7 +110,7 @@ where
 }
 
 /// Run a command that does NOT need project context but may still fail
-/// with an `Error` (e.g. `schema resolve`, `schema check`).
+/// with an `Error` (e.g. `capability resolve`, `capability check`).
 fn run_bare<F>(format: OutputFormat, f: F) -> CliResult
 where
     F: FnOnce() -> Result<CliResult, Error>,

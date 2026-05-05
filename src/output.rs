@@ -126,6 +126,7 @@ pub fn emit_json_error(err: &Error, code: CliResult) {
         Error::ChangeNotFound { .. } => "change-not-found",
         Error::RegistryMissing => "registry-missing",
         Error::LegacyLayout { .. } => "legacy-layout",
+        Error::SchemaBecameCapability { .. } => "schema-became-capability",
         Error::InvalidName(_) => "invalid-name",
         Error::Io(_) => "io",
         Error::Yaml(_) => "yaml",

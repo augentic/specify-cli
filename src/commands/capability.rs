@@ -1,20 +1,35 @@
 #![allow(clippy::items_after_statements, clippy::needless_pass_by_value)]
 
-use std::path::PathBuf;
+//! `specify capability {resolve, check, pipeline}` (RFC-13 Phase 1.2).
+//!
+//! These verbs replace the pre-RFC-13 `specify schema *` surface. The
+//! command layer is intentionally where the post-RFC-13 manifest
+//! filename (`capability.yaml`) is enforced: the lower-level
+//! [`specify_capability::Capability`] resolver still tolerates the
+//! legacy `schema.yaml` so internal callers like `init` keep working,
+//! but the binary CLI refuses to load a directory that carries only
+//! `schema.yaml` — it emits [`Error::SchemaBecameCapability`] instead
+//! and points the operator at RFC-13 §Migration.
+
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Capability, CapabilitySource, Error, Phase, ValidationResult};
+use specify::{
+    CAPABILITY_FILENAME, Capability, CapabilitySource, Error, ManifestProbe, Phase,
+    ValidationResult,
+};
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_schema_resolve(
-    format: OutputFormat, schema_value: String, project_dir: PathBuf,
+pub fn run_capability_resolve(
+    format: OutputFormat, capability_value: String, project_dir: PathBuf,
 ) -> Result<CliResult, Error> {
-    let resolved = Capability::resolve(&schema_value, &project_dir)?;
-    let (source, path) = match &resolved.source {
+    let (root_dir, source) = Capability::locate(&capability_value, &project_dir)?;
+    enforce_capability_filename(&root_dir)?;
+    let (source_label, path) = match &source {
         CapabilitySource::Local(p) => ("local", p.clone()),
         CapabilitySource::Cached(p) => ("cached", p.clone()),
         _ => ("unknown", PathBuf::new()),
@@ -23,15 +38,15 @@ pub fn run_schema_resolve(
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
     struct ResolveBody {
-        schema_value: String,
+        capability_value: String,
         resolved_path: String,
         source: &'static str,
     }
     match format {
         OutputFormat::Json => emit_response(ResolveBody {
-            schema_value,
+            capability_value,
             resolved_path: path.display().to_string(),
-            source,
+            source: source_label,
         }),
         OutputFormat::Text => println!("{}", path.display()),
     }
@@ -58,7 +73,7 @@ struct PipelineBody {
     briefs: Vec<Value>,
 }
 
-pub fn run_schema_pipeline(
+pub fn run_capability_pipeline(
     ctx: &CommandContext, phase: Phase, change: Option<PathBuf>,
 ) -> Result<CliResult, Error> {
     let pipeline = ctx.load_pipeline()?;
@@ -114,11 +129,23 @@ pub fn run_schema_pipeline(
     Ok(CliResult::Success)
 }
 
-pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> Result<CliResult, Error> {
-    let schema_path = schema_dir.join("schema.yaml");
-    let text = std::fs::read_to_string(&schema_path)?;
-    let schema: Capability = serde_saphyr::from_str(&text)?;
-    let results = schema.validate_structure();
+pub fn run_capability_check(
+    format: OutputFormat, capability_dir: PathBuf,
+) -> Result<CliResult, Error> {
+    let manifest_path = match Capability::manifest_path_in(&capability_dir) {
+        ManifestProbe::Capability(path) => path,
+        ManifestProbe::LegacySchema(path) => {
+            return Err(Error::SchemaBecameCapability { path });
+        }
+        ManifestProbe::Missing => {
+            return Err(Error::SchemaResolution(format!(
+                "no `{CAPABILITY_FILENAME}` at {}",
+                capability_dir.display()
+            )));
+        }
+    };
+    let capability = load_capability(&manifest_path)?;
+    let results = capability.validate_structure();
     let passed = !results.iter().any(|r| matches!(r, ValidationResult::Fail { .. }));
 
     match format {
@@ -137,11 +164,11 @@ pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> Result<Cli
         }
         OutputFormat::Text => {
             if passed {
-                println!("Schema OK");
+                println!("Capability OK");
             } else {
                 let fail_count =
                     results.iter().filter(|r| matches!(r, ValidationResult::Fail { .. })).count();
-                println!("Schema invalid: {fail_count} errors");
+                println!("Capability invalid: {fail_count} errors");
                 for r in &results {
                     if let ValidationResult::Fail { rule_id, detail, .. } = r {
                         println!("  [fail] {rule_id}: {detail}");
@@ -151,6 +178,27 @@ pub fn run_schema_check(format: OutputFormat, schema_dir: PathBuf) -> Result<Cli
         }
     }
     Ok(if passed { CliResult::Success } else { CliResult::ValidationFailed })
+}
+
+/// Translate a directory probe into the post-RFC-13 invariant: the CLI
+/// surface refuses to keep walking when a directory carries only the
+/// pre-RFC-13 `schema.yaml`. Callers that succeed here are guaranteed
+/// to find a `capability.yaml` on the next read.
+fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
+    match Capability::manifest_path_in(dir) {
+        ManifestProbe::Capability(_) => Ok(()),
+        ManifestProbe::LegacySchema(path) => Err(Error::SchemaBecameCapability { path }),
+        ManifestProbe::Missing => Err(Error::SchemaResolution(format!(
+            "no `{CAPABILITY_FILENAME}` at {}",
+            dir.display()
+        ))),
+    }
+}
+
+fn load_capability(manifest_path: &Path) -> Result<Capability, Error> {
+    let text = std::fs::read_to_string(manifest_path)?;
+    let capability: Capability = serde_saphyr::from_str(&text)?;
+    Ok(capability)
 }
 
 #[derive(Serialize)]

@@ -162,6 +162,28 @@ pub enum Error {
         paths: Vec<String>,
     },
 
+    /// The capability resolver found a pre-RFC-13 `schema.yaml` where it
+    /// expected a `capability.yaml`. RFC-13 renamed the extension
+    /// primitive from "schema" to "capability"; `schema.yaml` files are
+    /// no longer loaded silently — the operator must rename the file
+    /// (and re-run `specify init <capability>` if the project still
+    /// records the old `schema:` field). `path` is the offending
+    /// `schema.yaml` the detector found so the diagnostic can name it.
+    ///
+    /// See: <https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration>
+    #[error(
+        "schema-became-capability: found `{}` but expected `capability.yaml`. \
+         RFC-13 renamed the Specify extension primitive: `schema` is now `capability`. \
+         Rename this file to `capability.yaml` (and re-run `specify init <capability>` \
+         if you have not already migrated). \
+         See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
+        path.display()
+    )]
+    SchemaBecameCapability {
+        /// Path to the legacy `schema.yaml` that triggered the diagnostic.
+        path: std::path::PathBuf,
+    },
+
     /// A name failed kebab-case validation.
     #[error("invalid name: {0}")]
     InvalidName(String),
@@ -300,6 +322,35 @@ mod tests {
     fn invalid_name_display() {
         let err = Error::InvalidName("bad--name".to_string());
         assert_eq!(err.to_string(), "invalid name: bad--name");
+    }
+
+    #[test]
+    fn schema_became_capability_display() {
+        let err = Error::SchemaBecameCapability {
+            path: std::path::PathBuf::from("./.specify/.cache/omnia/schema.yaml"),
+        };
+        let s = err.to_string();
+        assert!(
+            s.contains("schema-became-capability"),
+            "diagnostic must carry the stable kebab-case code, got: {s}"
+        );
+        assert!(
+            s.contains("./.specify/.cache/omnia/schema.yaml"),
+            "diagnostic must surface the offending path, got: {s}"
+        );
+        assert!(
+            s.contains("capability.yaml"),
+            "diagnostic must name the post-rename filename, got: {s}"
+        );
+        assert!(s.contains("RFC-13"), "diagnostic must cite RFC-13, got: {s}");
+        assert!(
+            s.contains("specify init <capability>"),
+            "diagnostic must mention the post-rename init command, got: {s}"
+        );
+        assert!(
+            s.contains("rfcs/rfc-13-extensibility.md#migration"),
+            "diagnostic must link the RFC-13 §Migration anchor, got: {s}"
+        );
     }
 
     #[test]

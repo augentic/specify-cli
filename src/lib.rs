@@ -27,9 +27,10 @@ pub use specify_merge::{
     validate_baseline,
 };
 pub use specify_capability::{
-    Brief, BriefFrontmatter, CacheMeta, Capability, CapabilitySource, InitiativeBrief,
-    InitiativeFrontmatter, InitiativeInput, InputKind, Phase, Pipeline, PipelineEntry,
-    PipelineView, Registry, RegistryProject, ResolvedCapability,
+    Brief, BriefFrontmatter, CAPABILITY_FILENAME, CacheMeta, Capability, CapabilitySource,
+    InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind, LEGACY_SCHEMA_FILENAME,
+    ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, Registry, RegistryProject,
+    ResolvedCapability,
 };
 pub use specify_spec::{
     DeltaSpec, ParsedSpec, RenameEntry, RequirementBlock, Scenario, has_delta_headers,

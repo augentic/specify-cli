@@ -30,7 +30,10 @@ mod registry;
 
 pub use brief::{Brief, BriefFrontmatter};
 pub use cache::CacheMeta;
-pub use capability::{Capability, CapabilitySource, Phase, Pipeline, PipelineEntry, ResolvedCapability};
+pub use capability::{
+    CAPABILITY_FILENAME, Capability, CapabilitySource, LEGACY_SCHEMA_FILENAME, ManifestProbe,
+    Phase, Pipeline, PipelineEntry, ResolvedCapability,
+};
 pub use initiative_brief::{InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind};
 pub use pipeline::PipelineView;
 pub use registry::{ContractRoles, Registry, RegistryProject};

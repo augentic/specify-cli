@@ -49,10 +49,10 @@ pub enum Commands {
     /// Project dashboard — registry summary, plan progress, active changes
     Status,
 
-    /// Schema operations
-    Schema {
+    /// Capability operations
+    Capability {
         #[command(subcommand)]
-        action: SchemaAction,
+        action: CapabilityAction,
     },
 
     /// Change lifecycle operations
@@ -510,15 +510,24 @@ pub enum MigrateAction {
 }
 
 #[derive(Subcommand)]
-pub enum SchemaAction {
-    /// Resolve a schema value to a directory path
+pub enum CapabilityAction {
+    /// Resolve a capability value to a directory path
     Resolve {
-        schema_value: String,
+        /// Capability value (bare name or URL) to resolve through the
+        /// project-local cache and `schemas/` lookup
+        capability_value: String,
         #[arg(long, default_value = ".")]
         project_dir: PathBuf,
     },
-    /// Validate a schema.yaml file
-    Check { schema_dir: PathBuf },
+    /// Validate a capability.yaml file
+    ///
+    /// Reads `<capability_dir>/capability.yaml`. Refuses with the
+    /// `schema-became-capability` diagnostic when the directory carries
+    /// only the pre-RFC-13 `schema.yaml` shape.
+    Check {
+        /// Directory containing `capability.yaml`
+        capability_dir: PathBuf,
+    },
     /// List the briefs for a phase in topological order (optionally
     /// with completion status against a specific change)
     Pipeline {

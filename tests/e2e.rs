@@ -395,17 +395,18 @@ fn task_mark_marks_then_is_idempotent() {
 }
 
 // ---------------------------------------------------------------------------
-// 6. schema resolve — local
+// 6. capability resolve — local
 // ---------------------------------------------------------------------------
 
 #[test]
-fn schema_resolve_local_returns_local_source() {
+fn capability_resolve_local_returns_local_source() {
     let project = Project::init().with_schemas();
-    fs::remove_dir_all(project.root().join(".specify/.cache/omnia")).expect("remove cached schema");
+    fs::remove_dir_all(project.root().join(".specify/.cache/omnia"))
+        .expect("remove cached capability");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "schema", "resolve", "omnia"])
+        .args(["--format", "json", "capability", "resolve", "omnia"])
         .arg("--project-dir")
         .arg(project.root())
         .assert()
@@ -413,7 +414,7 @@ fn schema_resolve_local_returns_local_source() {
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(actual["schema-version"], 2);
-    assert_eq!(actual["schema-value"], "omnia");
+    assert_eq!(actual["capability-value"], "omnia");
     assert_eq!(actual["source"], "local");
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
@@ -423,17 +424,17 @@ fn schema_resolve_local_returns_local_source() {
 }
 
 // ---------------------------------------------------------------------------
-// 7. schema resolve — cached
+// 7. capability resolve — cached
 // ---------------------------------------------------------------------------
 
 #[test]
-fn schema_resolve_cached_returns_cached_source() {
+fn capability_resolve_cached_returns_cached_source() {
     // `init` + cache-only layout (no `schemas/omnia` under the tempdir).
     let project = Project::init().with_cached_schema();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "schema", "resolve", "omnia"])
+        .args(["--format", "json", "capability", "resolve", "omnia"])
         .arg("--project-dir")
         .arg(project.root())
         .assert()
