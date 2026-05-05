@@ -44,32 +44,57 @@
 //!    `component: <slug>` directive must share a single canonical
 //!    skeleton across the document. The engine itself is generic and
 //!    Phase 1.9 reuses it for `composition` mode (see
-//!    [`check_structural_identity`]); the engine consumes
+//!    `check_structural_identity`); the engine consumes
 //!    `*-when`-key *presence* (forbidden in layout, allowed in
 //!    composition) but ignores `*-when` *condition values* per §G's
 //!    edge-case enumeration.
 //!
-//! Cross-artifact reference checks (token / asset id resolution
-//! from inside `layout.yaml`) are deliberately deferred to Phase 1.9.
-//! The plan note in Phase 1.8 ("Cross-artifact reference checks are
-//! also §A behavior; layered exactly the same way as Phase 1.9 does
-//! for composition") is an architectural pointer rather than a Phase
-//! 1.8 deliverable: §A's verification step describes the inferer
-//! invoking those checks, and §H's `layout` mode bullet enumerates
-//! "YAML syntax, schema shape, `screens` only, no `delta`, no
-//! define-owned wiring keys, and the §G structural-identity rule"
-//! without mentioning auto-invoke. Phase 1.9 owns the auto-invoke
-//! mechanism; once it lands, layout mode can opt into it via the
-//! same shared helper without disturbing Phase 1.8's surface.
+//! Phase 1.9 brings `composition` mode online -- the lifecycle
+//! artifact form (`screens` for baseline, `delta` for change-local).
+//! On top of YAML parsing the mode performs:
 //!
-//! The remaining two modes (`composition`, `all`) still return
-//! [`CommandOutcome::Stub`] and will be filled in by Phases 1.9
-//! and 1.10:
+//! 1. **Schema validation** against the same vendored composition
+//!    schema (shared with `layout` mode -- one schema, two runtime
+//!    layers).
+//! 2. **Structural-identity** (RFC-11 §G) -- shared engine
+//!    (`check_structural_identity`) with `layout` mode. Both
+//!    `screens` and `delta` shapes are walked; instances inside
+//!    `delta.added` and `delta.modified` participate in identity
+//!    checks together (a slug introduced in `added` must agree with
+//!    a slug modified in `modified`).
+//! 3. **Auto-invoke** (RFC-11 §H "CLI validation modes" + §I
+//!    "Validation gate") -- when a sibling `tokens.yaml` exists, run
+//!    `validate tokens` and fold its envelope into `results: [{ mode,
+//!    report }]`; same for `assets.yaml`. The folding shape matches
+//!    what Phase 1.10's `validate all` will emit so the dispatcher's
+//!    `validate_exit_code` (recursion-aware since Phase 1.6) needs no
+//!    changes.
+//! 4. **Cross-artifact reference resolution** -- when sibling
+//!    `tokens.yaml` is present, every typed token reference in the
+//!    composition (`color`, `background`, `border.color`, `elevation`)
+//!    plus every string-valued spacing / corner-radius reference
+//!    (`gap`, `padding`, `padding.<side>`, `corner_radius`) is
+//!    resolved against the manifest's category. Unknown ids become
+//!    composition-mode errors with JSON-Pointer-shaped paths. When
+//!    sibling `assets.yaml` is present, the same `image` / `icon` /
+//!    `icon-button` / `fab` walker Phase 1.7 introduced is reused to
+//!    resolve static asset references against the manifest's id set.
 //!
-//! - **Phase 1.9** -- `composition` mode adds cross-artifact
-//!   resolution and auto-invokes `tokens` / `assets` when sibling
-//!   files exist. Reuses the structural-identity engine landed
-//!   in Phase 1.8.
+//! Composition mode deliberately defers full resolution of
+//! `maps_to` / `bind` / `event` / overlay `trigger` / navigation
+//! target references. The plan-§1.9 note ("RFC-7 already specifies
+//! the field/event/ViewModel/overlay/navigation coverage rules; this
+//! phase carries them forward through whatever helper RFC-7 left in
+//! place") points at a helper that does not exist in the CLI today
+//! -- those rules are design.md / specs/-driven and require a richer
+//! project-wide context than `validate composition` has. The schema
+//! patterns (`bindValue`, `eventValue`, `triggerValue`) shape-check
+//! these fields at parse time; the runtime resolution layer is left
+//! for a follow-on RFC.
+//!
+//! The remaining mode (`all`) still returns [`CommandOutcome::Stub`]
+//! and will be filled in by Phase 1.10:
+//!
 //! - **Phase 1.10** -- `all` runs the four modes in turn, plus the
 //!   `artifacts:`-block default-path resolution every mode shares.
 //!
@@ -149,6 +174,13 @@ const DEFAULT_ASSETS_PATH: &str = "design-system/assets.yaml";
 /// canonical fallback is the project-relative path the RFC names.
 const DEFAULT_LAYOUT_PATH: &str = "design-system/layout.yaml";
 
+/// Default fallback path for `composition.yaml`. Composition's
+/// `paths.baseline` (RFC-11 §H worked v1 shape) is the canonical
+/// "no path supplied" location for v1; Phase 1.10 layers the full
+/// `artifacts:`-block cascade (`paths.change_local` then
+/// `paths.baseline`) on top of this.
+const DEFAULT_COMPOSITION_PATH: &str = ".specify/specs/composition.yaml";
+
 /// Lazily compiled tokens validator. Compiling once per process avoids
 /// re-parsing the embedded schema on every invocation; in practice the
 /// CLI runs one mode per process today, but Phase 1.10's `validate
@@ -166,28 +198,30 @@ static COMPOSITION_VALIDATOR: OnceLock<Result<Validator, String>> = OnceLock::ne
 
 /// Dispatch a `vectis validate` invocation to the per-mode handler.
 ///
-/// Phases 1.6 + 1.7 implement `tokens` and `assets`; the other three
-/// modes still return [`CommandOutcome::Stub`] with a `command`
-/// string of the form `"validate <mode>"` so the dispatcher in
-/// `src/commands/vectis.rs` emits the v2 `not-implemented` envelope
-/// unchanged.
+/// Phases 1.6 / 1.7 / 1.8 / 1.9 implement `tokens` / `assets` /
+/// `layout` / `composition`; only `all` still returns
+/// [`CommandOutcome::Stub`] with a `command` string of the form
+/// `"validate all"` so the dispatcher in `src/commands/vectis.rs`
+/// emits the v2 `not-implemented` envelope unchanged.
 ///
 /// # Errors
 ///
 /// Returns [`VectisError::InvalidProject`] when the resolved
-/// `tokens.yaml` / `assets.yaml` is unreadable (missing file,
-/// permission denied) and [`VectisError::Internal`] if an embedded
-/// schema fails to compile (a build-time invariant violation -- both
-/// schemas ship with the binary). YAML parse failures and schema
-/// validation failures are *not* errors at this layer; they are
-/// folded into the `errors` array of the per-mode envelope so the
-/// operator sees the full report alongside any other findings.
+/// `tokens.yaml` / `assets.yaml` / `layout.yaml` / `composition.yaml`
+/// is unreadable (missing file, permission denied) and
+/// [`VectisError::Internal`] if an embedded schema fails to compile
+/// (a build-time invariant violation -- all three schemas ship with
+/// the binary). YAML parse failures and schema validation failures
+/// are *not* errors at this layer; they are folded into the `errors`
+/// array of the per-mode envelope so the operator sees the full
+/// report alongside any other findings.
 pub fn run(args: &ValidateArgs) -> Result<CommandOutcome, VectisError> {
     match args.mode {
         ValidateMode::Tokens => validate_tokens(args.path.as_deref()),
         ValidateMode::Assets => validate_assets(args.path.as_deref()),
         ValidateMode::Layout => validate_layout(args.path.as_deref()),
-        mode => Ok(CommandOutcome::Stub {
+        ValidateMode::Composition => validate_composition(args.path.as_deref()),
+        mode @ ValidateMode::All => Ok(CommandOutcome::Stub {
             command: stub_command(mode),
         }),
     }
@@ -460,6 +494,203 @@ fn validate_layout(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
         "errors": errors,
         "warnings": warnings,
     })))
+}
+
+/// Validate `composition.yaml` as the lifecycle artifact (RFC-11 §G,
+/// §H "`composition` mode", §I "Validation gate").
+///
+/// Resolution order for the file path mirrors the other modes:
+/// the explicit `[path]` positional wins, otherwise fall back to
+/// the canonical `.specify/specs/composition.yaml`. Phase 1.10
+/// layers the `artifacts:`-block cascade
+/// (`paths.change_local` → `paths.baseline`) on top.
+///
+/// The mode performs four checks:
+///
+/// 1. **Schema validation** against the embedded composition schema
+///    (shared with `layout` mode -- one schema, two runtime
+///    layers).
+/// 2. **Structural-identity** for `component:` directives (RFC-11
+///    §G), reusing Phase 1.8's [`check_structural_identity`]
+///    engine. The walk covers both `screens` (baseline shape) and
+///    `delta.added` / `delta.modified` (change-local shape) so
+///    instances introduced or modified in a delta participate in
+///    identity checks together.
+/// 3. **Auto-invoke** sibling `tokens.yaml` / `assets.yaml` modes
+///    when the files exist; their envelopes are folded into
+///    `results: [{ mode, report }]` (the same shape Phase 1.10's
+///    `validate all` will emit).
+/// 4. **Cross-artifact reference resolution** -- token references
+///    (`color`, `background`, `border.color`, `elevation`, plus
+///    string-valued `gap` / `padding` / `padding.<side>` /
+///    `corner_radius`) and asset references (`image.name`,
+///    `icon.name`, `icon-button.icon`, `fab.icon`) are resolved
+///    against the discovered manifests' id sets. Unresolved
+///    references become composition-mode errors with
+///    JSON-Pointer-shaped paths.
+///
+/// `maps_to` / `bind` / `event` / overlay `trigger` / navigation
+/// target full resolution is deferred -- the schema's regex
+/// patterns shape-check these fields at parse time, but resolution
+/// against `design.md` / `specs/` belongs to a follow-on RFC.
+fn validate_composition(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
+    let target =
+        path.map_or_else(|| PathBuf::from(DEFAULT_COMPOSITION_PATH), std::path::Path::to_path_buf);
+
+    let source = std::fs::read_to_string(&target).map_err(|err| VectisError::InvalidProject {
+        message: format!("composition.yaml not readable at {}: {err}", target.display()),
+    })?;
+
+    let mut errors: Vec<Value> = Vec::new();
+    // Composition mode has no warning class in v1 -- reference
+    // mismatches are errors and structural-identity divergence is
+    // an error. The empty `warnings` array stays in the envelope so
+    // the shape matches the other modes; if a future phase
+    // introduces a soft-finding (e.g. operator-flagged
+    // candidate-component comments) it can push here without
+    // disturbing the envelope contract.
+    let warnings: Vec<Value> = Vec::new();
+    let mut results: Vec<Value> = Vec::new();
+
+    match serde_saphyr::from_str::<Value>(&source) {
+        Ok(instance) => {
+            let validator = composition_validator()?;
+            for err in validator.iter_errors(&instance) {
+                errors.push(json!({
+                    "path": err.instance_path().to_string(),
+                    "message": err.to_string(),
+                }));
+            }
+
+            // Structural identity walks both shapes. The schema's
+            // `oneOf` ensures only one of `screens` / `delta` is
+            // present at a time; the `if let` guards keep the call
+            // site shape-agnostic so a malformed document
+            // (`oneOf`-rejected by the validator, but still loaded)
+            // doesn't trip a NPE here.
+            if let Some(screens) = instance.get("screens") {
+                check_structural_identity(screens, "/screens", &mut errors);
+            }
+            if let Some(delta) = instance.get("delta") {
+                // The walker descends into `delta.added`,
+                // `delta.modified`, and `delta.removed` -- collecting
+                // every `component:` directive into a single instance
+                // list so a slug that appears in both `added` and
+                // `modified` is checked for skeleton agreement.
+                check_structural_identity(delta, "/delta", &mut errors);
+            }
+
+            // Sibling discovery + auto-invoke. Both helpers are
+            // ordered: `tokens` before `assets` so the envelope's
+            // `results` array matches the dispatch order operators
+            // see in `vectis validate all` (Phase 1.10).
+            let tokens_sibling = find_sibling_input(&target, "tokens.yaml");
+            let assets_sibling = find_sibling_input(&target, "assets.yaml");
+
+            if let Some(ref tokens_path) = tokens_sibling {
+                let report = run_inner(ValidateMode::Tokens, tokens_path)?;
+                results.push(json!({
+                    "mode": ValidateMode::Tokens.as_str(),
+                    "report": report,
+                }));
+            }
+            if let Some(ref assets_path) = assets_sibling {
+                let report = run_inner(ValidateMode::Assets, assets_path)?;
+                results.push(json!({
+                    "mode": ValidateMode::Assets.as_str(),
+                    "report": report,
+                }));
+            }
+
+            // Cross-artifact reference resolution. Token / asset
+            // walks run against the *content* of the sibling
+            // manifests, separately from the auto-invoked
+            // structural validation above. This is the layer that
+            // catches "composition references a name that does not
+            // exist in tokens.yaml / assets.yaml" -- the auto-invoke
+            // catches "tokens.yaml / assets.yaml is itself
+            // structurally broken".
+            if let Some(ref tokens_path) = tokens_sibling
+                && let Some(tokens_value) = parse_yaml_file(tokens_path)
+            {
+                resolve_token_references(&instance, &tokens_value, &mut errors);
+            }
+            if let Some(ref assets_path) = assets_sibling
+                && let Some(assets_value) = parse_yaml_file(assets_path)
+            {
+                resolve_asset_references(&instance, &assets_value, &mut errors);
+            }
+        }
+        Err(err) => {
+            errors.push(json!({
+                "path": "",
+                "message": format!("invalid YAML: {err}"),
+            }));
+        }
+    }
+
+    let mut envelope = json!({
+        "mode": ValidateMode::Composition.as_str(),
+        "path": target.display().to_string(),
+        "errors": errors,
+        "warnings": warnings,
+    });
+    // Only emit `results` when we actually folded something in.
+    // The `validate all` envelope (Phase 1.10) ALWAYS carries a
+    // `results` array; the per-mode envelope keeps it optional so
+    // operators of pure-composition runs see a clean shape.
+    if !results.is_empty()
+        && let Value::Object(ref mut map) = envelope
+    {
+        map.insert("results".to_string(), Value::Array(results));
+    }
+
+    Ok(CommandOutcome::Success(envelope))
+}
+
+/// Re-enter [`run`] for the auto-invoke path -- runs the named
+/// sub-mode against the supplied path and returns its envelope (the
+/// `Value` inside [`CommandOutcome::Success`]).
+///
+/// Used by `composition` mode (Phase 1.9) to fold sibling `tokens` /
+/// `assets` envelopes into its own report. Phase 1.10's `all` mode
+/// will use the same helper to dispatch each sub-mode in turn.
+///
+/// A [`CommandOutcome::Stub`] from a sub-mode is treated as an
+/// invariant breach today (every mode `composition` auto-invokes is
+/// already wired) and surfaces as [`VectisError::Internal`] so the
+/// caller sees a clean failure rather than a silently-empty report.
+fn run_inner(mode: ValidateMode, path: &Path) -> Result<Value, VectisError> {
+    let inner_args = ValidateArgs {
+        mode,
+        path: Some(path.to_path_buf()),
+    };
+    match run(&inner_args)? {
+        CommandOutcome::Success(value) => Ok(value),
+        CommandOutcome::Stub { command } => Err(VectisError::Internal {
+            message: format!(
+                "auto-invoke folded a stub sub-mode `{command}`; this should never happen now that Phases 1.6/1.7 have landed",
+            ),
+        }),
+    }
+}
+
+/// Read `path` and parse it as YAML into a [`serde_json::Value`].
+///
+/// The `Option<Value>` return shape is intentional -- we only call
+/// this from inside `validate_composition` after we've already
+/// loaded the manifest through `validate_tokens` /
+/// `validate_assets`, so the auto-invoked envelope already carries
+/// any read / parse findings. This helper just gets at the
+/// *content* for the reference-resolution pass; if it fails for any
+/// reason, the caller silently skips ref resolution against that
+/// manifest (the auto-invoke envelope will already point at the
+/// problem). Returning `None` lets the call site stay flat with
+/// `if let Some(...)` instead of dragging a synthetic error type
+/// through.
+fn parse_yaml_file(path: &Path) -> Option<Value> {
+    let source = std::fs::read_to_string(path).ok()?;
+    serde_saphyr::from_str::<Value>(&source).ok()
 }
 
 /// Compile the embedded tokens schema once and re-use the
@@ -812,6 +1043,181 @@ fn find_sibling_composition(assets_path: &Path) -> Option<SiblingComposition> {
         }
         if !cursor.pop() {
             return None;
+        }
+    }
+}
+
+/// Locate a sibling input artifact (`tokens.yaml` or `assets.yaml`)
+/// for the supplied composition path. Two-step search:
+///
+/// 1. Same directory as the composition: this catches the
+///    change-local case where `composition.yaml`, `tokens.yaml`,
+///    and `assets.yaml` all live under
+///    `.specify/changes/<name>/`.
+/// 2. Project root (parent of the nearest `.specify/` ancestor):
+///    fall back to `<root>/design-system/<filename>`. This catches
+///    the canonical project-wide layout from RFC-11 §H "Inputs".
+///
+/// Returns `None` when neither location resolves. Phase 1.10 will
+/// replace this with the full `artifacts:`-block cascade
+/// (`paths.change_local` → `paths.project`); the same call sites
+/// keep working unchanged because both helpers return
+/// `Option<PathBuf>`.
+fn find_sibling_input(composition_path: &Path, filename: &str) -> Option<PathBuf> {
+    if let Some(parent) = composition_path.parent() {
+        let local = parent.join(filename);
+        if local.is_file() {
+            return Some(local);
+        }
+    }
+
+    // Walk up to find `.specify/`. The project root is the parent
+    // of that directory (the same anchor `find_sibling_composition`
+    // uses, just inverted -- composition discovery starts FROM
+    // assets.yaml; here we discover tokens / assets FROM
+    // composition.yaml). Stop the walk once `.specify/` is found
+    // so a parent project's `.specify/` cannot bleed in.
+    let mut cursor = composition_path.parent()?.to_path_buf();
+    loop {
+        if cursor.join(".specify").is_dir() {
+            let candidate = cursor.join("design-system").join(filename);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+            return None;
+        }
+        if !cursor.pop() {
+            return None;
+        }
+    }
+}
+
+/// Walk a composition document and append an error for every token
+/// reference whose value is not present in `tokens` under the
+/// expected category.
+///
+/// V1 token-ref categories (RFC-11 §F + Appendix D shape):
+///
+/// - `color`, `background`, `border.color` → `colors.<name>`
+/// - `elevation` (groupProps) → `elevation.<name>`
+/// - `gap`, `padding`, `padding.<side>` (when string-valued) →
+///   `spacing.<name>`
+/// - `corner_radius` (when string-valued) → `cornerRadius.<name>`
+///
+/// Skipped for v1 (deliberately ambiguous, deferred to a follow-on
+/// RFC):
+///
+/// - `style` -- the schema declares `style: { type: string }` with
+///   no enum; it is a typography ref on `text` items but a
+///   presentation enum on `button`/`list`/etc. Without a
+///   per-item-kind classifier, autoresolving it generates false
+///   positives.
+/// - `size.width` / `size.height` -- the schema's `sizingValue`
+///   only permits `"fill"` / `"hug"` strings, so these never
+///   reference tokens.
+fn resolve_token_references(composition: &Value, tokens: &Value, errors: &mut Vec<Value>) {
+    walk_token_refs(composition, "", tokens, errors);
+}
+
+/// Recursive walker driving [`resolve_token_references`]. Matches on
+/// the well-known token-bearing keys and recurses through the rest
+/// of the document. The category lookup is centralised in
+/// [`token_category_for_key`] so the walker stays small.
+fn walk_token_refs(node: &Value, json_path: &str, tokens: &Value, errors: &mut Vec<Value>) {
+    match node {
+        Value::Object(map) => {
+            for (key, val) in map {
+                let child_path = format!("{json_path}/{}", escape_pointer_token(key));
+
+                // String-valued token refs: look up the category
+                // for `key` and resolve `val` (as a string) against
+                // the tokens manifest's category map. `gap` /
+                // `padding` / `corner_radius` skip resolution when
+                // the value is a number (literal pixel value).
+                if let Some(category) = token_category_for_key(key)
+                    && let Some(name) = val.as_str()
+                {
+                    check_token_ref(category, name, &child_path, tokens, errors);
+                }
+
+                // `padding` may also be a paddingSpec object. Walk
+                // each side as a spacing ref. The string-valued
+                // `padding: md` case is already handled above.
+                if key == "padding"
+                    && let Some(side_map) = val.as_object()
+                {
+                    for (side, side_val) in side_map {
+                        if let Some(name) = side_val.as_str() {
+                            let side_path = format!("{child_path}/{}", escape_pointer_token(side));
+                            check_token_ref("spacing", name, &side_path, tokens, errors);
+                        }
+                    }
+                }
+
+                walk_token_refs(val, &child_path, tokens, errors);
+            }
+        }
+        Value::Array(arr) => {
+            for (i, v) in arr.iter().enumerate() {
+                walk_token_refs(v, &format!("{json_path}/{i}"), tokens, errors);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Map a composition-document key to the `tokens.yaml` category its
+/// string value resolves against, or `None` when the key does not
+/// carry a deterministic token reference in v1.
+const fn token_category_for_key(key: &str) -> Option<&'static str> {
+    match key.as_bytes() {
+        b"color" | b"background" => Some("colors"),
+        b"elevation" => Some("elevation"),
+        b"gap" | b"padding" => Some("spacing"),
+        b"corner_radius" => Some("cornerRadius"),
+        _ => None,
+    }
+}
+
+/// Resolve `name` against `tokens.<category>` and append an error to
+/// `errors` when it is absent. The error message names both the
+/// category and the offending name so an operator can fix it
+/// without re-reading the manifest.
+fn check_token_ref(
+    category: &str, name: &str, json_path: &str, tokens: &Value, errors: &mut Vec<Value>,
+) {
+    let exists =
+        tokens.get(category).and_then(Value::as_object).is_some_and(|m| m.contains_key(name));
+    if !exists {
+        errors.push(json!({
+            "path": json_path,
+            "message": format!(
+                "composition references unknown {category} token `{name}` -- not present in tokens.yaml under `{category}.{name}`",
+            ),
+        }));
+    }
+}
+
+/// Walk a composition document and append an error for every static
+/// asset reference whose name is not declared under
+/// `assets.<id>` in the supplied assets manifest. Reuses Phase 1.7's
+/// [`collect_asset_references`] walker so the reference shapes
+/// (`image.name`, `icon.name`, `icon-button.icon`, `fab.icon`)
+/// stay in lock-step between composition mode (this function) and
+/// assets mode's own composition-discovery path.
+fn resolve_asset_references(composition: &Value, assets: &Value, errors: &mut Vec<Value>) {
+    let asset_ids = assets.get("assets").and_then(Value::as_object);
+    let refs = collect_asset_references(composition);
+    for asset_ref in &refs {
+        let exists = asset_ids.is_some_and(|m| m.contains_key(&asset_ref.id));
+        if !exists {
+            errors.push(json!({
+                "path": asset_ref.path,
+                "message": format!(
+                    "composition references unknown asset id `{}` -- not present in assets.yaml",
+                    asset_ref.id,
+                ),
+            }));
         }
     }
 }
@@ -1393,24 +1799,23 @@ assets:
         }
     }
 
-    /// Stub modes (every mode except `tokens`, `assets`, and
-    /// `layout` after Phases 1.6 / 1.7 / 1.8) MUST continue to
-    /// return [`CommandOutcome::Stub`] until the corresponding phase
-    /// lands. This pins the regression so accidentally flipping a
-    /// mode to `Success` shows up in CI.
+    /// Stub modes (every mode except `tokens`, `assets`, `layout`,
+    /// and `composition` after Phases 1.6 / 1.7 / 1.8 / 1.9) MUST
+    /// continue to return [`CommandOutcome::Stub`] until the
+    /// corresponding phase lands. After Phase 1.9 only `all`
+    /// remains stubbed; this pins the regression so accidentally
+    /// flipping that mode to `Success` shows up in CI. (Kept as a
+    /// `#[test]` rather than inlining into a sibling test so Phase
+    /// 1.10 can simply delete the function once `all` lands.)
     #[test]
     fn stub_modes_still_return_stub() {
-        for (mode, expected) in [
-            (ValidateMode::Composition, "validate composition"),
-            (ValidateMode::All, "validate all"),
-        ] {
-            let args = ValidateArgs { mode, path: None };
-            let outcome = run(&args).expect("stub never errors");
-            match outcome {
-                CommandOutcome::Stub { command } => assert_eq!(command, expected),
-                CommandOutcome::Success(value) => {
-                    panic!("expected Stub for {mode:?}, got Success({value})")
-                }
+        let mode = ValidateMode::All;
+        let args = ValidateArgs { mode, path: None };
+        let outcome = run(&args).expect("stub never errors");
+        match outcome {
+            CommandOutcome::Stub { command } => assert_eq!(command, "validate all"),
+            CommandOutcome::Success(value) => {
+                panic!("expected Stub for {mode:?}, got Success({value})")
             }
         }
     }
@@ -2386,6 +2791,688 @@ screens:
             Err(VectisError::InvalidProject { message }) => {
                 assert!(
                     message.contains("layout.yaml not readable"),
+                    "unexpected message: {message}"
+                );
+            }
+            other => panic!("expected InvalidProject for missing file, got {other:?}"),
+        }
+    }
+
+    // -------------------------------------------------------------
+    // composition-mode unit tests (Phase 1.9)
+    // -------------------------------------------------------------
+
+    /// Materialise a composition document plus optional sibling
+    /// `tokens.yaml` and `assets.yaml` on disk under a fresh
+    /// tempdir, returning the tempdir and the composition path.
+    /// The two helpers default to placing the inputs in the same
+    /// directory (the change-local-shape that
+    /// [`find_sibling_input`] picks up first).
+    fn write_composition_project(
+        composition: &str, tokens: Option<&str>, assets: Option<&str>,
+    ) -> (TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // Mark the tree as a Specify project so
+        // `find_sibling_input`'s walk-up can stop at the right
+        // anchor even when we're testing the design-system fallback
+        // shape elsewhere.
+        std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+        let comp_path = tmp.path().join("composition.yaml");
+        std::fs::write(&comp_path, composition).expect("write composition.yaml");
+        if let Some(yaml) = tokens {
+            std::fs::write(tmp.path().join("tokens.yaml"), yaml).expect("write tokens.yaml");
+        }
+        if let Some(yaml) = assets {
+            std::fs::write(tmp.path().join("assets.yaml"), yaml).expect("write assets.yaml");
+        }
+        (tmp, comp_path)
+    }
+
+    /// Run `validate_composition` against a composition fixture and
+    /// return the unwrapped JSON envelope. Mirrors `run_layout` but
+    /// runs through the public `run` dispatcher so the dispatch
+    /// arm stays exercised.
+    fn run_composition(comp_path: &Path) -> Value {
+        let args = ValidateArgs {
+            mode: ValidateMode::Composition,
+            path: Some(comp_path.to_path_buf()),
+        };
+        extract_envelope(run(&args).expect("run succeeds"))
+    }
+
+    /// Acceptance baseline: a minimal valid composition with no
+    /// sibling tokens / assets validates cleanly. The envelope
+    /// SHOULD NOT carry a `results` array when no sibling files
+    /// were found (the array is only emitted when auto-invoke
+    /// folded something in).
+    #[test]
+    fn composition_clean_run_validates_silently_without_siblings() {
+        let yaml = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        each: tasks
+        item:
+          - text:
+              content: hello
+";
+        let (_tmp, comp_path) = write_composition_project(yaml, None, None);
+        let envelope = run_composition(&comp_path);
+        assert_eq!(envelope["mode"], "composition");
+        assert!(errors_array(&envelope).is_empty(), "errors unexpected: {envelope}");
+        assert!(warnings_array(&envelope).is_empty(), "warnings unexpected: {envelope}");
+        assert!(
+            envelope.get("results").is_none(),
+            "results array should be absent without auto-invoke: {envelope}"
+        );
+    }
+
+    /// Composition mode (unlike layout mode) MUST allow
+    /// define-owned wiring keys (`bind`, `event`, `error`,
+    /// overlay `trigger`, `*-when`) and `delta:` shape. This pins
+    /// the contract distinction that justifies two runtime layers
+    /// over the same schema.
+    #[test]
+    fn composition_permits_wired_keys_layout_rejects() {
+        let yaml = r"version: 1
+screens:
+  s:
+    name: S
+    maps_to: SomeRoute
+    body:
+      list:
+        each: tasks
+        item:
+          - checkbox:
+              bind: tasks.completed
+              event: ToggleTask
+              strikethrough-when: tasks.completed
+    overlays:
+      sheet:
+        kind: sheet
+        trigger: OpenSheet
+        content:
+          - text:
+              content: hi
+";
+        let (_tmp, comp_path) = write_composition_project(yaml, None, None);
+        let envelope = run_composition(&comp_path);
+        assert!(
+            errors_array(&envelope).is_empty(),
+            "wired keys MUST validate cleanly in composition mode: {envelope}"
+        );
+    }
+
+    /// `delta:` documents are valid in composition mode (the
+    /// change-local lifecycle shape RFC-11 §H names). The schema's
+    /// `oneOf` accepts either `screens` or `delta`.
+    #[test]
+    fn composition_accepts_delta_documents() {
+        let yaml = r"version: 1
+delta:
+  added:
+    new-screen:
+      name: New
+      body:
+        list:
+          each: things
+          item:
+            - text:
+                content: hello
+  modified:
+    other:
+      name: Other
+      body:
+        - text:
+            content: hi
+";
+        let (_tmp, comp_path) = write_composition_project(yaml, None, None);
+        let envelope = run_composition(&comp_path);
+        assert!(errors_array(&envelope).is_empty(), "delta MUST validate cleanly: {envelope}");
+    }
+
+    /// A token reference (`color: nonexistent`) that is absent from
+    /// the sibling `tokens.yaml` produces a composition-mode error
+    /// pointing at the offending node. This is the cross-artifact
+    /// resolution layer the auto-invoke does NOT cover (the
+    /// auto-invoke catches "tokens.yaml is itself broken" -- this
+    /// catches "composition references something tokens.yaml does
+    /// not declare").
+    #[test]
+    fn composition_unresolved_color_token_is_an_error() {
+        let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - text:
+          content: hi
+          color: nonexistent
+";
+        let tokens = r##"version: 1
+colors:
+  primary:
+    light: "#0066CC"
+    dark: "#3399FF"
+"##;
+        let (_tmp, comp_path) = write_composition_project(composition, Some(tokens), None);
+        let envelope = run_composition(&comp_path);
+        let errors = errors_array(&envelope);
+        assert!(
+            errors.iter().any(|e| e["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("unknown colors token `nonexistent`")
+                && e["path"].as_str().unwrap_or("").ends_with("/text/color")),
+            "expected an unresolved-color error: {errors:?}"
+        );
+    }
+
+    /// String-valued `gap: <name>` references resolve against
+    /// `spacing.<name>`. A typo (`gap: mid` instead of `md`) MUST
+    /// surface as an error.
+    #[test]
+    fn composition_unresolved_spacing_token_is_an_error() {
+        let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - group:
+          direction: column
+          gap: mid
+          items:
+            - text:
+                content: hi
+";
+        let tokens = r"version: 1
+spacing:
+  xs: 4
+  sm: 8
+  md: 16
+  lg: 24
+";
+        let (_tmp, comp_path) = write_composition_project(composition, Some(tokens), None);
+        let envelope = run_composition(&comp_path);
+        let errors = errors_array(&envelope);
+        assert!(
+            errors.iter().any(|e| e["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("unknown spacing token `mid`")),
+            "expected an unresolved-spacing error: {errors:?}"
+        );
+    }
+
+    /// Numeric `gap: 16` MUST NOT surface a token-resolution error
+    /// -- it is a literal pixel value. This pins the
+    /// string-or-number split at the resolver layer.
+    #[test]
+    fn composition_numeric_spacing_is_not_a_token_ref() {
+        let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - group:
+          direction: column
+          gap: 16
+          padding: 8
+          items:
+            - text:
+                content: hi
+";
+        let tokens = r"version: 1
+spacing:
+  xs: 4
+";
+        let (_tmp, comp_path) = write_composition_project(composition, Some(tokens), None);
+        let envelope = run_composition(&comp_path);
+        assert!(
+            errors_array(&envelope).is_empty(),
+            "numeric spacing values MUST NOT trip the resolver: {envelope}"
+        );
+    }
+
+    /// `padding` may be a paddingSpec object with per-side string
+    /// values (`top: md`, etc.). Each side resolves against
+    /// `spacing.<name>` independently.
+    #[test]
+    fn composition_padding_object_resolves_per_side() {
+        let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - group:
+          direction: column
+          padding:
+            top: md
+            bottom: lg
+            left: nope
+          items:
+            - text:
+                content: hi
+";
+        let tokens = r"version: 1
+spacing:
+  md: 16
+  lg: 24
+";
+        let (_tmp, comp_path) = write_composition_project(composition, Some(tokens), None);
+        let envelope = run_composition(&comp_path);
+        let errors = errors_array(&envelope);
+        assert!(
+            errors.iter().any(|e| e["path"].as_str().unwrap_or("").ends_with("/padding/left")
+                && e["message"].as_str().unwrap_or("").contains("unknown spacing token `nope`")),
+            "expected an unresolved-padding-side error: {errors:?}"
+        );
+        // The other two sides should NOT produce findings.
+        assert!(
+            !errors.iter().any(|e| e["path"].as_str().unwrap_or("").ends_with("/padding/top")
+                || e["path"].as_str().unwrap_or("").ends_with("/padding/bottom")),
+            "valid padding sides must not surface: {errors:?}"
+        );
+    }
+
+    /// Elevation tokens resolve against `elevation.<name>` and
+    /// `corner_radius` tokens against `cornerRadius.<name>`. A typo
+    /// in either category surfaces as an error.
+    #[test]
+    fn composition_unresolved_elevation_and_corner_radius_are_errors() {
+        let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - group:
+          direction: column
+          elevation: floating
+          corner_radius: huge
+          items:
+            - text:
+                content: hi
+";
+        let tokens = r"version: 1
+elevation:
+  card: 2
+cornerRadius:
+  md: 8
+";
+        let (_tmp, comp_path) = write_composition_project(composition, Some(tokens), None);
+        let envelope = run_composition(&comp_path);
+        let errors = errors_array(&envelope);
+        assert!(
+            errors.iter().any(|e| e["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("unknown elevation token `floating`")),
+            "expected an unresolved-elevation error: {errors:?}"
+        );
+        assert!(
+            errors.iter().any(|e| e["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("unknown cornerRadius token `huge`")),
+            "expected an unresolved-cornerRadius error: {errors:?}"
+        );
+    }
+
+    /// Asset references (`image.name`, `icon.name`, `icon-button.icon`,
+    /// `fab.icon`) that point at unknown ids in the sibling
+    /// `assets.yaml` produce composition-mode errors via Phase
+    /// 1.7's [`collect_asset_references`] walker.
+    #[test]
+    fn composition_unresolved_asset_id_is_an_error() {
+        let composition = r"version: 1
+screens:
+  s:
+    name: S
+    header:
+      title: T
+      trailing:
+        - icon-button:
+            icon: mystery
+            label: Mystery
+    body:
+      - image:
+          name: empty-tasks-hero
+";
+        let assets = r"version: 1
+assets:
+  empty-tasks-hero:
+    kind: symbol
+    role: icon
+    symbols:
+      ios: foo
+      android: bar
+";
+        let (_tmp, comp_path) = write_composition_project(composition, None, Some(assets));
+        let envelope = run_composition(&comp_path);
+        let errors = errors_array(&envelope);
+        assert!(
+            errors.iter().any(|e| e["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("unknown asset id `mystery`")
+                && e["path"].as_str().unwrap_or("").ends_with("/icon-button/icon")),
+            "expected an unresolved-asset error: {errors:?}"
+        );
+        // The valid `empty-tasks-hero` ref must NOT surface.
+        assert!(
+            !errors
+                .iter()
+                .any(|e| e["message"].as_str().unwrap_or("").contains("`empty-tasks-hero`")),
+            "valid asset id MUST resolve cleanly: {errors:?}"
+        );
+    }
+
+    /// Auto-invoke: when a sibling `tokens.yaml` exists, the
+    /// composition envelope's `results` array MUST contain a
+    /// `tokens` report. A broken hex inside that tokens.yaml
+    /// surfaces as an error inside `results[].report.errors`,
+    /// which the dispatcher's `validate_exit_code` recurses
+    /// through.
+    #[test]
+    fn composition_auto_invokes_tokens_and_folds_into_results() {
+        let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - text:
+          content: hi
+";
+        let broken_tokens = r##"version: 1
+colors:
+  primary:
+    light: "#xyz"
+    dark: "#000000"
+"##;
+        let (_tmp, comp_path) = write_composition_project(composition, Some(broken_tokens), None);
+        let envelope = run_composition(&comp_path);
+        let results = envelope["results"].as_array().expect("results array present");
+        assert_eq!(results.len(), 1, "expected exactly one folded sub-report: {envelope}");
+        assert_eq!(results[0]["mode"], "tokens");
+        let tokens_errors =
+            results[0]["report"]["errors"].as_array().expect("nested tokens.errors is an array");
+        assert!(
+            !tokens_errors.is_empty(),
+            "expected the broken hex to surface in the folded tokens report: {envelope}"
+        );
+    }
+
+    /// Auto-invoke: when both sibling tokens and assets exist, both
+    /// reports surface and the order in `results` is `tokens`
+    /// before `assets` (matches the order Phase 1.10's
+    /// `validate all` will ship).
+    #[test]
+    fn composition_auto_invokes_tokens_and_assets_in_order() {
+        let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - text:
+          content: hi
+";
+        let tokens = r"version: 1
+spacing:
+  md: 16
+";
+        let assets = r"version: 1
+assets: {}
+";
+        let (_tmp, comp_path) = write_composition_project(composition, Some(tokens), Some(assets));
+        let envelope = run_composition(&comp_path);
+        let results = envelope["results"].as_array().expect("results array");
+        assert_eq!(results.len(), 2, "expected two folded sub-reports: {envelope}");
+        assert_eq!(results[0]["mode"], "tokens");
+        assert_eq!(results[1]["mode"], "assets");
+    }
+
+    /// Structural-identity (RFC-11 §G) reuses Phase 1.8's engine.
+    /// Two `component: card` instances with materially different
+    /// skeletons in the `screens` shape MUST produce a
+    /// composition-mode error.
+    #[test]
+    fn composition_structural_identity_violation_in_screens() {
+        let composition = r"version: 1
+screens:
+  one:
+    name: One
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - text:
+                content: body
+  two:
+    name: Two
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - icon:
+                name: chevron-right
+            - text:
+                content: body
+";
+        let (_tmp, comp_path) = write_composition_project(composition, None, None);
+        let envelope = run_composition(&comp_path);
+        let errors = errors_array(&envelope);
+        assert!(
+            errors.iter().any(|e| e["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("component slug `card` has a different skeleton")),
+            "expected structural-identity error in screens shape: {errors:?}"
+        );
+    }
+
+    /// Structural-identity walks the `delta` sub-tree too: a slug
+    /// added in `delta.added` must agree with the same slug
+    /// modified in `delta.modified`. This is the cross-shape
+    /// behavior the plan called out explicitly for Phase 1.9.
+    #[test]
+    fn composition_structural_identity_violation_in_delta() {
+        let composition = r"version: 1
+delta:
+  added:
+    one:
+      name: One
+      body:
+        - group:
+            component: card
+            direction: column
+            items:
+              - text:
+                  content: heading
+              - text:
+                  content: body
+  modified:
+    two:
+      name: Two
+      body:
+        - group:
+            component: card
+            direction: column
+            items:
+              - text:
+                  content: heading
+              - icon:
+                  name: chevron-right
+              - text:
+                  content: body
+";
+        let (_tmp, comp_path) = write_composition_project(composition, None, None);
+        let envelope = run_composition(&comp_path);
+        let errors = errors_array(&envelope);
+        assert!(
+            errors.iter().any(|e| e["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("component slug `card` has a different skeleton")),
+            "expected structural-identity error in delta shape: {errors:?}"
+        );
+    }
+
+    /// Acceptance bullet 4: the Appendix C/D/E example trio
+    /// validates cleanly end-to-end. Appendix C is reused as the
+    /// composition (it already validates against the schema -- the
+    /// `oneOf` accepts the unwired-subset shape -- and contains
+    /// every token / asset reference shape composition mode
+    /// resolves). Appendix D supplies the tokens, Appendix E the
+    /// assets.
+    #[test]
+    fn composition_appendix_trio_validates_cleanly() {
+        let (tmp, comp_path) = write_composition_project(
+            APPENDIX_C_LAYOUT_YAML,
+            Some(APPENDIX_D_TOKENS_YAML),
+            Some(APPENDIX_E_ASSETS_YAML),
+        );
+        // Materialise every referenced asset file under
+        // `<tmp>/assets/**` so the auto-invoked assets mode finds
+        // them on disk.
+        for rel in APPENDIX_E_FILES {
+            let p = tmp.path().join(rel);
+            if let Some(parent) = p.parent() {
+                std::fs::create_dir_all(parent).expect("mkdir parent");
+            }
+            std::fs::write(&p, b"PNGSTUB").expect("write fixture file");
+        }
+
+        let envelope = run_composition(&comp_path);
+        let errors = errors_array(&envelope);
+        assert!(
+            errors.is_empty(),
+            "Appendix C/D/E trio unexpectedly produced composition-mode errors: {errors:?}"
+        );
+
+        // Both sub-reports must be present and error-free. (The
+        // assets sub-report MAY carry warnings -- Appendix E omits
+        // `xxxhdpi` on the empty-tasks-hero android side -- which
+        // is the expected "missing optional density" warning shape
+        // and not a failure.)
+        let results = envelope["results"].as_array().expect("results array");
+        assert_eq!(results.len(), 2, "expected tokens + assets sub-reports: {envelope}");
+        for entry in results {
+            let mode = entry["mode"].as_str().unwrap_or("?");
+            let report_errors = entry["report"]["errors"]
+                .as_array()
+                .unwrap_or_else(|| panic!("[{mode}] missing errors array: {envelope}"));
+            assert!(
+                report_errors.is_empty(),
+                "[{mode}] sub-report unexpectedly errored: {report_errors:?}"
+            );
+        }
+    }
+
+    /// The design-system-shape sibling fallback: when the
+    /// composition lives at `<root>/.specify/specs/composition.yaml`
+    /// (the canonical baseline location), `find_sibling_input`
+    /// walks up to `<root>/` and picks up
+    /// `<root>/design-system/tokens.yaml` /
+    /// `<root>/design-system/assets.yaml`.
+    #[test]
+    fn composition_design_system_fallback_picks_up_siblings() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let specs_dir = tmp.path().join(".specify/specs");
+        let design_dir = tmp.path().join("design-system");
+        std::fs::create_dir_all(&specs_dir).expect("mkdir .specify/specs");
+        std::fs::create_dir_all(&design_dir).expect("mkdir design-system");
+        let comp_path = specs_dir.join("composition.yaml");
+        std::fs::write(
+            &comp_path,
+            r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - text:
+          content: hi
+          color: surface
+",
+        )
+        .expect("write composition.yaml");
+        std::fs::write(
+            design_dir.join("tokens.yaml"),
+            r##"version: 1
+colors:
+  surface:
+    light: "#FFFFFF"
+    dark: "#000000"
+"##,
+        )
+        .expect("write design-system/tokens.yaml");
+        std::fs::write(design_dir.join("assets.yaml"), "version: 1\nassets: {}\n")
+            .expect("write design-system/assets.yaml");
+
+        let envelope = run_composition(&comp_path);
+        assert!(
+            errors_array(&envelope).is_empty(),
+            "design-system fallback path MUST resolve cleanly: {envelope}"
+        );
+        let results = envelope["results"].as_array().expect("results array");
+        assert_eq!(results.len(), 2, "expected tokens + assets fallback fold: {envelope}");
+    }
+
+    /// Reserved component slugs (header / body / footer / fab) are
+    /// rejected by the F.2 patch's `not.enum` -- composition mode
+    /// surfaces this as a schema error just like layout mode does.
+    #[test]
+    fn composition_reserved_component_slug_is_rejected() {
+        let yaml = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - group:
+          component: header
+          direction: column
+          items:
+            - text:
+                content: hi
+";
+        let (_tmp, comp_path) = write_composition_project(yaml, None, None);
+        let envelope = run_composition(&comp_path);
+        assert!(
+            !errors_array(&envelope).is_empty(),
+            "reserved slug `header` MUST be rejected by the F.2 patch: {envelope}"
+        );
+    }
+
+    #[test]
+    fn composition_invalid_yaml_surfaces_as_a_single_error_entry() {
+        let (_tmp, comp_path) = write_composition_project(": : not valid yaml :::\n", None, None);
+        let envelope = run_composition(&comp_path);
+        let errors = errors_array(&envelope);
+        assert_eq!(errors.len(), 1, "expected one YAML-parse error: {envelope}");
+        assert!(
+            errors[0]["message"].as_str().unwrap_or("").contains("invalid YAML"),
+            "expected `invalid YAML` prefix, got {:?}",
+            errors[0]
+        );
+    }
+
+    #[test]
+    fn composition_missing_file_returns_invalid_project_error() {
+        let args = ValidateArgs {
+            mode: ValidateMode::Composition,
+            path: Some(PathBuf::from("/definitely/not/here/composition.yaml")),
+        };
+        match run(&args) {
+            Err(VectisError::InvalidProject { message }) => {
+                assert!(
+                    message.contains("composition.yaml not readable"),
                     "unexpected message: {message}"
                 );
             }

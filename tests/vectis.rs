@@ -163,34 +163,35 @@ fn vectis_validate_help_lists_every_mode_and_path_positional() {
 }
 
 /// Phase 1.5 wired the `not-implemented` envelope for every mode;
-/// Phase 1.6 promoted `tokens`, Phase 1.7 promoted `assets`, and
-/// Phase 1.8 promoted `layout`, so this test now pins the envelope
-/// across the two still-stubbed modes only (`composition`, `all`).
-/// The live modes get their own dedicated tests below.
+/// Phase 1.6 promoted `tokens`, Phase 1.7 promoted `assets`, Phase
+/// 1.8 promoted `layout`, and Phase 1.9 promoted `composition`, so
+/// this test now pins the envelope across the one still-stubbed
+/// mode only (`all`). The live modes get their own dedicated tests
+/// below. (Kept as a `#[test]` rather than collapsed into a
+/// sibling so Phase 1.10 can simply delete the function once
+/// `all` lands.)
 #[test]
 fn vectis_validate_stub_modes_emit_not_implemented_envelope() {
-    for mode in ["composition", "all"] {
-        let assert =
-            specify().args(["--format", "json", "vectis", "validate", mode]).assert().failure();
-        let output = assert.get_output();
-        let value = parse_json(&output.stdout);
-        assert_eq!(value["error"], "not-implemented", "[{mode}] error variant: {value}");
-        assert_eq!(value["exit-code"], 1, "[{mode}] exit-code: {value}");
-        assert_eq!(value["schema-version"], 2, "[{mode}] schema-version: {value}");
-        assert_eq!(value["command"], format!("validate {mode}"), "[{mode}] command field: {value}");
-        let message = value["message"].as_str().unwrap_or("");
-        assert!(
-            message.contains("not implemented"),
-            "[{mode}] expected message to mention `not implemented`, got: {message}"
-        );
-        assert_eq!(output.status.code(), Some(1), "[{mode}] expected exit 1");
-    }
+    let mode = "all";
+    let assert =
+        specify().args(["--format", "json", "vectis", "validate", mode]).assert().failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+    assert_eq!(value["error"], "not-implemented", "[{mode}] error variant: {value}");
+    assert_eq!(value["exit-code"], 1, "[{mode}] exit-code: {value}");
+    assert_eq!(value["schema-version"], 2, "[{mode}] schema-version: {value}");
+    assert_eq!(value["command"], format!("validate {mode}"), "[{mode}] command field: {value}");
+    let message = value["message"].as_str().unwrap_or("");
+    assert!(
+        message.contains("not implemented"),
+        "[{mode}] expected message to mention `not implemented`, got: {message}"
+    );
+    assert_eq!(output.status.code(), Some(1), "[{mode}] expected exit 1");
 }
 
-/// Phase 1.7 update: the `tokens` and `assets` modes are now real;
-/// only `layout`, `composition`, and `all` remain as stubs. Asserts
-/// the v2 `not-implemented` envelope across the three still-stubbed
-/// modes -- the live modes get their own dedicated tests below.
+/// Phase 1.7: a minimal valid `assets.yaml` MUST exit 0 with the
+/// per-mode envelope (`mode`, `path`, empty `errors` and
+/// `warnings` arrays) and the auto-injected `schema-version`.
 #[test]
 fn vectis_validate_assets_clean_run_exits_zero_with_envelope() {
     // Minimal valid `assets.yaml` (the schema permits an
@@ -771,6 +772,300 @@ fn vectis_validate_accepts_explicit_path_positional() {
         value["path"].as_str().expect("path is a string"),
         tokens_path.display().to_string()
     );
+}
+
+/// Phase 1.9: a minimal valid composition with no sibling tokens /
+/// assets MUST exit 0 with the per-mode envelope and NO `results`
+/// array (the array is only emitted when auto-invoke folded
+/// something in).
+#[test]
+fn vectis_validate_composition_clean_run_exits_zero_with_envelope() {
+    let tmp = tempdir().unwrap();
+    // Mark the tree as a Specify project so `find_sibling_input`'s
+    // walk-up has a well-defined stop point even though no design
+    // system / change-local files are present.
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let comp_path = tmp.path().join("composition.yaml");
+    std::fs::write(
+        &comp_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        each: tasks
+        item:
+          - text:
+              content: hello
+",
+    )
+    .expect("write composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&comp_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["mode"], "composition");
+    assert_eq!(value["path"].as_str().expect("path is a string"), comp_path.display().to_string());
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0), "expected no errors: {value}");
+    assert_eq!(
+        value["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "expected no warnings: {value}"
+    );
+    assert!(
+        value.get("results").is_none(),
+        "results array MUST be absent without auto-invoke: {value}"
+    );
+}
+
+/// Phase 1.9: a composition that references a token name not in
+/// the sibling `tokens.yaml` MUST exit 1 with an "unknown ... token"
+/// error pointing at the offending JSON Pointer.
+#[test]
+fn vectis_validate_composition_unknown_token_exits_one() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let comp_path = tmp.path().join("composition.yaml");
+    std::fs::write(
+        &comp_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - text:
+          content: hi
+          color: nonexistent
+",
+    )
+    .expect("write composition.yaml");
+    std::fs::write(
+        tmp.path().join("tokens.yaml"),
+        // Single colors entry; `nonexistent` is deliberately
+        // absent.
+        "version: 1\ncolors:\n  primary:\n    light: \"#0066CC\"\n    dark: \"#3399FF\"\n",
+    )
+    .expect("write tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&comp_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    assert_eq!(value["mode"], "composition");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .contains("unknown colors token `nonexistent`")
+            && e.get("path").and_then(Value::as_str).unwrap_or("").ends_with("/text/color")),
+        "expected unknown-color error with pathful pointer: {errors:?}"
+    );
+}
+
+/// Phase 1.9: a composition that references an asset id not in the
+/// sibling `assets.yaml` MUST exit 1 with an "unknown asset id"
+/// error.
+#[test]
+fn vectis_validate_composition_unknown_asset_exits_one() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let comp_path = tmp.path().join("composition.yaml");
+    std::fs::write(
+        &comp_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    header:
+      title: T
+      trailing:
+        - icon-button:
+            icon: mystery
+            label: Mystery
+    body:
+      list:
+        each: tasks
+        item:
+          - text:
+              content: hi
+",
+    )
+    .expect("write composition.yaml");
+    std::fs::write(
+        tmp.path().join("assets.yaml"),
+        // Empty asset map -- every reference is unknown.
+        "version: 1\nassets: {}\n",
+    )
+    .expect("write assets.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&comp_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .contains("unknown asset id `mystery`")),
+        "expected unknown-asset error: {errors:?}"
+    );
+}
+
+/// Phase 1.9: when sibling `tokens.yaml` and `assets.yaml` both
+/// exist, the composition envelope's `results` array MUST contain
+/// folded sub-reports for both modes (in `tokens` → `assets`
+/// order). A broken hex inside the sibling tokens.yaml MUST
+/// surface in `results[0].report.errors` AND drive the dispatcher
+/// to exit 1 via its recursion-aware `validate_exit_code` helper.
+#[test]
+fn vectis_validate_composition_auto_invokes_tokens_and_assets() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let comp_path = tmp.path().join("composition.yaml");
+    std::fs::write(
+        &comp_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - text:
+          content: hi
+",
+    )
+    .expect("write composition.yaml");
+    std::fs::write(
+        tmp.path().join("tokens.yaml"),
+        // `light: \"#xyz\"` is rejected by the colorValue pattern
+        // (`#xxxxxx` only).
+        "version: 1\ncolors:\n  primary:\n    light: \"#xyz\"\n    dark: \"#000000\"\n",
+    )
+    .expect("write tokens.yaml");
+    std::fs::write(tmp.path().join("assets.yaml"), "version: 1\nassets: {}\n")
+        .expect("write assets.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&comp_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let results =
+        value["results"].as_array().unwrap_or_else(|| panic!("results array present: {value}"));
+    assert_eq!(results.len(), 2, "expected tokens + assets sub-reports: {value}");
+    assert_eq!(results[0]["mode"], "tokens");
+    assert_eq!(results[1]["mode"], "assets");
+    let token_errors = results[0]["report"]["errors"].as_array().expect("nested tokens.errors");
+    assert!(!token_errors.is_empty(), "broken hex MUST surface in folded tokens report: {value}");
+}
+
+/// Phase 1.9: structural-identity violation (RFC-11 §G) inside a
+/// composition document MUST exit 1 with the same error message
+/// shape Phase 1.8 lock for layout mode, since the engine is
+/// shared.
+#[test]
+fn vectis_validate_composition_structural_identity_violation_exits_one() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let comp_path = tmp.path().join("composition.yaml");
+    std::fs::write(
+        &comp_path,
+        r"version: 1
+screens:
+  one:
+    name: One
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - text:
+                content: body
+  two:
+    name: Two
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - icon:
+                name: chevron-right
+            - text:
+                content: body
+",
+    )
+    .expect("write composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&comp_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("component slug `card` has a different skeleton")),
+        "expected structural-identity rejection for `card`: {errors:?}"
+    );
+}
+
+/// Phase 1.9: a missing `composition.yaml` MUST surface as the v2
+/// `invalid-project` error envelope (exit 1) -- distinct from the
+/// validator-reported `errors` array.
+#[test]
+fn vectis_validate_composition_missing_file_surfaces_invalid_project() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("nope-composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "composition"])
+        .arg(&missing)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 1);
+    assert_eq!(value["schema-version"], 2);
+    assert!(
+        value["message"].as_str().unwrap_or("").contains("composition.yaml not readable"),
+        "unexpected message: {value}"
+    );
+    assert_eq!(output.status.code(), Some(1));
 }
 
 /// Force the `missing-prerequisites` path by clearing PATH so every
