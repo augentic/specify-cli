@@ -4,7 +4,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use specify_capability::Registry;
+use specify_registry::Registry;
 use specify_change::Plan;
 use specify_error::Error;
 
@@ -517,7 +517,7 @@ pub fn run_workspace_push_impl(
     let branch_name = format!("specify/{initiative_name}");
     let workspace_base = ProjectConfig::specify_dir(project_dir).join("workspace");
 
-    let target_projects: Vec<&specify_capability::RegistryProject> = if filter_projects.is_empty() {
+    let target_projects: Vec<&specify_registry::RegistryProject> = if filter_projects.is_empty() {
         registry.projects.iter().collect()
     } else {
         registry.projects.iter().filter(|p| filter_projects.contains(&p.name)).collect()
@@ -615,7 +615,7 @@ fn ensure_pull_request(
 }
 
 fn push_single_project(
-    project_dir: &Path, workspace_base: &Path, rp: &specify_capability::RegistryProject,
+    project_dir: &Path, workspace_base: &Path, rp: &specify_registry::RegistryProject,
     branch_name: &str, initiative_name: &str, dry_run: bool,
 ) -> WorkspacePushResult {
     let project_path = if rp.url_materialises_as_symlink() {

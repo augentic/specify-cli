@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 specify-error.workspace = true
 specify-capability.workspace = true
+specify-registry.workspace = true
 specify-spec.workspace = true
 specify-task.workspace = true
 serde.workspace = true

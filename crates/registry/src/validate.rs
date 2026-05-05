@@ -1,131 +1,28 @@
-//! Registry parser — platform-level catalogue of peer projects
-//! (RFC-3a §*The Registry*).
+//! Registry-shape validators (RFC-3a §"The Registry", RFC-8 §Layer 2,
+//! RFC-9 §1D).
 //!
-//! `registry.yaml` (at the repo root) enumerates the repos that
-//! comprise the platform and the schema each of them uses. The file
-//! is optional: an absent or single-entry registry is equivalent to
-//! single-repo mode. Multi-entry registries activate the `/spec:plan`
-//! *sync peers* phase — but that behaviour lands in C28/C30; this
-//! module only handles shape parsing and validation.
+//! Enforces invariants that `serde` cannot express on its own:
+//! `version == 1`, kebab-case project names, non-empty required strings,
+//! unique project names, well-formed URLs, the multi-project description
+//! requirement, and the contract-roles consistency rules. Hub-mode
+//! validation (RFC-9 §1D) layers an additional `hub-cannot-be-project`
+//! check on top of the base shape rules.
 //!
-//! No JSON schema file ships for v1 per the RFC — the shape is
-//! enforced directly by [`Registry::validate_shape`].
+//! The methods are exposed on [`Registry`] itself so callers — including
+//! `Registry::load` — keep the same fluent shape they had pre-extraction.
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
-/// In-memory representation of `registry.yaml` (at the repo root).
-///
-/// `additionalProperties: false` is expressed via
-/// `#[serde(deny_unknown_fields)]` — the same posture the `plan.yaml`
-/// `ScopeShape` uses — so typos (e.g. `versions:`, `project:`) fail
-/// fast at parse time rather than silently round-tripping.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Registry {
-    /// Schema version. `1` is the only accepted value for this
-    /// release; [`Registry::validate_shape`] rejects anything else
-    /// with an actionable diagnostic.
-    pub version: u32,
-    /// Platform catalogue. Empty or single-entry is equivalent to
-    /// "single-repo mode"; multi-entry activates the `/spec:plan`
-    /// *sync peers* phase (C28/C30).
-    #[serde(default)]
-    pub projects: Vec<RegistryProject>,
-}
-
-/// One entry in [`Registry::projects`].
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct RegistryProject {
-    /// Kebab-case identifier for the project. Obeys the same
-    /// naming rules as change names
-    /// (`specify_change::actions::validate_name`) — duplicated here
-    /// because `specify-capability` sits upstream of `specify-change` in
-    /// the crate graph.
-    pub name: String,
-    /// Clone target — `.`, a repo-relative path (`../peer`, `./foo`,
-    /// `pkg/sub`), `git@host:path`, or an `http(s)://`, `ssh://`, or
-    /// `git+http(s)://` / `git+ssh://` remote. Shape-validated by
-    /// [`Registry::validate_shape`] (RFC-3a C28). Stored verbatim.
-    pub url: String,
-    /// Schema identifier — e.g. `omnia@v1`. Opaque at this layer;
-    /// the `name@version` suffix is **not** parsed here.
-    pub schema: String,
-    /// Domain-level characterisation of the project (RFC-3b).
-    /// Required when `len(projects) > 1`; optional for single-project registries.
-    #[serde(default)]
-    pub description: Option<String>,
-    /// Optional contract role declarations for this project (RFC-8 Layer 2).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub contracts: Option<ContractRoles>,
-}
-
-/// Contract role declarations for a registry project.
-/// All fields are optional — a project may only produce, only consume,
-/// or have no contract relationships at all.
-///
-/// RFC-12 collapsed the role set to two: `produces` (this project
-/// authoritatively implements the contract) and `consumes` (this project
-/// calls or subscribes to the contract). A contract that no project
-/// produces is, by definition, externally authored — no separate
-/// `imports` field is needed to mark it. `#[serde(deny_unknown_fields)]`
-/// causes any surviving `imports:` key in `registry.yaml` to fail at
-/// parse time, which is the documented migration trigger (RFC-12
-/// §Migration).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ContractRoles {
-    /// Contract files this project is the authoritative implementer of.
-    /// Paths relative to root `contracts/`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub produces: Vec<String>,
-    /// Contract files this project calls or subscribes to as a client.
-    /// Paths relative to root `contracts/`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub consumes: Vec<String>,
-}
+use crate::registry::Registry;
 
 impl Registry {
-    /// Absolute path to `<project_dir>/registry.yaml`. The platform
-    /// catalogue lives at the repo root.
-    #[must_use]
-    pub fn path(project_dir: &Path) -> PathBuf {
-        project_dir.join("registry.yaml")
-    }
-
-    /// Load + shape-validate the registry.
-    ///
-    /// - `Ok(None)` — the file is absent. The registry is optional
-    ///   and a missing file is *not* an error.
-    /// - `Ok(Some(_))` — file parsed and shape-validated.
-    /// - `Err(_)` — malformed YAML, unknown keys, wrong `version`,
-    ///   kebab-case / required-field / duplicate-name violations.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    pub fn load(project_dir: &Path) -> Result<Option<Self>, Error> {
-        let path = Self::path(project_dir);
-        if !path.exists() {
-            return Ok(None);
-        }
-        let content = std::fs::read_to_string(&path)
-            .map_err(|err| Error::Config(format!("failed to read {}: {err}", path.display())))?;
-        let registry: Self = serde_saphyr::from_str(&content)
-            .map_err(|err| Error::Config(format!("registry.yaml: invalid YAML: {err}")))?;
-        registry.validate_shape()?;
-        Ok(Some(registry))
-    }
-
     /// Enforce invariants that serde cannot express on its own:
     /// `version == 1`, kebab-case project names, non-empty required
     /// strings, unique project names, and well-formed [`RegistryProject::url`]
     /// values (RFC-3a C28). Returns the first error encountered — the
-    /// convention used elsewhere in `specify-capability` for fast-fail
+    /// convention used elsewhere in the registry crate for fast-fail
     /// shape validation.
     ///
     /// # Errors
@@ -140,7 +37,7 @@ impl Registry {
             )));
         }
 
-        let mut seen_names: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        let mut seen_names: HashSet<&str> = HashSet::new();
         for (idx, project) in self.projects.iter().enumerate() {
             if project.name.is_empty() {
                 return Err(Error::Config(format!("registry.yaml: projects[{idx}].name is empty")));
@@ -240,17 +137,6 @@ impl Registry {
         Ok(())
     }
 
-    /// `true` when the registry declares at most one project.
-    ///
-    /// Absent registry + single-entry registry behave identically in
-    /// the `/spec:plan` flow (RFC-3a §*When are `registry.yaml` and
-    /// `initiative.md` required?*). Useful to C28/C30 where the
-    /// *sync peers* phase is gated on `len(projects) > 1`.
-    #[must_use]
-    pub const fn is_single_repo(&self) -> bool {
-        self.projects.len() <= 1
-    }
-
     /// Hub-only shape check (RFC-9 §1D).
     ///
     /// Runs the base [`Registry::validate_shape`] first, then layers on
@@ -284,20 +170,6 @@ impl Registry {
             }
         }
         Ok(())
-    }
-}
-
-impl RegistryProject {
-    /// `true` when this entry's [`RegistryProject::url`] should be
-    /// materialised under `.specify/workspace/<name>/` as a symlink to a
-    /// resolved filesystem path (`.` or a repo-relative path), as opposed
-    /// to a `git clone` remote.
-    ///
-    /// Callers may assume [`Registry::validate_shape`] has already accepted
-    /// the URL — this predicate mirrors the C28 classification rules.
-    #[must_use]
-    pub fn url_materialises_as_symlink(&self) -> bool {
-        self.url == "." || (!self.url.contains("://") && !self.url.starts_with("git@"))
     }
 }
 
@@ -369,10 +241,12 @@ fn looks_like_windows_drive_path(url: &str) -> bool {
     c.is_ascii_alphabetic() && chars.next() == Some(':')
 }
 
-/// Kebab-case predicate shared within `specify-capability`. Identical
-/// contract to `specify_change::actions::validate_name`; duplicated
-/// because `specify-capability` is upstream of `specify-change` in the
-/// crate dep graph and cannot call through.
+/// Kebab-case predicate shared within `specify-registry`.
+///
+/// Identical contract to `specify_change::actions::validate_name`;
+/// duplicated because `specify-registry` is upstream of `specify-change`
+/// in the crate dep graph and cannot call through.
+#[must_use]
 pub fn is_kebab_case(s: &str) -> bool {
     if s.is_empty() {
         return false;

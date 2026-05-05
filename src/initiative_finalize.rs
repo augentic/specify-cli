@@ -54,7 +54,7 @@ use std::path::Path;
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
-use specify_capability::{Registry, RegistryProject};
+use specify_registry::{Registry, RegistryProject};
 use specify_change::Plan;
 use specify_change::plan::Status;
 use specify_error::Error;
@@ -650,7 +650,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    use specify_capability::RegistryProject;
+    use specify_registry::RegistryProject;
     use specify_change::plan::Entry;
     use tempfile::TempDir;
 

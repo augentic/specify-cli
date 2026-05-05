@@ -1,0 +1,25 @@
+[package]
+name = "specify-registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Specify registry: topology and project locations"
+categories = ["development-tools"]
+keywords = ["specify", "registry", "topology"]
+readme = "../../README.md"
+
+[lib]
+name = "specify_registry"
+path = "src/lib.rs"
+
+[dependencies]
+specify-error.workspace = true
+serde.workspace = true
+serde-saphyr.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

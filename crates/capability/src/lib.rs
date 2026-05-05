@@ -17,17 +17,19 @@
 //!   subcommand (see [`PipelineView`]).
 //! - The on-disk `.cache-meta.yaml` format written by the agent
 //!   (see [`CacheMeta`]).
-//! - The on-disk `registry.yaml` platform catalogue at the repo root
-//!   (see [`Registry`]) introduced by RFC-3a.
 //! - The on-disk `initiative.md` operator-authored brief at the repo
 //!   root (see [`InitiativeBrief`]) introduced by RFC-3a.
+//!
+//! Registry parsing and shape validation moved out into
+//! `specify-registry` in RFC-13 chunk 2.1; per the RFC's
+//! "platform components are not capabilities" invariant this crate
+//! must not depend on `specify-registry`.
 
 mod brief;
 mod cache;
 mod capability;
 mod initiative_brief;
 mod pipeline;
-mod registry;
 
 pub use brief::{Brief, BriefFrontmatter};
 pub use cache::CacheMeta;
@@ -37,7 +39,6 @@ pub use capability::{
 };
 pub use initiative_brief::{InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind};
 pub use pipeline::PipelineView;
-pub use registry::{ContractRoles, Registry, RegistryProject};
 
 /// Outcome of a structural validation rule.
 ///

@@ -9,9 +9,9 @@ pub use init::{InitOptions, InitResult, VersionMode, ensure_specify_gitignore_en
 pub use specify_capability::{
     Brief, BriefFrontmatter, CAPABILITY_FILENAME, CacheMeta, Capability, CapabilitySource,
     InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind, LEGACY_SCHEMA_FILENAME,
-    ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, Registry, RegistryProject,
-    ResolvedCapability,
+    ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, ResolvedCapability,
 };
+pub use specify_registry::{ContractRoles, Registry, RegistryProject};
 pub use specify_change::plan::{Entry as PlanChange, Status as PlanStatus};
 pub use specify_change::{
     Acquired as PlanLockAcquired, BlockingPredecessor, CODE_CYCLE, CODE_ORPHAN_SOURCE,

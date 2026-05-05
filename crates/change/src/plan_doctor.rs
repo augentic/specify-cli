@@ -57,7 +57,7 @@ use std::process::Command;
 use petgraph::algo::tarjan_scc;
 use petgraph::graph::DiGraph;
 use serde::{Deserialize, Serialize};
-use specify_capability::Registry;
+use specify_registry::Registry;
 
 use crate::plan::{Entry, Finding, Plan, Severity, Status};
 
@@ -408,7 +408,7 @@ fn orphan_source_keys(plan: &Plan) -> Vec<Diagnostic> {
 /// slots are skipped per the module-level contract.
 fn stale_workspace_clones(registry: &Registry, project_dir: &Path) -> Vec<Diagnostic> {
     let workspace_base = project_dir.join(".specify").join("workspace");
-    let mut sorted: Vec<&specify_capability::RegistryProject> = registry.projects.iter().collect();
+    let mut sorted: Vec<&specify_registry::RegistryProject> = registry.projects.iter().collect();
     sorted.sort_by(|a, b| a.name.cmp(&b.name));
 
     let mut out = Vec::new();
@@ -690,7 +690,7 @@ fn cycle_membership(changes: &[Entry]) -> HashSet<&str> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use specify_capability::RegistryProject;
+    use specify_registry::RegistryProject;
     use tempfile::tempdir;
 
     use super::*;
