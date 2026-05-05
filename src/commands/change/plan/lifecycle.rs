@@ -20,7 +20,7 @@ pub fn run_plan_create(
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if plan_path.exists() {
         return Err(Error::Config(format!(
-            "plan already exists at {}; run `specify plan archive` first",
+            "plan already exists at {}; run `specify change plan archive` first",
             plan_path.display()
         )));
     }

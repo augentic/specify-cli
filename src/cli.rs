@@ -50,11 +50,12 @@ pub enum Commands {
         /// instead of a regular project: writes `registry.yaml` at
         /// the repo root and `project.yaml { hub: true }` (with
         /// `capability:` omitted — RFC-13 §Migration "Hub project
-        /// shape") under `.specify/`. `initiative.md` and `plan.yaml`
-        /// stay operator-managed (use `specify initiative create` /
-        /// `specify plan create`). Refuses to run when `.specify/`
-        /// already exists. Mutually exclusive with the `<capability>`
-        /// positional.
+        /// shape") under `.specify/`. The change brief
+        /// (`initiative.md` on disk; rename ships in a later chunk)
+        /// and `plan.yaml` stay operator-managed (use
+        /// `specify change create` / `specify change plan create`).
+        /// Refuses to run when `.specify/` already exists. Mutually
+        /// exclusive with the `<capability>` positional.
         #[arg(long)]
         hub: bool,
     },
@@ -77,16 +78,16 @@ pub enum Commands {
         action: SliceAction,
     },
 
-    /// Manage the initiative-level plan at `plan.yaml` (repo root)
-    Plan {
+    /// Change orchestration — operator brief, plan, finalize.
+    ///
+    /// The umbrella verb family for an operator-defined outcome that
+    /// coordinates one or more slices (RFC-13 §"What becomes a
+    /// capability"). Owns the change brief at `initiative.md` (the
+    /// on-disk filename migrates in a later chunk) and the
+    /// `plan.yaml` that drives multi-slice execution.
+    Change {
         #[command(subcommand)]
-        action: PlanAction,
-    },
-
-    /// Operator brief at `initiative.md` (repo root)
-    Initiative {
-        #[command(subcommand)]
-        action: InitiativeAction,
+        action: ChangeAction,
     },
 
     /// Platform registry at `registry.yaml` (repo root)
@@ -125,11 +126,89 @@ pub enum Commands {
     },
 }
 
+/// Operator-facing **change** verbs (RFC-13 §"What becomes a capability").
+///
+/// `change` is the umbrella orchestration noun: it holds the operator
+/// brief (`initiative.md` on disk — the on-disk filename migrates in a
+/// later chunk) and the executable plan (`plan.yaml` at the repo root)
+/// that drives one or more slices through `define → build → merge`.
+///
+/// The `Plan { action }` variant nests every plan-authoring sub-verb
+/// under `specify change plan *` so the durable post-RFC surface reads
+/// `specify change {create, plan {add,amend,next,status,doctor,lock,
+/// transition,archive,validate,create}, finalize}`.
+#[derive(Subcommand)]
+pub enum ChangeAction {
+    /// Scaffold the change brief (`initiative.md` at the repo root)
+    /// from the canonical template.
+    ///
+    /// Refuses to overwrite an existing file — mirrors the
+    /// `change plan create` posture for `plan.yaml`.
+    Create {
+        /// Kebab-case change name (baked into the frontmatter).
+        name: String,
+    },
+    /// Print the parsed change brief (text or JSON).
+    ///
+    /// Absent file is not an error: exit 0 with "no change brief
+    /// declared". Malformed file fails loud with a non-zero exit — the
+    /// operator asked to show something unparseable.
+    Show,
+    /// Manage the change's executable plan (`plan.yaml` at the repo root).
+    ///
+    /// The plan-authoring sub-resource that drives slice execution.
+    /// Verbs (`create`, `add`, `amend`, `next`, `status`, `doctor`,
+    /// `lock`, `transition`, `archive`, `validate`) are unchanged from
+    /// the previous top-level `specify plan *` family — they are now
+    /// scoped under the change umbrella.
+    Plan {
+        #[command(subcommand)]
+        action: PlanAction,
+    },
+    /// Close out a change once every plan entry is in a terminal
+    /// state and every per-project PR has merged on its remote
+    /// (RFC-9 §4C). Sweeps `plan.yaml`, the change brief, and the
+    /// `.specify/plans/<name>/` authoring trail into
+    /// `.specify/archive/plans/<YYYYMMDD>-<name>/`. With `--clean`
+    /// also removes `.specify/workspace/<peer>/` clones.
+    ///
+    /// Atomic: any guard failure (non-terminal entry, unmerged PR,
+    /// dirty workspace clone) refuses with a per-project status table
+    /// and leaves the on-disk state untouched. The archive write
+    /// preflights both destinations before any move, so a collision
+    /// here also leaves the working tree alone.
+    ///
+    /// Composes with `specify workspace merge` (RFC-9 §4A): the
+    /// autonomous path merges PRs first, then finalizes; the
+    /// supervised path finalizes after manual merges. Either way,
+    /// idempotent — re-run after the operator clears the failing
+    /// guard.
+    Finalize {
+        /// Remove `.specify/workspace/<peer>/` clones after the archive
+        /// completes. Refused when any clone has a dirty working tree
+        /// (the diagnostic flags that `--clean` would drop the
+        /// uncommitted work).
+        #[arg(long)]
+        clean: bool,
+        /// Show what would happen without writing anything. Never
+        /// invokes `gh pr merge` and never moves files.
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+/// Plan-authoring verbs (`specify change plan *`).
+///
+/// `plan.yaml` (at the repo root) is the change's executable plan.
+/// These verbs scope, validate, advance, and archive plan entries.
+/// The shape is preserved from the previous top-level `Commands::Plan`
+/// — it now nests under `Commands::Change` per RFC-13 §"What becomes a
+/// capability".
 #[derive(Subcommand)]
 pub enum PlanAction {
     /// Scaffold an empty plan.yaml at the repo root
     Create {
-        /// Kebab-case initiative name
+        /// Kebab-case change name
         name: String,
         /// Named source, repeated: --source <key>=<path-or-url>
         #[arg(long = "source", value_parser = parse_source_kv)]
@@ -160,9 +239,9 @@ pub enum PlanAction {
     Doctor,
     /// Return the next eligible plan entry (respects depends-on + in-progress)
     Next,
-    /// Show initiative progress report
+    /// Show change progress report
     Status,
-    /// Add a new change entry (status: pending)
+    /// Add a new plan entry (status: pending)
     Add {
         /// Kebab-case change name
         name: String,
@@ -243,60 +322,6 @@ pub enum PlanAction {
     Lock {
         #[command(subcommand)]
         action: LockAction,
-    },
-}
-
-/// Initiative brief operations (RFC-3a §"The Initiative Brief").
-///
-/// `initiative.md` (at the repo root) is the operator-authored brief:
-/// a YAML frontmatter block (`name`, optional `inputs`) plus free-form
-/// markdown body. It's optional — `create` scaffolds a canonical
-/// template; `show` prints the parsed brief.
-#[derive(Subcommand)]
-pub enum InitiativeAction {
-    /// Scaffold `initiative.md` (at the repo root) from the canonical template.
-    ///
-    /// Refuses to overwrite an existing file — mirrors the
-    /// `plan create` posture for `plan.yaml`.
-    Create {
-        /// Kebab-case initiative name (baked into the frontmatter).
-        name: String,
-    },
-    /// Print the parsed `initiative.md` (text or JSON).
-    ///
-    /// Absent file is not an error: exit 0 with "no initiative brief
-    /// declared". Malformed file fails loud with a non-zero exit — the
-    /// operator asked to show something unparseable.
-    Show,
-    /// Close out an initiative once every plan entry is in a terminal
-    /// state and every per-project PR has merged on its remote
-    /// (RFC-9 §4C). Sweeps `plan.yaml`, `initiative.md`, and the
-    /// `.specify/plans/<name>/` authoring trail into
-    /// `.specify/archive/plans/<YYYYMMDD>-<name>/`. With `--clean`
-    /// also removes `.specify/workspace/<peer>/` clones.
-    ///
-    /// Atomic: any guard failure (non-terminal entry, unmerged PR,
-    /// dirty workspace clone) refuses with a per-project status table
-    /// and leaves the on-disk state untouched. The archive write
-    /// preflights both destinations before any move, so a collision
-    /// here also leaves the working tree alone.
-    ///
-    /// Composes with `specify workspace merge` (RFC-9 §4A): the
-    /// autonomous path merges PRs first, then finalizes; the
-    /// supervised path finalizes after manual merges. Either way,
-    /// idempotent — re-run after the operator clears the failing
-    /// guard.
-    Finalize {
-        /// Remove `.specify/workspace/<peer>/` clones after the archive
-        /// completes. Refused when any clone has a dirty working tree
-        /// (the diagnostic flags that `--clean` would drop the
-        /// uncommitted work).
-        #[arg(long)]
-        clean: bool,
-        /// Show what would happen without writing anything. Never
-        /// invokes `gh pr merge` and never moves files.
-        #[arg(long)]
-        dry_run: bool,
     },
 }
 
@@ -431,7 +456,7 @@ pub enum RegistryAction {
     /// remaining shape, and persists the result. Warns on stderr (or
     /// in the JSON `warnings` array) when `plan.yaml` exists
     /// and any plan entry references the removed project — the
-    /// operator must rewire those entries via `specify plan amend
+    /// operator must rewire those entries via `specify change plan amend
     /// --project ...` separately. The warning is non-fatal.
     Remove {
         /// Kebab-case project name to remove.

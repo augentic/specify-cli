@@ -1,8 +1,9 @@
-//! Integration tests for the `specify plan *`, `specify initiative *`,
-//! and `specify registry *` CLI groups — `plan` manages `plan.yaml`
-//! at the repo root, `initiative` owns the operator brief at
-//! `initiative.md` (also at root), and `registry` covers
-//! `registry.yaml` (also at root).
+//! Integration tests for `specify change *` (the umbrella orchestration
+//! surface) and `specify registry *` — `change` owns the operator brief
+//! (`initiative.md` on disk; the on-disk filename migrates in a later
+//! chunk) plus the executable plan at `plan.yaml`, and `registry`
+//! covers `registry.yaml`. All three platform-component artifacts live
+//! at the repo root per RFC-9 §1B.
 //!
 //! These CLI tests stand up a fresh `.specify/` project via
 //! `specify init` (mirroring `tests/change.rs` / `tests/e2e.rs`),
@@ -10,7 +11,7 @@
 //! disk, and drive the CLI through `assert_cmd`. JSON shapes are
 //! pinned by checked-in fixtures under `tests/fixtures/plan/`;
 //! regenerate them with
-//! `REGENERATE_GOLDENS=1 cargo test --test initiative`.
+//! `REGENERATE_GOLDENS=1 cargo test --test change_umbrella`.
 
 #[cfg(test)]
 mod cli {
@@ -156,7 +157,7 @@ mod cli {
 
         let expected_raw = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
             panic!(
-                "golden {} missing ({err}); regenerate via REGENERATE_GOLDENS=1 cargo test --test initiative",
+                "golden {} missing ({err}); regenerate via REGENERATE_GOLDENS=1 cargo test --test change_umbrella",
                 golden_path.display()
             )
         });
@@ -350,7 +351,7 @@ changes:
         project.seed_plan(CLEAN_PLAN);
 
         let assert =
-            specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+            specify().current_dir(project.root()).args(["change", "plan", "validate"]).assert().success();
         assert_eq!(assert.get_output().status.code(), Some(0));
 
         let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
@@ -368,7 +369,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "validate"])
+            .args(["--format", "json", "change", "plan", "validate"])
             .assert()
             .success();
         assert_eq!(assert.get_output().status.code(), Some(0));
@@ -391,7 +392,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "validate"])
+            .args(["--format", "json", "change", "plan", "validate"])
             .assert()
             .success();
         assert_eq!(
@@ -425,7 +426,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "validate"])
+            .args(["--format", "json", "change", "plan", "validate"])
             .assert()
             .failure();
         assert_eq!(
@@ -453,7 +454,7 @@ changes:
         project.seed_plan(A_DONE_B_PENDING);
 
         let assert =
-            specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
+            specify().current_dir(project.root()).args(["change", "plan", "next"]).assert().success();
         let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
         assert_eq!(stdout, "b\n", "text next should be bare '<name>\\n', got: {stdout:?}");
     }
@@ -465,7 +466,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "next"])
+            .args(["--format", "json", "change", "plan", "next"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -487,13 +488,13 @@ changes:
         let project = Project::init();
         project.seed_plan(A_IN_PROGRESS);
 
-        let text = specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
+        let text = specify().current_dir(project.root()).args(["change", "plan", "next"]).assert().success();
         let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
         assert!(stdout.contains('a'), "text output should mention 'a': {stdout:?}");
 
         let json = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "next"])
+            .args(["--format", "json", "change", "plan", "next"])
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
@@ -509,13 +510,13 @@ changes:
         let project = Project::init();
         project.seed_plan(ALL_DONE);
 
-        let text = specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
+        let text = specify().current_dir(project.root()).args(["change", "plan", "next"]).assert().success();
         let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
         assert_eq!(stdout, "All changes done.\n");
 
         let json = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "next"])
+            .args(["--format", "json", "change", "plan", "next"])
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
@@ -533,7 +534,7 @@ changes:
 
         let json = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "next"])
+            .args(["--format", "json", "change", "plan", "next"])
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
@@ -553,7 +554,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "status"])
+            .args(["--format", "json", "change", "plan", "status"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -598,7 +599,7 @@ changes:
 
         let output = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "status"])
+            .args(["--format", "json", "change", "plan", "status"])
             .assert()
             .success();
 
@@ -628,7 +629,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "status"])
+            .args(["--format", "json", "change", "plan", "status"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -645,7 +646,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "status"])
+            .args(["--format", "json", "change", "plan", "status"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -707,7 +708,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "add", "foo", "--schema", "contracts@v1"])
+            .args(["--format", "json", "change", "plan", "add", "foo", "--schema", "contracts@v1"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -733,13 +734,13 @@ changes:
 
         specify()
             .current_dir(project.root())
-            .args(["plan", "add", "foo", "--schema", "contracts@v1"])
+            .args(["change", "plan", "add", "foo", "--schema", "contracts@v1"])
             .assert()
             .success();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "add", "foo", "--schema", "contracts@v1"])
+            .args(["change", "plan", "add", "foo", "--schema", "contracts@v1"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -757,7 +758,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "add", "NotKebab", "--schema", "contracts@v1"])
+            .args(["change", "plan", "add", "NotKebab", "--schema", "contracts@v1"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -793,7 +794,7 @@ changes:
             .args([
                 "--format",
                 "json",
-                "plan",
+                "change", "plan",
                 "amend",
                 "foo",
                 "--depends-on",
@@ -824,7 +825,7 @@ changes:
 
         specify()
             .current_dir(project.root())
-            .args(["plan", "amend", "foo", "--description", ""])
+            .args(["change", "plan", "amend", "foo", "--description", ""])
             .assert()
             .success();
 
@@ -843,7 +844,7 @@ changes:
         // --depends-on (clear) but no --description; description must stay.
         specify()
             .current_dir(project.root())
-            .args(["plan", "amend", "foo", "--depends-on"])
+            .args(["change", "plan", "amend", "foo", "--depends-on"])
             .assert()
             .success();
 
@@ -861,7 +862,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "amend", "nope", "--description", "x"])
+            .args(["change", "plan", "amend", "nope", "--description", "x"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -881,7 +882,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "transition", "foo", "in-progress"])
+            .args(["change", "plan", "transition", "foo", "in-progress"])
             .assert()
             .success();
         let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
@@ -899,7 +900,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "transition", "foo", "done"])
+            .args(["--format", "json", "change", "plan", "transition", "foo", "done"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -919,7 +920,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "transition", "foo", "pending"])
+            .args(["change", "plan", "transition", "foo", "pending"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -937,7 +938,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "transition", "foo", "in-progress"])
+            .args(["--format", "json", "change", "plan", "transition", "foo", "in-progress"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -954,7 +955,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "transition", "foo", "failed", "--reason", "boom"])
+            .args(["--format", "json", "change", "plan", "transition", "foo", "failed", "--reason", "boom"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -974,7 +975,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "transition", "foo", "in-progress", "--reason", "x"])
+            .args(["change", "plan", "transition", "foo", "in-progress", "--reason", "x"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -998,7 +999,7 @@ changes:
 
         specify()
             .current_dir(project.root())
-            .args(["plan", "transition", "foo", "pending"])
+            .args(["change", "plan", "transition", "foo", "pending"])
             .assert()
             .success();
 
@@ -1028,7 +1029,7 @@ changes:
         specify()
             .current_dir(project.root())
             .args([
-                "plan",
+                "change", "plan",
                 "add",
                 "registration-duplicate-email-crash",
                 "--schema",
@@ -1041,14 +1042,14 @@ changes:
 
         specify()
             .current_dir(project.root())
-            .args(["plan", "transition", "registration-duplicate-email-crash", "in-progress"])
+            .args(["change", "plan", "transition", "registration-duplicate-email-crash", "in-progress"])
             .assert()
             .success();
 
         specify()
             .current_dir(project.root())
             .args([
-                "plan",
+                "change", "plan",
                 "amend",
                 "registration-duplicate-email-crash",
                 "--description",
@@ -1059,7 +1060,7 @@ changes:
 
         specify()
             .current_dir(project.root())
-            .args(["plan", "transition", "registration-duplicate-email-crash", "done"])
+            .args(["change", "plan", "transition", "registration-duplicate-email-crash", "done"])
             .assert()
             .success();
 
@@ -1074,7 +1075,7 @@ changes:
 
         let expected = fs::read_to_string(&fixture_path).unwrap_or_else(|err| {
             panic!(
-                "fixture {} missing ({err}); regenerate via REGENERATE_GOLDENS=1 cargo test --test initiative",
+                "fixture {} missing ({err}); regenerate via REGENERATE_GOLDENS=1 cargo test --test change_umbrella",
                 fixture_path.display()
             )
         });
@@ -1104,7 +1105,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "create", "my-initiative"])
+            .args(["--format", "json", "change", "plan", "create", "my-initiative"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1134,7 +1135,7 @@ changes:
         specify()
             .current_dir(project.root())
             .args([
-                "plan",
+                "change", "plan",
                 "create",
                 "big",
                 "--source",
@@ -1161,14 +1162,14 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "create", "other"])
+            .args(["change", "plan", "create", "other"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
         assert!(
-            stderr.contains("specify plan archive"),
-            "stderr should suggest `specify plan archive`, got: {stderr:?}"
+            stderr.contains("specify change plan archive"),
+            "stderr should suggest `specify change plan archive`, got: {stderr:?}"
         );
 
         let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
@@ -1184,7 +1185,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "create", "BadName"])
+            .args(["change", "plan", "create", "BadName"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1199,7 +1200,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "create", "x", "--source", "a=/p1", "--source", "a=/p2"])
+            .args(["change", "plan", "create", "x", "--source", "a=/p1", "--source", "a=/p2"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1219,7 +1220,7 @@ changes:
         // the argument at parse time (exit code 2).
         let assert = specify()
             .current_dir(project.root())
-            .args(["plan", "create", "x", "--source", "badkey"])
+            .args(["change", "plan", "create", "x", "--source", "badkey"])
             .assert()
             .failure();
         assert_eq!(
@@ -1234,10 +1235,10 @@ changes:
     fn plan_create_validates_the_result() {
         let project = init_without_plan();
 
-        specify().current_dir(project.root()).args(["plan", "create", "fresh"]).assert().success();
+        specify().current_dir(project.root()).args(["change", "plan", "create", "fresh"]).assert().success();
 
         let assert =
-            specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+            specify().current_dir(project.root()).args(["change", "plan", "validate"]).assert().success();
         assert_eq!(assert.get_output().status.code(), Some(0));
         let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
         assert!(
@@ -1287,7 +1288,7 @@ changes:
         project.seed_plan(ALL_DONE);
 
         let assert =
-            specify().current_dir(project.root()).args(["plan", "archive"]).assert().success();
+            specify().current_dir(project.root()).args(["change", "plan", "archive"]).assert().success();
         let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
         assert!(
             stdout.contains("Archived plan to"),
@@ -1306,7 +1307,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "archive"])
+            .args(["--format", "json", "change", "plan", "archive"])
             .assert()
             .success();
         let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1329,7 +1330,7 @@ changes:
         project.seed_plan(A_DONE_B_PENDING);
 
         let assert =
-            specify().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+            specify().current_dir(project.root()).args(["change", "plan", "archive"]).assert().failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
         assert!(
@@ -1353,7 +1354,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "archive"])
+            .args(["--format", "json", "change", "plan", "archive"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1375,7 +1376,7 @@ changes:
 
         specify()
             .current_dir(project.root())
-            .args(["plan", "archive", "--force"])
+            .args(["change", "plan", "archive", "--force"])
             .assert()
             .success();
 
@@ -1402,7 +1403,7 @@ changes: []
 ",
         );
 
-        specify().current_dir(project.root()).args(["plan", "archive"]).assert().success();
+        specify().current_dir(project.root()).args(["change", "plan", "archive"]).assert().success();
 
         let re = regex::Regex::new(r"^my-initiative-\d{8}\.yaml$").expect("regex compiles");
         let entries: Vec<String> = fs::read_dir(archive_dir(&project))
@@ -1428,7 +1429,7 @@ changes: []
         fs::write(&dest, "prior: content\n").expect("seed prior archive");
 
         let assert =
-            specify().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+            specify().current_dir(project.root()).args(["change", "plan", "archive"]).assert().failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
         assert!(
@@ -1450,7 +1451,7 @@ changes: []
         // Deliberately do NOT seed plan.yaml.
 
         let assert =
-            specify().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+            specify().current_dir(project.root()).args(["change", "plan", "archive"]).assert().failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
         assert!(
@@ -1484,7 +1485,7 @@ changes: []
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "archive"])
+            .args(["--format", "json", "change", "plan", "archive"])
             .assert()
             .success();
         let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1524,7 +1525,7 @@ changes: []
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "archive"])
+            .args(["--format", "json", "change", "plan", "archive"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1550,7 +1551,7 @@ changes: []
         fs::create_dir_all(&dest_dir).expect("seed collision dir");
 
         let assert =
-            specify().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+            specify().current_dir(project.root()).args(["change", "plan", "archive"]).assert().failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
         assert!(
@@ -1589,7 +1590,7 @@ changes: []
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "lock", "acquire", "--pid", &our_pid])
+            .args(["--format", "json", "change", "plan", "lock", "acquire", "--pid", &our_pid])
             .assert()
             .success();
         let acquired = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1604,7 +1605,7 @@ changes: []
 
         let release_assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "lock", "release", "--pid", &our_pid])
+            .args(["--format", "json", "change", "plan", "lock", "release", "--pid", &our_pid])
             .assert()
             .success();
         let released = parse_stdout(&release_assert.get_output().stdout, project.root());
@@ -1630,7 +1631,7 @@ changes: []
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "lock", "acquire", "--pid", &contender_pid])
+            .args(["--format", "json", "change", "plan", "lock", "acquire", "--pid", &contender_pid])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1658,13 +1659,13 @@ changes: []
 
         specify()
             .current_dir(project.root())
-            .args(["plan", "lock", "acquire", "--pid", &our_pid])
+            .args(["change", "plan", "lock", "acquire", "--pid", &our_pid])
             .assert()
             .success();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "lock", "status"])
+            .args(["--format", "json", "change", "plan", "lock", "status"])
             .assert()
             .success();
         let value = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1675,7 +1676,7 @@ changes: []
         // Text form for the same state — `held by pid <n>`.
         let text = specify()
             .current_dir(project.root())
-            .args(["plan", "lock", "status"])
+            .args(["change", "plan", "lock", "status"])
             .assert()
             .success();
         let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
@@ -1692,7 +1693,7 @@ changes: []
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "lock", "status"])
+            .args(["--format", "json", "change", "plan", "lock", "status"])
             .assert()
             .success();
         let value = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1702,7 +1703,7 @@ changes: []
 
         let text = specify()
             .current_dir(project.root())
-            .args(["plan", "lock", "status"])
+            .args(["change", "plan", "lock", "status"])
             .assert()
             .success();
         let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
@@ -2026,7 +2027,7 @@ inputs: []
 
         specify()
             .current_dir(project.root())
-            .args(["initiative", "create", "traffic-modernisation"])
+            .args(["change", "create", "traffic-modernisation"])
             .assert()
             .success();
 
@@ -2040,7 +2041,7 @@ inputs: []
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "create", "my-initiative"])
+            .args(["--format", "json", "change", "create", "my-initiative"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2061,7 +2062,7 @@ inputs: []
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "create", "pre-existing"])
+            .args(["--format", "json", "change", "create", "pre-existing"])
             .assert()
             .failure();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2080,7 +2081,7 @@ inputs: []
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "create", "NotKebab"])
+            .args(["--format", "json", "change", "create", "NotKebab"])
             .assert()
             .failure();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2097,7 +2098,7 @@ inputs: []
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "show"])
+            .args(["--format", "json", "change", "show"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2109,11 +2110,11 @@ inputs: []
         );
 
         let text =
-            specify().current_dir(project.root()).args(["initiative", "show"]).assert().success();
+            specify().current_dir(project.root()).args(["change", "show"]).assert().success();
         let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
         assert!(
-            stdout.contains("no initiative brief declared"),
-            "text show should say 'no initiative brief declared', got: {stdout:?}"
+            stdout.contains("no change brief declared"),
+            "text show should say 'no change brief declared', got: {stdout:?}"
         );
     }
 
@@ -2137,7 +2138,7 @@ inputs: []
         // JSON
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "initiative", "show"])
+            .args(["--format", "json", "change", "show"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2155,7 +2156,7 @@ inputs: []
 
         // Text
         let text =
-            specify().current_dir(project.root()).args(["initiative", "show"]).assert().success();
+            specify().current_dir(project.root()).args(["change", "show"]).assert().success();
         let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
         for fragment in
             ["name: traffic-modernisation", "path: ./inputs/legacy/", "kind: legacy-code"]
@@ -2173,7 +2174,7 @@ inputs: []
         write_brief(&project, "---\nname: BadName\n---\n\nbody\n");
 
         let assert =
-            specify().current_dir(project.root()).args(["initiative", "show"]).assert().failure();
+            specify().current_dir(project.root()).args(["change", "show"]).assert().failure();
         assert_ne!(assert.get_output().status.code(), Some(0));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
         assert!(
@@ -2195,7 +2196,7 @@ inputs: []
         project.seed_plan(ALL_DONE);
         write_brief(&project, TRAFFIC_BRIEF_GOLDEN);
 
-        specify().current_dir(project.root()).args(["plan", "archive"]).assert().success();
+        specify().current_dir(project.root()).args(["change", "plan", "archive"]).assert().success();
 
         assert!(!brief_path(&project).exists(), "initiative.md must leave the repo root");
 
@@ -2229,7 +2230,7 @@ inputs: []
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "plan", "validate"])
+            .args(["--format", "json", "change", "plan", "validate"])
             .assert()
             .failure();
         let value = parse_stdout(&assert.get_output().stdout, project.root());
@@ -2254,15 +2255,15 @@ inputs: []
         let project = Project::init();
         specify()
             .current_dir(project.root())
-            .args(["initiative", "create", "rfc3a-planning"])
+            .args(["change", "create", "rfc3a-planning"])
             .assert()
             .success();
         specify()
             .current_dir(project.root())
-            .args(["plan", "create", "rfc3a-planning", "--source", "app=."])
+            .args(["change", "plan", "create", "rfc3a-planning", "--source", "app=."])
             .assert()
             .success();
-        specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+        specify().current_dir(project.root()).args(["change", "plan", "validate"]).assert().success();
     }
 
     #[test]

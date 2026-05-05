@@ -1,5 +1,7 @@
 #![allow(clippy::items_after_statements, clippy::option_if_let_else, clippy::unnecessary_wraps)]
 
+pub mod plan;
+
 use std::path::Path;
 
 use serde::Serialize;
@@ -11,22 +13,29 @@ use specify_change::{
 };
 use specify_registry::Registry;
 
-use crate::cli::{InitiativeAction, OutputFormat};
+use crate::cli::{ChangeAction, OutputFormat};
 use crate::context::CommandContext;
 use crate::output::{CliResult, absolute_string, emit_response};
 
-pub fn run_initiative(ctx: &CommandContext, action: InitiativeAction) -> Result<CliResult, Error> {
+/// Dispatch `specify change *` (RFC-13 §"What becomes a capability").
+///
+/// `change` is the umbrella orchestration verb family — operator
+/// brief, executable plan, and finalize. The `Plan { action }`
+/// arm threads through to the plan submodule so the durable surface
+/// reads `specify change plan {add,amend,next,status,...}`.
+pub fn run_change(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult, Error> {
     match action {
-        InitiativeAction::Create { name } => brief_create(ctx, name),
-        InitiativeAction::Show => brief_show(ctx),
-        InitiativeAction::Finalize { clean, dry_run } => finalize(ctx, clean, dry_run),
+        ChangeAction::Create { name } => brief_create(ctx, name),
+        ChangeAction::Show => brief_show(ctx),
+        ChangeAction::Plan { action } => plan::run_plan(ctx, action),
+        ChangeAction::Finalize { clean, dry_run } => finalize(ctx, clean, dry_run),
     }
 }
 
 fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     if !is_valid_kebab_name(&name) {
         return Err(Error::Config(format!(
-            "initiative.md: name `{name}` must be kebab-case \
+            "change brief: name `{name}` must be kebab-case \
              (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
         )));
     }
@@ -54,7 +63,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
             }
             OutputFormat::Text => {
                 eprintln!(
-                    "initiative.md already exists at {}; refusing to overwrite",
+                    "change brief already exists at {}; refusing to overwrite",
                     brief_path.display()
                 );
             }
@@ -84,7 +93,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
             path: absolute_string(&brief_path),
         }),
         OutputFormat::Text => {
-            println!("Created initiative.md for {name}");
+            println!("Created change brief for {name} at {}", brief_path.display());
         }
     }
     Ok(CliResult::Success)
@@ -106,7 +115,10 @@ fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
                     path: brief_path.display().to_string(),
                 }),
                 OutputFormat::Text => {
-                    println!("no initiative brief declared at initiative.md");
+                    println!(
+                        "no change brief declared at {}",
+                        brief_path.display()
+                    );
                 }
             }
             Ok(CliResult::Success)
@@ -132,15 +144,15 @@ fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
                     },
                     path: brief_path.display().to_string(),
                 }),
-                OutputFormat::Text => print_initiative_brief_text(&brief, &brief_path),
+                OutputFormat::Text => print_change_brief_text(&brief, &brief_path),
             }
             Ok(CliResult::Success)
         }
     }
 }
 
-fn print_initiative_brief_text(brief: &ChangeBrief, brief_path: &Path) {
-    println!("initiative.md: {}", brief_path.display());
+fn print_change_brief_text(brief: &ChangeBrief, brief_path: &Path) {
+    println!("change brief: {}", brief_path.display());
     println!("name: {}", brief.frontmatter.name);
     if brief.frontmatter.inputs.is_empty() {
         println!("inputs: (none)");
@@ -160,7 +172,7 @@ fn print_initiative_brief_text(brief: &ChangeBrief, brief_path: &Path) {
 }
 
 // ---------------------------------------------------------------------------
-// `specify initiative finalize` (RFC-9 §4C)
+// `specify change finalize` (RFC-9 §4C)
 // ---------------------------------------------------------------------------
 
 fn finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResult, Error> {
@@ -208,10 +220,10 @@ fn finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResul
 
 fn emit_plan_not_found(format: OutputFormat) -> CliResult {
     let msg = "no plan to finalize: plan.yaml is absent. \
-               If the initiative was already finalized, the archive is at \
-               .specify/archive/plans/. Otherwise run `specify plan create` \
-               (and `specify initiative create` if initiative.md is \
-               also missing) to start the loop.";
+               If the change was already finalized, the archive is at \
+               .specify/archive/plans/. Otherwise run \
+               `specify change plan create` (and `specify change create` \
+               if the change brief is also missing) to start the loop.";
     match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
@@ -234,12 +246,12 @@ fn emit_plan_not_found(format: OutputFormat) -> CliResult {
     CliResult::GenericFailure
 }
 
-fn emit_non_terminal(format: OutputFormat, initiative: &str, entries: &[String]) -> CliResult {
+fn emit_non_terminal(format: OutputFormat, change: &str, entries: &[String]) -> CliResult {
     let entry_list = entries.join(", ");
     let msg = format!(
-        "non-terminal-entries-present: plan `{initiative}` has {} entry(ies) not in a terminal \
+        "non-terminal-entries-present: plan `{change}` has {} entry(ies) not in a terminal \
          state: {entry_list}. Resolve them (transition done/failed/skipped) and re-run; see \
-         `specify plan status` for the full picture.",
+         `specify change plan status` for the full picture.",
         entries.len(),
     );
     match format {
@@ -255,7 +267,7 @@ fn emit_non_terminal(format: OutputFormat, initiative: &str, entries: &[String])
             }
             emit_response(NonTerminal {
                 error: "non-terminal-entries-present",
-                initiative,
+                initiative: change,
                 entries,
                 message: msg,
                 exit_code: CliResult::GenericFailure.code(),
@@ -278,12 +290,12 @@ fn emit_outcome(format: OutputFormat, outcome: &FinalizeOutcome) {
 fn print_outcome_text(outcome: &FinalizeOutcome) {
     if outcome.dry_run == Some(true) {
         println!(
-            "[dry-run] specify: initiative finalize — {} ({})",
+            "[dry-run] specify: change finalize — {} ({})",
             outcome.initiative, outcome.expected_branch
         );
     } else {
         println!(
-            "specify: initiative finalize — {} ({})",
+            "specify: change finalize — {} ({})",
             outcome.initiative, outcome.expected_branch
         );
     }
@@ -301,9 +313,9 @@ fn print_outcome_text(outcome: &FinalizeOutcome) {
     println!();
     if outcome.finalized {
         if outcome.dry_run == Some(true) {
-            println!("[dry-run] Initiative `{}` would be finalized.", outcome.initiative);
+            println!("[dry-run] Change `{}` would be finalized.", outcome.initiative);
         } else {
-            println!("Initiative `{}` finalized.", outcome.initiative);
+            println!("Change `{}` finalized.", outcome.initiative);
             if let Some(archived) = &outcome.archived {
                 println!("  archived plan: {archived}");
             }
@@ -316,7 +328,7 @@ fn print_outcome_text(outcome: &FinalizeOutcome) {
         }
     } else {
         let reason = blocked_reason(&outcome.summary);
-        println!("Initiative `{}` blocked: {reason}.", outcome.initiative);
+        println!("Change `{}` blocked: {reason}.", outcome.initiative);
     }
 }
 
@@ -359,7 +371,7 @@ fn blocked_reason(s: &FinalizeSummaryCounts) -> String {
 
 // ---------------------------------------------------------------------------
 // Tests for the CLI handler — keep them lean; the heavy lifting lives in
-// `crate::initiative_finalize` (orchestrator) and `tests/cli.rs`
+// `specify_change::finalize` (orchestrator) and `tests/cli.rs`
 // (end-to-end with the real binary).
 // ---------------------------------------------------------------------------
 

@@ -13,7 +13,7 @@ use specify_registry::workspace::{
     workspace_status,
 };
 
-use super::plan::require_file;
+use super::change::plan::require_file;
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
@@ -152,7 +152,7 @@ pub fn run_workspace_push(
 ) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
         Error::Config(
-            "No active plan found at plan.yaml. Run 'specify plan create' \
+            "No active plan found at plan.yaml. Run 'specify change plan create' \
              to create one, or check whether the plan was already archived."
                 .to_string(),
         )
@@ -248,8 +248,8 @@ pub fn run_workspace_merge(
 ) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
         Error::Config(
-            "No active plan found at plan.yaml. Run 'specify plan create' \
-             to author one (or 'specify initiative create' first if initiative.md \
+            "No active plan found at plan.yaml. Run 'specify change plan create' \
+             to author one (or 'specify change create' first if the change brief \
              is also missing) before invoking 'specify workspace merge'."
                 .to_string(),
         )

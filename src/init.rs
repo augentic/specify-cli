@@ -14,9 +14,9 @@
 //! the `.specify/` tree. Platform-component artefacts at the repo
 //! root (`registry.yaml`, `initiative.md`, `plan.yaml`) are
 //! operator-managed: `specify registry add` mints `registry.yaml`,
-//! `specify initiative create` mints `initiative.md`, and
-//! `specify plan create` mints `plan.yaml`. Init never pre-touches
-//! them.
+//! `specify change create` mints `initiative.md`, and
+//! `specify change plan create` mints `plan.yaml`. Init never
+//! pre-touches them.
 //!
 //! Hub mode (`InitOptions::hub: true`, RFC-9 §1D / RFC-13 §Migration)
 //! is the one principled exception: a registry-only platform hub
@@ -127,8 +127,8 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     // Per RFC-13 chunk 2.9, the `.specify/` skeleton stays here but
     // platform-component artefacts at the repo root (`registry.yaml`,
     // `initiative.md`, `plan.yaml`) are not pre-touched — their
-    // owning verbs (`specify registry add`, `specify initiative
-    // create`, `specify plan create`) mint them on demand.
+    // owning verbs (`specify registry add`, `specify change create`,
+    // `specify change plan create`) mint them on demand.
     // `.specify/specs/` is retained as a per-project convention used
     // by the bundled `omnia` capability; capabilities that need
     // different layouts can mint their own subdirectories from a
@@ -214,8 +214,8 @@ const HUB_INIT_NAME: &str = "hub";
 /// `registry.yaml` is the one platform-component artefact init
 /// scaffolds — bootstrapping a hub *is* bootstrapping its registry.
 /// `initiative.md` and `plan.yaml` stay operator-managed even on a
-/// hub; the operator runs `specify initiative create <name>` and
-/// `specify plan create <name>` when the work itself begins.
+/// hub; the operator runs `specify change create <name>` and
+/// `specify change plan create <name>` when the work itself begins.
 ///
 /// Refuses to run when `.specify/` already exists so the operator
 /// never accidentally flips an existing single-repo project into a
@@ -661,8 +661,8 @@ mod tests {
 
         // RFC-13 chunk 2.9 — non-hub init must not pre-touch any
         // platform-component artefact at the repo root. Operators
-        // mint these via `specify registry add`, `specify initiative
-        // create`, and `specify plan create`.
+        // mint these via `specify registry add`, `specify change
+        // create`, and `specify change plan create`.
         for absent in ["registry.yaml", "initiative.md", "plan.yaml", "change.md"] {
             assert!(
                 !tmp.path().join(absent).exists(),

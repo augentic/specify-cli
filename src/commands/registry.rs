@@ -274,7 +274,7 @@ fn add_to_registry(
 /// invariant, so the post-write check should always succeed; we run
 /// it anyway to pin the contract). Emits a non-fatal warning when
 /// `plan.yaml` references the removed project, naming the affected
-/// plan entries so the operator can run `specify plan amend
+/// plan entries so the operator can run `specify change plan amend
 /// --project <other>` against each one.
 fn remove_from_registry(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let registry_path = Registry::path(&ctx.project_dir);
@@ -373,7 +373,7 @@ fn plan_references_for(project_dir: &Path, removed_name: &str) -> Vec<String> {
             } else {
                 vec![format!(
                     "plan.yaml has {n} entry(ies) still referencing project `{removed_name}`: {entries}. \
-                     Run `specify plan amend <change> --project <other>` to rewire them.",
+                     Run `specify change plan amend <change> --project <other>` to rewire them.",
                     n = referencing.len(),
                     entries = referencing.join(", "),
                 )]

@@ -40,8 +40,8 @@ impl CommandContext {
         let Some(capability) = self.config.capability.as_deref() else {
             return Err(Error::Config(
                 "this project has no capability declared (hub projects do not run \
-                 phase pipelines); only `specify registry` / `specify change` / \
-                 `specify plan` verbs are supported on hubs"
+                 phase pipelines); only `specify registry` and `specify change` \
+                 verbs are supported on hubs"
                     .to_string(),
             ));
         };

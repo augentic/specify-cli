@@ -901,7 +901,7 @@ fn format_result_line(r: &specify::ValidationResult) -> String {
 /// exists in the project directory. The secondary guard — CWD does not
 /// contain `.specify/plan.yaml` — is retained as a safety check but is not
 /// sufficient on its own because `plan.yaml` may be absent after
-/// `specify plan archive`.
+/// `specify change plan archive`.
 fn is_workspace_clone(project_dir: &Path) -> bool {
     let components: Vec<_> = project_dir.components().collect();
     let in_workspace = components.windows(3).any(|w| {

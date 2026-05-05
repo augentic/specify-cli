@@ -113,8 +113,8 @@ fn emit_init_result(format: OutputFormat, result: &InitResult, hub: bool) -> Cli
                 );
             } else {
                 println!(
-                    "Next: run `specify initiative create <name>` to start a change, \
-                     then `specify plan create <name>` to plan it."
+                    "Next: run `specify change create <name>` to start a change, \
+                     then `specify change plan create <name>` to plan it."
                 );
             }
         }

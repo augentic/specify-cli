@@ -646,12 +646,12 @@ fn registry_remove_warns_when_plan_references_project() {
     // Author a plan with one entry pointing at alpha.
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "create", "demo"])
+        .args(["--format", "json", "change", "plan", "create", "demo"])
         .assert()
         .success();
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "add", "alpha-feature", "--project", "alpha"])
+        .args(["--format", "json", "change", "plan", "add", "alpha-feature", "--project", "alpha"])
         .assert()
         .success();
 
@@ -923,7 +923,7 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     .unwrap();
 
     let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "plan", "doctor"]).assert();
+        specify().current_dir(tmp.path()).args(["--format", "json", "change", "plan", "doctor"]).assert();
     let output = assert.get_output();
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
@@ -975,7 +975,7 @@ fn plan_doctor_diagnostic_payloads_round_trip_typed() {
     .unwrap();
 
     let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "plan", "doctor"]).assert();
+        specify().current_dir(tmp.path()).args(["--format", "json", "change", "plan", "doctor"]).assert();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
@@ -1042,7 +1042,7 @@ fn plan_validate_unchanged_by_doctor_fixture() {
     .unwrap();
 
     let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
+        specify().current_dir(tmp.path()).args(["--format", "json", "change", "plan", "validate"]).assert();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
@@ -1076,13 +1076,13 @@ fn plan_doctor_healthy_plan_exits_zero() {
 
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "create", "demo"])
+        .args(["--format", "json", "change", "plan", "create", "demo"])
         .assert()
         .success();
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "doctor"])
+        .args(["--format", "json", "change", "plan", "doctor"])
         .assert()
         .success();
     let value: serde_json::Value =
@@ -1097,7 +1097,7 @@ fn plan_doctor_healthy_plan_exits_zero() {
 
 #[test]
 fn plan_doctor_help_documents_superset_relationship() {
-    let assert = specify().args(["plan", "doctor", "--help"]).assert().success();
+    let assert = specify().args(["change", "plan", "doctor", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for code in
         ["cycle-in-depends-on", "orphan-source-key", "stale-workspace-clone", "unreachable-entry"]
@@ -1113,14 +1113,14 @@ fn plan_doctor_help_documents_superset_relationship() {
 //
 // Wire-level integration tests for the precondition diagnostics. The
 // happy-path classifier flow is covered by the in-process `MockProbe`
-// against the orchestrator (see `cargo test --lib initiative_finalize`).
+// against the orchestrator (see `cargo test -p specify-change`).
 // The CLI tests below pin: (a) the failure-mode wire shape skill
 // authors will rely on, and (b) the on-disk archive landing when no
 // projects need probing.
 
 #[test]
 fn initiative_help_lists_finalize_subcommand() {
-    let assert = specify().args(["initiative", "--help"]).assert().success();
+    let assert = specify().args(["change", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for verb in ["create", "show", "finalize"] {
         assert!(
@@ -1132,7 +1132,7 @@ fn initiative_help_lists_finalize_subcommand() {
 
 #[test]
 fn initiative_finalize_help_documents_clean_and_dry_run() {
-    let assert = specify().args(["initiative", "finalize", "--help"]).assert().success();
+    let assert = specify().args(["change", "finalize", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for flag in ["--clean", "--dry-run"] {
         assert!(stdout.contains(flag), "expected --help to document `{flag}`, got:\n{stdout}");
@@ -1147,7 +1147,7 @@ fn initiative_finalize_refuses_when_plan_absent() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "initiative", "finalize"])
+        .args(["--format", "json", "change", "finalize"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1184,7 +1184,7 @@ fn initiative_finalize_refuses_on_non_terminal_entries() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "initiative", "finalize"])
+        .args(["--format", "json", "change", "finalize"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1210,7 +1210,7 @@ fn initiative_finalize_dry_run_archives_nothing_with_empty_registry() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "initiative", "finalize", "--dry-run"])
+        .args(["--format", "json", "change", "finalize", "--dry-run"])
         .assert()
         .success();
     let value: serde_json::Value =
@@ -1234,7 +1234,7 @@ fn initiative_finalize_archives_when_all_terminal_and_no_registry() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "initiative", "finalize"])
+        .args(["--format", "json", "change", "finalize"])
         .assert()
         .success();
     let value: serde_json::Value =
@@ -1273,13 +1273,13 @@ fn initiative_finalize_idempotent_after_archive() {
     fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
 
     // First run: archives the plan.
-    specify().current_dir(tmp.path()).args(["initiative", "finalize"]).assert().success();
+    specify().current_dir(tmp.path()).args(["change", "finalize"]).assert().success();
     assert!(!tmp.path().join("plan.yaml").exists());
 
     // Second run: plan is gone, refused with plan-not-found.
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "initiative", "finalize"])
+        .args(["--format", "json", "change", "finalize"])
         .assert()
         .failure();
     let value: serde_json::Value =

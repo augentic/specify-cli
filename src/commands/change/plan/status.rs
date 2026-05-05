@@ -31,12 +31,12 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
         match ctx.format {
             OutputFormat::Json => {
                 eprintln!(
-                    "warning: dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
+                    "warning: dependency cycle detected — falling back to list order. Run 'specify change plan validate' for detail."
                 );
             }
             OutputFormat::Text => {
                 println!(
-                    "\u{26a0} dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
+                    "\u{26a0} dependency cycle detected — falling back to list order. Run 'specify change plan validate' for detail."
                 );
             }
         }
@@ -212,7 +212,7 @@ fn plan_entry_to_json(entry: &Entry, lifecycle: Option<String>) -> Value {
 fn print_status(view: &StatusView) {
     let counts = view.counts;
     let total: usize = counts.values().sum();
-    println!("## Initiative: {}", view.plan.name);
+    println!("## Change: {}", view.plan.name);
     println!();
     println!();
     println!(

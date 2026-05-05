@@ -1386,10 +1386,19 @@ fn phase_outcome_round_trips_through_serde() {
     }
 }
 
-// ---- specify change * is gone (RFC-13 Phase 3.2 cut-over) ------------------
+// ---- specify {initiative, plan} * are gone (RFC-13 Phase 3.5 cut-over) ----
+//
+// Phase 3.2 deleted the pre-RFC `change` per-loop-unit verb (renamed to
+// `slice`). Phase 3.5 then re-uses the `change` noun as the operator-
+// facing umbrella that nests the plan sub-resource: `Commands::Change`
+// folds in what used to be `Commands::Initiative` and adds a nested
+// `change plan *` family that replaces top-level `Commands::Plan`. The
+// regression tests below pin the post-3.5 surface — `change` is back as
+// a top-level subcommand, while `initiative` and `plan` are gone from
+// the binary's `--help` and trip clap's unrecognised-subcommand path.
 
 #[test]
-fn change_subcommand_is_gone_from_top_level_help() {
+fn change_umbrella_is_listed_in_top_level_help() {
     let assert = specify().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(
@@ -1397,30 +1406,60 @@ fn change_subcommand_is_gone_from_top_level_help() {
         "post-RFC-13 --help must list `slice`, got:\n{stdout}"
     );
     // `--help` lists subcommand names one-per-line (clap default).
-    // Anchor on the leading-token form so a stray `change` inside an
-    // unrelated description (e.g. `specify status`) does not satisfy the
-    // assertion.
+    // After Phase 3.5, the umbrella `change` subcommand is back.
     assert!(
-        !stdout
+        stdout
             .lines()
-            .any(|line| line.trim_start().starts_with("change ") || line.trim_start() == "change"),
-        "pre-RFC-13 `change` subcommand must be gone from --help, got:\n{stdout}"
+            .any(|line| line.trim_start().starts_with("change ")),
+        "post-3.5 --help must list `change` as the umbrella subcommand, got:\n{stdout}"
     );
 }
 
 #[test]
-fn change_subcommand_returns_clap_unrecognised_subcommand_error() {
-    let assert = specify().args(["change", "create", "demo"]).assert().failure();
+fn initiative_subcommand_is_gone_from_top_level_help() {
+    let assert = specify().arg("--help").assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
+    assert!(
+        !stdout.lines().any(|line| {
+            line.trim_start().starts_with("initiative ")
+                || line.trim_start() == "initiative"
+        }),
+        "post-3.5 --help must not list `initiative` (folded into `change`), got:\n{stdout}"
+    );
+}
+
+#[test]
+fn plan_subcommand_is_gone_from_top_level_help() {
+    let assert = specify().arg("--help").assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
+    assert!(
+        !stdout
+            .lines()
+            .any(|line| line.trim_start().starts_with("plan ") || line.trim_start() == "plan"),
+        "post-3.5 --help must not list top-level `plan` (folded into `change plan`), got:\n{stdout}"
+    );
+}
+
+#[test]
+fn initiative_subcommand_returns_clap_unrecognised_subcommand_error() {
+    let assert = specify().args(["initiative", "create", "demo"]).assert().failure();
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
-    // clap's standard "unrecognised subcommand" message includes the
-    // word "unrecognized" or "unexpected" depending on version; either
-    // is acceptable. Anchor on the noun that proves clap rejected it
-    // rather than dispatching to a real handler.
     assert!(
         stderr.to_lowercase().contains("unrecognized")
             || stderr.to_lowercase().contains("unrecognised")
-            || stderr.to_lowercase().contains("unexpected argument")
-            || stderr.contains("error: ") && stderr.contains("change"),
-        "pre-RFC-13 `specify change *` must be a clap-level error, got stderr:\n{stderr}"
+            || stderr.to_lowercase().contains("unexpected argument"),
+        "post-3.5 `specify initiative *` must be a clap-level error, got stderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn plan_subcommand_returns_clap_unrecognised_subcommand_error() {
+    let assert = specify().args(["plan", "add", "foo"]).assert().failure();
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
+    assert!(
+        stderr.to_lowercase().contains("unrecognized")
+            || stderr.to_lowercase().contains("unrecognised")
+            || stderr.to_lowercase().contains("unexpected argument"),
+        "post-3.5 top-level `specify plan *` must be a clap-level error, got stderr:\n{stderr}"
     );
 }
