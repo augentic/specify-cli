@@ -68,10 +68,13 @@ pub enum Commands {
         action: CapabilityAction,
     },
 
-    /// Change lifecycle operations
-    Change {
+    /// Slice lifecycle operations (the per-loop unit of work).
+    ///
+    /// A "slice" is the unit a single `define → build → merge` loop
+    /// drives end to end (RFC-13 §"What becomes a capability").
+    Slice {
         #[command(subcommand)]
-        action: ChangeAction,
+        action: SliceAction,
     },
 
     /// Manage the initiative-level plan at `plan.yaml` (repo root)
@@ -486,53 +489,53 @@ pub enum CapabilityAction {
 }
 
 #[derive(Subcommand)]
-pub enum ChangeAction {
-    /// Create a new change directory with an initial `.metadata.yaml`
+pub enum SliceAction {
+    /// Create a new slice directory with an initial `.metadata.yaml`
     Create {
-        /// Kebab-case change name
+        /// Kebab-case slice name
         name: String,
         /// Schema identifier; defaults to the value in `.specify/project.yaml`
         #[arg(long)]
         schema: Option<String>,
-        /// Behaviour when `<changes_dir>/<name>/` already exists
+        /// Behaviour when `<slices_dir>/<name>/` already exists
         #[arg(long, value_enum, default_value = "fail")]
         if_exists: CreateIfExistsArg,
     },
-    /// List every active change under `.specify/changes/`
+    /// List every active slice under `.specify/changes/`
     List,
-    /// Show the status of one change
+    /// Show the status of one slice
     Status {
-        /// Change name (under `.specify/changes/`)
+        /// Slice name (under `.specify/changes/`)
         name: String,
     },
-    /// Validate a change's artifacts against schema rules
+    /// Validate a slice's artifacts against schema rules
     Validate {
-        /// Change name (under `.specify/changes/`)
+        /// Slice name (under `.specify/changes/`)
         name: String,
     },
-    /// Spec-merge operations for a change
+    /// Spec-merge operations for a slice
     Merge {
         #[command(subcommand)]
-        action: ChangeMergeAction,
+        action: SliceMergeAction,
     },
-    /// Tasks-list operations for a change
+    /// Tasks-list operations for a slice
     Task {
         #[command(subcommand)]
-        action: ChangeTaskAction,
+        action: SliceTaskAction,
     },
     /// Phase-outcome bookkeeping on `.metadata.yaml`
     Outcome {
         #[command(subcommand)]
         action: OutcomeAction,
     },
-    /// Append-only audit log at `<change_dir>/journal.yaml`
+    /// Append-only audit log at `<slice_dir>/journal.yaml`
     Journal {
         #[command(subcommand)]
         action: JournalAction,
     },
-    /// Transition a change to a new lifecycle status
+    /// Transition a slice to a new lifecycle status
     Transition {
-        /// Change name
+        /// Slice name
         name: String,
         /// Target status (`defined`, `building`, `complete`, `merged`, `dropped`, or `defining`)
         #[arg(value_enum)]
@@ -540,7 +543,7 @@ pub enum ChangeAction {
     },
     /// Scan or overwrite `touched_specs` on `.metadata.yaml`
     TouchedSpecs {
-        /// Change name
+        /// Slice name
         name: String,
         /// Scan `specs/` subdirs and classify each as new or modified
         #[arg(long, conflicts_with = "set")]
@@ -549,19 +552,19 @@ pub enum ChangeAction {
         #[arg(long, value_delimiter = ',')]
         set: Vec<String>,
     },
-    /// Report overlapping `touched_specs` with other active changes
+    /// Report overlapping `touched_specs` with other active slices
     Overlap {
-        /// Change name
+        /// Slice name
         name: String,
     },
-    /// Archive a change directory into `.specify/archive/YYYY-MM-DD-<name>/`
+    /// Archive a slice directory into `.specify/archive/YYYY-MM-DD-<name>/`
     Archive {
-        /// Change name
+        /// Slice name
         name: String,
     },
-    /// Transition a change to `dropped` and archive it
+    /// Transition a slice to `dropped` and archive it
     Drop {
-        /// Change name
+        /// Slice name
         name: String,
         /// Free-text reason; surfaced in `.metadata.yaml.drop_reason` and the archive path
         #[arg(long)]
@@ -569,49 +572,49 @@ pub enum ChangeAction {
     },
 }
 
-/// Spec-merge subcommands grouped under `change merge`.
+/// Spec-merge subcommands grouped under `slice merge`.
 #[derive(Subcommand)]
-pub enum ChangeMergeAction {
-    /// Merge all delta specs for the change into baseline and archive the change
+pub enum SliceMergeAction {
+    /// Merge all delta specs for the slice into baseline and archive the slice
     Run {
-        /// Change name
+        /// Slice name
         name: String,
     },
     /// Show the merge operations that would be applied, without writing
     Preview {
-        /// Change name
+        /// Slice name
         name: String,
     },
-    /// Report `type: modified` baselines modified after this change's `defined_at`
+    /// Report `type: modified` baselines modified after this slice's `defined_at`
     ConflictCheck {
-        /// Change name
+        /// Slice name
         name: String,
     },
 }
 
-/// Task-list subcommands grouped under `change task`.
+/// Task-list subcommands grouped under `slice task`.
 #[derive(Subcommand)]
-pub enum ChangeTaskAction {
+pub enum SliceTaskAction {
     /// Report task completion counts (total, complete, pending)
     Progress {
-        /// Change name
+        /// Slice name
         name: String,
     },
     /// Mark a task complete (idempotent — no-op if already complete)
     Mark {
-        /// Change name
+        /// Slice name
         name: String,
         /// Task number (e.g. `1.1`)
         task_number: String,
     },
 }
 
-/// Phase-outcome subcommands grouped under `change outcome`.
+/// Phase-outcome subcommands grouped under `slice outcome`.
 #[derive(Subcommand)]
 pub enum OutcomeAction {
     /// Record the outcome of a phase (define|build|merge) on `.metadata.yaml`
     Set {
-        /// Change name
+        /// Slice name
         name: String,
         /// Phase this outcome applies to
         #[arg(value_enum)]
@@ -655,24 +658,24 @@ pub enum OutcomeAction {
         #[arg(long)]
         rationale: Option<String>,
     },
-    /// Read the stamped `.metadata.yaml.outcome` for a change
+    /// Read the stamped `.metadata.yaml.outcome` for a slice
     ///
     /// Symmetric read verb for `outcome set`: emits the current
     /// `outcome` subtree for consumers like `/spec:execute` that
     /// classify a phase return without needing the rest of the
     /// lifecycle-status payload. Exits 0 both when an outcome is
-    /// present and when the change is unstamped (`outcome: null`).
+    /// present and when the slice is unstamped (`outcome: null`).
     Show {
-        /// Change name
+        /// Slice name
         name: String,
     },
 }
 
-/// CLI-side discriminant for `change outcome set <outcome>`.
+/// CLI-side discriminant for `slice outcome set <outcome>`.
 ///
 /// Mirrors the on-disk [`specify::Outcome`] discriminant strings
 /// (kebab-case) but keeps the variants unit-only so clap can derive
-/// `ValueEnum`. The dispatcher in `src/commands/change.rs` reads this
+/// `ValueEnum`. The dispatcher in `src/commands/slice.rs` reads this
 /// alongside the `--proposed-*` / `--rationale` flags and constructs
 /// the actual `Outcome` enum value.
 ///
@@ -693,12 +696,12 @@ pub enum OutcomeKind {
     RegistryAmendmentRequired,
 }
 
-/// Journal subcommands grouped under `change journal`.
+/// Journal subcommands grouped under `slice journal`.
 #[derive(Subcommand)]
 pub enum JournalAction {
-    /// Append an entry to the change's `journal.yaml`
+    /// Append an entry to the slice's `journal.yaml`
     Append {
-        /// Change name
+        /// Slice name
         name: String,
         /// Phase that produced the entry
         #[arg(value_enum)]
@@ -713,9 +716,9 @@ pub enum JournalAction {
         #[arg(long)]
         context: Option<String>,
     },
-    /// Print the change's journal entries (text or JSON)
+    /// Print the slice's journal entries (text or JSON)
     Show {
-        /// Change name
+        /// Slice name
         name: String,
     },
 }

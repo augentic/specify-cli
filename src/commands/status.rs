@@ -3,8 +3,8 @@
 //! Top-level `specify status` — project dashboard.
 //!
 //! Aggregates the registry summary, plan progress counts, and the
-//! active-change list. Single-change status lives in
-//! `super::change::ChangeAction::Status`; this module is dashboard-only.
+//! active-slice list. Single-slice status lives in
+//! `super::slice::SliceAction::Status`; this module is dashboard-only.
 
 use std::collections::BTreeMap;
 
@@ -14,7 +14,7 @@ use specify::{Error, ProjectConfig};
 use specify_initiative::{Plan, Status};
 use specify_registry::Registry;
 
-use super::change::{collect_status, list_change_names, status_entry_to_json};
+use super::slice::{collect_status, list_slice_names, status_entry_to_json};
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
@@ -26,7 +26,7 @@ pub fn run_status_dashboard(ctx: &CommandContext) -> Result<CliResult, Error> {
     let registry = Registry::load(&ctx.project_dir)?;
     let plan_summary = load_plan_summary(ctx);
 
-    let names = list_change_names(&changes_dir)?;
+    let names = list_slice_names(&changes_dir)?;
     let mut entries = Vec::with_capacity(names.len());
     for name in names {
         let dir = changes_dir.join(&name);
@@ -108,7 +108,7 @@ fn load_plan_summary(ctx: &CommandContext) -> Option<PlanSummary> {
 }
 
 fn print_dashboard_text(
-    registry: Option<&Registry>, plan: Option<&PlanSummary>, entries: &[super::change::StatusEntry],
+    registry: Option<&Registry>, plan: Option<&PlanSummary>, entries: &[super::slice::StatusEntry],
 ) {
     println!("## Registry");
     match registry {

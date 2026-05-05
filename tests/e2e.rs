@@ -249,7 +249,7 @@ fn validate_good_change_passes() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "validate", "my-change"])
+        .args(["--format", "json", "slice", "validate", "my-change"])
         .assert()
         .success();
     assert_eq!(assert.get_output().status.code(), Some(0));
@@ -271,7 +271,7 @@ fn validate_bad_change_fails_with_exit_two() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "validate", "my-change"])
+        .args(["--format", "json", "slice", "validate", "my-change"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2), "validate on bad fixture must exit 2");
@@ -293,7 +293,7 @@ fn merge_two_spec_change_produces_baselines_and_archive() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "merge", "run", "my-change"])
+        .args(["--format", "json", "slice", "merge", "run", "my-change"])
         .assert()
         .success();
 
@@ -336,7 +336,7 @@ fn task_progress_reports_counts_and_items() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "task", "progress", "my-change"])
+        .args(["--format", "json", "slice", "task", "progress", "my-change"])
         .assert()
         .success();
 
@@ -364,7 +364,7 @@ fn task_mark_marks_then_is_idempotent() {
     // First mark: flips - [ ] -> - [x] and reports idempotent: false.
     let first = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "task", "mark", "my-change", "1.1"])
+        .args(["--format", "json", "slice", "task", "mark", "my-change", "1.1"])
         .assert()
         .success();
     let first_value = parse_stdout(&first.get_output().stdout, project.root());
@@ -382,7 +382,7 @@ fn task_mark_marks_then_is_idempotent() {
     // Second mark: no-op, idempotent: true, file unchanged.
     let second = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "task", "mark", "my-change", "1.1"])
+        .args(["--format", "json", "slice", "task", "mark", "my-change", "1.1"])
         .assert()
         .success();
     let second_value = parse_stdout(&second.get_output().stdout, project.root());
@@ -462,11 +462,11 @@ fn capability_resolve_cached_returns_cached_source() {
 fn phase_outcome_round_trip_via_change_outcome_verb() {
     let project = Project::init();
 
-    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
         .current_dir(project.root())
         .args([
-            "change",
+            "slice",
             "outcome",
             "set",
             "foo",
@@ -482,7 +482,7 @@ fn phase_outcome_round_trip_via_change_outcome_verb() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "show", "foo"])
+        .args(["--format", "json", "slice", "outcome", "show", "foo"])
         .assert()
         .success();
     assert_eq!(assert.get_output().status.code(), Some(0));
@@ -508,12 +508,12 @@ fn phase_outcome_round_trip_via_change_outcome_verb() {
     assert_golden("change-outcome.json", actual);
 
     let unstamped =
-        specify().current_dir(project.root()).args(["change", "create", "bar"]).assert().success();
+        specify().current_dir(project.root()).args(["slice", "create", "bar"]).assert().success();
     assert_eq!(unstamped.get_output().status.code(), Some(0));
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "show", "bar"])
+        .args(["--format", "json", "slice", "outcome", "show", "bar"])
         .assert()
         .success();
     assert_eq!(assert.get_output().status.code(), Some(0));

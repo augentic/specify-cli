@@ -15,8 +15,8 @@ use specify::{
 };
 
 use crate::cli::{
-    ChangeAction, ChangeMergeAction, ChangeTaskAction, JournalAction, OutcomeAction, OutcomeKind,
-    OutputFormat,
+    JournalAction, OutcomeAction, OutcomeKind, OutputFormat, SliceAction, SliceMergeAction,
+    SliceTaskAction,
 };
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
@@ -58,28 +58,28 @@ fn omnia_artifact_classes(project_root: &Path, change_dir: &Path) -> Vec<Artifac
     ]
 }
 
-pub fn run_change(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult, Error> {
+pub fn run_slice(ctx: &CommandContext, action: SliceAction) -> Result<CliResult, Error> {
     match action {
-        ChangeAction::Create {
+        SliceAction::Create {
             name,
             schema,
             if_exists,
-        } => run_change_create(ctx, name, schema, if_exists.into()),
-        ChangeAction::List => run_change_list(ctx),
-        ChangeAction::Status { name } => run_change_status_one(ctx, name),
-        ChangeAction::Validate { name } => run_change_validate(ctx, name),
-        ChangeAction::Merge { action } => match action {
-            ChangeMergeAction::Run { name } => run_change_merge_run(ctx, name),
-            ChangeMergeAction::Preview { name } => run_change_merge_preview(ctx, name),
-            ChangeMergeAction::ConflictCheck { name } => run_change_merge_conflict_check(ctx, name),
+        } => run_slice_create(ctx, name, schema, if_exists.into()),
+        SliceAction::List => run_slice_list(ctx),
+        SliceAction::Status { name } => run_slice_status_one(ctx, name),
+        SliceAction::Validate { name } => run_slice_validate(ctx, name),
+        SliceAction::Merge { action } => match action {
+            SliceMergeAction::Run { name } => run_slice_merge_run(ctx, name),
+            SliceMergeAction::Preview { name } => run_slice_merge_preview(ctx, name),
+            SliceMergeAction::ConflictCheck { name } => run_slice_merge_conflict_check(ctx, name),
         },
-        ChangeAction::Task { action } => match action {
-            ChangeTaskAction::Progress { name } => run_change_task_progress(ctx, name),
-            ChangeTaskAction::Mark { name, task_number } => {
-                run_change_task_mark(ctx, name, task_number)
+        SliceAction::Task { action } => match action {
+            SliceTaskAction::Progress { name } => run_slice_task_progress(ctx, name),
+            SliceTaskAction::Mark { name, task_number } => {
+                run_slice_task_mark(ctx, name, task_number)
             }
         },
-        ChangeAction::Outcome { action } => match action {
+        SliceAction::Outcome { action } => match action {
             OutcomeAction::Set {
                 name,
                 phase,
@@ -91,7 +91,7 @@ pub fn run_change(ctx: &CommandContext, action: ChangeAction) -> Result<CliResul
                 proposed_schema,
                 proposed_description,
                 rationale,
-            } => run_change_outcome_set(
+            } => run_slice_outcome_set(
                 ctx,
                 name,
                 phase,
@@ -106,29 +106,29 @@ pub fn run_change(ctx: &CommandContext, action: ChangeAction) -> Result<CliResul
                     rationale,
                 },
             ),
-            OutcomeAction::Show { name } => run_change_outcome_show(ctx, name),
+            OutcomeAction::Show { name } => run_slice_outcome_show(ctx, name),
         },
-        ChangeAction::Journal { action } => match action {
+        SliceAction::Journal { action } => match action {
             JournalAction::Append {
                 name,
                 phase,
                 kind,
                 summary,
                 context,
-            } => run_change_journal_append(ctx, name, phase, kind, summary, context),
-            JournalAction::Show { name } => run_change_journal_show(ctx, name),
+            } => run_slice_journal_append(ctx, name, phase, kind, summary, context),
+            JournalAction::Show { name } => run_slice_journal_show(ctx, name),
         },
-        ChangeAction::Transition { name, target } => run_change_transition(ctx, name, target),
-        ChangeAction::TouchedSpecs { name, scan, set } => {
-            run_change_touched_specs(ctx, name, scan, set)
+        SliceAction::Transition { name, target } => run_slice_transition(ctx, name, target),
+        SliceAction::TouchedSpecs { name, scan, set } => {
+            run_slice_touched_specs(ctx, name, scan, set)
         }
-        ChangeAction::Overlap { name } => run_change_overlap(ctx, name),
-        ChangeAction::Archive { name } => run_change_archive(ctx, name),
-        ChangeAction::Drop { name, reason } => run_change_drop(ctx, name, reason),
+        SliceAction::Overlap { name } => run_slice_overlap(ctx, name),
+        SliceAction::Archive { name } => run_slice_archive(ctx, name),
+        SliceAction::Drop { name, reason } => run_slice_drop(ctx, name, reason),
     }
 }
 
-fn run_change_create(
+fn run_slice_create(
     ctx: &CommandContext, name: String, schema: Option<String>, if_exists: CreateIfExists,
 ) -> Result<CliResult, Error> {
     let schema_value = match schema {
@@ -147,7 +147,7 @@ fn run_change_create(
     let outcome =
         change_actions::create(&changes_dir, &name, &schema_value, if_exists, Utc::now())?;
 
-    Ok(emit_change_create(ctx.format, &outcome))
+    Ok(emit_slice_create(ctx.format, &outcome))
 }
 
 #[derive(Serialize)]
@@ -161,7 +161,7 @@ struct CreateBody {
     restarted: bool,
 }
 
-fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResult {
+fn emit_slice_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResult {
     match format {
         OutputFormat::Json => emit_response(CreateBody {
             name: outcome.dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
@@ -173,9 +173,9 @@ fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResul
         }),
         OutputFormat::Text => {
             if outcome.created {
-                println!("Created change {}", outcome.dir.display());
+                println!("Created slice {}", outcome.dir.display());
             } else {
-                println!("Reusing existing change {}", outcome.dir.display());
+                println!("Reusing existing slice {}", outcome.dir.display());
             }
             if outcome.restarted {
                 println!("  (previous directory was removed)");
@@ -187,7 +187,7 @@ fn emit_change_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResul
     CliResult::Success
 }
 
-fn run_change_transition(
+fn run_slice_transition(
     ctx: &CommandContext, name: String, target: LifecycleStatus,
 ) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
@@ -221,7 +221,7 @@ fn run_change_transition(
     Ok(CliResult::Success)
 }
 
-fn run_change_touched_specs(
+fn run_slice_touched_specs(
     ctx: &CommandContext, name: String, scan: bool, set: Vec<String>,
 ) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
@@ -308,7 +308,7 @@ fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
     Ok(out)
 }
 
-fn run_change_overlap(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn run_slice_overlap(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let changes_dir = ctx.changes_dir();
     let overlaps = change_actions::overlap(&changes_dir, &name)?;
 
@@ -333,7 +333,7 @@ fn run_change_overlap(ctx: &CommandContext, name: String) -> Result<CliResult, E
         }),
         OutputFormat::Text => {
             if overlaps.is_empty() {
-                println!("{name}: no overlapping changes");
+                println!("{name}: no overlapping slices");
             } else {
                 for o in &overlaps {
                     println!(
@@ -347,7 +347,7 @@ fn run_change_overlap(ctx: &CommandContext, name: String) -> Result<CliResult, E
     Ok(CliResult::Success)
 }
 
-fn run_change_archive(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn run_slice_archive(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let target = change_actions::archive(&change_dir, &archive_dir, Utc::now())?;
@@ -370,7 +370,7 @@ fn run_change_archive(ctx: &CommandContext, name: String) -> Result<CliResult, E
     Ok(CliResult::Success)
 }
 
-fn run_change_drop(
+fn run_slice_drop(
     ctx: &CommandContext, name: String, reason: Option<String>,
 ) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
@@ -403,11 +403,11 @@ fn run_change_drop(
     Ok(CliResult::Success)
 }
 
-/// Inputs for [`run_change_outcome_set`].
+/// Inputs for [`run_slice_outcome_set`].
 ///
 /// Bundling the `OutcomeAction::Set` flag soup into one struct avoids
 /// the eight-positional-args clippy lint while keeping the dispatcher
-/// in `run_change` flat and readable.
+/// in `run_slice` flat and readable.
 struct OutcomeSetArgs {
     kind: OutcomeKind,
     summary: Option<String>,
@@ -419,7 +419,7 @@ struct OutcomeSetArgs {
     rationale: Option<String>,
 }
 
-fn run_change_outcome_set(
+fn run_slice_outcome_set(
     ctx: &CommandContext, name: String, phase: Phase, args: OutcomeSetArgs,
 ) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
@@ -460,7 +460,7 @@ fn run_change_outcome_set(
             at: stamped.at.to_string(),
         }),
         OutputFormat::Text => {
-            println!("Stamped outcome '{outcome_str}' for phase '{phase}' on change '{name}'.");
+            println!("Stamped outcome '{outcome_str}' for phase '{phase}' on slice '{name}'.");
         }
     }
     Ok(CliResult::Success)
@@ -579,19 +579,19 @@ const fn cli_kind_str(kind: OutcomeKind) -> &'static str {
 
 /// Report the stamped `.metadata.yaml.outcome` for `name`.
 ///
-/// Symmetric with [`run_change_outcome_set`] (the writer): this is
+/// Symmetric with [`run_slice_outcome_set`] (the writer): this is
 /// the read verb `/spec:execute` consumes after a phase returns.
-/// Emits `"outcome": null` when the change exists but nothing has
+/// Emits `"outcome": null` when the slice exists but nothing has
 /// been stamped; exits `CliResult::Success` in both cases — an unstamped
-/// change is not an error, just an absence.
+/// slice is not an error, just an absence.
 ///
-/// Falls back to `.specify/archive/` when the change is not found under
-/// `.specify/changes/`. This handles the post-merge case: `change merge run`
-/// stamps the outcome into `.metadata.yaml` and then archives the change
+/// Falls back to `.specify/archive/` when the slice is not found under
+/// `.specify/changes/`. This handles the post-merge case: `slice merge run`
+/// stamps the outcome into `.metadata.yaml` and then archives the slice
 /// directory, so the active path no longer exists. The fallback scans
 /// archive entries matching `*-<name>` and picks the most recent by
 /// `created-at` timestamp.
-fn run_change_outcome_show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn run_slice_outcome_show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
     let metadata = if change_dir.is_dir() {
         ChangeMetadata::load(&change_dir)?
@@ -629,9 +629,9 @@ fn run_change_outcome_show(ctx: &CommandContext, name: String) -> Result<CliResu
     Ok(CliResult::Success)
 }
 
-/// JSON serialiser for `change outcome show`.
+/// JSON serialiser for `slice outcome show`.
 ///
-/// Splitting the JSON branch out of [`run_change_outcome_show`] keeps
+/// Splitting the JSON branch out of [`run_slice_outcome_show`] keeps
 /// the dispatcher readable and lets the helper own the
 /// `Outcome::RegistryAmendmentRequired` payload-extraction shim that
 /// RFC-9 §2B introduces. The on-disk wire (in `.metadata.yaml`)
@@ -706,8 +706,8 @@ fn emit_outcome_show_json(name: String, metadata: &ChangeMetadata) {
 /// Scan `.specify/archive/` for directories whose name ends with
 /// `-<change_name>` (the `YYYY-MM-DD-<name>` convention), load each
 /// candidate's `.metadata.yaml`, and return the most recent by
-/// `created-at`. Used by `run_change_outcome_show` as a fallback when the
-/// active change directory has been archived by `change merge run`.
+/// `created-at`. Used by `run_slice_outcome_show` as a fallback when the
+/// active slice directory has been archived by `slice merge run`.
 fn resolve_archived_metadata(
     project_dir: &Path, change_name: &str,
 ) -> Result<ChangeMetadata, Error> {
@@ -743,7 +743,7 @@ fn resolve_archived_metadata(
     Ok(metadata)
 }
 
-fn run_change_journal_append(
+fn run_slice_journal_append(
     ctx: &CommandContext, name: String, phase: Phase, kind: EntryKind, summary: String,
     context: Option<String>,
 ) -> Result<CliResult, Error> {
@@ -785,7 +785,7 @@ fn run_change_journal_append(
     Ok(CliResult::Success)
 }
 
-fn run_change_journal_show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn run_slice_journal_show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
     if !change_dir.is_dir() || !ChangeMetadata::path(&change_dir).exists() {
         return Err(Error::ChangeNotFound { name });
@@ -847,10 +847,10 @@ fn run_change_journal_show(ctx: &CommandContext, name: String) -> Result<CliResu
 }
 
 // ---------------------------------------------------------------------------
-// change validate
+// slice validate
 // ---------------------------------------------------------------------------
 
-fn run_change_validate(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn run_slice_validate(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
     let pipeline = ctx.load_pipeline()?;
     let report = validate_change(&change_dir, &pipeline)?;
@@ -892,7 +892,7 @@ fn format_result_line(r: &specify::ValidationResult) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// change merge run / preview / conflict-check
+// slice merge run / preview / conflict-check
 // ---------------------------------------------------------------------------
 
 /// RFC-3b: Detect whether a project directory is inside a workspace clone.
@@ -917,7 +917,7 @@ fn is_workspace_clone(project_dir: &Path) -> bool {
     has_project_yaml && !has_plan_yaml
 }
 
-fn run_change_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn run_slice_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let classes = omnia_artifact_classes(&ctx.project_dir, &change_dir);
@@ -995,7 +995,7 @@ fn run_change_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult,
     Ok(CliResult::Success)
 }
 
-fn run_change_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn run_slice_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
     let classes = omnia_artifact_classes(&ctx.project_dir, &change_dir);
     let result = preview_change(&change_dir, &classes)?;
@@ -1055,7 +1055,7 @@ fn run_change_merge_preview(ctx: &CommandContext, name: String) -> Result<CliRes
     Ok(CliResult::Success)
 }
 
-fn run_change_merge_conflict_check(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn run_slice_merge_conflict_check(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
     let classes = omnia_artifact_classes(&ctx.project_dir, &change_dir);
     let conflicts = conflict_check(&change_dir, &classes)?;
@@ -1274,10 +1274,10 @@ fn summarise_operations(ops: &[MergeOperation]) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// change task (progress / mark)
+// slice task (progress / mark)
 // ---------------------------------------------------------------------------
 
-fn run_change_task_progress(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn run_slice_task_progress(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
     let tasks_path = resolve_tasks_path(&ctx.project_dir, &change_dir)?;
     let content = std::fs::read_to_string(&tasks_path)?;
@@ -1344,7 +1344,7 @@ fn task_to_json(t: &Task) -> Value {
     .expect("TaskRow serialises")
 }
 
-fn run_change_task_mark(
+fn run_slice_task_mark(
     ctx: &CommandContext, name: String, task_number: String,
 ) -> Result<CliResult, Error> {
     let change_dir = ctx.changes_dir().join(&name);
@@ -1382,7 +1382,7 @@ fn run_change_task_mark(
     Ok(CliResult::Success)
 }
 
-/// Resolve the `tasks.md` path for a change.
+/// Resolve the `tasks.md` path for a slice.
 ///
 /// Walks the pipeline view to find the `build` brief's `tracks` value
 /// (the id of the tasks brief), then uses that brief's `generates`
@@ -1435,7 +1435,7 @@ fn brief_generates(brief: &Brief) -> Result<&str, Error> {
 }
 
 // ---------------------------------------------------------------------------
-// change list / change status (multi-change list + single-change view)
+// slice list / slice status (multi-slice list + single-slice view)
 // ---------------------------------------------------------------------------
 
 pub(super) struct StatusEntry {
@@ -1508,7 +1508,7 @@ pub(super) fn collect_status(
     })
 }
 
-pub(super) fn list_change_names(changes_dir: &Path) -> Result<Vec<String>, Error> {
+pub(super) fn list_slice_names(changes_dir: &Path) -> Result<Vec<String>, Error> {
     if !changes_dir.exists() {
         return Ok(Vec::new());
     }
@@ -1530,10 +1530,10 @@ pub(super) fn list_change_names(changes_dir: &Path) -> Result<Vec<String>, Error
     Ok(names)
 }
 
-fn run_change_list(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn run_slice_list(ctx: &CommandContext) -> Result<CliResult, Error> {
     let pipeline = ctx.load_pipeline()?;
     let changes_dir = ctx.changes_dir();
-    let names = list_change_names(&changes_dir)?;
+    let names = list_slice_names(&changes_dir)?;
 
     let mut entries: Vec<StatusEntry> = Vec::with_capacity(names.len());
     for name in names {
@@ -1542,20 +1542,20 @@ fn run_change_list(ctx: &CommandContext) -> Result<CliResult, Error> {
         entries.push(entry);
     }
 
-    emit_change_list(ctx.format, &entries);
+    emit_slice_list(ctx.format, &entries);
     Ok(CliResult::Success)
 }
 
-fn run_change_status_one(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn run_slice_status_one(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let pipeline = ctx.load_pipeline()?;
     let change_dir = ctx.changes_dir().join(&name);
     let entry = collect_status(&change_dir, &name, &pipeline, &ctx.project_dir)?;
 
-    emit_change_list(ctx.format, std::slice::from_ref(&entry));
+    emit_slice_list(ctx.format, std::slice::from_ref(&entry));
     Ok(CliResult::Success)
 }
 
-fn emit_change_list(format: OutputFormat, entries: &[StatusEntry]) {
+fn emit_slice_list(format: OutputFormat, entries: &[StatusEntry]) {
     match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
@@ -1566,13 +1566,13 @@ fn emit_change_list(format: OutputFormat, entries: &[StatusEntry]) {
             let changes: Vec<Value> = entries.iter().map(status_entry_to_json).collect();
             emit_response(StatusResponse { changes });
         }
-        OutputFormat::Text => print_change_list_text(entries),
+        OutputFormat::Text => print_slice_list_text(entries),
     }
 }
 
-fn print_change_list_text(entries: &[StatusEntry]) {
+fn print_slice_list_text(entries: &[StatusEntry]) {
     if entries.is_empty() {
-        println!("No changes.");
+        println!("No slices.");
         return;
     }
     if entries.len() == 1 {
@@ -1598,7 +1598,7 @@ fn print_change_list_text(entries: &[StatusEntry]) {
     let status_w = entries.iter().map(|e| e.status.len()).max().unwrap_or(6).max(6);
     println!(
         "{:<name_w$}  {:<status_w$}  tasks",
-        "change",
+        "slice",
         "status",
         name_w = name_w,
         status_w = status_w

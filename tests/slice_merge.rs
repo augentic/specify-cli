@@ -1,7 +1,7 @@
-//! Integration tests for `specify change merge preview` and
-//! `specify change merge conflict-check`.
+//! Integration tests for `specify slice merge preview` and
+//! `specify slice merge conflict-check`.
 //!
-//! These are the two no-write counterparts to `specify change merge run`
+//! These are the two no-write counterparts to `specify slice merge run`
 //! used by the merge-skill rewrite: `preview` computes the operation
 //! list without touching disk; `conflict-check` flags `type: modified`
 //! baselines that have drifted since `defined_at`.
@@ -86,7 +86,7 @@ fn change_merge_preview_reports_operations_without_writing() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "merge", "preview", "my-change"])
+        .args(["--format", "json", "slice", "merge", "preview", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -139,7 +139,7 @@ fn change_merge_preview_does_not_require_complete_status() {
 
     specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "merge", "preview", "my-change"])
+        .args(["--format", "json", "slice", "merge", "preview", "my-change"])
         .assert()
         .success();
 }
@@ -151,7 +151,7 @@ fn change_merge_preview_emits_readable_text_output() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["change", "merge", "preview", "my-change"])
+        .args(["slice", "merge", "preview", "my-change"])
         .assert()
         .success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
@@ -174,7 +174,7 @@ fn conflict_check_reports_no_conflicts_when_no_modified_entries() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -210,7 +210,7 @@ fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -246,7 +246,7 @@ fn conflict_check_no_contract_drift_when_baseline_is_older() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -284,7 +284,7 @@ fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -313,7 +313,7 @@ fn conflict_check_no_drift_for_new_contract_files() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -343,7 +343,7 @@ fn conflict_check_no_drift_when_change_has_no_contracts_dir() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -370,7 +370,7 @@ fn conflict_check_ignores_new_entries_even_with_existing_baseline() {
     // `defined_at` means conflict_check returns empty regardless.
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);

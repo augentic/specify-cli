@@ -1,10 +1,10 @@
 pub mod capability;
-pub mod change;
 pub mod init;
 pub mod initiative;
 pub mod migrate;
 pub mod plan;
 pub mod registry;
+pub mod slice;
 pub mod status;
 pub mod workspace;
 
@@ -37,8 +37,8 @@ pub fn run(cli: Cli) -> CliResult {
                 capability::run_capability_pipeline(ctx, phase, change)
             }),
         },
-        Commands::Change { action } => {
-            run_with_project(cli.format, |ctx| change::run_change(ctx, action))
+        Commands::Slice { action } => {
+            run_with_project(cli.format, |ctx| slice::run_slice(ctx, action))
         }
         Commands::Plan { action } => {
             run_with_project(cli.format, |ctx| plan::run_plan(ctx, action))

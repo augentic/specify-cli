@@ -205,7 +205,7 @@ fn capability_pipeline_with_change_reports_completion() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["change", "create", "my-change"])
+        .args(["slice", "create", "my-change"])
         .assert()
         .success();
     let change_dir = project.root().join(".specify/changes/my-change");
