@@ -2,9 +2,9 @@
 //! outputs captured from the archived Python reference implementation
 //! (now retired). The Rust port must match them exactly.
 
+use specify_capability::ValidationResult;
 use specify_error::Error;
 use specify_merge::{merge, validate_baseline};
-use specify_capability::ValidationResult;
 
 macro_rules! fixture {
     ($case:literal, $file:literal) => {

@@ -52,7 +52,7 @@ impl Project {
         let root = tmp.path().to_path_buf();
         specify()
             .current_dir(&root)
-            .args(["init", "--schema-uri"])
+            .args(["init"])
             .arg(repo_root().join("schemas").join("omnia"))
             .args(["--name", "test-proj"])
             .assert()
@@ -71,7 +71,7 @@ impl Project {
         copy_dir(fixture_dir, &root.join("schemas").join(name));
         specify()
             .current_dir(&root)
-            .args(["init", "--schema-uri"])
+            .args(["init"])
             .arg(root.join("schemas").join(name))
             .args(["--name", "test-proj"])
             .assert()
@@ -355,11 +355,8 @@ fn capability_check_resolves_capability_yaml_when_both_files_present() {
     )
     .expect("write capability.yaml");
 
-    let assert = specify()
-        .args(["--format", "json", "capability", "check"])
-        .arg(dir)
-        .assert()
-        .success();
+    let assert =
+        specify().args(["--format", "json", "capability", "check"]).arg(dir).assert().success();
     let value = parse_json(&assert.get_output().stdout);
     assert_eq!(value["passed"], true, "capability.yaml content must win, got: {value}");
 }
@@ -378,8 +375,9 @@ fn schema_subcommand_is_gone_from_top_level_help() {
     // A grepped `\n  schema` would catch the surface even if `schema`
     // appeared incidentally inside descriptions of other commands.
     assert!(
-        !stdout.lines().any(|line| line.trim_start().starts_with("schema ")
-            || line.trim_start() == "schema"),
+        !stdout
+            .lines()
+            .any(|line| line.trim_start().starts_with("schema ") || line.trim_start() == "schema"),
         "pre-RFC-13 `schema` subcommand must be gone from --help, got:\n{stdout}"
     );
 }

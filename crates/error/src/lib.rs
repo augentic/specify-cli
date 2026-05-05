@@ -162,27 +162,46 @@ pub enum Error {
         paths: Vec<String>,
     },
 
-    /// The capability resolver found a pre-RFC-13 `schema.yaml` where it
-    /// expected a `capability.yaml`. RFC-13 renamed the extension
-    /// primitive from "schema" to "capability"; `schema.yaml` files are
-    /// no longer loaded silently — the operator must rename the file
-    /// (and re-run `specify init <capability>` if the project still
-    /// records the old `schema:` field). `path` is the offending
-    /// `schema.yaml` the detector found so the diagnostic can name it.
+    /// The capability resolver found a pre-RFC-13 `schema.yaml` (or a
+    /// `project.yaml` carrying the v1 `schema:` field) where it expected
+    /// a `capability.yaml` (or `capability:` field). RFC-13 renamed the
+    /// extension primitive from "schema" to "capability"; the legacy
+    /// shape is no longer loaded silently — the operator must rename the
+    /// file (and re-run `specify init <capability>` if the project still
+    /// records the old `schema:` field). `path` is the offending file
+    /// the detector found so the diagnostic can name it.
     ///
     /// See: <https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration>
     #[error(
-        "schema-became-capability: found `{}` but expected `capability.yaml`. \
-         RFC-13 renamed the Specify extension primitive: `schema` is now `capability`. \
-         Rename this file to `capability.yaml` (and re-run `specify init <capability>` \
-         if you have not already migrated). \
+        "schema-became-capability: found legacy `schema` shape at `{}` but expected the \
+         post-RFC-13 `capability` shape. RFC-13 renamed the Specify extension primitive: \
+         `schema` is now `capability` (rename `schema.yaml` → `capability.yaml`, and rewrite \
+         `project.yaml: schema:` → `project.yaml: capability:`). Re-run \
+         `specify init <capability>` if you have not already migrated. \
          See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
         path.display()
     )]
     SchemaBecameCapability {
-        /// Path to the legacy `schema.yaml` that triggered the diagnostic.
+        /// Path to the file that triggered the diagnostic (a legacy
+        /// `schema.yaml`, or a `project.yaml` carrying the v1 `schema:`
+        /// field).
         path: std::path::PathBuf,
     },
+
+    /// `specify init` was invoked without the post-RFC-13 capability
+    /// positional and without `--hub`, or with both at once. RFC-13
+    /// makes the two mutually exclusive: a regular project init takes
+    /// `<capability>` as a required positional; a registry-only platform
+    /// hub init takes `--hub` instead. See:
+    /// <https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration>.
+    #[error(
+        "init-requires-capability-or-hub: `specify init` requires either a capability \
+         identifier or `--hub`. Run `specify init <capability>` for a regular project \
+         (e.g. `specify init omnia` or `specify init https://...`), or `specify init --hub` \
+         for a registry-only platform hub. The two are mutually exclusive. \
+         See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration"
+    )]
+    InitRequiresCapabilityOrHub,
 
     /// A name failed kebab-case validation.
     #[error("invalid name: {0}")]
@@ -350,6 +369,28 @@ mod tests {
         assert!(
             s.contains("rfcs/rfc-13-extensibility.md#migration"),
             "diagnostic must link the RFC-13 §Migration anchor, got: {s}"
+        );
+    }
+
+    #[test]
+    fn init_requires_capability_or_hub_display() {
+        let err = Error::InitRequiresCapabilityOrHub;
+        let s = err.to_string();
+        assert!(
+            s.contains("init-requires-capability-or-hub"),
+            "diagnostic must carry the stable kebab-case code, got: {s}"
+        );
+        assert!(
+            s.contains("specify init <capability>"),
+            "diagnostic must show the regular-project init form, got: {s}"
+        );
+        assert!(
+            s.contains("specify init --hub"),
+            "diagnostic must show the hub-init form, got: {s}"
+        );
+        assert!(
+            s.contains("rfcs/rfc-13-extensibility.md#migration"),
+            "diagnostic must link RFC-13 §Migration, got: {s}"
         );
     }
 

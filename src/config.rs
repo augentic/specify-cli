@@ -30,12 +30,18 @@ pub struct ProjectConfig {
     pub name: String,
 
     /// Free-text description of the project's tech stack, architecture,
-    /// and testing approach. Falls back to `schema.domain` when empty.
+    /// and testing approach. Falls back to `capability.domain` when empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
 
-    /// Schema identifier — either a bare name (`omnia`) or a URL.
-    pub schema: String,
+    /// Capability identifier — either a bare name (`omnia`) or a URL.
+    /// Absent for registry-only platform hubs (`hub: true`); see the
+    /// `hub` field for the discriminator. RFC-13 renamed this from the
+    /// pre-RFC-13 `schema:` key; legacy files carrying `schema:` are
+    /// rejected loudly with [`Error::SchemaBecameCapability`] in
+    /// [`ProjectConfig::load`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability: Option<String>,
 
     /// Minimum `specify` CLI version required to operate on this project.
     /// Written by `specify init` as the running binary's version and
@@ -51,12 +57,14 @@ pub struct ProjectConfig {
     pub rules: BTreeMap<String, String>,
 
     /// `true` when this project is a registry-only **platform hub**
-    /// (RFC-9 §1D). Hubs hold platform-level state — `registry.yaml`,
-    /// `initiative.md`, `plan.yaml`, `workspace/` — but never appear in
-    /// their own `registry.yaml` and have phase pipelines disabled
-    /// (`schema: hub` is the matching sentinel). Defaults to `false`;
-    /// serialised only when `true` so existing single-repo
-    /// `project.yaml` files round-trip byte-stable.
+    /// (RFC-9 §1D, restated in RFC-13 §Migration). Hubs hold
+    /// platform-level state — `registry.yaml`, `initiative.md`,
+    /// `plan.yaml`, `workspace/` — but never appear in their own
+    /// `registry.yaml` and have phase pipelines disabled. Hubs **omit**
+    /// the `capability:` field entirely; the absence of `capability:`
+    /// together with `hub: true` is the discriminator. Defaults to
+    /// `false`; serialised only when `true` so non-hub `project.yaml`
+    /// files round-trip byte-stable.
     #[serde(default, skip_serializing_if = "is_false")]
     pub hub: bool,
 }
@@ -78,6 +86,11 @@ impl ProjectConfig {
     ///   `Err(Error::SpecifyVersionTooOld { required, found })`.
     ///   Unparseable pinned versions are tolerated — we prefer a
     ///   permissive stance for a human-edited file.
+    /// - Detects the pre-RFC-13 `schema:` key and refuses to load such a
+    ///   `project.yaml` with [`Error::SchemaBecameCapability`]. RFC-13
+    ///   renamed `project.yaml: schema:` to `project.yaml: capability:`;
+    ///   the operator must rewrite the field (and re-run `specify init
+    ///   <capability>` if they have not migrated yet).
     ///
     /// # Errors
     ///
@@ -91,6 +104,11 @@ impl ProjectConfig {
             }
             Err(err) => return Err(Error::Io(err)),
         };
+
+        if has_legacy_schema_field(&text)? {
+            return Err(Error::SchemaBecameCapability { path });
+        }
+
         let cfg: Self = serde_saphyr::from_str(&text)?;
 
         let current = env!("CARGO_PKG_VERSION");
@@ -222,6 +240,21 @@ fn version_is_older(current: &str, required: &str) -> bool {
     cur < req
 }
 
+/// Probe a `project.yaml` text for the pre-RFC-13 `schema:` top-level
+/// key without attempting to deserialise into [`ProjectConfig`]. We
+/// route through `serde_json::Value` (the same shape `serde_saphyr` can
+/// project a YAML document into) so the answer agrees with what
+/// `serde_saphyr::from_str` would see — comments, document headers, and
+/// quoted keys are all handled by the YAML parser, not by us.
+///
+/// Returns `Ok(true)` only when the document's top-level mapping
+/// carries a `schema:` key. A missing `capability:` is *not* a trigger
+/// on its own — hub projects legitimately omit it.
+fn has_legacy_schema_field(text: &str) -> Result<bool, Error> {
+    let value: serde_json::Value = serde_saphyr::from_str(text)?;
+    Ok(value.as_object().is_some_and(|map| map.contains_key("schema")))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -255,7 +288,7 @@ mod tests {
         ProjectConfig {
             name: "demo".to_string(),
             domain: None,
-            schema: "omnia".to_string(),
+            capability: Some("omnia".to_string()),
             specify_version: None,
             rules,
             hub: false,
@@ -297,7 +330,7 @@ mod tests {
     #[test]
     fn load_refuses_future_specify_version() {
         let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nschema: omnia\nspecify_version: \"99.0.0\"\n");
+        write_config(tmp.path(), "name: demo\ncapability: omnia\nspecify_version: \"99.0.0\"\n");
         let err = ProjectConfig::load(tmp.path()).expect_err("future version rejected");
         match err {
             Error::SpecifyVersionTooOld { required, found } => {
@@ -311,14 +344,14 @@ mod tests {
     #[test]
     fn load_accepts_floor_lte_current() {
         let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nschema: omnia\nspecify_version: \"0.0.1\"\n");
+        write_config(tmp.path(), "name: demo\ncapability: omnia\nspecify_version: \"0.0.1\"\n");
         ProjectConfig::load(tmp.path()).expect("older version loads");
 
         let tmp = tempdir().unwrap();
         let exact = env!("CARGO_PKG_VERSION");
         write_config(
             tmp.path(),
-            &format!("name: demo\nschema: omnia\nspecify_version: \"{exact}\"\n"),
+            &format!("name: demo\ncapability: omnia\nspecify_version: \"{exact}\"\n"),
         );
         ProjectConfig::load(tmp.path()).expect("exact version loads");
     }
@@ -326,7 +359,7 @@ mod tests {
     #[test]
     fn load_allows_invalid_pinned_version() {
         let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nschema: omnia\nspecify_version: not-a-semver\n");
+        write_config(tmp.path(), "name: demo\ncapability: omnia\nspecify_version: not-a-semver\n");
         let cfg = ProjectConfig::load(tmp.path()).expect("unparseable version is permissive");
         assert_eq!(cfg.specify_version.as_deref(), Some("not-a-semver"));
     }
@@ -334,14 +367,17 @@ mod tests {
     #[test]
     fn hub_field_defaults_false_and_round_trips_when_true() {
         let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nschema: omnia\n");
+        write_config(tmp.path(), "name: demo\ncapability: omnia\n");
         let cfg = ProjectConfig::load(tmp.path()).expect("loads");
         assert!(!cfg.hub, "hub must default to false when absent");
+        assert_eq!(cfg.capability.as_deref(), Some("omnia"));
 
+        // Hub shape: no `capability:` field, just `hub: true`.
         let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nschema: hub\nhub: true\n");
+        write_config(tmp.path(), "name: demo\nhub: true\n");
         let cfg = ProjectConfig::load(tmp.path()).expect("loads");
         assert!(cfg.hub, "hub: true must round-trip through deserialize");
+        assert!(cfg.capability.is_none(), "hub project.yaml must omit capability:");
     }
 
     #[test]
@@ -349,27 +385,55 @@ mod tests {
         let cfg = ProjectConfig {
             name: "demo".to_string(),
             domain: None,
-            schema: "omnia".to_string(),
+            capability: Some("omnia".to_string()),
             specify_version: None,
             rules: BTreeMap::new(),
             hub: false,
         };
         let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
         assert!(!yaml.contains("hub:"), "hub: false should be omitted, got:\n{yaml}");
+        assert!(yaml.contains("capability: omnia"), "capability: must serialise, got:\n{yaml}");
     }
 
     #[test]
-    fn hub_field_serialised_when_true() {
+    fn hub_field_serialised_when_true_and_capability_omitted() {
         let cfg = ProjectConfig {
             name: "platform".to_string(),
             domain: None,
-            schema: "hub".to_string(),
+            capability: None,
             specify_version: None,
             rules: BTreeMap::new(),
             hub: true,
         };
         let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
         assert!(yaml.contains("hub: true"), "hub: true must serialise, got:\n{yaml}");
+        assert!(
+            !yaml.contains("capability:"),
+            "hub project.yaml must omit `capability:`, got:\n{yaml}"
+        );
+    }
+
+    #[test]
+    fn load_refuses_legacy_schema_field_with_schema_became_capability() {
+        let tmp = tempdir().unwrap();
+        write_config(tmp.path(), "name: demo\nschema: omnia\n");
+        let err = ProjectConfig::load(tmp.path()).expect_err("legacy schema must be rejected");
+        match err {
+            Error::SchemaBecameCapability { path } => {
+                assert!(path.ends_with(".specify/project.yaml"), "path: {}", path.display());
+            }
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn load_refuses_legacy_schema_hub_sentinel_with_schema_became_capability() {
+        // Pre-RFC-13 hub shape: `schema: hub, hub: true`. The hub sentinel
+        // is removed in Phase 1.3; loading still rejects loud.
+        let tmp = tempdir().unwrap();
+        write_config(tmp.path(), "name: demo\nschema: hub\nhub: true\n");
+        let err = ProjectConfig::load(tmp.path()).expect_err("legacy hub shape must be rejected");
+        assert!(matches!(err, Error::SchemaBecameCapability { .. }));
     }
 
     // ---- legacy-layout detector ---------------------------------------

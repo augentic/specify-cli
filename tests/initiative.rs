@@ -49,7 +49,7 @@ mod cli {
             let root = tmp.path().to_path_buf();
             specify()
                 .current_dir(&root)
-                .args(["init", "--schema-uri"])
+                .args(["init"])
                 .arg(repo_root().join("schemas").join("omnia"))
                 .args(["--name", "test-proj"])
                 .assert()
@@ -2287,7 +2287,7 @@ inputs: []
         fs::create_dir_all(&root).expect("root");
         specify()
             .current_dir(&root)
-            .args(["init", "--schema-uri"])
+            .args(["init"])
             .arg(repo_root().join("schemas").join("omnia"))
             .args(["--name", "rfc3a-ws"])
             .assert()

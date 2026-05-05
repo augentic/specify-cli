@@ -26,11 +26,19 @@ pub enum OutputFormat {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Initialize .specify/ in a project
+    /// Initialize .specify/ in a project.
+    ///
+    /// Run `specify init <capability>` for a regular project (e.g.
+    /// `specify init omnia` or `specify init https://...`), or
+    /// `specify init --hub` for a registry-only platform hub. The
+    /// `<capability>` positional and `--hub` are mutually exclusive;
+    /// running with neither (or with both) errors with the
+    /// `init-requires-capability-or-hub` diagnostic.
     Init {
-        /// Schema URI to fetch or copy before scaffolding. Required unless `--hub` is set.
-        #[arg(long)]
-        schema_uri: Option<String>,
+        /// Capability identifier or URL to resolve before scaffolding
+        /// (e.g. `omnia`, `https://github.com/<owner>/<repo>/schemas/<name>`).
+        /// Required unless `--hub` is set; mutually exclusive with `--hub`.
+        capability: Option<String>,
         /// Project name (defaults to the project directory name)
         #[arg(long)]
         name: Option<String>,
@@ -39,9 +47,10 @@ pub enum Commands {
         domain: Option<String>,
         /// Scaffold a registry-only **platform hub** (RFC-9 §1D)
         /// instead of a regular project: writes `registry.yaml`,
-        /// `initiative.md`, and a sentinel `project.yaml { schema:
-        /// hub, hub: true }`. Refuses to run when `.specify/` already
-        /// exists.
+        /// `initiative.md`, and `project.yaml { hub: true }` (with
+        /// `capability:` omitted — RFC-13 §Migration "Hub project
+        /// shape"). Refuses to run when `.specify/` already exists.
+        /// Mutually exclusive with the `<capability>` positional.
         #[arg(long)]
         hub: bool,
     },

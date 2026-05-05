@@ -8,24 +8,32 @@ use specify::{Error, InitOptions, InitResult, VersionMode, init};
 use crate::cli::OutputFormat;
 use crate::output::{CliResult, absolute_string, emit_response};
 
+/// Dispatcher for `specify init`.
+///
+/// Enforces the RFC-13 Phase 1.3 mutual-exclusion invariant between the
+/// `<capability>` positional and `--hub`:
+///
+/// - regular project init requires `<capability>`;
+/// - hub init requires `--hub` and refuses a `<capability>` positional;
+/// - missing both, or both at once, errors with
+///   `init-requires-capability-or-hub`.
 pub fn run_init(
-    format: OutputFormat, schema_uri: Option<String>, name: Option<String>, domain: Option<String>,
+    format: OutputFormat, capability: Option<String>, name: Option<String>, domain: Option<String>,
     hub: bool,
 ) -> Result<CliResult, Error> {
     let project_dir = PathBuf::from(".");
-    let schema_uri = match (hub, schema_uri) {
-        (true, _) => None,
-        (false, Some(schema_uri)) => Some(schema_uri),
-        (false, None) => {
-            return Err(Error::Config(
-                "specify init requires --schema-uri <uri> unless --hub is set".to_string(),
-            ));
-        }
+
+    let capability = match (hub, capability) {
+        (false, Some(cap)) => Some(cap),
+        (true, None) => None,
+        // Both unset, or both set: the diagnostic is the same per
+        // RFC-13 §1.3 — the operator must pick one.
+        (false, None) | (true, Some(_)) => return Err(Error::InitRequiresCapabilityOrHub),
     };
 
     let opts = InitOptions {
         project_dir: &project_dir,
-        schema_uri: schema_uri.as_deref(),
+        capability: capability.as_deref(),
         name: name.as_deref(),
         domain: domain.as_deref(),
         version_mode: VersionMode::WriteCurrent,
@@ -40,6 +48,10 @@ pub fn run_init(
 #[serde(rename_all = "kebab-case")]
 struct InitBody {
     config_path: String,
+    /// Resolved capability name (or `"hub"` for hub init). Kept under
+    /// the legacy JSON key `schema-name` so existing wire consumers
+    /// keep parsing while the vocabulary cut-over lands; renames live
+    /// behind a structured-output bump out of scope for chunk 1.3.
     schema_name: String,
     cache_present: bool,
     directories_created: Vec<String>,
@@ -47,7 +59,8 @@ struct InitBody {
     specify_version: String,
     /// `true` when this init scaffolded a registry-only platform hub
     /// (RFC-9 §1D). Always present so consumers can distinguish hub
-    /// from regular initialisations without parsing the schema name.
+    /// from regular initialisations without parsing the capability
+    /// name.
     hub: bool,
 }
 
@@ -56,7 +69,7 @@ fn emit_init_result(format: OutputFormat, result: &InitResult, hub: bool) -> Cli
         OutputFormat::Json => {
             emit_response(InitBody {
                 config_path: absolute_string(&result.config_path),
-                schema_name: result.schema_name.clone(),
+                schema_name: result.capability_name.clone(),
                 cache_present: result.cache_present,
                 directories_created: result
                     .directories_created
@@ -74,7 +87,7 @@ fn emit_init_result(format: OutputFormat, result: &InitResult, hub: bool) -> Cli
             } else {
                 println!("Initialized .specify/");
             }
-            println!("  schema: {}", result.schema_name);
+            println!("  capability: {}", result.capability_name);
             println!("  config: {}", absolute_string(&result.config_path));
             println!("  cache present: {}", result.cache_present);
             if !result.directories_created.is_empty() {

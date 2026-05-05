@@ -36,9 +36,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
+use specify_capability::{Registry, RegistryProject};
 use specify_change::Plan;
 use specify_error::Error;
-use specify_capability::{Registry, RegistryProject};
 
 use crate::config::ProjectConfig;
 

@@ -16,8 +16,8 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use specify_error::Error;
 pub use specify_capability::Phase;
+use specify_error::Error;
 
 /// Verb-level operations on a Specify change directory.
 pub mod actions;

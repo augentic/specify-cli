@@ -40,8 +40,7 @@ fn omnia_schema_path() -> PathBuf {
 #[test]
 fn parses_omnia_schema_yaml_fields_and_entries() {
     let raw = std::fs::read_to_string(omnia_schema_path()).expect("omnia capability on disk");
-    let schema: Capability =
-        serde_saphyr::from_str(&raw).expect("omnia capability is valid YAML");
+    let schema: Capability = serde_saphyr::from_str(&raw).expect("omnia capability is valid YAML");
 
     assert_eq!(schema.name, "omnia");
     assert_eq!(schema.version, 1);
@@ -245,15 +244,14 @@ pipeline:
 /// JSON Schema body shipped with the crate. Read directly from disk so
 /// the rejection tests below stay coupled to the on-disk file used by
 /// `Capability::validate_structure`.
-const CAPABILITY_JSON_SCHEMA: &str =
-    include_str!("../../../schemas/capability.schema.json");
+const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../schemas/capability.schema.json");
 
-fn validate_raw(instance: serde_json::Value) -> Vec<ValidationResult> {
+fn validate_raw(instance: &serde_json::Value) -> Vec<ValidationResult> {
     crate::capability::validate_against_embedded_schema(
         CAPABILITY_JSON_SCHEMA,
         "capability.valid",
         "capability manifest conforms to schemas/capability.schema.json",
-        &instance,
+        instance,
     )
 }
 
@@ -280,7 +278,7 @@ fn json_schema_rejects_capability_domain_field() {
             "merge": [{ "id": "merge", "brief": "briefs/merge.md" }]
         }
     });
-    let results = validate_raw(instance);
+    let results = validate_raw(&instance);
     let detail = fail_detail(&results, "domain field");
     assert!(detail.contains("domain"), "diagnostic must name `domain`, got: {detail}");
 }
@@ -298,7 +296,7 @@ fn json_schema_rejects_capability_extends_field() {
             "merge": [{ "id": "merge", "brief": "briefs/merge.md" }]
         }
     });
-    let results = validate_raw(instance);
+    let results = validate_raw(&instance);
     let detail = fail_detail(&results, "extends field");
     assert!(detail.contains("extends"), "diagnostic must name `extends`, got: {detail}");
 }

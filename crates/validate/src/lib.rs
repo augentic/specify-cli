@@ -18,8 +18,8 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use specify_error as _; // dependency declared; re-exported via `Error` return type
 use specify_capability::PipelineView;
+use specify_error as _; // dependency declared; re-exported via `Error` return type
 use specify_spec::ParsedSpec;
 use specify_task::TaskProgress;
 

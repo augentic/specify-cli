@@ -5,9 +5,12 @@
 //! `crates/` for the underlying logic.
 
 pub use config::{ProjectConfig, detect_legacy_layout};
-pub use init::{
-    HUB_SCHEMA_SENTINEL, InitOptions, InitResult, VersionMode, ensure_specify_gitignore_entries,
-    init,
+pub use init::{InitOptions, InitResult, VersionMode, ensure_specify_gitignore_entries, init};
+pub use specify_capability::{
+    Brief, BriefFrontmatter, CAPABILITY_FILENAME, CacheMeta, Capability, CapabilitySource,
+    InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind, LEGACY_SCHEMA_FILENAME,
+    ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, Registry, RegistryProject,
+    ResolvedCapability,
 };
 pub use specify_change::plan::{Entry as PlanChange, Status as PlanStatus};
 pub use specify_change::{
@@ -25,12 +28,6 @@ pub use specify_merge::{
     BaselineConflict, ContractAction, ContractPreviewEntry, Entry as MergeEntry, MergeOperation,
     MergeResult, PreviewResult, conflict_check, merge, merge_change, preview_change,
     validate_baseline,
-};
-pub use specify_capability::{
-    Brief, BriefFrontmatter, CAPABILITY_FILENAME, CacheMeta, Capability, CapabilitySource,
-    InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind, LEGACY_SCHEMA_FILENAME,
-    ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, Registry, RegistryProject,
-    ResolvedCapability,
 };
 pub use specify_spec::{
     DeltaSpec, ParsedSpec, RenameEntry, RequirementBlock, Scenario, has_delta_headers,

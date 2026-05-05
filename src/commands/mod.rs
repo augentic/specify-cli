@@ -19,11 +19,11 @@ use crate::output::{CliResult, emit_error};
 pub fn run(cli: Cli) -> CliResult {
     match cli.command {
         Commands::Init {
-            schema_uri,
+            capability,
             name,
             domain,
             hub,
-        } => run_bare(cli.format, || init::run_init(cli.format, schema_uri, name, domain, hub)),
+        } => run_bare(cli.format, || init::run_init(cli.format, capability, name, domain, hub)),
         Commands::Status => run_with_project(cli.format, status::run_status_dashboard),
         Commands::Capability { action } => match action {
             CapabilityAction::Resolve {

@@ -54,10 +54,10 @@ use std::path::Path;
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
+use specify_capability::{Registry, RegistryProject};
 use specify_change::Plan;
 use specify_change::plan::Status;
 use specify_error::Error;
-use specify_capability::{Registry, RegistryProject};
 
 use crate::config::ProjectConfig;
 use crate::workspace_merge::{
@@ -650,8 +650,8 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    use specify_change::plan::Entry;
     use specify_capability::RegistryProject;
+    use specify_change::plan::Entry;
     use tempfile::TempDir;
 
     use super::*;

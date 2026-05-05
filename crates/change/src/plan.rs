@@ -35,8 +35,8 @@ use petgraph::Direction;
 use petgraph::algo::{tarjan_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
-use specify_error::Error;
 use specify_capability::Registry;
+use specify_error::Error;
 
 /// Lifecycle state of a single entry in [`Plan::changes`].
 ///

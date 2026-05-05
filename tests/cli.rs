@@ -37,7 +37,7 @@ fn init_text_format_succeeds() {
     let tmp = tempdir().unwrap();
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["init", "--schema-uri"])
+        .args(["init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
@@ -57,7 +57,7 @@ fn init_json_format_has_stable_shape() {
     let tmp = tempdir().unwrap();
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "init", "--schema-uri"])
+        .args(["--format", "json", "init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
@@ -99,15 +99,135 @@ fn init_github_directory_uri_succeeds() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
-        .args([
-            "init",
-            "--schema-uri",
-            "https://github.com/augentic/specify/schemas/omnia",
-            "--name",
-            "demo",
-        ])
+        .args(["init", "https://github.com/augentic/specify/schemas/omnia", "--name", "demo"])
         .assert()
         .success();
+}
+
+// ---- RFC-13 Phase 1.3: positional <capability> + --hub mutual exclusion ----
+
+#[test]
+fn init_writes_capability_field_for_url_arg() {
+    // Acceptance (a): `specify init <url>` writes `capability: <url>`
+    // and no `schema:` field; `hub:` either absent or false.
+    let tmp = tempdir().unwrap();
+    specify()
+        .current_dir(tmp.path())
+        .args(["init"])
+        .arg(omnia_schema_dir())
+        .args(["--name", "demo"])
+        .assert()
+        .success();
+
+    let project_yaml =
+        fs::read_to_string(tmp.path().join(".specify/project.yaml")).expect("read project.yaml");
+    assert!(
+        project_yaml.contains("capability:"),
+        "project.yaml must carry `capability:` after non-hub init, got:\n{project_yaml}"
+    );
+    assert!(
+        !project_yaml.lines().any(|line| line.trim_start().starts_with("schema:")),
+        "project.yaml must NOT carry the legacy `schema:` field, got:\n{project_yaml}"
+    );
+    // hub: absent (or false) means the value is implicit; just check no
+    // `hub: true` line.
+    assert!(
+        !project_yaml.lines().any(|l| l.trim_start().starts_with("hub: true")),
+        "non-hub init must not write `hub: true`, got:\n{project_yaml}"
+    );
+}
+
+#[test]
+fn init_with_no_args_errors_with_init_requires_capability_or_hub() {
+    // Acceptance (c): `specify init` (no positional, no `--hub`) must
+    // exit non-zero with the `init-requires-capability-or-hub`
+    // diagnostic.
+    let tmp = tempdir().unwrap();
+    let assert = specify().current_dir(tmp.path()).args(["init"]).assert().failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_ne!(code, 0, "init with no args must exit non-zero");
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("init-requires-capability-or-hub"),
+        "diagnostic must carry the stable code, got stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        !tmp.path().join(".specify").exists(),
+        "no .specify must be scaffolded on validation failure"
+    );
+}
+
+#[test]
+fn init_with_capability_and_hub_errors_with_init_requires_capability_or_hub() {
+    // Acceptance (d): `specify init <url> --hub` must exit non-zero
+    // with the same diagnostic.
+    let tmp = tempdir().unwrap();
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["init"])
+        .arg(omnia_schema_dir())
+        .arg("--hub")
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_ne!(code, 0, "init with both capability and --hub must exit non-zero");
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("init-requires-capability-or-hub"),
+        "diagnostic must carry the stable code, got stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn init_help_no_longer_advertises_schema_uri_flag() {
+    // RFC-13 §1.3: `--schema-uri` is gone from the post-Phase-1 surface.
+    let assert = specify().args(["init", "--help"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(
+        !stdout.contains("--schema-uri"),
+        "post-RFC-13 init --help must not advertise `--schema-uri`, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("CAPABILITY") || stdout.contains("capability"),
+        "init --help must mention the capability positional, got:\n{stdout}"
+    );
+    assert!(stdout.contains("--hub"), "init --help must still document --hub, got:\n{stdout}");
+}
+
+#[test]
+fn project_aware_command_refuses_legacy_schema_field_with_schema_became_capability() {
+    // Acceptance (e): a v1 `project.yaml` carrying `schema:` must be
+    // rejected loudly when a project-aware verb tries to load it.
+    // `specify status` is the canonical project-aware entry point and
+    // loads `ProjectConfig` first thing.
+    let tmp = tempdir().unwrap();
+    let specify_dir = tmp.path().join(".specify");
+    fs::create_dir_all(&specify_dir).unwrap();
+    fs::write(
+        specify_dir.join("project.yaml"),
+        // Deliberate v1 shape — `schema:` instead of the post-RFC-13
+        // `capability:` field.
+        "name: demo\nschema: omnia\n",
+    )
+    .unwrap();
+
+    let assert =
+        specify().current_dir(tmp.path()).args(["--format", "json", "status"]).assert().failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(
+        value["error"], "schema-became-capability",
+        "expected schema-became-capability diagnostic, got: {value}"
+    );
+    let msg = value["message"].as_str().expect("message string");
+    assert!(msg.contains("schema-became-capability"), "msg: {msg}");
+    assert!(msg.contains("capability"), "msg: {msg}");
+    assert!(msg.contains("RFC-13"), "msg: {msg}");
+    assert!(msg.contains(".specify/project.yaml"), "msg should name the file, got: {msg}");
 }
 
 #[test]
@@ -116,7 +236,7 @@ fn version_too_old_exits_three_with_json_envelope() {
     // Fresh init to produce a real project.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "--schema-uri"])
+        .args(["init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
@@ -182,12 +302,17 @@ fn init_hub_writes_canonical_on_disk_shape() {
     assert!(!tmp.path().join(".specify/specs").exists());
     assert!(!tmp.path().join(".specify/.cache").exists());
 
-    // project.yaml shape.
+    // project.yaml shape — RFC-13 §Migration: `hub: true` only, no
+    // `capability:` field, and the legacy `schema:` sentinel is gone.
     let project_yaml =
         fs::read_to_string(tmp.path().join(".specify/project.yaml")).expect("read project.yaml");
     assert!(
-        project_yaml.contains("schema: hub"),
-        "project.yaml must use the `schema: hub` sentinel:\n{project_yaml}"
+        !project_yaml.lines().any(|l| l.trim_start().starts_with("schema:")),
+        "post-RFC-13 hub project.yaml must omit the legacy `schema:` field:\n{project_yaml}"
+    );
+    assert!(
+        !project_yaml.lines().any(|l| l.trim_start().starts_with("capability:")),
+        "post-RFC-13 hub project.yaml must omit the `capability:` field:\n{project_yaml}"
     );
     assert!(
         project_yaml.contains("hub: true"),
@@ -222,7 +347,8 @@ fn init_hub_refuses_when_specify_dir_already_exists() {
     let tmp = tempdir().unwrap();
     // Pre-create `.specify/` with arbitrary content.
     fs::create_dir_all(tmp.path().join(".specify")).unwrap();
-    fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\nschema: omnia\n").unwrap();
+    fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\ncapability: omnia\n")
+        .unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -237,7 +363,7 @@ fn init_hub_refuses_when_specify_dir_already_exists() {
     );
 
     let on_disk = fs::read_to_string(tmp.path().join(".specify/project.yaml")).unwrap();
-    assert_eq!(on_disk, "name: existing\nschema: omnia\n");
+    assert_eq!(on_disk, "name: existing\ncapability: omnia\n");
 }
 
 #[test]
@@ -549,7 +675,7 @@ fn registry_remove_refuses_when_registry_absent() {
     // by default.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "--schema-uri"])
+        .args(["init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
@@ -654,7 +780,7 @@ fn workspace_merge_refuses_when_registry_absent() {
     // Plain init (single-repo) — no registry.yaml.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "--schema-uri"])
+        .args(["init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
@@ -709,7 +835,7 @@ fn workspace_merge_refuses_when_registry_empty() {
 fn init_omnia_project(tmp: &tempfile::TempDir) {
     specify()
         .current_dir(tmp.path())
-        .args(["init", "--schema-uri"])
+        .args(["init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()

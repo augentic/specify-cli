@@ -94,7 +94,16 @@ pub fn run_change(ctx: &CommandContext, action: ChangeAction) -> Result<CliResul
 fn run_change_create(
     ctx: &CommandContext, name: String, schema: Option<String>, if_exists: CreateIfExists,
 ) -> Result<CliResult, Error> {
-    let schema_value = schema.unwrap_or_else(|| ctx.config.schema.clone());
+    let schema_value = match schema {
+        Some(s) => s,
+        None => ctx.config.capability.clone().ok_or_else(|| {
+            Error::Config(
+                "no project capability declared; pass `--schema <id>` explicitly or run \
+                 `specify init <capability>` first (hub projects cannot create changes)"
+                    .to_string(),
+            )
+        })?,
+    };
     let changes_dir = ctx.changes_dir();
     std::fs::create_dir_all(&changes_dir)?;
 

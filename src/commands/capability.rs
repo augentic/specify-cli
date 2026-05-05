@@ -188,10 +188,9 @@ fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
     match Capability::manifest_path_in(dir) {
         ManifestProbe::Capability(_) => Ok(()),
         ManifestProbe::LegacySchema(path) => Err(Error::SchemaBecameCapability { path }),
-        ManifestProbe::Missing => Err(Error::SchemaResolution(format!(
-            "no `{CAPABILITY_FILENAME}` at {}",
-            dir.display()
-        ))),
+        ManifestProbe::Missing => {
+            Err(Error::SchemaResolution(format!("no `{CAPABILITY_FILENAME}` at {}", dir.display())))
+        }
     }
 }
 

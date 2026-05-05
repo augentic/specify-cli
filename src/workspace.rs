@@ -4,9 +4,9 @@
 use std::path::Path;
 use std::process::Command;
 
+use specify_capability::Registry;
 use specify_change::Plan;
 use specify_error::Error;
-use specify_capability::Registry;
 
 use crate::config::ProjectConfig;
 use crate::init::ensure_specify_gitignore_entries;
@@ -320,24 +320,21 @@ fn greenfield_bootstrap(
 fn greenfield_init(
     dest: &Path, schema: &str, initiating_project_dir: &Path, is_rerun: bool,
 ) -> Result<(), Error> {
-    let schema_uri = resolve_greenfield_schema_uri(schema, initiating_project_dir)?;
+    let capability = resolve_greenfield_capability(schema, initiating_project_dir)?;
 
-    let status = Command::new("specify")
-        .arg("init")
-        .arg("--schema-uri")
-        .arg(&schema_uri)
-        .current_dir(dest)
-        .status()
-        .map_err(|e| {
-            Error::Config(format!(
-                "failed to spawn `specify init` for greenfield project at {}: {e}",
-                dest.display()
-            ))
-        })?;
+    let status =
+        Command::new("specify").arg("init").arg(&capability).current_dir(dest).status().map_err(
+            |e| {
+                Error::Config(format!(
+                    "failed to spawn `specify init` for greenfield project at {}: {e}",
+                    dest.display()
+                ))
+            },
+        )?;
 
     if !status.success() {
         return Err(Error::Config(format!(
-            "`specify init --schema-uri {schema_uri}` failed in {}",
+            "`specify init {capability}` failed in {}",
             dest.display()
         )));
     }
@@ -354,12 +351,13 @@ fn greenfield_init(
     Ok(())
 }
 
-/// Resolve the schema URI to pass into a greenfield slot's `specify init`.
+/// Resolve the capability identifier to pass into a greenfield slot's
+/// `specify init <capability>`.
 ///
-/// URL-shaped schemas are already self-contained. Bare registry schema
-/// identifiers are local to the initiating repo's cache, so convert them
-/// into a file URI that the spawned init can copy directly.
-fn resolve_greenfield_schema_uri(
+/// URL-shaped capabilities are already self-contained. Bare registry
+/// capability identifiers are local to the initiating repo's cache, so
+/// convert them into a file URI the spawned init can copy directly.
+fn resolve_greenfield_capability(
     schema: &str, initiating_project_dir: &Path,
 ) -> Result<String, Error> {
     if schema.contains("://") {

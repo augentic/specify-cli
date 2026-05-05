@@ -444,7 +444,7 @@ mod tests {
         let cfg = ProjectConfig {
             name: "demo".to_string(),
             domain: None,
-            schema: if hub { "hub".to_string() } else { "omnia".to_string() },
+            capability: if hub { None } else { Some("omnia".to_string()) },
             specify_version: None,
             rules: BTreeMap::new(),
             hub,
