@@ -493,9 +493,14 @@ const EXDEV: i32 = 18;
 /// via a single `std::fs::copy`. The two old helpers
 /// (`move_file_atomic`, `move_dir_atomic`) were identical modulo that
 /// one branch — collapsing them keeps the cross-device semantics in a
-/// single implementation shared by `crates/change/src/plan.rs` and
-/// `specify_merge::change`.
-pub(crate) fn move_atomic(src: &Path, dst: &Path) -> Result<(), Error> {
+/// single implementation shared by `specify_merge::change` (archive
+/// move) and `specify_initiative::plan` (plan archive move, lifted
+/// out of this crate by RFC-13 chunk 2.4).
+///
+/// # Errors
+///
+/// Returns `Error::Io` on rename / copy / remove failures.
+pub fn move_atomic(src: &Path, dst: &Path) -> Result<(), Error> {
     match std::fs::rename(src, dst) {
         Ok(()) => Ok(()),
         Err(err) if err.raw_os_error() == Some(EXDEV) => {

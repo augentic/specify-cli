@@ -50,12 +50,10 @@
 
 #![allow(clippy::needless_pass_by_value)]
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
-use specify_change::Plan;
-use specify_change::plan::Status;
 use specify_error::Error;
 use specify_registry::merge::{
     GhClient, PrState, PrView, RealGhClient, SPECIFY_BRANCH_PREFIX, pr_branch_matches,
@@ -63,7 +61,34 @@ use specify_registry::merge::{
 };
 use specify_registry::{Registry, RegistryProject};
 
-use crate::config::ProjectConfig;
+use crate::plan::core::{Plan, Status};
+
+// ---------------------------------------------------------------------------
+// Path helpers
+// ---------------------------------------------------------------------------
+//
+// `crate::config::ProjectConfig::{specify_dir, plan_path, initiative_path,
+// archive_dir}` lived in the binary lib pre-RFC-13 chunk 2.4. The lifted
+// crate must not couple back to the binary; the four path helpers are
+// inlined here as `fn`s. They are pure `Path::join` calls and the
+// canonical layout (`registry.yaml` / `plan.yaml` / `initiative.md` at
+// repo root, `.specify/` for framework-managed state) is fixed by RFC-9.
+
+fn specify_dir(project_dir: &Path) -> PathBuf {
+    project_dir.join(".specify")
+}
+
+fn plan_path(project_dir: &Path) -> PathBuf {
+    project_dir.join("plan.yaml")
+}
+
+fn initiative_path(project_dir: &Path) -> PathBuf {
+    project_dir.join("initiative.md")
+}
+
+fn archive_dir(project_dir: &Path) -> PathBuf {
+    specify_dir(project_dir).join("archive")
+}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -426,7 +451,7 @@ pub fn run_finalize<P: FinalizeProbe>(
 
     let initiative_name = inputs.plan.name.clone();
     let expected_branch = format!("{SPECIFY_BRANCH_PREFIX}{initiative_name}");
-    let workspace_base = ProjectConfig::specify_dir(inputs.project_dir).join("workspace");
+    let workspace_base = specify_dir(inputs.project_dir).join("workspace");
 
     // Guard: per-project PR state + dirty clones.
     let mut projects: Vec<FinalizeProjectResult> =
@@ -462,10 +487,10 @@ pub fn run_finalize<P: FinalizeProbe>(
     }
 
     // All guards passed — archive (atomic) and optionally clean.
-    let plan_path = ProjectConfig::plan_path(inputs.project_dir);
-    let initiative_path = ProjectConfig::initiative_path(inputs.project_dir);
-    let archive_dir = ProjectConfig::archive_dir(inputs.project_dir).join("plans");
-    match Plan::archive(&plan_path, &initiative_path, &archive_dir, /* force = */ true) {
+    let plan_file = plan_path(inputs.project_dir);
+    let initiative_file = initiative_path(inputs.project_dir);
+    let archive_root = archive_dir(inputs.project_dir).join("plans");
+    match Plan::archive(&plan_file, &initiative_file, &archive_root, /* force = */ true) {
         Ok((archived, archived_plans_dir)) => {
             outcome.archived = Some(archived.display().to_string());
             outcome.archived_plans_dir =
@@ -632,11 +657,11 @@ fn clean_workspace_clones(workspace_base: &Path, registry: &Registry) -> Vec<Str
 /// Bubbles up `Plan::load` errors verbatim — a malformed plan is a
 /// real failure, not a "plan absent" sentinel.
 pub fn load_plan_or_refuse(project_dir: &Path) -> Result<Result<Plan, FinalizeError>, Error> {
-    let plan_path = ProjectConfig::plan_path(project_dir);
-    if !plan_path.exists() {
+    let plan_file = plan_path(project_dir);
+    if !plan_file.exists() {
         return Ok(Err(FinalizeError::PlanNotFound));
     }
-    Ok(Ok(Plan::load(&plan_path)?))
+    Ok(Ok(Plan::load(&plan_file)?))
 }
 
 // ---------------------------------------------------------------------------
@@ -651,8 +676,9 @@ mod tests {
     use std::path::PathBuf;
 
     use specify_registry::RegistryProject;
-    use specify_change::plan::Entry;
     use tempfile::TempDir;
+
+    use crate::plan::core::Entry;
 
     use super::*;
 

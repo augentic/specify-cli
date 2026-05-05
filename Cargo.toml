@@ -25,6 +25,7 @@ specify-spec.workspace = true
 specify-merge.workspace = true
 specify-task.workspace = true
 specify-change.workspace = true
+specify-initiative.workspace = true
 specify-validate.workspace = true
 specify-vectis.workspace = true
 clap.workspace = true
@@ -55,6 +56,7 @@ members = [
     "crates/task",
     "crates/validate",
     "crates/change",
+    "crates/initiative",
     "crates/vectis",
 ]
 
@@ -114,6 +116,7 @@ specify-spec = { path = "crates/spec" }
 specify-merge = { path = "crates/merge" }
 specify-task = { path = "crates/task" }
 specify-change = { path = "crates/change" }
+specify-initiative = { path = "crates/initiative" }
 specify-validate = { path = "crates/validate" }
 specify-vectis = { path = "crates/vectis" }
 clap = { version = "4", features = ["derive"] }

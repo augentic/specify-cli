@@ -36,6 +36,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use fs2::FileExt;
+use specify_change::atomic::atomic_bytes_write;
 use specify_error::Error;
 
 /// RAII guard for the `.specify/plan.lock` advisory lock.
@@ -321,7 +322,7 @@ impl Stamp {
         // Atomic write via tempfile + rename, matching the convention
         // used by `Plan::save` and `ChangeMetadata::save`. Readers
         // never observe a partial stamp.
-        crate::atomic::atomic_bytes_write(&path, our_pid.to_string().as_bytes())?;
+        atomic_bytes_write(&path, our_pid.to_string().as_bytes())?;
 
         Ok(Acquired {
             pid: our_pid,

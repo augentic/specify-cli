@@ -10,7 +10,8 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, Plan, PlanStatus, ProjectConfig};
+use specify::{Error, ProjectConfig};
+use specify_initiative::{Plan, Status as PlanStatus};
 use specify_registry::Registry;
 
 use super::change::{collect_status, list_change_names, status_entry_to_json};

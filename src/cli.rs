@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
-use specify::{CreateIfExists, EntryKind, LifecycleStatus, Phase, PlanStatus};
+use specify::{CreateIfExists, EntryKind, LifecycleStatus, Phase};
+use specify_initiative::Status as PlanStatus;
 
 #[derive(Parser)]
 #[command(

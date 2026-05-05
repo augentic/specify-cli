@@ -3,8 +3,9 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{
-    ChangeMetadata, Error, Plan, PlanChange, PlanStatus, PlanValidationLevel, ProjectConfig,
+use specify::{ChangeMetadata, Error, ProjectConfig};
+use specify_initiative::{
+    Entry as PlanChange, Plan, Severity as PlanValidationLevel, Status as PlanStatus,
 };
 
 use super::{PlanRef, emit_structural_error, require_file};

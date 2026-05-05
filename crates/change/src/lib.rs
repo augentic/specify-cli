@@ -21,27 +21,21 @@ use specify_error::Error;
 
 /// Verb-level operations on a Specify change directory.
 pub mod actions;
-mod atomic;
+/// Crash-safe write helpers shared with `specify-initiative`.
+///
+/// Originally a `pub(crate)` private module; promoted to `pub` by
+/// RFC-13 chunk 2.4 so the lifted plan + lock primitives in
+/// `specify-initiative` can route their on-disk writes through the
+/// same atomic-rename envelope as the per-loop-unit primitives that
+/// remain in this crate.
+pub mod atomic;
 /// On-disk journal for append-only audit logging.
 pub mod journal;
-/// Advisory PID lock for the Layer 2 executor.
-pub mod lock;
-/// Plan state machine for ordered, dependency-aware change execution.
-pub mod plan;
-/// `specify plan doctor` — RFC-9 §4B plan-health diagnostics.
-pub mod plan_doctor;
 /// RFC 3339 timestamp newtype.
 pub mod timestamp;
 
 pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339, is_valid_kebab_name};
 pub use journal::{EntryKind, Journal, JournalEntry};
-pub use lock::{Acquired, Guard, PlanLockReleased, PlanLockState, Stamp};
-pub use plan::{Entry, EntryPatch, Finding, Plan, Severity, Status};
-pub use plan_doctor::{
-    BlockingPredecessor, CODE_CYCLE, CODE_ORPHAN_SOURCE, CODE_STALE_CLONE, CODE_UNREACHABLE,
-    CloneSignature, Diagnostic as PlanDoctorDiagnostic, DiagnosticPayload as PlanDoctorPayload,
-    DiagnosticSeverity as PlanDoctorSeverity, StaleCloneReason, doctor as plan_doctor,
-};
 pub use timestamp::Rfc3339Stamp;
 
 /// On-disk schema version for `.metadata.yaml`.
@@ -413,15 +407,15 @@ impl ChangeMetadata {
     ///
     /// Atomic: a partial file is never observed by readers. Write goes
     /// via a temp file in the same directory followed by `fs::rename`.
-    /// This mirrors the exact convention used by [`Plan::save`] — both
-    /// `ChangeMetadata` and `Plan` route their on-disk writes through
-    /// `NamedTempFile::new_in(parent) + persist` so that every
-    /// `.specify/*.yaml` write in the codebase is crash-safe and
-    /// never-partial under concurrent reads.
+    /// This mirrors the exact convention used by `Plan::save` (in
+    /// `specify-initiative`) — both `ChangeMetadata` and `Plan` route
+    /// their on-disk writes through `NamedTempFile::new_in(parent) +
+    /// persist` so that every `.specify/*.yaml` write in the codebase
+    /// is crash-safe and never-partial under concurrent reads.
     ///
     /// A trailing newline is always emitted so the on-disk form
-    /// matches the convention used by `Plan::save` and so POSIX
-    /// text-file tools (`wc -l`, `sed`, `grep`) behave predictably.
+    /// matches the convention used elsewhere and so POSIX text-file
+    /// tools (`wc -l`, `sed`, `grep`) behave predictably.
     ///
     /// Does **not** create the parent directory — `init`/`define` own
     /// that responsibility. Returns `Error::Io` on any write failure

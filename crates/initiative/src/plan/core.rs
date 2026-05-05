@@ -35,8 +35,10 @@ use petgraph::Direction;
 use petgraph::algo::{tarjan_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
-use specify_registry::Registry;
+use specify_change::actions::{move_atomic, validate_name};
+use specify_change::atomic::atomic_yaml_write;
 use specify_error::Error;
+use specify_registry::Registry;
 
 /// Lifecycle state of a single entry in [`Plan::changes`].
 ///
@@ -246,7 +248,7 @@ impl Plan {
     ///
     /// Every entry starts with `status: pending`; this just initialises the
     /// top-level struct. The name is validated with
-    /// [`crate::actions::validate_name`] so it obeys the same kebab-case
+    /// [`specify_change::actions::validate_name`] so it obeys the same kebab-case
     /// rules as change names (RFC-1 §"Naming Rules").
     ///
     /// Does NOT write anything to disk. Call [`Plan::save`] afterwards.
@@ -255,7 +257,7 @@ impl Plan {
     ///
     /// Returns an error if the operation fails.
     pub fn init(name: &str, sources: BTreeMap<String, String>) -> Result<Self, Error> {
-        crate::actions::validate_name(name)?;
+        validate_name(name)?;
         Ok(Self {
             name: name.to_string(),
             sources,
@@ -265,7 +267,7 @@ impl Plan {
 
     /// Load `plan.yaml` (at the repo root) from disk.
     ///
-    /// Errors mirror [`crate::ChangeMetadata::load`]:
+    /// Errors mirror [`specify_change::ChangeMetadata::load`]:
     ///   - missing file -> `Error::Config`
     ///   - malformed YAML -> `Error::Yaml`
     ///   - other I/O failure -> `Error::Io`
@@ -311,7 +313,7 @@ impl Plan {
     ///
     /// Returns an error if the operation fails.
     pub fn save(&self, path: &Path) -> Result<(), Error> {
-        crate::atomic::atomic_yaml_write(path, self)
+        atomic_yaml_write(path, self)
     }
 
     /// Run all structural and semantic checks over the plan.
@@ -446,7 +448,7 @@ impl Plan {
     ///
     /// Returns an error if the operation fails.
     pub fn create(&mut self, change: Entry) -> Result<(), Error> {
-        crate::actions::validate_name(&change.name)?;
+        validate_name(&change.name)?;
 
         if self.changes.iter().any(|c| c.name == change.name) {
             return Err(Error::Config(format!(
@@ -732,13 +734,13 @@ impl Plan {
 
         std::fs::create_dir_all(archive_dir)?;
 
-        crate::actions::move_atomic(path, &dest_plan)?;
+        move_atomic(path, &dest_plan)?;
         if let (Some(src), Some(dst)) = (co_move_plans.as_ref(), dest_plans_dir.as_ref()) {
-            crate::actions::move_atomic(src, dst)?;
+            move_atomic(src, dst)?;
         }
         if let (Some(src), Some(dst)) = (initiative_src.as_ref(), dest_plans_dir.as_ref()) {
             std::fs::create_dir_all(dst)?;
-            crate::actions::move_atomic(src, &dst.join("initiative.md"))?;
+            move_atomic(src, &dst.join("initiative.md"))?;
         }
 
         Ok((dest_plan, dest_plans_dir))

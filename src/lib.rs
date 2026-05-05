@@ -11,16 +11,10 @@ pub use specify_capability::{
     InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind, LEGACY_SCHEMA_FILENAME,
     ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, ResolvedCapability,
 };
-pub use specify_change::plan::{Entry as PlanChange, Status as PlanStatus};
 pub use specify_change::{
-    Acquired as PlanLockAcquired, BlockingPredecessor, CODE_CYCLE, CODE_ORPHAN_SOURCE,
-    CODE_STALE_CLONE, CODE_UNREACHABLE, ChangeMetadata, CloneSignature, CreateIfExists,
-    CreateOutcome, EntryKind, EntryPatch as PlanChangePatch, Finding as PlanValidationResult,
-    Guard as PlanLockGuard, Journal, JournalEntry, LifecycleStatus, METADATA_VERSION, Outcome,
-    Overlap, PhaseOutcome, Plan, PlanDoctorDiagnostic, PlanDoctorPayload, PlanDoctorSeverity,
-    PlanLockReleased, PlanLockState, Rfc3339Stamp, Severity as PlanValidationLevel, SpecType,
-    StaleCloneReason, Stamp as PlanLockStamp, TouchedSpec, actions as change_actions,
-    format_rfc3339, is_valid_kebab_name, plan_doctor,
+    ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry,
+    LifecycleStatus, METADATA_VERSION, Outcome, Overlap, PhaseOutcome, Rfc3339Stamp, SpecType,
+    TouchedSpec, actions as change_actions, format_rfc3339, is_valid_kebab_name,
 };
 pub use specify_error::{Error, ValidationStatus, ValidationSummary};
 pub use specify_merge::{
@@ -41,11 +35,3 @@ pub use specify_validate::{
 
 mod config;
 mod init;
-mod initiative_finalize;
-
-pub use initiative_finalize::{
-    FinalizeError, FinalizeInputs, FinalizeOutcome, FinalizeProbe, FinalizeProjectResult,
-    FinalizeStatus, FinalizeSummaryCounts, RealFinalizeProbe, classify_pr_state, combine_status,
-    is_terminal_for_finalize, load_plan_or_refuse, non_terminal_entries, run_finalize,
-    summarise as summarise_finalize,
-};

@@ -1,5 +1,8 @@
 use serde::Serialize;
-use specify::{Error, PlanLockAcquired, PlanLockReleased, PlanLockStamp, PlanLockState};
+use specify::Error;
+use specify_initiative::{
+    Acquired as PlanLockAcquired, PlanLockReleased, PlanLockState, Stamp as PlanLockStamp,
+};
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;

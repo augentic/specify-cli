@@ -1379,6 +1379,7 @@ dependencies = [
  "specify-capability",
  "specify-change",
  "specify-error",
+ "specify-initiative",
  "specify-merge",
  "specify-registry",
  "specify-spec",
@@ -1426,6 +1427,24 @@ version = "0.2.0"
 dependencies = [
  "serde-saphyr",
  "thiserror",
+]
+
+[[package]]
+name = "specify-initiative"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "fs2",
+ "libc",
+ "petgraph",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "specify-change",
+ "specify-error",
+ "specify-registry",
+ "tempfile",
 ]
 
 [[package]]

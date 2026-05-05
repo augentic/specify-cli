@@ -2,8 +2,9 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{
-    Error, Plan, PlanStatus, PlanValidationLevel, PlanValidationResult, ProjectConfig,
+use specify::{Error, ProjectConfig};
+use specify_initiative::{
+    Finding as PlanValidationResult, Plan, Severity as PlanValidationLevel, Status as PlanStatus,
 };
 use specify_registry::Registry;
 

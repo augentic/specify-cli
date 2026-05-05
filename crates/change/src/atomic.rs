@@ -11,12 +11,14 @@
 //! write to a freshly-minted `.specify/` layout without an explicit
 //! `create_dir_all` at every call site.
 //!
-//! These are `pub(crate)` on purpose: the atomic-write invariant is a
-//! private implementation detail of the `change` crate, not part of
-//! its public surface. Downstream library users who need the same
-//! behaviour should call the domain helpers (`ChangeMetadata::save`,
-//! `Plan::save`, `Journal::append`, `lock::Stamp::acquire`) that
-//! route through here.
+//! Promoted from `pub(crate)` to `pub` by RFC-13 chunk 2.4 so the
+//! lifted plan + lock primitives in `specify-initiative` can route
+//! their on-disk writes through the same atomic-rename envelope as
+//! the per-loop-unit primitives that remain in this crate. Downstream
+//! library users who need the same behaviour should call the domain
+//! helpers (`ChangeMetadata::save`, `Journal::append`, plus the
+//! `Plan::save` / `Stamp::acquire` re-exports in `specify-initiative`)
+//! that route through here.
 
 use std::path::Path;
 
@@ -26,6 +28,11 @@ use specify_error::Error;
 /// Serialise `value` as YAML (with a guaranteed trailing newline) and
 /// atomically persist it at `path`. See module-level docs for the
 /// atomicity envelope.
+///
+/// # Errors
+///
+/// Returns `Error::Yaml` if serialisation fails, or `Error::Io` if the
+/// temp-file write or rename fails.
 pub fn atomic_yaml_write<T: Serialize>(path: &Path, value: &T) -> Result<(), Error> {
     let mut content = serde_saphyr::to_string(value)?;
     if !content.ends_with('\n') {
@@ -37,6 +44,10 @@ pub fn atomic_yaml_write<T: Serialize>(path: &Path, value: &T) -> Result<(), Err
 /// Atomically write `bytes` to `path`. Used for non-YAML writers (e.g.
 /// the PID stamp in `.specify/plan.lock`) where the caller has already
 /// produced the exact on-disk bytes.
+///
+/// # Errors
+///
+/// Returns `Error::Io` if the temp-file create / write / rename fails.
 pub fn atomic_bytes_write(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(parent)?;

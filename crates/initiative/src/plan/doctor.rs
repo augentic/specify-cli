@@ -59,7 +59,7 @@ use petgraph::graph::DiGraph;
 use serde::{Deserialize, Serialize};
 use specify_registry::Registry;
 
-use crate::plan::{Entry, Finding, Plan, Severity, Status};
+use super::core::{Entry, Finding, Plan, Severity, Status};
 
 /// Stable code for the cycle-detection diagnostic.
 ///
@@ -694,7 +694,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::plan::{Entry, Plan, Status};
+    use crate::plan::core::{Entry, Plan, Status};
 
     fn change(name: &str, status: Status) -> Entry {
         Entry {

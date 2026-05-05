@@ -4,10 +4,10 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{
-    Error, FinalizeError, FinalizeInputs, FinalizeOutcome, FinalizeProjectResult,
-    FinalizeSummaryCounts, InitiativeBrief, RealFinalizeProbe, is_valid_kebab_name,
-    load_plan_or_refuse, run_finalize,
+use specify::{Error, InitiativeBrief, is_valid_kebab_name};
+use specify_initiative::{
+    FinalizeError, FinalizeInputs, FinalizeOutcome, FinalizeProjectResult, FinalizeSummaryCounts,
+    RealFinalizeProbe, load_plan_or_refuse, run_finalize,
 };
 use specify_registry::Registry;
 
@@ -365,7 +365,7 @@ fn blocked_reason(s: &FinalizeSummaryCounts) -> String {
 
 #[cfg(test)]
 mod tests {
-    use specify::FinalizeStatus;
+    use specify_initiative::FinalizeStatus;
 
     #[test]
     fn passing_statuses_only_merged_and_no_branch() {

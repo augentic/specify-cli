@@ -2,9 +2,12 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, Plan};
+use specify::Error;
+use specify_initiative::Plan;
 use specify_registry::Registry;
-use specify_registry::merge::{MergeProjectResult, MergeStatus, RealGhClient, run_workspace_merge_impl};
+use specify_registry::merge::{
+    MergeProjectResult, MergeStatus, RealGhClient, run_workspace_merge_impl,
+};
 use specify_registry::workspace::{
     PushOutcome, SlotKind, SlotStatus, run_workspace_push_impl, sync_registry_workspace,
     workspace_status,
