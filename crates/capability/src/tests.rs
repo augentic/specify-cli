@@ -164,11 +164,22 @@ pipeline:
     assert_eq!(phase, Phase::Plan);
     assert_eq!(entry.id, "discovery");
 
-    // Structure validation accepts the schema end-to-end.
+    // RFC-13 chunk 1.4: the JSON Schema now actively rejects
+    // `pipeline.plan` (planning leaves the capability surface and moves
+    // to `specify change`). The parser stays tolerant for one more
+    // chunk so existing on-disk manifests load, but `validate_structure`
+    // is the boundary that pins the post-RFC field set.
     let results = schema.validate_structure();
+    let detail = results
+        .iter()
+        .find_map(|r| match r {
+            ValidationResult::Fail { detail, .. } => Some(detail.as_str()),
+            _ => None,
+        })
+        .expect("plan-bearing schema must fail validation");
     assert!(
-        results.iter().all(|r| matches!(r, ValidationResult::Pass { .. })),
-        "plan-bearing schema should validate: {results:?}"
+        detail.contains("plan"),
+        "rejection diagnostic must name the offending field, got: {detail}"
     );
 }
 
@@ -231,19 +242,87 @@ pipeline:
     assert_eq!(propose.brief, "briefs/plan/propose-v2.md");
 }
 
+/// JSON Schema body shipped with the crate. Read directly from disk so
+/// the rejection tests below stay coupled to the on-disk file used by
+/// `Capability::validate_structure`.
+const CAPABILITY_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/capability.schema.json");
+
+fn validate_raw(instance: serde_json::Value) -> Vec<ValidationResult> {
+    crate::capability::validate_against_embedded_schema(
+        CAPABILITY_JSON_SCHEMA,
+        "capability.valid",
+        "capability manifest conforms to schemas/capability.schema.json",
+        &instance,
+    )
+}
+
+fn fail_detail(results: &[ValidationResult], context: &str) -> String {
+    results
+        .iter()
+        .find_map(|r| match r {
+            ValidationResult::Fail { detail, .. } => Some(detail.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("expected failure for {context}, got: {results:?}"))
+}
+
 #[test]
-fn json_schema_rejects_missing_define_even_with_plan_present() {
-    // `pipeline.plan` is allowed but `define` is still required.
+fn json_schema_rejects_capability_domain_field() {
+    let instance = serde_json::json!({
+        "name": "broken",
+        "version": 1,
+        "description": "manifest still carrying legacy `domain`",
+        "domain": "Tech stack: Rust",
+        "pipeline": {
+            "define": [{ "id": "proposal", "brief": "briefs/proposal.md" }],
+            "build": [{ "id": "build", "brief": "briefs/build.md" }],
+            "merge": [{ "id": "merge", "brief": "briefs/merge.md" }]
+        }
+    });
+    let results = validate_raw(instance);
+    let detail = fail_detail(&results, "domain field");
+    assert!(detail.contains("domain"), "diagnostic must name `domain`, got: {detail}");
+}
+
+#[test]
+fn json_schema_rejects_capability_extends_field() {
+    let instance = serde_json::json!({
+        "name": "broken",
+        "version": 1,
+        "description": "manifest still carrying legacy `extends`",
+        "extends": "https://example.com/parent.yaml",
+        "pipeline": {
+            "define": [{ "id": "proposal", "brief": "briefs/proposal.md" }],
+            "build": [{ "id": "build", "brief": "briefs/build.md" }],
+            "merge": [{ "id": "merge", "brief": "briefs/merge.md" }]
+        }
+    });
+    let results = validate_raw(instance);
+    let detail = fail_detail(&results, "extends field");
+    assert!(detail.contains("extends"), "diagnostic must name `extends`, got: {detail}");
+}
+
+#[test]
+fn json_schema_rejects_pipeline_plan_block() {
+    // RFC-13 chunk 1.4 tightens the JSON Schema to forbid
+    // `pipeline.plan` outright — planning leaves the capability surface
+    // and moves to the change surface. A manifest that still carries a
+    // `plan` block must fail structure validation even when the rest of
+    // the pipeline is well-formed.
     let schema = Capability {
         name: "broken".into(),
         version: 1,
-        description: "no define".into(),
+        description: "plan still present".into(),
         pipeline: crate::capability::Pipeline {
             plan: vec![crate::capability::PipelineEntry {
                 id: "discovery".into(),
                 brief: "briefs/plan/discovery.md".into(),
             }],
-            define: vec![],
+            define: vec![crate::capability::PipelineEntry {
+                id: "proposal".into(),
+                brief: "briefs/proposal.md".into(),
+            }],
             build: vec![crate::capability::PipelineEntry {
                 id: "build".into(),
                 brief: "briefs/build.md".into(),
@@ -255,9 +334,16 @@ fn json_schema_rejects_missing_define_even_with_plan_present() {
         },
     };
     let results = schema.validate_structure();
+    let detail = results
+        .iter()
+        .find_map(|r| match r {
+            ValidationResult::Fail { detail, .. } => Some(detail.as_str()),
+            _ => None,
+        })
+        .expect("pipeline.plan must be rejected");
     assert!(
-        results.iter().any(|r| matches!(r, ValidationResult::Fail { .. })),
-        "empty define must still fail even with plan present: {results:?}"
+        detail.contains("plan"),
+        "rejection diagnostic must name the offending field, got: {detail}"
     );
 }
 

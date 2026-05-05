@@ -49,4 +49,4 @@ For offline work, point `$schema` at the checked-in file via a `file://` URL or 
 
 ## See also
 
-- [`../schema.schema.json`](../schema.schema.json) - schema for the `schema.yaml` that declares which briefs make up a schema's pipeline; `pipeline.*` entries reference brief `id` values.
+- [`../capability.schema.json`](../capability.schema.json) - schema for the capability manifest that declares which briefs make up a capability's pipeline; `pipeline.*` entries reference brief `id` values.

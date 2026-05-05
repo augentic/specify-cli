@@ -1,11 +1,7 @@
-# yaml-language-server: $schema=../schema.schema.json
+# yaml-language-server: $schema=../capability.schema.json
 name: omnia
 version: 1
 description: Omnia Rust WASM workflow
-domain: |
-  Tech stack: Rust, WASM (wasm32-wasip2), Omnia SDK
-  Architecture: Handler<P> pattern with provider trait bounds
-  Testing: Rust integration tests, cargo test
 
 pipeline:
   define:

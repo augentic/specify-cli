@@ -23,7 +23,7 @@ use specify_error::Error;
 
 use crate::ValidationResult;
 
-const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../schemas/schema.schema.json");
+const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../schemas/capability.schema.json");
 
 /// In-memory representation of a capability manifest (`schema.yaml`
 /// pre-chunk-1.4, `capability.yaml` afterwards).
@@ -158,8 +158,8 @@ impl Capability {
     }
 
     /// Validate this in-memory capability against the embedded
-    /// `schemas/schema.schema.json`. Returns one `ValidationResult` per
-    /// check performed (empty = fully valid).
+    /// `schemas/capability.schema.json`. Returns one `ValidationResult`
+    /// per check performed (empty = fully valid).
     #[must_use]
     pub fn validate_structure(&self) -> Vec<ValidationResult> {
         let schema_value: serde_json::Value = match serde_json::to_value(self) {
@@ -175,7 +175,7 @@ impl Capability {
         validate_against_embedded_schema(
             CAPABILITY_JSON_SCHEMA,
             "capability.valid",
-            "capability manifest conforms to schemas/schema.schema.json",
+            "capability manifest conforms to schemas/capability.schema.json",
             &schema_value,
         )
     }

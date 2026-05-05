@@ -6,7 +6,7 @@ This directory contains JSON Schemas and bundled workflow fixtures used by the `
 
 | Schema | Purpose |
 |---|---|
-| [`schema.schema.json`](schema.schema.json) | Validates `schema.yaml`, the manifest for a selectable Specify workflow schema. |
+| [`capability.schema.json`](capability.schema.json) | Validates a Specify capability manifest (still on disk as `schema.yaml` until the loud rename in chunk 1.6). |
 | [`brief/schema.json`](brief/schema.json) | Validates YAML frontmatter in schema brief markdown files. |
 | [`plan/plan.schema.json`](plan/plan.schema.json) | Validates `plan.yaml` structure. |
 | [`plan-validate-output/schema.json`](plan-validate-output/schema.json) | Validates `specify plan validate --format json` output. |
