@@ -5,9 +5,9 @@
 //! the convention without reaching back into the binary lib.
 //!
 //! `init` and `specify workspace sync` both call
-//! [`ensure_specify_gitignore_entries`]; the binary re-exports the
-//! function via `specify::ensure_specify_gitignore_entries` to preserve
-//! the pre-RFC-13 public surface.
+//! [`ensure_specify_gitignore_entries`] directly; RFC-13 chunk 2.3 dropped
+//! the temporary `specify::ensure_specify_gitignore_entries` re-export
+//! from the binary lib.
 
 use std::fs;
 use std::path::Path;

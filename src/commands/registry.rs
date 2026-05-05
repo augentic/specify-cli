@@ -10,7 +10,8 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, Plan, ProjectConfig, Registry, RegistryProject};
+use specify::{Error, Plan, ProjectConfig};
+use specify_registry::{Registry, RegistryProject};
 
 use crate::cli::{OutputFormat, RegistryAction};
 use crate::commands::plan as plan_cmd;

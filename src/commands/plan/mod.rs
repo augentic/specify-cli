@@ -10,9 +10,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{
-    Error, Plan, PlanChange, PlanValidationLevel, PlanValidationResult, ProjectConfig, Registry,
-};
+use specify::{Error, Plan, PlanChange, PlanValidationLevel, PlanValidationResult, ProjectConfig};
+use specify_registry::Registry;
 
 use crate::cli::{LockAction, OutputFormat, PlanAction};
 use crate::context::CommandContext;

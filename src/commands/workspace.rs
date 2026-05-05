@@ -2,9 +2,12 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{
-    Error, MergeProjectResult, MergeStatus, Plan, PushOutcome, RealGhClient, Registry, SlotKind,
-    SlotStatus, run_workspace_merge_impl, sync_registry_workspace, workspace_status,
+use specify::{Error, Plan};
+use specify_registry::Registry;
+use specify_registry::merge::{MergeProjectResult, MergeStatus, RealGhClient, run_workspace_merge_impl};
+use specify_registry::workspace::{
+    PushOutcome, SlotKind, SlotStatus, run_workspace_push_impl, sync_registry_workspace,
+    workspace_status,
 };
 
 use super::plan::require_file;
@@ -159,7 +162,7 @@ pub fn run_workspace_push(
         ));
     };
 
-    let results = specify::run_workspace_push_impl(
+    let results = run_workspace_push_impl(
         &ctx.project_dir,
         &plan.name,
         &registry,

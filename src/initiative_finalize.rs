@@ -54,16 +54,16 @@ use std::path::Path;
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
-use specify_registry::{Registry, RegistryProject};
 use specify_change::Plan;
 use specify_change::plan::Status;
 use specify_error::Error;
-
-use crate::config::ProjectConfig;
-use crate::workspace_merge::{
+use specify_registry::merge::{
     GhClient, PrState, PrView, RealGhClient, SPECIFY_BRANCH_PREFIX, pr_branch_matches,
     project_path_for,
 };
+use specify_registry::{Registry, RegistryProject};
+
+use crate::config::ProjectConfig;
 
 // ---------------------------------------------------------------------------
 // Public types

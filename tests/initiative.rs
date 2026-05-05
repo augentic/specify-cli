@@ -1713,7 +1713,7 @@ changes: []
 
     #[test]
     fn registry_load_from_tempdir() {
-        use specify::Registry;
+        use specify_registry::Registry;
 
         let project = Project::init();
         let registry_path = project.root().join("registry.yaml");

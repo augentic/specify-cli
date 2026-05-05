@@ -3,8 +3,9 @@
 use serde::Serialize;
 use serde_json::Value;
 use specify::{
-    Error, Plan, PlanStatus, PlanValidationLevel, PlanValidationResult, ProjectConfig, Registry,
+    Error, Plan, PlanStatus, PlanValidationLevel, PlanValidationResult, ProjectConfig,
 };
+use specify_registry::Registry;
 
 use super::{
     PlanRef, absolute_string, emit_structural_error, file_path, load_for_write, plan_ref,

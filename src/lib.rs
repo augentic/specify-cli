@@ -11,9 +11,6 @@ pub use specify_capability::{
     InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind, LEGACY_SCHEMA_FILENAME,
     ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, ResolvedCapability,
 };
-pub use specify_registry::{
-    ContractRoles, Registry, RegistryProject, ensure_specify_gitignore_entries,
-};
 pub use specify_change::plan::{Entry as PlanChange, Status as PlanStatus};
 pub use specify_change::{
     Acquired as PlanLockAcquired, BlockingPredecessor, CODE_CYCLE, CODE_ORPHAN_SOURCE,
@@ -51,20 +48,4 @@ pub use initiative_finalize::{
     FinalizeStatus, FinalizeSummaryCounts, RealFinalizeProbe, classify_pr_state, combine_status,
     is_terminal_for_finalize, load_plan_or_refuse, non_terminal_entries, run_finalize,
     summarise as summarise_finalize,
-};
-
-// Workspace materialisation moved into `specify-registry` by RFC-13
-// chunk 2.2. Re-export both modules under their pre-RFC-13 names so
-// existing call-sites (`crate::workspace::*`, `crate::workspace_merge::*`)
-// keep resolving — the dispatcher rewire is chunk 2.3.
-pub use specify_registry::merge as workspace_merge;
-pub use specify_registry::workspace;
-pub use specify_registry::workspace::{
-    PushOutcome, SlotKind, SlotStatus, WorkspacePushResult, extract_github_slug,
-    run_workspace_push_impl, sync_registry_workspace, workspace_status,
-};
-pub use specify_registry::merge::{
-    CheckBucket, CheckOverall, GhClient, MergeProjectResult, MergeStatus, PrCheck, PrState, PrView,
-    RealGhClient, SPECIFY_BRANCH_PREFIX, classify_checks, classify_status,
-    matches_specify_branch_pattern, pr_branch_matches, project_path_for, run_workspace_merge_impl,
 };

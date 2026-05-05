@@ -10,7 +10,8 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, Plan, PlanStatus, ProjectConfig, Registry};
+use specify::{Error, Plan, PlanStatus, ProjectConfig};
+use specify_registry::Registry;
 
 use super::change::{collect_status, list_change_names, status_entry_to_json};
 use crate::cli::OutputFormat;

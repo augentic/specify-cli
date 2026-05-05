@@ -7,9 +7,8 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{
-    Error, Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, ProjectConfig, Registry, plan_doctor,
-};
+use specify::{Error, Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, ProjectConfig, plan_doctor};
+use specify_registry::Registry;
 
 use super::{PlanRef, plan_ref, require_file};
 use crate::cli::OutputFormat;

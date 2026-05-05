@@ -6,9 +6,10 @@ use serde::Serialize;
 use serde_json::Value;
 use specify::{
     Error, FinalizeError, FinalizeInputs, FinalizeOutcome, FinalizeProjectResult,
-    FinalizeSummaryCounts, InitiativeBrief, RealFinalizeProbe, Registry, is_valid_kebab_name,
+    FinalizeSummaryCounts, InitiativeBrief, RealFinalizeProbe, is_valid_kebab_name,
     load_plan_or_refuse, run_finalize,
 };
+use specify_registry::Registry;
 
 use crate::cli::{InitiativeAction, OutputFormat};
 use crate::context::CommandContext;
