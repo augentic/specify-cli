@@ -163,13 +163,13 @@ fn vectis_validate_help_lists_every_mode_and_path_positional() {
 }
 
 /// Phase 1.5 wired the `not-implemented` envelope for every mode;
-/// Phase 1.6 promotes `tokens` to a real validator, so this test now
-/// pins the envelope across the four still-stubbed modes only
-/// (`layout`, `composition`, `assets`, `all`). The `tokens` envelope
-/// shape gets its own dedicated tests below.
+/// Phase 1.6 promoted `tokens` and Phase 1.7 promoted `assets`, so
+/// this test now pins the envelope across the three still-stubbed
+/// modes only (`layout`, `composition`, `all`). The live modes get
+/// their own dedicated tests below.
 #[test]
 fn vectis_validate_stub_modes_emit_not_implemented_envelope() {
-    for mode in ["layout", "composition", "assets", "all"] {
+    for mode in ["layout", "composition", "all"] {
         let assert =
             specify().args(["--format", "json", "vectis", "validate", mode]).assert().failure();
         let output = assert.get_output();
@@ -185,6 +185,253 @@ fn vectis_validate_stub_modes_emit_not_implemented_envelope() {
         );
         assert_eq!(output.status.code(), Some(1), "[{mode}] expected exit 1");
     }
+}
+
+/// Phase 1.7 update: the `tokens` and `assets` modes are now real;
+/// only `layout`, `composition`, and `all` remain as stubs. Asserts
+/// the v2 `not-implemented` envelope across the three still-stubbed
+/// modes -- the live modes get their own dedicated tests below.
+#[test]
+fn vectis_validate_assets_clean_run_exits_zero_with_envelope() {
+    // Minimal valid `assets.yaml` (the schema permits an
+    // assets-only manifest with `version` + an empty `assets` map,
+    // because `assets` is required at the document level but
+    // `additionalProperties: { ... }` allows zero entries).
+    let tmp = tempdir().unwrap();
+    let assets_path = tmp.path().join("assets.yaml");
+    std::fs::write(&assets_path, "version: 1\nassets: {}\n").expect("write assets.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "assets"])
+        .arg(&assets_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["mode"], "assets");
+    assert_eq!(
+        value["path"].as_str().expect("path is a string"),
+        assets_path.display().to_string()
+    );
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0), "expected no errors: {value}");
+    assert_eq!(
+        value["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "expected no warnings: {value}"
+    );
+}
+
+/// Phase 1.7: a referenced raster file that is not on disk must
+/// surface as an error pointing at the corresponding density slot
+/// (`/assets/<id>/sources/ios/1x`) and at the missing-file path.
+#[test]
+fn vectis_validate_assets_missing_raster_file_exits_one() {
+    let tmp = tempdir().unwrap();
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    let assets_path = design.join("assets.yaml");
+    // Asset declares a 1x density file that we never create on
+    // disk.
+    std::fs::write(
+        &assets_path,
+        r"version: 1
+assets:
+  hero:
+    kind: raster
+    role: illustration
+    sources:
+      ios:
+        1x: assets/hero.png
+",
+    )
+    .expect("write assets.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "assets"])
+        .arg(&assets_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    assert_eq!(value["mode"], "assets");
+    let errors = value["errors"].as_array().expect("errors array");
+    let any_hits = errors.iter().any(|e| {
+        e.get("path").and_then(Value::as_str) == Some("/assets/hero/sources/ios/1x")
+            && e.get("message").and_then(Value::as_str).unwrap_or("").contains("file not found")
+    });
+    assert!(any_hits, "expected file-not-found error for 1x: {errors:?}");
+}
+
+/// Phase 1.7: when a sibling `composition.yaml` is present at the
+/// canonical path `.specify/specs/composition.yaml`, missing optional
+/// raster densities surface as warnings (not errors) for any asset
+/// the composition references.
+#[test]
+fn vectis_validate_assets_missing_density_emits_warning_when_referenced() {
+    let tmp = tempdir().unwrap();
+    let design = tmp.path().join("design-system");
+    let assets_dir = design.join("assets/android");
+    std::fs::create_dir_all(&assets_dir).expect("mkdir assets/android");
+    std::fs::write(design.join("assets/hero@2x.png"), b"PNGSTUB").expect("write 2x");
+    std::fs::write(design.join("assets/hero@3x.png"), b"PNGSTUB").expect("write 3x");
+    std::fs::write(assets_dir.join("hero-mdpi.png"), b"PNGSTUB").expect("write mdpi");
+    std::fs::write(assets_dir.join("hero-hdpi.png"), b"PNGSTUB").expect("write hdpi");
+    std::fs::write(assets_dir.join("hero-xhdpi.png"), b"PNGSTUB").expect("write xhdpi");
+    std::fs::write(assets_dir.join("hero-xxhdpi.png"), b"PNGSTUB").expect("write xxhdpi");
+    std::fs::write(assets_dir.join("hero-xxxhdpi.png"), b"PNGSTUB").expect("write xxxhdpi");
+
+    let assets_path = design.join("assets.yaml");
+    std::fs::write(
+        &assets_path,
+        r"version: 1
+assets:
+  hero:
+    kind: raster
+    role: illustration
+    sources:
+      ios:
+        2x: assets/hero@2x.png
+        3x: assets/hero@3x.png
+      android:
+        mdpi: assets/android/hero-mdpi.png
+        hdpi: assets/android/hero-hdpi.png
+        xhdpi: assets/android/hero-xhdpi.png
+        xxhdpi: assets/android/hero-xxhdpi.png
+        xxxhdpi: assets/android/hero-xxxhdpi.png
+",
+    )
+    .expect("write assets.yaml");
+
+    let specs = tmp.path().join(".specify/specs");
+    std::fs::create_dir_all(&specs).expect("mkdir .specify/specs");
+    std::fs::write(
+        specs.join("composition.yaml"),
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        item:
+          - image:
+              name: hero
+",
+    )
+    .expect("write composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "assets"])
+        .arg(&assets_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "assets");
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0), "errors unexpected: {value}");
+    let warnings = value["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings.iter().any(|w| w
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .contains("missing optional `1x`")),
+        "expected a missing-1x warning: {warnings:?}"
+    );
+}
+
+/// Phase 1.7: when the sibling `composition.yaml` references an
+/// asset id that is NOT in the manifest, the run errors with an
+/// "unknown asset id" message.
+#[test]
+fn vectis_validate_assets_unresolved_composition_reference_exits_one() {
+    let tmp = tempdir().unwrap();
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    let assets_path = design.join("assets.yaml");
+    std::fs::write(
+        &assets_path,
+        // Manifest declares `gear` but composition references `mystery`.
+        r"version: 1
+assets:
+  gear:
+    kind: symbol
+    role: icon
+    symbols:
+      ios: gearshape
+      android: settings
+",
+    )
+    .expect("write assets.yaml");
+
+    let specs = tmp.path().join(".specify/specs");
+    std::fs::create_dir_all(&specs).expect("mkdir .specify/specs");
+    std::fs::write(
+        specs.join("composition.yaml"),
+        r"version: 1
+screens:
+  s:
+    name: S
+    header:
+      title: T
+      trailing:
+        - icon-button:
+            icon: mystery
+            label: Mystery
+    body:
+      list:
+        item: []
+",
+    )
+    .expect("write composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "assets"])
+        .arg(&assets_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .contains("references unknown asset id `mystery`")),
+        "expected unresolved-reference error: {errors:?}"
+    );
+}
+
+/// Phase 1.7: a missing `assets.yaml` MUST surface as the v2
+/// `invalid-project` error envelope (exit 1) -- distinct from the
+/// validator-reported `errors` array, which is reserved for shape /
+/// reference findings against an actually-loaded document.
+#[test]
+fn vectis_validate_assets_missing_file_surfaces_invalid_project() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("nope-assets.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "assets"])
+        .arg(&missing)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 1);
+    assert_eq!(value["schema-version"], 2);
+    assert!(
+        value["message"].as_str().unwrap_or("").contains("assets.yaml not readable"),
+        "unexpected message: {value}"
+    );
+    assert_eq!(output.status.code(), Some(1));
 }
 
 /// Phase 1.6: the `tokens` mode is now real. A valid Appendix-D-shaped
