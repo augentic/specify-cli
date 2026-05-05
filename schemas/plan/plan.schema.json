@@ -30,7 +30,7 @@
     "kebabName": {
       "type": "string",
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-      "description": "Kebab-case identifier: lowercase letters and digits grouped by single internal hyphens; no leading, trailing, or consecutive hyphens. Matches `specify_change::actions::validate_name`."
+      "description": "Kebab-case identifier: lowercase letters and digits grouped by single internal hyphens; no leading, trailing, or consecutive hyphens. Matches `specify_slice::actions::validate_name`."
     },
     "planChange": {
       "type": "object",

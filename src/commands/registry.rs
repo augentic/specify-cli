@@ -401,7 +401,7 @@ fn print_registry_text(registry: &Registry, registry_path: &Path) {
 }
 
 /// Local kebab-case predicate. Mirrors the schema crate's invariant
-/// (`registry::is_kebab_case`) and `specify_change::is_valid_kebab_name`
+/// (`registry::is_kebab_case`) and `specify_slice::is_valid_kebab_name`
 /// — duplicated rather than re-exported because the schema crate keeps
 /// the helper module-private and the change crate's diagnostic hard-codes
 /// "change name" in the error message, which would confuse operators

@@ -14,7 +14,7 @@
 //!   2. Flips `.metadata.yaml.status` from `Complete` to `Merged` and
 //!      stamps `PhaseOutcome { phase: Merge, outcome: Success }`.
 //!   3. Moves the change directory under `archive_dir` as
-//!      `YYYY-MM-DD-<change-name>/` via `specify_change::actions::archive`.
+//!      `YYYY-MM-DD-<change-name>/` via `specify_slice::actions::archive`.
 //!
 //! Any failure before step 1 returns `Err` with the filesystem untouched.
 //!
@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
-use specify_change::{
+use specify_slice::{
     ChangeMetadata, LifecycleStatus, Outcome, Phase, PhaseOutcome, SpecType, actions,
     format_rfc3339,
 };
@@ -146,7 +146,7 @@ pub fn preview_change(
 /// `Merged` with `merged_at`/`completed_at` timestamps, stamps a
 /// `PhaseOutcome { phase: Merge, outcome: Success }` into
 /// `.metadata.yaml`, then archives the change directory via
-/// `specify_change::actions::archive`.
+/// `specify_slice::actions::archive`.
 ///
 /// The outcome stamp is written atomically with the status transition,
 /// before the archive move. This ensures the archived `.metadata.yaml`
@@ -711,7 +711,7 @@ fn copy_opaque_recursive(
     Ok(())
 }
 
-// Archive move semantics live in `specify_change::actions::archive`; both
+// Archive move semantics live in `specify_slice::actions::archive`; both
 // `specify change archive` and `merge_change` route through that helper
 // so the cross-device-safe `rename → copy-then-remove` fallback has a
 // single implementation.

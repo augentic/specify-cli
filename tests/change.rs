@@ -473,7 +473,7 @@ fn change_status_by_name_returns_single_entry() {
 
 /// Parse the `.metadata.yaml` for `name` under `project` as a
 /// `serde_json::Value` so tests can assert on the `outcome` subtree
-/// without pulling in the `specify-change` crate directly.
+/// without pulling in the `specify-slice` crate directly.
 fn read_metadata_yaml(project: &Project, name: &str) -> serde_json::Value {
     let path = project.changes_dir().join(name).join(".metadata.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));

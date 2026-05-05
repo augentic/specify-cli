@@ -35,8 +35,8 @@ use petgraph::Direction;
 use petgraph::algo::{tarjan_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
-use specify_change::actions::{move_atomic, validate_name};
-use specify_change::atomic::atomic_yaml_write;
+use specify_slice::actions::{move_atomic, validate_name};
+use specify_slice::atomic::atomic_yaml_write;
 use specify_error::Error;
 use specify_registry::Registry;
 
@@ -248,7 +248,7 @@ impl Plan {
     ///
     /// Every entry starts with `status: pending`; this just initialises the
     /// top-level struct. The name is validated with
-    /// [`specify_change::actions::validate_name`] so it obeys the same kebab-case
+    /// [`specify_slice::actions::validate_name`] so it obeys the same kebab-case
     /// rules as change names (RFC-1 §"Naming Rules").
     ///
     /// Does NOT write anything to disk. Call [`Plan::save`] afterwards.
@@ -267,7 +267,7 @@ impl Plan {
 
     /// Load `plan.yaml` (at the repo root) from disk.
     ///
-    /// Errors mirror [`specify_change::ChangeMetadata::load`]:
+    /// Errors mirror [`specify_slice::ChangeMetadata::load`]:
     ///   - missing file -> `Error::Config`
     ///   - malformed YAML -> `Error::Yaml`
     ///   - other I/O failure -> `Error::Io`

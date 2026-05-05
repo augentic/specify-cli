@@ -12,14 +12,14 @@
 //! capabilities"):
 //!
 //! ```text
-//! specify-validate → specify-change → specify-registry → specify-capability
+//! specify-validate → specify-slice → specify-registry → specify-capability
 //! ```
 //!
 //! `specify-capability` does **not** depend on this crate. Registry
 //! types lived under `specify-capability` only because Phase 1 had no
 //! other home for them.
 //!
-//! The workspace layer is **upstream** of `specify-change`: to avoid a
+//! The workspace layer is **upstream** of `specify-slice`: to avoid a
 //! cycle, [`workspace::run_workspace_push_impl`] and
 //! [`merge::run_workspace_merge_impl`] take `initiative_name: &str`
 //! rather than a `&Plan`. The binary flattens `&plan.name` at the

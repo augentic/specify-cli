@@ -452,7 +452,7 @@ pub fn project_path_for(
 /// Core implementation of `specify workspace merge`.
 ///
 /// `initiative_name` is `plan.name` from the binary side; the registry
-/// crate cannot depend on `specify-change` (which already depends on
+/// crate cannot depend on `specify-slice` (which already depends on
 /// `specify-registry`), so callers flatten the field at the boundary.
 ///
 /// # Errors

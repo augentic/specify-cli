@@ -5,20 +5,20 @@
 //! `specify initiative finalize`.
 //!
 //! Lifted out of the binary lib (`src/initiative_finalize.rs`) and
-//! the per-loop unit crate (`crates/change/src/{plan,plan_doctor,
+//! the per-loop unit crate (`crates/slice/src/{plan,plan_doctor,
 //! lock}.rs`) by RFC-13 chunk 2.4. The crate name is a placeholder —
 //! Phase 3.4 will rename it to `specify-change` once the per-loop
-//! unit crate (currently `crates/change/`) is renamed to `slice`.
+//! unit crate (`crates/slice/`, package `specify-slice`) settles.
 //!
 //! Dependency direction (RFC-13 invariant #4):
 //!
 //! ```text
 //! specify-initiative → specify-registry → specify-capability
-//!                   → specify-change   (per-loop unit primitives)
+//!                   → specify-slice    (per-loop unit primitives)
 //!                   → specify-error
 //! ```
 //!
-//! `specify-change` MUST NOT depend on this crate; the per-loop unit
+//! `specify-slice` MUST NOT depend on this crate; the per-loop unit
 //! is the substrate, the umbrella orchestration is the consumer.
 
 /// `specify initiative finalize` — RFC-9 §4C closure verb.

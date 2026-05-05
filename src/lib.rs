@@ -11,7 +11,7 @@ pub use specify_capability::{
     InitiativeBrief, InitiativeFrontmatter, InitiativeInput, InputKind, LEGACY_SCHEMA_FILENAME,
     ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, ResolvedCapability,
 };
-pub use specify_change::{
+pub use specify_slice::{
     ChangeMetadata, CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry,
     LifecycleStatus, METADATA_VERSION, Outcome, Overlap, PhaseOutcome, Rfc3339Stamp, SpecType,
     TouchedSpec, actions as change_actions, format_rfc3339, is_valid_kebab_name,

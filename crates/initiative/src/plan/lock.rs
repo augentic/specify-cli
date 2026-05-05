@@ -36,7 +36,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use fs2::FileExt;
-use specify_change::atomic::atomic_bytes_write;
+use specify_slice::atomic::atomic_bytes_write;
 use specify_error::Error;
 
 /// RAII guard for the `.specify/plan.lock` advisory lock.

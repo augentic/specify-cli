@@ -16,7 +16,7 @@ path = "src/lib.rs"
 [dependencies]
 specify-error.workspace = true
 specify-registry.workspace = true
-specify-change.workspace = true
+specify-slice.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 chrono.workspace = true

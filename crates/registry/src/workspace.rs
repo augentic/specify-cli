@@ -4,7 +4,7 @@
 //! Lifted into `specify-registry` by RFC-13 chunk 2.2 so all
 //! registry-derived state lives in one crate. The `Plan` argument was
 //! flattened to `&str initiative_name` to avoid a cycle with
-//! `specify-change` (which already depends on `specify-registry`); the
+//! `specify-slice` (which already depends on `specify-registry`); the
 //! callers in the binary pass `&plan.name` and the same surface
 //! continues to be exposed as `crate::workspace::*` re-exports from
 //! `src/lib.rs`.
@@ -528,7 +528,7 @@ pub fn extract_github_slug(url: &str) -> Option<String> {
 /// Core implementation of `specify workspace push`.
 ///
 /// `initiative_name` is `plan.name` from the binary side; the registry
-/// crate cannot depend on `specify-change` (which already depends on
+/// crate cannot depend on `specify-slice` (which already depends on
 /// `specify-registry`), so callers flatten the field at the boundary.
 ///
 /// # Errors

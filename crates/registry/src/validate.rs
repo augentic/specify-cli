@@ -243,8 +243,8 @@ fn looks_like_windows_drive_path(url: &str) -> bool {
 
 /// Kebab-case predicate shared within `specify-registry`.
 ///
-/// Identical contract to `specify_change::actions::validate_name`;
-/// duplicated because `specify-registry` is upstream of `specify-change`
+/// Identical contract to `specify_slice::actions::validate_name`;
+/// duplicated because `specify-registry` is upstream of `specify-slice`
 /// in the crate dep graph and cannot call through.
 #[must_use]
 pub fn is_kebab_case(s: &str) -> bool {

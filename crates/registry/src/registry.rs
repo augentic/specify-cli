@@ -43,9 +43,9 @@ pub struct Registry {
 pub struct RegistryProject {
     /// Kebab-case identifier for the project. Obeys the same
     /// naming rules as change names
-    /// (`specify_change::actions::validate_name`) — duplicated in
+    /// (`specify_slice::actions::validate_name`) — duplicated in
     /// [`crate::validate::is_kebab_case`] because `specify-registry`
-    /// sits upstream of `specify-change` in the crate graph.
+    /// sits upstream of `specify-slice` in the crate graph.
     pub name: String,
     /// Clone target — `.`, a repo-relative path (`../peer`, `./foo`,
     /// `pkg/sub`), `git@host:path`, or an `http(s)://`, `ssh://`, or

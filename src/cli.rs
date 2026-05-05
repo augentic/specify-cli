@@ -677,7 +677,7 @@ pub enum OutcomeAction {
 /// the actual `Outcome` enum value.
 ///
 /// Adding a new outcome requires extending **both** this enum and the
-/// `specify::Outcome` enum in `crates/change/src/lib.rs` (the wire
+/// `specify::Outcome` enum in `crates/slice/src/lib.rs` (the wire
 /// type) — the kebab-case spelling MUST match.
 #[derive(Copy, Clone, ValueEnum, PartialEq, Eq, Debug)]
 pub enum OutcomeKind {

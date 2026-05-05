@@ -76,7 +76,7 @@ pub struct Overlap {
 ///
 /// Names must be non-empty, contain only `[a-z0-9-]`, and may not start,
 /// end, or contain consecutive hyphens. Identical contract to the
-/// `specify-change` naming rules in `rfcs/rfc-1-cli.md`.
+/// `specify-slice` naming rules in `rfcs/rfc-1-cli.md`.
 ///
 /// The same contract is expressed as a JSON Schema regex at
 /// `schemas/plan/plan.schema.json` `$defs.kebabName.pattern`

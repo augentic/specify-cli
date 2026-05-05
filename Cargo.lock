@@ -1377,11 +1377,11 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "specify-capability",
- "specify-change",
  "specify-error",
  "specify-initiative",
  "specify-merge",
  "specify-registry",
+ "specify-slice",
  "specify-spec",
  "specify-task",
  "specify-validate",
@@ -1399,24 +1399,6 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "specify-error",
- "tempfile",
-]
-
-[[package]]
-name = "specify-change"
-version = "0.2.0"
-dependencies = [
- "chrono",
- "clap",
- "fs2",
- "libc",
- "petgraph",
- "serde",
- "serde-saphyr",
- "serde_json",
- "specify-capability",
- "specify-error",
- "specify-registry",
  "tempfile",
 ]
 
@@ -1440,9 +1422,9 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
- "specify-change",
  "specify-error",
  "specify-registry",
+ "specify-slice",
  "tempfile",
 ]
 
@@ -1455,8 +1437,8 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "specify-capability",
- "specify-change",
  "specify-error",
+ "specify-slice",
  "specify-spec",
  "tempfile",
 ]
@@ -1469,6 +1451,24 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "specify-error",
+ "tempfile",
+]
+
+[[package]]
+name = "specify-slice"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "fs2",
+ "libc",
+ "petgraph",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "specify-capability",
+ "specify-error",
+ "specify-registry",
  "tempfile",
 ]
 

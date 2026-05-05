@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use regex::Regex;
-use specify_change::{
+use specify_slice::{
     ChangeMetadata, LifecycleStatus, METADATA_VERSION, Outcome, Phase, PhaseOutcome, Rfc3339Stamp,
 };
 use specify_error::Error;

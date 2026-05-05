@@ -36,7 +36,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use specify_capability::{CacheMeta, PipelineView};
 use specify_registry::Registry;
-use specify_change::is_valid_kebab_name;
+use specify_slice::is_valid_kebab_name;
 use specify_error::Error;
 
 use crate::config::ProjectConfig;

@@ -8,7 +8,7 @@
 //! - [`validate_baseline`] — post-merge coherence checks, ported from the
 //!   Python `validate_baseline` (preserves one documented regex quirk).
 //! - [`merge_change`] — transactional multi-class merge + archive that consumes
-//!   [`specify_change::ChangeMetadata`] plus a caller-supplied
+//!   [`specify_slice::ChangeMetadata`] plus a caller-supplied
 //!   `&[ArtifactClass]` slice (RFC-13 §"Domain behavior is encoded in
 //!   Rust"); discovers per-class staged content, promotes it through the
 //!   class's [`MergeStrategy`], and moves the change directory under
