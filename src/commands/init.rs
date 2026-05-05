@@ -102,6 +102,21 @@ fn emit_init_result(format: OutputFormat, result: &InitResult, hub: bool) -> Cli
                 );
             }
             println!("  specify_version: {}", result.specify_version);
+            // RFC-13 chunk 2.9 — init no longer pre-touches
+            // platform-component artefacts; the hint points operators
+            // at the verb that owns the next step.
+            println!();
+            if hub {
+                println!(
+                    "Next: run `specify registry add <id> <url>` to declare the projects \
+                     this hub coordinates."
+                );
+            } else {
+                println!(
+                    "Next: run `specify initiative create <name>` to start a change, \
+                     then `specify plan create <name>` to plan it."
+                );
+            }
         }
     }
     CliResult::Success

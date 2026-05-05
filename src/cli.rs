@@ -47,11 +47,14 @@ pub enum Commands {
         #[arg(long)]
         domain: Option<String>,
         /// Scaffold a registry-only **platform hub** (RFC-9 §1D)
-        /// instead of a regular project: writes `registry.yaml`,
-        /// `initiative.md`, and `project.yaml { hub: true }` (with
+        /// instead of a regular project: writes `registry.yaml` at
+        /// the repo root and `project.yaml { hub: true }` (with
         /// `capability:` omitted — RFC-13 §Migration "Hub project
-        /// shape"). Refuses to run when `.specify/` already exists.
-        /// Mutually exclusive with the `<capability>` positional.
+        /// shape") under `.specify/`. `initiative.md` and `plan.yaml`
+        /// stay operator-managed (use `specify initiative create` /
+        /// `specify plan create`). Refuses to run when `.specify/`
+        /// already exists. Mutually exclusive with the `<capability>`
+        /// positional.
         #[arg(long)]
         hub: bool,
     },

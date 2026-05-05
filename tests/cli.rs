@@ -135,6 +135,19 @@ fn init_writes_capability_field_for_url_arg() {
         !project_yaml.lines().any(|l| l.trim_start().starts_with("hub: true")),
         "non-hub init must not write `hub: true`, got:\n{project_yaml}"
     );
+
+    // RFC-13 chunk 2.9 — non-hub init writes only `project.yaml` and
+    // the `.specify/` skeleton at the project root. Platform-component
+    // artefacts at the repo root are operator-managed: `specify
+    // registry add` mints `registry.yaml`, `specify initiative create`
+    // mints `initiative.md`, and `specify plan create` mints
+    // `plan.yaml`. Init must not pre-touch any of them.
+    for absent in ["registry.yaml", "initiative.md", "plan.yaml", "change.md"] {
+        assert!(
+            !tmp.path().join(absent).exists(),
+            "non-hub init must not pre-touch `{absent}` at the repo root"
+        );
+    }
 }
 
 #[test]
@@ -292,11 +305,20 @@ fn init_hub_writes_canonical_on_disk_shape() {
         value["scaffolded-rule-keys"]
     );
 
-    // Files we expect: project.yaml stays under .specify/, registry.yaml +
-    // initiative.md live at the repo root after the v2 layout move.
+    // RFC-13 chunk 2.9 — hub init scaffolds `project.yaml` (under
+    // `.specify/`) plus `registry.yaml` at the repo root, and
+    // nothing else. `registry.yaml` survives because bootstrapping a
+    // hub *is* bootstrapping its registry; `initiative.md` and
+    // `plan.yaml` stay operator-managed (minted via `specify
+    // initiative create` / `specify plan create`).
     assert!(tmp.path().join(".specify/project.yaml").is_file());
     assert!(tmp.path().join("registry.yaml").is_file());
-    assert!(tmp.path().join("initiative.md").is_file());
+    for absent in ["initiative.md", "plan.yaml", "change.md"] {
+        assert!(
+            !tmp.path().join(absent).exists(),
+            "hub init must not pre-touch `{absent}` at the repo root"
+        );
+    }
     // Phase-pipeline directories MUST NOT be present.
     assert!(!tmp.path().join(".specify/changes").exists());
     assert!(!tmp.path().join(".specify/specs").exists());
@@ -334,12 +356,11 @@ fn init_hub_writes_canonical_on_disk_shape() {
         "registry.yaml `projects` must be an empty list, got: {registry}"
     );
 
-    // initiative.md shape — name baked into frontmatter.
-    let brief = fs::read_to_string(tmp.path().join("initiative.md")).expect("read brief");
-    assert!(
-        brief.contains("name: platform-hub"),
-        "initiative.md missing kebab-cased name:\n{brief}"
-    );
+    // `initiative.md` is no longer scaffolded by hub init (RFC-13
+    // chunk 2.9). The absence assertion above (in the on-disk shape
+    // block) is the post-2.9 contract; an `initiative.md` body
+    // appears only after the operator runs `specify initiative
+    // create <name>`.
 }
 
 #[test]
@@ -1274,13 +1295,19 @@ fn initiative_finalize_idempotent_after_archive() {
 fn seed_v1_layout(tmp: &tempfile::TempDir) {
     init_hub(tmp, "platform-hub");
     let specify = tmp.path().join(".specify");
-    // Hub init writes registry.yaml and initiative.md at the repo root
-    // already; move them back to .specify/ to simulate a v1-layout
+    // Hub init writes `registry.yaml` at the repo root (per RFC-13
+    // chunk 2.9, that's the one platform-component artefact init
+    // touches); move it back to `.specify/` to simulate a v1-layout
     // project that needs migrating.
     fs::rename(tmp.path().join("registry.yaml"), specify.join("registry.yaml"))
         .expect("move registry.yaml back to .specify/");
-    fs::rename(tmp.path().join("initiative.md"), specify.join("initiative.md"))
-        .expect("move initiative.md back to .specify/");
+    // `initiative.md` and `plan.yaml` are no longer scaffolded by
+    // init (operator-managed via `specify initiative create` /
+    // `specify plan create`). Hand-seed them at the v1 location so
+    // the detector and migrator have all four legacy artefacts to
+    // act on.
+    fs::write(specify.join("initiative.md"), "---\nname: demo\ninputs: []\n---\n\n# demo\n")
+        .expect("seed initiative.md");
     fs::write(specify.join("plan.yaml"), "name: demo\nchanges: []\n").expect("seed plan.yaml");
     let contracts = specify.join("contracts").join("schemas");
     fs::create_dir_all(&contracts).expect("mkdir .specify/contracts/schemas");

@@ -9,13 +9,24 @@
 //! effect of the second call is refreshing the cache and overwriting
 //! `project.yaml` with byte-identical content.
 //!
+//! Per RFC-13 chunk 2.9 ("Init wires components, not capabilities"),
+//! `init` writes only the per-project skeleton — `project.yaml` plus
+//! the `.specify/` tree. Platform-component artefacts at the repo
+//! root (`registry.yaml`, `initiative.md`, `plan.yaml`) are
+//! operator-managed: `specify registry add` mints `registry.yaml`,
+//! `specify initiative create` mints `initiative.md`, and
+//! `specify plan create` mints `plan.yaml`. Init never pre-touches
+//! them.
+//!
 //! Hub mode (`InitOptions::hub: true`, RFC-9 §1D / RFC-13 §Migration)
-//! takes a different shape: a registry-only platform hub holds
-//! `registry.yaml` and `initiative.md` at the repo root and a
-//! sentinel `project.yaml { hub: true }` (with `capability:` omitted)
-//! under `.specify/`, but never carries phase-pipeline rules of its
-//! own. Hub init refuses to run when `.specify/` already exists so it
-//! never clobbers a regular single-repo project.
+//! is the one principled exception: a registry-only platform hub
+//! exists *to* host a `registry.yaml`, so hub init scaffolds the
+//! empty registry alongside the sentinel `project.yaml { hub: true }`
+//! (with `capability:` omitted) under `.specify/`. It still does not
+//! pre-write `initiative.md` or `plan.yaml` — those are operator
+//! actions on a hub too. Hub init refuses to run when `.specify/`
+//! already exists so it never clobbers a regular single-repo
+//! project.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -23,7 +34,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use specify_capability::{CacheMeta, InitiativeBrief, PipelineView};
+use specify_capability::{CacheMeta, PipelineView};
 use specify_registry::Registry;
 use specify_change::is_valid_kebab_name;
 use specify_error::Error;
@@ -113,11 +124,15 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let name = resolved_name(opts.project_dir, opts.name);
 
     let mut directories_created: Vec<PathBuf> = Vec::new();
-    // Phase 2.8 of RFC-13 retired `ProjectConfig::specs_dir` along
-    // with the rest of the per-class baseline helpers. Init still
-    // scaffolds `.specify/specs/` by convention because the omnia
-    // capability expects it; chunk 2.9 will decouple init from
-    // capability-specific layout entirely (per the plan).
+    // Per RFC-13 chunk 2.9, the `.specify/` skeleton stays here but
+    // platform-component artefacts at the repo root (`registry.yaml`,
+    // `initiative.md`, `plan.yaml`) are not pre-touched — their
+    // owning verbs (`specify registry add`, `specify initiative
+    // create`, `specify plan create`) mint them on demand.
+    // `.specify/specs/` is retained as a per-project convention used
+    // by the bundled `omnia` capability; capabilities that need
+    // different layouts can mint their own subdirectories from a
+    // brief without core involvement.
     for dir in [
         ProjectConfig::specify_dir(opts.project_dir),
         ProjectConfig::changes_dir(opts.project_dir),
@@ -180,9 +195,10 @@ const HUB_INIT_NAME: &str = "hub";
 
 /// Hub variant of [`init`] (RFC-9 §1D, RFC-13 §Migration). Scaffolds a
 /// **registry-only platform hub**: the platform repo holds
-/// platform-level state (`registry.yaml`, `initiative.md`, `plan.yaml`,
-/// plans, `workspace/`) but never appears in its own `registry.yaml`
-/// and disables phase pipelines on itself by **omitting** `capability:`
+/// platform-level state (`registry.yaml`, plus the operator-managed
+/// `initiative.md`, `plan.yaml`, and `workspace/` once the operator
+/// asks for them) but never appears in its own `registry.yaml` and
+/// disables phase pipelines on itself by **omitting** `capability:`
 /// from `project.yaml`. The post-RFC-13 hub project carries only
 /// `hub: true` (no `capability:` field).
 ///
@@ -191,10 +207,15 @@ const HUB_INIT_NAME: &str = "hub";
 /// ```text
 /// <project_dir>/
 /// ├── registry.yaml     # { version: 1, projects: [] }
-/// ├── initiative.md     # canonical template, named after the project
 /// └── .specify/
 ///     └── project.yaml  # { name: …, hub: true }
 /// ```
+///
+/// `registry.yaml` is the one platform-component artefact init
+/// scaffolds — bootstrapping a hub *is* bootstrapping its registry.
+/// `initiative.md` and `plan.yaml` stay operator-managed even on a
+/// hub; the operator runs `specify initiative create <name>` and
+/// `specify plan create <name>` when the work itself begins.
 ///
 /// Refuses to run when `.specify/` already exists so the operator
 /// never accidentally flips an existing single-repo project into a
@@ -236,7 +257,7 @@ fn init_hub(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let specify_version = resolve_version(opts.project_dir, opts.version_mode)?;
 
     let cfg = ProjectConfig {
-        name: name.clone(),
+        name,
         domain: opts.domain.map(str::to_string),
         capability: None,
         specify_version: Some(specify_version.clone()),
@@ -258,10 +279,6 @@ fn init_hub(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     // shape check so any future registry-write code paths inherit the
     // same invariant from this seed.
     registry.validate_shape_hub()?;
-
-    let brief_path = InitiativeBrief::path(opts.project_dir);
-    let brief_body = InitiativeBrief::template(&name);
-    fs::write(&brief_path, brief_body)?;
 
     upsert_gitignore(opts.project_dir)?;
 
@@ -642,6 +659,17 @@ mod tests {
         assert_eq!(result.config_path, config_path);
         assert_eq!(result.capability_name, "omnia");
 
+        // RFC-13 chunk 2.9 — non-hub init must not pre-touch any
+        // platform-component artefact at the repo root. Operators
+        // mint these via `specify registry add`, `specify initiative
+        // create`, and `specify plan create`.
+        for absent in ["registry.yaml", "initiative.md", "plan.yaml", "change.md"] {
+            assert!(
+                !tmp.path().join(absent).exists(),
+                "non-hub init must not pre-touch `{absent}` at the repo root"
+            );
+        }
+
         let mut keys = result.scaffolded_rule_keys;
         keys.sort();
         assert_eq!(keys, vec!["design", "proposal", "specs", "tasks"]);
@@ -819,10 +847,19 @@ mod tests {
 
         let project_yaml = tmp.path().join(".specify/project.yaml");
         let registry_yaml = tmp.path().join("registry.yaml");
-        let initiative_md = tmp.path().join("initiative.md");
         assert!(project_yaml.is_file(), "project.yaml missing");
         assert!(registry_yaml.is_file(), "registry.yaml missing at repo root");
-        assert!(initiative_md.is_file(), "initiative.md missing at repo root");
+
+        // RFC-13 chunk 2.9 — hub init scaffolds `registry.yaml`
+        // (intrinsic to the hub's purpose) but no other
+        // platform-component artefact. `initiative.md` and
+        // `plan.yaml` stay operator-managed even on a hub.
+        for absent in ["initiative.md", "plan.yaml", "change.md"] {
+            assert!(
+                !tmp.path().join(absent).exists(),
+                "hub init must not pre-touch `{absent}` at the repo root"
+            );
+        }
 
         // Phase-pipeline directories MUST NOT be scaffolded for a hub —
         // the absence of `capability:` (with `hub: true`) is the
@@ -855,9 +892,6 @@ mod tests {
         let registry = Registry::load(tmp.path()).expect("registry parses").expect("present");
         assert_eq!(registry.version, 1);
         assert!(registry.projects.is_empty(), "hub registry starts empty");
-
-        let brief = InitiativeBrief::load(tmp.path()).expect("brief parses").expect("present");
-        assert_eq!(brief.frontmatter.name, "platform-hub");
 
         assert_eq!(result.capability_name, HUB_INIT_NAME);
         assert!(result.scaffolded_rule_keys.is_empty());
