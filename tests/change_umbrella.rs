@@ -1,12 +1,12 @@
 //! Integration tests for `specify change *` (the umbrella orchestration
 //! surface) and `specify registry *` — `change` owns the operator brief
-//! (`initiative.md` on disk; the on-disk filename migrates in a later
-//! chunk) plus the executable plan at `plan.yaml`, and `registry`
-//! covers `registry.yaml`. All three platform-component artifacts live
-//! at the repo root per RFC-9 §1B.
+//! at `change.md` (renamed from the pre-Phase-3.7 `initiative.md` by
+//! `specify migrate change-noun`) plus the executable plan at
+//! `plan.yaml`, and `registry` covers `registry.yaml`. All three
+//! platform-component artifacts live at the repo root per RFC-9 §1B.
 //!
 //! These CLI tests stand up a fresh `.specify/` project via
-//! `specify init` (mirroring `tests/change.rs` / `tests/e2e.rs`),
+//! `specify init` (mirroring `tests/slice.rs` / `tests/e2e.rs`),
 //! seed `plan.yaml` at the repo root by writing YAML directly to
 //! disk, and drive the CLI through `assert_cmd`. JSON shapes are
 //! pinned by checked-in fixtures under `tests/fixtures/plan/`;
@@ -346,7 +346,7 @@ changes:
     // -- validate ----------------------------------------------------------
 
     #[test]
-    fn initiative_validate_clean_plan_text() {
+    fn change_plan_validate_clean_plan_text() {
         let project = Project::init();
         project.seed_plan(CLEAN_PLAN);
 
@@ -363,7 +363,7 @@ changes:
     }
 
     #[test]
-    fn initiative_validate_clean_plan_json() {
+    fn change_plan_validate_clean_plan_json() {
         let project = Project::init();
         project.seed_plan(CLEAN_PLAN);
 
@@ -420,7 +420,7 @@ changes:
     }
 
     #[test]
-    fn initiative_validate_with_errors_json() {
+    fn change_plan_validate_with_errors_json() {
         let project = Project::init();
         project.seed_plan(DUPLICATE_NAME_PLAN);
 
@@ -449,7 +449,7 @@ changes:
     // -- next --------------------------------------------------------------
 
     #[test]
-    fn initiative_next_picks_first_pending_text() {
+    fn change_plan_next_picks_first_pending_text() {
         let project = Project::init();
         project.seed_plan(A_DONE_B_PENDING);
 
@@ -460,7 +460,7 @@ changes:
     }
 
     #[test]
-    fn initiative_next_picks_first_pending_json() {
+    fn change_plan_next_picks_first_pending_json() {
         let project = Project::init();
         project.seed_plan(A_DONE_B_PENDING);
 
@@ -484,7 +484,7 @@ changes:
     }
 
     #[test]
-    fn initiative_next_reports_in_progress() {
+    fn change_plan_next_reports_in_progress() {
         let project = Project::init();
         project.seed_plan(A_IN_PROGRESS);
 
@@ -506,7 +506,7 @@ changes:
     }
 
     #[test]
-    fn initiative_next_all_done_text() {
+    fn change_plan_next_all_done_text() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
 
@@ -528,7 +528,7 @@ changes:
     }
 
     #[test]
-    fn initiative_next_stuck_when_deps_unmet() {
+    fn change_plan_next_stuck_when_deps_unmet() {
         let project = Project::init();
         project.seed_plan(STUCK_PLAN);
 
@@ -548,7 +548,7 @@ changes:
     // -- status ------------------------------------------------------------
 
     #[test]
-    fn initiative_status_renders_counts_and_topo_order_json() {
+    fn change_plan_status_renders_counts_and_topo_order_json() {
         let project = Project::init();
         project.seed_plan(PLATFORM_V2_PLAN);
 
@@ -593,7 +593,7 @@ changes:
     }
 
     #[test]
-    fn initiative_status_on_cycle_falls_back_to_list_order() {
+    fn change_plan_status_on_cycle_falls_back_to_list_order() {
         let project = Project::init();
         project.seed_plan(CYCLE_PLAN);
 
@@ -623,7 +623,7 @@ changes:
     }
 
     #[test]
-    fn initiative_status_surfaces_status_reason_on_failed_entry() {
+    fn change_plan_status_surfaces_status_reason_on_failed_entry() {
         let project = Project::init();
         project.seed_plan(FAILED_WITH_REASON);
 
@@ -640,7 +640,7 @@ changes:
     }
 
     #[test]
-    fn initiative_status_missing_plan_file_errors() {
+    fn change_plan_status_missing_plan_file_errors() {
         let project = Project::init();
         // Deliberately do NOT seed plan.yaml.
 
@@ -770,7 +770,7 @@ changes:
     // -- plan amend -------------------------------------------------------
 
     #[test]
-    fn initiative_amend_replaces_depends_on() {
+    fn change_plan_amend_replaces_depends_on() {
         let project = Project::init();
         project.seed_plan(
             "\
@@ -819,7 +819,7 @@ changes:
     }
 
     #[test]
-    fn initiative_amend_clear_description() {
+    fn change_plan_amend_clear_description() {
         let project = Project::init();
         project.seed_plan(WITH_DESCRIPTION);
 
@@ -837,7 +837,7 @@ changes:
     }
 
     #[test]
-    fn initiative_amend_leave_field_alone() {
+    fn change_plan_amend_leave_field_alone() {
         let project = Project::init();
         project.seed_plan(WITH_DESCRIPTION);
 
@@ -856,7 +856,7 @@ changes:
     }
 
     #[test]
-    fn initiative_amend_on_missing_entry_fails() {
+    fn change_plan_amend_on_missing_entry_fails() {
         let project = Project::init();
         project.seed_plan(SINGLE_PENDING);
 
@@ -876,7 +876,7 @@ changes:
     // -- plan transition --------------------------------------------------
 
     #[test]
-    fn initiative_transition_happy_path_text() {
+    fn change_plan_transition_happy_path_text() {
         let project = Project::init();
         project.seed_plan(SINGLE_PENDING);
 
@@ -894,7 +894,7 @@ changes:
     }
 
     #[test]
-    fn initiative_transition_legal_edge_json() {
+    fn change_plan_transition_legal_edge_json() {
         let project = Project::init();
         project.seed_plan(SINGLE_IN_PROGRESS);
 
@@ -914,7 +914,7 @@ changes:
     }
 
     #[test]
-    fn initiative_transition_rejects_illegal_edge() {
+    fn change_plan_transition_rejects_illegal_edge() {
         let project = Project::init();
         project.seed_plan(SINGLE_DONE);
 
@@ -932,7 +932,7 @@ changes:
     }
 
     #[test]
-    fn initiative_transition_happy_path_json_pending_to_in_progress() {
+    fn change_plan_transition_happy_path_json_pending_to_in_progress() {
         let project = Project::init();
         project.seed_plan(SINGLE_PENDING);
 
@@ -949,7 +949,7 @@ changes:
     }
 
     #[test]
-    fn initiative_transition_reason_on_failed() {
+    fn change_plan_transition_reason_on_failed() {
         let project = Project::init();
         project.seed_plan(SINGLE_IN_PROGRESS);
 
@@ -969,7 +969,7 @@ changes:
     }
 
     #[test]
-    fn initiative_transition_rejects_reason_on_in_progress_target() {
+    fn change_plan_transition_rejects_reason_on_in_progress_target() {
         let project = Project::init();
         project.seed_plan(SINGLE_PENDING);
 
@@ -984,7 +984,7 @@ changes:
     }
 
     #[test]
-    fn initiative_transition_clears_reason_on_pending_reentry() {
+    fn change_plan_transition_clears_reason_on_pending_reentry() {
         let project = Project::init();
         project.seed_plan(
             "\
@@ -1014,7 +1014,7 @@ changes:
     // -- human-driven replay (RFC-2 §"The Loop (Human-Driven)") -----------
 
     #[test]
-    fn initiative_human_replay_matches_fixture() {
+    fn change_plan_human_replay_matches_fixture() {
         let project = Project::init();
         project.seed_plan(
             "\
@@ -1283,7 +1283,7 @@ changes:
     }
 
     #[test]
-    fn initiative_archive_happy_path_text() {
+    fn change_plan_archive_happy_path_text() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
 
@@ -1301,7 +1301,7 @@ changes:
     }
 
     #[test]
-    fn initiative_archive_happy_path_json() {
+    fn change_plan_archive_happy_path_json() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
 
@@ -1325,7 +1325,7 @@ changes:
     }
 
     #[test]
-    fn initiative_archive_refuses_without_force_on_pending_entries() {
+    fn change_plan_archive_refuses_without_force_on_pending_entries() {
         let project = Project::init();
         project.seed_plan(A_DONE_B_PENDING);
 
@@ -1348,7 +1348,7 @@ changes:
     }
 
     #[test]
-    fn initiative_archive_refuses_json_lists_entries() {
+    fn change_plan_archive_refuses_json_lists_entries() {
         let project = Project::init();
         project.seed_plan(A_DONE_B_PENDING);
 
@@ -1370,7 +1370,7 @@ changes:
     }
 
     #[test]
-    fn initiative_archive_with_force_on_pending_succeeds() {
+    fn change_plan_archive_with_force_on_pending_succeeds() {
         let project = Project::init();
         project.seed_plan(A_DONE_B_PENDING);
 
@@ -1394,7 +1394,7 @@ changes:
     }
 
     #[test]
-    fn initiative_archive_filename_is_kebab_plan_name_plus_yyyymmdd() {
+    fn change_plan_archive_filename_is_kebab_plan_name_plus_yyyymmdd() {
         let project = Project::init();
         project.seed_plan(
             "\
@@ -1419,7 +1419,7 @@ changes: []
     }
 
     #[test]
-    fn initiative_archive_refuses_when_destination_exists() {
+    fn change_plan_archive_refuses_when_destination_exists() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
 
@@ -1446,7 +1446,7 @@ changes: []
     }
 
     #[test]
-    fn initiative_archive_missing_plan_file_errors() {
+    fn change_plan_archive_missing_plan_file_errors() {
         let project = Project::init();
         // Deliberately do NOT seed plan.yaml.
 
@@ -1474,7 +1474,7 @@ changes: []
     }
 
     #[test]
-    fn initiative_archive_co_moves_working_dir_json() {
+    fn change_plan_archive_co_moves_working_dir_json() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
         let working_dir = seed_working_dir(
@@ -1519,7 +1519,7 @@ changes: []
     }
 
     #[test]
-    fn initiative_archive_no_working_dir_json() {
+    fn change_plan_archive_no_working_dir_json() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
 
@@ -1539,7 +1539,7 @@ changes: []
     }
 
     #[test]
-    fn initiative_archive_co_move_destination_collision_halts_before_moving_plan() {
+    fn change_plan_archive_co_move_destination_collision_halts_before_moving_plan() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
         let working_dir = seed_working_dir(&project, "demo", &[("notes.md", b"# notes\n")]);
@@ -1580,7 +1580,7 @@ changes: []
     }
 
     #[test]
-    fn initiative_lock_acquire_then_release_cycles_cleanly() {
+    fn change_plan_lock_acquire_then_release_cycles_cleanly() {
         let project = Project::init();
 
         // Use a stable agent-session PID so release can authenticate. We
@@ -1616,7 +1616,7 @@ changes: []
     }
 
     #[test]
-    fn initiative_lock_acquire_refuses_when_another_live_pid_stamped() {
+    fn change_plan_lock_acquire_refuses_when_another_live_pid_stamped() {
         let project = Project::init();
 
         // Prime with our own PID — the CLI's liveness probe will find it
@@ -1653,7 +1653,7 @@ changes: []
     }
 
     #[test]
-    fn initiative_lock_status_when_held() {
+    fn change_plan_lock_status_when_held() {
         let project = Project::init();
         let our_pid = std::process::id().to_string();
 
@@ -1687,7 +1687,7 @@ changes: []
     }
 
     #[test]
-    fn initiative_lock_status_when_absent() {
+    fn change_plan_lock_status_when_absent() {
         let project = Project::init();
         // Deliberately do NOT call acquire — no stamp on disk.
 
@@ -2031,7 +2031,7 @@ inputs: []
     }
 
     #[test]
-    fn initiative_create_scaffolds_canonical_file() {
+    fn change_create_scaffolds_canonical_file() {
         let project = Project::init();
         assert!(!brief_path(&project).exists(), "bare project must not have change.md");
 
@@ -2046,7 +2046,7 @@ inputs: []
     }
 
     #[test]
-    fn initiative_create_json_response() {
+    fn change_create_json_response() {
         let project = Project::init();
 
         let assert = specify()
@@ -2066,7 +2066,7 @@ inputs: []
     }
 
     #[test]
-    fn initiative_create_refuses_when_file_exists() {
+    fn change_create_refuses_when_file_exists() {
         let project = Project::init();
         write_brief(&project, "---\nname: pre-existing\n---\n\nhands off\n");
 
@@ -2110,7 +2110,7 @@ inputs: []
     }
 
     #[test]
-    fn initiative_create_rejects_non_kebab_name() {
+    fn change_create_rejects_non_kebab_name() {
         let project = Project::init();
 
         let assert = specify()
@@ -2127,7 +2127,7 @@ inputs: []
     }
 
     #[test]
-    fn initiative_show_absent() {
+    fn change_show_absent() {
         let project = Project::init();
 
         let assert = specify()
@@ -2176,7 +2176,7 @@ inputs: []
     }
 
     #[test]
-    fn initiative_show_valid_text_and_json() {
+    fn change_show_valid_text_and_json() {
         let project = Project::init();
         write_brief(
             &project,
@@ -2226,7 +2226,7 @@ inputs: []
     }
 
     #[test]
-    fn initiative_show_malformed_returns_error() {
+    fn change_show_malformed_returns_error() {
         let project = Project::init();
         write_brief(&project, "---\nname: BadName\n---\n\nbody\n");
 
@@ -2253,7 +2253,7 @@ inputs: []
     /// this test pins the brief half. Post-RFC-13 chunk 3.7 the
     /// brief is `change.md`.
     #[test]
-    fn archive_includes_initiative_md() {
+    fn archive_includes_change_md() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
         write_brief(&project, TRAFFIC_BRIEF_GOLDEN);
@@ -2306,9 +2306,9 @@ inputs: []
     /// complementing the dedicated `specify registry validate`
     /// verb.
     #[test]
-    fn initiative_validate_surfaces_registry_shape_errors() {
+    fn change_plan_validate_surfaces_registry_shape_errors() {
         let project = Project::init();
-        // Seed a minimal, structurally-valid plan so `initiative validate`
+        // Seed a minimal, structurally-valid plan so `change plan validate`
         // doesn't exit on the plan load itself.
         project.seed_plan("name: demo\nchanges: []\n");
         // Then stomp the registry with an illegal version.
@@ -2338,7 +2338,7 @@ inputs: []
     // ---- RFC-3a C35 — planning-path smoke (Stage A/B, manifest, Layer 2) ----
 
     #[test]
-    fn rfc3a_c35_stage_ab_initiative_brief_and_plan_validate() {
+    fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
         let project = Project::init();
         specify()
             .current_dir(project.root())

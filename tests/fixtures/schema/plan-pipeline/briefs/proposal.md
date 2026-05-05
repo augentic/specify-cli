@@ -1,9 +1,9 @@
 ---
 id: proposal
-description: One-paragraph change motivation produced during /spec:define.
+description: One-paragraph slice motivation produced during /spec:define.
 generates: proposal.md
 ---
 
 # Proposal brief
 
-State why this change exists in one paragraph.
+State why this slice exists in one paragraph.

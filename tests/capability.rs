@@ -201,14 +201,14 @@ fn capability_pipeline_phase_plan_does_not_perturb_define_output() {
 }
 
 #[test]
-fn capability_pipeline_with_change_reports_completion() {
+fn capability_pipeline_with_slice_reports_completion() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["slice", "create", "my-change"])
+        .args(["slice", "create", "my-slice"])
         .assert()
         .success();
-    let slice_dir = project.root().join(".specify/slices/my-change");
+    let slice_dir = project.root().join(".specify/slices/my-slice");
     fs::write(slice_dir.join("proposal.md"), "# Proposal\n").unwrap();
 
     let assert = specify()

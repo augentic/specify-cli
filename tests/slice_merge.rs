@@ -67,26 +67,26 @@ impl Project {
         &self.root
     }
 
-    fn stage_change(&self, fixture: &str) -> PathBuf {
-        let dst = self.root.join(".specify/slices/my-change");
-        fs::create_dir_all(&dst).expect("mkdir change");
+    fn stage_slice(&self, fixture: &str) -> PathBuf {
+        let dst = self.root.join(".specify/slices/my-slice");
+        fs::create_dir_all(&dst).expect("mkdir slice");
         copy_dir(&repo_root().join("tests/fixtures/e2e").join(fixture), &dst);
         dst
     }
 }
 
 // ---------------------------------------------------------------------------
-// change merge preview
+// slice merge preview
 // ---------------------------------------------------------------------------
 
 #[test]
-fn change_merge_preview_reports_operations_without_writing() {
+fn slice_merge_preview_reports_operations_without_writing() {
     let project = Project::init();
-    let slice_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "merge", "preview", "my-change"])
+        .args(["--format", "json", "slice", "merge", "preview", "my-slice"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -108,9 +108,9 @@ fn change_merge_preview_reports_operations_without_writing() {
         assert!(spec["baseline-path"].is_string());
     }
 
-    // No filesystem mutation: no archive, change dir still in place,
+    // No filesystem mutation: no archive, slice dir still in place,
     // baselines under .specify/specs/ untouched.
-    assert!(slice_dir.is_dir(), "preview must not archive the change");
+    assert!(slice_dir.is_dir(), "preview must not archive the slice");
     let archive = project.root().join(".specify/archive");
     assert!(
         !archive.exists() || fs::read_dir(&archive).unwrap().next().is_none(),
@@ -127,11 +127,11 @@ fn change_merge_preview_reports_operations_without_writing() {
 }
 
 #[test]
-fn change_merge_preview_does_not_require_complete_status() {
+fn slice_merge_preview_does_not_require_complete_status() {
     let project = Project::init();
-    let slice_dir = project.stage_change("merge-two-spec-change");
-    // Downgrade status to `building` — `change merge run` refuses this but
-    // `change merge preview` must accept it.
+    let slice_dir = project.stage_slice("merge-two-spec-slice");
+    // Downgrade status to `building` — `slice merge run` refuses this but
+    // `slice merge preview` must accept it.
     let metadata_path = slice_dir.join(".metadata.yaml");
     let original = fs::read_to_string(&metadata_path).unwrap();
     let downgraded = original.replace("status: complete", "status: building");
@@ -139,19 +139,19 @@ fn change_merge_preview_does_not_require_complete_status() {
 
     specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "merge", "preview", "my-change"])
+        .args(["--format", "json", "slice", "merge", "preview", "my-slice"])
         .assert()
         .success();
 }
 
 #[test]
-fn change_merge_preview_emits_readable_text_output() {
+fn slice_merge_preview_emits_readable_text_output() {
     let project = Project::init();
-    project.stage_change("merge-two-spec-change");
+    project.stage_slice("merge-two-spec-slice");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["slice", "merge", "preview", "my-change"])
+        .args(["slice", "merge", "preview", "my-slice"])
         .assert()
         .success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
@@ -164,17 +164,17 @@ fn change_merge_preview_emits_readable_text_output() {
 }
 
 // ---------------------------------------------------------------------------
-// change merge conflict-check
+// slice merge conflict-check
 // ---------------------------------------------------------------------------
 
 #[test]
 fn conflict_check_reports_no_conflicts_when_no_modified_entries() {
     let project = Project::init();
-    project.stage_change("merge-two-spec-change");
+    project.stage_slice("merge-two-spec-slice");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -185,10 +185,10 @@ fn conflict_check_reports_no_conflicts_when_no_modified_entries() {
 #[test]
 fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
     let project = Project::init();
-    let slice_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     // Seed a baseline file under .specify/specs/login/spec.md then rewrite
-    // the change's metadata to mark `login` as `modified` with a historic
+    // the slice's metadata to mark `login` as `modified` with a historic
     // defined_at. touching the baseline afterwards puts its mtime in the
     // future relative to defined_at, producing a conflict.
     let baseline = project.root().join(".specify/specs/login/spec.md");
@@ -210,7 +210,7 @@ fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -224,7 +224,7 @@ fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
 #[test]
 fn conflict_check_no_contract_drift_when_baseline_is_older() {
     let project = Project::init();
-    let slice_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     // Set defined_at to the far future so nothing is "newer".
     let metadata_path = slice_dir.join(".metadata.yaml");
@@ -239,14 +239,14 @@ fn conflict_check_no_contract_drift_when_baseline_is_older() {
     fs::create_dir_all(baseline_contract.parent().unwrap()).unwrap();
     fs::write(&baseline_contract, "type: object\n").unwrap();
 
-    // Seed the corresponding change contract so the drift walker visits it.
-    let change_contract = slice_dir.join("contracts/schemas/test.yaml");
-    fs::create_dir_all(change_contract.parent().unwrap()).unwrap();
-    fs::write(&change_contract, "type: object\nproperties: {}\n").unwrap();
+    // Seed the corresponding slice contract so the drift walker visits it.
+    let slice_contract = slice_dir.join("contracts/schemas/test.yaml");
+    fs::create_dir_all(slice_contract.parent().unwrap()).unwrap();
+    fs::write(&slice_contract, "type: object\nproperties: {}\n").unwrap();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -260,7 +260,7 @@ fn conflict_check_no_contract_drift_when_baseline_is_older() {
 #[test]
 fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
     let project = Project::init();
-    let slice_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     // defined_at in the deep past — any real file mtime will be newer.
     let metadata_path = slice_dir.join(".metadata.yaml");
@@ -278,13 +278,13 @@ fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
     sleep(Duration::from_millis(10));
     fs::write(&baseline_contract, "type: object # touched\n").unwrap();
 
-    let change_contract = slice_dir.join("contracts/schemas/test.yaml");
-    fs::create_dir_all(change_contract.parent().unwrap()).unwrap();
-    fs::write(&change_contract, "type: object\nproperties: {}\n").unwrap();
+    let slice_contract = slice_dir.join("contracts/schemas/test.yaml");
+    fs::create_dir_all(slice_contract.parent().unwrap()).unwrap();
+    fs::write(&slice_contract, "type: object\nproperties: {}\n").unwrap();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -297,7 +297,7 @@ fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
 #[test]
 fn conflict_check_no_drift_for_new_contract_files() {
     let project = Project::init();
-    let slice_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
@@ -306,14 +306,14 @@ fn conflict_check_no_drift_for_new_contract_files() {
     )
     .unwrap();
 
-    // Change has a contract file, but no corresponding baseline exists.
-    let change_contract = slice_dir.join("contracts/schemas/new.yaml");
-    fs::create_dir_all(change_contract.parent().unwrap()).unwrap();
-    fs::write(&change_contract, "type: object\n").unwrap();
+    // Slice has a contract file, but no corresponding baseline exists.
+    let slice_contract = slice_dir.join("contracts/schemas/new.yaml");
+    fs::create_dir_all(slice_contract.parent().unwrap()).unwrap();
+    fs::write(&slice_contract, "type: object\n").unwrap();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -325,9 +325,9 @@ fn conflict_check_no_drift_for_new_contract_files() {
 }
 
 #[test]
-fn conflict_check_no_drift_when_change_has_no_contracts_dir() {
+fn conflict_check_no_drift_when_slice_has_no_contracts_dir() {
     let project = Project::init();
-    let slice_dir = project.stage_change("merge-two-spec-change");
+    let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
@@ -336,21 +336,21 @@ fn conflict_check_no_drift_when_change_has_no_contracts_dir() {
     )
     .unwrap();
 
-    // Seed a baseline contract but do NOT create contracts/ in the change.
+    // Seed a baseline contract but do NOT create contracts/ in the slice.
     let baseline_contract = project.root().join("contracts/schemas/test.yaml");
     fs::create_dir_all(baseline_contract.parent().unwrap()).unwrap();
     fs::write(&baseline_contract, "type: object\n").unwrap();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
     let conflicts = value["conflicts"].as_array().unwrap();
     assert!(
         conflicts.is_empty(),
-        "no contracts/ in the change means no contract drift, got {conflicts:?}"
+        "no contracts/ in the slice means no contract drift, got {conflicts:?}"
     );
 }
 
@@ -361,7 +361,7 @@ fn conflict_check_ignores_new_entries_even_with_existing_baseline() {
     // conflict in the mtime-vs-defined_at sense, just a different kind
     // of integrity issue the caller should handle separately.
     let project = Project::init();
-    project.stage_change("merge-two-spec-change");
+    project.stage_slice("merge-two-spec-slice");
     let baseline = project.root().join(".specify/specs/login/spec.md");
     fs::create_dir_all(baseline.parent().unwrap()).unwrap();
     fs::write(&baseline, "# Login baseline\n").unwrap();
@@ -370,7 +370,7 @@ fn conflict_check_ignores_new_entries_even_with_existing_baseline() {
     // `defined_at` means conflict_check returns empty regardless.
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "merge", "conflict-check", "my-change"])
+        .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);

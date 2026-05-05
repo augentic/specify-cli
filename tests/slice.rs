@@ -85,21 +85,21 @@ fn copy_dir(src: &Path, dst: &Path) {
 }
 
 // ---------------------------------------------------------------------------
-// change create
+// slice create
 // ---------------------------------------------------------------------------
 
 #[test]
-fn change_create_produces_directory_and_metadata() {
+fn slice_create_produces_directory_and_metadata() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "create", "my-change"])
+        .args(["--format", "json", "slice", "create", "my-slice"])
         .assert()
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
     assert_eq!(value["schema-version"], 2);
-    assert_eq!(value["name"], "my-change");
+    assert_eq!(value["name"], "my-slice");
     assert_eq!(value["status"], "defining");
     let schema = value["schema"].as_str().expect("schema string");
     assert!(schema.starts_with("file://"));
@@ -107,8 +107,8 @@ fn change_create_produces_directory_and_metadata() {
     assert_eq!(value["created"], true);
     assert_eq!(value["restarted"], false);
 
-    let slice_dir = project.slices_dir().join("my-change");
-    assert!(slice_dir.is_dir(), "change dir must exist");
+    let slice_dir = project.slices_dir().join("my-slice");
+    assert!(slice_dir.is_dir(), "slice dir must exist");
     assert!(slice_dir.join("specs").is_dir(), "specs/ must exist");
     let meta = fs::read_to_string(slice_dir.join(".metadata.yaml")).expect("read metadata");
     assert!(meta.contains("status: defining"));
@@ -117,7 +117,7 @@ fn change_create_produces_directory_and_metadata() {
 }
 
 #[test]
-fn change_create_rejects_uppercase_name() {
+fn slice_create_rejects_uppercase_name() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -134,16 +134,16 @@ fn change_create_rejects_uppercase_name() {
 }
 
 #[test]
-fn change_create_fails_when_dir_exists_by_default() {
+fn slice_create_fails_when_dir_exists_by_default() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["slice", "create", "my-change"])
+        .args(["slice", "create", "my-slice"])
         .assert()
         .success();
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "create", "my-change"])
+        .args(["--format", "json", "slice", "create", "my-slice"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -153,16 +153,16 @@ fn change_create_fails_when_dir_exists_by_default() {
 }
 
 #[test]
-fn change_create_continue_reuses_existing_directory() {
+fn slice_create_continue_reuses_existing_directory() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["slice", "create", "my-change"])
+        .args(["slice", "create", "my-slice"])
         .assert()
         .success();
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "create", "my-change", "--if-exists", "continue"])
+        .args(["--format", "json", "slice", "create", "my-slice", "--if-exists", "continue"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -171,29 +171,29 @@ fn change_create_continue_reuses_existing_directory() {
 }
 
 // ---------------------------------------------------------------------------
-// change transition
+// slice transition
 // ---------------------------------------------------------------------------
 
 #[test]
-fn change_transition_walks_the_happy_path() {
+fn slice_transition_walks_the_happy_path() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["slice", "create", "my-change"])
+        .args(["slice", "create", "my-slice"])
         .assert()
         .success();
 
     for target in ["defined", "building", "complete"] {
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "slice", "transition", "my-change", target])
+            .args(["--format", "json", "slice", "transition", "my-slice", target])
             .assert()
             .success();
         let value = parse_json(&assert.get_output().stdout);
         assert_eq!(value["status"], target);
     }
 
-    let meta = fs::read_to_string(project.slices_dir().join("my-change").join(".metadata.yaml"))
+    let meta = fs::read_to_string(project.slices_dir().join("my-slice").join(".metadata.yaml"))
         .expect("read metadata");
     assert!(meta.contains("status: complete"));
     assert!(meta.contains("defined-at:"));
@@ -202,17 +202,17 @@ fn change_transition_walks_the_happy_path() {
 }
 
 #[test]
-fn change_transition_rejects_illegal_edge() {
+fn slice_transition_rejects_illegal_edge() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["slice", "create", "my-change"])
+        .args(["slice", "create", "my-slice"])
         .assert()
         .success();
     // Defining -> Building is not a legal edge.
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "transition", "my-change", "building"])
+        .args(["--format", "json", "slice", "transition", "my-slice", "building"])
         .assert()
         .failure();
     let value = parse_json(&assert.get_output().stdout);
@@ -220,18 +220,18 @@ fn change_transition_rejects_illegal_edge() {
 }
 
 // ---------------------------------------------------------------------------
-// change touched-specs
+// slice touched-specs
 // ---------------------------------------------------------------------------
 
 #[test]
-fn change_touched_specs_scan_classifies_new_vs_modified() {
+fn slice_touched_specs_scan_classifies_new_vs_modified() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["slice", "create", "my-change"])
+        .args(["slice", "create", "my-slice"])
         .assert()
         .success();
-    let slice_dir = project.slices_dir().join("my-change");
+    let slice_dir = project.slices_dir().join("my-slice");
 
     // Capability `alpha` — no baseline, should classify as `new`.
     fs::create_dir_all(slice_dir.join("specs/alpha")).unwrap();
@@ -245,7 +245,7 @@ fn change_touched_specs_scan_classifies_new_vs_modified() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "touched-specs", "my-change", "--scan"])
+        .args(["--format", "json", "slice", "touched-specs", "my-slice", "--scan"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -266,11 +266,11 @@ fn change_touched_specs_scan_classifies_new_vs_modified() {
 }
 
 #[test]
-fn change_touched_specs_set_accepts_explicit_list() {
+fn slice_touched_specs_set_accepts_explicit_list() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["slice", "create", "my-change"])
+        .args(["slice", "create", "my-slice"])
         .assert()
         .success();
 
@@ -281,7 +281,7 @@ fn change_touched_specs_set_accepts_explicit_list() {
             "json",
             "slice",
             "touched-specs",
-            "my-change",
+            "my-slice",
             "--set",
             "alpha:new,beta:modified",
         ])
@@ -295,13 +295,13 @@ fn change_touched_specs_set_accepts_explicit_list() {
 }
 
 // ---------------------------------------------------------------------------
-// change overlap
+// slice overlap
 // ---------------------------------------------------------------------------
 
 #[test]
-fn change_overlap_reports_shared_capabilities() {
+fn slice_overlap_reports_shared_capabilities() {
     let project = Project::init();
-    // Two active changes both claim `login`.
+    // Two active slices both claim `login`.
     specify().current_dir(project.root()).args(["slice", "create", "first"]).assert().success();
     specify().current_dir(project.root()).args(["slice", "create", "second"]).assert().success();
     specify()
@@ -330,7 +330,7 @@ fn change_overlap_reports_shared_capabilities() {
 }
 
 #[test]
-fn change_overlap_empty_for_disjoint_changes() {
+fn slice_overlap_empty_for_disjoint_slices() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
     specify().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
@@ -355,43 +355,43 @@ fn change_overlap_empty_for_disjoint_changes() {
 }
 
 // ---------------------------------------------------------------------------
-// change archive and drop
+// slice archive and drop
 // ---------------------------------------------------------------------------
 
 #[test]
-fn change_archive_moves_dir_into_dated_archive() {
+fn slice_archive_moves_dir_into_dated_archive() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["slice", "create", "my-change"])
+        .args(["slice", "create", "my-slice"])
         .assert()
         .success();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "archive", "my-change"])
+        .args(["--format", "json", "slice", "archive", "my-slice"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
     let archive_path = value["archive-path"].as_str().unwrap();
     assert!(archive_path.contains(".specify/archive/"));
-    assert!(archive_path.ends_with("-my-change"));
+    assert!(archive_path.ends_with("-my-slice"));
 
     // Original is gone; archive dir has one dated subdirectory.
-    assert!(!project.slices_dir().join("my-change").exists());
+    assert!(!project.slices_dir().join("my-slice").exists());
     let archive = project.root().join(".specify/archive");
     let entries: Vec<_> =
         fs::read_dir(&archive).unwrap().filter_map(std::result::Result::ok).collect();
     assert_eq!(entries.len(), 1);
-    assert!(entries[0].file_name().to_string_lossy().ends_with("-my-change"));
+    assert!(entries[0].file_name().to_string_lossy().ends_with("-my-slice"));
 }
 
 #[test]
-fn change_drop_transitions_and_archives_with_reason() {
+fn slice_drop_transitions_and_archives_with_reason() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["slice", "create", "my-change"])
+        .args(["slice", "create", "my-slice"])
         .assert()
         .success();
 
@@ -402,7 +402,7 @@ fn change_drop_transitions_and_archives_with_reason() {
             "json",
             "slice",
             "drop",
-            "my-change",
+            "my-slice",
             "--reason",
             "Needs design call-out",
         ])
@@ -412,7 +412,7 @@ fn change_drop_transitions_and_archives_with_reason() {
     assert_eq!(value["status"], "dropped");
     assert_eq!(value["drop-reason"], "Needs design call-out");
     let archive_path = value["archive-path"].as_str().unwrap();
-    assert!(archive_path.ends_with("-my-change"));
+    assert!(archive_path.ends_with("-my-slice"));
 
     // `.metadata.yaml` inside the archive should reflect the drop.
     let archived_meta = fs::read_to_string(format!("{archive_path}/.metadata.yaml")).unwrap();
@@ -422,11 +422,11 @@ fn change_drop_transitions_and_archives_with_reason() {
 }
 
 // ---------------------------------------------------------------------------
-// change list / status
+// slice list / status
 // ---------------------------------------------------------------------------
 
 #[test]
-fn change_list_shows_every_active_change() {
+fn slice_list_shows_every_active_slice() {
     let project = Project::init().with_schemas();
     specify().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
     specify().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
@@ -447,28 +447,28 @@ fn change_list_shows_every_active_change() {
 }
 
 #[test]
-fn change_status_by_name_returns_single_entry() {
+fn slice_status_by_name_returns_single_entry() {
     let project = Project::init().with_schemas();
     specify()
         .current_dir(project.root())
-        .args(["slice", "create", "only-change"])
+        .args(["slice", "create", "only-slice"])
         .assert()
         .success();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "status", "only-change"])
+        .args(["--format", "json", "slice", "status", "only-slice"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
     let items = value["slices"].as_array().unwrap();
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0]["name"], "only-change");
+    assert_eq!(items[0]["name"], "only-slice");
     assert_eq!(items[0]["status"], "defining");
 }
 
 // ---------------------------------------------------------------------------
-// change outcome set (L2.A)
+// slice outcome set (L2.A)
 // ---------------------------------------------------------------------------
 
 /// Parse the `.metadata.yaml` for `name` under `project` as a
@@ -489,7 +489,7 @@ fn looks_like_rfc3339(s: &str) -> bool {
 }
 
 #[test]
-fn change_phase_outcome_stamps_success_on_define_json() {
+fn slice_phase_outcome_stamps_success_on_define_json() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -512,7 +512,6 @@ fn change_phase_outcome_stamps_success_on_define_json() {
 
     let value = parse_json(&assert.get_output().stdout);
     assert_eq!(value["schema-version"], 2);
-    // Wire field is still serialized as `change` until chunk 3.3 lands.
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["outcome"], "success");
@@ -533,7 +532,7 @@ fn change_phase_outcome_stamps_success_on_define_json() {
 }
 
 #[test]
-fn change_phase_outcome_stamps_failure_with_context() {
+fn slice_phase_outcome_stamps_failure_with_context() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -563,7 +562,7 @@ fn change_phase_outcome_stamps_failure_with_context() {
 }
 
 #[test]
-fn change_phase_outcome_stamps_deferred_on_build() {
+fn slice_phase_outcome_stamps_deferred_on_build() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -589,7 +588,7 @@ fn change_phase_outcome_stamps_deferred_on_build() {
 }
 
 #[test]
-fn change_phase_outcome_text_output() {
+fn slice_phase_outcome_text_output() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -603,7 +602,7 @@ fn change_phase_outcome_text_output() {
 }
 
 #[test]
-fn change_phase_outcome_on_nonexistent_change_errors() {
+fn slice_phase_outcome_on_nonexistent_slice_errors() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -628,7 +627,7 @@ fn change_phase_outcome_on_nonexistent_change_errors() {
 }
 
 #[test]
-fn change_phase_outcome_writes_trailing_newline() {
+fn slice_phase_outcome_writes_trailing_newline() {
     // Atomicity is an OS-level guarantee (NamedTempFile + rename) so it
     // is not directly unit-testable. Instead assert the saved file
     // shape: trailing newline, mirroring the Plan::save atomic-save
@@ -653,7 +652,7 @@ fn change_phase_outcome_writes_trailing_newline() {
 }
 
 #[test]
-fn change_phase_outcome_overwrites_previous_outcome() {
+fn slice_phase_outcome_overwrites_previous_outcome() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -699,7 +698,7 @@ fn change_phase_outcome_overwrites_previous_outcome() {
 }
 
 #[test]
-fn change_phase_outcome_preserves_existing_metadata_fields() {
+fn slice_phase_outcome_preserves_existing_metadata_fields() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -745,11 +744,11 @@ created-at: "2024-08-01T10:00:00Z"
 }
 
 // ---------------------------------------------------------------------------
-// change outcome show (read verb symmetric with `outcome set`)
+// slice outcome show (read verb symmetric with `outcome set`)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn change_outcome_returns_stamped_outcome_as_json() {
+fn slice_outcome_returns_stamped_outcome_as_json() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
@@ -788,7 +787,7 @@ fn change_outcome_returns_stamped_outcome_as_json() {
 }
 
 #[test]
-fn change_outcome_emits_null_when_unstamped() {
+fn slice_outcome_emits_null_when_unstamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -809,7 +808,7 @@ fn change_outcome_emits_null_when_unstamped() {
 }
 
 #[test]
-fn change_outcome_null_context_when_stamped_without_context() {
+fn slice_outcome_null_context_when_stamped_without_context() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
@@ -834,7 +833,7 @@ fn change_outcome_null_context_when_stamped_without_context() {
 }
 
 #[test]
-fn change_outcome_text_output_stamped() {
+fn slice_outcome_text_output_stamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
@@ -853,7 +852,7 @@ fn change_outcome_text_output_stamped() {
 }
 
 #[test]
-fn change_outcome_text_output_unstamped() {
+fn slice_outcome_text_output_unstamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -867,7 +866,7 @@ fn change_outcome_text_output_unstamped() {
 }
 
 #[test]
-fn change_outcome_on_nonexistent_change_errors() {
+fn slice_outcome_on_nonexistent_slice_errors() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -881,7 +880,7 @@ fn change_outcome_on_nonexistent_change_errors() {
 }
 
 #[test]
-fn change_outcome_falls_back_to_archive() {
+fn slice_outcome_falls_back_to_archive() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "bar"]).assert().success();
     specify()
@@ -905,7 +904,7 @@ fn change_outcome_falls_back_to_archive() {
     fs::create_dir_all(&archive_dir).unwrap();
     fs::rename(slices_dir.join("bar"), archive_dir.join("2026-04-24-bar")).unwrap();
 
-    // The active change directory is gone; outcome should resolve from archive.
+    // The active slice directory is gone; outcome should resolve from archive.
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "outcome", "show", "bar"])
@@ -921,7 +920,7 @@ fn change_outcome_falls_back_to_archive() {
 }
 
 #[test]
-fn change_outcome_archive_fallback_picks_most_recent() {
+fn slice_outcome_archive_fallback_picks_most_recent() {
     let project = Project::init();
 
     // Create and stamp two archived versions with different created-at timestamps.
@@ -957,14 +956,14 @@ fn change_outcome_archive_fallback_picks_most_recent() {
 }
 
 // ---------------------------------------------------------------------------
-// change outcome set — registry-amendment-required (RFC-9 §2B)
+// slice outcome set — registry-amendment-required (RFC-9 §2B)
 // ---------------------------------------------------------------------------
 
 /// Stamping the new outcome variant writes the structured proposal
 /// payload to `.metadata.yaml` under `outcome.outcome.registry-amendment-required.*`
 /// (kebab-case external-tag form). Round-trips through the writer.
 #[test]
-fn change_outcome_registry_amendment_required_writes_payload() {
+fn slice_outcome_registry_amendment_required_writes_payload() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1041,7 +1040,7 @@ fn change_outcome_registry_amendment_required_writes_payload() {
 
 /// Missing required flags surface a clear `Error::Config` (exit code 1).
 #[test]
-fn change_outcome_registry_amendment_required_missing_flags_errors() {
+fn slice_outcome_registry_amendment_required_missing_flags_errors() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1076,7 +1075,7 @@ fn change_outcome_registry_amendment_required_missing_flags_errors() {
 /// `registry-amendment-required` is rejected — those flags are
 /// outcome-scoped, and silently dropping them would mask author intent.
 #[test]
-fn change_outcome_proposal_flags_rejected_for_other_kinds() {
+fn slice_outcome_proposal_flags_rejected_for_other_kinds() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1108,11 +1107,11 @@ fn change_outcome_proposal_flags_rejected_for_other_kinds() {
 }
 
 // ---------------------------------------------------------------------------
-// change journal append (L2.B)
+// slice journal append (L2.B)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn change_journal_append_appends_to_file() {
+fn slice_journal_append_appends_to_file() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1137,7 +1136,6 @@ fn change_journal_append_appends_to_file() {
 
     let value = parse_json(&assert.get_output().stdout);
     assert_eq!(value["schema-version"], 2);
-    // Wire field is still serialized as `change` until chunk 3.3 lands.
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["kind"], "question");
@@ -1167,7 +1165,7 @@ fn change_journal_append_appends_to_file() {
 }
 
 #[test]
-fn change_journal_append_stamps_rfc3339_timestamp() {
+fn slice_journal_append_stamps_rfc3339_timestamp() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1206,7 +1204,7 @@ fn change_journal_append_stamps_rfc3339_timestamp() {
 }
 
 #[test]
-fn change_journal_append_preserves_existing_entries() {
+fn slice_journal_append_preserves_existing_entries() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1233,7 +1231,7 @@ fn change_journal_append_preserves_existing_entries() {
 }
 
 #[test]
-fn change_journal_append_text_output() {
+fn slice_journal_append_text_output() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1247,7 +1245,7 @@ fn change_journal_append_text_output() {
 }
 
 #[test]
-fn change_journal_append_on_nonexistent_change_errors() {
+fn slice_journal_append_on_nonexistent_slice_errors() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -1272,11 +1270,11 @@ fn change_journal_append_on_nonexistent_change_errors() {
 }
 
 // ---------------------------------------------------------------------------
-// change journal show
+// slice journal show
 // ---------------------------------------------------------------------------
 
 #[test]
-fn change_journal_show_empty_then_populated() {
+fn slice_journal_show_empty_then_populated() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1291,11 +1289,11 @@ fn change_journal_show_empty_then_populated() {
     assert_eq!(value["name"], "foo");
     assert!(
         value["entries"].as_array().unwrap().is_empty(),
-        "expected empty entries on a fresh change, got: {}",
+        "expected empty entries on a fresh slice, got: {}",
         value["entries"]
     );
 
-    // Text mode for the empty case: the per-change "no journal entries" line.
+    // Text mode for the empty case: the per-slice "no journal entries" line.
     let text = specify()
         .current_dir(project.root())
         .args(["slice", "journal", "show", "foo"])
@@ -1349,7 +1347,7 @@ fn change_journal_show_empty_then_populated() {
 }
 
 #[test]
-fn change_journal_show_on_nonexistent_change_errors() {
+fn slice_journal_show_on_nonexistent_slice_errors() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
