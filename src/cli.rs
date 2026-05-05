@@ -130,6 +130,14 @@ pub enum VectisAction {
     UpdateVersions(specify_vectis::UpdateVersionsArgs),
     /// Show the resolved version pins (embedded → user → project → override).
     Versions(specify_vectis::VersionsArgs),
+    /// Validate UI input artifacts (`layout.yaml`, `tokens.yaml`,
+    /// `assets.yaml`) and the wired `composition.yaml` against the
+    /// schemas in `schemas/vectis/` (RFC-11 §H, §I).
+    ///
+    /// Phase 1.5 ships the surface only; every mode returns the v2
+    /// `not-implemented` envelope and exits non-zero. Phases 1.6–1.10
+    /// fill the modes in incrementally without changing this surface.
+    Validate(specify_vectis::ValidateArgs),
 }
 
 #[derive(Subcommand)]

@@ -35,7 +35,7 @@ fn parse_json(stdout: &[u8]) -> Value {
 fn vectis_help_lists_subcommands() {
     let assert = specify().args(["vectis", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    for verb in ["init", "verify", "add-shell", "update-versions", "versions"] {
+    for verb in ["init", "verify", "add-shell", "update-versions", "versions", "validate"] {
         assert!(
             stdout.contains(verb),
             "expected `vectis --help` to mention {verb}, got:\n{stdout}"
@@ -139,6 +139,67 @@ fn init_invalid_project_json_shape() {
         "unexpected message: {value}"
     );
     assert_eq!(output.status.code(), Some(1));
+}
+
+/// `vectis validate --help` MUST list every mode the RFC-11 §H verb
+/// table promises (`layout | composition | tokens | assets | all`)
+/// plus the optional `[PATH]` positional. Phase 1.5 acceptance bullet:
+/// the surface lands now even though every mode is a stub.
+#[test]
+fn vectis_validate_help_lists_every_mode_and_path_positional() {
+    let assert = specify().args(["vectis", "validate", "--help"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    for mode in ["layout", "composition", "tokens", "assets", "all"] {
+        assert!(
+            stdout.contains(mode),
+            "expected `vectis validate --help` to mention `{mode}`, got:\n{stdout}"
+        );
+    }
+    // Positional `[PATH]` (clap renders the value-name in upper-case).
+    assert!(
+        stdout.contains("[PATH]"),
+        "expected `vectis validate --help` to advertise an optional `[PATH]` positional, got:\n{stdout}"
+    );
+}
+
+/// Phase 1.5: every `vectis validate <mode>` invocation MUST exit
+/// non-zero with the v2 `not-implemented` envelope. The shape is
+/// authored once in `src/commands/vectis.rs` -- this test pins it
+/// across all five modes so Phases 1.6-1.10 cannot regress callers
+/// that already key off the `error: not-implemented` discriminator.
+#[test]
+fn vectis_validate_modes_emit_not_implemented_envelope() {
+    for mode in ["layout", "composition", "tokens", "assets", "all"] {
+        let assert =
+            specify().args(["--format", "json", "vectis", "validate", mode]).assert().failure();
+        let output = assert.get_output();
+        let value = parse_json(&output.stdout);
+        assert_eq!(value["error"], "not-implemented", "[{mode}] error variant: {value}");
+        assert_eq!(value["exit-code"], 1, "[{mode}] exit-code: {value}");
+        assert_eq!(value["schema-version"], 2, "[{mode}] schema-version: {value}");
+        assert_eq!(value["command"], format!("validate {mode}"), "[{mode}] command field: {value}");
+        let message = value["message"].as_str().unwrap_or("");
+        assert!(
+            message.contains("not implemented"),
+            "[{mode}] expected message to mention `not implemented`, got: {message}"
+        );
+        assert_eq!(output.status.code(), Some(1), "[{mode}] expected exit 1");
+    }
+}
+
+/// Phase 1.5: an explicit `[PATH]` positional MUST be accepted by clap
+/// and threaded through to the stub (today it does not change the
+/// outcome, but we lock the parse so future phases inherit it).
+#[test]
+fn vectis_validate_accepts_explicit_path_positional() {
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "tokens", "design-system/tokens.yaml"])
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+    assert_eq!(value["error"], "not-implemented");
+    assert_eq!(value["command"], "validate tokens");
 }
 
 /// Force the `missing-prerequisites` path by clearing PATH so every

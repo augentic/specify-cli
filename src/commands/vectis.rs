@@ -22,6 +22,7 @@ pub fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
         VectisAction::AddShell(args) => specify_vectis::add_shell::run(args),
         VectisAction::UpdateVersions(args) => specify_vectis::update_versions::run(args),
         VectisAction::Versions(args) => specify_vectis::versions_cmd::run(args),
+        VectisAction::Validate(args) => specify_vectis::validate::run(args),
     };
     match result {
         Ok(specify_vectis::CommandOutcome::Success(value)) => {
@@ -128,6 +129,7 @@ fn render_text(action: &VectisAction, value: &Value) {
         VectisAction::AddShell(_) => render_add_shell_text(value),
         VectisAction::UpdateVersions(_) => render_update_versions_text(value),
         VectisAction::Versions(_) => render_versions_text(value),
+        VectisAction::Validate(_) => render_validate_text(value),
     }
 }
 
@@ -307,6 +309,66 @@ fn render_versions_text(value: &Value) {
                 println!("    {key} = {val}");
             }
         }
+    }
+}
+
+/// Forward-compatible text renderer for `vectis validate <mode>`.
+///
+/// Phase 1.5 every mode returns
+/// `CommandOutcome::Stub`, which the dispatcher renders through the
+/// `not-implemented` arm, so this function is unreachable today (the
+/// `render_text` match still requires it for exhaustiveness). It is
+/// written against the JSON shape Phases 1.6–1.10 will populate so
+/// later phases only need to widen the body, not the dispatch tree:
+///
+/// ```json
+/// {
+///   "mode": "tokens",
+///   "path": "design-system/tokens.yaml",
+///   "errors":   [{ "path": "/colors/primary/light", "message": "..." }],
+///   "warnings": [{ "path": "/typography/...",       "message": "..." }]
+/// }
+/// ```
+///
+/// `path` may be absent (e.g. `validate all`) and the two arrays may be
+/// missing or empty on a clean run.
+fn render_validate_text(value: &Value) {
+    let mode = value.get("mode").and_then(Value::as_str).unwrap_or("?");
+    let path = value.get("path").and_then(Value::as_str);
+    if let Some(p) = path {
+        println!("Validate {mode}: {p}");
+    } else {
+        println!("Validate {mode}");
+    }
+
+    let warnings = value.get("warnings").and_then(Value::as_array);
+    let errors = value.get("errors").and_then(Value::as_array);
+    let warn_count = warnings.map_or(0, Vec::len);
+    let err_count = errors.map_or(0, Vec::len);
+
+    if let Some(arr) = warnings {
+        for w in arr {
+            let msg = w.get("message").and_then(Value::as_str).unwrap_or("?");
+            match w.get("path").and_then(Value::as_str) {
+                Some(p) if !p.is_empty() => println!("  warning: {p}: {msg}"),
+                _ => println!("  warning: {msg}"),
+            }
+        }
+    }
+    if let Some(arr) = errors {
+        for e in arr {
+            let msg = e.get("message").and_then(Value::as_str).unwrap_or("?");
+            match e.get("path").and_then(Value::as_str) {
+                Some(p) if !p.is_empty() => println!("  error: {p}: {msg}"),
+                _ => println!("  error: {msg}"),
+            }
+        }
+    }
+
+    if err_count == 0 && warn_count == 0 {
+        println!("  OK");
+    } else {
+        println!("  ({err_count} error(s), {warn_count} warning(s))");
     }
 }
 
