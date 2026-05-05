@@ -1420,3 +1420,125 @@ fn migrate_v2_layout_refuses_destination_collision() {
     // v1 source must still be on disk so the operator can resolve.
     assert!(tmp.path().join(".specify/registry.yaml").is_file());
 }
+
+// ---- specify migrate slice-layout (RFC-13 chunk 3.6) ----
+
+/// Stand up a v1 (pre-Phase-3) project on disk: a real `.specify/`
+/// (so the migrator's "is this a Specify project?" preflight passes)
+/// plus `.specify/changes/<name>/.metadata.yaml` for each requested
+/// slice. `init_omnia_project` already creates `.specify/slices/`
+/// (post-Phase-3 layout); the helper removes it so the migrator sees
+/// only the v1 source directory and can apply the rename cleanly.
+fn seed_pre_phase3_layout(tmp: &tempfile::TempDir, slices: &[(&str, &str)]) {
+    init_omnia_project(tmp);
+    let post_phase3 = tmp.path().join(".specify/slices");
+    if post_phase3.is_dir() {
+        fs::remove_dir_all(&post_phase3).expect("remove post-Phase-3 slices dir");
+    }
+    let changes_dir = tmp.path().join(".specify/changes");
+    fs::create_dir_all(&changes_dir).expect("mkdir .specify/changes");
+    for (name, status) in slices {
+        let entry = changes_dir.join(name);
+        fs::create_dir_all(&entry).expect("mkdir slice dir");
+        // Minimal metadata shape that the slice crate's `serde_saphyr`
+        // reader accepts: schema + lifecycle status are required, the
+        // rest of the fields default through `#[serde(default)]`.
+        fs::write(entry.join(".metadata.yaml"), format!("schema: omnia\nstatus: {status}\n"))
+            .expect("seed .metadata.yaml");
+    }
+}
+
+#[test]
+fn migrate_slice_layout_renames_changes_dir_and_preserves_metadata() {
+    let tmp = tempdir().unwrap();
+    seed_pre_phase3_layout(&tmp, &[("alpha", "merged"), ("beta", "dropped")]);
+    // Plant a non-metadata payload to confirm the rename moves the
+    // entire subtree, not just the metadata files.
+    fs::write(tmp.path().join(".specify/changes/alpha/notes.md"), "# alpha\n")
+        .expect("seed payload");
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "slice-layout"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["status"], "migrated");
+    assert_eq!(value["slices-moved"], 2);
+
+    // .specify/changes/ is gone; .specify/slices/ carries the
+    // migrated subtree verbatim (metadata + ad-hoc payload).
+    assert!(!tmp.path().join(".specify/changes").exists(), "v1 source must be removed");
+    assert!(tmp.path().join(".specify/slices/alpha/.metadata.yaml").is_file());
+    assert!(tmp.path().join(".specify/slices/beta/.metadata.yaml").is_file());
+    let payload = fs::read_to_string(tmp.path().join(".specify/slices/alpha/notes.md"))
+        .expect("payload survived rename");
+    assert_eq!(payload, "# alpha\n");
+}
+
+#[test]
+fn migrate_slice_layout_rerun_is_a_noop() {
+    let tmp = tempdir().unwrap();
+    seed_pre_phase3_layout(&tmp, &[("alpha", "merged")]);
+
+    // First run actually migrates.
+    specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "slice-layout"])
+        .assert()
+        .success();
+
+    // Second run on the now-post-Phase-3 layout exits 0 with the
+    // `already-migrated` discriminant — idempotency invariant.
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "slice-layout"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["status"], "already-migrated");
+    assert_eq!(value["slices-moved"], 0);
+    // The post-Phase-3 layout must still be intact after the no-op.
+    assert!(tmp.path().join(".specify/slices/alpha").is_dir());
+    assert!(!tmp.path().join(".specify/changes").exists());
+}
+
+#[test]
+fn migrate_slice_layout_blocks_when_a_slice_is_in_progress() {
+    let tmp = tempdir().unwrap();
+    // `defining` is the canonical first non-terminal lifecycle state;
+    // `merged` confirms the preflight ignores already-terminal slices.
+    seed_pre_phase3_layout(&tmp, &[("alpha", "merged"), ("zeta", "defining")]);
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "slice-layout"])
+        .assert()
+        .failure();
+
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "slice-migration-blocked-by-in-progress");
+    let message = value["message"].as_str().expect("message string");
+    assert!(
+        message.contains("slice-migration-blocked-by-in-progress:"),
+        "diagnostic must lead with the kebab-case prefix, got: {message}"
+    );
+    assert!(
+        message.contains("zeta (defining)"),
+        "diagnostic must surface the in-progress (name, status) pair, got: {message}"
+    );
+    assert!(
+        !message.contains("alpha"),
+        "terminal slices must not appear in the offender list, got: {message}"
+    );
+
+    // The on-disk state must be untouched: the v1 source still in
+    // place, the post-Phase-3 destination absent. The operator's
+    // recovery path is `specify slice drop zeta` followed by re-run.
+    assert!(tmp.path().join(".specify/changes/zeta/.metadata.yaml").is_file());
+    assert!(tmp.path().join(".specify/changes/alpha/.metadata.yaml").is_file());
+    assert!(!tmp.path().join(".specify/slices").exists());
+}

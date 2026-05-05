@@ -126,6 +126,8 @@ pub fn emit_json_error(err: &Error, code: CliResult) {
         Error::SliceNotFound { .. } => "slice-not-found",
         Error::RegistryMissing => "registry-missing",
         Error::LegacyLayout { .. } => "legacy-layout",
+        Error::SliceMigrationBlockedByInProgress { .. } => "slice-migration-blocked-by-in-progress",
+        Error::SliceMigrationTargetExists { .. } => "slice-migration-target-exists",
         Error::SchemaBecameCapability { .. } => "schema-became-capability",
         Error::InvalidName(_) => "invalid-name",
         Error::Io(_) => "io",

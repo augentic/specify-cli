@@ -162,6 +162,51 @@ pub enum Error {
         paths: Vec<String>,
     },
 
+    /// `specify migrate slice-layout` (RFC-13 chunk 3.6) refused to
+    /// run because at least one per-loop unit under
+    /// `.specify/changes/<name>/` carries an unfinished phase
+    /// (lifecycle status not in `Merged` or `Dropped`). The operator
+    /// must finish the slice loop (`specify slice merge run <name>`
+    /// once it reaches `complete`) or discard it
+    /// (`specify slice drop <name>`) before re-running the migration.
+    /// `in_progress` is `(slice_name, lifecycle_status)` pairs in
+    /// deterministic (alphabetical) order so JSON output and error
+    /// text stay stable across runs.
+    #[error(
+        "slice-migration-blocked-by-in-progress: {} slice(s) carry an unfinished phase. \
+         Finish or drop them before migrating: {}. \
+         Run `specify slice drop <name>` to discard each, or complete the slice loop \
+         (`specify slice merge run <name>` once it reaches `complete`).",
+        in_progress.len(),
+        format_in_progress(in_progress)
+    )]
+    SliceMigrationBlockedByInProgress {
+        /// `(slice_name, lifecycle_status)` for each non-terminal
+        /// slice the detector found, sorted by slice name.
+        in_progress: Vec<(String, String)>,
+    },
+
+    /// `specify migrate slice-layout` (RFC-13 chunk 3.6) refused to
+    /// run because both `.specify/changes/` (the v1 source) and
+    /// `.specify/slices/` (the post-migration destination) are
+    /// present. A previous migration was interrupted or someone
+    /// hand-edited the tree; the operator must inspect both
+    /// directories and reconcile manually before re-running.
+    #[error(
+        "slice-migration-target-exists: both `{}` and `{}` exist; the migration cannot proceed \
+         while the destination is non-empty. Inspect both directories, move any needed contents \
+         out of `.specify/slices/`, then remove the empty `.specify/slices/` and re-run \
+         `specify migrate slice-layout`.",
+        changes.display(),
+        slices.display()
+    )]
+    SliceMigrationTargetExists {
+        /// Path to the v1 source directory (`.specify/changes/`).
+        changes: std::path::PathBuf,
+        /// Path to the post-migration destination (`.specify/slices/`).
+        slices: std::path::PathBuf,
+    },
+
     /// The capability resolver found a pre-RFC-13 `schema.yaml` (or a
     /// `project.yaml` carrying the v1 `schema:` field) where it expected
     /// a `capability.yaml` (or `capability:` field). RFC-13 renamed the
@@ -218,6 +263,20 @@ pub enum Error {
     /// A YAML serialization error.
     #[error(transparent)]
     YamlSer(#[from] serde_saphyr::ser::Error),
+}
+
+/// Render the `(slice_name, lifecycle_status)` list embedded in
+/// [`Error::SliceMigrationBlockedByInProgress`] as the comma-separated
+/// `name (status), name (status)` form used in the diagnostic.
+///
+/// Kept as a free function so the `thiserror` `#[error(…)]` format
+/// string can resolve it without taking on a runtime fmt closure.
+fn format_in_progress(items: &[(String, String)]) -> String {
+    items
+        .iter()
+        .map(|(name, status)| format!("{name} ({status})"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[cfg(test)]
@@ -391,6 +450,75 @@ mod tests {
         assert!(
             s.contains("rfcs/rfc-13-extensibility.md#migration"),
             "diagnostic must link RFC-13 §Migration, got: {s}"
+        );
+    }
+
+    #[test]
+    fn slice_migration_blocked_by_in_progress_display() {
+        let err = Error::SliceMigrationBlockedByInProgress {
+            in_progress: vec![
+                ("demo".to_string(), "defining".to_string()),
+                ("other-thing".to_string(), "building".to_string()),
+            ],
+        };
+        let s = err.to_string();
+        assert!(
+            s.starts_with("slice-migration-blocked-by-in-progress:"),
+            "diagnostic must carry the kebab-case prefix, got: {s}"
+        );
+        assert!(s.contains("2 slice(s)"), "diagnostic must surface the count, got: {s}");
+        assert!(
+            s.contains("demo (defining)"),
+            "diagnostic must surface the (name, status) pair, got: {s}"
+        );
+        assert!(
+            s.contains("other-thing (building)"),
+            "diagnostic must surface every offender, got: {s}"
+        );
+        assert!(
+            s.contains("specify slice drop"),
+            "diagnostic must point operator at the recovery verb, got: {s}"
+        );
+        assert!(
+            s.contains("specify slice merge run"),
+            "diagnostic must mention the canonical completion verb, got: {s}"
+        );
+    }
+
+    #[test]
+    fn slice_migration_blocked_singular_form_round_trips() {
+        // Single-offender variant: the same diagnostic must still
+        // render cleanly so the operator's first read names the
+        // problematic slice.
+        let err = Error::SliceMigrationBlockedByInProgress {
+            in_progress: vec![("demo".to_string(), "defining".to_string())],
+        };
+        let s = err.to_string();
+        assert!(s.contains("1 slice(s)"), "diagnostic must surface the count, got: {s}");
+        assert!(
+            s.contains("demo (defining)"),
+            "diagnostic must surface the offender, got: {s}"
+        );
+    }
+
+    #[test]
+    fn slice_migration_target_exists_display() {
+        let err = Error::SliceMigrationTargetExists {
+            changes: std::path::PathBuf::from("/proj/.specify/changes"),
+            slices: std::path::PathBuf::from("/proj/.specify/slices"),
+        };
+        let s = err.to_string();
+        assert!(
+            s.starts_with("slice-migration-target-exists:"),
+            "diagnostic must carry the kebab-case prefix, got: {s}"
+        );
+        assert!(
+            s.contains("/proj/.specify/changes") && s.contains("/proj/.specify/slices"),
+            "diagnostic must surface both colliding paths, got: {s}"
+        );
+        assert!(
+            s.contains("specify migrate slice-layout"),
+            "diagnostic must reference the migration verb, got: {s}"
         );
     }
 

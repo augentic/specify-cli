@@ -104,14 +104,24 @@ pub enum Commands {
 
     /// One-shot layout migrations.
     ///
-    /// Currently exposes a single subcommand, `v2-layout`, that moves
-    /// the operator-facing platform artifacts (`registry.yaml`,
-    /// `plan.yaml`, `initiative.md`, `contracts/`) from the legacy v1
-    /// location under `.specify/` to the repo root. Idempotent —
-    /// re-running on an already-migrated project exits 0 with
-    /// `nothing to migrate`. Refuses to run inside a workspace clone
-    /// (`.specify/workspace/<name>/`); migrate the hub repo first,
-    /// then iterate clones explicitly.
+    /// Two subcommands:
+    ///
+    /// - `v2-layout` (RFC-9 §1B / RFC-13 chunk 2.0) moves the
+    ///   operator-facing platform artifacts (`registry.yaml`,
+    ///   `plan.yaml`, `initiative.md`, `contracts/`) from the legacy
+    ///   v1 location under `.specify/` to the repo root.
+    /// - `slice-layout` (RFC-13 chunk 3.6) renames `.specify/changes/`
+    ///   to `.specify/slices/` on disk and rewrites any in-tree
+    ///   `$CHANGE_DIR` substitutions in vendored skill markdown to
+    ///   `$SLICE_DIR`. Refuses to run when a per-loop unit is
+    ///   mid-phase (operator must finish or drop the in-progress
+    ///   slice first).
+    ///
+    /// Both commands are idempotent — re-running on an already-
+    /// migrated project exits 0 with a "nothing to migrate" message.
+    /// `v2-layout` additionally refuses to run inside a workspace
+    /// clone (`.specify/workspace/<name>/`); migrate the hub repo
+    /// first, then iterate clones explicitly.
     Migrate {
         #[command(subcommand)]
         action: MigrateAction,
@@ -475,6 +485,33 @@ pub enum MigrateAction {
     /// a workspace clone (`.specify/workspace/<name>/`).
     V2Layout {
         /// Show what would move without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Rename `.specify/changes/` to `.specify/slices/` and rewrite
+    /// any in-tree `$CHANGE_DIR` substitutions in vendored skill
+    /// markdown to `$SLICE_DIR` (RFC-13 chunk 3.6).
+    ///
+    /// Idempotent: re-running on an already-migrated project (no
+    /// `.specify/changes/` and `.specify/slices/` already in place,
+    /// or both directories absent) exits 0 with a "no slices to
+    /// migrate" / "already migrated" message. Refuses to run when
+    /// any per-loop unit under `.specify/changes/` carries a
+    /// non-terminal lifecycle status — the operator must finish or
+    /// drop the in-progress slice before migrating
+    /// (`slice-migration-blocked-by-in-progress`). Refuses with
+    /// `slice-migration-target-exists` when both `.specify/changes/`
+    /// and `.specify/slices/` are present (a previous migration was
+    /// interrupted or someone hand-edited the tree).
+    ///
+    /// Single-shot: the migration does not journal its own progress.
+    /// If interrupted mid-step, the operator can re-run; the
+    /// idempotency guard makes the second run safe.
+    SliceLayout {
+        /// Show what would change without modifying any file. The
+        /// preflight (in-progress detection, target collision check)
+        /// still runs and surfaces the same diagnostics it would in a
+        /// real run.
         #[arg(long)]
         dry_run: bool,
     },
