@@ -162,33 +162,6 @@ fn vectis_validate_help_lists_every_mode_and_path_positional() {
     );
 }
 
-/// Phase 1.5 wired the `not-implemented` envelope for every mode;
-/// Phase 1.6 promoted `tokens`, Phase 1.7 promoted `assets`, Phase
-/// 1.8 promoted `layout`, and Phase 1.9 promoted `composition`, so
-/// this test now pins the envelope across the one still-stubbed
-/// mode only (`all`). The live modes get their own dedicated tests
-/// below. (Kept as a `#[test]` rather than collapsed into a
-/// sibling so Phase 1.10 can simply delete the function once
-/// `all` lands.)
-#[test]
-fn vectis_validate_stub_modes_emit_not_implemented_envelope() {
-    let mode = "all";
-    let assert =
-        specify().args(["--format", "json", "vectis", "validate", mode]).assert().failure();
-    let output = assert.get_output();
-    let value = parse_json(&output.stdout);
-    assert_eq!(value["error"], "not-implemented", "[{mode}] error variant: {value}");
-    assert_eq!(value["exit-code"], 1, "[{mode}] exit-code: {value}");
-    assert_eq!(value["schema-version"], 2, "[{mode}] schema-version: {value}");
-    assert_eq!(value["command"], format!("validate {mode}"), "[{mode}] command field: {value}");
-    let message = value["message"].as_str().unwrap_or("");
-    assert!(
-        message.contains("not implemented"),
-        "[{mode}] expected message to mention `not implemented`, got: {message}"
-    );
-    assert_eq!(output.status.code(), Some(1), "[{mode}] expected exit 1");
-}
-
 /// Phase 1.7: a minimal valid `assets.yaml` MUST exit 0 with the
 /// per-mode envelope (`mode`, `path`, empty `errors` and
 /// `warnings` arrays) and the auto-injected `schema-version`.
@@ -1066,6 +1039,189 @@ fn vectis_validate_composition_missing_file_surfaces_invalid_project() {
         "unexpected message: {value}"
     );
     assert_eq!(output.status.code(), Some(1));
+}
+
+/// Phase 1.10: `vectis validate all` against a project root that
+/// has every artifact materialised at the canonical project shape
+/// MUST emit a combined envelope with `mode: "all"`, the project
+/// root in `path`, and four sub-reports in `layout` → `composition`
+/// → `tokens` → `assets` order. Every sub-report is a real per-mode
+/// envelope (`skipped` absent) and the run exits 0 because no
+/// errors fire.
+#[test]
+fn vectis_validate_all_runs_every_mode_against_project_root() {
+    let tmp = tempdir().unwrap();
+    // Mark as a Specify project but ship NO project.yaml -- the
+    // resolver falls through to the embedded artifact-paths
+    // defaults (which match the v2 schema.yaml verbatim). This pins
+    // the embedded-fallback contract.
+    std::fs::create_dir_all(tmp.path().join(".specify/specs")).expect("mkdir .specify/specs");
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    std::fs::write(design.join("layout.yaml"), "version: 1\nscreens: {}\n")
+        .expect("write layout.yaml");
+    std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
+    std::fs::write(design.join("assets.yaml"), "version: 1\nassets: {}\n")
+        .expect("write assets.yaml");
+    std::fs::write(tmp.path().join(".specify/specs/composition.yaml"), "version: 1\nscreens: {}\n")
+        .expect("write composition.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "all"])
+        .arg(tmp.path())
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["mode"], "all");
+    let results = value["results"].as_array().expect("results array");
+    assert_eq!(results.len(), 4, "expected four sub-reports: {value}");
+    assert_eq!(results[0]["mode"], "layout");
+    assert_eq!(results[1]["mode"], "composition");
+    assert_eq!(results[2]["mode"], "tokens");
+    assert_eq!(results[3]["mode"], "assets");
+    for entry in results {
+        assert!(
+            entry["report"].get("skipped").is_none(),
+            "[{}] expected real report (no skipped field): {entry}",
+            entry["mode"]
+        );
+    }
+}
+
+/// Phase 1.10: when a project is missing some inputs, the `all`
+/// envelope marks each missing sub-mode as `skipped: true` rather
+/// than failing the whole run. Exit code stays 0 when no real
+/// errors fire across the entire combined report.
+#[test]
+fn vectis_validate_all_skips_missing_inputs_without_failing() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    // Provide ONLY tokens.yaml at the project shape; the other
+    // three artifacts are absent.
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "all"])
+        .arg(tmp.path())
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "all");
+    let results = value["results"].as_array().expect("results array");
+    let mut by_mode = std::collections::HashMap::new();
+    for entry in results {
+        by_mode.insert(entry["mode"].as_str().expect("mode string").to_string(), entry);
+    }
+    for skipped in ["layout", "composition", "assets"] {
+        let entry = by_mode.get(skipped).unwrap_or_else(|| panic!("missing entry for {skipped}"));
+        assert_eq!(
+            entry["report"]["skipped"],
+            Value::Bool(true),
+            "[{skipped}] expected skipped: {entry}"
+        );
+    }
+    assert!(
+        by_mode["tokens"]["report"].get("skipped").is_none(),
+        "tokens.yaml IS on disk; report MUST NOT be skipped: {value}"
+    );
+}
+
+/// Phase 1.10: a sub-mode error (e.g. broken hex inside
+/// `tokens.yaml`) MUST surface inside `results[*].report.errors`
+/// AND drive the dispatcher's `validate_exit_code` (recursion-aware
+/// since Phase 1.6) to exit 1. This pins the contract that `all`
+/// composes the per-mode exit-code semantics correctly.
+#[test]
+fn vectis_validate_all_propagates_sub_mode_errors_into_exit_code() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    std::fs::write(
+        design.join("tokens.yaml"),
+        "version: 1\ncolors:\n  primary:\n    light: \"#xyz\"\n    dark: \"#000000\"\n",
+    )
+    .expect("write tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "all"])
+        .arg(tmp.path())
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let results = value["results"].as_array().expect("results array");
+    let tokens = results.iter().find(|e| e["mode"] == "tokens").expect("tokens sub-report present");
+    let token_errors = tokens["report"]["errors"].as_array().expect("tokens errors array");
+    assert!(!token_errors.is_empty(), "broken hex MUST surface in nested tokens report: {value}");
+}
+
+/// Phase 1.10: when no `[path]` is supplied, single-mode runs
+/// resolve the default via the artifacts:-block cascade. Pinning
+/// `validate layout` against a fixture that places the file at the
+/// `change_local` shape (`.specify/changes/<active>/layout.yaml`)
+/// asserts the change-local discovery works end-to-end through the
+/// CLI, not just inside the unit-test resolver.
+#[test]
+fn vectis_validate_layout_default_path_discovers_change_local() {
+    let tmp = tempdir().unwrap();
+    let change_dir = tmp.path().join(".specify/changes/active");
+    std::fs::create_dir_all(&change_dir).expect("mkdir change");
+    std::fs::write(change_dir.join("layout.yaml"), "version: 1\nscreens: {}\n")
+        .expect("write change-local layout.yaml");
+
+    // No explicit `[path]` -- the resolver MUST pick up the
+    // change-local file from the project root the test sets via
+    // `current_dir`.
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "layout");
+    let resolved = value["path"].as_str().expect("path is a string");
+    assert!(
+        resolved.ends_with(".specify/changes/active/layout.yaml"),
+        "expected change-local resolution, got: {resolved}"
+    );
+}
+
+/// Phase 1.10: removing the `artifacts:` block from `schema.yaml`
+/// (or, equivalently, having no `schema.yaml` on disk) MUST fall
+/// back to the embedded defaults cleanly. The single-mode default
+/// path should still resolve `design-system/tokens.yaml`.
+#[test]
+fn vectis_validate_tokens_default_path_falls_back_to_embedded_default() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    // No `.specify/project.yaml`, no schema.yaml: the resolver
+    // falls through to the embedded artifact-paths defaults.
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "vectis", "validate", "tokens"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "tokens");
+    let resolved = value["path"].as_str().expect("path is a string");
+    assert!(
+        resolved.ends_with("design-system/tokens.yaml"),
+        "expected embedded-default resolution, got: {resolved}"
+    );
 }
 
 /// Force the `missing-prerequisites` path by clearing PATH so every

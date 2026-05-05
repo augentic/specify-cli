@@ -355,11 +355,10 @@ fn validate_exit_code(value: &Value) -> CliResult {
 
 /// Forward-compatible text renderer for `vectis validate <mode>`.
 ///
-/// Phase 1.6 wired the `tokens` mode through this renderer; the four
-/// remaining modes (`layout`, `composition`, `assets`, `all`) still
-/// return `CommandOutcome::Stub` and reach the dispatcher's
-/// `not-implemented` arm instead. The shape this function consumes is
-/// the per-mode envelope Phase 1.5 fixed:
+/// Phase 1.6 wired the `tokens` mode through this renderer; Phases
+/// 1.7 / 1.8 / 1.9 added `assets` / `layout` / `composition`; Phase
+/// 1.10 lands `all`. The shape this function consumes is the
+/// per-mode envelope Phase 1.5 fixed:
 ///
 /// ```json
 /// {
@@ -370,15 +369,47 @@ fn validate_exit_code(value: &Value) -> CliResult {
 /// }
 /// ```
 ///
-/// `path` may be absent (e.g. `validate all`) and the two arrays may be
-/// missing or empty on a clean run.
+/// And the Phase 1.9 / 1.10 nested shape (auto-invoke + `all`):
+///
+/// ```json
+/// {
+///   "mode": "all",
+///   "path": "<project-root>",
+///   "results": [
+///     { "mode": "layout",      "report": { ... } },
+///     { "mode": "composition", "report": { ... } },
+///     ...
+///   ]
+/// }
+/// ```
+///
+/// `path` may be absent and the two arrays may be missing or empty
+/// on a clean run.
 fn render_validate_text(value: &Value) {
+    render_validate_envelope(value, 0);
+}
+
+/// Render a single validate envelope at the given indent depth. The
+/// `all` shape (and `composition`'s auto-invoke fold) carries
+/// `results: [{ mode, report }]`; the function recurses into each
+/// `report` at one extra indent so operators see a clear two-level
+/// hierarchy in their terminal output.
+fn render_validate_envelope(value: &Value, depth: usize) {
+    let indent = "  ".repeat(depth);
     let mode = value.get("mode").and_then(Value::as_str).unwrap_or("?");
     let path = value.get("path").and_then(Value::as_str);
-    if let Some(p) = path {
-        println!("Validate {mode}: {p}");
-    } else {
-        println!("Validate {mode}");
+    let skipped = value.get("skipped").and_then(Value::as_bool).unwrap_or(false);
+
+    let header = path.map_or_else(
+        || format!("{indent}Validate {mode}"),
+        |p| format!("{indent}Validate {mode}: {p}"),
+    );
+    println!("{header}");
+
+    if skipped {
+        let msg = value.get("message").and_then(Value::as_str).unwrap_or("skipped");
+        println!("{indent}  skipped: {msg}");
+        return;
     }
 
     let warnings = value.get("warnings").and_then(Value::as_array);
@@ -390,8 +421,8 @@ fn render_validate_text(value: &Value) {
         for w in arr {
             let msg = w.get("message").and_then(Value::as_str).unwrap_or("?");
             match w.get("path").and_then(Value::as_str) {
-                Some(p) if !p.is_empty() => println!("  warning: {p}: {msg}"),
-                _ => println!("  warning: {msg}"),
+                Some(p) if !p.is_empty() => println!("{indent}  warning: {p}: {msg}"),
+                _ => println!("{indent}  warning: {msg}"),
             }
         }
     }
@@ -399,17 +430,35 @@ fn render_validate_text(value: &Value) {
         for e in arr {
             let msg = e.get("message").and_then(Value::as_str).unwrap_or("?");
             match e.get("path").and_then(Value::as_str) {
-                Some(p) if !p.is_empty() => println!("  error: {p}: {msg}"),
-                _ => println!("  error: {msg}"),
+                Some(p) if !p.is_empty() => println!("{indent}  error: {p}: {msg}"),
+                _ => println!("{indent}  error: {msg}"),
             }
         }
     }
 
-    if err_count == 0 && warn_count == 0 {
-        println!("  OK");
-    } else {
-        println!("  ({err_count} error(s), {warn_count} warning(s))");
+    // Phase 1.9 (`composition` auto-invoke) + Phase 1.10 (`all`):
+    // recurse through each `results[i].report` at one more indent so
+    // a `validate all` run renders as a single hierarchical summary.
+    if let Some(results) = value.get("results").and_then(Value::as_array) {
+        for entry in results {
+            if let Some(report) = entry.get("report") {
+                render_validate_envelope(report, depth + 1);
+            }
+        }
     }
+
+    // The flat-shape summary line still fires for the `all` envelope
+    // even though it has no `errors` / `warnings` of its own; the
+    // per-sub-report lines above it carry the actionable detail.
+    let has_results = value.get("results").is_some();
+    if err_count == 0 && warn_count == 0 && !has_results {
+        println!("{indent}  OK");
+    } else if err_count != 0 || warn_count != 0 {
+        println!("{indent}  ({err_count} error(s), {warn_count} warning(s))");
+    }
+    // `all` / auto-invoke envelopes with `results: []` and no
+    // top-level findings deliberately stop here -- the sub-reports
+    // already printed their own status.
 }
 
 /// Summarise a `build-steps` array (init/add-shell shapes) as either

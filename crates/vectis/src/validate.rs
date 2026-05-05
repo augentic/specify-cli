@@ -92,11 +92,35 @@
 //! these fields at parse time; the runtime resolution layer is left
 //! for a follow-on RFC.
 //!
-//! The remaining mode (`all`) still returns [`CommandOutcome::Stub`]
-//! and will be filled in by Phase 1.10:
+//! Phase 1.10 brings `all` mode online and lands the
+//! `artifacts:`-block default-path resolver every mode shares:
 //!
-//! - **Phase 1.10** -- `all` runs the four modes in turn, plus the
-//!   `artifacts:`-block default-path resolution every mode shares.
+//! 1. **Default-path resolution** (RFC-11 §H field semantics) --
+//!    when no `[path]` is supplied, walk up from CWD looking for a
+//!    `.specify/` directory; read the project's `schema.yaml`
+//!    (cached or local) and its `artifacts:` block; expand each
+//!    artifact's `paths.change_local` / `paths.project` /
+//!    `paths.baseline` template (with `<name>` substituted from the
+//!    alphabetically-first change directory under
+//!    `.specify/changes/`) and return the first existing file. When
+//!    no `schema.yaml` is reachable, fall back to the embedded
+//!    default mapping that mirrors `schemas/vectis/schema.yaml` v2.
+//!    The helper is shared with the cross-artifact discovery layer
+//!    Phase 1.7 (assets → composition) and Phase 1.9 (composition →
+//!    tokens / assets) introduced; the previous `find_sibling_*`
+//!    walks are now thin wrappers around the unified resolver.
+//! 2. **`validate all`** (RFC-11 §H closing paragraph) -- runs
+//!    `layout`, `composition`, `tokens`, `assets` against a project
+//!    root (the optional `[path]` positional, defaulting to CWD)
+//!    and folds the per-mode envelopes into
+//!    `{ "mode": "all", "results": [{ "mode", "report" }, ...] }`.
+//!    Sub-modes whose default-resolved input does not exist on disk
+//!    are surfaced as a synthetic `{ skipped: true }` report rather
+//!    than a hard `InvalidProject` error so the combined run does
+//!    not bail when (e.g.) a project has no `tokens.yaml` yet. The
+//!    dispatcher's `validate_exit_code` recurses through
+//!    `results[*].report` (since Phase 1.6) and exits 1 when any
+//!    sub-report carries errors.
 //!
 //! ## Per-mode envelope
 //!
@@ -157,29 +181,51 @@ const ASSETS_SCHEMA_SOURCE: &str = include_str!("../embedded/assets.schema.json"
 /// references).
 const COMPOSITION_SCHEMA_SOURCE: &str = include_str!("../embedded/composition.schema.json");
 
-/// Default fallback path for `tokens.yaml` when no `[path]` argument is
-/// supplied (RFC-11 §H "Inputs"). Phase 1.10 layers `artifacts:`-block
-/// resolution on top of this; until then the canonical fallback is
-/// the project-relative path documented in the RFC.
-const DEFAULT_TOKENS_PATH: &str = "design-system/tokens.yaml";
-
-/// Default fallback path for `assets.yaml`, mirroring the tokens
-/// fallback (RFC-11 §H "Inputs"). Phase 1.10 layers `artifacts:`-block
-/// resolution on top of this.
-const DEFAULT_ASSETS_PATH: &str = "design-system/assets.yaml";
-
-/// Default fallback path for `layout.yaml`, mirroring the tokens /
-/// assets fallbacks (RFC-11 §H "Inputs"). Phase 1.10 layers
-/// `artifacts:`-block resolution on top of this; until then the
-/// canonical fallback is the project-relative path the RFC names.
-const DEFAULT_LAYOUT_PATH: &str = "design-system/layout.yaml";
-
-/// Default fallback path for `composition.yaml`. Composition's
-/// `paths.baseline` (RFC-11 §H worked v1 shape) is the canonical
-/// "no path supplied" location for v1; Phase 1.10 layers the full
-/// `artifacts:`-block cascade (`paths.change_local` then
-/// `paths.baseline`) on top of this.
-const DEFAULT_COMPOSITION_PATH: &str = ".specify/specs/composition.yaml";
+/// Embedded default `artifacts:`-block paths for the four
+/// `vectis validate` modes. Mirrors the worked v1 shape in
+/// `schemas/vectis/schema.yaml` (RFC-11 §H) verbatim so that
+/// projects without an on-disk `schema.yaml` still get the canonical
+/// resolution order `(change_local, project | baseline)`. When a
+/// project's own `schema.yaml` is reachable, [`read_artifacts_block`]
+/// loads it instead and the on-disk shape wins -- so a fork of the
+/// vectis schema with custom paths just works.
+///
+/// The order of the inner array is the resolution order; the first
+/// existing file wins. The role label (first tuple element) is
+/// retained for parity with the schema YAML even though Phase 1.10
+/// only uses the template strings. The `<name>` placeholder is
+/// expanded against `.specify/changes/<dir>/` (alphabetical first
+/// match) at resolution time.
+const EMBEDDED_ARTIFACT_PATHS: &[(&str, &[(&str, &str)])] = &[
+    (
+        "layout",
+        &[
+            ("change_local", ".specify/changes/<name>/layout.yaml"),
+            ("project", "design-system/layout.yaml"),
+        ],
+    ),
+    (
+        "tokens",
+        &[
+            ("change_local", ".specify/changes/<name>/tokens.yaml"),
+            ("project", "design-system/tokens.yaml"),
+        ],
+    ),
+    (
+        "assets",
+        &[
+            ("change_local", ".specify/changes/<name>/assets.yaml"),
+            ("project", "design-system/assets.yaml"),
+        ],
+    ),
+    (
+        "composition",
+        &[
+            ("change_local", ".specify/changes/<name>/composition.yaml"),
+            ("baseline", ".specify/specs/composition.yaml"),
+        ],
+    ),
+];
 
 /// Lazily compiled tokens validator. Compiling once per process avoids
 /// re-parsing the embedded schema on every invocation; in practice the
@@ -199,61 +245,52 @@ static COMPOSITION_VALIDATOR: OnceLock<Result<Validator, String>> = OnceLock::ne
 /// Dispatch a `vectis validate` invocation to the per-mode handler.
 ///
 /// Phases 1.6 / 1.7 / 1.8 / 1.9 implement `tokens` / `assets` /
-/// `layout` / `composition`; only `all` still returns
-/// [`CommandOutcome::Stub`] with a `command` string of the form
-/// `"validate all"` so the dispatcher in `src/commands/vectis.rs`
-/// emits the v2 `not-implemented` envelope unchanged.
+/// `layout` / `composition`; Phase 1.10 lands `all`. Every mode
+/// returns [`CommandOutcome::Success`] now -- the
+/// [`CommandOutcome::Stub`] arm Phase 1.5 wired is unreachable and
+/// retained only to keep the contract surface forward-compatible.
 ///
 /// # Errors
 ///
 /// Returns [`VectisError::InvalidProject`] when the resolved
 /// `tokens.yaml` / `assets.yaml` / `layout.yaml` / `composition.yaml`
-/// is unreadable (missing file, permission denied) and
-/// [`VectisError::Internal`] if an embedded schema fails to compile
-/// (a build-time invariant violation -- all three schemas ship with
-/// the binary). YAML parse failures and schema validation failures
-/// are *not* errors at this layer; they are folded into the `errors`
-/// array of the per-mode envelope so the operator sees the full
-/// report alongside any other findings.
+/// is unreadable in single-mode runs (missing file, permission
+/// denied; `validate all` instead surfaces the missing input as a
+/// synthetic `skipped: true` sub-report) and [`VectisError::Internal`]
+/// if an embedded schema fails to compile (a build-time invariant
+/// violation -- all three schemas ship with the binary). YAML parse
+/// failures and schema validation failures are *not* errors at this
+/// layer; they are folded into the `errors` array of the per-mode
+/// envelope so the operator sees the full report alongside any other
+/// findings.
 pub fn run(args: &ValidateArgs) -> Result<CommandOutcome, VectisError> {
     match args.mode {
         ValidateMode::Tokens => validate_tokens(args.path.as_deref()),
         ValidateMode::Assets => validate_assets(args.path.as_deref()),
         ValidateMode::Layout => validate_layout(args.path.as_deref()),
         ValidateMode::Composition => validate_composition(args.path.as_deref()),
-        mode @ ValidateMode::All => Ok(CommandOutcome::Stub {
-            command: stub_command(mode),
-        }),
-    }
-}
-
-/// Stub command identifier for not-yet-implemented modes. The string
-/// MUST match the kebab-case spelling in [`ValidateMode::as_str`] so
-/// the v2 `not-implemented` envelope's `command` field stays
-/// consistent across modes.
-const fn stub_command(mode: ValidateMode) -> &'static str {
-    match mode {
-        ValidateMode::Layout => "validate layout",
-        ValidateMode::Composition => "validate composition",
-        ValidateMode::Tokens => "validate tokens",
-        ValidateMode::Assets => "validate assets",
-        ValidateMode::All => "validate all",
+        ValidateMode::All => validate_all(args.path.as_deref()),
     }
 }
 
 /// Validate `tokens.yaml` against the embedded Appendix A schema.
 ///
-/// Resolution order for the file path:
+/// Resolution order for the file path (Phase 1.10):
 /// 1. The explicit `[path]` positional, when supplied.
-/// 2. The canonical fallback `design-system/tokens.yaml` (relative to
-///    the current working directory).
-///
-/// Phase 1.10 adds an `artifacts:`-block lookup between (1) and (2);
-/// until then the canonical fallback is the only default the CLI
-/// honours.
+/// 2. The first existing file in
+///    `artifacts.tokens.paths.{change_local, project}` (with
+///    `<name>` expanded against the alphabetically-first directory
+///    under `.specify/changes/`). The on-disk
+///    `<root>/.specify/.cache/<schema>/schema.yaml` (or
+///    `<root>/schemas/<schema>/schema.yaml`) wins; without one, the
+///    embedded defaults from [`EMBEDDED_ARTIFACT_PATHS`] mirror the
+///    same paths.
+/// 3. The last candidate template (`design-system/tokens.yaml`)
+///    when nothing exists, so the read error names the most
+///    operator-friendly path.
 fn validate_tokens(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
-    let target =
-        path.map_or_else(|| PathBuf::from(DEFAULT_TOKENS_PATH), std::path::Path::to_path_buf);
+    let target = path
+        .map_or_else(|| resolve_default_path(ValidateMode::Tokens), std::path::Path::to_path_buf);
 
     let source = std::fs::read_to_string(&target).map_err(|err| VectisError::InvalidProject {
         message: format!("tokens.yaml not readable at {}: {err}", target.display()),
@@ -295,8 +332,10 @@ fn validate_tokens(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
 /// layer the cross-artifact checks RFC-11 §E demands.
 ///
 /// Resolution order for the file path mirrors [`validate_tokens`]:
-/// the explicit `[path]` positional wins, otherwise fall back to the
-/// canonical `design-system/assets.yaml`.
+/// the explicit `[path]` positional wins, otherwise the
+/// `artifacts.assets.paths` cascade (`change_local` → `project`)
+/// resolves the default; nothing-exists falls back to
+/// `design-system/assets.yaml`.
 ///
 /// On top of schema validation the function performs three
 /// cross-artifact checks:
@@ -324,8 +363,8 @@ fn validate_tokens(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
 ///    per missing optional density slot when the platform itself is
 ///    populated.
 fn validate_assets(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
-    let target =
-        path.map_or_else(|| PathBuf::from(DEFAULT_ASSETS_PATH), std::path::Path::to_path_buf);
+    let target = path
+        .map_or_else(|| resolve_default_path(ValidateMode::Assets), std::path::Path::to_path_buf);
 
     let source = std::fs::read_to_string(&target).map_err(|err| VectisError::InvalidProject {
         message: format!("assets.yaml not readable at {}: {err}", target.display()),
@@ -366,12 +405,14 @@ fn validate_assets(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
             }
         }
 
-        // Cross-artifact composition reference resolution. Phase 1.10
-        // replaces this walk with the `artifacts:`-block cascade; for
-        // now we use a project-root walk that mirrors the canonical
-        // paths from RFC-11 §H "Inputs".
-        if let Some(comp) = find_sibling_composition(&target)
-            && let Ok(comp_value) = serde_saphyr::from_str::<Value>(&comp.source)
+        // Cross-artifact composition reference resolution. Phase
+        // 1.10 routes this through the unified
+        // [`discover_artifact`] helper which reads the project's
+        // on-disk `schema.yaml` `artifacts:` block when present and
+        // otherwise falls back to the embedded defaults that mirror
+        // `schemas/vectis/schema.yaml` v2.
+        if let Some(comp_path) = discover_artifact(&target, ValidateMode::Composition)
+            && let Some(comp_value) = parse_yaml_file(&comp_path)
         {
             let assets_map = instance.get("assets").and_then(Value::as_object);
             let refs = collect_asset_references(&comp_value);
@@ -382,7 +423,7 @@ fn validate_assets(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
                         "path": asset_ref.path,
                         "message": format!(
                             "composition.yaml at {} references unknown asset id `{}`",
-                            comp.path.display(),
+                            comp_path.display(),
                             asset_ref.id,
                         ),
                     }));
@@ -410,8 +451,9 @@ fn validate_assets(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
 ///
 /// Resolution order for the file path mirrors [`validate_tokens`]
 /// and [`validate_assets`]: the explicit `[path]` positional wins,
-/// otherwise fall back to the canonical `design-system/layout.yaml`
-/// (Phase 1.10 layers the `artifacts:`-block cascade on top).
+/// otherwise the `artifacts.layout.paths` cascade (`change_local` →
+/// `project`) resolves the default; nothing-exists falls back to
+/// `design-system/layout.yaml`.
 ///
 /// The mode performs three checks:
 ///
@@ -437,8 +479,8 @@ fn validate_assets(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
 ///    `platforms.*` overrides are exempt from base-skeleton match
 ///    per §G's third edge case.
 fn validate_layout(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
-    let target =
-        path.map_or_else(|| PathBuf::from(DEFAULT_LAYOUT_PATH), std::path::Path::to_path_buf);
+    let target = path
+        .map_or_else(|| resolve_default_path(ValidateMode::Layout), std::path::Path::to_path_buf);
 
     let source = std::fs::read_to_string(&target).map_err(|err| VectisError::InvalidProject {
         message: format!("layout.yaml not readable at {}: {err}", target.display()),
@@ -500,10 +542,10 @@ fn validate_layout(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
 /// §H "`composition` mode", §I "Validation gate").
 ///
 /// Resolution order for the file path mirrors the other modes:
-/// the explicit `[path]` positional wins, otherwise fall back to
-/// the canonical `.specify/specs/composition.yaml`. Phase 1.10
-/// layers the `artifacts:`-block cascade
-/// (`paths.change_local` → `paths.baseline`) on top.
+/// the explicit `[path]` positional wins, otherwise the
+/// `artifacts.composition.paths` cascade (`change_local` →
+/// `baseline`) resolves the default; nothing-exists falls back to
+/// `.specify/specs/composition.yaml`.
 ///
 /// The mode performs four checks:
 ///
@@ -534,8 +576,10 @@ fn validate_layout(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
 /// patterns shape-check these fields at parse time, but resolution
 /// against `design.md` / `specs/` belongs to a follow-on RFC.
 fn validate_composition(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
-    let target =
-        path.map_or_else(|| PathBuf::from(DEFAULT_COMPOSITION_PATH), std::path::Path::to_path_buf);
+    let target = path.map_or_else(
+        || resolve_default_path(ValidateMode::Composition),
+        std::path::Path::to_path_buf,
+    );
 
     let source = std::fs::read_to_string(&target).map_err(|err| VectisError::InvalidProject {
         message: format!("composition.yaml not readable at {}: {err}", target.display()),
@@ -583,9 +627,13 @@ fn validate_composition(path: Option<&Path>) -> Result<CommandOutcome, VectisErr
             // Sibling discovery + auto-invoke. Both helpers are
             // ordered: `tokens` before `assets` so the envelope's
             // `results` array matches the dispatch order operators
-            // see in `vectis validate all` (Phase 1.10).
-            let tokens_sibling = find_sibling_input(&target, "tokens.yaml");
-            let assets_sibling = find_sibling_input(&target, "assets.yaml");
+            // see in `vectis validate all` (Phase 1.10). Both sites
+            // resolve through the unified [`discover_artifact`]
+            // helper Phase 1.10 introduced; the on-disk
+            // `artifacts:` block (if any) wins, embedded defaults
+            // otherwise.
+            let tokens_sibling = discover_artifact(&target, ValidateMode::Tokens);
+            let assets_sibling = discover_artifact(&target, ValidateMode::Assets);
 
             if let Some(ref tokens_path) = tokens_sibling {
                 let report = run_inner(ValidateMode::Tokens, tokens_path)?;
@@ -980,116 +1028,349 @@ fn escape_pointer_token(token: &str) -> String {
     token.replace('~', "~0").replace('/', "~1")
 }
 
-/// Minimal record of a discovered sibling composition. Carries the
-/// raw YAML so the caller can decide whether to parse, and the
-/// resolved path so the resulting error messages can name it.
-struct SiblingComposition {
-    path: PathBuf,
-    source: String,
+// -------------------------------------------------------------------
+// Phase 1.10: artifacts:-block default-path resolver
+// -------------------------------------------------------------------
+//
+// The resolver answers two related questions in one place:
+//
+// * "What file should `validate <mode>` read when no `[path]`
+//   positional is supplied?" -- that's [`resolve_default_path`].
+// * "What sibling artifact should cross-artifact resolution chase
+//   from this calling artifact's location?" -- that's
+//   [`discover_artifact`].
+//
+// Both walk up from a starting path looking for `.specify/`, parse
+// the project's `schema.yaml` (if any) for an on-disk `artifacts:`
+// block, and otherwise use the embedded defaults at
+// [`EMBEDDED_ARTIFACT_PATHS`] which mirror `schemas/vectis/schema.yaml`
+// v2 verbatim. The walk replaces the Phase 1.7
+// `find_sibling_composition` / Phase 1.9 `find_sibling_input` helpers
+// the previous phases left behind; both call sites consume
+// `Option<PathBuf>` so the migration is purely a body-level
+// refactor.
+
+/// Resolve a per-mode default path for `validate <mode>` when no
+/// `[path]` positional was supplied.
+///
+/// Walks up from CWD looking for a project root (the directory
+/// containing `.specify/`); falls through to a fixed canonical path
+/// (the project-mode template, which is the most operator-friendly
+/// "where to put it" home) when the resolver yields nothing.
+///
+/// The returned `PathBuf` is suitable for `read_to_string`; if no
+/// file exists at any candidate location, the *last* candidate is
+/// returned so the caller's "<file>.yaml not readable at <path>"
+/// error message names the location operators most likely expect.
+fn resolve_default_path(mode: ValidateMode) -> PathBuf {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let project_root = find_project_root(&cwd);
+    resolve_default_path_with_root(mode, &project_root.unwrap_or(cwd))
 }
 
-/// Walk up from the directory containing `assets_path` until a
-/// project root marked by `.specify/` is found, then look at the
-/// canonical composition locations from RFC-11 §H "Inputs":
+/// Resolve a per-mode default path against an explicit project root.
 ///
-/// 1. The first `.specify/changes/<name>/composition.yaml` (sorted
-///    alphabetically by `<name>`).
-/// 2. `.specify/specs/composition.yaml`.
-///
-/// The first existing path wins. Returns `None` when no project
-/// root is found, no composition file is present at either location,
-/// or the file cannot be read. Phase 1.10 replaces this walk with
-/// the full `artifacts:`-block cascade (`paths.change_local` then
-/// `paths.project` then `paths.baseline`).
-fn find_sibling_composition(assets_path: &Path) -> Option<SiblingComposition> {
-    let mut cursor = assets_path.parent()?.to_path_buf();
-    loop {
-        let root = cursor.join(".specify");
-        if root.is_dir() {
-            // Change-local first: the active change overrides the
-            // baseline in every other Specify lifecycle phase, so
-            // mirror that priority here. We sort the entries so the
-            // discovery is deterministic across filesystems that do
-            // not iterate alphabetically.
-            let changes_dir = root.join("changes");
-            if let Ok(entries) = std::fs::read_dir(&changes_dir) {
-                let mut names: Vec<PathBuf> = entries
-                    .filter_map(Result::ok)
-                    .map(|e| e.path())
-                    .filter(|p| p.is_dir())
-                    .collect();
-                names.sort();
-                for change_dir in names {
-                    let candidate = change_dir.join("composition.yaml");
-                    if let Ok(source) = std::fs::read_to_string(&candidate) {
-                        return Some(SiblingComposition {
-                            path: candidate,
-                            source,
-                        });
-                    }
-                }
+/// Used both by [`resolve_default_path`] (where the root is derived
+/// from CWD) and by [`validate_all`] (where the root is the operator's
+/// `[path]` positional, defaulting to CWD). When no candidate exists
+/// the function returns the *last* candidate it considered; if the
+/// candidate list itself is empty (an unknown mode key in a
+/// hand-edited `artifacts:` block), it falls back to the embedded
+/// canonical name under `<root>/`.
+fn resolve_default_path_with_root(mode: ValidateMode, project_root: &Path) -> PathBuf {
+    let artifacts = read_artifacts_block(project_root);
+    let key = artifact_key_for_mode(mode).unwrap_or("composition");
+    let templates = paths_for_key(artifacts.as_ref(), key);
+
+    let mut last_candidate: Option<PathBuf> = None;
+    for template in &templates {
+        for resolved in expand_path_template(template, project_root) {
+            if resolved.is_file() {
+                return resolved;
             }
-            let baseline = root.join("specs").join("composition.yaml");
-            if let Ok(source) = std::fs::read_to_string(&baseline) {
-                return Some(SiblingComposition {
-                    path: baseline,
-                    source,
-                });
-            }
-            // `.specify/` exists but no composition was found at
-            // either canonical location: stop the walk so we don't
-            // accidentally pick up a parent project's `.specify/`.
-            return None;
-        }
-        if !cursor.pop() {
-            return None;
+            last_candidate = Some(resolved);
         }
     }
+    last_candidate.unwrap_or_else(|| project_root.join(canonical_default_template(key)))
 }
 
-/// Locate a sibling input artifact (`tokens.yaml` or `assets.yaml`)
-/// for the supplied composition path. Two-step search:
+/// Locate a sibling artifact (in the [`ValidateMode`] sense) for a
+/// caller anchored at `start`. Returns `Some(path)` only when an
+/// existing file is found; `None` otherwise.
 ///
-/// 1. Same directory as the composition: this catches the
-///    change-local case where `composition.yaml`, `tokens.yaml`,
-///    and `assets.yaml` all live under
-///    `.specify/changes/<name>/`.
-/// 2. Project root (parent of the nearest `.specify/` ancestor):
-///    fall back to `<root>/design-system/<filename>`. This catches
-///    the canonical project-wide layout from RFC-11 §H "Inputs".
+/// Phase 1.7's `validate_assets` calls this with `start = assets.yaml`
+/// and `mode = Composition` to pick up sibling compositions for
+/// reference resolution; Phase 1.9's `validate_composition` calls it
+/// with `mode = Tokens` / `mode = Assets` for auto-invoke. Both call
+/// sites keep working unchanged because the helper preserves the
+/// `Option<PathBuf>` return shape.
 ///
-/// Returns `None` when neither location resolves. Phase 1.10 will
-/// replace this with the full `artifacts:`-block cascade
-/// (`paths.change_local` → `paths.project`); the same call sites
-/// keep working unchanged because both helpers return
-/// `Option<PathBuf>`.
-fn find_sibling_input(composition_path: &Path, filename: &str) -> Option<PathBuf> {
-    if let Some(parent) = composition_path.parent() {
+/// Resolution order mirrors what the previous `find_sibling_*` helpers
+/// did, layered with the new artifacts:-block cascade:
+///
+/// 1. **Same directory as `start`** -- catches the change-local case
+///    where every artifact sits next to its caller (e.g.
+///    `.specify/changes/<name>/{composition,tokens,assets}.yaml`),
+///    plus standalone "files in the same folder" usage that does not
+///    rely on a Specify project layout.
+/// 2. **Artifacts:-block cascade against the project root** -- walks
+///    up from `start` to find `.specify/`, reads the project's
+///    `schema.yaml` `artifacts:` block (or the embedded fallback),
+///    and tries every `paths.<role>` template in canonical order.
+fn discover_artifact(start: &Path, mode: ValidateMode) -> Option<PathBuf> {
+    let key = artifact_key_for_mode(mode)?;
+
+    // (1) Same-directory check. Mirrors the Phase 1.7 / 1.9
+    // `find_sibling_*` preamble: if the operator placed the calling
+    // artifact next to a sibling of the requested mode, that
+    // co-location is the most direct signal of intent.
+    let filename = canonical_filename_for_key(key);
+    if let Some(parent) = start.parent() {
         let local = parent.join(filename);
         if local.is_file() {
             return Some(local);
         }
     }
 
-    // Walk up to find `.specify/`. The project root is the parent
-    // of that directory (the same anchor `find_sibling_composition`
-    // uses, just inverted -- composition discovery starts FROM
-    // assets.yaml; here we discover tokens / assets FROM
-    // composition.yaml). Stop the walk once `.specify/` is found
-    // so a parent project's `.specify/` cannot bleed in.
-    let mut cursor = composition_path.parent()?.to_path_buf();
+    // (2) Artifacts:-block cascade.
+    let project_root = find_project_root(start)?;
+    let artifacts = read_artifacts_block(&project_root);
+    let templates = paths_for_key(artifacts.as_ref(), key);
+
+    for template in &templates {
+        for resolved in expand_path_template(template, &project_root) {
+            if resolved.is_file() {
+                return Some(resolved);
+            }
+        }
+    }
+    None
+}
+
+/// Filename half of the canonical-default template for a given
+/// artifact key. Used by [`discover_artifact`]'s same-directory
+/// preamble. Stays in lock-step with [`canonical_default_template`].
+fn canonical_filename_for_key(key: &str) -> &'static str {
+    match key {
+        "layout" => "layout.yaml",
+        "tokens" => "tokens.yaml",
+        "assets" => "assets.yaml",
+        _ => "composition.yaml",
+    }
+}
+
+/// Walk up from `start` (treated as a directory if it is one,
+/// otherwise its parent) looking for the first ancestor that
+/// contains a `.specify/` directory. Returns the project root --
+/// i.e. the directory containing `.specify/`, *not* `.specify/`
+/// itself.
+fn find_project_root(start: &Path) -> Option<PathBuf> {
+    let mut cursor =
+        if start.is_dir() { start.to_path_buf() } else { start.parent()?.to_path_buf() };
     loop {
         if cursor.join(".specify").is_dir() {
-            let candidate = cursor.join("design-system").join(filename);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-            return None;
+            return Some(cursor);
         }
         if !cursor.pop() {
             return None;
         }
     }
+}
+
+/// Read the `artifacts:` block from the project's on-disk
+/// `schema.yaml` (cached under `.specify/.cache/<schema>/schema.yaml`
+/// or vendored under `<root>/schemas/<schema>/schema.yaml`). Returns
+/// `None` when:
+///
+/// - There is no `.specify/project.yaml` at the supplied root.
+/// - `project.yaml` is unparseable or has no `schema:` key.
+/// - Neither candidate `schema.yaml` is on disk or parseable.
+/// - The schema has no `artifacts:` key.
+///
+/// The caller treats `None` as "use the embedded defaults" so the
+/// resolver still works for projects that have not vendored a
+/// `schema.yaml` (e.g. early-life projects, or projects whose schema
+/// only ships via the agent cache).
+fn read_artifacts_block(project_root: &Path) -> Option<Value> {
+    let project_yaml = project_root.join(".specify/project.yaml");
+    let project_text = std::fs::read_to_string(&project_yaml).ok()?;
+    let project: Value = serde_saphyr::from_str(&project_text).ok()?;
+    let schema_value = project.get("schema").and_then(Value::as_str)?;
+    let schema_name = schema_name_from_value(schema_value);
+    let candidates = [
+        project_root.join(".specify/.cache").join(&schema_name).join("schema.yaml"),
+        project_root.join("schemas").join(&schema_name).join("schema.yaml"),
+    ];
+    for candidate in &candidates {
+        let Some(schema) = parse_yaml_file(candidate) else {
+            continue;
+        };
+        if let Some(artifacts) = schema.get("artifacts") {
+            return Some(artifacts.clone());
+        }
+    }
+    None
+}
+
+/// Derive a schema directory name from a `schema:` value in
+/// `project.yaml`. Mirrors the resolution in
+/// `crates/schema/src/schema.rs::locate_schema_root`:
+///
+/// - URL-shaped values (`https://.../<name>@<ref>`) → take the last
+///   non-empty path segment, drop any `@<ref>` suffix.
+/// - Bare names (`vectis`, `omnia`, ...) → use as-is.
+fn schema_name_from_value(value: &str) -> String {
+    if value.contains("://") {
+        value.rsplit('/').find(|seg| !seg.is_empty()).map_or_else(
+            || value.to_string(),
+            |seg| seg.split('@').next().unwrap_or(seg).to_string(),
+        )
+    } else {
+        value.to_string()
+    }
+}
+
+/// Map a [`ValidateMode`] to the `artifacts:` map key it resolves
+/// against. `ValidateMode::All` has no per-mode key (the convenience
+/// verb dispatches each per-mode handler in turn) and returns `None`.
+const fn artifact_key_for_mode(mode: ValidateMode) -> Option<&'static str> {
+    match mode {
+        ValidateMode::Layout => Some("layout"),
+        ValidateMode::Composition => Some("composition"),
+        ValidateMode::Tokens => Some("tokens"),
+        ValidateMode::Assets => Some("assets"),
+        ValidateMode::All => None,
+    }
+}
+
+/// Return the ordered list of `paths.<role>` templates for the given
+/// artifact `key`. When `artifacts` carries an on-disk entry, its
+/// `paths` map's values become the resolution order
+/// (`change_local`, `project`, `baseline`); otherwise the embedded
+/// defaults from [`EMBEDDED_ARTIFACT_PATHS`] are used.
+fn paths_for_key(artifacts: Option<&Value>, key: &str) -> Vec<String> {
+    if let Some(artifacts) = artifacts
+        && let Some(entry) = artifacts.get(key)
+        && let Some(paths) = entry.get("paths")
+    {
+        let mut out = Vec::new();
+        // Honour the canonical resolution order regardless of the
+        // YAML map's insertion order. `change_local` is the
+        // active-change-first signal; `project` (inputs) and
+        // `baseline` (composition) are mutually exclusive in v1 but
+        // we walk both keys defensively so a hand-edited schema with
+        // both still works.
+        for role in ["change_local", "project", "baseline"] {
+            if let Some(template) = paths.get(role).and_then(Value::as_str) {
+                out.push(template.to_string());
+            }
+        }
+        if !out.is_empty() {
+            return out;
+        }
+    }
+    EMBEDDED_ARTIFACT_PATHS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, paths)| paths.iter().map(|(_, t)| (*t).to_string()).collect())
+        .unwrap_or_default()
+}
+
+/// Return the operator-friendly fallback template (the project /
+/// baseline location, *not* the change-local one) for a given
+/// artifact key. Used as the very last resort when neither the
+/// on-disk `artifacts:` block nor the embedded defaults yield any
+/// candidate -- which only happens for an unknown key.
+fn canonical_default_template(key: &str) -> &'static str {
+    match key {
+        "layout" => "design-system/layout.yaml",
+        "tokens" => "design-system/tokens.yaml",
+        "assets" => "design-system/assets.yaml",
+        // Composition + unknown keys: the baseline composition path
+        // is the most defensible default since `composition.yaml`
+        // is the lifecycle artifact every other mode points back at.
+        _ => ".specify/specs/composition.yaml",
+    }
+}
+
+/// Expand a `paths.<role>` template against `project_root`,
+/// substituting `<name>` with each directory under
+/// `.specify/changes/` (sorted alphabetically). Templates without
+/// `<name>` resolve to a single absolute path.
+fn expand_path_template(template: &str, project_root: &Path) -> Vec<PathBuf> {
+    if !template.contains("<name>") {
+        return vec![project_root.join(template)];
+    }
+    let changes_dir = project_root.join(".specify/changes");
+    let Ok(entries) = std::fs::read_dir(&changes_dir) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .filter_map(Result::ok)
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
+    names.sort();
+    names.into_iter().map(|name| project_root.join(template.replace("<name>", &name))).collect()
+}
+
+// -------------------------------------------------------------------
+// Phase 1.10: `validate all`
+// -------------------------------------------------------------------
+
+/// Run every per-mode validator against the supplied project root
+/// (or CWD when none is given) and fold the per-mode envelopes into
+/// a combined `{ "mode": "all", "results": [...] }` envelope (RFC-11
+/// §H closing paragraph).
+///
+/// Sub-mode order: `layout`, `composition`, `tokens`, `assets` --
+/// matches the operator-friendly "structural input → wired
+/// composition → cross-artifact references" pipeline. When a sub-mode's
+/// default-resolved input does not exist on disk, the sub-report is a
+/// synthetic `{ mode, path, errors: [], warnings: [], skipped: true,
+/// message: ... }` so the combined run continues; the dispatcher's
+/// `validate_exit_code` (recursion-aware since Phase 1.6) only flips
+/// to non-zero when a real sub-report has errors.
+fn validate_all(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
+    let project_root = path
+        .map(Path::to_path_buf)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let mut results: Vec<Value> = Vec::new();
+    for mode in [
+        ValidateMode::Layout,
+        ValidateMode::Composition,
+        ValidateMode::Tokens,
+        ValidateMode::Assets,
+    ] {
+        let target = resolve_default_path_with_root(mode, &project_root);
+        let report = if target.is_file() {
+            run_inner(mode, &target)?
+        } else {
+            json!({
+                "mode": mode.as_str(),
+                "path": target.display().to_string(),
+                "errors": Vec::<Value>::new(),
+                "warnings": Vec::<Value>::new(),
+                "skipped": true,
+                "message": format!(
+                    "no input found at {}; default-resolved via the artifacts: block (or its embedded fallback)",
+                    target.display(),
+                ),
+            })
+        };
+        results.push(json!({
+            "mode": mode.as_str(),
+            "report": report,
+        }));
+    }
+
+    Ok(CommandOutcome::Success(json!({
+        "mode": ValidateMode::All.as_str(),
+        "path": project_root.display().to_string(),
+        "results": results,
+    })))
 }
 
 /// Walk a composition document and append an error for every token
@@ -1796,27 +2077,6 @@ assets:
                 );
             }
             other => panic!("expected InvalidProject for missing file, got {other:?}"),
-        }
-    }
-
-    /// Stub modes (every mode except `tokens`, `assets`, `layout`,
-    /// and `composition` after Phases 1.6 / 1.7 / 1.8 / 1.9) MUST
-    /// continue to return [`CommandOutcome::Stub`] until the
-    /// corresponding phase lands. After Phase 1.9 only `all`
-    /// remains stubbed; this pins the regression so accidentally
-    /// flipping that mode to `Success` shows up in CI. (Kept as a
-    /// `#[test]` rather than inlining into a sibling test so Phase
-    /// 1.10 can simply delete the function once `all` lands.)
-    #[test]
-    fn stub_modes_still_return_stub() {
-        let mode = ValidateMode::All;
-        let args = ValidateArgs { mode, path: None };
-        let outcome = run(&args).expect("stub never errors");
-        match outcome {
-            CommandOutcome::Stub { command } => assert_eq!(command, "validate all"),
-            CommandOutcome::Success(value) => {
-                panic!("expected Stub for {mode:?}, got Success({value})")
-            }
         }
     }
 
@@ -3478,5 +3738,479 @@ screens:
             }
             other => panic!("expected InvalidProject for missing file, got {other:?}"),
         }
+    }
+
+    // -------------------------------------------------------------
+    // Phase 1.10: artifacts:-block resolver + `validate all`
+    // -------------------------------------------------------------
+
+    /// Materialise a minimal Specify project under a fresh tempdir
+    /// matching the canonical layout `read_artifacts_block` walks:
+    /// `<root>/.specify/project.yaml` plus
+    /// `<root>/schemas/vectis/schema.yaml` (the local-shape schema
+    /// path; the cached shape under `.specify/.cache/<name>/` works
+    /// the same way and is exercised by a sibling test below). The
+    /// schema content embeds the v2 `artifacts:` block from
+    /// `schemas/vectis/schema.yaml` (so the resolver picks up the
+    /// on-disk shape rather than the embedded fallback).
+    fn write_specify_project(extra_schema_yaml: Option<&str>) -> TempDir {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dot_specify = tmp.path().join(".specify");
+        std::fs::create_dir_all(&dot_specify).expect("mkdir .specify");
+        std::fs::write(dot_specify.join("project.yaml"), "name: demo\nschema: vectis\n")
+            .expect("write project.yaml");
+        if let Some(yaml) = extra_schema_yaml {
+            let schema_dir = tmp.path().join("schemas").join("vectis");
+            std::fs::create_dir_all(&schema_dir).expect("mkdir schemas/vectis");
+            std::fs::write(schema_dir.join("schema.yaml"), yaml).expect("write schema.yaml");
+        }
+        tmp
+    }
+
+    /// Minimal `schema.yaml` body carrying just the v2 `artifacts:`
+    /// block. Mirrors the four artifact entries the resolver knows
+    /// about; deliberately scoped to v1 keys so a future schema
+    /// extension (e.g. `components.yaml`) does not silently change
+    /// what this test exercises.
+    const V2_SCHEMA_YAML: &str = r"name: vectis
+version: 2
+description: test
+pipeline:
+  define: []
+  build: []
+  merge: []
+artifacts:
+  layout:
+    role: input
+    paths:
+      change_local: .specify/changes/<name>/layout.yaml
+      project: design-system/layout.yaml
+  tokens:
+    role: input
+    paths:
+      change_local: .specify/changes/<name>/tokens.yaml
+      project: design-system/tokens.yaml
+  assets:
+    role: input
+    paths:
+      change_local: .specify/changes/<name>/assets.yaml
+      project: design-system/assets.yaml
+  composition:
+    role: define-output
+    paths:
+      change_local: .specify/changes/<name>/composition.yaml
+      baseline: .specify/specs/composition.yaml
+";
+
+    /// `find_project_root` walks up from a starting path until it
+    /// finds a `.specify/` ancestor. A starting path that is itself
+    /// the project root resolves cleanly; a starting path nested
+    /// under the root walks up to find it. A path with no Specify
+    /// ancestor returns `None`.
+    #[test]
+    fn find_project_root_walks_up_to_specify_dir() {
+        let tmp = write_specify_project(None);
+        let nested = tmp.path().join("a/b/c");
+        std::fs::create_dir_all(&nested).expect("mkdir nested");
+
+        // Direct hit: the start path is the project root itself.
+        assert_eq!(find_project_root(tmp.path()).as_deref(), Some(tmp.path()));
+        // Nested directory: walks up.
+        assert_eq!(find_project_root(&nested).as_deref(), Some(tmp.path()));
+        // A file inside a nested directory: walks up from its parent.
+        let file = nested.join("file.yaml");
+        std::fs::write(&file, b"version: 1\n").expect("write file");
+        assert_eq!(find_project_root(&file).as_deref(), Some(tmp.path()));
+
+        // No ancestor with `.specify/`: a fresh tempdir without it.
+        let bare = tempfile::tempdir().expect("tempdir");
+        assert!(find_project_root(bare.path()).is_none());
+    }
+
+    /// `paths_for_key` reads the on-disk `artifacts:` block when
+    /// present and falls back to [`EMBEDDED_ARTIFACT_PATHS`]
+    /// otherwise. Both paths produce the same canonical resolution
+    /// order for v1.
+    #[test]
+    fn paths_for_key_prefers_on_disk_block_over_embedded_default() {
+        // Embedded fallback (no project.yaml resolved).
+        let embedded = paths_for_key(None, "tokens");
+        assert_eq!(
+            embedded,
+            vec![
+                ".specify/changes/<name>/tokens.yaml".to_string(),
+                "design-system/tokens.yaml".to_string(),
+            ]
+        );
+
+        // On-disk override that swaps the project path. The on-disk
+        // value MUST win.
+        let custom = json!({
+            "tokens": {
+                "paths": {
+                    "change_local": ".specify/changes/<name>/tokens.yaml",
+                    "project": "custom/path/tokens.yaml",
+                }
+            }
+        });
+        let resolved = paths_for_key(Some(&custom), "tokens");
+        assert_eq!(
+            resolved,
+            vec![
+                ".specify/changes/<name>/tokens.yaml".to_string(),
+                "custom/path/tokens.yaml".to_string(),
+            ]
+        );
+
+        // Unknown key (e.g. a future artifact) returns an empty
+        // candidate list so the caller can fall back to the
+        // canonical-default-template helper.
+        assert!(paths_for_key(None, "components").is_empty());
+    }
+
+    /// `expand_path_template` substitutes `<name>` against every
+    /// directory under `.specify/changes/`, sorted alphabetically.
+    /// Templates without `<name>` resolve to a single absolute path
+    /// rooted at the project root. Templates with `<name>` against a
+    /// project that has no `.specify/changes/` directory resolve to
+    /// an empty list so the caller skips to the next template.
+    #[test]
+    fn expand_path_template_handles_name_substitution() {
+        let tmp = write_specify_project(None);
+        let changes_dir = tmp.path().join(".specify/changes");
+        std::fs::create_dir_all(changes_dir.join("zeta")).expect("mkdir zeta");
+        std::fs::create_dir_all(changes_dir.join("alpha")).expect("mkdir alpha");
+
+        let with_name = expand_path_template(".specify/changes/<name>/layout.yaml", tmp.path());
+        // Sorted: alpha first, zeta second.
+        assert_eq!(with_name.len(), 2);
+        assert!(with_name[0].ends_with(".specify/changes/alpha/layout.yaml"));
+        assert!(with_name[1].ends_with(".specify/changes/zeta/layout.yaml"));
+
+        let without_name = expand_path_template("design-system/layout.yaml", tmp.path());
+        assert_eq!(without_name.len(), 1);
+        assert!(without_name[0].ends_with("design-system/layout.yaml"));
+
+        // Project with no `.specify/changes/` directory: the
+        // template resolves to no candidates rather than panicking.
+        let empty = tempfile::tempdir().expect("tempdir");
+        let no_changes = expand_path_template(".specify/changes/<name>/x.yaml", empty.path());
+        assert!(no_changes.is_empty());
+    }
+
+    /// The default-path resolver's primary acceptance bullet: when
+    /// no `[path]` is supplied, `validate layout` discovers
+    /// `.specify/changes/<active>/layout.yaml` first (the
+    /// `change_local` template) before falling back to
+    /// `design-system/layout.yaml` (the `project` template).
+    #[test]
+    fn resolve_default_path_prefers_change_local_over_project() {
+        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        let change_dir = tmp.path().join(".specify/changes/active");
+        std::fs::create_dir_all(&change_dir).expect("mkdir change");
+        std::fs::write(change_dir.join("layout.yaml"), "version: 1\nscreens: {}\n")
+            .expect("write layout.yaml");
+        // Also create the project-shape file so the resolver could
+        // pick either; assert that change-local wins.
+        let design = tmp.path().join("design-system");
+        std::fs::create_dir_all(&design).expect("mkdir design-system");
+        std::fs::write(design.join("layout.yaml"), "version: 1\nscreens: {}\n")
+            .expect("write design-system/layout.yaml");
+
+        let resolved = resolve_default_path_with_root(ValidateMode::Layout, tmp.path());
+        assert!(
+            resolved.ends_with(".specify/changes/active/layout.yaml"),
+            "expected change-local resolution, got: {}",
+            resolved.display(),
+        );
+    }
+
+    /// When the change-local file is absent but the project-shape
+    /// exists, `validate layout` falls back to `design-system/`.
+    #[test]
+    fn resolve_default_path_falls_back_to_project_when_change_local_missing() {
+        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        let design = tmp.path().join("design-system");
+        std::fs::create_dir_all(&design).expect("mkdir design-system");
+        std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
+
+        let resolved = resolve_default_path_with_root(ValidateMode::Tokens, tmp.path());
+        assert!(
+            resolved.ends_with("design-system/tokens.yaml"),
+            "expected project-shape resolution, got: {}",
+            resolved.display(),
+        );
+    }
+
+    /// When neither template resolves, the resolver returns the
+    /// last candidate (the project / baseline shape) so the caller's
+    /// "<file>.yaml not readable" error names the most
+    /// operator-friendly path.
+    #[test]
+    fn resolve_default_path_returns_last_candidate_when_nothing_exists() {
+        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        // No layout.yaml / tokens.yaml / etc. on disk.
+        let layout = resolve_default_path_with_root(ValidateMode::Layout, tmp.path());
+        assert!(
+            layout.ends_with("design-system/layout.yaml"),
+            "expected design-system/layout.yaml fallback, got: {}",
+            layout.display(),
+        );
+        let composition = resolve_default_path_with_root(ValidateMode::Composition, tmp.path());
+        assert!(
+            composition.ends_with(".specify/specs/composition.yaml"),
+            "expected baseline composition fallback, got: {}",
+            composition.display(),
+        );
+    }
+
+    /// Removing the `artifacts:` block from `schema.yaml` (the v1
+    /// shape every other Specify schema ships today) MUST fall back
+    /// to the embedded defaults cleanly. Identical resolution shape
+    /// to the on-disk-block tests above.
+    #[test]
+    fn resolve_default_path_falls_back_to_embedded_defaults_without_block() {
+        // Schema file without an `artifacts:` block (mirroring the
+        // omnia / contracts schemas that don't carry the v1
+        // contract).
+        let schema_no_artifacts = r"name: vectis
+version: 2
+description: test
+pipeline:
+  define: []
+  build: []
+  merge: []
+";
+        let tmp = write_specify_project(Some(schema_no_artifacts));
+        let design = tmp.path().join("design-system");
+        std::fs::create_dir_all(&design).expect("mkdir design-system");
+        std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
+
+        let resolved = resolve_default_path_with_root(ValidateMode::Tokens, tmp.path());
+        assert!(
+            resolved.ends_with("design-system/tokens.yaml"),
+            "expected embedded-default resolution, got: {}",
+            resolved.display(),
+        );
+    }
+
+    /// `discover_artifact` is the cross-artifact discovery helper
+    /// `validate_assets` (Phase 1.7) and `validate_composition`
+    /// (Phase 1.9) call. It returns `Some(path)` only when the file
+    /// is actually on disk -- never the "best guess" fallback path
+    /// the per-mode resolver returns. This pins that contract
+    /// distinction: `Some` means "we found it"; `None` means "no
+    /// sibling was found, skip cross-artifact resolution".
+    #[test]
+    fn discover_artifact_returns_some_only_for_existing_files() {
+        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        let comp_dir = tmp.path().join(".specify/specs");
+        std::fs::create_dir_all(&comp_dir).expect("mkdir specs");
+        std::fs::write(comp_dir.join("composition.yaml"), "version: 1\nscreens: {}\n")
+            .expect("write composition.yaml");
+        let assets_path = tmp.path().join("design-system/assets.yaml");
+        std::fs::create_dir_all(assets_path.parent().expect("parent"))
+            .expect("mkdir design-system");
+        std::fs::write(&assets_path, "version: 1\nassets: {}\n").expect("write assets.yaml");
+
+        // Discovering composition from assets.yaml: composition is
+        // on disk → Some.
+        let found = discover_artifact(&assets_path, ValidateMode::Composition);
+        assert!(
+            found.as_deref().is_some_and(|p| p.ends_with(".specify/specs/composition.yaml")),
+            "expected composition discovery to succeed, got: {found:?}",
+        );
+
+        // Discovering tokens from assets.yaml: tokens is NOT on
+        // disk (no design-system/tokens.yaml) → None. The
+        // per-mode resolver would return a "best guess" path here;
+        // discover_artifact does not.
+        let missing = discover_artifact(&assets_path, ValidateMode::Tokens);
+        assert!(missing.is_none(), "expected tokens discovery to return None, got: {missing:?}");
+
+        // A start path with no Specify ancestor returns None.
+        let bare = tempfile::tempdir().expect("tempdir");
+        assert!(
+            discover_artifact(bare.path(), ValidateMode::Composition).is_none(),
+            "expected None for non-Specify starting paths"
+        );
+    }
+
+    /// The `.specify/.cache/<schema>/schema.yaml` shape (cached by
+    /// the agent) must resolve identically to the local
+    /// `<root>/schemas/<schema>/schema.yaml` shape exercised by the
+    /// other tests. Pinning both paths so a future cache vs. local
+    /// preference flip surfaces here.
+    #[test]
+    fn read_artifacts_block_finds_cached_schema_when_local_is_absent() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dot_specify = tmp.path().join(".specify");
+        std::fs::create_dir_all(&dot_specify).expect("mkdir .specify");
+        std::fs::write(dot_specify.join("project.yaml"), "name: demo\nschema: vectis\n")
+            .expect("write project.yaml");
+        // Place the schema under `.specify/.cache/vectis/schema.yaml`
+        // -- the agent-managed cache path -- and NOT under
+        // `<root>/schemas/vectis/`.
+        let cache_dir = dot_specify.join(".cache").join("vectis");
+        std::fs::create_dir_all(&cache_dir).expect("mkdir cache");
+        std::fs::write(cache_dir.join("schema.yaml"), V2_SCHEMA_YAML)
+            .expect("write cached schema.yaml");
+
+        let artifacts = read_artifacts_block(tmp.path()).expect("artifacts found in cache");
+        // Spot-check: every v1 key is present.
+        for key in ["layout", "tokens", "assets", "composition"] {
+            assert!(artifacts.get(key).is_some(), "expected `{key}` in artifacts: {artifacts}");
+        }
+    }
+
+    /// `read_artifacts_block` interprets URL-shaped `schema:`
+    /// values (e.g. `https://.../vectis@1`) by extracting the last
+    /// path segment minus any `@<ref>` suffix. This mirrors the
+    /// canonical resolution in `crates/schema/src/schema.rs`.
+    #[test]
+    fn schema_name_from_value_handles_urls_and_refs() {
+        assert_eq!(schema_name_from_value("vectis"), "vectis");
+        assert_eq!(schema_name_from_value("https://example.com/schemas/vectis"), "vectis");
+        assert_eq!(schema_name_from_value("https://example.com/schemas/vectis@1.2.3"), "vectis");
+        assert_eq!(schema_name_from_value("https://example.com/schemas/vectis@1.2.3/"), "vectis");
+    }
+
+    // -------------------------------------------------------------
+    // Phase 1.10: `validate all` envelope shape + sub-mode dispatch
+    // -------------------------------------------------------------
+
+    /// The combined-run envelope MUST carry `mode: "all"`, the
+    /// project root in `path`, and a `results` array with exactly
+    /// four sub-reports in the canonical order layout → composition
+    /// → tokens → assets. Each sub-report has its own per-mode
+    /// envelope under `report`.
+    #[test]
+    fn all_envelope_runs_every_mode_in_canonical_order() {
+        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+
+        // Materialise every artifact at the project shape so each
+        // sub-mode produces a real (non-skipped) report.
+        let design = tmp.path().join("design-system");
+        std::fs::create_dir_all(&design).expect("mkdir design-system");
+        std::fs::write(design.join("layout.yaml"), "version: 1\nscreens: {}\n")
+            .expect("write layout.yaml");
+        std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
+        std::fs::write(design.join("assets.yaml"), "version: 1\nassets: {}\n")
+            .expect("write assets.yaml");
+        let specs = tmp.path().join(".specify/specs");
+        std::fs::create_dir_all(&specs).expect("mkdir specs");
+        std::fs::write(specs.join("composition.yaml"), "version: 1\nscreens: {}\n")
+            .expect("write composition.yaml");
+
+        let envelope = extract_envelope(
+            run(&ValidateArgs {
+                mode: ValidateMode::All,
+                path: Some(tmp.path().to_path_buf()),
+            })
+            .expect("run all succeeds"),
+        );
+
+        assert_eq!(envelope["mode"], "all");
+        assert_eq!(
+            envelope["path"].as_str().expect("path string"),
+            tmp.path().display().to_string()
+        );
+        let results = envelope["results"].as_array().expect("results array");
+        assert_eq!(results.len(), 4, "expected four sub-reports: {envelope}");
+        assert_eq!(results[0]["mode"], "layout");
+        assert_eq!(results[1]["mode"], "composition");
+        assert_eq!(results[2]["mode"], "tokens");
+        assert_eq!(results[3]["mode"], "assets");
+
+        // Each sub-report must have a real per-mode envelope (NOT
+        // the skipped synthetic shape).
+        for entry in results {
+            let report = &entry["report"];
+            assert!(report.get("skipped").is_none(), "unexpected skipped: {entry}");
+            assert_eq!(
+                report["errors"].as_array().map(Vec::len),
+                Some(0),
+                "{}: unexpected errors: {entry}",
+                entry["mode"]
+            );
+        }
+    }
+
+    /// Sub-modes whose default-resolved input does not exist on
+    /// disk MUST surface as a synthetic `{ skipped: true }`
+    /// sub-report rather than a hard `InvalidProject` failure -- so
+    /// `validate all` keeps running through the rest of the modes.
+    #[test]
+    fn all_envelope_skips_missing_inputs_without_failing() {
+        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        // Provide ONLY tokens.yaml; the other three are absent.
+        let design = tmp.path().join("design-system");
+        std::fs::create_dir_all(&design).expect("mkdir design-system");
+        std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
+
+        let envelope = extract_envelope(
+            run(&ValidateArgs {
+                mode: ValidateMode::All,
+                path: Some(tmp.path().to_path_buf()),
+            })
+            .expect("run all does not fail on missing inputs"),
+        );
+
+        let results = envelope["results"].as_array().expect("results array");
+        let by_mode: std::collections::BTreeMap<&str, &Value> =
+            results.iter().map(|e| (e["mode"].as_str().expect("mode str"), e)).collect();
+
+        for skipped_mode in ["layout", "composition", "assets"] {
+            let report = &by_mode[skipped_mode]["report"];
+            assert_eq!(
+                report["skipped"],
+                Value::Bool(true),
+                "[{skipped_mode}] expected skipped: {report}",
+            );
+            assert_eq!(
+                report["errors"].as_array().map(Vec::len),
+                Some(0),
+                "[{skipped_mode}] errors must stay empty: {report}"
+            );
+        }
+        let tokens_report = &by_mode["tokens"]["report"];
+        assert!(
+            tokens_report.get("skipped").is_none(),
+            "tokens.yaml IS on disk; skipped MUST be absent: {tokens_report}",
+        );
+    }
+
+    /// A sub-mode's findings MUST surface inside `results[*].report`
+    /// so the dispatcher's recursion-aware `validate_exit_code`
+    /// helper picks them up. This test feeds a deliberately-broken
+    /// tokens.yaml and asserts the broken-hex error rides the
+    /// nested sub-report.
+    #[test]
+    fn all_envelope_propagates_sub_mode_errors_into_nested_report() {
+        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        let design = tmp.path().join("design-system");
+        std::fs::create_dir_all(&design).expect("mkdir design-system");
+        std::fs::write(
+            design.join("tokens.yaml"),
+            "version: 1\ncolors:\n  primary:\n    light: \"#xyz\"\n    dark: \"#000000\"\n",
+        )
+        .expect("write tokens.yaml");
+
+        let envelope = extract_envelope(
+            run(&ValidateArgs {
+                mode: ValidateMode::All,
+                path: Some(tmp.path().to_path_buf()),
+            })
+            .expect("run all succeeds"),
+        );
+        let results = envelope["results"].as_array().expect("results array");
+        let tokens_entry =
+            results.iter().find(|e| e["mode"] == "tokens").expect("tokens sub-report present");
+        let tokens_errors =
+            tokens_entry["report"]["errors"].as_array().expect("tokens errors array");
+        assert!(
+            !tokens_errors.is_empty(),
+            "broken hex MUST surface in nested tokens report: {envelope}"
+        );
     }
 }
