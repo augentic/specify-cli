@@ -1,6 +1,5 @@
 pub mod capability;
 pub mod change;
-pub mod contract;
 pub mod init;
 pub mod initiative;
 pub mod migrate;
@@ -62,9 +61,6 @@ pub fn run(cli: Cli) -> CliResult {
                 workspace::run_workspace_merge(ctx, projects, dry_run)
             }),
         },
-        Commands::Contract { action } => {
-            run_with_project(cli.format, |ctx| contract::run_contract(ctx, action))
-        }
         Commands::Migrate { action } => match action {
             MigrateAction::V2Layout { dry_run } => run_bare(cli.format, || {
                 let cwd = std::env::current_dir().map_err(Error::Io)?;
