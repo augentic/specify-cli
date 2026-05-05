@@ -36,11 +36,18 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
-use specify_registry::{Registry, RegistryProject};
-use specify_change::Plan;
 use specify_error::Error;
 
-use crate::config::ProjectConfig;
+use crate::registry::{Registry, RegistryProject};
+
+/// Absolute path to `<project_dir>/.specify/workspace/`. Mirror of
+/// `ProjectConfig::specify_dir(...).join("workspace")` from the binary;
+/// duplicated so the registry crate stays self-contained (the binary
+/// is downstream of this crate, so we cannot reach back to
+/// `ProjectConfig`).
+fn workspace_base(project_dir: &Path) -> PathBuf {
+    project_dir.join(".specify").join("workspace")
+}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -444,14 +451,18 @@ pub fn project_path_for(
 
 /// Core implementation of `specify workspace merge`.
 ///
+/// `initiative_name` is `plan.name` from the binary side; the registry
+/// crate cannot depend on `specify-change` (which already depends on
+/// `specify-registry`), so callers flatten the field at the boundary.
+///
 /// # Errors
 ///
 /// Returns an error before any per-project work when a precondition
 /// fails (no plan, empty registry, …). Per-project errors are
 /// captured in [`MergeProjectResult::status`] and never bubble up.
 pub fn run_workspace_merge_impl<C: GhClient>(
-    project_dir: &Path, plan: &Plan, registry: &Registry, gh: &C, filter_projects: &[String],
-    dry_run: bool,
+    project_dir: &Path, initiative_name: &str, registry: &Registry, gh: &C,
+    filter_projects: &[String], dry_run: bool,
 ) -> Result<Vec<MergeProjectResult>, Error> {
     if registry.projects.is_empty() {
         return Err(Error::Config(
@@ -461,9 +472,8 @@ pub fn run_workspace_merge_impl<C: GhClient>(
         ));
     }
 
-    let initiative_name = &plan.name;
     let branch_name = format!("{SPECIFY_BRANCH_PREFIX}{initiative_name}");
-    let workspace_base = ProjectConfig::specify_dir(project_dir).join("workspace");
+    let workspace_base = workspace_base(project_dir);
 
     let target_projects: Vec<&RegistryProject> = if filter_projects.is_empty() {
         registry.projects.iter().collect()
@@ -886,23 +896,14 @@ mod tests {
         }
     }
 
-    fn plan_named(name: &str) -> Plan {
-        Plan {
-            name: name.to_string(),
-            sources: std::collections::BTreeMap::new(),
-            changes: Vec::new(),
-        }
-    }
-
     #[test]
     fn empty_registry_errors_before_any_gh_call() {
-        let plan = plan_named("foo");
         let registry = Registry {
             version: 1,
             projects: vec![],
         };
         let mock = MockGh::new();
-        let err = run_workspace_merge_impl(Path::new("/proj"), &plan, &registry, &mock, &[], false)
+        let err = run_workspace_merge_impl(Path::new("/proj"), "foo", &registry, &mock, &[], false)
             .expect_err("empty registry must error");
         assert!(matches!(err, Error::Config(_)), "expected Error::Config, got {err:?}");
         assert!(mock.calls.borrow().is_empty(), "no gh calls should fire on empty registry");
@@ -910,11 +911,10 @@ mod tests {
 
     #[test]
     fn no_branch_when_pr_view_returns_none() {
-        let plan = plan_named("foo");
         let registry = registry_with(&["alpha"]);
         let mock = MockGh::new().with_view("specify/foo", Ok(None));
         let results =
-            run_workspace_merge_impl(Path::new("/proj"), &plan, &registry, &mock, &[], false)
+            run_workspace_merge_impl(Path::new("/proj"), "foo", &registry, &mock, &[], false)
                 .expect("ok");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].status, MergeStatus::NoBranch);
@@ -928,7 +928,6 @@ mod tests {
 
     #[test]
     fn branch_pattern_mismatch_rejects_off_pattern_pr() {
-        let plan = plan_named("foo");
         let registry = registry_with(&["alpha"]);
         let bogus = PrView {
             state: PrState::Open,
@@ -939,7 +938,7 @@ mod tests {
         };
         let mock = MockGh::new().with_view("specify/foo", Ok(Some(bogus)));
         let results =
-            run_workspace_merge_impl(Path::new("/proj"), &plan, &registry, &mock, &[], false)
+            run_workspace_merge_impl(Path::new("/proj"), "foo", &registry, &mock, &[], false)
                 .expect("ok");
         assert_eq!(results[0].status, MergeStatus::BranchPatternMismatch);
         // Diagnostic surfaces the literal expected branch (RFC-9 §4A
@@ -958,7 +957,6 @@ mod tests {
 
     #[test]
     fn already_merged_short_circuits() {
-        let plan = plan_named("foo");
         let registry = registry_with(&["alpha"]);
         let mock = MockGh::new().with_view(
             "specify/foo",
@@ -971,7 +969,7 @@ mod tests {
             })),
         );
         let results =
-            run_workspace_merge_impl(Path::new("/proj"), &plan, &registry, &mock, &[], false)
+            run_workspace_merge_impl(Path::new("/proj"), "foo", &registry, &mock, &[], false)
                 .expect("ok");
         assert_eq!(results[0].status, MergeStatus::Merged);
         assert_eq!(results[0].pr_number, Some(7));
@@ -983,7 +981,6 @@ mod tests {
 
     #[test]
     fn closed_without_merge_classifies_closed() {
-        let plan = plan_named("foo");
         let registry = registry_with(&["alpha"]);
         let mock = MockGh::new().with_view(
             "specify/foo",
@@ -996,14 +993,13 @@ mod tests {
             })),
         );
         let results =
-            run_workspace_merge_impl(Path::new("/proj"), &plan, &registry, &mock, &[], false)
+            run_workspace_merge_impl(Path::new("/proj"), "foo", &registry, &mock, &[], false)
                 .expect("ok");
         assert_eq!(results[0].status, MergeStatus::Closed);
     }
 
     #[test]
     fn pending_checks_reported_without_merging() {
-        let plan = plan_named("foo");
         let registry = registry_with(&["alpha"]);
         let mock = MockGh::new()
             .with_view(
@@ -1030,7 +1026,7 @@ mod tests {
                 ]),
             );
         let results =
-            run_workspace_merge_impl(Path::new("/proj"), &plan, &registry, &mock, &[], false)
+            run_workspace_merge_impl(Path::new("/proj"), "foo", &registry, &mock, &[], false)
                 .expect("ok");
         assert_eq!(results[0].status, MergeStatus::PendingChecks);
         assert!(
@@ -1046,7 +1042,6 @@ mod tests {
 
     #[test]
     fn failed_checks_reported_without_merging() {
-        let plan = plan_named("foo");
         let registry = registry_with(&["alpha"]);
         let mock = MockGh::new()
             .with_view(
@@ -1067,7 +1062,7 @@ mod tests {
                 }]),
             );
         let results =
-            run_workspace_merge_impl(Path::new("/proj"), &plan, &registry, &mock, &[], false)
+            run_workspace_merge_impl(Path::new("/proj"), "foo", &registry, &mock, &[], false)
                 .expect("ok");
         assert_eq!(results[0].status, MergeStatus::FailedChecks);
         assert!(
@@ -1083,7 +1078,6 @@ mod tests {
 
     #[test]
     fn green_pr_merged_in_real_run() {
-        let plan = plan_named("foo");
         let registry = registry_with(&["alpha"]);
         let mock = MockGh::new()
             .with_view(
@@ -1105,7 +1099,7 @@ mod tests {
             )
             .with_merge(15, Ok(()));
         let results =
-            run_workspace_merge_impl(Path::new("/proj"), &plan, &registry, &mock, &[], false)
+            run_workspace_merge_impl(Path::new("/proj"), "foo", &registry, &mock, &[], false)
                 .expect("ok");
         assert_eq!(results[0].status, MergeStatus::Merged);
         assert_eq!(results[0].pr_number, Some(15));
@@ -1117,7 +1111,6 @@ mod tests {
 
     #[test]
     fn green_pr_dry_run_does_not_invoke_merge() {
-        let plan = plan_named("foo");
         let registry = registry_with(&["alpha"]);
         let mock = MockGh::new()
             .with_view(
@@ -1139,7 +1132,7 @@ mod tests {
             )
             .with_merge(17, Err("must not be called".to_string()));
         let results =
-            run_workspace_merge_impl(Path::new("/proj"), &plan, &registry, &mock, &[], true)
+            run_workspace_merge_impl(Path::new("/proj"), "foo", &registry, &mock, &[], true)
                 .expect("ok");
         assert_eq!(results[0].status, MergeStatus::WouldMerge);
         let calls = mock.calls.borrow();
@@ -1149,7 +1142,6 @@ mod tests {
 
     #[test]
     fn merge_failure_reports_failed_status_with_detail() {
-        let plan = plan_named("foo");
         let registry = registry_with(&["alpha"]);
         let mock = MockGh::new()
             .with_view(
@@ -1171,7 +1163,7 @@ mod tests {
             )
             .with_merge(19, Err("merge conflict".to_string()));
         let results =
-            run_workspace_merge_impl(Path::new("/proj"), &plan, &registry, &mock, &[], false)
+            run_workspace_merge_impl(Path::new("/proj"), "foo", &registry, &mock, &[], false)
                 .expect("ok");
         assert_eq!(results[0].status, MergeStatus::Failed);
         assert!(
@@ -1215,13 +1207,12 @@ mod tests {
     /// processing of others."
     #[test]
     fn batch_continues_after_one_project_failure() {
-        let plan = plan_named("foo");
         let registry = registry_with(&["alpha", "beta", "gamma"]);
         // Base mock applies to alpha + beta + gamma; the per-project
         // wrapper short-circuits beta with a simulated gh error.
         let mock = MockGh::new().with_view("specify/foo", Ok(None));
         let project_dir = Path::new("/proj");
-        let workspace_base = ProjectConfig::specify_dir(project_dir).join("workspace");
+        let workspace_base = workspace_base(project_dir);
         let beta_path = workspace_base.join("beta");
         let per_proj = PerProjectMock {
             base: mock,
@@ -1229,7 +1220,7 @@ mod tests {
         };
 
         let results =
-            run_workspace_merge_impl(project_dir, &plan, &registry, &per_proj, &[], false)
+            run_workspace_merge_impl(project_dir, "foo", &registry, &per_proj, &[], false)
                 .expect("ok");
         assert_eq!(results.len(), 3);
         // alpha + gamma classify as no-branch (the base mock returns None).
@@ -1248,12 +1239,11 @@ mod tests {
 
     #[test]
     fn project_filter_restricts_to_named_projects() {
-        let plan = plan_named("foo");
         let registry = registry_with(&["alpha", "beta", "gamma"]);
         let mock = MockGh::new().with_view("specify/foo", Ok(None));
         let results = run_workspace_merge_impl(
             Path::new("/proj"),
-            &plan,
+            "foo",
             &registry,
             &mock,
             &["beta".to_string()],

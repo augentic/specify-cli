@@ -1,15 +1,35 @@
 //! Multi-project workspace materialisation under `.specify/workspace/`
 //! (RFC-3a C29).
+//!
+//! Lifted into `specify-registry` by RFC-13 chunk 2.2 so all
+//! registry-derived state lives in one crate. The `Plan` argument was
+//! flattened to `&str initiative_name` to avoid a cycle with
+//! `specify-change` (which already depends on `specify-registry`); the
+//! callers in the binary pass `&plan.name` and the same surface
+//! continues to be exposed as `crate::workspace::*` re-exports from
+//! `src/lib.rs`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use specify_registry::Registry;
-use specify_change::Plan;
 use specify_error::Error;
 
-use crate::config::ProjectConfig;
-use crate::init::ensure_specify_gitignore_entries;
+use crate::Registry;
+use crate::gitignore::ensure_specify_gitignore_entries;
+use crate::registry::RegistryProject;
+
+/// Absolute path to `<project_dir>/.specify/workspace/`. Mirror of
+/// `ProjectConfig::specify_dir(...).join("workspace")` from the binary;
+/// duplicated so the registry crate stays self-contained.
+fn workspace_base(project_dir: &Path) -> PathBuf {
+    project_dir.join(".specify").join("workspace")
+}
+
+/// Absolute path to `<project_dir>/contracts/`. Operator-facing
+/// platform artifact; lives at the repo root by RFC-9.
+fn contracts_base(project_dir: &Path) -> PathBuf {
+    project_dir.join("contracts")
+}
 
 /// Materialise `.specify/workspace/<name>/` for every registry entry.
 ///
@@ -27,7 +47,7 @@ pub fn sync_registry_workspace(project_dir: &Path) -> Result<(), Error> {
 
     ensure_specify_gitignore_entries(project_dir)?;
 
-    let base = ProjectConfig::specify_dir(project_dir).join("workspace");
+    let base = workspace_base(project_dir);
     std::fs::create_dir_all(&base)?;
 
     let mut errors: Vec<String> = Vec::new();
@@ -44,7 +64,7 @@ pub fn sync_registry_workspace(project_dir: &Path) -> Result<(), Error> {
     }
 
     // Distribute central contracts to non-symlink workspace clones.
-    let central_contracts = ProjectConfig::contracts_dir(project_dir);
+    let central_contracts = contracts_base(project_dir);
     if central_contracts.is_dir() {
         for project in &registry.projects {
             if project.url_materialises_as_symlink() {
@@ -114,7 +134,7 @@ pub fn workspace_status(project_dir: &Path) -> Result<Option<Vec<SlotStatus>>, E
         return Ok(None);
     };
 
-    let base = ProjectConfig::specify_dir(project_dir).join("workspace");
+    let base = workspace_base(project_dir);
     let mut out = Vec::with_capacity(registry.projects.len());
     for project in &registry.projects {
         let slot = base.join(&project.name);
@@ -507,17 +527,21 @@ pub fn extract_github_slug(url: &str) -> Option<String> {
 
 /// Core implementation of `specify workspace push`.
 ///
+/// `initiative_name` is `plan.name` from the binary side; the registry
+/// crate cannot depend on `specify-change` (which already depends on
+/// `specify-registry`), so callers flatten the field at the boundary.
+///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
 pub fn run_workspace_push_impl(
-    project_dir: &Path, plan: &Plan, registry: &Registry, filter_projects: &[String], dry_run: bool,
+    project_dir: &Path, initiative_name: &str, registry: &Registry, filter_projects: &[String],
+    dry_run: bool,
 ) -> Result<Vec<WorkspacePushResult>, Error> {
-    let initiative_name = &plan.name;
     let branch_name = format!("specify/{initiative_name}");
-    let workspace_base = ProjectConfig::specify_dir(project_dir).join("workspace");
+    let workspace_base = workspace_base(project_dir);
 
-    let target_projects: Vec<&specify_registry::RegistryProject> = if filter_projects.is_empty() {
+    let target_projects: Vec<&RegistryProject> = if filter_projects.is_empty() {
         registry.projects.iter().collect()
     } else {
         registry.projects.iter().filter(|p| filter_projects.contains(&p.name)).collect()
@@ -615,8 +639,8 @@ fn ensure_pull_request(
 }
 
 fn push_single_project(
-    project_dir: &Path, workspace_base: &Path, rp: &specify_registry::RegistryProject,
-    branch_name: &str, initiative_name: &str, dry_run: bool,
+    project_dir: &Path, workspace_base: &Path, rp: &RegistryProject, branch_name: &str,
+    initiative_name: &str, dry_run: bool,
 ) -> WorkspacePushResult {
     let project_path = if rp.url_materialises_as_symlink() {
         if rp.url == "." { project_dir.to_path_buf() } else { project_dir.join(&rp.url) }
