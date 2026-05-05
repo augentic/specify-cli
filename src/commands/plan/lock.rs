@@ -1,8 +1,6 @@
 use serde::Serialize;
 use specify::Error;
-use specify_initiative::{
-    Acquired as PlanLockAcquired, PlanLockReleased, PlanLockState, Stamp as PlanLockStamp,
-};
+use specify_initiative::{Acquired, PlanLockReleased, PlanLockState, Stamp};
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
@@ -10,11 +8,11 @@ use crate::output::{CliResult, emit_response};
 
 pub fn run_plan_lock_acquire(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
     let our_pid = pid.unwrap_or_else(std::process::id);
-    let acquired = PlanLockStamp::acquire(&ctx.project_dir, our_pid)?;
+    let acquired = Stamp::acquire(&ctx.project_dir, our_pid)?;
     Ok(emit_acquired(ctx.format, &acquired))
 }
 
-fn emit_acquired(format: OutputFormat, acquired: &PlanLockAcquired) -> CliResult {
+fn emit_acquired(format: OutputFormat, acquired: &Acquired) -> CliResult {
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
     struct AcquiredBody {
@@ -46,7 +44,7 @@ fn emit_acquired(format: OutputFormat, acquired: &PlanLockAcquired) -> CliResult
 
 pub fn run_plan_lock_release(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
     let our_pid = pid.unwrap_or_else(std::process::id);
-    let outcome = PlanLockStamp::release(&ctx.project_dir, our_pid)?;
+    let outcome = Stamp::release(&ctx.project_dir, our_pid)?;
     Ok(emit_released(ctx.format, our_pid, &outcome))
 }
 
@@ -103,7 +101,7 @@ fn emit_released(format: OutputFormat, our_pid: u32, outcome: &PlanLockReleased)
 }
 
 pub fn run_plan_lock_status(ctx: &CommandContext) -> Result<CliResult, Error> {
-    let state = PlanLockStamp::status(&ctx.project_dir)?;
+    let state = Stamp::status(&ctx.project_dir)?;
     Ok(emit_state(ctx.format, &state))
 }
 

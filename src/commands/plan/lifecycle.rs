@@ -3,13 +3,11 @@
 use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, ProjectConfig};
-use specify_initiative::{
-    Finding as PlanValidationResult, Plan, Severity as PlanValidationLevel, Status as PlanStatus,
-};
+use specify_initiative::{Finding, Plan, Severity, Status};
 use specify_registry::Registry;
 
 use super::{
-    PlanRef, absolute_string, emit_structural_error, file_path, load_for_write, plan_ref,
+    PlanRef, absolute_string, emit_structural_error, load_for_write, plan_ref,
     print_validation_line, require_file, validation_to_json,
 };
 use crate::cli::OutputFormat;
@@ -19,7 +17,7 @@ use crate::output::{CliResult, emit_response};
 pub fn run_plan_create(
     ctx: &CommandContext, name: String, sources: Vec<(String, String)>,
 ) -> Result<CliResult, Error> {
-    let plan_path = file_path(&ctx.project_dir);
+    let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if plan_path.exists() {
         return Err(Error::Config(format!(
             "plan already exists at {}; run `specify plan archive` first",
@@ -70,8 +68,8 @@ pub fn run_plan_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
     };
     let mut results = plan.validate(Some(&changes_dir), registry.as_ref());
     if let Some(err) = registry_err {
-        results.push(PlanValidationResult {
-            level: PlanValidationLevel::Error,
+        results.push(Finding {
+            level: Severity::Error,
             code: "registry-shape",
             message: err.to_string(),
             entry: None,
@@ -89,8 +87,8 @@ pub fn run_plan_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
                 && let Some(schema_val) = config.get("schema").and_then(|v| v.as_str())
                 && schema_val != rp.schema
             {
-                results.push(PlanValidationResult {
-                    level: PlanValidationLevel::Warning,
+                results.push(Finding {
+                    level: Severity::Warning,
                     code: "schema-mismatch-workspace",
                     message: format!(
                         "workspace clone '{}' has schema '{}' but registry declares '{}'; \
@@ -103,7 +101,7 @@ pub fn run_plan_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
         }
     }
 
-    let has_errors = results.iter().any(|r| matches!(r.level, PlanValidationLevel::Error));
+    let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
 
     match ctx.format {
         OutputFormat::Json => {
@@ -155,11 +153,11 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
     let changes_dir = ProjectConfig::changes_dir(&ctx.project_dir);
 
     let results = plan.validate(Some(&changes_dir), None);
-    if results.iter().any(|r| matches!(r.level, PlanValidationLevel::Error)) {
+    if results.iter().any(|r| matches!(r.level, Severity::Error)) {
         return Ok(emit_structural_error(ctx.format));
     }
 
-    if let Some(active) = plan.changes.iter().find(|c| c.status == PlanStatus::InProgress) {
+    if let Some(active) = plan.changes.iter().find(|c| c.status == Status::InProgress) {
         match ctx.format {
             OutputFormat::Json => emit_response(NextBody {
                 next: None,
@@ -190,7 +188,7 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
         }
     } else {
         let all_terminal =
-            plan.changes.iter().all(|c| matches!(c.status, PlanStatus::Done | PlanStatus::Skipped));
+            plan.changes.iter().all(|c| matches!(c.status, Status::Done | Status::Skipped));
         let (reason, text_msg) = if all_terminal {
             ("all-done", "All changes done.")
         } else {
@@ -216,7 +214,7 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
 }
 
 pub fn run_plan_transition(
-    ctx: &CommandContext, name: String, target: PlanStatus, reason: Option<String>,
+    ctx: &CommandContext, name: String, target: Status, reason: Option<String>,
 ) -> Result<CliResult, Error> {
     let (plan_path, mut plan) = load_for_write(ctx)?;
 

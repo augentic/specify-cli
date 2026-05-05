@@ -3,9 +3,7 @@
 use serde::Serialize;
 use serde_json::Value;
 use specify::Error;
-use specify_initiative::{
-    Entry as PlanChange, EntryPatch as PlanChangePatch, Status as PlanStatus,
-};
+use specify_initiative::{Entry, EntryPatch, Status};
 
 use super::{PlanRef, change_entry_json, check_project, load_for_write, plan_ref};
 use crate::cli::OutputFormat;
@@ -23,11 +21,11 @@ pub fn run_plan_add(
         check_project(&ctx.project_dir, proj)?;
     }
 
-    let entry = PlanChange {
+    let entry = Entry {
         name: name.clone(),
         project,
         schema,
-        status: PlanStatus::Pending,
+        status: Status::Pending,
         depends_on,
         sources,
         context,
@@ -80,7 +78,7 @@ pub fn run_plan_amend(
     let schema_patch: Option<Option<String>> =
         schema.map(|s| if s.is_empty() { None } else { Some(s) });
 
-    let patch = PlanChangePatch {
+    let patch = EntryPatch {
         depends_on,
         sources,
         project: project_patch,

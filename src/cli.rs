@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use specify::{CreateIfExists, EntryKind, LifecycleStatus, Phase};
-use specify_initiative::Status as PlanStatus;
+use specify_initiative::Status;
 
 #[derive(Parser)]
 #[command(
@@ -257,7 +257,7 @@ pub enum PlanAction {
         name: String,
         /// Target status
         #[arg(value_enum)]
-        target: PlanStatus,
+        target: Status,
         /// Free-text reason; only valid when transitioning to `failed`,
         /// `blocked`, or `skipped`.
         #[arg(long)]

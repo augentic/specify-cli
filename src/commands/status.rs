@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, ProjectConfig};
-use specify_initiative::{Plan, Status as PlanStatus};
+use specify_initiative::{Plan, Status};
 use specify_registry::Registry;
 
 use super::change::{collect_status, list_change_names, status_entry_to_json};
@@ -87,7 +87,7 @@ fn load_plan_summary(ctx: &CommandContext) -> Option<PlanSummary> {
     }
     let plan = Plan::load(&plan_path).ok()?;
 
-    let mut counts: BTreeMap<PlanStatus, usize> = PlanStatus::ALL.iter().map(|&s| (s, 0)).collect();
+    let mut counts: BTreeMap<Status, usize> = Status::ALL.iter().map(|&s| (s, 0)).collect();
     for entry in &plan.changes {
         *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
     }
@@ -96,12 +96,12 @@ fn load_plan_summary(ctx: &CommandContext) -> Option<PlanSummary> {
     Some(PlanSummary {
         name: plan.name,
         counts: PlanCounts {
-            done: counts[&PlanStatus::Done],
-            in_progress: counts[&PlanStatus::InProgress],
-            pending: counts[&PlanStatus::Pending],
-            blocked: counts[&PlanStatus::Blocked],
-            failed: counts[&PlanStatus::Failed],
-            skipped: counts[&PlanStatus::Skipped],
+            done: counts[&Status::Done],
+            in_progress: counts[&Status::InProgress],
+            pending: counts[&Status::Pending],
+            blocked: counts[&Status::Blocked],
+            failed: counts[&Status::Failed],
+            skipped: counts[&Status::Skipped],
             total,
         },
     })

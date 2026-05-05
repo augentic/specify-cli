@@ -4,9 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value;
 use specify::{ChangeMetadata, Error, ProjectConfig};
-use specify_initiative::{
-    Entry as PlanChange, Plan, Severity as PlanValidationLevel, Status as PlanStatus,
-};
+use specify_initiative::{Entry, Plan, Severity, Status};
 
 use super::{PlanRef, emit_structural_error, require_file};
 use crate::cli::OutputFormat;
@@ -22,7 +20,7 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
     let results = plan.validate(Some(&changes_dir), None);
     let has_other_structural_errors = results
         .iter()
-        .any(|r| matches!(r.level, PlanValidationLevel::Error) && r.code != "dependency-cycle");
+        .any(|r| matches!(r.level, Severity::Error) && r.code != "dependency-cycle");
     if has_other_structural_errors {
         return Ok(emit_structural_error(ctx.format));
     }
@@ -45,19 +43,19 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
         (plan.changes.iter().collect::<Vec<_>>(), "list")
     };
 
-    let mut counts: BTreeMap<PlanStatus, usize> = PlanStatus::ALL.iter().map(|&s| (s, 0)).collect();
+    let mut counts: BTreeMap<Status, usize> = Status::ALL.iter().map(|&s| (s, 0)).collect();
     for entry in &plan.changes {
         *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
     }
     let total: usize = counts.values().sum();
 
-    let active = plan.changes.iter().find(|c| c.status == PlanStatus::InProgress);
+    let active = plan.changes.iter().find(|c| c.status == Status::InProgress);
     let active_lifecycle = active.and_then(|a| read_lifecycle(&changes_dir.join(&a.name)));
 
-    let blocked: Vec<&PlanChange> =
-        plan.changes.iter().filter(|c| c.status == PlanStatus::Blocked).collect();
-    let failed: Vec<&PlanChange> =
-        plan.changes.iter().filter(|c| c.status == PlanStatus::Failed).collect();
+    let blocked: Vec<&Entry> =
+        plan.changes.iter().filter(|c| c.status == Status::Blocked).collect();
+    let failed: Vec<&Entry> =
+        plan.changes.iter().filter(|c| c.status == Status::Failed).collect();
 
     let next_eligible = plan.next_eligible();
 
@@ -102,7 +100,7 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
             let entries: Vec<Value> = ordered
                 .iter()
                 .map(|entry| {
-                    let lifecycle = if entry.status == PlanStatus::InProgress {
+                    let lifecycle = if entry.status == Status::InProgress {
                         active_lifecycle.clone()
                     } else {
                         None
@@ -137,12 +135,12 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
                     path: plan_path.display().to_string(),
                 },
                 counts: Counts {
-                    done: counts[&PlanStatus::Done],
-                    in_progress: counts[&PlanStatus::InProgress],
-                    pending: counts[&PlanStatus::Pending],
-                    blocked: counts[&PlanStatus::Blocked],
-                    failed: counts[&PlanStatus::Failed],
-                    skipped: counts[&PlanStatus::Skipped],
+                    done: counts[&Status::Done],
+                    in_progress: counts[&Status::InProgress],
+                    pending: counts[&Status::Pending],
+                    blocked: counts[&Status::Blocked],
+                    failed: counts[&Status::Failed],
+                    skipped: counts[&Status::Skipped],
                     total,
                 },
                 order: order_label,
@@ -168,12 +166,12 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
 
 struct StatusView<'a> {
     plan: &'a Plan,
-    counts: &'a BTreeMap<PlanStatus, usize>,
-    active: Option<&'a PlanChange>,
+    counts: &'a BTreeMap<Status, usize>,
+    active: Option<&'a Entry>,
     active_lifecycle: Option<&'a str>,
-    blocked: &'a [&'a PlanChange],
-    failed: &'a [&'a PlanChange],
-    next_eligible: Option<&'a PlanChange>,
+    blocked: &'a [&'a Entry],
+    failed: &'a [&'a Entry],
+    next_eligible: Option<&'a Entry>,
 }
 
 fn read_lifecycle(change_dir: &Path) -> Option<String> {
@@ -197,7 +195,7 @@ struct EntryRow {
     context: Vec<String>,
 }
 
-fn plan_entry_to_json(entry: &PlanChange, lifecycle: Option<String>) -> Value {
+fn plan_entry_to_json(entry: &Entry, lifecycle: Option<String>) -> Value {
     serde_json::to_value(EntryRow {
         name: entry.name.clone(),
         status: entry.status.to_string(),
@@ -219,12 +217,12 @@ fn print_status(view: &StatusView) {
     println!();
     println!(
         "Progress: done {}, in-progress {}, pending {}, blocked {}, failed {}, skipped {} (total {total})",
-        counts[&PlanStatus::Done],
-        counts[&PlanStatus::InProgress],
-        counts[&PlanStatus::Pending],
-        counts[&PlanStatus::Blocked],
-        counts[&PlanStatus::Failed],
-        counts[&PlanStatus::Skipped],
+        counts[&Status::Done],
+        counts[&Status::InProgress],
+        counts[&Status::Pending],
+        counts[&Status::Blocked],
+        counts[&Status::Failed],
+        counts[&Status::Skipped],
     );
 
     if let Some(a) = view.active {

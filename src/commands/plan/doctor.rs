@@ -1,9 +1,9 @@
 //! `specify plan doctor` — RFC-9 §4B.
 //!
-//! Thin handler over [`specify::plan_doctor`]: load the plan + registry,
-//! run the doctor pipeline (which is a strict superset of
-//! `Plan::validate`), then render the diagnostic stream as text or
-//! JSON.
+//! Thin handler over [`specify_initiative::plan_doctor`]: load the
+//! plan + registry, run the doctor pipeline (which is a strict
+//! superset of `Plan::validate`), then render the diagnostic stream as
+//! text or JSON.
 
 use serde::Serialize;
 use serde_json::Value;

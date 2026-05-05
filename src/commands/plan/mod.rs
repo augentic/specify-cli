@@ -11,8 +11,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 use specify::{Error, ProjectConfig};
-use specify_initiative::Severity as PlanValidationLevel;
-use specify_initiative::{Entry as PlanChange, Finding as PlanValidationResult, Plan};
+use specify_initiative::{Entry, Finding, Plan, Severity};
 use specify_registry::Registry;
 
 use crate::cli::{LockAction, OutputFormat, PlanAction};
@@ -77,16 +76,11 @@ pub fn run_plan(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, E
 
 // ---- Shared helpers used across submodules ----
 
-/// `<project_dir>/plan.yaml`.
-pub fn file_path(project_dir: &Path) -> PathBuf {
-    ProjectConfig::plan_path(project_dir)
-}
-
 /// Ensure the plan file exists before we try to load it. Error text is
 /// the stable "plan file not found: plan.yaml" string that skill
 /// authors match on.
 pub fn require_file(project_dir: &Path) -> Result<PathBuf, Error> {
-    let path = file_path(project_dir);
+    let path = ProjectConfig::plan_path(project_dir);
     if !path.exists() {
         return Err(Error::ArtifactNotFound {
             kind: "plan.yaml",
@@ -96,10 +90,10 @@ pub fn require_file(project_dir: &Path) -> Result<PathBuf, Error> {
     Ok(path)
 }
 
-pub(super) const fn level_label(level: &PlanValidationLevel) -> &'static str {
+pub(super) const fn level_label(level: &Severity) -> &'static str {
     match level {
-        PlanValidationLevel::Error => "error",
-        PlanValidationLevel::Warning => "warning",
+        Severity::Error => "error",
+        Severity::Warning => "warning",
     }
 }
 
@@ -139,9 +133,9 @@ pub(super) fn plan_ref(plan: &Plan, plan_path: &Path) -> PlanRef {
     }
 }
 
-/// Serialize a `PlanChange` into the on-the-wire kebab-case JSON shape.
-pub(super) fn change_entry_json(entry: &PlanChange) -> Value {
-    serde_json::to_value(entry).expect("PlanChange serialises as JSON")
+/// Serialize a plan `Entry` into the on-the-wire kebab-case JSON shape.
+pub(super) fn change_entry_json(entry: &Entry) -> Value {
+    serde_json::to_value(entry).expect("plan Entry serialises as JSON")
 }
 
 /// Verify that `project_name` appears in `registry.yaml`.
@@ -171,7 +165,7 @@ pub(super) struct ValidationRow<'a> {
     message: &'a str,
 }
 
-pub(super) fn validation_to_json(r: &PlanValidationResult) -> Value {
+pub(super) fn validation_to_json(r: &Finding) -> Value {
     serde_json::to_value(ValidationRow {
         level: level_label(&r.level),
         code: r.code,
@@ -181,10 +175,10 @@ pub(super) fn validation_to_json(r: &PlanValidationResult) -> Value {
     .expect("ValidationRow serialises")
 }
 
-pub(super) fn print_validation_line(r: &PlanValidationResult) {
+pub(super) fn print_validation_line(r: &Finding) {
     let level = match r.level {
-        PlanValidationLevel::Error => "ERROR  ",
-        PlanValidationLevel::Warning => "WARNING",
+        Severity::Error => "ERROR  ",
+        Severity::Warning => "WARNING",
     };
     let entry_col = r.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
     println!("{level} {:<32} {:<24} {}", r.code, entry_col, r.message);
