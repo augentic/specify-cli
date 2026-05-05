@@ -49,8 +49,8 @@ impl Project {
         let root = tmp.path().to_path_buf();
         specify()
             .current_dir(&root)
-            .args(["init", "omnia", "--schema-dir"])
-            .arg(repo_root())
+            .args(["init", "--schema-uri"])
+            .arg(repo_root().join("schemas").join("omnia"))
             .args(["--name", "test-proj"])
             .assert()
             .success();
@@ -68,8 +68,8 @@ impl Project {
         copy_dir(fixture_dir, &root.join("schemas").join(schema_name));
         specify()
             .current_dir(&root)
-            .args(["init", schema_name, "--schema-dir"])
-            .arg(&root)
+            .args(["init", "--schema-uri"])
+            .arg(root.join("schemas").join(schema_name))
             .args(["--name", "test-proj"])
             .assert()
             .success();

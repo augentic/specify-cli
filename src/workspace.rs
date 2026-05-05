@@ -43,8 +43,8 @@ pub fn sync_registry_workspace(project_dir: &Path) -> Result<(), Error> {
         }
     }
 
-    // Distribute central contracts to non-symlink workspace clones
-    let central_contracts = ProjectConfig::specify_dir(project_dir).join("contracts");
+    // Distribute central contracts to non-symlink workspace clones.
+    let central_contracts = ProjectConfig::contracts_dir(project_dir);
     if central_contracts.is_dir() {
         for project in &registry.projects {
             if project.url_materialises_as_symlink() {
@@ -54,11 +54,10 @@ pub fn sync_registry_workspace(project_dir: &Path) -> Result<(), Error> {
             if !slot.is_dir() {
                 continue;
             }
-            let dest_specify = slot.join(".specify");
-            if !dest_specify.is_dir() {
+            if !slot.join(".specify").is_dir() {
                 continue;
             }
-            let dest_contracts = dest_specify.join("contracts");
+            let dest_contracts = slot.join("contracts");
             if let Err(err) = distribute_contracts(&central_contracts, &dest_contracts) {
                 errors.push(format!("{} (contracts): {err}", project.name));
             }
@@ -321,13 +320,12 @@ fn greenfield_bootstrap(
 fn greenfield_init(
     dest: &Path, schema: &str, initiating_project_dir: &Path, is_rerun: bool,
 ) -> Result<(), Error> {
-    let schema_dir = locate_schema_cache(schema, initiating_project_dir)?;
+    let schema_uri = resolve_greenfield_schema_uri(schema, initiating_project_dir)?;
 
     let status = Command::new("specify")
         .arg("init")
-        .arg(schema)
-        .arg("--schema-dir")
-        .arg(&schema_dir)
+        .arg("--schema-uri")
+        .arg(&schema_uri)
         .current_dir(dest)
         .status()
         .map_err(|e| {
@@ -339,8 +337,7 @@ fn greenfield_init(
 
     if !status.success() {
         return Err(Error::Config(format!(
-            "`specify init {schema} --schema-dir {}` failed in {}",
-            schema_dir.display(),
+            "`specify init --schema-uri {schema_uri}` failed in {}",
             dest.display()
         )));
     }
@@ -357,26 +354,30 @@ fn greenfield_init(
     Ok(())
 }
 
-/// Resolve the schema cache directory from the initiating repo's `.specify/.cache/`.
-/// For a bare identifier like `omnia@v1`, the path is `<initiating>/.specify/.cache/omnia@v1/`.
-/// For a URL-shaped identifier, use the last non-empty path segment before any `@ref`.
-fn locate_schema_cache(
+/// Resolve the schema URI to pass into a greenfield slot's `specify init`.
+///
+/// URL-shaped schemas are already self-contained. Bare registry schema
+/// identifiers are local to the initiating repo's cache, so convert them
+/// into a file URI that the spawned init can copy directly.
+fn resolve_greenfield_schema_uri(
     schema: &str, initiating_project_dir: &Path,
-) -> Result<std::path::PathBuf, Error> {
+) -> Result<String, Error> {
+    if schema.contains("://") {
+        return Ok(schema.to_string());
+    }
     let cache_base = initiating_project_dir.join(".specify").join(".cache");
 
     let direct = cache_base.join(schema);
     if direct.is_dir() {
-        return Ok(direct);
+        return Ok(format!("file://{}", direct.display()));
     }
 
-    // For URL-shaped identifiers, try the last path segment
-    // (strip any @ref suffix, then take the last non-empty segment)
+    // Try the last path segment before any @ref for older cached layouts.
     let without_ref = schema.split('@').next().unwrap_or(schema);
     if let Some(segment) = without_ref.rsplit('/').find(|s| !s.is_empty()) {
         let by_segment = cache_base.join(segment);
         if by_segment.is_dir() {
-            return Ok(by_segment);
+            return Ok(format!("file://{}", by_segment.display()));
         }
     }
 
@@ -387,9 +388,9 @@ fn locate_schema_cache(
     )))
 }
 
-/// Copy `.specify/contracts/` from the initiating repo into a workspace
-/// slot's `.specify/contracts/`. Removes the destination first for a
-/// clean replacement, then copies recursively.
+/// Copy root `contracts/` from the initiating repo into a workspace slot's
+/// root `contracts/`. Removes the destination first for a clean replacement,
+/// then copies recursively.
 fn distribute_contracts(src: &Path, dest: &Path) -> Result<(), Error> {
     if dest.exists() {
         std::fs::remove_dir_all(dest).map_err(|e| {
@@ -788,7 +789,7 @@ mod tests {
         std::fs::write(src.join("openapi.yaml"), "openapi: 3.1").unwrap();
         std::fs::write(nested.join("order.yaml"), "type: object").unwrap();
 
-        let dest = tmp.path().join("slot").join(".specify").join("contracts");
+        let dest = tmp.path().join("slot").join("contracts");
         distribute_contracts(&src, &dest).unwrap();
 
         assert!(dest.join("openapi.yaml").is_file());

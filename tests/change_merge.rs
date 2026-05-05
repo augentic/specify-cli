@@ -53,8 +53,8 @@ impl Project {
         let root = tmp.path().to_path_buf();
         specify()
             .current_dir(&root)
-            .args(["init", "omnia", "--schema-dir"])
-            .arg(repo_root())
+            .args(["init", "--schema-uri"])
+            .arg(repo_root().join("schemas").join("omnia"))
             .args(["--name", "test-proj"])
             .assert()
             .success();
@@ -235,7 +235,7 @@ fn conflict_check_no_contract_drift_when_baseline_is_older() {
     .unwrap();
 
     // Seed a baseline contract file (its mtime will be well before 2099).
-    let baseline_contract = project.root().join(".specify/contracts/schemas/test.yaml");
+    let baseline_contract = project.root().join("contracts/schemas/test.yaml");
     fs::create_dir_all(baseline_contract.parent().unwrap()).unwrap();
     fs::write(&baseline_contract, "type: object\n").unwrap();
 
@@ -270,7 +270,7 @@ fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
     )
     .unwrap();
 
-    let baseline_contract = project.root().join(".specify/contracts/schemas/test.yaml");
+    let baseline_contract = project.root().join("contracts/schemas/test.yaml");
     fs::create_dir_all(baseline_contract.parent().unwrap()).unwrap();
     fs::write(&baseline_contract, "type: object\n").unwrap();
 
@@ -337,7 +337,7 @@ fn conflict_check_no_drift_when_change_has_no_contracts_dir() {
     .unwrap();
 
     // Seed a baseline contract but do NOT create contracts/ in the change.
-    let baseline_contract = project.root().join(".specify/contracts/schemas/test.yaml");
+    let baseline_contract = project.root().join("contracts/schemas/test.yaml");
     fs::create_dir_all(baseline_contract.parent().unwrap()).unwrap();
     fs::write(&baseline_contract, "type: object\n").unwrap();
 

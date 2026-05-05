@@ -28,12 +28,9 @@ pub enum OutputFormat {
 pub enum Commands {
     /// Initialize .specify/ in a project
     Init {
-        /// Schema name or URL. Ignored when `--hub` is set; hubs use
-        /// the `schema: hub` sentinel instead (RFC-9 §1D).
-        schema: String,
-        /// Schema source directory (pre-resolved). Ignored when `--hub` is set.
+        /// Schema URI to fetch or copy before scaffolding. Required unless `--hub` is set.
         #[arg(long)]
-        schema_dir: PathBuf,
+        schema_uri: Option<String>,
         /// Project name (defaults to the project directory name)
         #[arg(long)]
         name: Option<String>,
@@ -64,19 +61,19 @@ pub enum Commands {
         action: ChangeAction,
     },
 
-    /// Manage the initiative-level plan at `.specify/plan.yaml`
+    /// Manage the initiative-level plan at `plan.yaml` (repo root)
     Plan {
         #[command(subcommand)]
         action: PlanAction,
     },
 
-    /// Operator brief at `.specify/initiative.md`
+    /// Operator brief at `initiative.md` (repo root)
     Initiative {
         #[command(subcommand)]
         action: InitiativeAction,
     },
 
-    /// Platform registry at `.specify/registry.yaml`
+    /// Platform registry at `registry.yaml` (repo root)
     Registry {
         #[command(subcommand)]
         action: RegistryAction,
@@ -86,6 +83,27 @@ pub enum Commands {
     Workspace {
         #[command(subcommand)]
         action: WorkspaceAction,
+    },
+
+    /// Inspect and validate baseline contracts under the project's `contracts/` directory (RFC-12).
+    Contract {
+        #[command(subcommand)]
+        action: ContractAction,
+    },
+
+    /// One-shot layout migrations.
+    ///
+    /// Currently exposes a single subcommand, `v2-layout`, that moves
+    /// the operator-facing platform artifacts (`registry.yaml`,
+    /// `plan.yaml`, `initiative.md`, `contracts/`) from the legacy v1
+    /// location under `.specify/` to the repo root. Idempotent —
+    /// re-running on an already-migrated project exits 0 with
+    /// `nothing to migrate`. Refuses to run inside a workspace clone
+    /// (`.specify/workspace/<name>/`); migrate the hub repo first,
+    /// then iterate clones explicitly.
+    Migrate {
+        #[command(subcommand)]
+        action: MigrateAction,
     },
 
     /// Generate shell completions for the given shell.
@@ -142,7 +160,7 @@ pub enum VectisAction {
 
 #[derive(Subcommand)]
 pub enum PlanAction {
-    /// Scaffold an empty .specify/plan.yaml
+    /// Scaffold an empty plan.yaml at the repo root
     Create {
         /// Kebab-case initiative name
         name: String,
@@ -150,7 +168,7 @@ pub enum PlanAction {
         #[arg(long = "source", value_parser = parse_source_kv)]
         sources: Vec<(String, String)>,
     },
-    /// Validate .specify/plan.yaml (structure + plan/change consistency)
+    /// Validate plan.yaml (structure + plan/change consistency)
     Validate,
     /// Diagnose plan health (superset of `validate`, RFC-9 §4B).
     ///
@@ -263,13 +281,13 @@ pub enum PlanAction {
 
 /// Initiative brief operations (RFC-3a §"The Initiative Brief").
 ///
-/// `.specify/initiative.md` is the operator-authored brief: a YAML
-/// frontmatter block (`name`, optional `inputs`) plus free-form
+/// `initiative.md` (at the repo root) is the operator-authored brief:
+/// a YAML frontmatter block (`name`, optional `inputs`) plus free-form
 /// markdown body. It's optional — `create` scaffolds a canonical
 /// template; `show` prints the parsed brief.
 #[derive(Subcommand)]
 pub enum InitiativeAction {
-    /// Scaffold `.specify/initiative.md` from the canonical template.
+    /// Scaffold `initiative.md` (at the repo root) from the canonical template.
     ///
     /// Refuses to overwrite an existing file — mirrors the
     /// `plan create` posture for `plan.yaml`.
@@ -277,7 +295,7 @@ pub enum InitiativeAction {
         /// Kebab-case initiative name (baked into the frontmatter).
         name: String,
     },
-    /// Print the parsed `.specify/initiative.md` (text or JSON).
+    /// Print the parsed `initiative.md` (text or JSON).
     ///
     /// Absent file is not an error: exit 0 with "no initiative brief
     /// declared". Malformed file fails loud with a non-zero exit — the
@@ -319,7 +337,7 @@ pub enum InitiativeAction {
 pub enum WorkspaceAction {
     /// Create symlinks or git clones under `.specify/workspace/<name>/`.
     ///
-    /// No-op with exit 0 when `.specify/registry.yaml` is absent. Updates
+    /// No-op with exit 0 when `registry.yaml` is absent. Updates
     /// `.gitignore` to ignore `.specify/workspace/` when a registry exists.
     Sync,
     /// Report symlink vs git clone, `HEAD`, and dirty working tree per entry.
@@ -336,7 +354,7 @@ pub enum WorkspaceAction {
     /// Merge open PRs created by `workspace push` after CI passes (RFC-9 §4A).
     ///
     /// For every selected registry project, looks up the PR on
-    /// `specify/<initiative-name>` (resolved from `.specify/plan.yaml`),
+    /// `specify/<initiative-name>` (resolved from `plan.yaml`),
     /// inspects `gh pr checks`, and squash-merges via
     /// `gh pr merge --squash` when all checks pass. Best-effort across
     /// projects: a single project's failure surfaces in the per-project
@@ -348,7 +366,7 @@ pub enum WorkspaceAction {
     /// - Never force-merges and never overrides failing or pending checks.
     Merge {
         /// Optionally restrict to specific projects. Default: all
-        /// projects in `.specify/registry.yaml`.
+        /// projects in `registry.yaml`.
         #[arg()]
         projects: Vec<String>,
         /// Classify every project's mergeability without invoking
@@ -389,28 +407,28 @@ pub enum LockAction {
 
 /// Registry operations (RFC-3a §"The Registry", RFC-9 §2A).
 ///
-/// `.specify/registry.yaml` is the platform-level catalogue of peer
-/// projects. It's optional: an absent file is equivalent to single-repo
-/// mode. These verbs expose the shape-validation already used by
-/// `plan validate` as dedicated read/validate entry points, plus the
-/// dynamic `add`/`remove` mutators introduced by RFC-9 §2A so the
-/// operator no longer has to hand-edit the file.
+/// `registry.yaml` (at the repo root) is the platform-level catalogue
+/// of peer projects. It's optional: an absent file is equivalent to
+/// single-repo mode. These verbs expose the shape-validation already
+/// used by `plan validate` as dedicated read/validate entry points,
+/// plus the dynamic `add`/`remove` mutators introduced by RFC-9 §2A
+/// so the operator no longer has to hand-edit the file.
 #[derive(Subcommand)]
 pub enum RegistryAction {
-    /// Print the parsed `.specify/registry.yaml` (text or JSON).
+    /// Print the parsed `registry.yaml` (text or JSON).
     ///
     /// Prints a clear "no registry declared" message when the file is
     /// absent (exit 0). Malformed files fail loud with a non-zero exit —
     /// the operator asked to show something unparseable.
     Show,
-    /// Validate `.specify/registry.yaml` shape. Non-zero exit on any error.
+    /// Validate `registry.yaml` shape. Non-zero exit on any error.
     ///
     /// Absent registry is not an error: exit 0 with a "none declared"
     /// message. Well-formed registry exits 0. Malformed registry exits
     /// with `CliResult::ValidationFailed` and a diagnostic that names
     /// `registry.yaml`.
     Validate,
-    /// Append a new project entry to `.specify/registry.yaml`
+    /// Append a new project entry to `registry.yaml`
     /// (RFC-9 §2A).
     ///
     /// Creates the file with `version: 1` when absent, validates the
@@ -439,18 +457,63 @@ pub enum RegistryAction {
         #[arg(long)]
         description: Option<String>,
     },
-    /// Remove an existing project entry from `.specify/registry.yaml`
+    /// Remove an existing project entry from `registry.yaml`
     /// (RFC-9 §2A).
     ///
     /// Loads the registry, removes the named entry, validates the
     /// remaining shape, and persists the result. Warns on stderr (or
-    /// in the JSON `warnings` array) when `.specify/plan.yaml` exists
+    /// in the JSON `warnings` array) when `plan.yaml` exists
     /// and any plan entry references the removed project — the
     /// operator must rewire those entries via `specify plan amend
     /// --project ...` separately. The warning is non-fatal.
     Remove {
         /// Kebab-case project name to remove.
         name: String,
+    },
+}
+
+/// Contract (top-level `OpenAPI` / `AsyncAPI` contract) operations
+/// (RFC-12).
+///
+/// The project's `contracts/` directory carries the merged platform
+/// baseline. These verbs are the read / validate counterpart to the
+/// per-change `/contract:*` skills: `list` projects every top-level
+/// contract for inspection, `validate` enforces the RFC-12 §Validation
+/// rules (`SemVer` `info.version`; format + cross-repo uniqueness on
+/// `info.x-specify-id` when present). Both no-op with exit 0 when
+/// `contracts/` is absent.
+#[derive(Subcommand)]
+pub enum ContractAction {
+    /// Project every top-level contract under `contracts/`
+    /// (`(file, format, info.title, info.version, info.x-specify-id)`).
+    ///
+    /// Format detection per RFC-12 §"Top-level contracts": a YAML
+    /// file is top-level iff its root carries `openapi:` or
+    /// `asyncapi:`. Standalone JSON Schemas are payload vocabulary
+    /// and are skipped.
+    List,
+    /// Run the RFC-12 §Validation checks across `contracts/`.
+    ///
+    /// Three rules: `SemVer` `info.version`, kebab-case + ≤64-char
+    /// `info.x-specify-id` when present, cross-repo uniqueness on
+    /// every declared `info.x-specify-id`. Exits
+    /// `CliResult::ValidationFailed` on any finding.
+    Validate,
+}
+
+#[derive(Subcommand)]
+pub enum MigrateAction {
+    /// Move v1 layout artifacts (`registry.yaml`, `plan.yaml`,
+    /// `initiative.md`, `contracts/`) from `.specify/` to the repo
+    /// root. Idempotent: re-running on an already-migrated project
+    /// exits 0 with `nothing to migrate`. Refuses to clobber an
+    /// existing destination — if a root-level conflict is present,
+    /// inspect manually and resolve before retrying. Refuses inside
+    /// a workspace clone (`.specify/workspace/<name>/`).
+    V2Layout {
+        /// Show what would move without writing anything.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

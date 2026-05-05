@@ -70,7 +70,7 @@ pub struct InitArgs {
     #[arg(long)]
     pub shells: Option<String>,
 
-    /// Android package name (defaults to `com.vectis.<appname lowercase>`).
+    /// Android package name (defaults to `com.vectis.<appname>` lowercase).
     #[arg(long)]
     pub android_package: Option<String>,
 
@@ -104,7 +104,7 @@ pub struct AddShellArgs {
     #[arg(long)]
     pub dir: Option<std::path::PathBuf>,
 
-    /// Android package name (defaults to `com.vectis.<appname lowercase>`).
+    /// Android package name (defaults to `com.vectis.<appname>` lowercase).
     #[arg(long)]
     pub android_package: Option<String>,
 

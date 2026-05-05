@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/augentic/specify/schemas/plan/plan.schema.json",
+  "$id": "https://github.com/augentic/specify-cli/schemas/plan/plan.schema.json",
   "title": "Specify plan.yaml",
-  "description": "Validates the structure of `.specify/plan.yaml`: the initiative name, the optional named-sources map, and the ordered list of plan changes with their dependencies and status. Strict schema — unknown fields are rejected. Written by `specify plan {init,create,amend,transition,archive}`; read by `/spec:execute` and by humans driving the Layer 1 loop. Scope and delta-targeting intent are carried in the `description` field and inferred by the define skill at execution time.",
+  "description": "Validates the structure of `plan.yaml` (at the repo root): the initiative name, the optional named-sources map, and the ordered list of plan changes with their dependencies and status. Strict schema — unknown fields are rejected. Written by `specify plan {init,create,amend,transition,archive}`; read by `/spec:execute` and by humans driving the Layer 1 loop. Scope and delta-targeting intent are carried in the `description` field and inferred by the define skill at execution time.",
   "type": "object",
   "required": ["name", "changes"],
   "additionalProperties": false,

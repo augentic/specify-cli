@@ -1,15 +1,16 @@
 //! Integration tests for the `specify plan *`, `specify initiative *`,
-//! and `specify registry *` CLI groups — `plan` manages
-//! `.specify/plan.yaml`, `initiative` owns the operator brief at
-//! `.specify/initiative.md`, and `registry` covers
-//! `.specify/registry.yaml`.
+//! and `specify registry *` CLI groups — `plan` manages `plan.yaml`
+//! at the repo root, `initiative` owns the operator brief at
+//! `initiative.md` (also at root), and `registry` covers
+//! `registry.yaml` (also at root).
 //!
 //! These CLI tests stand up a fresh `.specify/` project via
 //! `specify init` (mirroring `tests/change.rs` / `tests/e2e.rs`),
-//! seed `.specify/plan.yaml` by writing YAML directly to disk, and
-//! drive the CLI through `assert_cmd`. JSON shapes are pinned by
-//! checked-in fixtures under `tests/fixtures/plan/`; regenerate them
-//! with `REGENERATE_GOLDENS=1 cargo test --test initiative`.
+//! seed `plan.yaml` at the repo root by writing YAML directly to
+//! disk, and drive the CLI through `assert_cmd`. JSON shapes are
+//! pinned by checked-in fixtures under `tests/fixtures/plan/`;
+//! regenerate them with
+//! `REGENERATE_GOLDENS=1 cargo test --test initiative`.
 
 #[cfg(test)]
 mod cli {
@@ -35,8 +36,7 @@ mod cli {
     /// A `.specify/` project rooted in a throwaway tempdir.
     ///
     /// Mirrors the harness in `tests/change.rs`: run `specify init` with
-    /// `--schema-dir` pointed at the repo root so `schema.yaml` is
-    /// always resolvable, then let the test body seed whatever
+    /// the in-repo Omnia schema URI, then let the test body seed whatever
     /// `plan.yaml` / `changes/` content it needs.
     struct Project {
         _tmp: TempDir,
@@ -49,8 +49,8 @@ mod cli {
             let root = tmp.path().to_path_buf();
             specify()
                 .current_dir(&root)
-                .args(["init", "omnia", "--schema-dir"])
-                .arg(repo_root())
+                .args(["init", "--schema-uri"])
+                .arg(repo_root().join("schemas").join("omnia"))
                 .args(["--name", "test-proj"])
                 .assert()
                 .success();
@@ -62,12 +62,13 @@ mod cli {
         }
 
         fn plan_path(&self) -> PathBuf {
-            self.root.join(".specify/plan.yaml")
+            self.root.join("plan.yaml")
         }
 
-        /// Seed `.specify/plan.yaml` with arbitrary YAML. The tests
-        /// drive the file directly (not the library's `Plan::save`)
-        /// for convenience and isolation from the `create` verb.
+        /// Seed `plan.yaml` (at the repo root) with arbitrary YAML.
+        /// The tests drive the file directly (not the library's
+        /// `Plan::save`) for convenience and isolation from the
+        /// `create` verb.
         fn seed_plan(&self, yaml: &str) {
             fs::write(self.plan_path(), yaml).expect("write plan.yaml");
         }
@@ -1089,8 +1090,8 @@ changes:
     // -- plan create (L3.A) -----------------------------------------------
 
     /// Build a blank `Project` via `specify init` and then delete the
-    /// auto-created `.specify/plan.yaml` (if any) so `specify plan create`
-    /// is exercised against a clean slate.
+    /// auto-created `plan.yaml` (if any) so `specify plan create` is
+    /// exercised against a clean slate.
     fn init_without_plan() -> Project {
         let project = Project::init();
         let _ = fs::remove_file(project.plan_path());
@@ -1112,8 +1113,8 @@ changes:
         assert_eq!(actual["plan"]["name"], "my-initiative");
         let path_str = actual["plan"]["path"].as_str().expect("plan.path string");
         assert!(
-            path_str.ends_with(".specify/plan.yaml"),
-            "plan.path should end with .specify/plan.yaml, got: {path_str}"
+            path_str.ends_with("/plan.yaml"),
+            "plan.path should end with /plan.yaml at the repo root, got: {path_str}"
         );
 
         assert!(project.plan_path().exists(), "plan.yaml should be created");
@@ -1715,7 +1716,7 @@ changes: []
         use specify::Registry;
 
         let project = Project::init();
-        let registry_path = project.root().join(".specify/registry.yaml");
+        let registry_path = project.root().join("registry.yaml");
         fs::write(
             &registry_path,
             "version: 1\n\
@@ -1770,7 +1771,7 @@ projects:
 ";
 
     fn write_registry(project: &Project, body: &str) {
-        fs::write(project.root().join(".specify/registry.yaml"), body).expect("write registry");
+        fs::write(project.root().join("registry.yaml"), body).expect("write registry");
     }
 
     #[test]
@@ -1787,8 +1788,8 @@ projects:
         assert_eq!(actual["registry"], Value::Null);
         let path = actual["path"].as_str().expect("path");
         assert!(
-            path.ends_with(".specify/registry.yaml"),
-            "path should point at .specify/registry.yaml, got: {path}"
+            path.ends_with("/registry.yaml"),
+            "path should point at /registry.yaml at the repo root, got: {path}"
         );
     }
 
@@ -1981,7 +1982,7 @@ projects:
     fn registry_validate_on_bare_repo_green() {
         let project = Project::init();
         assert!(
-            !project.root().join(".specify/registry.yaml").exists(),
+            !project.root().join("registry.yaml").exists(),
             "bare repo must not have a registry"
         );
         specify().current_dir(project.root()).args(["registry", "validate"]).assert().success();
@@ -1990,9 +1991,9 @@ projects:
     // ---- Initiative brief CLI verbs (RFC-3a C14) ----
     //
     // `specify initiative {create, show}` — scaffolds or prints
-    // `.specify/initiative.md`. The template byte-stability is the
-    // key contract: `create` must produce the same bytes every time so
-    // operators can diff against the RFC-matching golden.
+    // `initiative.md` (at the repo root). The template byte-stability
+    // is the key contract: `create` must produce the same bytes every
+    // time so operators can diff against the RFC-matching golden.
 
     /// Byte-for-byte golden for `specify initiative create
     /// traffic-modernisation`. Kept in-source (not a fixture file) so
@@ -2007,11 +2008,11 @@ inputs: []
 # Traffic modernisation
 
 <!-- One-paragraph framing of what this initiative is trying to
-     achieve. Plans reference this brief via `.specify/initiative.md`. -->
+     achieve. Plans reference this brief via `initiative.md`. -->
 ";
 
     fn brief_path(project: &Project) -> PathBuf {
-        project.root().join(".specify/initiative.md")
+        project.root().join("initiative.md")
     }
 
     fn write_brief(project: &Project, body: &str) {
@@ -2047,7 +2048,7 @@ inputs: []
         assert_eq!(actual["ok"], true);
         assert_eq!(actual["name"], "my-initiative");
         assert!(
-            actual["path"].as_str().expect("path string").ends_with(".specify/initiative.md"),
+            actual["path"].as_str().expect("path string").ends_with("/initiative.md"),
             "path should point at the brief, got: {}",
             actual["path"]
         );
@@ -2103,7 +2104,7 @@ inputs: []
         assert_eq!(actual["brief"], Value::Null);
         let path = actual["path"].as_str().expect("path");
         assert!(
-            path.ends_with(".specify/initiative.md"),
+            path.ends_with("/initiative.md"),
             "path should point at initiative.md, got: {path}"
         );
 
@@ -2185,9 +2186,9 @@ inputs: []
         );
     }
 
-    /// RFC-3a C14 archive-sweep hook: `.specify/initiative.md` travels
-    /// with the archive. Real C33 sweep adds `workspace.md` +
-    /// `slices/`; this test pins the `initiative.md` half.
+    /// RFC-3a C14 archive-sweep hook: `initiative.md` travels with
+    /// the archive. Real C33 sweep adds `workspace.md` + `slices/`;
+    /// this test pins the `initiative.md` half.
     #[test]
     fn archive_includes_initiative_md() {
         let project = Project::init();
@@ -2196,7 +2197,7 @@ inputs: []
 
         specify().current_dir(project.root()).args(["plan", "archive"]).assert().success();
 
-        assert!(!brief_path(&project).exists(), "initiative.md must leave .specify/");
+        assert!(!brief_path(&project).exists(), "initiative.md must leave the repo root");
 
         let archived_dir = project
             .root()
@@ -2223,7 +2224,7 @@ inputs: []
         // doesn't exit on the plan load itself.
         project.seed_plan("name: demo\nchanges: []\n");
         // Then stomp the registry with an illegal version.
-        fs::write(project.root().join(".specify/registry.yaml"), "version: 2\nprojects: []\n")
+        fs::write(project.root().join("registry.yaml"), "version: 2\nprojects: []\n")
             .expect("write bad registry");
 
         let assert = specify()
@@ -2286,8 +2287,8 @@ inputs: []
         fs::create_dir_all(&root).expect("root");
         specify()
             .current_dir(&root)
-            .args(["init", "omnia", "--schema-dir"])
-            .arg(repo_root())
+            .args(["init", "--schema-uri"])
+            .arg(repo_root().join("schemas").join("omnia"))
             .args(["--name", "rfc3a-ws"])
             .assert()
             .success();
@@ -2304,7 +2305,7 @@ projects:
     schema: omnia@v1
     description: Peer project
 ";
-        fs::write(root.join(".specify/registry.yaml"), reg).expect("registry");
+        fs::write(root.join("registry.yaml"), reg).expect("registry");
 
         specify().current_dir(&root).args(["workspace", "sync"]).assert().success();
 

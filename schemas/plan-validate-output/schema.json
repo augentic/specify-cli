@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/augentic/specify/schemas/plan-validate-output/schema.json",
+  "$id": "https://github.com/augentic/specify-cli/schemas/plan-validate-output/schema.json",
   "title": "specify plan validate --format json response",
   "description": "Validates the JSON response body emitted by `specify plan validate --format json` under the v2 JSON contract (RFC-2 §2). The CLI exits 0 when `passed` is true and 2 (EXIT_VALIDATION_FAILED) otherwise; downstream skills should match on the structured payload rather than the exit code alone.",
   "type": "object",
@@ -20,12 +20,12 @@
         "name": {
           "type": "string",
           "minLength": 1,
-          "description": "Initiative name lifted from `.specify/plan.yaml`. Expected to be kebab-case per `schemas/plan/plan.schema.json#/$defs/kebabName`."
+          "description": "Initiative name lifted from `plan.yaml`. Expected to be kebab-case per `schemas/plan/plan.schema.json#/$defs/kebabName`."
         },
         "path": {
           "type": "string",
           "minLength": 1,
-          "description": "Filesystem path the plan was loaded from (typically `.specify/plan.yaml`, rendered relative to the caller's cwd)."
+          "description": "Filesystem path the plan was loaded from (typically `plan.yaml` at the repo root, rendered relative to the caller's cwd)."
         }
       }
     },

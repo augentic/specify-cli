@@ -480,3 +480,55 @@ both via `Yaml(#[from] serde_saphyr::Error)` and
 The dependency is pinned to `0.0.25`. YAML serialization output may
 differ in whitespace or quoting from `serde_yaml_ng`; all existing
 tests pass against the new output.
+
+## v2 layout — platform artifacts at the repo root
+
+**Decision.** Move the operator-facing platform artifacts —
+`registry.yaml`, `plan.yaml`, `initiative.md`, `contracts/` — from
+`.specify/` to the repo root. `.specify/` retains the
+framework-managed state every CLI verb writes through (configuration
+under `project.yaml`, `changes/`, `specs/`, `archive/`, `.cache/`,
+`workspace/`, `plans/`, `plan.lock`). The boundary is "operator
+artifacts at root, framework state under `.specify/`".
+
+The CLI ships:
+
+- `ProjectConfig::registry_path` / `plan_path` / `initiative_path`
+  helpers (alongside the pre-existing `contracts_dir` which already
+  pointed at the root). Every call site routes through these helpers.
+- A new `specify migrate v2-layout` verb that renames each present
+  legacy artifact in place. Idempotent. Refuses to clobber an
+  existing destination. Refuses to run inside a workspace clone.
+- A hard-cutover detector at the project-aware command boundary
+  (`run_with_project`) that surfaces `Error::LegacyLayout` (stable
+  code `legacy-layout`, exit 1) and tells the operator to run the
+  migrate verb.
+
+**Rationale.** `.specify/` started life as workflow scratch — cache,
+archive, working changes, lifecycle metadata. The artifacts that
+have accreted there since (the registry, the operator brief, the
+plan, contracts) are durable, PR-reviewed, human-edited material.
+Putting them under a dot-prefixed framework directory understated
+their importance and forced operators to navigate framework
+internals to inspect or hand-edit them. Pulling them up to the root
+makes the boundary explicit: framework owns `.specify/`; operators
+own everything else.
+
+**Hard cutover, no transition window.** The CLI does not silently
+read both layouts. An operator on a v1-layout repo running any
+project-aware verb gets `Error::LegacyLayout` and is pointed at the
+migrate command. The trade-off: a one-time stop for every operator
+when they upgrade past `0.2.0`, against a smaller surface to
+maintain (no dual-read code paths, no warning lifecycle).
+
+**Plan::archive.** The function gained an explicit
+`initiative_path: &Path` parameter so it no longer infers the brief
+location from the plan path's parent. Callers pass
+`ProjectConfig::initiative_path(project_dir)`. The archive co-moves
+both the plan file (now at the repo root) and the brief (also at
+the root) into `.specify/archive/plans/<name>-<YYYYMMDD>/`.
+
+**Risks.** Hand-written tooling that hard-codes `.specify/registry.yaml`
+or sibling paths breaks on upgrade. The migrate verb addresses every
+in-repo case; downstream tooling consumers must adopt the root paths
+in lockstep with the version bump.

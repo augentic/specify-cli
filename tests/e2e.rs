@@ -60,15 +60,15 @@ struct Project {
 }
 
 impl Project {
-    /// Build an empty tempdir and run `specify init omnia` with `--schema-dir`
-    /// pointed at the repo root.
+    /// Build an empty tempdir and run `specify init` with the in-repo
+    /// Omnia schema URI.
     fn init() -> Self {
         let tmp = tempdir().expect("tempdir");
         let root = tmp.path().to_path_buf();
         specify()
             .current_dir(&root)
-            .args(["init", "omnia", "--schema-dir"])
-            .arg(repo_root())
+            .args(["init", "--schema-uri"])
+            .arg(repo_root().join("schemas").join("omnia"))
             .args(["--name", "test-proj"])
             .assert()
             .success();
@@ -401,6 +401,7 @@ fn task_mark_marks_then_is_idempotent() {
 #[test]
 fn schema_resolve_local_returns_local_source() {
     let project = Project::init().with_schemas();
+    fs::remove_dir_all(project.root().join(".specify/.cache/omnia")).expect("remove cached schema");
 
     let assert = specify()
         .current_dir(project.root())

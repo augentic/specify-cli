@@ -12,7 +12,7 @@
   },
   "plan": {
     "name": "demo",
-    "path": "<TEMPDIR>/.specify/plan.yaml"
+    "path": "<TEMPDIR>/plan.yaml"
   },
   "schema-version": 2
 }

@@ -462,9 +462,10 @@ pub fn run_finalize<P: FinalizeProbe>(
     }
 
     // All guards passed — archive (atomic) and optionally clean.
-    let plan_path = ProjectConfig::specify_dir(inputs.project_dir).join("plan.yaml");
+    let plan_path = ProjectConfig::plan_path(inputs.project_dir);
+    let initiative_path = ProjectConfig::initiative_path(inputs.project_dir);
     let archive_dir = ProjectConfig::archive_dir(inputs.project_dir).join("plans");
-    match Plan::archive(&plan_path, &archive_dir, /* force = */ true) {
+    match Plan::archive(&plan_path, &initiative_path, &archive_dir, /* force = */ true) {
         Ok((archived, archived_plans_dir)) => {
             outcome.archived = Some(archived.display().to_string());
             outcome.archived_plans_dir =
@@ -623,7 +624,7 @@ fn clean_workspace_clones(workspace_base: &Path, registry: &Registry) -> Vec<Str
     cleaned
 }
 
-/// Plan-presence guard: load `.specify/plan.yaml` or return
+/// Plan-presence guard: load `plan.yaml` (at the repo root) or return
 /// [`FinalizeError::PlanNotFound`].
 ///
 /// # Errors
@@ -631,7 +632,7 @@ fn clean_workspace_clones(workspace_base: &Path, registry: &Registry) -> Vec<Str
 /// Bubbles up `Plan::load` errors verbatim — a malformed plan is a
 /// real failure, not a "plan absent" sentinel.
 pub fn load_plan_or_refuse(project_dir: &Path) -> Result<Result<Plan, FinalizeError>, Error> {
-    let plan_path = ProjectConfig::specify_dir(project_dir).join("plan.yaml");
+    let plan_path = ProjectConfig::plan_path(project_dir);
     if !plan_path.exists() {
         return Ok(Err(FinalizeError::PlanNotFound));
     }
@@ -881,7 +882,7 @@ mod tests {
         // exercised — finalize must succeed.
         let tmp = TempDir::new().expect("tempdir");
         seed_specify_dir(tmp.path());
-        let plan_path = tmp.path().join(".specify/plan.yaml");
+        let plan_path = tmp.path().join("plan.yaml");
         fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
 
         let plan = plan_named("foo");
@@ -908,7 +909,7 @@ mod tests {
     fn refuses_when_one_project_pr_is_unmerged() {
         let tmp = TempDir::new().expect("tempdir");
         seed_specify_dir(tmp.path());
-        let plan_path = tmp.path().join(".specify/plan.yaml");
+        let plan_path = tmp.path().join("plan.yaml");
         fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
 
         let plan = plan_named("foo");
@@ -943,7 +944,7 @@ mod tests {
     fn passes_when_pr_is_merged() {
         let tmp = TempDir::new().expect("tempdir");
         seed_specify_dir(tmp.path());
-        fs::write(tmp.path().join(".specify/plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+        fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
 
         let plan = plan_named("foo");
         let registry = registry_with(&["alpha"]);
@@ -974,7 +975,7 @@ mod tests {
     fn passes_when_no_branch_for_project() {
         let tmp = TempDir::new().expect("tempdir");
         seed_specify_dir(tmp.path());
-        fs::write(tmp.path().join(".specify/plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+        fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
 
         let plan = plan_named("foo");
         let registry = registry_with(&["alpha"]);
@@ -1145,7 +1146,7 @@ mod tests {
     fn dry_run_does_not_archive_or_clean() {
         let tmp = TempDir::new().expect("tempdir");
         seed_specify_dir(tmp.path());
-        let plan_path = tmp.path().join(".specify/plan.yaml");
+        let plan_path = tmp.path().join("plan.yaml");
         fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
         let workspace_base = tmp.path().join(".specify/workspace");
         let alpha_path = workspace_base.join("alpha");
@@ -1216,7 +1217,7 @@ mod tests {
     fn clean_removes_clones_after_archive() {
         let tmp = TempDir::new().expect("tempdir");
         seed_specify_dir(tmp.path());
-        let plan_path = tmp.path().join(".specify/plan.yaml");
+        let plan_path = tmp.path().join("plan.yaml");
         fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
         let workspace_base = tmp.path().join(".specify/workspace");
         let alpha_path = workspace_base.join("alpha");
@@ -1254,7 +1255,7 @@ mod tests {
     fn clean_skips_symlink_projects() {
         let tmp = TempDir::new().expect("tempdir");
         seed_specify_dir(tmp.path());
-        fs::write(tmp.path().join(".specify/plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+        fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
 
         let plan = plan_named("foo");
         // url: "." → symlink-mode; clean must not delete the project_dir.
@@ -1290,7 +1291,7 @@ mod tests {
     fn idempotent_after_manual_merge() {
         let tmp = TempDir::new().expect("tempdir");
         seed_specify_dir(tmp.path());
-        let plan_path = tmp.path().join(".specify/plan.yaml");
+        let plan_path = tmp.path().join("plan.yaml");
         fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
 
         let plan = plan_named("foo");

@@ -14,6 +14,10 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+fn omnia_schema_dir() -> PathBuf {
+    repo_root().join("schemas").join("omnia")
+}
+
 fn specify() -> Command {
     Command::cargo_bin("specify").expect("cargo_bin(specify)")
 }
@@ -33,8 +37,8 @@ fn init_text_format_succeeds() {
     let tmp = tempdir().unwrap();
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();
@@ -53,8 +57,8 @@ fn init_json_format_has_stable_shape() {
     let tmp = tempdir().unwrap();
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["--format", "json", "init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();
@@ -79,13 +83,41 @@ fn init_json_format_has_stable_shape() {
 }
 
 #[test]
+fn init_rejects_removed_schema_dir_syntax() {
+    let tmp = tempdir().unwrap();
+    specify()
+        .current_dir(tmp.path())
+        .args(["init", "omnia", "--schema-dir"])
+        .arg(repo_root())
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore = "networked GitHub fetch smoke test"]
+fn init_github_directory_uri_succeeds() {
+    let tmp = tempdir().unwrap();
+    specify()
+        .current_dir(tmp.path())
+        .args([
+            "init",
+            "--schema-uri",
+            "https://github.com/augentic/specify/schemas/omnia",
+            "--name",
+            "demo",
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
 fn version_too_old_exits_three_with_json_envelope() {
     let tmp = tempdir().unwrap();
     // Fresh init to produce a real project.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();
@@ -125,16 +157,7 @@ fn init_hub_writes_canonical_on_disk_shape() {
     let tmp = tempdir().unwrap();
     let assert = specify()
         .current_dir(tmp.path())
-        .args([
-            "--format",
-            "json",
-            "init",
-            // schema arg is required by clap but ignored in hub mode;
-            // pass a value the parser will accept.
-            "hub",
-            "--schema-dir",
-        ])
-        .arg(repo_root())
+        .args(["--format", "json", "init"])
         .args(["--name", "platform-hub", "--hub"])
         .assert()
         .success();
@@ -149,10 +172,11 @@ fn init_hub_writes_canonical_on_disk_shape() {
         value["scaffolded-rule-keys"]
     );
 
-    // Files we expect.
+    // Files we expect: project.yaml stays under .specify/, registry.yaml +
+    // initiative.md live at the repo root after the v2 layout move.
     assert!(tmp.path().join(".specify/project.yaml").is_file());
-    assert!(tmp.path().join(".specify/registry.yaml").is_file());
-    assert!(tmp.path().join(".specify/initiative.md").is_file());
+    assert!(tmp.path().join("registry.yaml").is_file());
+    assert!(tmp.path().join("initiative.md").is_file());
     // Phase-pipeline directories MUST NOT be present.
     assert!(!tmp.path().join(".specify/changes").exists());
     assert!(!tmp.path().join(".specify/specs").exists());
@@ -172,7 +196,7 @@ fn init_hub_writes_canonical_on_disk_shape() {
 
     // registry.yaml shape — version: 1, projects: [].
     let registry_yaml =
-        fs::read_to_string(tmp.path().join(".specify/registry.yaml")).expect("read registry.yaml");
+        fs::read_to_string(tmp.path().join("registry.yaml")).expect("read registry.yaml");
     assert!(
         registry_yaml.contains("version: 1"),
         "registry.yaml missing version:\n{registry_yaml}"
@@ -186,7 +210,7 @@ fn init_hub_writes_canonical_on_disk_shape() {
     );
 
     // initiative.md shape — name baked into frontmatter.
-    let brief = fs::read_to_string(tmp.path().join(".specify/initiative.md")).expect("read brief");
+    let brief = fs::read_to_string(tmp.path().join("initiative.md")).expect("read brief");
     assert!(
         brief.contains("name: platform-hub"),
         "initiative.md missing kebab-cased name:\n{brief}"
@@ -202,8 +226,7 @@ fn init_hub_refuses_when_specify_dir_already_exists() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["init", "hub", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init"])
         .args(["--name", "platform-hub", "--hub"])
         .assert()
         .failure();
@@ -222,8 +245,7 @@ fn init_hub_then_registry_validate_succeeds_on_empty_projects() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
-        .args(["init", "hub", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init"])
         .args(["--name", "platform-hub", "--hub"])
         .assert()
         .success();
@@ -243,8 +265,7 @@ fn init_hub_then_registry_validate_rejects_dot_url_with_hub_diagnostic() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
-        .args(["init", "hub", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init"])
         .args(["--name", "platform-hub", "--hub"])
         .assert()
         .success();
@@ -253,7 +274,7 @@ fn init_hub_then_registry_validate_rejects_dot_url_with_hub_diagnostic() {
     // entry. Hub-mode validation must surface the
     // `hub-cannot-be-project` diagnostic.
     fs::write(
-        tmp.path().join(".specify/registry.yaml"),
+        tmp.path().join("registry.yaml"),
         "version: 1\n\
          projects:\n\
          \x20\x20- name: platform\n\
@@ -299,8 +320,7 @@ fn serde_yaml_to_json(yaml: &str) -> Result<serde_json::Value, String> {
 fn init_hub(tmp: &tempfile::TempDir, name: &str) {
     specify()
         .current_dir(tmp.path())
-        .args(["init", "hub", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init"])
         .args(["--name", name, "--hub"])
         .assert()
         .success();
@@ -529,12 +549,12 @@ fn registry_remove_refuses_when_registry_absent() {
     // by default.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();
-    assert!(!tmp.path().join(".specify/registry.yaml").exists());
+    assert!(!tmp.path().join("registry.yaml").exists());
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -607,10 +627,7 @@ fn workspace_merge_refuses_when_plan_absent() {
         .assert()
         .success();
 
-    assert!(
-        !tmp.path().join(".specify/plan.yaml").exists(),
-        "test precondition: plan.yaml must be absent",
-    );
+    assert!(!tmp.path().join("plan.yaml").exists(), "test precondition: plan.yaml must be absent");
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -637,15 +654,15 @@ fn workspace_merge_refuses_when_registry_absent() {
     // Plain init (single-repo) — no registry.yaml.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();
-    assert!(!tmp.path().join(".specify/registry.yaml").exists());
+    assert!(!tmp.path().join("registry.yaml").exists());
 
     // Seed plan.yaml directly so the registry check is the first guard hit.
-    fs::write(tmp.path().join(".specify/plan.yaml"), "name: demo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: demo\nchanges: []\n").unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -665,7 +682,7 @@ fn workspace_merge_refuses_when_registry_empty() {
     init_hub(&tmp, "platform-hub");
     // Hub init writes an empty registry; seed a plan so the *empty
     // registry* path is the guard that fires.
-    fs::write(tmp.path().join(".specify/plan.yaml"), "name: demo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: demo\nchanges: []\n").unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -692,8 +709,8 @@ fn workspace_merge_refuses_when_registry_empty() {
 fn init_omnia_project(tmp: &tempfile::TempDir) {
     specify()
         .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
-        .arg(repo_root())
+        .args(["init", "--schema-uri"])
+        .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
         .success();
@@ -709,7 +726,7 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     // `plan create` path enforces validation at write time and would
     // refuse the cycle / unknown-source cases below.
     fs::write(
-        tmp.path().join(".specify/plan.yaml"),
+        tmp.path().join("plan.yaml"),
         "name: demo\n\
          sources:\n\
          \x20\x20monolith: /tmp/legacy\n\
@@ -738,12 +755,11 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     )
     .unwrap();
 
-    // Hand-write a registry too, so we can exercise stale-clone with
-    // a deterministic fixture: a clone slot with a sync stamp whose
-    // `url` disagrees with the registry.
-    fs::create_dir_all(tmp.path().join(".specify")).unwrap();
+    // Hand-write a registry at the repo root, so we can exercise
+    // stale-clone with a deterministic fixture: a clone slot with a
+    // sync stamp whose `url` disagrees with the registry.
     fs::write(
-        tmp.path().join(".specify/registry.yaml"),
+        tmp.path().join("registry.yaml"),
         "version: 1\n\
          projects:\n\
          \x20\x20- name: alpha\n\
@@ -795,7 +811,7 @@ fn plan_doctor_diagnostic_payloads_round_trip_typed() {
     // checks — enough to confirm the typed payload deserialises
     // cleanly.
     fs::write(
-        tmp.path().join(".specify/plan.yaml"),
+        tmp.path().join("plan.yaml"),
         "name: demo\n\
          sources:\n\
          \x20\x20orphan-key: /tmp/somewhere\n\
@@ -849,7 +865,7 @@ fn plan_validate_unchanged_by_doctor_fixture() {
     init_omnia_project(&tmp);
 
     fs::write(
-        tmp.path().join(".specify/plan.yaml"),
+        tmp.path().join("plan.yaml"),
         "name: demo\n\
          sources:\n\
          \x20\x20monolith: /tmp/legacy\n\
@@ -980,10 +996,7 @@ fn initiative_finalize_help_documents_clean_and_dry_run() {
 fn initiative_finalize_refuses_when_plan_absent() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
-    assert!(
-        !tmp.path().join(".specify/plan.yaml").exists(),
-        "test precondition: plan.yaml must be absent",
-    );
+    assert!(!tmp.path().join("plan.yaml").exists(), "test precondition: plan.yaml must be absent");
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -1010,7 +1023,7 @@ fn initiative_finalize_refuses_on_non_terminal_entries() {
     // Seed a plan with one done and one pending entry — pending is
     // not terminal for finalize.
     fs::write(
-        tmp.path().join(".specify/plan.yaml"),
+        tmp.path().join("plan.yaml"),
         "name: foo\n\
          changes:\n\
          \x20\x20- name: a\n\
@@ -1037,7 +1050,7 @@ fn initiative_finalize_refuses_on_non_terminal_entries() {
     assert_eq!(names, ["b"], "entries must list the offending non-terminal name");
 
     // Atomicity: plan.yaml must remain on disk on refusal.
-    assert!(tmp.path().join(".specify/plan.yaml").exists(), "plan.yaml must be untouched");
+    assert!(tmp.path().join("plan.yaml").exists(), "plan.yaml must be untouched");
 }
 
 #[test]
@@ -1046,7 +1059,7 @@ fn initiative_finalize_dry_run_archives_nothing_with_empty_registry() {
     init_hub(&tmp, "platform-hub");
     // Seed an all-terminal plan and rely on the hub-init's empty
     // registry — no per-project probes will run.
-    fs::write(tmp.path().join(".specify/plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -1063,14 +1076,14 @@ fn initiative_finalize_dry_run_archives_nothing_with_empty_registry() {
     assert!(projects.is_empty(), "empty registry → empty projects, got: {projects:?}");
 
     // On-disk: plan.yaml must remain.
-    assert!(tmp.path().join(".specify/plan.yaml").exists(), "dry-run must not move plan.yaml");
+    assert!(tmp.path().join("plan.yaml").exists(), "dry-run must not move plan.yaml");
 }
 
 #[test]
 fn initiative_finalize_archives_when_all_terminal_and_no_registry() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
-    fs::write(tmp.path().join(".specify/plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -1091,7 +1104,7 @@ fn initiative_finalize_archives_when_all_terminal_and_no_registry() {
     }
 
     // Plan.yaml must have moved into the archive.
-    assert!(!tmp.path().join(".specify/plan.yaml").exists(), "plan.yaml must be archived");
+    assert!(!tmp.path().join("plan.yaml").exists(), "plan.yaml must be archived");
     let archive_dir = tmp.path().join(".specify/archive/plans");
     let entries: Vec<String> = fs::read_dir(&archive_dir)
         .expect("read archive dir")
@@ -1110,11 +1123,11 @@ fn initiative_finalize_idempotent_after_archive() {
     // canonical "initiative is already finalized" signal.
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
-    fs::write(tmp.path().join(".specify/plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
 
     // First run: archives the plan.
     specify().current_dir(tmp.path()).args(["initiative", "finalize"]).assert().success();
-    assert!(!tmp.path().join(".specify/plan.yaml").exists());
+    assert!(!tmp.path().join("plan.yaml").exists());
 
     // Second run: plan is gone, refused with plan-not-found.
     let assert = specify()
@@ -1125,4 +1138,132 @@ fn initiative_finalize_idempotent_after_archive() {
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert_eq!(value["error"], "plan-not-found");
+}
+
+// ---- specify migrate v2-layout (Option-3 hard cutover) ----
+
+/// Seed a v1-layout project: a real `.specify/` (so `ProjectConfig::load`
+/// succeeds) plus the four legacy artifacts the detector watches for.
+/// Used by the `legacy-layout` cutover and `migrate v2-layout` tests.
+fn seed_v1_layout(tmp: &tempfile::TempDir) {
+    init_hub(tmp, "platform-hub");
+    let specify = tmp.path().join(".specify");
+    // Hub init writes registry.yaml and initiative.md at the repo root
+    // already; move them back to .specify/ to simulate a v1-layout
+    // project that needs migrating.
+    fs::rename(tmp.path().join("registry.yaml"), specify.join("registry.yaml"))
+        .expect("move registry.yaml back to .specify/");
+    fs::rename(tmp.path().join("initiative.md"), specify.join("initiative.md"))
+        .expect("move initiative.md back to .specify/");
+    fs::write(specify.join("plan.yaml"), "name: demo\nchanges: []\n").expect("seed plan.yaml");
+    let contracts = specify.join("contracts").join("schemas");
+    fs::create_dir_all(&contracts).expect("mkdir .specify/contracts/schemas");
+    fs::write(contracts.join("payload.yaml"), "type: object\n").expect("seed contract");
+}
+
+#[test]
+fn project_aware_command_refuses_on_v1_layout_with_legacy_layout_error() {
+    let tmp = tempdir().unwrap();
+    seed_v1_layout(&tmp);
+
+    // `specify status` is the canonical project-aware entry point; the
+    // detector wired into `run_with_project` must surface
+    // `legacy-layout` before the dashboard even runs.
+    let assert =
+        specify().current_dir(tmp.path()).args(["--format", "json", "status"]).assert().failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "legacy-layout");
+    let msg = value["message"].as_str().expect("message");
+    assert!(
+        msg.contains(".specify/registry.yaml"),
+        "legacy-layout message must enumerate the offenders, got: {msg}"
+    );
+    assert!(
+        msg.contains("specify migrate v2-layout"),
+        "legacy-layout message must point at the migrate verb, got: {msg}"
+    );
+}
+
+#[test]
+fn migrate_v2_layout_moves_every_artifact_and_succeeds() {
+    let tmp = tempdir().unwrap();
+    seed_v1_layout(&tmp);
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "v2-layout"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["any-collisions"], false);
+    assert_eq!(value["any-legacy-present"], true);
+
+    // v2 destinations now exist at the repo root.
+    assert!(tmp.path().join("registry.yaml").is_file());
+    assert!(tmp.path().join("plan.yaml").is_file());
+    assert!(tmp.path().join("initiative.md").is_file());
+    assert!(tmp.path().join("contracts").is_dir());
+
+    // v1 sources are gone.
+    assert!(!tmp.path().join(".specify/registry.yaml").exists());
+    assert!(!tmp.path().join(".specify/plan.yaml").exists());
+    assert!(!tmp.path().join(".specify/initiative.md").exists());
+    assert!(!tmp.path().join(".specify/contracts").exists());
+
+    // Re-running on the migrated repo is a no-op.
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "v2-layout"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["any-legacy-present"], false);
+
+    // After the migration, project-aware verbs work again.
+    specify().current_dir(tmp.path()).args(["registry", "show"]).assert().success();
+}
+
+#[test]
+fn migrate_v2_layout_dry_run_does_not_modify_disk() {
+    let tmp = tempdir().unwrap();
+    seed_v1_layout(&tmp);
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "v2-layout", "--dry-run"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["dry-run"], true);
+
+    // Sources still in .specify/, no destinations at root.
+    assert!(tmp.path().join(".specify/registry.yaml").is_file());
+    assert!(!tmp.path().join("registry.yaml").exists());
+}
+
+#[test]
+fn migrate_v2_layout_refuses_destination_collision() {
+    let tmp = tempdir().unwrap();
+    seed_v1_layout(&tmp);
+    // Plant a colliding file at the v2 destination.
+    fs::write(tmp.path().join("registry.yaml"), "pre-existing\n").unwrap();
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "v2-layout"])
+        .assert()
+        .failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["any-collisions"], true);
+
+    // Pre-existing destination must not be clobbered.
+    let pre = fs::read_to_string(tmp.path().join("registry.yaml")).expect("read pre-existing");
+    assert_eq!(pre, "pre-existing\n");
+    // v1 source must still be on disk so the operator can resolve.
+    assert!(tmp.path().join(".specify/registry.yaml").is_file());
 }

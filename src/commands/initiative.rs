@@ -83,7 +83,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
             path: absolute_string(&brief_path),
         }),
         OutputFormat::Text => {
-            println!("Created .specify/initiative.md for {name}");
+            println!("Created initiative.md for {name}");
         }
     }
     Ok(CliResult::Success)
@@ -105,7 +105,7 @@ fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
                     path: brief_path.display().to_string(),
                 }),
                 OutputFormat::Text => {
-                    println!("no initiative brief declared at .specify/initiative.md");
+                    println!("no initiative brief declared at initiative.md");
                 }
             }
             Ok(CliResult::Success)
@@ -206,10 +206,10 @@ fn finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResul
 }
 
 fn emit_plan_not_found(format: OutputFormat) -> CliResult {
-    let msg = "no plan to finalize: .specify/plan.yaml is absent. \
+    let msg = "no plan to finalize: plan.yaml is absent. \
                If the initiative was already finalized, the archive is at \
                .specify/archive/plans/. Otherwise run `specify plan create` \
-               (and `specify initiative create` if .specify/initiative.md is \
+               (and `specify initiative create` if initiative.md is \
                also missing) to start the loop.";
     match format {
         OutputFormat::Json => {

@@ -49,7 +49,7 @@ fn show_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
                     });
                 }
                 OutputFormat::Text => {
-                    println!("no registry declared at .specify/registry.yaml");
+                    println!("no registry declared at registry.yaml");
                 }
             }
             Ok(CliResult::Success)
@@ -109,7 +109,7 @@ fn validate_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
                     ok: true,
                 }),
                 OutputFormat::Text => {
-                    println!("no registry declared at .specify/registry.yaml");
+                    println!("no registry declared at registry.yaml");
                 }
             }
             Ok(CliResult::Success)
@@ -165,10 +165,10 @@ fn validate_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
 }
 
 /// `specify registry add` — RFC-9 §2A. Append a new project entry to
-/// `.specify/registry.yaml`, creating the file with `version: 1` when
-/// absent. Pre-validates the obvious shape errors (kebab-case name,
-/// non-empty schema, duplicate name) for friendlier diagnostics, then
-/// runs the same `Registry::validate_shape` (or
+/// `registry.yaml` (at the repo root), creating the file with
+/// `version: 1` when absent. Pre-validates the obvious shape errors
+/// (kebab-case name, non-empty schema, duplicate name) for friendlier
+/// diagnostics, then runs the same `Registry::validate_shape` (or
 /// `validate_shape_hub` for platform hubs) the read-only verbs
 /// already use, so URL classification and the
 /// `description-missing-multi-repo` invariant produce the canonical
@@ -268,12 +268,12 @@ fn add_to_registry(
 }
 
 /// `specify registry remove` — RFC-9 §2A. Delete the named project
-/// from `.specify/registry.yaml`. Validates the resulting shape (a
-/// removal can only relax the multi-repo description invariant, so
-/// the post-write check should always succeed; we run it anyway to
-/// pin the contract). Emits a non-fatal warning when
-/// `.specify/plan.yaml` references the removed project, naming the
-/// affected plan entries so the operator can run `specify plan amend
+/// from `registry.yaml` (at the repo root). Validates the resulting
+/// shape (a removal can only relax the multi-repo description
+/// invariant, so the post-write check should always succeed; we run
+/// it anyway to pin the contract). Emits a non-fatal warning when
+/// `plan.yaml` references the removed project, naming the affected
+/// plan entries so the operator can run `specify plan amend
 /// --project <other>` against each one.
 fn remove_from_registry(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let registry_path = Registry::path(&ctx.project_dir);
@@ -348,7 +348,7 @@ fn write_registry(registry: &Registry, path: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-/// Scan `.specify/plan.yaml` (when present) for plan entries whose
+/// Scan `plan.yaml` (when present) for plan entries whose
 /// `project` field equals `removed_name`. Returns one human-readable
 /// warning string per affected entry. Best-effort: any parse error is
 /// surfaced as a single advisory string instead of failing the
