@@ -1478,10 +1478,13 @@ name = "specify-vectis"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "jsonschema",
  "roxmltree",
  "serde",
+ "serde-saphyr",
  "serde_json",
  "syn",
+ "tempfile",
  "thiserror",
  "toml",
  "ureq",

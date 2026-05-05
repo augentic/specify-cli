@@ -13,10 +13,15 @@ workspace = true
 
 [dependencies]
 clap.workspace = true
+jsonschema.workspace = true
 roxmltree = "0.21"
 serde.workspace = true
+serde-saphyr.workspace = true
 serde_json.workspace = true
 syn = { version = "2", features = ["full"] }
 thiserror.workspace = true
 toml = "1"
 ureq = { version = "3", features = ["json"] }
+
+[dev-dependencies]
+tempfile.workspace = true

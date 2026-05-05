@@ -9,7 +9,7 @@
 //!    project name, so getting it right is load-bearing.
 //! 2. **Capability set** -- each `type <Alias> = <crux_crate>::<...><...>;`
 //!    line that names a Crux capability crate the engine knows about
-//!    contributes the corresponding [`Capability`]. Crux-like aliases
+//!    contributes the corresponding `Capability`. Crux-like aliases
 //!    whose crate is *not* in our canonical set (e.g. a writer-skill
 //!    experiment) land in `unrecognized_capabilities` as warnings, not
 //!    errors: the RFC explicitly prefers "scaffold the shell with the

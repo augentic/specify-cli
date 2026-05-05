@@ -93,7 +93,7 @@ pub struct InitResult {
 /// new directories, doesn't duplicate the `.gitignore` entry, and writes
 /// byte-identical `project.yaml` contents.
 ///
-/// When [`InitOptions::hub`] is `true`, dispatches to [`init_hub`]
+/// When [`InitOptions::hub`] is `true`, dispatches to `init_hub`
 /// instead — see its doc comment for the platform-hub on-disk shape.
 ///
 /// # Errors
@@ -284,7 +284,7 @@ fn resolve_version(project_dir: &Path, mode: VersionMode) -> Result<String, Erro
 
 const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/workspace/"];
 
-/// Idempotent: ensure each line in [`SPECIFY_GITIGNORE_ENTRIES`] appears
+/// Idempotent: ensure each line in `SPECIFY_GITIGNORE_ENTRIES` appears
 /// exactly once (matched with `trim()` per line) in the project
 /// `.gitignore`, appending missing lines with a trailing newline.
 ///

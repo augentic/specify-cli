@@ -162,14 +162,14 @@ fn vectis_validate_help_lists_every_mode_and_path_positional() {
     );
 }
 
-/// Phase 1.5: every `vectis validate <mode>` invocation MUST exit
-/// non-zero with the v2 `not-implemented` envelope. The shape is
-/// authored once in `src/commands/vectis.rs` -- this test pins it
-/// across all five modes so Phases 1.6-1.10 cannot regress callers
-/// that already key off the `error: not-implemented` discriminator.
+/// Phase 1.5 wired the `not-implemented` envelope for every mode;
+/// Phase 1.6 promotes `tokens` to a real validator, so this test now
+/// pins the envelope across the four still-stubbed modes only
+/// (`layout`, `composition`, `assets`, `all`). The `tokens` envelope
+/// shape gets its own dedicated tests below.
 #[test]
-fn vectis_validate_modes_emit_not_implemented_envelope() {
-    for mode in ["layout", "composition", "tokens", "assets", "all"] {
+fn vectis_validate_stub_modes_emit_not_implemented_envelope() {
+    for mode in ["layout", "composition", "assets", "all"] {
         let assert =
             specify().args(["--format", "json", "vectis", "validate", mode]).assert().failure();
         let output = assert.get_output();
@@ -187,19 +187,128 @@ fn vectis_validate_modes_emit_not_implemented_envelope() {
     }
 }
 
-/// Phase 1.5: an explicit `[PATH]` positional MUST be accepted by clap
-/// and threaded through to the stub (today it does not change the
-/// outcome, but we lock the parse so future phases inherit it).
+/// Phase 1.6: the `tokens` mode is now real. A valid Appendix-D-shaped
+/// document MUST exit 0 with the per-mode envelope (`mode`, `path`,
+/// empty `errors` and `warnings` arrays) and the auto-injected
+/// `schema-version`.
 #[test]
-fn vectis_validate_accepts_explicit_path_positional() {
+fn vectis_validate_tokens_clean_run_exits_zero_with_envelope() {
+    let tmp = tempdir().unwrap();
+    let tokens_path = tmp.path().join("tokens.yaml");
+    std::fs::write(
+        &tokens_path,
+        // Tiny version-only document: structurally valid against
+        // tokens.schema.json's `additionalProperties: false` because
+        // every category is optional.
+        "version: 1\n",
+    )
+    .expect("write tokens.yaml");
+
     let assert = specify()
-        .args(["--format", "json", "vectis", "validate", "tokens", "design-system/tokens.yaml"])
+        .args(["--format", "json", "vectis", "validate", "tokens"])
+        .arg(&tokens_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["mode"], "tokens");
+    assert_eq!(
+        value["path"].as_str().expect("path is a string"),
+        tokens_path.display().to_string()
+    );
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0), "expected no errors: {value}");
+    assert_eq!(
+        value["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "expected no warnings: {value}"
+    );
+}
+
+/// Phase 1.6: a deliberately broken `tokens.yaml` MUST exit 1 with at
+/// least one error entry whose `path` points at the offending node
+/// (`/colors/primary/light`). The `error` discriminator is **not**
+/// present on the validate envelope (that's reserved for the v2 error
+/// shape) -- the validator wrote a real report and exited non-zero.
+#[test]
+fn vectis_validate_tokens_broken_hex_exits_one_with_pathful_error() {
+    let tmp = tempdir().unwrap();
+    let tokens_path = tmp.path().join("tokens.yaml");
+    std::fs::write(
+        &tokens_path,
+        "version: 1\ncolors:\n  primary:\n    light: \"#xyz\"\n    dark: \"#000000\"\n",
+    )
+    .expect("write tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "tokens"])
+        .arg(&tokens_path)
         .assert()
         .failure();
     let output = assert.get_output();
     let value = parse_json(&output.stdout);
-    assert_eq!(value["error"], "not-implemented");
-    assert_eq!(value["command"], "validate tokens");
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    assert_eq!(value["mode"], "tokens");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(!errors.is_empty(), "expected at least one error: {value}");
+    let any_path_hits_primary_light = errors.iter().any(|e| {
+        e.get("path").and_then(Value::as_str).is_some_and(|p| p.contains("/colors/primary/light"))
+    });
+    assert!(
+        any_path_hits_primary_light,
+        "expected an error pointing at /colors/primary/light, got: {errors:?}"
+    );
+}
+
+/// Phase 1.6: a missing `tokens.yaml` MUST surface as the v2
+/// `invalid-project` error envelope (exit 1) -- distinct from the
+/// validator-reported `errors` array, which is reserved for shape /
+/// reference findings against an actually-loaded document.
+#[test]
+fn vectis_validate_tokens_missing_file_surfaces_invalid_project() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("nope-tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "tokens"])
+        .arg(&missing)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 1);
+    assert_eq!(value["schema-version"], 2);
+    assert!(
+        value["message"].as_str().unwrap_or("").contains("tokens.yaml not readable"),
+        "unexpected message: {value}"
+    );
+    assert_eq!(output.status.code(), Some(1));
+}
+
+/// Phase 1.5 acceptance kept: an explicit `[PATH]` positional MUST be
+/// accepted by clap and threaded through. Phase 1.6 makes it
+/// observable -- the resolved path appears in the validate envelope's
+/// `path` field on a successful run.
+#[test]
+fn vectis_validate_accepts_explicit_path_positional() {
+    let tmp = tempdir().unwrap();
+    let tokens_path = tmp.path().join("custom-tokens.yaml");
+    std::fs::write(&tokens_path, "version: 1\n").expect("write tokens.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "tokens"])
+        .arg(&tokens_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    assert_eq!(value["mode"], "tokens");
+    assert_eq!(
+        value["path"].as_str().expect("path is a string"),
+        tokens_path.display().to_string()
+    );
 }
 
 /// Force the `missing-prerequisites` path by clearing PATH so every

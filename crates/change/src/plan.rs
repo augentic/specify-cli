@@ -644,7 +644,7 @@ impl Plan {
     ///      Any collision errors out before any file or directory is
     ///      moved, so a failure here leaves the working tree untouched.
     /// 4. Create `archive_dir` if missing.
-    /// 5. Execute: move `plan.yaml` via [`crate::actions::move_atomic`],
+    /// 5. Execute: move `plan.yaml` via `crate::actions::move_atomic`,
     ///    then (when present) move the working directory via the same
     ///    helper. It dispatches on `src.is_dir()` and does an atomic
     ///    `fs::rename` with a `copy + remove` fallback on `EXDEV`

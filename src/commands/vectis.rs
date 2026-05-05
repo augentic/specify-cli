@@ -26,11 +26,22 @@ pub fn run_vectis(format: OutputFormat, action: &VectisAction) -> CliResult {
     };
     match result {
         Ok(specify_vectis::CommandOutcome::Success(value)) => {
+            // `vectis validate <mode>` always emits its envelope on
+            // stdout (so the operator sees the report) but exits
+            // non-zero when the envelope carries any `errors`. Every
+            // other verb stays exit 0 on Success — they only fail via
+            // `Err(VectisError)`. RFC-11 §H: "non-zero on errors,
+            // zero with a printed warning report on warnings, zero
+            // silently on a clean run".
+            let exit = match action {
+                VectisAction::Validate(_) => validate_exit_code(&value),
+                _ => CliResult::Success,
+            };
             match format {
                 OutputFormat::Json => emit_response(value),
                 OutputFormat::Text => render_text(action, &value),
             }
-            CliResult::Success
+            exit
         }
         Ok(specify_vectis::CommandOutcome::Stub { command }) => {
             let message = format!("`vectis {command}` is not implemented yet");
@@ -312,14 +323,43 @@ fn render_versions_text(value: &Value) {
     }
 }
 
+/// Map a `vectis validate` envelope to the binary's exit code.
+///
+/// The envelope shape Phase 1.5 fixed has `errors` and `warnings`
+/// arrays at the top level (one mode) and Phase 1.10 will introduce a
+/// nested `mode: "all"` shape with `results: [{ mode, report }, ...]`.
+/// To keep the dispatcher mode-agnostic, this helper:
+///
+/// 1. Looks at the top-level `errors` array first (flat mode shape).
+/// 2. When the envelope has `results` (the `all` shape from Phase
+///    1.10), recurses into every entry's `report` and returns
+///    [`CliResult::GenericFailure`] if any sub-report has errors.
+///
+/// A clean run (no errors anywhere) yields [`CliResult::Success`];
+/// warnings are reported but do not change the exit code, per RFC-11
+/// §H ("zero with a printed warning report on warnings").
+fn validate_exit_code(value: &Value) -> CliResult {
+    fn has_errors(node: &Value) -> bool {
+        if node.get("errors").and_then(Value::as_array).is_some_and(|arr| !arr.is_empty()) {
+            return true;
+        }
+        if let Some(results) = node.get("results").and_then(Value::as_array) {
+            return results
+                .iter()
+                .any(|entry| entry.get("report").is_some_and(has_errors) || has_errors(entry));
+        }
+        false
+    }
+    if has_errors(value) { CliResult::GenericFailure } else { CliResult::Success }
+}
+
 /// Forward-compatible text renderer for `vectis validate <mode>`.
 ///
-/// Phase 1.5 every mode returns
-/// `CommandOutcome::Stub`, which the dispatcher renders through the
-/// `not-implemented` arm, so this function is unreachable today (the
-/// `render_text` match still requires it for exhaustiveness). It is
-/// written against the JSON shape Phases 1.6–1.10 will populate so
-/// later phases only need to widen the body, not the dispatch tree:
+/// Phase 1.6 wired the `tokens` mode through this renderer; the four
+/// remaining modes (`layout`, `composition`, `assets`, `all`) still
+/// return `CommandOutcome::Stub` and reach the dispatcher's
+/// `not-implemented` arm instead. The shape this function consumes is
+/// the per-mode envelope Phase 1.5 fixed:
 ///
 /// ```json
 /// {
