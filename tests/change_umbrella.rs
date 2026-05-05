@@ -1105,13 +1105,13 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "change", "plan", "create", "my-initiative"])
+            .args(["--format", "json", "change", "plan", "create", "my-change"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
         assert_eq!(actual["schema-version"], 2);
-        assert_eq!(actual["plan"]["name"], "my-initiative");
+        assert_eq!(actual["plan"]["name"], "my-change");
         let path_str = actual["plan"]["path"].as_str().expect("plan.path string");
         assert!(
             path_str.ends_with("/plan.yaml"),
@@ -1120,7 +1120,7 @@ changes:
 
         assert!(project.plan_path().exists(), "plan.yaml should be created");
         let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
-        assert!(saved.contains("name: my-initiative"), "plan missing name:\n{saved}");
+        assert!(saved.contains("name: my-change"), "plan missing name:\n{saved}");
         // Empty maps/vecs serialise with either `{}`/`[]` or are omitted
         // via serde's default — either way, no actual source/change entries.
         assert!(!saved.contains("- name:"), "plan should have no change entries:\n{saved}");
@@ -1398,14 +1398,14 @@ changes:
         let project = Project::init();
         project.seed_plan(
             "\
-name: my-initiative
+name: my-change
 changes: []
 ",
         );
 
         specify().current_dir(project.root()).args(["change", "plan", "archive"]).assert().success();
 
-        let re = regex::Regex::new(r"^my-initiative-\d{8}\.yaml$").expect("regex compiles");
+        let re = regex::Regex::new(r"^my-change-\d{8}\.yaml$").expect("regex compiles");
         let entries: Vec<String> = fs::read_dir(archive_dir(&project))
             .expect("read archive dir")
             .filter_map(|e| e.ok().and_then(|e| e.file_name().into_string().ok()))
@@ -1413,7 +1413,7 @@ changes: []
         assert_eq!(entries.len(), 1, "expected exactly one archive file, got: {entries:?}");
         assert!(
             re.is_match(&entries[0]),
-            "archive filename {} should match `my-initiative-<YYYYMMDD>.yaml`",
+            "archive filename {} should match `my-change-<YYYYMMDD>.yaml`",
             entries[0]
         );
     }
@@ -2051,13 +2051,13 @@ inputs: []
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "change", "create", "my-initiative"])
+            .args(["--format", "json", "change", "create", "my-change"])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
         assert_eq!(actual["action"], "init");
         assert_eq!(actual["ok"], true);
-        assert_eq!(actual["name"], "my-initiative");
+        assert_eq!(actual["name"], "my-change");
         assert!(
             actual["path"].as_str().expect("path string").ends_with("/change.md"),
             "path should point at the brief, got: {}",

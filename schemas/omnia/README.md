@@ -16,7 +16,7 @@
 | `briefs/design.md` | Generation brief for the design stage |
 | `briefs/tasks.md` | Generation brief for the tasks stage |
 | `briefs/build.md` | Implementation brief for the build stage |
-| `briefs/merge.md` | Merge brief for finalizing a change |
+| `briefs/merge.md` | Merge brief for finalizing a slice |
 
 ## Pipeline
 
@@ -28,7 +28,7 @@ The capability declares four briefs under `pipeline.define` in dependency order:
 4. **tasks** — implementation checklist (`tasks.md`), requires specs + design
 
 `pipeline.build` requires tasks to be complete and is tracked via `tasks.md`.
-`pipeline.merge` finalises the change and runs the merge brief.
+`pipeline.merge` finalises the slice and runs the merge brief.
 
 ## Schema framework
 
