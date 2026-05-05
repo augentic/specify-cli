@@ -26,16 +26,50 @@
 //!    per the plan). Missing optional raster densities surface as
 //!    warnings; a fully-missing platform surfaces as an error.
 //!
-//! The remaining three modes (`layout`, `composition`, `all`) still
-//! return [`CommandOutcome::Stub`] and will be filled in by Phases
-//! 1.8-1.10:
+//! Phase 1.8 brings the `layout` mode online against the patched
+//! `schemas/vectis/composition.schema.json` (RFC-11 Appendix F;
+//! vendored from the `specify` repo into
+//! `crates/vectis/embedded/composition.schema.json` -- the same
+//! byte-identity discipline as the tokens / assets copies). The
+//! mode performs three coordinated checks on top of YAML parsing:
 //!
-//! - **Phase 1.8** -- `layout` mode validates as the unwired subset
-//!   of `composition.schema.json`, including the §G structural-
-//!   identity rule for any `component:` directives present.
+//! 1. **Schema validation** against the patched composition schema.
+//! 2. **Unwired-subset enforcement** (RFC-11 §A) -- reject `delta`
+//!    documents and any define-owned wiring keys (`maps_to`, `bind`,
+//!    `event`, `error`, overlay `trigger`, conditional visual
+//!    `*-when` keys). Define is the only writer for those keys; a
+//!    layout document MUST stay flat-shape until `/spec:define`
+//!    promotes it to `composition.yaml`.
+//! 3. **Structural-identity** (RFC-11 §G) -- every group carrying a
+//!    `component: <slug>` directive must share a single canonical
+//!    skeleton across the document. The engine itself is generic and
+//!    Phase 1.9 reuses it for `composition` mode (see
+//!    [`check_structural_identity`]); the engine consumes
+//!    `*-when`-key *presence* (forbidden in layout, allowed in
+//!    composition) but ignores `*-when` *condition values* per §G's
+//!    edge-case enumeration.
+//!
+//! Cross-artifact reference checks (token / asset id resolution
+//! from inside `layout.yaml`) are deliberately deferred to Phase 1.9.
+//! The plan note in Phase 1.8 ("Cross-artifact reference checks are
+//! also §A behavior; layered exactly the same way as Phase 1.9 does
+//! for composition") is an architectural pointer rather than a Phase
+//! 1.8 deliverable: §A's verification step describes the inferer
+//! invoking those checks, and §H's `layout` mode bullet enumerates
+//! "YAML syntax, schema shape, `screens` only, no `delta`, no
+//! define-owned wiring keys, and the §G structural-identity rule"
+//! without mentioning auto-invoke. Phase 1.9 owns the auto-invoke
+//! mechanism; once it lands, layout mode can opt into it via the
+//! same shared helper without disturbing Phase 1.8's surface.
+//!
+//! The remaining two modes (`composition`, `all`) still return
+//! [`CommandOutcome::Stub`] and will be filled in by Phases 1.9
+//! and 1.10:
+//!
 //! - **Phase 1.9** -- `composition` mode adds cross-artifact
 //!   resolution and auto-invokes `tokens` / `assets` when sibling
-//!   files exist.
+//!   files exist. Reuses the structural-identity engine landed
+//!   in Phase 1.8.
 //! - **Phase 1.10** -- `all` runs the four modes in turn, plus the
 //!   `artifacts:`-block default-path resolution every mode shares.
 //!
@@ -63,6 +97,7 @@
 //! per RFC-11 §H ("non-zero on errors, zero with a printed warning
 //! report on warnings, zero silently on a clean run").
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -85,6 +120,18 @@ const TOKENS_SCHEMA_SOURCE: &str = include_str!("../embedded/tokens.schema.json"
 /// upstream is canonical and any edit there must be mirrored here.
 const ASSETS_SCHEMA_SOURCE: &str = include_str!("../embedded/assets.schema.json");
 
+/// Embedded `composition.schema.json` (RFC-11 Appendix F-patched).
+/// Vendored from the `specify` repo at
+/// `schemas/vectis/composition.schema.json` (Phase 1.3). Same
+/// byte-identity discipline as the tokens / assets copies: upstream
+/// is canonical and any edit there must be mirrored here. Shared
+/// between `layout` mode (Phase 1.8, this file) and `composition`
+/// mode (Phase 1.9) -- both validate against the same JSON Schema;
+/// the difference is the runtime layer (`layout` enforces the
+/// unwired subset, `composition` resolves wiring + cross-artifact
+/// references).
+const COMPOSITION_SCHEMA_SOURCE: &str = include_str!("../embedded/composition.schema.json");
+
 /// Default fallback path for `tokens.yaml` when no `[path]` argument is
 /// supplied (RFC-11 §H "Inputs"). Phase 1.10 layers `artifacts:`-block
 /// resolution on top of this; until then the canonical fallback is
@@ -96,6 +143,12 @@ const DEFAULT_TOKENS_PATH: &str = "design-system/tokens.yaml";
 /// resolution on top of this.
 const DEFAULT_ASSETS_PATH: &str = "design-system/assets.yaml";
 
+/// Default fallback path for `layout.yaml`, mirroring the tokens /
+/// assets fallbacks (RFC-11 §H "Inputs"). Phase 1.10 layers
+/// `artifacts:`-block resolution on top of this; until then the
+/// canonical fallback is the project-relative path the RFC names.
+const DEFAULT_LAYOUT_PATH: &str = "design-system/layout.yaml";
+
 /// Lazily compiled tokens validator. Compiling once per process avoids
 /// re-parsing the embedded schema on every invocation; in practice the
 /// CLI runs one mode per process today, but Phase 1.10's `validate
@@ -104,6 +157,12 @@ static TOKENS_VALIDATOR: OnceLock<Result<Validator, String>> = OnceLock::new();
 
 /// Lazily compiled assets validator (companion to [`TOKENS_VALIDATOR`]).
 static ASSETS_VALIDATOR: OnceLock<Result<Validator, String>> = OnceLock::new();
+
+/// Lazily compiled composition validator (sister of
+/// [`TOKENS_VALIDATOR`] / [`ASSETS_VALIDATOR`]). Shared between
+/// `layout` mode (Phase 1.8) and `composition` mode (Phase 1.9): one
+/// schema, two runtime layers on top.
+static COMPOSITION_VALIDATOR: OnceLock<Result<Validator, String>> = OnceLock::new();
 
 /// Dispatch a `vectis validate` invocation to the per-mode handler.
 ///
@@ -127,6 +186,7 @@ pub fn run(args: &ValidateArgs) -> Result<CommandOutcome, VectisError> {
     match args.mode {
         ValidateMode::Tokens => validate_tokens(args.path.as_deref()),
         ValidateMode::Assets => validate_assets(args.path.as_deref()),
+        ValidateMode::Layout => validate_layout(args.path.as_deref()),
         mode => Ok(CommandOutcome::Stub {
             command: stub_command(mode),
         }),
@@ -310,6 +370,98 @@ fn validate_assets(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
     })))
 }
 
+/// Validate `layout.yaml` as the unwired subset of the patched
+/// composition schema (RFC-11 §A, §G, §H "`layout` mode", Appendix
+/// F).
+///
+/// Resolution order for the file path mirrors [`validate_tokens`]
+/// and [`validate_assets`]: the explicit `[path]` positional wins,
+/// otherwise fall back to the canonical `design-system/layout.yaml`
+/// (Phase 1.10 layers the `artifacts:`-block cascade on top).
+///
+/// The mode performs three checks:
+///
+/// 1. **Schema validation** against the embedded composition schema
+///    (Phase 1.3-patched). The schema permits both `screens` and
+///    `delta` shapes; the unwired-subset check below rejects
+///    `delta`-shaped layout documents.
+/// 2. **Unwired-subset enforcement** -- reject `delta:` and any
+///    occurrence of define-owned wiring keys (`maps_to`, `bind`,
+///    `event`, `error`, overlay `trigger`, conditional visual
+///    `*-when` keys). The walker descends only the `screens`
+///    sub-tree (the only place where wiring keys can appear in a
+///    valid composition document); other top-level keys
+///    (`provenance`, `version`, `custom_items`) carry no wiring.
+///    Bare `when:` (the required `stateEntry.when` from the schema)
+///    is *not* a `*-when` key and is preserved.
+/// 3. **Structural-identity** for `component:` directives -- every
+///    group carrying the same `component: <slug>` MUST share the
+///    same skeleton (RFC-11 §G). The engine ignores leaf wiring
+///    values (`bind`, `event`, `error`, free text content, token /
+///    asset references) and `*-when` *condition values*, but is
+///    sensitive to `*-when` key *presence*. Per-instance
+///    `platforms.*` overrides are exempt from base-skeleton match
+///    per §G's third edge case.
+fn validate_layout(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
+    let target =
+        path.map_or_else(|| PathBuf::from(DEFAULT_LAYOUT_PATH), std::path::Path::to_path_buf);
+
+    let source = std::fs::read_to_string(&target).map_err(|err| VectisError::InvalidProject {
+        message: format!("layout.yaml not readable at {}: {err}", target.display()),
+    })?;
+
+    let mut errors: Vec<Value> = Vec::new();
+    let warnings: Vec<Value> = Vec::new();
+
+    match serde_saphyr::from_str::<Value>(&source) {
+        Ok(instance) => {
+            let validator = composition_validator()?;
+            for err in validator.iter_errors(&instance) {
+                errors.push(json!({
+                    "path": err.instance_path().to_string(),
+                    "message": err.to_string(),
+                }));
+            }
+
+            // Reject `delta:` documents at the top level. The
+            // schema's `oneOf` permits either `screens` or `delta`;
+            // layout.yaml is restricted to the `screens` half.
+            if instance.get("delta").is_some() {
+                errors.push(json!({
+                    "path": "/delta",
+                    "message": "layout.yaml MUST NOT use the `delta` shape (RFC-11 §A unwired-subset rule); only `screens` documents are permitted. Use composition.yaml for change-local delta artifacts.",
+                }));
+            }
+
+            // Walk the `screens` sub-tree for forbidden wiring keys
+            // and `component:` directive instances. Both walks are
+            // scoped to `screens` because (a) other top-level keys
+            // never carry wiring per the schema, and (b) keeping
+            // the scope tight avoids descending into a `delta:`
+            // sub-tree (which would surface noisy redundant
+            // wiring-key errors after we've already rejected the
+            // shape itself).
+            if let Some(screens) = instance.get("screens") {
+                walk_unwired(screens, "/screens", &mut errors);
+                check_structural_identity(screens, "/screens", &mut errors);
+            }
+        }
+        Err(err) => {
+            errors.push(json!({
+                "path": "",
+                "message": format!("invalid YAML: {err}"),
+            }));
+        }
+    }
+
+    Ok(CommandOutcome::Success(json!({
+        "mode": ValidateMode::Layout.as_str(),
+        "path": target.display().to_string(),
+        "errors": errors,
+        "warnings": warnings,
+    })))
+}
+
 /// Compile the embedded tokens schema once and re-use the
 /// [`Validator`] for every invocation in this process.
 ///
@@ -326,6 +478,15 @@ fn tokens_validator() -> Result<&'static Validator, VectisError> {
 /// [`tokens_validator`]; same build-time invariants apply.
 fn assets_validator() -> Result<&'static Validator, VectisError> {
     lazy_validator(&ASSETS_VALIDATOR, ASSETS_SCHEMA_SOURCE, "assets.schema.json")
+}
+
+/// Compile the embedded composition schema once and re-use the
+/// [`Validator`] for every invocation in this process. Sister of
+/// [`tokens_validator`] / [`assets_validator`]; same build-time
+/// invariants apply. Shared between `layout` mode (Phase 1.8) and
+/// `composition` mode (Phase 1.9).
+fn composition_validator() -> Result<&'static Validator, VectisError> {
+    lazy_validator(&COMPOSITION_VALIDATOR, COMPOSITION_SCHEMA_SOURCE, "composition.schema.json")
 }
 
 /// Generic helper for the embedded-schema lazy-compile pattern shared
@@ -655,11 +816,255 @@ fn find_sibling_composition(assets_path: &Path) -> Option<SiblingComposition> {
     }
 }
 
+// -------------------------------------------------------------------
+// Layout-mode helpers (Phase 1.8). The unwired-subset walker is
+// layout-only; the structural-identity engine is shared with Phase
+// 1.9's composition mode.
+// -------------------------------------------------------------------
+
+/// Walk a YAML sub-tree (typically the `screens` value) and append
+/// an error for every define-owned wiring key the unwired subset
+/// (RFC-11 §A) forbids:
+///
+/// - `maps_to` (screen route binding).
+/// - `bind` (field binding on items).
+/// - `event` (event handler on items).
+/// - `error` (validation-error string on items).
+/// - `trigger` (overlay trigger).
+/// - any key matching the pattern `*-when` (e.g. `strikethrough-when`,
+///   `visible-when`) -- conditional visual keys that ride the wiring
+///   layer. The bare `when:` key (`stateEntry.when`) is part of the
+///   unwired subset and explicitly preserved.
+///
+/// The walker recurses through every nested object and array so a
+/// `bind:` buried in `screens.<name>.body.list.item[0].group.items[0]
+/// .checkbox` is reported with a precise JSON Pointer. Tokens such
+/// as `style: plain` or `align: center` are property *values* and
+/// never trigger a finding -- the walker matches keys, not strings.
+fn walk_unwired(node: &Value, json_path: &str, errors: &mut Vec<Value>) {
+    match node {
+        Value::Object(map) => {
+            for (key, val) in map {
+                let child_path = format!("{json_path}/{}", escape_pointer_token(key));
+                if let Some(reason) = forbidden_wiring_key(key) {
+                    errors.push(json!({
+                        "path": child_path,
+                        "message": format!(
+                            "{reason} -- remove this key from layout.yaml (RFC-11 §A unwired-subset rule); wiring is added by /spec:define when it produces composition.yaml"
+                        ),
+                    }));
+                }
+                walk_unwired(val, &child_path, errors);
+            }
+        }
+        Value::Array(arr) => {
+            for (i, v) in arr.iter().enumerate() {
+                walk_unwired(v, &format!("{json_path}/{i}"), errors);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Classify `key` as a forbidden define-owned wiring key. Returns
+/// the human-readable reason string when the key is forbidden, or
+/// `None` when the key is allowed in unwired layout documents.
+///
+/// Edge cases pinned here:
+/// - `when` (bare) is the required `stateEntry.when` field; allowed.
+/// - `<x>-when` patterns require both the hyphen and the `-when`
+///   suffix, so `when` alone never matches. The minimum kebab-case
+///   form is at least 6 characters (`a-when`) which the length
+///   guard enforces.
+fn forbidden_wiring_key(key: &str) -> Option<&'static str> {
+    match key {
+        "maps_to" => Some("`maps_to` is define-owned screen-to-route wiring"),
+        "bind" => Some("`bind` is define-owned field binding"),
+        "event" => Some("`event` is define-owned event wiring"),
+        "error" => Some("`error` is define-owned validation-error wiring"),
+        "trigger" => Some("overlay `trigger` is define-owned"),
+        _ if key.ends_with("-when") && key.len() > 5 => {
+            Some("conditional visual `*-when` keys are define-owned wiring")
+        }
+        _ => None,
+    }
+}
+
+/// Recorded `component: <slug>` instance for the structural-identity
+/// engine. The `path` is a JSON Pointer that points at the group
+/// that bears the directive, so an identity violation can name both
+/// halves.
+struct ComponentInstance {
+    /// Kebab-case component slug declared by the directive.
+    slug: String,
+    /// Normalised skeleton derived from the group's `items:` array.
+    skeleton: Skeleton,
+    /// JSON Pointer indicating where this instance's group lives.
+    path: String,
+    /// `true` when the instance lives inside a
+    /// `screens.<name>.platforms.<plat>.*` sub-tree. Per RFC-11 §G
+    /// edge case 3, platform overrides MAY diverge from the base
+    /// skeleton -- we collect them but do not enforce base-equality
+    /// against them.
+    in_platform_override: bool,
+}
+
+/// Normalised structural skeleton for a group's children. Keeps just
+/// enough information to detect material divergence (item kinds,
+/// nested-group nesting, `*-when` key presence) while ignoring leaf
+/// wiring values per RFC-11 §G:
+///
+/// > Slug instances [...] MAY differ in `bind`, `event`, `error`,
+/// > `asset`, token references, `*-when` keys, and free text
+/// > content.
+///
+/// (`*-when` keys' *condition values* are wiring; their *presence*
+/// participates in skeleton identity per §G edge case 1.)
+#[derive(Debug, Eq, PartialEq, Clone)]
+enum Skeleton {
+    /// A leaf item identified by its single property key (e.g.
+    /// `text`, `icon-button`, `checkbox`, `image`). Item leaf
+    /// properties are deliberately ignored.
+    Item(String),
+    /// A group: ordered children plus the sorted, deduplicated set
+    /// of `*-when`-keyed properties present on the group props
+    /// (presence-only; condition values do not participate).
+    Group { when_keys: Vec<String>, items: Vec<Self> },
+}
+
+/// Walk a YAML sub-tree (typically the `screens` value) and validate
+/// the §G structural-identity rule for every `component: <slug>`
+/// directive present. The engine is shared with Phase 1.9's
+/// `composition` mode -- the same skeleton-derivation rules apply
+/// because §G is artifact-agnostic.
+fn check_structural_identity(node: &Value, json_path: &str, errors: &mut Vec<Value>) {
+    let mut instances: Vec<ComponentInstance> = Vec::new();
+    walk_for_components(node, json_path, false, &mut instances);
+
+    let mut by_slug: BTreeMap<String, Vec<&ComponentInstance>> = BTreeMap::new();
+    for inst in &instances {
+        by_slug.entry(inst.slug.clone()).or_default().push(inst);
+    }
+
+    for (slug, group) in by_slug {
+        // Per-instance `platforms.*` overrides MAY diverge from the
+        // base skeleton (§G edge case 3). We only enforce identity
+        // across the base instances; platform-override instances
+        // are collected for completeness but not compared here.
+        let base: Vec<&ComponentInstance> =
+            group.iter().filter(|i| !i.in_platform_override).copied().collect();
+        if base.len() < 2 {
+            continue;
+        }
+        let canonical = base[0];
+        for other in base.iter().skip(1) {
+            if other.skeleton != canonical.skeleton {
+                errors.push(json!({
+                    "path": other.path,
+                    "message": format!(
+                        "component slug `{slug}` has a different skeleton at {} than the canonical instance at {} (RFC-11 §G structural-identity rule); slug instances may differ in `bind`, `event`, `error`, asset / token references, `*-when` condition values, and free text content but their group skeleton MUST match across all base instances",
+                        other.path,
+                        canonical.path,
+                    ),
+                }));
+            }
+        }
+    }
+}
+
+/// Recursive walker for [`check_structural_identity`]. Every group
+/// shaped as `{ "group": { "component": <slug>, "items": [...], ... } }`
+/// produces a [`ComponentInstance`]; every nested group inside it
+/// is also visited (so `component:` directives nested inside a
+/// component group are still picked up). The `in_platform`
+/// parameter tracks whether we are currently descending through a
+/// `screens.<name>.platforms.<plat>.*` sub-tree.
+fn walk_for_components(
+    node: &Value, json_path: &str, in_platform: bool, out: &mut Vec<ComponentInstance>,
+) {
+    match node {
+        Value::Object(map) => {
+            for (key, val) in map {
+                let child_path = format!("{json_path}/{}", escape_pointer_token(key));
+                // Detect the start of a `screens.<name>.platforms`
+                // sub-tree. Anything below this point is treated as
+                // a per-platform override per §G edge case 3.
+                let descend_in_platform = in_platform || key == "platforms";
+                if key == "group"
+                    && let Some(component) = val.get("component").and_then(Value::as_str)
+                {
+                    out.push(ComponentInstance {
+                        slug: component.to_string(),
+                        skeleton: build_group_skeleton(val),
+                        path: child_path.clone(),
+                        in_platform_override: in_platform,
+                    });
+                }
+                walk_for_components(val, &child_path, descend_in_platform, out);
+            }
+        }
+        Value::Array(arr) => {
+            for (i, v) in arr.iter().enumerate() {
+                walk_for_components(v, &format!("{json_path}/{i}"), in_platform, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Build a [`Skeleton::Group`] from a `groupProps` JSON value. The
+/// `*-when` key set is sorted + deduplicated so two groups carrying
+/// the same `*-when`-keyed props (in any author order) compare
+/// equal. Children are derived from the `items:` array; missing
+/// `items` (schema-invalid) becomes an empty children list.
+fn build_group_skeleton(group_props: &Value) -> Skeleton {
+    let mut when_keys: Vec<String> = group_props
+        .as_object()
+        .map(|m| m.keys().filter(|k| k.ends_with("-when") && k.len() > 5).cloned().collect())
+        .unwrap_or_default();
+    when_keys.sort();
+    when_keys.dedup();
+
+    let items: Vec<Skeleton> = group_props
+        .get("items")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().map(build_node_skeleton).collect())
+        .unwrap_or_default();
+
+    Skeleton::Group { when_keys, items }
+}
+
+/// Build a skeleton fragment for a single `contentNode` (an item or
+/// a nested group). Each content node is either:
+///
+/// - `{ group: { ... } }` -- a nested group, recursed via
+///   [`build_group_skeleton`].
+/// - `{ <kind>: <itemProps-or-null> }` -- an item identified by its
+///   single key (`text`, `checkbox`, `icon`, etc.). Item kind is
+///   the only datum the skeleton retains; itemProps (text content,
+///   bindings, colors, sizes) are wiring per §G and ignored.
+///
+/// Schema-invalid shapes (zero or multi-key objects) collapse to a
+/// stable `<unknown>` placeholder so the schema validator's own
+/// findings remain the authoritative diagnostic.
+fn build_node_skeleton(node: &Value) -> Skeleton {
+    let Some(map) = node.as_object() else {
+        return Skeleton::Item(String::from("<unknown>"));
+    };
+    if map.len() != 1 {
+        return Skeleton::Item(String::from("<unknown>"));
+    }
+    let (key, val) = map.iter().next().expect("len 1");
+    if key == "group" { build_group_skeleton(val) } else { Skeleton::Item(key.clone()) }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::Write;
+
     use tempfile::{NamedTempFile, TempDir};
+
+    use super::*;
 
     /// Appendix D verbatim. Pinned here as a unit test so the embedded
     /// schema stays in lock-step with the RFC's worked example -- if a
@@ -988,14 +1393,14 @@ assets:
         }
     }
 
-    /// Stub modes (every mode except `tokens` + `assets` after Phases
-    /// 1.6 / 1.7) MUST continue to return [`CommandOutcome::Stub`]
-    /// until the corresponding phase lands. This pins the regression
-    /// so accidentally flipping a mode to `Success` shows up in CI.
+    /// Stub modes (every mode except `tokens`, `assets`, and
+    /// `layout` after Phases 1.6 / 1.7 / 1.8) MUST continue to
+    /// return [`CommandOutcome::Stub`] until the corresponding phase
+    /// lands. This pins the regression so accidentally flipping a
+    /// mode to `Success` shows up in CI.
     #[test]
     fn stub_modes_still_return_stub() {
         for (mode, expected) in [
-            (ValidateMode::Layout, "validate layout"),
             (ValidateMode::Composition, "validate composition"),
             (ValidateMode::All, "validate all"),
         ] {
@@ -1391,5 +1796,600 @@ assets:
         let dir = project.join(".specify").join("specs");
         std::fs::create_dir_all(&dir).expect("mkdir .specify/specs");
         std::fs::write(dir.join("composition.yaml"), yaml).expect("write composition.yaml");
+    }
+
+    // -------------------------------------------------------------
+    // layout-mode unit tests (Phase 1.8)
+    // -------------------------------------------------------------
+
+    /// Appendix C verbatim (RFC-11 §"Appendix C. Example
+    /// `layout.yaml` (non-normative)"). Pinned here as the
+    /// happy-path schema fixture so any future drift surfaces in
+    /// this test first. The example exercises the unwired subset
+    /// end-to-end: regions, groups (one with `component: task-row`),
+    /// items, token references, asset references, states with the
+    /// `stateEntry.when` field (which is the bare `when:` -- not a
+    /// `*-when` key -- and explicitly preserved), overlays without
+    /// `trigger`, and a `platforms.{ios,android}` block.
+    const APPENDIX_C_LAYOUT_YAML: &str = r#"version: 1
+
+provenance:
+  sources:
+    - kind: screenshots
+      captured_at: "2026-04-12T10:30:00Z"
+    - kind: manual
+
+screens:
+  task-list:
+    name: Task list
+    description: Primary screen showing all open tasks for the signed-in user.
+    header:
+      title: My tasks
+      trailing:
+        - icon-button:
+            icon: settings
+            label: Open settings
+    body:
+      list:
+        each: tasks
+        style: plain
+        item:
+          - group:
+              component: task-row
+              direction: row
+              gap: md
+              padding: md
+              align: center
+              items:
+                - checkbox:
+                    label: Mark task complete
+                - group:
+                    direction: column
+                    gap: xs
+                    size:
+                      width: fill
+                    items:
+                      - text:
+                          role: heading
+                          style: body
+                      - text:
+                          style: caption
+                          color: on-surface-variant
+                - icon:
+                    name: chevron-right
+                    color: on-surface-variant
+    fab:
+      icon: plus
+      label: Add task
+    states:
+      empty:
+        when: tasks.is_empty
+        replaces: body
+        body:
+          - group:
+              direction: column
+              gap: md
+              padding: lg
+              align: center
+              justify: center
+              items:
+                - image:
+                    name: empty-tasks-hero
+                - text:
+                    content: No tasks yet
+                    style: title
+                - text:
+                    content: Tap the + button to add your first task.
+                    style: body
+                    color: on-surface-variant
+      loading:
+        when: tasks.is_loading
+        replaces: body
+        body:
+          - progress-indicator:
+              style: circular
+    overlays:
+      delete-confirm:
+        kind: dialog
+        title: Delete task?
+        content:
+          - text:
+              content: This task will be removed permanently.
+          - group:
+              direction: row
+              gap: sm
+              justify: end
+              items:
+                - button:
+                    label: Cancel
+                    style: text
+                - button:
+                    label: Delete
+                    style: text
+                    color: error
+
+  settings:
+    name: Settings
+    header:
+      title: Settings
+      leading:
+        - icon-button:
+            icon: chevron-left
+            label: Back
+    body:
+      form:
+        - group:
+            direction: column
+            gap: lg
+            padding: md
+            items:
+              - text:
+                  content: Appearance
+                  role: heading
+                  style: title
+              - segmented-control:
+                  options:
+                    - System
+                    - Light
+                    - Dark
+              - text:
+                  content: Account
+                  role: heading
+                  style: title
+              - button:
+                  label: Sign out
+                  style: outlined
+                  color: error
+    platforms:
+      ios:
+        header:
+          title: Settings
+      android:
+        header:
+          title: Settings
+"#;
+
+    fn write_layout(content: &str) -> NamedTempFile {
+        let mut file = NamedTempFile::new().expect("tempfile");
+        file.write_all(content.as_bytes()).expect("write layout.yaml");
+        file
+    }
+
+    fn run_layout(content: &str) -> Value {
+        let file = write_layout(content);
+        let args = ValidateArgs {
+            mode: ValidateMode::Layout,
+            path: Some(file.path().to_path_buf()),
+        };
+        extract_envelope(run(&args).expect("run succeeds"))
+    }
+
+    #[test]
+    fn embedded_composition_schema_compiles() {
+        composition_validator().expect("embedded composition.schema.json must compile");
+    }
+
+    /// Acceptance bullet 1: Appendix C's `layout.yaml` validates
+    /// cleanly. Schema passes (the `screens`-shape `oneOf` branch),
+    /// no forbidden wiring keys are present, and the single
+    /// `component: task-row` instance has nothing to compare
+    /// against -- so structural-identity is a no-op.
+    #[test]
+    fn layout_appendix_c_validates_cleanly() {
+        let envelope = run_layout(APPENDIX_C_LAYOUT_YAML);
+        assert_eq!(envelope["mode"], "layout");
+        assert!(errors_array(&envelope).is_empty(), "Appendix C unexpectedly errored: {envelope}");
+        assert!(
+            warnings_array(&envelope).is_empty(),
+            "no warnings expected for Appendix C: {envelope}"
+        );
+    }
+
+    /// Acceptance bullet 2: a `bind:` key anywhere in the document
+    /// produces an error pointing at the offending node.
+    #[test]
+    fn layout_bind_key_is_rejected_with_pathful_error() {
+        let yaml = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        each: tasks
+        item:
+          - checkbox:
+              bind: tasks.completed
+";
+        let envelope = run_layout(yaml);
+        let errors = errors_array(&envelope);
+        let any_hit = errors.iter().any(|e| {
+            e["path"].as_str().unwrap_or("").ends_with("/checkbox/bind")
+                && e["message"].as_str().unwrap_or("").contains("`bind` is define-owned")
+        });
+        assert!(any_hit, "expected a `bind` rejection with the offending JSON Pointer: {errors:?}");
+    }
+
+    /// `event:`, `error:`, `maps_to:`, overlay `trigger:`, and a
+    /// representative `*-when` key (`strikethrough-when`) are all
+    /// rejected by the unwired-subset walker. The bare `when:` on
+    /// `stateEntry` -- which appears in Appendix C as
+    /// `when: tasks.is_empty` -- MUST stay allowed; the matrix
+    /// pinned below also asserts that.
+    #[test]
+    fn layout_every_forbidden_wiring_key_is_rejected_but_bare_when_passes() {
+        let yaml = r"version: 1
+screens:
+  s:
+    name: S
+    maps_to: SomeRoute
+    body:
+      list:
+        each: tasks
+        item:
+          - text:
+              content: hello
+              event: Tapped
+              error: required
+              strikethrough-when: tasks.completed
+    overlays:
+      sheet:
+        kind: sheet
+        trigger: OpenSheet
+        content:
+          - text:
+              content: hi
+    states:
+      empty:
+        when: tasks.is_empty
+        replaces: body
+        body:
+          - text:
+              content: nothing here
+";
+        let envelope = run_layout(yaml);
+        let errors = errors_array(&envelope);
+        let messages: Vec<String> =
+            errors.iter().map(|e| e["message"].as_str().unwrap_or("").to_string()).collect();
+
+        for key in [
+            "`maps_to` is define-owned",
+            "`event` is define-owned",
+            "`error` is define-owned",
+            "overlay `trigger` is define-owned",
+            "`*-when` keys are define-owned",
+        ] {
+            assert!(
+                messages.iter().any(|m| m.contains(key)),
+                "expected a finding mentioning {key:?}, got: {messages:?}"
+            );
+        }
+
+        // The bare `when:` on stateEntry is *not* a forbidden key.
+        // No error message should reference `/states/empty/when`.
+        assert!(
+            !errors
+                .iter()
+                .any(|e| e["path"].as_str().unwrap_or("").ends_with("/states/empty/when")),
+            "stateEntry.when (bare `when:`) MUST stay allowed: {errors:?}"
+        );
+    }
+
+    /// Acceptance bullet 3: a `delta:` document is rejected, even
+    /// when it would otherwise pass the schema (the schema's
+    /// `oneOf` permits `delta`). The error points at `/delta`.
+    #[test]
+    fn layout_delta_document_is_rejected() {
+        let yaml = r"version: 1
+delta:
+  added:
+    new-screen:
+      name: New
+      body:
+        list:
+          each: things
+          item:
+            - text:
+                content: hello
+";
+        let envelope = run_layout(yaml);
+        let errors = errors_array(&envelope);
+        assert!(
+            errors.iter().any(|e| e["path"].as_str().unwrap_or("") == "/delta"
+                && e["message"].as_str().unwrap_or("").contains("MUST NOT use the `delta` shape")),
+            "expected `/delta` rejection: {errors:?}"
+        );
+    }
+
+    /// Acceptance bullet 4 (positive half): two groups in different
+    /// screens carrying the same `component:` slug with the *same*
+    /// skeleton but different free text content / token references
+    /// validate cleanly. The wiring-difference dimension that
+    /// composition mode (Phase 1.9) cares about (`bind` / `event` /
+    /// etc.) cannot be exercised in layout mode because those keys
+    /// are forbidden by the unwired subset; the structural-identity
+    /// engine still ignores leaf wiring values across all
+    /// invocations, so the tightest test we can land here exercises
+    /// content + token-ref divergence with skeleton match.
+    #[test]
+    fn layout_same_skeleton_different_wiring_validates_cleanly() {
+        let yaml = r"version: 1
+screens:
+  one:
+    name: One
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: First card heading
+                style: title
+                color: on-surface
+            - text:
+                content: First card body
+                style: body
+  two:
+    name: Two
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: Second card heading
+                style: title
+                color: primary
+            - text:
+                content: Second card body
+                style: caption
+";
+        let envelope = run_layout(yaml);
+        assert!(
+            errors_array(&envelope).is_empty(),
+            "same skeleton + differing leaf values must validate: {envelope}"
+        );
+    }
+
+    /// Acceptance bullet 4 (negative half): two groups in different
+    /// screens carrying the same `component:` slug with materially
+    /// different skeletons (different ordered nested item kinds)
+    /// produce a structural-identity error.
+    #[test]
+    fn layout_different_skeletons_same_slug_is_an_error() {
+        let yaml = r"version: 1
+screens:
+  one:
+    name: One
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - text:
+                content: body
+  two:
+    name: Two
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - icon:
+                name: chevron-right
+            - text:
+                content: body
+";
+        let envelope = run_layout(yaml);
+        let errors = errors_array(&envelope);
+        assert!(
+            errors.iter().any(|e| e["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("component slug `card` has a different skeleton")),
+            "expected a structural-identity error for `card`: {errors:?}"
+        );
+    }
+
+    /// Edge case: differing nested-group depth between two slug
+    /// instances also triggers a structural-identity error. This
+    /// pins §G's "same nested item kinds, same nesting shape" rule
+    /// concretely.
+    #[test]
+    fn layout_different_nested_group_depth_is_an_error() {
+        let yaml = r"version: 1
+screens:
+  one:
+    name: One
+    body:
+      - group:
+          component: row
+          direction: row
+          items:
+            - text:
+                content: a
+            - text:
+                content: b
+  two:
+    name: Two
+    body:
+      - group:
+          component: row
+          direction: row
+          items:
+            - text:
+                content: a
+            - group:
+                direction: column
+                items:
+                  - text:
+                      content: b
+";
+        let envelope = run_layout(yaml);
+        let errors = errors_array(&envelope);
+        assert!(
+            errors.iter().any(|e| e["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("component slug `row` has a different skeleton")),
+            "expected a structural-identity error for `row`: {errors:?}"
+        );
+    }
+
+    /// Edge case: per-instance `platforms.*` overrides MAY diverge
+    /// from the base skeleton (RFC-11 §G edge case 3). The base
+    /// instances must still match, but a `screens.<n>.platforms.ios.body`
+    /// instance with a different shape does not trigger the rule.
+    #[test]
+    fn layout_platforms_override_instance_is_exempt_from_base_match() {
+        let yaml = r"version: 1
+screens:
+  one:
+    name: One
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+    platforms:
+      ios:
+        body:
+          - group:
+              component: card
+              direction: column
+              items:
+                - text:
+                    content: heading
+                - icon:
+                    name: chevron-right
+                - text:
+                    content: body
+  two:
+    name: Two
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+";
+        let envelope = run_layout(yaml);
+        assert!(
+            errors_array(&envelope).is_empty(),
+            "platforms.* override instance MUST be exempt from base-skeleton match: {envelope}"
+        );
+    }
+
+    /// A single `component:` instance has nothing to compare
+    /// against; the structural-identity rule is a no-op until a
+    /// second base instance appears (matches §J's conservative
+    /// emission policy: directives only emitted when ≥2 instances
+    /// agree on a slug, but the validator does not require that --
+    /// it is only sensitive to disagreement).
+    #[test]
+    fn layout_single_component_instance_passes_silently() {
+        let yaml = r"version: 1
+screens:
+  one:
+    name: One
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+";
+        let envelope = run_layout(yaml);
+        assert!(
+            errors_array(&envelope).is_empty(),
+            "single component instance should pass silently: {envelope}"
+        );
+    }
+
+    /// Schema rejection still fires for layout-mode (e.g. an
+    /// unknown screen-property name); the rejection rides the same
+    /// envelope shape as the unwired-subset / structural-identity
+    /// errors and the dispatcher exits non-zero.
+    #[test]
+    fn layout_schema_violation_reports_pathful_error() {
+        let yaml = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        each: tasks
+        item:
+          - text:
+              content: hi
+        unknown_listpattern_field: nope
+";
+        let envelope = run_layout(yaml);
+        let errors = errors_array(&envelope);
+        assert!(
+            !errors.is_empty(),
+            "expected at least one schema error for unknown_listpattern_field: {envelope}"
+        );
+    }
+
+    /// Reserved component slug (e.g. `header`) is rejected by
+    /// `composition.schema.json`'s F.2 patch (`component.not.enum`).
+    /// The layout-mode validator surfaces it as a schema error.
+    #[test]
+    fn layout_reserved_component_slug_is_rejected() {
+        let yaml = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - group:
+          component: header
+          direction: column
+          items:
+            - text:
+                content: hi
+";
+        let envelope = run_layout(yaml);
+        let errors = errors_array(&envelope);
+        assert!(
+            !errors.is_empty(),
+            "reserved slug `header` MUST be rejected by the F.2 patch: {envelope}"
+        );
+    }
+
+    #[test]
+    fn layout_invalid_yaml_surfaces_as_a_single_error_entry() {
+        let envelope = run_layout(": : not valid yaml :::\n");
+        let errors = errors_array(&envelope);
+        assert_eq!(errors.len(), 1, "expected one YAML-parse error: {envelope}");
+        assert!(
+            errors[0]["message"].as_str().unwrap_or("").contains("invalid YAML"),
+            "expected `invalid YAML` prefix, got {:?}",
+            errors[0]
+        );
+    }
+
+    #[test]
+    fn layout_missing_file_returns_invalid_project_error() {
+        let args = ValidateArgs {
+            mode: ValidateMode::Layout,
+            path: Some(PathBuf::from("/definitely/not/here/layout.yaml")),
+        };
+        match run(&args) {
+            Err(VectisError::InvalidProject { message }) => {
+                assert!(
+                    message.contains("layout.yaml not readable"),
+                    "unexpected message: {message}"
+                );
+            }
+            other => panic!("expected InvalidProject for missing file, got {other:?}"),
+        }
     }
 }

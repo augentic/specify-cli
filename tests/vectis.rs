@@ -163,13 +163,13 @@ fn vectis_validate_help_lists_every_mode_and_path_positional() {
 }
 
 /// Phase 1.5 wired the `not-implemented` envelope for every mode;
-/// Phase 1.6 promoted `tokens` and Phase 1.7 promoted `assets`, so
-/// this test now pins the envelope across the three still-stubbed
-/// modes only (`layout`, `composition`, `all`). The live modes get
-/// their own dedicated tests below.
+/// Phase 1.6 promoted `tokens`, Phase 1.7 promoted `assets`, and
+/// Phase 1.8 promoted `layout`, so this test now pins the envelope
+/// across the two still-stubbed modes only (`composition`, `all`).
+/// The live modes get their own dedicated tests below.
 #[test]
 fn vectis_validate_stub_modes_emit_not_implemented_envelope() {
-    for mode in ["layout", "composition", "all"] {
+    for mode in ["composition", "all"] {
         let assert =
             specify().args(["--format", "json", "vectis", "validate", mode]).assert().failure();
         let output = assert.get_output();
@@ -530,6 +530,221 @@ fn vectis_validate_tokens_missing_file_surfaces_invalid_project() {
     assert_eq!(value["schema-version"], 2);
     assert!(
         value["message"].as_str().unwrap_or("").contains("tokens.yaml not readable"),
+        "unexpected message: {value}"
+    );
+    assert_eq!(output.status.code(), Some(1));
+}
+
+/// Phase 1.8: a minimal but realistic `layout.yaml` (single screen,
+/// no `component:` directive, no forbidden wiring keys) MUST exit 0
+/// silently with the per-mode envelope. Asserts the `mode` and
+/// `path` fields plus empty `errors` / `warnings` arrays so any
+/// future drift in the envelope shape surfaces here.
+#[test]
+fn vectis_validate_layout_clean_run_exits_zero_with_envelope() {
+    let tmp = tempdir().unwrap();
+    let layout_path = tmp.path().join("layout.yaml");
+    std::fs::write(
+        &layout_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        each: tasks
+        item:
+          - text:
+              content: hello
+",
+    )
+    .expect("write layout.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .arg(&layout_path)
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["mode"], "layout");
+    assert_eq!(
+        value["path"].as_str().expect("path is a string"),
+        layout_path.display().to_string()
+    );
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0), "expected no errors: {value}");
+    assert_eq!(
+        value["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "expected no warnings: {value}"
+    );
+}
+
+/// Phase 1.8: a `bind:` key anywhere in `layout.yaml` MUST exit 1
+/// with an error pointing at the offending JSON Pointer. Use a
+/// nested `bind:` so the path-precision claim is observable.
+#[test]
+fn vectis_validate_layout_bind_key_exits_one_with_pathful_error() {
+    let tmp = tempdir().unwrap();
+    let layout_path = tmp.path().join("layout.yaml");
+    std::fs::write(
+        &layout_path,
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        each: tasks
+        item:
+          - checkbox:
+              bind: tasks.completed
+",
+    )
+    .expect("write layout.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .arg(&layout_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    assert_eq!(value["mode"], "layout");
+    let errors = value["errors"].as_array().expect("errors array");
+    let any_hits = errors.iter().any(|e| {
+        e["path"].as_str().unwrap_or("").ends_with("/checkbox/bind")
+            && e["message"].as_str().unwrap_or("").contains("`bind` is define-owned")
+    });
+    assert!(any_hits, "expected pathful `bind` rejection: {errors:?}");
+}
+
+/// Phase 1.8: a `delta:`-shaped document MUST be rejected even
+/// though the underlying composition schema's `oneOf` permits it.
+/// Layout is restricted to the `screens` half of the schema (RFC-11
+/// §A unwired-subset rule).
+#[test]
+fn vectis_validate_layout_delta_document_exits_one() {
+    let tmp = tempdir().unwrap();
+    let layout_path = tmp.path().join("layout.yaml");
+    std::fs::write(
+        &layout_path,
+        r"version: 1
+delta:
+  added:
+    new-screen:
+      name: New
+      body:
+        list:
+          each: things
+          item:
+            - text:
+                content: hello
+",
+    )
+    .expect("write layout.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .arg(&layout_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e["path"].as_str().unwrap_or("") == "/delta"
+            && e["message"].as_str().unwrap_or("").contains("MUST NOT use the `delta` shape")),
+        "expected `/delta` rejection: {errors:?}"
+    );
+}
+
+/// Phase 1.8: two groups in different screens carrying the same
+/// `component:` slug with materially different skeletons MUST
+/// produce a structural-identity error (RFC-11 §G).
+#[test]
+fn vectis_validate_layout_structural_identity_violation_exits_one() {
+    let tmp = tempdir().unwrap();
+    let layout_path = tmp.path().join("layout.yaml");
+    std::fs::write(
+        &layout_path,
+        r"version: 1
+screens:
+  one:
+    name: One
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - text:
+                content: body
+  two:
+    name: Two
+    body:
+      - group:
+          component: card
+          direction: column
+          items:
+            - text:
+                content: heading
+            - icon:
+                name: chevron-right
+            - text:
+                content: body
+",
+    )
+    .expect("write layout.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .arg(&layout_path)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "expected exit 1: {value}");
+    let errors = value["errors"].as_array().expect("errors array");
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("component slug `card` has a different skeleton")),
+        "expected structural-identity rejection for `card`: {errors:?}"
+    );
+}
+
+/// Phase 1.8: a missing `layout.yaml` MUST surface as the v2
+/// `invalid-project` error envelope (exit 1) -- distinct from the
+/// validator-reported `errors` array, which is reserved for shape /
+/// reference / unwired-subset findings against an actually-loaded
+/// document.
+#[test]
+fn vectis_validate_layout_missing_file_surfaces_invalid_project() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("nope-layout.yaml");
+
+    let assert = specify()
+        .args(["--format", "json", "vectis", "validate", "layout"])
+        .arg(&missing)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 1);
+    assert_eq!(value["schema-version"], 2);
+    assert!(
+        value["message"].as_str().unwrap_or("").contains("layout.yaml not readable"),
         "unexpected message: {value}"
     );
     assert_eq!(output.status.code(), Some(1));
