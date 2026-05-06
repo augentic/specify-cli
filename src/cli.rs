@@ -150,12 +150,14 @@ pub enum VectisAction {
     Versions(specify_vectis::VersionsArgs),
     /// Validate UI input artifacts (`layout.yaml`, `tokens.yaml`,
     /// `assets.yaml`) and the wired `composition.yaml` against the
-    /// schemas in `schemas/vectis/` (RFC-11 §H, §I).
+    /// embedded JSON schemas (RFC-11 §H, §I).
     ///
     /// Five modes are supported: `layout`, `tokens`, `assets`,
-    /// `composition`, and `all`. Each returns a v2 JSON envelope
-    /// with `mode`, `path`, `errors`, and `warnings` arrays; exits
-    /// zero when no errors are found.
+    /// `composition`, and `all`. Per-mode runs return a v2 JSON
+    /// envelope with `mode`, `path`, `errors`, and `warnings`;
+    /// `all` returns `{ mode: "all", path, results }` where each
+    /// entry wraps a per-mode `report`. Exits zero when no errors
+    /// are found.
     Validate(specify_vectis::ValidateArgs),
 }
 
