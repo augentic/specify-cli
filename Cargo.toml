@@ -57,6 +57,7 @@ members = [
     "crates/slice",
     "crates/change",
     "crates/vectis",
+    "crates/contract-validate",
 ]
 
 [workspace.package]
