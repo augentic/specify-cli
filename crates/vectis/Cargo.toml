@@ -8,6 +8,18 @@ description = "Vectis bootstrap CLI for scaffolding and verifying Crux cross-pla
 readme = "../../README.md"
 publish = false
 
+[lib]
+name = "specify_vectis"
+path = "src/lib.rs"
+
+# Standalone Vectis binary (RFC-13 §4.3a). Wraps the library API so the
+# Vectis capability can shell out via `specify-vectis <verb>` from skill
+# runtimes; the library API stays available for callers that prefer to
+# dispatch in-process.
+[[bin]]
+name = "specify-vectis"
+path = "src/bin/specify-vectis.rs"
+
 [lints]
 workspace = true
 
@@ -20,3 +32,7 @@ syn = { version = "2", features = ["full"] }
 thiserror.workspace = true
 toml = "1"
 ureq = { version = "3", features = ["json"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+tempfile.workspace = true

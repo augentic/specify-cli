@@ -26,6 +26,15 @@ pub mod versions;
 pub use error::{MissingTool, VectisError};
 pub use versions::Versions;
 
+/// JSON contract version emitted on every structured response.
+///
+/// Bumping this is a breaking change for skill authors. Frozen at `2`
+/// to match the v2 envelope the pre-RFC-13 `specify vectis *`
+/// dispatcher produced (kebab-case keys, auto-injected `schema-version`,
+/// kebab-case error variants — see RFC-2 §2 and the `specify` binary's
+/// `output::JSON_SCHEMA_VERSION`).
+pub const JSON_SCHEMA_VERSION: u64 = 2;
+
 /// Outcome returned by every subcommand handler.
 ///
 /// `Success` carries the handler's normal JSON output (the dispatcher
@@ -43,6 +52,79 @@ pub enum CommandOutcome {
         /// The subcommand name that produced this stub.
         command: &'static str,
     },
+}
+
+/// Render a `(CommandOutcome | VectisError)` as the v2 JSON envelope
+/// (`schema-version: 2` + payload), pretty-printed.
+///
+/// Both the standalone `specify-vectis` binary (RFC-13 §4.3a) and any
+/// capability skill that forwards Vectis output verbatim should funnel
+/// through this helper. The byte sequence matches the legacy
+/// `specify vectis * --format json` output that pre-2.6 operators
+/// scripted against:
+///
+/// * **Success** — `{"schema-version": 2, ...payload object fields...}`.
+///   Fields appear in the order the handler's `serde_json::json!` macro
+///   inserted them, so any future field-order change in the handlers is
+///   visible to the parity tests rather than masked by this helper.
+/// * **Stub** — `{"schema-version": 2, "error": "not-implemented",
+///   "command": "<verb>", "message": "...", "exit-code": 1}`.
+/// * **Err(VectisError)** — `{"schema-version": 2, ...VectisError::to_json
+///   payload..., "exit-code": <variant code>}`. The variant-specific keys
+///   (`missing` for `MissingPrerequisites`, `message` everywhere) come
+///   straight from [`VectisError::to_json`] so this helper cannot drift
+///   from the typed error surface.
+///
+/// Returns the envelope JSON string (without trailing newline; the bin
+/// adds one via `println!`) and the exit code the caller should use.
+///
+/// # Panics
+///
+/// Panics if [`VectisError::to_json`] ever returns a non-object value,
+/// which the type contract forbids.
+#[must_use]
+pub fn render_envelope_json(outcome: Result<CommandOutcome, VectisError>) -> (String, u8) {
+    match outcome {
+        Ok(CommandOutcome::Success(value)) => (envelope_json(value), 0),
+        Ok(CommandOutcome::Stub { command }) => {
+            let payload = serde_json::json!({
+                "error": "not-implemented",
+                "command": command,
+                "message": format!("`vectis {command}` is not implemented yet"),
+                "exit-code": 1u8,
+            });
+            (envelope_json(payload), 1)
+        }
+        Err(err) => {
+            let exit_code = u8::try_from(err.exit_code()).unwrap_or(1);
+            let serde_json::Value::Object(mut payload) = err.to_json() else {
+                unreachable!("VectisError::to_json always returns an object")
+            };
+            payload.entry("exit-code".to_string()).or_insert(serde_json::Value::from(exit_code));
+            (envelope_json(serde_json::Value::Object(payload)), exit_code)
+        }
+    }
+}
+
+/// Pretty-print `payload` under the v2 envelope (`schema-version: 2`
+/// first, then flattened payload fields). Internal helper for
+/// [`render_envelope_json`].
+fn envelope_json(payload: serde_json::Value) -> String {
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    struct Envelope {
+        #[serde(rename = "schema-version")]
+        schema_version: u64,
+        #[serde(flatten)]
+        payload: serde_json::Value,
+    }
+
+    serde_json::to_string_pretty(&Envelope {
+        schema_version: JSON_SCHEMA_VERSION,
+        payload,
+    })
+    .expect("JSON serialise")
 }
 
 /// `vectis init` arguments.

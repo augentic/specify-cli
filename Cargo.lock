@@ -1522,11 +1522,13 @@ dependencies = [
 name = "specify-vectis"
 version = "0.2.0"
 dependencies = [
+ "assert_cmd",
  "clap",
  "roxmltree",
  "serde",
  "serde_json",
  "syn",
+ "tempfile",
  "thiserror",
  "toml",
  "ureq",
