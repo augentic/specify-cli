@@ -34,10 +34,10 @@ fn parse_json(stdout: &[u8]) -> Value {
 }
 
 #[test]
-fn help_lists_all_five_verbs() {
+fn help_lists_all_six_verbs() {
     let assert = vectis().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    for verb in ["init", "verify", "add-shell", "update-versions", "versions"] {
+    for verb in ["init", "verify", "add-shell", "update-versions", "versions", "validate"] {
         assert!(
             stdout.contains(verb),
             "expected `specify-vectis --help` to mention {verb}, got:\n{stdout}"
@@ -166,6 +166,78 @@ fn init_invalid_project_json_shape() {
         "unexpected message: {value}"
     );
     assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+fn validate_help_lists_every_mode_and_path_positional() {
+    let assert = vectis().args(["validate", "--help"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    for mode in ["layout", "composition", "tokens", "assets", "all"] {
+        assert!(
+            stdout.contains(mode),
+            "expected `specify-vectis validate --help` to mention `{mode}`, got:\n{stdout}"
+        );
+    }
+    assert!(
+        stdout.contains("[PATH]"),
+        "expected validate help to advertise optional [PATH] positional, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn validate_assets_clean_run_exits_zero_with_envelope() {
+    let tmp = tempdir().unwrap();
+    let assets_path = tmp.path().join("assets.yaml");
+    std::fs::write(&assets_path, "version: 1\nassets: {}\n").expect("write assets.yaml");
+
+    let assert = vectis().args(["validate", "assets"]).arg(&assets_path).assert().success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["mode"], "assets");
+    assert_eq!(
+        value["path"].as_str().expect("path is a string"),
+        assets_path.display().to_string()
+    );
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0), "expected no errors: {value}");
+    assert_eq!(
+        value["warnings"].as_array().map(Vec::len),
+        Some(0),
+        "expected no warnings: {value}"
+    );
+}
+
+#[test]
+fn validate_tokens_missing_file_surfaces_invalid_project() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("missing-tokens.yaml");
+    let assert = vectis().args(["validate", "tokens"]).arg(&missing).assert().failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 1);
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+fn validate_layout_default_path_discovers_slice_local() {
+    let tmp = tempdir().unwrap();
+    let slice_dir = tmp.path().join(".specify/slices/active");
+    std::fs::create_dir_all(&slice_dir).expect("mkdir slice");
+    std::fs::write(slice_dir.join("layout.yaml"), "version: 1\nscreens: {}\n")
+        .expect("write slice-local layout.yaml");
+
+    let assert = vectis().current_dir(tmp.path()).args(["validate", "layout"]).assert().success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "layout");
+    let resolved = value["path"].as_str().expect("path is a string");
+    assert!(
+        resolved.ends_with(".specify/slices/active/layout.yaml"),
+        "expected slice-local resolution, got: {resolved}"
+    );
 }
 
 /// Force the `missing-prerequisites` path on `init` by clearing PATH

@@ -16,6 +16,7 @@ pub mod add_shell;
 pub mod error;
 pub mod init;
 pub mod update_versions;
+pub mod validate;
 pub mod verify;
 pub mod versions_cmd;
 
@@ -225,4 +226,78 @@ pub struct VersionsArgs {
     /// `vectis init --help` for the full resolution order.
     #[arg(long)]
     pub version_file: Option<std::path::PathBuf>,
+}
+
+/// `vectis validate <mode> [path]` arguments (RFC-11 §H).
+///
+/// `mode` is required; `path` is optional. When `path` is omitted the
+/// dispatcher resolves the canonical RFC-11 §H Vectis paths (slice-local
+/// files first, then project-level design-system files or the merged
+/// composition baseline). Legacy projects that still vendor a
+/// `schema.yaml` `artifacts:` block can override those defaults. An
+/// explicit `path` always wins.
+///
+/// All five modes (`layout`, `composition`, `tokens`, `assets`, `all`)
+/// are fully implemented. Per-mode runs return
+/// `CommandOutcome::Success` with a v2 JSON envelope containing
+/// `mode`, `path`, `errors`, and `warnings`. The `all` mode returns
+/// a `{ mode: "all", path, results }` envelope where each entry
+/// wraps a per-mode `report`. The dispatcher exits zero when no
+/// errors are found.
+#[derive(clap::Args, Debug)]
+pub struct ValidateArgs {
+    /// Validation mode. Choose one of `layout`, `composition`,
+    /// `tokens`, `assets`, or `all`.
+    #[arg(value_enum)]
+    pub mode: ValidateMode,
+
+    /// Optional path to the artifact (or, for `all`, the project
+    /// root). When omitted, defaults are resolved from the
+    /// canonical Vectis path cascade (Phase 1.10) with an embedded
+    /// fallback.
+    pub path: Option<std::path::PathBuf>,
+}
+
+/// Validation mode discriminant for `vectis validate`.
+///
+/// Five-valued enum mirroring the RFC-11 §H verb list. Variant
+/// spellings (kebab-case via `clap::ValueEnum`) match the strings the
+/// `Stub { command }` payload threads through to the v2 `command`
+/// field — keep them in lock-step with `validate::run`'s match arms.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum ValidateMode {
+    /// Validate `layout.yaml` as the unwired subset of the composition
+    /// schema (RFC-11 §H "`layout` mode").
+    Layout,
+    /// Validate `composition.yaml` as the lifecycle artifact, with
+    /// auto-invoked tokens / assets cross-checks (RFC-11 §H
+    /// "`composition` mode").
+    Composition,
+    /// Validate `tokens.yaml` against `tokens.schema.json` (RFC-11
+    /// Appendix A).
+    Tokens,
+    /// Validate `assets.yaml` against `assets.schema.json` plus
+    /// referenced-file existence checks (RFC-11 §E, Appendix B).
+    Assets,
+    /// Run every other mode against the active change + baseline and
+    /// emit a combined report (RFC-11 §H "CLI validation modes"
+    /// closing paragraph).
+    All,
+}
+
+impl ValidateMode {
+    /// Stable kebab-case name used in stub payloads, JSON output, and
+    /// text rendering. Matches the CLI value-enum spelling exactly so
+    /// `--format json` consumers and `--format text` operators see
+    /// the same identifier.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Layout => "layout",
+            Self::Composition => "composition",
+            Self::Tokens => "tokens",
+            Self::Assets => "assets",
+            Self::All => "all",
+        }
+    }
 }

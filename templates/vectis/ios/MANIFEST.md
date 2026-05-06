@@ -80,26 +80,22 @@ Notes for chunk 7:
   When chunk 6 decides whether to add the Rust-side variant, this manifest and
   `Core.swift` should grow a matching `<<<CAP:sse` block.
 
-## Design system / Inject
+## Inject
 
-The chunk-3b templates deliberately omit `VectisDesign` and `Inject` from the
-project's SPM dependency list, even though the `ios-writer` reference docs
-mention both. Reasons:
+The templates deliberately omit `Inject` from the project's SPM dependency
+list. **`Inject`** (hot-reload) is a per-developer convenience that requires
+network resolution at first build and an external `InjectionIII` macOS app.
+Including it would make the deterministic baseline depend on network
+connectivity for the first `xcodegen`/`xcodebuild` cycle, which violates
+the "one command, working project" promise.
 
-- **`VectisDesign`** lives at `design-system/ios/` and is produced by the
-  separate `design-system-writer` skill. It is not guaranteed to exist when
-  `vectis init` runs, and the iOS reference docs explicitly say "If the design
-  system files do not exist, generate views without design system imports."
-  The CLI's job is to produce a baseline that always compiles; the writer
-  skills layer in `VectisDesign` during Update Mode when they detect it.
-- **`Inject`** (hot-reload) is a per-developer convenience that requires
-  network resolution at first build and an external `InjectionIII` macOS app.
-  Including it would make the deterministic baseline depend on network
-  connectivity for the first `xcodegen`/`xcodebuild` cycle, which violates
-  the "one command, working project" promise.
+Theme and token code is emitted as shell-local files under `iOS/<App>/Theme/`
+by the `ios-writer` skill during Update Mode (RFC-11 §L "Generated layout").
+The CLI scaffold does not include theme files because `tokens.yaml` may not
+exist at scaffold time; the writer adds them on first generation.
 
-If a future RFC wants either back, they can be added as cap-style toggles
-(e.g. `--design-system`, `--hot-reload`) and gated by their own markers.
+If a future RFC wants hot-reload back, it can be added as a cap-style toggle
+(e.g. `--hot-reload`) and gated by its own marker.
 
 ## Self-check
 

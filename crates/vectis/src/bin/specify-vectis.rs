@@ -1,10 +1,10 @@
 //! `specify-vectis` — standalone binary for the Vectis capability's
 //! deterministic verbs (RFC-13 §4.3a).
 //!
-//! Wraps `crates/vectis`'s library API. Five verbs are exposed, each a
+//! Wraps `crates/vectis`'s library API. Six verbs are exposed, each a
 //! one-line dispatch into a handler that already exists in the library
 //! (`specify_vectis::{init, verify, add_shell, update_versions,
-//! versions_cmd}::run`):
+//! versions_cmd, validate}::run`):
 //!
 //! * `init`              — scaffold a new Crux project (core + optional shells).
 //! * `verify`            — run the per-assembly compilation pipelines.
@@ -13,6 +13,8 @@
 //!   versions, optionally proving the cap-matrix builds first.
 //! * `versions`          — print the resolved version pins (embedded → user →
 //!   project → `--version-file` override).
+//! * `validate`          — validate Vectis UI inputs (`layout.yaml`,
+//!   `composition.yaml`, `tokens.yaml`, `assets.yaml`).
 //!
 //! The JSON envelope (default `--format json`) is byte-for-byte the
 //! same shape the pre-2.6 `specify vectis * --format json` dispatcher
@@ -41,8 +43,8 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::Value;
 use specify_vectis::{
-    AddShellArgs, CommandOutcome, InitArgs, JSON_SCHEMA_VERSION, UpdateVersionsArgs, VectisError,
-    VerifyArgs, VersionsArgs, render_envelope_json,
+    AddShellArgs, CommandOutcome, InitArgs, JSON_SCHEMA_VERSION, UpdateVersionsArgs, ValidateArgs,
+    VectisError, VerifyArgs, VersionsArgs, render_envelope_json,
 };
 
 /// Top-level `specify-vectis` CLI.
@@ -60,7 +62,8 @@ use specify_vectis::{
                   verify             run the per-assembly compilation pipelines\n  \
                   add-shell          append an iOS or Android shell to an existing core\n  \
                   update-versions    query registries and refresh pinned tool / crate versions\n  \
-                  versions           print the resolved version pins\n\
+                  versions           print the resolved version pins\n  \
+                  validate           validate layout, composition, token, and asset inputs\n\
                   \nJSON output (`--format json`, default) follows the v2 contract used by \
                   the pre-2.6 `specify vectis * --format json` dispatcher byte-for-byte: \
                   `schema-version: 2` first, then the per-verb payload, kebab-case keys \
@@ -106,6 +109,9 @@ enum Command {
     UpdateVersions(UpdateVersionsArgs),
     /// Show the resolved version pins (embedded → user → project → override).
     Versions(VersionsArgs),
+    /// Validate UI input artifacts (`layout.yaml`, `tokens.yaml`,
+    /// `assets.yaml`) and the wired `composition.yaml`.
+    Validate(ValidateArgs),
 }
 
 impl Command {
@@ -117,6 +123,7 @@ impl Command {
             Self::AddShell(args) => specify_vectis::add_shell::run(args),
             Self::UpdateVersions(args) => specify_vectis::update_versions::run(args),
             Self::Versions(args) => specify_vectis::versions_cmd::run(args),
+            Self::Validate(args) => specify_vectis::validate::run(args),
         }
     }
 }
@@ -127,9 +134,15 @@ fn main() -> ExitCode {
 
     match cli.format {
         OutputFormat::Json => {
+            let validate_code = match (&cli.command, &outcome) {
+                (Command::Validate(_), Ok(CommandOutcome::Success(value))) => {
+                    Some(validate_exit_code(value))
+                }
+                _ => None,
+            };
             let (json, code) = render_envelope_json(outcome);
             println!("{json}");
-            ExitCode::from(code)
+            ExitCode::from(validate_code.unwrap_or(code))
         }
         OutputFormat::Text => render_text(&cli.command, outcome),
     }
@@ -155,8 +168,13 @@ fn render_text(command: &Command, outcome: Result<CommandOutcome, VectisError>) 
                 Command::AddShell(_) => render_add_shell_text(&value),
                 Command::UpdateVersions(_) => render_update_versions_text(&value),
                 Command::Versions(_) => render_versions_text(&value),
+                Command::Validate(_) => render_validate_text(&value),
             }
-            ExitCode::from(0)
+            let code = match command {
+                Command::Validate(_) => validate_exit_code(&value),
+                _ => 0,
+            };
+            ExitCode::from(code)
         }
         Ok(CommandOutcome::Stub { command: verb }) => {
             eprintln!("error: `vectis {verb}` is not implemented yet");
@@ -375,6 +393,84 @@ fn render_versions_text(value: &Value) {
                 println!("    {key} = {val}");
             }
         }
+    }
+}
+
+fn validate_exit_code(value: &Value) -> u8 {
+    fn has_errors(node: &Value) -> bool {
+        if node.get("errors").and_then(Value::as_array).is_some_and(|arr| !arr.is_empty()) {
+            return true;
+        }
+        if let Some(results) = node.get("results").and_then(Value::as_array) {
+            return results
+                .iter()
+                .any(|entry| entry.get("report").is_some_and(has_errors) || has_errors(entry));
+        }
+        false
+    }
+
+    if has_errors(value) { 1 } else { 0 }
+}
+
+fn render_validate_text(value: &Value) {
+    render_validate_envelope(value, 0);
+}
+
+fn render_validate_envelope(value: &Value, depth: usize) {
+    let indent = "  ".repeat(depth);
+    let mode = value.get("mode").and_then(Value::as_str).unwrap_or("?");
+    let path = value.get("path").and_then(Value::as_str);
+    let skipped = value.get("skipped").and_then(Value::as_bool).unwrap_or(false);
+
+    let header = path.map_or_else(
+        || format!("{indent}Validate {mode}"),
+        |p| format!("{indent}Validate {mode}: {p}"),
+    );
+    println!("{header}");
+
+    if skipped {
+        let msg = value.get("message").and_then(Value::as_str).unwrap_or("skipped");
+        println!("{indent}  skipped: {msg}");
+        return;
+    }
+
+    let warnings = value.get("warnings").and_then(Value::as_array);
+    let errors = value.get("errors").and_then(Value::as_array);
+    let warn_count = warnings.map_or(0, Vec::len);
+    let err_count = errors.map_or(0, Vec::len);
+
+    if let Some(arr) = warnings {
+        for w in arr {
+            let msg = w.get("message").and_then(Value::as_str).unwrap_or("?");
+            match w.get("path").and_then(Value::as_str) {
+                Some(p) if !p.is_empty() => println!("{indent}  warning: {p}: {msg}"),
+                _ => println!("{indent}  warning: {msg}"),
+            }
+        }
+    }
+    if let Some(arr) = errors {
+        for e in arr {
+            let msg = e.get("message").and_then(Value::as_str).unwrap_or("?");
+            match e.get("path").and_then(Value::as_str) {
+                Some(p) if !p.is_empty() => println!("{indent}  error: {p}: {msg}"),
+                _ => println!("{indent}  error: {msg}"),
+            }
+        }
+    }
+
+    if let Some(results) = value.get("results").and_then(Value::as_array) {
+        for entry in results {
+            if let Some(report) = entry.get("report") {
+                render_validate_envelope(report, depth + 1);
+            }
+        }
+    }
+
+    let has_results = value.get("results").is_some();
+    if err_count == 0 && warn_count == 0 && !has_results {
+        println!("{indent}  OK");
+    } else if err_count != 0 || warn_count != 0 {
+        println!("{indent}  ({err_count} error(s), {warn_count} warning(s))");
     }
 }
 
