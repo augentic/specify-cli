@@ -154,11 +154,10 @@ pub struct VersionsArgs {
 /// to the canonical paths in RFC-11 §H "Inputs". An explicit `path`
 /// always wins.
 ///
-/// The five modes (`layout`, `composition`, `tokens`, `assets`, `all`)
-/// are stubs in Phase 1.5 — every variant returns
-/// `CommandOutcome::Stub` so the dispatcher emits the v2
-/// `not-implemented` envelope. Phases 1.6–1.10 fill them in
-/// incrementally without changing this surface.
+/// All five modes (`layout`, `composition`, `tokens`, `assets`, `all`)
+/// are fully implemented. Each returns `CommandOutcome::Success` with
+/// a v2 JSON envelope containing `mode`, `path`, `errors`, and
+/// `warnings`; the dispatcher exits zero when no errors are found.
 #[derive(clap::Args, Debug)]
 pub struct ValidateArgs {
     /// Validation mode. Choose one of `layout`, `composition`,

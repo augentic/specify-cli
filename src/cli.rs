@@ -152,9 +152,10 @@ pub enum VectisAction {
     /// `assets.yaml`) and the wired `composition.yaml` against the
     /// schemas in `schemas/vectis/` (RFC-11 §H, §I).
     ///
-    /// Phase 1.5 ships the surface only; every mode returns the v2
-    /// `not-implemented` envelope and exits non-zero. Phases 1.6–1.10
-    /// fill the modes in incrementally without changing this surface.
+    /// Five modes are supported: `layout`, `tokens`, `assets`,
+    /// `composition`, and `all`. Each returns a v2 JSON envelope
+    /// with `mode`, `path`, `errors`, and `warnings` arrays; exits
+    /// zero when no errors are found.
     Validate(specify_vectis::ValidateArgs),
 }
 
