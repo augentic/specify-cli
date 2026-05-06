@@ -157,17 +157,12 @@ Notes for chunk 8:
   manifest, `libs.versions.toml`, `AndroidManifest.xml` (cleartext for SSE
   endpoints), and `Core.kt` all need matching `<<<CAP:sse` blocks.
 
-## Design system / Koin DI
+## Koin DI
 
-The chunk-3c templates deliberately omit `:vectis-design`, the Koin
-`AppModule.kt`, and any `HttpClient.kt` / `SseClient.kt` / `KeyValueClient.kt`
-classes from the deterministic baseline. Reasons mirror chunk 3b:
+The templates deliberately omit the Koin `AppModule.kt` and any
+`HttpClient.kt` / `SseClient.kt` / `KeyValueClient.kt` classes from the
+deterministic baseline.
 
-- **`:vectis-design`** lives at `design-system/android/` and is produced by
-  the separate `design-system-writer` skill. It is not guaranteed to exist
-  when `vectis init` runs, and the Android reference docs say "When
-  `design-system/tokens.yaml` exists, ... include the generated Compose
-  library" -- i.e. additive, not baseline.
 - **Koin DI / per-cap helper classes** (Pattern 2 Core in
   `crux-android-shell-pattern.md`) introduce non-trivial dependencies and
   multi-file structure that the deterministic baseline does not need. The
@@ -175,9 +170,15 @@ classes from the deterministic baseline. Reasons mirror chunk 3b:
   `mutableStateOf` for view state) and inlines a stub HTTP handler inside
   `Core.kt` when the `http` cap is selected.
 
-The writer skills layer in `:vectis-design`, Koin, and the per-cap helper
-classes during Update Mode when they detect them. Chunk 12's skill rewrite
-should keep that path working.
+Theme and token code is emitted as shell-local files under
+`Android/app/src/main/java/com/vectis/<appname>/ui/theme/` by the
+`android-writer` skill during Update Mode (RFC-11 §L "Generated layout").
+The CLI scaffold includes only the base Material 3 theme files (`Color.kt`,
+`Theme.kt`, `Type.kt`); the writer enriches them from `tokens.yaml` on first
+generation.
+
+The writer skills layer in Koin and the per-cap helper classes during Update
+Mode when they detect them.
 
 ## Verification deviations
 

@@ -1044,7 +1044,8 @@ fn escape_pointer_token(token: &str) -> String {
 // the project's `schema.yaml` (if any) for an on-disk `artifacts:`
 // block, and otherwise use the embedded defaults at
 // [`EMBEDDED_ARTIFACT_PATHS`] which mirror `schemas/vectis/schema.yaml`
-// v2 verbatim. The walk replaces the Phase 1.7
+// v3 verbatim (paths unchanged from v2; v3 only bumps the version
+// and removes the deprecated design-system-writer alias). The walk replaces the Phase 1.7
 // `find_sibling_composition` / Phase 1.9 `find_sibling_input` helpers
 // the previous phases left behind; both call sites consume
 // `Option<PathBuf>` so the migration is purely a body-level

@@ -149,16 +149,21 @@ pub struct VersionsArgs {
 /// `vectis validate <mode> [path]` arguments (RFC-11 §H).
 ///
 /// `mode` is required; `path` is optional. When `path` is omitted the
-/// dispatcher resolves a default via the `artifacts:` block in
-/// `schemas/vectis/schema.yaml` (Phase 1.10) and otherwise falls back
-/// to the canonical paths in RFC-11 §H "Inputs". An explicit `path`
-/// always wins.
+/// dispatcher reads the project's `.specify/project.yaml` `schema:`
+/// value, resolves the matching `schema.yaml` (from
+/// `.specify/.cache/<schema>/` or `<root>/schemas/<schema>/`), and
+/// walks its `artifacts:` block to find the default path. When no
+/// on-disk `schema.yaml` is reachable, embedded defaults mirroring
+/// the canonical RFC-11 §H paths are used. An explicit `path` always
+/// wins.
 ///
-/// The five modes (`layout`, `composition`, `tokens`, `assets`, `all`)
-/// are stubs in Phase 1.5 — every variant returns
-/// `CommandOutcome::Stub` so the dispatcher emits the v2
-/// `not-implemented` envelope. Phases 1.6–1.10 fill them in
-/// incrementally without changing this surface.
+/// All five modes (`layout`, `composition`, `tokens`, `assets`, `all`)
+/// are fully implemented. Per-mode runs return
+/// `CommandOutcome::Success` with a v2 JSON envelope containing
+/// `mode`, `path`, `errors`, and `warnings`. The `all` mode returns
+/// a `{ mode: "all", path, results }` envelope where each entry
+/// wraps a per-mode `report`. The dispatcher exits zero when no
+/// errors are found.
 #[derive(clap::Args, Debug)]
 pub struct ValidateArgs {
     /// Validation mode. Choose one of `layout`, `composition`,
@@ -168,8 +173,8 @@ pub struct ValidateArgs {
 
     /// Optional path to the artifact (or, for `all`, the project
     /// root). When omitted, defaults are resolved from the
-    /// `artifacts:` block in `schemas/vectis/schema.yaml`
-    /// (Phase 1.10) with a canonical-path fallback.
+    /// `artifacts:` block in the project's `schema.yaml`
+    /// (Phase 1.10) with an embedded canonical-path fallback.
     pub path: Option<std::path::PathBuf>,
 }
 

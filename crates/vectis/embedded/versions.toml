@@ -63,8 +63,8 @@ gradle      = "8.13"
 # `Versions::android` for projects that want to pin explicitly.
 
 [ios]
-# No external SPM deps today -- VectisDesign and the generated SharedTypes /
-# Shared packages are all internal.
+# No external SPM deps today -- the generated SharedTypes / Shared packages
+# are all internal. Theme code is emitted shell-locally by ios-writer.
 
 [tooling]
 cargo_deny = "0.19.4"      # latest
