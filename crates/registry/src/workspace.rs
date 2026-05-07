@@ -1667,9 +1667,9 @@ fn git_stdout_allow_empty(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::cell::RefCell;
+
+    use super::*;
 
     const TEST_CHANGE: &str = "demo-change";
     const TEST_BRANCH: &str = "specify/demo-change";
