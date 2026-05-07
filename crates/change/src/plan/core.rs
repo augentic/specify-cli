@@ -161,10 +161,10 @@ pub struct Entry {
     /// Target registry project (RFC-3b). Required for multi-project registries.
     #[serde(default)]
     pub project: Option<String>,
-    /// Schema identifier for project-less entries (e.g. `contracts@v1`).
+    /// Plan-entry `schema` target for project-less entries (e.g. `contracts@v1`).
     /// Required when `project` is `None`; optional override when `project`
     /// is `Some`. Mutually enriching with `project`: `project` identifies
-    /// the target codebase; `schema` identifies the schema directly.
+    /// the target codebase; `schema` identifies the target directly.
     #[serde(default)]
     pub schema: Option<String>,
     /// Current lifecycle state of this entry.

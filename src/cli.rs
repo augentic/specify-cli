@@ -37,7 +37,7 @@ pub enum Commands {
     /// `init-requires-capability-or-hub` diagnostic.
     Init {
         /// Capability identifier or URL to resolve before scaffolding
-        /// (e.g. `omnia`, `https://github.com/<owner>/<repo>/schemas/<name>`).
+        /// (e.g. `omnia`, `https://github.com/<owner>/<repo>/capabilities/<name>`).
         /// Required unless `--hub` is set; mutually exclusive with `--hub`.
         capability: Option<String>,
         /// Project name (defaults to the project directory name)
@@ -308,7 +308,7 @@ pub enum PlanAction {
         /// Target registry project name (RFC-3b)
         #[arg(long)]
         project: Option<String>,
-        /// Schema identifier for project-less entries (e.g. `contracts@v1`)
+        /// Plan-entry `schema` target for project-less entries (e.g. `contracts@v1`)
         #[arg(long)]
         schema: Option<String>,
         /// Baseline paths relevant to this change, relative to `.specify/` (repeatable)
@@ -335,7 +335,8 @@ pub enum PlanAction {
         /// Replace project. Pass `--project ""` to clear; omit the flag to leave it unchanged.
         #[arg(long)]
         project: Option<String>,
-        /// Replace schema. Pass `--schema ""` to clear; omit the flag to leave it unchanged.
+        /// Replace the plan-entry `schema` target. Pass `--schema ""` to clear;
+        /// omit the flag to leave it unchanged.
         #[arg(long)]
         schema: Option<String>,
         /// Replace context paths. Pass `--context` (with no value) to clear; omit the
@@ -501,8 +502,8 @@ pub enum RegistryAction {
         /// `registry validate` enforces.
         #[arg(long)]
         url: String,
-        /// Schema identifier — e.g. `omnia@v1`. Must be non-empty
-        /// after trim.
+        /// Capability identifier stored in registry.yaml's `schema:`
+        /// field — e.g. `omnia@v1`. Must be non-empty after trim.
         #[arg(long)]
         schema: String,
         /// Domain-level characterisation of the project. Required when
@@ -598,7 +599,7 @@ pub enum CapabilityAction {
     /// Resolve a capability value to a directory path
     Resolve {
         /// Capability value (bare name or URL) to resolve through the
-        /// project-local cache and `schemas/` lookup
+        /// project-local cache and bundled capability lookup
         capability_value: String,
         #[arg(long, default_value = ".")]
         project_dir: PathBuf,
@@ -632,7 +633,7 @@ pub enum SliceAction {
     Create {
         /// Kebab-case slice name
         name: String,
-        /// Schema identifier; defaults to the value in `.specify/project.yaml`
+        /// Capability identifier; defaults to the value in `.specify/project.yaml`
         #[arg(long)]
         schema: Option<String>,
         /// Behaviour when `<slices_dir>/<name>/` already exists
@@ -646,7 +647,7 @@ pub enum SliceAction {
         /// Slice name (under `.specify/slices/`)
         name: String,
     },
-    /// Validate a slice's artifacts against schema rules
+    /// Validate a slice's artifacts against capability validation rules
     Validate {
         /// Slice name (under `.specify/slices/`)
         name: String,
@@ -782,7 +783,8 @@ pub enum OutcomeAction {
         /// Required when `<outcome>` is `registry-amendment-required`.
         #[arg(long)]
         proposed_url: Option<String>,
-        /// Proposed schema identifier (e.g. `omnia@v1`). Required
+        /// Proposed capability identifier carried by `--proposed-schema`
+        /// (e.g. `omnia@v1`). Required
         /// when `<outcome>` is `registry-amendment-required`.
         #[arg(long)]
         proposed_schema: Option<String>,

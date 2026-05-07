@@ -91,7 +91,7 @@ struct Project {
 
 impl Project {
     /// Build an empty tempdir and run `specify init` with the in-repo
-    /// Omnia schema URI.
+    /// Omnia capability fixture.
     fn init() -> Self {
         let tmp = tempdir().expect("tempdir");
         let root = tmp.path().to_path_buf();

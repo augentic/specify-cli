@@ -30,9 +30,9 @@ The capability declares four briefs under `pipeline.define` in dependency order:
 `pipeline.build` requires tasks to be complete and is tracked via `tasks.md`.
 `pipeline.merge` finalises the slice and runs the merge brief.
 
-## Schema framework
+## Capability framework
 
 For general capability concepts — directory structure, field reference for
 `capability.yaml`, capability resolution, composition, caching, and rules
-override — see the [Schemas README](../README.md) and the bundled
+override — see the [Capabilities README](../README.md) and the bundled
 [`capability.schema.json`](../capability.schema.json).

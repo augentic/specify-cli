@@ -37,7 +37,7 @@ mod cli {
     /// A `.specify/` project rooted in a throwaway tempdir.
     ///
     /// Mirrors the harness in `tests/slice.rs`: run `specify init` with
-    /// the in-repo Omnia schema URI, then let the test body seed whatever
+    /// the in-repo Omnia capability fixture, then let the test body seed whatever
     /// `plan.yaml` / `slices/` content it needs.
     struct Project {
         _tmp: TempDir,

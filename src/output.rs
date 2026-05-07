@@ -39,8 +39,6 @@ impl From<&Error> for CliResult {
         match err {
             Error::SpecifyVersionTooOld { .. } => Self::VersionTooOld,
             Error::Validation { .. }
-            | Error::ToolResolver(_)
-            | Error::ToolRuntime(_)
             | Error::ToolPermissionDenied(_)
             | Error::ToolNotDeclared { .. } => Self::ValidationFailed,
             _ => Self::GenericFailure,
@@ -64,13 +62,8 @@ impl From<&Error> for CliResult {
 /// - New read verb `specify change outcome <name>` (added in RFC-2 §1.1 /
 ///   L0.A1) shipped under the v2 contract.
 /// - Error variant identifiers surfaced as the `"error"` value in failure
-///   payloads are kebab-case too: `not_initialized` → `not-initialized`,
-///   `schema_resolution` → `schema-resolution`, `specify_version_too_old`
-///   → `specify-version-too-old`, `plan_transition` → `plan-transition`,
-///   `plan_has_outstanding_work` → `plan-has-outstanding-work`, and
-///   `driver_busy` → `driver-busy`. Single-word variants (`io`, `yaml`,
-///   `config`, `merge`, `lifecycle`, `validation`) were already kebab-safe
-///   and are unchanged.
+///   payloads are kebab-case too. `Error::variant_str()` is the canonical
+///   source for these stable identifiers.
 /// - No shape changes beyond the casing: key sets, nesting, and value
 ///   types are frozen.
 pub const JSON_SCHEMA_VERSION: u64 = 2;
@@ -145,38 +138,7 @@ pub fn emit_json_error(err: &Error, code: CliResult) {
         return;
     }
 
-    let variant = match err {
-        Error::NotInitialized => "not-initialized",
-        Error::SchemaResolution(_) => "schema-resolution",
-        Error::Config(_) => "config",
-        Error::Validation { .. } => "validation",
-        Error::Merge(_) => "merge",
-        Error::Lifecycle { .. } => "lifecycle",
-        Error::SpecifyVersionTooOld { .. } => "specify-version-too-old",
-        Error::PlanTransition { .. } => "plan-transition",
-        Error::PlanHasOutstandingWork { .. } => "plan-has-outstanding-work",
-        Error::DriverBusy { .. } => "driver-busy",
-        Error::ArtifactNotFound { .. } => "artifact-not-found",
-        Error::SliceNotFound { .. } => "slice-not-found",
-        Error::RegistryMissing => "registry-missing",
-        Error::LegacyLayout { .. } => "legacy-layout",
-        Error::SliceMigrationBlockedByInProgress { .. } => "slice-migration-blocked-by-in-progress",
-        Error::SliceMigrationTargetExists { .. } => "slice-migration-target-exists",
-        Error::ChangeNounMigrationTargetExists { .. } => "change-noun-migration-target-exists",
-        Error::ChangeBriefBecameChangeMd { .. } => "change-brief-became-change-md",
-        Error::SchemaBecameCapability { .. } => "schema-became-capability",
-        Error::InvalidName(_) => "invalid-name",
-        Error::Io(_) => "io",
-        Error::Yaml(_) => "yaml",
-        Error::YamlSer(_) => "yaml-ser",
-        Error::ToolResolver(_) => "tool-resolver",
-        Error::ToolRuntime(_) => "tool-runtime",
-        Error::ToolPermissionDenied(_) => "tool-permission-denied",
-        Error::ToolNotDeclared { .. } => "tool-not-declared",
-        // `Error` is #[non_exhaustive]; keep this arm but update when
-        // adding new variants to `specify_error::Error`.
-        _ => "unknown",
-    };
+    let variant = err.variant_str();
     emit_response(ErrorResponse {
         error: variant.to_string(),
         message: err.to_string(),

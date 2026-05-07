@@ -790,16 +790,28 @@ fn run_slice_journal_show(ctx: &CommandContext, name: String) -> Result<CliResul
     }
 
     let journal = Journal::load(&slice_dir)?;
+    journal_show::emit(ctx.format, &name, &journal);
+    Ok(CliResult::Success)
+}
+
+mod journal_show {
+    use serde::Serialize;
+    use serde_json::Value;
+    use specify::{Journal, JournalEntry, Rfc3339Stamp};
+
+    use crate::cli::OutputFormat;
+    use crate::output::emit_response;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct JournalShowBody {
+    struct Body {
         name: String,
-        entries: Vec<JournalEntryRow>,
+        entries: Vec<EntryRow>,
     }
+
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct JournalEntryRow {
+    struct EntryRow {
         timestamp: Rfc3339Stamp,
         phase: String,
         kind: String,
@@ -807,41 +819,42 @@ fn run_slice_journal_show(ctx: &CommandContext, name: String) -> Result<CliResul
         context: Value,
     }
 
-    match ctx.format {
-        OutputFormat::Json => {
-            let entries: Vec<JournalEntryRow> = journal
-                .entries
-                .iter()
-                .map(|e| JournalEntryRow {
-                    timestamp: e.timestamp.clone(),
-                    phase: e.step.to_string(),
-                    kind: e.r#type.to_string(),
-                    summary: e.summary.clone(),
-                    context: e.context.clone().map_or(Value::Null, Value::from),
-                })
-                .collect();
-            emit_response(JournalShowBody { name, entries });
+    pub(super) fn emit(format: OutputFormat, name: &str, journal: &Journal) {
+        match format {
+            OutputFormat::Json => emit_response(Body {
+                name: name.to_string(),
+                entries: journal.entries.iter().map(entry_row).collect(),
+            }),
+            OutputFormat::Text => print_text(name, journal),
         }
-        OutputFormat::Text => {
-            if journal.entries.is_empty() {
-                println!("{name}: no journal entries");
-            } else {
-                println!("{name}:");
-                for entry in &journal.entries {
-                    println!(
-                        "  [{}] {}/{} — {}",
-                        entry.timestamp, entry.step, entry.r#type, entry.summary,
-                    );
-                    if let Some(context) = &entry.context {
-                        for line in context.lines() {
-                            println!("      {line}");
-                        }
-                    }
+    }
+
+    fn entry_row(entry: &JournalEntry) -> EntryRow {
+        EntryRow {
+            timestamp: entry.timestamp.clone(),
+            phase: entry.step.to_string(),
+            kind: entry.r#type.to_string(),
+            summary: entry.summary.clone(),
+            context: entry.context.clone().map_or(Value::Null, Value::from),
+        }
+    }
+
+    fn print_text(name: &str, journal: &Journal) {
+        if journal.entries.is_empty() {
+            println!("{name}: no journal entries");
+            return;
+        }
+
+        println!("{name}:");
+        for entry in &journal.entries {
+            println!("  [{}] {}/{} — {}", entry.timestamp, entry.step, entry.r#type, entry.summary);
+            if let Some(context) = &entry.context {
+                for line in context.lines() {
+                    println!("      {line}");
                 }
             }
         }
     }
-    Ok(CliResult::Success)
 }
 
 // ---------------------------------------------------------------------------
