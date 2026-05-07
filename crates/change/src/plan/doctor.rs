@@ -282,8 +282,7 @@ impl Diagnostic {
 ///   5. Unreachable-entry diagnostics (sorted by entry name).
 #[must_use]
 pub fn doctor(
-    plan: &Plan, slices_dir: Option<&Path>, registry: Option<&Registry>,
-    project_dir: Option<&Path>,
+    plan: &Plan, slices_dir: Option<&Path>, registry: Option<&Registry>, project_dir: Option<&Path>,
 ) -> Vec<Diagnostic> {
     let mut out: Vec<Diagnostic> =
         plan.validate(slices_dir, registry).iter().map(Diagnostic::from_finding).collect();

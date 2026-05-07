@@ -165,13 +165,8 @@ pub fn run_workspace_push(
         ));
     };
 
-    let results = run_workspace_push_impl(
-        &ctx.project_dir,
-        &plan.name,
-        &registry,
-        &projects,
-        dry_run,
-    )?;
+    let results =
+        run_workspace_push_impl(&ctx.project_dir, &plan.name, &registry, &projects, dry_run)?;
 
     match ctx.format {
         OutputFormat::Json => {
@@ -265,14 +260,8 @@ pub fn run_workspace_merge(
     };
 
     let gh = RealGhClient;
-    let results = run_workspace_merge_impl(
-        &ctx.project_dir,
-        &plan.name,
-        &registry,
-        &gh,
-        &projects,
-        dry_run,
-    )?;
+    let results =
+        run_workspace_merge_impl(&ctx.project_dir, &plan.name, &registry, &gh, &projects, dry_run)?;
 
     let initiative_name = plan.name.clone();
     let expected_branch = format!("specify/{initiative_name}");

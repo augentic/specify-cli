@@ -1,9 +1,9 @@
-//! `specify-vectis validate <mode> [path]` -- schema and cross-artifact
-//! validation surface (RFC-11 §H, §I).
+//! `vectis-validate <mode> [path]` -- schema and cross-artifact validation
+//! surface (RFC-11 §H, §I).
 //!
 //! Phase 1.6 wired the `tokens` mode against the embedded
 //! `schemas/vectis/tokens.schema.json` (Appendix A; vendored from the
-//! `specify` repo at `crates/vectis/embedded/tokens.schema.json`).
+//! `specify` repo at `crates/vectis-validate/embedded/tokens.schema.json`).
 //! Phase 1.7 brings the `assets` mode online against the embedded
 //! `schemas/vectis/assets.schema.json` (Appendix B), layering three
 //! cross-artifact checks on top of the schema:
@@ -29,7 +29,7 @@
 //! Phase 1.8 brings the `layout` mode online against the patched
 //! `schemas/vectis/composition.schema.json` (RFC-11 Appendix F;
 //! vendored from the `specify` repo into
-//! `crates/vectis/embedded/composition.schema.json` -- the same
+//! `crates/vectis-validate/embedded/composition.schema.json` -- the same
 //! byte-identity discipline as the tokens / assets copies). The
 //! mode performs three coordinated checks on top of YAML parsing:
 //!
@@ -139,7 +139,7 @@
 //! same `instance_path` jsonschema reports for schema findings, and
 //! a hand-rolled equivalent for our own cross-artifact findings) so
 //! operators can find the offending sub-document quickly. The
-//! standalone dispatcher translates
+//! command renderer translates
 //! `errors.is_empty() -> exit 0` and `errors.non_empty -> exit 1`
 //! per RFC-11 §H ("non-zero on errors, zero with a printed warning
 //! report on warnings, zero silently on a clean run").
@@ -179,7 +179,7 @@ const ASSETS_SCHEMA_SOURCE: &str = include_str!("../embedded/assets.schema.json"
 /// references).
 const COMPOSITION_SCHEMA_SOURCE: &str = include_str!("../embedded/composition.schema.json");
 
-/// Embedded default paths for the four `vectis validate` modes. This
+/// Embedded default paths for the four `vectis-validate` modes. This
 /// is the post-RFC-13 canonical Vectis cascade: slice-local files
 /// first, then project-level inputs or the merged composition baseline.
 /// Older projects with an on-disk `schema.yaml` `artifacts:` block can
@@ -1057,9 +1057,21 @@ fn escape_pointer_token(token: &str) -> String {
 /// returned so the caller's "<file>.yaml not readable at <path>"
 /// error message names the location operators most likely expect.
 fn resolve_default_path(mode: ValidateMode) -> PathBuf {
+    resolve_default_path_with_root(mode, &default_project_root())
+}
+
+/// Return the default project root for omitted `[path]` positionals.
+///
+/// WASI tool invocations receive `PROJECT_DIR` from the host and normal
+/// preopened paths rooted there. Native development keeps the legacy behavior:
+/// walk up from CWD to a `.specify/` root when present, otherwise use CWD.
+fn default_project_root() -> PathBuf {
+    if let Some(project_dir) = std::env::var_os("PROJECT_DIR").filter(|value| !value.is_empty()) {
+        return PathBuf::from(project_dir);
+    }
+
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let project_root = find_project_root(&cwd);
-    resolve_default_path_with_root(mode, &project_root.unwrap_or(cwd))
+    find_project_root(&cwd).unwrap_or(cwd)
 }
 
 /// Resolve a per-mode default path against an explicit project root.
@@ -1326,10 +1338,7 @@ fn expand_path_template(template: &str, project_root: &Path) -> Vec<PathBuf> {
 /// `validate_exit_code` (recursion-aware since Phase 1.6) only flips
 /// to non-zero when a real sub-report has errors.
 fn validate_all(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
-    let project_root = path
-        .map(Path::to_path_buf)
-        .or_else(|| std::env::current_dir().ok())
-        .unwrap_or_else(|| PathBuf::from("."));
+    let project_root = path.map_or_else(default_project_root, Path::to_path_buf);
 
     let mut results: Vec<Value> = Vec::new();
     for mode in [

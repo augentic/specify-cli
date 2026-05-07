@@ -275,9 +275,7 @@ fn is_valid_specify_id(id: &str) -> bool {
 /// last-resort tripwire.
 #[must_use]
 pub fn serialize_contract_findings(
-    baseline_dir: &Path,
-    findings: &[ContractFinding],
-    exit_code: u8,
+    baseline_dir: &Path, findings: &[ContractFinding], exit_code: u8,
 ) -> String {
     let strip_root = baseline_dir.parent();
     let payload: Vec<FindingPayload> = findings

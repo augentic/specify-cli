@@ -923,8 +923,10 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     )
     .unwrap();
 
-    let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "change", "plan", "doctor"]).assert();
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "change", "plan", "doctor"])
+        .assert();
     let output = assert.get_output();
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
@@ -975,8 +977,10 @@ fn plan_doctor_diagnostic_payloads_round_trip_typed() {
     )
     .unwrap();
 
-    let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "change", "plan", "doctor"]).assert();
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "change", "plan", "doctor"])
+        .assert();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
@@ -1042,8 +1046,10 @@ fn plan_validate_unchanged_by_doctor_fixture() {
     )
     .unwrap();
 
-    let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "change", "plan", "validate"]).assert();
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "change", "plan", "validate"])
+        .assert();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
@@ -1551,15 +1557,13 @@ fn migrate_slice_layout_blocks_when_a_slice_is_in_progress() {
 /// Minimal `initiative.md` body used by the change-noun integration
 /// tests. The migration is a wholesale `fs::rename`, so the body
 /// bytes survive verbatim across the rename.
-const CHANGE_NOUN_BODY: &str =
-    "---\nname: demo\ninputs: []\n---\n\n# demo\n";
+const CHANGE_NOUN_BODY: &str = "---\nname: demo\ninputs: []\n---\n\n# demo\n";
 
 #[test]
 fn migrate_change_noun_renames_initiative_to_change_md() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
-    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY)
-        .expect("seed initiative.md");
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed initiative.md");
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -1583,8 +1587,7 @@ fn migrate_change_noun_renames_initiative_to_change_md() {
 fn migrate_change_noun_rerun_is_a_noop() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
-    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY)
-        .expect("seed initiative.md");
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed initiative.md");
 
     // First run actually migrates.
     specify()
@@ -1615,8 +1618,7 @@ fn migrate_change_noun_rerun_is_a_noop() {
 fn migrate_change_noun_refuses_when_both_files_present() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
-    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY)
-        .expect("seed initiative.md");
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed initiative.md");
     fs::write(
         tmp.path().join("change.md"),
         "---\nname: collision\ninputs: []\n---\n\n# collision\n",
@@ -1660,8 +1662,7 @@ fn migrate_change_noun_refuses_when_both_files_present() {
 fn change_show_refuses_when_only_legacy_brief_present() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
-    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY)
-        .expect("seed initiative.md");
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed initiative.md");
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -1699,10 +1700,7 @@ fn change_show_refuses_when_only_legacy_brief_present() {
 fn migrate_change_noun_appears_in_help() {
     let assert = specify().args(["migrate", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        stdout.contains("change-noun"),
-        "migrate --help must list change-noun, got:\n{stdout}"
-    );
+    assert!(stdout.contains("change-noun"), "migrate --help must list change-noun, got:\n{stdout}");
 }
 
 // ---- RFC-13 Phase 3.8 — migration round-trip acceptance gate ----
@@ -1768,8 +1766,7 @@ fn migration_roundtrip_slice_layout_makes_slice_discoverable() {
 fn migration_roundtrip_change_noun_makes_brief_readable_through_show() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
-    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY)
-        .expect("seed v1 initiative.md");
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed v1 initiative.md");
 
     specify()
         .current_dir(tmp.path())
@@ -1806,8 +1803,7 @@ fn migration_roundtrip_change_noun_makes_brief_readable_through_show() {
 fn migration_roundtrip_combined_slice_layout_then_change_noun() {
     let tmp = tempdir().unwrap();
     seed_pre_phase3_layout(&tmp, &[("alpha", "merged")]);
-    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY)
-        .expect("seed v1 initiative.md");
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed v1 initiative.md");
 
     // Run the migrations in the documented order: slice-layout
     // first, then change-noun. The order matters because

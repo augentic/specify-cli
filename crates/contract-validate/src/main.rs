@@ -133,15 +133,15 @@ fn run(baseline_dir: &std::path::Path, format: OutputFormat) -> ExitCode {
 }
 
 fn baseline_directory_error(baseline_dir: &std::path::Path) -> Result<(), String> {
-    std::fs::read_dir(baseline_dir)
-        .map(|_| ())
-        .map_err(|err| match err.kind() {
-            std::io::ErrorKind::NotFound => {
-                format!("error: baseline directory does not exist: {}", baseline_dir.display())
-            }
-            std::io::ErrorKind::NotADirectory => {
-                format!("error: baseline path is not a directory: {}", baseline_dir.display())
-            }
-            _ => format!("error: baseline directory is not readable: {}: {err}", baseline_dir.display()),
-        })
+    std::fs::read_dir(baseline_dir).map(|_| ()).map_err(|err| match err.kind() {
+        std::io::ErrorKind::NotFound => {
+            format!("error: baseline directory does not exist: {}", baseline_dir.display())
+        }
+        std::io::ErrorKind::NotADirectory => {
+            format!("error: baseline path is not a directory: {}", baseline_dir.display())
+        }
+        _ => {
+            format!("error: baseline directory is not readable: {}: {err}", baseline_dir.display())
+        }
+    })
 }

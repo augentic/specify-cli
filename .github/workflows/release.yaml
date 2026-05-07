@@ -101,9 +101,78 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  wasi-tools:
+    name: Build Vectis WASI tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: release-wasi-tools
+
+      - name: Build Vectis WASI tools
+        shell: bash
+        run: cargo build --release --locked --target wasm32-wasip2 -p vectis-validate -p vectis-scaffold
+
+      - name: Package Vectis WASI tools
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          DIST_DIR="target/vectis-wasi-tools/release"
+          ARCHIVE="vectis-wasi-tools-${VERSION}.tar.gz"
+
+          mkdir -p "${DIST_DIR}"
+          cp target/wasm32-wasip2/release/vectis-validate.wasm "${DIST_DIR}/vectis-validate.wasm"
+          cp target/wasm32-wasip2/release/vectis-scaffold.wasm "${DIST_DIR}/vectis-scaffold.wasm"
+
+          (
+            cd "${DIST_DIR}"
+            shasum -a 256 vectis-validate.wasm > vectis-validate.wasm.sha256
+            shasum -a 256 vectis-scaffold.wasm > vectis-scaffold.wasm.sha256
+            shasum -a 256 vectis-validate.wasm vectis-scaffold.wasm > SHA256SUMS
+          )
+
+          cp "${DIST_DIR}/vectis-validate.wasm" .
+          cp "${DIST_DIR}/vectis-scaffold.wasm" .
+          cp "${DIST_DIR}/vectis-validate.wasm.sha256" .
+          cp "${DIST_DIR}/vectis-scaffold.wasm.sha256" .
+
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+            -czf "${ARCHIVE}" \
+            -C "${DIST_DIR}" \
+            SHA256SUMS \
+            vectis-scaffold.wasm \
+            vectis-scaffold.wasm.sha256 \
+            vectis-validate.wasm \
+            vectis-validate.wasm.sha256
+          shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: specify-wasi-tools
+          path: |
+            vectis-validate.wasm
+            vectis-scaffold.wasm
+            vectis-validate.wasm.sha256
+            vectis-scaffold.wasm.sha256
+            vectis-wasi-tools-*.tar.gz
+            vectis-wasi-tools-*.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, wasi-tools]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -190,11 +259,6 @@ jobs:
 
       - name: Publish specify-validate
         run: cargo publish --package specify-validate --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Wait for index
-        run: sleep 30
-
-      - name: Publish specify-vectis
-        run: cargo publish --package specify-vectis --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Wait for index
         run: sleep 30
 

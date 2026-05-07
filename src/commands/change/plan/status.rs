@@ -18,9 +18,8 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
 
     let results = plan.validate(Some(&slices_dir), None);
-    let has_other_structural_errors = results
-        .iter()
-        .any(|r| matches!(r.level, Severity::Error) && r.code != "dependency-cycle");
+    let has_other_structural_errors =
+        results.iter().any(|r| matches!(r.level, Severity::Error) && r.code != "dependency-cycle");
     if has_other_structural_errors {
         return Ok(emit_structural_error(ctx.format));
     }
@@ -54,8 +53,7 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
 
     let blocked: Vec<&Entry> =
         plan.changes.iter().filter(|c| c.status == Status::Blocked).collect();
-    let failed: Vec<&Entry> =
-        plan.changes.iter().filter(|c| c.status == Status::Failed).collect();
+    let failed: Vec<&Entry> = plan.changes.iter().filter(|c| c.status == Status::Failed).collect();
 
     let next_eligible = plan.next_eligible();
 

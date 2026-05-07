@@ -27,10 +27,7 @@ fn extract_github_slug_handles_each_supported_form() {
         extract_github_slug("git@github.com:org/mobile.git"),
         Some("org/mobile".to_string())
     );
-    assert_eq!(
-        extract_github_slug("git@github.com:org/mobile"),
-        Some("org/mobile".to_string())
-    );
+    assert_eq!(extract_github_slug("git@github.com:org/mobile"), Some("org/mobile".to_string()));
     assert_eq!(
         extract_github_slug("https://github.com/org/mobile.git"),
         Some("org/mobile".to_string())

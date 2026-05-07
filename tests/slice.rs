@@ -136,11 +136,7 @@ fn slice_create_rejects_uppercase_name() {
 #[test]
 fn slice_create_fails_when_dir_exists_by_default() {
     let project = Project::init();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "create", "my-slice"])
-        .assert()
-        .success();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "create", "my-slice"])
@@ -155,11 +151,7 @@ fn slice_create_fails_when_dir_exists_by_default() {
 #[test]
 fn slice_create_continue_reuses_existing_directory() {
     let project = Project::init();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "create", "my-slice"])
-        .assert()
-        .success();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "create", "my-slice", "--if-exists", "continue"])
@@ -177,11 +169,7 @@ fn slice_create_continue_reuses_existing_directory() {
 #[test]
 fn slice_transition_walks_the_happy_path() {
     let project = Project::init();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "create", "my-slice"])
-        .assert()
-        .success();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
     for target in ["defined", "building", "complete"] {
         let assert = specify()
@@ -204,11 +192,7 @@ fn slice_transition_walks_the_happy_path() {
 #[test]
 fn slice_transition_rejects_illegal_edge() {
     let project = Project::init();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "create", "my-slice"])
-        .assert()
-        .success();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     // Defining -> Building is not a legal edge.
     let assert = specify()
         .current_dir(project.root())
@@ -226,11 +210,7 @@ fn slice_transition_rejects_illegal_edge() {
 #[test]
 fn slice_touched_specs_scan_classifies_new_vs_modified() {
     let project = Project::init();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "create", "my-slice"])
-        .assert()
-        .success();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let slice_dir = project.slices_dir().join("my-slice");
 
     // Capability `alpha` — no baseline, should classify as `new`.
@@ -268,11 +248,7 @@ fn slice_touched_specs_scan_classifies_new_vs_modified() {
 #[test]
 fn slice_touched_specs_set_accepts_explicit_list() {
     let project = Project::init();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "create", "my-slice"])
-        .assert()
-        .success();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
     let assert = specify()
         .current_dir(project.root())
@@ -361,11 +337,7 @@ fn slice_overlap_empty_for_disjoint_slices() {
 #[test]
 fn slice_archive_moves_dir_into_dated_archive() {
     let project = Project::init();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "create", "my-slice"])
-        .assert()
-        .success();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
     let assert = specify()
         .current_dir(project.root())
@@ -389,11 +361,7 @@ fn slice_archive_moves_dir_into_dated_archive() {
 #[test]
 fn slice_drop_transitions_and_archives_with_reason() {
     let project = Project::init();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "create", "my-slice"])
-        .assert()
-        .success();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
     let assert = specify()
         .current_dir(project.root())
@@ -1399,16 +1367,11 @@ fn phase_outcome_round_trips_through_serde() {
 fn change_umbrella_is_listed_in_top_level_help() {
     let assert = specify().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        stdout.contains("slice"),
-        "post-RFC-13 --help must list `slice`, got:\n{stdout}"
-    );
+    assert!(stdout.contains("slice"), "post-RFC-13 --help must list `slice`, got:\n{stdout}");
     // `--help` lists subcommand names one-per-line (clap default).
     // After Phase 3.5, the umbrella `change` subcommand is back.
     assert!(
-        stdout
-            .lines()
-            .any(|line| line.trim_start().starts_with("change ")),
+        stdout.lines().any(|line| line.trim_start().starts_with("change ")),
         "post-3.5 --help must list `change` as the umbrella subcommand, got:\n{stdout}"
     );
 }
@@ -1419,8 +1382,7 @@ fn initiative_subcommand_is_gone_from_top_level_help() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(
         !stdout.lines().any(|line| {
-            line.trim_start().starts_with("initiative ")
-                || line.trim_start() == "initiative"
+            line.trim_start().starts_with("initiative ") || line.trim_start() == "initiative"
         }),
         "post-3.5 --help must not list `initiative` (folded into `change`), got:\n{stdout}"
     );

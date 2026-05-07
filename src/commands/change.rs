@@ -126,10 +126,7 @@ fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
                     path: brief_path.display().to_string(),
                 }),
                 OutputFormat::Text => {
-                    println!(
-                        "no change brief declared at {}",
-                        brief_path.display()
-                    );
+                    println!("no change brief declared at {}", brief_path.display());
                 }
             }
             Ok(CliResult::Success)
@@ -310,10 +307,7 @@ fn print_outcome_text(outcome: &FinalizeOutcome) {
             outcome.initiative, outcome.expected_branch
         );
     } else {
-        println!(
-            "specify: change finalize — {} ({})",
-            outcome.initiative, outcome.expected_branch
-        );
+        println!("specify: change finalize — {} ({})", outcome.initiative, outcome.expected_branch);
     }
     println!();
 

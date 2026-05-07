@@ -9,12 +9,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use regex::Regex;
-use specify_slice::{
-    LifecycleStatus, METADATA_VERSION, Outcome, Phase, PhaseOutcome, Rfc3339Stamp, SliceMetadata,
-    SLICES_DIR_NAME,
-};
 use specify_error::Error;
 use specify_merge::{ArtifactClass, MergeStrategy, OpaqueAction, merge_slice, preview_slice};
+use specify_slice::{
+    LifecycleStatus, METADATA_VERSION, Outcome, Phase, PhaseOutcome, Rfc3339Stamp, SLICES_DIR_NAME,
+    SliceMetadata,
+};
 use tempfile::TempDir;
 
 const SLICE_NAME: &str = "feature-x";
@@ -114,8 +114,8 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     let archive_dir = project.archive_dir();
     let classes = omnia_classes(&slice_dir, &project.root);
 
-    let merged = merge_slice(&slice_dir, &classes, &archive_dir)
-        .expect("merge_slice should succeed");
+    let merged =
+        merge_slice(&slice_dir, &classes, &archive_dir).expect("merge_slice should succeed");
 
     // Results sorted by (class_name, name).
     let names: Vec<&str> = merged.iter().map(|e| e.name.as_str()).collect();
@@ -289,11 +289,7 @@ fn merge_copies_contract_files_to_baseline() {
     );
 
     let archived = find_archived_metadata(&project);
-    assert!(
-        archived.summary.contains("2 contracts"),
-        "unexpected summary: {}",
-        archived.summary
-    );
+    assert!(archived.summary.contains("2 contracts"), "unexpected summary: {}", archived.summary);
     assert!(
         archived.summary.contains(&format!("{} specs", merged.len())),
         "unexpected summary: {}",
@@ -358,8 +354,7 @@ fn merge_without_contracts_dir_works_as_before() {
     assert!(!slice_dir.join("contracts").exists(), "precondition: no contracts dir");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let merged =
-        merge_slice(&slice_dir, &classes, &project.archive_dir()).expect("merge ok");
+    let merged = merge_slice(&slice_dir, &classes, &project.archive_dir()).expect("merge ok");
     assert!(!merged.is_empty(), "should still merge specs");
 
     let baseline_contracts = project.contracts_dir();

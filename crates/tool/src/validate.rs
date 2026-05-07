@@ -13,7 +13,6 @@ const RULE_VERSION_SEMVER: &str = "tool.version-is-semver";
 const RULE_SOURCE_SUPPORTED: &str = "tool.source-is-supported-uri";
 const RULE_SHA256_FORMAT: &str = "tool.sha256-format";
 const RULE_PERMISSION_PATH_FORM: &str = "tool.permission-path-form";
-const RULE_WRITE_PERMISSION_TOO_BROAD: &str = "tool.write-permission-too-broad";
 const RULE_LIFECYCLE_WRITE_DENIED: &str = "tool.lifecycle-state-write-denied";
 const RULE_CAPABILITY_DIR_SCOPE: &str = "tool.capability-dir-out-of-scope";
 const RULE_NAME_UNIQUE: &str = "tool.name-unique";
@@ -74,7 +73,6 @@ impl Tool {
             validate_source(&self.source),
             validate_sha256(self.sha256.as_deref()),
             validate_permission_paths(&self.permissions.read, &self.permissions.write),
-            validate_broad_write_permissions(&self.permissions.write),
             validate_lifecycle_writes(&self.permissions.write),
             validate_capability_dir_scope(scope, &self.permissions.read, &self.permissions.write),
         ]
@@ -85,7 +83,7 @@ impl ToolManifest {
     /// Validate a manifest and all of its contained tools.
     #[must_use]
     pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationResult> {
-        let mut results = Vec::with_capacity(1 + self.tools.len() * 8);
+        let mut results = Vec::with_capacity(1 + self.tools.len() * 7);
         results.push(validate_unique_names(&self.tools));
         for tool in &self.tools {
             results.extend(tool.validate_structure(scope));
@@ -198,20 +196,6 @@ fn validate_lifecycle_writes(write: &[String]) -> ValidationResult {
     }
 }
 
-fn validate_broad_write_permissions(write: &[String]) -> ValidationResult {
-    const RULE: &str = "tool write permissions do not grant write access to the whole project";
-    let failures: Vec<String> = write
-        .iter()
-        .filter(|entry| is_project_dir_itself(entry))
-        .map(|entry| format!("write path `{entry}` grants write access to $PROJECT_DIR"))
-        .collect();
-    if failures.is_empty() {
-        pass(RULE_WRITE_PERMISSION_TOO_BROAD, RULE)
-    } else {
-        fail(RULE_WRITE_PERMISSION_TOO_BROAD, RULE, failures.join("; "))
-    }
-}
-
 fn validate_capability_dir_scope(
     scope: &ToolScope, read: &[String], write: &[String],
 ) -> ValidationResult {
@@ -289,14 +273,6 @@ fn is_project_dir_path(value: &str) -> bool {
     value == "$PROJECT_DIR"
         || value.starts_with("$PROJECT_DIR/")
         || value.starts_with("$PROJECT_DIR\\")
-}
-
-fn is_project_dir_itself(value: &str) -> bool {
-    // TODO(rfc-5): extend `tool.write-permission-too-broad` to compare
-    // canonical absolute paths against the project root once the framework
-    // linter has project context. The tool manifest validator can catch the
-    // explicit variable form used by declaration authors today.
-    matches!(value, "$PROJECT_DIR" | "$PROJECT_DIR/" | "$PROJECT_DIR\\")
 }
 
 fn is_capability_dir_path(value: &str) -> bool {
@@ -392,12 +368,12 @@ mod tests {
     }
 
     #[test]
-    fn write_permission_to_project_root_is_too_broad() {
+    fn write_permission_to_project_root_is_valid_when_tool_needs_root_outputs() {
         let mut tool = valid_tool("contract");
         tool.permissions.write = vec!["$PROJECT_DIR".to_string()];
 
         let results = tool.validate_structure(&project_scope());
-        assert!(fail_rule_ids(&results).contains(&RULE_WRITE_PERMISSION_TOO_BROAD));
+        assert!(results.iter().all(|result| matches!(result, ValidationResult::Pass { .. })));
     }
 
     #[test]
@@ -436,7 +412,6 @@ mod tests {
             json!({ "tools": [{ "name": "bad", "version": "1.0.0", "source": "oci://x" }] }),
             json!({ "tools": [{ "name": "bad", "version": "1.0.0", "source": "/tmp/a.wasm", "sha256": "ABC" }] }),
             json!({ "tools": [{ "name": "bad", "version": "1.0.0", "source": "/tmp/a.wasm", "permissions": { "read": ["$PROJECT_DIR/../x"] } }] }),
-            json!({ "tools": [{ "name": "bad", "version": "1.0.0", "source": "/tmp/a.wasm", "permissions": { "write": ["$PROJECT_DIR"] } }] }),
             json!({ "tools": [{ "name": "bad", "version": "1.0.0", "source": "/tmp/a.wasm", "permissions": { "write": ["$PROJECT_DIR/.specify/project.yaml"] } }] }),
             json!({ "tools": [
                 { "name": "bad", "version": "1.0.0", "source": "/tmp/a.wasm" },
@@ -448,5 +423,22 @@ mod tests {
         for case in cases {
             assert!(!validator.is_valid(&case), "schema should reject invalid case: {case}");
         }
+    }
+
+    #[test]
+    fn tool_schema_accepts_project_root_write_permission() {
+        let schema: serde_json::Value =
+            serde_json::from_str(TOOL_JSON_SCHEMA).expect("schema parses");
+        let validator = jsonschema::validator_for(&schema).expect("schema compiles");
+        let case = json!({
+            "tools": [{
+                "name": "root-writer",
+                "version": "1.0.0",
+                "source": "/tmp/a.wasm",
+                "permissions": { "write": ["$PROJECT_DIR"] }
+            }]
+        });
+
+        assert!(validator.is_valid(&case), "schema should allow project-root writes: {case}");
     }
 }

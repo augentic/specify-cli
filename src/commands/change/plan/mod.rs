@@ -101,8 +101,7 @@ pub(super) const fn level_label(level: &Severity) -> &'static str {
 /// `change plan next` or `change plan status` is asked to operate on a
 /// structurally broken plan.
 pub(super) fn emit_structural_error(format: OutputFormat) -> CliResult {
-    let msg =
-        "plan has structural errors; run 'specify change plan validate' for detail";
+    let msg = "plan has structural errors; run 'specify change plan validate' for detail";
     match format {
         OutputFormat::Json => emit_response(crate::output::ErrorResponse {
             error: "validation".to_string(),

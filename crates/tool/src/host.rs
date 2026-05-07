@@ -63,17 +63,6 @@ impl RunContext {
     }
 }
 
-/// Narrow execution boundary for declared tools.
-pub trait ToolRunner {
-    /// Run a resolved tool and return the guest's process-style exit code.
-    ///
-    /// # Errors
-    ///
-    /// Returns permission errors before instantiation, or runtime errors when
-    /// Wasmtime cannot compile, link, instantiate, or execute the component.
-    fn run(&self, resolved: &ResolvedTool, ctx: &RunContext) -> Result<i32, ToolError>;
-}
-
 /// Wasmtime-backed synchronous WASI Preview 2 runner.
 pub struct WasiRunner {
     engine: Engine,
@@ -93,10 +82,14 @@ impl WasiRunner {
         })?;
         Ok(Self { engine })
     }
-}
 
-impl ToolRunner for WasiRunner {
-    fn run(&self, resolved: &ResolvedTool, ctx: &RunContext) -> Result<i32, ToolError> {
+    /// Run a resolved WASI tool and return the guest's process-style exit code.
+    ///
+    /// # Errors
+    ///
+    /// Returns permission errors before instantiation, or runtime errors when
+    /// Wasmtime cannot compile, link, instantiate, or execute the component.
+    pub fn run(&self, resolved: &ResolvedTool, ctx: &RunContext) -> Result<i32, ToolError> {
         let project_dir = canonical_project_dir(&ctx.project_dir)?;
         let capability_dir =
             canonical_capability_dir(&resolved.scope, ctx.capability_dir.as_deref())?;

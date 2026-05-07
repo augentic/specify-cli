@@ -189,18 +189,20 @@ impl ChangeBrief {
     ///
     /// Returns an error if the operation fails.
     pub fn parse_str(content: &str) -> Result<Self, Error> {
-        let after_open = content
-            .strip_prefix("---\n")
-            .or_else(|| content.strip_prefix("---\r\n"))
-            .ok_or_else(|| Error::Config(format!("{CHANGE_BRIEF_FILENAME}: missing YAML frontmatter")))?;
+        let after_open =
+            content.strip_prefix("---\n").or_else(|| content.strip_prefix("---\r\n")).ok_or_else(
+                || Error::Config(format!("{CHANGE_BRIEF_FILENAME}: missing YAML frontmatter")),
+            )?;
         let (frontmatter_text, body) = split_on_closing_delimiter(after_open).ok_or_else(|| {
             Error::Config(format!(
                 "{CHANGE_BRIEF_FILENAME}: opening `---` has no closing `---` delimiter"
             ))
         })?;
 
-        let frontmatter: ChangeFrontmatter = serde_saphyr::from_str(frontmatter_text)
-            .map_err(|err| Error::Config(format!("{CHANGE_BRIEF_FILENAME}: invalid frontmatter: {err}")))?;
+        let frontmatter: ChangeFrontmatter =
+            serde_saphyr::from_str(frontmatter_text).map_err(|err| {
+                Error::Config(format!("{CHANGE_BRIEF_FILENAME}: invalid frontmatter: {err}"))
+            })?;
 
         let brief = Self {
             frontmatter,

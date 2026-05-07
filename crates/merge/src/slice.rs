@@ -30,11 +30,10 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
-use specify_slice::{
-    LifecycleStatus, Outcome, Phase, PhaseOutcome, SliceMetadata, SpecType, actions,
-    format_rfc3339,
-};
 use specify_error::Error;
+use specify_slice::{
+    LifecycleStatus, Outcome, Phase, PhaseOutcome, SliceMetadata, SpecType, actions, format_rfc3339,
+};
 
 use crate::artifact_class::{ArtifactClass, MergeStrategy};
 use crate::merge::{MergeOperation, MergeResult, merge};
@@ -131,9 +130,7 @@ pub struct BaselineConflict {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn preview_slice(
-    slice_dir: &Path, classes: &[ArtifactClass],
-) -> Result<PreviewResult, Error> {
+pub fn preview_slice(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewResult, Error> {
     let three_way = plan_three_way(slice_dir, classes)?;
     let opaque = preview_opaque(classes)?;
     Ok(PreviewResult { three_way, opaque })
@@ -222,8 +219,9 @@ pub fn merge_slice(
         .map_err(|err| Error::Merge(format!("archive move failed: {err}")))?;
 
     let mut output: Vec<MergePreviewEntry> = merged;
-    output.sort_by(|a, b| (a.class_name.as_str(), a.name.as_str())
-        .cmp(&(b.class_name.as_str(), b.name.as_str())));
+    output.sort_by(|a, b| {
+        (a.class_name.as_str(), a.name.as_str()).cmp(&(b.class_name.as_str(), b.name.as_str()))
+    });
     Ok(output)
 }
 
@@ -397,13 +395,9 @@ fn plan_three_way(
 
         if class.staged_dir.is_dir() {
             for entry in fs::read_dir(&class.staged_dir).map_err(|err| {
-                Error::Merge(format!(
-                    "failed to read {}: {err}",
-                    class.staged_dir.display()
-                ))
+                Error::Merge(format!("failed to read {}: {err}", class.staged_dir.display()))
             })? {
-                let entry =
-                    entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
+                let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
                 let file_type = entry.file_type().map_err(|err| {
                     Error::Merge(format!(
                         "failed to read file type for {}: {err}",
@@ -435,10 +429,7 @@ fn plan_three_way(
 
         for spec in delta_specs {
             let delta_text = fs::read_to_string(&spec.delta_path).map_err(|err| {
-                Error::Merge(format!(
-                    "failed to read delta {}: {err}",
-                    spec.delta_path.display()
-                ))
+                Error::Merge(format!("failed to read delta {}: {err}", spec.delta_path.display()))
             })?;
 
             let baseline_text = if spec.baseline_path.is_file() {
@@ -483,13 +474,12 @@ fn plan_three_way(
             composition_handled = true;
             let composition_delta_path = slice_dir.join(COMPOSITION_FILENAME);
             if composition_delta_path.is_file() {
-                let delta_text =
-                    fs::read_to_string(&composition_delta_path).map_err(|err| {
-                        Error::Merge(format!(
-                            "failed to read composition delta {}: {err}",
-                            composition_delta_path.display()
-                        ))
-                    })?;
+                let delta_text = fs::read_to_string(&composition_delta_path).map_err(|err| {
+                    Error::Merge(format!(
+                        "failed to read composition delta {}: {err}",
+                        composition_delta_path.display()
+                    ))
+                })?;
 
                 let baseline_path = class.baseline_dir.join(COMPOSITION_FILENAME);
                 let baseline_text = if baseline_path.is_file() {
@@ -503,8 +493,7 @@ fn plan_three_way(
                     None
                 };
 
-                match crate::composition::merge_composition(baseline_text.as_deref(), &delta_text)
-                {
+                match crate::composition::merge_composition(baseline_text.as_deref(), &delta_text) {
                     Ok(comp_result) => {
                         let spec_merge_result = MergeResult {
                             output: comp_result.output,
@@ -558,8 +547,9 @@ fn plan_three_way(
         return Err(Error::Merge(aborts.join("\n")));
     }
 
-    merged.sort_by(|a, b| (a.class_name.as_str(), a.name.as_str())
-        .cmp(&(b.class_name.as_str(), b.name.as_str())));
+    merged.sort_by(|a, b| {
+        (a.class_name.as_str(), a.name.as_str()).cmp(&(b.class_name.as_str(), b.name.as_str()))
+    });
     Ok(merged)
 }
 
@@ -577,8 +567,10 @@ fn preview_opaque(classes: &[ArtifactClass]) -> Result<Vec<OpaquePreviewEntry>, 
             &mut entries,
         )?;
     }
-    entries.sort_by(|a, b| (a.class_name.as_str(), a.relative_path.as_str())
-        .cmp(&(b.class_name.as_str(), b.relative_path.as_str())));
+    entries.sort_by(|a, b| {
+        (a.class_name.as_str(), a.relative_path.as_str())
+            .cmp(&(b.class_name.as_str(), b.relative_path.as_str()))
+    });
     Ok(entries)
 }
 
@@ -598,11 +590,8 @@ fn collect_opaque_entries(
                 .strip_prefix(base)
                 .map_err(|err| Error::Merge(format!("path prefix error: {err}")))?;
             let baseline_path = baseline_dir.join(relative);
-            let action = if baseline_path.is_file() {
-                OpaqueAction::Replaced
-            } else {
-                OpaqueAction::Added
-            };
+            let action =
+                if baseline_path.is_file() { OpaqueAction::Replaced } else { OpaqueAction::Added };
             entries.push(OpaquePreviewEntry {
                 class_name: class_name.to_string(),
                 relative_path: relative.to_string_lossy().to_string(),

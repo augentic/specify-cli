@@ -160,10 +160,14 @@
 //!   target is not a descendant of `PROJECT_DIR` or, for capability-scope
 //!   tools, `CAPABILITY_DIR`, the request is denied even if the textual prefix
 //!   matches.
+//! - Project-root write preopens (`$PROJECT_DIR`) are valid for tools that
+//!   must create root-level files such as `Cargo.toml`; declaration authors
+//!   should still prefer the narrowest existing parent directory that satisfies
+//!   the tool's contract.
 //! - `permissions:` absent and `permissions: { read: [], write: [] }` are
 //!   equivalent: no preopens. The structural validator accepts both.
-//! - `write:` entries must not grant authority over Specify lifecycle state.
-//!   Reject writes to `.specify/project.yaml`,
+//! - `write:` entries must not directly target Specify lifecycle state.
+//!   Reject direct writes to `.specify/project.yaml`,
 //!   `.specify/slices/**/.metadata.yaml`, `.specify/archive/**/.metadata.yaml`,
 //!   `.specify/plan.lock`, or any directory whose intended purpose is
 //!   lifecycle transition or archive movement rather than capability-owned
@@ -209,9 +213,9 @@
 //!   `wasmtime::Module` (core wasm).
 //! - Disable filesystem access by default in the WASI context; preopens are
 //!   added per-tool from manifest permissions only.
-//! - Keep execution behind a narrow runner boundary (`ToolRunner` /
-//!   `WasiRunner` or equivalent) so manifest parsing, cache resolution, and CLI
-//!   output do not depend directly on Wasmtime.
+//! - Keep execution behind the concrete `WasiRunner` boundary so manifest
+//!   parsing, cache resolution, and CLI output do not depend directly on
+//!   Wasmtime.
 //!
 //! ## Diagnostics evolution
 //!

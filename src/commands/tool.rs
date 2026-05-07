@@ -12,7 +12,7 @@ use specify::{
     ValidationSummary,
 };
 use specify_tool::cache::{self, CacheStatus};
-use specify_tool::host::{RunContext, ToolRunner, WasiRunner};
+use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::load::{self, Warning};
 use specify_tool::validate::ValidationResult as ToolValidationResult;
 use specify_tool::{Tool, ToolManifest, ToolPermissions, ToolScope};
@@ -103,7 +103,7 @@ struct GcBody {
     warnings: Vec<WarningRow>,
 }
 
-/// Run a declared WASI tool through the configured runner.
+/// Run a declared WASI tool through the concrete WASI host.
 pub fn run_tool_run(
     ctx: &CommandContext, name: String, args: Vec<String>,
 ) -> Result<CliResult, Error> {

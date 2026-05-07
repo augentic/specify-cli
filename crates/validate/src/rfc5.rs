@@ -23,8 +23,8 @@ pub const TOOL_LIFECYCLE_STATE_WRITE_DENIED: &str = "tool.lifecycle-state-write-
 /// declared tool exists.
 ///
 /// TODO(rfc-5): scan capability `briefs/*.md` and plugin `SKILL.md` files for
-/// `specify-contract-validate` / `specify-vectis` invocations once the merged
-/// tool list declares the corresponding tool. Fixture seed: a capability with
+/// retired host-binary invocations once the merged tool list declares the
+/// corresponding tool. Fixture seed: a capability with
 /// `tools.yaml` declaring `contract` plus a merge brief that still invokes
 /// `specify-contract-validate`.
 pub const SKILL_INVOKES_HOST_BINARY_WITH_DECLARED_TOOL_EQUIVALENT: &str =

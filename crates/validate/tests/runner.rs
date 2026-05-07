@@ -43,8 +43,7 @@ fn stage_project() -> (TempDir, PathBuf) {
 #[test]
 fn missing_artifact_produces_synth_failure() {
     let (_guard, project_dir) = stage_project();
-    let slice_dir =
-        project_dir.join(".specify").join(SLICES_DIR_NAME).join("synth-missing");
+    let slice_dir = project_dir.join(".specify").join(SLICES_DIR_NAME).join("synth-missing");
     fs::create_dir_all(&slice_dir).unwrap();
     // Deliberately leave out every artifact.
 

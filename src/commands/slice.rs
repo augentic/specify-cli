@@ -7,11 +7,11 @@ use chrono::Utc;
 use serde::Serialize;
 use serde_json::Value;
 use specify::{
-    ArtifactClass, BaselineConflict, Brief, SliceMetadata, CreateIfExists, CreateOutcome,
-    EntryKind, Error, Journal, JournalEntry, LifecycleStatus, MergeEntry, MergeOperation,
-    MergeStrategy, OpaqueAction, OpaquePreviewEntry, Outcome, Phase, PipelineView, ProjectConfig,
-    Rfc3339Stamp, SpecType, Task, TouchedSpec, slice_actions, conflict_check, format_rfc3339,
-    mark_complete, merge_slice, parse_tasks, preview_slice, serialize_report, validate_slice,
+    ArtifactClass, BaselineConflict, Brief, CreateIfExists, CreateOutcome, EntryKind, Error,
+    Journal, JournalEntry, LifecycleStatus, MergeEntry, MergeOperation, MergeStrategy,
+    OpaqueAction, OpaquePreviewEntry, Outcome, Phase, PipelineView, ProjectConfig, Rfc3339Stamp,
+    SliceMetadata, SpecType, Task, TouchedSpec, conflict_check, format_rfc3339, mark_complete,
+    merge_slice, parse_tasks, preview_slice, serialize_report, slice_actions, validate_slice,
 };
 
 use crate::cli::{
@@ -144,8 +144,7 @@ fn run_slice_create(
     let slices_dir = ctx.slices_dir();
     std::fs::create_dir_all(&slices_dir)?;
 
-    let outcome =
-        slice_actions::create(&slices_dir, &name, &schema_value, if_exists, Utc::now())?;
+    let outcome = slice_actions::create(&slices_dir, &name, &schema_value, if_exists, Utc::now())?;
 
     Ok(emit_slice_create(ctx.format, &outcome))
 }
@@ -708,9 +707,7 @@ fn emit_outcome_show_json(name: String, metadata: &SliceMetadata) {
 /// candidate's `.metadata.yaml`, and return the most recent by
 /// `created-at`. Used by `run_slice_outcome_show` as a fallback when the
 /// active slice directory has been archived by `slice merge run`.
-fn resolve_archived_metadata(
-    project_dir: &Path, slice_name: &str,
-) -> Result<SliceMetadata, Error> {
+fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<SliceMetadata, Error> {
     let archive_dir = ProjectConfig::archive_dir(project_dir);
     let suffix = format!("-{slice_name}");
     let mut candidates: Vec<(String, SliceMetadata)> = Vec::new();
@@ -1012,7 +1009,8 @@ fn run_slice_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResu
 
     match ctx.format {
         OutputFormat::Json => {
-            let specs: Vec<Value> = specs_entries.iter().map(|e| preview_entry_to_json(e)).collect();
+            let specs: Vec<Value> =
+                specs_entries.iter().map(|e| preview_entry_to_json(e)).collect();
             let contracts: Vec<Value> =
                 contract_entries.iter().map(|c| contract_to_json(c)).collect();
             #[derive(Serialize)]

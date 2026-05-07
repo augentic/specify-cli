@@ -50,11 +50,6 @@
                   { "$ref": "#/$defs/permissionPath" },
                   {
                     "not": {
-                      "pattern": "^\\$PROJECT_DIR[\\\\/]?$"
-                    }
-                  },
-                  {
-                    "not": {
                       "pattern": "(^|/)\\.specify($|/)"
                     }
                   }

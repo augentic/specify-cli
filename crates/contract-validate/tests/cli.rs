@@ -119,10 +119,7 @@ fn baseline_is_a_file_exits_two() {
 
     let assert = cmd().arg(&file).assert().code(2);
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).unwrap();
-    assert!(
-        stderr.contains("not a directory"),
-        "diagnostic mentions non-directory: {stderr}"
-    );
+    assert!(stderr.contains("not a directory"), "diagnostic mentions non-directory: {stderr}");
 }
 
 #[test]
@@ -134,12 +131,7 @@ fn text_format_pass_summary() {
         "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n",
     );
 
-    let assert = cmd()
-        .arg(contracts_dir(&tmp))
-        .arg("--format")
-        .arg("text")
-        .assert()
-        .success();
+    let assert = cmd().arg(contracts_dir(&tmp)).arg("--format").arg("text").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(stdout.starts_with("PASS"), "text PASS preamble: {stdout}");
 }
@@ -153,19 +145,11 @@ fn text_format_fail_lists_findings_on_stderr() {
         "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 2024-01-15\n",
     );
 
-    let assert = cmd()
-        .arg(contracts_dir(&tmp))
-        .arg("--format")
-        .arg("text")
-        .assert()
-        .code(1);
+    let assert = cmd().arg(contracts_dir(&tmp)).arg("--format").arg("text").assert().code(1);
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).unwrap();
     assert!(stdout.starts_with("FAIL"), "text FAIL preamble: {stdout}");
-    assert!(
-        stderr.contains("contract.version-is-semver"),
-        "rule id surfaces on stderr: {stderr}"
-    );
+    assert!(stderr.contains("contract.version-is-semver"), "rule id surfaces on stderr: {stderr}");
 }
 
 /// Pin the legacy envelope key order on the JSON output. Operator

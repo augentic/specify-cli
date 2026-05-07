@@ -35,10 +35,10 @@ use petgraph::Direction;
 use petgraph::algo::{tarjan_scc, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
-use specify_slice::actions::{move_atomic, validate_name};
-use specify_slice::atomic::atomic_yaml_write;
 use specify_error::Error;
 use specify_registry::Registry;
+use specify_slice::actions::{move_atomic, validate_name};
+use specify_slice::atomic::atomic_yaml_write;
 
 /// Lifecycle state of a single entry in [`Plan::changes`].
 ///
@@ -335,9 +335,7 @@ impl Plan {
     /// for completeness against hand-edited YAML that bypassed parsing,
     /// which is not reachable in-process — so nothing is emitted for it.
     #[must_use]
-    pub fn validate(
-        &self, slices_dir: Option<&Path>, registry: Option<&Registry>,
-    ) -> Vec<Finding> {
+    pub fn validate(&self, slices_dir: Option<&Path>, registry: Option<&Registry>) -> Vec<Finding> {
         let mut results = Vec::new();
         results.extend(duplicate_names(&self.changes));
         results.extend(detect_cycles(&self.changes));

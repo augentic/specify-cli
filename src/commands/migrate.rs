@@ -955,11 +955,8 @@ mod tests {
     /// [`specify::LifecycleStatus`]'s lowercase serde discriminant.
     fn write_slice_metadata_at(slice_dir: &Path, status: &str) {
         fs::create_dir_all(slice_dir).unwrap();
-        fs::write(
-            slice_dir.join(".metadata.yaml"),
-            format!("schema: omnia\nstatus: {status}\n"),
-        )
-        .unwrap();
+        fs::write(slice_dir.join(".metadata.yaml"), format!("schema: omnia\nstatus: {status}\n"))
+            .unwrap();
     }
 
     #[test]
@@ -973,8 +970,7 @@ mod tests {
         // wholesale move, not an iterate-and-copy.
         fs::write(changes.join("alpha").join("notes.md"), "# alpha\n").unwrap();
 
-        let result =
-            run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success);
 
         // Source directory is gone.
@@ -995,8 +991,7 @@ mod tests {
         // already run the migration once.
         fs::create_dir_all(tmp.path().join(".specify/slices/gamma")).unwrap();
 
-        let result =
-            run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success, "re-run on post-Phase-3 layout must succeed");
     }
 
@@ -1005,8 +1000,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         seed_specify_project(tmp.path());
 
-        let result =
-            run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success);
     }
 
@@ -1055,8 +1049,7 @@ mod tests {
         seed_specify_project(tmp.path());
         write_slice_metadata_at(&tmp.path().join(".specify/changes/alpha"), "merged");
 
-        let result =
-            run_migrate_slice_layout(OutputFormat::Json, tmp.path(), true).unwrap();
+        let result = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), true).unwrap();
         assert_eq!(result, CliResult::Success);
         assert!(tmp.path().join(".specify/changes/alpha").is_dir());
         assert!(!tmp.path().join(".specify/slices").exists());
@@ -1083,8 +1076,7 @@ mod tests {
         let cache_path = cache_dir.join("proposal.md");
         fs::write(&cache_path, "$CHANGE_DIR cache\n").unwrap();
 
-        let result =
-            run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success);
 
         let rewritten = fs::read_to_string(&skill_path).unwrap();

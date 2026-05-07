@@ -97,18 +97,15 @@ fn omnia_capability_yaml_has_no_dropped_fields() {
     let raw = std::fs::read_to_string(omnia_capability_path()).unwrap();
 
     for forbidden in ["domain:", "extends:"] {
-        let starts_at_col_zero =
-            raw.lines().any(|line| line.starts_with(forbidden));
+        let starts_at_col_zero = raw.lines().any(|line| line.starts_with(forbidden));
         assert!(
             !starts_at_col_zero,
             "post-RFC-13 omnia capability must not carry top-level `{forbidden}`"
         );
     }
 
-    let pipeline_plan_present = raw
-        .lines()
-        .map(str::trim_end)
-        .any(|line| line == "  plan:" || line == "  plan: []");
+    let pipeline_plan_present =
+        raw.lines().map(str::trim_end).any(|line| line == "  plan:" || line == "  plan: []");
     assert!(
         !pipeline_plan_present,
         "post-RFC-13 omnia capability must not declare `pipeline.plan` \
@@ -1107,10 +1104,7 @@ fn initiative_brief_path_helper_points_at_repo_root() {
     // diagnostic.
     let dir = Path::new("/tmp/some/project");
     assert_eq!(ChangeBrief::path(dir), PathBuf::from("/tmp/some/project/change.md"));
-    assert_eq!(
-        ChangeBrief::legacy_path(dir),
-        PathBuf::from("/tmp/some/project/initiative.md")
-    );
+    assert_eq!(ChangeBrief::legacy_path(dir), PathBuf::from("/tmp/some/project/initiative.md"));
 }
 
 #[test]

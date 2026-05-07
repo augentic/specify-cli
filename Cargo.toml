@@ -58,7 +58,8 @@ members = [
     "crates/validate",
     "crates/slice",
     "crates/change",
-    "crates/vectis",
+    "crates/vectis-validate",
+    "crates/vectis-scaffold",
     "crates/tool",
     "crates/contract-validate",
 ]
@@ -121,7 +122,6 @@ specify-task = { path = "crates/task" }
 specify-slice = { path = "crates/slice" }
 specify-change = { path = "crates/change" }
 specify-validate = { path = "crates/validate" }
-specify-vectis = { path = "crates/vectis" }
 specify-tool = { path = "crates/tool" }
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"

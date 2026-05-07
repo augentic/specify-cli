@@ -1,5 +1,5 @@
-# Embedded defaults -- overridden by ~/.config/vectis/versions.toml or
-# project-local versions.toml. See RFC-6 § Version Management.
+# Embedded defaults for vectis-scaffold -- overridden only by an explicit
+# complete --version-file input. See RFC-16 § WASI scaffold surface.
 #
 # Sourced from the "Initial Version Pins" block in
 # rfcs/rfc-6-tasks.md, with Android pins bumped per the chunk-3c
