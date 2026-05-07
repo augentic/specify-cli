@@ -36,9 +36,9 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use specify_capability::{CacheMeta, PipelineView};
+use specify_error::Error;
 use specify_registry::Registry;
 use specify_slice::is_valid_kebab_name;
-use specify_error::Error;
 
 use crate::config::ProjectConfig;
 
@@ -168,6 +168,7 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         capability: Some(resolved.capability_value),
         specify_version: Some(specify_version.clone()),
         rules,
+        tools: Vec::new(),
         hub: false,
     };
 
@@ -267,6 +268,7 @@ fn init_hub(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         capability: None,
         specify_version: Some(specify_version.clone()),
         rules: BTreeMap::new(),
+        tools: Vec::new(),
         hub: true,
     };
     let config_path = ProjectConfig::config_path(opts.project_dir);
@@ -650,13 +652,9 @@ mod tests {
         let schema_dir = omnia_schema_dir();
         let result = init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
 
-        for sub in [
-            ".specify",
-            ".specify/slices",
-            ".specify/specs",
-            ".specify/archive",
-            ".specify/.cache",
-        ] {
+        for sub in
+            [".specify", ".specify/slices", ".specify/specs", ".specify/archive", ".specify/.cache"]
+        {
             assert!(tmp.path().join(sub).is_dir(), "expected directory {sub} to exist");
         }
         let config_path = tmp.path().join(".specify/project.yaml");

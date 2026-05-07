@@ -69,6 +69,12 @@ pub enum Commands {
         action: CapabilityAction,
     },
 
+    /// WASI tool runner (RFC-15).
+    Tool {
+        #[command(subcommand)]
+        action: ToolAction,
+    },
+
     /// Slice lifecycle operations (the per-loop unit of work).
     ///
     /// A "slice" is the unit a single `define → build → merge` loop
@@ -209,6 +215,36 @@ pub enum ChangeAction {
         /// invokes `gh pr merge` and never moves files.
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ToolAction {
+    /// Fetch if needed, then run a declared WASI tool.
+    Run {
+        /// Declared tool name.
+        name: String,
+        /// Args forwarded to the tool after `--`.
+        #[arg(last = true)]
+        args: Vec<String>,
+    },
+    /// List declared tools and cache status.
+    List,
+    /// Fetch one declared tool, or every declared tool when omitted.
+    Fetch {
+        /// Optional declared tool name to fetch.
+        name: Option<String>,
+    },
+    /// Show one declared tool's metadata.
+    Show {
+        /// Declared tool name.
+        name: String,
+    },
+    /// Remove unused cache entries for the current project.
+    Gc {
+        /// Scan every current-project tool scope. Currently equivalent to the default scan.
+        #[arg(long)]
+        all: bool,
     },
 }
 

@@ -447,6 +447,7 @@ mod tests {
             capability: if hub { None } else { Some("omnia".to_string()) },
             specify_version: None,
             rules: BTreeMap::new(),
+            tools: Vec::new(),
             hub,
         };
         let cfg_path = ProjectConfig::config_path(tmp.path());

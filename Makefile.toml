@@ -76,6 +76,27 @@ env = { RUSTFLAGS = "-Dwarnings" }
 command = "cargo"
 args = ["test", "--doc", "--all-features", "--workspace"]
 
+[tasks.tools-test-fixtures]
+script = '''
+set -euo pipefail
+CARGO_TARGET_DIR=target/tools-test-fixtures cargo build --manifest-path tests/fixtures/tools-test-project/src-rust/Cargo.toml --target wasm32-wasip2 --release --bins
+mkdir -p tests/fixtures/tools-test-project/wasm tests/fixtures/tools-test-cap/wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/echo.wasm tests/fixtures/tools-test-project/wasm/echo.wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/read-only.wasm tests/fixtures/tools-test-project/wasm/read-only.wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/read-write.wasm tests/fixtures/tools-test-project/wasm/read-write.wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/read-denied.wasm tests/fixtures/tools-test-project/wasm/read-denied.wasm
+wasm-tools parse tests/fixtures/tools-test-cap/src-wat/exit-seven.component.wat -o tests/fixtures/tools-test-cap/wasm/exit-seven.wasm
+'''
+
+[tasks.contract-validator-wasm]
+script = '''
+set -euo pipefail
+cargo build -p specify-contract-validate --target wasm32-wasip2 --release
+mkdir -p crates/contract-validate/dist
+cp target/wasm32-wasip2/release/specify-contract-validate.wasm crates/contract-validate/dist/contract-0.2.0.wasm
+shasum -a 256 crates/contract-validate/dist/contract-0.2.0.wasm
+'''
+
 # Docs
 [tasks.doc]
 command = "cargo"

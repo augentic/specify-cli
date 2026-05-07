@@ -26,6 +26,7 @@ use specify_task::TaskProgress;
 pub mod contracts;
 mod primitives;
 mod registry;
+pub mod rfc5;
 mod run;
 mod serialize;
 

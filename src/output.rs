@@ -2,7 +2,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use serde::Serialize;
-use specify::Error;
+use specify::{Error, ValidationSummary};
 
 use crate::cli::OutputFormat;
 
@@ -13,6 +13,7 @@ pub enum CliResult {
     GenericFailure,
     ValidationFailed,
     VersionTooOld,
+    Exit(u8),
 }
 
 impl CliResult {
@@ -22,6 +23,7 @@ impl CliResult {
             Self::GenericFailure => 1,
             Self::ValidationFailed => 2,
             Self::VersionTooOld => 3,
+            Self::Exit(code) => code,
         }
     }
 }
@@ -36,7 +38,11 @@ impl From<&Error> for CliResult {
     fn from(err: &Error) -> Self {
         match err {
             Error::SpecifyVersionTooOld { .. } => Self::VersionTooOld,
-            Error::Validation { .. } => Self::ValidationFailed,
+            Error::Validation { .. }
+            | Error::ToolResolver(_)
+            | Error::ToolRuntime(_)
+            | Error::ToolPermissionDenied(_)
+            | Error::ToolNotDeclared { .. } => Self::ValidationFailed,
             _ => Self::GenericFailure,
         }
     }
@@ -110,7 +116,35 @@ pub struct ErrorResponse {
     pub exit_code: u8,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ValidationErrorResponse {
+    error: String,
+    message: String,
+    exit_code: u8,
+    results: Vec<ValidationResultResponse>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ValidationResultResponse {
+    status: String,
+    rule_id: String,
+    rule: String,
+    detail: Option<String>,
+}
+
 pub fn emit_json_error(err: &Error, code: CliResult) {
+    if let Error::Validation { results, .. } = err {
+        emit_response(ValidationErrorResponse {
+            error: "validation".to_string(),
+            message: err.to_string(),
+            exit_code: code.code(),
+            results: results.iter().map(validation_result_response).collect(),
+        });
+        return;
+    }
+
     let variant = match err {
         Error::NotInitialized => "not-initialized",
         Error::SchemaResolution(_) => "schema-resolution",
@@ -135,6 +169,10 @@ pub fn emit_json_error(err: &Error, code: CliResult) {
         Error::Io(_) => "io",
         Error::Yaml(_) => "yaml",
         Error::YamlSer(_) => "yaml-ser",
+        Error::ToolResolver(_) => "tool-resolver",
+        Error::ToolRuntime(_) => "tool-runtime",
+        Error::ToolPermissionDenied(_) => "tool-permission-denied",
+        Error::ToolNotDeclared { .. } => "tool-not-declared",
         // `Error` is #[non_exhaustive]; keep this arm but update when
         // adding new variants to `specify_error::Error`.
         _ => "unknown",
@@ -144,6 +182,15 @@ pub fn emit_json_error(err: &Error, code: CliResult) {
         message: err.to_string(),
         exit_code: code.code(),
     });
+}
+
+fn validation_result_response(summary: &ValidationSummary) -> ValidationResultResponse {
+    ValidationResultResponse {
+        status: summary.status.to_string(),
+        rule_id: summary.rule_id.clone(),
+        rule: summary.rule.clone(),
+        detail: summary.detail.clone(),
+    }
 }
 
 pub fn absolute_string(path: &Path) -> String {

@@ -5,11 +5,14 @@ pub mod migrate;
 pub mod registry;
 pub mod slice;
 pub mod status;
+pub mod tool;
 pub mod workspace;
 
 use specify::Error;
 
-use crate::cli::{CapabilityAction, Cli, Commands, MigrateAction, OutputFormat, WorkspaceAction};
+use crate::cli::{
+    CapabilityAction, Cli, Commands, MigrateAction, OutputFormat, ToolAction, WorkspaceAction,
+};
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_error};
 
@@ -35,6 +38,21 @@ pub fn run(cli: Cli) -> CliResult {
             CapabilityAction::Pipeline { phase, slice } => run_with_project(cli.format, |ctx| {
                 capability::run_capability_pipeline(ctx, phase, slice)
             }),
+        },
+        Commands::Tool { action } => match action {
+            ToolAction::Run { name, args } => {
+                run_with_project(cli.format, |ctx| tool::run_tool_run(ctx, name, args))
+            }
+            ToolAction::List => run_with_project(cli.format, tool::run_tool_list),
+            ToolAction::Fetch { name } => {
+                run_with_project(cli.format, |ctx| tool::run_tool_fetch(ctx, name))
+            }
+            ToolAction::Show { name } => {
+                run_with_project(cli.format, |ctx| tool::run_tool_show(ctx, name))
+            }
+            ToolAction::Gc { all } => {
+                run_with_project(cli.format, |ctx| tool::run_tool_gc(ctx, all))
+            }
         },
         Commands::Slice { action } => {
             run_with_project(cli.format, |ctx| slice::run_slice(ctx, action))

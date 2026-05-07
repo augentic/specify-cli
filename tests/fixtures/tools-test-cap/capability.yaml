@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../../schemas/capability.schema.json
+name: tools-test-cap
+version: 1
+description: Fixture capability for RFC-15 sidecar tool acceptance tests
+
+pipeline:
+  define:
+    - id: proposal
+      brief: briefs/proposal.md
+  build:
+    - id: build
+      brief: briefs/build.md
+  merge:
+    - id: merge
+      brief: briefs/merge.md

@@ -27,6 +27,7 @@ specify-task.workspace = true
 specify-slice.workspace = true
 specify-change.workspace = true
 specify-validate.workspace = true
+specify-tool.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 serde.workspace = true
@@ -41,6 +42,7 @@ assert_cmd = "2"
 tempfile.workspace = true
 regex.workspace = true
 jsonschema.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true
@@ -57,6 +59,7 @@ members = [
     "crates/slice",
     "crates/change",
     "crates/vectis",
+    "crates/tool",
     "crates/contract-validate",
 ]
 
@@ -119,6 +122,7 @@ specify-slice = { path = "crates/slice" }
 specify-change = { path = "crates/change" }
 specify-validate = { path = "crates/validate" }
 specify-vectis = { path = "crates/vectis" }
+specify-tool = { path = "crates/tool" }
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 thiserror = "2"
@@ -131,6 +135,11 @@ chrono = { version = "0.4", features = ["serde"] }
 jsonschema = { version = "0.46", default-features = false }
 semver = "1"
 tempfile = "3"
+dirs = "5"
+sha2 = "0.10"
+ureq = { version = "3", features = ["json"] }
+wasmtime = { version = "44.0.1", default-features = false, features = ["component-model", "runtime", "cranelift"] }
+wasmtime-wasi = { version = "44.0.1", default-features = false, features = ["p2"] }
 
 [profile.release]
 lto = true

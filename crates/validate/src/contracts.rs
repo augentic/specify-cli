@@ -52,10 +52,10 @@ const RULE_ID_UNIQUE: &str = "contract.id-unique";
 /// is empty, or when every walked file is well-formed. The order of
 /// findings is deterministic: rules within a file appear in the order
 /// listed in the module docs, and files appear in lexicographic path
-/// order (the `glob` crate's natural enumeration).
+/// order.
 #[must_use]
 pub fn validate_baseline_contracts(contracts_dir: &Path) -> Vec<ContractFinding> {
-    if !contracts_dir.is_dir() {
+    if std::fs::read_dir(contracts_dir).is_err() {
         return Vec::new();
     }
 
@@ -144,20 +144,11 @@ struct TopLevelDoc {
 /// — the contracts-brief verifier owns that diagnostic; this module is
 /// identity / version only.
 fn collect_top_level_docs(contracts_dir: &Path) -> Vec<TopLevelDoc> {
-    let pattern = match contracts_dir.join("**").join("*.yaml").to_str() {
-        Some(p) => p.to_string(),
-        None => return Vec::new(),
-    };
-
+    let mut paths = Vec::new();
+    collect_yaml_paths(contracts_dir, &mut paths);
+    paths.sort();
     let mut out: Vec<TopLevelDoc> = Vec::new();
-    let Ok(entries) = glob::glob(&pattern) else {
-        return Vec::new();
-    };
-
-    for entry in entries.flatten() {
-        if !entry.is_file() {
-            continue;
-        }
+    for entry in paths {
         let Ok(content) = std::fs::read_to_string(&entry) else {
             continue;
         };
@@ -172,6 +163,23 @@ fn collect_top_level_docs(contracts_dir: &Path) -> Vec<TopLevelDoc> {
 
     out.sort_by(|a, b| a.path.cmp(&b.path));
     out
+}
+
+fn collect_yaml_paths(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            collect_yaml_paths(&path, out);
+        } else if file_type.is_file() && path.extension().is_some_and(|ext| ext == "yaml") {
+            out.push(path);
+        }
+    }
 }
 
 /// `true` when `value`'s root object declares `openapi:` or

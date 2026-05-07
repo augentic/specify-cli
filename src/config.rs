@@ -64,6 +64,11 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub rules: BTreeMap<String, String>,
 
+    /// Project-scope WASI tool declarations. These are generic extension
+    /// points owned by `specify-tool`, not by any capability.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<specify_tool::Tool>,
+
     /// `true` when this project is a registry-only **platform hub**
     /// (RFC-9 §1D, restated in RFC-13 §Migration). Hubs hold
     /// platform-level state — `registry.yaml`, `initiative.md`,
@@ -303,6 +308,7 @@ mod tests {
             capability: Some("omnia".to_string()),
             specify_version: None,
             rules,
+            tools: Vec::new(),
             hub: false,
         }
     }
@@ -383,6 +389,7 @@ mod tests {
         let cfg = ProjectConfig::load(tmp.path()).expect("loads");
         assert!(!cfg.hub, "hub must default to false when absent");
         assert_eq!(cfg.capability.as_deref(), Some("omnia"));
+        assert!(cfg.tools.is_empty(), "tools must default empty when absent");
 
         // Hub shape: no `capability:` field, just `hub: true`.
         let tmp = tempdir().unwrap();
@@ -400,6 +407,7 @@ mod tests {
             capability: Some("omnia".to_string()),
             specify_version: None,
             rules: BTreeMap::new(),
+            tools: Vec::new(),
             hub: false,
         };
         let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
@@ -415,6 +423,7 @@ mod tests {
             capability: None,
             specify_version: None,
             rules: BTreeMap::new(),
+            tools: Vec::new(),
             hub: true,
         };
         let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
@@ -423,6 +432,36 @@ mod tests {
             !yaml.contains("capability:"),
             "hub project.yaml must omit `capability:`, got:\n{yaml}"
         );
+    }
+
+    #[test]
+    fn tools_field_parses_and_serialises_when_present() {
+        let tmp = tempdir().unwrap();
+        write_config(
+            tmp.path(),
+            "name: demo\ncapability: omnia\ntools:\n  - name: contract\n    version: 1.0.0\n    source: https://example.com/contract.wasm\n",
+        );
+        let cfg = ProjectConfig::load(tmp.path()).expect("loads");
+        assert_eq!(cfg.tools.len(), 1);
+        assert_eq!(cfg.tools[0].name, "contract");
+        assert!(matches!(
+            &cfg.tools[0].source,
+            specify_tool::ToolSource::HttpsUri(uri) if uri == "https://example.com/contract.wasm"
+        ));
+
+        let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
+        assert!(yaml.contains("tools:"), "tools should serialise when present, got:\n{yaml}");
+        assert!(
+            yaml.contains("source: https://example.com/contract.wasm"),
+            "tool source should stay in string form, got:\n{yaml}"
+        );
+    }
+
+    #[test]
+    fn tools_field_omitted_when_empty() {
+        let cfg = sample_cfg(BTreeMap::new());
+        let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
+        assert!(!yaml.contains("tools:"), "empty tools should be omitted, got:\n{yaml}");
     }
 
     #[test]

@@ -1,3 +1,8 @@
+#![allow(
+    clippy::multiple_crate_versions,
+    reason = "The RFC-15 tool runner pulls in Wasmtime/WASI transitive versions the workspace cannot unify yet."
+)]
+
 //! `specify` binary entry point.
 //!
 //! The binary is a thin dispatcher over the library: it parses CLI

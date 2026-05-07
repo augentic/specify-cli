@@ -290,6 +290,25 @@ pub enum Error {
     )]
     InitRequiresCapabilityOrHub,
 
+    /// A declared WASI tool could not be resolved or fetched.
+    #[error("tool resolver error: {0}")]
+    ToolResolver(String),
+
+    /// A declared WASI tool failed while compiling, linking, instantiating, or running.
+    #[error("tool runtime error: {0}")]
+    ToolRuntime(String),
+
+    /// A declared WASI tool requested filesystem authority outside its manifest policy.
+    #[error("tool permission denied: {0}")]
+    ToolPermissionDenied(String),
+
+    /// The requested tool name was not present in either declaration site.
+    #[error("tool not declared: {name}")]
+    ToolNotDeclared {
+        /// Missing tool name.
+        name: String,
+    },
+
     /// A name failed kebab-case validation.
     #[error("invalid name: {0}")]
     InvalidName(String),
@@ -314,11 +333,7 @@ pub enum Error {
 /// Kept as a free function so the `thiserror` `#[error(…)]` format
 /// string can resolve it without taking on a runtime fmt closure.
 fn format_in_progress(items: &[(String, String)]) -> String {
-    items
-        .iter()
-        .map(|(name, status)| format!("{name} ({status})"))
-        .collect::<Vec<_>>()
-        .join(", ")
+    items.iter().map(|(name, status)| format!("{name} ({status})")).collect::<Vec<_>>().join(", ")
 }
 
 #[cfg(test)]
@@ -537,10 +552,7 @@ mod tests {
         };
         let s = err.to_string();
         assert!(s.contains("1 slice(s)"), "diagnostic must surface the count, got: {s}");
-        assert!(
-            s.contains("demo (defining)"),
-            "diagnostic must surface the offender, got: {s}"
-        );
+        assert!(s.contains("demo (defining)"), "diagnostic must surface the offender, got: {s}");
     }
 
     #[test]
@@ -578,10 +590,7 @@ mod tests {
             s.contains("/proj/initiative.md"),
             "diagnostic must surface the offending path, got: {s}"
         );
-        assert!(
-            s.contains("change.md"),
-            "diagnostic must name the post-rename filename, got: {s}"
-        );
+        assert!(s.contains("change.md"), "diagnostic must name the post-rename filename, got: {s}");
         assert!(
             s.contains("specify migrate change-noun"),
             "diagnostic must point operator at the migration verb, got: {s}"
