@@ -14,7 +14,8 @@ workspace = true
 
 [dependencies]
 specify-error.workspace = true
-specify-schema.workspace = true
+specify-capability.workspace = true
+specify-registry.workspace = true
 specify-spec.workspace = true
 specify-task.workspace = true
 serde.workspace = true
@@ -25,4 +26,5 @@ semver.workspace = true
 glob.workspace = true
 
 [dev-dependencies]
+specify-slice.workspace = true
 tempfile.workspace = true

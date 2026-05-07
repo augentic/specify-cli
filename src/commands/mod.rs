@@ -1,52 +1,64 @@
+pub mod capability;
 pub mod change;
-pub mod contract;
 pub mod init;
-pub mod initiative;
 pub mod migrate;
-pub mod plan;
 pub mod registry;
-pub mod schema;
+pub mod slice;
 pub mod status;
-pub mod vectis;
+pub mod tool;
 pub mod workspace;
 
 use specify::Error;
 
-use crate::cli::{Cli, Commands, MigrateAction, OutputFormat, SchemaAction, WorkspaceAction};
+use crate::cli::{
+    CapabilityAction, Cli, Commands, MigrateAction, OutputFormat, ToolAction, WorkspaceAction,
+};
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_error};
 
 pub fn run(cli: Cli) -> CliResult {
     match cli.command {
         Commands::Init {
-            schema_uri,
+            capability,
             name,
             domain,
             hub,
-        } => run_bare(cli.format, || init::run_init(cli.format, schema_uri, name, domain, hub)),
+        } => run_bare(cli.format, || init::run_init(cli.format, capability, name, domain, hub)),
         Commands::Status => run_with_project(cli.format, status::run_status_dashboard),
-        Commands::Schema { action } => match action {
-            SchemaAction::Resolve {
-                schema_value,
+        Commands::Capability { action } => match action {
+            CapabilityAction::Resolve {
+                capability_value,
                 project_dir,
             } => run_bare(cli.format, || {
-                schema::run_schema_resolve(cli.format, schema_value, project_dir)
+                capability::run_capability_resolve(cli.format, capability_value, project_dir)
             }),
-            SchemaAction::Check { schema_dir } => {
-                run_bare(cli.format, || schema::run_schema_check(cli.format, schema_dir))
+            CapabilityAction::Check { capability_dir } => run_bare(cli.format, || {
+                capability::run_capability_check(cli.format, capability_dir)
+            }),
+            CapabilityAction::Pipeline { phase, slice } => run_with_project(cli.format, |ctx| {
+                capability::run_capability_pipeline(ctx, phase, slice)
+            }),
+        },
+        Commands::Tool { action } => match action {
+            ToolAction::Run { name, args } => {
+                run_with_project(cli.format, |ctx| tool::run_tool_run(ctx, name, args))
             }
-            SchemaAction::Pipeline { phase, change } => {
-                run_with_project(cli.format, |ctx| schema::run_schema_pipeline(ctx, phase, change))
+            ToolAction::List => run_with_project(cli.format, tool::run_tool_list),
+            ToolAction::Fetch { name } => {
+                run_with_project(cli.format, |ctx| tool::run_tool_fetch(ctx, name))
+            }
+            ToolAction::Show { name } => {
+                run_with_project(cli.format, |ctx| tool::run_tool_show(ctx, name))
+            }
+            ToolAction::Gc { all } => {
+                run_with_project(cli.format, |ctx| tool::run_tool_gc(ctx, all))
             }
         },
+        Commands::Slice { action } => {
+            run_with_project(cli.format, |ctx| slice::run_slice(ctx, action))
+        }
         Commands::Change { action } => {
             run_with_project(cli.format, |ctx| change::run_change(ctx, action))
-        }
-        Commands::Plan { action } => {
-            run_with_project(cli.format, |ctx| plan::run_plan(ctx, action))
-        }
-        Commands::Initiative { action } => {
-            run_with_project(cli.format, |ctx| initiative::run_initiative(ctx, action))
         }
         Commands::Registry { action } => {
             run_with_project(cli.format, |ctx| registry::run_registry(ctx, action))
@@ -63,13 +75,18 @@ pub fn run(cli: Cli) -> CliResult {
                 workspace::run_workspace_merge(ctx, projects, dry_run)
             }),
         },
-        Commands::Contract { action } => {
-            run_with_project(cli.format, |ctx| contract::run_contract(ctx, action))
-        }
         Commands::Migrate { action } => match action {
             MigrateAction::V2Layout { dry_run } => run_bare(cli.format, || {
                 let cwd = std::env::current_dir().map_err(Error::Io)?;
                 migrate::run_migrate_v2_layout(cli.format, &cwd, dry_run)
+            }),
+            MigrateAction::SliceLayout { dry_run } => run_bare(cli.format, || {
+                let cwd = std::env::current_dir().map_err(Error::Io)?;
+                migrate::run_migrate_slice_layout(cli.format, &cwd, dry_run)
+            }),
+            MigrateAction::ChangeNoun { dry_run } => run_bare(cli.format, || {
+                let cwd = std::env::current_dir().map_err(Error::Io)?;
+                migrate::run_migrate_change_noun(cli.format, &cwd, dry_run)
             }),
         },
         Commands::Completions { shell } => {
@@ -77,7 +94,6 @@ pub fn run(cli: Cli) -> CliResult {
             clap_complete::generate(shell, &mut cmd, "specify", &mut std::io::stdout());
             CliResult::Success
         }
-        Commands::Vectis { action } => vectis::run_vectis(cli.format, &action),
     }
 }
 
@@ -110,7 +126,7 @@ where
 }
 
 /// Run a command that does NOT need project context but may still fail
-/// with an `Error` (e.g. `schema resolve`, `schema check`).
+/// with an `Error` (e.g. `capability resolve`, `capability check`).
 fn run_bare<F>(format: OutputFormat, f: F) -> CliResult
 where
     F: FnOnce() -> Result<CliResult, Error>,

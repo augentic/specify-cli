@@ -1,0 +1,5 @@
+tools:
+  - name: exit-seven
+    version: 0.1.0
+    source: "file:///__SPECIFY_FIXTURE_ROOT__/tools-test-cap/wasm/exit-seven.wasm"
+    permissions: {}

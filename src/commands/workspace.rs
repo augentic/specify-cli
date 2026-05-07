@@ -2,12 +2,18 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{
-    Error, MergeProjectResult, MergeStatus, Plan, PushOutcome, RealGhClient, Registry, SlotKind,
-    SlotStatus, run_workspace_merge_impl, sync_registry_workspace, workspace_status,
+use specify::Error;
+use specify_change::Plan;
+use specify_registry::Registry;
+use specify_registry::merge::{
+    MergeProjectResult, MergeStatus, RealGhClient, run_workspace_merge_impl,
+};
+use specify_registry::workspace::{
+    PushOutcome, SlotKind, SlotStatus, run_workspace_push_impl, sync_registry_workspace,
+    workspace_status,
 };
 
-use super::plan::require_file;
+use super::change::plan::require_file;
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
@@ -146,7 +152,7 @@ pub fn run_workspace_push(
 ) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
         Error::Config(
-            "No active plan found at plan.yaml. Run 'specify plan create' \
+            "No active plan found at plan.yaml. Run 'specify change plan create' \
              to create one, or check whether the plan was already archived."
                 .to_string(),
         )
@@ -160,7 +166,7 @@ pub fn run_workspace_push(
     };
 
     let results =
-        specify::run_workspace_push_impl(&ctx.project_dir, &plan, &registry, &projects, dry_run)?;
+        run_workspace_push_impl(&ctx.project_dir, &plan.name, &registry, &projects, dry_run)?;
 
     match ctx.format {
         OutputFormat::Json => {
@@ -237,8 +243,8 @@ pub fn run_workspace_merge(
 ) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
         Error::Config(
-            "No active plan found at plan.yaml. Run 'specify plan create' \
-             to author one (or 'specify initiative create' first if initiative.md \
+            "No active plan found at plan.yaml. Run 'specify change plan create' \
+             to author one (or 'specify change create' first if the change brief \
              is also missing) before invoking 'specify workspace merge'."
                 .to_string(),
         )
@@ -255,7 +261,7 @@ pub fn run_workspace_merge(
 
     let gh = RealGhClient;
     let results =
-        run_workspace_merge_impl(&ctx.project_dir, &plan, &registry, &gh, &projects, dry_run)?;
+        run_workspace_merge_impl(&ctx.project_dir, &plan.name, &registry, &gh, &projects, dry_run)?;
 
     let initiative_name = plan.name.clone();
     let expected_branch = format!("specify/{initiative_name}");

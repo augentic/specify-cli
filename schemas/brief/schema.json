@@ -10,7 +10,7 @@
     "id": {
       "type": "string",
       "minLength": 1,
-      "description": "Stable identifier for this brief. Referenced by `needs` in sibling briefs and by `pipeline.*` entries in the owning `schema.yaml`."
+      "description": "Stable identifier for this brief. Referenced by `needs` in sibling briefs and by `pipeline.*` entries in the owning `capability.yaml`."
     },
     "description": {
       "type": "string",

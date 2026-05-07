@@ -1,6 +1,6 @@
 ---
 id: build
-description: Execute the change end-to-end.
+description: Execute the slice end-to-end.
 needs: [proposal]
 tracks: proposal
 ---

@@ -3,31 +3,33 @@
 //! Top-level `specify status` — project dashboard.
 //!
 //! Aggregates the registry summary, plan progress counts, and the
-//! active-change list. Single-change status lives in
-//! `super::change::ChangeAction::Status`; this module is dashboard-only.
+//! active-slice list. Single-slice status lives in
+//! `super::slice::SliceAction::Status`; this module is dashboard-only.
 
 use std::collections::BTreeMap;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, Plan, PlanStatus, ProjectConfig, Registry};
+use specify::{Error, ProjectConfig};
+use specify_change::{Plan, Status};
+use specify_registry::Registry;
 
-use super::change::{collect_status, list_change_names, status_entry_to_json};
+use super::slice::{collect_status, list_slice_names, status_entry_to_json};
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
 pub fn run_status_dashboard(ctx: &CommandContext) -> Result<CliResult, Error> {
     let pipeline = ctx.load_pipeline()?;
-    let changes_dir = ctx.changes_dir();
+    let slices_dir = ctx.slices_dir();
 
     let registry = Registry::load(&ctx.project_dir)?;
     let plan_summary = load_plan_summary(ctx);
 
-    let names = list_change_names(&changes_dir)?;
+    let names = list_slice_names(&slices_dir)?;
     let mut entries = Vec::with_capacity(names.len());
     for name in names {
-        let dir = changes_dir.join(&name);
+        let dir = slices_dir.join(&name);
         entries.push(collect_status(&dir, &name, &pipeline, &ctx.project_dir)?);
     }
 
@@ -38,18 +40,18 @@ pub fn run_status_dashboard(ctx: &CommandContext) -> Result<CliResult, Error> {
             struct DashboardBody {
                 registry: Value,
                 plan: Value,
-                changes: Vec<Value>,
+                slices: Vec<Value>,
             }
             let registry_json = registry
                 .map_or(Value::Null, |r| serde_json::to_value(r).expect("Registry serialises"));
             let plan_json = plan_summary
                 .as_ref()
                 .map_or(Value::Null, |p| serde_json::to_value(p).expect("PlanSummary serialises"));
-            let changes_json: Vec<Value> = entries.iter().map(status_entry_to_json).collect();
+            let slices_json: Vec<Value> = entries.iter().map(status_entry_to_json).collect();
             emit_response(DashboardBody {
                 registry: registry_json,
                 plan: plan_json,
-                changes: changes_json,
+                slices: slices_json,
             });
         }
         OutputFormat::Text => {
@@ -85,7 +87,7 @@ fn load_plan_summary(ctx: &CommandContext) -> Option<PlanSummary> {
     }
     let plan = Plan::load(&plan_path).ok()?;
 
-    let mut counts: BTreeMap<PlanStatus, usize> = PlanStatus::ALL.iter().map(|&s| (s, 0)).collect();
+    let mut counts: BTreeMap<Status, usize> = Status::ALL.iter().map(|&s| (s, 0)).collect();
     for entry in &plan.changes {
         *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
     }
@@ -94,19 +96,19 @@ fn load_plan_summary(ctx: &CommandContext) -> Option<PlanSummary> {
     Some(PlanSummary {
         name: plan.name,
         counts: PlanCounts {
-            done: counts[&PlanStatus::Done],
-            in_progress: counts[&PlanStatus::InProgress],
-            pending: counts[&PlanStatus::Pending],
-            blocked: counts[&PlanStatus::Blocked],
-            failed: counts[&PlanStatus::Failed],
-            skipped: counts[&PlanStatus::Skipped],
+            done: counts[&Status::Done],
+            in_progress: counts[&Status::InProgress],
+            pending: counts[&Status::Pending],
+            blocked: counts[&Status::Blocked],
+            failed: counts[&Status::Failed],
+            skipped: counts[&Status::Skipped],
             total,
         },
     })
 }
 
 fn print_dashboard_text(
-    registry: Option<&Registry>, plan: Option<&PlanSummary>, entries: &[super::change::StatusEntry],
+    registry: Option<&Registry>, plan: Option<&PlanSummary>, entries: &[super::slice::StatusEntry],
 ) {
     println!("## Registry");
     match registry {
@@ -144,7 +146,7 @@ fn print_dashboard_text(
     }
 
     println!();
-    println!("## Active changes");
+    println!("## Active slices");
     if entries.is_empty() {
         println!("  (none)");
         return;
@@ -153,7 +155,7 @@ fn print_dashboard_text(
     let status_w = entries.iter().map(|e| e.status.len()).max().unwrap_or(6).max(6);
     println!(
         "  {:<name_w$}  {:<status_w$}  tasks",
-        "change",
+        "slice",
         "status",
         name_w = name_w,
         status_w = status_w

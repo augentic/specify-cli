@@ -17,7 +17,7 @@ First, read the proposal's **Source** section to determine the workflow:
      guarded form).
   2. Generate specs and design. Invoke `/spec:extract` with
      arguments:
-       `legacy/<repo-name> <change-dir>`
+       `legacy/<repo-name> <slice-dir>`
      extract produces both `specs/` and `design.md` in a single pass.
   3. Review the generated specs for completeness and adjust if needed.
   4. Proceed to the next artifact. design.md was already produced by
@@ -28,7 +28,7 @@ First, read the proposal's **Source** section to determine the workflow:
 **Source-code path** (Source is a local path to existing code):
 
   1. Generate specs and design. Invoke `/spec:extract` with arguments:
-       `<source-path> <change-dir>`
+       `<source-path> <slice-dir>`
      extract produces both `specs/` and `design.md` in a single pass.
   2. Review the generated specs for completeness and adjust if needed.
   3. Proceed to the next artifact. design.md was already produced by

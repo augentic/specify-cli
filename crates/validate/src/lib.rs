@@ -3,11 +3,11 @@
 //!
 //! The public surface follows RFC-1 §`validate.rs`:
 //!
-//! - [`ValidationResult`] is re-exported from `specify-schema`; that
-//!   crate is the canonical home (see `DECISIONS.md` §"Change G —
+//! - [`ValidationResult`] is re-exported from `specify-capability`;
+//!   that crate is the canonical home (see `DECISIONS.md` §"Change G —
 //!   `ValidationResult` canonical home" for why it doesn't live here).
 //! - [`ValidationReport`] is the structured output produced by
-//!   [`validate_change`].
+//!   [`validate_slice`].
 //! - [`Rule`] / [`CrossRule`] declare their [`Classification`]
 //!   (`Structural` or `Semantic`). Semantic rules are always materialised
 //!   as [`ValidationResult::Deferred`]; their `check` function is never
@@ -18,28 +18,29 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use specify_capability::PipelineView;
 use specify_error as _; // dependency declared; re-exported via `Error` return type
-use specify_schema::PipelineView;
 use specify_spec::ParsedSpec;
 use specify_task::TaskProgress;
 
 pub mod contracts;
 mod primitives;
 mod registry;
+pub mod rfc5;
 mod run;
 mod serialize;
 
-pub use contracts::{ContractFinding, validate_baseline_contracts};
+pub use contracts::{ContractFinding, serialize_contract_findings, validate_baseline_contracts};
 pub use registry::{cross_rules, rules_for};
-pub use run::validate_change;
+pub use run::validate_slice;
 pub use serialize::serialize_report;
-pub use specify_schema::ValidationResult;
+pub use specify_capability::ValidationResult;
 
-/// Structured result of running every applicable rule over a change dir.
+/// Structured result of running every applicable rule over a slice dir.
 ///
 /// `brief_results` is keyed by brief id when a brief produces a single
 /// artifact (e.g. `"proposal"` → `proposal.md`), or by the artifact path
-/// relative to `change_dir` when the brief's `generates` is a glob
+/// relative to `slice_dir` when the brief's `generates` is a glob
 /// matching multiple files (e.g. `"specs/login/spec.md"`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
@@ -97,8 +98,8 @@ pub struct BriefContext<'a> {
     pub parsed_spec: Option<&'a ParsedSpec>,
     /// Parsed task progress (when `brief_id == "tasks"`).
     pub tasks: Option<&'a TaskProgress>,
-    /// Absolute path to the change directory.
-    pub change_dir: &'a Path,
+    /// Absolute path to the slice directory.
+    pub slice_dir: &'a Path,
     /// Absolute path to the specs directory.
     pub specs_dir: &'a Path,
     /// Schema-inferred terminology (e.g. `"crate"` or `"feature"`).
@@ -119,11 +120,11 @@ pub struct CrossRule {
 
 /// Inputs a cross-brief checker needs.
 pub struct CrossContext<'a> {
-    /// Absolute path to the change directory.
-    pub change_dir: &'a Path,
+    /// Absolute path to the slice directory.
+    pub slice_dir: &'a Path,
     /// Absolute path to the specs directory.
     pub specs_dir: &'a Path,
-    /// Resolved pipeline for the change.
+    /// Resolved pipeline for the slice.
     pub pipeline: &'a PipelineView,
     /// Schema-inferred terminology.
     pub terminology: &'a str,
@@ -188,7 +189,7 @@ mod tests {
             content: "",
             parsed_spec: None,
             tasks: None,
-            change_dir: dummy_path,
+            slice_dir: dummy_path,
             specs_dir: dummy_path,
             terminology: "crate",
         };

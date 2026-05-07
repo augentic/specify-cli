@@ -76,6 +76,60 @@ env = { RUSTFLAGS = "-Dwarnings" }
 command = "cargo"
 args = ["test", "--doc", "--all-features", "--workspace"]
 
+[tasks.tools-test-fixtures]
+script = '''
+set -euo pipefail
+CARGO_TARGET_DIR=target/tools-test-fixtures cargo build --manifest-path tests/fixtures/tools-test-project/src-rust/Cargo.toml --target wasm32-wasip2 --release --bins
+mkdir -p tests/fixtures/tools-test-project/wasm tests/fixtures/tools-test-cap/wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/echo.wasm tests/fixtures/tools-test-project/wasm/echo.wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/read-only.wasm tests/fixtures/tools-test-project/wasm/read-only.wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/read-write.wasm tests/fixtures/tools-test-project/wasm/read-write.wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/read-denied.wasm tests/fixtures/tools-test-project/wasm/read-denied.wasm
+wasm-tools parse tests/fixtures/tools-test-cap/src-wat/exit-seven.component.wat -o tests/fixtures/tools-test-cap/wasm/exit-seven.wasm
+'''
+
+[tasks.contract-validator-wasm]
+script = '''
+set -euo pipefail
+cargo build -p specify-contract-validate --target wasm32-wasip2 --release
+mkdir -p crates/contract-validate/dist
+cp target/wasm32-wasip2/release/specify-contract-validate.wasm crates/contract-validate/dist/contract-0.2.0.wasm
+shasum -a 256 crates/contract-validate/dist/contract-0.2.0.wasm
+'''
+
+[tasks.vectis-validate-wasm]
+script = '''
+set -euo pipefail
+cargo build -p vectis-validate --target wasm32-wasip2 --release
+'''
+
+[tasks.vectis-scaffold-wasm]
+script = '''
+set -euo pipefail
+cargo build -p vectis-scaffold --target wasm32-wasip2 --release
+'''
+
+[tasks.vectis-wasi-artifacts]
+script = '''
+set -euo pipefail
+
+DIST_DIR="${VECTIS_WASI_DIST_DIR:-target/vectis-wasi-tools/release}"
+
+cargo build -p vectis-validate -p vectis-scaffold --target wasm32-wasip2 --release --locked
+mkdir -p "${DIST_DIR}"
+cp target/wasm32-wasip2/release/vectis-validate.wasm "${DIST_DIR}/vectis-validate.wasm"
+cp target/wasm32-wasip2/release/vectis-scaffold.wasm "${DIST_DIR}/vectis-scaffold.wasm"
+
+(
+  cd "${DIST_DIR}"
+  shasum -a 256 vectis-validate.wasm > vectis-validate.wasm.sha256
+  shasum -a 256 vectis-scaffold.wasm > vectis-scaffold.wasm.sha256
+  shasum -a 256 vectis-validate.wasm vectis-scaffold.wasm > SHA256SUMS
+)
+
+echo "Vectis WASI artifacts written to ${DIST_DIR}"
+'''
+
 # Docs
 [tasks.doc]
 command = "cargo"
@@ -117,18 +171,17 @@ fi
 echo "=== Tier 1: No internal dependencies ==="
 cargo publish -p specify-error $DRY_RUN
 
-echo "=== Tier 2: Schema ==="
-cargo publish -p specify-schema $DRY_RUN
+echo "=== Tier 2: Capability ==="
+cargo publish -p specify-capability $DRY_RUN
 
 echo "=== Tier 3: Mid-level crates ==="
 cargo publish -p specify-spec $DRY_RUN
 cargo publish -p specify-task $DRY_RUN
-cargo publish -p specify-change $DRY_RUN
+cargo publish -p specify-slice $DRY_RUN
 
 echo "=== Tier 4: Higher-level crates ==="
 cargo publish -p specify-merge $DRY_RUN
 cargo publish -p specify-validate $DRY_RUN
-cargo publish -p specify-vectis $DRY_RUN
 
 echo "=== Tier 5: Root CLI ==="
 cargo publish -p specify $DRY_RUN

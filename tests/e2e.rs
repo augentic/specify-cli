@@ -67,7 +67,7 @@ impl Project {
         let root = tmp.path().to_path_buf();
         specify()
             .current_dir(&root)
-            .args(["init", "--schema-uri"])
+            .args(["init"])
             .arg(repo_root().join("schemas").join("omnia"))
             .args(["--name", "test-proj"])
             .assert()
@@ -76,23 +76,23 @@ impl Project {
     }
 
     /// Mirror the in-repo `schemas/` tree into the project so
-    /// `Schema::resolve("omnia", …)` succeeds.
+    /// `Capability::resolve("omnia", …)` succeeds.
     fn with_schemas(self) -> Self {
         copy_dir(&repo_root().join("schemas/omnia"), &self.root.join("schemas/omnia"));
         self
     }
 
     /// Populate the schema cache instead of the local `schemas/` tree so
-    /// `Schema::resolve` picks the `SchemaSource::Cached` branch.
+    /// `Capability::resolve` picks the `CapabilitySource::Cached` branch.
     fn with_cached_schema(self) -> Self {
         copy_dir(&repo_root().join("schemas/omnia"), &self.root.join(".specify/.cache/omnia"));
         self
     }
 
-    /// Copy a fixture subtree into `.specify/changes/my-change/`.
-    fn stage_change(&self, fixture: &str) -> PathBuf {
-        let dst = self.root.join(".specify/changes/my-change");
-        fs::create_dir_all(&dst).expect("mkdir change");
+    /// Copy a fixture subtree into `.specify/slices/my-slice/`.
+    fn stage_slice(&self, fixture: &str) -> PathBuf {
+        let dst = self.root.join(".specify/slices/my-slice");
+        fs::create_dir_all(&dst).expect("mkdir slice");
         copy_dir(&e2e_fixtures().join(fixture), &dst);
         dst
     }
@@ -212,8 +212,8 @@ fn parse_stdout(stdout: &[u8], root: &Path) -> Value {
 
 /// Replace any RFC3339 `YYYY-MM-DDTHH:MM:SS(Z|±HH:MM)` timestamp in JSON
 /// strings with the placeholder `<ISO8601>` so goldens stay stable
-/// across test runs. Mirrors `initiative.rs::strip_date_stamps` for
-/// the timestamp case.
+/// across test runs. Mirrors `change_umbrella.rs::strip_date_stamps`
+/// for the timestamp case.
 fn strip_iso8601(value: &mut Value) {
     fn visit(re: &regex::Regex, v: &mut Value) {
         match v {
@@ -243,13 +243,13 @@ fn strip_iso8601(value: &mut Value) {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn validate_good_change_passes() {
+fn validate_good_slice_passes() {
     let project = Project::init().with_schemas();
-    project.stage_change("good-change");
+    project.stage_slice("good-slice");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "validate", "my-change"])
+        .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
         .success();
     assert_eq!(assert.get_output().status.code(), Some(0));
@@ -265,13 +265,13 @@ fn validate_good_change_passes() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn validate_bad_change_fails_with_exit_two() {
+fn validate_bad_slice_fails_with_exit_two() {
     let project = Project::init().with_schemas();
-    project.stage_change("bad-change");
+    project.stage_slice("bad-slice");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "validate", "my-change"])
+        .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2), "validate on bad fixture must exit 2");
@@ -283,17 +283,17 @@ fn validate_bad_change_fails_with_exit_two() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. merge — two-spec change
+// 3. merge — two-spec slice
 // ---------------------------------------------------------------------------
 
 #[test]
-fn merge_two_spec_change_produces_baselines_and_archive() {
+fn merge_two_spec_slice_produces_baselines_and_archive() {
     let project = Project::init().with_schemas();
-    project.stage_change("merge-two-spec-change");
+    project.stage_slice("merge-two-spec-slice");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "merge", "run", "my-change"])
+        .args(["--format", "json", "slice", "merge", "run", "my-slice"])
         .assert()
         .success();
 
@@ -303,21 +303,21 @@ fn merge_two_spec_change_produces_baselines_and_archive() {
     assert!(login_baseline.is_file(), "login baseline must exist");
     assert!(oauth_baseline.is_file(), "oauth baseline must exist");
 
-    // Change dir moved under archive/<YYYY-MM-DD>-my-change/.
+    // Slice dir moved under archive/<YYYY-MM-DD>-my-slice/.
     let archive_root = project.root().join(".specify/archive");
     let archived: Vec<_> = fs::read_dir(&archive_root)
         .expect("read archive dir")
         .filter_map(std::result::Result::ok)
         .collect();
-    assert_eq!(archived.len(), 1, "expected one archived change");
+    assert_eq!(archived.len(), 1, "expected one archived slice");
     let archived_name = archived[0].file_name().to_string_lossy().into_owned();
     assert!(
-        archived_name.ends_with("-my-change"),
-        "archive dir name must end with -my-change, got {archived_name}"
+        archived_name.ends_with("-my-slice"),
+        "archive dir name must end with -my-slice, got {archived_name}"
     );
     assert!(
-        !project.root().join(".specify/changes/my-change").exists(),
-        "original change dir should be gone"
+        !project.root().join(".specify/slices/my-slice").exists(),
+        "original slice dir should be gone"
     );
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -332,11 +332,11 @@ fn merge_two_spec_change_produces_baselines_and_archive() {
 #[test]
 fn task_progress_reports_counts_and_items() {
     let project = Project::init().with_schemas();
-    project.stage_change("good-change");
+    project.stage_slice("good-slice");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "task", "progress", "my-change"])
+        .args(["--format", "json", "slice", "task", "progress", "my-slice"])
         .assert()
         .success();
 
@@ -355,8 +355,8 @@ fn task_progress_reports_counts_and_items() {
 #[test]
 fn task_mark_marks_then_is_idempotent() {
     let project = Project::init().with_schemas();
-    project.stage_change("good-change");
-    let tasks_path = project.root().join(".specify/changes/my-change/tasks.md");
+    project.stage_slice("good-slice");
+    let tasks_path = project.root().join(".specify/slices/my-slice/tasks.md");
 
     let before = fs::read_to_string(&tasks_path).expect("read tasks before");
     assert!(before.contains("- [ ] 1.1"), "fixture must start with task 1.1 incomplete");
@@ -364,7 +364,7 @@ fn task_mark_marks_then_is_idempotent() {
     // First mark: flips - [ ] -> - [x] and reports idempotent: false.
     let first = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "task", "mark", "my-change", "1.1"])
+        .args(["--format", "json", "slice", "task", "mark", "my-slice", "1.1"])
         .assert()
         .success();
     let first_value = parse_stdout(&first.get_output().stdout, project.root());
@@ -382,7 +382,7 @@ fn task_mark_marks_then_is_idempotent() {
     // Second mark: no-op, idempotent: true, file unchanged.
     let second = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "task", "mark", "my-change", "1.1"])
+        .args(["--format", "json", "slice", "task", "mark", "my-slice", "1.1"])
         .assert()
         .success();
     let second_value = parse_stdout(&second.get_output().stdout, project.root());
@@ -395,17 +395,18 @@ fn task_mark_marks_then_is_idempotent() {
 }
 
 // ---------------------------------------------------------------------------
-// 6. schema resolve — local
+// 6. capability resolve — local
 // ---------------------------------------------------------------------------
 
 #[test]
-fn schema_resolve_local_returns_local_source() {
+fn capability_resolve_local_returns_local_source() {
     let project = Project::init().with_schemas();
-    fs::remove_dir_all(project.root().join(".specify/.cache/omnia")).expect("remove cached schema");
+    fs::remove_dir_all(project.root().join(".specify/.cache/omnia"))
+        .expect("remove cached capability");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "schema", "resolve", "omnia"])
+        .args(["--format", "json", "capability", "resolve", "omnia"])
         .arg("--project-dir")
         .arg(project.root())
         .assert()
@@ -413,7 +414,7 @@ fn schema_resolve_local_returns_local_source() {
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(actual["schema-version"], 2);
-    assert_eq!(actual["schema-value"], "omnia");
+    assert_eq!(actual["capability-value"], "omnia");
     assert_eq!(actual["source"], "local");
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
@@ -423,17 +424,17 @@ fn schema_resolve_local_returns_local_source() {
 }
 
 // ---------------------------------------------------------------------------
-// 7. schema resolve — cached
+// 7. capability resolve — cached
 // ---------------------------------------------------------------------------
 
 #[test]
-fn schema_resolve_cached_returns_cached_source() {
+fn capability_resolve_cached_returns_cached_source() {
     // `init` + cache-only layout (no `schemas/omnia` under the tempdir).
     let project = Project::init().with_cached_schema();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "schema", "resolve", "omnia"])
+        .args(["--format", "json", "capability", "resolve", "omnia"])
         .arg("--project-dir")
         .arg(project.root())
         .assert()
@@ -450,22 +451,23 @@ fn schema_resolve_cached_returns_cached_source() {
 }
 
 // ---------------------------------------------------------------------------
-// 8. change outcome — round-trip through `outcome set` + `outcome show`
+// 8. slice outcome — round-trip through `outcome set` + `outcome show`
 // ---------------------------------------------------------------------------
 
-/// End-to-end round-trip for the `change outcome` read verb added in
-/// RFC-2 §1.1: stamp an outcome with `change outcome set`, read it back
-/// with `change outcome show --format json`, and assert the full JSON
+/// End-to-end round-trip for the `slice outcome` read verb added in
+/// RFC-2 §1.1 (renamed from `change outcome` in RFC-13 chunk 3.2):
+/// stamp an outcome with `slice outcome set`, read it back with
+/// `slice outcome show --format json`, and assert the full JSON
 /// shape. Also covers the unstamped case where `outcome` must be `null`.
 #[test]
-fn phase_outcome_round_trip_via_change_outcome_verb() {
+fn phase_outcome_round_trip_via_slice_outcome_verb() {
     let project = Project::init();
 
-    specify().current_dir(project.root()).args(["change", "create", "foo"]).assert().success();
+    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
         .current_dir(project.root())
         .args([
-            "change",
+            "slice",
             "outcome",
             "set",
             "foo",
@@ -481,7 +483,7 @@ fn phase_outcome_round_trip_via_change_outcome_verb() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "show", "foo"])
+        .args(["--format", "json", "slice", "outcome", "show", "foo"])
         .assert()
         .success();
     assert_eq!(assert.get_output().status.code(), Some(0));
@@ -504,15 +506,15 @@ fn phase_outcome_round_trip_via_change_outcome_verb() {
     );
 
     strip_iso8601(&mut actual);
-    assert_golden("change-outcome.json", actual);
+    assert_golden("slice-outcome.json", actual);
 
     let unstamped =
-        specify().current_dir(project.root()).args(["change", "create", "bar"]).assert().success();
+        specify().current_dir(project.root()).args(["slice", "create", "bar"]).assert().success();
     assert_eq!(unstamped.get_output().status.code(), Some(0));
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "outcome", "show", "bar"])
+        .args(["--format", "json", "slice", "outcome", "show", "bar"])
         .assert()
         .success();
     assert_eq!(assert.get_output().status.code(), Some(0));
@@ -522,7 +524,7 @@ fn phase_outcome_round_trip_via_change_outcome_verb() {
     assert_eq!(value["name"], "bar");
     assert!(
         value["outcome"].is_null(),
-        "unstamped change must emit outcome == null, got: {}",
+        "unstamped slice must emit outcome == null, got: {}",
         value["outcome"]
     );
 }

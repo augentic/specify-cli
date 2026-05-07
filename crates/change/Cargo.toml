@@ -4,31 +4,34 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Change-metadata lifecycle state machine for Specify"
+description = "Specify change orchestration: change brief, plan, execution, finalization"
 categories = ["development-tools"]
-keywords = ["specify", "change", "lifecycle"]
+keywords = ["specify", "change", "plan", "orchestration"]
 readme = "../../README.md"
 
-[lints]
-workspace = true
+[lib]
+name = "specify_change"
+path = "src/lib.rs"
 
 [dependencies]
 specify-error.workspace = true
-specify-schema.workspace = true
+specify-registry.workspace = true
+specify-slice.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 chrono.workspace = true
-tempfile.workspace = true
-petgraph = "0.8"
-fs2 = "0.4"
-# `derive` pulls `clap_derive` for `#[derive(ValueEnum)]` on
-# library-exported enums (`PlanStatus`, `LifecycleStatus`, `Outcome`,
-# `EntryKind`).
+petgraph.workspace = true
+fs2.workspace = true
+# `derive` pulls `clap_derive` for `#[derive(ValueEnum)]` on the
+# `Status` enum that the binary's CLI args parse into.
 clap.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
+libc.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 serde_json.workspace = true
+
+[lints]
+workspace = true

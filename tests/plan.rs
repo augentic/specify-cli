@@ -1,11 +1,12 @@
 //! Integration tests for `schemas/plan/plan.schema.json` plus the
-//! kebab-name regex shared with `specify_change::actions::validate_name`.
+//! kebab-name regex shared with `specify_slice::actions::validate_name`.
 //!
 //! The schema tests are pure-library: they compile the bundled JSON
 //! Schema and feed it YAML fixtures converted to `serde_json::Value`.
-//! CLI integration tests for the `specify plan *` group that
+//! CLI integration tests for the `specify change plan *` group that
 //! used to live alongside these schema tests have moved to
-//! `tests/initiative.rs` (see RFC-2 §3 — CLI namespace rename).
+//! `tests/change_umbrella.rs` (RFC-13 §"What becomes a capability"
+//! folded `specify plan *` under the `change` umbrella).
 
 use std::fs;
 use std::path::PathBuf;
@@ -142,11 +143,11 @@ fn plan_schema_rejects_non_kebab_name() {
 /// The JSON Schema regex and `validate_name` must agree on every name,
 /// in both directions. The cases below are the ones RFC-2 §1.5 calls
 /// out; keep them in sync with the doc-comment on
-/// `specify_change::actions::validate_name`.
+/// `specify_slice::actions::validate_name`.
 #[test]
 fn kebab_name_regex_matches_validate_name() {
     use regex::Regex;
-    use specify::change_actions;
+    use specify::slice_actions;
 
     // Extract the pattern from the compiled schema to keep this test
     // honest against drift — the schema file is the source of truth.
@@ -162,14 +163,14 @@ fn kebab_name_regex_matches_validate_name() {
 
     for name in accept {
         assert!(regex.is_match(name), "regex `{pattern}` should accept `{name}` but did not");
-        change_actions::validate_name(name).unwrap_or_else(|err| {
+        slice_actions::validate_name(name).unwrap_or_else(|err| {
             panic!("validate_name should accept `{name}`, got error: {err}");
         });
     }
 
     for name in reject {
         assert!(!regex.is_match(name), "regex `{pattern}` should reject `{name}` but accepted it");
-        change_actions::validate_name(name)
+        slice_actions::validate_name(name)
             .err()
             .unwrap_or_else(|| panic!("validate_name should reject `{name}`"));
     }

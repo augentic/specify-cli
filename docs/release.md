@@ -11,7 +11,7 @@ git tag -a v0.1.0 -m "Specify v0.1.0"
 git push origin v0.1.0
 ```
 
-The `.github/workflows/release.yml` workflow fires on the tag push and runs three jobs in order.
+The `.github/workflows/release.yaml` workflow fires on the tag push and runs four jobs in order.
 
 ## Jobs that run
 
@@ -24,13 +24,49 @@ The `.github/workflows/release.yml` workflow fires on the tag push and runs thre
 
    Each job produces a versioned archive (`specify-${TAG}-${TARGET}.tar.gz` on unix, `.zip` on Windows) plus a companion `.sha256` file, uploaded via `actions/upload-artifact@v4`.
 
-2. **`release`.** Waits for every matrix leg, downloads all artifacts, and creates the GitHub Release with `softprops/action-gh-release@v2`. Release notes are generated from `.github/release.yaml`.
+2. **`wasi-tools`.** Builds the first-party Vectis command components once for `wasm32-wasip2`:
 
-3. **`publish-crates-io`.** Gated behind `if: github.repository == 'augentic/specify'` so forks and non-canonical clones silently skip it. Publishes crates to crates.io in dependency order:
+   - `vectis-validate.wasm`
+   - `vectis-scaffold.wasm`
 
-   `specify-error` → `specify-schema` → `specify-spec` → `specify-task` → `specify-change` → `specify-merge` → `specify-validate` → `specify`
+   The release uploads both raw `.wasm` files for `tools.yaml` sources, each file's `.sha256` companion, and a `vectis-wasi-tools-${TAG}.tar.gz` archive containing both components plus individual `.sha256` files and `SHA256SUMS`.
+
+3. **`release`.** Waits for every native matrix leg and the Vectis WASI tools, downloads all artifacts, and creates the GitHub Release with `softprops/action-gh-release@v2`. Release notes are generated from `.github/release.yaml`.
+
+4. **`publish-crates-io`.** Gated behind `if: github.repository == 'augentic/specify-cli'` so forks and non-canonical clones silently skip it. Publishes crates to crates.io in dependency order:
+
+   `specify-error` → `specify-capability` → `specify-spec` → `specify-task` → `specify-change` → `specify-merge` → `specify-validate` → `specify`
 
    A `sleep 30` between each publish gives the crates.io index time to propagate before the next dependent crate tries to resolve it. The job reads `secrets.CARGO_REGISTRY_TOKEN`; because the job is gated at the job-level `if:`, the workflow file remains valid even in repos where the secret does not exist (GitHub only evaluates `secrets.*` inside steps that actually execute).
+
+## Vectis WASI tool artifacts
+
+Released Vectis tool declarations should point directly at the raw release assets:
+
+```text
+https://github.com/augentic/specify-cli/releases/download/v${VERSION}/vectis-validate.wasm
+https://github.com/augentic/specify-cli/releases/download/v${VERSION}/vectis-scaffold.wasm
+```
+
+Use the companion `.sha256` assets from the same release as the `tools.yaml` pins. Do not invent digest values before the workflow has built the release components.
+
+For local development before a public release, build both components and checksum files into a deterministic local directory:
+
+```bash
+cargo make vectis-wasi-artifacts
+```
+
+This writes:
+
+```text
+target/vectis-wasi-tools/release/vectis-validate.wasm
+target/vectis-wasi-tools/release/vectis-validate.wasm.sha256
+target/vectis-wasi-tools/release/vectis-scaffold.wasm
+target/vectis-wasi-tools/release/vectis-scaffold.wasm.sha256
+target/vectis-wasi-tools/release/SHA256SUMS
+```
+
+To smoke-test a capability before release, add project-scope tool declarations in `.specify/project.yaml` that keep the capability's version and permissions but override `source` to `file:///absolute/path/to/specify-cli/target/vectis-wasi-tools/release/<tool>.wasm`. Include the matching local `sha256` value if you want cache verification; otherwise omit `sha256` for rapid rebuilds and run `specify tool gc` when switching bytes without changing the declaration tuple.
 
 ## Updating the Homebrew formula
 

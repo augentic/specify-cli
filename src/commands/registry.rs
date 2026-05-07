@@ -10,10 +10,11 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, Plan, ProjectConfig, Registry, RegistryProject};
+use specify::{Error, ProjectConfig};
+use specify_change::Plan;
+use specify_registry::{Registry, RegistryProject};
 
 use crate::cli::{OutputFormat, RegistryAction};
-use crate::commands::plan as plan_cmd;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
@@ -273,7 +274,7 @@ fn add_to_registry(
 /// invariant, so the post-write check should always succeed; we run
 /// it anyway to pin the contract). Emits a non-fatal warning when
 /// `plan.yaml` references the removed project, naming the affected
-/// plan entries so the operator can run `specify plan amend
+/// plan entries so the operator can run `specify change plan amend
 /// --project <other>` against each one.
 fn remove_from_registry(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let registry_path = Registry::path(&ctx.project_dir);
@@ -355,7 +356,7 @@ fn write_registry(registry: &Registry, path: &Path) -> Result<(), Error> {
 /// remove (the registry write has already landed, so the operator
 /// needs to learn about both halves).
 fn plan_references_for(project_dir: &Path, removed_name: &str) -> Vec<String> {
-    let plan_path = plan_cmd::file_path(project_dir);
+    let plan_path = ProjectConfig::plan_path(project_dir);
     if !plan_path.exists() {
         return Vec::new();
     }
@@ -372,7 +373,7 @@ fn plan_references_for(project_dir: &Path, removed_name: &str) -> Vec<String> {
             } else {
                 vec![format!(
                     "plan.yaml has {n} entry(ies) still referencing project `{removed_name}`: {entries}. \
-                     Run `specify plan amend <change> --project <other>` to rewire them.",
+                     Run `specify change plan amend <change> --project <other>` to rewire them.",
                     n = referencing.len(),
                     entries = referencing.join(", "),
                 )]
@@ -400,7 +401,7 @@ fn print_registry_text(registry: &Registry, registry_path: &Path) {
 }
 
 /// Local kebab-case predicate. Mirrors the schema crate's invariant
-/// (`registry::is_kebab_case`) and `specify_change::is_valid_kebab_name`
+/// (`registry::is_kebab_case`) and `specify_slice::is_valid_kebab_name`
 /// — duplicated rather than re-exported because the schema crate keeps
 /// the helper module-private and the change crate's diagnostic hard-codes
 /// "change name" in the error message, which would confuse operators
@@ -422,12 +423,11 @@ fn is_kebab_case(s: &str) -> bool {
 mod tests {
     use std::collections::BTreeMap;
 
-    use specify::{PlanChange, PlanStatus};
+    use specify_change::{Entry, Status};
     use tempfile::TempDir;
 
     use super::*;
     use crate::cli::OutputFormat;
-    use crate::commands::plan as plan_cmd;
 
     /// Assert the handler returned `CliResult::Success`. Wrapping the
     /// `must_use` value here keeps each test site ergonomic without
@@ -444,9 +444,10 @@ mod tests {
         let cfg = ProjectConfig {
             name: "demo".to_string(),
             domain: None,
-            schema: if hub { "hub".to_string() } else { "omnia".to_string() },
+            capability: if hub { None } else { Some("omnia".to_string()) },
             specify_version: None,
             rules: BTreeMap::new(),
+            tools: Vec::new(),
             hub,
         };
         let cfg_path = ProjectConfig::config_path(tmp.path());
@@ -851,33 +852,33 @@ mod tests {
             name: "demo".to_string(),
             sources: BTreeMap::new(),
             changes: vec![
-                PlanChange {
+                Entry {
                     name: "alpha-feature".to_string(),
                     project: Some("alpha".to_string()),
                     schema: None,
-                    status: PlanStatus::Pending,
+                    status: Status::Pending,
                     depends_on: vec![],
                     sources: vec![],
                     context: vec![],
                     description: None,
                     status_reason: None,
                 },
-                PlanChange {
+                Entry {
                     name: "beta-feature".to_string(),
                     project: Some("beta".to_string()),
                     schema: None,
-                    status: PlanStatus::Pending,
+                    status: Status::Pending,
                     depends_on: vec![],
                     sources: vec![],
                     context: vec![],
                     description: None,
                     status_reason: None,
                 },
-                PlanChange {
+                Entry {
                     name: "another-alpha".to_string(),
                     project: Some("alpha".to_string()),
                     schema: None,
-                    status: PlanStatus::Pending,
+                    status: Status::Pending,
                     depends_on: vec![],
                     sources: vec![],
                     context: vec![],
@@ -886,7 +887,7 @@ mod tests {
                 },
             ],
         };
-        plan.save(&plan_cmd::file_path(tmp.path())).expect("save plan");
+        plan.save(&ProjectConfig::plan_path(tmp.path())).expect("save plan");
 
         // Removing alpha keeps the registry shape valid (beta still
         // has its description) and surfaces a warning naming both

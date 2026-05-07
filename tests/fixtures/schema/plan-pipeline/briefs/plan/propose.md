@@ -9,4 +9,4 @@ generates: propose.md
 
 Take the discovery artifact and produce an ordered list of milestones with
 owners, rough effort, and exit criteria. Downstream `/spec:define` runs one
-change per milestone.
+slice per milestone.

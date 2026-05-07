@@ -30,21 +30,26 @@ impl CommandContext {
         })
     }
 
-    /// Load the schema pipeline for this project.
+    /// Load the capability pipeline for this project.
+    ///
+    /// Hub projects (`hub: true`, `capability:` omitted) do not declare
+    /// a capability and have no pipeline to walk, so this returns a
+    /// [`Error::Config`] diagnostic naming the hub case rather than a
+    /// stray `SchemaResolution` lower down the stack.
     pub fn load_pipeline(&self) -> Result<PipelineView, Error> {
-        PipelineView::load(&self.config.schema, &self.project_dir)
+        let Some(capability) = self.config.capability.as_deref() else {
+            return Err(Error::Config(
+                "this project has no capability declared (hub projects do not run \
+                 phase pipelines); only `specify registry` and `specify change` \
+                 verbs are supported on hubs"
+                    .to_string(),
+            ));
+        };
+        PipelineView::load(capability, &self.project_dir)
     }
 
-    pub fn changes_dir(&self) -> PathBuf {
-        ProjectConfig::changes_dir(&self.project_dir)
-    }
-
-    pub fn specs_dir(&self) -> PathBuf {
-        ProjectConfig::specs_dir(&self.project_dir)
-    }
-
-    pub fn contracts_dir(&self) -> PathBuf {
-        ProjectConfig::contracts_dir(&self.project_dir)
+    pub fn slices_dir(&self) -> PathBuf {
+        ProjectConfig::slices_dir(&self.project_dir)
     }
 
     pub fn archive_dir(&self) -> PathBuf {

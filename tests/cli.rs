@@ -37,7 +37,7 @@ fn init_text_format_succeeds() {
     let tmp = tempdir().unwrap();
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["init", "--schema-uri"])
+        .args(["init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
@@ -57,7 +57,7 @@ fn init_json_format_has_stable_shape() {
     let tmp = tempdir().unwrap();
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "init", "--schema-uri"])
+        .args(["--format", "json", "init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
@@ -99,15 +99,149 @@ fn init_github_directory_uri_succeeds() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
-        .args([
-            "init",
-            "--schema-uri",
-            "https://github.com/augentic/specify/schemas/omnia",
-            "--name",
-            "demo",
-        ])
+        .args(["init", "https://github.com/augentic/specify/schemas/omnia", "--name", "demo"])
         .assert()
         .success();
+}
+
+// ---- RFC-13 Phase 1.3: positional <capability> + --hub mutual exclusion ----
+
+#[test]
+fn init_writes_capability_field_for_url_arg() {
+    // Acceptance (a): `specify init <url>` writes `capability: <url>`
+    // and no `schema:` field; `hub:` either absent or false.
+    let tmp = tempdir().unwrap();
+    specify()
+        .current_dir(tmp.path())
+        .args(["init"])
+        .arg(omnia_schema_dir())
+        .args(["--name", "demo"])
+        .assert()
+        .success();
+
+    let project_yaml =
+        fs::read_to_string(tmp.path().join(".specify/project.yaml")).expect("read project.yaml");
+    assert!(
+        project_yaml.contains("capability:"),
+        "project.yaml must carry `capability:` after non-hub init, got:\n{project_yaml}"
+    );
+    assert!(
+        !project_yaml.lines().any(|line| line.trim_start().starts_with("schema:")),
+        "project.yaml must NOT carry the legacy `schema:` field, got:\n{project_yaml}"
+    );
+    // hub: absent (or false) means the value is implicit; just check no
+    // `hub: true` line.
+    assert!(
+        !project_yaml.lines().any(|l| l.trim_start().starts_with("hub: true")),
+        "non-hub init must not write `hub: true`, got:\n{project_yaml}"
+    );
+
+    // RFC-13 chunk 2.9 — non-hub init writes only `project.yaml` and
+    // the `.specify/` skeleton at the project root. Platform-component
+    // artefacts at the repo root are operator-managed: `specify
+    // registry add` mints `registry.yaml`, `specify change create`
+    // mints `change.md` (post-Phase-3.7; the legacy filename was
+    // `initiative.md`), and `specify change plan create` mints
+    // `plan.yaml`. Init must not pre-touch any of them.
+    for absent in ["registry.yaml", "initiative.md", "plan.yaml", "change.md"] {
+        assert!(
+            !tmp.path().join(absent).exists(),
+            "non-hub init must not pre-touch `{absent}` at the repo root"
+        );
+    }
+}
+
+#[test]
+fn init_with_no_args_errors_with_init_requires_capability_or_hub() {
+    // Acceptance (c): `specify init` (no positional, no `--hub`) must
+    // exit non-zero with the `init-requires-capability-or-hub`
+    // diagnostic.
+    let tmp = tempdir().unwrap();
+    let assert = specify().current_dir(tmp.path()).args(["init"]).assert().failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_ne!(code, 0, "init with no args must exit non-zero");
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("init-requires-capability-or-hub"),
+        "diagnostic must carry the stable code, got stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        !tmp.path().join(".specify").exists(),
+        "no .specify must be scaffolded on validation failure"
+    );
+}
+
+#[test]
+fn init_with_capability_and_hub_errors_with_init_requires_capability_or_hub() {
+    // Acceptance (d): `specify init <url> --hub` must exit non-zero
+    // with the same diagnostic.
+    let tmp = tempdir().unwrap();
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["init"])
+        .arg(omnia_schema_dir())
+        .arg("--hub")
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_ne!(code, 0, "init with both capability and --hub must exit non-zero");
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("init-requires-capability-or-hub"),
+        "diagnostic must carry the stable code, got stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn init_help_no_longer_advertises_schema_uri_flag() {
+    // RFC-13 §1.3: `--schema-uri` is gone from the post-Phase-1 surface.
+    let assert = specify().args(["init", "--help"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(
+        !stdout.contains("--schema-uri"),
+        "post-RFC-13 init --help must not advertise `--schema-uri`, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("CAPABILITY") || stdout.contains("capability"),
+        "init --help must mention the capability positional, got:\n{stdout}"
+    );
+    assert!(stdout.contains("--hub"), "init --help must still document --hub, got:\n{stdout}");
+}
+
+#[test]
+fn project_aware_command_refuses_legacy_schema_field_with_schema_became_capability() {
+    // Acceptance (e): a v1 `project.yaml` carrying `schema:` must be
+    // rejected loudly when a project-aware verb tries to load it.
+    // `specify status` is the canonical project-aware entry point and
+    // loads `ProjectConfig` first thing.
+    let tmp = tempdir().unwrap();
+    let specify_dir = tmp.path().join(".specify");
+    fs::create_dir_all(&specify_dir).unwrap();
+    fs::write(
+        specify_dir.join("project.yaml"),
+        // Deliberate v1 shape — `schema:` instead of the post-RFC-13
+        // `capability:` field.
+        "name: demo\nschema: omnia\n",
+    )
+    .unwrap();
+
+    let assert =
+        specify().current_dir(tmp.path()).args(["--format", "json", "status"]).assert().failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(
+        value["error"], "schema-became-capability",
+        "expected schema-became-capability diagnostic, got: {value}"
+    );
+    let msg = value["message"].as_str().expect("message string");
+    assert!(msg.contains("schema-became-capability"), "msg: {msg}");
+    assert!(msg.contains("capability"), "msg: {msg}");
+    assert!(msg.contains("RFC-13"), "msg: {msg}");
+    assert!(msg.contains(".specify/project.yaml"), "msg should name the file, got: {msg}");
 }
 
 #[test]
@@ -116,7 +250,7 @@ fn version_too_old_exits_three_with_json_envelope() {
     // Fresh init to produce a real project.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "--schema-uri"])
+        .args(["init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
@@ -133,7 +267,7 @@ fn version_too_old_exits_three_with_json_envelope() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "change", "validate", "."])
+        .args(["--format", "json", "slice", "validate", "."])
         .assert()
         .failure();
     let code = assert.get_output().status.code().expect("process exited with a code");
@@ -172,22 +306,36 @@ fn init_hub_writes_canonical_on_disk_shape() {
         value["scaffolded-rule-keys"]
     );
 
-    // Files we expect: project.yaml stays under .specify/, registry.yaml +
-    // initiative.md live at the repo root after the v2 layout move.
+    // RFC-13 chunk 2.9 — hub init scaffolds `project.yaml` (under
+    // `.specify/`) plus `registry.yaml` at the repo root, and
+    // nothing else. `registry.yaml` survives because bootstrapping a
+    // hub *is* bootstrapping its registry; `change.md` and
+    // `plan.yaml` stay operator-managed (minted via `specify change
+    // create` / `specify change plan create` post-Phase-3.5).
     assert!(tmp.path().join(".specify/project.yaml").is_file());
     assert!(tmp.path().join("registry.yaml").is_file());
-    assert!(tmp.path().join("initiative.md").is_file());
+    for absent in ["initiative.md", "plan.yaml", "change.md"] {
+        assert!(
+            !tmp.path().join(absent).exists(),
+            "hub init must not pre-touch `{absent}` at the repo root"
+        );
+    }
     // Phase-pipeline directories MUST NOT be present.
-    assert!(!tmp.path().join(".specify/changes").exists());
+    assert!(!tmp.path().join(".specify/slices").exists());
     assert!(!tmp.path().join(".specify/specs").exists());
     assert!(!tmp.path().join(".specify/.cache").exists());
 
-    // project.yaml shape.
+    // project.yaml shape — RFC-13 §Migration: `hub: true` only, no
+    // `capability:` field, and the legacy `schema:` sentinel is gone.
     let project_yaml =
         fs::read_to_string(tmp.path().join(".specify/project.yaml")).expect("read project.yaml");
     assert!(
-        project_yaml.contains("schema: hub"),
-        "project.yaml must use the `schema: hub` sentinel:\n{project_yaml}"
+        !project_yaml.lines().any(|l| l.trim_start().starts_with("schema:")),
+        "post-RFC-13 hub project.yaml must omit the legacy `schema:` field:\n{project_yaml}"
+    );
+    assert!(
+        !project_yaml.lines().any(|l| l.trim_start().starts_with("capability:")),
+        "post-RFC-13 hub project.yaml must omit the `capability:` field:\n{project_yaml}"
     );
     assert!(
         project_yaml.contains("hub: true"),
@@ -209,12 +357,11 @@ fn init_hub_writes_canonical_on_disk_shape() {
         "registry.yaml `projects` must be an empty list, got: {registry}"
     );
 
-    // initiative.md shape — name baked into frontmatter.
-    let brief = fs::read_to_string(tmp.path().join("initiative.md")).expect("read brief");
-    assert!(
-        brief.contains("name: platform-hub"),
-        "initiative.md missing kebab-cased name:\n{brief}"
-    );
+    // `change.md` is no longer scaffolded by hub init (RFC-13
+    // chunk 2.9; pre-Phase-3.7 the brief filename was `initiative.md`).
+    // The absence assertion above (in the on-disk shape block) is the
+    // post-2.9 contract; a `change.md` body appears only after the
+    // operator runs `specify change create <name>`.
 }
 
 #[test]
@@ -222,7 +369,8 @@ fn init_hub_refuses_when_specify_dir_already_exists() {
     let tmp = tempdir().unwrap();
     // Pre-create `.specify/` with arbitrary content.
     fs::create_dir_all(tmp.path().join(".specify")).unwrap();
-    fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\nschema: omnia\n").unwrap();
+    fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\ncapability: omnia\n")
+        .unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -237,7 +385,7 @@ fn init_hub_refuses_when_specify_dir_already_exists() {
     );
 
     let on_disk = fs::read_to_string(tmp.path().join(".specify/project.yaml")).unwrap();
-    assert_eq!(on_disk, "name: existing\nschema: omnia\n");
+    assert_eq!(on_disk, "name: existing\ncapability: omnia\n");
 }
 
 #[test]
@@ -499,12 +647,12 @@ fn registry_remove_warns_when_plan_references_project() {
     // Author a plan with one entry pointing at alpha.
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "create", "demo"])
+        .args(["--format", "json", "change", "plan", "create", "demo"])
         .assert()
         .success();
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "add", "alpha-feature", "--project", "alpha"])
+        .args(["--format", "json", "change", "plan", "add", "alpha-feature", "--project", "alpha"])
         .assert()
         .success();
 
@@ -549,7 +697,7 @@ fn registry_remove_refuses_when_registry_absent() {
     // by default.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "--schema-uri"])
+        .args(["init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
@@ -640,11 +788,11 @@ fn workspace_merge_refuses_when_plan_absent() {
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("plan.yaml"), "diagnostic must reference plan.yaml, got: {msg}");
     // Surface the operator remediation hint per the brief
-    // ("diagnostic should point at `specify ... initiative {init,create}`
-    // and `specify plan {init,create}`").
+    // ("diagnostic should point at `specify change create` and
+    // `specify change plan create`" — the post-Phase-3.5 surface).
     assert!(
-        msg.contains("plan init") || msg.contains("plan create"),
-        "diagnostic must hint at the plan-init verb, got: {msg}",
+        msg.contains("plan create"),
+        "diagnostic must hint at `specify change plan create`, got: {msg}",
     );
 }
 
@@ -654,7 +802,7 @@ fn workspace_merge_refuses_when_registry_absent() {
     // Plain init (single-repo) — no registry.yaml.
     specify()
         .current_dir(tmp.path())
-        .args(["init", "--schema-uri"])
+        .args(["init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
@@ -709,7 +857,7 @@ fn workspace_merge_refuses_when_registry_empty() {
 fn init_omnia_project(tmp: &tempfile::TempDir) {
     specify()
         .current_dir(tmp.path())
-        .args(["init", "--schema-uri"])
+        .args(["init"])
         .arg(omnia_schema_dir())
         .args(["--name", "demo"])
         .assert()
@@ -775,8 +923,10 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     )
     .unwrap();
 
-    let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "plan", "doctor"]).assert();
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "change", "plan", "doctor"])
+        .assert();
     let output = assert.get_output();
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
@@ -827,8 +977,10 @@ fn plan_doctor_diagnostic_payloads_round_trip_typed() {
     )
     .unwrap();
 
-    let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "plan", "doctor"]).assert();
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "change", "plan", "doctor"])
+        .assert();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
@@ -894,8 +1046,10 @@ fn plan_validate_unchanged_by_doctor_fixture() {
     )
     .unwrap();
 
-    let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "change", "plan", "validate"])
+        .assert();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
@@ -929,13 +1083,13 @@ fn plan_doctor_healthy_plan_exits_zero() {
 
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "create", "demo"])
+        .args(["--format", "json", "change", "plan", "create", "demo"])
         .assert()
         .success();
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "doctor"])
+        .args(["--format", "json", "change", "plan", "doctor"])
         .assert()
         .success();
     let value: serde_json::Value =
@@ -950,7 +1104,7 @@ fn plan_doctor_healthy_plan_exits_zero() {
 
 #[test]
 fn plan_doctor_help_documents_superset_relationship() {
-    let assert = specify().args(["plan", "doctor", "--help"]).assert().success();
+    let assert = specify().args(["change", "plan", "doctor", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for code in
         ["cycle-in-depends-on", "orphan-source-key", "stale-workspace-clone", "unreachable-entry"]
@@ -962,30 +1116,30 @@ fn plan_doctor_help_documents_superset_relationship() {
     }
 }
 
-// ---- specify initiative finalize (RFC-9 §4C) ----
+// ---- specify change finalize (RFC-9 §4C) ----
 //
 // Wire-level integration tests for the precondition diagnostics. The
 // happy-path classifier flow is covered by the in-process `MockProbe`
-// against the orchestrator (see `cargo test --lib initiative_finalize`).
+// against the orchestrator (see `cargo test -p specify-change`).
 // The CLI tests below pin: (a) the failure-mode wire shape skill
 // authors will rely on, and (b) the on-disk archive landing when no
 // projects need probing.
 
 #[test]
-fn initiative_help_lists_finalize_subcommand() {
-    let assert = specify().args(["initiative", "--help"]).assert().success();
+fn change_help_lists_finalize_subcommand() {
+    let assert = specify().args(["change", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for verb in ["create", "show", "finalize"] {
         assert!(
             stdout.contains(verb),
-            "expected `initiative --help` to mention `{verb}`, got:\n{stdout}",
+            "expected `change --help` to mention `{verb}`, got:\n{stdout}",
         );
     }
 }
 
 #[test]
-fn initiative_finalize_help_documents_clean_and_dry_run() {
-    let assert = specify().args(["initiative", "finalize", "--help"]).assert().success();
+fn change_finalize_help_documents_clean_and_dry_run() {
+    let assert = specify().args(["change", "finalize", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for flag in ["--clean", "--dry-run"] {
         assert!(stdout.contains(flag), "expected --help to document `{flag}`, got:\n{stdout}");
@@ -993,14 +1147,14 @@ fn initiative_finalize_help_documents_clean_and_dry_run() {
 }
 
 #[test]
-fn initiative_finalize_refuses_when_plan_absent() {
+fn change_finalize_refuses_when_plan_absent() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     assert!(!tmp.path().join("plan.yaml").exists(), "test precondition: plan.yaml must be absent");
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "initiative", "finalize"])
+        .args(["--format", "json", "change", "finalize"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1009,15 +1163,17 @@ fn initiative_finalize_refuses_when_plan_absent() {
     assert_eq!(value["error"], "plan-not-found");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("plan.yaml"), "msg should reference plan.yaml: {msg}");
-    // Diagnostic should hint at the recovery sequence.
+    // Diagnostic should hint at the recovery sequence — post-Phase-3.5
+    // the umbrella surface is `specify change plan create` (and
+    // `specify change create` for the brief).
     assert!(
-        msg.contains("plan create") || msg.contains("initiative create"),
-        "msg should hint at plan/initiative create, got: {msg}",
+        msg.contains("plan create") || msg.contains("change create"),
+        "msg should hint at the change/plan create verbs, got: {msg}",
     );
 }
 
 #[test]
-fn initiative_finalize_refuses_on_non_terminal_entries() {
+fn change_finalize_refuses_on_non_terminal_entries() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     // Seed a plan with one done and one pending entry — pending is
@@ -1037,7 +1193,7 @@ fn initiative_finalize_refuses_on_non_terminal_entries() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "initiative", "finalize"])
+        .args(["--format", "json", "change", "finalize"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -1054,7 +1210,7 @@ fn initiative_finalize_refuses_on_non_terminal_entries() {
 }
 
 #[test]
-fn initiative_finalize_dry_run_archives_nothing_with_empty_registry() {
+fn change_finalize_dry_run_archives_nothing_with_empty_registry() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     // Seed an all-terminal plan and rely on the hub-init's empty
@@ -1063,7 +1219,7 @@ fn initiative_finalize_dry_run_archives_nothing_with_empty_registry() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "initiative", "finalize", "--dry-run"])
+        .args(["--format", "json", "change", "finalize", "--dry-run"])
         .assert()
         .success();
     let value: serde_json::Value =
@@ -1080,14 +1236,14 @@ fn initiative_finalize_dry_run_archives_nothing_with_empty_registry() {
 }
 
 #[test]
-fn initiative_finalize_archives_when_all_terminal_and_no_registry() {
+fn change_finalize_archives_when_all_terminal_and_no_registry() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "initiative", "finalize"])
+        .args(["--format", "json", "change", "finalize"])
         .assert()
         .success();
     let value: serde_json::Value =
@@ -1117,22 +1273,22 @@ fn initiative_finalize_archives_when_all_terminal_and_no_registry() {
 }
 
 #[test]
-fn initiative_finalize_idempotent_after_archive() {
+fn change_finalize_idempotent_after_archive() {
     // Idempotency proof: the second `finalize` invocation after the
     // archive landed produces a clear `plan-not-found` refusal — the
-    // canonical "initiative is already finalized" signal.
+    // canonical "change is already finalized" signal.
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
 
     // First run: archives the plan.
-    specify().current_dir(tmp.path()).args(["initiative", "finalize"]).assert().success();
+    specify().current_dir(tmp.path()).args(["change", "finalize"]).assert().success();
     assert!(!tmp.path().join("plan.yaml").exists());
 
     // Second run: plan is gone, refused with plan-not-found.
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "initiative", "finalize"])
+        .args(["--format", "json", "change", "finalize"])
         .assert()
         .failure();
     let value: serde_json::Value =
@@ -1148,13 +1304,19 @@ fn initiative_finalize_idempotent_after_archive() {
 fn seed_v1_layout(tmp: &tempfile::TempDir) {
     init_hub(tmp, "platform-hub");
     let specify = tmp.path().join(".specify");
-    // Hub init writes registry.yaml and initiative.md at the repo root
-    // already; move them back to .specify/ to simulate a v1-layout
+    // Hub init writes `registry.yaml` at the repo root (per RFC-13
+    // chunk 2.9, that's the one platform-component artefact init
+    // touches); move it back to `.specify/` to simulate a v1-layout
     // project that needs migrating.
     fs::rename(tmp.path().join("registry.yaml"), specify.join("registry.yaml"))
         .expect("move registry.yaml back to .specify/");
-    fs::rename(tmp.path().join("initiative.md"), specify.join("initiative.md"))
-        .expect("move initiative.md back to .specify/");
+    // `initiative.md` and `plan.yaml` are no longer scaffolded by
+    // init (operator-managed via `specify initiative create` /
+    // `specify plan create`). Hand-seed them at the v1 location so
+    // the detector and migrator have all four legacy artefacts to
+    // act on.
+    fs::write(specify.join("initiative.md"), "---\nname: demo\ninputs: []\n---\n\n# demo\n")
+        .expect("seed initiative.md");
     fs::write(specify.join("plan.yaml"), "name: demo\nchanges: []\n").expect("seed plan.yaml");
     let contracts = specify.join("contracts").join("schemas");
     fs::create_dir_all(&contracts).expect("mkdir .specify/contracts/schemas");
@@ -1266,4 +1428,450 @@ fn migrate_v2_layout_refuses_destination_collision() {
     assert_eq!(pre, "pre-existing\n");
     // v1 source must still be on disk so the operator can resolve.
     assert!(tmp.path().join(".specify/registry.yaml").is_file());
+}
+
+// ---- specify migrate slice-layout (RFC-13 chunk 3.6) ----
+
+/// Stand up a v1 (pre-Phase-3) project on disk: a real `.specify/`
+/// (so the migrator's "is this a Specify project?" preflight passes)
+/// plus `.specify/changes/<name>/.metadata.yaml` for each requested
+/// slice. `init_omnia_project` already creates `.specify/slices/`
+/// (post-Phase-3 layout); the helper removes it so the migrator sees
+/// only the v1 source directory and can apply the rename cleanly.
+fn seed_pre_phase3_layout(tmp: &tempfile::TempDir, slices: &[(&str, &str)]) {
+    init_omnia_project(tmp);
+    let post_phase3 = tmp.path().join(".specify/slices");
+    if post_phase3.is_dir() {
+        fs::remove_dir_all(&post_phase3).expect("remove post-Phase-3 slices dir");
+    }
+    let changes_dir = tmp.path().join(".specify/changes");
+    fs::create_dir_all(&changes_dir).expect("mkdir .specify/changes");
+    for (name, status) in slices {
+        let entry = changes_dir.join(name);
+        fs::create_dir_all(&entry).expect("mkdir slice dir");
+        // Minimal metadata shape that the slice crate's `serde_saphyr`
+        // reader accepts: schema + lifecycle status are required, the
+        // rest of the fields default through `#[serde(default)]`.
+        fs::write(entry.join(".metadata.yaml"), format!("schema: omnia\nstatus: {status}\n"))
+            .expect("seed .metadata.yaml");
+    }
+}
+
+#[test]
+fn migrate_slice_layout_renames_changes_dir_and_preserves_metadata() {
+    let tmp = tempdir().unwrap();
+    seed_pre_phase3_layout(&tmp, &[("alpha", "merged"), ("beta", "dropped")]);
+    // Plant a non-metadata payload to confirm the rename moves the
+    // entire subtree, not just the metadata files.
+    fs::write(tmp.path().join(".specify/changes/alpha/notes.md"), "# alpha\n")
+        .expect("seed payload");
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "slice-layout"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["status"], "migrated");
+    assert_eq!(value["slices-moved"], 2);
+
+    // .specify/changes/ is gone; .specify/slices/ carries the
+    // migrated subtree verbatim (metadata + ad-hoc payload).
+    assert!(!tmp.path().join(".specify/changes").exists(), "v1 source must be removed");
+    assert!(tmp.path().join(".specify/slices/alpha/.metadata.yaml").is_file());
+    assert!(tmp.path().join(".specify/slices/beta/.metadata.yaml").is_file());
+    let payload = fs::read_to_string(tmp.path().join(".specify/slices/alpha/notes.md"))
+        .expect("payload survived rename");
+    assert_eq!(payload, "# alpha\n");
+}
+
+#[test]
+fn migrate_slice_layout_rerun_is_a_noop() {
+    let tmp = tempdir().unwrap();
+    seed_pre_phase3_layout(&tmp, &[("alpha", "merged")]);
+
+    // First run actually migrates.
+    specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "slice-layout"])
+        .assert()
+        .success();
+
+    // Second run on the now-post-Phase-3 layout exits 0 with the
+    // `already-migrated` discriminant — idempotency invariant.
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "slice-layout"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["status"], "already-migrated");
+    assert_eq!(value["slices-moved"], 0);
+    // The post-Phase-3 layout must still be intact after the no-op.
+    assert!(tmp.path().join(".specify/slices/alpha").is_dir());
+    assert!(!tmp.path().join(".specify/changes").exists());
+}
+
+#[test]
+fn migrate_slice_layout_blocks_when_a_slice_is_in_progress() {
+    let tmp = tempdir().unwrap();
+    // `defining` is the canonical first non-terminal lifecycle state;
+    // `merged` confirms the preflight ignores already-terminal slices.
+    seed_pre_phase3_layout(&tmp, &[("alpha", "merged"), ("zeta", "defining")]);
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "slice-layout"])
+        .assert()
+        .failure();
+
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "slice-migration-blocked-by-in-progress");
+    let message = value["message"].as_str().expect("message string");
+    assert!(
+        message.contains("slice-migration-blocked-by-in-progress:"),
+        "diagnostic must lead with the kebab-case prefix, got: {message}"
+    );
+    assert!(
+        message.contains("zeta (defining)"),
+        "diagnostic must surface the in-progress (name, status) pair, got: {message}"
+    );
+    assert!(
+        !message.contains("alpha"),
+        "terminal slices must not appear in the offender list, got: {message}"
+    );
+
+    // The on-disk state must be untouched: the v1 source still in
+    // place, the post-Phase-3 destination absent. The operator's
+    // recovery path is `specify slice drop zeta` followed by re-run.
+    assert!(tmp.path().join(".specify/changes/zeta/.metadata.yaml").is_file());
+    assert!(tmp.path().join(".specify/changes/alpha/.metadata.yaml").is_file());
+    assert!(!tmp.path().join(".specify/slices").exists());
+}
+
+// ---- specify migrate change-noun (RFC-13 chunk 3.7) ----
+
+/// Minimal `initiative.md` body used by the change-noun integration
+/// tests. The migration is a wholesale `fs::rename`, so the body
+/// bytes survive verbatim across the rename.
+const CHANGE_NOUN_BODY: &str = "---\nname: demo\ninputs: []\n---\n\n# demo\n";
+
+#[test]
+fn migrate_change_noun_renames_initiative_to_change_md() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed initiative.md");
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "change-noun"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["status"], "migrated");
+    assert_eq!(value["renamed-from"], "initiative.md");
+    assert_eq!(value["renamed-to"], "change.md");
+
+    // Source removed, destination present with byte-identical content.
+    assert!(!tmp.path().join("initiative.md").exists(), "v1 source must be removed");
+    assert!(tmp.path().join("change.md").is_file(), "post-rename file must exist");
+    let migrated = fs::read_to_string(tmp.path().join("change.md")).expect("read change.md");
+    assert_eq!(migrated, CHANGE_NOUN_BODY, "rename must preserve the body verbatim");
+}
+
+#[test]
+fn migrate_change_noun_rerun_is_a_noop() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed initiative.md");
+
+    // First run actually migrates.
+    specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "change-noun"])
+        .assert()
+        .success();
+
+    // Second run on the now-post-Phase-3.7 layout exits 0 with the
+    // `already-migrated` discriminant — idempotency invariant.
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "change-noun"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["status"], "already-migrated");
+    // `renamed-from` / `renamed-to` are omitted on no-op statuses so
+    // JSON consumers can branch on presence.
+    assert!(value.get("renamed-from").is_none(), "got: {value}");
+    assert!(value.get("renamed-to").is_none(), "got: {value}");
+    assert!(tmp.path().join("change.md").is_file());
+    assert!(!tmp.path().join("initiative.md").exists());
+}
+
+#[test]
+fn migrate_change_noun_refuses_when_both_files_present() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed initiative.md");
+    fs::write(
+        tmp.path().join("change.md"),
+        "---\nname: collision\ninputs: []\n---\n\n# collision\n",
+    )
+    .expect("seed change.md");
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "change-noun"])
+        .assert()
+        .failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "change-noun-migration-target-exists");
+    let message = value["message"].as_str().expect("message string");
+    assert!(
+        message.contains("change-noun-migration-target-exists:"),
+        "diagnostic must lead with the kebab-case prefix, got: {message}"
+    );
+    assert!(
+        message.contains("specify migrate change-noun"),
+        "diagnostic must reference the recovery verb, got: {message}"
+    );
+
+    // The on-disk state must be untouched.
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("initiative.md")).expect("read"),
+        CHANGE_NOUN_BODY
+    );
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("change.md")).expect("read"),
+        "---\nname: collision\ninputs: []\n---\n\n# collision\n"
+    );
+}
+
+/// `specify change show` against a project that still carries the
+/// pre-Phase-3.7 `initiative.md` (and no `change.md`) must refuse
+/// loud with the `change-brief-became-change-md` diagnostic and
+/// point the operator at `specify migrate change-noun`.
+#[test]
+fn change_show_refuses_when_only_legacy_brief_present() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed initiative.md");
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "change", "show"])
+        .assert()
+        .failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "change-brief-became-change-md");
+    let message = value["message"].as_str().expect("message string");
+    assert!(
+        message.contains("change-brief-became-change-md:"),
+        "diagnostic must lead with the kebab-case prefix, got: {message}"
+    );
+    assert!(
+        message.contains("initiative.md") && message.contains("change.md"),
+        "diagnostic must surface both filenames, got: {message}"
+    );
+    assert!(
+        message.contains("specify migrate change-noun"),
+        "diagnostic must point at the migration verb, got: {message}"
+    );
+    assert!(
+        message.contains("rfcs/rfc-13-extensibility.md#migration"),
+        "diagnostic must link RFC-13 §Migration, got: {message}"
+    );
+    // The on-disk state must be untouched.
+    assert!(tmp.path().join("initiative.md").is_file());
+    assert!(!tmp.path().join("change.md").exists());
+}
+
+/// Help text must list the new migration subcommand so operators can
+/// discover it through `specify migrate --help`.
+#[test]
+fn migrate_change_noun_appears_in_help() {
+    let assert = specify().args(["migrate", "--help"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
+    assert!(stdout.contains("change-noun"), "migrate --help must list change-noun, got:\n{stdout}");
+}
+
+// ---- RFC-13 Phase 3.8 — migration round-trip acceptance gate ----
+//
+// The two Phase-3 migrations (`slice-layout` from chunk 3.6 and
+// `change-noun` from chunk 3.7) ship with their own unit and
+// integration tests. The acceptance gate for chunk 3.8, however, is
+// the operator's lived experience: starting from a real v1 project,
+// running the migrations should leave a tree that the post-RFC-13
+// surface verbs (`specify slice list`, `specify change show`)
+// drive without further intervention.
+//
+// Each test below stands up a fresh tempdir, seeds the v1-shaped
+// artefacts, runs the relevant migration(s) end-to-end, and then
+// drives the post-Phase-3 verb against the migrated tree to prove
+// it is a working post-RFC-13 project.
+
+/// Round-trip: a v1 project with `.specify/changes/<name>/` and a
+/// `change.md` brief (i.e. only the slice-layout rename is needed)
+/// migrates to `.specify/slices/<name>/`, and `specify slice list`
+/// against the migrated tree surfaces every legacy slice exactly as
+/// `slice create` would have minted.
+#[test]
+fn migration_roundtrip_slice_layout_makes_slice_discoverable() {
+    let tmp = tempdir().unwrap();
+    seed_pre_phase3_layout(&tmp, &[("alpha", "merged"), ("beta", "merged")]);
+
+    specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "slice-layout"])
+        .assert()
+        .success();
+
+    assert!(tmp.path().join(".specify/slices/alpha/.metadata.yaml").is_file());
+    assert!(tmp.path().join(".specify/slices/beta/.metadata.yaml").is_file());
+    assert!(!tmp.path().join(".specify/changes").exists(), "v1 layout must be gone");
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "slice", "list"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    let names: Vec<&str> = value["slices"]
+        .as_array()
+        .expect("slices array")
+        .iter()
+        .map(|s| s["name"].as_str().expect("slice name"))
+        .collect();
+    assert_eq!(
+        names,
+        ["alpha", "beta"],
+        "post-migration `specify slice list` must surface every legacy slice, got: {names:?}"
+    );
+}
+
+/// Round-trip: a v1 project that carries the pre-Phase-3.7
+/// `initiative.md` brief (and no `change.md`) migrates to
+/// `change.md`, and `specify change show` reads it back through the
+/// canonical loader.
+#[test]
+fn migration_roundtrip_change_noun_makes_brief_readable_through_show() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed v1 initiative.md");
+
+    specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "change-noun"])
+        .assert()
+        .success();
+    assert!(tmp.path().join("change.md").is_file());
+    assert!(!tmp.path().join("initiative.md").exists());
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "change", "show"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    let brief = value["brief"].as_object().expect("brief object");
+    assert_eq!(brief["frontmatter"]["name"], "demo");
+    let path = value["path"].as_str().expect("path string");
+    assert!(
+        path.ends_with("/change.md"),
+        "post-migration `specify change show` must point at change.md, got: {path}"
+    );
+}
+
+/// Round-trip: a project that carries both v1 shapes — the
+/// `.specify/changes/` slice layout *and* the `initiative.md` brief
+/// — runs both migrations in the order `slice-layout` then
+/// `change-noun`, and ends up indistinguishable (modulo operator
+/// data) from a fresh post-RFC-13 project. Both post-Phase-3 verbs
+/// (`specify slice list`, `specify change show`) drive against the
+/// migrated tree without re-running any migration.
+#[test]
+fn migration_roundtrip_combined_slice_layout_then_change_noun() {
+    let tmp = tempdir().unwrap();
+    seed_pre_phase3_layout(&tmp, &[("alpha", "merged")]);
+    fs::write(tmp.path().join("initiative.md"), CHANGE_NOUN_BODY).expect("seed v1 initiative.md");
+
+    // Run the migrations in the documented order: slice-layout
+    // first, then change-noun. The order matters because
+    // `change-noun` only touches a repo-root file and is independent
+    // of the slice tree, but the documented operator path is
+    // slice-layout → change-noun.
+    specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "slice-layout"])
+        .assert()
+        .success();
+    specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "change-noun"])
+        .assert()
+        .success();
+
+    // Post-Phase-3 layout is in place: slices live under
+    // `.specify/slices/`, the brief is `change.md`, and neither v1
+    // artefact remains.
+    assert!(tmp.path().join(".specify/slices/alpha/.metadata.yaml").is_file());
+    assert!(tmp.path().join("change.md").is_file());
+    assert!(!tmp.path().join(".specify/changes").exists());
+    assert!(!tmp.path().join("initiative.md").exists());
+
+    // Both post-Phase-3 surface verbs drive the migrated tree
+    // without prompting another migration.
+    let list = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "slice", "list"])
+        .assert()
+        .success();
+    let list_value: serde_json::Value =
+        serde_json::from_slice(&list.get_output().stdout).expect("json");
+    let names: Vec<&str> = list_value["slices"]
+        .as_array()
+        .expect("slices array")
+        .iter()
+        .map(|s| s["name"].as_str().expect("slice name"))
+        .collect();
+    assert_eq!(names, ["alpha"]);
+
+    let show = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "change", "show"])
+        .assert()
+        .success();
+    let show_value: serde_json::Value =
+        serde_json::from_slice(&show.get_output().stdout).expect("json");
+    assert_eq!(show_value["brief"]["frontmatter"]["name"], "demo");
+
+    // Re-running either migration on the post-Phase-3 tree is a
+    // documented no-op (idempotency) — the round-trip is stable.
+    let rerun_slice = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "slice-layout"])
+        .assert()
+        .success();
+    let rerun_slice_value: serde_json::Value =
+        serde_json::from_slice(&rerun_slice.get_output().stdout).expect("json");
+    assert_eq!(rerun_slice_value["status"], "already-migrated");
+
+    let rerun_noun = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "migrate", "change-noun"])
+        .assert()
+        .success();
+    let rerun_noun_value: serde_json::Value =
+        serde_json::from_slice(&rerun_noun.get_output().stdout).expect("json");
+    assert_eq!(rerun_noun_value["status"], "already-migrated");
 }

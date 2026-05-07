@@ -6,7 +6,7 @@ tracks: tasks
 ---
 
 Arguments (used by all skills):
-- CHANGE_ID: the name of this change (from specify status)
+- SLICE_ID: the name of this slice (from specify status)
 - CRATE_NAME: the spec folder name (specs/<crate>/spec.md)
 - CRATE_PATH: crates/CRATE_NAME
 
@@ -52,7 +52,7 @@ Run the remediation process described below.
 Before any changes, record the current test state:
 
 ```bash
-cd $CRATE_PATH && cargo test 2>&1 | tee /tmp/${CHANGE_ID}-${CRATE_NAME}-baseline.txt
+cd $CRATE_PATH && cargo test 2>&1 | tee /tmp/${SLICE_ID}-${CRATE_NAME}-baseline.txt
 ```
 
 Record which tests pass and which fail. This baseline is used in

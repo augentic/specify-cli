@@ -1,9 +1,9 @@
 ---
 id: merge
-description: Fold the change into baseline.
+description: Fold the slice into baseline.
 needs: [build]
 ---
 
 # Merge brief
 
-Land the change into baseline specs.
+Land the slice into baseline specs.

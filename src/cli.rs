@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
-use specify::{CreateIfExists, EntryKind, LifecycleStatus, Phase, PlanStatus};
+use specify::{CreateIfExists, EntryKind, LifecycleStatus, Phase};
+use specify_change::Status;
 
 #[derive(Parser)]
 #[command(
@@ -26,11 +27,19 @@ pub enum OutputFormat {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Initialize .specify/ in a project
+    /// Initialize .specify/ in a project.
+    ///
+    /// Run `specify init <capability>` for a regular project (e.g.
+    /// `specify init omnia` or `specify init https://...`), or
+    /// `specify init --hub` for a registry-only platform hub. The
+    /// `<capability>` positional and `--hub` are mutually exclusive;
+    /// running with neither (or with both) errors with the
+    /// `init-requires-capability-or-hub` diagnostic.
     Init {
-        /// Schema URI to fetch or copy before scaffolding. Required unless `--hub` is set.
-        #[arg(long)]
-        schema_uri: Option<String>,
+        /// Capability identifier or URL to resolve before scaffolding
+        /// (e.g. `omnia`, `https://github.com/<owner>/<repo>/schemas/<name>`).
+        /// Required unless `--hub` is set; mutually exclusive with `--hub`.
+        capability: Option<String>,
         /// Project name (defaults to the project directory name)
         #[arg(long)]
         name: Option<String>,
@@ -38,10 +47,15 @@ pub enum Commands {
         #[arg(long)]
         domain: Option<String>,
         /// Scaffold a registry-only **platform hub** (RFC-9 §1D)
-        /// instead of a regular project: writes `registry.yaml`,
-        /// `initiative.md`, and a sentinel `project.yaml { schema:
-        /// hub, hub: true }`. Refuses to run when `.specify/` already
-        /// exists.
+        /// instead of a regular project: writes `registry.yaml` at
+        /// the repo root and `project.yaml { hub: true }` (with
+        /// `capability:` omitted — RFC-13 §Migration "Hub project
+        /// shape") under `.specify/`. The change brief
+        /// (`initiative.md` on disk; rename ships in a later chunk)
+        /// and `plan.yaml` stay operator-managed (use
+        /// `specify change create` / `specify change plan create`).
+        /// Refuses to run when `.specify/` already exists. Mutually
+        /// exclusive with the `<capability>` positional.
         #[arg(long)]
         hub: bool,
     },
@@ -49,28 +63,37 @@ pub enum Commands {
     /// Project dashboard — registry summary, plan progress, active changes
     Status,
 
-    /// Schema operations
-    Schema {
+    /// Capability operations
+    Capability {
         #[command(subcommand)]
-        action: SchemaAction,
+        action: CapabilityAction,
     },
 
-    /// Change lifecycle operations
+    /// WASI tool runner (RFC-15).
+    Tool {
+        #[command(subcommand)]
+        action: ToolAction,
+    },
+
+    /// Slice lifecycle operations (the per-loop unit of work).
+    ///
+    /// A "slice" is the unit a single `define → build → merge` loop
+    /// drives end to end (RFC-13 §"What becomes a capability").
+    Slice {
+        #[command(subcommand)]
+        action: SliceAction,
+    },
+
+    /// Change orchestration — operator brief, plan, finalize.
+    ///
+    /// The umbrella verb family for an operator-defined outcome that
+    /// coordinates one or more slices (RFC-13 §"What becomes a
+    /// capability"). Owns the change brief at `initiative.md` (the
+    /// on-disk filename migrates in a later chunk) and the
+    /// `plan.yaml` that drives multi-slice execution.
     Change {
         #[command(subcommand)]
         action: ChangeAction,
-    },
-
-    /// Manage the initiative-level plan at `plan.yaml` (repo root)
-    Plan {
-        #[command(subcommand)]
-        action: PlanAction,
-    },
-
-    /// Operator brief at `initiative.md` (repo root)
-    Initiative {
-        #[command(subcommand)]
-        action: InitiativeAction,
     },
 
     /// Platform registry at `registry.yaml` (repo root)
@@ -85,22 +108,31 @@ pub enum Commands {
         action: WorkspaceAction,
     },
 
-    /// Inspect and validate baseline contracts under the project's `contracts/` directory (RFC-12).
-    Contract {
-        #[command(subcommand)]
-        action: ContractAction,
-    },
-
     /// One-shot layout migrations.
     ///
-    /// Currently exposes a single subcommand, `v2-layout`, that moves
-    /// the operator-facing platform artifacts (`registry.yaml`,
-    /// `plan.yaml`, `initiative.md`, `contracts/`) from the legacy v1
-    /// location under `.specify/` to the repo root. Idempotent —
-    /// re-running on an already-migrated project exits 0 with
-    /// `nothing to migrate`. Refuses to run inside a workspace clone
-    /// (`.specify/workspace/<name>/`); migrate the hub repo first,
-    /// then iterate clones explicitly.
+    /// Three subcommands:
+    ///
+    /// - `v2-layout` (RFC-9 §1B / RFC-13 chunk 2.0) moves the
+    ///   operator-facing platform artifacts (`registry.yaml`,
+    ///   `plan.yaml`, `initiative.md`, `contracts/`) from the legacy
+    ///   v1 location under `.specify/` to the repo root.
+    /// - `slice-layout` (RFC-13 chunk 3.6) renames `.specify/changes/`
+    ///   to `.specify/slices/` on disk and rewrites any in-tree
+    ///   `$CHANGE_DIR` substitutions in vendored skill markdown to
+    ///   `$SLICE_DIR`. Refuses to run when a per-loop unit is
+    ///   mid-phase (operator must finish or drop the in-progress
+    ///   slice first).
+    /// - `change-noun` (RFC-13 chunk 3.7) renames the umbrella
+    ///   operator brief from `initiative.md` to `change.md` at the
+    ///   repo root. No on-disk changes to other platform artifacts
+    ///   (`registry.yaml`, `plan.yaml`, `contracts/` stay put per
+    ///   RFC-9 §1B).
+    ///
+    /// All commands are idempotent — re-running on an already-
+    /// migrated project exits 0 with a "nothing to migrate" message.
+    /// `v2-layout` additionally refuses to run inside a workspace
+    /// clone (`.specify/workspace/<name>/`); migrate the hub repo
+    /// first, then iterate clones explicitly.
     Migrate {
         #[command(subcommand)]
         action: MigrateAction,
@@ -113,59 +145,121 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+}
 
-    /// Bootstrap and verify Crux cross-platform projects (RFC-6).
+/// Operator-facing **change** verbs (RFC-13 §"What becomes a capability").
+///
+/// `change` is the umbrella orchestration noun: it holds the operator
+/// brief (`initiative.md` on disk — the on-disk filename migrates in a
+/// later chunk) and the executable plan (`plan.yaml` at the repo root)
+/// that drives one or more slices through `define → build → merge`.
+///
+/// The `Plan { action }` variant nests every plan-authoring sub-verb
+/// under `specify change plan *` so the durable post-RFC surface reads
+/// `specify change {create, plan {add,amend,next,status,doctor,lock,
+/// transition,archive,validate,create}, finalize}`.
+#[derive(Subcommand)]
+pub enum ChangeAction {
+    /// Scaffold the change brief (`initiative.md` at the repo root)
+    /// from the canonical template.
     ///
-    /// The five verbs route to handlers in the `specify-vectis` library
-    /// crate. They reuse the global `--format text|json` flag: JSON
-    /// responses follow the v2 contract (kebab-case keys, auto-injected
-    /// `schema-version: 2`, kebab-case error variants); text responses
-    /// are humanised per-verb summaries.
+    /// Refuses to overwrite an existing file — mirrors the
+    /// `change plan create` posture for `plan.yaml`.
+    Create {
+        /// Kebab-case change name (baked into the frontmatter).
+        name: String,
+    },
+    /// Print the parsed change brief (text or JSON).
     ///
-    /// Exit codes reuse the binary's contract: missing prerequisites
-    /// reports back as [`CliResult::ValidationFailed`] (`2`) — locally
-    /// "your workstation is incomplete", which slots cleanly into the
-    /// existing "validation failed" bucket — and every other failure
-    /// returns [`CliResult::GenericFailure`] (`1`).
-    Vectis {
+    /// Absent file is not an error: exit 0 with "no change brief
+    /// declared". Malformed file fails loud with a non-zero exit — the
+    /// operator asked to show something unparseable.
+    Show,
+    /// Manage the change's executable plan (`plan.yaml` at the repo root).
+    ///
+    /// The plan-authoring sub-resource that drives slice execution.
+    /// Verbs (`create`, `add`, `amend`, `next`, `status`, `doctor`,
+    /// `lock`, `transition`, `archive`, `validate`) are unchanged from
+    /// the previous top-level `specify plan *` family — they are now
+    /// scoped under the change umbrella.
+    Plan {
         #[command(subcommand)]
-        action: VectisAction,
+        action: PlanAction,
+    },
+    /// Close out a change once every plan entry is in a terminal
+    /// state and every per-project PR has merged on its remote
+    /// (RFC-9 §4C). Sweeps `plan.yaml`, the change brief, and the
+    /// `.specify/plans/<name>/` authoring trail into
+    /// `.specify/archive/plans/<YYYYMMDD>-<name>/`. With `--clean`
+    /// also removes `.specify/workspace/<peer>/` clones.
+    ///
+    /// Atomic: any guard failure (non-terminal entry, unmerged PR,
+    /// dirty workspace clone) refuses with a per-project status table
+    /// and leaves the on-disk state untouched. The archive write
+    /// preflights both destinations before any move, so a collision
+    /// here also leaves the working tree alone.
+    ///
+    /// Composes with `specify workspace merge` (RFC-9 §4A): the
+    /// autonomous path merges PRs first, then finalizes; the
+    /// supervised path finalizes after manual merges. Either way,
+    /// idempotent — re-run after the operator clears the failing
+    /// guard.
+    Finalize {
+        /// Remove `.specify/workspace/<peer>/` clones after the archive
+        /// completes. Refused when any clone has a dirty working tree
+        /// (the diagnostic flags that `--clean` would drop the
+        /// uncommitted work).
+        #[arg(long)]
+        clean: bool,
+        /// Show what would happen without writing anything. Never
+        /// invokes `gh pr merge` and never moves files.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
-/// Subcommands under `specify vectis`. Each variant flattens the
-/// matching `clap::Args` struct from the `specify-vectis` library so
-/// flag parsing stays in lock-step with the library definition.
 #[derive(Subcommand)]
-pub enum VectisAction {
-    /// Scaffold a new Crux project (core + optional shells).
-    Init(specify_vectis::InitArgs),
-    /// Verify that a Crux project still builds end-to-end.
-    Verify(specify_vectis::VerifyArgs),
-    /// Add an iOS or Android shell to an existing core.
-    AddShell(specify_vectis::AddShellArgs),
-    /// Refresh pinned tool/crate versions and (optionally) verify them.
-    UpdateVersions(specify_vectis::UpdateVersionsArgs),
-    /// Show the resolved version pins (embedded → user → project → override).
-    Versions(specify_vectis::VersionsArgs),
-    /// Validate UI input artifacts (`layout.yaml`, `tokens.yaml`,
-    /// `assets.yaml`) and the wired `composition.yaml` against the
-    /// embedded JSON schemas (RFC-11 §H, §I).
-    ///
-    /// Five modes are supported: `layout`, `tokens`, `assets`,
-    /// `composition`, and `all`. Per-mode runs return a v2 JSON
-    /// envelope with `mode`, `path`, `errors`, and `warnings`;
-    /// `all` returns `{ mode: "all", path, results }` where each
-    /// entry wraps a per-mode `report`. Exits zero when no errors
-    /// are found.
-    Validate(specify_vectis::ValidateArgs),
+pub enum ToolAction {
+    /// Fetch if needed, then run a declared WASI tool.
+    Run {
+        /// Declared tool name.
+        name: String,
+        /// Args forwarded to the tool after `--`.
+        #[arg(last = true)]
+        args: Vec<String>,
+    },
+    /// List declared tools and cache status.
+    List,
+    /// Fetch one declared tool, or every declared tool when omitted.
+    Fetch {
+        /// Optional declared tool name to fetch.
+        name: Option<String>,
+    },
+    /// Show one declared tool's metadata.
+    Show {
+        /// Declared tool name.
+        name: String,
+    },
+    /// Remove unused cache entries for the current project.
+    Gc {
+        /// Scan every current-project tool scope. Currently equivalent to the default scan.
+        #[arg(long)]
+        all: bool,
+    },
 }
 
+/// Plan-authoring verbs (`specify change plan *`).
+///
+/// `plan.yaml` (at the repo root) is the change's executable plan.
+/// These verbs scope, validate, advance, and archive plan entries.
+/// The shape is preserved from the previous top-level `Commands::Plan`
+/// — it now nests under `Commands::Change` per RFC-13 §"What becomes a
+/// capability".
 #[derive(Subcommand)]
 pub enum PlanAction {
     /// Scaffold an empty plan.yaml at the repo root
     Create {
-        /// Kebab-case initiative name
+        /// Kebab-case change name
         name: String,
         /// Named source, repeated: --source <key>=<path-or-url>
         #[arg(long = "source", value_parser = parse_source_kv)]
@@ -196,9 +290,9 @@ pub enum PlanAction {
     Doctor,
     /// Return the next eligible plan entry (respects depends-on + in-progress)
     Next,
-    /// Show initiative progress report
+    /// Show change progress report
     Status,
-    /// Add a new change entry (status: pending)
+    /// Add a new plan entry (status: pending)
     Add {
         /// Kebab-case change name
         name: String,
@@ -258,7 +352,7 @@ pub enum PlanAction {
         name: String,
         /// Target status
         #[arg(value_enum)]
-        target: PlanStatus,
+        target: Status,
         /// Free-text reason; only valid when transitioning to `failed`,
         /// `blocked`, or `skipped`.
         #[arg(long)]
@@ -279,60 +373,6 @@ pub enum PlanAction {
     Lock {
         #[command(subcommand)]
         action: LockAction,
-    },
-}
-
-/// Initiative brief operations (RFC-3a §"The Initiative Brief").
-///
-/// `initiative.md` (at the repo root) is the operator-authored brief:
-/// a YAML frontmatter block (`name`, optional `inputs`) plus free-form
-/// markdown body. It's optional — `create` scaffolds a canonical
-/// template; `show` prints the parsed brief.
-#[derive(Subcommand)]
-pub enum InitiativeAction {
-    /// Scaffold `initiative.md` (at the repo root) from the canonical template.
-    ///
-    /// Refuses to overwrite an existing file — mirrors the
-    /// `plan create` posture for `plan.yaml`.
-    Create {
-        /// Kebab-case initiative name (baked into the frontmatter).
-        name: String,
-    },
-    /// Print the parsed `initiative.md` (text or JSON).
-    ///
-    /// Absent file is not an error: exit 0 with "no initiative brief
-    /// declared". Malformed file fails loud with a non-zero exit — the
-    /// operator asked to show something unparseable.
-    Show,
-    /// Close out an initiative once every plan entry is in a terminal
-    /// state and every per-project PR has merged on its remote
-    /// (RFC-9 §4C). Sweeps `plan.yaml`, `initiative.md`, and the
-    /// `.specify/plans/<name>/` authoring trail into
-    /// `.specify/archive/plans/<YYYYMMDD>-<name>/`. With `--clean`
-    /// also removes `.specify/workspace/<peer>/` clones.
-    ///
-    /// Atomic: any guard failure (non-terminal entry, unmerged PR,
-    /// dirty workspace clone) refuses with a per-project status table
-    /// and leaves the on-disk state untouched. The archive write
-    /// preflights both destinations before any move, so a collision
-    /// here also leaves the working tree alone.
-    ///
-    /// Composes with `specify workspace merge` (RFC-9 §4A): the
-    /// autonomous path merges PRs first, then finalizes; the
-    /// supervised path finalizes after manual merges. Either way,
-    /// idempotent — re-run after the operator clears the failing
-    /// guard.
-    Finalize {
-        /// Remove `.specify/workspace/<peer>/` clones after the archive
-        /// completes. Refused when any clone has a dirty working tree
-        /// (the diagnostic flags that `--clean` would drop the
-        /// uncommitted work).
-        #[arg(long)]
-        clean: bool,
-        /// Show what would happen without writing anything. Never
-        /// invokes `gh pr merge` and never moves files.
-        #[arg(long)]
-        dry_run: bool,
     },
 }
 
@@ -467,41 +507,12 @@ pub enum RegistryAction {
     /// remaining shape, and persists the result. Warns on stderr (or
     /// in the JSON `warnings` array) when `plan.yaml` exists
     /// and any plan entry references the removed project — the
-    /// operator must rewire those entries via `specify plan amend
+    /// operator must rewire those entries via `specify change plan amend
     /// --project ...` separately. The warning is non-fatal.
     Remove {
         /// Kebab-case project name to remove.
         name: String,
     },
-}
-
-/// Contract (top-level `OpenAPI` / `AsyncAPI` contract) operations
-/// (RFC-12).
-///
-/// The project's `contracts/` directory carries the merged platform
-/// baseline. These verbs are the read / validate counterpart to the
-/// per-change `/contract:*` skills: `list` projects every top-level
-/// contract for inspection, `validate` enforces the RFC-12 §Validation
-/// rules (`SemVer` `info.version`; format + cross-repo uniqueness on
-/// `info.x-specify-id` when present). Both no-op with exit 0 when
-/// `contracts/` is absent.
-#[derive(Subcommand)]
-pub enum ContractAction {
-    /// Project every top-level contract under `contracts/`
-    /// (`(file, format, info.title, info.version, info.x-specify-id)`).
-    ///
-    /// Format detection per RFC-12 §"Top-level contracts": a YAML
-    /// file is top-level iff its root carries `openapi:` or
-    /// `asyncapi:`. Standalone JSON Schemas are payload vocabulary
-    /// and are skipped.
-    List,
-    /// Run the RFC-12 §Validation checks across `contracts/`.
-    ///
-    /// Three rules: `SemVer` `info.version`, kebab-case + ≤64-char
-    /// `info.x-specify-id` when present, cross-repo uniqueness on
-    /// every declared `info.x-specify-id`. Exits
-    /// `CliResult::ValidationFailed` on any finding.
-    Validate,
 }
 
 #[derive(Subcommand)]
@@ -518,80 +529,140 @@ pub enum MigrateAction {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Rename `.specify/changes/` to `.specify/slices/` and rewrite
+    /// any in-tree `$CHANGE_DIR` substitutions in vendored skill
+    /// markdown to `$SLICE_DIR` (RFC-13 chunk 3.6).
+    ///
+    /// Idempotent: re-running on an already-migrated project (no
+    /// `.specify/changes/` and `.specify/slices/` already in place,
+    /// or both directories absent) exits 0 with a "no slices to
+    /// migrate" / "already migrated" message. Refuses to run when
+    /// any per-loop unit under `.specify/changes/` carries a
+    /// non-terminal lifecycle status — the operator must finish or
+    /// drop the in-progress slice before migrating
+    /// (`slice-migration-blocked-by-in-progress`). Refuses with
+    /// `slice-migration-target-exists` when both `.specify/changes/`
+    /// and `.specify/slices/` are present (a previous migration was
+    /// interrupted or someone hand-edited the tree).
+    ///
+    /// Single-shot: the migration does not journal its own progress.
+    /// If interrupted mid-step, the operator can re-run; the
+    /// idempotency guard makes the second run safe.
+    SliceLayout {
+        /// Show what would change without modifying any file. The
+        /// preflight (in-progress detection, target collision check)
+        /// still runs and surfaces the same diagnostics it would in a
+        /// real run.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Rename the umbrella operator brief from `initiative.md` to
+    /// `change.md` at the repo root (RFC-13 chunk 3.7).
+    ///
+    /// Idempotent: re-running on an already-migrated project (only
+    /// `change.md` present, or neither file present) exits 0 with a
+    /// "nothing to migrate" / "already migrated" message. Refuses
+    /// with `change-noun-migration-target-exists` when both
+    /// `initiative.md` and `change.md` are present at the repo root
+    /// (a previous migration was interrupted or someone hand-edited
+    /// the tree); the operator must reconcile manually before
+    /// re-running. No on-disk changes to other platform artefacts
+    /// (`registry.yaml`, `plan.yaml`, `contracts/` stay put per
+    /// RFC-9 §1B).
+    ///
+    /// Single-shot: this migration does not journal its own progress.
+    /// If interrupted mid-step, the operator simply re-runs; the
+    /// idempotency guard makes the second run safe.
+    ChangeNoun {
+        /// Show what would change without modifying any file. The
+        /// detection (target collision check) still runs and surfaces
+        /// the same diagnostics it would in a real run.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
-pub enum SchemaAction {
-    /// Resolve a schema value to a directory path
+pub enum CapabilityAction {
+    /// Resolve a capability value to a directory path
     Resolve {
-        schema_value: String,
+        /// Capability value (bare name or URL) to resolve through the
+        /// project-local cache and `schemas/` lookup
+        capability_value: String,
         #[arg(long, default_value = ".")]
         project_dir: PathBuf,
     },
-    /// Validate a schema.yaml file
-    Check { schema_dir: PathBuf },
+    /// Validate a capability.yaml file
+    ///
+    /// Reads `<capability_dir>/capability.yaml`. Refuses with the
+    /// `schema-became-capability` diagnostic when the directory carries
+    /// only the pre-RFC-13 `schema.yaml` shape.
+    Check {
+        /// Directory containing `capability.yaml`
+        capability_dir: PathBuf,
+    },
     /// List the briefs for a phase in topological order (optionally
-    /// with completion status against a specific change)
+    /// with completion status against a specific slice)
     Pipeline {
         /// Pipeline phase to enumerate
         #[arg(value_enum)]
         phase: Phase,
-        /// Change directory; when supplied, each brief includes a
+        /// Slice directory; when supplied, each brief includes a
         /// `present` boolean reflecting whether its `generates`
         /// artifact exists under the directory
         #[arg(long)]
-        change: Option<PathBuf>,
+        slice: Option<PathBuf>,
     },
 }
 
 #[derive(Subcommand)]
-pub enum ChangeAction {
-    /// Create a new change directory with an initial `.metadata.yaml`
+pub enum SliceAction {
+    /// Create a new slice directory with an initial `.metadata.yaml`
     Create {
-        /// Kebab-case change name
+        /// Kebab-case slice name
         name: String,
         /// Schema identifier; defaults to the value in `.specify/project.yaml`
         #[arg(long)]
         schema: Option<String>,
-        /// Behaviour when `<changes_dir>/<name>/` already exists
+        /// Behaviour when `<slices_dir>/<name>/` already exists
         #[arg(long, value_enum, default_value = "fail")]
         if_exists: CreateIfExistsArg,
     },
-    /// List every active change under `.specify/changes/`
+    /// List every active slice under `.specify/slices/`
     List,
-    /// Show the status of one change
+    /// Show the status of one slice
     Status {
-        /// Change name (under `.specify/changes/`)
+        /// Slice name (under `.specify/slices/`)
         name: String,
     },
-    /// Validate a change's artifacts against schema rules
+    /// Validate a slice's artifacts against schema rules
     Validate {
-        /// Change name (under `.specify/changes/`)
+        /// Slice name (under `.specify/slices/`)
         name: String,
     },
-    /// Spec-merge operations for a change
+    /// Spec-merge operations for a slice
     Merge {
         #[command(subcommand)]
-        action: ChangeMergeAction,
+        action: SliceMergeAction,
     },
-    /// Tasks-list operations for a change
+    /// Tasks-list operations for a slice
     Task {
         #[command(subcommand)]
-        action: ChangeTaskAction,
+        action: SliceTaskAction,
     },
     /// Phase-outcome bookkeeping on `.metadata.yaml`
     Outcome {
         #[command(subcommand)]
         action: OutcomeAction,
     },
-    /// Append-only audit log at `<change_dir>/journal.yaml`
+    /// Append-only audit log at `<slice_dir>/journal.yaml`
     Journal {
         #[command(subcommand)]
         action: JournalAction,
     },
-    /// Transition a change to a new lifecycle status
+    /// Transition a slice to a new lifecycle status
     Transition {
-        /// Change name
+        /// Slice name
         name: String,
         /// Target status (`defined`, `building`, `complete`, `merged`, `dropped`, or `defining`)
         #[arg(value_enum)]
@@ -599,7 +670,7 @@ pub enum ChangeAction {
     },
     /// Scan or overwrite `touched_specs` on `.metadata.yaml`
     TouchedSpecs {
-        /// Change name
+        /// Slice name
         name: String,
         /// Scan `specs/` subdirs and classify each as new or modified
         #[arg(long, conflicts_with = "set")]
@@ -608,19 +679,19 @@ pub enum ChangeAction {
         #[arg(long, value_delimiter = ',')]
         set: Vec<String>,
     },
-    /// Report overlapping `touched_specs` with other active changes
+    /// Report overlapping `touched_specs` with other active slices
     Overlap {
-        /// Change name
+        /// Slice name
         name: String,
     },
-    /// Archive a change directory into `.specify/archive/YYYY-MM-DD-<name>/`
+    /// Archive a slice directory into `.specify/archive/YYYY-MM-DD-<name>/`
     Archive {
-        /// Change name
+        /// Slice name
         name: String,
     },
-    /// Transition a change to `dropped` and archive it
+    /// Transition a slice to `dropped` and archive it
     Drop {
-        /// Change name
+        /// Slice name
         name: String,
         /// Free-text reason; surfaced in `.metadata.yaml.drop_reason` and the archive path
         #[arg(long)]
@@ -628,49 +699,49 @@ pub enum ChangeAction {
     },
 }
 
-/// Spec-merge subcommands grouped under `change merge`.
+/// Spec-merge subcommands grouped under `slice merge`.
 #[derive(Subcommand)]
-pub enum ChangeMergeAction {
-    /// Merge all delta specs for the change into baseline and archive the change
+pub enum SliceMergeAction {
+    /// Merge all delta specs for the slice into baseline and archive the slice
     Run {
-        /// Change name
+        /// Slice name
         name: String,
     },
     /// Show the merge operations that would be applied, without writing
     Preview {
-        /// Change name
+        /// Slice name
         name: String,
     },
-    /// Report `type: modified` baselines modified after this change's `defined_at`
+    /// Report `type: modified` baselines modified after this slice's `defined_at`
     ConflictCheck {
-        /// Change name
+        /// Slice name
         name: String,
     },
 }
 
-/// Task-list subcommands grouped under `change task`.
+/// Task-list subcommands grouped under `slice task`.
 #[derive(Subcommand)]
-pub enum ChangeTaskAction {
+pub enum SliceTaskAction {
     /// Report task completion counts (total, complete, pending)
     Progress {
-        /// Change name
+        /// Slice name
         name: String,
     },
     /// Mark a task complete (idempotent — no-op if already complete)
     Mark {
-        /// Change name
+        /// Slice name
         name: String,
         /// Task number (e.g. `1.1`)
         task_number: String,
     },
 }
 
-/// Phase-outcome subcommands grouped under `change outcome`.
+/// Phase-outcome subcommands grouped under `slice outcome`.
 #[derive(Subcommand)]
 pub enum OutcomeAction {
     /// Record the outcome of a phase (define|build|merge) on `.metadata.yaml`
     Set {
-        /// Change name
+        /// Slice name
         name: String,
         /// Phase this outcome applies to
         #[arg(value_enum)]
@@ -714,29 +785,29 @@ pub enum OutcomeAction {
         #[arg(long)]
         rationale: Option<String>,
     },
-    /// Read the stamped `.metadata.yaml.outcome` for a change
+    /// Read the stamped `.metadata.yaml.outcome` for a slice
     ///
     /// Symmetric read verb for `outcome set`: emits the current
     /// `outcome` subtree for consumers like `/spec:execute` that
     /// classify a phase return without needing the rest of the
     /// lifecycle-status payload. Exits 0 both when an outcome is
-    /// present and when the change is unstamped (`outcome: null`).
+    /// present and when the slice is unstamped (`outcome: null`).
     Show {
-        /// Change name
+        /// Slice name
         name: String,
     },
 }
 
-/// CLI-side discriminant for `change outcome set <outcome>`.
+/// CLI-side discriminant for `slice outcome set <outcome>`.
 ///
 /// Mirrors the on-disk [`specify::Outcome`] discriminant strings
 /// (kebab-case) but keeps the variants unit-only so clap can derive
-/// `ValueEnum`. The dispatcher in `src/commands/change.rs` reads this
+/// `ValueEnum`. The dispatcher in `src/commands/slice.rs` reads this
 /// alongside the `--proposed-*` / `--rationale` flags and constructs
 /// the actual `Outcome` enum value.
 ///
 /// Adding a new outcome requires extending **both** this enum and the
-/// `specify::Outcome` enum in `crates/change/src/lib.rs` (the wire
+/// `specify::Outcome` enum in `crates/slice/src/lib.rs` (the wire
 /// type) — the kebab-case spelling MUST match.
 #[derive(Copy, Clone, ValueEnum, PartialEq, Eq, Debug)]
 pub enum OutcomeKind {
@@ -752,12 +823,12 @@ pub enum OutcomeKind {
     RegistryAmendmentRequired,
 }
 
-/// Journal subcommands grouped under `change journal`.
+/// Journal subcommands grouped under `slice journal`.
 #[derive(Subcommand)]
 pub enum JournalAction {
-    /// Append an entry to the change's `journal.yaml`
+    /// Append an entry to the slice's `journal.yaml`
     Append {
-        /// Change name
+        /// Slice name
         name: String,
         /// Phase that produced the entry
         #[arg(value_enum)]
@@ -772,9 +843,9 @@ pub enum JournalAction {
         #[arg(long)]
         context: Option<String>,
     },
-    /// Print the change's journal entries (text or JSON)
+    /// Print the slice's journal entries (text or JSON)
     Show {
-        /// Change name
+        /// Slice name
         name: String,
     },
 }
