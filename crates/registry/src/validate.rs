@@ -20,7 +20,7 @@ use crate::registry::Registry;
 impl Registry {
     /// Enforce invariants that serde cannot express on its own:
     /// `version == 1`, kebab-case project names, non-empty required
-    /// strings, unique project names, and well-formed [`RegistryProject::url`]
+    /// strings, unique project names, and well-formed `projects[].url`
     /// values (RFC-3a C28). Returns the first error encountered — the
     /// convention used elsewhere in the registry crate for fast-fail
     /// shape validation.

@@ -97,7 +97,7 @@ struct VectisToolFixture {
 }
 
 impl VectisToolFixture {
-    fn from_tempdir(tmp: TempDir, scaffold_write_permission: String) -> Self {
+    fn from_tempdir(tmp: TempDir, scaffold_write_permission: &str) -> Self {
         let project = tmp.path().join("project");
         let capability = project.join("schemas/vectis");
         let design = project.join("design-system");
@@ -143,14 +143,14 @@ impl VectisToolFixture {
 
     fn with_project_write() -> Self {
         let tmp = tempdir().expect("tempdir");
-        Self::from_tempdir(tmp, "$PROJECT_DIR".to_string())
+        Self::from_tempdir(tmp, "$PROJECT_DIR")
     }
 
     fn with_scaffold_write_outside_project() -> Self {
         let tmp = tempdir().expect("tempdir");
         let outside = tmp.path().join("outside");
         fs::create_dir_all(&outside).expect("create outside permission target");
-        Self::from_tempdir(tmp, outside.display().to_string())
+        Self::from_tempdir(tmp, &outside.display().to_string())
     }
 
     fn write_tokens(&self, name: &str, body: &str) -> PathBuf {
@@ -169,6 +169,58 @@ fn run_json(project: &Path, cache: &Path, args: &[&str]) -> Value {
         .assert()
         .success();
     parse_json(&assert.get_output().stdout)
+}
+
+fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
+    let scaffold = specify()
+        .current_dir(&fixture.project)
+        .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
+        .args(["tool", "run", "vectis-scaffold", "--", "core", "Counter"])
+        .assert()
+        .success();
+    let scaffold_value = parse_json(&scaffold.get_output().stdout);
+    assert_eq!(scaffold_value["schema-version"], 2);
+    assert_eq!(scaffold_value["target"], "core");
+    assert_eq!(scaffold_value["app-name"], "Counter");
+    assert!(fixture.project.join("shared/src/app.rs").is_file());
+    assert!(!fixture.project.join("iOS").exists(), "core scaffold must stay render-only");
+    assert!(!fixture.project.join("Android").exists(), "core scaffold must stay render-only");
+
+    let overwrite = specify()
+        .current_dir(&fixture.project)
+        .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
+        .args(["tool", "run", "vectis-scaffold", "--", "core", "Counter"])
+        .assert()
+        .failure();
+    assert_eq!(overwrite.get_output().status.code(), Some(1));
+    let overwrite_value = parse_json(&overwrite.get_output().stdout);
+    assert_eq!(overwrite_value["schema-version"], 2);
+    assert_eq!(overwrite_value["error"], "invalid-project");
+    assert!(
+        overwrite_value["message"]
+            .as_str()
+            .expect("overwrite message")
+            .contains("refusing to overwrite existing file"),
+        "{overwrite_value}"
+    );
+
+    let denied = VectisToolFixture::with_scaffold_write_outside_project();
+    let denied_value = specify()
+        .current_dir(&denied.project)
+        .env("SPECIFY_TOOLS_CACHE", &denied.cache)
+        .args(["--format", "json", "tool", "run", "vectis-scaffold", "--", "core", "Counter"])
+        .assert()
+        .failure();
+    assert_eq!(denied_value.get_output().status.code(), Some(2));
+    let denied_json = parse_json(&denied_value.get_output().stdout);
+    assert_eq!(denied_json["error"], "tool-permission-denied", "{denied_json}");
+    assert!(
+        denied_json["message"]
+            .as_str()
+            .expect("denied message")
+            .contains("escapes PROJECT_DIR/CAPABILITY_DIR"),
+        "{denied_json}"
+    );
 }
 
 #[test]
@@ -233,53 +285,5 @@ fn vectis_tools_run_through_fetch_cache_permissions_and_exit_codes() {
     assert_eq!(findings_value["mode"], "tokens");
     assert_eq!(findings_value["errors"].as_array().map(Vec::len), Some(1), "{findings_value}");
 
-    let scaffold = specify()
-        .current_dir(&fixture.project)
-        .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
-        .args(["tool", "run", "vectis-scaffold", "--", "core", "Counter"])
-        .assert()
-        .success();
-    let scaffold_value = parse_json(&scaffold.get_output().stdout);
-    assert_eq!(scaffold_value["schema-version"], 2);
-    assert_eq!(scaffold_value["target"], "core");
-    assert_eq!(scaffold_value["app-name"], "Counter");
-    assert!(fixture.project.join("shared/src/app.rs").is_file());
-    assert!(!fixture.project.join("iOS").exists(), "core scaffold must stay render-only");
-    assert!(!fixture.project.join("Android").exists(), "core scaffold must stay render-only");
-
-    let overwrite = specify()
-        .current_dir(&fixture.project)
-        .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
-        .args(["tool", "run", "vectis-scaffold", "--", "core", "Counter"])
-        .assert()
-        .failure();
-    assert_eq!(overwrite.get_output().status.code(), Some(1));
-    let overwrite_value = parse_json(&overwrite.get_output().stdout);
-    assert_eq!(overwrite_value["schema-version"], 2);
-    assert_eq!(overwrite_value["error"], "invalid-project");
-    assert!(
-        overwrite_value["message"]
-            .as_str()
-            .expect("overwrite message")
-            .contains("refusing to overwrite existing file"),
-        "{overwrite_value}"
-    );
-
-    let denied = VectisToolFixture::with_scaffold_write_outside_project();
-    let denied_value = specify()
-        .current_dir(&denied.project)
-        .env("SPECIFY_TOOLS_CACHE", &denied.cache)
-        .args(["--format", "json", "tool", "run", "vectis-scaffold", "--", "core", "Counter"])
-        .assert()
-        .failure();
-    assert_eq!(denied_value.get_output().status.code(), Some(2));
-    let denied_json = parse_json(&denied_value.get_output().stdout);
-    assert_eq!(denied_json["error"], "tool-permission-denied", "{denied_json}");
-    assert!(
-        denied_json["message"]
-            .as_str()
-            .expect("denied message")
-            .contains("escapes PROJECT_DIR/CAPABILITY_DIR"),
-        "{denied_json}"
-    );
+    assert_scaffold_run_and_permission_denial(&fixture);
 }

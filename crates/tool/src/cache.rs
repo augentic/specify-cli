@@ -114,8 +114,7 @@ impl Sidecar {
 /// Resolve the global tool cache root.
 ///
 /// Precedence is `SPECIFY_TOOLS_CACHE`, then `XDG_CACHE_HOME/specify/tools`,
-/// then `dirs::cache_dir()/specify/tools`, with `$HOME/.cache/specify/tools`
-/// as a POSIX fallback if `dirs` cannot locate a cache directory.
+/// then `$HOME/.cache/specify/tools`.
 ///
 /// # Errors
 ///
@@ -130,19 +129,13 @@ pub fn cache_root() -> Result<PathBuf, ToolError> {
         return env_path("XDG_CACHE_HOME", value).map(|root| root.join("specify").join("tools"));
     }
 
-    if let Some(root) = dirs::cache_dir()
-        && root.is_absolute()
-    {
-        return Ok(root.join("specify").join("tools"));
-    }
-
     if let Some(home) = env::var_os("HOME") {
         let home = env_path("HOME", home)?;
         return Ok(home.join(".cache").join("specify").join("tools"));
     }
 
     Err(ToolError::CacheRoot(
-        "could not determine a cache directory from SPECIFY_TOOLS_CACHE, XDG_CACHE_HOME, dirs::cache_dir, or HOME"
+        "could not determine a cache directory from SPECIFY_TOOLS_CACHE, XDG_CACHE_HOME, or HOME"
             .to_string(),
     ))
 }
@@ -612,7 +605,7 @@ mod tests {
     }
 
     #[test]
-    fn cache_root_uses_xdg_before_dirs_fallback() {
+    fn cache_root_uses_xdg_before_home_fallback() {
         let xdg_dir = scratch_dir("xdg-only");
         let home_dir = scratch_dir("home-only");
         with_cache_env(None, Some(&xdg_dir), Some(&home_dir), || {
@@ -621,12 +614,12 @@ mod tests {
     }
 
     #[test]
-    fn cache_root_uses_dirs_cache_dir_when_no_explicit_env() {
-        let home_dir = scratch_dir("dirs-home");
+    fn cache_root_uses_home_when_no_explicit_env() {
+        let home_dir = scratch_dir("home-fallback");
         with_cache_env(None, None, Some(&home_dir), || {
             assert_eq!(
                 cache_root().expect("cache root"),
-                dirs::cache_dir().expect("dirs cache dir").join("specify").join("tools")
+                home_dir.join(".cache").join("specify").join("tools")
             );
         });
     }

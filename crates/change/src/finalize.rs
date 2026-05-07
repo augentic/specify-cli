@@ -693,9 +693,8 @@ mod tests {
     use specify_registry::RegistryProject;
     use tempfile::TempDir;
 
-    use crate::plan::core::Entry;
-
     use super::*;
+    use crate::plan::core::Entry;
 
     // ---- pure helpers -----------------------------------------------------
 

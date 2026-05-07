@@ -20,14 +20,14 @@ specify-slice.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 chrono.workspace = true
-petgraph = "0.8"
-fs2 = "0.4"
+petgraph.workspace = true
+fs2.workspace = true
 # `derive` pulls `clap_derive` for `#[derive(ValueEnum)]` on the
 # `Status` enum that the binary's CLI args parse into.
 clap.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
+libc.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

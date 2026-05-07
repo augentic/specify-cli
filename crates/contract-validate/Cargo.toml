@@ -22,7 +22,7 @@ specify-validate.workspace = true
 clap.workspace = true
 
 [dev-dependencies]
-assert_cmd = "2"
+assert_cmd.workspace = true
 tempfile.workspace = true
 serde_json.workspace = true
 

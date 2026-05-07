@@ -7,8 +7,7 @@
 //! `validate_shape_hub`, URL classification, and the contract-roles
 //! invariants (RFC-8 Layer 2 / RFC-12).
 
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use specify_error::Error;
 use specify_registry::{ContractRoles, Registry, RegistryProject};

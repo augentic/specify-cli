@@ -36,7 +36,6 @@ use crate::output::{CliResult, emit_response};
 /// Both staged paths are absolute (rooted under `slice_dir`), and
 /// both baseline paths are absolute (rooted under `project_root`),
 /// matching the pre-2.8 path conventions byte-for-byte.
-///
 // TODO(RFC-13 Phase 4.1): move this default into the omnia capability manifest
 // (`capabilities/omnia/capability.yaml` will grow an `artifact_classes:`
 // field) and read it through `specify-capability`. The pre-2.8 hard-codes
