@@ -187,8 +187,8 @@ pub enum ChangeAction {
         action: PlanAction,
     },
     /// Close out a change once every plan entry is in a terminal
-    /// state and every per-project PR has merged on its remote
-    /// (RFC-9 §4C). Sweeps `plan.yaml`, the change brief, and the
+    /// state and every per-project PR has been operator-merged on its
+    /// remote (RFC-9 §4C / RFC-14 C09). Sweeps `plan.yaml`, the change brief, and the
     /// `.specify/plans/<name>/` authoring trail into
     /// `.specify/archive/plans/<YYYYMMDD>-<name>/`. With `--clean`
     /// also removes `.specify/workspace/<peer>/` clones.
@@ -199,11 +199,9 @@ pub enum ChangeAction {
     /// preflights both destinations before any move, so a collision
     /// here also leaves the working tree alone.
     ///
-    /// Composes with `specify workspace merge` (RFC-9 §4A): the
-    /// autonomous path merges PRs first, then finalizes; the
-    /// supervised path finalizes after manual merges. Either way,
-    /// idempotent — re-run after the operator clears the failing
-    /// guard.
+    /// Finalize never merges PRs. The operator lands them first
+    /// through the forge UI or `gh pr merge`, then re-runs finalize
+    /// after clearing any failing guard.
     Finalize {
         /// Remove `.specify/workspace/<peer>/` clones after the archive
         /// completes. Refused when any clone has a dirty working tree
@@ -212,7 +210,7 @@ pub enum ChangeAction {
         #[arg(long)]
         clean: bool,
         /// Show what would happen without writing anything. Never
-        /// invokes `gh pr merge` and never moves files.
+        /// invokes a forge merge command and never moves files.
         #[arg(long)]
         dry_run: bool,
     },
@@ -279,8 +277,7 @@ pub enum PlanAction {
     /// - `orphan-source-key` — top-level `sources:` keys that no entry
     ///   references (the inverse of validate's `unknown-source`).
     /// - `stale-workspace-clone` — `.specify/workspace/<project>/`
-    ///   clones whose registry signature has drifted (or that have
-    ///   no readable signature at all).
+    ///   slots whose materialisation no longer matches `registry.yaml`.
     /// - `unreachable-entry` — pending entries whose dependency
     ///   closure is rooted in a `failed` or `skipped` predecessor.
     ///
@@ -382,9 +379,32 @@ pub enum WorkspaceAction {
     ///
     /// No-op with exit 0 when `registry.yaml` is absent. Updates
     /// `.gitignore` to ignore `.specify/workspace/` when a registry exists.
-    Sync,
-    /// Report symlink vs git clone, `HEAD`, and dirty working tree per entry.
-    Status,
+    Sync {
+        /// Specific project(s) to sync; omit to sync all registry projects.
+        #[arg()]
+        projects: Vec<String>,
+    },
+    /// Report slot materialisation, Git state, project config, and active slices per entry.
+    Status {
+        /// Specific project(s) to inspect; omit to inspect all registry projects.
+        #[arg()]
+        projects: Vec<String>,
+    },
+    /// Hidden executor helper: prepare one workspace slot on `specify/<change>`.
+    #[command(hide = true)]
+    PrepareBranch {
+        /// Registry project to prepare.
+        project: String,
+        /// Kebab-case umbrella change name.
+        #[arg(long)]
+        change: String,
+        /// Active entry source path allowed to be dirty during resume.
+        #[arg(long = "source", value_name = "PATH")]
+        sources: Vec<PathBuf>,
+        /// Capability-owned output path allowed to be dirty during resume.
+        #[arg(long = "output", value_name = "PATH")]
+        outputs: Vec<PathBuf>,
+    },
     /// Push workspace clones to their remote repositories (RFC-3b).
     Push {
         /// Specific project(s) to push; omit to push all dirty clones.
@@ -394,26 +414,17 @@ pub enum WorkspaceAction {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Merge open PRs created by `workspace push` after CI passes (RFC-9 §4A).
+    /// Deprecated: automated PR merge was removed by RFC-14.
     ///
-    /// For every selected registry project, looks up the PR on
-    /// `specify/<initiative-name>` (resolved from `plan.yaml`),
-    /// inspects `gh pr checks`, and squash-merges via
-    /// `gh pr merge --squash` when all checks pass. Best-effort across
-    /// projects: a single project's failure surfaces in the per-project
-    /// status without aborting the others.
-    ///
-    /// Safety guards (non-negotiable):
-    /// - Refuses to operate on any PR whose `headRefName` does not equal
-    ///   the resolved branch exactly (`branch-pattern-mismatch`).
-    /// - Never force-merges and never overrides failing or pending checks.
+    /// One-release compatibility shim. Accepts the old arguments, then
+    /// exits non-zero without reading registry state, looking up PRs, or
+    /// performing any forge side effect. Merge PRs through the forge UI
+    /// or `gh pr merge`, then run `specify change finalize`.
     Merge {
-        /// Optionally restrict to specific projects. Default: all
-        /// projects in `registry.yaml`.
+        /// Accepted for one-release compatibility; ignored by the shim.
         #[arg()]
         projects: Vec<String>,
-        /// Classify every project's mergeability without invoking
-        /// `gh pr merge`. Mergeable PRs report `would-merge`.
+        /// Accepted for one-release compatibility; ignored by the shim.
         #[arg(long)]
         dry_run: bool,
     },

@@ -14,32 +14,16 @@
 //! `Plan::validate` and `Plan::next_eligible` runtime semantics are not
 //! changed by anything in this module.
 //!
-//! ## Stale-clone signature contract
+//! ## Stale workspace slot contract
 //!
-//! RFC-9 §4B's brief explicitly notes that no canonical sync-stamp file
-//! is shipped today (4A/4B do not introduce one). So the staleness
-//! check uses a *layered* signature design:
-//!
-//!   1. **Primary, forward-compatible.** Read
-//!      `.specify/workspace/<name>/.specify-sync.yaml` (a forward-compatible
-//!      stamp file the materialiser may write in a future change). When
-//!      present, compare its `url` and `schema` fields to the registry
-//!      entry's current `url` / `schema`.
-//!   2. **Fallback.** When the stamp file is absent, the *clone's own
-//!      git remote URL* (`git remote get-url origin`) is the persisted
-//!      sentinel. If it disagrees with the registry's `url`, the clone
-//!      pre-dates the most recent `registry add` / hand-edit and the
-//!      operator must `specify workspace sync` to resync.
-//!   3. **Defensive.** When neither sentinel is readable (no stamp file
-//!      *and* `git remote get-url origin` fails or the slot is missing
-//!      a `.git/`), the diagnostic is still emitted, with
-//!      `reason: missing-sync-stamp`. The brief's defensive contract
-//!      ("missing stamps are themselves a warning") drives this branch.
-//!
-//! Symlink slots are skipped: a symlink always tracks its target tree
-//! and "staleness" is not a meaningful concept for them (the registry
-//! URL is `.` or a relative path, and the working copy is the live
-//! repo).
+//! RFC-14 C02 made `workspace sync` the authority for whether an
+//! existing slot matches `registry.yaml`: remote-backed slots must be
+//! git work trees whose `origin` equals the registry URL, and
+//! local/relative slots must be symlinks whose canonical target equals
+//! the registry target. Doctor reads the same slot-problem inspector
+//! from `specify-registry` instead of looking for a speculative
+//! `.specify-sync.yaml` stamp. A missing stamp is not a warning; only
+//! an actual mismatch that sync would refuse is reported.
 //!
 //! ## Schema-mismatch overlap
 //!
@@ -52,12 +36,14 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::process::Command;
 
 use petgraph::algo::tarjan_scc;
 use petgraph::graph::DiGraph;
 use serde::{Deserialize, Serialize};
-use specify_registry::Registry;
+use specify_registry::workspace::{
+    WorkspaceSlotProblem, WorkspaceSlotProblemReason, workspace_slot_problem,
+};
+use specify_registry::{Registry, RegistryProject};
 
 use super::core::{Entry, Finding, Plan, Severity, Status};
 
@@ -164,17 +150,14 @@ pub enum DiagnosticPayload {
     /// Payload for [`CODE_STALE_CLONE`].
     StaleClone {
         /// Registry project name whose `.specify/workspace/<project>/`
-        /// clone is out of sync.
+        /// slot is out of sync.
         project: String,
-        /// Why the clone is classified stale.
+        /// Why the slot is classified stale.
         reason: StaleCloneReason,
-        /// Registry's current signature. `None` is rare (only when the
-        /// registry entry could not be re-read mid-check) — emitted so
-        /// the JSON shape is stable.
+        /// Registry's expected signature for the slot.
         #[serde(skip_serializing_if = "Option::is_none")]
         expected: Option<CloneSignature>,
-        /// Clone's observed signature (sync stamp, or git-remote
-        /// fallback). `None` when no sentinel is readable.
+        /// Slot's observed signature, when inspectable.
         #[serde(skip_serializing_if = "Option::is_none")]
         observed: Option<CloneSignature>,
     },
@@ -193,32 +176,32 @@ pub enum DiagnosticPayload {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum StaleCloneReason {
-    /// Registry's current `(url, schema)` signature differs from the
-    /// signature persisted in the clone (sync stamp file or git
-    /// remote URL fallback).
+    /// A remote-backed clone's `origin` differs from the registry URL.
     SignatureChanged,
-    /// Neither the sync stamp file nor the git-remote fallback
-    /// produced a usable signature for the clone — the staleness
-    /// check has nothing to compare against, so doctor warns
-    /// defensively.
+    /// Slot materialisation does not match the registry URL class or target.
+    SlotMismatch,
+    /// Retained for old JSON consumers. RFC-14 doctor no longer emits
+    /// this reason because sync does not write `.specify-sync.yaml`.
     MissingSyncStamp,
 }
 
-/// Snapshot of the (url, schema) signature for staleness comparison.
-/// Either side may be `None` when the corresponding fact is not
-/// readable (e.g. clone has no stamp file and no `.git/`).
+/// Snapshot of the registry or slot signature for staleness comparison.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct CloneSignature {
-    /// Repo URL — registry's `url` for the expected signature; sync
-    /// stamp's `url` (or `git remote get-url origin`) for observed.
+    /// Materialisation kind (`git-clone`, `symlink`, or `other`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slot_kind: Option<String>,
+    /// Repo URL — registry's `url` for the expected signature; git
+    /// `origin` for observed remote-backed slots.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    /// Schema identifier — registry's `schema` for the expected
-    /// signature; sync stamp's `schema` for observed (the git-remote
-    /// fallback does not carry schema information).
+    /// Schema identifier from the registry.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
+    /// Canonical filesystem target for symlink-backed slots.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 
 /// One immediate predecessor of an unreachable entry.
@@ -232,21 +215,6 @@ pub struct BlockingPredecessor {
     /// predecessor is itself unreachable; the chain is reported via
     /// the predecessor's own `unreachable-entry` diagnostic).
     pub status: String,
-}
-
-/// Forward-compatible sync-stamp file the materialiser may persist.
-///
-/// One file per workspace clone, alongside the rest of the slot's
-/// metadata (`.specify/workspace/<name>/.specify-sync.yaml`). Until
-/// the materialiser writes it, doctor reads the stamp opportunistically
-/// and falls back to the git-remote signature when it is absent. See
-/// module docstring §"Stale-clone signature contract".
-#[derive(Debug, Clone, Deserialize)]
-struct WorkspaceSyncStamp {
-    #[serde(default)]
-    url: Option<String>,
-    #[serde(default)]
-    schema: Option<String>,
 }
 
 impl Diagnostic {
@@ -399,144 +367,58 @@ fn orphan_source_keys(plan: &Plan) -> Vec<Diagnostic> {
 // 3. Stale workspace clones (RFC-9 §4B / `stale-workspace-clone`)
 // ---------------------------------------------------------------------------
 
-/// Stale-clone diagnostics for every project whose signature drifted.
+/// Stale-slot diagnostics for every project whose materialisation drifted.
 ///
-/// Emits one [`CODE_STALE_CLONE`] per registry project whose workspace
-/// clone's signature does not match the registry, plus a defensive
-/// emission for clones with no readable signature at all. Symlink
-/// slots are skipped per the module-level contract.
+/// Emits one [`CODE_STALE_CLONE`] per registry project whose existing workspace
+/// slot would be refused by `workspace sync`. Missing slots are left to
+/// `workspace sync`; absent `.specify-sync.yaml` metadata is ignored.
 fn stale_workspace_clones(registry: &Registry, project_dir: &Path) -> Vec<Diagnostic> {
-    let workspace_base = project_dir.join(".specify").join("workspace");
-    let mut sorted: Vec<&specify_registry::RegistryProject> = registry.projects.iter().collect();
+    let mut sorted: Vec<&RegistryProject> = registry.projects.iter().collect();
     sorted.sort_by(|a, b| a.name.cmp(&b.name));
 
     let mut out = Vec::new();
     for project in sorted {
-        if project.url_materialises_as_symlink() {
-            continue;
-        }
-        let slot = workspace_base.join(&project.name);
-        if !slot.exists() {
-            continue;
-        }
-
-        let expected = CloneSignature {
-            url: Some(project.url.clone()),
-            schema: Some(project.schema.clone()),
-        };
-
-        // 1. Forward-compatible stamp file.
-        let stamp_path = slot.join(".specify-sync.yaml");
-        if let Some(stamp) = read_sync_stamp(&stamp_path) {
-            let observed = CloneSignature {
-                url: stamp.url.clone(),
-                schema: stamp.schema.clone(),
-            };
-            if expected.url == observed.url && expected.schema == observed.schema {
-                continue;
-            }
-            out.push(diag_signature_changed(&project.name, expected, observed));
-            continue;
-        }
-
-        // 2. Git-remote fallback.
-        let remote_url = git_remote_origin(&slot);
-        match remote_url {
-            Some(url) => {
-                if expected.url.as_deref() == Some(url.as_str()) {
-                    continue;
-                }
-                let observed = CloneSignature {
-                    url: Some(url),
-                    schema: None,
-                };
-                out.push(diag_signature_changed(&project.name, expected, observed));
-            }
-            None => {
-                // 3. Defensive — neither sentinel readable.
-                out.push(Diagnostic {
-                    severity: DiagnosticSeverity::Warning,
-                    code: CODE_STALE_CLONE.to_string(),
-                    message: format!(
-                        "workspace clone '{}' has no `.specify-sync.yaml` and no readable git remote; cannot verify it is in sync with `registry.yaml` — re-run `specify workspace sync` to refresh",
-                        project.name
-                    ),
-                    entry: None,
-                    data: Some(DiagnosticPayload::StaleClone {
-                        project: project.name.clone(),
-                        reason: StaleCloneReason::MissingSyncStamp,
-                        expected: Some(expected),
-                        observed: None,
-                    }),
-                });
-            }
+        if let Some(problem) = workspace_slot_problem(project_dir, project) {
+            out.push(diag_slot_problem(project, &problem));
         }
     }
     out
 }
 
-fn diag_signature_changed(
-    project: &str, expected: CloneSignature, observed: CloneSignature,
-) -> Diagnostic {
-    let mut detail_parts = Vec::new();
-    if expected.url != observed.url {
-        detail_parts.push(format!(
-            "url {} -> {}",
-            observed.url.clone().unwrap_or_else(|| "<unknown>".to_string()),
-            expected.url.clone().unwrap_or_else(|| "<unknown>".to_string())
-        ));
-    }
-    if expected.schema != observed.schema && observed.schema.is_some() {
-        detail_parts.push(format!(
-            "schema {} -> {}",
-            observed.schema.clone().unwrap_or_else(|| "<unknown>".to_string()),
-            expected.schema.clone().unwrap_or_else(|| "<unknown>".to_string())
-        ));
-    }
-    let detail = if detail_parts.is_empty() {
-        "registry signature has drifted".to_string()
+fn diag_slot_problem(project: &RegistryProject, problem: &WorkspaceSlotProblem) -> Diagnostic {
+    let expected = CloneSignature {
+        slot_kind: Some(problem.expected_kind.label().to_string()),
+        url: Some(project.url.clone()),
+        schema: Some(project.schema.clone()),
+        target: problem.expected_target.as_ref().map(|path| path.display().to_string()),
+    };
+    let observed = CloneSignature {
+        slot_kind: problem.observed_kind.map(|kind| kind.label().to_string()),
+        url: problem.observed_url.clone(),
+        schema: None,
+        target: problem.observed_target.as_ref().map(|path| path.display().to_string()),
+    };
+    let reason = if problem.reason == WorkspaceSlotProblemReason::RemoteOriginMismatch {
+        StaleCloneReason::SignatureChanged
     } else {
-        detail_parts.join("; ")
+        StaleCloneReason::SlotMismatch
     };
     Diagnostic {
         severity: DiagnosticSeverity::Warning,
         code: CODE_STALE_CLONE.to_string(),
         message: format!(
-            "workspace clone '{project}' is out of sync with `registry.yaml` ({detail}); re-run `specify workspace sync`"
+            "workspace slot '{}' is out of sync with `registry.yaml`: {}",
+            project.name,
+            problem.message()
         ),
         entry: None,
         data: Some(DiagnosticPayload::StaleClone {
-            project: project.to_string(),
-            reason: StaleCloneReason::SignatureChanged,
+            project: project.name.clone(),
+            reason,
             expected: Some(expected),
             observed: Some(observed),
         }),
     }
-}
-
-fn read_sync_stamp(path: &Path) -> Option<WorkspaceSyncStamp> {
-    if !path.is_file() {
-        return None;
-    }
-    let raw = std::fs::read_to_string(path).ok()?;
-    serde_saphyr::from_str(&raw).ok()
-}
-
-fn git_remote_origin(slot: &Path) -> Option<String> {
-    if !slot.join(".git").exists() {
-        return None;
-    }
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(slot)
-        .args(["remote", "get-url", "origin"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if s.is_empty() { None } else { Some(s) }
 }
 
 // ---------------------------------------------------------------------------
@@ -688,6 +570,7 @@ fn cycle_membership(changes: &[Entry]) -> HashSet<&str> {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::process::Command;
 
     use specify_registry::RegistryProject;
     use tempfile::tempdir;
@@ -1018,20 +901,44 @@ mod tests {
         }
     }
 
-    /// Set up a fake project root with a `.specify/workspace/<name>/`
-    /// slot wired as a git clone (no remote configured by default).
-    fn make_clone_slot(root: &Path, name: &str) -> std::path::PathBuf {
+    fn run_git(cwd: &Path, args: &[&str]) {
+        let output = Command::new("git").arg("-C").arg(cwd).args(args).output().unwrap();
+        assert!(
+            output.status.success(),
+            "git -C {} {} failed\nstdout:\n{}\nstderr:\n{}",
+            cwd.display(),
+            args.join(" "),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// Set up a project root with a `.specify/workspace/<name>/`
+    /// slot wired as a git clone.
+    fn make_clone_slot(root: &Path, name: &str, origin: Option<&str>) -> std::path::PathBuf {
         let slot = root.join(".specify").join("workspace").join(name);
-        std::fs::create_dir_all(slot.join(".git")).unwrap();
+        std::fs::create_dir_all(&slot).unwrap();
+        run_git(&slot, &["init"]);
+        if let Some(origin) = origin {
+            run_git(&slot, &["remote", "add", "origin", origin]);
+        }
         slot
     }
 
+    #[cfg(unix)]
+    fn symlink_dir(target: &Path, link: &Path) {
+        std::os::unix::fs::symlink(target, link).unwrap();
+    }
+
+    #[cfg(windows)]
+    fn symlink_dir(target: &Path, link: &Path) {
+        std::os::windows::fs::symlink_dir(target, link).unwrap();
+    }
+
     #[test]
-    fn doctor_stale_clone_missing_sync_stamp() {
+    fn doctor_stale_clone_reports_missing_origin_without_sync_stamp_warning() {
         let tmp = tempdir().unwrap();
-        let _slot = make_clone_slot(tmp.path(), "alpha");
-        // No `.specify-sync.yaml`, no real git remote — defensive
-        // missing-sync-stamp warning.
+        let _slot = make_clone_slot(tmp.path(), "alpha", None);
         let registry = registry_with(vec![rp(
             "alpha",
             "git@github.com:org/alpha.git",
@@ -1052,24 +959,24 @@ mod tests {
                 observed,
             } => {
                 assert_eq!(project, "alpha");
-                assert_eq!(*reason, StaleCloneReason::MissingSyncStamp);
-                assert!(expected.is_some());
-                assert!(observed.is_none());
+                assert_eq!(*reason, StaleCloneReason::SlotMismatch);
+                assert_eq!(expected.as_ref().unwrap().slot_kind.as_deref(), Some("git-clone"));
+                assert_eq!(observed.as_ref().unwrap().slot_kind.as_deref(), Some("git-clone"));
+                assert!(observed.as_ref().unwrap().url.is_none());
             }
             other => panic!("wrong payload: {other:?}"),
         }
+        assert!(
+            hits[0].message.contains("has no origin remote"),
+            "missing origin should be reported via sync slot rules: {:?}",
+            hits[0].message
+        );
     }
 
     #[test]
     fn doctor_stale_clone_signature_changed() {
         let tmp = tempdir().unwrap();
-        let slot = make_clone_slot(tmp.path(), "alpha");
-        // Drop a stamp that disagrees with the registry's url.
-        std::fs::write(
-            slot.join(".specify-sync.yaml"),
-            "url: git@github.com:old/alpha.git\nschema: omnia@v1\n",
-        )
-        .unwrap();
+        make_clone_slot(tmp.path(), "alpha", Some("git@github.com:old/alpha.git"));
         let registry = registry_with(vec![rp(
             "alpha",
             "git@github.com:org/alpha.git",
@@ -1106,12 +1013,7 @@ mod tests {
     #[test]
     fn doctor_stale_clone_signature_current() {
         let tmp = tempdir().unwrap();
-        let slot = make_clone_slot(tmp.path(), "alpha");
-        std::fs::write(
-            slot.join(".specify-sync.yaml"),
-            "url: git@github.com:org/alpha.git\nschema: omnia@v1\n",
-        )
-        .unwrap();
+        make_clone_slot(tmp.path(), "alpha", Some("git@github.com:org/alpha.git"));
         let registry = registry_with(vec![rp(
             "alpha",
             "git@github.com:org/alpha.git",
@@ -1127,15 +1029,50 @@ mod tests {
     }
 
     #[test]
-    fn doctor_stale_clone_skips_symlink_slots() {
+    fn doctor_stale_clone_diagnoses_wrong_symlink_target() {
         let tmp = tempdir().unwrap();
-        // Pretend the registry says url=. (symlink).
+        let peer = tmp.path().join("peer");
+        let other = tmp.path().join("other");
+        std::fs::create_dir_all(&peer).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        let workspace = tmp.path().join(".specify").join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        symlink_dir(&other, &workspace.join("peer"));
+        let registry = registry_with(vec![rp("peer", "./peer", "omnia@v1", "peer service")]);
+        let plan = plan_with(vec![]);
+        let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
+            .into_iter()
+            .filter(|d| d.code == CODE_STALE_CLONE)
+            .collect();
+        assert_eq!(hits.len(), 1, "wrong symlink target must surface stale slot");
+        match hits[0].data.as_ref().unwrap() {
+            DiagnosticPayload::StaleClone {
+                reason,
+                expected,
+                observed,
+                ..
+            } => {
+                assert_eq!(*reason, StaleCloneReason::SlotMismatch);
+                assert_eq!(expected.as_ref().unwrap().slot_kind.as_deref(), Some("symlink"));
+                assert_eq!(observed.as_ref().unwrap().slot_kind.as_deref(), Some("symlink"));
+                assert!(
+                    observed.as_ref().unwrap().target.as_ref().unwrap().contains("other"),
+                    "observed target should name the wrong symlink target"
+                );
+            }
+            other => panic!("wrong payload: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn doctor_stale_clone_ignores_missing_symlink_slots() {
+        let tmp = tempdir().unwrap();
         let registry = registry_with(vec![rp("self", ".", "omnia@v1", "self service")]);
         let plan = plan_with(vec![]);
         let any_stale = doctor(&plan, None, Some(&registry), Some(tmp.path()))
             .into_iter()
             .any(|d| d.code == CODE_STALE_CLONE);
-        assert!(!any_stale, "symlink slots must not surface stale-clone");
+        assert!(!any_stale, "missing slots are left to workspace sync");
     }
 
     // ------- Combined / negative cases --------------------------------

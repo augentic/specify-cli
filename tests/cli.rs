@@ -5,7 +5,8 @@
 //! effects are observed exactly as a user would experience them.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
 
 use assert_cmd::Command;
 use tempfile::tempdir;
@@ -20,6 +21,30 @@ fn omnia_schema_dir() -> PathBuf {
 
 fn specify() -> Command {
     Command::cargo_bin("specify").expect("cargo_bin(specify)")
+}
+
+const GIT_TEST_ENV: [(&str, &str); 4] = [
+    ("GIT_AUTHOR_NAME", "Specify Test"),
+    ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
+    ("GIT_COMMITTER_NAME", "Specify Test"),
+    ("GIT_COMMITTER_EMAIL", "specify-test@example.com"),
+];
+
+fn run_git(root: &Path, args: &[&str]) -> String {
+    let output = ProcessCommand::new("git")
+        .current_dir(root)
+        .args(args)
+        .envs(GIT_TEST_ENV)
+        .output()
+        .unwrap_or_else(|err| panic!("git {} failed to start: {err}", args.join(" ")));
+    assert!(
+        output.status.success(),
+        "git {} failed\nstdout:\n{}\nstderr:\n{}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("git stdout utf8")
 }
 
 #[test]
@@ -716,13 +741,10 @@ fn registry_remove_refuses_when_registry_absent() {
     assert!(msg.contains("no registry declared"), "msg: {msg}");
 }
 
-// ---- specify workspace merge (RFC-9 §4A) ----
+// ---- specify workspace merge deprecation shim (RFC-14 C08) ----
 //
-// CLI-level integration tests for the precondition diagnostics. The
-// happy-path classifier flow is covered by `cargo test --lib
-// workspace_merge` against an in-process `MockGh` (the function-pointer
-// alternative the brief explicitly allows); the assertions below pin
-// the failure-mode wire shape skill authors will rely on.
+// The shim must keep old invocations parseable for one release while
+// refusing before any project, registry, PR lookup, or forge mutation.
 
 #[test]
 fn workspace_help_lists_merge_subcommand() {
@@ -741,6 +763,10 @@ fn workspace_merge_help_documents_dry_run_and_projects() {
     let assert = specify().args(["workspace", "merge", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     assert!(
+        stdout.contains("Deprecated") || stdout.contains("removed"),
+        "expected workspace merge help to explain removal, got:\n{stdout}",
+    );
+    assert!(
         stdout.contains("--dry-run"),
         "expected --dry-run flag in workspace merge --help, got:\n{stdout}",
     );
@@ -749,100 +775,419 @@ fn workspace_merge_help_documents_dry_run_and_projects() {
         stdout.to_lowercase().contains("project"),
         "expected projects positional in workspace merge --help, got:\n{stdout}",
     );
-}
-
-#[test]
-fn workspace_merge_refuses_when_plan_absent() {
-    let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
-
-    // Seed a registry entry so the *plan* check is the first guard hit.
-    specify()
-        .current_dir(tmp.path())
-        .args([
-            "--format",
-            "json",
-            "registry",
-            "add",
-            "alpha",
-            "--url",
-            "git@github.com:org/alpha.git",
-            "--schema",
-            "omnia@v1",
-            "--description",
-            "alpha service",
-        ])
-        .assert()
-        .success();
-
-    assert!(!tmp.path().join("plan.yaml").exists(), "test precondition: plan.yaml must be absent");
-
-    let assert = specify()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "workspace", "merge"])
-        .assert()
-        .failure();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
-    let msg = value["message"].as_str().expect("message");
-    assert!(msg.contains("plan.yaml"), "diagnostic must reference plan.yaml, got: {msg}");
-    // Surface the operator remediation hint per the brief
-    // ("diagnostic should point at `specify change create` and
-    // `specify change plan create`" — the post-Phase-3.5 surface).
     assert!(
-        msg.contains("plan create"),
-        "diagnostic must hint at `specify change plan create`, got: {msg}",
+        stdout.contains("change finalize"),
+        "expected workspace merge help to point at change finalize, got:\n{stdout}",
     );
 }
 
 #[test]
-fn workspace_merge_refuses_when_registry_absent() {
+fn rfc14_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
     let tmp = tempdir().unwrap();
-    // Plain init (single-repo) — no registry.yaml.
-    specify()
-        .current_dir(tmp.path())
-        .args(["init"])
-        .arg(omnia_schema_dir())
-        .args(["--name", "demo"])
-        .assert()
-        .success();
-    assert!(!tmp.path().join("registry.yaml").exists());
-
-    // Seed plan.yaml directly so the registry check is the first guard hit.
-    fs::write(tmp.path().join("plan.yaml"), "name: demo\nchanges: []\n").unwrap();
+    init_hub(&tmp, "platform-hub");
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: alpha\n\
+         \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
+         \x20\x20\x20\x20schema: omnia@v1\n",
+    )
+    .unwrap();
+    let gitignore_before = fs::read_to_string(tmp.path().join(".gitignore")).ok();
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "workspace", "merge"])
+        .args(["--format", "json", "workspace", "sync", "ghost"])
         .assert()
         .failure();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert_eq!(value["error"], "config");
     let msg = value["message"].as_str().expect("message");
-    assert!(msg.contains("registry.yaml"), "diagnostic must reference registry.yaml, got: {msg}");
+    assert!(msg.contains("unknown project selector"), "msg: {msg}");
+    assert!(msg.contains("ghost"), "msg: {msg}");
+    assert!(
+        !tmp.path().join(".specify/workspace").exists(),
+        "unknown selector must fail before workspace materialisation"
+    );
+    assert_eq!(
+        fs::read_to_string(tmp.path().join(".gitignore")).ok(),
+        gitignore_before,
+        "unknown selector must fail before sync mutates .gitignore"
+    );
 }
 
 #[test]
-fn workspace_merge_refuses_when_registry_empty() {
+fn rfc14_c01_workspace_status_unknown_selector_fails_before_side_effects() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
-    // Hub init writes an empty registry; seed a plan so the *empty
-    // registry* path is the guard that fires.
-    fs::write(tmp.path().join("plan.yaml"), "name: demo\nchanges: []\n").unwrap();
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: alpha\n\
+         \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
+         \x20\x20\x20\x20schema: omnia@v1\n",
+    )
+    .unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "workspace", "merge"])
+        .args(["--format", "json", "workspace", "status", "ghost"])
         .assert()
         .failure();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert_eq!(value["error"], "config");
     let msg = value["message"].as_str().expect("message");
-    assert!(msg.contains("no projects"), "diagnostic must explain the empty registry, got: {msg}");
-    assert!(msg.contains("registry add"), "diagnostic must hint at `registry add`, got: {msg}");
+    assert!(msg.contains("unknown project selector"), "msg: {msg}");
+    assert!(msg.contains("ghost"), "msg: {msg}");
+    assert!(
+        !tmp.path().join(".specify/workspace").exists(),
+        "status selector preflight must not materialise workspace paths"
+    );
+}
+
+#[test]
+fn rfc14_c01_workspace_sync_and_status_select_projects_in_registry_order() {
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+    for name in ["billing", "orders", "inventory"] {
+        fs::create_dir_all(tmp.path().join(name)).unwrap();
+    }
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: billing\n\
+         \x20\x20\x20\x20url: ./billing\n\
+         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20description: billing service\n\
+         \x20\x20- name: orders\n\
+         \x20\x20\x20\x20url: ./orders\n\
+         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20description: orders service\n\
+         \x20\x20- name: inventory\n\
+         \x20\x20\x20\x20url: ./inventory\n\
+         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20description: inventory service\n",
+    )
+    .unwrap();
+
+    specify()
+        .current_dir(tmp.path())
+        .args(["workspace", "sync", "orders", "billing"])
+        .assert()
+        .success();
+    assert!(tmp.path().join(".specify/workspace/billing").exists());
+    assert!(tmp.path().join(".specify/workspace/orders").exists());
+    assert!(
+        !tmp.path().join(".specify/workspace/inventory").exists(),
+        "selected sync must not materialise unselected slots"
+    );
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "workspace", "status", "orders", "billing"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    let names: Vec<&str> = value["slots"]
+        .as_array()
+        .expect("slots array")
+        .iter()
+        .map(|slot| slot["name"].as_str().expect("slot name"))
+        .collect();
+    assert_eq!(
+        names,
+        ["billing", "orders"],
+        "selectors must preserve registry order, not argument order"
+    );
+}
+
+#[test]
+fn rfc14_c03_workspace_status_json_reports_enriched_slot_fields() {
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+    fs::create_dir_all(tmp.path().join("billing/.specify/slices/alpha")).unwrap();
+    fs::write(
+        tmp.path().join("billing/.specify/project.yaml"),
+        "name: billing\ncapability: omnia@v1\n",
+    )
+    .unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nchanges: []\n").unwrap();
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: billing\n\
+         \x20\x20\x20\x20url: ./billing\n\
+         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20description: billing service\n\
+         \x20\x20- name: remote\n\
+         \x20\x20\x20\x20url: git@github.com:org/remote.git\n\
+         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20description: remote service\n",
+    )
+    .unwrap();
+
+    specify().current_dir(tmp.path()).args(["workspace", "sync", "billing"]).assert().success();
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "workspace", "status", "remote", "billing"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    let slots = value["slots"].as_array().expect("slots array");
+    assert_eq!(slots.len(), 2);
+
+    let billing = &slots[0];
+    assert_eq!(billing["name"], "billing");
+    assert_eq!(billing["kind"], "symlink");
+    assert!(billing["slot-path"].as_str().unwrap().ends_with(".specify/workspace/billing"));
+    assert_eq!(billing["configured-target-kind"], "local");
+    assert!(billing["configured-target"].as_str().unwrap().ends_with("/billing"));
+    assert!(billing["actual-symlink-target"].as_str().unwrap().ends_with("/billing"));
+    assert_eq!(billing["project-config-present"], true);
+    assert_eq!(billing["active-slices"], serde_json::json!(["alpha"]));
+    assert!(billing["actual-origin"].is_null());
+    assert!(billing["current-branch"].is_null());
+    assert!(billing["branch-matches-change"].is_null());
+
+    let remote = &slots[1];
+    assert_eq!(remote["name"], "remote");
+    assert_eq!(remote["kind"], "missing");
+    assert_eq!(remote["configured-target-kind"], "remote");
+    assert_eq!(remote["configured-target"], "git@github.com:org/remote.git");
+    assert_eq!(remote["project-config-present"], false);
+    assert_eq!(remote["active-slices"], serde_json::json!([]));
+}
+
+#[test]
+fn rfc14_c03_workspace_status_text_flags_mismatch_dirty_and_project_config() {
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+    let slot_path = tmp.path().join(".specify/workspace/remote");
+    let remote_url = "git@github.com:org/remote.git";
+    fs::create_dir_all(slot_path.join(".specify")).unwrap();
+    fs::write(slot_path.join(".specify/project.yaml"), "name: remote\ncapability: omnia@v1\n")
+        .unwrap();
+    fs::write(slot_path.join("README.md"), "# remote\n").unwrap();
+    run_git(&slot_path, &["init"]);
+    run_git(&slot_path, &["remote", "add", "origin", remote_url]);
+    run_git(&slot_path, &["add", "."]);
+    run_git(&slot_path, &["commit", "-m", "initial"]);
+    run_git(&slot_path, &["checkout", "-b", "feature/work"]);
+    fs::write(slot_path.join("dirty.txt"), "dirty\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nchanges: []\n").unwrap();
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: remote\n\
+         \x20\x20\x20\x20url: git@github.com:org/remote.git\n\
+         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20description: remote service\n",
+    )
+    .unwrap();
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["workspace", "status", "remote"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+
+    assert!(stdout.contains("remote: kind=git-clone"), "stdout:\n{stdout}");
+    assert!(
+        stdout.contains("configured-remote=git@github.com:org/remote.git"),
+        "stdout:\n{stdout}"
+    );
+    assert!(stdout.contains("origin=git@github.com:org/remote.git"), "stdout:\n{stdout}");
+    assert!(stdout.contains("branch=feature/work"), "stdout:\n{stdout}");
+    assert!(stdout.contains("change-branch=mismatch"), "stdout:\n{stdout}");
+    assert!(stdout.contains("dirty=yes"), "stdout:\n{stdout}");
+    assert!(stdout.contains("project.yaml=present"), "stdout:\n{stdout}");
+}
+
+#[test]
+fn rfc14_c01_workspace_push_unknown_selector_fails_before_side_effects() {
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nchanges: []\n").unwrap();
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: alpha\n\
+         \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
+         \x20\x20\x20\x20schema: omnia@v1\n",
+    )
+    .unwrap();
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "workspace", "push", "ghost", "--dry-run"])
+        .assert()
+        .failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "config");
+    let msg = value["message"].as_str().expect("message");
+    assert!(msg.contains("unknown project selector"), "msg: {msg}");
+    assert!(msg.contains("ghost"), "msg: {msg}");
+    assert!(
+        !tmp.path().join(".specify/workspace").exists(),
+        "unknown selector must fail before workspace paths are touched"
+    );
+}
+
+#[test]
+fn rfc14_c04_workspace_prepare_branch_hidden_helper_returns_structured_json() {
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+
+    let alpha = tmp.path().join("alpha");
+    fs::create_dir_all(&alpha).unwrap();
+    run_git(&alpha, &["init", "-b", "main"]);
+    fs::write(alpha.join("README.md"), "seed\n").unwrap();
+    run_git(&alpha, &["add", "README.md"]);
+    run_git(&alpha, &["commit", "--no-gpg-sign", "-m", "seed"]);
+    let remote = tmp.path().join("alpha.git");
+    run_git(tmp.path(), &["clone", "--bare", alpha.to_str().unwrap(), remote.to_str().unwrap()]);
+    let remote_url = format!("file://{}", remote.display());
+    run_git(&alpha, &["remote", "add", "origin", &remote_url]);
+
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: alpha\n\
+         \x20\x20\x20\x20url: ./alpha\n\
+         \x20\x20\x20\x20schema: omnia@v1\n",
+    )
+    .unwrap();
+
+    let help = specify().args(["workspace", "--help"]).assert().success();
+    let help_stdout = String::from_utf8(help.get_output().stdout.clone()).expect("help utf8");
+    assert!(
+        !help_stdout.contains("prepare-branch"),
+        "executor helper must stay hidden from human workspace help, got:\n{help_stdout}"
+    );
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args([
+            "--format",
+            "json",
+            "workspace",
+            "prepare-branch",
+            "alpha",
+            "--change",
+            "demo-change",
+        ])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+
+    assert_eq!(value["prepared"], true);
+    assert_eq!(value["project"], "alpha");
+    assert_eq!(value["branch"], "specify/demo-change");
+    assert_eq!(value["local-branch"], "created");
+    assert_eq!(value["remote-branch"], "absent");
+    assert_eq!(value["dirty"]["tracked-blocked"], serde_json::json!([]));
+    assert_eq!(value["diagnostics"], serde_json::json!([]));
+    assert_eq!(run_git(&alpha, &["branch", "--show-current"]).trim(), "specify/demo-change");
+}
+
+#[test]
+fn rfc14_c04_workspace_prepare_branch_surfaces_origin_head_diagnostic_key() {
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+
+    let remote = tmp.path().join("headless.git");
+    run_git(tmp.path(), &["init", "--bare", remote.to_str().unwrap()]);
+    let remote_url = format!("file://{}", remote.display());
+
+    let alpha = tmp.path().join("alpha");
+    fs::create_dir_all(&alpha).unwrap();
+    run_git(&alpha, &["init", "-b", "main"]);
+    run_git(&alpha, &["remote", "add", "origin", &remote_url]);
+    fs::write(alpha.join("README.md"), "seed\n").unwrap();
+    run_git(&alpha, &["add", "README.md"]);
+    run_git(&alpha, &["commit", "--no-gpg-sign", "-m", "seed"]);
+
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: alpha\n\
+         \x20\x20\x20\x20url: ./alpha\n\
+         \x20\x20\x20\x20schema: omnia@v1\n",
+    )
+    .unwrap();
+
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args([
+            "--format",
+            "json",
+            "workspace",
+            "prepare-branch",
+            "alpha",
+            "--change",
+            "demo-change",
+        ])
+        .assert()
+        .failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+
+    assert_eq!(value["error"], "branch-preparation-failed");
+    assert_eq!(value["diagnostic"]["key"], "origin-head-unresolved");
+    assert_eq!(value["diagnostic"]["project"], "alpha");
+    assert_eq!(value["diagnostic"]["branch"], "specify/demo-change");
+    assert_eq!(run_git(&alpha, &["branch", "--show-current"]).trim(), "main");
+}
+
+#[test]
+fn workspace_merge_shim_exits_nonzero_with_migration_guidance() {
+    let tmp = tempdir().unwrap();
+    let assert = specify()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "workspace", "merge", "ghost", "--dry-run"])
+        .assert()
+        .failure();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["error"], "workspace-merge-removed");
+    assert_eq!(value["command"], "workspace merge");
+    assert_eq!(value["exit-code"], 1);
+    assert_eq!(value["projects"], serde_json::json!(["ghost"]));
+    assert_eq!(value["dry-run"], true);
+    assert_eq!(value["inspected-pull-requests"], false);
+    assert_eq!(value["merged-pull-requests"], false);
+    let msg = value["message"].as_str().expect("message");
+    assert!(msg.contains("gh pr merge"), "msg: {msg}");
+    assert!(msg.contains("change finalize"), "msg: {msg}");
+}
+
+#[test]
+fn workspace_merge_shim_does_not_require_project_context_or_touch_workspace() {
+    let tmp = tempdir().unwrap();
+    let assert =
+        specify().current_dir(tmp.path()).args(["workspace", "merge", "alpha"]).assert().failure();
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
+    assert!(stderr.contains("was removed"), "stderr: {stderr}");
+    assert!(stderr.contains("change finalize"), "stderr: {stderr}");
+    assert!(
+        !tmp.path().join(".specify/workspace").exists(),
+        "workspace merge shim must not materialise workspace paths"
+    );
 }
 
 // ---- specify plan doctor (RFC-9 §4B) ----
@@ -904,8 +1249,8 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     .unwrap();
 
     // Hand-write a registry at the repo root, so we can exercise
-    // stale-clone with a deterministic fixture: a clone slot with a
-    // sync stamp whose `url` disagrees with the registry.
+    // stale-clone with a deterministic fixture: a clone slot whose
+    // origin remote disagrees with the registry.
     fs::write(
         tmp.path().join("registry.yaml"),
         "version: 1\n\
@@ -916,12 +1261,20 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     )
     .unwrap();
     let slot = tmp.path().join(".specify/workspace/alpha");
-    fs::create_dir_all(slot.join(".git")).unwrap();
-    fs::write(
-        slot.join(".specify-sync.yaml"),
-        "url: git@github.com:old/alpha.git\nschema: omnia@v1\n",
-    )
-    .unwrap();
+    fs::create_dir_all(&slot).unwrap();
+    let init = ProcessCommand::new("git").arg("-C").arg(&slot).arg("init").output().unwrap();
+    assert!(init.status.success(), "git init failed: {}", String::from_utf8_lossy(&init.stderr));
+    let remote = ProcessCommand::new("git")
+        .arg("-C")
+        .arg(&slot)
+        .args(["remote", "add", "origin", "git@github.com:old/alpha.git"])
+        .output()
+        .unwrap();
+    assert!(
+        remote.status.success(),
+        "git remote add failed: {}",
+        String::from_utf8_lossy(&remote.stderr)
+    );
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -1144,6 +1497,10 @@ fn change_finalize_help_documents_clean_and_dry_run() {
     for flag in ["--clean", "--dry-run"] {
         assert!(stdout.contains(flag), "expected --help to document `{flag}`, got:\n{stdout}");
     }
+    assert!(
+        stdout.contains("operator-merged") || stdout.contains("gh pr merge"),
+        "finalize help must explain PRs are operator-merged before finalize, got:\n{stdout}",
+    );
 }
 
 #[test]

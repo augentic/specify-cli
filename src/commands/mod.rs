@@ -64,16 +64,26 @@ pub fn run(cli: Cli) -> CliResult {
             run_with_project(cli.format, |ctx| registry::run_registry(ctx, action))
         }
         Commands::Workspace { action } => match action {
-            WorkspaceAction::Sync => run_with_project(cli.format, workspace::run_workspace_sync),
-            WorkspaceAction::Status => {
-                run_with_project(cli.format, workspace::run_workspace_status)
+            WorkspaceAction::Sync { projects } => {
+                run_with_project(cli.format, |ctx| workspace::run_workspace_sync(ctx, projects))
             }
+            WorkspaceAction::Status { projects } => {
+                run_with_project(cli.format, |ctx| workspace::run_workspace_status(ctx, projects))
+            }
+            WorkspaceAction::PrepareBranch {
+                project,
+                change,
+                sources,
+                outputs,
+            } => run_with_project(cli.format, |ctx| {
+                workspace::run_workspace_prepare_branch(ctx, project, change, sources, outputs)
+            }),
             WorkspaceAction::Push { projects, dry_run } => run_with_project(cli.format, |ctx| {
                 workspace::run_workspace_push(ctx, projects, dry_run)
             }),
-            WorkspaceAction::Merge { projects, dry_run } => run_with_project(cli.format, |ctx| {
-                workspace::run_workspace_merge(ctx, projects, dry_run)
-            }),
+            WorkspaceAction::Merge { projects, dry_run } => {
+                workspace::run_workspace_merge_removed(cli.format, projects, dry_run)
+            }
         },
         Commands::Migrate { action } => match action {
             MigrateAction::V2Layout { dry_run } => run_bare(cli.format, || {

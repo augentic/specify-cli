@@ -1,16 +1,19 @@
 #![allow(clippy::needless_pass_by_value, clippy::option_if_let_else)]
 
+use std::path::PathBuf;
+
 use serde::Serialize;
 use serde_json::Value;
 use specify::Error;
 use specify_change::Plan;
 use specify_registry::Registry;
-use specify_registry::merge::{
-    MergeProjectResult, MergeStatus, RealGhClient, run_workspace_merge_impl,
+use specify_registry::branch::{
+    BranchPreparation, BranchPreparationDiagnostic, BranchPreparationRequest,
+    prepare_project_branch,
 };
 use specify_registry::workspace::{
-    PushOutcome, SlotKind, SlotStatus, run_workspace_push_impl, sync_registry_workspace,
-    workspace_status,
+    ConfiguredTargetKind, PushOutcome, SlotKind, SlotStatus, run_workspace_push_projects_impl,
+    sync_registry_workspace_projects, workspace_status_projects,
 };
 
 use super::change::plan::require_file;
@@ -18,9 +21,15 @@ use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_workspace_sync(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn run_workspace_sync(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, Error> {
     match Registry::load(&ctx.project_dir)? {
         None => {
+            if !projects.is_empty() {
+                return Err(Error::Config(
+                    "No registry.yaml found; workspace sync cannot resolve project selectors"
+                        .to_string(),
+                ));
+            }
             match ctx.format {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
@@ -43,7 +52,8 @@ pub fn run_workspace_sync(ctx: &CommandContext) -> Result<CliResult, Error> {
             Ok(CliResult::Success)
         }
         Some(registry) => {
-            sync_registry_workspace(&ctx.project_dir)?;
+            let selected = registry.resolve_project_selectors(&projects)?;
+            sync_registry_workspace_projects(&ctx.project_dir, &selected)?;
             match ctx.format {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
@@ -64,9 +74,17 @@ pub fn run_workspace_sync(ctx: &CommandContext) -> Result<CliResult, Error> {
     }
 }
 
-pub fn run_workspace_status(ctx: &CommandContext) -> Result<CliResult, Error> {
-    match workspace_status(&ctx.project_dir)? {
+pub fn run_workspace_status(
+    ctx: &CommandContext, projects: Vec<String>,
+) -> Result<CliResult, Error> {
+    match Registry::load(&ctx.project_dir)? {
         None => {
+            if !projects.is_empty() {
+                return Err(Error::Config(
+                    "No registry.yaml found; workspace status cannot resolve project selectors"
+                        .to_string(),
+                ));
+            }
             match ctx.format {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
@@ -86,7 +104,9 @@ pub fn run_workspace_status(ctx: &CommandContext) -> Result<CliResult, Error> {
             }
             Ok(CliResult::Success)
         }
-        Some(slots) => {
+        Some(registry) => {
+            let selected = registry.resolve_project_selectors(&projects)?;
+            let slots = workspace_status_projects(&ctx.project_dir, &selected);
             match ctx.format {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
@@ -108,6 +128,111 @@ pub fn run_workspace_status(ctx: &CommandContext) -> Result<CliResult, Error> {
     }
 }
 
+pub fn run_workspace_prepare_branch(
+    ctx: &CommandContext, project: String, change: String, sources: Vec<PathBuf>,
+    outputs: Vec<PathBuf>,
+) -> Result<CliResult, Error> {
+    let Some(registry) = Registry::load(&ctx.project_dir)? else {
+        return Err(Error::Config(
+            "No registry.yaml found; workspace prepare-branch requires a registry".to_string(),
+        ));
+    };
+    let selected = registry.resolve_project_selectors(std::slice::from_ref(&project))?;
+    let Some(project) = selected.first() else {
+        return Err(Error::Config("workspace prepare-branch resolved no project".to_string()));
+    };
+    let request = BranchPreparationRequest {
+        change_name: change,
+        source_paths: sources,
+        output_paths: outputs,
+    };
+
+    match prepare_project_branch(&ctx.project_dir, project, &request) {
+        Ok(prepared) => {
+            render_branch_preparation_success(ctx.format, &prepared);
+            Ok(CliResult::Success)
+        }
+        Err(diagnostic) => {
+            render_branch_preparation_failure(ctx.format, &diagnostic);
+            Ok(CliResult::GenericFailure)
+        }
+    }
+}
+
+fn render_branch_preparation_success(format: OutputFormat, prepared: &BranchPreparation) {
+    match format {
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            #[serde(rename_all = "kebab-case")]
+            struct PrepareBranchBody<'a> {
+                prepared: bool,
+                project: &'a str,
+                branch: &'a str,
+                slot_path: &'a str,
+                base_ref: &'a str,
+                base_sha: &'a str,
+                local_branch: &'a specify_registry::branch::LocalBranchAction,
+                remote_branch: &'a specify_registry::branch::RemoteBranchAction,
+                dirty: &'a specify_registry::branch::DirtyClassification,
+                diagnostics: Vec<BranchPreparationDiagnostic>,
+            }
+            emit_response(PrepareBranchBody {
+                prepared: true,
+                project: &prepared.project,
+                branch: &prepared.branch,
+                slot_path: &prepared.slot_path,
+                base_ref: &prepared.base_ref,
+                base_sha: &prepared.base_sha,
+                local_branch: &prepared.local_branch,
+                remote_branch: &prepared.remote_branch,
+                dirty: &prepared.dirty,
+                diagnostics: Vec::new(),
+            });
+        }
+        OutputFormat::Text => {
+            println!(
+                "workspace branch prepared: {} {} ({:?}, {:?})",
+                prepared.project, prepared.branch, prepared.local_branch, prepared.remote_branch
+            );
+            if !prepared.dirty.tracked_allowed.is_empty() || !prepared.dirty.untracked.is_empty() {
+                println!(
+                    "dirty: {} tracked resume-safe, {} untracked",
+                    prepared.dirty.tracked_allowed.len(),
+                    prepared.dirty.untracked.len()
+                );
+            }
+        }
+    }
+}
+
+fn render_branch_preparation_failure(
+    format: OutputFormat, diagnostic: &BranchPreparationDiagnostic,
+) {
+    match format {
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            #[serde(rename_all = "kebab-case")]
+            struct PrepareBranchFailure<'a> {
+                error: &'static str,
+                exit_code: u8,
+                diagnostic: &'a BranchPreparationDiagnostic,
+            }
+            emit_response(PrepareBranchFailure {
+                error: "branch-preparation-failed",
+                exit_code: CliResult::GenericFailure.code(),
+                diagnostic,
+            });
+        }
+        OutputFormat::Text => {
+            eprintln!("error: {}", diagnostic.message);
+            eprintln!("diagnostic: {}", diagnostic.key);
+            if !diagnostic.paths.is_empty() {
+                eprintln!("paths: {}", diagnostic.paths.join(", "));
+            }
+        }
+    }
+}
+
 const fn kind_label(kind: SlotKind) -> &'static str {
     match kind {
         SlotKind::Missing => "missing",
@@ -117,21 +242,49 @@ const fn kind_label(kind: SlotKind) -> &'static str {
     }
 }
 
+const fn configured_target_kind_label(kind: ConfiguredTargetKind) -> &'static str {
+    match kind {
+        ConfiguredTargetKind::Local => "local",
+        ConfiguredTargetKind::Remote => "remote",
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct SlotJson {
     name: String,
     kind: &'static str,
+    slot_path: String,
+    configured_target_kind: &'static str,
+    configured_target: String,
+    actual_symlink_target: Option<String>,
+    actual_origin: Option<String>,
+    current_branch: Option<String>,
     head_sha: Option<String>,
     dirty: Option<bool>,
+    branch_matches_change: Option<bool>,
+    project_config_present: bool,
+    active_slices: Vec<String>,
 }
 
 fn slot_to_json(slot: &SlotStatus) -> Value {
     serde_json::to_value(SlotJson {
         name: slot.name.clone(),
         kind: kind_label(slot.kind),
+        slot_path: slot.slot_path.display().to_string(),
+        configured_target_kind: configured_target_kind_label(slot.configured_target_kind),
+        configured_target: slot.configured_target.clone(),
+        actual_symlink_target: slot
+            .actual_symlink_target
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        actual_origin: slot.actual_origin.clone(),
+        current_branch: slot.current_branch.clone(),
         head_sha: slot.head_sha.clone(),
         dirty: slot.dirty,
+        branch_matches_change: slot.branch_matches_change,
+        project_config_present: slot.project_config_present,
+        active_slices: slot.active_slices.clone(),
     })
     .expect("SlotJson serialises")
 }
@@ -139,17 +292,52 @@ fn slot_to_json(slot: &SlotStatus) -> Value {
 fn print_slot(slot: &SlotStatus) {
     let kind = kind_label(slot.kind);
     let head = slot.head_sha.as_deref().unwrap_or("-");
+    let origin = slot.actual_origin.as_deref().unwrap_or("-");
+    let branch = slot.current_branch.as_deref().unwrap_or("-");
+    let symlink_target = slot
+        .actual_symlink_target
+        .as_ref()
+        .map_or_else(|| "-".to_string(), |path| path.display().to_string());
     let dirty = match slot.dirty {
         None => "-",
         Some(true) => "yes",
         Some(false) => "no",
     };
-    println!("{}: kind={kind} head={head} dirty={dirty}", slot.name);
+    let change_branch = match slot.branch_matches_change {
+        None => "-",
+        Some(true) => "match",
+        Some(false) => "mismatch",
+    };
+    let project_config = if slot.project_config_present { "present" } else { "missing" };
+    let slices =
+        if slot.active_slices.is_empty() { "-".to_string() } else { slot.active_slices.join(",") };
+    println!(
+        "{}: kind={kind} path={} configured-{}={} target={} origin={} branch={} change-branch={} head={} dirty={} project.yaml={} active-slices={}",
+        slot.name,
+        slot.slot_path.display(),
+        configured_target_kind_label(slot.configured_target_kind),
+        slot.configured_target,
+        symlink_target,
+        origin,
+        branch,
+        change_branch,
+        head,
+        dirty,
+        project_config,
+        slices
+    );
 }
 
 pub fn run_workspace_push(
     ctx: &CommandContext, projects: Vec<String>, dry_run: bool,
 ) -> Result<CliResult, Error> {
+    let Some(registry) = Registry::load(&ctx.project_dir)? else {
+        return Err(Error::Config(
+            "No registry.yaml found; workspace push requires a registry".to_string(),
+        ));
+    };
+    let selected = registry.resolve_project_selectors(&projects)?;
+
     let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
         Error::Config(
             "No active plan found at plan.yaml. Run 'specify change plan create' \
@@ -159,14 +347,8 @@ pub fn run_workspace_push(
     })?;
     let plan = Plan::load(&plan_path)?;
 
-    let Some(registry) = Registry::load(&ctx.project_dir)? else {
-        return Err(Error::Config(
-            "No registry.yaml found; workspace push requires a registry".to_string(),
-        ));
-    };
-
     let results =
-        run_workspace_push_impl(&ctx.project_dir, &plan.name, &registry, &projects, dry_run)?;
+        run_workspace_push_projects_impl(&ctx.project_dir, &plan.name, &selected, dry_run)?;
 
     match ctx.format {
         OutputFormat::Json => {
@@ -186,6 +368,8 @@ pub fn run_workspace_push(
                 branch: Option<String>,
                 #[serde(skip_serializing_if = "Option::is_none")]
                 pr: Option<u64>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                error: Option<String>,
             }
             let items: Vec<PushItem> = results
                 .iter()
@@ -194,6 +378,7 @@ pub fn run_workspace_push(
                     status: r.status.to_string(),
                     branch: r.branch.clone(),
                     pr: r.pr_number,
+                    error: r.error.clone(),
                 })
                 .collect();
             emit_response(PushBody {
@@ -222,10 +407,13 @@ pub fn run_workspace_push(
             let created = results.iter().filter(|r| r.status == PushOutcome::Created).count();
             let pushed = results.iter().filter(|r| r.status == PushOutcome::Pushed).count();
             let up_to_date = results.iter().filter(|r| r.status == PushOutcome::UpToDate).count();
+            let local_only = results.iter().filter(|r| r.status == PushOutcome::LocalOnly).count();
+            let no_branch = results.iter().filter(|r| r.status == PushOutcome::NoBranch).count();
             let failed = results.iter().filter(|r| r.status == PushOutcome::Failed).count();
             println!();
             println!(
-                "{created} created, {pushed} pushed, {up_to_date} up-to-date. \
+                "{created} created, {pushed} pushed, {up_to_date} up-to-date, \
+                 {local_only} local-only, {no_branch} no-branch. \
                  {failed} failed."
             );
         }
@@ -235,166 +423,52 @@ pub fn run_workspace_push(
 }
 
 // ---------------------------------------------------------------------------
-// workspace merge (RFC-9 §4A)
+// workspace merge deprecation shim (RFC-14 C08)
 // ---------------------------------------------------------------------------
 
-pub fn run_workspace_merge(
-    ctx: &CommandContext, projects: Vec<String>, dry_run: bool,
-) -> Result<CliResult, Error> {
-    let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
-        Error::Config(
-            "No active plan found at plan.yaml. Run 'specify change plan create' \
-             to author one (or 'specify change create' first if the change brief \
-             is also missing) before invoking 'specify workspace merge'."
-                .to_string(),
-        )
-    })?;
-    let plan = Plan::load(&plan_path)?;
-
-    let Some(registry) = Registry::load(&ctx.project_dir)? else {
-        return Err(Error::Config(
-            "No registry.yaml found; workspace merge requires a registry. \
-             Add projects via `specify registry add`."
-                .to_string(),
-        ));
-    };
-
-    let gh = RealGhClient;
-    let results =
-        run_workspace_merge_impl(&ctx.project_dir, &plan.name, &registry, &gh, &projects, dry_run)?;
-
-    let initiative_name = plan.name.clone();
-    let expected_branch = format!("specify/{initiative_name}");
-
-    match ctx.format {
+pub fn run_workspace_merge_removed(
+    format: OutputFormat, projects: Vec<String>, dry_run: bool,
+) -> CliResult {
+    let message = "`specify workspace merge` was removed by RFC-14. \
+                   Merge PRs through the forge UI or `gh pr merge`, then run \
+                   `specify change finalize`. No pull requests were inspected or merged.";
+    match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
-            struct MergeBody {
-                initiative: String,
-                expected_branch: String,
-                projects: Vec<MergeItem>,
-                summary: MergeSummaryCounts,
+            struct MergeRemoved {
+                error: &'static str,
+                command: &'static str,
+                message: &'static str,
+                exit_code: u8,
+                projects: Vec<String>,
                 #[serde(skip_serializing_if = "Option::is_none")]
                 dry_run: Option<bool>,
+                inspected_pull_requests: bool,
+                merged_pull_requests: bool,
             }
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct MergeItem {
-                name: String,
-                status: String,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                pr_number: Option<u64>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                url: Option<String>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                head_ref_name: Option<String>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                detail: Option<String>,
-            }
-            let summary = summarise(&results);
-            let items: Vec<MergeItem> = results
-                .iter()
-                .map(|r| MergeItem {
-                    name: r.name.clone(),
-                    status: r.status.to_string(),
-                    pr_number: r.pr_number,
-                    url: r.url.clone(),
-                    head_ref_name: r.head_ref_name.clone(),
-                    detail: r.detail.clone(),
-                })
-                .collect();
-            emit_response(MergeBody {
-                initiative: initiative_name,
-                expected_branch,
-                projects: items,
-                summary,
+            emit_response(MergeRemoved {
+                error: "workspace-merge-removed",
+                command: "workspace merge",
+                message,
+                exit_code: CliResult::GenericFailure.code(),
+                projects,
                 dry_run: dry_run.then_some(true),
+                inspected_pull_requests: false,
+                merged_pull_requests: false,
             });
         }
         OutputFormat::Text => {
-            print_merge_text(&results, &expected_branch, &plan.name, dry_run);
+            eprintln!("error: {message}");
+            if !projects.is_empty() {
+                eprintln!(
+                    "note: project selectors are accepted only for compatibility and were ignored"
+                );
+            }
+            if dry_run {
+                eprintln!("note: --dry-run is accepted only for compatibility and was ignored");
+            }
         }
     }
-
-    let any_failed = results.iter().any(is_failure_status);
-    Ok(if any_failed { CliResult::GenericFailure } else { CliResult::Success })
-}
-
-/// Statuses that warrant exit 1 (operator action required). `merged`,
-/// `would-merge`, and `no-branch` are normal classifications and exit
-/// 0; the failure-bucket statuses below force a non-zero exit so CI
-/// loops and the 2C umbrella skill can branch on the exit code.
-const fn is_failure_status(r: &MergeProjectResult) -> bool {
-    matches!(
-        r.status,
-        MergeStatus::Failed
-            | MergeStatus::FailedChecks
-            | MergeStatus::PendingChecks
-            | MergeStatus::BranchPatternMismatch
-            | MergeStatus::Closed
-    )
-}
-
-fn summarise(results: &[MergeProjectResult]) -> MergeSummaryCounts {
-    let mut s = MergeSummaryCounts::default();
-    for r in results {
-        match r.status {
-            MergeStatus::Merged => s.merged += 1,
-            MergeStatus::WouldMerge => s.would_merge += 1,
-            MergeStatus::PendingChecks => s.pending_checks += 1,
-            MergeStatus::FailedChecks => s.failed_checks += 1,
-            MergeStatus::Closed => s.closed += 1,
-            MergeStatus::NoBranch => s.no_branch += 1,
-            MergeStatus::BranchPatternMismatch => s.branch_pattern_mismatch += 1,
-            MergeStatus::Failed => s.failed += 1,
-        }
-    }
-    s
-}
-
-#[derive(Default, Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct MergeSummaryCounts {
-    merged: usize,
-    would_merge: usize,
-    pending_checks: usize,
-    failed_checks: usize,
-    closed: usize,
-    no_branch: usize,
-    branch_pattern_mismatch: usize,
-    failed: usize,
-}
-
-fn print_merge_text(
-    results: &[MergeProjectResult], expected_branch: &str, initiative: &str, dry_run: bool,
-) {
-    if dry_run {
-        println!("[dry-run] specify: workspace merge — {initiative} ({expected_branch})");
-    } else {
-        println!("specify: workspace merge — {initiative} ({expected_branch})");
-    }
-    println!();
-    for r in results {
-        let url = r.url.as_deref().unwrap_or("");
-        let pr = r.pr_number.map(|n| format!("PR #{n}")).unwrap_or_default();
-        println!("  {:<20} {:<24} {:<10} {}", r.name, r.status, pr, url);
-        if let Some(detail) = &r.detail {
-            println!("    {detail}");
-        }
-    }
-    let s = summarise(results);
-    println!();
-    println!(
-        "{} merged, {} would-merge, {} pending-checks, {} failed-checks, \
-         {} closed, {} no-branch, {} branch-pattern-mismatch, {} failed.",
-        s.merged,
-        s.would_merge,
-        s.pending_checks,
-        s.failed_checks,
-        s.closed,
-        s.no_branch,
-        s.branch_pattern_mismatch,
-        s.failed,
-    );
+    CliResult::GenericFailure
 }
