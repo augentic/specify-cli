@@ -4,7 +4,8 @@
 //! Owns parsing, helpers, and shape validators for `registry.yaml` (the
 //! platform-level catalogue at the repo root) plus the local
 //! `.specify/workspace/` materialisation surface (`sync`, `status`,
-//! `push`, `merge`). Until RFC-13 chunk 2.2 the workspace code lived in
+//! `push`) plus read-only forge PR probes for finalization. Until RFC-13
+//! chunk 2.2 the workspace code lived in
 //! the binary's lib (`src/workspace.rs`, `src/workspace_merge.rs`); this
 //! crate now owns it end to end.
 //!
@@ -20,13 +21,13 @@
 //! other home for them.
 //!
 //! The workspace layer is **upstream** of `specify-slice`: to avoid a
-//! cycle, [`workspace::run_workspace_push_impl`] and
-//! [`merge::run_workspace_merge_impl`] take `initiative_name: &str`
-//! rather than a `&Plan`. The binary flattens `&plan.name` at the
+//! cycle, [`workspace::run_workspace_push_impl`] takes the flattened plan
+//! name rather than a `&Plan`. The binary passes `&plan.name` at the
 //! call-site.
 
+pub mod branch;
+pub mod forge;
 pub mod gitignore;
-pub mod merge;
 pub mod registry;
 pub mod validate;
 pub mod workspace;

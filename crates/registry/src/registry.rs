@@ -12,6 +12,7 @@
 //! enforced directly by [`Registry::validate_shape`] (in
 //! [`crate::validate`]).
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -131,6 +132,59 @@ impl Registry {
     #[must_use]
     pub const fn is_single_repo(&self) -> bool {
         self.projects.len() <= 1
+    }
+
+    /// Resolve optional project selectors against `registry.yaml`.
+    ///
+    /// Empty selectors mean every registry project. Non-empty selectors
+    /// are treated as a set, but output always follows registry order so
+    /// workspace verbs behave consistently regardless of CLI argument
+    /// order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the registry shape is invalid or any selector
+    /// does not match a declared project name.
+    pub fn resolve_project_selectors<'a>(
+        &'a self, selectors: &[String],
+    ) -> Result<Vec<&'a RegistryProject>, Error> {
+        self.validate_shape()?;
+        if selectors.is_empty() {
+            return Ok(self.projects.iter().collect());
+        }
+
+        let requested: HashSet<&str> = selectors.iter().map(String::as_str).collect();
+        let selected: Vec<&RegistryProject> = self
+            .projects
+            .iter()
+            .filter(|project| requested.contains(project.name.as_str()))
+            .collect();
+
+        if selected.len() == requested.len() {
+            return Ok(selected);
+        }
+
+        let matched: HashSet<&str> = selected.iter().map(|project| project.name.as_str()).collect();
+        let mut unknown = Vec::new();
+        for selector in selectors {
+            let name = selector.as_str();
+            if !matched.contains(name) && !unknown.contains(&name) {
+                unknown.push(name);
+            }
+        }
+
+        let known = self
+            .projects
+            .iter()
+            .map(|project| project.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let unknown_list =
+            unknown.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", ");
+        let noun = if unknown.len() == 1 { "selector" } else { "selectors" };
+        Err(Error::Config(format!(
+            "registry.yaml: unknown project {noun} {unknown_list}; expected one of: {known}"
+        )))
     }
 }
 

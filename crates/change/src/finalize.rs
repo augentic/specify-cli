@@ -1,11 +1,10 @@
-//! `specify initiative finalize` — initiative landing closure (RFC-9 §4C).
+//! `specify change finalize` — change landing closure (RFC-9 §4C / RFC-14 C09).
 //!
 //! Closure verb for the platform-first loop. `workspace push` ships the
-//! commits; `workspace merge` (RFC-9 §4A) lands the PRs; `plan archive`
-//! sweeps local plan state. `initiative finalize` is the verb that
-//! confirms the **whole** initiative is landed (every per-project PR
+//! commits; the operator lands PRs through the forge UI or `gh pr merge`;
+//! `change finalize` confirms the **whole** change is landed (every per-project PR
 //! merged on remote, every workspace clone clean) and atomically sweeps
-//! `plan.yaml`, `initiative.md`, and `.specify/plans/<name>/` into
+//! `plan.yaml`, `change.md`, and `.specify/plans/<name>/` into
 //! `.specify/archive/plans/<YYYYMMDD>-<name>/`. With `--clean`, prunes
 //! `.specify/workspace/<peer>/` clones after the archive completes.
 //!
@@ -32,21 +31,19 @@
 //!
 //! ## Composition
 //!
-//! `initiative finalize` is independent of `workspace merge`. The two
-//! valid operator paths are:
-//!
-//! - **Autonomous:** `workspace merge` (RFC-9 §4A) merges every PR with
-//!   green CI; `initiative finalize` confirms the merges and archives.
-//! - **Supervised:** the operator merges PRs by hand on the forge;
-//!   `initiative finalize` confirms and archives.
+//! `change finalize` is independent of the forge landing action. It is
+//! a read-only closure check for PRs: the operator must merge PRs first
+//! through the forge UI or `gh pr merge`; finalize only observes that
+//! state, archives local coordinator state, and optionally cleans clones.
 //!
 //! ## Atomicity
 //!
 //! `Plan::archive` preflights both destinations (`<name>-<date>.yaml`
 //! and `<name>-<date>/`) before any move, so a collision returns an
-//! error before any file is touched. `--clean` runs **after** the
-//! archive, so a failed archive leaves clones intact. `--dry-run`
-//! never invokes archive or clean and never spawns `gh pr merge`.
+//! error before any file is touched. `--clean` runs **after** every PR
+//! and dirty-clone guard passes and after the archive succeeds, so a
+//! failed archive leaves clones intact. `--dry-run` never invokes archive
+//! or clean and never invokes a forge merge command.
 
 #![allow(clippy::needless_pass_by_value)]
 
@@ -55,7 +52,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
-use specify_registry::merge::{
+use specify_registry::forge::{
     GhClient, PrState, PrView, RealGhClient, SPECIFY_BRANCH_PREFIX, pr_branch_matches,
     project_path_for,
 };
@@ -118,15 +115,15 @@ fn archive_dir(project_dir: &Path) -> PathBuf {
 pub enum FinalizeStatus {
     /// PR is `MERGED` on remote — passing.
     Merged,
-    /// PR exists, branch matches, but has not landed (state `OPEN`).
-    /// Refuses finalize.
+    /// PR exists, branch matches, but has not been operator-merged
+    /// (state `OPEN`). Refuses finalize.
     Unmerged,
     /// PR was `CLOSED` without merging. Refuses finalize.
     Closed,
     /// No PR on `specify/<initiative-name>` for this project — passing
     /// (e.g. the project was assigned no work in this initiative, or
-    /// the operator merged via the GitHub web UI and deleted the
-    /// branch).
+    /// the operator merged via the forge UI / `gh pr merge` and deleted
+    /// the branch).
     NoBranch,
     /// A PR exists but its `headRefName` is not the expected branch.
     /// Defence in depth — branch-pattern guard from RFC-9 §4A applies
@@ -249,6 +246,11 @@ pub struct FinalizeOutcome {
     pub projects: Vec<FinalizeProjectResult>,
     /// Aggregate counts — same vocabulary as the per-project rows.
     pub summary: FinalizeSummaryCounts,
+    /// Operator-facing next step when finalize is refused. This is
+    /// intentionally present in JSON too so non-text consumers can show
+    /// the same RFC-14 guidance.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
     /// Path of the archived `plan.yaml` (e.g.
     /// `.specify/archive/plans/foo-20260428.yaml`). `None` on dry-run
     /// or refused finalize.
@@ -485,6 +487,7 @@ pub fn run_finalize<P: FinalizeProbe>(
         expected_branch,
         projects,
         summary,
+        message: None,
         archived: None,
         archived_plans_dir: None,
         cleaned: Vec::new(),
@@ -492,6 +495,7 @@ pub fn run_finalize<P: FinalizeProbe>(
     };
 
     if any_refusing {
+        outcome.message = refusal_message(&outcome.summary, &outcome.expected_branch);
         return Ok(outcome);
     }
 
@@ -518,6 +522,8 @@ pub fn run_finalize<P: FinalizeProbe>(
             // and return finalized=false.
             outcome.archived = None;
             outcome.archived_plans_dir = None;
+            outcome.message =
+                Some("plan archive failed; workspace clones were not cleaned".to_string());
             // Use a generic "archive-failed" status on every project so
             // the operator sees a clear archive-time failure marker.
             // We do NOT mutate per-project rows — the actual cause is
@@ -557,6 +563,42 @@ pub fn run_finalize<P: FinalizeProbe>(
     Ok(outcome)
 }
 
+fn refusal_message(summary: &FinalizeSummaryCounts, expected_branch: &str) -> Option<String> {
+    let mut guidance: Vec<String> = Vec::new();
+    if summary.unmerged > 0 {
+        guidance.push(format!(
+            "{} unmerged PR(s) must be operator-merged through the forge UI or `gh pr merge` before finalize",
+            summary.unmerged,
+        ));
+    }
+    if summary.closed > 0 {
+        guidance.push(format!(
+            "{} closed PR(s) were not merged; reopen or push a replacement on `{expected_branch}` and operator-merge before finalize",
+            summary.closed,
+        ));
+    }
+    if summary.branch_pattern_mismatch > 0 {
+        guidance.push(format!(
+            "{} PR(s) have the wrong head branch; recreate them from `{expected_branch}` before finalize",
+            summary.branch_pattern_mismatch,
+        ));
+    }
+    if summary.dirty > 0 {
+        guidance.push(format!(
+            "{} dirty workspace clone(s) must be committed, pushed, or stashed before finalize can archive or clean",
+            summary.dirty,
+        ));
+    }
+    if summary.failed > 0 {
+        guidance.push(format!(
+            "{} PR or workspace probe failure(s) must be resolved before finalize can continue",
+            summary.failed,
+        ));
+    }
+
+    (!guidance.is_empty()).then(|| guidance.join("; "))
+}
+
 /// Probe a single project — combine PR state and dirty observation
 /// into one [`FinalizeProjectResult`] row.
 fn probe_single_project<P: FinalizeProbe>(
@@ -571,14 +613,15 @@ fn probe_single_project<P: FinalizeProbe>(
             let status = classify_pr_state(Some(&pr), expected_branch);
             let detail = match status {
                 FinalizeStatus::BranchPatternMismatch => Some(format!(
-                    "PR #{} headRefName `{}` does not match expected branch `{}`; refusing to finalize",
+                    "PR #{} headRefName `{}` does not match expected branch `{}`; recreate or retarget the PR before finalizing",
                     pr.number, pr.head_ref_name, expected_branch
                 )),
-                FinalizeStatus::Closed => {
-                    Some(format!("PR #{} is CLOSED without merge", pr.number))
-                }
+                FinalizeStatus::Closed => Some(format!(
+                    "PR #{} is CLOSED without merge; reopen or push a replacement and operator-merge before finalizing",
+                    pr.number,
+                )),
                 FinalizeStatus::Unmerged => Some(format!(
-                    "PR #{} is still OPEN; merge it (or run `specify workspace merge`) before finalizing",
+                    "PR #{} is still OPEN; operator-merge it through the forge UI or `gh pr merge`, then re-run `specify change finalize`",
                     pr.number
                 )),
                 _ => None,
@@ -975,6 +1018,28 @@ mod tests {
         assert!(!outcome.finalized);
         assert_eq!(outcome.projects[0].status, FinalizeStatus::Unmerged);
         assert_eq!(outcome.projects[0].pr_number, Some(7));
+        assert!(
+            outcome.projects[0]
+                .detail
+                .as_deref()
+                .is_some_and(|d| d.contains("operator-merge") && d.contains("gh pr merge")),
+            "unmerged diagnostic must tell the operator how to land the PR, got: {:?}",
+            outcome.projects[0].detail,
+        );
+        assert!(
+            !outcome.projects[0].detail.as_deref().unwrap_or("").contains("workspace merge"),
+            "finalize must not point operators at workspace merge automation",
+        );
+        assert!(
+            outcome.message.as_deref().is_some_and(|m| m.contains("operator-merged")),
+            "JSON/text summary message must mention operator-merged PRs, got: {:?}",
+            outcome.message,
+        );
+        let json = serde_json::to_value(&outcome).expect("serialize outcome");
+        assert!(
+            json["message"].as_str().is_some_and(|m| m.contains("operator-merged")),
+            "JSON outcome must carry operator-merge guidance, got: {json}",
+        );
         assert!(outcome.archived.is_none(), "archive must not run when project refuses");
         // Atomicity: plan.yaml must still exist on refusal.
         assert!(plan_path.exists(), "plan.yaml must remain on disk when finalize refuses");
@@ -1067,6 +1132,11 @@ mod tests {
             "branch-pattern-mismatch detail must include the expected branch, got: {:?}",
             outcome.projects[0].detail,
         );
+        assert!(
+            outcome.message.as_deref().is_some_and(|m| m.contains("wrong head branch")),
+            "summary message must include branch mismatch guidance, got: {:?}",
+            outcome.message,
+        );
     }
 
     #[test]
@@ -1142,12 +1212,16 @@ mod tests {
     fn refuses_dirty_workspace_with_clean() {
         let tmp = TempDir::new().expect("tempdir");
         seed_specify_dir(tmp.path());
+        let plan_path = tmp.path().join("plan.yaml");
+        fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
         let workspace_base = tmp.path().join(".specify/workspace");
         let alpha_path = workspace_base.join("alpha");
+        let beta_path = workspace_base.join("beta");
         fs::create_dir_all(&alpha_path).expect("mkdir alpha");
+        fs::create_dir_all(&beta_path).expect("mkdir beta");
 
         let plan = plan_named("foo");
-        let registry = registry_with(&["alpha"]);
+        let registry = registry_with(&["alpha", "beta"]);
         let probe = MockProbe::new()
             .with_view(
                 "specify/foo",
@@ -1159,7 +1233,8 @@ mod tests {
                     url: "u".to_string(),
                 })),
             )
-            .with_dirty(alpha_path.clone(), true);
+            .with_dirty(alpha_path.clone(), true)
+            .with_dirty(beta_path.clone(), false);
         let inputs = FinalizeInputs {
             project_dir: tmp.path(),
             plan: &plan,
@@ -1170,14 +1245,22 @@ mod tests {
         let outcome = run_finalize(inputs, &probe).expect("ok");
         assert!(!outcome.finalized);
         assert_eq!(outcome.projects[0].status, FinalizeStatus::Dirty);
+        assert_eq!(
+            outcome.projects[1].status,
+            FinalizeStatus::Merged,
+            "clean projects may still classify as merged, but any dirty clone blocks the whole run",
+        );
         // With --clean, the diagnostic MUST mention that --clean would drop changes.
         assert!(
             outcome.projects[0].detail.as_deref().is_some_and(|d| d.contains("--clean")),
             "with --clean, diagnostic must warn about dropping changes, got: {:?}",
             outcome.projects[0].detail,
         );
-        // Workspace clone must still exist — refused finalize never cleans.
+        assert!(outcome.cleaned.is_empty(), "refused --clean must report no cleaned clones");
+        assert!(plan_path.exists(), "refused --clean must not archive the plan");
+        // Workspace clones must still exist — any dirty clone refuses before cleaning any clone.
         assert!(alpha_path.exists(), "refused --clean must leave clones alone");
+        assert!(beta_path.exists(), "refused --clean must leave clean clones alone too");
     }
 
     // ---- dry-run --------------------------------------------------------
@@ -1289,6 +1372,63 @@ mod tests {
         assert_eq!(outcome.cleaned, vec!["alpha"], "alpha must be cleaned");
         assert!(!alpha_path.exists(), "workspace clone must be gone");
         assert!(!plan_path.exists(), "plan.yaml must be archived");
+    }
+
+    #[test]
+    fn clean_waits_until_archive_succeeds() {
+        let tmp = TempDir::new().expect("tempdir");
+        seed_specify_dir(tmp.path());
+        let plan_path = tmp.path().join("plan.yaml");
+        fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
+        let archive_root = tmp.path().join(".specify/archive/plans");
+        fs::create_dir_all(&archive_root).expect("mkdir archive");
+        fs::write(
+            archive_root.join(format!("foo-{}.yaml", today_yyyymmdd())),
+            "pre-existing archive\n",
+        )
+        .expect("seed archive collision");
+        let workspace_base = tmp.path().join(".specify/workspace");
+        let alpha_path = workspace_base.join("alpha");
+        fs::create_dir_all(&alpha_path).expect("mkdir alpha");
+        fs::write(alpha_path.join("README.md"), "stub\n").expect("seed clone file");
+
+        let plan = plan_named("foo");
+        let registry = registry_with(&["alpha"]);
+        let probe = MockProbe::new().with_view(
+            "specify/foo",
+            Ok(Some(PrView {
+                state: PrState::Merged,
+                merged: true,
+                head_ref_name: "specify/foo".to_string(),
+                number: 7,
+                url: "u".to_string(),
+            })),
+        );
+        let inputs = FinalizeInputs {
+            project_dir: tmp.path(),
+            plan: &plan,
+            registry: &registry,
+            clean: true,
+            dry_run: false,
+        };
+        let outcome = run_finalize(inputs, &probe).expect("ok");
+        assert!(!outcome.finalized, "archive collision must refuse finalize");
+        assert!(outcome.cleaned.is_empty(), "failed archive must not clean clones");
+        assert!(alpha_path.exists(), "clone must remain when archive fails");
+        assert!(plan_path.exists(), "plan.yaml must remain when archive fails");
+        assert!(
+            outcome.message.as_deref().is_some_and(|m| m.contains("archive failed")),
+            "archive failure should produce a summary message, got: {:?}",
+            outcome.message,
+        );
+        assert!(
+            outcome.projects[0]
+                .detail
+                .as_deref()
+                .is_some_and(|d| d.contains("plan archive failed")),
+            "archive failure detail should be attached to the first project row, got: {:?}",
+            outcome.projects[0].detail,
+        );
     }
 
     #[test]
@@ -1446,5 +1586,9 @@ mod tests {
     /// real on-disk parent to operate on.
     fn seed_specify_dir(project_dir: &Path) {
         fs::create_dir_all(project_dir.join(".specify")).expect("mkdir .specify");
+    }
+
+    fn today_yyyymmdd() -> String {
+        chrono::Utc::now().format("%Y%m%d").to_string()
     }
 }

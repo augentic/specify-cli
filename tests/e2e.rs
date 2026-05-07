@@ -39,6 +39,36 @@ fn specify() -> Command {
     Command::cargo_bin("specify").expect("cargo_bin(specify)")
 }
 
+const GIT_TEST_ENV: [(&str, &str); 4] = [
+    ("GIT_AUTHOR_NAME", "Specify Test"),
+    ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
+    ("GIT_COMMITTER_NAME", "Specify Test"),
+    ("GIT_COMMITTER_EMAIL", "specify-test@example.com"),
+];
+
+fn specify_with_git_identity() -> Command {
+    let mut cmd = specify();
+    cmd.envs(GIT_TEST_ENV);
+    cmd
+}
+
+fn run_git(root: &Path, args: &[&str]) -> String {
+    let output = std::process::Command::new("git")
+        .current_dir(root)
+        .args(args)
+        .envs(GIT_TEST_ENV)
+        .output()
+        .unwrap_or_else(|err| panic!("git {} failed to start: {err}", args.join(" ")));
+    assert!(
+        output.status.success(),
+        "git {} failed\nstdout:\n{}\nstderr:\n{}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("git stdout utf8")
+}
+
 fn copy_dir(src: &Path, dst: &Path) {
     fs::create_dir_all(dst).expect("create_dir_all dst");
     for entry in fs::read_dir(src).expect("read_dir src") {
@@ -323,6 +353,81 @@ fn merge_two_spec_slice_produces_baselines_and_archive() {
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(actual["schema-version"], 2);
     assert_golden("merge-two-spec.json", actual);
+}
+
+#[test]
+fn workspace_merge_auto_commit_excludes_generated_residue() {
+    let tmp = tempdir().expect("tempdir");
+    let project_root = tmp.path().join(".specify/workspace/orders");
+    fs::create_dir_all(&project_root).expect("mkdir workspace project");
+
+    specify()
+        .current_dir(&project_root)
+        .args(["init"])
+        .arg(repo_root().join("schemas").join("omnia"))
+        .args(["--name", "orders"])
+        .assert()
+        .success();
+    copy_dir(&repo_root().join("schemas/omnia"), &project_root.join("schemas/omnia"));
+
+    run_git(&project_root, &["init"]);
+    run_git(&project_root, &["add", "."]);
+    run_git(&project_root, &["commit", "-m", "initial project"]);
+
+    let slice_dir = project_root.join(".specify/slices/my-slice");
+    copy_dir(&e2e_fixtures().join("merge-two-spec-slice"), &slice_dir);
+    fs::create_dir_all(slice_dir.join("contracts/schemas")).expect("mkdir slice contracts");
+    fs::write(slice_dir.join("contracts/schemas/generated.yaml"), "openapi: 3.1\n")
+        .expect("write generated contract");
+
+    let generated_crate = project_root.join("crates/generated/src/lib.rs");
+    fs::create_dir_all(generated_crate.parent().expect("crate parent")).expect("mkdir crate");
+    fs::write(&generated_crate, "pub fn generated() {}\n").expect("write generated crate");
+    run_git(&project_root, &["add", "crates/generated/src/lib.rs"]);
+
+    specify_with_git_identity()
+        .current_dir(&project_root)
+        .args(["--format", "json", "slice", "merge", "run", "my-slice"])
+        .assert()
+        .success();
+
+    let subject = run_git(&project_root, &["log", "-1", "--pretty=%s"]);
+    assert_eq!(subject.trim(), "specify: merge my-slice");
+
+    let committed_paths =
+        run_git(&project_root, &["show", "--name-only", "--pretty=format:", "HEAD"]);
+    let committed_paths: Vec<&str> =
+        committed_paths.lines().filter(|line| !line.is_empty()).collect();
+    assert!(
+        committed_paths.iter().any(|path| path.starts_with(".specify/specs/")),
+        "merge commit must include spec baselines, got {committed_paths:?}"
+    );
+    assert!(
+        committed_paths.iter().any(|path| path.starts_with(".specify/archive/")),
+        "merge commit must include archived slice, got {committed_paths:?}"
+    );
+    assert!(
+        committed_paths.iter().all(
+            |path| path.starts_with(".specify/specs/") || path.starts_with(".specify/archive/")
+        ),
+        "merge commit must not include generated residue, got {committed_paths:?}"
+    );
+
+    let status = run_git(&project_root, &["status", "--porcelain"]);
+    assert!(
+        status.contains("A  crates/generated/src/lib.rs"),
+        "pre-staged generated crate must remain staged for execute residue commit, got:\n{status}"
+    );
+    assert!(
+        status.contains("?? contracts/"),
+        "opaque generated contracts must remain uncommitted, got:\n{status}"
+    );
+    assert!(
+        !status
+            .lines()
+            .any(|line| { line.contains(".specify/specs/") || line.contains(".specify/archive/") }),
+        "baseline-owned paths should be clean after merge auto-commit, got:\n{status}"
+    );
 }
 
 // ---------------------------------------------------------------------------

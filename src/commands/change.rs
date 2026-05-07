@@ -339,6 +339,9 @@ fn print_outcome_text(outcome: &FinalizeOutcome) {
     } else {
         let reason = blocked_reason(&outcome.summary);
         println!("Change `{}` blocked: {reason}.", outcome.initiative);
+        if let Some(message) = &outcome.message {
+            println!("{message}");
+        }
     }
 }
 
@@ -362,7 +365,7 @@ fn print_summary_line(s: &FinalizeSummaryCounts) {
 fn blocked_reason(s: &FinalizeSummaryCounts) -> String {
     let mut reasons: Vec<String> = Vec::new();
     if s.unmerged > 0 {
-        reasons.push(format!("{} unmerged PR(s)", s.unmerged));
+        reasons.push(format!("{} unmerged PR(s) awaiting operator merge", s.unmerged));
     }
     if s.closed > 0 {
         reasons.push(format!("{} closed PR(s)", s.closed));
@@ -389,6 +392,8 @@ fn blocked_reason(s: &FinalizeSummaryCounts) -> String {
 mod tests {
     use specify_change::FinalizeStatus;
 
+    use super::*;
+
     #[test]
     fn passing_statuses_only_merged_and_no_branch() {
         for s in [FinalizeStatus::Merged, FinalizeStatus::NoBranch] {
@@ -403,5 +408,18 @@ mod tests {
         ] {
             assert!(!s.is_passing(), "{s} must refuse");
         }
+    }
+
+    #[test]
+    fn blocked_reason_points_unmerged_prs_at_operator_merge() {
+        let summary = FinalizeSummaryCounts {
+            unmerged: 2,
+            ..FinalizeSummaryCounts::default()
+        };
+        let reason = blocked_reason(&summary);
+        assert!(
+            reason.contains("operator merge"),
+            "unmerged blocked reason must mention operator merge, got: {reason}",
+        );
     }
 }

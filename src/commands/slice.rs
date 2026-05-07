@@ -21,6 +21,8 @@ use crate::cli::{
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
+const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/archive"];
+
 /// Synthesise the omnia-default [`ArtifactClass`] slice for one
 /// slice directory.
 ///
@@ -913,6 +915,83 @@ fn is_workspace_clone(project_dir: &Path) -> bool {
     has_project_yaml && !has_plan_yaml
 }
 
+fn workspace_merge_pathspecs(project_dir: &Path) -> Vec<&'static str> {
+    WORKSPACE_MERGE_COMMIT_PATHS
+        .iter()
+        .copied()
+        .filter(|path| project_dir.join(path).exists())
+        .collect()
+}
+
+fn print_git_warning(action: &str, output: &std::process::Output) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    eprintln!("warning: workspace auto-commit {action} failed (non-zero exit): {stderr}");
+}
+
+fn workspace_auto_commit_merge_baseline(project_dir: &Path, name: &str) {
+    let pathspecs = workspace_merge_pathspecs(project_dir);
+    if pathspecs.is_empty() {
+        return;
+    }
+
+    let git_add = std::process::Command::new("git")
+        .arg("-C")
+        .arg(project_dir)
+        .args(["add", "--"])
+        .args(pathspecs.iter().copied())
+        .output();
+
+    match git_add {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => {
+            print_git_warning("git-add", &output);
+            return;
+        }
+        Err(err) => {
+            eprintln!("warning: workspace auto-commit git-add failed: {err}");
+            return;
+        }
+    }
+
+    let git_diff = std::process::Command::new("git")
+        .arg("-C")
+        .arg(project_dir)
+        .args(["diff", "--cached", "--quiet", "--"])
+        .args(pathspecs.iter().copied())
+        .status();
+
+    match git_diff {
+        Ok(status) if status.success() => return,
+        Ok(status) if status.code() == Some(1) => {}
+        Ok(status) => {
+            eprintln!("warning: workspace auto-commit diff check failed with status {status}");
+            return;
+        }
+        Err(err) => {
+            eprintln!("warning: workspace auto-commit diff check failed: {err}");
+            return;
+        }
+    }
+
+    let commit_msg = format!("specify: merge {name}");
+    let git_commit = std::process::Command::new("git")
+        .arg("-C")
+        .arg(project_dir)
+        .args(["commit", "-m", &commit_msg, "--"])
+        .args(pathspecs.iter().copied())
+        .output();
+
+    match git_commit {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => {
+            print_git_warning("commit", &output);
+        }
+        Err(err) => {
+            eprintln!("warning: workspace auto-commit commit failed: {err}");
+        }
+    }
+}
+
 fn run_slice_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
@@ -920,52 +999,11 @@ fn run_slice_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, 
 
     let merged = merge_slice(&slice_dir, &classes, &archive_dir)?;
 
-    // RFC-3b: auto-commit merged baselines when running inside a
-    // workspace clone. Loop through every artefact class so the
-    // workspace push picks up each baseline_dir uniformly — the
-    // engine never branches on class name.
+    // RFC-14 C05: the merge-owned workspace commit is limited to the
+    // baseline spec tree and archived slice. Opaque/generated outputs
+    // remain as residue for the execute driver.
     if is_workspace_clone(&ctx.project_dir) {
-        let archive_path_for_git = ctx.archive_dir();
-
-        let mut git_add_cmd = std::process::Command::new("git");
-        git_add_cmd.arg("-C").arg(&ctx.project_dir).args(["add"]);
-        for class in &classes {
-            if class.baseline_dir.exists() {
-                git_add_cmd.arg(&class.baseline_dir);
-            }
-        }
-        let git_add = git_add_cmd.arg(&archive_path_for_git).output();
-
-        match git_add {
-            Ok(output) if output.status.success() => {
-                let commit_msg = format!("specify: merge {name}");
-                let git_commit = std::process::Command::new("git")
-                    .arg("-C")
-                    .arg(&ctx.project_dir)
-                    .args(["commit", "-m", &commit_msg])
-                    .output();
-
-                match git_commit {
-                    Ok(output) if output.status.success() => {}
-                    Ok(output) => {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        eprintln!(
-                            "warning: workspace auto-commit failed (non-zero exit): {stderr}"
-                        );
-                    }
-                    Err(err) => {
-                        eprintln!("warning: workspace auto-commit failed: {err}");
-                    }
-                }
-            }
-            Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                eprintln!("warning: workspace git-add failed (non-zero exit): {stderr}");
-            }
-            Err(err) => {
-                eprintln!("warning: workspace git-add failed: {err}");
-            }
-        }
+        workspace_auto_commit_merge_baseline(&ctx.project_dir, &name);
     }
 
     let today = Utc::now().format("%Y-%m-%d").to_string();
