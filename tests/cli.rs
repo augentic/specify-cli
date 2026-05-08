@@ -58,6 +58,38 @@ fn help_exits_zero_and_prints_usage() {
 }
 
 #[test]
+fn context_help_surfaces_generate_and_check() {
+    let top = specify().arg("--help").assert().success();
+    let top_stdout = String::from_utf8(top.get_output().stdout.clone()).expect("utf8 stdout");
+    assert!(
+        top_stdout.contains("context"),
+        "top-level --help must list `context`, got:\n{top_stdout}"
+    );
+
+    let context = specify().args(["context", "--help"]).assert().success();
+    let context_stdout =
+        String::from_utf8(context.get_output().stdout.clone()).expect("utf8 stdout");
+    for verb in ["generate", "check"] {
+        assert!(
+            context_stdout.contains(verb),
+            "context --help must list `{verb}`, got:\n{context_stdout}"
+        );
+    }
+
+    let generate = specify().args(["context", "generate", "--help"]).assert().success();
+    let generate_stdout =
+        String::from_utf8(generate.get_output().stdout.clone()).expect("utf8 stdout");
+    for flag in ["--check", "--force"] {
+        assert!(
+            generate_stdout.contains(flag),
+            "context generate --help must document `{flag}`, got:\n{generate_stdout}"
+        );
+    }
+
+    specify().args(["context", "check", "--help"]).assert().success();
+}
+
+#[test]
 fn init_text_format_succeeds() {
     let tmp = tempdir().unwrap();
     let assert = specify()

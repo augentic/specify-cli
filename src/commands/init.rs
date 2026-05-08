@@ -3,12 +3,17 @@
     reason = "Clap dispatch hands owned subcommand values to command handlers."
 )]
 
-use std::path::PathBuf;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use specify::{Error, InitOptions, InitResult, VersionMode, init};
+use specify::{
+    Error, InitOptions, InitResult, ProjectConfig, VersionMode, init, is_workspace_clone_path,
+};
 
 use crate::cli::OutputFormat;
+use crate::commands::context;
+use crate::context::CommandContext;
 use crate::output::{CliResult, absolute_string, emit_response};
 
 /// Dispatcher for `specify init`.
@@ -44,7 +49,9 @@ pub fn run_init(
     };
 
     let result = init(opts)?;
-    emit_init_result(format, &result, hub)
+    let current_dir = std::env::current_dir().map_err(Error::Io)?;
+    let context_generation = generate_initial_context(format, &current_dir)?;
+    emit_init_result(format, &result, hub, context_generation)
 }
 
 #[derive(Serialize)]
@@ -65,10 +72,32 @@ struct InitBody {
     /// from regular initialisations without parsing the capability
     /// name.
     hub: bool,
+    #[serde(flatten)]
+    context: InitContextBody,
+}
+
+#[derive(Serialize)]
+struct InitContextBody {
+    #[serde(rename = "context-generated")]
+    generated: bool,
+    #[serde(rename = "context-skipped")]
+    skipped: bool,
+    #[serde(rename = "context-skip-reason", skip_serializing_if = "Option::is_none")]
+    skip_reason: Option<&'static str>,
+}
+
+impl InitContextBody {
+    const fn from_generation(context_generation: InitContextGeneration) -> Self {
+        Self {
+            generated: context_generation.generated(),
+            skipped: context_generation.skipped(),
+            skip_reason: context_generation.skip_reason(),
+        }
+    }
 }
 
 fn emit_init_result(
-    format: OutputFormat, result: &InitResult, hub: bool,
+    format: OutputFormat, result: &InitResult, hub: bool, context_generation: InitContextGeneration,
 ) -> Result<CliResult, Error> {
     match format {
         OutputFormat::Json => {
@@ -84,6 +113,7 @@ fn emit_init_result(
                 scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
                 specify_version: result.specify_version.clone(),
                 hub,
+                context: InitContextBody::from_generation(context_generation),
             })?;
         }
         OutputFormat::Text => {
@@ -107,6 +137,9 @@ fn emit_init_result(
                 );
             }
             println!("  specify_version: {}", result.specify_version);
+            if let Some(note) = context_generation.text_note() {
+                println!("{note}");
+            }
             // RFC-13 chunk 2.9 — init no longer pre-touches
             // platform-component artefacts; the hint points operators
             // at the verb that owns the next step.
@@ -125,4 +158,66 @@ fn emit_init_result(
         }
     }
     Ok(CliResult::Success)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InitContextGeneration {
+    Generated,
+    SkippedExistingAgents,
+    SkippedWorkspaceClone,
+}
+
+impl InitContextGeneration {
+    const fn generated(self) -> bool {
+        matches!(self, Self::Generated)
+    }
+
+    const fn skipped(self) -> bool {
+        matches!(self, Self::SkippedExistingAgents | Self::SkippedWorkspaceClone)
+    }
+
+    const fn skip_reason(self) -> Option<&'static str> {
+        match self {
+            Self::Generated => None,
+            Self::SkippedExistingAgents => Some("existing-agents-md"),
+            Self::SkippedWorkspaceClone => Some("workspace-clone"),
+        }
+    }
+
+    const fn text_note(self) -> Option<&'static str> {
+        match self {
+            Self::Generated | Self::SkippedWorkspaceClone => None,
+            Self::SkippedExistingAgents => {
+                Some("AGENTS.md already present; skipping context generate")
+            }
+        }
+    }
+}
+
+fn generate_initial_context(
+    format: OutputFormat, project_dir: &Path,
+) -> Result<InitContextGeneration, Error> {
+    if is_workspace_clone_path(project_dir) {
+        return Ok(InitContextGeneration::SkippedWorkspaceClone);
+    }
+    match project_dir.join("AGENTS.md").try_exists() {
+        Ok(true) => return Ok(InitContextGeneration::SkippedExistingAgents),
+        Ok(false) => {}
+        Err(err) if err.kind() == ErrorKind::NotFound => {}
+        Err(err) => return Err(Error::Io(err)),
+    }
+
+    let config = ProjectConfig::load(project_dir)?;
+    let ctx = CommandContext {
+        format,
+        project_dir: project_dir.to_path_buf(),
+        config,
+    };
+    let outcome = context::generate_for_init(&ctx)?;
+    debug_assert!(
+        outcome.changed,
+        "init context generation is called only when AGENTS.md is absent"
+    );
+    debug_assert_eq!(outcome.disposition, "create");
+    Ok(InitContextGeneration::Generated)
 }

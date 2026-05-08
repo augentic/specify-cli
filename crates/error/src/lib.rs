@@ -66,6 +66,50 @@ pub enum Error {
     #[error("config error: {0}")]
     Config(String),
 
+    /// `specify context generate` refused to overwrite an existing
+    /// hand-authored `AGENTS.md` that does not contain the managed fences.
+    #[error(
+        "context-existing-unfenced-agents-md: AGENTS.md exists without Specify context fences; \
+         rerun with --force to rewrite it"
+    )]
+    ContextExistingUnfencedAgentsMd,
+
+    /// `specify context generate` refused to replace the managed block
+    /// because the fenced content has diverged from `.specify/context.lock`.
+    #[error(
+        "context-fenced-content-modified: AGENTS.md content inside the Specify context fences \
+         has changed since .specify/context.lock was written; reconcile the edits or rerun \
+         with --force to replace the generated block"
+    )]
+    ContextFencedContentModified,
+
+    /// `.specify/context.lock` is absent for a context check.
+    #[error("context-lock-missing: .specify/context.lock is missing")]
+    ContextLockMissing,
+
+    /// `AGENTS.md` is absent for a context check.
+    #[error("context-not-generated: AGENTS.md is missing")]
+    ContextNotGenerated,
+
+    /// `.specify/context.lock` declares a version newer than this CLI supports.
+    #[error(
+        "context-lock-version-too-new: lock version {found} is newer than supported version \
+         {supported}"
+    )]
+    ContextLockVersionTooNew {
+        /// Version declared by the lock file.
+        found: u64,
+        /// Highest lock-file version supported by this CLI.
+        supported: u64,
+    },
+
+    /// `.specify/context.lock` exists but is not a well-formed current lock.
+    #[error("context-lock-malformed: {detail}")]
+    ContextLockMalformed {
+        /// Human-readable malformed-lock detail.
+        detail: String,
+    },
+
     /// Validation failed with one or more findings.
     #[error("validation failed: {count} errors")]
     Validation {
@@ -334,6 +378,12 @@ impl Error {
             Self::NotInitialized => "not-initialized",
             Self::SchemaResolution(_) => "schema-resolution",
             Self::Config(_) => "config",
+            Self::ContextExistingUnfencedAgentsMd => "context-existing-unfenced-agents-md",
+            Self::ContextFencedContentModified => "context-fenced-content-modified",
+            Self::ContextLockMissing => "context-lock-missing",
+            Self::ContextNotGenerated => "context-not-generated",
+            Self::ContextLockVersionTooNew { .. } => "context-lock-version-too-new",
+            Self::ContextLockMalformed { .. } => "context-lock-malformed",
             Self::Validation { .. } => "validation",
             Self::Merge(_) => "merge",
             Self::Lifecycle { .. } => "lifecycle",
@@ -496,6 +546,37 @@ mod tests {
     fn invalid_name_display() {
         let err = Error::InvalidName("bad--name".to_string());
         assert_eq!(err.to_string(), "invalid name: bad--name");
+    }
+
+    #[test]
+    fn context_diagnostic_variant_strings_are_stable() {
+        let cases = [
+            (Error::ContextExistingUnfencedAgentsMd, "context-existing-unfenced-agents-md"),
+            (Error::ContextFencedContentModified, "context-fenced-content-modified"),
+            (Error::ContextLockMissing, "context-lock-missing"),
+            (Error::ContextNotGenerated, "context-not-generated"),
+            (
+                Error::ContextLockVersionTooNew {
+                    found: 2,
+                    supported: 1,
+                },
+                "context-lock-version-too-new",
+            ),
+            (
+                Error::ContextLockMalformed {
+                    detail: "missing inputs".to_string(),
+                },
+                "context-lock-malformed",
+            ),
+        ];
+
+        for (err, expected) in cases {
+            assert_eq!(err.variant_str(), expected);
+            assert!(
+                err.to_string().starts_with(expected),
+                "context diagnostic display must start with `{expected}`, got: {err}"
+            );
+        }
     }
 
     #[test]
