@@ -247,6 +247,23 @@ pub fn detect_legacy_layout(project_dir: &Path) -> Vec<String> {
         .collect()
 }
 
+/// Detect whether `project_dir` lives below `.specify/workspace/<peer>/`.
+///
+/// This is a path-ancestry predicate only. RM-02 context generation uses
+/// the shared posture to skip init-time `AGENTS.md` creation in workspace
+/// clones and to refuse standalone generation there; callers that need a
+/// fully initialized clone can layer `.specify/project.yaml` or plan-file
+/// guards on top.
+#[must_use]
+pub fn is_workspace_clone_path(project_dir: &Path) -> bool {
+    let components: Vec<_> = project_dir.components().collect();
+    components.windows(3).any(|w| {
+        w[0].as_os_str() == ".specify"
+            && w[1].as_os_str() == "workspace"
+            && !w[2].as_os_str().is_empty()
+    })
+}
+
 /// Returns `true` when `current < required` under semver ordering.
 /// Unparseable versions are treated as "not older" — we don't want a
 /// typo in a human-edited `project.yaml` to brick the project.
@@ -528,5 +545,24 @@ mod tests {
         fs::create_dir_all(tmp.path().join("contracts").join("schemas")).unwrap();
 
         assert!(detect_legacy_layout(tmp.path()).is_empty(), "v2 layout must not trigger");
+    }
+
+    #[test]
+    fn workspace_clone_path_detects_literal_workspace_slot() {
+        let path = Path::new("/repo/.specify/workspace/orders");
+        assert!(is_workspace_clone_path(path));
+    }
+
+    #[test]
+    fn workspace_clone_path_detects_nested_directory_inside_slot() {
+        let path = Path::new("/repo/.specify/workspace/orders/src/service");
+        assert!(is_workspace_clone_path(path));
+    }
+
+    #[test]
+    fn workspace_clone_path_rejects_non_workspace_paths() {
+        assert!(!is_workspace_clone_path(Path::new("/repo")));
+        assert!(!is_workspace_clone_path(Path::new("/repo/.specify")));
+        assert!(!is_workspace_clone_path(Path::new("/repo/.specify/workspace")));
     }
 }

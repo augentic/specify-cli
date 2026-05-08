@@ -62,6 +62,12 @@ pub enum Commands {
     /// Project dashboard — registry summary, plan progress, active changes
     Status,
 
+    /// Refresh AGENTS.md and check whether generated context is current.
+    Context {
+        #[command(subcommand)]
+        action: ContextAction,
+    },
+
     /// Capability operations
     Capability {
         #[command(subcommand)]
@@ -143,6 +149,22 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+}
+
+/// Refreshable repository context for agent-facing guidance.
+#[derive(Subcommand)]
+pub enum ContextAction {
+    /// Generate or refresh the managed `AGENTS.md` context block.
+    Generate {
+        /// Exit non-zero if AGENTS.md or the context lock would change; do not write.
+        #[arg(long)]
+        check: bool,
+        /// Rewrite managed context despite unfenced or edited generated content.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Check whether `AGENTS.md` matches current repository inputs.
+    Check,
 }
 
 /// Operator-facing **change** verbs (RFC-13 §"What becomes a capability").

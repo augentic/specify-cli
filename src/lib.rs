@@ -9,7 +9,7 @@
 //! See also: the `specify` binary (`src/main.rs`) and domain crates under
 //! `crates/` for the underlying logic.
 
-pub use config::{ProjectConfig, detect_legacy_layout};
+pub use config::{ProjectConfig, detect_legacy_layout, is_workspace_clone_path};
 pub use init::{InitOptions, InitResult, VersionMode, init};
 pub use specify_capability::{
     Brief, BriefFrontmatter, CAPABILITY_FILENAME, CHANGE_BRIEF_FILENAME, CacheMeta, Capability,

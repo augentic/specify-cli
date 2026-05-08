@@ -14,8 +14,9 @@ use specify::{
     ArtifactClass, BaselineConflict, Brief, CreateIfExists, CreateOutcome, EntryKind, Error,
     Journal, JournalEntry, LifecycleStatus, MergeEntry, MergeOperation, MergeStrategy,
     OpaqueAction, OpaquePreviewEntry, Outcome, Phase, PipelineView, ProjectConfig, Rfc3339Stamp,
-    SliceMetadata, SpecType, Task, TouchedSpec, conflict_check, format_rfc3339, mark_complete,
-    merge_slice, parse_tasks, preview_slice, serialize_report, slice_actions, validate_slice,
+    SliceMetadata, SpecType, Task, TouchedSpec, conflict_check, format_rfc3339,
+    is_workspace_clone_path, mark_complete, merge_slice, parse_tasks, preview_slice,
+    serialize_report, slice_actions, validate_slice,
 };
 
 use crate::cli::{
@@ -920,13 +921,7 @@ fn format_result_line(r: &specify::ValidationResult) -> String {
 /// sufficient on its own because `plan.yaml` may be absent after
 /// `specify change plan archive`.
 fn is_workspace_clone(project_dir: &Path) -> bool {
-    let components: Vec<_> = project_dir.components().collect();
-    let in_workspace = components.windows(3).any(|w| {
-        w[0].as_os_str() == ".specify"
-            && w[1].as_os_str() == "workspace"
-            && !w[2].as_os_str().is_empty()
-    });
-    if !in_workspace {
+    if !is_workspace_clone_path(project_dir) {
         return false;
     }
     let has_project_yaml = project_dir.join(".specify").join("project.yaml").exists();

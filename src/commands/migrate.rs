@@ -60,12 +60,12 @@
 //! migration is purely the noun cut-over from initiative to change.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::Serialize;
 use specify::{
     CHANGE_BRIEF_FILENAME, ChangeBrief, Error, LEGACY_CHANGE_BRIEF_FILENAME, ProjectConfig,
-    SLICES_DIR_NAME, SliceMetadata,
+    SLICES_DIR_NAME, SliceMetadata, is_workspace_clone_path,
 };
 
 use crate::cli::OutputFormat;
@@ -170,7 +170,7 @@ struct MigrateBody {
 pub fn run_migrate_v2_layout(
     format: OutputFormat, project_dir: &Path, dry_run: bool,
 ) -> Result<CliResult, Error> {
-    if is_inside_workspace_clone(project_dir) {
+    if is_workspace_clone_path(project_dir) {
         return Err(Error::Config(format!(
             "specify migrate v2-layout: refusing to run inside a workspace clone at {}; \
              migrate the hub repo first, then iterate clones explicitly",
@@ -386,7 +386,7 @@ pub fn run_migrate_slice_layout(
     if !ProjectConfig::config_path(project_dir).is_file() {
         return Err(Error::NotInitialized);
     }
-    if is_inside_workspace_clone(project_dir) {
+    if is_workspace_clone_path(project_dir) {
         return Err(Error::Config(format!(
             "specify migrate slice-layout: refusing to run inside a workspace clone at {}; \
              migrate the hub repo first, then iterate clones explicitly",
@@ -732,7 +732,7 @@ pub fn run_migrate_change_noun(
     if !ProjectConfig::config_path(project_dir).is_file() {
         return Err(Error::NotInitialized);
     }
-    if is_inside_workspace_clone(project_dir) {
+    if is_workspace_clone_path(project_dir) {
         return Err(Error::Config(format!(
             "specify migrate change-noun: refusing to run inside a workspace clone at {}; \
              migrate the hub repo first, then iterate clones explicitly",
@@ -830,23 +830,6 @@ fn print_change_noun_text(body: &ChangeNounBody) {
             );
         }
     }
-}
-
-/// Detect whether `project_dir` sits *inside* a `.specify/workspace/<name>/`
-/// path so the migrator refuses to touch peer clones. Conservative:
-/// only true when the chain `.../foo/.specify/workspace/bar/...`
-/// appears literally in the path components.
-fn is_inside_workspace_clone(project_dir: &Path) -> bool {
-    // Canonicalise best-effort; if the path doesn't exist yet (the CWD
-    // always does in practice), fall back to the input path.
-    let path = fs::canonicalize(project_dir).unwrap_or_else(|_| PathBuf::from(project_dir));
-    let parts: Vec<&std::ffi::OsStr> =
-        path.components().map(std::path::Component::as_os_str).collect();
-    parts.windows(3).any(|w| {
-        w[0] == std::ffi::OsStr::new(".specify")
-            && w[1] == std::ffi::OsStr::new("workspace")
-            && !w[2].is_empty()
-    })
 }
 
 #[cfg(test)]

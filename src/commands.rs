@@ -1,5 +1,6 @@
 mod capability;
 mod change;
+mod context;
 mod init;
 mod migrate;
 mod registry;
@@ -25,6 +26,9 @@ pub fn run(cli: Cli) -> CliResult {
             hub,
         } => run_bare(cli.format, || init::run_init(cli.format, capability, name, domain, hub)),
         Commands::Status => run_with_project(cli.format, status::run_status_dashboard),
+        Commands::Context { action } => {
+            run_with_project(cli.format, |ctx| context::run_context(ctx, action))
+        }
         Commands::Capability { action } => match action {
             CapabilityAction::Resolve {
                 capability_value,

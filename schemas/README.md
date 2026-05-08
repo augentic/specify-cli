@@ -11,6 +11,7 @@ This directory contains JSON Schemas and bundled workflow fixtures used by the `
 | [`plan/plan.schema.json`](plan/plan.schema.json) | Validates `plan.yaml` structure. |
 | [`plan-validate-output/schema.json`](plan-validate-output/schema.json) | Validates `specify plan validate --format json` output. |
 | [`cache-meta.schema.json`](cache-meta.schema.json) | Validates schema cache metadata written under `.specify/.cache`. |
+| [`context-lock.schema.json`](context-lock.schema.json) | Validates `.specify/context.lock`, the sidecar used by `specify context` drift checks. |
 
 ## Bundled workflow schema
 
