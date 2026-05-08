@@ -57,10 +57,10 @@ impl From<&Error> for CliResult {
 ///   every snake-case key that was ever emitted by the CLI (see RFC-2 §2.1
 ///   for the full rename table). Library-derived types were already kebab
 ///   via `#[serde(rename_all = "kebab-case")]`; v2 aligns the hand-built
-///   `json!({...})` blocks in `src/main.rs` and the
+///   response DTOs in the command handlers and the
 ///   `specify-validate::serialize_report` helper with the same rule.
-/// - New read verb `specify change outcome <name>` (added in RFC-2 §1.1 /
-///   L0.A1) shipped under the v2 contract.
+/// - New read verb `specify slice outcome show <name>` (added in RFC-2
+///   §1.1 / L0.A1 and later renamed by RFC-13) shipped under the v2 contract.
 /// - Error variant identifiers surfaced as the `"error"` value in failure
 ///   payloads are kebab-case too. `Error::variant_str()` is the canonical
 ///   source for these stable identifiers.
@@ -96,9 +96,12 @@ impl<T: Serialize> JsonEnvelope<T> {
     }
 }
 
-pub fn emit_response<T: Serialize>(payload: T) {
+pub fn emit_response<T: Serialize>(payload: T) -> Result<(), Error> {
     let envelope = JsonEnvelope::wrap(payload);
-    println!("{}", serde_json::to_string_pretty(&envelope).expect("JSON serialise"));
+    let body = serde_json::to_string_pretty(&envelope)
+        .map_err(|err| Error::Config(format!("failed to serialize JSON response: {err}")))?;
+    println!("{body}");
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -129,21 +132,27 @@ struct ValidationResultResponse {
 
 pub fn emit_json_error(err: &Error, code: CliResult) {
     if let Error::Validation { results, .. } = err {
-        emit_response(ValidationErrorResponse {
+        if let Err(serialise_err) = emit_response(ValidationErrorResponse {
             error: "validation".to_string(),
             message: err.to_string(),
             exit_code: code.code(),
             results: results.iter().map(validation_result_response).collect(),
-        });
+        }) {
+            eprintln!("error: {err}");
+            eprintln!("error: {serialise_err}");
+        }
         return;
     }
 
     let variant = err.variant_str();
-    emit_response(ErrorResponse {
+    if let Err(serialise_err) = emit_response(ErrorResponse {
         error: variant.to_string(),
         message: err.to_string(),
         exit_code: code.code(),
-    });
+    }) {
+        eprintln!("error: {err}");
+        eprintln!("error: {serialise_err}");
+    }
 }
 
 fn validation_result_response(summary: &ValidationSummary) -> ValidationResultResponse {

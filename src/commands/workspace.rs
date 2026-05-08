@@ -1,10 +1,14 @@
-#![allow(clippy::needless_pass_by_value, clippy::option_if_let_else)]
+#![allow(
+    clippy::needless_pass_by_value,
+    clippy::option_if_let_else,
+    reason = "Clap dispatch hands owned subcommand values to these command handlers."
+)]
 
 use std::path::PathBuf;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::Error;
+use specify::{Error, ProjectConfig};
 use specify_change::Plan;
 use specify_registry::Registry;
 use specify_registry::branch::{
@@ -16,7 +20,6 @@ use specify_registry::workspace::{
     sync_registry_workspace_projects, workspace_status_projects,
 };
 
-use super::change::plan::require_file;
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
@@ -43,7 +46,7 @@ pub fn run_workspace_sync(ctx: &CommandContext, projects: Vec<String>) -> Result
                         registry: Value::Null,
                         synced: false,
                         message: "no registry declared at registry.yaml; nothing to sync",
-                    });
+                    })?;
                 }
                 OutputFormat::Text => {
                     println!("no registry declared at registry.yaml; nothing to sync");
@@ -65,7 +68,7 @@ pub fn run_workspace_sync(ctx: &CommandContext, projects: Vec<String>) -> Result
                     emit_response(SyncBody {
                         registry,
                         synced: true,
-                    });
+                    })?;
                 }
                 OutputFormat::Text => println!("workspace sync complete"),
             }
@@ -96,7 +99,7 @@ pub fn run_workspace_status(
                     emit_response(StatusAbsent {
                         registry: Value::Null,
                         slots: Value::Null,
-                    });
+                    })?;
                 }
                 OutputFormat::Text => {
                     println!("no registry declared at registry.yaml");
@@ -115,7 +118,7 @@ pub fn run_workspace_status(
                         slots: Vec<Value>,
                     }
                     let items: Vec<Value> = slots.iter().map(slot_to_json).collect();
-                    emit_response(StatusBody { slots: items });
+                    emit_response(StatusBody { slots: items })?;
                 }
                 OutputFormat::Text => {
                     for slot in &slots {
@@ -149,17 +152,19 @@ pub fn run_workspace_prepare_branch(
 
     match prepare_project_branch(&ctx.project_dir, project, &request) {
         Ok(prepared) => {
-            render_branch_preparation_success(ctx.format, &prepared);
+            render_branch_preparation_success(ctx.format, &prepared)?;
             Ok(CliResult::Success)
         }
         Err(diagnostic) => {
-            render_branch_preparation_failure(ctx.format, &diagnostic);
+            render_branch_preparation_failure(ctx.format, &diagnostic)?;
             Ok(CliResult::GenericFailure)
         }
     }
 }
 
-fn render_branch_preparation_success(format: OutputFormat, prepared: &BranchPreparation) {
+fn render_branch_preparation_success(
+    format: OutputFormat, prepared: &BranchPreparation,
+) -> Result<(), Error> {
     match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
@@ -187,7 +192,7 @@ fn render_branch_preparation_success(format: OutputFormat, prepared: &BranchPrep
                 remote_branch: &prepared.remote_branch,
                 dirty: &prepared.dirty,
                 diagnostics: Vec::new(),
-            });
+            })?;
         }
         OutputFormat::Text => {
             println!(
@@ -203,11 +208,12 @@ fn render_branch_preparation_success(format: OutputFormat, prepared: &BranchPrep
             }
         }
     }
+    Ok(())
 }
 
 fn render_branch_preparation_failure(
     format: OutputFormat, diagnostic: &BranchPreparationDiagnostic,
-) {
+) -> Result<(), Error> {
     match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
@@ -221,7 +227,7 @@ fn render_branch_preparation_failure(
                 error: "branch-preparation-failed",
                 exit_code: CliResult::GenericFailure.code(),
                 diagnostic,
-            });
+            })?;
         }
         OutputFormat::Text => {
             eprintln!("error: {}", diagnostic.message);
@@ -231,6 +237,7 @@ fn render_branch_preparation_failure(
             }
         }
     }
+    Ok(())
 }
 
 const fn kind_label(kind: SlotKind) -> &'static str {
@@ -338,13 +345,14 @@ pub fn run_workspace_push(
     };
     let selected = registry.resolve_project_selectors(&projects)?;
 
-    let plan_path = require_file(&ctx.project_dir).map_err(|_err| {
-        Error::Config(
+    let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
+    if !plan_path.exists() {
+        return Err(Error::Config(
             "No active plan found at plan.yaml. Run 'specify change plan create' \
              to create one, or check whether the plan was already archived."
                 .to_string(),
-        )
-    })?;
+        ));
+    }
     let plan = Plan::load(&plan_path)?;
 
     let results =
@@ -384,7 +392,7 @@ pub fn run_workspace_push(
             emit_response(PushBody {
                 projects: items,
                 dry_run: dry_run.then_some(true),
-            });
+            })?;
         }
         OutputFormat::Text => {
             if dry_run {
@@ -428,7 +436,7 @@ pub fn run_workspace_push(
 
 pub fn run_workspace_merge_removed(
     format: OutputFormat, projects: Vec<String>, dry_run: bool,
-) -> CliResult {
+) -> Result<CliResult, Error> {
     let message = "`specify workspace merge` was removed by RFC-14. \
                    Merge PRs through the forge UI or `gh pr merge`, then run \
                    `specify change finalize`. No pull requests were inspected or merged.";
@@ -456,7 +464,7 @@ pub fn run_workspace_merge_removed(
                 dry_run: dry_run.then_some(true),
                 inspected_pull_requests: false,
                 merged_pull_requests: false,
-            });
+            })?;
         }
         OutputFormat::Text => {
             eprintln!("error: {message}");
@@ -470,5 +478,5 @@ pub fn run_workspace_merge_removed(
             }
         }
     }
-    CliResult::GenericFailure
+    Ok(CliResult::GenericFailure)
 }

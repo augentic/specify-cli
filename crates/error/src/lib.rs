@@ -329,7 +329,7 @@ pub enum Error {
 impl Error {
     /// Kebab-case identifier used in structured CLI error payloads.
     #[must_use]
-    pub fn variant_str(&self) -> &'static str {
+    pub const fn variant_str(&self) -> &'static str {
         match self {
             Self::NotInitialized => "not-initialized",
             Self::SchemaResolution(_) => "schema-resolution",

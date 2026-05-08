@@ -2,7 +2,8 @@
     clippy::items_after_statements,
     clippy::needless_pass_by_value,
     clippy::option_if_let_else,
-    clippy::unnecessary_wraps
+    clippy::unnecessary_wraps,
+    reason = "Command handlers mirror Clap-owned inputs and keep JSON DTOs close to their emission sites."
 )]
 
 use std::fs;
@@ -47,7 +48,7 @@ fn show_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
                     emit_response(RegistryBody {
                         registry: Value::Null,
                         path: registry_path.display().to_string(),
-                    });
+                    })?;
                 }
                 OutputFormat::Text => {
                     println!("no registry declared at registry.yaml");
@@ -67,7 +68,7 @@ fn show_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
                     emit_response(RegistryFullBody {
                         registry,
                         path: registry_path.display().to_string(),
-                    });
+                    })?;
                 }
                 OutputFormat::Text => {
                     print_registry_text(&registry, &registry_path);
@@ -108,7 +109,7 @@ fn validate_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
                     registry: Value::Null,
                     path: registry_path.display().to_string(),
                     ok: true,
-                }),
+                })?,
                 OutputFormat::Text => {
                     println!("no registry declared at registry.yaml");
                 }
@@ -129,7 +130,7 @@ fn validate_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
                     registry,
                     path: registry_path.display().to_string(),
                     ok: true,
-                }),
+                })?,
                 OutputFormat::Text => {
                     if hub_mode {
                         println!("registry.yaml is well-formed in hub mode ({count} project(s))");
@@ -157,7 +158,7 @@ fn validate_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
                     error: err.to_string(),
                     kind: "config",
                     exit_code: CliResult::ValidationFailed.code(),
-                }),
+                })?,
                 OutputFormat::Text => eprintln!("error: {err}"),
             }
             Ok(CliResult::ValidationFailed)
@@ -258,7 +259,7 @@ fn add_to_registry(
                 path: registry_path.display().to_string(),
                 added,
                 ok: true,
-            });
+            })?;
         }
         OutputFormat::Text => {
             println!("Added `{name}` to {}", registry_path.display());
@@ -322,7 +323,7 @@ fn remove_from_registry(ctx: &CommandContext, name: String) -> Result<CliResult,
                 removed: name,
                 warnings,
                 ok: true,
-            });
+            })?;
         }
         OutputFormat::Text => {
             println!("Removed `{name}` from {}", registry_path.display());

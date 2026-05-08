@@ -9,10 +9,10 @@ use crate::output::{CliResult, emit_response};
 pub fn run_plan_lock_acquire(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let acquired = Stamp::acquire(&ctx.project_dir, our_pid)?;
-    Ok(emit_acquired(ctx.format, &acquired))
+    emit_acquired(ctx.format, &acquired)
 }
 
-fn emit_acquired(format: OutputFormat, acquired: &Acquired) -> CliResult {
+fn emit_acquired(format: OutputFormat, acquired: &Acquired) -> Result<CliResult, Error> {
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
     struct AcquiredBody {
@@ -27,7 +27,7 @@ fn emit_acquired(format: OutputFormat, acquired: &Acquired) -> CliResult {
             pid: acquired.pid,
             already_held: acquired.already_held,
             reclaimed_stale_pid: acquired.reclaimed_stale_pid,
-        }),
+        })?,
         OutputFormat::Text => {
             if acquired.already_held {
                 println!("Lock already held by pid {}; re-stamped.", acquired.pid);
@@ -39,16 +39,18 @@ fn emit_acquired(format: OutputFormat, acquired: &Acquired) -> CliResult {
             }
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 pub fn run_plan_lock_release(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let outcome = Stamp::release(&ctx.project_dir, our_pid)?;
-    Ok(emit_released(ctx.format, our_pid, &outcome))
+    emit_released(ctx.format, our_pid, &outcome)
 }
 
-fn emit_released(format: OutputFormat, our_pid: u32, outcome: &PlanLockReleased) -> CliResult {
+fn emit_released(
+    format: OutputFormat, our_pid: u32, outcome: &PlanLockReleased,
+) -> Result<CliResult, Error> {
     match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
@@ -76,7 +78,7 @@ fn emit_released(format: OutputFormat, our_pid: u32, outcome: &PlanLockReleased)
                     our_pid: Some(our_pid),
                 },
             };
-            emit_response(payload);
+            emit_response(payload)?;
         }
         OutputFormat::Text => match outcome {
             PlanLockReleased::Removed { pid } => {
@@ -97,15 +99,15 @@ fn emit_released(format: OutputFormat, our_pid: u32, outcome: &PlanLockReleased)
             }
         },
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 pub fn run_plan_lock_status(ctx: &CommandContext) -> Result<CliResult, Error> {
     let state = Stamp::status(&ctx.project_dir)?;
-    Ok(emit_state(ctx.format, &state))
+    emit_state(ctx.format, &state)
 }
 
-fn emit_state(format: OutputFormat, state: &PlanLockState) -> CliResult {
+fn emit_state(format: OutputFormat, state: &PlanLockState) -> Result<CliResult, Error> {
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
     struct StateBody {
@@ -118,7 +120,7 @@ fn emit_state(format: OutputFormat, state: &PlanLockState) -> CliResult {
             held: state.held,
             pid: state.pid,
             stale: state.stale,
-        }),
+        })?,
         OutputFormat::Text => match state.pid {
             Some(pid) => {
                 let is_stale = state.stale.unwrap_or(false);
@@ -134,5 +136,5 @@ fn emit_state(format: OutputFormat, state: &PlanLockState) -> CliResult {
             },
         },
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }

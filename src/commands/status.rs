@@ -1,4 +1,7 @@
-#![allow(clippy::needless_pass_by_value)]
+#![allow(
+    clippy::needless_pass_by_value,
+    reason = "Clap dispatch hands owned subcommand values to command handlers."
+)]
 
 //! Top-level `specify status` — project dashboard.
 //!
@@ -52,7 +55,7 @@ pub fn run_status_dashboard(ctx: &CommandContext) -> Result<CliResult, Error> {
                 registry: registry_json,
                 plan: plan_json,
                 slices: slices_json,
-            });
+            })?;
         }
         OutputFormat::Text => {
             print_dashboard_text(registry.as_ref(), plan_summary.as_ref(), &entries);

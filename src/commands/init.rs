@@ -1,4 +1,7 @@
-#![allow(clippy::needless_pass_by_value)]
+#![allow(
+    clippy::needless_pass_by_value,
+    reason = "Clap dispatch hands owned subcommand values to command handlers."
+)]
 
 use std::path::PathBuf;
 
@@ -41,7 +44,7 @@ pub fn run_init(
     };
 
     let result = init(opts)?;
-    Ok(emit_init_result(format, &result, hub))
+    emit_init_result(format, &result, hub)
 }
 
 #[derive(Serialize)]
@@ -64,7 +67,9 @@ struct InitBody {
     hub: bool,
 }
 
-fn emit_init_result(format: OutputFormat, result: &InitResult, hub: bool) -> CliResult {
+fn emit_init_result(
+    format: OutputFormat, result: &InitResult, hub: bool,
+) -> Result<CliResult, Error> {
     match format {
         OutputFormat::Json => {
             emit_response(InitBody {
@@ -79,7 +84,7 @@ fn emit_init_result(format: OutputFormat, result: &InitResult, hub: bool) -> Cli
                 scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
                 specify_version: result.specify_version.clone(),
                 hub,
-            });
+            })?;
         }
         OutputFormat::Text => {
             if hub {
@@ -119,5 +124,5 @@ fn emit_init_result(format: OutputFormat, result: &InitResult, hub: bool) -> Cli
             }
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }

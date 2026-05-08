@@ -1,6 +1,11 @@
-#![allow(clippy::items_after_statements, clippy::option_if_let_else, clippy::unnecessary_wraps)]
+#![allow(
+    clippy::items_after_statements,
+    clippy::option_if_let_else,
+    clippy::unnecessary_wraps,
+    reason = "Command handlers keep small JSON DTOs next to their emission sites."
+)]
 
-pub mod plan;
+mod plan;
 
 use std::path::Path;
 
@@ -65,7 +70,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
                     error: "already-exists",
                     path: brief_path.display().to_string(),
                     exit_code: CliResult::GenericFailure.code(),
-                });
+                })?;
             }
             OutputFormat::Text => {
                 eprintln!(
@@ -97,7 +102,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
             ok: true,
             name,
             path: absolute_string(&brief_path),
-        }),
+        })?,
         OutputFormat::Text => {
             println!("Created change brief for {name} at {}", brief_path.display());
         }
@@ -124,7 +129,7 @@ fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
                 OutputFormat::Json => emit_response(BriefAbsent {
                     brief: Value::Null,
                     path: brief_path.display().to_string(),
-                }),
+                })?,
                 OutputFormat::Text => {
                     println!("no change brief declared at {}", brief_path.display());
                 }
@@ -151,7 +156,7 @@ fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
                         body: brief.body,
                     },
                     path: brief_path.display().to_string(),
-                }),
+                })?,
                 OutputFormat::Text => print_change_brief_text(&brief, &brief_path),
             }
             Ok(CliResult::Success)
@@ -193,7 +198,7 @@ fn finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResul
     let plan = match plan_or_refusal {
         Ok(plan) => plan,
         Err(FinalizeError::PlanNotFound) => {
-            return Ok(emit_plan_not_found(ctx.format));
+            return emit_plan_not_found(ctx.format);
         }
         Err(FinalizeError::NonTerminalEntries(_)) => {
             unreachable!("load_plan_or_refuse only emits PlanNotFound");
@@ -219,11 +224,11 @@ fn finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResul
 
     match run_finalize(inputs, &probe) {
         Ok(outcome) => {
-            emit_outcome(ctx.format, &outcome);
+            emit_outcome(ctx.format, &outcome)?;
             Ok(if outcome.finalized { CliResult::Success } else { CliResult::GenericFailure })
         }
         Err(FinalizeError::NonTerminalEntries(entries)) => {
-            Ok(emit_non_terminal(ctx.format, &plan.name, &entries))
+            emit_non_terminal(ctx.format, &plan.name, &entries)
         }
         Err(FinalizeError::PlanNotFound) => {
             unreachable!("PlanNotFound is handled by load_plan_or_refuse")
@@ -231,7 +236,7 @@ fn finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResul
     }
 }
 
-fn emit_plan_not_found(format: OutputFormat) -> CliResult {
+fn emit_plan_not_found(format: OutputFormat) -> Result<CliResult, Error> {
     let msg = "no plan to finalize: plan.yaml is absent. \
                If the change was already finalized, the archive is at \
                .specify/archive/plans/. Otherwise run \
@@ -250,16 +255,18 @@ fn emit_plan_not_found(format: OutputFormat) -> CliResult {
                 error: "plan-not-found",
                 message: msg.to_string(),
                 exit_code: CliResult::GenericFailure.code(),
-            });
+            })?;
         }
         OutputFormat::Text => {
             eprintln!("error: {msg}");
         }
     }
-    CliResult::GenericFailure
+    Ok(CliResult::GenericFailure)
 }
 
-fn emit_non_terminal(format: OutputFormat, change: &str, entries: &[String]) -> CliResult {
+fn emit_non_terminal(
+    format: OutputFormat, change: &str, entries: &[String],
+) -> Result<CliResult, Error> {
     let entry_list = entries.join(", ");
     let msg = format!(
         "non-terminal-entries-present: plan `{change}` has {} entry(ies) not in a terminal \
@@ -284,20 +291,21 @@ fn emit_non_terminal(format: OutputFormat, change: &str, entries: &[String]) -> 
                 entries,
                 message: msg,
                 exit_code: CliResult::GenericFailure.code(),
-            });
+            })?;
         }
         OutputFormat::Text => {
             eprintln!("error: {msg}");
         }
     }
-    CliResult::GenericFailure
+    Ok(CliResult::GenericFailure)
 }
 
-fn emit_outcome(format: OutputFormat, outcome: &FinalizeOutcome) {
+fn emit_outcome(format: OutputFormat, outcome: &FinalizeOutcome) -> Result<(), Error> {
     match format {
-        OutputFormat::Json => emit_response(outcome),
+        OutputFormat::Json => emit_response(outcome)?,
         OutputFormat::Text => print_outcome_text(outcome),
     }
+    Ok(())
 }
 
 fn print_outcome_text(outcome: &FinalizeOutcome) {

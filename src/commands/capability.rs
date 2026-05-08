@@ -1,4 +1,8 @@
-#![allow(clippy::items_after_statements, clippy::needless_pass_by_value)]
+#![allow(
+    clippy::items_after_statements,
+    clippy::needless_pass_by_value,
+    reason = "Clap dispatch hands owned subcommand values to these command handlers."
+)]
 
 //! `specify capability {resolve, check, pipeline}` (RFC-13 Phase 1.2).
 //!
@@ -47,7 +51,7 @@ pub fn run_capability_resolve(
             capability_value,
             resolved_path: path.display().to_string(),
             source: source_label,
-        }),
+        })?,
         OutputFormat::Text => println!("{}", path.display()),
     }
     Ok(CliResult::Success)
@@ -103,7 +107,7 @@ pub fn run_capability_pipeline(
                 phase: phase.to_string(),
                 slice: slice.as_ref().map(|p| p.display().to_string()),
                 briefs,
-            });
+            })?;
         }
         OutputFormat::Text => {
             println!("phase: {phase}");
@@ -160,7 +164,7 @@ pub fn run_capability_check(
             emit_response(CheckBody {
                 passed,
                 results: results_json,
-            });
+            })?;
         }
         OutputFormat::Text => {
             if passed {

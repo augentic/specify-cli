@@ -246,7 +246,7 @@ pub fn run_migrate_v2_layout(
     };
 
     match format {
-        OutputFormat::Json => emit_response(&body),
+        OutputFormat::Json => emit_response(&body)?,
         OutputFormat::Text => print_text(&body),
     }
 
@@ -456,7 +456,7 @@ pub fn run_migrate_slice_layout(
     };
 
     match format {
-        OutputFormat::Json => emit_response(&body),
+        OutputFormat::Json => emit_response(&body)?,
         OutputFormat::Text => print_slice_layout_text(&body),
     }
     Ok(CliResult::Success)
@@ -792,7 +792,7 @@ pub fn run_migrate_change_noun(
     };
 
     match format {
-        OutputFormat::Json => emit_response(&body),
+        OutputFormat::Json => emit_response(&body)?,
         OutputFormat::Text => print_change_noun_text(&body),
     }
     Ok(CliResult::Success)

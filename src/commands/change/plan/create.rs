@@ -1,4 +1,8 @@
-#![allow(clippy::items_after_statements, clippy::too_many_arguments)]
+#![allow(
+    clippy::items_after_statements,
+    clippy::too_many_arguments,
+    reason = "Command handlers mirror the Clap option set for each subcommand."
+)]
 
 use serde::Serialize;
 use serde_json::Value;
@@ -50,7 +54,7 @@ pub fn run_plan_add(
             plan: plan_ref(&plan, &plan_path),
             action: "create",
             entry: change_entry_json(created),
-        }),
+        })?,
         OutputFormat::Text => {
             println!("Created plan entry '{name}' with status 'pending'.");
         }
@@ -104,7 +108,7 @@ pub fn run_plan_amend(
             plan: plan_ref(&plan, &plan_path),
             action: "amend",
             entry: change_entry_json(amended),
-        }),
+        })?,
         OutputFormat::Text => {
             println!("Amended plan entry '{name}'.");
         }

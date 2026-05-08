@@ -73,7 +73,7 @@ pub fn run_plan_doctor(ctx: &CommandContext) -> Result<CliResult, Error> {
                 plan: plan_ref(&plan, &plan_path),
                 diagnostics: rows,
                 ok: !has_errors,
-            });
+            })?;
         }
         OutputFormat::Text => render_text(&diagnostics),
     }

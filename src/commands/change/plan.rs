@@ -1,4 +1,8 @@
-#![allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
+#![allow(
+    clippy::needless_pass_by_value,
+    clippy::too_many_arguments,
+    reason = "Clap dispatch hands owned subcommand values to these command handlers."
+)]
 
 mod create;
 mod doctor;
@@ -100,17 +104,17 @@ pub(super) const fn level_label(level: &Severity) -> &'static str {
 /// Emit the stable "go run `specify change plan validate`" pointer when
 /// `change plan next` or `change plan status` is asked to operate on a
 /// structurally broken plan.
-pub(super) fn emit_structural_error(format: OutputFormat) -> CliResult {
+pub(super) fn emit_structural_error(format: OutputFormat) -> Result<CliResult, Error> {
     let msg = "plan has structural errors; run 'specify change plan validate' for detail";
     match format {
         OutputFormat::Json => emit_response(crate::output::ErrorResponse {
             error: "validation".to_string(),
             message: msg.to_string(),
             exit_code: CliResult::ValidationFailed.code(),
-        }),
+        })?,
         OutputFormat::Text => eprintln!("error: {msg}"),
     }
-    CliResult::ValidationFailed
+    Ok(CliResult::ValidationFailed)
 }
 
 pub(super) fn load_for_write(ctx: &CommandContext) -> Result<(PathBuf, Plan), Error> {

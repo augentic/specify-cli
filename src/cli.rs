@@ -50,8 +50,7 @@ pub enum Commands {
         /// instead of a regular project: writes `registry.yaml` at
         /// the repo root and `project.yaml { hub: true }` (with
         /// `capability:` omitted — RFC-13 §Migration "Hub project
-        /// shape") under `.specify/`. The change brief
-        /// (`initiative.md` on disk; rename ships in a later chunk)
+        /// shape") under `.specify/`. The change brief (`change.md`)
         /// and `plan.yaml` stay operator-managed (use
         /// `specify change create` / `specify change plan create`).
         /// Refuses to run when `.specify/` already exists. Mutually
@@ -88,8 +87,7 @@ pub enum Commands {
     ///
     /// The umbrella verb family for an operator-defined outcome that
     /// coordinates one or more slices (RFC-13 §"What becomes a
-    /// capability"). Owns the change brief at `initiative.md` (the
-    /// on-disk filename migrates in a later chunk) and the
+    /// capability"). Owns the change brief at `change.md` and the
     /// `plan.yaml` that drives multi-slice execution.
     Change {
         #[command(subcommand)]
@@ -150,8 +148,7 @@ pub enum Commands {
 /// Operator-facing **change** verbs (RFC-13 §"What becomes a capability").
 ///
 /// `change` is the umbrella orchestration noun: it holds the operator
-/// brief (`initiative.md` on disk — the on-disk filename migrates in a
-/// later chunk) and the executable plan (`plan.yaml` at the repo root)
+/// brief (`change.md` at the repo root) and the executable plan (`plan.yaml`)
 /// that drives one or more slices through `define → build → merge`.
 ///
 /// The `Plan { action }` variant nests every plan-authoring sub-verb
@@ -160,7 +157,7 @@ pub enum Commands {
 /// transition,archive,validate,create}, finalize}`.
 #[derive(Subcommand)]
 pub enum ChangeAction {
-    /// Scaffold the change brief (`initiative.md` at the repo root)
+    /// Scaffold the change brief (`change.md` at the repo root)
     /// from the canonical template.
     ///
     /// Refuses to overwrite an existing file — mirrors the

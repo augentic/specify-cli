@@ -106,7 +106,7 @@ fn archive_dir(project_dir: &Path) -> PathBuf {
 // Public types
 // ---------------------------------------------------------------------------
 
-/// Per-project classification for `specify initiative finalize`.
+/// Per-project classification for `specify change finalize`.
 ///
 /// Display strings are kebab-case and match the JSON `status` value.
 /// Skill authors and operators rely on this vocabulary; treat it as a
