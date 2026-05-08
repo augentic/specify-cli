@@ -7,12 +7,11 @@
 
 #![cfg(unix)]
 
-use std::env;
 use std::ffi::OsString;
-use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
+use std::{env, fs};
 
 use assert_cmd::Command;
 use serde_json::Value;
