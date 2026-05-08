@@ -47,6 +47,8 @@ All driven by `cargo make` (see `Makefile.toml`). The bare `Makefile` is a one-l
 - `cargo make tools-test-fixtures` — rebuild WASI fixture components used by `tests/tool.rs`.
 - `cargo make contract-validator-wasm` / `vectis-validate-wasm` / `vectis-scaffold-wasm` / `vectis-wasi-artifacts` — build the WASI tool components for distribution.
 
+Before committing, run the complete local CI suite with `cargo make ci` and fix any failures or warnings it surfaces. Do not rely on narrower substitutes such as `cargo test` or `cargo clippy`; if `cargo make ci` cannot be run, say exactly why and which checks were run instead.
+
 ## Lints
 
 Workspace lints live in `Cargo.toml`. Defaults are aggressive — clippy `all`/`cargo`/`nursery`/`pedantic` are all `warn`, plus a curated set of `restriction` lints (`assertions_on_result_states`, `clone_on_ref_ptr`, `map_err_ignore`, `redundant_type_annotations`, `unused_result_ok`, `if_then_some_else_none`, etc.). Compile under `RUSTFLAGS=-Dwarnings` (`cargo make test` does this), so any new warning fails CI.

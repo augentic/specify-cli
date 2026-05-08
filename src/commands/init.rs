@@ -72,10 +72,28 @@ struct InitBody {
     /// from regular initialisations without parsing the capability
     /// name.
     hub: bool,
-    context_generated: bool,
-    context_skipped: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    context_skip_reason: Option<&'static str>,
+    #[serde(flatten)]
+    context: InitContextBody,
+}
+
+#[derive(Serialize)]
+struct InitContextBody {
+    #[serde(rename = "context-generated")]
+    generated: bool,
+    #[serde(rename = "context-skipped")]
+    skipped: bool,
+    #[serde(rename = "context-skip-reason", skip_serializing_if = "Option::is_none")]
+    skip_reason: Option<&'static str>,
+}
+
+impl InitContextBody {
+    const fn from_generation(context_generation: InitContextGeneration) -> Self {
+        Self {
+            generated: context_generation.generated(),
+            skipped: context_generation.skipped(),
+            skip_reason: context_generation.skip_reason(),
+        }
+    }
 }
 
 fn emit_init_result(
@@ -95,9 +113,7 @@ fn emit_init_result(
                 scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
                 specify_version: result.specify_version.clone(),
                 hub,
-                context_generated: context_generation.generated(),
-                context_skipped: context_generation.skipped(),
-                context_skip_reason: context_generation.skip_reason(),
+                context: InitContextBody::from_generation(context_generation),
             })?;
         }
         OutputFormat::Text => {
