@@ -161,10 +161,10 @@ pub struct Entry {
     /// Target registry project (RFC-3b). Required for multi-project registries.
     #[serde(default)]
     pub project: Option<String>,
-    /// Schema identifier for project-less entries (e.g. `contracts@v1`).
+    /// Plan-entry `schema` target for project-less entries (e.g. `contracts@v1`).
     /// Required when `project` is `None`; optional override when `project`
     /// is `Some`. Mutually enriching with `project`: `project` identifies
-    /// the target codebase; `schema` identifies the schema directly.
+    /// the target codebase; `schema` identifies the target directly.
     #[serde(default)]
     pub schema: Option<String>,
     /// Current lifecycle state of this entry.
@@ -914,19 +914,21 @@ fn check_project_in_registry(changes: &[Entry], registry: &Registry) -> Vec<Find
     out
 }
 
-/// RFC-3b: When registry has >1 project, every change must have a `project` field.
+/// RFC-3b: When registry has >1 project, implementation entries must have
+/// a `project` field. Schema-targeted entries run against the coordinator
+/// project and are intentionally project-less.
 fn check_project_required_multi_repo(changes: &[Entry], registry: &Registry) -> Vec<Finding> {
     if registry.projects.len() <= 1 {
         return Vec::new();
     }
     let mut out = Vec::new();
     for entry in changes {
-        if entry.project.is_none() {
+        if entry.project.is_none() && entry.schema.is_none() {
             out.push(Finding {
                 level: Severity::Error,
                 code: "project-missing-multi-repo",
                 message: format!(
-                    "change '{}' has no project; every change must specify a project when the registry declares more than one project",
+                    "change '{}' has no project or schema; multi-repo implementation changes must specify a project",
                     entry.name
                 ),
                 entry: Some(entry.name.clone()),
@@ -2957,7 +2959,7 @@ status: pending
             changes: vec![Entry {
                 name: "a".to_string(),
                 project: None,
-                schema: Some("contracts@v1".into()),
+                schema: None,
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -2987,6 +2989,49 @@ status: pending
         };
         let results = plan.validate(None, Some(&registry));
         assert!(results.iter().any(|r| r.code == "project-missing-multi-repo"));
+    }
+
+    #[test]
+    fn schema_only_entry_valid_multi_repo() {
+        let plan = Plan {
+            name: "test".to_string(),
+            sources: BTreeMap::new(),
+            changes: vec![Entry {
+                name: "contracts".to_string(),
+                project: None,
+                schema: Some("contracts@v1".into()),
+                status: Status::Pending,
+                depends_on: vec![],
+                sources: vec![],
+                context: vec![],
+                description: None,
+                status_reason: None,
+            }],
+        };
+        let registry = Registry {
+            version: 1,
+            projects: vec![
+                RegistryProject {
+                    name: "alpha".to_string(),
+                    url: ".".to_string(),
+                    schema: "omnia@v1".to_string(),
+                    description: Some("Alpha project".to_string()),
+                    contracts: None,
+                },
+                RegistryProject {
+                    name: "beta".to_string(),
+                    url: "git@github.com:org/beta.git".to_string(),
+                    schema: "omnia@v1".to_string(),
+                    description: Some("Beta project".to_string()),
+                    contracts: None,
+                },
+            ],
+        };
+        let results = plan.validate(None, Some(&registry));
+        assert!(
+            !results.iter().any(|r| r.code == "project-missing-multi-repo"),
+            "schema-only coordinator entries must remain valid in multi-repo plans: {results:#?}"
+        );
     }
 
     #[test]

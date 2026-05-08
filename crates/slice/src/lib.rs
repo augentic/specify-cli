@@ -86,7 +86,7 @@ pub struct SliceMetadata {
     /// `outcome.outcome` field.
     #[serde(default = "default_metadata_version")]
     pub version: u32,
-    /// Schema identifier for this slice (e.g. `omnia`).
+    /// Capability identifier stored in this slice's on-disk `schema` field.
     pub schema: String,
     /// Current lifecycle state.
     pub status: LifecycleStatus,
@@ -227,7 +227,7 @@ pub enum Outcome {
         /// or `git+...://`). Same shape rules as
         /// `specify registry add --url`.
         proposed_url: String,
-        /// Schema identifier the proposed project should adopt
+        /// Capability identifier carried by the `proposed-schema` payload field
         /// (e.g. `omnia@v1`).
         proposed_schema: String,
         /// Optional human-readable description of the proposed

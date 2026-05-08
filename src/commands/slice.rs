@@ -1,4 +1,8 @@
-#![allow(clippy::items_after_statements, clippy::needless_pass_by_value)]
+#![allow(
+    clippy::items_after_statements,
+    clippy::needless_pass_by_value,
+    reason = "Clap dispatch hands owned subcommand values to these command handlers."
+)]
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -147,7 +151,7 @@ fn run_slice_create(
 
     let outcome = slice_actions::create(&slices_dir, &name, &schema_value, if_exists, Utc::now())?;
 
-    Ok(emit_slice_create(ctx.format, &outcome))
+    emit_slice_create(ctx.format, &outcome)
 }
 
 #[derive(Serialize)]
@@ -161,7 +165,7 @@ struct CreateBody {
     restarted: bool,
 }
 
-fn emit_slice_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResult {
+fn emit_slice_create(format: OutputFormat, outcome: &CreateOutcome) -> Result<CliResult, Error> {
     match format {
         OutputFormat::Json => emit_response(CreateBody {
             name: outcome.dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
@@ -170,7 +174,7 @@ fn emit_slice_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResult
             schema: outcome.metadata.schema.clone(),
             created: outcome.created,
             restarted: outcome.restarted,
-        }),
+        })?,
         OutputFormat::Text => {
             if outcome.created {
                 println!("Created slice {}", outcome.dir.display());
@@ -184,7 +188,7 @@ fn emit_slice_create(format: OutputFormat, outcome: &CreateOutcome) -> CliResult
             println!("  status: {}", outcome.metadata.status);
         }
     }
-    CliResult::Success
+    Ok(CliResult::Success)
 }
 
 fn run_slice_transition(
@@ -213,7 +217,7 @@ fn run_slice_transition(
             completed_at: metadata.completed_at.clone(),
             merged_at: metadata.merged_at.clone(),
             dropped_at: metadata.dropped_at,
-        }),
+        })?,
         OutputFormat::Text => {
             println!("{name}: status = {}", metadata.status);
         }
@@ -267,7 +271,7 @@ fn run_slice_touched_specs(
                     r#type: t.kind.to_string(),
                 })
                 .collect(),
-        }),
+        })?,
         OutputFormat::Text => {
             if entries.is_empty() {
                 println!("{name}: no touched specs");
@@ -330,7 +334,7 @@ fn run_slice_overlap(ctx: &CommandContext, name: String) -> Result<CliResult, Er
                     other_spec_type: o.theirs.to_string(),
                 })
                 .collect(),
-        }),
+        })?,
         OutputFormat::Text => {
             if overlaps.is_empty() {
                 println!("{name}: no overlapping slices");
@@ -362,7 +366,7 @@ fn run_slice_archive(ctx: &CommandContext, name: String) -> Result<CliResult, Er
         OutputFormat::Json => emit_response(ArchiveResponse {
             name,
             archive_path: target.display().to_string(),
-        }),
+        })?,
         OutputFormat::Text => {
             println!("{name}: archived to {}", target.display());
         }
@@ -392,7 +396,7 @@ fn run_slice_drop(
             status: metadata.status.to_string(),
             archive_path: archive_path.display().to_string(),
             drop_reason: metadata.drop_reason,
-        }),
+        })?,
         OutputFormat::Text => {
             println!("{name}: dropped and archived to {}", archive_path.display());
             if let Some(r) = &metadata.drop_reason {
@@ -458,7 +462,7 @@ fn run_slice_outcome_set(
             phase: phase.to_string(),
             outcome: outcome_str.to_string(),
             at: stamped.at.to_string(),
-        }),
+        })?,
         OutputFormat::Text => {
             println!("Stamped outcome '{outcome_str}' for phase '{phase}' on slice '{name}'.");
         }
@@ -600,7 +604,7 @@ fn run_slice_outcome_show(ctx: &CommandContext, name: String) -> Result<CliResul
     };
 
     match ctx.format {
-        OutputFormat::Json => emit_outcome_show_json(name, &metadata),
+        OutputFormat::Json => emit_outcome_show_json(name, &metadata)?,
         OutputFormat::Text => match &metadata.outcome {
             Some(o) => {
                 println!("{name}: {}/{} — {}", o.phase, o.outcome, o.summary);
@@ -641,7 +645,7 @@ fn run_slice_outcome_show(ctx: &CommandContext, name: String) -> Result<CliResul
 /// `outcome.proposal` object so existing consumers that only read
 /// `.outcome.outcome` (the historical contract `/spec:execute` pins)
 /// keep working unchanged.
-fn emit_outcome_show_json(name: String, metadata: &SliceMetadata) {
+fn emit_outcome_show_json(name: String, metadata: &SliceMetadata) -> Result<(), Error> {
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
     struct OutcomeResponse {
@@ -700,7 +704,8 @@ fn emit_outcome_show_json(name: String, metadata: &SliceMetadata) {
     emit_response(OutcomeResponse {
         name,
         outcome: outcome_detail,
-    });
+    })?;
+    Ok(())
 }
 
 /// Scan `.specify/archive/` for directories whose name ends with
@@ -775,7 +780,7 @@ fn run_slice_journal_append(
             phase: phase.to_string(),
             kind: kind.to_string(),
             timestamp,
-        }),
+        })?,
         OutputFormat::Text => {
             println!("Appended {kind} entry to {name}/journal.yaml.");
         }
@@ -790,16 +795,28 @@ fn run_slice_journal_show(ctx: &CommandContext, name: String) -> Result<CliResul
     }
 
     let journal = Journal::load(&slice_dir)?;
+    journal_show::emit(ctx.format, &name, &journal)?;
+    Ok(CliResult::Success)
+}
+
+mod journal_show {
+    use serde::Serialize;
+    use serde_json::Value;
+    use specify::{Error, Journal, JournalEntry, Rfc3339Stamp};
+
+    use crate::cli::OutputFormat;
+    use crate::output::emit_response;
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct JournalShowBody {
+    struct Body {
         name: String,
-        entries: Vec<JournalEntryRow>,
+        entries: Vec<EntryRow>,
     }
+
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
-    struct JournalEntryRow {
+    struct EntryRow {
         timestamp: Rfc3339Stamp,
         phase: String,
         kind: String,
@@ -807,41 +824,43 @@ fn run_slice_journal_show(ctx: &CommandContext, name: String) -> Result<CliResul
         context: Value,
     }
 
-    match ctx.format {
-        OutputFormat::Json => {
-            let entries: Vec<JournalEntryRow> = journal
-                .entries
-                .iter()
-                .map(|e| JournalEntryRow {
-                    timestamp: e.timestamp.clone(),
-                    phase: e.step.to_string(),
-                    kind: e.r#type.to_string(),
-                    summary: e.summary.clone(),
-                    context: e.context.clone().map_or(Value::Null, Value::from),
-                })
-                .collect();
-            emit_response(JournalShowBody { name, entries });
+    pub(super) fn emit(format: OutputFormat, name: &str, journal: &Journal) -> Result<(), Error> {
+        match format {
+            OutputFormat::Json => emit_response(Body {
+                name: name.to_string(),
+                entries: journal.entries.iter().map(entry_row).collect(),
+            })?,
+            OutputFormat::Text => print_text(name, journal),
         }
-        OutputFormat::Text => {
-            if journal.entries.is_empty() {
-                println!("{name}: no journal entries");
-            } else {
-                println!("{name}:");
-                for entry in &journal.entries {
-                    println!(
-                        "  [{}] {}/{} — {}",
-                        entry.timestamp, entry.step, entry.r#type, entry.summary,
-                    );
-                    if let Some(context) = &entry.context {
-                        for line in context.lines() {
-                            println!("      {line}");
-                        }
-                    }
+        Ok(())
+    }
+
+    fn entry_row(entry: &JournalEntry) -> EntryRow {
+        EntryRow {
+            timestamp: entry.timestamp.clone(),
+            phase: entry.step.to_string(),
+            kind: entry.r#type.to_string(),
+            summary: entry.summary.clone(),
+            context: entry.context.clone().map_or(Value::Null, Value::from),
+        }
+    }
+
+    fn print_text(name: &str, journal: &Journal) {
+        if journal.entries.is_empty() {
+            println!("{name}: no journal entries");
+            return;
+        }
+
+        println!("{name}:");
+        for entry in &journal.entries {
+            println!("  [{}] {}/{} — {}", entry.timestamp, entry.step, entry.r#type, entry.summary);
+            if let Some(context) = &entry.context {
+                for line in context.lines() {
+                    println!("      {line}");
                 }
             }
         }
     }
-    Ok(CliResult::Success)
 }
 
 // ---------------------------------------------------------------------------
@@ -854,7 +873,7 @@ fn run_slice_validate(ctx: &CommandContext, name: String) -> Result<CliResult, E
     let report = validate_slice(&slice_dir, &pipeline)?;
 
     match ctx.format {
-        OutputFormat::Json => emit_response(serialize_report(&report)),
+        OutputFormat::Json => emit_response(serialize_report(&report))?,
         OutputFormat::Text => print_validate_report(&report),
     }
 
@@ -1017,7 +1036,7 @@ fn run_slice_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, 
                 merged_specs: Vec<Value>,
             }
             let specs: Vec<Value> = merged.iter().map(merge_entry_to_json).collect();
-            emit_response(MergeResponse { merged_specs: specs });
+            emit_response(MergeResponse { merged_specs: specs })?;
         }
         OutputFormat::Text => {
             for entry in &merged {
@@ -1061,7 +1080,7 @@ fn run_slice_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResu
                 slice_dir: slice_dir.display().to_string(),
                 specs,
                 contracts,
-            });
+            })?;
         }
         OutputFormat::Text => {
             if specs_entries.is_empty() {
@@ -1107,7 +1126,7 @@ fn run_slice_merge_conflict_check(ctx: &CommandContext, name: String) -> Result<
             emit_response(ConflictCheckResponse {
                 slice_dir: slice_dir.display().to_string(),
                 conflicts: items,
-            });
+            })?;
         }
         OutputFormat::Text => {
             if conflicts.is_empty() {
@@ -1334,7 +1353,7 @@ fn run_slice_task_progress(ctx: &CommandContext, name: String) -> Result<CliResu
                 complete: progress.complete,
                 pending: progress.total.saturating_sub(progress.complete),
                 tasks,
-            });
+            })?;
         }
         OutputFormat::Text => {
             println!("{}/{} tasks complete", progress.complete, progress.total);
@@ -1404,7 +1423,7 @@ fn run_slice_task_mark(
                 marked: task_number,
                 new_content_path: tasks_path.display().to_string(),
                 idempotent,
-            });
+            })?;
         }
         OutputFormat::Text => {
             if idempotent {
@@ -1577,7 +1596,7 @@ fn run_slice_list(ctx: &CommandContext) -> Result<CliResult, Error> {
         entries.push(entry);
     }
 
-    emit_slice_list(ctx.format, &entries);
+    emit_slice_list(ctx.format, &entries)?;
     Ok(CliResult::Success)
 }
 
@@ -1586,11 +1605,11 @@ fn run_slice_status_one(ctx: &CommandContext, name: String) -> Result<CliResult,
     let slice_dir = ctx.slices_dir().join(&name);
     let entry = collect_status(&slice_dir, &name, &pipeline, &ctx.project_dir)?;
 
-    emit_slice_list(ctx.format, std::slice::from_ref(&entry));
+    emit_slice_list(ctx.format, std::slice::from_ref(&entry))?;
     Ok(CliResult::Success)
 }
 
-fn emit_slice_list(format: OutputFormat, entries: &[StatusEntry]) {
+fn emit_slice_list(format: OutputFormat, entries: &[StatusEntry]) -> Result<(), Error> {
     match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
@@ -1599,10 +1618,11 @@ fn emit_slice_list(format: OutputFormat, entries: &[StatusEntry]) {
                 slices: Vec<Value>,
             }
             let slices: Vec<Value> = entries.iter().map(status_entry_to_json).collect();
-            emit_response(StatusResponse { slices });
+            emit_response(StatusResponse { slices })?;
         }
         OutputFormat::Text => print_slice_list_text(entries),
     }
+    Ok(())
 }
 
 fn print_slice_list_text(entries: &[StatusEntry]) {

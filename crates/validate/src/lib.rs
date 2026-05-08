@@ -12,8 +12,8 @@
 //!   (`Structural` or `Semantic`). Semantic rules are always materialised
 //!   as [`ValidationResult::Deferred`]; their `check` function is never
 //!   invoked. A test enforces this by making semantic checkers panic.
-//! - [`serialize_report`] emits the `schema_version: 1` JSON shape from
-//!   RFC-1 §"Output Format".
+//! - [`serialize_report`] emits the kebab-case validation payload that the
+//!   root CLI wraps in its versioned JSON envelope.
 
 use std::collections::BTreeMap;
 use std::path::Path;

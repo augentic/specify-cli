@@ -14,7 +14,7 @@
 //!
 //! - `0` ([`CliResult::Success`]): Success.
 //! - `1` ([`CliResult::GenericFailure`]): Generic failure (I/O, parse,
-//!   unknown).
+//!   tool resolver/runtime, unknown).
 //! - `2` ([`CliResult::ValidationFailed`]): Validation failed —
 //!   `specify validate` returned a report whose `passed` flag is `false`.
 //! - `3` ([`CliResult::VersionTooOld`]): The CLI binary is older than the
@@ -22,7 +22,8 @@
 //!
 //! Error → exit code mapping:
 //! - [`Error::SpecifyVersionTooOld`] → `3`.
-//! - [`Error::Validation`] → `2`.
+//! - [`Error::Validation`], [`Error::ToolPermissionDenied`], and
+//!   [`Error::ToolNotDeclared`] → `2`.
 //! - Any other [`Error`] variant → `1`.
 //! - A successful `Commands::Validate` where `report.passed == false` →
 //!   `2` (even though no `Error` is produced).

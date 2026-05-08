@@ -4,21 +4,19 @@
 //! the RFC-15 host. It renders embedded templates, plans every target file, then
 //! refuses all overwrites before creating directories or writing bytes.
 
-pub mod error;
-pub mod templates;
-pub mod versions;
+mod error;
+mod templates;
+mod versions;
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::{Args as ClapArgs, Parser, Subcommand};
+pub use error::ScaffoldError;
 use serde::Serialize;
-use templates::{
-    Capability, Params, android, core, ios, render, substitute_path, substitute_path_with,
-};
-
-use crate::error::ScaffoldError;
-use crate::versions::Versions;
+pub use templates::Capability;
+use templates::{Params, android, core, ios, render, substitute_path, substitute_path_with};
+pub use versions::Versions;
 
 /// JSON contract version emitted on structured responses.
 pub const JSON_SCHEMA_VERSION: u64 = 2;

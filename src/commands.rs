@@ -1,12 +1,12 @@
-pub mod capability;
-pub mod change;
-pub mod init;
-pub mod migrate;
-pub mod registry;
-pub mod slice;
-pub mod status;
-pub mod tool;
-pub mod workspace;
+mod capability;
+mod change;
+mod init;
+mod migrate;
+mod registry;
+mod slice;
+mod status;
+mod tool;
+mod workspace;
 
 use specify::Error;
 
@@ -81,9 +81,9 @@ pub fn run(cli: Cli) -> CliResult {
             WorkspaceAction::Push { projects, dry_run } => run_with_project(cli.format, |ctx| {
                 workspace::run_workspace_push(ctx, projects, dry_run)
             }),
-            WorkspaceAction::Merge { projects, dry_run } => {
+            WorkspaceAction::Merge { projects, dry_run } => run_bare(cli.format, || {
                 workspace::run_workspace_merge_removed(cli.format, projects, dry_run)
-            }
+            }),
         },
         Commands::Migrate { action } => match action {
             MigrateAction::V2Layout { dry_run } => run_bare(cli.format, || {

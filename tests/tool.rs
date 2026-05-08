@@ -205,6 +205,19 @@ fn tool_list_outside_project_preserves_not_initialized_error() {
 }
 
 #[test]
+fn tool_list_discovers_project_root_from_nested_subdirectory() {
+    let fixtures = ToolFixtures::new();
+    let nested = fixtures.project().join("nested/deeper");
+    fs::create_dir_all(&nested).expect("create nested project dir");
+
+    let value = json_tool_list(&nested, &cache_dir("nested-list"));
+    let tools = value["tools"].as_array().expect("tools array");
+    let names: Vec<&str> = tools.iter().map(|tool| tool["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["echo", "read-only", "read-write"]);
+    assert!(tools.iter().all(|tool| tool["scope-detail"] == "tools-test"));
+}
+
+#[test]
 fn project_scope_fixture_lists_three_hub_project_tools() {
     let fixtures = ToolFixtures::new();
     let value = json_tool_list(&fixtures.project(), &cache_dir("project-list"));
@@ -390,7 +403,7 @@ fn digest_mismatch_fails_before_installing_cache_entry() {
     );
     write_project_manifest(&project, &project_manifest(&entry));
 
-    let value = run_json_failure(&project, &cache, &["tool", "run", "echo"], 2);
+    let value = run_json_failure(&project, &cache, &["tool", "run", "echo"], 1);
     assert_eq!(value["error"], "tool-resolver", "{value}");
     assert!(
         !cache.join("project--tools-test/echo/0.1.0/module.wasm").exists(),
@@ -418,7 +431,7 @@ fn local_path_source_runs_without_file_uri() {
 }
 
 #[test]
-fn https_network_failure_is_typed_and_exits_two() {
+fn https_network_failure_is_typed_and_exits_one() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.project();
     let cache = cache_dir("network-failure");
@@ -428,9 +441,23 @@ fn https_network_failure_is_typed_and_exits_two() {
     let entry = tool_entry("echo", "0.1.0", &url, None, None);
     write_project_manifest(&project, &project_manifest(&entry));
 
-    let value = run_json_failure(&project, &cache, &["tool", "run", "echo"], 2);
+    let value = run_json_failure(&project, &cache, &["tool", "run", "echo"], 1);
     assert_eq!(value["error"], "tool-resolver", "{value}");
     assert!(value["message"].as_str().expect("message").contains(&url), "{value}");
+}
+
+#[test]
+fn invalid_wasm_runtime_failure_is_typed_and_exits_one() {
+    let fixtures = ToolFixtures::new();
+    let project = fixtures.project();
+    let cache = cache_dir("runtime-failure");
+    let invalid_wasm = project.join("not-a-component.wasm");
+    fs::write(&invalid_wasm, b"not a wasm component").expect("write invalid wasm");
+    let entry = tool_entry("echo", "0.1.0", &file_uri(&invalid_wasm), None, None);
+    write_project_manifest(&project, &project_manifest(&entry));
+
+    let value = run_json_failure(&project, &cache, &["tool", "run", "echo"], 1);
+    assert_eq!(value["error"], "tool-runtime", "{value}");
 }
 
 #[test]

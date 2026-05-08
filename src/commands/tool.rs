@@ -1,4 +1,7 @@
-#![allow(clippy::needless_pass_by_value)]
+#![allow(
+    clippy::needless_pass_by_value,
+    reason = "Clap dispatch hands owned subcommand values to these command handlers."
+)]
 
 //! `specify tool {run,list,fetch,show,gc}` (RFC-15 chunk 5).
 
@@ -129,7 +132,7 @@ pub fn run_tool_list(ctx: &CommandContext) -> Result<CliResult, Error> {
         OutputFormat::Json => emit_response(ListBody {
             tools: rows,
             warnings: inventory.warnings,
-        }),
+        })?,
         OutputFormat::Text => {
             print_tool_rows(&rows);
             emit_warnings_to_stderr(&inventory.warnings);
@@ -156,7 +159,7 @@ pub fn run_tool_fetch(ctx: &CommandContext, name: Option<String>) -> Result<CliR
         OutputFormat::Json => emit_response(FetchBody {
             tools: rows,
             warnings: inventory.warnings,
-        }),
+        })?,
         OutputFormat::Text => {
             if rows.is_empty() {
                 println!("No declared tools to fetch.");
@@ -188,7 +191,7 @@ pub fn run_tool_show(ctx: &CommandContext, name: String) -> Result<CliResult, Er
         OutputFormat::Json => emit_response(ShowBody {
             tool: row,
             warnings: inventory.warnings,
-        }),
+        })?,
         OutputFormat::Text => {
             print_show_row(&row);
             emit_warnings_to_stderr(&inventory.warnings);
@@ -221,7 +224,7 @@ pub fn run_tool_gc(ctx: &CommandContext, all: bool) -> Result<CliResult, Error> 
             removed,
             all,
             warnings: inventory.warnings,
-        }),
+        })?,
         OutputFormat::Text => {
             let label =
                 if all { "current-project scopes (--all)" } else { "current-project scopes" };

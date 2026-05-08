@@ -124,7 +124,7 @@ fn init_github_directory_uri_succeeds() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
-        .args(["init", "https://github.com/augentic/specify/schemas/omnia", "--name", "demo"])
+        .args(["init", "https://github.com/augentic/specify/capabilities/omnia", "--name", "demo"])
         .assert()
         .success();
 }
@@ -192,6 +192,26 @@ fn init_with_no_args_errors_with_init_requires_capability_or_hub() {
         combined.contains("init-requires-capability-or-hub"),
         "diagnostic must carry the stable code, got stdout:\n{stdout}\nstderr:\n{stderr}"
     );
+    assert!(
+        !tmp.path().join(".specify").exists(),
+        "no .specify must be scaffolded on validation failure"
+    );
+}
+
+#[test]
+fn init_json_with_no_args_errors_with_stable_code() {
+    let tmp = tempdir().unwrap();
+    let assert =
+        specify().current_dir(tmp.path()).args(["--format", "json", "init"]).assert().failure();
+
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("stdout is JSON");
+    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["error"], "init-requires-capability-or-hub");
+    assert_eq!(value["exit-code"], 1);
+    let message = value["message"].as_str().expect("message string");
+    assert!(message.contains("specify init <capability>"), "message: {message}");
+    assert!(message.contains("specify init --hub"), "message: {message}");
     assert!(
         !tmp.path().join(".specify").exists(),
         "no .specify must be scaffolded on validation failure"

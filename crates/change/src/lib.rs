@@ -1,16 +1,15 @@
 //! Specify change orchestration.
 //!
-//! Plan-driven multi-change loops, the operator-facing `initiative.md`
+//! Plan-driven multi-slice changes, the operator-facing `change.md`
 //! brief, the `plan.yaml` state machine, and the closure verb
-//! `specify initiative finalize`.
+//! `specify change finalize`.
 //!
 //! Lifted out of the binary lib (`src/initiative_finalize.rs`) and
 //! the per-loop unit crate (`crates/slice/src/{plan,plan_doctor,
 //! lock}.rs`) by RFC-13 chunk 2.4 and renamed from `specify-initiative`
-//! to `specify-change` by RFC-13 chunk 3.4. The on-disk `initiative.md`
-//! and `Commands::Initiative` CLI surface still carry the pre-rename
-//! noun — chunk 3.5 reshapes the action enums and chunk 3.7 migrates
-//! the on-disk file.
+//! to `specify-change` by RFC-13 chunk 3.4. RFC-13 chunk 3.5 reshaped the
+//! action enums under `specify change`, and chunk 3.7 migrated the on-disk
+//! brief from `initiative.md` to `change.md`.
 //!
 //! Dependency direction (RFC-13 invariant #4):
 //!
@@ -23,10 +22,8 @@
 //! `specify-slice` MUST NOT depend on this crate; the per-loop unit
 //! is the substrate, the umbrella orchestration is the consumer.
 
-/// `specify initiative finalize` — RFC-9 §4C closure verb.
-pub mod finalize;
-/// `plan.yaml` state machine, plan-doctor, advisory plan lock.
-pub mod plan;
+mod finalize;
+mod plan;
 
 pub use finalize::{
     FinalizeError, FinalizeInputs, FinalizeOutcome, FinalizeProbe, FinalizeProjectResult,

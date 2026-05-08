@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use specify::{Error, PipelineView, ProjectConfig};
 
@@ -14,14 +14,15 @@ pub struct CommandContext {
 }
 
 impl CommandContext {
-    /// Resolve the current directory, load `.specify/project.yaml`, and
-    /// bundle everything into a `CommandContext`.
+    /// Resolve the current project root, load `.specify/project.yaml`,
+    /// and bundle everything into a `CommandContext`.
     ///
     /// Returns `Err(Error)` on failure so callers can propagate with `?`.
     /// The top-level dispatcher (`run_with_project`) converts `Error` to
     /// the format-aware exit code.
     pub fn require(format: OutputFormat) -> Result<Self, Error> {
-        let project_dir = std::env::current_dir().map_err(Error::Io)?;
+        let current_dir = std::env::current_dir().map_err(Error::Io)?;
+        let project_dir = discover_project_root(&current_dir)?.ok_or(Error::NotInitialized)?;
         let config = ProjectConfig::load(&project_dir)?;
         Ok(Self {
             format,
@@ -60,4 +61,16 @@ impl CommandContext {
     pub fn specify_dir(&self) -> PathBuf {
         ProjectConfig::specify_dir(&self.project_dir)
     }
+}
+
+fn discover_project_root(start_dir: &Path) -> Result<Option<PathBuf>, Error> {
+    for candidate in start_dir.ancestors() {
+        let config_path = ProjectConfig::config_path(candidate);
+        match config_path.try_exists() {
+            Ok(true) => return Ok(Some(candidate.to_path_buf())),
+            Ok(false) => {}
+            Err(err) => return Err(Error::Io(err)),
+        }
+    }
+    Ok(None)
 }

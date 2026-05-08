@@ -326,6 +326,45 @@ pub enum Error {
     YamlSer(#[from] serde_saphyr::ser::Error),
 }
 
+impl Error {
+    /// Kebab-case identifier used in structured CLI error payloads.
+    #[must_use]
+    pub const fn variant_str(&self) -> &'static str {
+        match self {
+            Self::NotInitialized => "not-initialized",
+            Self::SchemaResolution(_) => "schema-resolution",
+            Self::Config(_) => "config",
+            Self::Validation { .. } => "validation",
+            Self::Merge(_) => "merge",
+            Self::Lifecycle { .. } => "lifecycle",
+            Self::SpecifyVersionTooOld { .. } => "specify-version-too-old",
+            Self::PlanTransition { .. } => "plan-transition",
+            Self::PlanHasOutstandingWork { .. } => "plan-has-outstanding-work",
+            Self::DriverBusy { .. } => "driver-busy",
+            Self::ArtifactNotFound { .. } => "artifact-not-found",
+            Self::SliceNotFound { .. } => "slice-not-found",
+            Self::RegistryMissing => "registry-missing",
+            Self::LegacyLayout { .. } => "legacy-layout",
+            Self::SliceMigrationBlockedByInProgress { .. } => {
+                "slice-migration-blocked-by-in-progress"
+            }
+            Self::SliceMigrationTargetExists { .. } => "slice-migration-target-exists",
+            Self::ChangeNounMigrationTargetExists { .. } => "change-noun-migration-target-exists",
+            Self::ChangeBriefBecameChangeMd { .. } => "change-brief-became-change-md",
+            Self::SchemaBecameCapability { .. } => "schema-became-capability",
+            Self::InitRequiresCapabilityOrHub => "init-requires-capability-or-hub",
+            Self::ToolResolver(_) => "tool-resolver",
+            Self::ToolRuntime(_) => "tool-runtime",
+            Self::ToolPermissionDenied(_) => "tool-permission-denied",
+            Self::ToolNotDeclared { .. } => "tool-not-declared",
+            Self::InvalidName(_) => "invalid-name",
+            Self::Io(_) => "io",
+            Self::Yaml(_) => "yaml",
+            Self::YamlSer(_) => "yaml-ser",
+        }
+    }
+}
+
 /// Render the `(slice_name, lifecycle_status)` list embedded in
 /// [`Error::SliceMigrationBlockedByInProgress`] as the comma-separated
 /// `name (status), name (status)` form used in the diagnostic.

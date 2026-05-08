@@ -37,7 +37,7 @@ pub enum Commands {
     /// `init-requires-capability-or-hub` diagnostic.
     Init {
         /// Capability identifier or URL to resolve before scaffolding
-        /// (e.g. `omnia`, `https://github.com/<owner>/<repo>/schemas/<name>`).
+        /// (e.g. `omnia`, `https://github.com/<owner>/<repo>/capabilities/<name>`).
         /// Required unless `--hub` is set; mutually exclusive with `--hub`.
         capability: Option<String>,
         /// Project name (defaults to the project directory name)
@@ -50,8 +50,7 @@ pub enum Commands {
         /// instead of a regular project: writes `registry.yaml` at
         /// the repo root and `project.yaml { hub: true }` (with
         /// `capability:` omitted — RFC-13 §Migration "Hub project
-        /// shape") under `.specify/`. The change brief
-        /// (`initiative.md` on disk; rename ships in a later chunk)
+        /// shape") under `.specify/`. The change brief (`change.md`)
         /// and `plan.yaml` stay operator-managed (use
         /// `specify change create` / `specify change plan create`).
         /// Refuses to run when `.specify/` already exists. Mutually
@@ -88,8 +87,7 @@ pub enum Commands {
     ///
     /// The umbrella verb family for an operator-defined outcome that
     /// coordinates one or more slices (RFC-13 §"What becomes a
-    /// capability"). Owns the change brief at `initiative.md` (the
-    /// on-disk filename migrates in a later chunk) and the
+    /// capability"). Owns the change brief at `change.md` and the
     /// `plan.yaml` that drives multi-slice execution.
     Change {
         #[command(subcommand)]
@@ -150,8 +148,7 @@ pub enum Commands {
 /// Operator-facing **change** verbs (RFC-13 §"What becomes a capability").
 ///
 /// `change` is the umbrella orchestration noun: it holds the operator
-/// brief (`initiative.md` on disk — the on-disk filename migrates in a
-/// later chunk) and the executable plan (`plan.yaml` at the repo root)
+/// brief (`change.md` at the repo root) and the executable plan (`plan.yaml`)
 /// that drives one or more slices through `define → build → merge`.
 ///
 /// The `Plan { action }` variant nests every plan-authoring sub-verb
@@ -160,7 +157,7 @@ pub enum Commands {
 /// transition,archive,validate,create}, finalize}`.
 #[derive(Subcommand)]
 pub enum ChangeAction {
-    /// Scaffold the change brief (`initiative.md` at the repo root)
+    /// Scaffold the change brief (`change.md` at the repo root)
     /// from the canonical template.
     ///
     /// Refuses to overwrite an existing file — mirrors the
@@ -308,7 +305,7 @@ pub enum PlanAction {
         /// Target registry project name (RFC-3b)
         #[arg(long)]
         project: Option<String>,
-        /// Schema identifier for project-less entries (e.g. `contracts@v1`)
+        /// Plan-entry `schema` target for project-less entries (e.g. `contracts@v1`)
         #[arg(long)]
         schema: Option<String>,
         /// Baseline paths relevant to this change, relative to `.specify/` (repeatable)
@@ -335,7 +332,8 @@ pub enum PlanAction {
         /// Replace project. Pass `--project ""` to clear; omit the flag to leave it unchanged.
         #[arg(long)]
         project: Option<String>,
-        /// Replace schema. Pass `--schema ""` to clear; omit the flag to leave it unchanged.
+        /// Replace the plan-entry `schema` target. Pass `--schema ""` to clear;
+        /// omit the flag to leave it unchanged.
         #[arg(long)]
         schema: Option<String>,
         /// Replace context paths. Pass `--context` (with no value) to clear; omit the
@@ -501,8 +499,8 @@ pub enum RegistryAction {
         /// `registry validate` enforces.
         #[arg(long)]
         url: String,
-        /// Schema identifier — e.g. `omnia@v1`. Must be non-empty
-        /// after trim.
+        /// Capability identifier stored in registry.yaml's `schema:`
+        /// field — e.g. `omnia@v1`. Must be non-empty after trim.
         #[arg(long)]
         schema: String,
         /// Domain-level characterisation of the project. Required when
@@ -598,7 +596,7 @@ pub enum CapabilityAction {
     /// Resolve a capability value to a directory path
     Resolve {
         /// Capability value (bare name or URL) to resolve through the
-        /// project-local cache and `schemas/` lookup
+        /// project-local cache and bundled capability lookup
         capability_value: String,
         #[arg(long, default_value = ".")]
         project_dir: PathBuf,
@@ -632,7 +630,7 @@ pub enum SliceAction {
     Create {
         /// Kebab-case slice name
         name: String,
-        /// Schema identifier; defaults to the value in `.specify/project.yaml`
+        /// Capability identifier; defaults to the value in `.specify/project.yaml`
         #[arg(long)]
         schema: Option<String>,
         /// Behaviour when `<slices_dir>/<name>/` already exists
@@ -646,7 +644,7 @@ pub enum SliceAction {
         /// Slice name (under `.specify/slices/`)
         name: String,
     },
-    /// Validate a slice's artifacts against schema rules
+    /// Validate a slice's artifacts against capability validation rules
     Validate {
         /// Slice name (under `.specify/slices/`)
         name: String,
@@ -782,7 +780,8 @@ pub enum OutcomeAction {
         /// Required when `<outcome>` is `registry-amendment-required`.
         #[arg(long)]
         proposed_url: Option<String>,
-        /// Proposed schema identifier (e.g. `omnia@v1`). Required
+        /// Proposed capability identifier carried by `--proposed-schema`
+        /// (e.g. `omnia@v1`). Required
         /// when `<outcome>` is `registry-amendment-required`.
         #[arg(long)]
         proposed_schema: Option<String>,

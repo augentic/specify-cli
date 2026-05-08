@@ -39,8 +39,6 @@ impl From<&Error> for CliResult {
         match err {
             Error::SpecifyVersionTooOld { .. } => Self::VersionTooOld,
             Error::Validation { .. }
-            | Error::ToolResolver(_)
-            | Error::ToolRuntime(_)
             | Error::ToolPermissionDenied(_)
             | Error::ToolNotDeclared { .. } => Self::ValidationFailed,
             _ => Self::GenericFailure,
@@ -59,18 +57,13 @@ impl From<&Error> for CliResult {
 ///   every snake-case key that was ever emitted by the CLI (see RFC-2 §2.1
 ///   for the full rename table). Library-derived types were already kebab
 ///   via `#[serde(rename_all = "kebab-case")]`; v2 aligns the hand-built
-///   `json!({...})` blocks in `src/main.rs` and the
+///   response DTOs in the command handlers and the
 ///   `specify-validate::serialize_report` helper with the same rule.
-/// - New read verb `specify change outcome <name>` (added in RFC-2 §1.1 /
-///   L0.A1) shipped under the v2 contract.
+/// - New read verb `specify slice outcome show <name>` (added in RFC-2
+///   §1.1 / L0.A1 and later renamed by RFC-13) shipped under the v2 contract.
 /// - Error variant identifiers surfaced as the `"error"` value in failure
-///   payloads are kebab-case too: `not_initialized` → `not-initialized`,
-///   `schema_resolution` → `schema-resolution`, `specify_version_too_old`
-///   → `specify-version-too-old`, `plan_transition` → `plan-transition`,
-///   `plan_has_outstanding_work` → `plan-has-outstanding-work`, and
-///   `driver_busy` → `driver-busy`. Single-word variants (`io`, `yaml`,
-///   `config`, `merge`, `lifecycle`, `validation`) were already kebab-safe
-///   and are unchanged.
+///   payloads are kebab-case too. `Error::variant_str()` is the canonical
+///   source for these stable identifiers.
 /// - No shape changes beyond the casing: key sets, nesting, and value
 ///   types are frozen.
 pub const JSON_SCHEMA_VERSION: u64 = 2;
@@ -103,9 +96,12 @@ impl<T: Serialize> JsonEnvelope<T> {
     }
 }
 
-pub fn emit_response<T: Serialize>(payload: T) {
+pub fn emit_response<T: Serialize>(payload: T) -> Result<(), Error> {
     let envelope = JsonEnvelope::wrap(payload);
-    println!("{}", serde_json::to_string_pretty(&envelope).expect("JSON serialise"));
+    let body = serde_json::to_string_pretty(&envelope)
+        .map_err(|err| Error::Config(format!("failed to serialize JSON response: {err}")))?;
+    println!("{body}");
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -136,52 +132,27 @@ struct ValidationResultResponse {
 
 pub fn emit_json_error(err: &Error, code: CliResult) {
     if let Error::Validation { results, .. } = err {
-        emit_response(ValidationErrorResponse {
+        if let Err(serialise_err) = emit_response(ValidationErrorResponse {
             error: "validation".to_string(),
             message: err.to_string(),
             exit_code: code.code(),
             results: results.iter().map(validation_result_response).collect(),
-        });
+        }) {
+            eprintln!("error: {err}");
+            eprintln!("error: {serialise_err}");
+        }
         return;
     }
 
-    let variant = match err {
-        Error::NotInitialized => "not-initialized",
-        Error::SchemaResolution(_) => "schema-resolution",
-        Error::Config(_) => "config",
-        Error::Validation { .. } => "validation",
-        Error::Merge(_) => "merge",
-        Error::Lifecycle { .. } => "lifecycle",
-        Error::SpecifyVersionTooOld { .. } => "specify-version-too-old",
-        Error::PlanTransition { .. } => "plan-transition",
-        Error::PlanHasOutstandingWork { .. } => "plan-has-outstanding-work",
-        Error::DriverBusy { .. } => "driver-busy",
-        Error::ArtifactNotFound { .. } => "artifact-not-found",
-        Error::SliceNotFound { .. } => "slice-not-found",
-        Error::RegistryMissing => "registry-missing",
-        Error::LegacyLayout { .. } => "legacy-layout",
-        Error::SliceMigrationBlockedByInProgress { .. } => "slice-migration-blocked-by-in-progress",
-        Error::SliceMigrationTargetExists { .. } => "slice-migration-target-exists",
-        Error::ChangeNounMigrationTargetExists { .. } => "change-noun-migration-target-exists",
-        Error::ChangeBriefBecameChangeMd { .. } => "change-brief-became-change-md",
-        Error::SchemaBecameCapability { .. } => "schema-became-capability",
-        Error::InvalidName(_) => "invalid-name",
-        Error::Io(_) => "io",
-        Error::Yaml(_) => "yaml",
-        Error::YamlSer(_) => "yaml-ser",
-        Error::ToolResolver(_) => "tool-resolver",
-        Error::ToolRuntime(_) => "tool-runtime",
-        Error::ToolPermissionDenied(_) => "tool-permission-denied",
-        Error::ToolNotDeclared { .. } => "tool-not-declared",
-        // `Error` is #[non_exhaustive]; keep this arm but update when
-        // adding new variants to `specify_error::Error`.
-        _ => "unknown",
-    };
-    emit_response(ErrorResponse {
+    let variant = err.variant_str();
+    if let Err(serialise_err) = emit_response(ErrorResponse {
         error: variant.to_string(),
         message: err.to_string(),
         exit_code: code.code(),
-    });
+    }) {
+        eprintln!("error: {err}");
+        eprintln!("error: {serialise_err}");
+    }
 }
 
 fn validation_result_response(summary: &ValidationSummary) -> ValidationResultResponse {

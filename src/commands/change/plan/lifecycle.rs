@@ -1,4 +1,8 @@
-#![allow(clippy::items_after_statements, clippy::needless_pass_by_value)]
+#![allow(
+    clippy::items_after_statements,
+    clippy::needless_pass_by_value,
+    reason = "Clap dispatch hands owned subcommand values to these command handlers."
+)]
 
 use serde::Serialize;
 use serde_json::Value;
@@ -49,7 +53,7 @@ pub fn run_plan_create(
                 name,
                 path: absolute_string(&plan_path),
             },
-        }),
+        })?,
         OutputFormat::Text => {
             println!("Initialised plan '{name}' at {}.", plan_path.display());
         }
@@ -120,7 +124,7 @@ pub fn run_plan_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
                 },
                 results: items,
                 passed: !has_errors,
-            });
+            })?;
         }
         OutputFormat::Text => {
             for r in &results {
@@ -154,7 +158,7 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
 
     let results = plan.validate(Some(&slices_dir), None);
     if results.iter().any(|r| matches!(r.level, Severity::Error)) {
-        return Ok(emit_structural_error(ctx.format));
+        return emit_structural_error(ctx.format);
     }
 
     if let Some(active) = plan.changes.iter().find(|c| c.status == Status::InProgress) {
@@ -167,7 +171,7 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
                 schema: None,
                 description: None,
                 sources: None,
-            }),
+            })?,
             OutputFormat::Text => println!("Active change in progress: {}", active.name),
         }
         return Ok(CliResult::Success);
@@ -183,7 +187,7 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
                 schema: entry.schema.clone(),
                 description: entry.description.clone(),
                 sources: Some(entry.sources.clone()),
-            }),
+            })?,
             OutputFormat::Text => println!("{}", entry.name),
         }
     } else {
@@ -206,7 +210,7 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
                 schema: None,
                 description: None,
                 sources: None,
-            }),
+            })?,
             OutputFormat::Text => println!("{text_msg}"),
         }
     }
@@ -251,7 +255,7 @@ pub fn run_plan_transition(
                 status: entry.status.to_string(),
                 status_reason: entry.status_reason.clone(),
             },
-        }),
+        })?,
         OutputFormat::Text => {
             println!("Transitioned '{name}': {} \u{2192} {}.", old_status, entry.status);
         }
@@ -297,7 +301,7 @@ pub fn run_plan_archive(ctx: &CommandContext, force: bool) -> Result<CliResult, 
                         archived: absolute_string(&archived),
                         archived_plans_dir: archived_plans_dir.as_deref().map(absolute_string),
                         plan: ArchiveId { name: plan_name },
-                    });
+                    })?;
                 }
                 OutputFormat::Text => match archived_plans_dir {
                     Some(dir) => println!(
@@ -324,7 +328,7 @@ pub fn run_plan_archive(ctx: &CommandContext, force: bool) -> Result<CliResult, 
                         error: "plan-has-outstanding-work",
                         entries,
                         exit_code: CliResult::GenericFailure.code(),
-                    });
+                    })?;
                 }
                 OutputFormat::Text => {
                     eprintln!(

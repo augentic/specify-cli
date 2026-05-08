@@ -21,7 +21,7 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
     let has_other_structural_errors =
         results.iter().any(|r| matches!(r.level, Severity::Error) && r.code != "dependency-cycle");
     if has_other_structural_errors {
-        return Ok(emit_structural_error(ctx.format));
+        return emit_structural_error(ctx.format);
     }
 
     let (ordered, order_label) = if let Ok(v) = plan.topological_order() {
@@ -147,7 +147,7 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
                 blocked: blocked_json,
                 failed: failed_json,
                 next_eligible: next_eligible.map(|e| e.name.clone()),
-            });
+            })?;
         }
         OutputFormat::Text => print_status(&StatusView {
             plan: &plan,
