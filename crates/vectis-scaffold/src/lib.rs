@@ -12,11 +12,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::{Args as ClapArgs, Parser, Subcommand};
-use serde::Serialize;
-use templates::{Params, android, core, ios, render, substitute_path, substitute_path_with};
-
 pub use error::ScaffoldError;
+use serde::Serialize;
 pub use templates::Capability;
+use templates::{Params, android, core, ios, render, substitute_path, substitute_path_with};
 pub use versions::Versions;
 
 /// JSON contract version emitted on structured responses.
