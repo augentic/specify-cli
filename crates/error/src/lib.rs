@@ -77,7 +77,7 @@ pub enum Error {
         "context-existing-unfenced-agents-md: AGENTS.md exists without Specify context fences; \
          rerun with --force to rewrite it"
     )]
-    ContextExistingUnfencedAgentsMd,
+    ContextUnfenced,
 
     /// `specify context generate` refused to replace the managed block
     /// because the fenced content has diverged from `.specify/context.lock`.
@@ -86,22 +86,22 @@ pub enum Error {
          has changed since .specify/context.lock was written; reconcile the edits or rerun \
          with --force to replace the generated block"
     )]
-    ContextFencedContentModified,
+    ContextDrift,
 
     /// `.specify/context.lock` is absent for a context check.
     #[error("context-lock-missing: .specify/context.lock is missing")]
-    ContextLockMissing,
+    ContextNoLock,
 
     /// `AGENTS.md` is absent for a context check.
     #[error("context-not-generated: AGENTS.md is missing")]
-    ContextNotGenerated,
+    ContextMissing,
 
     /// `.specify/context.lock` declares a version newer than this CLI supports.
     #[error(
         "context-lock-version-too-new: lock version {found} is newer than supported version \
          {supported}"
     )]
-    ContextLockVersionTooNew {
+    ContextLockTooNew {
         /// Version declared by the lock file.
         found: u64,
         /// Highest lock-file version supported by this CLI.
@@ -139,7 +139,7 @@ pub enum Error {
 
     /// The installed CLI version is older than the project floor.
     #[error("specify version {found} is older than the project floor {required}; upgrade the CLI")]
-    SpecifyVersionTooOld {
+    CliTooOld {
         /// Minimum version the project requires.
         required: String,
         /// Version currently installed.
@@ -159,7 +159,7 @@ pub enum Error {
     /// non-terminal entries, and the caller did not pass `force`.
     /// `entries` lists the offending entry names.
     #[error("plan has outstanding non-terminal work: {entries:?}")]
-    PlanHasOutstandingWork {
+    PlanIncomplete {
         /// Names of plan entries not yet in a terminal state.
         entries: Vec<String>,
     },
@@ -211,7 +211,7 @@ pub enum Error {
         in_progress.len(),
         format_in_progress(in_progress)
     )]
-    SliceMigrationBlockedByInProgress {
+    SliceMigrationInProgress {
         /// `(slice_name, lifecycle_status)` for each non-terminal
         /// slice the detector found, sorted by slice name.
         in_progress: Vec<(String, String)>,
@@ -227,7 +227,7 @@ pub enum Error {
         changes.display(),
         slices.display()
     )]
-    SliceMigrationTargetExists {
+    SliceMigrationCollision {
         /// Path to the v1 source directory (`.specify/changes/`).
         changes: std::path::PathBuf,
         /// Path to the post-migration destination (`.specify/slices/`).
@@ -244,7 +244,7 @@ pub enum Error {
         initiative.display(),
         change.display()
     )]
-    ChangeNounMigrationTargetExists {
+    ChangeNounCollision {
         /// Path to the pre-Phase-3.7 source file (`initiative.md`).
         initiative: std::path::PathBuf,
         /// Path to the post-migration destination file (`change.md`).
@@ -260,7 +260,7 @@ pub enum Error {
          See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
         path.display()
     )]
-    ChangeBriefBecameChangeMd {
+    LegacyChangeBrief {
         /// Path to the pre-Phase-3.7 file the detector found.
         path: std::path::PathBuf,
     },
@@ -276,7 +276,7 @@ pub enum Error {
          See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
         path.display()
     )]
-    SchemaBecameCapability {
+    LegacyCapabilityField {
         /// Path to the file that triggered the diagnostic (a legacy
         /// `schema.yaml`, or a `project.yaml` carrying the v1 `schema:`
         /// field).
@@ -292,7 +292,7 @@ pub enum Error {
          for a registry-only platform hub. The two are mutually exclusive. \
          See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration"
     )]
-    InitRequiresCapabilityOrHub,
+    InitNeedsCapability,
 
     /// A declared WASI tool could not be resolved or fetched.
     #[error("tool resolver error: {0}")]
@@ -304,7 +304,7 @@ pub enum Error {
 
     /// A declared WASI tool requested filesystem authority outside its manifest policy.
     #[error("tool permission denied: {0}")]
-    ToolPermissionDenied(String),
+    ToolDenied(String),
 
     /// The requested tool name was not present in either declaration site.
     #[error("tool not declared: {name}")]
@@ -338,34 +338,32 @@ impl Error {
             Self::NotInitialized => "not-initialized",
             Self::SchemaResolution(_) => "schema-resolution",
             Self::Config(_) => "config",
-            Self::ContextExistingUnfencedAgentsMd => "context-existing-unfenced-agents-md",
-            Self::ContextFencedContentModified => "context-fenced-content-modified",
-            Self::ContextLockMissing => "context-lock-missing",
-            Self::ContextNotGenerated => "context-not-generated",
-            Self::ContextLockVersionTooNew { .. } => "context-lock-version-too-new",
+            Self::ContextUnfenced => "context-existing-unfenced-agents-md",
+            Self::ContextDrift => "context-fenced-content-modified",
+            Self::ContextNoLock => "context-lock-missing",
+            Self::ContextMissing => "context-not-generated",
+            Self::ContextLockTooNew { .. } => "context-lock-version-too-new",
             Self::ContextLockMalformed { .. } => "context-lock-malformed",
             Self::Validation { .. } => "validation",
             Self::Merge(_) => "merge",
             Self::Lifecycle { .. } => "lifecycle",
-            Self::SpecifyVersionTooOld { .. } => "specify-version-too-old",
+            Self::CliTooOld { .. } => "specify-version-too-old",
             Self::PlanTransition { .. } => "plan-transition",
-            Self::PlanHasOutstandingWork { .. } => "plan-has-outstanding-work",
+            Self::PlanIncomplete { .. } => "plan-has-outstanding-work",
             Self::DriverBusy { .. } => "driver-busy",
             Self::ArtifactNotFound { .. } => "artifact-not-found",
             Self::SliceNotFound { .. } => "slice-not-found",
             Self::RegistryMissing => "registry-missing",
             Self::LegacyLayout { .. } => "legacy-layout",
-            Self::SliceMigrationBlockedByInProgress { .. } => {
-                "slice-migration-blocked-by-in-progress"
-            }
-            Self::SliceMigrationTargetExists { .. } => "slice-migration-target-exists",
-            Self::ChangeNounMigrationTargetExists { .. } => "change-noun-migration-target-exists",
-            Self::ChangeBriefBecameChangeMd { .. } => "change-brief-became-change-md",
-            Self::SchemaBecameCapability { .. } => "schema-became-capability",
-            Self::InitRequiresCapabilityOrHub => "init-requires-capability-or-hub",
+            Self::SliceMigrationInProgress { .. } => "slice-migration-blocked-by-in-progress",
+            Self::SliceMigrationCollision { .. } => "slice-migration-target-exists",
+            Self::ChangeNounCollision { .. } => "change-noun-migration-target-exists",
+            Self::LegacyChangeBrief { .. } => "change-brief-became-change-md",
+            Self::LegacyCapabilityField { .. } => "schema-became-capability",
+            Self::InitNeedsCapability => "init-requires-capability-or-hub",
             Self::ToolResolver(_) => "tool-resolver",
             Self::ToolRuntime(_) => "tool-runtime",
-            Self::ToolPermissionDenied(_) => "tool-permission-denied",
+            Self::ToolDenied(_) => "tool-permission-denied",
             Self::ToolNotDeclared { .. } => "tool-not-declared",
             Self::InvalidName(_) => "invalid-name",
             Self::Io(_) => "io",
@@ -448,7 +446,7 @@ mod tests {
 
     #[test]
     fn version_too_old_display() {
-        let err = Error::SpecifyVersionTooOld {
+        let err = Error::CliTooOld {
             required: "0.2.0".to_string(),
             found: "0.1.0".to_string(),
         };
@@ -469,7 +467,7 @@ mod tests {
 
     #[test]
     fn plan_outstanding_display() {
-        let err = Error::PlanHasOutstandingWork {
+        let err = Error::PlanIncomplete {
             entries: vec!["checkout-api".to_string(), "checkout-ui".to_string()],
         };
         assert_eq!(
@@ -505,12 +503,12 @@ mod tests {
     #[test]
     fn context_diagnostic_variant_strings_are_stable() {
         let cases = [
-            (Error::ContextExistingUnfencedAgentsMd, "context-existing-unfenced-agents-md"),
-            (Error::ContextFencedContentModified, "context-fenced-content-modified"),
-            (Error::ContextLockMissing, "context-lock-missing"),
-            (Error::ContextNotGenerated, "context-not-generated"),
+            (Error::ContextUnfenced, "context-existing-unfenced-agents-md"),
+            (Error::ContextDrift, "context-fenced-content-modified"),
+            (Error::ContextNoLock, "context-lock-missing"),
+            (Error::ContextMissing, "context-not-generated"),
             (
-                Error::ContextLockVersionTooNew {
+                Error::ContextLockTooNew {
                     found: 2,
                     supported: 1,
                 },
@@ -535,7 +533,7 @@ mod tests {
 
     #[test]
     fn schema_became_capability_display() {
-        let err = Error::SchemaBecameCapability {
+        let err = Error::LegacyCapabilityField {
             path: std::path::PathBuf::from("./.specify/.cache/omnia/schema.yaml"),
         };
         let s = err.to_string();
@@ -564,7 +562,7 @@ mod tests {
 
     #[test]
     fn init_requires_capability_or_hub_display() {
-        let err = Error::InitRequiresCapabilityOrHub;
+        let err = Error::InitNeedsCapability;
         let s = err.to_string();
         assert!(
             s.contains("init-requires-capability-or-hub"),
@@ -586,7 +584,7 @@ mod tests {
 
     #[test]
     fn slice_migration_blocked_by_in_progress_display() {
-        let err = Error::SliceMigrationBlockedByInProgress {
+        let err = Error::SliceMigrationInProgress {
             in_progress: vec![
                 ("demo".to_string(), "defining".to_string()),
                 ("other-thing".to_string(), "building".to_string()),
@@ -621,7 +619,7 @@ mod tests {
         // Single-offender variant: the same diagnostic must still
         // render cleanly so the operator's first read names the
         // problematic slice.
-        let err = Error::SliceMigrationBlockedByInProgress {
+        let err = Error::SliceMigrationInProgress {
             in_progress: vec![("demo".to_string(), "defining".to_string())],
         };
         let s = err.to_string();
@@ -631,7 +629,7 @@ mod tests {
 
     #[test]
     fn change_noun_migration_target_exists_display() {
-        let err = Error::ChangeNounMigrationTargetExists {
+        let err = Error::ChangeNounCollision {
             initiative: std::path::PathBuf::from("/proj/initiative.md"),
             change: std::path::PathBuf::from("/proj/change.md"),
         };
@@ -652,7 +650,7 @@ mod tests {
 
     #[test]
     fn change_brief_became_change_md_display() {
-        let err = Error::ChangeBriefBecameChangeMd {
+        let err = Error::LegacyChangeBrief {
             path: std::path::PathBuf::from("/proj/initiative.md"),
         };
         let s = err.to_string();
@@ -677,7 +675,7 @@ mod tests {
 
     #[test]
     fn slice_migration_target_exists_display() {
-        let err = Error::SliceMigrationTargetExists {
+        let err = Error::SliceMigrationCollision {
             changes: std::path::PathBuf::from("/proj/.specify/changes"),
             slices: std::path::PathBuf::from("/proj/.specify/slices"),
         };

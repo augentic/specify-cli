@@ -21,7 +21,7 @@
 //! other home for them.
 //!
 //! The workspace layer is **upstream** of `specify-slice`: to avoid a
-//! cycle, [`workspace::run_workspace_push_impl`] takes the flattened plan
+//! cycle, [`workspace::push_all`] takes the flattened plan
 //! name rather than a `&Plan`. The binary passes `&plan.name` at the
 //! call-site.
 

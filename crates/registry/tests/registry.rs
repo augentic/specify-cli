@@ -465,7 +465,7 @@ fn registry_project_url_materialises_as_symlink_classification() {
             description: None,
             contracts: None,
         };
-        assert_eq!(p.url_materialises_as_symlink(), symlink, "url={url:?}");
+        assert_eq!(p.is_local(), symlink, "url={url:?}");
     }
 }
 

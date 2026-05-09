@@ -25,7 +25,7 @@ use crate::output::{CliResult, absolute_string, emit_response};
 /// - hub init requires `--hub` and refuses a `<capability>` positional;
 /// - missing both, or both at once, errors with
 ///   `init-requires-capability-or-hub`.
-pub fn run_init(
+pub fn run(
     format: OutputFormat, capability: Option<String>, name: Option<String>, domain: Option<String>,
     hub: bool,
 ) -> Result<CliResult, Error> {
@@ -36,7 +36,7 @@ pub fn run_init(
         (true, None) => None,
         // Both unset, or both set: the diagnostic is the same per
         // RFC-13 §1.3 — the operator must pick one.
-        (false, None) | (true, Some(_)) => return Err(Error::InitRequiresCapabilityOrHub),
+        (false, None) | (true, Some(_)) => return Err(Error::InitNeedsCapability),
     };
 
     let opts = InitOptions {

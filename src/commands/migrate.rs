@@ -167,7 +167,7 @@ struct MigrateBody {
 ///
 /// Returns an error on filesystem failures other than the structured
 /// `DestinationExists` outcome (e.g. a permission error during `rename`).
-pub fn run_migrate_v2_layout(
+pub fn v2_layout(
     format: OutputFormat, project_dir: &Path, dry_run: bool,
 ) -> Result<CliResult, Error> {
     if is_workspace_clone_path(project_dir) {
@@ -347,13 +347,13 @@ enum SliceLayoutStatus {
 ///    - Both absent: no-op (`no-slices`), exit 0.
 ///    - Source absent, destination present: no-op (`already-migrated`),
 ///      exit 0.
-///    - Both present: refuse with [`Error::SliceMigrationTargetExists`].
+///    - Both present: refuse with [`Error::SliceMigrationCollision`].
 ///    - Source present, destination absent: continue.
 /// 4. Walk every immediate child of `.specify/changes/`. For each
 ///    directory carrying a readable `.metadata.yaml`, classify by
 ///    [`specify::LifecycleStatus::is_terminal`]; collect the in-progress
 ///    offenders. Refuse with
-///    [`Error::SliceMigrationBlockedByInProgress`] when the list is
+///    [`Error::SliceMigrationInProgress`] when the list is
 ///    non-empty.
 /// 5. `fs::rename` the directory atomically (same-filesystem in the
 ///    common case; cross-FS callers can pre-stage manually).
@@ -370,9 +370,9 @@ enum SliceLayoutStatus {
 ///
 /// - [`Error::NotInitialized`] when `.specify/project.yaml` is absent.
 /// - [`Error::Config`] when invoked inside `.specify/workspace/<peer>/`.
-/// - [`Error::SliceMigrationTargetExists`] when both the v1 source
+/// - [`Error::SliceMigrationCollision`] when both the v1 source
 ///   and the post-migration destination are on disk.
-/// - [`Error::SliceMigrationBlockedByInProgress`] when one or more
+/// - [`Error::SliceMigrationInProgress`] when one or more
 ///   slices under `.specify/changes/` carry a non-terminal lifecycle
 ///   status.
 /// - [`Error::Io`] on filesystem failures during the rename or skill
@@ -380,7 +380,7 @@ enum SliceLayoutStatus {
 /// - [`Error::Yaml`] when a slice's `.metadata.yaml` cannot be parsed
 ///   to classify its lifecycle status (the operator must repair the
 ///   metadata before migrating).
-pub fn run_migrate_slice_layout(
+pub fn slice_layout(
     format: OutputFormat, project_dir: &Path, dry_run: bool,
 ) -> Result<CliResult, Error> {
     if !ProjectConfig::config_path(project_dir).is_file() {
@@ -417,7 +417,7 @@ pub fn run_migrate_slice_layout(
             dry_run: dry_run.then_some(true),
         },
         (true, true) => {
-            return Err(Error::SliceMigrationTargetExists {
+            return Err(Error::SliceMigrationCollision {
                 changes: changes_dir,
                 slices: slices_dir,
             });
@@ -425,7 +425,7 @@ pub fn run_migrate_slice_layout(
         (true, false) => {
             let in_progress = scan_in_progress(&changes_dir)?;
             if !in_progress.is_empty() {
-                return Err(Error::SliceMigrationBlockedByInProgress { in_progress });
+                return Err(Error::SliceMigrationInProgress { in_progress });
             }
             let slice_names = list_slice_names(&changes_dir)?;
             if !dry_run {
@@ -705,7 +705,7 @@ enum ChangeNounStatus {
 ///    - Source absent, destination present: no-op (`already-migrated`),
 ///      exit 0.
 ///    - Both present: refuse with
-///      [`Error::ChangeNounMigrationTargetExists`].
+///      [`Error::ChangeNounCollision`].
 ///    - Source present, destination absent: continue.
 /// 4. `fs::rename` the file atomically (same-filesystem in the common
 ///    case; `fs::rename` collapses to copy + remove on `EXDEV`).
@@ -723,10 +723,10 @@ enum ChangeNounStatus {
 ///
 /// - [`Error::NotInitialized`] when `.specify/project.yaml` is absent.
 /// - [`Error::Config`] when invoked inside `.specify/workspace/<peer>/`.
-/// - [`Error::ChangeNounMigrationTargetExists`] when both
+/// - [`Error::ChangeNounCollision`] when both
 ///   `initiative.md` and `change.md` are on disk at the repo root.
 /// - [`Error::Io`] on filesystem failures during the rename.
-pub fn run_migrate_change_noun(
+pub fn change_noun(
     format: OutputFormat, project_dir: &Path, dry_run: bool,
 ) -> Result<CliResult, Error> {
     if !ProjectConfig::config_path(project_dir).is_file() {
@@ -760,7 +760,7 @@ pub fn run_migrate_change_noun(
             dry_run: dry_run.then_some(true),
         },
         (true, true) => {
-            return Err(Error::ChangeNounMigrationTargetExists {
+            return Err(Error::ChangeNounCollision {
                 initiative: initiative_path,
                 change: change_path,
             });
@@ -856,7 +856,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         legacy_layout(tmp.path());
 
-        let result = run_migrate_v2_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = v2_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success);
 
         // v2 destinations exist at the root.
@@ -877,8 +877,8 @@ mod tests {
         let tmp = tempdir().unwrap();
         legacy_layout(tmp.path());
 
-        let r1 = run_migrate_v2_layout(OutputFormat::Json, tmp.path(), false).unwrap();
-        let r2 = run_migrate_v2_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let r1 = v2_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let r2 = v2_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(r1, CliResult::Success);
         assert_eq!(r2, CliResult::Success, "second run on already-migrated tree must succeed");
     }
@@ -888,7 +888,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         legacy_layout(tmp.path());
 
-        let result = run_migrate_v2_layout(OutputFormat::Json, tmp.path(), true).unwrap();
+        let result = v2_layout(OutputFormat::Json, tmp.path(), true).unwrap();
         assert_eq!(result, CliResult::Success);
 
         // v1 sources still present, v2 destinations not yet.
@@ -905,7 +905,7 @@ mod tests {
         // Plant a colliding root-level file.
         fs::write(tmp.path().join("registry.yaml"), "pre-existing\n").unwrap();
 
-        let result = run_migrate_v2_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = v2_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::GenericFailure, "collision must surface as exit 1");
 
         // Source must remain untouched.
@@ -918,7 +918,7 @@ mod tests {
     fn migrate_no_op_when_nothing_to_do() {
         let tmp = tempdir().unwrap();
         // No legacy layout, no v2 layout — clean tempdir.
-        let result = run_migrate_v2_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = v2_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success);
     }
 
@@ -953,7 +953,7 @@ mod tests {
         // wholesale move, not an iterate-and-copy.
         fs::write(changes.join("alpha").join("notes.md"), "# alpha\n").unwrap();
 
-        let result = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success);
 
         // Source directory is gone.
@@ -974,7 +974,7 @@ mod tests {
         // already run the migration once.
         fs::create_dir_all(tmp.path().join(".specify/slices/gamma")).unwrap();
 
-        let result = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success, "re-run on post-Phase-3 layout must succeed");
     }
 
@@ -983,7 +983,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         seed_specify_project(tmp.path());
 
-        let result = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success);
     }
 
@@ -996,10 +996,10 @@ mod tests {
         // `defining` is the canonical first non-terminal status.
         write_slice_metadata_at(&changes.join("zeta"), "defining");
 
-        let err = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false)
+        let err = slice_layout(OutputFormat::Json, tmp.path(), false)
             .expect_err("non-terminal slice must block");
         match err {
-            Error::SliceMigrationBlockedByInProgress { in_progress } => {
+            Error::SliceMigrationInProgress { in_progress } => {
                 assert_eq!(in_progress.len(), 1);
                 assert_eq!(in_progress[0].0, "zeta");
                 assert_eq!(in_progress[0].1, "defining");
@@ -1018,9 +1018,9 @@ mod tests {
         write_slice_metadata_at(&tmp.path().join(".specify/changes/alpha"), "merged");
         fs::create_dir_all(tmp.path().join(".specify/slices/already-here")).unwrap();
 
-        let err = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false)
+        let err = slice_layout(OutputFormat::Json, tmp.path(), false)
             .expect_err("both dirs present must refuse");
-        assert!(matches!(err, Error::SliceMigrationTargetExists { .. }));
+        assert!(matches!(err, Error::SliceMigrationCollision { .. }));
         // Neither side should be modified.
         assert!(tmp.path().join(".specify/changes/alpha").is_dir());
         assert!(tmp.path().join(".specify/slices/already-here").is_dir());
@@ -1032,7 +1032,7 @@ mod tests {
         seed_specify_project(tmp.path());
         write_slice_metadata_at(&tmp.path().join(".specify/changes/alpha"), "merged");
 
-        let result = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), true).unwrap();
+        let result = slice_layout(OutputFormat::Json, tmp.path(), true).unwrap();
         assert_eq!(result, CliResult::Success);
         assert!(tmp.path().join(".specify/changes/alpha").is_dir());
         assert!(!tmp.path().join(".specify/slices").exists());
@@ -1059,7 +1059,7 @@ mod tests {
         let cache_path = cache_dir.join("proposal.md");
         fs::write(&cache_path, "$CHANGE_DIR cache\n").unwrap();
 
-        let result = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = slice_layout(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success);
 
         let rewritten = fs::read_to_string(&skill_path).unwrap();
@@ -1074,7 +1074,7 @@ mod tests {
     fn slice_layout_requires_specify_project() {
         let tmp = tempdir().unwrap();
         // No `.specify/project.yaml` at all.
-        let err = run_migrate_slice_layout(OutputFormat::Json, tmp.path(), false)
+        let err = slice_layout(OutputFormat::Json, tmp.path(), false)
             .expect_err("missing project must refuse");
         assert!(matches!(err, Error::NotInitialized));
     }
@@ -1092,7 +1092,7 @@ mod tests {
         seed_specify_project(tmp.path());
         fs::write(tmp.path().join("initiative.md"), INITIATIVE_BODY).unwrap();
 
-        let result = run_migrate_change_noun(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = change_noun(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success);
 
         // Source gone; destination present with byte-identical content.
@@ -1108,7 +1108,7 @@ mod tests {
         seed_specify_project(tmp.path());
         fs::write(tmp.path().join("change.md"), INITIATIVE_BODY).unwrap();
 
-        let result = run_migrate_change_noun(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = change_noun(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success);
         // The destination must still be there with the original body.
         let content = fs::read_to_string(tmp.path().join("change.md")).unwrap();
@@ -1120,7 +1120,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         seed_specify_project(tmp.path());
 
-        let result = run_migrate_change_noun(OutputFormat::Json, tmp.path(), false).unwrap();
+        let result = change_noun(OutputFormat::Json, tmp.path(), false).unwrap();
         assert_eq!(result, CliResult::Success);
         assert!(!tmp.path().join("initiative.md").exists());
         assert!(!tmp.path().join("change.md").exists());
@@ -1133,9 +1133,9 @@ mod tests {
         fs::write(tmp.path().join("initiative.md"), INITIATIVE_BODY).unwrap();
         fs::write(tmp.path().join("change.md"), "---\nname: other\n---\n\n# other\n").unwrap();
 
-        let err = run_migrate_change_noun(OutputFormat::Json, tmp.path(), false)
+        let err = change_noun(OutputFormat::Json, tmp.path(), false)
             .expect_err("both files present must refuse");
-        assert!(matches!(err, Error::ChangeNounMigrationTargetExists { .. }));
+        assert!(matches!(err, Error::ChangeNounCollision { .. }));
         // Neither side should be modified.
         assert_eq!(fs::read_to_string(tmp.path().join("initiative.md")).unwrap(), INITIATIVE_BODY);
         assert_eq!(
@@ -1150,7 +1150,7 @@ mod tests {
         seed_specify_project(tmp.path());
         fs::write(tmp.path().join("initiative.md"), INITIATIVE_BODY).unwrap();
 
-        let result = run_migrate_change_noun(OutputFormat::Json, tmp.path(), true).unwrap();
+        let result = change_noun(OutputFormat::Json, tmp.path(), true).unwrap();
         assert_eq!(result, CliResult::Success);
         // Source still on disk; destination not yet created.
         assert!(tmp.path().join("initiative.md").is_file());
@@ -1160,7 +1160,7 @@ mod tests {
     #[test]
     fn change_noun_requires_specify_project() {
         let tmp = tempdir().unwrap();
-        let err = run_migrate_change_noun(OutputFormat::Json, tmp.path(), false)
+        let err = change_noun(OutputFormat::Json, tmp.path(), false)
             .expect_err("missing project must refuse");
         assert!(matches!(err, Error::NotInitialized));
     }

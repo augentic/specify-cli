@@ -17,7 +17,7 @@
 //!   journal entries as a signalling channel. Phase success / failure
 //!   / deferred classification travels through
 //!   `.metadata.yaml.outcome` (stamped via
-//!   [`crate::actions::phase_outcome`] in L2.A). The journal is for
+//!   [`crate::actions::stamp_outcome`] in L2.A). The journal is for
 //!   humans — stderr traces, ambiguous-requirement text, recovery
 //!   notes — not for the driver's state machine.
 //!

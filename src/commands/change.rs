@@ -12,10 +12,7 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value;
 use specify::{ChangeBrief, Error, is_kebab};
-use specify_change::{
-    FinalizeError, FinalizeInputs, FinalizeOutcome, FinalizeProjectResult, FinalizeSummaryCounts,
-    RealFinalizeProbe, load_plan_or_refuse, run_finalize,
-};
+use specify_change::finalize;
 use specify_registry::Registry;
 
 use crate::cli::{ChangeAction, OutputFormat};
@@ -28,12 +25,12 @@ use crate::output::{CliResult, absolute_string, emit_response};
 /// brief, executable plan, and finalize. The `Plan { action }`
 /// arm threads through to the plan submodule so the durable surface
 /// reads `specify change plan {add,amend,next,status,...}`.
-pub fn run_change(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult, Error> {
     match action {
         ChangeAction::Create { name } => brief_create(ctx, name),
         ChangeAction::Show => brief_show(ctx),
-        ChangeAction::Plan { action } => plan::run_plan(ctx, action),
-        ChangeAction::Finalize { clean, dry_run } => finalize(ctx, clean, dry_run),
+        ChangeAction::Plan { action } => plan::run(ctx, action),
+        ChangeAction::Finalize { clean, dry_run } => run_finalize(ctx, clean, dry_run),
     }
 }
 
@@ -188,20 +185,20 @@ fn print_change_brief_text(brief: &ChangeBrief, brief_path: &Path) {
 // `specify change finalize` (RFC-9 §4C)
 // ---------------------------------------------------------------------------
 
-fn finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResult, Error> {
+fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResult, Error> {
     // RFC-13 chunk 3.7: refuse to finalize when the project still
     // carries the pre-Phase-3.7 `initiative.md` filename. Operators
     // must run `specify migrate change-noun` first so the archive
     // co-moves the correct file.
     ChangeBrief::refuse_legacy(&ctx.project_dir)?;
-    let plan_or_refusal = load_plan_or_refuse(&ctx.project_dir)?;
+    let plan_or_refusal = finalize::load_plan(&ctx.project_dir)?;
     let plan = match plan_or_refusal {
         Ok(plan) => plan,
-        Err(FinalizeError::PlanNotFound) => {
+        Err(finalize::Refusal::PlanNotFound) => {
             return emit_plan_not_found(ctx.format);
         }
-        Err(FinalizeError::NonTerminalEntries(_)) => {
-            unreachable!("load_plan_or_refuse only emits PlanNotFound");
+        Err(finalize::Refusal::NonTerminalEntries(_)) => {
+            unreachable!("finalize::load_plan only emits PlanNotFound");
         }
     };
 
@@ -213,8 +210,8 @@ fn finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResul
         projects: Vec::new(),
     });
 
-    let probe = RealFinalizeProbe;
-    let inputs = FinalizeInputs {
+    let probe = finalize::RealProbe;
+    let inputs = finalize::Inputs {
         project_dir: &ctx.project_dir,
         plan: &plan,
         registry: &registry,
@@ -222,16 +219,16 @@ fn finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResul
         dry_run,
     };
 
-    match run_finalize(inputs, &probe) {
+    match finalize::run(inputs, &probe) {
         Ok(outcome) => {
             emit_outcome(ctx.format, &outcome)?;
             Ok(if outcome.finalized { CliResult::Success } else { CliResult::GenericFailure })
         }
-        Err(FinalizeError::NonTerminalEntries(entries)) => {
+        Err(finalize::Refusal::NonTerminalEntries(entries)) => {
             emit_non_terminal(ctx.format, &plan.name, &entries)
         }
-        Err(FinalizeError::PlanNotFound) => {
-            unreachable!("PlanNotFound is handled by load_plan_or_refuse")
+        Err(finalize::Refusal::PlanNotFound) => {
+            unreachable!("PlanNotFound is handled by finalize::load_plan")
         }
     }
 }
@@ -300,7 +297,7 @@ fn emit_non_terminal(
     Ok(CliResult::GenericFailure)
 }
 
-fn emit_outcome(format: OutputFormat, outcome: &FinalizeOutcome) -> Result<(), Error> {
+fn emit_outcome(format: OutputFormat, outcome: &finalize::Outcome) -> Result<(), Error> {
     match format {
         OutputFormat::Json => emit_response(outcome)?,
         OutputFormat::Text => print_outcome_text(outcome),
@@ -308,14 +305,14 @@ fn emit_outcome(format: OutputFormat, outcome: &FinalizeOutcome) -> Result<(), E
     Ok(())
 }
 
-fn print_outcome_text(outcome: &FinalizeOutcome) {
+fn print_outcome_text(outcome: &finalize::Outcome) {
     if outcome.dry_run == Some(true) {
         println!(
             "[dry-run] specify: change finalize — {} ({})",
-            outcome.initiative, outcome.expected_branch
+            outcome.name, outcome.expected_branch
         );
     } else {
-        println!("specify: change finalize — {} ({})", outcome.initiative, outcome.expected_branch);
+        println!("specify: change finalize — {} ({})", outcome.name, outcome.expected_branch);
     }
     println!();
 
@@ -331,9 +328,9 @@ fn print_outcome_text(outcome: &FinalizeOutcome) {
     println!();
     if outcome.finalized {
         if outcome.dry_run == Some(true) {
-            println!("[dry-run] Change `{}` would be finalized.", outcome.initiative);
+            println!("[dry-run] Change `{}` would be finalized.", outcome.name);
         } else {
-            println!("Change `{}` finalized.", outcome.initiative);
+            println!("Change `{}` finalized.", outcome.name);
             if let Some(archived) = &outcome.archived {
                 println!("  archived plan: {archived}");
             }
@@ -346,14 +343,14 @@ fn print_outcome_text(outcome: &FinalizeOutcome) {
         }
     } else {
         let reason = blocked_reason(&outcome.summary);
-        println!("Change `{}` blocked: {reason}.", outcome.initiative);
+        println!("Change `{}` blocked: {reason}.", outcome.name);
         if let Some(message) = &outcome.message {
             println!("{message}");
         }
     }
 }
 
-fn print_project_row(r: &FinalizeProjectResult) {
+fn print_project_row(r: &finalize::ProjectResult) {
     let pr = r.pr_number.map(|n| format!("PR #{n}")).unwrap_or_default();
     let url = r.url.as_deref().unwrap_or("");
     println!("  {:<20} {:<24} {:<10} {}", r.name, r.status, pr, url);
@@ -362,7 +359,7 @@ fn print_project_row(r: &FinalizeProjectResult) {
     }
 }
 
-fn print_summary_line(s: &FinalizeSummaryCounts) {
+fn print_summary_line(s: &finalize::Summary) {
     println!(
         "{} merged, {} unmerged, {} closed, {} no-branch, {} branch-pattern-mismatch, \
          {} dirty, {} failed.",
@@ -370,7 +367,7 @@ fn print_summary_line(s: &FinalizeSummaryCounts) {
     );
 }
 
-fn blocked_reason(s: &FinalizeSummaryCounts) -> String {
+fn blocked_reason(s: &finalize::Summary) -> String {
     let mut reasons: Vec<String> = Vec::new();
     if s.unmerged > 0 {
         reasons.push(format!("{} unmerged PR(s) awaiting operator merge", s.unmerged));
@@ -398,21 +395,21 @@ fn blocked_reason(s: &FinalizeSummaryCounts) -> String {
 
 #[cfg(test)]
 mod tests {
-    use specify_change::FinalizeStatus;
+    use specify_change::finalize::Landing;
 
     use super::*;
 
     #[test]
     fn passing_statuses_only_merged_and_no_branch() {
-        for s in [FinalizeStatus::Merged, FinalizeStatus::NoBranch] {
+        for s in [Landing::Merged, Landing::NoBranch] {
             assert!(s.is_passing(), "{s} must pass");
         }
         for s in [
-            FinalizeStatus::Unmerged,
-            FinalizeStatus::Closed,
-            FinalizeStatus::BranchPatternMismatch,
-            FinalizeStatus::Dirty,
-            FinalizeStatus::Failed,
+            Landing::Unmerged,
+            Landing::Closed,
+            Landing::BranchPatternMismatch,
+            Landing::Dirty,
+            Landing::Failed,
         ] {
             assert!(!s.is_passing(), "{s} must refuse");
         }
@@ -420,9 +417,9 @@ mod tests {
 
     #[test]
     fn blocked_reason_points_unmerged_prs_at_operator_merge() {
-        let summary = FinalizeSummaryCounts {
+        let summary = finalize::Summary {
             unmerged: 2,
-            ..FinalizeSummaryCounts::default()
+            ..finalize::Summary::default()
         };
         let reason = blocked_reason(&summary);
         assert!(

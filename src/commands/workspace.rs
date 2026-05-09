@@ -12,19 +12,18 @@ use specify::{Error, ProjectConfig};
 use specify_change::Plan;
 use specify_registry::Registry;
 use specify_registry::branch::{
-    BranchPreparation, BranchPreparationDiagnostic, BranchPreparationRequest,
-    prepare_project_branch,
+    self, Diagnostic as BranchDiagnostic, Prepared, Request as BranchRequest, prepare,
 };
 use specify_registry::workspace::{
-    ConfiguredTargetKind, PushOutcome, SlotKind, SlotStatus, run_workspace_push_projects_impl,
-    sync_registry_workspace_projects, workspace_status_projects,
+    ConfiguredTargetKind, PushOutcome, SlotKind, SlotStatus, push_projects,
+    status_projects as workspace_status_projects, sync_projects as workspace_sync_projects,
 };
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_workspace_sync(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, Error> {
+pub fn sync(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, Error> {
     match Registry::load(&ctx.project_dir)? {
         None => {
             if !projects.is_empty() {
@@ -55,8 +54,8 @@ pub fn run_workspace_sync(ctx: &CommandContext, projects: Vec<String>) -> Result
             Ok(CliResult::Success)
         }
         Some(registry) => {
-            let selected = registry.resolve_project_selectors(&projects)?;
-            sync_registry_workspace_projects(&ctx.project_dir, &selected)?;
+            let selected = registry.select(&projects)?;
+            workspace_sync_projects(&ctx.project_dir, &selected)?;
             match ctx.format {
                 OutputFormat::Json => {
                     #[derive(Serialize)]
@@ -77,9 +76,7 @@ pub fn run_workspace_sync(ctx: &CommandContext, projects: Vec<String>) -> Result
     }
 }
 
-pub fn run_workspace_status(
-    ctx: &CommandContext, projects: Vec<String>,
-) -> Result<CliResult, Error> {
+pub fn status(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, Error> {
     match Registry::load(&ctx.project_dir)? {
         None => {
             if !projects.is_empty() {
@@ -108,7 +105,7 @@ pub fn run_workspace_status(
             Ok(CliResult::Success)
         }
         Some(registry) => {
-            let selected = registry.resolve_project_selectors(&projects)?;
+            let selected = registry.select(&projects)?;
             let slots = workspace_status_projects(&ctx.project_dir, &selected);
             match ctx.format {
                 OutputFormat::Json => {
@@ -131,7 +128,7 @@ pub fn run_workspace_status(
     }
 }
 
-pub fn run_workspace_prepare_branch(
+pub fn prepare_branch(
     ctx: &CommandContext, project: String, change: String, sources: Vec<PathBuf>,
     outputs: Vec<PathBuf>,
 ) -> Result<CliResult, Error> {
@@ -140,17 +137,17 @@ pub fn run_workspace_prepare_branch(
             "No registry.yaml found; workspace prepare-branch requires a registry".to_string(),
         ));
     };
-    let selected = registry.resolve_project_selectors(std::slice::from_ref(&project))?;
+    let selected = registry.select(std::slice::from_ref(&project))?;
     let Some(project) = selected.first() else {
         return Err(Error::Config("workspace prepare-branch resolved no project".to_string()));
     };
-    let request = BranchPreparationRequest {
+    let request = BranchRequest {
         change_name: change,
         source_paths: sources,
         output_paths: outputs,
     };
 
-    match prepare_project_branch(&ctx.project_dir, project, &request) {
+    match prepare(&ctx.project_dir, project, &request) {
         Ok(prepared) => {
             render_branch_preparation_success(ctx.format, &prepared)?;
             Ok(CliResult::Success)
@@ -163,7 +160,7 @@ pub fn run_workspace_prepare_branch(
 }
 
 fn render_branch_preparation_success(
-    format: OutputFormat, prepared: &BranchPreparation,
+    format: OutputFormat, prepared: &Prepared,
 ) -> Result<(), Error> {
     match format {
         OutputFormat::Json => {
@@ -176,10 +173,10 @@ fn render_branch_preparation_success(
                 slot_path: &'a str,
                 base_ref: &'a str,
                 base_sha: &'a str,
-                local_branch: &'a specify_registry::branch::LocalBranchAction,
-                remote_branch: &'a specify_registry::branch::RemoteBranchAction,
-                dirty: &'a specify_registry::branch::DirtyClassification,
-                diagnostics: Vec<BranchPreparationDiagnostic>,
+                local_branch: &'a branch::LocalAction,
+                remote_branch: &'a branch::RemoteAction,
+                dirty: &'a branch::Dirty,
+                diagnostics: Vec<BranchDiagnostic>,
             }
             emit_response(PrepareBranchBody {
                 prepared: true,
@@ -212,7 +209,7 @@ fn render_branch_preparation_success(
 }
 
 fn render_branch_preparation_failure(
-    format: OutputFormat, diagnostic: &BranchPreparationDiagnostic,
+    format: OutputFormat, diagnostic: &BranchDiagnostic,
 ) -> Result<(), Error> {
     match format {
         OutputFormat::Json => {
@@ -221,7 +218,7 @@ fn render_branch_preparation_failure(
             struct PrepareBranchFailure<'a> {
                 error: &'static str,
                 exit_code: u8,
-                diagnostic: &'a BranchPreparationDiagnostic,
+                diagnostic: &'a BranchDiagnostic,
             }
             emit_response(PrepareBranchFailure {
                 error: "branch-preparation-failed",
@@ -335,7 +332,7 @@ fn print_slot(slot: &SlotStatus) {
     );
 }
 
-pub fn run_workspace_push(
+pub fn push(
     ctx: &CommandContext, projects: Vec<String>, dry_run: bool,
 ) -> Result<CliResult, Error> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
@@ -343,7 +340,7 @@ pub fn run_workspace_push(
             "No registry.yaml found; workspace push requires a registry".to_string(),
         ));
     };
-    let selected = registry.resolve_project_selectors(&projects)?;
+    let selected = registry.select(&projects)?;
 
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if !plan_path.exists() {
@@ -355,8 +352,7 @@ pub fn run_workspace_push(
     }
     let plan = Plan::load(&plan_path)?;
 
-    let results =
-        run_workspace_push_projects_impl(&ctx.project_dir, &plan.name, &selected, dry_run)?;
+    let results = push_projects(&ctx.project_dir, &plan.name, &selected, dry_run)?;
 
     match ctx.format {
         OutputFormat::Json => {
@@ -434,7 +430,7 @@ pub fn run_workspace_push(
 // workspace merge deprecation shim (RFC-14 C08)
 // ---------------------------------------------------------------------------
 
-pub fn run_workspace_merge_removed(
+pub fn merge_removed(
     format: OutputFormat, projects: Vec<String>, dry_run: bool,
 ) -> Result<CliResult, Error> {
     let message = "`specify workspace merge` was removed by RFC-14. \

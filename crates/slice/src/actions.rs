@@ -20,7 +20,7 @@ use chrono::{DateTime, Utc};
 use specify_error::{Error, is_kebab};
 
 use crate::{
-    LifecycleStatus, Outcome, Phase, PhaseOutcome, Rfc3339Stamp, SliceMetadata, SpecType,
+    LifecycleStatus, Outcome, Phase, PhaseOutcome, Rfc3339Stamp, SliceMetadata, SpecKind,
     TouchedSpec,
 };
 
@@ -67,9 +67,9 @@ pub struct Overlap {
     /// Name of the other slice that touches the same capability.
     pub other: String,
     /// How our slice touches the capability.
-    pub ours: SpecType,
+    pub ours: SpecKind,
     /// How the other slice touches the capability.
-    pub theirs: SpecType,
+    pub theirs: SpecKind,
 }
 
 /// Validate a kebab-case slice name.
@@ -226,12 +226,12 @@ pub fn transition(
 ///
 /// Returns entries sorted by capability name for stable output. The
 /// scan is non-destructive — it does not mutate `.metadata.yaml`. The
-/// caller typically follows up with [`write_touched_specs`].
+/// caller typically follows up with [`write_touched`].
 ///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn scan_touched_specs(slice_dir: &Path, specs_dir: &Path) -> Result<Vec<TouchedSpec>, Error> {
+pub fn scan_touched(slice_dir: &Path, specs_dir: &Path) -> Result<Vec<TouchedSpec>, Error> {
     let specs_root = slice_dir.join("specs");
     if !specs_root.is_dir() {
         return Ok(Vec::new());
@@ -252,7 +252,7 @@ pub fn scan_touched_specs(slice_dir: &Path, specs_dir: &Path) -> Result<Vec<Touc
             continue;
         }
         let baseline = specs_dir.join(&name).join("spec.md");
-        let kind = if baseline.is_file() { SpecType::Modified } else { SpecType::New };
+        let kind = if baseline.is_file() { SpecKind::Modified } else { SpecKind::New };
         entries.push(TouchedSpec { name, kind });
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
@@ -266,9 +266,7 @@ pub fn scan_touched_specs(slice_dir: &Path, specs_dir: &Path) -> Result<Vec<Touc
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn write_touched_specs(
-    slice_dir: &Path, entries: Vec<TouchedSpec>,
-) -> Result<SliceMetadata, Error> {
+pub fn write_touched(slice_dir: &Path, entries: Vec<TouchedSpec>) -> Result<SliceMetadata, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     metadata.touched_specs = entries;
     metadata.save(slice_dir)?;
@@ -379,7 +377,7 @@ pub fn archive(
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn phase_outcome(
+pub fn stamp_outcome(
     slice_dir: &Path, phase: Phase, outcome: Outcome, summary: &str, context: Option<&str>,
     now: DateTime<Utc>,
 ) -> Result<SliceMetadata, Error> {

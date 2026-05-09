@@ -22,11 +22,11 @@ use specify_error as _;
 // ---------------------------------------------------------------------------
 
 /// Markdown heading prefix for requirement blocks.
-pub const REQUIREMENT_HEADING: &str = "### Requirement:";
+pub const REQ_HEADING: &str = "### Requirement:";
 /// Line prefix that introduces a requirement's ID.
-pub const REQUIREMENT_ID_PREFIX: &str = "ID:";
+pub const REQ_ID_PREFIX: &str = "ID:";
 /// Regex pattern for valid requirement IDs (`REQ-NNN`).
-pub const REQUIREMENT_ID_PATTERN: &str = r"^REQ-[0-9]{3}$";
+pub const REQ_ID_PATTERN: &str = r"^REQ-[0-9]{3}$";
 /// Markdown heading prefix for scenario blocks.
 pub const SCENARIO_HEADING: &str = "#### Scenario:";
 /// Section heading for added requirements in a delta spec.
@@ -44,7 +44,7 @@ pub const DELTA_RENAMED: &str = "## RENAMED Requirements";
 
 /// A single requirement block parsed from a spec document.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RequirementBlock {
+pub struct Requirement {
     /// The full `### Requirement: …` heading line.
     pub heading: String,
     /// Requirement name extracted from the heading.
@@ -72,25 +72,25 @@ pub struct ParsedSpec {
     /// Text before the first requirement heading.
     pub preamble: String,
     /// Requirement blocks in document order.
-    pub requirements: Vec<RequirementBlock>,
+    pub requirements: Vec<Requirement>,
 }
 
 /// Result of parsing a delta spec document.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeltaSpec {
     /// Requirements whose name changed.
-    pub renamed: Vec<RenameEntry>,
+    pub renamed: Vec<Rename>,
     /// Requirements that were removed.
-    pub removed: Vec<RequirementBlock>,
+    pub removed: Vec<Requirement>,
     /// Requirements that were modified.
-    pub modified: Vec<RequirementBlock>,
+    pub modified: Vec<Requirement>,
     /// Requirements that were added.
-    pub added: Vec<RequirementBlock>,
+    pub added: Vec<Requirement>,
 }
 
 /// An `ID:` / `TO:` pair from the renamed section.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RenameEntry {
+pub struct Rename {
     /// Requirement ID being renamed.
     pub id: String,
     /// New name for the requirement.
@@ -110,10 +110,10 @@ pub struct RenameEntry {
 #[must_use]
 pub fn parse_baseline(text: &str) -> ParsedSpec {
     let lines: Vec<&str> = text.split('\n').collect();
-    let heading_prefix = REQUIREMENT_HEADING;
-    let id_prefix = REQUIREMENT_ID_PREFIX;
+    let heading_prefix = REQ_HEADING;
+    let id_prefix = REQ_ID_PREFIX;
 
-    let mut blocks: Vec<RequirementBlock> = Vec::new();
+    let mut blocks: Vec<Requirement> = Vec::new();
     let mut preamble_lines: Vec<&str> = Vec::new();
     let mut current_lines: Vec<&str> = Vec::new();
     let mut current_name: Option<String> = None;
@@ -227,8 +227,8 @@ pub fn parse_delta(text: &str) -> DeltaSpec {
     // shows up. The ID is cleared after a successful emission (so paired
     // lines consume each other), but empty-string IDs don't trigger an
     // emission because Python's `and current_id` truth-checks the string.
-    let mut renamed: Vec<RenameEntry> = Vec::new();
-    let id_prefix = REQUIREMENT_ID_PREFIX;
+    let mut renamed: Vec<Rename> = Vec::new();
+    let id_prefix = REQ_ID_PREFIX;
     let mut current_id: Option<String> = None;
     for line in &renamed_lines {
         let stripped = line.trim();
@@ -238,7 +238,7 @@ pub fn parse_delta(text: &str) -> DeltaSpec {
             let has_usable_id = matches!(&current_id, Some(id) if !id.is_empty());
             if has_usable_id && let Some(id) = current_id.take() {
                 let new_name = stripped.get(3..).unwrap_or("").trim().to_string();
-                renamed.push(RenameEntry { id, new_name });
+                renamed.push(Rename { id, new_name });
             }
         }
     }
@@ -284,14 +284,14 @@ pub fn has_delta_headers(text: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 fn flush_block(
-    blocks: &mut Vec<RequirementBlock>, current_lines: &mut Vec<&str>,
+    blocks: &mut Vec<Requirement>, current_lines: &mut Vec<&str>,
     current_name: &mut Option<String>, current_id: &mut Option<String>,
 ) {
     if let Some(name) = current_name.take() {
         let heading = current_lines.first().copied().unwrap_or("").to_string();
         let body = current_lines.join("\n");
         let scenarios = parse_scenarios(&body);
-        blocks.push(RequirementBlock {
+        blocks.push(Requirement {
             heading,
             name,
             id: current_id.take().unwrap_or_default(),

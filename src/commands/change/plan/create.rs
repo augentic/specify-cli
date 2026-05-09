@@ -14,7 +14,7 @@ use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_plan_add(
+pub fn add(
     ctx: &CommandContext, name: String, depends_on: Vec<String>, sources: Vec<String>,
     description: Option<String>, project: Option<String>, schema: Option<String>,
     context: Vec<String>,
@@ -40,7 +40,7 @@ pub fn run_plan_add(
     plan.create(entry)?;
     plan.save(&plan_path)?;
 
-    let created = plan.changes.last().expect("Plan::create appended an entry that is now missing");
+    let created = plan.entries.last().expect("Plan::create appended an entry that is now missing");
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -62,7 +62,7 @@ pub fn run_plan_add(
     Ok(CliResult::Success)
 }
 
-pub fn run_plan_amend(
+pub fn amend(
     ctx: &CommandContext, name: String, depends_on: Option<Vec<String>>,
     sources: Option<Vec<String>>, description: Option<String>, project: Option<String>,
     schema: Option<String>, context: Option<Vec<String>>,
@@ -94,7 +94,7 @@ pub fn run_plan_amend(
     plan.amend(&name, patch)?;
     plan.save(&plan_path)?;
 
-    let amended = plan.changes.iter().find(|c| c.name == name).expect("amended entry present");
+    let amended = plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]

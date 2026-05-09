@@ -119,7 +119,7 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.hub {
         return init_hub(opts);
     }
-    let capability = opts.capability.ok_or(Error::InitRequiresCapabilityOrHub)?;
+    let capability = opts.capability.ok_or(Error::InitNeedsCapability)?;
 
     let name = resolved_name(opts.project_dir, opts.name);
 
@@ -151,9 +151,9 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
 
     let resolved = cache_capability(capability, opts.project_dir)?;
     let view = PipelineView::load(&resolved.capability_value, opts.project_dir)?;
-    let capability_name = view.schema.schema.name.clone();
+    let capability_name = view.capability.manifest.name.clone();
     let scaffolded_rule_keys: Vec<String> =
-        view.schema.schema.pipeline.define.iter().map(|entry| entry.id.clone()).collect();
+        view.capability.manifest.pipeline.define.iter().map(|entry| entry.id.clone()).collect();
 
     let specify_version = resolve_version(opts.project_dir, opts.version_mode)?;
 
@@ -235,7 +235,7 @@ const HUB_INIT_NAME: &str = "hub";
 #[allow(clippy::needless_pass_by_value)]
 fn init_hub(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.capability.is_some() {
-        return Err(Error::InitRequiresCapabilityOrHub);
+        return Err(Error::InitNeedsCapability);
     }
 
     let specify_dir = ProjectConfig::specify_dir(opts.project_dir);
@@ -987,7 +987,7 @@ mod tests {
             hub: true,
         })
         .expect_err("hub + capability must error");
-        assert!(matches!(err, Error::InitRequiresCapabilityOrHub), "got: {err:?}");
+        assert!(matches!(err, Error::InitNeedsCapability), "got: {err:?}");
     }
 
     #[test]
@@ -1002,6 +1002,6 @@ mod tests {
             hub: false,
         })
         .expect_err("missing capability must error");
-        assert!(matches!(err, Error::InitRequiresCapabilityOrHub), "got: {err:?}");
+        assert!(matches!(err, Error::InitNeedsCapability), "got: {err:?}");
     }
 }

@@ -16,7 +16,7 @@ use serde::Deserialize;
 use specify_error::Error;
 
 use crate::Registry;
-use crate::forge::project_path_for;
+use crate::forge::project_path;
 use crate::gitignore::ensure_specify_gitignore_entries;
 use crate::registry::RegistryProject;
 
@@ -42,26 +42,24 @@ fn contracts_base(project_dir: &Path) -> PathBuf {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn sync_registry_workspace(project_dir: &Path) -> Result<(), Error> {
+pub fn sync_all(project_dir: &Path) -> Result<(), Error> {
     let Some(registry) = Registry::load(project_dir)? else {
         return Ok(());
     };
-    let projects = registry.resolve_project_selectors(&[])?;
-    sync_registry_workspace_projects(project_dir, &projects)
+    let projects = registry.select(&[])?;
+    sync_projects(project_dir, &projects)
 }
 
 /// Materialise `.specify/workspace/<name>/` for selected registry entries.
 ///
 /// Callers must pass projects returned by
-/// [`Registry::resolve_project_selectors`] so unknown selectors fail before
+/// [`Registry::select`] so unknown selectors fail before
 /// this function performs filesystem, Git, or forge work.
 ///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn sync_registry_workspace_projects(
-    project_dir: &Path, projects: &[&RegistryProject],
-) -> Result<(), Error> {
+pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Result<(), Error> {
     ensure_specify_gitignore_entries(project_dir)?;
 
     let base = prepare_workspace_base(project_dir)?;
@@ -69,10 +67,10 @@ pub fn sync_registry_workspace_projects(
     let mut errors: Vec<String> = Vec::new();
     for project in projects {
         let result = workspace_slot_path(&base, &project.name).and_then(|dest| {
-            if let Some(problem) = workspace_slot_problem_for_dest(project_dir, project, &dest) {
+            if let Some(problem) = slot_problem_at(project_dir, project, &dest) {
                 return Err(Error::Config(problem.message().to_string()));
             }
-            if project.url_materialises_as_symlink() {
+            if project.is_local() {
                 materialise_symlink(project_dir, &project.url, &dest)
             } else {
                 materialise_git_remote(&project.url, &dest, &project.schema, project_dir)
@@ -87,7 +85,7 @@ pub fn sync_registry_workspace_projects(
     let central_contracts = contracts_base(project_dir);
     if central_contracts.is_dir() {
         for project in projects {
-            if project.url_materialises_as_symlink() {
+            if project.is_local() {
                 continue;
             }
             let Ok(slot) = workspace_slot_path(&base, &project.name) else {
@@ -240,9 +238,9 @@ impl SlotKind {
 
 /// A registry/workspace mismatch that would cause `workspace sync` to refuse a slot.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkspaceSlotProblem {
+pub struct SlotProblem {
     /// Machine-readable reason for the mismatch.
-    pub reason: WorkspaceSlotProblemReason,
+    pub reason: SlotProblemReason,
     /// Materialisation kind expected from the registry URL.
     pub expected_kind: SlotKind,
     /// Materialisation kind currently observed on disk, when inspectable.
@@ -258,7 +256,7 @@ pub struct WorkspaceSlotProblem {
     message: String,
 }
 
-impl WorkspaceSlotProblem {
+impl SlotProblem {
     /// Human-readable diagnostic matching the refusal text from `workspace sync`.
     #[must_use]
     pub fn message(&self) -> &str {
@@ -266,9 +264,9 @@ impl WorkspaceSlotProblem {
     }
 }
 
-/// Stable reason code for [`WorkspaceSlotProblem`].
+/// Stable reason code for [`SlotProblem`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkspaceSlotProblemReason {
+pub enum SlotProblemReason {
     /// Project name cannot map to exactly `.specify/workspace/<project>/`.
     SlotPathEscapesWorkspace,
     /// The registry's local/relative URL no longer resolves.
@@ -300,19 +298,17 @@ pub enum WorkspaceSlotProblemReason {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn workspace_status(project_dir: &Path) -> Result<Option<Vec<SlotStatus>>, Error> {
+pub fn status(project_dir: &Path) -> Result<Option<Vec<SlotStatus>>, Error> {
     let Some(registry) = Registry::load(project_dir)? else {
         return Ok(None);
     };
-    let projects = registry.resolve_project_selectors(&[])?;
-    Ok(Some(workspace_status_projects(project_dir, &projects)))
+    let projects = registry.select(&[])?;
+    Ok(Some(status_projects(project_dir, &projects)))
 }
 
 /// Inspect `.specify/workspace/<name>/` for selected registry projects.
 #[must_use]
-pub fn workspace_status_projects(
-    project_dir: &Path, projects: &[&RegistryProject],
-) -> Vec<SlotStatus> {
+pub fn status_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Vec<SlotStatus> {
     let base = workspace_base(project_dir);
     let change_name = discover_change_name(project_dir);
     let mut out = Vec::with_capacity(projects.len());
@@ -329,14 +325,12 @@ pub fn workspace_status_projects(
 /// registry. The function is read-only; callers such as doctor/status can use it
 /// to report the same wrong-remote and wrong-symlink facts that sync refuses.
 #[must_use]
-pub fn workspace_slot_problem(
-    project_dir: &Path, project: &RegistryProject,
-) -> Option<WorkspaceSlotProblem> {
+pub fn slot_problem(project_dir: &Path, project: &RegistryProject) -> Option<SlotProblem> {
     let base = workspace_base(project_dir);
     match workspace_slot_path(&base, &project.name) {
-        Ok(dest) => workspace_slot_problem_for_dest(project_dir, project, &dest),
-        Err(err) => Some(WorkspaceSlotProblem {
-            reason: WorkspaceSlotProblemReason::SlotPathEscapesWorkspace,
+        Ok(dest) => slot_problem_at(project_dir, project, &dest),
+        Err(err) => Some(SlotProblem {
+            reason: SlotProblemReason::SlotPathEscapesWorkspace,
             expected_kind: expected_slot_kind(project),
             observed_kind: None,
             expected_url: project.url.clone(),
@@ -397,7 +391,7 @@ fn describe_slot(
 fn configured_target(
     project_dir: &Path, project: &RegistryProject,
 ) -> (ConfiguredTargetKind, String) {
-    if project.url_materialises_as_symlink() {
+    if project.is_local() {
         let target = local_target_path(project_dir, &project.url);
         let resolved = std::fs::canonicalize(&target).unwrap_or(target);
         (ConfiguredTargetKind::Local, resolved.display().to_string())
@@ -410,10 +404,10 @@ fn local_target_path(project_dir: &Path, url: &str) -> PathBuf {
     if url == "." { project_dir.to_path_buf() } else { project_dir.join(url) }
 }
 
-fn workspace_slot_problem_for_dest(
+fn slot_problem_at(
     project_dir: &Path, project: &RegistryProject, dest: &Path,
-) -> Option<WorkspaceSlotProblem> {
-    if project.url_materialises_as_symlink() {
+) -> Option<SlotProblem> {
+    if project.is_local() {
         local_slot_problem(project_dir, project, dest)
     } else {
         remote_slot_problem(project, dest)
@@ -421,18 +415,18 @@ fn workspace_slot_problem_for_dest(
 }
 
 fn expected_slot_kind(project: &RegistryProject) -> SlotKind {
-    if project.url_materialises_as_symlink() { SlotKind::Symlink } else { SlotKind::GitClone }
+    if project.is_local() { SlotKind::Symlink } else { SlotKind::GitClone }
 }
 
 fn local_slot_problem(
     project_dir: &Path, project: &RegistryProject, dest: &Path,
-) -> Option<WorkspaceSlotProblem> {
+) -> Option<SlotProblem> {
     let meta = match std::fs::symlink_metadata(dest) {
         Ok(meta) => meta,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return None,
         Err(err) => {
-            return Some(WorkspaceSlotProblem {
-                reason: WorkspaceSlotProblemReason::SlotMetadataUnreadable,
+            return Some(SlotProblem {
+                reason: SlotProblemReason::SlotMetadataUnreadable,
                 expected_kind: SlotKind::Symlink,
                 observed_kind: None,
                 expected_url: project.url.clone(),
@@ -447,8 +441,8 @@ fn local_slot_problem(
     let target = match registry_symlink_target(project_dir, &project.url) {
         Ok(target) => target,
         Err(err) => {
-            return Some(WorkspaceSlotProblem {
-                reason: WorkspaceSlotProblemReason::LocalTargetUnresolved,
+            return Some(SlotProblem {
+                reason: SlotProblemReason::LocalTargetUnresolved,
                 expected_kind: SlotKind::Symlink,
                 observed_kind: Some(observed_slot_kind(&meta, dest)),
                 expected_url: project.url.clone(),
@@ -461,8 +455,8 @@ fn local_slot_problem(
     };
 
     if !meta.file_type().is_symlink() {
-        return Some(WorkspaceSlotProblem {
-            reason: WorkspaceSlotProblemReason::LocalSlotIsNotSymlink,
+        return Some(SlotProblem {
+            reason: SlotProblemReason::LocalSlotIsNotSymlink,
             expected_kind: SlotKind::Symlink,
             observed_kind: Some(observed_slot_kind(&meta, dest)),
             expected_url: project.url.clone(),
@@ -478,8 +472,8 @@ fn local_slot_problem(
 
     match std::fs::canonicalize(dest) {
         Ok(resolved) if resolved == target => None,
-        Ok(resolved) => Some(WorkspaceSlotProblem {
-            reason: WorkspaceSlotProblemReason::LocalSymlinkTargetMismatch,
+        Ok(resolved) => Some(SlotProblem {
+            reason: SlotProblemReason::LocalSymlinkTargetMismatch,
             expected_kind: SlotKind::Symlink,
             observed_kind: Some(SlotKind::Symlink),
             expected_url: project.url.clone(),
@@ -494,8 +488,8 @@ fn local_slot_problem(
                 project.url
             ),
         }),
-        Err(err) => Some(WorkspaceSlotProblem {
-            reason: WorkspaceSlotProblemReason::LocalSymlinkBroken,
+        Err(err) => Some(SlotProblem {
+            reason: SlotProblemReason::LocalSymlinkBroken,
             expected_kind: SlotKind::Symlink,
             observed_kind: Some(SlotKind::Symlink),
             expected_url: project.url.clone(),
@@ -512,13 +506,13 @@ fn local_slot_problem(
     }
 }
 
-fn remote_slot_problem(project: &RegistryProject, dest: &Path) -> Option<WorkspaceSlotProblem> {
+fn remote_slot_problem(project: &RegistryProject, dest: &Path) -> Option<SlotProblem> {
     let meta = match std::fs::symlink_metadata(dest) {
         Ok(meta) => meta,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return None,
         Err(err) => {
-            return Some(WorkspaceSlotProblem {
-                reason: WorkspaceSlotProblemReason::SlotMetadataUnreadable,
+            return Some(SlotProblem {
+                reason: SlotProblemReason::SlotMetadataUnreadable,
                 expected_kind: SlotKind::GitClone,
                 observed_kind: None,
                 expected_url: project.url.clone(),
@@ -531,8 +525,8 @@ fn remote_slot_problem(project: &RegistryProject, dest: &Path) -> Option<Workspa
     };
 
     if meta.file_type().is_symlink() {
-        return Some(WorkspaceSlotProblem {
-            reason: WorkspaceSlotProblemReason::RemoteSlotIsSymlink,
+        return Some(SlotProblem {
+            reason: SlotProblemReason::RemoteSlotIsSymlink,
             expected_kind: SlotKind::GitClone,
             observed_kind: Some(SlotKind::Symlink),
             expected_url: project.url.clone(),
@@ -548,8 +542,8 @@ fn remote_slot_problem(project: &RegistryProject, dest: &Path) -> Option<Workspa
     }
 
     if !meta.is_dir() {
-        return Some(WorkspaceSlotProblem {
-            reason: WorkspaceSlotProblemReason::RemoteSlotIsNotDirectory,
+        return Some(SlotProblem {
+            reason: SlotProblemReason::RemoteSlotIsNotDirectory,
             expected_kind: SlotKind::GitClone,
             observed_kind: Some(SlotKind::Other),
             expected_url: project.url.clone(),
@@ -564,8 +558,8 @@ fn remote_slot_problem(project: &RegistryProject, dest: &Path) -> Option<Workspa
     }
 
     if !dest.join(".git").exists() {
-        return Some(WorkspaceSlotProblem {
-            reason: WorkspaceSlotProblemReason::RemoteSlotIsNotGitClone,
+        return Some(SlotProblem {
+            reason: SlotProblemReason::RemoteSlotIsNotGitClone,
             expected_kind: SlotKind::GitClone,
             observed_kind: Some(SlotKind::Other),
             expected_url: project.url.clone(),
@@ -581,8 +575,8 @@ fn remote_slot_problem(project: &RegistryProject, dest: &Path) -> Option<Workspa
 
     match git_output_ok(dest, &["remote", "get-url", "origin"]) {
         Some(actual) if actual == project.url => None,
-        Some(actual) => Some(WorkspaceSlotProblem {
-            reason: WorkspaceSlotProblemReason::RemoteOriginMismatch,
+        Some(actual) => Some(SlotProblem {
+            reason: SlotProblemReason::RemoteOriginMismatch,
             expected_kind: SlotKind::GitClone,
             observed_kind: Some(SlotKind::GitClone),
             expected_url: project.url.clone(),
@@ -596,8 +590,8 @@ fn remote_slot_problem(project: &RegistryProject, dest: &Path) -> Option<Workspa
                 project.url
             ),
         }),
-        None => Some(WorkspaceSlotProblem {
-            reason: WorkspaceSlotProblemReason::RemoteOriginMissing,
+        None => Some(SlotProblem {
+            reason: SlotProblemReason::RemoteOriginMissing,
             expected_kind: SlotKind::GitClone,
             observed_kind: Some(SlotKind::GitClone),
             expected_url: project.url.clone(),
@@ -1015,7 +1009,7 @@ pub enum PushOutcome {
     Pushed,
     /// Remote repo was created, then pushed.
     Created,
-    /// Push failed (see `WorkspacePushResult.error`).
+    /// Push failed (see `PushResult.error`).
     Failed,
     /// No changes to push.
     UpToDate,
@@ -1040,7 +1034,7 @@ impl std::fmt::Display for PushOutcome {
 
 /// Result of a per-project push operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkspacePushResult {
+pub struct PushResult {
     /// Registry project name.
     pub name: String,
     /// Outcome of this push.
@@ -1056,7 +1050,7 @@ pub struct WorkspacePushResult {
 /// Extract a `GitHub` `org/repo` slug from a git remote URL.
 /// Returns `None` for non-GitHub URLs.
 #[must_use]
-pub fn extract_github_slug(url: &str) -> Option<String> {
+pub fn github_slug(url: &str) -> Option<String> {
     if let Some(rest) = url.strip_prefix("git@github.com:") {
         let slug = rest.strip_suffix(".git").unwrap_or(rest);
         return Some(slug.to_string());
@@ -1083,12 +1077,12 @@ pub fn extract_github_slug(url: &str) -> Option<String> {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn run_workspace_push_impl(
+pub fn push_all(
     project_dir: &Path, initiative_name: &str, registry: &Registry, filter_projects: &[String],
     dry_run: bool,
-) -> Result<Vec<WorkspacePushResult>, Error> {
-    let target_projects = registry.resolve_project_selectors(filter_projects)?;
-    run_workspace_push_projects_impl(project_dir, initiative_name, &target_projects, dry_run)
+) -> Result<Vec<PushResult>, Error> {
+    let target_projects = registry.select(filter_projects)?;
+    push_projects(project_dir, initiative_name, &target_projects, dry_run)
 }
 
 /// Core implementation of `specify workspace push` for pre-resolved projects.
@@ -1096,9 +1090,9 @@ pub fn run_workspace_push_impl(
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn run_workspace_push_projects_impl(
+pub fn push_projects(
     project_dir: &Path, initiative_name: &str, target_projects: &[&RegistryProject], dry_run: bool,
-) -> Result<Vec<WorkspacePushResult>, Error> {
+) -> Result<Vec<PushResult>, Error> {
     let branch_name = format!("specify/{initiative_name}");
     let workspace_base = workspace_base(project_dir);
     let forge = RealWorkspacePushForge;
@@ -1274,8 +1268,8 @@ fn push_branch(
 fn push_result(
     rp: &RegistryProject, status: PushOutcome, branch: Option<&str>, pr_number: Option<u64>,
     error: Option<String>,
-) -> WorkspacePushResult {
-    WorkspacePushResult {
+) -> PushResult {
+    PushResult {
         name: rp.name.clone(),
         status,
         branch: branch.map(ToString::to_string),
@@ -1288,8 +1282,8 @@ fn push_result(
 fn push_single_project(
     project_dir: &Path, workspace_base: &Path, rp: &RegistryProject, branch_name: &str,
     initiative_name: &str, dry_run: bool, forge: &dyn WorkspacePushForge,
-) -> WorkspacePushResult {
-    let project_path = project_path_for(project_dir, workspace_base, rp);
+) -> PushResult {
+    let project_path = project_path(project_dir, workspace_base, rp);
 
     if !is_git_worktree(&project_path) {
         return push_result(
@@ -1355,7 +1349,7 @@ fn push_single_project(
             }
         };
 
-    let slug = extract_github_slug(&forge_url);
+    let slug = github_slug(&forge_url);
     let remote_branch =
         match inspect_remote_branch(&project_path, branch_name, slug.as_deref(), forge) {
             Ok(state) => state,
@@ -1799,7 +1793,7 @@ mod tests {
     fn push_alpha(
         project_dir: &Path, project: &RegistryProject, dry_run: bool,
         forge: &dyn WorkspacePushForge,
-    ) -> WorkspacePushResult {
+    ) -> PushResult {
         let workspace_base = project_dir.join(".specify/workspace");
         push_single_project(
             project_dir,
@@ -2087,47 +2081,38 @@ mod tests {
 
     #[test]
     fn extract_github_slug_git_ssh() {
-        assert_eq!(
-            extract_github_slug("git@github.com:org/mobile.git"),
-            Some("org/mobile".to_string())
-        );
+        assert_eq!(github_slug("git@github.com:org/mobile.git"), Some("org/mobile".to_string()));
     }
 
     #[test]
     fn extract_github_slug_git_ssh_no_suffix() {
-        assert_eq!(
-            extract_github_slug("git@github.com:org/mobile"),
-            Some("org/mobile".to_string())
-        );
+        assert_eq!(github_slug("git@github.com:org/mobile"), Some("org/mobile".to_string()));
     }
 
     #[test]
     fn extract_github_slug_https() {
         assert_eq!(
-            extract_github_slug("https://github.com/org/mobile.git"),
+            github_slug("https://github.com/org/mobile.git"),
             Some("org/mobile".to_string())
         );
     }
 
     #[test]
     fn extract_github_slug_https_no_suffix() {
-        assert_eq!(
-            extract_github_slug("https://github.com/org/mobile"),
-            Some("org/mobile".to_string())
-        );
+        assert_eq!(github_slug("https://github.com/org/mobile"), Some("org/mobile".to_string()));
     }
 
     #[test]
     fn extract_github_slug_ssh_protocol() {
         assert_eq!(
-            extract_github_slug("ssh://git@github.com/org/mobile.git"),
+            github_slug("ssh://git@github.com/org/mobile.git"),
             Some("org/mobile".to_string())
         );
     }
 
     #[test]
     fn extract_github_slug_non_github() {
-        assert_eq!(extract_github_slug("git@gitlab.com:org/repo.git"), None);
+        assert_eq!(github_slug("git@gitlab.com:org/repo.git"), None);
     }
 
     #[test]

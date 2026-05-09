@@ -12,7 +12,7 @@ use specify_error::{Error, ValidationStatus, ValidationSummary};
 
 use crate::ValidationResult;
 use crate::brief::split_on_closing_delimiter;
-use crate::capability::validate_against_embedded_schema;
+use crate::capability::validate_against_schema;
 
 const CODEX_RULE_JSON_SCHEMA: &str = include_str!("../../../schemas/codex-rule.schema.json");
 
@@ -249,7 +249,7 @@ impl CodexRule {
             rule_id: RULE_FRONTMATTER_PARSEABLE,
             rule: "codex rule frontmatter parses as YAML",
         });
-        results.extend(validate_against_embedded_schema(
+        results.extend(validate_against_schema(
             CODEX_RULE_JSON_SCHEMA,
             RULE_FRONTMATTER_VALID,
             "codex rule frontmatter conforms to schemas/codex-rule.schema.json",

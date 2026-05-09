@@ -29,11 +29,11 @@ pub use specify_merge::{
 pub use specify_slice::{
     CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry, LifecycleStatus,
     METADATA_VERSION, Outcome, Overlap, PhaseOutcome, Rfc3339Stamp, SLICES_DIR_NAME, SliceMetadata,
-    SpecType, TouchedSpec, actions as slice_actions, format_rfc3339,
+    SpecKind, TouchedSpec, actions as slice_actions, format_rfc3339,
 };
 pub use specify_spec::{
-    DeltaSpec, ParsedSpec, RenameEntry, RequirementBlock, Scenario, has_delta_headers,
-    parse_baseline, parse_delta,
+    DeltaSpec, ParsedSpec, Rename, Requirement, Scenario, has_delta_headers, parse_baseline,
+    parse_delta,
 };
 pub use specify_task::{SkillDirective, Task, TaskProgress, mark_complete, parse_tasks};
 pub use specify_validate::{ValidationReport, ValidationResult, serialize_report, validate_slice};

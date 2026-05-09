@@ -19,7 +19,7 @@ use crate::cli::{OutputFormat, RegistryAction};
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_registry(ctx: &CommandContext, action: RegistryAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: RegistryAction) -> Result<CliResult, Error> {
     match action {
         RegistryAction::Show => show_registry(ctx),
         RegistryAction::Validate => validate_registry(ctx),
@@ -364,7 +364,7 @@ fn plan_references_for(project_dir: &Path, removed_name: &str) -> Vec<String> {
     match Plan::load(&plan_path) {
         Ok(plan) => {
             let referencing: Vec<&str> = plan
-                .changes
+                .entries
                 .iter()
                 .filter(|entry| entry.project.as_deref() == Some(removed_name))
                 .map(|entry| entry.name.as_str())
@@ -833,7 +833,7 @@ mod tests {
         let plan = Plan {
             name: "demo".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![
+            entries: vec![
                 Entry {
                     name: "alpha-feature".to_string(),
                     project: Some("alpha".to_string()),

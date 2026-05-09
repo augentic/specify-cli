@@ -300,11 +300,11 @@ mod tests {
         let ok = specify_spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n",
         );
-        assert!(ids_match_pattern(&ok, specify_spec::REQUIREMENT_ID_PATTERN));
+        assert!(ids_match_pattern(&ok, specify_spec::REQ_ID_PATTERN));
         let bad = specify_spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-1\n\n#### Scenario: Happy\n",
         );
-        assert!(!ids_match_pattern(&bad, specify_spec::REQUIREMENT_ID_PATTERN));
+        assert!(!ids_match_pattern(&bad, specify_spec::REQ_ID_PATTERN));
     }
 
     #[test]

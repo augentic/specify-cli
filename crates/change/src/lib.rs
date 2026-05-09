@@ -22,18 +22,14 @@
 //! `specify-slice` MUST NOT depend on this crate; the per-loop unit
 //! is the substrate, the umbrella orchestration is the consumer.
 
-mod finalize;
+pub mod finalize;
 mod plan;
 
-pub use finalize::{
-    FinalizeError, FinalizeInputs, FinalizeOutcome, FinalizeProbe, FinalizeProjectResult,
-    FinalizeStatus, FinalizeSummaryCounts, RealFinalizeProbe, classify_pr_state, combine_status,
-    is_terminal_for_finalize, load_plan_or_refuse, non_terminal_entries, run_finalize, summarise,
-};
+pub use finalize::summarise;
 pub use plan::core::{Entry, EntryPatch, Finding, Plan, Severity, Status};
 pub use plan::doctor::{
-    BlockingPredecessor, CODE_CYCLE, CODE_ORPHAN_SOURCE, CODE_STALE_CLONE, CODE_UNREACHABLE,
-    CloneSignature, Diagnostic as PlanDoctorDiagnostic, DiagnosticPayload as PlanDoctorPayload,
-    DiagnosticSeverity as PlanDoctorSeverity, StaleCloneReason, doctor as plan_doctor,
+    BlockingPredecessor, CYCLE, CloneSignature, Diagnostic as PlanDoctorDiagnostic,
+    DiagnosticPayload as PlanDoctorPayload, DiagnosticSeverity as PlanDoctorSeverity,
+    ORPHAN_SOURCE, STALE_CLONE, StaleReason, UNREACHABLE, doctor as plan_doctor,
 };
 pub use plan::lock::{Acquired, Guard, PlanLockReleased, PlanLockState, Stamp};

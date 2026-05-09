@@ -41,8 +41,8 @@ pub use capability::{
     Phase, Pipeline, PipelineEntry, ResolvedCapability,
 };
 pub use change_brief::{
-    CHANGE_BRIEF_FILENAME, ChangeBrief, ChangeFrontmatter, ChangeInput, InputKind,
-    LEGACY_CHANGE_BRIEF_FILENAME,
+    ChangeBrief, ChangeFrontmatter, ChangeInput, FILENAME as CHANGE_BRIEF_FILENAME, InputKind,
+    LEGACY_FILENAME as LEGACY_CHANGE_BRIEF_FILENAME,
 };
 pub use codex::{
     CodexApplicability, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexReference,

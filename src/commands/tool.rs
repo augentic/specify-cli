@@ -107,9 +107,7 @@ struct GcBody {
 }
 
 /// Run a declared WASI tool through the concrete WASI host.
-pub fn run_tool_run(
-    ctx: &CommandContext, name: String, args: Vec<String>,
-) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, name: String, args: Vec<String>) -> Result<CliResult, Error> {
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
     let scoped = find_tool(&inventory, &name)?;
@@ -125,7 +123,7 @@ pub fn run_tool_run(
 }
 
 /// List the merged tool declarations for the current project.
-pub fn run_tool_list(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn list(ctx: &CommandContext) -> Result<CliResult, Error> {
     let inventory = build_inventory(ctx)?;
     let rows = rows_for(&inventory.tools)?;
     match ctx.format {
@@ -142,7 +140,7 @@ pub fn run_tool_list(ctx: &CommandContext) -> Result<CliResult, Error> {
 }
 
 /// Fetch one declared tool, or all declared tools when no name is supplied.
-pub fn run_tool_fetch(ctx: &CommandContext, name: Option<String>) -> Result<CliResult, Error> {
+pub fn fetch(ctx: &CommandContext, name: Option<String>) -> Result<CliResult, Error> {
     let inventory = build_inventory(ctx)?;
     let selected = select_tools(&inventory, name.as_deref())?;
     let mut rows = Vec::with_capacity(selected.len());
@@ -183,7 +181,7 @@ pub fn run_tool_fetch(ctx: &CommandContext, name: Option<String>) -> Result<CliR
 }
 
 /// Show one declared tool's metadata and cache state.
-pub fn run_tool_show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub fn show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let inventory = build_inventory(ctx)?;
     let scoped = find_tool(&inventory, &name)?;
     let row = show_row_for(scoped)?;
@@ -201,7 +199,7 @@ pub fn run_tool_show(ctx: &CommandContext, name: String) -> Result<CliResult, Er
 }
 
 /// Remove cache entries not referenced by the current project's merged tool list.
-pub fn run_tool_gc(ctx: &CommandContext, all: bool) -> Result<CliResult, Error> {
+pub fn gc(ctx: &CommandContext, all: bool) -> Result<CliResult, Error> {
     let inventory = build_inventory(ctx)?;
     let mut kept_by_scope = kept_by_scope(&inventory);
     let mut removed = Vec::new();
@@ -249,12 +247,12 @@ fn build_inventory(ctx: &CommandContext) -> Result<Inventory, Error> {
     let capability = resolve_project_capability(ctx)?;
     let capability_tools = if let Some(capability) = capability {
         let capability_scope = ToolScope::Capability {
-            capability_slug: capability.schema.name.clone(),
+            capability_slug: capability.manifest.name.clone(),
             capability_dir: capability.root_dir.clone(),
         };
         scopes.push(capability_scope.clone());
         let sidecar_tools =
-            load::load_capability_sidecar(&capability.root_dir, &capability.schema.name)?;
+            load::load_capability_sidecar(&capability.root_dir, &capability.manifest.name)?;
         let tools: Vec<Tool> = sidecar_tools.iter().map(|(_, tool)| tool.clone()).collect();
         validate_manifest_tools(&tools, &capability_scope)?;
         sidecar_tools
@@ -280,9 +278,9 @@ fn resolve_project_capability(ctx: &CommandContext) -> Result<Option<ResolvedCap
 }
 
 fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
-    match Capability::manifest_path_in(dir) {
-        ManifestProbe::Capability(_) => Ok(()),
-        ManifestProbe::LegacySchema(path) => Err(Error::SchemaBecameCapability { path }),
+    match Capability::probe_dir(dir) {
+        ManifestProbe::Found(_) => Ok(()),
+        ManifestProbe::Legacy(path) => Err(Error::LegacyCapabilityField { path }),
         ManifestProbe::Missing => {
             Err(Error::SchemaResolution(format!("no `{CAPABILITY_FILENAME}` at {}", dir.display())))
         }

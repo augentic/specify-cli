@@ -37,10 +37,10 @@ impl From<CliResult> for ExitCode {
 impl From<&Error> for CliResult {
     fn from(err: &Error) -> Self {
         match err {
-            Error::SpecifyVersionTooOld { .. } => Self::VersionTooOld,
-            Error::Validation { .. }
-            | Error::ToolPermissionDenied(_)
-            | Error::ToolNotDeclared { .. } => Self::ValidationFailed,
+            Error::CliTooOld { .. } => Self::VersionTooOld,
+            Error::Validation { .. } | Error::ToolDenied(_) | Error::ToolNotDeclared { .. } => {
+                Self::ValidationFailed
+            }
             _ => Self::GenericFailure,
         }
     }

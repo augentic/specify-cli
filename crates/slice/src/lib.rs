@@ -157,14 +157,14 @@ pub struct TouchedSpec {
     pub name: String,
     /// Whether this spec is new or modifies an existing baseline.
     #[serde(rename = "type")]
-    pub kind: SpecType,
+    pub kind: SpecKind,
 }
 
 /// Whether a touched spec is new or a modification of an existing baseline.
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
-pub enum SpecType {
+pub enum SpecKind {
     /// A brand-new spec not yet in the baseline.
     New,
     /// A modification of an existing baseline spec.
@@ -205,7 +205,7 @@ impl Outcome {
     }
 }
 
-impl fmt::Display for SpecType {
+impl fmt::Display for SpecKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::New => "new",
@@ -223,13 +223,13 @@ impl LifecycleStatus {
 
     /// Whether this status is terminal (no further transitions possible).
     #[must_use]
-    pub const fn is_terminal(&self) -> bool {
+    pub const fn is_terminal(self) -> bool {
         matches!(self, Self::Merged | Self::Dropped)
     }
 
     /// Whether `self → target` is a legal edge in the lifecycle state machine.
     #[must_use]
-    pub const fn can_transition_to(&self, target: &Self) -> bool {
+    pub const fn can_transition_to(self, target: Self) -> bool {
         use LifecycleStatus::{Building, Complete, Defined, Defining, Dropped, Merged};
         matches!(
             (self, target),
@@ -246,8 +246,8 @@ impl LifecycleStatus {
     /// # Errors
     ///
     /// Returns `Error::Lifecycle` if the transition is illegal.
-    pub fn transition(&self, target: Self) -> Result<Self, Error> {
-        if self.can_transition_to(&target) {
+    pub fn transition(self, target: Self) -> Result<Self, Error> {
+        if self.can_transition_to(target) {
             Ok(target)
         } else {
             Err(Error::Lifecycle {
@@ -351,7 +351,7 @@ mod tests {
         for &from in &ALL_STATUSES {
             for &to in &ALL_STATUSES {
                 let expected = allowed.contains(&(from, to));
-                let actual = from.can_transition_to(&to);
+                let actual = from.can_transition_to(to);
                 assert_eq!(
                     actual, expected,
                     "({from:?}) -> ({to:?}): expected allowed={expected}, got {actual}"
@@ -368,7 +368,7 @@ mod tests {
             }
             for &to in &ALL_STATUSES {
                 assert!(
-                    !from.can_transition_to(&to),
+                    !from.can_transition_to(to),
                     "terminal state {from:?} must not allow -> {to:?}"
                 );
             }
@@ -430,11 +430,11 @@ mod tests {
             touched_specs: vec![
                 TouchedSpec {
                     name: "login".to_string(),
-                    kind: SpecType::Modified,
+                    kind: SpecKind::Modified,
                 },
                 TouchedSpec {
                     name: "oauth".to_string(),
-                    kind: SpecType::New,
+                    kind: SpecKind::New,
                 },
             ],
             outcome: None,
@@ -500,9 +500,9 @@ touched-specs:
         assert_eq!(meta.completed_at, None);
         assert_eq!(meta.touched_specs.len(), 2);
         assert_eq!(meta.touched_specs[0].name, "login");
-        assert_eq!(meta.touched_specs[0].kind, SpecType::Modified);
+        assert_eq!(meta.touched_specs[0].kind, SpecKind::Modified);
         assert_eq!(meta.touched_specs[1].name, "oauth");
-        assert_eq!(meta.touched_specs[1].kind, SpecType::New);
+        assert_eq!(meta.touched_specs[1].kind, SpecKind::New);
     }
 
     #[test]
@@ -520,7 +520,7 @@ touched-specs:
             drop_reason: None,
             touched_specs: vec![TouchedSpec {
                 name: "login".to_string(),
-                kind: SpecType::Modified,
+                kind: SpecKind::Modified,
             }],
             outcome: None,
         };
@@ -607,8 +607,8 @@ touched-specs:
 
     #[test]
     fn spec_type_display_matches_serde() {
-        assert_eq!(SpecType::New.to_string(), "new");
-        assert_eq!(SpecType::Modified.to_string(), "modified");
+        assert_eq!(SpecKind::New.to_string(), "new");
+        assert_eq!(SpecKind::Modified.to_string(), "modified");
     }
 
     /// RFC-9 §2B back-compat invariant: the implicit pre-RFC-9

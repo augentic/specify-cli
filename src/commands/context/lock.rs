@@ -88,7 +88,7 @@ pub(super) fn load(path: &Path) -> Result<Option<ContextLock>, Error> {
     if version.version > CURRENT_LOCK_VERSION {
         return Err(validation_error(
             "context-lock-version-too-new",
-            Error::ContextLockVersionTooNew {
+            Error::ContextLockTooNew {
                 found: version.version,
                 supported: CURRENT_LOCK_VERSION,
             }

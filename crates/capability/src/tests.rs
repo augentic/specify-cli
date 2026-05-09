@@ -287,7 +287,7 @@ pipeline:
 const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../schemas/capability.schema.json");
 
 fn validate_raw(instance: &serde_json::Value) -> Vec<ValidationResult> {
-    crate::capability::validate_against_embedded_schema(
+    crate::capability::validate_against_schema(
         CAPABILITY_JSON_SCHEMA,
         "capability.valid",
         "capability manifest conforms to schemas/capability.schema.json",
@@ -822,7 +822,7 @@ fn pipeline_view_loads_omnia_schema_from_workspace() {
     let root = repo_root();
     let view = PipelineView::load("omnia", &root).expect("omnia view loads");
     assert_eq!(view.briefs.len(), 6);
-    assert!(matches!(view.schema.source, CapabilitySource::Local(_)));
+    assert!(matches!(view.capability.source, CapabilitySource::Local(_)));
 
     assert!(view.brief("proposal").is_some());
     assert!(view.brief("build").is_some());
@@ -1029,7 +1029,7 @@ fn schema_resolve_prefers_cache_over_local_for_bare_names() {
 
     let resolved = Capability::resolve("demo", tmp.path()).unwrap();
     assert!(matches!(resolved.source, CapabilitySource::Cached(_)));
-    assert_eq!(resolved.schema.description, "cached");
+    assert_eq!(resolved.manifest.description, "cached");
 }
 
 // ---------- CacheMeta ----------
@@ -1429,7 +1429,7 @@ fn change_brief_refuse_legacy_errors_when_only_legacy_present() {
     std::fs::write(ChangeBrief::legacy_path(tmp.path()), "---\nname: x\n---\n").unwrap();
     let err = ChangeBrief::refuse_legacy(tmp.path()).expect_err("legacy-only must refuse");
     match err {
-        Error::ChangeBriefBecameChangeMd { path } => {
+        Error::LegacyChangeBrief { path } => {
             assert_eq!(path, tmp.path().join("initiative.md"));
         }
         other => panic!("wrong variant: {other:?}"),
@@ -1438,7 +1438,7 @@ fn change_brief_refuse_legacy_errors_when_only_legacy_present() {
 
 #[test]
 fn change_brief_refuse_legacy_passes_when_both_present() {
-    // Both files present is a [`Error::ChangeNounMigrationTargetExists`]
+    // Both files present is a [`Error::ChangeNounCollision`]
     // condition resolved by the migration verb, not by the read-side
     // helper. `refuse_legacy` should silently allow the call so
     // callers like `specify change show` can still load `change.md`

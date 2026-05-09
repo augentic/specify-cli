@@ -40,9 +40,7 @@ use std::path::Path;
 use petgraph::algo::tarjan_scc;
 use petgraph::graph::DiGraph;
 use serde::{Deserialize, Serialize};
-use specify_registry::workspace::{
-    WorkspaceSlotProblem, WorkspaceSlotProblemReason, workspace_slot_problem,
-};
+use specify_registry::workspace::{SlotProblem, SlotProblemReason, slot_problem};
 use specify_registry::{Registry, RegistryProject};
 
 use super::core::{Entry, Finding, Plan, Severity, Status};
@@ -52,16 +50,16 @@ use super::core::{Entry, Finding, Plan, Severity, Status};
 /// Distinct from validate's `dependency-cycle` so dashboards can route
 /// the doctor-only structured payload separately from validate's
 /// message-only string.
-pub const CODE_CYCLE: &str = "cycle-in-depends-on";
+pub const CYCLE: &str = "cycle-in-depends-on";
 /// Stable code for the orphan-source-key diagnostic — top-level
 /// `sources:` key declared but unreferenced by any entry.
-pub const CODE_ORPHAN_SOURCE: &str = "orphan-source-key";
+pub const ORPHAN_SOURCE: &str = "orphan-source-key";
 /// Stable code for the stale-workspace-clone diagnostic. See
-/// [`StaleCloneReason`] for the two ways a clone is classified stale.
-pub const CODE_STALE_CLONE: &str = "stale-workspace-clone";
+/// [`StaleReason`] for the two ways a clone is classified stale.
+pub const STALE_CLONE: &str = "stale-workspace-clone";
 /// Stable code for the unreachable-entry diagnostic — pending entry
 /// whose dependency closure is rooted in `failed`/`skipped`.
-pub const CODE_UNREACHABLE: &str = "unreachable-entry";
+pub const UNREACHABLE: &str = "unreachable-entry";
 
 /// One row in the doctor diagnostic stream.
 ///
@@ -133,7 +131,7 @@ impl From<&Severity> for DiagnosticSeverity {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum DiagnosticPayload {
-    /// Payload for [`CODE_CYCLE`].
+    /// Payload for [`CYCLE`].
     ///
     /// `cycle` is the dependency cycle in stable, alphabetically-sorted
     /// order with the first node repeated at the end so reviewers can
@@ -142,18 +140,18 @@ pub enum DiagnosticPayload {
         /// Cycle path: `[a, b, c, a]`.
         cycle: Vec<String>,
     },
-    /// Payload for [`CODE_ORPHAN_SOURCE`].
+    /// Payload for [`ORPHAN_SOURCE`].
     OrphanSource {
         /// Top-level `sources:` key that no entry references.
         key: String,
     },
-    /// Payload for [`CODE_STALE_CLONE`].
+    /// Payload for [`STALE_CLONE`].
     StaleClone {
         /// Registry project name whose `.specify/workspace/<project>/`
         /// slot is out of sync.
         project: String,
         /// Why the slot is classified stale.
-        reason: StaleCloneReason,
+        reason: StaleReason,
         /// Registry's expected signature for the slot.
         #[serde(skip_serializing_if = "Option::is_none")]
         expected: Option<CloneSignature>,
@@ -161,7 +159,7 @@ pub enum DiagnosticPayload {
         #[serde(skip_serializing_if = "Option::is_none")]
         observed: Option<CloneSignature>,
     },
-    /// Payload for [`CODE_UNREACHABLE`].
+    /// Payload for [`UNREACHABLE`].
     UnreachableEntry {
         /// The unreachable plan entry.
         entry: String,
@@ -172,10 +170,10 @@ pub enum DiagnosticPayload {
     },
 }
 
-/// Why a workspace clone is classified stale by [`CODE_STALE_CLONE`].
+/// Why a workspace clone is classified stale by [`STALE_CLONE`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum StaleCloneReason {
+pub enum StaleReason {
     /// A remote-backed clone's `origin` differs from the registry URL.
     SignatureChanged,
     /// Slot materialisation does not match the registry URL class or target.
@@ -255,12 +253,12 @@ pub fn doctor(
     let mut out: Vec<Diagnostic> =
         plan.validate(slices_dir, registry).iter().map(Diagnostic::from_finding).collect();
 
-    out.extend(detect_cycles_doctor(&plan.changes));
+    out.extend(detect_cycles_doctor(&plan.entries));
     out.extend(orphan_source_keys(plan));
     if let (Some(reg), Some(dir)) = (registry, project_dir) {
         out.extend(stale_workspace_clones(reg, dir));
     }
-    out.extend(unreachable_entries(&plan.changes));
+    out.extend(unreachable_entries(&plan.entries));
 
     out
 }
@@ -269,7 +267,7 @@ pub fn doctor(
 // 1. Cycle detection (RFC-9 §4B / `cycle-in-depends-on`)
 // ---------------------------------------------------------------------------
 
-/// One [`CODE_CYCLE`] diagnostic per cycle in the depends-on graph.
+/// One [`CYCLE`] diagnostic per cycle in the depends-on graph.
 ///
 /// Self-loops are emitted too. Cycles are deduplicated by sorted
 /// node-set so every distinct cycle surfaces exactly once. The cycle
@@ -315,7 +313,7 @@ fn detect_cycles_doctor(changes: &[Entry]) -> Vec<Diagnostic> {
         let pretty = cycle_names.join(" → ");
         out.push(Diagnostic {
             severity: DiagnosticSeverity::Error,
-            code: CODE_CYCLE.to_string(),
+            code: CYCLE.to_string(),
             message: format!("dependency cycle: {pretty}"),
             entry: None,
             data: Some(DiagnosticPayload::Cycle { cycle: cycle_names }),
@@ -335,7 +333,7 @@ fn detect_cycles_doctor(changes: &[Entry]) -> Vec<Diagnostic> {
 /// references.
 fn orphan_source_keys(plan: &Plan) -> Vec<Diagnostic> {
     let mut referenced: HashSet<&str> = HashSet::new();
-    for entry in &plan.changes {
+    for entry in &plan.entries {
         for k in &entry.sources {
             referenced.insert(k.as_str());
         }
@@ -351,7 +349,7 @@ fn orphan_source_keys(plan: &Plan) -> Vec<Diagnostic> {
         .into_iter()
         .map(|key| Diagnostic {
             severity: DiagnosticSeverity::Warning,
-            code: CODE_ORPHAN_SOURCE.to_string(),
+            code: ORPHAN_SOURCE.to_string(),
             message: format!(
                 "source key '{key}' is declared in the plan-level `sources:` map but no entry references it; either reference it from an entry's `sources:` list or remove the declaration"
             ),
@@ -369,7 +367,7 @@ fn orphan_source_keys(plan: &Plan) -> Vec<Diagnostic> {
 
 /// Stale-slot diagnostics for every project whose materialisation drifted.
 ///
-/// Emits one [`CODE_STALE_CLONE`] per registry project whose existing workspace
+/// Emits one [`STALE_CLONE`] per registry project whose existing workspace
 /// slot would be refused by `workspace sync`. Missing slots are left to
 /// `workspace sync`; absent `.specify-sync.yaml` metadata is ignored.
 fn stale_workspace_clones(registry: &Registry, project_dir: &Path) -> Vec<Diagnostic> {
@@ -378,14 +376,14 @@ fn stale_workspace_clones(registry: &Registry, project_dir: &Path) -> Vec<Diagno
 
     let mut out = Vec::new();
     for project in sorted {
-        if let Some(problem) = workspace_slot_problem(project_dir, project) {
+        if let Some(problem) = slot_problem(project_dir, project) {
             out.push(diag_slot_problem(project, &problem));
         }
     }
     out
 }
 
-fn diag_slot_problem(project: &RegistryProject, problem: &WorkspaceSlotProblem) -> Diagnostic {
+fn diag_slot_problem(project: &RegistryProject, problem: &SlotProblem) -> Diagnostic {
     let expected = CloneSignature {
         slot_kind: Some(problem.expected_kind.label().to_string()),
         url: Some(project.url.clone()),
@@ -398,14 +396,14 @@ fn diag_slot_problem(project: &RegistryProject, problem: &WorkspaceSlotProblem) 
         schema: None,
         target: problem.observed_target.as_ref().map(|path| path.display().to_string()),
     };
-    let reason = if problem.reason == WorkspaceSlotProblemReason::RemoteOriginMismatch {
-        StaleCloneReason::SignatureChanged
+    let reason = if problem.reason == SlotProblemReason::RemoteOriginMismatch {
+        StaleReason::SignatureChanged
     } else {
-        StaleCloneReason::SlotMismatch
+        StaleReason::SlotMismatch
     };
     Diagnostic {
         severity: DiagnosticSeverity::Warning,
-        code: CODE_STALE_CLONE.to_string(),
+        code: STALE_CLONE.to_string(),
         message: format!(
             "workspace slot '{}' is out of sync with `registry.yaml`: {}",
             project.name,
@@ -514,7 +512,7 @@ fn unreachable_entries(changes: &[Entry]) -> Vec<Diagnostic> {
                 .join(", ");
             Diagnostic {
                 severity: DiagnosticSeverity::Error,
-                code: CODE_UNREACHABLE.to_string(),
+                code: UNREACHABLE.to_string(),
                 message: format!("entry '{}' is unreachable: blocked by {}", entry.name, detail),
                 entry: Some(entry.name.clone()),
                 data: Some(DiagnosticPayload::UnreachableEntry {
@@ -530,7 +528,7 @@ fn unreachable_entries(changes: &[Entry]) -> Vec<Diagnostic> {
 ///
 /// Self-loops are included. Used by the unreachable check to avoid
 /// double-reporting entries that are already surfaced under
-/// [`CODE_CYCLE`].
+/// [`CYCLE`].
 fn cycle_membership(changes: &[Entry]) -> HashSet<&str> {
     let mut graph: DiGraph<&str, ()> = DiGraph::new();
     let mut idx = HashMap::new();
@@ -602,7 +600,7 @@ mod tests {
         Plan {
             name: "test".into(),
             sources: BTreeMap::new(),
-            changes,
+            entries: changes,
         }
     }
 
@@ -614,7 +612,7 @@ mod tests {
         Plan {
             name: "test".into(),
             sources: map,
-            changes,
+            entries: changes,
         }
     }
 
@@ -627,7 +625,7 @@ mod tests {
             change_with_deps("b", Status::Pending, &["a"]),
         ]);
         let hits: Vec<_> =
-            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CODE_CYCLE).collect();
+            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).collect();
         assert_eq!(hits.len(), 1, "expected one cycle, got {hits:#?}");
         match hits[0].data.as_ref().unwrap() {
             DiagnosticPayload::Cycle { cycle } => {
@@ -645,7 +643,7 @@ mod tests {
             change_with_deps("c", Status::Pending, &["b"]),
         ]);
         let hits: Vec<_> =
-            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CODE_CYCLE).collect();
+            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).collect();
         assert_eq!(hits.len(), 1, "single SCC, single diagnostic");
         match hits[0].data.as_ref().unwrap() {
             DiagnosticPayload::Cycle { cycle } => {
@@ -666,8 +664,7 @@ mod tests {
             change_with_deps("c", Status::Pending, &["d"]),
             change_with_deps("d", Status::Pending, &["c"]),
         ]);
-        let count =
-            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CODE_CYCLE).count();
+        let count = doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).count();
         assert_eq!(count, 2, "expected two distinct cycles");
     }
 
@@ -675,7 +672,7 @@ mod tests {
     fn doctor_cycle_self_loop() {
         let plan = plan_with(vec![change_with_deps("a", Status::Pending, &["a"])]);
         let hits: Vec<_> =
-            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CODE_CYCLE).collect();
+            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).collect();
         assert_eq!(hits.len(), 1);
         match hits[0].data.as_ref().unwrap() {
             DiagnosticPayload::Cycle { cycle } => {
@@ -692,7 +689,7 @@ mod tests {
             change_with_deps("b", Status::Pending, &["a"]),
         ]);
         let hits: Vec<_> =
-            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CODE_CYCLE).collect();
+            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).collect();
         assert!(hits.is_empty(), "no cycle expected, got {hits:#?}");
     }
 
@@ -704,7 +701,7 @@ mod tests {
         e.sources = vec!["monolith".into()];
         let plan = plan_with_sources(vec![("monolith", "/path")], vec![e]);
         let any_orphan =
-            doctor(&plan, None, None, None).into_iter().any(|d| d.code == CODE_ORPHAN_SOURCE);
+            doctor(&plan, None, None, None).into_iter().any(|d| d.code == ORPHAN_SOURCE);
         assert!(!any_orphan);
     }
 
@@ -720,7 +717,7 @@ mod tests {
         );
         let hits: Vec<_> = doctor(&plan, None, None, None)
             .into_iter()
-            .filter(|d| d.code == CODE_ORPHAN_SOURCE)
+            .filter(|d| d.code == ORPHAN_SOURCE)
             .collect();
         assert_eq!(hits.len(), 1);
         match hits[0].data.as_ref().unwrap() {
@@ -742,7 +739,7 @@ mod tests {
         );
         let hits: Vec<_> = doctor(&plan, None, None, None)
             .into_iter()
-            .filter(|d| d.code == CODE_ORPHAN_SOURCE)
+            .filter(|d| d.code == ORPHAN_SOURCE)
             .collect();
         let keys: Vec<&str> = hits
             .iter()
@@ -771,10 +768,8 @@ mod tests {
                 },
             ],
         );
-        let count = doctor(&plan, None, None, None)
-            .into_iter()
-            .filter(|d| d.code == CODE_ORPHAN_SOURCE)
-            .count();
+        let count =
+            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == ORPHAN_SOURCE).count();
         assert_eq!(count, 1, "only `ghost` should orphan");
     }
 
@@ -786,10 +781,8 @@ mod tests {
             change("a", Status::Failed),
             change_with_deps("b", Status::Pending, &["a"]),
         ]);
-        let hits: Vec<_> = doctor(&plan, None, None, None)
-            .into_iter()
-            .filter(|d| d.code == CODE_UNREACHABLE)
-            .collect();
+        let hits: Vec<_> =
+            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == UNREACHABLE).collect();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].entry.as_deref(), Some("b"));
         match hits[0].data.as_ref().unwrap() {
@@ -810,10 +803,8 @@ mod tests {
             change_with_deps("b", Status::Pending, &["a"]),
             change_with_deps("c", Status::Pending, &["b"]),
         ]);
-        let hits: Vec<_> = doctor(&plan, None, None, None)
-            .into_iter()
-            .filter(|d| d.code == CODE_UNREACHABLE)
-            .collect();
+        let hits: Vec<_> =
+            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == UNREACHABLE).collect();
         let names: Vec<&str> = hits.iter().filter_map(|d| d.entry.as_deref()).collect();
         assert_eq!(names, vec!["b", "c"], "both b and c are unreachable, sorted");
         // c's blocking points at b (Pending and unreachable).
@@ -835,10 +826,8 @@ mod tests {
             change("b", Status::Skipped),
             change_with_deps("c", Status::Pending, &["a", "b"]),
         ]);
-        let hits: Vec<_> = doctor(&plan, None, None, None)
-            .into_iter()
-            .filter(|d| d.code == CODE_UNREACHABLE)
-            .collect();
+        let hits: Vec<_> =
+            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == UNREACHABLE).collect();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].entry.as_deref(), Some("c"));
         match hits[0].data.as_ref().unwrap() {
@@ -864,10 +853,8 @@ mod tests {
             change("c", Status::Failed),
             change_with_deps("d", Status::Pending, &["c"]),
         ]);
-        let unreach: Vec<_> = doctor(&plan, None, None, None)
-            .into_iter()
-            .filter(|d| d.code == CODE_UNREACHABLE)
-            .collect();
+        let unreach: Vec<_> =
+            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == UNREACHABLE).collect();
         let names: Vec<&str> = unreach.iter().filter_map(|d| d.entry.as_deref()).collect();
         assert_eq!(names, vec!["d"], "cycle members must not double-report");
     }
@@ -878,10 +865,8 @@ mod tests {
             change("a", Status::Done),
             change_with_deps("b", Status::Pending, &["a"]),
         ]);
-        let hits: Vec<_> = doctor(&plan, None, None, None)
-            .into_iter()
-            .filter(|d| d.code == CODE_UNREACHABLE)
-            .collect();
+        let hits: Vec<_> =
+            doctor(&plan, None, None, None).into_iter().filter(|d| d.code == UNREACHABLE).collect();
         assert!(hits.is_empty(), "no unreachable expected, got {hits:#?}");
     }
 
@@ -948,7 +933,7 @@ mod tests {
         let plan = plan_with(vec![]);
         let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
             .into_iter()
-            .filter(|d| d.code == CODE_STALE_CLONE)
+            .filter(|d| d.code == STALE_CLONE)
             .collect();
         assert_eq!(hits.len(), 1, "expected single stale-clone, got {hits:#?}");
         match hits[0].data.as_ref().unwrap() {
@@ -959,7 +944,7 @@ mod tests {
                 observed,
             } => {
                 assert_eq!(project, "alpha");
-                assert_eq!(*reason, StaleCloneReason::SlotMismatch);
+                assert_eq!(*reason, StaleReason::SlotMismatch);
                 assert_eq!(expected.as_ref().unwrap().slot_kind.as_deref(), Some("git-clone"));
                 assert_eq!(observed.as_ref().unwrap().slot_kind.as_deref(), Some("git-clone"));
                 assert!(observed.as_ref().unwrap().url.is_none());
@@ -986,7 +971,7 @@ mod tests {
         let plan = plan_with(vec![]);
         let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
             .into_iter()
-            .filter(|d| d.code == CODE_STALE_CLONE)
+            .filter(|d| d.code == STALE_CLONE)
             .collect();
         assert_eq!(hits.len(), 1);
         match hits[0].data.as_ref().unwrap() {
@@ -996,7 +981,7 @@ mod tests {
                 observed,
                 ..
             } => {
-                assert_eq!(*reason, StaleCloneReason::SignatureChanged);
+                assert_eq!(*reason, StaleReason::SignatureChanged);
                 assert_eq!(
                     expected.as_ref().unwrap().url.as_deref(),
                     Some("git@github.com:org/alpha.git")
@@ -1023,7 +1008,7 @@ mod tests {
         let plan = plan_with(vec![]);
         let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
             .into_iter()
-            .filter(|d| d.code == CODE_STALE_CLONE)
+            .filter(|d| d.code == STALE_CLONE)
             .collect();
         assert!(hits.is_empty(), "current signature must not warn, got {hits:#?}");
     }
@@ -1042,7 +1027,7 @@ mod tests {
         let plan = plan_with(vec![]);
         let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
             .into_iter()
-            .filter(|d| d.code == CODE_STALE_CLONE)
+            .filter(|d| d.code == STALE_CLONE)
             .collect();
         assert_eq!(hits.len(), 1, "wrong symlink target must surface stale slot");
         match hits[0].data.as_ref().unwrap() {
@@ -1052,7 +1037,7 @@ mod tests {
                 observed,
                 ..
             } => {
-                assert_eq!(*reason, StaleCloneReason::SlotMismatch);
+                assert_eq!(*reason, StaleReason::SlotMismatch);
                 assert_eq!(expected.as_ref().unwrap().slot_kind.as_deref(), Some("symlink"));
                 assert_eq!(observed.as_ref().unwrap().slot_kind.as_deref(), Some("symlink"));
                 assert!(
@@ -1071,7 +1056,7 @@ mod tests {
         let plan = plan_with(vec![]);
         let any_stale = doctor(&plan, None, Some(&registry), Some(tmp.path()))
             .into_iter()
-            .any(|d| d.code == CODE_STALE_CLONE);
+            .any(|d| d.code == STALE_CLONE);
         assert!(!any_stale, "missing slots are left to workspace sync");
     }
 
@@ -1095,7 +1080,7 @@ mod tests {
             ],
         );
         let diagnostics = doctor(&plan, None, None, None);
-        for code in [CODE_CYCLE, CODE_ORPHAN_SOURCE, CODE_STALE_CLONE, CODE_UNREACHABLE] {
+        for code in [CYCLE, ORPHAN_SOURCE, STALE_CLONE, UNREACHABLE] {
             assert!(
                 !diagnostics.iter().any(|d| d.code == code),
                 "healthy plan should not emit {code}: {diagnostics:#?}"
@@ -1118,7 +1103,7 @@ mod tests {
             "validate's `unknown-depends-on` must pass through doctor unchanged: {diagnostics:#?}"
         );
         assert!(
-            diagnostics.iter().any(|d| d.code == CODE_UNREACHABLE),
+            diagnostics.iter().any(|d| d.code == UNREACHABLE),
             "doctor must add the unreachable diagnostic: {diagnostics:#?}"
         );
     }
@@ -1127,7 +1112,7 @@ mod tests {
     fn diagnostic_serialises_kebab_case() {
         let diag = Diagnostic {
             severity: DiagnosticSeverity::Warning,
-            code: CODE_ORPHAN_SOURCE.to_string(),
+            code: ORPHAN_SOURCE.to_string(),
             message: "test".into(),
             entry: None,
             data: Some(DiagnosticPayload::OrphanSource {
@@ -1136,7 +1121,7 @@ mod tests {
         };
         let v = serde_json::to_value(&diag).expect("serialise");
         assert_eq!(v["severity"], "warning");
-        assert_eq!(v["code"], CODE_ORPHAN_SOURCE);
+        assert_eq!(v["code"], ORPHAN_SOURCE);
         assert_eq!(v["data"]["kind"], "orphan-source");
         assert_eq!(v["data"]["key"], "monolith");
     }

@@ -29,7 +29,7 @@ use crate::cli::{ContextAction, OutputFormat};
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_context(ctx: &CommandContext, action: ContextAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: ContextAction) -> Result<CliResult, Error> {
     match action {
         ContextAction::Generate { check, force } => run_generate(ctx, check, force),
         ContextAction::Check => run_check(ctx),
@@ -328,14 +328,14 @@ fn refuse_modified_fenced_body(
     };
     let actual_body = fingerprint::body_sha256(current.body());
     if actual_body != existing_lock.fences.body_sha256 {
-        return Err(Error::ContextFencedContentModified);
+        return Err(Error::ContextDrift);
     }
     Ok(())
 }
 
 fn error_from_fence(err: fences::FenceError) -> Error {
     match err {
-        fences::FenceError::ExistingUnfencedAgentsMd => Error::ContextExistingUnfencedAgentsMd,
+        fences::FenceError::ExistingUnfencedAgentsMd => Error::ContextUnfenced,
         other => Error::Config(other.to_string()),
     }
 }
@@ -398,8 +398,8 @@ fn assemble_render_input(ctx: &CommandContext) -> Result<RenderAssembly, Error> 
 fn collect_capability_inputs(
     collector: &mut fingerprint::InputCollector, pipeline: &PipelineView,
 ) -> Result<(), Error> {
-    match Capability::manifest_path_in(&pipeline.schema.root_dir) {
-        ManifestProbe::Capability(path) | ManifestProbe::LegacySchema(path) => {
+    match Capability::probe_dir(&pipeline.capability.root_dir) {
+        ManifestProbe::Found(path) | ManifestProbe::Legacy(path) => {
             collector.add_file(&path)?;
         }
         ManifestProbe::Missing => {}
@@ -429,9 +429,9 @@ fn capability_summary(pipeline: &PipelineView) -> render::CapabilitySummary {
     });
 
     render::CapabilitySummary {
-        name: pipeline.schema.schema.name.clone(),
-        version: pipeline.schema.schema.version,
-        description: pipeline.schema.schema.description.clone(),
+        name: pipeline.capability.manifest.name.clone(),
+        version: pipeline.capability.manifest.version,
+        description: pipeline.capability.manifest.description.clone(),
         briefs,
     }
 }

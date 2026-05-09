@@ -5,9 +5,7 @@ use std::collections::HashSet;
 
 use regex::Regex;
 use specify_capability::ValidationResult;
-use specify_spec::{
-    REQUIREMENT_ID_PATTERN, REQUIREMENT_ID_PREFIX, SCENARIO_HEADING, parse_baseline,
-};
+use specify_spec::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING, parse_baseline};
 
 const RULE_NO_DUPLICATE_IDS: &str = "merge.no-duplicate-ids";
 const RULE_NO_DUPLICATE_IDS_DESC: &str = "baseline has no duplicate requirement IDs";
@@ -37,7 +35,7 @@ const RULE_DESIGN_REFS_EXIST_DESC: &str =
 ///
 /// # Panics
 ///
-/// Panics if `REQUIREMENT_ID_PATTERN` is not a valid regex (compile-time
+/// Panics if `REQ_ID_PATTERN` is not a valid regex (compile-time
 /// constant — should never happen).
 #[must_use]
 pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<ValidationResult> {
@@ -75,8 +73,7 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
     }
 
     // (c) Heading structure — ID present, ID matches pattern, scenario present.
-    let id_pattern =
-        Regex::new(REQUIREMENT_ID_PATTERN).expect("REQUIREMENT_ID_PATTERN must be a valid regex");
+    let id_pattern = Regex::new(REQ_ID_PATTERN).expect("REQ_ID_PATTERN must be a valid regex");
     // The scenario check in Python strips the trailing colon so the
     // substring match still fires when body text contains `"#### Scenario"`
     // without a colon; preserve that.
@@ -86,10 +83,7 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
             results.push(ValidationResult::Fail {
                 rule_id: RULE_REQ_HAS_ID,
                 rule: RULE_REQ_HAS_ID_DESC,
-                detail: format!(
-                    "Requirement '{}' has no {} line",
-                    block.name, REQUIREMENT_ID_PREFIX
-                ),
+                detail: format!("Requirement '{}' has no {} line", block.name, REQ_ID_PREFIX),
             });
         } else if !id_pattern.is_match(&block.id) {
             results.push(ValidationResult::Fail {
@@ -97,7 +91,7 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
                 rule: RULE_ID_MATCHES_PATTERN_DESC,
                 detail: format!(
                     "Requirement '{}' has invalid ID '{}' (expected pattern: {})",
-                    block.name, block.id, REQUIREMENT_ID_PATTERN
+                    block.name, block.id, REQ_ID_PATTERN
                 ),
             });
         }
@@ -119,12 +113,11 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
         // re.MULTILINE, so finditer() on a multi-line design string never
         // matches. `specify-validate` (Change G, rule
         // `cross.design-references-valid`) will implement a correct
-        // multi-line check. `REQUIREMENT_ID_PATTERN` itself already
+        // multi-line check. `REQ_ID_PATTERN` itself already
         // contains ^ and $ — Rust's default `Regex` treats them as
         // string boundaries (no MULTILINE flag), so we match Python
         // byte-for-byte by feeding the constant straight to the engine.
-        let ref_pattern =
-            Regex::new(REQUIREMENT_ID_PATTERN).expect("REQUIREMENT_ID_PATTERN must compile");
+        let ref_pattern = Regex::new(REQ_ID_PATTERN).expect("REQ_ID_PATTERN must compile");
         let baseline_ids: HashSet<&str> = seen_ids.iter().copied().collect();
         for m in ref_pattern.find_iter(design_text) {
             let ref_id = m.as_str();
@@ -149,7 +142,7 @@ mod tests {
     fn design_reference_regex_is_compilable() {
         // If this ever fails, the const changed and the expect() inside
         // `validate_baseline` would start panicking in the wild.
-        Regex::new(REQUIREMENT_ID_PATTERN).unwrap();
+        Regex::new(REQ_ID_PATTERN).unwrap();
     }
 
     #[test]

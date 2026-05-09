@@ -274,7 +274,7 @@ impl From<ToolError> for specify_error::Error {
             ToolError::ToolNotDeclared { name } => Self::ToolNotDeclared { name },
             ToolError::Runtime(detail) => Self::ToolRuntime(detail),
             err @ (ToolError::InvalidPermission { .. } | ToolError::PermissionDenied { .. }) => {
-                Self::ToolPermissionDenied(err.to_string())
+                Self::ToolDenied(err.to_string())
             }
             other => Self::ToolResolver(other.to_string()),
         }

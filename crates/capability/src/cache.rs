@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
 use crate::ValidationResult;
-use crate::capability::validate_against_embedded_schema;
+use crate::capability::validate_against_schema;
 
 const CACHE_META_JSON_SCHEMA: &str = include_str!("../../../schemas/cache-meta.schema.json");
 
@@ -67,7 +67,7 @@ impl CacheMeta {
                 }];
             }
         };
-        validate_against_embedded_schema(
+        validate_against_schema(
             CACHE_META_JSON_SCHEMA,
             "cache-meta.valid",
             "cache-meta.yaml conforms to schemas/cache-meta.schema.json",

@@ -142,9 +142,7 @@ impl Registry {
     ///
     /// Returns an error if the registry shape is invalid or any selector
     /// does not match a declared project name.
-    pub fn resolve_project_selectors<'a>(
-        &'a self, selectors: &[String],
-    ) -> Result<Vec<&'a RegistryProject>, Error> {
+    pub fn select<'a>(&'a self, selectors: &[String]) -> Result<Vec<&'a RegistryProject>, Error> {
         self.validate_shape()?;
         if selectors.is_empty() {
             return Ok(self.projects.iter().collect());
@@ -194,7 +192,7 @@ impl RegistryProject {
     /// Callers may assume [`Registry::validate_shape`] has already accepted
     /// the URL — this predicate mirrors the C28 classification rules.
     #[must_use]
-    pub fn url_materialises_as_symlink(&self) -> bool {
+    pub fn is_local(&self) -> bool {
         self.url == "." || (!self.url.contains("://") && !self.url.starts_with("git@"))
     }
 }

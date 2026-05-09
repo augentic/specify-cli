@@ -15,7 +15,7 @@ use crate::context::CommandContext;
 use crate::output::{CliResult, absolute_string, emit_response};
 
 /// Dispatch `specify codex *`.
-pub fn run_codex(ctx: &CommandContext, action: CodexAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: CodexAction) -> Result<CliResult, Error> {
     match action {
         CodexAction::List => list(ctx),
         CodexAction::Show { rule_id } => show(ctx, &rule_id),

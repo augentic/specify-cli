@@ -188,8 +188,8 @@ fn load_capability_rules(
     capability: &crate::capability::ResolvedCapability,
 ) -> Result<Vec<ResolvedCodexRule>, Error> {
     let provenance = CodexProvenance::Capability {
-        name: capability.schema.name.clone(),
-        version: capability.schema.version,
+        name: capability.manifest.name.clone(),
+        version: capability.manifest.version,
     };
     load_rules(&capability.root_dir, &provenance)
 }
