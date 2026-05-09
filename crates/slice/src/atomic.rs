@@ -1,24 +1,9 @@
-//! Crash-safe "write a temp file, rename into place" helpers shared by
-//! every `.specify/*.yaml` writer in the crate.
+//! Crash-safe writers shared by every `.specify/*.yaml` writer.
 //!
-//! The pattern is `NamedTempFile::new_in(parent)`, `write_all`,
-//! `sync_all`, then `persist`, which bottoms out at `fs::rename`
-//! (atomic on a single filesystem). Readers observe either the
-//! previous complete contents or the new complete contents, never a
-//! half-written or empty file.
-//!
-//! Both helpers create the parent directory on demand so callers can
-//! write to a freshly-minted `.specify/` layout without an explicit
-//! `create_dir_all` at every call site.
-//!
-//! Promoted from `pub(crate)` to `pub` by RFC-13 chunk 2.4 so the
-//! lifted plan + lock primitives in `specify-change` can route
-//! their on-disk writes through the same atomic-rename envelope as
-//! the per-loop-unit primitives that remain in this crate. Downstream
-//! library users who need the same behaviour should call the domain
-//! helpers (`SliceMetadata::save`, `Journal::append`, plus the
-//! `Plan::save` / `Stamp::acquire` re-exports in `specify-change`)
-//! that route through here.
+//! Pattern: write to a temp file in the same parent, `sync_all`, then
+//! `persist` (atomic rename on a single filesystem). Readers see either
+//! the full previous content or the full new content, never a partial
+//! write. Both helpers create the parent directory on demand.
 
 use std::path::Path;
 

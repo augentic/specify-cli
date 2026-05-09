@@ -4,15 +4,15 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use serde::Serialize;
+use specify_error::is_kebab;
 
 use crate::registry::RegistryProject;
-use crate::validate::is_kebab_case;
 
 const ORIGIN_HEAD_UNRESOLVED: &str = "origin-head-unresolved";
 
 /// Inputs that define the branch-preparation dirtiness boundary.
 #[derive(Debug, Clone)]
-pub struct BranchPreparationRequest {
+pub struct Request {
     /// Kebab-case umbrella change name. The target branch is exactly
     /// `specify/<change_name>`.
     pub change_name: String,
@@ -25,7 +25,7 @@ pub struct BranchPreparationRequest {
 /// Successful branch-preparation result for one workspace slot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct BranchPreparation {
+pub struct Prepared {
     /// Registry project name.
     pub project: String,
     /// Prepared worktree path.
@@ -37,17 +37,17 @@ pub struct BranchPreparation {
     /// Commit SHA of `origin/HEAD` after fetch/default-head resolution.
     pub base_sha: String,
     /// Whether the local branch was created or reused.
-    pub local_branch: LocalBranchAction,
+    pub local_branch: LocalAction,
     /// What happened with `origin/specify/<change-name>`.
-    pub remote_branch: RemoteBranchAction,
+    pub remote_branch: RemoteAction,
     /// Tracked/untracked dirtiness classification observed before checkout.
-    pub dirty: DirtyClassification,
+    pub dirty: Dirty,
 }
 
 /// Local branch action taken during preparation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum LocalBranchAction {
+pub enum LocalAction {
     /// A new local branch was created from `origin/HEAD`.
     Created,
     /// An existing local branch was checked out or already current.
@@ -57,7 +57,7 @@ pub enum LocalBranchAction {
 /// Remote change-branch action taken during preparation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum RemoteBranchAction {
+pub enum RemoteAction {
     /// No `origin/specify/<change-name>` exists.
     Absent,
     /// The local branch already matched the remote branch.
@@ -71,7 +71,7 @@ pub enum RemoteBranchAction {
 /// Dirty-state classification used by branch preparation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct DirtyClassification {
+pub struct Dirty {
     /// Tracked dirty paths that are safe for slice resume.
     pub tracked_allowed: Vec<String>,
     /// Tracked dirty paths outside the active slice boundary.
@@ -83,7 +83,7 @@ pub struct DirtyClassification {
     pub allowed_paths: Vec<String>,
 }
 
-impl DirtyClassification {
+impl Dirty {
     #[must_use]
     const fn has_allowed_tracked(&self) -> bool {
         !self.tracked_allowed.is_empty()
@@ -93,7 +93,7 @@ impl DirtyClassification {
 /// Machine-readable failure emitted before any unsafe branch mutation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct BranchPreparationDiagnostic {
+pub struct Diagnostic {
     /// Stable diagnostic key.
     pub key: String,
     /// Registry project name.
@@ -108,7 +108,7 @@ pub struct BranchPreparationDiagnostic {
     pub paths: Vec<String>,
 }
 
-impl BranchPreparationDiagnostic {
+impl Diagnostic {
     #[must_use]
     fn new(
         key: impl Into<String>, project: &RegistryProject, branch: Option<&str>,
@@ -137,15 +137,15 @@ impl BranchPreparationDiagnostic {
 /// Returns a structured diagnostic when the slot is missing, the remote default
 /// cannot be resolved, the branch name is outside the RFC-14 pattern, unrelated
 /// tracked work is dirty, or a required Git operation fails.
-pub fn prepare_project_branch(
-    project_dir: &Path, project: &RegistryProject, request: &BranchPreparationRequest,
-) -> Result<BranchPreparation, BranchPreparationDiagnostic> {
+pub fn prepare(
+    project_dir: &Path, project: &RegistryProject, request: &Request,
+) -> Result<Prepared, Diagnostic> {
     let branch = target_branch(project, &request.change_name)?;
     let slot_path = project_worktree_path(project_dir, project);
     require_git_worktree(&slot_path, project, &branch)?;
     let remote_url = require_origin(&slot_path, project, &branch)?;
-    if !project.url_materialises_as_symlink() && remote_url != project.url {
-        return Err(BranchPreparationDiagnostic::new(
+    if !project.is_local() && remote_url != project.url {
+        return Err(Diagnostic::new(
             "origin-mismatch",
             project,
             Some(&branch),
@@ -176,7 +176,7 @@ pub fn prepare_project_branch(
     );
 
     if !dirty.tracked_blocked.is_empty() {
-        return Err(BranchPreparationDiagnostic::new(
+        return Err(Diagnostic::new(
             "dirty-unrelated-tracked",
             project,
             Some(&branch),
@@ -186,7 +186,7 @@ pub fn prepare_project_branch(
     }
 
     if dirty.has_allowed_tracked() && current_branch.as_deref() != Some(branch.as_str()) {
-        return Err(BranchPreparationDiagnostic::new(
+        return Err(Diagnostic::new(
             "dirty-branch-mismatch",
             project,
             Some(&branch),
@@ -205,7 +205,7 @@ pub fn prepare_project_branch(
                 &format!("git checkout {branch}"),
             )?;
         }
-        LocalBranchAction::Reused
+        LocalAction::Reused
     } else {
         run_git(
             &slot_path,
@@ -214,12 +214,12 @@ pub fn prepare_project_branch(
             Some(&branch),
             &format!("git checkout -b {branch} origin/HEAD"),
         )?;
-        LocalBranchAction::Created
+        LocalAction::Created
     };
 
     let remote_branch = fast_forward_remote_branch(&slot_path, project, &branch)?;
 
-    Ok(BranchPreparation {
+    Ok(Prepared {
         project: project.name.clone(),
         slot_path: slot_path.to_string_lossy().into_owned(),
         branch,
@@ -231,14 +231,12 @@ pub fn prepare_project_branch(
     })
 }
 
-fn target_branch(
-    project: &RegistryProject, change_name: &str,
-) -> Result<String, BranchPreparationDiagnostic> {
+fn target_branch(project: &RegistryProject, change_name: &str) -> Result<String, Diagnostic> {
     let branch = format!("specify/{change_name}");
-    if is_kebab_case(change_name) && !change_name.contains('/') {
+    if is_kebab(change_name) && !change_name.contains('/') {
         return Ok(branch);
     }
-    Err(BranchPreparationDiagnostic::new(
+    Err(Diagnostic::new(
         "branch-pattern-mismatch",
         project,
         Some(&branch),
@@ -251,7 +249,7 @@ fn target_branch(
 
 fn project_worktree_path(project_dir: &Path, project: &RegistryProject) -> PathBuf {
     let workspace_slot = project_dir.join(".specify").join("workspace").join(&project.name);
-    if !project.url_materialises_as_symlink() || workspace_slot.exists() {
+    if !project.is_local() || workspace_slot.exists() {
         return workspace_slot;
     }
     if project.url == "." { project_dir.to_path_buf() } else { project_dir.join(&project.url) }
@@ -259,9 +257,9 @@ fn project_worktree_path(project_dir: &Path, project: &RegistryProject) -> PathB
 
 fn require_git_worktree(
     slot_path: &Path, project: &RegistryProject, branch: &str,
-) -> Result<(), BranchPreparationDiagnostic> {
+) -> Result<(), Diagnostic> {
     if !slot_path.exists() {
-        return Err(BranchPreparationDiagnostic::new(
+        return Err(Diagnostic::new(
             "workspace-slot-missing",
             project,
             Some(branch),
@@ -273,7 +271,7 @@ fn require_git_worktree(
         ));
     }
     if !slot_path.join(".git").exists() {
-        return Err(BranchPreparationDiagnostic::new(
+        return Err(Diagnostic::new(
             "workspace-slot-not-git",
             project,
             Some(branch),
@@ -285,9 +283,9 @@ fn require_git_worktree(
 
 fn require_origin(
     slot_path: &Path, project: &RegistryProject, branch: &str,
-) -> Result<String, BranchPreparationDiagnostic> {
+) -> Result<String, Diagnostic> {
     git_output(slot_path, ["remote", "get-url", "origin"], project, Some(branch)).map_err(|_err| {
-        BranchPreparationDiagnostic::new(
+        Diagnostic::new(
             "missing-origin",
             project,
             Some(branch),
@@ -309,11 +307,11 @@ fn refresh_origin_head(slot_path: &Path) {
 
 fn resolve_origin_head(
     slot_path: &Path, project: &RegistryProject, branch: &str,
-) -> Result<String, BranchPreparationDiagnostic> {
+) -> Result<String, Diagnostic> {
     let symbolic =
         git_output_optional(slot_path, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
     let Some(base_ref) = symbolic else {
-        return Err(BranchPreparationDiagnostic::new(
+        return Err(Diagnostic::new(
             ORIGIN_HEAD_UNRESOLVED,
             project,
             Some(branch),
@@ -324,7 +322,7 @@ fn resolve_origin_head(
     git_output(slot_path, ["rev-parse", "--verify", "origin/HEAD^{commit}"], project, Some(branch))
         .map(|_| base_ref)
         .map_err(|_err| {
-            BranchPreparationDiagnostic::new(
+            Diagnostic::new(
                 ORIGIN_HEAD_UNRESOLVED,
                 project,
                 Some(branch),
@@ -335,17 +333,17 @@ fn resolve_origin_head(
 
 fn fast_forward_remote_branch(
     slot_path: &Path, project: &RegistryProject, branch: &str,
-) -> Result<RemoteBranchAction, BranchPreparationDiagnostic> {
+) -> Result<RemoteAction, Diagnostic> {
     let remote_ref = format!("refs/remotes/origin/{branch}");
     if !git_success(slot_path, ["show-ref", "--verify", "--quiet", &remote_ref]) {
-        return Ok(RemoteBranchAction::Absent);
+        return Ok(RemoteAction::Absent);
     }
 
     let local = git_output(slot_path, ["rev-parse", "HEAD"], project, Some(branch))?;
     let remote =
         git_output(slot_path, ["rev-parse", &format!("origin/{branch}")], project, Some(branch))?;
     if local == remote {
-        return Ok(RemoteBranchAction::UpToDate);
+        return Ok(RemoteAction::UpToDate);
     }
     if git_success(slot_path, ["merge-base", "--is-ancestor", "HEAD", &format!("origin/{branch}")])
     {
@@ -356,13 +354,13 @@ fn fast_forward_remote_branch(
             Some(branch),
             &format!("git merge --ff-only origin/{branch}"),
         )?;
-        return Ok(RemoteBranchAction::FastForwarded);
+        return Ok(RemoteAction::FastForwarded);
     }
     if git_success(slot_path, ["merge-base", "--is-ancestor", &format!("origin/{branch}"), "HEAD"])
     {
-        return Ok(RemoteBranchAction::LocalAhead);
+        return Ok(RemoteAction::LocalAhead);
     }
-    Err(BranchPreparationDiagnostic::new(
+    Err(Diagnostic::new(
         "remote-branch-diverged",
         project,
         Some(branch),
@@ -372,7 +370,7 @@ fn fast_forward_remote_branch(
 
 fn classify_dirty(
     slot_path: &Path, change_name: &str, source_paths: &[PathBuf], output_paths: &[PathBuf],
-) -> DirtyClassification {
+) -> Dirty {
     let allowed = allowed_paths(slot_path, change_name, source_paths, output_paths);
     let mut tracked_allowed = Vec::new();
     let mut tracked_blocked = Vec::new();
@@ -398,7 +396,7 @@ fn classify_dirty(
     untracked.sort();
     untracked.dedup();
 
-    DirtyClassification {
+    Dirty {
         tracked_allowed,
         tracked_blocked,
         untracked,
@@ -564,13 +562,13 @@ fn porcelain_entries(slot_path: &Path) -> Vec<PorcelainEntry> {
 
 fn run_git<I, S>(
     cwd: &Path, args: I, project: &RegistryProject, branch: Option<&str>, label: &str,
-) -> Result<(), BranchPreparationDiagnostic>
+) -> Result<(), Diagnostic>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
     let output = Command::new("git").arg("-C").arg(cwd).args(args).output().map_err(|err| {
-        BranchPreparationDiagnostic::new(
+        Diagnostic::new(
             "git-command-failed",
             project,
             branch,
@@ -580,7 +578,7 @@ where
     if output.status.success() {
         return Ok(());
     }
-    Err(BranchPreparationDiagnostic::new(
+    Err(Diagnostic::new(
         "git-command-failed",
         project,
         branch,
@@ -590,13 +588,13 @@ where
 
 fn git_output<I, S>(
     cwd: &Path, args: I, project: &RegistryProject, branch: Option<&str>,
-) -> Result<String, BranchPreparationDiagnostic>
+) -> Result<String, Diagnostic>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
     let output = Command::new("git").arg("-C").arg(cwd).args(args).output().map_err(|err| {
-        BranchPreparationDiagnostic::new(
+        Diagnostic::new(
             "git-command-failed",
             project,
             branch,
@@ -609,7 +607,7 @@ where
             return Ok(text);
         }
     }
-    Err(BranchPreparationDiagnostic::new(
+    Err(Diagnostic::new(
         "git-command-failed",
         project,
         branch,

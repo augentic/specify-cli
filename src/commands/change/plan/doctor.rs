@@ -39,7 +39,7 @@ struct DoctorBody {
     ok: bool,
 }
 
-pub fn run_plan_doctor(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);

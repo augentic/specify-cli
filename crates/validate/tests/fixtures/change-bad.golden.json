@@ -85,6 +85,5 @@
       "status": "pass"
     }
   ],
-  "passed": false,
-  "schema-version": 2
+  "passed": false
 }

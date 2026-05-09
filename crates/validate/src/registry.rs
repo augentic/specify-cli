@@ -104,13 +104,13 @@ fn specs_ids_match_pattern(ctx: &BriefContext<'_>) -> RuleOutcome {
             detail: "spec was not parsed".to_string(),
         };
     };
-    if primitives::ids_match_pattern(spec, specify_spec::REQUIREMENT_ID_PATTERN) {
+    if primitives::ids_match_pattern(spec, specify_spec::REQ_ID_PATTERN) {
         RuleOutcome::Pass
     } else {
         RuleOutcome::Fail {
             detail: format!(
                 "one or more requirement IDs do not match `{}`",
-                specify_spec::REQUIREMENT_ID_PATTERN
+                specify_spec::REQ_ID_PATTERN
             ),
         }
     }

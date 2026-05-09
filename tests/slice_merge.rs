@@ -15,6 +15,9 @@ use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
+mod common;
+use common::copy_dir;
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -26,20 +29,6 @@ fn specify() -> Command {
 fn parse_json(stdout: &[u8]) -> Value {
     let text = std::str::from_utf8(stdout).expect("utf8 stdout");
     serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
-}
-
-fn copy_dir(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create_dir_all dst");
-    for entry in fs::read_dir(src).expect("read_dir src") {
-        let entry = entry.expect("dir entry");
-        let kind = entry.file_type().expect("file_type");
-        let target = dst.join(entry.file_name());
-        if kind.is_dir() {
-            copy_dir(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), &target).expect("copy");
-        }
-    }
 }
 
 struct Project {
@@ -90,20 +79,24 @@ fn slice_merge_preview_reports_operations_without_writing() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
 
     let specs = value["specs"].as_array().expect("specs array");
-    // The two-spec fixture has both `login` and `oauth`; each uses a
-    // `## ADDED Requirements` section with one REQ-001 block, so each
-    // preview entry should carry exactly one `added` operation (the
-    // `created_baseline` op only fires for verbatim copies without
-    // delta headers — see merge-two-spec.json golden).
+    // Two-spec fixture: each spec uses `## ADDED Requirements` with one
+    // REQ-001 block, producing exactly one `added` op per spec. The
+    // `created-baseline` op only fires for verbatim copies without
+    // delta headers (see merge-two-spec.json golden).
     let names: Vec<&str> = specs.iter().map(|s| s["name"].as_str().unwrap()).collect();
     assert_eq!(names, vec!["login", "oauth"]);
     for spec in specs {
         let ops = spec["operations"].as_array().unwrap();
         assert_eq!(ops.len(), 1, "expected one op per spec, got {ops:?}");
-        assert_eq!(ops[0]["kind"], "added");
+        let kind = ops[0]["kind"].as_str().unwrap();
+        assert!(
+            ["added", "modified", "removed", "renamed", "created-baseline"].contains(&kind),
+            "merge-op `kind` must be kebab-case v3 contract, got {kind:?}"
+        );
+        assert_eq!(kind, "added");
         assert_eq!(ops[0]["id"], "REQ-001");
         assert!(spec["baseline-path"].is_string());
     }

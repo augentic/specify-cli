@@ -23,13 +23,13 @@ use crate::context::CommandContext;
 pub(super) use crate::output::absolute_string;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_plan(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, Error> {
     match action {
-        PlanAction::Create { name, sources } => lifecycle::run_plan_create(ctx, name, sources),
-        PlanAction::Validate => lifecycle::run_plan_validate(ctx),
-        PlanAction::Doctor => doctor::run_plan_doctor(ctx),
-        PlanAction::Next => lifecycle::run_plan_next(ctx),
-        PlanAction::Status => status::run_plan_status(ctx),
+        PlanAction::Create { name, sources } => lifecycle::create(ctx, name, sources),
+        PlanAction::Validate => lifecycle::validate(ctx),
+        PlanAction::Doctor => doctor::run(ctx),
+        PlanAction::Next => lifecycle::next(ctx),
+        PlanAction::Status => status::run(ctx),
         PlanAction::Add {
             name,
             depends_on,
@@ -38,16 +38,7 @@ pub fn run_plan(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, E
             project,
             schema,
             context,
-        } => create::run_plan_add(
-            ctx,
-            name,
-            depends_on,
-            sources,
-            description,
-            project,
-            schema,
-            context,
-        ),
+        } => create::add(ctx, name, depends_on, sources, description, project, schema, context),
         PlanAction::Amend {
             name,
             depends_on,
@@ -56,24 +47,15 @@ pub fn run_plan(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, E
             project,
             schema,
             context,
-        } => create::run_plan_amend(
-            ctx,
-            name,
-            depends_on,
-            sources,
-            description,
-            project,
-            schema,
-            context,
-        ),
+        } => create::amend(ctx, name, depends_on, sources, description, project, schema, context),
         PlanAction::Transition { name, target, reason } => {
-            lifecycle::run_plan_transition(ctx, name, target, reason)
+            lifecycle::transition(ctx, name, target, reason)
         }
-        PlanAction::Archive { force } => lifecycle::run_plan_archive(ctx, force),
+        PlanAction::Archive { force } => lifecycle::archive(ctx, force),
         PlanAction::Lock { action } => match action {
-            LockAction::Acquire { pid } => lock::run_plan_lock_acquire(ctx, pid),
-            LockAction::Release { pid } => lock::run_plan_lock_release(ctx, pid),
-            LockAction::Status => lock::run_plan_lock_status(ctx),
+            LockAction::Acquire { pid } => lock::acquire(ctx, pid),
+            LockAction::Release { pid } => lock::release(ctx, pid),
+            LockAction::Status => lock::status(ctx),
         },
     }
 }

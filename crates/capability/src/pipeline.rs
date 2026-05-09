@@ -14,7 +14,7 @@ use crate::capability::{Capability, Phase, ResolvedCapability};
 #[derive(Debug)]
 pub struct PipelineView {
     /// The resolved capability manifest.
-    pub schema: ResolvedCapability,
+    pub capability: ResolvedCapability,
     /// Briefs in pipeline order, each paired with its phase.
     pub briefs: Vec<(Phase, Brief)>,
 }
@@ -42,8 +42,8 @@ impl PipelineView {
         let resolved = Capability::resolve(schema_value, project_dir)?;
 
         let mut briefs: Vec<(Phase, Brief)> = Vec::new();
-        let plan_iter = resolved.schema.plan_entries().iter().map(|e| (Phase::Plan, e));
-        for (phase, entry) in plan_iter.chain(resolved.schema.entries()) {
+        let plan_iter = resolved.manifest.plan_entries().iter().map(|e| (Phase::Plan, e));
+        for (phase, entry) in plan_iter.chain(resolved.manifest.entries()) {
             let brief_path = resolved.root_dir.join(&entry.brief);
             let brief = Brief::load(&brief_path)?;
 
@@ -83,7 +83,7 @@ impl PipelineView {
         }
 
         Ok(Self {
-            schema: resolved,
+            capability: resolved,
             briefs,
         })
     }

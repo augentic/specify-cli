@@ -18,7 +18,7 @@ use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_plan_create(
+pub fn create(
     ctx: &CommandContext, name: String, sources: Vec<(String, String)>,
 ) -> Result<CliResult, Error> {
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
@@ -61,7 +61,7 @@ pub fn run_plan_create(
     Ok(CliResult::Success)
 }
 
-pub fn run_plan_validate(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
@@ -151,7 +151,7 @@ struct NextBody {
     sources: Option<Vec<String>>,
 }
 
-pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn next(ctx: &CommandContext) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
@@ -161,7 +161,7 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
         return emit_structural_error(ctx.format);
     }
 
-    if let Some(active) = plan.changes.iter().find(|c| c.status == Status::InProgress) {
+    if let Some(active) = plan.entries.iter().find(|c| c.status == Status::InProgress) {
         match ctx.format {
             OutputFormat::Json => emit_response(NextBody {
                 next: None,
@@ -192,7 +192,7 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
         }
     } else {
         let all_terminal =
-            plan.changes.iter().all(|c| matches!(c.status, Status::Done | Status::Skipped));
+            plan.entries.iter().all(|c| matches!(c.status, Status::Done | Status::Skipped));
         let (reason, text_msg) = if all_terminal {
             ("all-done", "All changes done.")
         } else {
@@ -217,13 +217,13 @@ pub fn run_plan_next(ctx: &CommandContext) -> Result<CliResult, Error> {
     Ok(CliResult::Success)
 }
 
-pub fn run_plan_transition(
+pub fn transition(
     ctx: &CommandContext, name: String, target: Status, reason: Option<String>,
 ) -> Result<CliResult, Error> {
     let (plan_path, mut plan) = load_for_write(ctx)?;
 
     let old_status = plan
-        .changes
+        .entries
         .iter()
         .find(|c| c.name == name)
         .ok_or_else(|| Error::Config(format!("no change named '{name}' in plan")))?
@@ -232,7 +232,7 @@ pub fn run_plan_transition(
     plan.transition(&name, target, reason.as_deref())?;
     plan.save(&plan_path)?;
 
-    let entry = plan.changes.iter().find(|c| c.name == name).expect("transitioned entry present");
+    let entry = plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
 
     #[derive(Serialize)]
     #[serde(rename_all = "kebab-case")]
@@ -263,7 +263,7 @@ pub fn run_plan_transition(
     Ok(CliResult::Success)
 }
 
-pub fn run_plan_archive(ctx: &CommandContext, force: bool) -> Result<CliResult, Error> {
+pub fn archive(ctx: &CommandContext, force: bool) -> Result<CliResult, Error> {
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if !plan_path.exists() {
         return Err(Error::ArtifactNotFound {
@@ -314,7 +314,7 @@ pub fn run_plan_archive(ctx: &CommandContext, force: bool) -> Result<CliResult, 
             }
             Ok(CliResult::Success)
         }
-        Err(Error::PlanHasOutstandingWork { entries }) => {
+        Err(Error::PlanIncomplete { entries }) => {
             match ctx.format {
                 OutputFormat::Json => {
                     #[derive(Serialize)]

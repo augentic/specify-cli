@@ -22,7 +22,7 @@ use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_status_dashboard(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
     let pipeline = ctx.load_pipeline()?;
     let slices_dir = ctx.slices_dir();
 
@@ -91,7 +91,7 @@ fn load_plan_summary(ctx: &CommandContext) -> Option<PlanSummary> {
     let plan = Plan::load(&plan_path).ok()?;
 
     let mut counts: BTreeMap<Status, usize> = Status::ALL.iter().map(|&s| (s, 0)).collect();
-    for entry in &plan.changes {
+    for entry in &plan.entries {
         *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
     }
     let total: usize = counts.values().sum();

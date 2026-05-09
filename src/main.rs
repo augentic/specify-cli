@@ -21,8 +21,8 @@
 //!   `specify_version` floor in `.specify/project.yaml`.
 //!
 //! Error → exit code mapping:
-//! - [`Error::SpecifyVersionTooOld`] → `3`.
-//! - [`Error::Validation`], [`Error::ToolPermissionDenied`], and
+//! - [`Error::CliTooOld`] → `3`.
+//! - [`Error::Validation`], [`Error::ToolDenied`], and
 //!   [`Error::ToolNotDeclared`] → `2`.
 //! - Any other [`Error`] variant → `1`.
 //! - A successful `Commands::Validate` where `report.passed == false` →

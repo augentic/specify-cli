@@ -37,36 +37,19 @@ impl From<CliResult> for ExitCode {
 impl From<&Error> for CliResult {
     fn from(err: &Error) -> Self {
         match err {
-            Error::SpecifyVersionTooOld { .. } => Self::VersionTooOld,
-            Error::Validation { .. }
-            | Error::ToolPermissionDenied(_)
-            | Error::ToolNotDeclared { .. } => Self::ValidationFailed,
+            Error::CliTooOld { .. } => Self::VersionTooOld,
+            Error::Validation { .. } | Error::ToolDenied(_) | Error::ToolNotDeclared { .. } => {
+                Self::ValidationFailed
+            }
             _ => Self::GenericFailure,
         }
     }
 }
 
 /// JSON contract version emitted on every structured response. Bumping
-/// this field is a breaking change for skill authors — see RFC-1
-/// §"JSON Contract Versioning".
-///
-/// # v1 → v2 diff (RFC-2 §2)
-///
-/// - Every JSON key is now kebab-case. `schema_version` → `schema-version`,
-///   `change_dir` → `change-dir`, `defined_at` → `defined-at`, and so on for
-///   every snake-case key that was ever emitted by the CLI (see RFC-2 §2.1
-///   for the full rename table). Library-derived types were already kebab
-///   via `#[serde(rename_all = "kebab-case")]`; v2 aligns the hand-built
-///   response DTOs in the command handlers and the
-///   `specify-validate::serialize_report` helper with the same rule.
-/// - New read verb `specify slice outcome show <name>` (added in RFC-2
-///   §1.1 / L0.A1 and later renamed by RFC-13) shipped under the v2 contract.
-/// - Error variant identifiers surfaced as the `"error"` value in failure
-///   payloads are kebab-case too. `Error::variant_str()` is the canonical
-///   source for these stable identifiers.
-/// - No shape changes beyond the casing: key sets, nesting, and value
-///   types are frozen.
-pub const JSON_SCHEMA_VERSION: u64 = 2;
+/// it is a breaking change for skill authors. v3 fixes the `created-baseline`
+/// `MergeOp` discriminant (was `created_baseline` in v2).
+pub const JSON_SCHEMA_VERSION: u64 = 3;
 
 pub fn emit_error(format: OutputFormat, err: &Error) -> CliResult {
     let code = CliResult::from(err);

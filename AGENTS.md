@@ -130,6 +130,16 @@ Patterns to follow:
 
 Duplicate-version exemptions live in `clippy.toml` `allowed-duplicate-crates`. Add a new entry only when the duplicate is unavoidable (e.g. a transitive `windows-sys` major bump).
 
+## Coding standards
+
+### Comments
+
+Comments answer "why does this look like this *today*?" — non-obvious intent, trade-offs, or constraints the code itself can't convey. RFC numbers, migration trails, and "this used to be X" rationale belong in `rfcs/`, `DECISIONS.md`, or commit messages — not in code or doc comments. Doc comments on items that surface in `--help` (clap `#[derive]` fields) must be operator-facing one-liners; rationale moves below the derive block where it doesn't leak into help output.
+
+### Naming
+
+Prefer short, idiomatic Rust names. Don't restate context the surrounding module, type, or function already supplies (`workspace::auto_commit_merge`, not `workspace_auto_commit_merge_baseline`). Avoid `_local` / `_value` / `_helper` suffixes. `is_kebab` over `is_valid_kebab_name`. New functions: 1–3 words. Public-API renames keep a deprecated alias for one release.
+
 ## Skill / CLI responsibility split (mirrors parent repo)
 
 Every deterministic operation lives in this CLI: kebab-case validation, `.metadata.yaml` reads/writes, lifecycle transitions, capability resolution, artifact-completion checks, spec-merge preview, baseline conflict detection, delta merge, coherence validation, archive moves, plan/registry validation. The plugin repo's phase skills (`/spec:define`, `/spec:build`, `/spec:merge`, `/spec:drop`, `/spec:init`, `/change:plan`, `/change:execute`) shell out for all of those.

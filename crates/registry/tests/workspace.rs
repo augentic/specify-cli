@@ -2,10 +2,10 @@
 //! `specify_registry::forge`.
 //!
 //! Pins the public surface lifted from the binary by RFC-13 chunk 2.2:
-//! `extract_github_slug`, `sync_registry_workspace` (registry-absent
+//! `github_slug`, `workspace_sync_all` (registry-absent
 //! short-circuit, `.gitignore` upkeep), `workspace_status` (returns
-//! `None` when no registry), `matches_specify_branch_pattern`, and
-//! `pr_branch_matches`. Per-classifier coverage continues to live in
+//! `None` when no registry), `is_specify_branch`, and
+//! `branches_match`. Per-classifier coverage continues to live in
 //! the in-module `#[cfg(test)]` blocks; this file exercises the
 //! integration boundary an external consumer (the binary, plus
 //! anyone replacing it via `--lib`) would touch.
@@ -14,15 +14,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use specify_registry::branch::{
-    BranchPreparationRequest, LocalBranchAction, RemoteBranchAction, prepare_project_branch,
-};
-use specify_registry::forge::{matches_specify_branch_pattern, pr_branch_matches};
+use specify_registry::branch::{LocalAction, RemoteAction, Request as BranchRequest, prepare};
+use specify_registry::forge::{branches_match, is_specify_branch};
 use specify_registry::workspace::{
-    PushOutcome, SlotKind, SlotStatus, WorkspaceSlotProblemReason, extract_github_slug,
-    run_workspace_push_impl, run_workspace_push_projects_impl, sync_registry_workspace,
-    sync_registry_workspace_projects, workspace_slot_problem, workspace_status,
-    workspace_status_projects,
+    PushOutcome, SlotKind, SlotProblemReason, SlotStatus, github_slug, push_all, push_projects,
+    slot_problem, status as workspace_status, status_projects as workspace_status_projects,
+    sync_all as workspace_sync_all, sync_projects as workspace_sync_projects,
 };
 use specify_registry::{Registry, RegistryProject};
 use tempfile::TempDir;
@@ -77,8 +74,8 @@ fn registry_with_projects(names: &[&str]) -> Registry {
     }
 }
 
-fn branch_request(change_name: &str) -> BranchPreparationRequest {
-    BranchPreparationRequest {
+fn branch_request(change_name: &str) -> BranchRequest {
+    BranchRequest {
         change_name: change_name.to_string(),
         source_paths: Vec::new(),
         output_paths: Vec::new(),
@@ -148,36 +145,24 @@ fn remote_branch_head(remote_url: &str, branch: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
-// ---------- extract_github_slug --------------------------------------
+// ---------- github_slug --------------------------------------
 
 #[test]
-fn extract_github_slug_handles_each_supported_form() {
-    assert_eq!(
-        extract_github_slug("git@github.com:org/mobile.git"),
-        Some("org/mobile".to_string())
-    );
-    assert_eq!(extract_github_slug("git@github.com:org/mobile"), Some("org/mobile".to_string()));
-    assert_eq!(
-        extract_github_slug("https://github.com/org/mobile.git"),
-        Some("org/mobile".to_string())
-    );
-    assert_eq!(
-        extract_github_slug("https://github.com/org/mobile"),
-        Some("org/mobile".to_string())
-    );
-    assert_eq!(
-        extract_github_slug("ssh://git@github.com/org/mobile.git"),
-        Some("org/mobile".to_string())
-    );
-    assert_eq!(extract_github_slug("git@gitlab.com:org/repo.git"), None);
+fn github_slug_handles_each_supported_form() {
+    assert_eq!(github_slug("git@github.com:org/mobile.git"), Some("org/mobile".to_string()));
+    assert_eq!(github_slug("git@github.com:org/mobile"), Some("org/mobile".to_string()));
+    assert_eq!(github_slug("https://github.com/org/mobile.git"), Some("org/mobile".to_string()));
+    assert_eq!(github_slug("https://github.com/org/mobile"), Some("org/mobile".to_string()));
+    assert_eq!(github_slug("ssh://git@github.com/org/mobile.git"), Some("org/mobile".to_string()));
+    assert_eq!(github_slug("git@gitlab.com:org/repo.git"), None);
 }
 
-// ---------- sync_registry_workspace ----------------------------------
+// ---------- workspace_sync_all ----------------------------------
 
 #[test]
-fn sync_registry_workspace_no_registry_is_noop() {
+fn workspace_sync_all_no_registry_is_noop() {
     let tmp = TempDir::new().unwrap();
-    sync_registry_workspace(tmp.path()).expect("absent registry must not error");
+    workspace_sync_all(tmp.path()).expect("absent registry must not error");
     // No `.gitignore` written when there is nothing to sync — the
     // helper is only invoked once a registry is present.
     assert!(!tmp.path().join(".gitignore").exists());
@@ -185,7 +170,7 @@ fn sync_registry_workspace_no_registry_is_noop() {
 }
 
 #[test]
-fn sync_registry_workspace_with_symlink_entry_creates_workspace_and_gitignore() {
+fn workspace_sync_all_with_symlink_entry_creates_workspace_and_gitignore() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
 
@@ -204,7 +189,7 @@ projects:
     )
     .unwrap();
 
-    sync_registry_workspace(project_dir).expect("sync ok");
+    workspace_sync_all(project_dir).expect("sync ok");
 
     let slot = project_dir.join(".specify/workspace/peer");
     assert!(slot.exists(), "symlink slot must materialise");
@@ -241,7 +226,7 @@ projects:
     )
     .unwrap();
 
-    sync_registry_workspace(project_dir).expect("sync ok");
+    workspace_sync_all(project_dir).expect("sync ok");
 
     let workspace = project_dir.join(".specify/workspace");
     for name in ["alpha", "beta"] {
@@ -262,9 +247,8 @@ projects:
 #[test]
 fn rfc14_c01_selector_resolver_preserves_registry_order() {
     let registry = registry_with_projects(&["billing", "orders", "inventory"]);
-    let selected = registry
-        .resolve_project_selectors(&["orders".to_string(), "billing".to_string()])
-        .expect("selectors resolve");
+    let selected =
+        registry.select(&["orders".to_string(), "billing".to_string()]).expect("selectors resolve");
     let names: Vec<&str> = selected.iter().map(|project| project.name.as_str()).collect();
     assert_eq!(names, ["billing", "orders"]);
 }
@@ -272,9 +256,7 @@ fn rfc14_c01_selector_resolver_preserves_registry_order() {
 #[test]
 fn rfc14_c01_selector_resolver_rejects_unknown_project() {
     let registry = registry_with_projects(&["billing", "orders"]);
-    let err = registry
-        .resolve_project_selectors(&["ghost".to_string()])
-        .expect_err("unknown selector must fail");
+    let err = registry.select(&["ghost".to_string()]).expect_err("unknown selector must fail");
     let msg = err.to_string();
     assert!(msg.contains("unknown project selector"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
@@ -290,11 +272,10 @@ fn rfc14_c01_sync_projects_materialises_selected_slots_only() {
         fs::create_dir_all(project_dir.join(name)).unwrap();
     }
     let registry = registry_with_projects(&["billing", "orders", "inventory"]);
-    let selected = registry
-        .resolve_project_selectors(&["orders".to_string(), "billing".to_string()])
-        .expect("selectors resolve");
+    let selected =
+        registry.select(&["orders".to_string(), "billing".to_string()]).expect("selectors resolve");
 
-    sync_registry_workspace_projects(project_dir, &selected).expect("sync selected");
+    workspace_sync_projects(project_dir, &selected).expect("sync selected");
 
     assert!(project_dir.join(".specify/workspace/billing").exists());
     assert!(project_dir.join(".specify/workspace/orders").exists());
@@ -309,9 +290,8 @@ fn rfc14_c01_status_projects_reports_selected_slots_in_registry_order() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let registry = registry_with_projects(&["billing", "orders", "inventory"]);
-    let selected = registry
-        .resolve_project_selectors(&["orders".to_string(), "billing".to_string()])
-        .expect("selectors resolve");
+    let selected =
+        registry.select(&["orders".to_string(), "billing".to_string()]).expect("selectors resolve");
 
     let slots = workspace_status_projects(project_dir, &selected);
 
@@ -328,19 +308,18 @@ fn rfc14_c02_selected_sync_recreates_deleted_slot_without_touching_unselected() 
         fs::create_dir_all(project_dir.join(name)).unwrap();
     }
     let registry = registry_with_projects(&["billing", "orders"]);
-    let selected =
-        registry.resolve_project_selectors(&["billing".to_string()]).expect("selectors resolve");
+    let selected = registry.select(&["billing".to_string()]).expect("selectors resolve");
 
     let workspace = project_dir.join(".specify/workspace");
     fs::create_dir_all(workspace.join("orders")).unwrap();
     fs::write(workspace.join("orders").join("sentinel.txt"), "hands off").unwrap();
 
-    sync_registry_workspace_projects(project_dir, &selected).expect("sync billing");
+    workspace_sync_projects(project_dir, &selected).expect("sync billing");
     let billing_slot = workspace.join("billing");
     assert!(fs::symlink_metadata(&billing_slot).unwrap().file_type().is_symlink());
 
     fs::remove_file(&billing_slot).unwrap();
-    sync_registry_workspace_projects(project_dir, &selected).expect("resync billing");
+    workspace_sync_projects(project_dir, &selected).expect("resync billing");
 
     assert!(fs::symlink_metadata(&billing_slot).unwrap().file_type().is_symlink());
     assert_eq!(
@@ -359,8 +338,8 @@ fn rfc14_c02_local_slot_refuses_existing_non_symlink() {
     fs::write(project_dir.join(".specify/workspace/peer/sentinel.txt"), "keep").unwrap();
 
     let registry = registry_with_projects(&["peer"]);
-    let selected = registry.resolve_project_selectors(&["peer".to_string()]).unwrap();
-    let err = sync_registry_workspace_projects(project_dir, &selected)
+    let selected = registry.select(&["peer".to_string()]).unwrap();
+    let err = workspace_sync_projects(project_dir, &selected)
         .expect_err("mismatched local slot should fail");
     let msg = err.to_string();
 
@@ -384,8 +363,8 @@ fn rfc14_c02_local_slot_refuses_symlink_to_wrong_target() {
     symlink_dir(&other, &project_dir.join(".specify/workspace/peer"));
 
     let registry = registry_with_projects(&["peer"]);
-    let selected = registry.resolve_project_selectors(&["peer".to_string()]).unwrap();
-    let err = sync_registry_workspace_projects(project_dir, &selected)
+    let selected = registry.select(&["peer".to_string()]).unwrap();
+    let err = workspace_sync_projects(project_dir, &selected)
         .expect_err("wrong symlink target should fail");
     let msg = err.to_string();
 
@@ -414,7 +393,7 @@ fn rfc14_c02_remote_slot_refuses_existing_symlink() {
         description: Some("remote service".to_string()),
         contracts: None,
     };
-    let err = sync_registry_workspace_projects(project_dir, &[&project])
+    let err = workspace_sync_projects(project_dir, &[&project])
         .expect_err("remote-backed symlink slot should fail");
     let msg = err.to_string();
 
@@ -440,12 +419,12 @@ fn rfc14_c10_slot_problem_matches_sync_for_wrong_symlink_target() {
 
     let registry = registry_with_projects(&["peer"]);
     let project = &registry.projects[0];
-    let problem = workspace_slot_problem(project_dir, project).expect("wrong symlink problem");
-    assert_eq!(problem.reason, WorkspaceSlotProblemReason::LocalSymlinkTargetMismatch);
+    let problem = slot_problem(project_dir, project).expect("wrong symlink problem");
+    assert_eq!(problem.reason, SlotProblemReason::LocalSymlinkTargetMismatch);
     assert_eq!(problem.observed_kind, Some(SlotKind::Symlink));
 
-    let selected = registry.resolve_project_selectors(&["peer".to_string()]).unwrap();
-    let err = sync_registry_workspace_projects(project_dir, &selected)
+    let selected = registry.select(&["peer".to_string()]).unwrap();
+    let err = workspace_sync_projects(project_dir, &selected)
         .expect_err("sync should refuse same wrong symlink");
     let msg = err.to_string();
     assert!(msg.contains(problem.message()), "msg: {msg}\nproblem: {}", problem.message());
@@ -467,11 +446,11 @@ fn rfc14_c10_slot_problem_matches_sync_for_wrong_remote_origin() {
         description: Some("remote service".to_string()),
         contracts: None,
     };
-    let problem = workspace_slot_problem(project_dir, &project).expect("wrong origin problem");
-    assert_eq!(problem.reason, WorkspaceSlotProblemReason::RemoteOriginMismatch);
+    let problem = slot_problem(project_dir, &project).expect("wrong origin problem");
+    assert_eq!(problem.reason, SlotProblemReason::RemoteOriginMismatch);
     assert_eq!(problem.observed_url.as_deref(), Some("https://example.invalid/old.git"));
 
-    let err = sync_registry_workspace_projects(project_dir, &[&project])
+    let err = workspace_sync_projects(project_dir, &[&project])
         .expect_err("sync should refuse same wrong origin");
     let msg = err.to_string();
     assert!(msg.contains(problem.message()), "msg: {msg}\nproblem: {}", problem.message());
@@ -490,7 +469,7 @@ fn rfc14_c02_sync_refuses_project_name_that_escapes_workspace_slot() {
         contracts: None,
     };
 
-    let err = sync_registry_workspace_projects(project_dir, &[&project])
+    let err = workspace_sync_projects(project_dir, &[&project])
         .expect_err("traversal-like project name should fail");
     let msg = err.to_string();
 
@@ -512,8 +491,8 @@ fn rfc14_c02_sync_refuses_symlinked_workspace_base() {
     symlink_dir(&outside, &project_dir.join(".specify/workspace"));
 
     let registry = registry_with_projects(&["peer"]);
-    let selected = registry.resolve_project_selectors(&["peer".to_string()]).unwrap();
-    let err = sync_registry_workspace_projects(project_dir, &selected)
+    let selected = registry.select(&["peer".to_string()]).unwrap();
+    let err = workspace_sync_projects(project_dir, &selected)
         .expect_err("workspace base symlink should fail");
     let msg = err.to_string();
 
@@ -531,10 +510,10 @@ fn rfc14_c02_sync_preserves_required_gitignore_entries_once() {
     fs::create_dir_all(project_dir.join("peer")).unwrap();
     fs::write(project_dir.join(".gitignore"), "target/\n.specify/workspace/\n").unwrap();
     let registry = registry_with_projects(&["peer"]);
-    let selected = registry.resolve_project_selectors(&[]).unwrap();
+    let selected = registry.select(&[]).unwrap();
 
-    sync_registry_workspace_projects(project_dir, &selected).expect("sync ok");
-    sync_registry_workspace_projects(project_dir, &selected).expect("sync remains idempotent");
+    workspace_sync_projects(project_dir, &selected).expect("sync ok");
+    workspace_sync_projects(project_dir, &selected).expect("sync remains idempotent");
 
     let gitignore = fs::read_to_string(project_dir.join(".gitignore")).unwrap();
     assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/workspace/").count(), 1);
@@ -553,12 +532,12 @@ fn rfc14_c04_prepare_branch_creates_change_branch_from_origin_head() {
     let project = remote_project(remote_url);
     let origin_head = git_output(&slot, &["rev-parse", "origin/HEAD"]);
 
-    let prepared = prepare_project_branch(&project_dir, &project, &branch_request("demo-change"))
+    let prepared = prepare(&project_dir, &project, &branch_request("demo-change"))
         .expect("branch preparation succeeds");
 
     assert_eq!(prepared.branch, "specify/demo-change");
-    assert_eq!(prepared.local_branch, LocalBranchAction::Created);
-    assert_eq!(prepared.remote_branch, RemoteBranchAction::Absent);
+    assert_eq!(prepared.local_branch, LocalAction::Created);
+    assert_eq!(prepared.remote_branch, RemoteAction::Absent);
     assert_eq!(current_branch(&slot), "specify/demo-change");
     assert_eq!(git_output(&slot, &["rev-parse", "HEAD"]), origin_head);
     assert_eq!(prepared.base_ref, "refs/remotes/origin/main");
@@ -572,8 +551,7 @@ fn rfc14_c04_prepare_branch_reuses_resume_branch_with_allowed_dirty_work() {
     let (_remote, remote_url) = seed_bare_remote(&tmp);
     let slot = clone_workspace_slot(&project_dir, &remote_url);
     let project = remote_project(remote_url);
-    prepare_project_branch(&project_dir, &project, &branch_request("demo-change"))
-        .expect("initial prepare");
+    prepare(&project_dir, &project, &branch_request("demo-change")).expect("initial prepare");
 
     let tracked = slot.join(".specify/slices/demo-change/notes.md");
     fs::create_dir_all(tracked.parent().unwrap()).unwrap();
@@ -583,10 +561,10 @@ fn rfc14_c04_prepare_branch_reuses_resume_branch_with_allowed_dirty_work() {
     fs::write(&tracked, "first\nsecond\n").unwrap();
     fs::write(slot.join("scratch.tmp"), "untracked\n").unwrap();
 
-    let prepared = prepare_project_branch(&project_dir, &project, &branch_request("demo-change"))
+    let prepared = prepare(&project_dir, &project, &branch_request("demo-change"))
         .expect("resume prepare accepts active slice dirtiness");
 
-    assert_eq!(prepared.local_branch, LocalBranchAction::Reused);
+    assert_eq!(prepared.local_branch, LocalAction::Reused);
     assert_eq!(current_branch(&slot), "specify/demo-change");
     assert_eq!(
         prepared.dirty.tracked_allowed,
@@ -604,8 +582,7 @@ fn rfc14_c04_prepare_branch_fast_forwards_when_remote_change_branch_is_ahead() {
     let (_remote, remote_url) = seed_bare_remote(&tmp);
     let slot = clone_workspace_slot(&project_dir, &remote_url);
     let project = remote_project(remote_url.clone());
-    prepare_project_branch(&project_dir, &project, &branch_request("demo-change"))
-        .expect("initial prepare");
+    prepare(&project_dir, &project, &branch_request("demo-change")).expect("initial prepare");
 
     let peer = tmp.path().join("peer");
     run_git(tmp.path(), &["clone", &remote_url, peer.to_str().unwrap()]);
@@ -616,11 +593,11 @@ fn rfc14_c04_prepare_branch_fast_forwards_when_remote_change_branch_is_ahead() {
     run_git(&peer, &["push", "origin", "specify/demo-change"]);
     let remote_tip = git_output(&peer, &["rev-parse", "HEAD"]);
 
-    let prepared = prepare_project_branch(&project_dir, &project, &branch_request("demo-change"))
+    let prepared = prepare(&project_dir, &project, &branch_request("demo-change"))
         .expect("remote ahead fast-forwards");
 
-    assert_eq!(prepared.local_branch, LocalBranchAction::Reused);
-    assert_eq!(prepared.remote_branch, RemoteBranchAction::FastForwarded);
+    assert_eq!(prepared.local_branch, LocalAction::Reused);
+    assert_eq!(prepared.remote_branch, RemoteAction::FastForwarded);
     assert_eq!(git_output(&slot, &["rev-parse", "HEAD"]), remote_tip);
 }
 
@@ -634,7 +611,7 @@ fn rfc14_c04_prepare_branch_blocks_unrelated_tracked_work_before_checkout() {
     let project = remote_project(remote_url);
     fs::write(slot.join("README.md"), "unrelated\n").unwrap();
 
-    let err = prepare_project_branch(&project_dir, &project, &branch_request("demo-change"))
+    let err = prepare(&project_dir, &project, &branch_request("demo-change"))
         .expect_err("unrelated tracked work must block");
 
     assert_eq!(err.key, "dirty-unrelated-tracked");
@@ -655,7 +632,7 @@ fn rfc14_c04_prepare_branch_reports_missing_origin() {
     run_git(&slot, &["commit", "--no-gpg-sign", "-m", "seed"]);
     let project = remote_project("https://example.invalid/org/alpha.git".to_string());
 
-    let err = prepare_project_branch(&project_dir, &project, &branch_request("demo-change"))
+    let err = prepare(&project_dir, &project, &branch_request("demo-change"))
         .expect_err("missing origin must fail");
 
     assert_eq!(err.key, "missing-origin");
@@ -680,7 +657,7 @@ fn rfc14_c04_prepare_branch_reports_unresolved_origin_head_without_guessing() {
     run_git(&slot, &["commit", "--no-gpg-sign", "-m", "seed"]);
     let project = remote_project(remote_url);
 
-    let err = prepare_project_branch(&project_dir, &project, &branch_request("demo-change"))
+    let err = prepare(&project_dir, &project, &branch_request("demo-change"))
         .expect_err("unresolved origin HEAD must fail");
 
     assert_eq!(err.key, "origin-head-unresolved");
@@ -757,7 +734,7 @@ projects:
     )
     .unwrap();
 
-    sync_registry_workspace(project_dir).unwrap();
+    workspace_sync_all(project_dir).unwrap();
     let slots = workspace_status(project_dir).unwrap().unwrap();
     assert_eq!(slots.len(), 1);
     assert_eq!(slots[0].name, "peer");
@@ -792,7 +769,7 @@ projects:
     )
     .unwrap();
 
-    sync_registry_workspace(project_dir).unwrap();
+    workspace_sync_all(project_dir).unwrap();
     let slots = workspace_status(project_dir).unwrap().unwrap();
     let slot = &slots[0];
 
@@ -890,8 +867,8 @@ fn rfc14_c07_workspace_push_pushes_clean_change_branch_only() {
     let local_head = prepare_change_branch(&slot, "demo-change");
     let project = remote_project(remote_url.clone());
 
-    let results = run_workspace_push_projects_impl(&project_dir, "demo-change", &[&project], false)
-        .expect("push succeeds");
+    let results =
+        push_projects(&project_dir, "demo-change", &[&project], false).expect("push succeeds");
 
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].status, PushOutcome::Pushed);
@@ -912,11 +889,10 @@ fn rfc14_c07_workspace_push_reports_up_to_date_when_remote_tip_matches() {
     let slot = clone_workspace_slot(&project_dir, &remote_url);
     let local_head = prepare_change_branch(&slot, "demo-change");
     let project = remote_project(remote_url.clone());
-    run_workspace_push_projects_impl(&project_dir, "demo-change", &[&project], false)
-        .expect("initial push");
+    push_projects(&project_dir, "demo-change", &[&project], false).expect("initial push");
 
-    let results = run_workspace_push_projects_impl(&project_dir, "demo-change", &[&project], false)
-        .expect("second push");
+    let results =
+        push_projects(&project_dir, "demo-change", &[&project], false).expect("second push");
 
     assert_eq!(results[0].status, PushOutcome::UpToDate);
     assert_eq!(
@@ -936,7 +912,7 @@ fn rfc14_c07_workspace_push_dirty_checkout_is_failed_without_push() {
     fs::write(slot.join("scratch.txt"), "dirty\n").unwrap();
     let project = remote_project(remote_url.clone());
 
-    let results = run_workspace_push_projects_impl(&project_dir, "demo-change", &[&project], false)
+    let results = push_projects(&project_dir, "demo-change", &[&project], false)
         .expect("best-effort push returns results");
 
     assert_eq!(results[0].status, PushOutcome::Failed);
@@ -961,7 +937,7 @@ fn rfc14_c07_workspace_push_wrong_branch_is_no_branch_without_checkout() {
     run_git(&slot, &["checkout", "-b", "feature/work"]);
     let project = remote_project(remote_url.clone());
 
-    let results = run_workspace_push_projects_impl(&project_dir, "demo-change", &[&project], false)
+    let results = push_projects(&project_dir, "demo-change", &[&project], false)
         .expect("best-effort push returns results");
 
     assert_eq!(results[0].status, PushOutcome::NoBranch);
@@ -982,7 +958,7 @@ fn rfc14_c07_workspace_push_missing_origin_is_local_only() {
     prepare_change_branch(&slot, "demo-change");
     let project = remote_project("https://example.invalid/org/alpha.git".to_string());
 
-    let results = run_workspace_push_projects_impl(&project_dir, "demo-change", &[&project], false)
+    let results = push_projects(&project_dir, "demo-change", &[&project], false)
         .expect("best-effort push returns results");
 
     assert_eq!(results[0].status, PushOutcome::LocalOnly);
@@ -998,8 +974,8 @@ fn rfc14_c07_workspace_push_dry_run_classifies_without_pushing() {
     prepare_change_branch(&slot, "demo-change");
     let project = remote_project(remote_url.clone());
 
-    let results = run_workspace_push_projects_impl(&project_dir, "demo-change", &[&project], true)
-        .expect("dry-run succeeds");
+    let results =
+        push_projects(&project_dir, "demo-change", &[&project], true).expect("dry-run succeeds");
 
     assert_eq!(results[0].status, PushOutcome::Pushed);
     assert!(
@@ -1013,9 +989,8 @@ fn rfc14_c07_workspace_push_selector_preflight_rejects_unknown_before_slots() {
     let tmp = TempDir::new().unwrap();
     let registry = registry_with_projects(&["alpha"]);
 
-    let err =
-        run_workspace_push_impl(tmp.path(), "demo-change", &registry, &["ghost".to_string()], true)
-            .expect_err("unknown selector must fail before workspace work");
+    let err = push_all(tmp.path(), "demo-change", &registry, &["ghost".to_string()], true)
+        .expect_err("unknown selector must fail before workspace work");
 
     let msg = err.to_string();
     assert!(msg.contains("unknown project selector"), "msg: {msg}");
@@ -1029,14 +1004,14 @@ fn rfc14_c07_workspace_push_selector_preflight_rejects_unknown_before_slots() {
 
 #[test]
 fn forge_branch_matchers_round_trip_canonical_inputs() {
-    assert!(matches_specify_branch_pattern("specify/foo"));
-    assert!(matches_specify_branch_pattern("specify/platform-v2"));
-    assert!(!matches_specify_branch_pattern("feature/bar"));
-    assert!(!matches_specify_branch_pattern("specify/foo/bar"));
+    assert!(is_specify_branch("specify/foo"));
+    assert!(is_specify_branch("specify/platform-v2"));
+    assert!(!is_specify_branch("feature/bar"));
+    assert!(!is_specify_branch("specify/foo/bar"));
 
-    assert!(pr_branch_matches("specify/foo", "specify/foo"));
-    assert!(!pr_branch_matches("specify/foo", "specify/bar"));
-    assert!(!pr_branch_matches("feature/foo", "specify/foo"));
+    assert!(branches_match("specify/foo", "specify/foo"));
+    assert!(!branches_match("specify/foo", "specify/bar"));
+    assert!(!branches_match("feature/foo", "specify/foo"));
 }
 
 // Sanity: the workspace base helper is private but the path it
@@ -1060,6 +1035,6 @@ projects:
     )
     .unwrap();
 
-    sync_registry_workspace(project_dir).unwrap();
+    workspace_sync_all(project_dir).unwrap();
     assert!(Path::new(&project_dir.join(".specify/workspace")).is_dir());
 }

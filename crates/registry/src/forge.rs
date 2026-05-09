@@ -115,7 +115,7 @@ impl GhClient for RealGhClient {
 ///
 /// `<segment>` must be non-empty and contain no further `/`.
 #[must_use]
-pub fn matches_specify_branch_pattern(branch: &str) -> bool {
+pub fn is_specify_branch(branch: &str) -> bool {
     let Some(rest) = branch.strip_prefix(SPECIFY_BRANCH_PREFIX) else {
         return false;
     };
@@ -124,9 +124,9 @@ pub fn matches_specify_branch_pattern(branch: &str) -> bool {
 
 /// Verify a PR's `headRefName` equals the resolved `specify/<change>` branch exactly.
 #[must_use]
-pub fn pr_branch_matches(head_ref_name: &str, expected_branch: &str) -> bool {
-    matches_specify_branch_pattern(expected_branch)
-        && matches_specify_branch_pattern(head_ref_name)
+pub fn branches_match(head_ref_name: &str, expected_branch: &str) -> bool {
+    is_specify_branch(expected_branch)
+        && is_specify_branch(head_ref_name)
         && head_ref_name == expected_branch
 }
 
@@ -135,10 +135,8 @@ pub fn pr_branch_matches(head_ref_name: &str, expected_branch: &str) -> bool {
 /// Symlink projects use the original path (relative or `.`), everything
 /// else lives under `.specify/workspace/<name>/`.
 #[must_use]
-pub fn project_path_for(
-    project_dir: &Path, workspace_base: &Path, rp: &RegistryProject,
-) -> PathBuf {
-    if rp.url_materialises_as_symlink() {
+pub fn project_path(project_dir: &Path, workspace_base: &Path, rp: &RegistryProject) -> PathBuf {
+    if rp.is_local() {
         if rp.url == "." { project_dir.to_path_buf() } else { project_dir.join(&rp.url) }
     } else {
         workspace_base.join(&rp.name)

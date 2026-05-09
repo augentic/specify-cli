@@ -12,12 +12,15 @@
 pub use config::{ProjectConfig, detect_legacy_layout, is_workspace_clone_path};
 pub use init::{InitOptions, InitResult, VersionMode, init};
 pub use specify_capability::{
-    Brief, BriefFrontmatter, CAPABILITY_FILENAME, CHANGE_BRIEF_FILENAME, CacheMeta, Capability,
-    CapabilitySource, ChangeBrief, ChangeFrontmatter, ChangeInput, InputKind,
-    LEGACY_CHANGE_BRIEF_FILENAME, LEGACY_SCHEMA_FILENAME, ManifestProbe, Phase, Pipeline,
-    PipelineEntry, PipelineView, ResolvedCapability,
+    Brief, BriefFrontmatter, CAPABILITY_FILENAME, CHANGE_BRIEF_FILENAME, CODEX_DIR_NAME, CacheMeta,
+    Capability, CapabilitySource, ChangeBrief, ChangeFrontmatter, ChangeInput, CodexApplicability,
+    CodexCatalogSource, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexProvenance,
+    CodexReference, CodexResolver, CodexReviewMode, CodexRule, CodexRuleFrontmatter, CodexSeverity,
+    DEFAULT_CODEX_CAPABILITY, InputKind, LEGACY_CHANGE_BRIEF_FILENAME, LEGACY_SCHEMA_FILENAME,
+    ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, ResolvedCapability, ResolvedCodex,
+    ResolvedCodexRule,
 };
-pub use specify_error::{Error, ValidationStatus, ValidationSummary};
+pub use specify_error::{Error, ValidationStatus, ValidationSummary, is_kebab};
 pub use specify_merge::{
     ArtifactClass, BaselineConflict, MergeOperation, MergePreviewEntry as MergeEntry, MergeResult,
     MergeStrategy, OpaqueAction, OpaquePreviewEntry, PreviewResult, conflict_check, merge,
@@ -26,11 +29,11 @@ pub use specify_merge::{
 pub use specify_slice::{
     CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry, LifecycleStatus,
     METADATA_VERSION, Outcome, Overlap, PhaseOutcome, Rfc3339Stamp, SLICES_DIR_NAME, SliceMetadata,
-    SpecType, TouchedSpec, actions as slice_actions, format_rfc3339, is_valid_kebab_name,
+    SpecKind, TouchedSpec, actions as slice_actions, format_rfc3339,
 };
 pub use specify_spec::{
-    DeltaSpec, ParsedSpec, RenameEntry, RequirementBlock, Scenario, has_delta_headers,
-    parse_baseline, parse_delta,
+    DeltaSpec, ParsedSpec, Rename, Requirement, Scenario, has_delta_headers, parse_baseline,
+    parse_delta,
 };
 pub use specify_task::{SkillDirective, Task, TaskProgress, mark_complete, parse_tasks};
 pub use specify_validate::{ValidationReport, ValidationResult, serialize_report, validate_slice};

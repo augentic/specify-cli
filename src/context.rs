@@ -22,7 +22,7 @@ impl CommandContext {
     /// the format-aware exit code.
     pub fn require(format: OutputFormat) -> Result<Self, Error> {
         let current_dir = std::env::current_dir().map_err(Error::Io)?;
-        let project_dir = discover_project_root(&current_dir)?.ok_or(Error::NotInitialized)?;
+        let project_dir = find_project_root(&current_dir)?.ok_or(Error::NotInitialized)?;
         let config = ProjectConfig::load(&project_dir)?;
         Ok(Self {
             format,
@@ -56,14 +56,9 @@ impl CommandContext {
     pub fn archive_dir(&self) -> PathBuf {
         ProjectConfig::archive_dir(&self.project_dir)
     }
-
-    #[allow(dead_code)]
-    pub fn specify_dir(&self) -> PathBuf {
-        ProjectConfig::specify_dir(&self.project_dir)
-    }
 }
 
-fn discover_project_root(start_dir: &Path) -> Result<Option<PathBuf>, Error> {
+fn find_project_root(start_dir: &Path) -> Result<Option<PathBuf>, Error> {
     for candidate in start_dir.ancestors() {
         let config_path = ProjectConfig::config_path(candidate);
         match config_path.try_exists() {

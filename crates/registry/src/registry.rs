@@ -42,11 +42,8 @@ pub struct Registry {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegistryProject {
-    /// Kebab-case identifier for the project. Obeys the same
-    /// naming rules as change names
-    /// (`specify_slice::actions::validate_name`) — duplicated in
-    /// [`crate::validate::is_kebab_case`] because `specify-registry`
-    /// sits upstream of `specify-slice` in the crate graph.
+    /// Kebab-case identifier for the project; validated by
+    /// [`specify_error::is_kebab`].
     pub name: String,
     /// Clone target — `.`, a repo-relative path (`../peer`, `./foo`,
     /// `pkg/sub`), `git@host:path`, or an `http(s)://`, `ssh://`, or
@@ -145,9 +142,7 @@ impl Registry {
     ///
     /// Returns an error if the registry shape is invalid or any selector
     /// does not match a declared project name.
-    pub fn resolve_project_selectors<'a>(
-        &'a self, selectors: &[String],
-    ) -> Result<Vec<&'a RegistryProject>, Error> {
+    pub fn select<'a>(&'a self, selectors: &[String]) -> Result<Vec<&'a RegistryProject>, Error> {
         self.validate_shape()?;
         if selectors.is_empty() {
             return Ok(self.projects.iter().collect());
@@ -197,7 +192,7 @@ impl RegistryProject {
     /// Callers may assume [`Registry::validate_shape`] has already accepted
     /// the URL — this predicate mirrors the C28 classification rules.
     #[must_use]
-    pub fn url_materialises_as_symlink(&self) -> bool {
+    pub fn is_local(&self) -> bool {
         self.url == "." || (!self.url.contains("://") && !self.url.starts_with("git@"))
     }
 }

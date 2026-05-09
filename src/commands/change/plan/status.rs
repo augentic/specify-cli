@@ -12,7 +12,7 @@ use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
 #[allow(clippy::too_many_lines)]
-pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
@@ -39,21 +39,21 @@ pub fn run_plan_status(ctx: &CommandContext) -> Result<CliResult, Error> {
                 );
             }
         }
-        (plan.changes.iter().collect::<Vec<_>>(), "list")
+        (plan.entries.iter().collect::<Vec<_>>(), "list")
     };
 
     let mut counts: BTreeMap<Status, usize> = Status::ALL.iter().map(|&s| (s, 0)).collect();
-    for entry in &plan.changes {
+    for entry in &plan.entries {
         *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
     }
     let total: usize = counts.values().sum();
 
-    let active = plan.changes.iter().find(|c| c.status == Status::InProgress);
+    let active = plan.entries.iter().find(|c| c.status == Status::InProgress);
     let active_lifecycle = active.and_then(|a| read_lifecycle(&slices_dir.join(&a.name)));
 
     let blocked: Vec<&Entry> =
-        plan.changes.iter().filter(|c| c.status == Status::Blocked).collect();
-    let failed: Vec<&Entry> = plan.changes.iter().filter(|c| c.status == Status::Failed).collect();
+        plan.entries.iter().filter(|c| c.status == Status::Blocked).collect();
+    let failed: Vec<&Entry> = plan.entries.iter().filter(|c| c.status == Status::Failed).collect();
 
     let next_eligible = plan.next_eligible();
 

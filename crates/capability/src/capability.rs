@@ -30,7 +30,7 @@ const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../schemas/capability.s
 /// The resolver still tolerates the pre-RFC-13 `schema.yaml` filename
 /// so internal callers can read older on-disk manifests during the
 /// cut-over; the `specify capability *` CLI surface refuses the legacy
-/// shape with [`Error::SchemaBecameCapability`].
+/// shape with [`Error::LegacyCapabilityField`].
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Capability {
     /// Capability name (e.g. `"omnia"`).
@@ -74,7 +74,7 @@ pub struct PipelineEntry {
 #[derive(Debug)]
 pub struct ResolvedCapability {
     /// The parsed capability manifest.
-    pub schema: Capability,
+    pub manifest: Capability,
     /// Filesystem directory the manifest was loaded from.
     pub root_dir: PathBuf,
     /// How the manifest was located (local workspace or agent cache).
@@ -135,19 +135,19 @@ pub const CAPABILITY_FILENAME: &str = "capability.yaml";
 /// Still loaded by the resolver (so `init` and other internal callers
 /// keep working) but the `specify capability *` CLI surface refuses to
 /// load a directory that carries only this filename and emits
-/// [`Error::SchemaBecameCapability`] instead.
+/// [`Error::LegacyCapabilityField`] instead.
 pub const LEGACY_SCHEMA_FILENAME: &str = "schema.yaml";
 
-/// Result of [`Capability::manifest_path_in`]. Names whether the
+/// Result of [`Capability::probe_dir`]. Names whether the
 /// directory carries the post-RFC-13 manifest, the pre-RFC-13 manifest,
 /// or neither — without doing any I/O beyond two `is_file` probes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManifestProbe {
     /// `<dir>/capability.yaml` exists.
-    Capability(PathBuf),
+    Found(PathBuf),
     /// Only `<dir>/schema.yaml` exists. The CLI surface translates this
-    /// into [`Error::SchemaBecameCapability`].
-    LegacySchema(PathBuf),
+    /// into [`Error::LegacyCapabilityField`].
+    Legacy(PathBuf),
     /// Neither filename is present.
     Missing,
 }
@@ -166,7 +166,7 @@ impl Capability {
     /// The resolver prefers `capability.yaml` and falls back to the
     /// pre-RFC-13 `schema.yaml`. The fallback keeps internal callers
     /// (notably `init`) working during the cut-over; the loud
-    /// [`Error::SchemaBecameCapability`] diagnostic for the legacy
+    /// [`Error::LegacyCapabilityField`] diagnostic for the legacy
     /// shape is surfaced by the CLI command layer in
     /// `src/commands/capability.rs`.
     ///
@@ -175,8 +175,8 @@ impl Capability {
     /// Returns an error if the operation fails.
     pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedCapability, Error> {
         let (root_dir, source) = Self::locate(schema_value, project_dir)?;
-        let manifest_path = match Self::manifest_path_in(&root_dir) {
-            ManifestProbe::Capability(path) | ManifestProbe::LegacySchema(path) => path,
+        let manifest_path = match Self::probe_dir(&root_dir) {
+            ManifestProbe::Found(path) | ManifestProbe::Legacy(path) => path,
             ManifestProbe::Missing => {
                 return Err(Error::SchemaResolution(format!(
                     "no capability manifest at {} (expected `{}` or legacy `{}`)",
@@ -192,12 +192,12 @@ impl Capability {
                 manifest_path.display()
             ))
         })?;
-        let schema: Self = serde_saphyr::from_str(&raw).map_err(|err| {
+        let manifest: Self = serde_saphyr::from_str(&raw).map_err(|err| {
             Error::SchemaResolution(format!("failed to parse {}: {err}", manifest_path.display()))
         })?;
 
         Ok(ResolvedCapability {
-            schema,
+            manifest,
             root_dir,
             source,
         })
@@ -207,7 +207,7 @@ impl Capability {
     /// the manifest. Mirrors [`Capability::resolve`]'s search order
     /// (cache → local) and is the entry point the CLI command layer
     /// uses to inspect the resolved directory before turning a legacy
-    /// `schema.yaml` into [`Error::SchemaBecameCapability`].
+    /// `schema.yaml` into [`Error::LegacyCapabilityField`].
     ///
     /// # Errors
     ///
@@ -222,14 +222,14 @@ impl Capability {
     /// the post-RFC-13 path when present, otherwise the pre-RFC-13
     /// fallback path, otherwise `Missing`.
     #[must_use]
-    pub fn manifest_path_in(dir: &Path) -> ManifestProbe {
+    pub fn probe_dir(dir: &Path) -> ManifestProbe {
         let cap = dir.join(CAPABILITY_FILENAME);
         if cap.is_file() {
-            return ManifestProbe::Capability(cap);
+            return ManifestProbe::Found(cap);
         }
         let legacy = dir.join(LEGACY_SCHEMA_FILENAME);
         if legacy.is_file() {
-            return ManifestProbe::LegacySchema(legacy);
+            return ManifestProbe::Legacy(legacy);
         }
         ManifestProbe::Missing
     }
@@ -249,7 +249,7 @@ impl Capability {
                 }];
             }
         };
-        validate_against_embedded_schema(
+        validate_against_schema(
             CAPABILITY_JSON_SCHEMA,
             "capability.valid",
             "capability manifest conforms to schemas/capability.schema.json",
@@ -385,7 +385,7 @@ fn locate_capability_root(
     )))
 }
 
-pub fn validate_against_embedded_schema(
+pub fn validate_against_schema(
     schema_source: &str, pass_rule_id: &'static str, pass_rule: &'static str,
     instance: &serde_json::Value,
 ) -> Vec<ValidationResult> {

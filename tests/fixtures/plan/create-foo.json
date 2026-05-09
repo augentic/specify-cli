@@ -14,5 +14,5 @@
     "name": "demo",
     "path": "<TEMPDIR>/plan.yaml"
   },
-  "schema-version": 2
+  "schema-version": 3
 }

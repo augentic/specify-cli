@@ -84,7 +84,7 @@ pub fn validate_slice(
 /// See `DECISIONS.md` §"Change G — Terminology inference" for the
 /// rationale.
 fn infer_terminology(pipeline: &PipelineView) -> &'static str {
-    match pipeline.schema.schema.name.as_str() {
+    match pipeline.capability.manifest.name.as_str() {
         "vectis" => "feature",
         _ => "crate",
     }

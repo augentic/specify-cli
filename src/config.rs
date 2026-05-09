@@ -16,7 +16,7 @@
 //! `contracts_dir`) that this module used to expose. Domain-specific
 //! baseline locations are owned by the active capability and are
 //! synthesised at the binary-side merge call site (currently
-//! `src/commands/slice.rs::omnia_artifact_classes`). `ProjectConfig`
+//! `src/commands/slice.rs::artifact_classes`). `ProjectConfig`
 //! stays capability-agnostic.
 //!
 //! `ProjectConfig::load` is the single choke point for the
@@ -46,7 +46,7 @@ pub struct ProjectConfig {
     /// Absent for registry-only platform hubs (`hub: true`); see the
     /// `hub` field for the discriminator. RFC-13 renamed this from the
     /// pre-RFC-13 `schema:` key; legacy files carrying `schema:` are
-    /// rejected loudly with [`Error::SchemaBecameCapability`] in
+    /// rejected loudly with [`Error::LegacyCapabilityField`] in
     /// [`ProjectConfig::load`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability: Option<String>,
@@ -96,11 +96,11 @@ impl ProjectConfig {
     /// - Propagates YAML parse failures as `Error::Yaml`.
     /// - Enforces the `specify_version` floor: if the pinned version in
     ///   the file is newer than `CARGO_PKG_VERSION`, returns
-    ///   `Err(Error::SpecifyVersionTooOld { required, found })`.
+    ///   `Err(Error::CliTooOld { required, found })`.
     ///   Unparseable pinned versions are tolerated — we prefer a
     ///   permissive stance for a human-edited file.
     /// - Detects the pre-RFC-13 `schema:` key and refuses to load such a
-    ///   `project.yaml` with [`Error::SchemaBecameCapability`]. RFC-13
+    ///   `project.yaml` with [`Error::LegacyCapabilityField`]. RFC-13
     ///   renamed `project.yaml: schema:` to `project.yaml: capability:`;
     ///   the operator must rewrite the field (and re-run `specify init
     ///   <capability>` if they have not migrated yet).
@@ -119,7 +119,7 @@ impl ProjectConfig {
         };
 
         if has_legacy_schema_field(&text)? {
-            return Err(Error::SchemaBecameCapability { path });
+            return Err(Error::LegacyCapabilityField { path });
         }
 
         let cfg: Self = serde_saphyr::from_str(&text)?;
@@ -128,7 +128,7 @@ impl ProjectConfig {
         if let Some(required) = &cfg.specify_version
             && version_is_older(current, required)
         {
-            return Err(Error::SpecifyVersionTooOld {
+            return Err(Error::CliTooOld {
                 required: required.clone(),
                 found: current.to_string(),
             });
@@ -368,7 +368,7 @@ mod tests {
         write_config(tmp.path(), "name: demo\ncapability: omnia\nspecify_version: \"99.0.0\"\n");
         let err = ProjectConfig::load(tmp.path()).expect_err("future version rejected");
         match err {
-            Error::SpecifyVersionTooOld { required, found } => {
+            Error::CliTooOld { required, found } => {
                 assert_eq!(required, "99.0.0");
                 assert_eq!(found, env!("CARGO_PKG_VERSION"));
             }
@@ -487,7 +487,7 @@ mod tests {
         write_config(tmp.path(), "name: demo\nschema: omnia\n");
         let err = ProjectConfig::load(tmp.path()).expect_err("legacy schema must be rejected");
         match err {
-            Error::SchemaBecameCapability { path } => {
+            Error::LegacyCapabilityField { path } => {
                 assert!(path.ends_with(".specify/project.yaml"), "path: {}", path.display());
             }
             other => panic!("unexpected error variant: {other:?}"),
@@ -501,7 +501,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         write_config(tmp.path(), "name: demo\nschema: hub\nhub: true\n");
         let err = ProjectConfig::load(tmp.path()).expect_err("legacy hub shape must be rejected");
-        assert!(matches!(err, Error::SchemaBecameCapability { .. }));
+        assert!(matches!(err, Error::LegacyCapabilityField { .. }));
     }
 
     // ---- legacy-layout detector ---------------------------------------

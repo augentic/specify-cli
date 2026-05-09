@@ -4,9 +4,7 @@
 use std::collections::{HashMap, HashSet};
 
 use specify_error::Error;
-use specify_spec::{
-    REQUIREMENT_HEADING, RequirementBlock, has_delta_headers, parse_baseline, parse_delta,
-};
+use specify_spec::{REQ_HEADING, Requirement, has_delta_headers, parse_baseline, parse_delta};
 
 /// Result of a successful [`merge`] call.
 ///
@@ -131,7 +129,7 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
     // --- Existing-baseline path ---------------------------------------------
 
     let parsed_baseline = parse_baseline(baseline_text);
-    let mut blocks: Vec<RequirementBlock> = parsed_baseline.requirements;
+    let mut blocks: Vec<Requirement> = parsed_baseline.requirements;
     let preamble = parsed_baseline.preamble;
 
     // Map id → index into `blocks`. Empty ids are excluded so stray
@@ -153,7 +151,7 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
             continue;
         };
         let old_block = blocks[idx].clone();
-        let new_heading = format!("{} {}", REQUIREMENT_HEADING, entry.new_name);
+        let new_heading = format!("{} {}", REQ_HEADING, entry.new_name);
         // Python `str.replace(old, new, 1)` = first-occurrence replace.
         let new_body = replace_first(&old_block.body, &old_block.heading, &new_heading);
         operations.push(MergeOperation::Renamed {
@@ -161,7 +159,7 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
             old_name: old_block.name.clone(),
             new_name: entry.new_name.clone(),
         });
-        blocks[idx] = RequirementBlock {
+        blocks[idx] = Requirement {
             heading: new_heading,
             name: entry.new_name.clone(),
             id: old_block.id,
@@ -241,7 +239,7 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
 }
 
 fn count_requirement_headings(text: &str) -> usize {
-    text.lines().filter(|line| line.trim_start().starts_with(REQUIREMENT_HEADING)).count()
+    text.lines().filter(|line| line.trim_start().starts_with(REQ_HEADING)).count()
 }
 
 /// Python's `str.replace(old, new, 1)`: replace only the first occurrence.

@@ -40,7 +40,7 @@ use specify_registry::Registry;
 use specify_slice::actions::{move_atomic, validate_name};
 use specify_slice::atomic::atomic_yaml_write;
 
-/// Lifecycle state of a single entry in [`Plan::changes`].
+/// Lifecycle state of a single entry in [`Plan::entries`].
 ///
 /// The enum is `Copy + Eq + Hash` so it can appear in `HashSet`s,
 /// `match` guards, and hash-keyed lookups without clones. This mirrors
@@ -149,10 +149,11 @@ pub struct Plan {
     /// Ordered list of plan entries. Order is the *intended* execution
     /// order; the authoritative dependency-respecting order comes from
     /// [`Plan::topological_order`].
-    pub changes: Vec<Entry>,
+    #[serde(rename = "changes")]
+    pub entries: Vec<Entry>,
 }
 
-/// One entry in [`Plan::changes`].
+/// One entry in [`Plan::entries`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Entry {
@@ -261,7 +262,7 @@ impl Plan {
         Ok(Self {
             name: name.to_string(),
             sources,
-            changes: vec![],
+            entries: vec![],
         })
     }
 
@@ -337,16 +338,16 @@ impl Plan {
     #[must_use]
     pub fn validate(&self, slices_dir: Option<&Path>, registry: Option<&Registry>) -> Vec<Finding> {
         let mut results = Vec::new();
-        results.extend(duplicate_names(&self.changes));
-        results.extend(detect_cycles(&self.changes));
-        results.extend(check_unknown_depends_on(&self.changes));
+        results.extend(duplicate_names(&self.entries));
+        results.extend(detect_cycles(&self.entries));
+        results.extend(check_unknown_depends_on(&self.entries));
         results.extend(check_unknown_sources(self));
-        results.extend(check_single_in_progress(&self.changes));
-        results.extend(missing_project_or_schema(&self.changes));
-        results.extend(check_context_paths(&self.changes));
+        results.extend(check_single_in_progress(&self.entries));
+        results.extend(missing_project_or_schema(&self.entries));
+        results.extend(check_context_paths(&self.entries));
         if let Some(reg) = registry {
-            results.extend(check_project_in_registry(&self.changes, reg));
-            results.extend(check_project_required_multi_repo(&self.changes, reg));
+            results.extend(check_project_in_registry(&self.entries, reg));
+            results.extend(check_project_required_multi_repo(&self.entries, reg));
         }
         if let Some(dir) = slices_dir.filter(|d| d.is_dir()) {
             results.extend(slices_dir_consistency(self, dir));
@@ -367,12 +368,12 @@ impl Plan {
     /// [`Plan::validate`].
     #[must_use]
     pub fn next_eligible(&self) -> Option<&Entry> {
-        if self.changes.iter().any(|c| c.status == Status::InProgress) {
+        if self.entries.iter().any(|c| c.status == Status::InProgress) {
             return None;
         }
         let status_by_name: HashMap<&str, Status> =
-            self.changes.iter().map(|c| (c.name.as_str(), c.status)).collect();
-        self.changes.iter().find(|c| {
+            self.entries.iter().map(|c| (c.name.as_str(), c.status)).collect();
+        self.entries.iter().find(|c| {
             c.status == Status::Pending
                 && c.depends_on
                     .iter()
@@ -401,7 +402,7 @@ impl Plan {
         &mut self, name: &str, target: Status, reason: Option<&str>,
     ) -> Result<(), Error> {
         let entry = self
-            .changes
+            .entries
             .iter_mut()
             .find(|c| c.name == name)
             .ok_or_else(|| Error::Config(format!("no change named '{name}' in plan")))?;
@@ -448,7 +449,7 @@ impl Plan {
     pub fn create(&mut self, change: Entry) -> Result<(), Error> {
         validate_name(&change.name)?;
 
-        if self.changes.iter().any(|c| c.name == change.name) {
+        if self.entries.iter().any(|c| c.name == change.name) {
             return Err(Error::Config(format!(
                 "plan already contains a change named '{}'",
                 change.name
@@ -463,12 +464,12 @@ impl Plan {
         // validation rejects the resulting plan. Cheaper than cloning
         // the whole `changes` vector since we know the mutation is a
         // single trailing push.
-        self.changes.push(change);
+        self.entries.push(change);
         let errors: Vec<Finding> =
             self.validate(None, None).into_iter().filter(|r| r.level == Severity::Error).collect();
         if let Some(first) = errors.first() {
             let msg = first.message.clone();
-            self.changes.pop();
+            self.entries.pop();
             return Err(Error::Config(format!("plan validation failed after create: {msg}")));
         }
 
@@ -496,16 +497,16 @@ impl Plan {
     /// Returns an error if the operation fails.
     pub fn amend(&mut self, name: &str, patch: EntryPatch) -> Result<(), Error> {
         let idx = self
-            .changes
+            .entries
             .iter()
             .position(|c| c.name == name)
             .ok_or_else(|| Error::Config(format!("no change named '{name}' in plan")))?;
 
         // Snapshot for targeted rollback on validation failure.
-        let snapshot = self.changes[idx].clone();
+        let snapshot = self.entries[idx].clone();
 
         {
-            let entry = &mut self.changes[idx];
+            let entry = &mut self.entries[idx];
             if let Some(v) = patch.depends_on {
                 entry.depends_on = v;
             }
@@ -530,7 +531,7 @@ impl Plan {
             self.validate(None, None).into_iter().filter(|r| r.level == Severity::Error).collect();
         if let Some(first) = errors.first() {
             let msg = first.message.clone();
-            self.changes[idx] = snapshot;
+            self.entries[idx] = snapshot;
             return Err(Error::Config(format!("plan validation failed after amend: {msg}")));
         }
 
@@ -543,7 +544,7 @@ impl Plan {
     ///
     /// Tie-break rule: when two entries are simultaneously "ready"
     /// (dependencies already emitted), the one earlier in
-    /// [`Plan::changes`] wins. This makes the output deterministic and
+    /// [`Plan::entries`] wins. This makes the output deterministic and
     /// a pure function of list order.
     ///
     /// Unknown `depends_on` targets are treated as satisfied for
@@ -569,11 +570,11 @@ impl Plan {
     pub fn topological_order(&self) -> Result<Vec<&Entry>, Error> {
         let mut graph: DiGraph<&str, ()> = DiGraph::new();
         let mut idx = HashMap::new();
-        for entry in &self.changes {
+        for entry in &self.entries {
             let node = graph.add_node(entry.name.as_str());
             idx.insert(entry.name.as_str(), node);
         }
-        for entry in &self.changes {
+        for entry in &self.entries {
             let to = idx[entry.name.as_str()];
             for dep in &entry.depends_on {
                 if let Some(&from) = idx.get(dep.as_str()) {
@@ -603,7 +604,7 @@ impl Plan {
         let mut ready: BinaryHeap<Reverse<NodeIndex>> =
             indegree.iter().filter_map(|(&n, &d)| (d == 0).then_some(Reverse(n))).collect();
 
-        let mut rank: HashMap<NodeIndex, usize> = HashMap::with_capacity(self.changes.len());
+        let mut rank: HashMap<NodeIndex, usize> = HashMap::with_capacity(self.entries.len());
         let mut next_rank = 0usize;
         while let Some(Reverse(node)) = ready.pop() {
             rank.insert(node, next_rank);
@@ -617,7 +618,7 @@ impl Plan {
             }
         }
 
-        let mut output: Vec<&Entry> = self.changes.iter().collect();
+        let mut output: Vec<&Entry> = self.entries.iter().collect();
         output.sort_by_key(|c| rank[&idx[c.name.as_str()]]);
         Ok(output)
     }
@@ -634,7 +635,7 @@ impl Plan {
     /// 2. Collect every entry whose status is non-terminal for archival
     ///    purposes — anything not in `{Done, Skipped}`. If the list is
     ///    non-empty and `force == false`, return
-    ///    [`Error::PlanHasOutstandingWork`] carrying those names in
+    ///    [`Error::PlanIncomplete`] carrying those names in
     ///    plan list order. When `force == true`, proceed; the archived
     ///    file preserves the statuses verbatim.
     /// 3. Preflight the on-disk destinations (before any mutation):
@@ -675,13 +676,13 @@ impl Plan {
 
         if !force {
             let entries: Vec<String> = plan
-                .changes
+                .entries
                 .iter()
                 .filter(|c| !matches!(c.status, Status::Done | Status::Skipped))
                 .map(|c| c.name.clone())
                 .collect();
             if !entries.is_empty() {
-                return Err(Error::PlanHasOutstandingWork { entries });
+                return Err(Error::PlanIncomplete { entries });
             }
         }
 
@@ -858,7 +859,7 @@ fn check_unknown_depends_on(changes: &[Entry]) -> Vec<Finding> {
 /// plan level.
 fn check_unknown_sources(plan: &Plan) -> Vec<Finding> {
     let mut out = Vec::new();
-    for entry in &plan.changes {
+    for entry in &plan.entries {
         for key in &entry.sources {
             if !plan.sources.contains_key(key) {
                 out.push(Finding {
@@ -982,7 +983,7 @@ fn check_context_paths(changes: &[Entry]) -> Vec<Finding> {
 ///   - Warn when an `in-progress` plan entry has no matching directory.
 fn slices_dir_consistency(plan: &Plan, slices_dir: &Path) -> Vec<Finding> {
     let mut out = Vec::new();
-    let declared: HashSet<&str> = plan.changes.iter().map(|c| c.name.as_str()).collect();
+    let declared: HashSet<&str> = plan.entries.iter().map(|c| c.name.as_str()).collect();
 
     let Ok(read_dir) = std::fs::read_dir(slices_dir) else {
         return out;
@@ -1011,7 +1012,7 @@ fn slices_dir_consistency(plan: &Plan, slices_dir: &Path) -> Vec<Finding> {
         }
     }
 
-    for entry in &plan.changes {
+    for entry in &plan.entries {
         if entry.status == Status::InProgress {
             let candidate = slices_dir.join(&entry.name);
             if !candidate.is_dir() {
@@ -1215,11 +1216,11 @@ changes:
 
         assert_eq!(original.name, "platform-v2");
         assert_eq!(original.sources.len(), 4);
-        assert_eq!(original.changes.len(), 9);
-        assert_eq!(original.changes[0].status, Status::Done);
-        assert_eq!(original.changes[1].status, Status::InProgress);
-        assert_eq!(original.changes[7].status, Status::Failed);
-        assert!(original.changes[7].status_reason.is_some());
+        assert_eq!(original.entries.len(), 9);
+        assert_eq!(original.entries[0].status, Status::Done);
+        assert_eq!(original.entries[1].status, Status::InProgress);
+        assert_eq!(original.entries[7].status, Status::Failed);
+        assert!(original.entries[7].status_reason.is_some());
     }
 
     #[test]
@@ -1227,7 +1228,7 @@ changes:
         let plan = Plan {
             name: "demo".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "entry-one".to_string(),
                 project: Some("default".into()),
                 schema: None,
@@ -1259,7 +1260,7 @@ changes:
         let plan: Plan = serde_saphyr::from_str(yaml).expect("parse minimal plan");
         assert_eq!(plan.name, "foo");
         assert!(plan.sources.is_empty(), "sources should default to empty map");
-        assert!(plan.changes.is_empty(), "changes should be empty");
+        assert!(plan.entries.is_empty(), "changes should be empty");
     }
 
     #[test]
@@ -1275,7 +1276,7 @@ changes:
       Needs design revision after shopping-cart specs are updated.
 ";
         let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-        let entry = &plan.changes[0];
+        let entry = &plan.entries[0];
         assert_eq!(entry.status, Status::Failed);
         let reason = entry.status_reason.as_deref().expect("status_reason populated");
         assert!(
@@ -1287,7 +1288,7 @@ changes:
         let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
         assert_eq!(plan, reparsed);
         assert_eq!(
-            reparsed.changes[0].status_reason, entry.status_reason,
+            reparsed.entries[0].status_reason, entry.status_reason,
             "status_reason should be byte-identical after round-trip"
         );
     }
@@ -1309,7 +1310,7 @@ changes:
         let plan = Plan {
             name: "init".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![],
+            entries: vec![],
         };
         plan.save(&path).expect("save ok");
 
@@ -1333,7 +1334,7 @@ changes:
         let plan = Plan {
             name: "fresh".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "only-entry".to_string(),
                 project: Some("default".into()),
                 schema: None,
@@ -1378,7 +1379,7 @@ changes:
         std::fs::write(&path, "name: foo\nchanges: []").expect("write without trailing newline");
         let plan = Plan::load(&path).expect("load ok");
         assert_eq!(plan.name, "foo");
-        assert!(plan.changes.is_empty());
+        assert!(plan.entries.is_empty());
     }
 
     #[test]
@@ -1388,7 +1389,7 @@ changes:
         let plan = Plan {
             name: "demo".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "entry-one".to_string(),
                 project: Some("default".into()),
                 schema: None,
@@ -1425,7 +1426,7 @@ changes:
         Plan {
             name: "test".into(),
             sources: BTreeMap::new(),
-            changes,
+            entries: changes,
         }
     }
 
@@ -1701,7 +1702,7 @@ changes:
     #[test]
     fn next_eligible_rfc_forward() {
         let mut plan: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
-        for entry in &mut plan.changes {
+        for entry in &mut plan.entries {
             entry.status = Status::Pending;
             entry.status_reason = None;
         }
@@ -1711,7 +1712,7 @@ changes:
             let name = next.name.clone();
             traversal.push(name.clone());
             let entry = plan
-                .changes
+                .entries
                 .iter_mut()
                 .find(|c| c.name == name)
                 .expect("returned name must exist in plan");
@@ -1843,14 +1844,14 @@ changes:
         let first = Plan {
             name: "first".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![],
+            entries: vec![],
         };
         first.save(&path).expect("save first ok");
 
         let second = Plan {
             name: "second".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "new-entry".to_string(),
                 project: Some("default".into()),
                 schema: None,
@@ -1890,15 +1891,15 @@ changes:
             status_reason: Some("bogus".into()),
         };
         plan.create(incoming).expect("create ok");
-        assert_eq!(plan.changes.len(), 1);
-        assert_eq!(plan.changes[0].name, "foo");
+        assert_eq!(plan.entries.len(), 1);
+        assert_eq!(plan.entries[0].name, "foo");
         assert_eq!(
-            plan.changes[0].status,
+            plan.entries[0].status,
             Status::Pending,
             "create must force status to Pending regardless of input"
         );
         assert_eq!(
-            plan.changes[0].status_reason, None,
+            plan.entries[0].status_reason, None,
             "create must clear status_reason regardless of input"
         );
     }
@@ -1917,7 +1918,7 @@ changes:
             }
             other => panic!("expected Error::Config, got {other:?}"),
         }
-        assert_eq!(plan.changes.len(), 1, "plan must still have exactly one entry");
+        assert_eq!(plan.entries.len(), 1, "plan must still have exactly one entry");
     }
 
     #[test]
@@ -1931,7 +1932,7 @@ changes:
             }
             other => panic!("expected Error::InvalidName, got {other:?}"),
         }
-        assert!(plan.changes.is_empty(), "plan must remain untouched after invalid name");
+        assert!(plan.entries.is_empty(), "plan must remain untouched after invalid name");
     }
 
     #[test]
@@ -1954,8 +1955,8 @@ changes:
             }
             other => panic!("expected Error::Config, got {other:?}"),
         }
-        assert_eq!(plan.changes.len(), 2, "plan must still have only its original entries");
-        let names: Vec<&str> = plan.changes.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(plan.entries.len(), 2, "plan must still have only its original entries");
+        let names: Vec<&str> = plan.entries.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["a", "b"], "existing entries must be untouched");
     }
 
@@ -1965,10 +1966,10 @@ changes:
         let bar = change_with_deps("bar", Status::Pending, &["nonexistent"]);
         let err = plan.create(bar).expect_err("must Err");
         assert!(matches!(err, Error::Config(_)));
-        assert_eq!(plan.changes.len(), 1, "plan length unchanged after rollback");
-        assert_eq!(plan.changes[0].name, "foo");
-        assert_eq!(plan.changes[0].status, Status::Pending);
-        assert!(plan.changes[0].depends_on.is_empty());
+        assert_eq!(plan.entries.len(), 1, "plan length unchanged after rollback");
+        assert_eq!(plan.entries[0].name, "foo");
+        assert_eq!(plan.entries[0].status, Status::Pending);
+        assert!(plan.entries[0].depends_on.is_empty());
     }
 
     #[test]
@@ -1982,7 +1983,7 @@ changes:
             ..EntryPatch::default()
         };
         plan.amend("b", patch).expect("amend ok");
-        let b = plan.changes.iter().find(|c| c.name == "b").unwrap();
+        let b = plan.entries.iter().find(|c| c.name == "b").unwrap();
         assert!(b.depends_on.is_empty(), "depends_on should be replaced with empty vec");
     }
 
@@ -2002,7 +2003,7 @@ changes:
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
         assert_eq!(
-            plan.changes[0].description.as_deref(),
+            plan.entries[0].description.as_deref(),
             Some("original"),
             "None description must leave description unchanged"
         );
@@ -2016,7 +2017,7 @@ changes:
         )
         .expect("amend clear ok");
         assert_eq!(
-            plan.changes[0].description, None,
+            plan.entries[0].description, None,
             "Some(None) description must clear description"
         );
 
@@ -2029,7 +2030,7 @@ changes:
         )
         .expect("amend replace ok");
         assert_eq!(
-            plan.changes[0].description.as_deref(),
+            plan.entries[0].description.as_deref(),
             Some("new"),
             "Some(Some(s)) description must replace description"
         );
@@ -2046,7 +2047,7 @@ changes:
                 m.insert("a".to_string(), "/path/a".to_string());
                 m
             },
-            changes: vec![
+            entries: vec![
                 Entry {
                     name: "foo".into(),
                     project: Some("default".into()),
@@ -2068,7 +2069,7 @@ changes:
             ..EntryPatch::default()
         };
         plan.amend("foo", patch).expect("amend ok");
-        let foo = plan.changes.iter().find(|c| c.name == "foo").unwrap();
+        let foo = plan.entries.iter().find(|c| c.name == "foo").unwrap();
         assert_eq!(foo.depends_on, vec!["x".to_string()]);
         assert_eq!(foo.sources, vec!["a".to_string()], "sources untouched");
         assert_eq!(foo.description.as_deref(), Some("d"), "description untouched");
@@ -2120,7 +2121,7 @@ changes:
             other => panic!("expected Error::Config, got {other:?}"),
         }
 
-        let b = plan.changes.iter().find(|c| c.name == "b").unwrap();
+        let b = plan.entries.iter().find(|c| c.name == "b").unwrap();
         assert!(
             b.depends_on.is_empty(),
             "b.depends_on must be unchanged after failed amend, got {:?}",
@@ -2165,7 +2166,7 @@ changes:
             status_reason: Some("crashed".into()),
         }]);
         plan.transition("a", Status::Pending, None).expect("failed -> pending ok");
-        let a = plan.changes.iter().find(|c| c.name == "a").unwrap();
+        let a = plan.entries.iter().find(|c| c.name == "a").unwrap();
         assert_eq!(a.status, Status::Pending);
         assert_eq!(a.status_reason, None, "re-entry to Pending must clear status_reason");
     }
@@ -2179,17 +2180,17 @@ changes:
         ]);
 
         plan.transition("a", Status::Blocked, Some("needs scope")).expect("pending -> blocked ok");
-        let a = plan.changes.iter().find(|c| c.name == "a").unwrap();
+        let a = plan.entries.iter().find(|c| c.name == "a").unwrap();
         assert_eq!(a.status, Status::Blocked);
         assert_eq!(a.status_reason.as_deref(), Some("needs scope"));
 
         plan.transition("b", Status::Failed, Some("broken")).expect("in-progress -> failed ok");
-        let b = plan.changes.iter().find(|c| c.name == "b").unwrap();
+        let b = plan.entries.iter().find(|c| c.name == "b").unwrap();
         assert_eq!(b.status, Status::Failed);
         assert_eq!(b.status_reason.as_deref(), Some("broken"));
 
         plan.transition("c", Status::Skipped, Some("abandoned")).expect("failed -> skipped ok");
-        let c = plan.changes.iter().find(|c| c.name == "c").unwrap();
+        let c = plan.entries.iter().find(|c| c.name == "c").unwrap();
         assert_eq!(c.status, Status::Skipped);
         assert_eq!(c.status_reason.as_deref(), Some("abandoned"));
     }
@@ -2208,7 +2209,7 @@ changes:
             }
             other => panic!("expected Error::Config, got {other:?}"),
         }
-        let a = plan.changes.iter().find(|c| c.name == "a").unwrap();
+        let a = plan.entries.iter().find(|c| c.name == "a").unwrap();
         assert_eq!(a.status, Status::Pending, "a.status must be unchanged");
 
         let err = plan
@@ -2220,7 +2221,7 @@ changes:
             }
             other => panic!("expected Error::Config, got {other:?}"),
         }
-        let b = plan.changes.iter().find(|c| c.name == "b").unwrap();
+        let b = plan.entries.iter().find(|c| c.name == "b").unwrap();
         assert_eq!(b.status, Status::InProgress, "b.status must be unchanged");
     }
 
@@ -2237,7 +2238,7 @@ changes:
             }
             other => panic!("expected Error::PlanTransition, got {other:?}"),
         }
-        let a = plan.changes.iter().find(|c| c.name == "a").unwrap();
+        let a = plan.entries.iter().find(|c| c.name == "a").unwrap();
         assert_eq!(a.status, Status::Done, "status must not be mutated on illegal edge");
     }
 
@@ -2263,7 +2264,7 @@ changes:
         let plan = Plan {
             name: name.to_string(),
             sources: BTreeMap::new(),
-            changes,
+            entries: changes,
         };
         let path = dir.join("plan.yaml");
         plan.save(&path).expect("save plan");
@@ -2343,10 +2344,10 @@ changes:
         let err = archive_test(&plan_path, &archive_dir, false)
             .expect_err("must refuse pending entry without force");
         match err {
-            Error::PlanHasOutstandingWork { entries } => {
+            Error::PlanIncomplete { entries } => {
                 assert_eq!(entries, vec!["still-pending".to_string()]);
             }
-            other => panic!("expected PlanHasOutstandingWork, got {other:?}"),
+            other => panic!("expected PlanIncomplete, got {other:?}"),
         }
 
         assert!(plan_path.exists(), "original plan.yaml must still exist");
@@ -2376,7 +2377,7 @@ changes:
         let err = archive_test(&plan_path, &archive_dir, false)
             .expect_err("must refuse non-terminal entries");
         match err {
-            Error::PlanHasOutstandingWork { entries } => {
+            Error::PlanIncomplete { entries } => {
                 assert_eq!(
                     entries,
                     vec!["b".to_string(), "c".to_string(), "d".to_string()],
@@ -2384,7 +2385,7 @@ changes:
                      excluding Done and Skipped"
                 );
             }
-            other => panic!("expected PlanHasOutstandingWork, got {other:?}"),
+            other => panic!("expected PlanIncomplete, got {other:?}"),
         }
         assert!(plan_path.exists(), "original plan.yaml must still exist");
     }
@@ -2416,7 +2417,7 @@ changes:
         );
 
         let archived: Plan = serde_saphyr::from_slice(&post_bytes).expect("parse archived");
-        let statuses: Vec<Status> = archived.changes.iter().map(|c| c.status).collect();
+        let statuses: Vec<Status> = archived.entries.iter().map(|c| c.status).collect();
         assert_eq!(
             statuses,
             vec![
@@ -2509,7 +2510,7 @@ changes:
         let plan = Plan::init("platform-v2", BTreeMap::new()).expect("init ok");
         assert_eq!(plan.name, "platform-v2");
         assert!(plan.sources.is_empty(), "sources should default to empty");
-        assert!(plan.changes.is_empty(), "changes should default to empty");
+        assert!(plan.entries.is_empty(), "changes should default to empty");
     }
 
     #[test]
@@ -2886,7 +2887,7 @@ status: pending
         // None leaves project unchanged.
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
         assert_eq!(
-            plan.changes[0].project.as_deref(),
+            plan.entries[0].project.as_deref(),
             Some("alpha"),
             "None must leave project unchanged"
         );
@@ -2901,7 +2902,7 @@ status: pending
         )
         .expect("amend replace ok");
         assert_eq!(
-            plan.changes[0].project.as_deref(),
+            plan.entries[0].project.as_deref(),
             Some("beta"),
             "Some(Some(s)) must replace project"
         );
@@ -2917,7 +2918,7 @@ status: pending
             },
         )
         .expect("amend clear ok");
-        assert_eq!(plan.changes[0].project, None, "Some(None) must clear project");
+        assert_eq!(plan.entries[0].project, None, "Some(None) must clear project");
     }
 
     #[test]
@@ -2925,7 +2926,7 @@ status: pending
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "a".to_string(),
                 project: Some("nonexistent".to_string()),
                 schema: None,
@@ -2956,7 +2957,7 @@ status: pending
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "a".to_string(),
                 project: None,
                 schema: None,
@@ -2996,7 +2997,7 @@ status: pending
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "contracts".to_string(),
                 project: None,
                 schema: Some("contracts@v1".into()),
@@ -3039,7 +3040,7 @@ status: pending
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "a".to_string(),
                 project: None,
                 schema: Some("contracts@v1".into()),
@@ -3071,7 +3072,7 @@ status: pending
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "a".to_string(),
                 project: Some("alpha".to_string()),
                 schema: None,
@@ -3121,10 +3122,10 @@ changes:
     status: pending
 ";
         let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-        assert_eq!(plan.changes[0].schema.as_deref(), Some("contracts@v1"));
-        assert_eq!(plan.changes[0].project, None);
-        assert_eq!(plan.changes[1].schema.as_deref(), Some("omnia@v1"));
-        assert_eq!(plan.changes[1].project.as_deref(), Some("auth-service"));
+        assert_eq!(plan.entries[0].schema.as_deref(), Some("contracts@v1"));
+        assert_eq!(plan.entries[0].project, None);
+        assert_eq!(plan.entries[1].schema.as_deref(), Some("omnia@v1"));
+        assert_eq!(plan.entries[1].project.as_deref(), Some("auth-service"));
 
         let rendered = serde_saphyr::to_string(&plan).expect("serialize");
         let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
@@ -3136,7 +3137,7 @@ changes:
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "orphan".to_string(),
                 project: None,
                 schema: None,
@@ -3163,7 +3164,7 @@ changes:
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "contracts".to_string(),
                 project: None,
                 schema: Some("contracts@v1".into()),
@@ -3187,7 +3188,7 @@ changes:
         let plan = Plan {
             name: "test".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![Entry {
+            entries: vec![Entry {
                 name: "impl".to_string(),
                 project: Some("auth-service".into()),
                 schema: Some("omnia@v1".into()),
@@ -3230,7 +3231,7 @@ changes:
             }
             other => panic!("expected Error::Config, got {other:?}"),
         }
-        assert!(plan.changes.is_empty(), "plan must remain empty after rejected create");
+        assert!(plan.entries.is_empty(), "plan must remain empty after rejected create");
     }
 
     #[test]
@@ -3250,7 +3251,7 @@ changes:
         // None leaves schema unchanged.
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
         assert_eq!(
-            plan.changes[0].schema.as_deref(),
+            plan.entries[0].schema.as_deref(),
             Some("omnia@v1"),
             "None must leave schema unchanged"
         );
@@ -3265,7 +3266,7 @@ changes:
         )
         .expect("amend replace ok");
         assert_eq!(
-            plan.changes[0].schema.as_deref(),
+            plan.entries[0].schema.as_deref(),
             Some("contracts@v1"),
             "Some(Some(s)) must replace schema"
         );
@@ -3279,7 +3280,7 @@ changes:
             },
         )
         .expect("amend clear ok");
-        assert_eq!(plan.changes[0].schema, None, "Some(None) must clear schema");
+        assert_eq!(plan.entries[0].schema, None, "Some(None) must clear schema");
     }
 
     #[test]
@@ -3299,10 +3300,10 @@ changes:
 ";
         let plan: Plan = serde_saphyr::from_str(yaml).expect("parse yaml");
         assert_eq!(
-            plan.changes[0].context,
+            plan.entries[0].context,
             vec!["contracts/http/user-api.yaml", "specs/user-registration/spec.md"],
         );
-        assert!(plan.changes[1].context.is_empty(), "missing context defaults to empty");
+        assert!(plan.entries[1].context.is_empty(), "missing context defaults to empty");
 
         let serialized = serde_saphyr::to_string(&plan).expect("serialize");
         assert!(
@@ -3371,7 +3372,7 @@ changes:
         )
         .expect("amend ok");
         assert_eq!(
-            plan.changes[0].context,
+            plan.entries[0].context,
             vec!["new/path.yaml", "another.md"],
             "amend must replace context wholesale"
         );
@@ -3385,7 +3386,7 @@ changes:
 
         plan.amend("foo", EntryPatch::default()).expect("amend ok");
         assert_eq!(
-            plan.changes[0].context,
+            plan.entries[0].context,
             vec!["keep/this.yaml"],
             "None context must leave field unchanged"
         );
@@ -3407,7 +3408,7 @@ changes:
         };
         plan.create(entry).expect("create ok");
         assert_eq!(
-            plan.changes[0].context,
+            plan.entries[0].context,
             vec!["contracts/http/foo.yaml"],
             "create must preserve context"
         );
@@ -3437,7 +3438,7 @@ changes:
             }
             other => panic!("expected Error::Config, got {other:?}"),
         }
-        assert!(plan.changes.is_empty(), "rollback must remove the entry");
+        assert!(plan.entries.is_empty(), "rollback must remove the entry");
     }
 
     #[test]

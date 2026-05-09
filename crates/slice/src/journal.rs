@@ -17,7 +17,7 @@
 //!   journal entries as a signalling channel. Phase success / failure
 //!   / deferred classification travels through
 //!   `.metadata.yaml.outcome` (stamped via
-//!   [`crate::actions::phase_outcome`] in L2.A). The journal is for
+//!   [`crate::actions::stamp_outcome`] in L2.A). The journal is for
 //!   humans — stderr traces, ambiguous-requirement text, recovery
 //!   notes — not for the driver's state machine.
 //!
@@ -166,7 +166,7 @@ mod tests {
 
     fn sample_entry(summary: &str) -> JournalEntry {
         JournalEntry {
-            timestamp: Rfc3339Stamp::from_raw("2026-04-16T14:30:00Z".to_string()),
+            timestamp: Rfc3339Stamp::new("2026-04-16T14:30:00Z".to_string()),
             step: Phase::Build,
             r#type: EntryKind::Question,
             summary: summary.to_string(),
@@ -224,14 +224,14 @@ mod tests {
         // and assert the on-disk bytes for A and B survive byte-for-byte.
         let dir = tempdir().expect("tempdir");
         let a = JournalEntry {
-            timestamp: Rfc3339Stamp::from_raw("2026-04-16T10:00:00Z".to_string()),
+            timestamp: Rfc3339Stamp::new("2026-04-16T10:00:00Z".to_string()),
             step: Phase::Define,
             r#type: EntryKind::Question,
             summary: "A".to_string(),
             context: None,
         };
         let b = JournalEntry {
-            timestamp: Rfc3339Stamp::from_raw("2026-04-16T10:05:00Z".to_string()),
+            timestamp: Rfc3339Stamp::new("2026-04-16T10:05:00Z".to_string()),
             step: Phase::Define,
             r#type: EntryKind::Failure,
             summary: "B".to_string(),
@@ -248,7 +248,7 @@ mod tests {
         let pre_bytes = std::fs::read(Journal::path(dir.path())).expect("read pre");
 
         let c = JournalEntry {
-            timestamp: Rfc3339Stamp::from_raw("2026-04-16T10:10:00Z".to_string()),
+            timestamp: Rfc3339Stamp::new("2026-04-16T10:10:00Z".to_string()),
             step: Phase::Build,
             r#type: EntryKind::Recovery,
             summary: "C".to_string(),
@@ -303,7 +303,7 @@ mod tests {
         for kind in [EntryKind::Question, EntryKind::Failure, EntryKind::Recovery] {
             for phase in [Phase::Define, Phase::Build, Phase::Merge] {
                 let entry = JournalEntry {
-                    timestamp: Rfc3339Stamp::from_raw("2026-04-16T14:30:00+00:00".to_string()),
+                    timestamp: Rfc3339Stamp::new("2026-04-16T14:30:00+00:00".to_string()),
                     step: phase,
                     r#type: kind,
                     summary: "summary text".to_string(),
@@ -320,7 +320,7 @@ mod tests {
     fn context_survives_multi_line_yaml_block() {
         let dir = tempdir().expect("tempdir");
         let entry = JournalEntry {
-            timestamp: Rfc3339Stamp::from_raw("2026-04-16T14:30:00Z".to_string()),
+            timestamp: Rfc3339Stamp::new("2026-04-16T14:30:00Z".to_string()),
             step: Phase::Build,
             r#type: EntryKind::Failure,
             summary: "multi-line detail".to_string(),
@@ -365,7 +365,7 @@ mod tests {
                 scope.spawn(move || {
                     for i in 0..10 {
                         let entry = JournalEntry {
-                            timestamp: Rfc3339Stamp::from_raw("2026-04-16T14:30:00Z".to_string()),
+                            timestamp: Rfc3339Stamp::new("2026-04-16T14:30:00Z".to_string()),
                             step: Phase::Build,
                             r#type: EntryKind::Question,
                             summary: format!("t{t}-i{i}"),

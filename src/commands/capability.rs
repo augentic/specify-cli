@@ -12,7 +12,7 @@
 //! [`specify_capability::Capability`] resolver still tolerates the
 //! legacy `schema.yaml` so internal callers like `init` keep working,
 //! but the binary CLI refuses to load a directory that carries only
-//! `schema.yaml` — it emits [`Error::SchemaBecameCapability`] instead
+//! `schema.yaml` — it emits [`Error::LegacyCapabilityField`] instead
 //! and points the operator at RFC-13 §Migration.
 
 use std::path::{Path, PathBuf};
@@ -28,7 +28,7 @@ use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_capability_resolve(
+pub fn resolve(
     format: OutputFormat, capability_value: String, project_dir: PathBuf,
 ) -> Result<CliResult, Error> {
     let (root_dir, source) = Capability::locate(&capability_value, &project_dir)?;
@@ -77,7 +77,7 @@ struct PipelineBody {
     briefs: Vec<Value>,
 }
 
-pub fn run_capability_pipeline(
+pub fn pipeline(
     ctx: &CommandContext, phase: Phase, slice: Option<PathBuf>,
 ) -> Result<CliResult, Error> {
     let pipeline = ctx.load_pipeline()?;
@@ -133,13 +133,11 @@ pub fn run_capability_pipeline(
     Ok(CliResult::Success)
 }
 
-pub fn run_capability_check(
-    format: OutputFormat, capability_dir: PathBuf,
-) -> Result<CliResult, Error> {
-    let manifest_path = match Capability::manifest_path_in(&capability_dir) {
-        ManifestProbe::Capability(path) => path,
-        ManifestProbe::LegacySchema(path) => {
-            return Err(Error::SchemaBecameCapability { path });
+pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult, Error> {
+    let manifest_path = match Capability::probe_dir(&capability_dir) {
+        ManifestProbe::Found(path) => path,
+        ManifestProbe::Legacy(path) => {
+            return Err(Error::LegacyCapabilityField { path });
         }
         ManifestProbe::Missing => {
             return Err(Error::SchemaResolution(format!(
@@ -189,9 +187,9 @@ pub fn run_capability_check(
 /// pre-RFC-13 `schema.yaml`. Callers that succeed here are guaranteed
 /// to find a `capability.yaml` on the next read.
 fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
-    match Capability::manifest_path_in(dir) {
-        ManifestProbe::Capability(_) => Ok(()),
-        ManifestProbe::LegacySchema(path) => Err(Error::SchemaBecameCapability { path }),
+    match Capability::probe_dir(dir) {
+        ManifestProbe::Found(_) => Ok(()),
+        ManifestProbe::Legacy(path) => Err(Error::LegacyCapabilityField { path }),
         ManifestProbe::Missing => {
             Err(Error::SchemaResolution(format!("no `{CAPABILITY_FILENAME}` at {}", dir.display())))
         }

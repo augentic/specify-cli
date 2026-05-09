@@ -78,6 +78,5 @@
       "status": "pass"
     }
   ],
-  "passed": true,
-  "schema-version": 2
+  "passed": true
 }

@@ -53,8 +53,7 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 use specify_registry::forge::{
-    GhClient, PrState, PrView, RealGhClient, SPECIFY_BRANCH_PREFIX, pr_branch_matches,
-    project_path_for,
+    GhClient, PrState, PrView, RealGhClient, SPECIFY_BRANCH_PREFIX, branches_match, project_path,
 };
 use specify_registry::{Registry, RegistryProject};
 
@@ -112,7 +111,7 @@ fn archive_dir(project_dir: &Path) -> PathBuf {
 /// Skill authors and operators rely on this vocabulary; treat it as a
 /// stable wire contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FinalizeStatus {
+pub enum Landing {
     /// PR is `MERGED` on remote — passing.
     Merged,
     /// PR exists, branch matches, but has not been operator-merged
@@ -138,7 +137,7 @@ pub enum FinalizeStatus {
     Failed,
 }
 
-impl FinalizeStatus {
+impl Landing {
     /// Stable kebab-case identifier — the JSON wire value and the
     /// human-readable status column.
     #[must_use]
@@ -162,7 +161,7 @@ impl FinalizeStatus {
     }
 }
 
-impl std::fmt::Display for FinalizeStatus {
+impl std::fmt::Display for Landing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }
@@ -171,12 +170,12 @@ impl std::fmt::Display for FinalizeStatus {
 /// Per-project result row, surfaced in both text and JSON output.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct FinalizeProjectResult {
+pub struct ProjectResult {
     /// Registry project name.
     pub name: String,
     /// Outcome of the finalize attempt.
     #[serde(serialize_with = "serialize_status")]
-    pub status: FinalizeStatus,
+    pub status: Landing,
     /// PR number when discovered (any state).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pr_number: Option<u64>,
@@ -199,16 +198,14 @@ pub struct FinalizeProjectResult {
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
-fn serialize_status<S: serde::Serializer>(
-    status: &FinalizeStatus, s: S,
-) -> Result<S::Ok, S::Error> {
+fn serialize_status<S: serde::Serializer>(status: &Landing, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(status.as_str())
 }
 
 /// Per-status counters for the summary row.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct FinalizeSummaryCounts {
+pub struct Summary {
     /// PRs in `MERGED` state on remote.
     pub merged: usize,
     /// PRs in `OPEN` state — refuses finalize.
@@ -233,9 +230,10 @@ pub struct FinalizeSummaryCounts {
 /// when the dry-run preview classified everything as ready.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct FinalizeOutcome {
+pub struct Outcome {
     /// Initiative name (= `plan.yaml:name`).
-    pub initiative: String,
+    #[serde(rename = "initiative")]
+    pub name: String,
     /// `true` when the archive landed on a real run, or when a dry-run
     /// preview classified the initiative as ready to finalize.
     pub finalized: bool,
@@ -243,9 +241,9 @@ pub struct FinalizeOutcome {
     /// echo the literal branch in operator-facing output.
     pub expected_branch: String,
     /// Per-project rows, one per registry entry.
-    pub projects: Vec<FinalizeProjectResult>,
+    pub projects: Vec<ProjectResult>,
     /// Aggregate counts — same vocabulary as the per-project rows.
-    pub summary: FinalizeSummaryCounts,
+    pub summary: Summary,
     /// Operator-facing next step when finalize is refused. This is
     /// intentionally present in JSON too so non-text consumers can show
     /// the same RFC-14 guidance.
@@ -284,11 +282,11 @@ pub struct FinalizeOutcome {
 /// `is_dirty` for the workspace-cleanliness guard (delegates to
 /// `git status --porcelain`).
 ///
-/// The CLI binary plugs in [`RealFinalizeProbe`]; tests substitute a
+/// The CLI binary plugs in [`RealProbe`]; tests substitute a
 /// mock that records calls and replays canned outputs. Both methods
 /// operate **inside** `project_path` (i.e. the workspace clone, or
 /// the source path for symlink-mode projects).
-pub trait FinalizeProbe {
+pub trait Probe {
     /// Look up the open/closed/merged PR for `branch`. Returns
     /// `Ok(None)` when no PR exists on that branch.
     ///
@@ -307,11 +305,11 @@ pub trait FinalizeProbe {
     fn is_dirty(&self, project_path: &Path) -> bool;
 }
 
-/// Default [`FinalizeProbe`] backed by `gh` + `git`.
+/// Default [`Probe`] backed by `gh` + `git`.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct RealFinalizeProbe;
+pub struct RealProbe;
 
-impl FinalizeProbe for RealFinalizeProbe {
+impl Probe for RealProbe {
     fn pr_view_for_branch(
         &self, project_path: &Path, branch: &str,
     ) -> Result<Option<PrView>, String> {
@@ -345,7 +343,7 @@ impl FinalizeProbe for RealFinalizeProbe {
 /// (the latter is what `specify change drop` surfaces back to the
 /// plan).
 #[must_use]
-pub const fn is_terminal_for_finalize(status: Status) -> bool {
+pub const fn is_terminal(status: Status) -> bool {
     matches!(status, Status::Done | Status::Failed | Status::Skipped)
 }
 
@@ -353,8 +351,8 @@ pub const fn is_terminal_for_finalize(status: Status) -> bool {
 /// mutation.
 ///
 /// Pure: takes the gh observations and the expected branch, returns a
-/// [`FinalizeStatus`] from the PR-state half of the universe. The
-/// caller layers in dirtiness via [`combine_status`].
+/// [`Status`] from the PR-state half of the universe. The
+/// caller layers in dirtiness via [`combine`].
 ///
 /// 1. No PR ⇒ `no-branch`.
 /// 2. `headRefName` mismatch ⇒ `branch-pattern-mismatch`.
@@ -362,20 +360,20 @@ pub const fn is_terminal_for_finalize(status: Status) -> bool {
 /// 4. Closed without merge ⇒ `closed`.
 /// 5. Open ⇒ `unmerged`.
 #[must_use]
-pub fn classify_pr_state(pr: Option<&PrView>, expected_branch: &str) -> FinalizeStatus {
+pub fn classify_pr(pr: Option<&PrView>, expected_branch: &str) -> Landing {
     let Some(pr) = pr else {
-        return FinalizeStatus::NoBranch;
+        return Landing::NoBranch;
     };
-    if !pr_branch_matches(&pr.head_ref_name, expected_branch) {
-        return FinalizeStatus::BranchPatternMismatch;
+    if !branches_match(&pr.head_ref_name, expected_branch) {
+        return Landing::BranchPatternMismatch;
     }
     if pr.merged || matches!(pr.state, PrState::Merged) {
-        return FinalizeStatus::Merged;
+        return Landing::Merged;
     }
     if matches!(pr.state, PrState::Closed) {
-        return FinalizeStatus::Closed;
+        return Landing::Closed;
     }
-    FinalizeStatus::Unmerged
+    Landing::Unmerged
 }
 
 /// Combine the PR-state classification with the dirty-clone observation.
@@ -385,12 +383,12 @@ pub fn classify_pr_state(pr: Option<&PrView>, expected_branch: &str) -> Finalize
 /// drop the uncommitted work. `Failed` (gh shell error) takes precedence
 /// over `Dirty` so the operator can see why the probe broke.
 #[must_use]
-pub const fn combine_status(pr_status: FinalizeStatus, dirty: bool) -> FinalizeStatus {
-    if matches!(pr_status, FinalizeStatus::Failed) {
-        return FinalizeStatus::Failed;
+pub const fn combine(pr_status: Landing, dirty: bool) -> Landing {
+    if matches!(pr_status, Landing::Failed) {
+        return Landing::Failed;
     }
     if dirty {
-        return FinalizeStatus::Dirty;
+        return Landing::Dirty;
     }
     pr_status
 }
@@ -399,20 +397,16 @@ pub const fn combine_status(pr_status: FinalizeStatus, dirty: bool) -> FinalizeS
 /// terminal-for-finalize state. List order matches plan order so the
 /// diagnostic is stable.
 #[must_use]
-pub fn non_terminal_entries(plan: &Plan) -> Vec<String> {
-    plan.changes
-        .iter()
-        .filter(|c| !is_terminal_for_finalize(c.status))
-        .map(|c| c.name.clone())
-        .collect()
+pub fn outstanding(plan: &Plan) -> Vec<String> {
+    plan.entries.iter().filter(|c| !is_terminal(c.status)).map(|c| c.name.clone()).collect()
 }
 
 // ---------------------------------------------------------------------------
-// Orchestration — generic over FinalizeProbe for testability
+// Orchestration — generic over Probe for testability
 // ---------------------------------------------------------------------------
 
 /// Inputs that don't fit the per-project loop.
-pub struct FinalizeInputs<'a> {
+pub struct Inputs<'a> {
     /// Project root directory (`.specify/` lives directly under here).
     pub project_dir: &'a Path,
     /// Loaded plan — owns the canonical initiative name.
@@ -431,7 +425,7 @@ pub struct FinalizeInputs<'a> {
 /// refusals (plan absent, non-terminal entries) that surface as a
 /// hard error from the CLI handler with their own diagnostic.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FinalizeError {
+pub enum Refusal {
     /// `.specify/plan.yaml` does not exist. Recovery: this is the
     /// signal that the initiative is already finalized.
     PlanNotFound,
@@ -444,26 +438,24 @@ pub enum FinalizeError {
 ///
 /// Order:
 /// 1. Plan-presence guard (caller's responsibility — call
-///    [`load_plan_or_refuse`] first; the `Plan` arrives here loaded).
+///    [`load_plan`] first; the `Plan` arrives here loaded).
 /// 2. Plan terminal-state guard (returns
-///    [`FinalizeError::NonTerminalEntries`] when not satisfied).
+///    [`Refusal::NonTerminalEntries`] when not satisfied).
 /// 3. Per-project probes — PR state + dirty clone.
 /// 4. When all projects pass and not `--dry-run`: archive plan + clean.
-/// 5. Always returns a [`FinalizeOutcome`] for consumers; a refused
+/// 5. Always returns a [`Outcome`] for consumers; a refused
 ///    finalize has `finalized: false` and pinpoints the failing
 ///    projects.
 ///
 /// # Errors
 ///
-/// Returns [`FinalizeError`] for whole-run refusals. Per-project
-/// failures live in [`FinalizeOutcome::projects`] and never bubble up.
-pub fn run_finalize<P: FinalizeProbe>(
-    inputs: FinalizeInputs<'_>, probe: &P,
-) -> Result<FinalizeOutcome, FinalizeError> {
+/// Returns [`Refusal`] for whole-run refusals. Per-project
+/// failures live in [`Outcome::projects`] and never bubble up.
+pub fn run<P: Probe>(inputs: Inputs<'_>, probe: &P) -> Result<Outcome, Refusal> {
     // Guard: terminal states.
-    let outstanding = non_terminal_entries(inputs.plan);
+    let outstanding = outstanding(inputs.plan);
     if !outstanding.is_empty() {
-        return Err(FinalizeError::NonTerminalEntries(outstanding));
+        return Err(Refusal::NonTerminalEntries(outstanding));
     }
 
     let initiative_name = inputs.plan.name.clone();
@@ -471,18 +463,17 @@ pub fn run_finalize<P: FinalizeProbe>(
     let workspace_base = specify_dir(inputs.project_dir).join("workspace");
 
     // Guard: per-project PR state + dirty clones.
-    let mut projects: Vec<FinalizeProjectResult> =
-        Vec::with_capacity(inputs.registry.projects.len());
+    let mut projects: Vec<ProjectResult> = Vec::with_capacity(inputs.registry.projects.len());
     for rp in &inputs.registry.projects {
-        let path = project_path_for(inputs.project_dir, &workspace_base, rp);
-        projects.push(probe_single_project(probe, &path, rp, &expected_branch, inputs.clean));
+        let path = project_path(inputs.project_dir, &workspace_base, rp);
+        projects.push(probe_one(probe, &path, rp, &expected_branch, inputs.clean));
     }
 
     let summary = summarise(&projects);
     let any_refusing = projects.iter().any(|p| !p.status.is_passing());
 
-    let mut outcome = FinalizeOutcome {
-        initiative: initiative_name,
+    let mut outcome = Outcome {
+        name: initiative_name,
         finalized: false,
         expected_branch,
         projects,
@@ -541,9 +532,9 @@ pub fn run_finalize<P: FinalizeProbe>(
             if let Some(first) = outcome.projects.first_mut() {
                 first.detail = Some(detail);
             } else {
-                outcome.projects.push(FinalizeProjectResult {
+                outcome.projects.push(ProjectResult {
                     name: "<archive>".to_string(),
-                    status: FinalizeStatus::Failed,
+                    status: Landing::Failed,
                     pr_number: None,
                     url: None,
                     head_ref_name: None,
@@ -556,14 +547,14 @@ pub fn run_finalize<P: FinalizeProbe>(
     }
 
     if inputs.clean {
-        outcome.cleaned = clean_workspace_clones(&workspace_base, inputs.registry);
+        outcome.cleaned = clean_clones(&workspace_base, inputs.registry);
     }
 
     outcome.finalized = true;
     Ok(outcome)
 }
 
-fn refusal_message(summary: &FinalizeSummaryCounts, expected_branch: &str) -> Option<String> {
+fn refusal_message(summary: &Summary, expected_branch: &str) -> Option<String> {
     let mut guidance: Vec<String> = Vec::new();
     if summary.unmerged > 0 {
         guidance.push(format!(
@@ -600,27 +591,27 @@ fn refusal_message(summary: &FinalizeSummaryCounts, expected_branch: &str) -> Op
 }
 
 /// Probe a single project — combine PR state and dirty observation
-/// into one [`FinalizeProjectResult`] row.
-fn probe_single_project<P: FinalizeProbe>(
+/// into one [`ProjectResult`] row.
+fn probe_one<P: Probe>(
     probe: &P, project_path: &Path, rp: &RegistryProject, expected_branch: &str, clean: bool,
-) -> FinalizeProjectResult {
+) -> ProjectResult {
     let name = &rp.name;
     let pr_view = probe.pr_view_for_branch(project_path, expected_branch);
 
     let (pr_status, pr_number, url, head_ref_name, pr_detail) = match pr_view {
-        Ok(None) => (FinalizeStatus::NoBranch, None, None, None, None::<String>),
+        Ok(None) => (Landing::NoBranch, None, None, None, None::<String>),
         Ok(Some(pr)) => {
-            let status = classify_pr_state(Some(&pr), expected_branch);
+            let status = classify_pr(Some(&pr), expected_branch);
             let detail = match status {
-                FinalizeStatus::BranchPatternMismatch => Some(format!(
+                Landing::BranchPatternMismatch => Some(format!(
                     "PR #{} headRefName `{}` does not match expected branch `{}`; recreate or retarget the PR before finalizing",
                     pr.number, pr.head_ref_name, expected_branch
                 )),
-                FinalizeStatus::Closed => Some(format!(
+                Landing::Closed => Some(format!(
                     "PR #{} is CLOSED without merge; reopen or push a replacement and operator-merge before finalizing",
                     pr.number,
                 )),
-                FinalizeStatus::Unmerged => Some(format!(
+                Landing::Unmerged => Some(format!(
                     "PR #{} is still OPEN; operator-merge it through the forge UI or `gh pr merge`, then re-run `specify change finalize`",
                     pr.number
                 )),
@@ -628,17 +619,17 @@ fn probe_single_project<P: FinalizeProbe>(
             };
             (status, Some(pr.number), Some(pr.url), Some(pr.head_ref_name), detail)
         }
-        Err(err) => (FinalizeStatus::Failed, None, None, None, Some(err)),
+        Err(err) => (Landing::Failed, None, None, None, Some(err)),
     };
 
     // Only check porcelain when the path actually exists — `gh` will
     // already have failed (and produced `Failed`) for a missing clone.
     let dirty = project_path.exists() && probe.is_dirty(project_path);
 
-    let final_status = combine_status(pr_status, dirty);
+    let final_status = combine(pr_status, dirty);
 
     let detail = match final_status {
-        FinalizeStatus::Dirty => Some(if clean {
+        Landing::Dirty => Some(if clean {
             format!(
                 "workspace clone `{}` has uncommitted work; refusing — `--clean` would drop those changes. \
                  Commit/push or stash, then re-run.",
@@ -654,7 +645,7 @@ fn probe_single_project<P: FinalizeProbe>(
         _ => pr_detail,
     };
 
-    FinalizeProjectResult {
+    ProjectResult {
         name: name.clone(),
         status: final_status,
         pr_number,
@@ -667,17 +658,17 @@ fn probe_single_project<P: FinalizeProbe>(
 
 /// Aggregate per-status counts for the summary row.
 #[must_use]
-pub fn summarise(results: &[FinalizeProjectResult]) -> FinalizeSummaryCounts {
-    let mut s = FinalizeSummaryCounts::default();
+pub fn summarise(results: &[ProjectResult]) -> Summary {
+    let mut s = Summary::default();
     for r in results {
         match r.status {
-            FinalizeStatus::Merged => s.merged += 1,
-            FinalizeStatus::Unmerged => s.unmerged += 1,
-            FinalizeStatus::Closed => s.closed += 1,
-            FinalizeStatus::NoBranch => s.no_branch += 1,
-            FinalizeStatus::BranchPatternMismatch => s.branch_pattern_mismatch += 1,
-            FinalizeStatus::Dirty => s.dirty += 1,
-            FinalizeStatus::Failed => s.failed += 1,
+            Landing::Merged => s.merged += 1,
+            Landing::Unmerged => s.unmerged += 1,
+            Landing::Closed => s.closed += 1,
+            Landing::NoBranch => s.no_branch += 1,
+            Landing::BranchPatternMismatch => s.branch_pattern_mismatch += 1,
+            Landing::Dirty => s.dirty += 1,
+            Landing::Failed => s.failed += 1,
         }
     }
     s
@@ -688,12 +679,12 @@ pub fn summarise(results: &[FinalizeProjectResult]) -> FinalizeSummaryCounts {
 /// recorded silently (the archive has already landed; clean is the
 /// optional bonus step). Returns the names of successfully-cleaned
 /// projects so the caller can surface them.
-fn clean_workspace_clones(workspace_base: &Path, registry: &Registry) -> Vec<String> {
+fn clean_clones(workspace_base: &Path, registry: &Registry) -> Vec<String> {
     let mut cleaned = Vec::new();
     for rp in &registry.projects {
         // Symlink projects point at source repositories the operator
         // owns separately — never delete them on `--clean`.
-        if rp.url_materialises_as_symlink() {
+        if rp.is_local() {
             continue;
         }
         let slot = workspace_base.join(&rp.name);
@@ -708,16 +699,16 @@ fn clean_workspace_clones(workspace_base: &Path, registry: &Registry) -> Vec<Str
 }
 
 /// Plan-presence guard: load `plan.yaml` (at the repo root) or return
-/// [`FinalizeError::PlanNotFound`].
+/// [`Refusal::PlanNotFound`].
 ///
 /// # Errors
 ///
 /// Bubbles up `Plan::load` errors verbatim — a malformed plan is a
 /// real failure, not a "plan absent" sentinel.
-pub fn load_plan_or_refuse(project_dir: &Path) -> Result<Result<Plan, FinalizeError>, Error> {
+pub fn load_plan(project_dir: &Path) -> Result<Result<Plan, Refusal>, Error> {
     let plan_file = plan_path(project_dir);
     if !plan_file.exists() {
-        return Ok(Err(FinalizeError::PlanNotFound));
+        return Ok(Err(Refusal::PlanNotFound));
     }
     Ok(Ok(Plan::load(&plan_file)?))
 }
@@ -743,73 +734,70 @@ mod tests {
 
     #[test]
     fn terminal_states_accept_done_failed_skipped() {
-        assert!(is_terminal_for_finalize(Status::Done));
-        assert!(is_terminal_for_finalize(Status::Failed));
-        assert!(is_terminal_for_finalize(Status::Skipped));
+        assert!(is_terminal(Status::Done));
+        assert!(is_terminal(Status::Failed));
+        assert!(is_terminal(Status::Skipped));
     }
 
     #[test]
     fn terminal_states_reject_pending_in_progress_blocked() {
-        assert!(!is_terminal_for_finalize(Status::Pending));
-        assert!(!is_terminal_for_finalize(Status::InProgress));
-        assert!(!is_terminal_for_finalize(Status::Blocked));
+        assert!(!is_terminal(Status::Pending));
+        assert!(!is_terminal(Status::InProgress));
+        assert!(!is_terminal(Status::Blocked));
     }
 
     #[test]
-    fn classify_pr_state_no_pr_is_no_branch() {
-        assert_eq!(classify_pr_state(None, "specify/foo"), FinalizeStatus::NoBranch);
+    fn classify_pr_no_pr_is_no_branch() {
+        assert_eq!(classify_pr(None, "specify/foo"), Landing::NoBranch);
     }
 
     #[test]
-    fn classify_pr_state_branch_mismatch() {
+    fn classify_pr_branch_mismatch() {
         let pr = pr_view("feature/x", PrState::Open, false);
-        assert_eq!(
-            classify_pr_state(Some(&pr), "specify/foo"),
-            FinalizeStatus::BranchPatternMismatch,
-        );
+        assert_eq!(classify_pr(Some(&pr), "specify/foo"), Landing::BranchPatternMismatch,);
     }
 
     #[test]
-    fn classify_pr_state_merged_short_circuits() {
+    fn classify_pr_merged_short_circuits() {
         let pr = pr_view("specify/foo", PrState::Merged, true);
-        assert_eq!(classify_pr_state(Some(&pr), "specify/foo"), FinalizeStatus::Merged);
+        assert_eq!(classify_pr(Some(&pr), "specify/foo"), Landing::Merged);
     }
 
     #[test]
-    fn classify_pr_state_closed_without_merge() {
+    fn classify_pr_closed_without_merge() {
         let pr = pr_view("specify/foo", PrState::Closed, false);
-        assert_eq!(classify_pr_state(Some(&pr), "specify/foo"), FinalizeStatus::Closed);
+        assert_eq!(classify_pr(Some(&pr), "specify/foo"), Landing::Closed);
     }
 
     #[test]
-    fn classify_pr_state_open_is_unmerged() {
+    fn classify_pr_open_is_unmerged() {
         let pr = pr_view("specify/foo", PrState::Open, false);
-        assert_eq!(classify_pr_state(Some(&pr), "specify/foo"), FinalizeStatus::Unmerged);
+        assert_eq!(classify_pr(Some(&pr), "specify/foo"), Landing::Unmerged);
     }
 
     #[test]
-    fn combine_status_dirty_overrides_passing() {
-        assert_eq!(combine_status(FinalizeStatus::Merged, true), FinalizeStatus::Dirty,);
-        assert_eq!(combine_status(FinalizeStatus::NoBranch, true), FinalizeStatus::Dirty,);
+    fn combine_dirty_overrides_passing() {
+        assert_eq!(combine(Landing::Merged, true), Landing::Dirty,);
+        assert_eq!(combine(Landing::NoBranch, true), Landing::Dirty,);
     }
 
     #[test]
-    fn combine_status_failed_takes_precedence_over_dirty() {
-        assert_eq!(combine_status(FinalizeStatus::Failed, true), FinalizeStatus::Failed,);
+    fn combine_failed_takes_precedence_over_dirty() {
+        assert_eq!(combine(Landing::Failed, true), Landing::Failed,);
     }
 
     #[test]
-    fn combine_status_clean_passes_through() {
-        assert_eq!(combine_status(FinalizeStatus::Merged, false), FinalizeStatus::Merged,);
-        assert_eq!(combine_status(FinalizeStatus::Unmerged, false), FinalizeStatus::Unmerged,);
+    fn combine_clean_passes_through() {
+        assert_eq!(combine(Landing::Merged, false), Landing::Merged,);
+        assert_eq!(combine(Landing::Unmerged, false), Landing::Unmerged,);
     }
 
     #[test]
-    fn non_terminal_entries_lists_in_plan_order() {
+    fn outstanding_lists_in_plan_order() {
         let plan = Plan {
             name: "demo".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![
+            entries: vec![
                 entry("a", Status::Done),
                 entry("b", Status::Pending),
                 entry("c", Status::InProgress),
@@ -817,21 +805,21 @@ mod tests {
                 entry("e", Status::Blocked),
             ],
         };
-        assert_eq!(non_terminal_entries(&plan), vec!["b", "c", "e"]);
+        assert_eq!(outstanding(&plan), vec!["b", "c", "e"]);
     }
 
     #[test]
-    fn non_terminal_entries_empty_when_all_terminal() {
+    fn outstanding_empty_when_all_terminal() {
         let plan = Plan {
             name: "demo".to_string(),
             sources: BTreeMap::new(),
-            changes: vec![
+            entries: vec![
                 entry("a", Status::Done),
                 entry("b", Status::Failed),
                 entry("c", Status::Skipped),
             ],
         };
-        assert!(non_terminal_entries(&plan).is_empty());
+        assert!(outstanding(&plan).is_empty());
     }
 
     fn entry(name: &str, status: Status) -> Entry {
@@ -888,7 +876,7 @@ mod tests {
         }
     }
 
-    impl FinalizeProbe for MockProbe {
+    impl Probe for MockProbe {
         fn pr_view_for_branch(
             &self, _project_path: &Path, branch: &str,
         ) -> Result<Option<PrView>, String> {
@@ -922,7 +910,7 @@ mod tests {
         Plan {
             name: name.to_string(),
             sources: BTreeMap::new(),
-            changes: Vec::new(),
+            entries: Vec::new(),
         }
     }
 
@@ -930,28 +918,28 @@ mod tests {
         Plan {
             name: name.to_string(),
             sources: BTreeMap::new(),
-            changes: entries,
+            entries,
         }
     }
 
     // ---- guard: non-terminal entries -------------------------------------
 
     #[test]
-    fn refuses_when_plan_has_non_terminal_entries() {
+    fn refuses_when_plan_has_outstanding() {
         let tmp = TempDir::new().expect("tempdir");
         let plan =
             plan_with_entries("foo", vec![entry("a", Status::Done), entry("b", Status::Pending)]);
         let registry = registry_with(&["alpha"]);
         let probe = MockProbe::new();
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: false,
             dry_run: false,
         };
-        let err = run_finalize(inputs, &probe).expect_err("non-terminal must refuse");
-        assert!(matches!(err, FinalizeError::NonTerminalEntries(ref names) if names == &["b"]));
+        let err = run(inputs, &probe).expect_err("non-terminal must refuse");
+        assert!(matches!(err, Refusal::NonTerminalEntries(ref names) if names == &["b"]));
         // Probe must not have been called — guard runs before any IO.
         assert!(probe.calls.borrow().is_empty(), "no probes on non-terminal refusal");
     }
@@ -974,14 +962,14 @@ mod tests {
             projects: vec![],
         };
         let probe = MockProbe::new();
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: false,
             dry_run: false,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(outcome.finalized);
         assert!(outcome.projects.is_empty());
         assert!(outcome.archived.is_some(), "archive must have run");
@@ -1007,16 +995,16 @@ mod tests {
                 url: "https://github.com/org/alpha/pull/7".to_string(),
             })),
         );
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: false,
             dry_run: false,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(!outcome.finalized);
-        assert_eq!(outcome.projects[0].status, FinalizeStatus::Unmerged);
+        assert_eq!(outcome.projects[0].status, Landing::Unmerged);
         assert_eq!(outcome.projects[0].pr_number, Some(7));
         assert!(
             outcome.projects[0]
@@ -1063,16 +1051,16 @@ mod tests {
                 url: "u".to_string(),
             })),
         );
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: false,
             dry_run: false,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(outcome.finalized);
-        assert_eq!(outcome.projects[0].status, FinalizeStatus::Merged);
+        assert_eq!(outcome.projects[0].status, Landing::Merged);
         assert_eq!(outcome.summary.merged, 1);
     }
 
@@ -1086,16 +1074,16 @@ mod tests {
         let registry = registry_with(&["alpha"]);
         // No `with_view` — defaults to Ok(None) i.e. no PR.
         let probe = MockProbe::new();
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: false,
             dry_run: false,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(outcome.finalized);
-        assert_eq!(outcome.projects[0].status, FinalizeStatus::NoBranch);
+        assert_eq!(outcome.projects[0].status, Landing::NoBranch);
         assert_eq!(outcome.summary.no_branch, 1);
     }
 
@@ -1116,16 +1104,16 @@ mod tests {
                 url: "u".to_string(),
             })),
         );
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: false,
             dry_run: false,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(!outcome.finalized);
-        assert_eq!(outcome.projects[0].status, FinalizeStatus::BranchPatternMismatch);
+        assert_eq!(outcome.projects[0].status, Landing::BranchPatternMismatch);
         // Diagnostic must surface the literal expected branch.
         assert!(
             outcome.projects[0].detail.as_deref().is_some_and(|d| d.contains("specify/foo")),
@@ -1148,16 +1136,16 @@ mod tests {
         let registry = registry_with(&["alpha"]);
         let probe =
             MockProbe::new().with_view("specify/foo", Err("simulated gh failure".to_string()));
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: false,
             dry_run: false,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(!outcome.finalized);
-        assert_eq!(outcome.projects[0].status, FinalizeStatus::Failed);
+        assert_eq!(outcome.projects[0].status, Landing::Failed);
         assert!(outcome.projects[0].detail.as_deref().is_some_and(|d| d.contains("simulated")));
     }
 
@@ -1185,16 +1173,16 @@ mod tests {
                 })),
             )
             .with_dirty(alpha_path, true);
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: false,
             dry_run: false,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(!outcome.finalized);
-        assert_eq!(outcome.projects[0].status, FinalizeStatus::Dirty);
+        assert_eq!(outcome.projects[0].status, Landing::Dirty);
         assert_eq!(outcome.projects[0].dirty, Some(true));
         assert!(
             outcome.projects[0].detail.as_deref().is_some_and(|d| d.contains("uncommitted")),
@@ -1235,19 +1223,19 @@ mod tests {
             )
             .with_dirty(alpha_path.clone(), true)
             .with_dirty(beta_path.clone(), false);
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: true,
             dry_run: false,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(!outcome.finalized);
-        assert_eq!(outcome.projects[0].status, FinalizeStatus::Dirty);
+        assert_eq!(outcome.projects[0].status, Landing::Dirty);
         assert_eq!(
             outcome.projects[1].status,
-            FinalizeStatus::Merged,
+            Landing::Merged,
             "clean projects may still classify as merged, but any dirty clone blocks the whole run",
         );
         // With --clean, the diagnostic MUST mention that --clean would drop changes.
@@ -1287,14 +1275,14 @@ mod tests {
                 url: "u".to_string(),
             })),
         );
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: true,
             dry_run: true,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(outcome.finalized, "dry-run with all-passing must report finalized=true");
         assert_eq!(outcome.dry_run, Some(true));
         assert!(outcome.archived.is_none(), "dry-run must not archive");
@@ -1321,16 +1309,16 @@ mod tests {
                 url: "u".to_string(),
             })),
         );
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: false,
             dry_run: true,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(!outcome.finalized);
-        assert_eq!(outcome.projects[0].status, FinalizeStatus::Unmerged);
+        assert_eq!(outcome.projects[0].status, Landing::Unmerged);
         assert_eq!(outcome.dry_run, Some(true));
     }
 
@@ -1360,14 +1348,14 @@ mod tests {
                 url: "u".to_string(),
             })),
         );
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: true,
             dry_run: false,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(outcome.finalized);
         assert_eq!(outcome.cleaned, vec!["alpha"], "alpha must be cleaned");
         assert!(!alpha_path.exists(), "workspace clone must be gone");
@@ -1404,14 +1392,14 @@ mod tests {
                 url: "u".to_string(),
             })),
         );
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: true,
             dry_run: false,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(!outcome.finalized, "archive collision must refuse finalize");
         assert!(outcome.cleaned.is_empty(), "failed archive must not clean clones");
         assert!(alpha_path.exists(), "clone must remain when archive fails");
@@ -1450,14 +1438,14 @@ mod tests {
             }],
         };
         let probe = MockProbe::new();
-        let inputs = FinalizeInputs {
+        let inputs = Inputs {
             project_dir: tmp.path(),
             plan: &plan,
             registry: &registry,
             clean: true,
             dry_run: false,
         };
-        let outcome = run_finalize(inputs, &probe).expect("ok");
+        let outcome = run(inputs, &probe).expect("ok");
         assert!(outcome.finalized);
         assert!(outcome.cleaned.is_empty(), "symlink projects must not be cleaned");
     }
@@ -1488,8 +1476,8 @@ mod tests {
                 url: "u".to_string(),
             })),
         );
-        let outcome1 = run_finalize(
-            FinalizeInputs {
+        let outcome1 = run(
+            Inputs {
                 project_dir: tmp.path(),
                 plan: &plan,
                 registry: &registry,
@@ -1515,8 +1503,8 @@ mod tests {
                 url: "u".to_string(),
             })),
         );
-        let outcome2 = run_finalize(
-            FinalizeInputs {
+        let outcome2 = run(
+            Inputs {
                 project_dir: tmp.path(),
                 plan: &plan,
                 registry: &registry,
@@ -1536,36 +1524,36 @@ mod tests {
     #[test]
     fn summary_counts_per_status() {
         let results = vec![
-            FinalizeProjectResult {
+            ProjectResult {
                 name: "a".into(),
-                status: FinalizeStatus::Merged,
+                status: Landing::Merged,
                 pr_number: None,
                 url: None,
                 head_ref_name: None,
                 dirty: None,
                 detail: None,
             },
-            FinalizeProjectResult {
+            ProjectResult {
                 name: "b".into(),
-                status: FinalizeStatus::NoBranch,
+                status: Landing::NoBranch,
                 pr_number: None,
                 url: None,
                 head_ref_name: None,
                 dirty: None,
                 detail: None,
             },
-            FinalizeProjectResult {
+            ProjectResult {
                 name: "c".into(),
-                status: FinalizeStatus::Unmerged,
+                status: Landing::Unmerged,
                 pr_number: None,
                 url: None,
                 head_ref_name: None,
                 dirty: None,
                 detail: None,
             },
-            FinalizeProjectResult {
+            ProjectResult {
                 name: "d".into(),
-                status: FinalizeStatus::Dirty,
+                status: Landing::Dirty,
                 pr_number: None,
                 url: None,
                 head_ref_name: None,

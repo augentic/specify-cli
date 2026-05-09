@@ -16,7 +16,7 @@
 //! [`ChangeBrief::path`] returns the post-rename filename;
 //! [`ChangeBrief::legacy_path`] returns the pre-rename filename so
 //! migrators and the "found legacy file" diagnostic
-//! ([`Error::ChangeBriefBecameChangeMd`]) have one place to ask for
+//! ([`Error::LegacyChangeBrief`]) have one place to ask for
 //! either name.
 //!
 //! No JSON schema file ships for v1 per the RFC — the shape is enforced
@@ -25,7 +25,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use specify_error::Error;
+use specify_error::{Error, is_kebab};
 
 use crate::brief::split_on_closing_delimiter;
 
@@ -33,8 +33,8 @@ use crate::brief::split_on_closing_delimiter;
 ///
 /// Written by `specify change create <name>` and by
 /// `specify migrate change-noun` (the chunk 3.7 migrator that renames
-/// pre-Phase-3.7 [`LEGACY_CHANGE_BRIEF_FILENAME`] in place).
-pub const CHANGE_BRIEF_FILENAME: &str = "change.md";
+/// pre-Phase-3.7 [`LEGACY_FILENAME`] in place).
+pub const FILENAME: &str = "change.md";
 
 /// Pre-Phase-3.7 filename of the operator brief at the repo root.
 ///
@@ -42,28 +42,9 @@ pub const CHANGE_BRIEF_FILENAME: &str = "change.md";
 /// renaming the file in place; the post-RFC CLI surface
 /// (`specify change {create, show, finalize}` and `specify change
 /// plan archive`) refuses to read this filename and emits
-/// [`Error::ChangeBriefBecameChangeMd`] pointing the operator at the
+/// [`Error::LegacyChangeBrief`] pointing the operator at the
 /// migration verb.
-pub const LEGACY_CHANGE_BRIEF_FILENAME: &str = "initiative.md";
-
-/// Kebab-case predicate. Duplicates the helper that lives in
-/// `specify_registry::validate::is_kebab_case` because RFC-13 chunk 2.1
-/// extracted registry parsing into its own crate; depending on
-/// `specify-registry` from here would re-introduce the
-/// "platform components are not capabilities" cycle (RFC-13 §Migration
-/// invariant 4). Kept private and inlined.
-fn is_kebab_case(s: &str) -> bool {
-    if s.is_empty() {
-        return false;
-    }
-    if s.starts_with('-') || s.ends_with('-') {
-        return false;
-    }
-    if s.contains("--") {
-        return false;
-    }
-    s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-}
+pub const LEGACY_FILENAME: &str = "initiative.md";
 
 /// In-memory representation of `change.md` (at the repo root).
 ///
@@ -118,23 +99,23 @@ impl ChangeBrief {
     /// operator brief lives at the repo root.
     #[must_use]
     pub fn path(project_dir: &Path) -> PathBuf {
-        project_dir.join(CHANGE_BRIEF_FILENAME)
+        project_dir.join(FILENAME)
     }
 
     /// Absolute path to `<project_dir>/initiative.md` — the
     /// pre-Phase-3.7 filename. Used by `specify migrate change-noun`
     /// to detect the legacy file before renaming, and by every
     /// `specify change *` verb that wants to surface the
-    /// [`Error::ChangeBriefBecameChangeMd`] diagnostic when a project
+    /// [`Error::LegacyChangeBrief`] diagnostic when a project
     /// has not run the migration yet.
     #[must_use]
     pub fn legacy_path(project_dir: &Path) -> PathBuf {
-        project_dir.join(LEGACY_CHANGE_BRIEF_FILENAME)
+        project_dir.join(LEGACY_FILENAME)
     }
 
     /// Refuse to load when only the pre-Phase-3.7 filename is on disk.
     ///
-    /// Returns `Err(Error::ChangeBriefBecameChangeMd { path })` when
+    /// Returns `Err(Error::LegacyChangeBrief { path })` when
     /// `<project_dir>/initiative.md` exists and `<project_dir>/change.md`
     /// does not — the caller (`specify change show` and
     /// `specify change finalize`) surfaces the diagnostic and points the
@@ -142,17 +123,17 @@ impl ChangeBrief {
     /// the project is on the post-Phase-3.7 layout, when the brief is
     /// absent altogether, or when both filenames are present (the
     /// migration verb resolves that case via
-    /// [`Error::ChangeNounMigrationTargetExists`]).
+    /// [`Error::ChangeNounCollision`]).
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ChangeBriefBecameChangeMd`] when only the
+    /// Returns [`Error::LegacyChangeBrief`] when only the
     /// legacy file is present.
     pub fn refuse_legacy(project_dir: &Path) -> Result<(), Error> {
         let modern = Self::path(project_dir);
         let legacy = Self::legacy_path(project_dir);
         if !modern.exists() && legacy.is_file() {
-            return Err(Error::ChangeBriefBecameChangeMd { path: legacy });
+            return Err(Error::LegacyChangeBrief { path: legacy });
         }
         Ok(())
     }
@@ -189,20 +170,16 @@ impl ChangeBrief {
     ///
     /// Returns an error if the operation fails.
     pub fn parse_str(content: &str) -> Result<Self, Error> {
-        let after_open =
-            content.strip_prefix("---\n").or_else(|| content.strip_prefix("---\r\n")).ok_or_else(
-                || Error::Config(format!("{CHANGE_BRIEF_FILENAME}: missing YAML frontmatter")),
-            )?;
+        let after_open = content
+            .strip_prefix("---\n")
+            .or_else(|| content.strip_prefix("---\r\n"))
+            .ok_or_else(|| Error::Config(format!("{FILENAME}: missing YAML frontmatter")))?;
         let (frontmatter_text, body) = split_on_closing_delimiter(after_open).ok_or_else(|| {
-            Error::Config(format!(
-                "{CHANGE_BRIEF_FILENAME}: opening `---` has no closing `---` delimiter"
-            ))
+            Error::Config(format!("{FILENAME}: opening `---` has no closing `---` delimiter"))
         })?;
 
-        let frontmatter: ChangeFrontmatter =
-            serde_saphyr::from_str(frontmatter_text).map_err(|err| {
-                Error::Config(format!("{CHANGE_BRIEF_FILENAME}: invalid frontmatter: {err}"))
-            })?;
+        let frontmatter: ChangeFrontmatter = serde_saphyr::from_str(frontmatter_text)
+            .map_err(|err| Error::Config(format!("{FILENAME}: invalid frontmatter: {err}")))?;
 
         let brief = Self {
             frontmatter,
@@ -220,20 +197,18 @@ impl ChangeBrief {
     /// Returns an error if the operation fails.
     pub fn validate_shape(&self) -> Result<(), Error> {
         if self.frontmatter.name.is_empty() {
-            return Err(Error::Config(format!("{CHANGE_BRIEF_FILENAME}: name is empty")));
+            return Err(Error::Config(format!("{FILENAME}: name is empty")));
         }
-        if !is_kebab_case(&self.frontmatter.name) {
+        if !is_kebab(&self.frontmatter.name) {
             return Err(Error::Config(format!(
-                "{CHANGE_BRIEF_FILENAME}: name `{}` must be kebab-case \
+                "{FILENAME}: name `{}` must be kebab-case \
                  (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)",
                 self.frontmatter.name
             )));
         }
         for (idx, input) in self.frontmatter.inputs.iter().enumerate() {
             if input.path.is_empty() {
-                return Err(Error::Config(format!(
-                    "{CHANGE_BRIEF_FILENAME}: inputs[{idx}].path is empty"
-                )));
+                return Err(Error::Config(format!("{FILENAME}: inputs[{idx}].path is empty")));
             }
         }
         Ok(())

@@ -6,7 +6,7 @@ use crate::cli::OutputFormat;
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_response};
 
-pub fn run_plan_lock_acquire(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
+pub fn acquire(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let acquired = Stamp::acquire(&ctx.project_dir, our_pid)?;
     emit_acquired(ctx.format, &acquired)
@@ -42,7 +42,7 @@ fn emit_acquired(format: OutputFormat, acquired: &Acquired) -> Result<CliResult,
     Ok(CliResult::Success)
 }
 
-pub fn run_plan_lock_release(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
+pub fn release(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let outcome = Stamp::release(&ctx.project_dir, our_pid)?;
     emit_released(ctx.format, our_pid, &outcome)
@@ -102,7 +102,7 @@ fn emit_released(
     Ok(CliResult::Success)
 }
 
-pub fn run_plan_lock_status(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn status(ctx: &CommandContext) -> Result<CliResult, Error> {
     let state = Stamp::status(&ctx.project_dir)?;
     emit_state(ctx.format, &state)
 }

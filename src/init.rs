@@ -35,10 +35,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use specify_capability::{CacheMeta, PipelineView};
-use specify_error::Error;
+use specify_capability::{CacheMeta, DEFAULT_CODEX_CAPABILITY, PipelineView};
+use specify_error::{Error, is_kebab};
 use specify_registry::Registry;
-use specify_slice::is_valid_kebab_name;
 
 use crate::config::ProjectConfig;
 
@@ -120,7 +119,7 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.hub {
         return init_hub(opts);
     }
-    let capability = opts.capability.ok_or(Error::InitRequiresCapabilityOrHub)?;
+    let capability = opts.capability.ok_or(Error::InitNeedsCapability)?;
 
     let name = resolved_name(opts.project_dir, opts.name);
 
@@ -152,9 +151,9 @@ pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
 
     let resolved = cache_capability(capability, opts.project_dir)?;
     let view = PipelineView::load(&resolved.capability_value, opts.project_dir)?;
-    let capability_name = view.schema.schema.name.clone();
+    let capability_name = view.capability.manifest.name.clone();
     let scaffolded_rule_keys: Vec<String> =
-        view.schema.schema.pipeline.define.iter().map(|entry| entry.id.clone()).collect();
+        view.capability.manifest.pipeline.define.iter().map(|entry| entry.id.clone()).collect();
 
     let specify_version = resolve_version(opts.project_dir, opts.version_mode)?;
 
@@ -236,7 +235,7 @@ const HUB_INIT_NAME: &str = "hub";
 #[allow(clippy::needless_pass_by_value)]
 fn init_hub(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.capability.is_some() {
-        return Err(Error::InitRequiresCapabilityOrHub);
+        return Err(Error::InitNeedsCapability);
     }
 
     let specify_dir = ProjectConfig::specify_dir(opts.project_dir);
@@ -249,7 +248,7 @@ fn init_hub(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     }
 
     let name = resolved_name(opts.project_dir, opts.name);
-    if !is_valid_kebab_name(&name) {
+    if !is_kebab(&name) {
         return Err(Error::Config(format!(
             "init --hub: project name `{name}` must be kebab-case \
              (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens). \
@@ -318,6 +317,7 @@ fn cache_capability(capability: &str, project_dir: &Path) -> Result<CachedCapabi
     let cache_dir = ProjectConfig::cache_dir(project_dir);
     let target = cache_dir.join(&source.capability_name);
     refresh_cached_capability(&source.source_dir, &target)?;
+    cache_sibling_default_capability(&source.source_dir, &cache_dir)?;
     write_cache_meta(project_dir, &source.capability_value)?;
 
     Ok(CachedCapability {
@@ -460,11 +460,19 @@ fn sparse_checkout_github(
     run_git(&clone_args, "clone capability repository")?;
 
     let checkout_dir_arg = checkout_dir.to_string_lossy().to_string();
+    let sparse_path = sparse_checkout_path(capability_path);
     run_git(
-        &["-C", &checkout_dir_arg, "sparse-checkout", "set", "--", capability_path],
+        &["-C", &checkout_dir_arg, "sparse-checkout", "set", "--", sparse_path],
         "sparse-checkout capability path",
     )?;
     Ok(checkout_dir)
+}
+
+fn sparse_checkout_path(capability_path: &str) -> &str {
+    match capability_path.rsplit_once('/') {
+        Some((parent, _name)) if !parent.is_empty() => parent,
+        _ => capability_path,
+    }
 }
 
 fn run_git(args: &[&str], action: &str) -> Result<(), Error> {
@@ -513,6 +521,23 @@ fn capability_name_from_dir(path: &Path) -> Result<String, Error> {
     path.file_name().and_then(|name| name.to_str()).map(str::to_string).ok_or_else(|| {
         Error::SchemaResolution(format!("cannot derive capability name from {}", path.display()))
     })
+}
+
+fn cache_sibling_default_capability(source_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
+    if source_dir.file_name().and_then(|name| name.to_str()) == Some(DEFAULT_CODEX_CAPABILITY) {
+        return Ok(());
+    }
+
+    let Some(parent) = source_dir.parent() else {
+        return Ok(());
+    };
+    let default_source = parent.join(DEFAULT_CODEX_CAPABILITY);
+    if !default_source.is_dir() {
+        return Ok(());
+    }
+
+    ensure_capability_dir(&default_source, DEFAULT_CODEX_CAPABILITY)?;
+    refresh_cached_capability(&default_source, &cache_dir.join(DEFAULT_CODEX_CAPABILITY))
 }
 
 fn refresh_cached_capability(source: &Path, target: &Path) -> Result<(), Error> {
@@ -644,6 +669,13 @@ mod tests {
         assert_eq!(parsed.checkout_ref.as_deref(), Some("main"));
         assert_eq!(parsed.capability_path, "schemas/omnia");
         assert_eq!(parsed.capability_name, "omnia");
+    }
+
+    #[test]
+    fn github_sparse_checkout_uses_capability_parent() {
+        assert_eq!(sparse_checkout_path("capabilities/omnia"), "capabilities");
+        assert_eq!(sparse_checkout_path("schemas/omnia"), "schemas");
+        assert_eq!(sparse_checkout_path("omnia"), "omnia");
     }
 
     #[test]
@@ -955,7 +987,7 @@ mod tests {
             hub: true,
         })
         .expect_err("hub + capability must error");
-        assert!(matches!(err, Error::InitRequiresCapabilityOrHub), "got: {err:?}");
+        assert!(matches!(err, Error::InitNeedsCapability), "got: {err:?}");
     }
 
     #[test]
@@ -970,6 +1002,6 @@ mod tests {
             hub: false,
         })
         .expect_err("missing capability must error");
-        assert!(matches!(err, Error::InitRequiresCapabilityOrHub), "got: {err:?}");
+        assert!(matches!(err, Error::InitNeedsCapability), "got: {err:?}");
     }
 }

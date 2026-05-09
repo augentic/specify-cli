@@ -4,11 +4,20 @@
 //! The variants are structured (rather than string-only) so `main.rs` can
 //! pattern-match them to assign exit codes and pick an output format.
 
-/// Validation outcome for a single rule check.
+/// Kebab-case predicate shared across every workspace crate.
 ///
-/// Kept in `specify-error` (rather than `specify-validate`) so the
-/// `Error::Validation` payload stays dependency-free. See `DECISIONS.md`
-/// ("Change A") for the rationale.
+/// Mirrors the JSON Schema regex `^[a-z0-9]+(-[a-z0-9]+)*$` carried by
+/// `schemas/plan/plan.schema.json` `$defs.kebabName.pattern`.
+#[must_use]
+pub fn is_kebab(s: &str) -> bool {
+    !s.is_empty()
+        && !s.starts_with('-')
+        && !s.ends_with('-')
+        && !s.contains("--")
+        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// Validation outcome for a single rule check.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ValidationStatus {
     /// Rule passed.
@@ -30,10 +39,6 @@ impl std::fmt::Display for ValidationStatus {
 }
 
 /// Compact summary of a validation result, embedded in `Error::Validation`.
-///
-/// The rich `ValidationResult` type lives in `specify-validate`; converting
-/// to this summary is a lossy projection but keeps `specify-error`
-/// dependency-free from the rest of the workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationSummary {
     /// Outcome of this validation check.
@@ -72,7 +77,7 @@ pub enum Error {
         "context-existing-unfenced-agents-md: AGENTS.md exists without Specify context fences; \
          rerun with --force to rewrite it"
     )]
-    ContextExistingUnfencedAgentsMd,
+    ContextUnfenced,
 
     /// `specify context generate` refused to replace the managed block
     /// because the fenced content has diverged from `.specify/context.lock`.
@@ -81,22 +86,22 @@ pub enum Error {
          has changed since .specify/context.lock was written; reconcile the edits or rerun \
          with --force to replace the generated block"
     )]
-    ContextFencedContentModified,
+    ContextDrift,
 
     /// `.specify/context.lock` is absent for a context check.
     #[error("context-lock-missing: .specify/context.lock is missing")]
-    ContextLockMissing,
+    ContextNoLock,
 
     /// `AGENTS.md` is absent for a context check.
     #[error("context-not-generated: AGENTS.md is missing")]
-    ContextNotGenerated,
+    ContextMissing,
 
     /// `.specify/context.lock` declares a version newer than this CLI supports.
     #[error(
         "context-lock-version-too-new: lock version {found} is newer than supported version \
          {supported}"
     )]
-    ContextLockVersionTooNew {
+    ContextLockTooNew {
         /// Version declared by the lock file.
         found: u64,
         /// Highest lock-file version supported by this CLI.
@@ -134,18 +139,14 @@ pub enum Error {
 
     /// The installed CLI version is older than the project floor.
     #[error("specify version {found} is older than the project floor {required}; upgrade the CLI")]
-    SpecifyVersionTooOld {
+    CliTooOld {
         /// Minimum version the project requires.
         required: String,
         /// Version currently installed.
         found: String,
     },
 
-    /// Illegal plan entry status transition. Mirrors the `Lifecycle`
-    /// variant in carrying stringified `PlanStatus` values to keep
-    /// `specify-error` at the root of the dependency graph. The caller
-    /// (in `specify-change::plan`) formats the strings via
-    /// `format!("{:?}", status)`.
+    /// Illegal plan entry status transition.
     #[error("illegal plan transition: cannot go from {from} to {to}")]
     PlanTransition {
         /// Source status of the attempted transition.
@@ -158,16 +159,13 @@ pub enum Error {
     /// non-terminal entries, and the caller did not pass `force`.
     /// `entries` lists the offending entry names.
     #[error("plan has outstanding non-terminal work: {entries:?}")]
-    PlanHasOutstandingWork {
+    PlanIncomplete {
         /// Names of plan entries not yet in a terminal state.
         entries: Vec<String>,
     },
 
-    /// `PlanLockGuard::acquire` found another live `/spec:execute`
-    /// driver holding `.specify/plan.lock`. `pid` is the contents of
-    /// the lockfile (confirmed alive via the host-level PID check).
-    /// Stale locks (dead PID / malformed content) are reclaimed
-    /// silently and do not surface this variant.
+    /// Another live `/spec:execute` driver holds `.specify/plan.lock`.
+    /// Stale locks (dead PID / malformed content) are reclaimed silently.
     #[error("another /spec:execute driver is running (pid {pid}); refusing to proceed")]
     DriverBusy {
         /// PID of the process that holds the lock.
@@ -194,28 +192,17 @@ pub enum Error {
     #[error("no registry declared at registry.yaml")]
     RegistryMissing,
 
-    /// One or more legacy v1-layout artifacts were found under
-    /// `.specify/`. The CLI moved these to the repo root in the v2
-    /// layout; the operator must run `specify migrate v2-layout` to
-    /// move them in place. `paths` enumerates every offending entry
-    /// the detector saw, in deterministic order.
+    /// Legacy v1-layout artifacts found under `.specify/`. Run
+    /// `specify migrate v2-layout` to relocate them.
     #[error("legacy v1 layout detected; run `specify migrate v2-layout` to upgrade ({paths:?})")]
     LegacyLayout {
-        /// Repo-relative paths of the legacy artifacts the detector
-        /// found (e.g. `.specify/registry.yaml`).
+        /// Repo-relative paths of the legacy artifacts the detector found.
         paths: Vec<String>,
     },
 
-    /// `specify migrate slice-layout` (RFC-13 chunk 3.6) refused to
-    /// run because at least one per-loop unit under
-    /// `.specify/changes/<name>/` carries an unfinished phase
-    /// (lifecycle status not in `Merged` or `Dropped`). The operator
-    /// must finish the slice loop (`specify slice merge run <name>`
-    /// once it reaches `complete`) or discard it
-    /// (`specify slice drop <name>`) before re-running the migration.
-    /// `in_progress` is `(slice_name, lifecycle_status)` pairs in
-    /// deterministic (alphabetical) order so JSON output and error
-    /// text stay stable across runs.
+    /// `specify migrate slice-layout` refused because at least one slice
+    /// under `.specify/changes/<name>/` is non-terminal. Pairs are sorted
+    /// by name for stable diagnostics.
     #[error(
         "slice-migration-blocked-by-in-progress: {} slice(s) carry an unfinished phase. \
          Finish or drop them before migrating: {}. \
@@ -224,18 +211,14 @@ pub enum Error {
         in_progress.len(),
         format_in_progress(in_progress)
     )]
-    SliceMigrationBlockedByInProgress {
+    SliceMigrationInProgress {
         /// `(slice_name, lifecycle_status)` for each non-terminal
         /// slice the detector found, sorted by slice name.
         in_progress: Vec<(String, String)>,
     },
 
-    /// `specify migrate slice-layout` (RFC-13 chunk 3.6) refused to
-    /// run because both `.specify/changes/` (the v1 source) and
-    /// `.specify/slices/` (the post-migration destination) are
-    /// present. A previous migration was interrupted or someone
-    /// hand-edited the tree; the operator must inspect both
-    /// directories and reconcile manually before re-running.
+    /// `specify migrate slice-layout` refused because both source and
+    /// destination directories exist. Operator must reconcile manually.
     #[error(
         "slice-migration-target-exists: both `{}` and `{}` exist; the migration cannot proceed \
          while the destination is non-empty. Inspect both directories, move any needed contents \
@@ -244,19 +227,15 @@ pub enum Error {
         changes.display(),
         slices.display()
     )]
-    SliceMigrationTargetExists {
+    SliceMigrationCollision {
         /// Path to the v1 source directory (`.specify/changes/`).
         changes: std::path::PathBuf,
         /// Path to the post-migration destination (`.specify/slices/`).
         slices: std::path::PathBuf,
     },
 
-    /// `specify migrate change-noun` (RFC-13 chunk 3.7) refused to
-    /// run because both `initiative.md` (the pre-Phase-3.7 source) and
-    /// `change.md` (the post-migration destination) are present at the
-    /// repo root. A previous migration was interrupted or someone
-    /// hand-edited the tree; the operator must inspect both files and
-    /// reconcile manually before re-running.
+    /// `specify migrate change-noun` refused because both `initiative.md`
+    /// and `change.md` exist at the repo root. Operator must reconcile.
     #[error(
         "change-noun-migration-target-exists: both `{}` and `{}` exist at the repo root; \
          the migration cannot proceed while the destination is already in place. Inspect \
@@ -265,22 +244,15 @@ pub enum Error {
         initiative.display(),
         change.display()
     )]
-    ChangeNounMigrationTargetExists {
+    ChangeNounCollision {
         /// Path to the pre-Phase-3.7 source file (`initiative.md`).
         initiative: std::path::PathBuf,
         /// Path to the post-migration destination file (`change.md`).
         change: std::path::PathBuf,
     },
 
-    /// A `specify change *` verb encountered the pre-Phase-3.7
-    /// operator brief filename (`initiative.md`) at the repo root
-    /// without the post-RFC-13 `change.md` companion. RFC-13 chunk 3.7
-    /// renamed the umbrella brief filename in place; the post-RFC CLI
-    /// surface refuses to read the legacy filename and points the
-    /// operator at `specify migrate change-noun`. `path` names the
-    /// offending legacy file.
-    ///
-    /// See: <https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration>
+    /// Legacy `initiative.md` found without a `change.md` companion.
+    /// Operator must run `specify migrate change-noun`.
     #[error(
         "change-brief-became-change-md: found legacy `initiative.md` at {} but expected \
          `change.md`. RFC-13 renamed the umbrella brief filename: `initiative.md` is now \
@@ -288,21 +260,13 @@ pub enum Error {
          See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
         path.display()
     )]
-    ChangeBriefBecameChangeMd {
+    LegacyChangeBrief {
         /// Path to the pre-Phase-3.7 file the detector found.
         path: std::path::PathBuf,
     },
 
-    /// The capability resolver found a pre-RFC-13 `schema.yaml` (or a
-    /// `project.yaml` carrying the v1 `schema:` field) where it expected
-    /// a `capability.yaml` (or `capability:` field). RFC-13 renamed the
-    /// extension primitive from "schema" to "capability"; the legacy
-    /// shape is no longer loaded silently — the operator must rename the
-    /// file (and re-run `specify init <capability>` if the project still
-    /// records the old `schema:` field). `path` is the offending file
-    /// the detector found so the diagnostic can name it.
-    ///
-    /// See: <https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration>
+    /// Legacy `schema.yaml` (or `project.yaml: schema:` field) found where
+    /// `capability.yaml` / `capability:` is expected.
     #[error(
         "schema-became-capability: found legacy `schema` shape at `{}` but expected the \
          post-RFC-13 `capability` shape. RFC-13 renamed the Specify extension primitive: \
@@ -312,19 +276,15 @@ pub enum Error {
          See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
         path.display()
     )]
-    SchemaBecameCapability {
+    LegacyCapabilityField {
         /// Path to the file that triggered the diagnostic (a legacy
         /// `schema.yaml`, or a `project.yaml` carrying the v1 `schema:`
         /// field).
         path: std::path::PathBuf,
     },
 
-    /// `specify init` was invoked without the post-RFC-13 capability
-    /// positional and without `--hub`, or with both at once. RFC-13
-    /// makes the two mutually exclusive: a regular project init takes
-    /// `<capability>` as a required positional; a registry-only platform
-    /// hub init takes `--hub` instead. See:
-    /// <https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration>.
+    /// `specify init` requires either a `<capability>` positional or
+    /// `--hub` (mutually exclusive).
     #[error(
         "init-requires-capability-or-hub: `specify init` requires either a capability \
          identifier or `--hub`. Run `specify init <capability>` for a regular project \
@@ -332,7 +292,7 @@ pub enum Error {
          for a registry-only platform hub. The two are mutually exclusive. \
          See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration"
     )]
-    InitRequiresCapabilityOrHub,
+    InitNeedsCapability,
 
     /// A declared WASI tool could not be resolved or fetched.
     #[error("tool resolver error: {0}")]
@@ -344,7 +304,7 @@ pub enum Error {
 
     /// A declared WASI tool requested filesystem authority outside its manifest policy.
     #[error("tool permission denied: {0}")]
-    ToolPermissionDenied(String),
+    ToolDenied(String),
 
     /// The requested tool name was not present in either declaration site.
     #[error("tool not declared: {name}")]
@@ -378,34 +338,32 @@ impl Error {
             Self::NotInitialized => "not-initialized",
             Self::SchemaResolution(_) => "schema-resolution",
             Self::Config(_) => "config",
-            Self::ContextExistingUnfencedAgentsMd => "context-existing-unfenced-agents-md",
-            Self::ContextFencedContentModified => "context-fenced-content-modified",
-            Self::ContextLockMissing => "context-lock-missing",
-            Self::ContextNotGenerated => "context-not-generated",
-            Self::ContextLockVersionTooNew { .. } => "context-lock-version-too-new",
+            Self::ContextUnfenced => "context-existing-unfenced-agents-md",
+            Self::ContextDrift => "context-fenced-content-modified",
+            Self::ContextNoLock => "context-lock-missing",
+            Self::ContextMissing => "context-not-generated",
+            Self::ContextLockTooNew { .. } => "context-lock-version-too-new",
             Self::ContextLockMalformed { .. } => "context-lock-malformed",
             Self::Validation { .. } => "validation",
             Self::Merge(_) => "merge",
             Self::Lifecycle { .. } => "lifecycle",
-            Self::SpecifyVersionTooOld { .. } => "specify-version-too-old",
+            Self::CliTooOld { .. } => "specify-version-too-old",
             Self::PlanTransition { .. } => "plan-transition",
-            Self::PlanHasOutstandingWork { .. } => "plan-has-outstanding-work",
+            Self::PlanIncomplete { .. } => "plan-has-outstanding-work",
             Self::DriverBusy { .. } => "driver-busy",
             Self::ArtifactNotFound { .. } => "artifact-not-found",
             Self::SliceNotFound { .. } => "slice-not-found",
             Self::RegistryMissing => "registry-missing",
             Self::LegacyLayout { .. } => "legacy-layout",
-            Self::SliceMigrationBlockedByInProgress { .. } => {
-                "slice-migration-blocked-by-in-progress"
-            }
-            Self::SliceMigrationTargetExists { .. } => "slice-migration-target-exists",
-            Self::ChangeNounMigrationTargetExists { .. } => "change-noun-migration-target-exists",
-            Self::ChangeBriefBecameChangeMd { .. } => "change-brief-became-change-md",
-            Self::SchemaBecameCapability { .. } => "schema-became-capability",
-            Self::InitRequiresCapabilityOrHub => "init-requires-capability-or-hub",
+            Self::SliceMigrationInProgress { .. } => "slice-migration-blocked-by-in-progress",
+            Self::SliceMigrationCollision { .. } => "slice-migration-target-exists",
+            Self::ChangeNounCollision { .. } => "change-noun-migration-target-exists",
+            Self::LegacyChangeBrief { .. } => "change-brief-became-change-md",
+            Self::LegacyCapabilityField { .. } => "schema-became-capability",
+            Self::InitNeedsCapability => "init-requires-capability-or-hub",
             Self::ToolResolver(_) => "tool-resolver",
             Self::ToolRuntime(_) => "tool-runtime",
-            Self::ToolPermissionDenied(_) => "tool-permission-denied",
+            Self::ToolDenied(_) => "tool-permission-denied",
             Self::ToolNotDeclared { .. } => "tool-not-declared",
             Self::InvalidName(_) => "invalid-name",
             Self::Io(_) => "io",
@@ -415,12 +373,6 @@ impl Error {
     }
 }
 
-/// Render the `(slice_name, lifecycle_status)` list embedded in
-/// [`Error::SliceMigrationBlockedByInProgress`] as the comma-separated
-/// `name (status), name (status)` form used in the diagnostic.
-///
-/// Kept as a free function so the `thiserror` `#[error(…)]` format
-/// string can resolve it without taking on a runtime fmt closure.
 fn format_in_progress(items: &[(String, String)]) -> String {
     items.iter().map(|(name, status)| format!("{name} ({status})")).collect::<Vec<_>>().join(", ")
 }
@@ -494,7 +446,7 @@ mod tests {
 
     #[test]
     fn version_too_old_display() {
-        let err = Error::SpecifyVersionTooOld {
+        let err = Error::CliTooOld {
             required: "0.2.0".to_string(),
             found: "0.1.0".to_string(),
         };
@@ -515,7 +467,7 @@ mod tests {
 
     #[test]
     fn plan_outstanding_display() {
-        let err = Error::PlanHasOutstandingWork {
+        let err = Error::PlanIncomplete {
             entries: vec!["checkout-api".to_string(), "checkout-ui".to_string()],
         };
         assert_eq!(
@@ -551,12 +503,12 @@ mod tests {
     #[test]
     fn context_diagnostic_variant_strings_are_stable() {
         let cases = [
-            (Error::ContextExistingUnfencedAgentsMd, "context-existing-unfenced-agents-md"),
-            (Error::ContextFencedContentModified, "context-fenced-content-modified"),
-            (Error::ContextLockMissing, "context-lock-missing"),
-            (Error::ContextNotGenerated, "context-not-generated"),
+            (Error::ContextUnfenced, "context-existing-unfenced-agents-md"),
+            (Error::ContextDrift, "context-fenced-content-modified"),
+            (Error::ContextNoLock, "context-lock-missing"),
+            (Error::ContextMissing, "context-not-generated"),
             (
-                Error::ContextLockVersionTooNew {
+                Error::ContextLockTooNew {
                     found: 2,
                     supported: 1,
                 },
@@ -581,7 +533,7 @@ mod tests {
 
     #[test]
     fn schema_became_capability_display() {
-        let err = Error::SchemaBecameCapability {
+        let err = Error::LegacyCapabilityField {
             path: std::path::PathBuf::from("./.specify/.cache/omnia/schema.yaml"),
         };
         let s = err.to_string();
@@ -610,7 +562,7 @@ mod tests {
 
     #[test]
     fn init_requires_capability_or_hub_display() {
-        let err = Error::InitRequiresCapabilityOrHub;
+        let err = Error::InitNeedsCapability;
         let s = err.to_string();
         assert!(
             s.contains("init-requires-capability-or-hub"),
@@ -632,7 +584,7 @@ mod tests {
 
     #[test]
     fn slice_migration_blocked_by_in_progress_display() {
-        let err = Error::SliceMigrationBlockedByInProgress {
+        let err = Error::SliceMigrationInProgress {
             in_progress: vec![
                 ("demo".to_string(), "defining".to_string()),
                 ("other-thing".to_string(), "building".to_string()),
@@ -667,7 +619,7 @@ mod tests {
         // Single-offender variant: the same diagnostic must still
         // render cleanly so the operator's first read names the
         // problematic slice.
-        let err = Error::SliceMigrationBlockedByInProgress {
+        let err = Error::SliceMigrationInProgress {
             in_progress: vec![("demo".to_string(), "defining".to_string())],
         };
         let s = err.to_string();
@@ -677,7 +629,7 @@ mod tests {
 
     #[test]
     fn change_noun_migration_target_exists_display() {
-        let err = Error::ChangeNounMigrationTargetExists {
+        let err = Error::ChangeNounCollision {
             initiative: std::path::PathBuf::from("/proj/initiative.md"),
             change: std::path::PathBuf::from("/proj/change.md"),
         };
@@ -698,7 +650,7 @@ mod tests {
 
     #[test]
     fn change_brief_became_change_md_display() {
-        let err = Error::ChangeBriefBecameChangeMd {
+        let err = Error::LegacyChangeBrief {
             path: std::path::PathBuf::from("/proj/initiative.md"),
         };
         let s = err.to_string();
@@ -723,7 +675,7 @@ mod tests {
 
     #[test]
     fn slice_migration_target_exists_display() {
-        let err = Error::SliceMigrationTargetExists {
+        let err = Error::SliceMigrationCollision {
             changes: std::path::PathBuf::from("/proj/.specify/changes"),
             slices: std::path::PathBuf::from("/proj/.specify/slices"),
         };
@@ -765,6 +717,16 @@ mod tests {
         let err: Error = io.into();
         assert!(matches!(err, Error::Io(_)));
         assert_eq!(err.to_string(), "missing");
+    }
+
+    #[test]
+    fn is_kebab_accepts_and_rejects() {
+        for ok in ["a", "abc", "alpha-gateway", "x-1", "a1-b2"] {
+            assert!(is_kebab(ok), "expected `{ok}` to pass");
+        }
+        for bad in ["", "-a", "a-", "a--b", "A", "alpha_gateway", "alpha gateway"] {
+            assert!(!is_kebab(bad), "expected `{bad}` to fail");
+        }
     }
 
     #[test]

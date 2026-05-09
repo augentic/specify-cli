@@ -32,7 +32,7 @@ use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 use specify_error::Error;
 use specify_slice::{
-    LifecycleStatus, Outcome, Phase, PhaseOutcome, SliceMetadata, SpecType, actions, format_rfc3339,
+    LifecycleStatus, Outcome, Phase, PhaseOutcome, SliceMetadata, SpecKind, actions, format_rfc3339,
 };
 
 use crate::artifact_class::{ArtifactClass, MergeStrategy};
@@ -261,7 +261,7 @@ pub fn conflict_check(
     // for each baseline that contains a touched spec name.
     for class in classes.iter().filter(|c| matches!(c.strategy, MergeStrategy::ThreeWayMerge)) {
         for touched in &metadata.touched_specs {
-            if touched.kind != SpecType::Modified {
+            if touched.kind != SpecKind::Modified {
                 continue;
             }
             let baseline = class.baseline_dir.join(&touched.name).join("spec.md");
