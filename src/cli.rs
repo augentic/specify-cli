@@ -19,21 +19,6 @@ pub struct Cli {
     /// out from skills.
     #[arg(long, env = "SPECIFY_FORMAT", default_value = "text", global = true)]
     pub(crate) format: OutputFormat,
-
-    /// Suppress non-essential text output (banners, progress lines).
-    /// No effect on JSON output, where everything is already
-    /// structured.
-    #[arg(long, short = 'q', global = true)]
-    pub(crate) quiet: bool,
-}
-
-impl Cli {
-    /// Resolve the effective output format. Currently a passthrough;
-    /// kept as a method so future changes (e.g. TTY-aware defaults) can
-    /// land without touching every call site.
-    pub(crate) const fn resolved_format(&self) -> OutputFormat {
-        self.format
-    }
 }
 
 #[derive(Copy, Clone, ValueEnum, PartialEq, Eq)]
@@ -222,11 +207,7 @@ pub enum ToolAction {
         name: String,
     },
     /// Remove unused cache entries for the current project.
-    Gc {
-        /// Scan every current-project tool scope. Currently equivalent to the default scan.
-        #[arg(long)]
-        all: bool,
-    },
+    Gc,
 }
 
 /// Contract compatibility classification verbs.

@@ -9,10 +9,6 @@ categories = ["development-tools", "wasm"]
 keywords = ["specify", "tools", "wasi", "wasmtime"]
 readme = "../../README.md"
 
-[lib]
-name = "specify_tool"
-path = "src/lib.rs"
-
 [lints]
 workspace = true
 

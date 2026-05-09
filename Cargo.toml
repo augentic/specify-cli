@@ -63,7 +63,12 @@ members = [
     "crates/vectis-scaffold",
     "crates/tool",
     "crates/contract-validate",
+    "xtask",
 ]
+exclude = []
+
+# `xtask` is a workspace-internal task runner (`cargo run -p xtask -- ...`)
+# rather than a library or published binary.
 
 [workspace.package]
 authors = ["Augentic"]

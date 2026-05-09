@@ -96,7 +96,6 @@ struct ShowBody {
 #[serde(rename_all = "kebab-case")]
 struct GcBody {
     removed: Vec<String>,
-    all: bool,
     warnings: Vec<WarningRow>,
 }
 
@@ -193,7 +192,7 @@ pub fn show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
 }
 
 /// Remove cache entries not referenced by the current project's merged tool list.
-pub fn gc(ctx: &CommandContext, all: bool) -> Result<CliResult, Error> {
+pub fn gc(ctx: &CommandContext) -> Result<CliResult, Error> {
     let inventory = build_inventory(ctx)?;
     let mut kept_by_scope = kept_by_scope(&inventory);
     let mut removed = Vec::new();
@@ -214,13 +213,13 @@ pub fn gc(ctx: &CommandContext, all: bool) -> Result<CliResult, Error> {
     match ctx.format {
         OutputFormat::Json => emit_response(GcBody {
             removed,
-            all,
             warnings: inventory.warnings,
         })?,
         OutputFormat::Text => {
-            let label =
-                if all { "current-project scopes (--all)" } else { "current-project scopes" };
-            println!("Removed {} tool cache entrie(s) from {label}.", removed.len());
+            println!(
+                "Removed {} tool cache entrie(s) from current-project scopes.",
+                removed.len()
+            );
             for path in &removed {
                 println!("  {path}");
             }

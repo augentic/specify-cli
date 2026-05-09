@@ -1,0 +1,29 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Workspace task runner: standards-check and similar maintenance verbs"
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+regex.workspace = true
+syn = { version = "2", features = ["full", "visit", "extra-traits"] }
+walkdir = "2"
+toml = "0.8"
+serde = { workspace = true }
+
+[lints.rust]
+missing_docs = "allow"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+# xtask is workspace-internal; cargo metadata lints don't apply.
+cargo = "allow"

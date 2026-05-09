@@ -9,10 +9,6 @@ categories = ["development-tools"]
 keywords = ["specify", "change", "plan", "orchestration"]
 readme = "../../README.md"
 
-[lib]
-name = "specify_change"
-path = "src/lib.rs"
-
 [dependencies]
 specify-error.workspace = true
 specify-registry.workspace = true

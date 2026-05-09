@@ -7,14 +7,16 @@
 /// Kebab-case predicate shared across every workspace crate.
 ///
 /// Mirrors the JSON Schema regex `^[a-z0-9]+(-[a-z0-9]+)*$` carried by
-/// `schemas/plan/plan.schema.json` `$defs.kebabName.pattern`.
+/// `schemas/plan/plan.schema.json` `$defs.kebabName.pattern`: one or
+/// more hyphen-separated segments; each segment is non-empty and
+/// contains only ASCII lowercase letters and digits.
 #[must_use]
 pub fn is_kebab(s: &str) -> bool {
     !s.is_empty()
-        && !s.starts_with('-')
-        && !s.ends_with('-')
-        && !s.contains("--")
-        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && s.split('-').all(|seg| {
+            !seg.is_empty()
+                && seg.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        })
 }
 
 /// Validation outcome for a single rule check.
@@ -63,11 +65,35 @@ pub enum Error {
     #[error("not initialized: .specify/project.yaml not found")]
     NotInitialized,
 
+    /// Structured catch-all for diagnostics that don't have (yet) a
+    /// dedicated variant. The `code` is a stable kebab-case
+    /// discriminant surfaced in JSON envelopes; `detail` is the
+    /// human-readable message. Prefer this over [`Error::Config`] /
+    /// [`Error::Merge`] / [`Error::ToolResolver`] / [`Error::ToolRuntime`]
+    /// / [`Error::CapabilityResolution`] for new diagnostics, and
+    /// promote a `Diag` site to its own variant once the call shape
+    /// stabilises.
+    #[error("{code}: {detail}")]
+    Diag {
+        /// Stable kebab-case discriminant surfaced as the JSON `error` field.
+        code: &'static str,
+        /// Human-readable message.
+        detail: String,
+    },
+
     /// Capability resolution failed with the given reason.
+    ///
+    /// **Frozen.** New diagnostics use [`Error::Diag`]. The `xtask
+    /// standards-check` `free-form-error-strings` predicate caps every
+    /// existing call site at its current per-file baseline; no new
+    /// occurrence is permitted.
     #[error("capability resolution failed: {0}")]
     CapabilityResolution(String),
 
     /// A configuration or input error.
+    ///
+    /// **Frozen.** New diagnostics use [`Error::Diag`]. See
+    /// [`Error::CapabilityResolution`] for the policy.
     #[error("config error: {0}")]
     Config(String),
 
@@ -139,6 +165,8 @@ pub enum Error {
     },
 
     /// Spec merge failed.
+    ///
+    /// **Frozen.** New diagnostics use [`Error::Diag`].
     #[error("merge failed: {0}")]
     Merge(String),
 
@@ -218,10 +246,14 @@ pub enum Error {
     InitNeedsCapability,
 
     /// A declared WASI tool could not be resolved or fetched.
+    ///
+    /// **Frozen.** New diagnostics use [`Error::Diag`].
     #[error("tool resolver error: {0}")]
     ToolResolver(String),
 
     /// A declared WASI tool failed while compiling, linking, instantiating, or running.
+    ///
+    /// **Frozen.** New diagnostics use [`Error::Diag`].
     #[error("tool runtime error: {0}")]
     ToolRuntime(String),
 
@@ -259,6 +291,7 @@ impl Error {
     pub const fn variant_str(&self) -> &'static str {
         match self {
             Self::NotInitialized => "not-initialized",
+            Self::Diag { code, .. } => code,
             Self::CapabilityResolution(_) => "capability-resolution",
             Self::Config(_) => "config",
             Self::Argument { .. } => "argument",
@@ -384,6 +417,16 @@ mod tests {
                 "context diagnostic display must start with `{expected}`, got: {err}"
             );
         }
+    }
+
+    #[test]
+    fn diag_round_trip() {
+        let err = Error::Diag {
+            code: "kebab-prefix",
+            detail: "specific detail".to_string(),
+        };
+        assert_eq!(err.variant_str(), "kebab-prefix");
+        assert_eq!(err.to_string(), "kebab-prefix: specific detail");
     }
 
     #[test]

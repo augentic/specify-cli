@@ -1,0 +1,291 @@
+# Per-file baselines for `cargo run -p xtask -- standards-check`.
+#
+# Each `[file."<rel-path>"]` table caps the number of violations of each
+# predicate for that file. A live count strictly greater than the
+# baseline fails CI; missing predicates default to zero (new files
+# start clean). Reductions are encouraged in any PR that touches a file;
+# raising a number requires a justification in the PR description.
+#
+# Predicate definitions live in `xtask/src/standards.rs`. AGENTS.md
+# §Mechanical enforcement explains what each predicate enforces and how
+# to drive its baselines down.
+
+[file."crates/capability/src/brief.rs"]
+free-form-error-strings = 4
+ritual-doc-paragraphs = 2
+
+[file."crates/capability/src/cache.rs"]
+free-form-error-strings = 2
+rfc-numbers-in-code = 1
+ritual-doc-paragraphs = 1
+
+[file."crates/capability/src/capability.rs"]
+free-form-error-strings = 7
+rfc-numbers-in-code = 2
+ritual-doc-paragraphs = 1
+
+[file."crates/capability/src/change_brief.rs"]
+free-form-error-strings = 7
+rfc-numbers-in-code = 1
+ritual-doc-paragraphs = 3
+
+[file."crates/capability/src/codex.rs"]
+free-form-error-strings = 4
+ritual-doc-paragraphs = 1
+
+[file."crates/capability/src/codex_resolver.rs"]
+free-form-error-strings = 6
+
+[file."crates/capability/src/lib.rs"]
+rfc-numbers-in-code = 2
+
+[file."crates/capability/src/pipeline.rs"]
+free-form-error-strings = 4
+ritual-doc-paragraphs = 2
+
+[file."crates/change/src/finalize.rs"]
+rfc-numbers-in-code = 7
+ritual-doc-paragraphs = 1
+
+[file."crates/change/src/lib.rs"]
+rfc-numbers-in-code = 4
+
+[file."crates/change/src/plan.rs"]
+rfc-numbers-in-code = 1
+
+[file."crates/change/src/plan/core.rs"]
+free-form-error-strings = 22
+rfc-numbers-in-code = 13
+ritual-doc-paragraphs = 8
+
+[file."crates/change/src/plan/doctor.rs"]
+name-suffix-duplication = 1
+rfc-numbers-in-code = 8
+
+[file."crates/change/src/plan/lock.rs"]
+rfc-numbers-in-code = 2
+ritual-doc-paragraphs = 7
+
+[file."crates/contract-validate/src/main.rs"]
+format-match-dispatch = 1
+rfc-numbers-in-code = 5
+
+[file."crates/error/src/lib.rs"]
+free-form-error-strings = 3
+
+[file."crates/merge/src/artifact_class.rs"]
+rfc-numbers-in-code = 2
+
+[file."crates/merge/src/composition.rs"]
+free-form-error-strings = 10
+name-suffix-duplication = 1
+ritual-doc-paragraphs = 1
+
+[file."crates/merge/src/lib.rs"]
+rfc-numbers-in-code = 3
+
+[file."crates/merge/src/merge.rs"]
+free-form-error-strings = 3
+ritual-doc-paragraphs = 1
+
+[file."crates/merge/src/slice.rs"]
+free-form-error-strings = 30
+name-suffix-duplication = 2
+rfc-numbers-in-code = 3
+ritual-doc-paragraphs = 3
+
+[file."crates/registry/src/branch.rs"]
+name-suffix-duplication = 2
+rfc-numbers-in-code = 2
+
+[file."crates/registry/src/forge.rs"]
+rfc-numbers-in-code = 1
+ritual-doc-paragraphs = 1
+
+[file."crates/registry/src/gitignore.rs"]
+rfc-numbers-in-code = 3
+ritual-doc-paragraphs = 1
+
+[file."crates/registry/src/lib.rs"]
+rfc-numbers-in-code = 2
+
+[file."crates/registry/src/registry.rs"]
+free-form-error-strings = 3
+rfc-numbers-in-code = 7
+ritual-doc-paragraphs = 1
+
+[file."crates/registry/src/validate.rs"]
+free-form-error-strings = 17
+rfc-numbers-in-code = 9
+ritual-doc-paragraphs = 1
+
+[file."crates/registry/src/workspace.rs"]
+free-form-error-strings = 46
+rfc-numbers-in-code = 4
+ritual-doc-paragraphs = 5
+
+[file."crates/slice/src/actions.rs"]
+free-form-error-strings = 3
+rfc-numbers-in-code = 2
+ritual-doc-paragraphs = 8
+
+[file."crates/slice/src/journal.rs"]
+name-suffix-duplication = 1
+rfc-numbers-in-code = 2
+ritual-doc-paragraphs = 2
+
+[file."crates/slice/src/lib.rs"]
+free-form-error-strings = 1
+rfc-numbers-in-code = 6
+
+[file."crates/slice/src/timestamp.rs"]
+rfc-numbers-in-code = 1
+
+[file."crates/task/src/lib.rs"]
+free-form-error-strings = 1
+rfc-numbers-in-code = 2
+ritual-doc-paragraphs = 1
+
+[file."crates/tool/src/lib.rs"]
+rfc-numbers-in-code = 2
+
+[file."crates/tool/src/permissions.rs"]
+rfc-numbers-in-code = 1
+
+[file."crates/tool/src/validate.rs"]
+rfc-numbers-in-code = 1
+
+[file."crates/validate/src/compatibility.rs"]
+name-suffix-duplication = 1
+
+[file."crates/validate/src/contracts.rs"]
+name-suffix-duplication = 1
+rfc-numbers-in-code = 8
+
+[file."crates/validate/src/lib.rs"]
+rfc-numbers-in-code = 3
+
+[file."crates/validate/src/registry.rs"]
+rfc-numbers-in-code = 1
+
+[file."crates/validate/src/run.rs"]
+free-form-error-strings = 3
+rfc-numbers-in-code = 1
+ritual-doc-paragraphs = 1
+
+[file."crates/vectis-scaffold/src/lib.rs"]
+inline-dtos = 1
+rfc-numbers-in-code = 2
+
+[file."crates/vectis-scaffold/src/versions.rs"]
+rfc-numbers-in-code = 1
+
+[file."crates/vectis-validate/src/engine.rs"]
+rfc-numbers-in-code = 39
+
+[file."crates/vectis-validate/src/lib.rs"]
+inline-dtos = 1
+rfc-numbers-in-code = 2
+
+[file."src/cli.rs"]
+rfc-numbers-in-code = 2
+
+[file."src/commands/capability.rs"]
+free-form-error-strings = 2
+name-suffix-duplication = 1
+
+[file."src/commands/change.rs"]
+format-match-dispatch = 7
+free-form-error-strings = 1
+inline-dtos = 7
+rfc-numbers-in-code = 2
+
+[file."src/commands/change/plan.rs"]
+format-match-dispatch = 1
+free-form-error-strings = 2
+
+[file."src/commands/change/plan/create.rs"]
+format-match-dispatch = 2
+inline-dtos = 2
+
+[file."src/commands/change/plan/doctor.rs"]
+format-match-dispatch = 1
+rfc-numbers-in-code = 1
+
+[file."src/commands/change/plan/lifecycle.rs"]
+format-match-dispatch = 8
+free-form-error-strings = 3
+inline-dtos = 7
+
+[file."src/commands/change/plan/lock.rs"]
+format-match-dispatch = 3
+inline-dtos = 3
+
+[file."src/commands/change/plan/status.rs"]
+format-match-dispatch = 2
+inline-dtos = 4
+name-suffix-duplication = 1
+
+
+[file."src/commands/context.rs"]
+format-match-dispatch = 2
+free-form-error-strings = 4
+name-suffix-duplication = 1
+
+[file."src/commands/context/fences.rs"]
+name-suffix-duplication = 1
+
+[file."src/commands/context/fingerprint.rs"]
+free-form-error-strings = 1
+name-suffix-duplication = 2
+
+[file."src/commands/init.rs"]
+rfc-numbers-in-code = 3
+
+[file."src/commands/registry.rs"]
+format-match-dispatch = 7
+free-form-error-strings = 5
+inline-dtos = 7
+name-suffix-duplication = 7
+rfc-numbers-in-code = 3
+
+[file."src/commands/slice.rs"]
+format-match-dispatch = 17
+free-form-error-strings = 8
+inline-dtos = 16
+name-suffix-duplication = 1
+rfc-numbers-in-code = 3
+
+[file."src/commands/tool.rs"]
+format-match-dispatch = 4
+free-form-error-strings = 2
+name-suffix-duplication = 1
+rfc-numbers-in-code = 1
+
+[file."src/commands/workspace.rs"]
+format-match-dispatch = 7
+free-form-error-strings = 6
+inline-dtos = 8
+
+[file."src/config.rs"]
+name-suffix-duplication = 1
+rfc-numbers-in-code = 3
+ritual-doc-paragraphs = 1
+
+[file."src/context.rs"]
+free-form-error-strings = 1
+
+[file."src/init.rs"]
+free-form-error-strings = 15
+rfc-numbers-in-code = 12
+ritual-doc-paragraphs = 1
+
+[file."src/lib.rs"]
+rfc-numbers-in-code = 1
+
+[file."src/main.rs"]
+rfc-numbers-in-code = 1
+
+[file."src/output.rs"]
+format-match-dispatch = 2
+

@@ -1,4 +1,4 @@
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -9,7 +9,7 @@ use specify::{
 use crate::cli::OutputFormat;
 use crate::commands::context;
 use crate::context::CommandContext;
-use crate::output::{CliResult, absolute_string, emit_response};
+use crate::output::{CliResult, Render, absolute_string, emit};
 
 /// Dispatcher for `specify init`.
 ///
@@ -68,6 +68,43 @@ struct InitBody {
     context: InitContextBody,
 }
 
+impl Render for InitBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        if self.hub {
+            writeln!(w, "Initialized .specify/ as a registry-only platform hub")?;
+        } else {
+            writeln!(w, "Initialized .specify/")?;
+        }
+        writeln!(w, "  capability: {}", self.capability_name)?;
+        writeln!(w, "  config: {}", self.config_path)?;
+        writeln!(w, "  cache present: {}", self.cache_present)?;
+        if !self.directories_created.is_empty() {
+            writeln!(
+                w,
+                "  directories created: {}",
+                self.directories_created.join(", ")
+            )?;
+        }
+        writeln!(w, "  specify_version: {}", self.specify_version)?;
+        if self.context.skipped && self.context.skip_reason == Some("existing-agents-md") {
+            writeln!(w, "AGENTS.md already present; skipping context generate")?;
+        }
+        writeln!(w)?;
+        if self.hub {
+            writeln!(
+                w,
+                "Next: run `specify registry add <id> <url>` to declare the projects this hub coordinates."
+            )?;
+        } else {
+            writeln!(
+                w,
+                "Next: run `specify change create <name>` to start a change, then `specify change plan create <name>` to plan it."
+            )?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Serialize)]
 struct InitContextBody {
     #[serde(rename = "context-generated")]
@@ -91,64 +128,21 @@ impl InitContextBody {
 fn emit_init_result(
     format: OutputFormat, result: &InitResult, hub: bool, context_generation: InitContextGeneration,
 ) -> Result<CliResult, Error> {
-    match format {
-        OutputFormat::Json => {
-            emit_response(InitBody {
-                config_path: absolute_string(&result.config_path),
-                capability_name: result.capability_name.clone(),
-                cache_present: result.cache_present,
-                directories_created: result
-                    .directories_created
-                    .iter()
-                    .map(|p| absolute_string(p))
-                    .collect(),
-                scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
-                specify_version: result.specify_version.clone(),
-                hub,
-                context: InitContextBody::from_generation(context_generation),
-            })?;
-        }
-        OutputFormat::Text => {
-            if hub {
-                println!("Initialized .specify/ as a registry-only platform hub");
-            } else {
-                println!("Initialized .specify/");
-            }
-            println!("  capability: {}", result.capability_name);
-            println!("  config: {}", absolute_string(&result.config_path));
-            println!("  cache present: {}", result.cache_present);
-            if !result.directories_created.is_empty() {
-                println!(
-                    "  directories created: {}",
-                    result
-                        .directories_created
-                        .iter()
-                        .map(|p| absolute_string(p))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-            println!("  specify_version: {}", result.specify_version);
-            if let Some(note) = context_generation.text_note() {
-                println!("{note}");
-            }
-            // RFC-13 chunk 2.9 — init no longer pre-touches
-            // platform-component artefacts; the hint points operators
-            // at the verb that owns the next step.
-            println!();
-            if hub {
-                println!(
-                    "Next: run `specify registry add <id> <url>` to declare the projects \
-                     this hub coordinates."
-                );
-            } else {
-                println!(
-                    "Next: run `specify change create <name>` to start a change, \
-                     then `specify change plan create <name>` to plan it."
-                );
-            }
-        }
-    }
+    let body = InitBody {
+        config_path: absolute_string(&result.config_path),
+        capability_name: result.capability_name.clone(),
+        cache_present: result.cache_present,
+        directories_created: result
+            .directories_created
+            .iter()
+            .map(|p| absolute_string(p))
+            .collect(),
+        scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
+        specify_version: result.specify_version.clone(),
+        hub,
+        context: InitContextBody::from_generation(context_generation),
+    };
+    emit(format, &body)?;
     Ok(CliResult::Success)
 }
 
@@ -173,15 +167,6 @@ impl InitContextGeneration {
             Self::Generated => None,
             Self::SkippedExistingAgents => Some("existing-agents-md"),
             Self::SkippedWorkspaceClone => Some("workspace-clone"),
-        }
-    }
-
-    const fn text_note(self) -> Option<&'static str> {
-        match self {
-            Self::Generated | Self::SkippedWorkspaceClone => None,
-            Self::SkippedExistingAgents => {
-                Some("AGENTS.md already present; skipping context generate")
-            }
         }
     }
 }

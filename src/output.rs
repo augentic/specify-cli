@@ -92,8 +92,10 @@ pub fn emit_response<T: Serialize>(payload: T) -> Result<(), Error> {
     let envelope = JsonEnvelope::wrap(payload);
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
-    serde_json::to_writer_pretty(&mut handle, &envelope)
-        .map_err(|err| Error::Config(format!("failed to serialize JSON response: {err}")))?;
+    serde_json::to_writer_pretty(&mut handle, &envelope).map_err(|err| Error::Diag {
+        code: "json-serialize-failed",
+        detail: format!("failed to serialize JSON response: {err}"),
+    })?;
     writeln!(handle).map_err(Error::Io)?;
     Ok(())
 }

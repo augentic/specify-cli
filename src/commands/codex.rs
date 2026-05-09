@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use serde::Serialize;
 use specify::{
     CodexApplicability, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexProvenance,
@@ -5,9 +7,9 @@ use specify::{
     ValidationSummary,
 };
 
-use crate::cli::{CodexAction, OutputFormat};
+use crate::cli::CodexAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, absolute_string, emit_response};
+use crate::output::{CliResult, Render, absolute_string, emit};
 
 /// Dispatch `specify codex *`.
 pub fn run(ctx: &CommandContext, action: CodexAction) -> Result<CliResult, Error> {
@@ -25,16 +27,11 @@ fn resolve(ctx: &CommandContext) -> Result<ResolvedCodex, Error> {
 
 fn list(ctx: &CommandContext) -> Result<CliResult, Error> {
     let codex = resolve(ctx)?;
-    match ctx.format {
-        OutputFormat::Json => {
-            let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from_resolved).collect();
-            emit_response(ListBody {
-                rule_count: rules.len(),
-                rules,
-            })?;
-        }
-        OutputFormat::Text => print_list_text(&codex),
-    }
+    let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from_resolved).collect();
+    emit(ctx.format, &ListBody {
+        rule_count: rules.len(),
+        rules,
+    })?;
     Ok(CliResult::Success)
 }
 
@@ -45,27 +42,35 @@ fn show(ctx: &CommandContext, rule_id: &str) -> Result<CliResult, Error> {
         .rules
         .iter()
         .find(|candidate| candidate.rule.normalized_id == normalized)
-        .ok_or_else(|| {
-            Error::Config(format!("codex-rule-not-found: rule `{rule_id}` not found"))
+        .ok_or_else(|| Error::Diag {
+            code: "codex-rule-not-found",
+            detail: format!("rule `{rule_id}` not found"),
         })?;
 
-    match ctx.format {
-        OutputFormat::Json => emit_response(ShowBody {
-            rule: RuleExport::from_resolved(resolved),
-        })?,
-        OutputFormat::Text => print_show_text(resolved),
-    }
+    emit(ctx.format, &ShowBody {
+        rule: RuleExport::from_resolved(resolved),
+    })?;
     Ok(CliResult::Success)
 }
 
 fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
     match resolve(ctx) {
         Ok(codex) => {
-            emit_validate_ok(ctx.format, codex.rules.len())?;
+            emit(ctx.format, &ValidateBody {
+                ok: true,
+                rule_count: Some(codex.rules.len()),
+                error_count: 0,
+                results: Vec::new(),
+            })?;
             Ok(CliResult::Success)
         }
         Err(Error::Validation { count, results }) => {
-            emit_validate_fail(ctx.format, count, &results)?;
+            emit(ctx.format, &ValidateBody {
+                ok: false,
+                rule_count: None,
+                error_count: count,
+                results: results.iter().map(validation_row).collect(),
+            })?;
             Ok(CliResult::ValidationFailed)
         }
         Err(err) => Err(err),
@@ -74,20 +79,11 @@ fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
 
 fn export(ctx: &CommandContext) -> Result<CliResult, Error> {
     let codex = resolve(ctx)?;
-    match ctx.format {
-        OutputFormat::Json => {
-            let rules: Vec<_> = codex.rules.iter().map(RuleExport::from_resolved).collect();
-            emit_response(ExportBody {
-                rule_count: rules.len(),
-                rules,
-            })?;
-        }
-        OutputFormat::Text => {
-            println!(
-                "Codex export is a JSON contract; rerun with `specify codex export --format json`."
-            );
-        }
-    }
+    let rules: Vec<_> = codex.rules.iter().map(RuleExport::from_resolved).collect();
+    emit(ctx.format, &ExportBody {
+        rule_count: rules.len(),
+        rules,
+    })?;
     Ok(CliResult::Success)
 }
 
@@ -98,10 +94,43 @@ struct ListBody<'a> {
     rules: Vec<RuleSummary<'a>>,
 }
 
+impl Render for ListBody<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        for rule in &self.rules {
+            writeln!(
+                w,
+                "{}\t{}\t{}\t{}",
+                rule.id,
+                rule.severity,
+                provenance_text(rule),
+                rule.title
+            )?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ShowBody<'a> {
     rule: RuleExport<'a>,
+}
+
+impl Render for ShowBody<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        let r = &self.rule;
+        writeln!(w, "id: {}", r.id)?;
+        writeln!(w, "title: {}", r.title)?;
+        writeln!(w, "severity: {}", r.severity)?;
+        writeln!(w, "trigger: {}", r.trigger)?;
+        if let Some(review_mode) = r.review_mode {
+            writeln!(w, "review-mode: {review_mode}")?;
+        }
+        writeln!(w, "source: {}", r.source_path)?;
+        writeln!(w, "provenance: {}", export_provenance_text(r))?;
+        writeln!(w)?;
+        write!(w, "{}", r.body)
+    }
 }
 
 #[derive(Serialize)]
@@ -111,6 +140,15 @@ struct ExportBody<'a> {
     rules: Vec<RuleExport<'a>>,
 }
 
+impl Render for ExportBody<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(
+            w,
+            "Codex export is a JSON contract; rerun with `specify codex export --format json`."
+        )
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ValidateBody<'a> {
@@ -118,6 +156,20 @@ struct ValidateBody<'a> {
     rule_count: Option<usize>,
     error_count: usize,
     results: Vec<ValidationRow<'a>>,
+}
+
+impl Render for ValidateBody<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        if self.ok {
+            return writeln!(w, "Codex OK: {} rule(s)", self.rule_count.unwrap_or(0));
+        }
+        writeln!(w, "Codex invalid: {} error(s)", self.error_count)?;
+        for r in &self.results {
+            let detail = r.detail.unwrap_or(r.rule);
+            writeln!(w, "  [fail] {}: {detail}", r.rule_id)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Serialize)]
@@ -271,40 +323,6 @@ const fn provenance_fields(provenance: &CodexProvenance) -> ProvenanceFields<'_>
     }
 }
 
-fn emit_validate_ok(format: OutputFormat, rule_count: usize) -> Result<(), Error> {
-    match format {
-        OutputFormat::Json => emit_response(ValidateBody {
-            ok: true,
-            rule_count: Some(rule_count),
-            error_count: 0,
-            results: Vec::new(),
-        })?,
-        OutputFormat::Text => println!("Codex OK: {rule_count} rule(s)"),
-    }
-    Ok(())
-}
-
-fn emit_validate_fail(
-    format: OutputFormat, error_count: usize, results: &[ValidationSummary],
-) -> Result<(), Error> {
-    match format {
-        OutputFormat::Json => emit_response(ValidateBody {
-            ok: false,
-            rule_count: None,
-            error_count,
-            results: results.iter().map(validation_row).collect(),
-        })?,
-        OutputFormat::Text => {
-            println!("Codex invalid: {error_count} error(s)");
-            for result in results {
-                let detail = result.detail.as_deref().unwrap_or(&result.rule);
-                println!("  [fail] {}: {detail}", result.rule_id);
-            }
-        }
-    }
-    Ok(())
-}
-
 fn validation_row(summary: &ValidationSummary) -> ValidationRow<'_> {
     ValidationRow {
         status: summary.status.to_string(),
@@ -314,33 +332,28 @@ fn validation_row(summary: &ValidationSummary) -> ValidationRow<'_> {
     }
 }
 
-fn print_list_text(codex: &ResolvedCodex) {
-    for resolved in &codex.rules {
-        let rule = &resolved.rule.frontmatter;
-        println!(
-            "{}\t{}\t{}\t{}",
-            rule.id,
-            severity_label(rule.severity),
-            resolved.provenance,
-            rule.title
-        );
+fn provenance_text(rule: &RuleSummary<'_>) -> String {
+    match rule.provenance_kind {
+        "capability" => format!(
+            "capability {} v{}",
+            rule.capability_name.unwrap_or(""),
+            rule.capability_version.unwrap_or(0)
+        ),
+        "catalog" => format!("catalog {}", rule.catalog_name.unwrap_or("")),
+        _ => "repo".into(),
     }
 }
 
-fn print_show_text(resolved: &ResolvedCodexRule) {
-    let rule = &resolved.rule;
-    let frontmatter = &rule.frontmatter;
-    println!("id: {}", frontmatter.id);
-    println!("title: {}", frontmatter.title);
-    println!("severity: {}", severity_label(frontmatter.severity));
-    println!("trigger: {}", frontmatter.trigger);
-    if let Some(review_mode) = frontmatter.review_mode {
-        println!("review-mode: {}", review_mode_label(review_mode));
+fn export_provenance_text(rule: &RuleExport<'_>) -> String {
+    match rule.provenance_kind {
+        "capability" => format!(
+            "capability {} v{}",
+            rule.capability_name.unwrap_or(""),
+            rule.capability_version.unwrap_or(0)
+        ),
+        "catalog" => format!("catalog {}", rule.catalog_name.unwrap_or("")),
+        _ => "repo".into(),
     }
-    println!("source: {}", rule.path.display());
-    println!("provenance: {}", resolved.provenance);
-    println!();
-    print!("{}", rule.body);
 }
 
 const fn severity_label(severity: CodexSeverity) -> &'static str {

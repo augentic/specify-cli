@@ -20,14 +20,12 @@ dependencies = ["audit", "fmt", "lint", "outdated", "deps"]
 [tasks.ci]
 dependencies = ["lint", "standards-check", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
 
-# Mechanical enforcement of AGENTS.md#coding-standards. See
-# scripts/standards-check.sh for the predicates and
-# scripts/standards-allowlist.txt for the count baselines.
+# Mechanical enforcement of AGENTS.md#coding-standards. Predicates live
+# in `xtask/src/standards.rs`; per-file baselines in
+# `scripts/standards-allowlist.toml`.
 [tasks.standards-check]
-script = '''
-set -euo pipefail
-bash scripts/standards-check.sh
-'''
+command = "cargo"
+args = ["run", "--quiet", "-p", "xtask", "--", "standards-check"]
 
 # -------------------------------------
 # Individual Actions

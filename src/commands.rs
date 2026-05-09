@@ -26,11 +26,7 @@ use crate::context::CommandContext;
 use crate::output::{CliResult, emit_error};
 
 pub fn run(cli: Cli) -> CliResult {
-    let format = cli.resolved_format();
-    // `--quiet` is plumbed through clap as a global flag; honouring it
-    // is a per-handler concern (text-mode banners, progress prints).
-    // For now we intentionally ignore it at the dispatcher level.
-    let _ = cli.quiet;
+    let format = cli.format;
     match cli.command {
         Commands::Init {
             capability,
@@ -63,7 +59,7 @@ pub fn run(cli: Cli) -> CliResult {
             ToolAction::List => with_project(format, tool::list),
             ToolAction::Fetch { name } => with_project(format, |ctx| tool::fetch(ctx, name)),
             ToolAction::Show { name } => with_project(format, |ctx| tool::show(ctx, name)),
-            ToolAction::Gc { all } => with_project(format, |ctx| tool::gc(ctx, all)),
+            ToolAction::Gc => with_project(format, tool::gc),
         },
         Commands::Slice { action } => with_project(format, |ctx| slice::run(ctx, action)),
         Commands::Change { action } => with_project(format, |ctx| change::run(ctx, action)),

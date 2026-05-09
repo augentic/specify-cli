@@ -153,9 +153,29 @@ Comments answer "why does this look like this *today*?" — non-obvious intent, 
 
 ### Naming
 
-Prefer short, idiomatic Rust names. Don't restate context the surrounding module, type, or function already supplies. Avoid `_local` / `_value` / `_helper` suffixes. New functions: 1–3 words. Predicates start with `is_` / `has_`.
+Prefer short, idiomatic Rust names. Don't restate context the surrounding module, type, or function already supplies. Avoid `_local` / `_value` / `_helper` suffixes. New functions: 1–3 words. Predicates start with `is_` / `has_`. DTOs returned by handlers are `<Action>Body` / `<Action>Row`, never `<Action>Response` / `<Action>Json` (the type's role is `Body`; the format dispatch lives in `emit`).
+
+A function defined in `mod <name>` (or `commands/<name>.rs`) MUST NOT carry `<name>` as a suffix or prefix on its own name — the module path already supplies that context. The `name-suffix-duplication` predicate enforces this.
 
 ```rust
+// BAD — file is commands/registry.rs / mod registry
+fn show_registry(ctx: &CommandContext) -> ... { ... }
+fn validate_registry(ctx: &CommandContext) -> ... { ... }
+fn add_to_registry(ctx: &CommandContext) -> ... { ... }
+
+// GOOD — caller writes registry::show, registry::validate, registry::add
+fn show(ctx: &CommandContext) -> ... { ... }
+fn validate(ctx: &CommandContext) -> ... { ... }
+fn add(ctx: &CommandContext) -> ... { ... }
+
+// BAD — overspecified DTO names
+struct ShowRegistryResponse { /* ... */ }
+struct ValidateRegistryJson { /* ... */ }
+
+// GOOD
+struct ShowBody { /* ... */ }
+struct ValidateBody { /* ... */ }
+
 // BAD
 fn workspace_auto_commit_merge_baseline(...) { ... }
 fn is_valid_kebab_name(s: &str) -> bool { ... }
@@ -169,7 +189,7 @@ fn parse_set(...) { ... }
 
 ### Format dispatch
 
-Handlers do **not** open-code `match ctx.format { Json, Text }`. Use the `Render` trait and the `emit` helper in [`src/output.rs`](./src/output.rs):
+Handlers do **not** open-code `match ctx.format { Json, Text }`. Use the `Render` trait and the `emit` helper in [`src/output.rs`](./src/output.rs).
 
 ```rust
 // BAD
@@ -182,24 +202,41 @@ match ctx.format {
 emit(ctx.format, &SomeBody::from(result))?;
 ```
 
-`Render::render_text(&self, w: &mut impl Write)` carries the text-mode body; the JSON path goes through `serde::Serialize`.
+`Render::render_text(&self, w: &mut dyn Write)` carries the text-mode body; the JSON path goes through `serde::Serialize`. New code must not introduce `match … format`; the `format-match-dispatch` predicate fails new occurrences. See [`src/commands/migrate.rs`](src/commands/migrate.rs) and [`src/commands/codex.rs`](src/commands/codex.rs) for the canonical pattern.
 
 ### DTOs
 
-Response DTOs (`*Body`, `*Row`, `*Json`) are **top-level** structs under `mod`, never declared inside fn bodies. Inline DTOs trip `clippy::items_after_statements` and force per-file `#[allow]`s.
+Response DTOs (`*Body`, `*Row`) are **top-level** structs under `mod`. Inline DTOs trip the `inline-dtos` AST predicate (DTOs declared inside *any* `Block` — function bodies, match arms, closures — count) and force per-file `#![allow(items_after_statements, …)]` waivers. The waiver is itself a refactor signal: a file that needs it is a file whose handler hasn't been migrated yet.
 
 ```rust
-// BAD
+// BAD — DTO inside fn body
 fn handle(...) {
     #[derive(Serialize)]
     struct Body { name: String }
     emit(format, &Body { name })?;
 }
 
+// BAD — DTO inside match arm (the prior regex missed these; the AST
+// predicate catches them)
+match action {
+    Action::List => {
+        #[derive(Serialize)]
+        struct ListRow { name: String }
+        // ...
+    }
+    Action::Show { .. } => { /* ... */ }
+}
+
 // GOOD
-#[derive(Serialize, Render)]
+#[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct HandleBody { name: String }
+
+impl Render for HandleBody {
+    fn render_text(&self, w: &mut dyn std::io::Write) -> std::io::Result<()> {
+        writeln!(w, "{}", self.name)
+    }
+}
 
 fn handle(...) {
     emit(format, &HandleBody { name })?;
@@ -208,22 +245,33 @@ fn handle(...) {
 
 ### Errors
 
-`specify-error::Error` variants are **structured**, not `Variant(String)` catch-alls. New free-form `Error::Config(String)` / `Merge(String)` / `ToolResolver(String)` / `ToolRuntime(String)` / `CapabilityResolution(String)` call sites fail `standards-check`; add a typed variant or extend an existing one.
+`specify-error::Error` variants are **structured**, not `Variant(String)` catch-alls. The catch-all variants (`Error::Config(String)` / `Merge(String)` / `ToolResolver(String)` / `ToolRuntime(String)` / `CapabilityResolution(String)`) are **frozen**: the `xtask standards-check` `free-form-error-strings` predicate caps every existing call site at its current per-file baseline; new occurrences fail CI.
+
+For new diagnostics, prefer in this order:
+
+1. A dedicated typed variant (e.g. `Error::Argument`, `Error::PlanTransition`, `Error::ContextLockMalformed`) when the call shape recurs or carries structured payload.
+2. `Error::Diag { code: "<kebab>", detail: format!(…) }` when it doesn't (yet). The `code` is the JSON envelope's stable `error` discriminant; `detail` is the human-readable message. Promote a recurring `Diag` site to its own variant once the call shape stabilises.
 
 ```rust
-// BAD
+// BAD — frozen catch-all
 return Err(Error::Config(format!(
     "--proposed-name is required when outcome is `registry-amendment-required`"
 )));
 
-// GOOD
+// GOOD — typed variant when the shape exists
 return Err(Error::Argument {
     flag: "--proposed-name",
-    reason: "required when outcome is `registry-amendment-required`".into(),
+    detail: "required when outcome is `registry-amendment-required`".into(),
+});
+
+// GOOD — Diag when no typed variant fits yet
+return Err(Error::Diag {
+    code: "registry-amendment-required-needs-proposed-name",
+    detail: "--proposed-name is required when outcome is `registry-amendment-required`".into(),
 });
 ```
 
-The kebab-case identifier in `#[error("…")]` is part of the public contract that skills and tests grep for; never rename without bumping `JSON_SCHEMA_VERSION`.
+The kebab-case identifier in `#[error("…")]` (and in `Error::Diag.code`) is part of the public contract that skills and tests grep for; never rename without bumping `JSON_SCHEMA_VERSION`.
 
 ### `#[non_exhaustive]`
 
@@ -259,15 +307,27 @@ Use the modern Rust module layout: prefer `src/<parent>/<module>.rs` as the modu
 
 ### Mechanical enforcement
 
-`cargo make standards-check` enforces the rules above with ripgrep predicates:
+`cargo make standards-check` shells out to `cargo run -p xtask -- standards-check`. Predicates live in [`xtask/src/standards.rs`](xtask/src/standards.rs); per-file baselines live in [`scripts/standards-allowlist.toml`](scripts/standards-allowlist.toml). The xtask uses `syn` for AST predicates (so DTOs declared inside `match` arms count, where the prior regex missed them) and `regex` for textual predicates.
 
-| Rule | Predicate |
+| Predicate | What it counts |
 |---|---|
-| No RFC numbers in code | `rg '\bRFC[- ]?\d+\b' src/ crates/ --type rust` returns zero hits outside `tests/` and `*_decisions.rs`. |
-| No DTOs inside fn bodies | `rg -U --multiline 'fn .*\{[^}]*#\[derive\(Serialize' src/ crates/` returns zero hits. |
-| No new free-form `Error::*(String)` call sites | `rg 'Error::(Config\|Merge\|ToolResolver\|ToolRuntime\|CapabilityResolution)\(' src/ crates/ --type rust` is bounded by an allowlist baseline; new hits fail. |
+| `inline-dtos` | Structs/enums with `#[derive(Serialize)]` declared inside any `Block`. |
+| `format-match-dispatch` | Hand-rolled `match … format { Json => … }`. Use `Render::render_text` + `emit` instead. |
+| `free-form-error-strings` | `Error::(Config\|Merge\|ToolResolver\|ToolRuntime\|CapabilityResolution)(...)` call sites. Use `Error::Diag { code, detail }`. |
+| `rfc-numbers-in-code` | `RFC[- ]?\d+` outside `tests/`, `DECISIONS.md`, and `rfcs/`. |
+| `ritual-doc-paragraphs` | The boilerplate `Returns an error if the operation fails.` doc paragraph. |
+| `no-op-forwarders` | `let _ = cli.<flag>;` — a parsed-but-unused CLI flag. |
+| `name-suffix-duplication` | `fn foo_<module>` inside `mod <module>` (e.g. `fn show_registry` in `commands/registry.rs`). |
 
-The allowlist baseline lives at `scripts/standards-allowlist.txt`; reducing it is encouraged, growing it requires a PR comment justifying the new hit.
+A live count strictly greater than its per-file baseline fails CI; missing predicates default to zero (new files start clean). Reductions are encouraged in any PR that touches a file; raising a number requires a justification in the PR description.
+
+### No-op forwarders
+
+A clap-parsed flag that is destructured and silently dropped (`let _ = cli.<flag>;` or pattern matches that never reach a handler) is a YAGNI smell. Either the flag is wired up (the variant carries data and the handler reads it) or it is removed from clap. The `no-op-forwarders` predicate fails new occurrences.
+
+### Wired-but-ignored flags
+
+Flag whose doc-comment says "Currently equivalent to the default …" or whose handler ignores the value is the same defect dressed up as documentation. Drop the flag from clap until the differentiated behaviour exists. `WorkspaceAction`/`ToolAction` audit at every PR — search clap doc-comments for the word "Currently".
 
 ## Skill / CLI responsibility split (mirrors parent repo)
 
