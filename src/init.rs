@@ -497,22 +497,12 @@ fn unique_temp_dir(prefix: &str) -> Result<PathBuf, Error> {
 }
 
 fn ensure_capability_dir(path: &Path, original: &str) -> Result<(), Error> {
-    // Pre-RFC-13 manifests still on disk used `schema.yaml`; the cache
-    // has not yet flipped over to the new filename. We accept either
-    // here so a freshly-resolved local capability without
-    // `capability.yaml` (still common during the cut-over) keeps
-    // working.
-    for filename in
-        [specify_capability::CAPABILITY_FILENAME, specify_capability::LEGACY_SCHEMA_FILENAME]
-    {
-        if path.join(filename).is_file() {
-            return Ok(());
-        }
+    if path.join(specify_capability::CAPABILITY_FILENAME).is_file() {
+        return Ok(());
     }
     Err(Error::SchemaResolution(format!(
-        "capability `{original}` did not resolve to a directory with `{}` (or legacy `{}`) at {}",
+        "capability `{original}` did not resolve to a directory with `{}` at {}",
         specify_capability::CAPABILITY_FILENAME,
-        specify_capability::LEGACY_SCHEMA_FILENAME,
         path.display()
     )))
 }

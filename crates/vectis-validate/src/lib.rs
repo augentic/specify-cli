@@ -35,14 +35,11 @@ pub const EXIT_FAILURE: u8 = 2;
 pub struct Args {
     /// Validation mode to run.
     #[arg(value_enum)]
-    pub mode: ValidationMode,
+    pub mode: ValidateMode,
 
     /// Artifact path for single-artifact modes, or project root for `all`.
     pub path: Option<PathBuf>,
 }
-
-/// Alias retained for the extracted validation engine.
-pub type ValidateArgs = Args;
 
 /// Vectis validation modes preserved for the WASI command surface.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -58,9 +55,6 @@ pub enum ValidateMode {
     /// Validate all Vectis UI artifacts reachable from the given root.
     All,
 }
-
-/// Backwards-compatible name for the command argument type.
-pub type ValidationMode = ValidateMode;
 
 impl ValidateMode {
     /// Return the stable CLI spelling for this mode.
@@ -82,11 +76,6 @@ impl ValidateMode {
 pub enum CommandOutcome {
     /// Handler completed normally with a JSON payload.
     Success(Value),
-    /// Placeholder arm retained for parity with the v2 Vectis JSON envelope.
-    Stub {
-        /// The subcommand name that produced this stub.
-        command: &'static str,
-    },
 }
 
 /// Error types used by deterministic validation.
@@ -159,15 +148,6 @@ pub fn render_envelope_json(outcome: Result<CommandOutcome, VectisError>) -> (St
         Ok(CommandOutcome::Success(value)) => {
             let code = validate_exit_code(&value);
             (envelope_json(value), code)
-        }
-        Ok(CommandOutcome::Stub { command }) => {
-            let payload = serde_json::json!({
-                "error": "not-implemented",
-                "command": command,
-                "message": format!("`vectis-validate {command}` is not implemented yet"),
-                "exit-code": EXIT_FAILURE,
-            });
-            (envelope_json(payload), EXIT_FAILURE)
         }
         Err(err) => {
             let exit_code = err.exit_code();

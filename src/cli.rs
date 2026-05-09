@@ -76,6 +76,12 @@ pub enum Commands {
         action: ToolAction,
     },
 
+    /// Cross-project contract compatibility reports.
+    Compatibility {
+        #[command(subcommand)]
+        action: CompatibilityAction,
+    },
+
     /// Slice lifecycle operations — one `define → build → merge` loop.
     Slice {
         #[command(subcommand)]
@@ -98,12 +104,6 @@ pub enum Commands {
     Workspace {
         #[command(subcommand)]
         action: WorkspaceAction,
-    },
-
-    /// One-shot layout migrations. All idempotent.
-    Migrate {
-        #[command(subcommand)]
-        action: MigrateAction,
     },
 
     /// Generate shell completions for the given shell.
@@ -188,6 +188,19 @@ pub enum ToolAction {
         /// Scan every current-project tool scope. Currently equivalent to the default scan.
         #[arg(long)]
         all: bool,
+    },
+}
+
+/// Contract compatibility classification verbs.
+#[derive(Subcommand)]
+pub enum CompatibilityAction {
+    /// Check current producer/consumer contract compatibility.
+    Check,
+    /// Render a classified compatibility report.
+    Report {
+        /// Kebab-case change name to echo in the report.
+        #[arg(long)]
+        change: String,
     },
 }
 
@@ -287,7 +300,7 @@ pub enum PlanAction {
         force: bool,
     },
     /// Driver-lock primitives — `.specify/plan.lock` PID stamp used by
-    /// `/spec:execute` to serialise concurrent drivers.
+    /// `/change:execute` to serialise concurrent drivers.
     Lock {
         #[command(subcommand)]
         action: LockAction,
@@ -330,16 +343,6 @@ pub enum WorkspaceAction {
         #[arg()]
         projects: Vec<String>,
         /// Show what would happen without making changes.
-        #[arg(long)]
-        dry_run: bool,
-    },
-    /// Deprecated: automated PR merge was removed. Compatibility shim
-    /// that exits non-zero. Use `gh pr merge` then `specify change finalize`.
-    Merge {
-        /// Accepted for compatibility; ignored.
-        #[arg()]
-        projects: Vec<String>,
-        /// Accepted for compatibility; ignored.
         #[arg(long)]
         dry_run: bool,
     },
@@ -392,31 +395,6 @@ pub enum RegistryAction {
     Remove {
         /// Kebab-case project name to remove.
         name: String,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum MigrateAction {
-    /// Move v1 layout artifacts (`registry.yaml`, `plan.yaml`,
-    /// `initiative.md`, `contracts/`) from `.specify/` to the repo root.
-    /// Refuses to clobber existing destinations or run inside a workspace
-    /// clone.
-    V2Layout {
-        #[arg(long)]
-        dry_run: bool,
-    },
-    /// Rename `.specify/changes/` to `.specify/slices/` and rewrite
-    /// `$CHANGE_DIR` to `$SLICE_DIR` in vendored skill markdown. Refuses
-    /// when any slice is non-terminal or both directories already exist.
-    SliceLayout {
-        #[arg(long)]
-        dry_run: bool,
-    },
-    /// Rename `initiative.md` to `change.md` at the repo root. Refuses
-    /// when both files exist.
-    ChangeNoun {
-        #[arg(long)]
-        dry_run: bool,
     },
 }
 

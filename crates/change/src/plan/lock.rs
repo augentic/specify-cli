@@ -8,7 +8,7 @@
 //!   drivers (a future native `specify plan run --loop`).
 //! - [`Stamp`] — stateless PID-stamp helper used by the short-
 //!   lived `specify plan lock {acquire, release, status}` CLI verbs
-//!   that drive the `/spec:execute` agent-side loop. Each CLI
+//!   that drive the `/change:execute` agent-side loop. Each CLI
 //!   invocation exits within milliseconds, so holding an `flock` is
 //!   not an option; the stamp file persists on disk between calls and
 //!   the holder's liveness is inferred by probing the stamped PID.
@@ -158,7 +158,7 @@ impl Guard {
     /// had been recorded. `None` for a cold acquire or when the
     /// previous contents were malformed (no PID to report).
     ///
-    /// `/spec:execute` renders this in its preamble as
+    /// `/change:execute` renders this in its preamble as
     /// "reclaimed stale lock from PID X".
     #[must_use]
     pub const fn reclaimed_stale_pid(&self) -> Option<u32> {
@@ -256,7 +256,7 @@ pub struct PlanLockState {
 /// - `specify plan lock status` reports the current holder (if any)
 ///   and whether the stamp is considered stale.
 ///
-/// The `/spec:execute` skill calls these verbs around its agent-side
+/// The `/change:execute` skill calls these verbs around its agent-side
 /// loop; no Rust-level process stays alive for the full driver run,
 /// so the stamp is the only signalling channel available. Secondary
 /// protection against genuine same-process racing is provided by

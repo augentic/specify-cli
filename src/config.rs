@@ -2,7 +2,7 @@
 //! the family of path helpers every subcommand reaches for when it needs
 //! to locate `.specify/slices/`, `.specify/.cache/`, `.specify/archive/`,
 //! or the operator-facing platform artifacts at the repo root
-//! (`registry.yaml`, `plan.yaml`, `initiative.md`).
+//! (`registry.yaml`, `plan.yaml`, `change.md`).
 //!
 //! Layout boundary: `.specify/` holds framework-managed state that the
 //! CLI owns (configuration, working slices, archive, cache, workspace
@@ -44,10 +44,7 @@ pub struct ProjectConfig {
 
     /// Capability identifier — either a bare name (`omnia`) or a URL.
     /// Absent for registry-only platform hubs (`hub: true`); see the
-    /// `hub` field for the discriminator. RFC-13 renamed this from the
-    /// pre-RFC-13 `schema:` key; legacy files carrying `schema:` are
-    /// rejected loudly with [`Error::LegacyCapabilityField`] in
-    /// [`ProjectConfig::load`].
+    /// `hub` field for the discriminator.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability: Option<String>,
 
@@ -70,14 +67,13 @@ pub struct ProjectConfig {
     pub tools: Vec<specify_tool::Tool>,
 
     /// `true` when this project is a registry-only **platform hub**
-    /// (RFC-9 §1D, restated in RFC-13 §Migration). Hubs hold
-    /// platform-level state — `registry.yaml`, `initiative.md`,
-    /// `plan.yaml`, `workspace/` — but never appear in their own
-    /// `registry.yaml` and have phase pipelines disabled. Hubs **omit**
-    /// the `capability:` field entirely; the absence of `capability:`
-    /// together with `hub: true` is the discriminator. Defaults to
-    /// `false`; serialised only when `true` so non-hub `project.yaml`
-    /// files round-trip byte-stable.
+    /// (RFC-9 §1D). Hubs hold platform-level state — `registry.yaml`,
+    /// `change.md`, `plan.yaml`, `workspace/` — but never appear in their
+    /// own `registry.yaml` and have phase pipelines disabled. Hubs
+    /// **omit** the `capability:` field entirely; the absence of
+    /// `capability:` together with `hub: true` is the discriminator.
+    /// Defaults to `false`; serialised only when `true` so non-hub
+    /// `project.yaml` files round-trip byte-stable.
     #[serde(default, skip_serializing_if = "is_false")]
     pub hub: bool,
 }
@@ -99,11 +95,6 @@ impl ProjectConfig {
     ///   `Err(Error::CliTooOld { required, found })`.
     ///   Unparseable pinned versions are tolerated — we prefer a
     ///   permissive stance for a human-edited file.
-    /// - Detects the pre-RFC-13 `schema:` key and refuses to load such a
-    ///   `project.yaml` with [`Error::LegacyCapabilityField`]. RFC-13
-    ///   renamed `project.yaml: schema:` to `project.yaml: capability:`;
-    ///   the operator must rewrite the field (and re-run `specify init
-    ///   <capability>` if they have not migrated yet).
     ///
     /// # Errors
     ///
@@ -117,10 +108,6 @@ impl ProjectConfig {
             }
             Err(err) => return Err(Error::Io(err)),
         };
-
-        if has_legacy_schema_field(&text)? {
-            return Err(Error::LegacyCapabilityField { path });
-        }
 
         let cfg: Self = serde_saphyr::from_str(&text)?;
 
@@ -150,11 +137,6 @@ impl ProjectConfig {
     }
 
     /// Absolute path to `<project_dir>/.specify/slices/`.
-    ///
-    /// Pre-RFC-13 projects used `.specify/changes/`; the on-disk
-    /// migration to the new name lives at `specify migrate
-    /// slice-layout` (RFC-13 chunk 3.6). Fresh `specify init` writes
-    /// here from chunk 3.3 onward.
     #[must_use]
     pub fn slices_dir(project_dir: &Path) -> PathBuf {
         Self::specify_dir(project_dir).join(specify_slice::SLICES_DIR_NAME)
@@ -174,20 +156,8 @@ impl ProjectConfig {
         project_dir.join("plan.yaml")
     }
 
-    /// Absolute path to `<project_dir>/initiative.md` — the
-    /// pre-Phase-3.7 operator brief filename. Retained so the
-    /// v1-layout detector and `specify migrate change-noun` migrator
-    /// have a single source of truth for the legacy basename;
-    /// post-RFC-13-chunk-3.7 callers should use [`Self::change_brief_path`]
-    /// instead.
-    #[must_use]
-    pub fn initiative_path(project_dir: &Path) -> PathBuf {
-        project_dir.join(specify_capability::LEGACY_CHANGE_BRIEF_FILENAME)
-    }
-
     /// Absolute path to `<project_dir>/change.md` — the umbrella
-    /// operator brief at the repo root after RFC-13 chunk 3.7.
-    /// Platform-level artifact; the post-RFC filename is canonical.
+    /// operator brief at the repo root. Platform-level artifact.
     #[must_use]
     pub fn change_brief_path(project_dir: &Path) -> PathBuf {
         project_dir.join(specify_capability::CHANGE_BRIEF_FILENAME)
@@ -219,34 +189,6 @@ impl ProjectConfig {
     }
 }
 
-/// Scan `project_dir` for v1-layout artifacts that the CLI no longer reads.
-///
-/// The four legacy paths checked are `.specify/registry.yaml`,
-/// `.specify/plan.yaml`, `.specify/initiative.md`, and
-/// `.specify/contracts/`. Returns the repo-relative paths in
-/// deterministic order so error output is stable. An empty `Vec` means
-/// the project is on the v2 layout (or has neither shape, which is
-/// also fine).
-///
-/// This is the engine behind the hard-cutover detector wired into
-/// every project-aware CLI verb: when this returns non-empty the
-/// dispatcher errors with [`Error::LegacyLayout`] and points the
-/// operator at `specify migrate v2-layout`.
-#[must_use]
-pub fn detect_legacy_layout(project_dir: &Path) -> Vec<String> {
-    let candidates: [(&str, bool); 4] = [
-        (".specify/registry.yaml", project_dir.join(".specify/registry.yaml").is_file()),
-        (".specify/plan.yaml", project_dir.join(".specify/plan.yaml").is_file()),
-        (".specify/initiative.md", project_dir.join(".specify/initiative.md").is_file()),
-        (".specify/contracts", project_dir.join(".specify/contracts").is_dir()),
-    ];
-    candidates
-        .into_iter()
-        .filter(|&(_, present)| present)
-        .map(|(name, _)| name.to_string())
-        .collect()
-}
-
 /// Detect whether `project_dir` lives below `.specify/workspace/<peer>/`.
 ///
 /// This is a path-ancestry predicate only. RM-02 context generation uses
@@ -275,21 +217,6 @@ fn version_is_older(current: &str, required: &str) -> bool {
     cur < req
 }
 
-/// Probe a `project.yaml` text for the pre-RFC-13 `schema:` top-level
-/// key without attempting to deserialise into [`ProjectConfig`]. We
-/// route through `serde_json::Value` (the same shape `serde_saphyr` can
-/// project a YAML document into) so the answer agrees with what
-/// `serde_saphyr::from_str` would see — comments, document headers, and
-/// quoted keys are all handled by the YAML parser, not by us.
-///
-/// Returns `Ok(true)` only when the document's top-level mapping
-/// carries a `schema:` key. A missing `capability:` is *not* a trigger
-/// on its own — hub projects legitimately omit it.
-fn has_legacy_schema_field(text: &str) -> Result<bool, Error> {
-    let value: serde_json::Value = serde_saphyr::from_str(text)?;
-    Ok(value.as_object().is_some_and(|map| map.contains_key("schema")))
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -312,7 +239,6 @@ mod tests {
         assert_eq!(ProjectConfig::slices_dir(base), PathBuf::from("/a/b/.specify/slices"));
         assert_eq!(ProjectConfig::registry_path(base), PathBuf::from("/a/b/registry.yaml"));
         assert_eq!(ProjectConfig::plan_path(base), PathBuf::from("/a/b/plan.yaml"));
-        assert_eq!(ProjectConfig::initiative_path(base), PathBuf::from("/a/b/initiative.md"));
         assert_eq!(ProjectConfig::change_brief_path(base), PathBuf::from("/a/b/change.md"));
         assert_eq!(ProjectConfig::cache_dir(base), PathBuf::from("/a/b/.specify/.cache"));
         assert_eq!(ProjectConfig::archive_dir(base), PathBuf::from("/a/b/.specify/archive"));
@@ -479,72 +405,6 @@ mod tests {
         let cfg = sample_cfg(BTreeMap::new());
         let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
         assert!(!yaml.contains("tools:"), "empty tools should be omitted, got:\n{yaml}");
-    }
-
-    #[test]
-    fn load_refuses_legacy_schema_field_with_schema_became_capability() {
-        let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nschema: omnia\n");
-        let err = ProjectConfig::load(tmp.path()).expect_err("legacy schema must be rejected");
-        match err {
-            Error::LegacyCapabilityField { path } => {
-                assert!(path.ends_with(".specify/project.yaml"), "path: {}", path.display());
-            }
-            other => panic!("unexpected error variant: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn load_refuses_legacy_schema_hub_sentinel_with_schema_became_capability() {
-        // Pre-RFC-13 hub shape: `schema: hub, hub: true`. The hub sentinel
-        // is removed in Phase 1.3; loading still rejects loud.
-        let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nschema: hub\nhub: true\n");
-        let err = ProjectConfig::load(tmp.path()).expect_err("legacy hub shape must be rejected");
-        assert!(matches!(err, Error::LegacyCapabilityField { .. }));
-    }
-
-    // ---- legacy-layout detector ---------------------------------------
-
-    #[test]
-    fn detect_legacy_returns_empty_for_clean_project() {
-        let tmp = tempdir().unwrap();
-        assert!(detect_legacy_layout(tmp.path()).is_empty());
-    }
-
-    #[test]
-    fn detect_legacy_finds_each_v1_artifact() {
-        let tmp = tempdir().unwrap();
-        let specify = tmp.path().join(".specify");
-        fs::create_dir_all(&specify).unwrap();
-        fs::write(specify.join("registry.yaml"), "version: 1\nprojects: []\n").unwrap();
-        fs::write(specify.join("plan.yaml"), "name: x\nchanges: []\n").unwrap();
-        fs::write(specify.join("initiative.md"), "---\nname: x\n---\n").unwrap();
-        fs::create_dir_all(specify.join("contracts").join("schemas")).unwrap();
-
-        let found = detect_legacy_layout(tmp.path());
-        assert_eq!(
-            found,
-            vec![
-                ".specify/registry.yaml".to_string(),
-                ".specify/plan.yaml".to_string(),
-                ".specify/initiative.md".to_string(),
-                ".specify/contracts".to_string(),
-            ],
-            "detector must surface every v1 artifact in deterministic order"
-        );
-    }
-
-    #[test]
-    fn detect_legacy_ignores_v2_layout() {
-        let tmp = tempdir().unwrap();
-        // v2: same files, but at the repo root.
-        fs::write(tmp.path().join("registry.yaml"), "version: 1\nprojects: []\n").unwrap();
-        fs::write(tmp.path().join("plan.yaml"), "name: x\nchanges: []\n").unwrap();
-        fs::write(tmp.path().join("initiative.md"), "---\nname: x\n---\n").unwrap();
-        fs::create_dir_all(tmp.path().join("contracts").join("schemas")).unwrap();
-
-        assert!(detect_legacy_layout(tmp.path()).is_empty(), "v2 layout must not trigger");
     }
 
     #[test]

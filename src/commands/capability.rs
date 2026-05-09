@@ -4,16 +4,7 @@
     reason = "Clap dispatch hands owned subcommand values to these command handlers."
 )]
 
-//! `specify capability {resolve, check, pipeline}` (RFC-13 Phase 1.2).
-//!
-//! These verbs replace the pre-RFC-13 `specify schema *` surface. The
-//! command layer is intentionally where the post-RFC-13 manifest
-//! filename (`capability.yaml`) is enforced: the lower-level
-//! [`specify_capability::Capability`] resolver still tolerates the
-//! legacy `schema.yaml` so internal callers like `init` keep working,
-//! but the binary CLI refuses to load a directory that carries only
-//! `schema.yaml` — it emits [`Error::LegacyCapabilityField`] instead
-//! and points the operator at RFC-13 §Migration.
+//! `specify capability {resolve, check, pipeline}`.
 
 use std::path::{Path, PathBuf};
 
@@ -136,9 +127,6 @@ pub fn pipeline(
 pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult, Error> {
     let manifest_path = match Capability::probe_dir(&capability_dir) {
         ManifestProbe::Found(path) => path,
-        ManifestProbe::Legacy(path) => {
-            return Err(Error::LegacyCapabilityField { path });
-        }
         ManifestProbe::Missing => {
             return Err(Error::SchemaResolution(format!(
                 "no `{CAPABILITY_FILENAME}` at {}",
@@ -182,14 +170,11 @@ pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult,
     Ok(if passed { CliResult::Success } else { CliResult::ValidationFailed })
 }
 
-/// Translate a directory probe into the post-RFC-13 invariant: the CLI
-/// surface refuses to keep walking when a directory carries only the
-/// pre-RFC-13 `schema.yaml`. Callers that succeed here are guaranteed
-/// to find a `capability.yaml` on the next read.
+/// Surface a `SchemaResolution` error when `dir` does not carry a
+/// `capability.yaml`.
 fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
     match Capability::probe_dir(dir) {
         ManifestProbe::Found(_) => Ok(()),
-        ManifestProbe::Legacy(path) => Err(Error::LegacyCapabilityField { path }),
         ManifestProbe::Missing => {
             Err(Error::SchemaResolution(format!("no `{CAPABILITY_FILENAME}` at {}", dir.display())))
         }

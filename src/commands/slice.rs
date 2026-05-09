@@ -12,7 +12,7 @@ use serde::Serialize;
 use serde_json::Value;
 use specify::{
     ArtifactClass, BaselineConflict, Brief, CreateIfExists, CreateOutcome, EntryKind, Error,
-    Journal, JournalEntry, LifecycleStatus, MergeEntry, MergeOperation, MergeStrategy,
+    Journal, JournalEntry, LifecycleStatus, MergeOperation, MergePreviewEntry, MergeStrategy,
     OpaqueAction, OpaquePreviewEntry, Outcome, Phase, PipelineView, ProjectConfig, Rfc3339Stamp,
     SliceMetadata, SpecKind, Task, TouchedSpec, conflict_check, format_rfc3339,
     is_workspace_clone_path, mark_complete, merge_slice, parse_tasks, preview_slice,
@@ -462,7 +462,7 @@ fn outcome_set(
 /// and `--rationale`; `--proposed-description` is optional. When
 /// `--summary` is omitted for the new variant the CLI synthesises a
 /// canonical `registry-amendment-required: <name>` summary so
-/// `/spec:execute` can carry the `<name>` into the journal entry's
+/// `/change:execute` can carry the `<name>` into the journal entry's
 /// `cross-project-warning:`-style prefix.
 fn build_outcome(args: OutcomeSetArgs) -> Result<(Outcome, String), Error> {
     let OutcomeSetArgs {
@@ -565,7 +565,7 @@ const fn kind_str(kind: OutcomeKind) -> &'static str {
 /// Report the stamped `.metadata.yaml.outcome` for `name`.
 ///
 /// Symmetric with [`outcome_set`] (the writer): this is
-/// the read verb `/spec:execute` consumes after a phase returns.
+/// the read verb `/change:execute` consumes after a phase returns.
 /// Emits `"outcome": null` when the slice exists but nothing has
 /// been stamped; exits `CliResult::Success` in both cases — an unstamped
 /// slice is not an error, just an absence.
@@ -624,7 +624,7 @@ fn outcome_show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
 /// the CLI shape is flatter — `outcome.outcome` stays a kebab-case
 /// string and the structured payload is hoisted into a sibling
 /// `outcome.proposal` object so existing consumers that only read
-/// `.outcome.outcome` (the historical contract `/spec:execute` pins)
+/// `.outcome.outcome` (the historical contract `/change:execute` pins)
 /// keep working unchanged.
 fn emit_outcome_show_json(name: String, metadata: &SliceMetadata) -> Result<(), Error> {
     #[derive(Serialize)]
@@ -1011,7 +1011,7 @@ fn merge_preview(ctx: &CommandContext, name: String) -> Result<CliResult, Error>
     // entries by their `class_name`. The literal output keys live
     // here, alongside the omnia-default synthesiser, rather than in
     // the engine.
-    let specs_entries: Vec<&MergeEntry> =
+    let specs_entries: Vec<&MergePreviewEntry> =
         result.three_way.iter().filter(|e| e.class_name == "specs").collect();
     let contract_entries: Vec<&OpaquePreviewEntry> =
         result.opaque.iter().filter(|e| e.class_name == "contracts").collect();
@@ -1105,18 +1105,18 @@ fn merge_conflict_check(ctx: &CommandContext, name: String) -> Result<CliResult,
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct MergeEntryJson {
+struct MergePreviewEntryJson {
     name: String,
     operations: Vec<Value>,
 }
 
-fn entry_json(entry: &MergeEntry) -> Value {
+fn entry_json(entry: &MergePreviewEntry) -> Value {
     let ops: Vec<Value> = entry.result.operations.iter().map(op_json).collect();
-    serde_json::to_value(MergeEntryJson {
+    serde_json::to_value(MergePreviewEntryJson {
         name: entry.name.clone(),
         operations: ops,
     })
-    .expect("MergeEntryJson serialises")
+    .expect("MergePreviewEntryJson serialises")
 }
 
 #[derive(Serialize)]
@@ -1127,7 +1127,7 @@ struct SpecPreviewEntryJson {
     operations: Vec<Value>,
 }
 
-fn preview_entry_to_json(entry: &MergeEntry) -> Value {
+fn preview_entry_to_json(entry: &MergePreviewEntry) -> Value {
     let ops: Vec<Value> = entry.result.operations.iter().map(op_json).collect();
     serde_json::to_value(SpecPreviewEntryJson {
         name: entry.name.clone(),

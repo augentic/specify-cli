@@ -79,22 +79,9 @@ fn plan_path(project_dir: &Path) -> PathBuf {
     project_dir.join("plan.yaml")
 }
 
-/// Repo-root path of the umbrella operator brief. Returns the
-/// post-RFC-13-chunk-3.7 filename `change.md` when present, falling
-/// back to the pre-RFC-13 `initiative.md` when only the legacy
-/// filename is on disk so projects mid-migration archive cleanly.
-/// Returns the post-RFC filename when neither is present (the
-/// `is_file` check inside `Plan::archive` then no-ops the co-move).
+/// Repo-root path of the umbrella operator brief.
 fn change_brief_path(project_dir: &Path) -> PathBuf {
-    let modern = project_dir.join("change.md");
-    if modern.is_file() {
-        return modern;
-    }
-    let legacy = project_dir.join("initiative.md");
-    if legacy.is_file() {
-        return legacy;
-    }
-    modern
+    project_dir.join("change.md")
 }
 
 fn archive_dir(project_dir: &Path) -> PathBuf {
@@ -255,7 +242,7 @@ pub struct Outcome {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archived: Option<String>,
     /// Path of the archived `<name>-<date>/` directory when the plans
-    /// working dir or `initiative.md` was co-moved. `None` when neither
+    /// working dir or `change.md` was co-moved. `None` when neither
     /// existed (or on dry-run / refused finalize).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archived_plans_dir: Option<String>,

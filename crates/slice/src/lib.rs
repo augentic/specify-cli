@@ -81,7 +81,7 @@ pub struct SliceMetadata {
 }
 
 /// Result of a phase run (define | build | merge) as recorded in
-/// `.metadata.yaml`. Read by `/spec:execute` on phase return to decide
+/// `.metadata.yaml`. Read by `/change:execute` on phase return to decide
 /// the next plan transition.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -99,7 +99,7 @@ pub struct PhaseOutcome {
     pub context: Option<String>,
 }
 
-/// Phase outcome reported to `/spec:execute`. Unit variants serialise as
+/// Phase outcome reported to `/change:execute`. Unit variants serialise as
 /// `outcome: success` etc.; [`Self::RegistryAmendmentRequired`] is an
 /// externally-tagged map carrying its proposal payload.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -112,7 +112,7 @@ pub enum Outcome {
     Failure,
     /// Phase deferred (needs human input).
     Deferred,
-    /// Phase blocked pending a registry amendment. `/spec:execute` treats
+    /// Phase blocked pending a registry amendment. `/change:execute` treats
     /// this like `deferred` and surfaces the proposal payload to the operator.
     RegistryAmendmentRequired {
         /// Kebab-case project name proposed for the registry.

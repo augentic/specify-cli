@@ -1,9 +1,9 @@
 mod capability;
 mod change;
 mod codex;
+mod compatibility;
 mod context;
 mod init;
-mod migrate;
 mod registry;
 mod slice;
 mod status;
@@ -12,9 +12,7 @@ mod workspace;
 
 use specify::Error;
 
-use crate::cli::{
-    CapabilityAction, Cli, Commands, MigrateAction, OutputFormat, ToolAction, WorkspaceAction,
-};
+use crate::cli::{CapabilityAction, Cli, Commands, OutputFormat, ToolAction, WorkspaceAction};
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_error};
 
@@ -43,6 +41,9 @@ pub fn run(cli: Cli) -> CliResult {
             }
         },
         Commands::Codex { action } => with_project(cli.format, |ctx| codex::run(ctx, action)),
+        Commands::Compatibility { action } => {
+            with_project(cli.format, |ctx| compatibility::run(ctx, action))
+        }
         Commands::Tool { action } => match action {
             ToolAction::Run { name, args } => {
                 with_project(cli.format, |ctx| tool::run(ctx, name, args))
@@ -73,23 +74,6 @@ pub fn run(cli: Cli) -> CliResult {
             WorkspaceAction::Push { projects, dry_run } => {
                 with_project(cli.format, |ctx| workspace::push(ctx, projects, dry_run))
             }
-            WorkspaceAction::Merge { projects, dry_run } => {
-                bare(cli.format, || workspace::merge_removed(cli.format, projects, dry_run))
-            }
-        },
-        Commands::Migrate { action } => match action {
-            MigrateAction::V2Layout { dry_run } => bare(cli.format, || {
-                let cwd = std::env::current_dir().map_err(Error::Io)?;
-                migrate::v2_layout(cli.format, &cwd, dry_run)
-            }),
-            MigrateAction::SliceLayout { dry_run } => bare(cli.format, || {
-                let cwd = std::env::current_dir().map_err(Error::Io)?;
-                migrate::slice_layout(cli.format, &cwd, dry_run)
-            }),
-            MigrateAction::ChangeNoun { dry_run } => bare(cli.format, || {
-                let cwd = std::env::current_dir().map_err(Error::Io)?;
-                migrate::change_noun(cli.format, &cwd, dry_run)
-            }),
         },
         Commands::Completions { shell } => {
             let mut cmd = <crate::cli::Cli as clap::CommandFactory>::command();
@@ -101,14 +85,10 @@ pub fn run(cli: Cli) -> CliResult {
 
 /// Run a command that requires an initialised `.specify/` project.
 ///
-/// Loads `CommandContext` (project config + pipeline), runs the
-/// hard-cutover detector for v1 layout artifacts, calls `f`, and
+/// Loads `CommandContext` (project config + pipeline), calls `f`, and
 /// maps any `Error` to the appropriate format-aware exit code. This
 /// is the single error-handling boundary for project-aware commands —
-/// handlers can use `?` freely inside `f`. The v1-layout check is
-/// the choke point that surfaces `Error::LegacyLayout` (and points
-/// the operator at `specify migrate v2-layout`) for every verb that
-/// touches project state.
+/// handlers can use `?` freely inside `f`.
 fn with_project<F>(format: OutputFormat, f: F) -> CliResult
 where
     F: FnOnce(&CommandContext) -> Result<CliResult, Error>,
@@ -117,10 +97,6 @@ where
         Ok(ctx) => ctx,
         Err(err) => return emit_error(format, &err),
     };
-    let legacy = specify::detect_legacy_layout(&ctx.project_dir);
-    if !legacy.is_empty() {
-        return emit_error(format, &Error::LegacyLayout { paths: legacy });
-    }
     match f(&ctx) {
         Ok(result) => result,
         Err(err) => emit_error(format, &err),

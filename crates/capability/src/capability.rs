@@ -1,19 +1,8 @@
 //! `Capability`, `Pipeline`, `PipelineEntry`, `Phase`, `ResolvedCapability`,
-//! `CapabilitySource` — the in-memory model of `capability.yaml` (with
-//! a tolerant fallback to the pre-RFC-13 `schema.yaml` filename) plus
+//! `CapabilitySource` — the in-memory model of `capability.yaml` plus
 //! the local / cache resolution algorithm. Remote (HTTP) resolution is
 //! explicitly the agent's job per RFC-1; this crate only walks the
 //! filesystem.
-//!
-//! Phase 1.1 (RFC-13) renames the extension-primitive types from
-//! `Schema` / `ResolvedSchema` / `SchemaSource` to `Capability` /
-//! `ResolvedCapability` / `CapabilitySource`. Phase 1.2 routes the CLI
-//! through `capability {resolve,check,pipeline}` and adds the loud
-//! `schema-became-capability` diagnostic that fires when the binary
-//! finds a legacy `schema.yaml` instead of `capability.yaml`. The
-//! resolver itself stays tolerant — `init` and other internal callers
-//! that still read `schema.yaml` on disk continue to work — so the
-//! diagnostic surfaces only at the CLI command boundary.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -26,11 +15,6 @@ use crate::ValidationResult;
 const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../schemas/capability.schema.json");
 
 /// In-memory representation of a `capability.yaml` manifest.
-///
-/// The resolver still tolerates the pre-RFC-13 `schema.yaml` filename
-/// so internal callers can read older on-disk manifests during the
-/// cut-over; the `specify capability *` CLI surface refuses the legacy
-/// shape with [`Error::LegacyCapabilityField`].
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Capability {
     /// Capability name (e.g. `"omnia"`).
@@ -46,7 +30,7 @@ pub struct Capability {
 /// Pipeline phases and their brief entries.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Pipeline {
-    /// Optional Layer 3 authoring-phase briefs for `/spec:plan`.
+    /// Optional Layer 3 authoring-phase briefs for `/change:plan`.
     /// Absent in pre-existing manifests; present ones expose briefs such
     /// as `discovery.md` → `propose.md` that run before the
     /// define→build→merge execution loop.
@@ -98,7 +82,7 @@ pub enum CapabilitySource {
 /// `SliceMetadata.outcome.phase` and by `pipeline.*` keys in the
 /// manifest, keeping a single source of truth for phase naming.
 ///
-/// `Plan` is the Layer 3 authoring phase (`/spec:plan`) that runs
+/// `Plan` is the Layer 3 authoring phase (`/change:plan`) that runs
 /// ahead of the define→build→merge execution loop. It is intentionally
 /// omitted from `Capability::entries()` (see that iterator's docs) —
 /// call `Capability::plan_entries()` to enumerate plan-phase briefs.
@@ -106,7 +90,7 @@ pub enum CapabilitySource {
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
 pub enum Phase {
-    /// Layer 3 authoring phase (`/spec:plan`).
+    /// Layer 3 authoring phase (`/change:plan`).
     Plan,
     /// Define phase — artifact generation.
     Define,
@@ -130,25 +114,14 @@ impl fmt::Display for Phase {
 /// Filename of a post-RFC-13 capability manifest.
 pub const CAPABILITY_FILENAME: &str = "capability.yaml";
 
-/// Pre-RFC-13 filename of a capability manifest.
-///
-/// Still loaded by the resolver (so `init` and other internal callers
-/// keep working) but the `specify capability *` CLI surface refuses to
-/// load a directory that carries only this filename and emits
-/// [`Error::LegacyCapabilityField`] instead.
-pub const LEGACY_SCHEMA_FILENAME: &str = "schema.yaml";
-
-/// Result of [`Capability::probe_dir`]. Names whether the
-/// directory carries the post-RFC-13 manifest, the pre-RFC-13 manifest,
-/// or neither — without doing any I/O beyond two `is_file` probes.
+/// Result of [`Capability::probe_dir`]. Names whether the directory
+/// carries a `capability.yaml` manifest — without doing any I/O
+/// beyond a single `is_file` probe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManifestProbe {
     /// `<dir>/capability.yaml` exists.
     Found(PathBuf),
-    /// Only `<dir>/schema.yaml` exists. The CLI surface translates this
-    /// into [`Error::LegacyCapabilityField`].
-    Legacy(PathBuf),
-    /// Neither filename is present.
+    /// `<dir>/capability.yaml` is not present.
     Missing,
 }
 
@@ -163,26 +136,18 @@ impl Capability {
     ///   `<project_dir>/.specify/.cache/<last-path-segment>/`; HTTP
     ///   fetching is the agent's responsibility.
     ///
-    /// The resolver prefers `capability.yaml` and falls back to the
-    /// pre-RFC-13 `schema.yaml`. The fallback keeps internal callers
-    /// (notably `init`) working during the cut-over; the loud
-    /// [`Error::LegacyCapabilityField`] diagnostic for the legacy
-    /// shape is surfaced by the CLI command layer in
-    /// `src/commands/capability.rs`.
-    ///
     /// # Errors
     ///
     /// Returns an error if the operation fails.
     pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedCapability, Error> {
         let (root_dir, source) = Self::locate(schema_value, project_dir)?;
         let manifest_path = match Self::probe_dir(&root_dir) {
-            ManifestProbe::Found(path) | ManifestProbe::Legacy(path) => path,
+            ManifestProbe::Found(path) => path,
             ManifestProbe::Missing => {
                 return Err(Error::SchemaResolution(format!(
-                    "no capability manifest at {} (expected `{}` or legacy `{}`)",
+                    "no capability manifest at {} (expected `{}`)",
                     root_dir.display(),
                     CAPABILITY_FILENAME,
-                    LEGACY_SCHEMA_FILENAME
                 )));
             }
         };
@@ -205,9 +170,7 @@ impl Capability {
 
     /// Locate the directory `schema_value` resolves to without reading
     /// the manifest. Mirrors [`Capability::resolve`]'s search order
-    /// (cache → local) and is the entry point the CLI command layer
-    /// uses to inspect the resolved directory before turning a legacy
-    /// `schema.yaml` into [`Error::LegacyCapabilityField`].
+    /// (cache → local).
     ///
     /// # Errors
     ///
@@ -218,18 +181,12 @@ impl Capability {
         locate_capability_root(schema_value, project_dir)
     }
 
-    /// Probe `dir` for a capability manifest without reading it. Returns
-    /// the post-RFC-13 path when present, otherwise the pre-RFC-13
-    /// fallback path, otherwise `Missing`.
+    /// Probe `dir` for a `capability.yaml` manifest without reading it.
     #[must_use]
     pub fn probe_dir(dir: &Path) -> ManifestProbe {
         let cap = dir.join(CAPABILITY_FILENAME);
         if cap.is_file() {
             return ManifestProbe::Found(cap);
-        }
-        let legacy = dir.join(LEGACY_SCHEMA_FILENAME);
-        if legacy.is_file() {
-            return ManifestProbe::Legacy(legacy);
         }
         ManifestProbe::Missing
     }
@@ -261,7 +218,7 @@ impl Capability {
     /// (define → build → merge), paired with its phase.
     ///
     /// This intentionally skips `pipeline.plan`: the plan phase is an
-    /// authoring-time step driven by `/spec:plan` and is not part of
+    /// authoring-time step driven by `/change:plan` and is not part of
     /// the per-change execution loop that `specify change status`,
     /// `specify change outcome`, and the define/build/merge skills
     /// iterate over. Plan briefs are exposed via

@@ -280,7 +280,6 @@ fn resolve_project_capability(ctx: &CommandContext) -> Result<Option<ResolvedCap
 fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
     match Capability::probe_dir(dir) {
         ManifestProbe::Found(_) => Ok(()),
-        ManifestProbe::Legacy(path) => Err(Error::LegacyCapabilityField { path }),
         ManifestProbe::Missing => {
             Err(Error::SchemaResolution(format!("no `{CAPABILITY_FILENAME}` at {}", dir.display())))
         }

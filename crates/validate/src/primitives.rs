@@ -11,19 +11,6 @@ use regex::Regex;
 use specify_spec::ParsedSpec;
 use specify_task::TaskProgress;
 
-/// Return `true` if any line (after trimming trailing whitespace) equals
-/// `heading` exactly. Case-sensitive — a spec that writes `## why` instead
-/// of `## Why` is treated as missing the section, which is deliberate: we
-/// only claim to understand the canonical casing from the brief.
-///
-/// Present in the primitives surface per RFC-1 line 677 even though the
-/// initial registry only uses [`has_content_after_heading`]; future rules
-/// that care about mere presence (e.g. optional sections) will compose it.
-#[allow(dead_code)]
-pub fn has_section(content: &str, heading: &str) -> bool {
-    content.lines().any(|line| line.trim_end() == heading)
-}
-
 /// Return `true` when `heading` appears AND at least one non-empty,
 /// non-whitespace line follows it before the next `##`-or-higher heading.
 /// Blank lines between the heading and prose are fine.
@@ -253,13 +240,6 @@ mod tests {
 
     fn tmp() -> TempDir {
         tempfile::tempdir().expect("tempdir")
-    }
-
-    #[test]
-    fn section_exact_line() {
-        assert!(has_section("## Why\nbecause", "## Why"));
-        assert!(!has_section("## why\nbecause", "## Why"));
-        assert!(!has_section("prose without heading", "## Why"));
     }
 
     #[test]

@@ -13,7 +13,7 @@
 //!   Callers who genuinely need to prune history edit the file by
 //!   hand.
 //!
-//! - **Pure audit log**: `/spec:execute` (Layer 2) does **not** consume
+//! - **Pure audit log**: `/change:execute` (Layer 2) does **not** consume
 //!   journal entries as a signalling channel. Phase success / failure
 //!   / deferred classification travels through
 //!   `.metadata.yaml.outcome` (stamped via
@@ -32,7 +32,7 @@
 //!   inter-process lock. Concurrent appends from multiple processes
 //!   will race at the read-modify-write boundary and lose entries.
 //!   In practice, only one phase runs at a time inside a single
-//!   `/spec:execute` invocation, and a second `/spec:execute` is
+//!   `/change:execute` invocation, and a second `/change:execute` is
 //!   prevented by `.specify/plan.lock` (L2.C). Callers who want
 //!   multi-writer safety must add their own coordination.
 //!
@@ -346,7 +346,7 @@ mod tests {
     /// writers race at the read-modify-write boundary — thread A
     /// loading [..N] while thread B is loading [..N] means whichever
     /// persists last loses the other's entry. In the single-writer
-    /// deployment (one phase at a time under `/spec:execute`, plus the
+    /// deployment (one phase at a time under `/change:execute`, plus the
     /// upcoming `.specify/plan.lock` in L2.C), this never fires. We
     /// `#[ignore]` the test by default and leave it as documentation
     /// of the limitation — running it under `cargo test -- --ignored`

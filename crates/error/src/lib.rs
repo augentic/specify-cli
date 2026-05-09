@@ -164,9 +164,9 @@ pub enum Error {
         entries: Vec<String>,
     },
 
-    /// Another live `/spec:execute` driver holds `.specify/plan.lock`.
+    /// Another live `/change:execute` driver holds `.specify/plan.lock`.
     /// Stale locks (dead PID / malformed content) are reclaimed silently.
-    #[error("another /spec:execute driver is running (pid {pid}); refusing to proceed")]
+    #[error("another /change:execute driver is running (pid {pid}); refusing to proceed")]
     DriverBusy {
         /// PID of the process that holds the lock.
         pid: u32,
@@ -191,97 +191,6 @@ pub enum Error {
     /// `registry.yaml` was expected but is absent.
     #[error("no registry declared at registry.yaml")]
     RegistryMissing,
-
-    /// Legacy v1-layout artifacts found under `.specify/`. Run
-    /// `specify migrate v2-layout` to relocate them.
-    #[error("legacy v1 layout detected; run `specify migrate v2-layout` to upgrade ({paths:?})")]
-    LegacyLayout {
-        /// Repo-relative paths of the legacy artifacts the detector found.
-        paths: Vec<String>,
-    },
-
-    /// `specify migrate slice-layout` refused because at least one slice
-    /// under `.specify/changes/<name>/` is non-terminal. Pairs are sorted
-    /// by name for stable diagnostics.
-    #[error(
-        "slice-migration-blocked-by-in-progress: {} slice(s) carry an unfinished phase. \
-         Finish or drop them before migrating: {}. \
-         Run `specify slice drop <name>` to discard each, or complete the slice loop \
-         (`specify slice merge run <name>` once it reaches `complete`).",
-        in_progress.len(),
-        format_in_progress(in_progress)
-    )]
-    SliceMigrationInProgress {
-        /// `(slice_name, lifecycle_status)` for each non-terminal
-        /// slice the detector found, sorted by slice name.
-        in_progress: Vec<(String, String)>,
-    },
-
-    /// `specify migrate slice-layout` refused because both source and
-    /// destination directories exist. Operator must reconcile manually.
-    #[error(
-        "slice-migration-target-exists: both `{}` and `{}` exist; the migration cannot proceed \
-         while the destination is non-empty. Inspect both directories, move any needed contents \
-         out of `.specify/slices/`, then remove the empty `.specify/slices/` and re-run \
-         `specify migrate slice-layout`.",
-        changes.display(),
-        slices.display()
-    )]
-    SliceMigrationCollision {
-        /// Path to the v1 source directory (`.specify/changes/`).
-        changes: std::path::PathBuf,
-        /// Path to the post-migration destination (`.specify/slices/`).
-        slices: std::path::PathBuf,
-    },
-
-    /// `specify migrate change-noun` refused because both `initiative.md`
-    /// and `change.md` exist at the repo root. Operator must reconcile.
-    #[error(
-        "change-noun-migration-target-exists: both `{}` and `{}` exist at the repo root; \
-         the migration cannot proceed while the destination is already in place. Inspect \
-         both files, move the canonical content into `change.md`, remove the legacy \
-         `initiative.md`, and re-run `specify migrate change-noun`.",
-        initiative.display(),
-        change.display()
-    )]
-    ChangeNounCollision {
-        /// Path to the pre-Phase-3.7 source file (`initiative.md`).
-        initiative: std::path::PathBuf,
-        /// Path to the post-migration destination file (`change.md`).
-        change: std::path::PathBuf,
-    },
-
-    /// Legacy `initiative.md` found without a `change.md` companion.
-    /// Operator must run `specify migrate change-noun`.
-    #[error(
-        "change-brief-became-change-md: found legacy `initiative.md` at {} but expected \
-         `change.md`. RFC-13 renamed the umbrella brief filename: `initiative.md` is now \
-         `change.md`. Run `specify migrate change-noun` to migrate. \
-         See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
-        path.display()
-    )]
-    LegacyChangeBrief {
-        /// Path to the pre-Phase-3.7 file the detector found.
-        path: std::path::PathBuf,
-    },
-
-    /// Legacy `schema.yaml` (or `project.yaml: schema:` field) found where
-    /// `capability.yaml` / `capability:` is expected.
-    #[error(
-        "schema-became-capability: found legacy `schema` shape at `{}` but expected the \
-         post-RFC-13 `capability` shape. RFC-13 renamed the Specify extension primitive: \
-         `schema` is now `capability` (rename `schema.yaml` → `capability.yaml`, and rewrite \
-         `project.yaml: schema:` → `project.yaml: capability:`). Re-run \
-         `specify init <capability>` if you have not already migrated. \
-         See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
-        path.display()
-    )]
-    LegacyCapabilityField {
-        /// Path to the file that triggered the diagnostic (a legacy
-        /// `schema.yaml`, or a `project.yaml` carrying the v1 `schema:`
-        /// field).
-        path: std::path::PathBuf,
-    },
 
     /// `specify init` requires either a `<capability>` positional or
     /// `--hub` (mutually exclusive).
@@ -354,12 +263,6 @@ impl Error {
             Self::ArtifactNotFound { .. } => "artifact-not-found",
             Self::SliceNotFound { .. } => "slice-not-found",
             Self::RegistryMissing => "registry-missing",
-            Self::LegacyLayout { .. } => "legacy-layout",
-            Self::SliceMigrationInProgress { .. } => "slice-migration-blocked-by-in-progress",
-            Self::SliceMigrationCollision { .. } => "slice-migration-target-exists",
-            Self::ChangeNounCollision { .. } => "change-noun-migration-target-exists",
-            Self::LegacyChangeBrief { .. } => "change-brief-became-change-md",
-            Self::LegacyCapabilityField { .. } => "schema-became-capability",
             Self::InitNeedsCapability => "init-requires-capability-or-hub",
             Self::ToolResolver(_) => "tool-resolver",
             Self::ToolRuntime(_) => "tool-runtime",
@@ -371,10 +274,6 @@ impl Error {
             Self::YamlSer(_) => "yaml-ser",
         }
     }
-}
-
-fn format_in_progress(items: &[(String, String)]) -> String {
-    items.iter().map(|(name, status)| format!("{name} ({status})")).collect::<Vec<_>>().join(", ")
 }
 
 #[cfg(test)]
@@ -481,7 +380,7 @@ mod tests {
         let err = Error::DriverBusy { pid: 4242 };
         assert_eq!(
             err.to_string(),
-            "another /spec:execute driver is running (pid 4242); refusing to proceed"
+            "another /change:execute driver is running (pid 4242); refusing to proceed"
         );
     }
 
@@ -532,35 +431,6 @@ mod tests {
     }
 
     #[test]
-    fn schema_became_capability_display() {
-        let err = Error::LegacyCapabilityField {
-            path: std::path::PathBuf::from("./.specify/.cache/omnia/schema.yaml"),
-        };
-        let s = err.to_string();
-        assert!(
-            s.contains("schema-became-capability"),
-            "diagnostic must carry the stable kebab-case code, got: {s}"
-        );
-        assert!(
-            s.contains("./.specify/.cache/omnia/schema.yaml"),
-            "diagnostic must surface the offending path, got: {s}"
-        );
-        assert!(
-            s.contains("capability.yaml"),
-            "diagnostic must name the post-rename filename, got: {s}"
-        );
-        assert!(s.contains("RFC-13"), "diagnostic must cite RFC-13, got: {s}");
-        assert!(
-            s.contains("specify init <capability>"),
-            "diagnostic must mention the post-rename init command, got: {s}"
-        );
-        assert!(
-            s.contains("rfcs/rfc-13-extensibility.md#migration"),
-            "diagnostic must link the RFC-13 §Migration anchor, got: {s}"
-        );
-    }
-
-    #[test]
     fn init_requires_capability_or_hub_display() {
         let err = Error::InitNeedsCapability;
         let s = err.to_string();
@@ -579,135 +449,6 @@ mod tests {
         assert!(
             s.contains("rfcs/rfc-13-extensibility.md#migration"),
             "diagnostic must link RFC-13 §Migration, got: {s}"
-        );
-    }
-
-    #[test]
-    fn slice_migration_blocked_by_in_progress_display() {
-        let err = Error::SliceMigrationInProgress {
-            in_progress: vec![
-                ("demo".to_string(), "defining".to_string()),
-                ("other-thing".to_string(), "building".to_string()),
-            ],
-        };
-        let s = err.to_string();
-        assert!(
-            s.starts_with("slice-migration-blocked-by-in-progress:"),
-            "diagnostic must carry the kebab-case prefix, got: {s}"
-        );
-        assert!(s.contains("2 slice(s)"), "diagnostic must surface the count, got: {s}");
-        assert!(
-            s.contains("demo (defining)"),
-            "diagnostic must surface the (name, status) pair, got: {s}"
-        );
-        assert!(
-            s.contains("other-thing (building)"),
-            "diagnostic must surface every offender, got: {s}"
-        );
-        assert!(
-            s.contains("specify slice drop"),
-            "diagnostic must point operator at the recovery verb, got: {s}"
-        );
-        assert!(
-            s.contains("specify slice merge run"),
-            "diagnostic must mention the canonical completion verb, got: {s}"
-        );
-    }
-
-    #[test]
-    fn slice_migration_blocked_singular_form_round_trips() {
-        // Single-offender variant: the same diagnostic must still
-        // render cleanly so the operator's first read names the
-        // problematic slice.
-        let err = Error::SliceMigrationInProgress {
-            in_progress: vec![("demo".to_string(), "defining".to_string())],
-        };
-        let s = err.to_string();
-        assert!(s.contains("1 slice(s)"), "diagnostic must surface the count, got: {s}");
-        assert!(s.contains("demo (defining)"), "diagnostic must surface the offender, got: {s}");
-    }
-
-    #[test]
-    fn change_noun_migration_target_exists_display() {
-        let err = Error::ChangeNounCollision {
-            initiative: std::path::PathBuf::from("/proj/initiative.md"),
-            change: std::path::PathBuf::from("/proj/change.md"),
-        };
-        let s = err.to_string();
-        assert!(
-            s.starts_with("change-noun-migration-target-exists:"),
-            "diagnostic must carry the kebab-case prefix, got: {s}"
-        );
-        assert!(
-            s.contains("/proj/initiative.md") && s.contains("/proj/change.md"),
-            "diagnostic must surface both colliding paths, got: {s}"
-        );
-        assert!(
-            s.contains("specify migrate change-noun"),
-            "diagnostic must reference the migration verb, got: {s}"
-        );
-    }
-
-    #[test]
-    fn change_brief_became_change_md_display() {
-        let err = Error::LegacyChangeBrief {
-            path: std::path::PathBuf::from("/proj/initiative.md"),
-        };
-        let s = err.to_string();
-        assert!(
-            s.starts_with("change-brief-became-change-md:"),
-            "diagnostic must carry the kebab-case prefix, got: {s}"
-        );
-        assert!(
-            s.contains("/proj/initiative.md"),
-            "diagnostic must surface the offending path, got: {s}"
-        );
-        assert!(s.contains("change.md"), "diagnostic must name the post-rename filename, got: {s}");
-        assert!(
-            s.contains("specify migrate change-noun"),
-            "diagnostic must point operator at the migration verb, got: {s}"
-        );
-        assert!(
-            s.contains("rfcs/rfc-13-extensibility.md#migration"),
-            "diagnostic must link the RFC-13 §Migration anchor, got: {s}"
-        );
-    }
-
-    #[test]
-    fn slice_migration_target_exists_display() {
-        let err = Error::SliceMigrationCollision {
-            changes: std::path::PathBuf::from("/proj/.specify/changes"),
-            slices: std::path::PathBuf::from("/proj/.specify/slices"),
-        };
-        let s = err.to_string();
-        assert!(
-            s.starts_with("slice-migration-target-exists:"),
-            "diagnostic must carry the kebab-case prefix, got: {s}"
-        );
-        assert!(
-            s.contains("/proj/.specify/changes") && s.contains("/proj/.specify/slices"),
-            "diagnostic must surface both colliding paths, got: {s}"
-        );
-        assert!(
-            s.contains("specify migrate slice-layout"),
-            "diagnostic must reference the migration verb, got: {s}"
-        );
-    }
-
-    #[test]
-    fn legacy_layout_display() {
-        let err = Error::LegacyLayout {
-            paths: vec![".specify/registry.yaml".to_string(), ".specify/plan.yaml".to_string()],
-        };
-        let s = err.to_string();
-        assert!(s.contains("legacy v1 layout detected"), "expected legacy-layout banner, got: {s}");
-        assert!(
-            s.contains("specify migrate v2-layout"),
-            "expected migration command in message, got: {s}"
-        );
-        assert!(
-            s.contains(".specify/registry.yaml") && s.contains(".specify/plan.yaml"),
-            "expected offending paths to surface, got: {s}"
         );
     }
 

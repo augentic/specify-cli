@@ -399,7 +399,7 @@ fn collect_capability_inputs(
     collector: &mut fingerprint::InputCollector, pipeline: &PipelineView,
 ) -> Result<(), Error> {
     match Capability::probe_dir(&pipeline.capability.root_dir) {
-        ManifestProbe::Found(path) | ManifestProbe::Legacy(path) => {
+        ManifestProbe::Found(path) => {
             collector.add_file(&path)?;
         }
         ManifestProbe::Missing => {}

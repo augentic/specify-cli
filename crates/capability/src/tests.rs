@@ -838,14 +838,14 @@ fn pipeline_view_loads_omnia_schema_from_workspace() {
 }
 
 /// Scaffold a minimal local capability at `<project>/schemas/<name>/`
-/// with the given `schema.yaml` and brief contents. Each brief content
+/// with the given `capability.yaml` and brief contents. Each brief content
 /// map entry is `(filename, contents)` written under `schemas/<name>/`.
 fn scaffold_schema_project(name: &str, schema_yaml: &str, briefs: &[(&str, &str)]) -> TempDir {
     let tmp = TempDir::new().unwrap();
     let schema_dir = tmp.path().join("schemas").join(name);
     let briefs_dir = schema_dir.join("briefs");
     std::fs::create_dir_all(&briefs_dir).unwrap();
-    std::fs::write(schema_dir.join("schema.yaml"), schema_yaml).unwrap();
+    std::fs::write(schema_dir.join("capability.yaml"), schema_yaml).unwrap();
     for (rel, contents) in briefs {
         let target = schema_dir.join(rel);
         if let Some(parent) = target.parent() {
@@ -1024,8 +1024,8 @@ fn schema_resolve_prefers_cache_over_local_for_bare_names() {
 
     let local_yaml = VALID_SCHEMA_YAML.replace("description: demo", "description: local");
     let cached_yaml = VALID_SCHEMA_YAML.replace("description: demo", "description: cached");
-    std::fs::write(local.join("schema.yaml"), local_yaml).unwrap();
-    std::fs::write(cached.join("schema.yaml"), cached_yaml).unwrap();
+    std::fs::write(local.join("capability.yaml"), local_yaml).unwrap();
+    std::fs::write(cached.join("capability.yaml"), cached_yaml).unwrap();
 
     let resolved = Capability::resolve("demo", tmp.path()).unwrap();
     assert!(matches!(resolved.source, CapabilitySource::Cached(_)));
@@ -1399,64 +1399,7 @@ fn initiative_brief_roundtrip_preserves_body() {
 }
 
 #[test]
-fn initiative_brief_path_helper_points_at_repo_root() {
-    // Post-RFC-13 chunk 3.7: `path()` returns the post-rename
-    // `change.md`. The pre-Phase-3.7 filename is preserved on
-    // [`ChangeBrief::legacy_path`] for the `specify migrate
-    // change-noun` migrator and the `change-brief-became-change-md`
-    // diagnostic.
+fn change_brief_path_helper_points_at_repo_root() {
     let dir = Path::new("/tmp/some/project");
     assert_eq!(ChangeBrief::path(dir), PathBuf::from("/tmp/some/project/change.md"));
-    assert_eq!(ChangeBrief::legacy_path(dir), PathBuf::from("/tmp/some/project/initiative.md"));
-}
-
-#[test]
-fn change_brief_refuse_legacy_passes_when_modern_only() {
-    let tmp = TempDir::new().unwrap();
-    std::fs::write(ChangeBrief::path(tmp.path()), "---\nname: x\n---\n").unwrap();
-    ChangeBrief::refuse_legacy(tmp.path()).expect("modern only must pass");
-}
-
-#[test]
-fn change_brief_refuse_legacy_passes_when_neither_present() {
-    let tmp = TempDir::new().unwrap();
-    ChangeBrief::refuse_legacy(tmp.path()).expect("neither file is allowed");
-}
-
-#[test]
-fn change_brief_refuse_legacy_errors_when_only_legacy_present() {
-    let tmp = TempDir::new().unwrap();
-    std::fs::write(ChangeBrief::legacy_path(tmp.path()), "---\nname: x\n---\n").unwrap();
-    let err = ChangeBrief::refuse_legacy(tmp.path()).expect_err("legacy-only must refuse");
-    match err {
-        Error::LegacyChangeBrief { path } => {
-            assert_eq!(path, tmp.path().join("initiative.md"));
-        }
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
-fn change_brief_refuse_legacy_passes_when_both_present() {
-    // Both files present is a [`Error::ChangeNounCollision`]
-    // condition resolved by the migration verb, not by the read-side
-    // helper. `refuse_legacy` should silently allow the call so
-    // callers like `specify change show` can still load `change.md`
-    // (the modern, canonical file).
-    let tmp = TempDir::new().unwrap();
-    std::fs::write(ChangeBrief::path(tmp.path()), "---\nname: x\n---\n").unwrap();
-    std::fs::write(ChangeBrief::legacy_path(tmp.path()), "---\nname: y\n---\n").unwrap();
-    ChangeBrief::refuse_legacy(tmp.path()).expect("both present must not refuse here");
-}
-
-#[test]
-fn change_brief_load_errors_with_change_brief_became_change_md_when_only_legacy_present() {
-    let tmp = TempDir::new().unwrap();
-    std::fs::write(ChangeBrief::legacy_path(tmp.path()), "---\nname: x\n---\n").unwrap();
-    // `load` reads `change.md` only; the legacy file alone returns
-    // `Ok(None)`. Callers that want the loud-diagnostic fall-back
-    // call `refuse_legacy` first (see
-    // [`change_brief_refuse_legacy_errors_when_only_legacy_present`]).
-    let loaded = ChangeBrief::load(tmp.path()).expect("legacy-only is not a load failure");
-    assert!(loaded.is_none(), "load must not pick up the pre-Phase-3.7 file");
 }

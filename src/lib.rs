@@ -9,22 +9,21 @@
 //! See also: the `specify` binary (`src/main.rs`) and domain crates under
 //! `crates/` for the underlying logic.
 
-pub use config::{ProjectConfig, detect_legacy_layout, is_workspace_clone_path};
+pub use config::{ProjectConfig, is_workspace_clone_path};
 pub use init::{InitOptions, InitResult, VersionMode, init};
 pub use specify_capability::{
     Brief, BriefFrontmatter, CAPABILITY_FILENAME, CHANGE_BRIEF_FILENAME, CODEX_DIR_NAME, CacheMeta,
     Capability, CapabilitySource, ChangeBrief, ChangeFrontmatter, ChangeInput, CodexApplicability,
     CodexCatalogSource, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexProvenance,
     CodexReference, CodexResolver, CodexReviewMode, CodexRule, CodexRuleFrontmatter, CodexSeverity,
-    DEFAULT_CODEX_CAPABILITY, InputKind, LEGACY_CHANGE_BRIEF_FILENAME, LEGACY_SCHEMA_FILENAME,
-    ManifestProbe, Phase, Pipeline, PipelineEntry, PipelineView, ResolvedCapability, ResolvedCodex,
-    ResolvedCodexRule,
+    DEFAULT_CODEX_CAPABILITY, InputKind, ManifestProbe, Phase, Pipeline, PipelineEntry,
+    PipelineView, ResolvedCapability, ResolvedCodex, ResolvedCodexRule,
 };
 pub use specify_error::{Error, ValidationStatus, ValidationSummary, is_kebab};
 pub use specify_merge::{
-    ArtifactClass, BaselineConflict, MergeOperation, MergePreviewEntry as MergeEntry, MergeResult,
-    MergeStrategy, OpaqueAction, OpaquePreviewEntry, PreviewResult, conflict_check, merge,
-    merge_slice, preview_slice, validate_baseline,
+    ArtifactClass, BaselineConflict, MergeOperation, MergePreviewEntry, MergeResult, MergeStrategy,
+    OpaqueAction, OpaquePreviewEntry, PreviewResult, conflict_check, merge, merge_slice,
+    preview_slice, validate_baseline,
 };
 pub use specify_slice::{
     CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry, LifecycleStatus,
