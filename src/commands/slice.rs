@@ -28,26 +28,10 @@ use crate::output::{CliResult, emit_response};
 
 const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/archive"];
 
-/// Synthesise the omnia-default [`ArtifactClass`] slice for one
-/// slice directory.
-///
-/// `specify-merge` and `specify-capability` are capability-agnostic
-/// (RFC-13 §"concern-specific behaviour leaves core", invariant #3).
-/// The set of mutable artefact classes that participate in a merge —
-/// today `specs` (3-way merge) and `contracts` (opaque replace) — is
-/// the omnia capability's responsibility, not core's. This synthesiser
-/// is the *only* place in the binary that names those classes; every
-/// merge call site routes through it so the literal class names live
-/// in exactly one location.
-///
-/// Both staged paths are absolute (rooted under `slice_dir`), and
-/// both baseline paths are absolute (rooted under `project_root`),
-/// matching the pre-2.8 path conventions byte-for-byte.
-// TODO(RFC-13 Phase 4.1): move this default into the omnia capability manifest
-// (`capabilities/omnia/capability.yaml` will grow an `artifact_classes:`
-// field) and read it through `specify-capability`. The pre-2.8 hard-codes
-// have been centralised here so that future move is a one-file edit.
-fn omnia_artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<ArtifactClass> {
+/// Default omnia [`ArtifactClass`] set: `specs` (3-way merge) and
+/// `contracts` (opaque replace). Single source of truth in the binary;
+/// future capability manifests should drive this through `specify-capability`.
+fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<ArtifactClass> {
     vec![
         ArtifactClass {
             name: "specs".to_string(),
@@ -240,7 +224,7 @@ fn run_slice_touched_specs(
         // the omnia ThreeWayMerge baseline. Reach through the omnia
         // synthesiser so any future change to the baseline location
         // (Phase 4.1) flows through one place.
-        let classes = omnia_artifact_classes(&ctx.project_dir, &slice_dir);
+        let classes = artifact_classes(&ctx.project_dir, &slice_dir);
         let baseline_dir = classes
             .iter()
             .find(|c| matches!(c.strategy, MergeStrategy::ThreeWayMerge))
@@ -507,7 +491,7 @@ fn build_outcome(args: OutcomeSetArgs) -> Result<(Outcome, String), Error> {
                 rationale.as_deref(),
             )?;
             let summary = summary.ok_or_else(|| {
-                Error::Config(format!("--summary is required for outcome `{}`", cli_kind_str(kind)))
+                Error::Config(format!("--summary is required for outcome `{}`", kind_str(kind)))
             })?;
             let outcome = match kind {
                 OutcomeKind::Success => Outcome::Success,
@@ -562,7 +546,7 @@ fn ensure_no_proposal_flags(
         Err(Error::Config(format!(
             "{} are only valid with `--outcome registry-amendment-required` (got `{}`)",
             offenders.join(", "),
-            cli_kind_str(kind)
+            kind_str(kind)
         )))
     }
 }
@@ -573,7 +557,7 @@ fn required_flag(flag: &str, value: Option<String>) -> Result<String, Error> {
     })
 }
 
-const fn cli_kind_str(kind: OutcomeKind) -> &'static str {
+const fn kind_str(kind: OutcomeKind) -> &'static str {
     match kind {
         OutcomeKind::Success => "success",
         OutcomeKind::Failure => "failure",
@@ -929,7 +913,7 @@ fn is_workspace_clone(project_dir: &Path) -> bool {
     has_project_yaml && !has_plan_yaml
 }
 
-fn workspace_merge_pathspecs(project_dir: &Path) -> Vec<&'static str> {
+fn merge_pathspecs(project_dir: &Path) -> Vec<&'static str> {
     WORKSPACE_MERGE_COMMIT_PATHS
         .iter()
         .copied()
@@ -937,79 +921,57 @@ fn workspace_merge_pathspecs(project_dir: &Path) -> Vec<&'static str> {
         .collect()
 }
 
-fn print_git_warning(action: &str, output: &std::process::Output) {
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    eprintln!("warning: workspace auto-commit {action} failed (non-zero exit): {stderr}");
+fn git(project_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
+    std::process::Command::new("git").arg("-C").arg(project_dir).args(args).output()
 }
 
-fn workspace_auto_commit_merge_baseline(project_dir: &Path, name: &str) {
-    let pathspecs = workspace_merge_pathspecs(project_dir);
+fn auto_commit_merge(project_dir: &Path, name: &str) {
+    let pathspecs = merge_pathspecs(project_dir);
     if pathspecs.is_empty() {
         return;
     }
-
-    let git_add = std::process::Command::new("git")
-        .arg("-C")
-        .arg(project_dir)
-        .args(["add", "--"])
-        .args(pathspecs.iter().copied())
-        .output();
-
-    match git_add {
-        Ok(output) if output.status.success() => {}
-        Ok(output) => {
-            print_git_warning("git-add", &output);
-            return;
+    let warn = |step: &str, msg: &str| eprintln!("warning: workspace auto-commit {step}: {msg}");
+    let run = |step: &str, args: &[&str]| -> Option<std::process::Output> {
+        match git(project_dir, args) {
+            Ok(output) => Some(output),
+            Err(err) => {
+                warn(step, &err.to_string());
+                None
+            }
         }
-        Err(err) => {
-            eprintln!("warning: workspace auto-commit git-add failed: {err}");
-            return;
-        }
+    };
+
+    let mut add_args = vec!["add", "--"];
+    add_args.extend(pathspecs.iter().copied());
+    let Some(add) = run("git-add", &add_args) else { return };
+    if !add.status.success() {
+        warn("git-add", &String::from_utf8_lossy(&add.stderr));
+        return;
     }
 
-    let git_diff = std::process::Command::new("git")
-        .arg("-C")
-        .arg(project_dir)
-        .args(["diff", "--cached", "--quiet", "--"])
-        .args(pathspecs.iter().copied())
-        .status();
-
-    match git_diff {
+    let mut diff_args = vec!["diff", "--cached", "--quiet", "--"];
+    diff_args.extend(pathspecs.iter().copied());
+    match git(project_dir, &diff_args).map(|o| o.status) {
         Ok(status) if status.success() => return,
         Ok(status) if status.code() == Some(1) => {}
-        Ok(status) => {
-            eprintln!("warning: workspace auto-commit diff check failed with status {status}");
-            return;
-        }
-        Err(err) => {
-            eprintln!("warning: workspace auto-commit diff check failed: {err}");
-            return;
-        }
+        Ok(status) => return warn("diff check", &format!("status {status}")),
+        Err(err) => return warn("diff check", &err.to_string()),
     }
 
     let commit_msg = format!("specify: merge {name}");
-    let git_commit = std::process::Command::new("git")
-        .arg("-C")
-        .arg(project_dir)
-        .args(["commit", "-m", &commit_msg, "--"])
-        .args(pathspecs.iter().copied())
-        .output();
-
-    match git_commit {
-        Ok(output) if output.status.success() => {}
-        Ok(output) => {
-            print_git_warning("commit", &output);
-        }
-        Err(err) => {
-            eprintln!("warning: workspace auto-commit commit failed: {err}");
-        }
+    let mut commit_args = vec!["commit", "-m", &commit_msg, "--"];
+    commit_args.extend(pathspecs.iter().copied());
+    if let Some(commit) = run("commit", &commit_args)
+        && !commit.status.success()
+    {
+        warn("commit", &String::from_utf8_lossy(&commit.stderr));
     }
 }
 
 fn run_slice_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
-    let classes = omnia_artifact_classes(&ctx.project_dir, &slice_dir);
+    let classes = artifact_classes(&ctx.project_dir, &slice_dir);
 
     let merged = merge_slice(&slice_dir, &classes, &archive_dir)?;
 
@@ -1017,7 +979,7 @@ fn run_slice_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, 
     // baseline spec tree and archived slice. Opaque/generated outputs
     // remain as residue for the execute driver.
     if is_workspace_clone(&ctx.project_dir) {
-        workspace_auto_commit_merge_baseline(&ctx.project_dir, &name);
+        auto_commit_merge(&ctx.project_dir, &name);
     }
 
     let today = Utc::now().format("%Y-%m-%d").to_string();
@@ -1030,12 +992,12 @@ fn run_slice_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, 
             struct MergeResponse {
                 merged_specs: Vec<Value>,
             }
-            let specs: Vec<Value> = merged.iter().map(merge_entry_to_json).collect();
+            let specs: Vec<Value> = merged.iter().map(entry_json).collect();
             emit_response(MergeResponse { merged_specs: specs })?;
         }
         OutputFormat::Text => {
             for entry in &merged {
-                println!("{}: {}", entry.name, summarise_operations(&entry.result.operations));
+                println!("{}: {}", entry.name, summarise_ops(&entry.result.operations));
             }
             println!("Archived to {}", archive_path.display());
         }
@@ -1045,7 +1007,7 @@ fn run_slice_merge_run(ctx: &CommandContext, name: String) -> Result<CliResult, 
 
 fn run_slice_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let slice_dir = ctx.slices_dir().join(&name);
-    let classes = omnia_artifact_classes(&ctx.project_dir, &slice_dir);
+    let classes = artifact_classes(&ctx.project_dir, &slice_dir);
     let result = preview_slice(&slice_dir, &classes)?;
 
     // The JSON preview surface keeps its pre-2.8 shape — `specs` and
@@ -1082,7 +1044,7 @@ fn run_slice_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResu
                 println!("No delta specs to merge.");
             } else {
                 for entry in &specs_entries {
-                    println!("{}: {}", entry.name, summarise_operations(&entry.result.operations));
+                    println!("{}: {}", entry.name, summarise_ops(&entry.result.operations));
                     for op in &entry.result.operations {
                         println!("  {}", operation_label(op));
                     }
@@ -1106,7 +1068,7 @@ fn run_slice_merge_preview(ctx: &CommandContext, name: String) -> Result<CliResu
 
 fn run_slice_merge_conflict_check(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let slice_dir = ctx.slices_dir().join(&name);
-    let classes = omnia_artifact_classes(&ctx.project_dir, &slice_dir);
+    let classes = artifact_classes(&ctx.project_dir, &slice_dir);
     let conflicts = conflict_check(&slice_dir, &classes)?;
 
     match ctx.format {
@@ -1152,8 +1114,8 @@ struct MergeEntryJson {
     operations: Vec<Value>,
 }
 
-fn merge_entry_to_json(entry: &MergeEntry) -> Value {
-    let ops: Vec<Value> = entry.result.operations.iter().map(merge_op_to_json).collect();
+fn entry_json(entry: &MergeEntry) -> Value {
+    let ops: Vec<Value> = entry.result.operations.iter().map(op_json).collect();
     serde_json::to_value(MergeEntryJson {
         name: entry.name.clone(),
         operations: ops,
@@ -1170,7 +1132,7 @@ struct SpecPreviewEntryJson {
 }
 
 fn preview_entry_to_json(entry: &MergeEntry) -> Value {
-    let ops: Vec<Value> = entry.result.operations.iter().map(merge_op_to_json).collect();
+    let ops: Vec<Value> = entry.result.operations.iter().map(op_json).collect();
     serde_json::to_value(SpecPreviewEntryJson {
         name: entry.name.clone(),
         baseline_path: entry.baseline_path.display().to_string(),
@@ -1235,22 +1197,16 @@ fn operation_label(op: &MergeOperation) -> String {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-#[serde(tag = "kind")]
+#[serde(tag = "kind", rename_all = "kebab-case")]
 enum MergeOpJson {
-    #[serde(rename = "added")]
     Added { id: String, name: String },
-    #[serde(rename = "modified")]
     Modified { id: String, name: String },
-    #[serde(rename = "removed")]
     Removed { id: String, name: String },
-    #[serde(rename = "renamed")]
     Renamed { id: String, old_name: String, new_name: String },
-    #[serde(rename = "created_baseline")]
     CreatedBaseline { requirement_count: usize },
 }
 
-fn merge_op_to_json(op: &MergeOperation) -> Value {
+fn op_json(op: &MergeOperation) -> Value {
     let typed = match op {
         MergeOperation::Added { id, name } => MergeOpJson::Added {
             id: id.clone(),
@@ -1285,7 +1241,7 @@ fn merge_op_to_json(op: &MergeOperation) -> Value {
     serde_json::to_value(typed).expect("MergeOpJson serialises")
 }
 
-fn summarise_operations(ops: &[MergeOperation]) -> String {
+fn summarise_ops(ops: &[MergeOperation]) -> String {
     let mut added = 0;
     let mut modified = 0;
     let mut removed = 0;

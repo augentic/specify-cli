@@ -38,7 +38,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use specify_capability::{CacheMeta, PipelineView};
 use specify_error::Error;
 use specify_registry::Registry;
-use specify_slice::is_valid_kebab_name;
+use specify_error::is_kebab;
 
 use crate::config::ProjectConfig;
 
@@ -249,7 +249,7 @@ fn init_hub(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     }
 
     let name = resolved_name(opts.project_dir, opts.name);
-    if !is_valid_kebab_name(&name) {
+    if !is_kebab(&name) {
         return Err(Error::Config(format!(
             "init --hub: project name `{name}` must be kebab-case \
              (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens). \

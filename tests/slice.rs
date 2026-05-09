@@ -16,6 +16,9 @@ use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
+mod common;
+use common::copy_dir;
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -70,20 +73,6 @@ impl Project {
     }
 }
 
-fn copy_dir(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create_dir_all dst");
-    for entry in fs::read_dir(src).expect("read_dir src") {
-        let entry = entry.expect("dir entry");
-        let kind = entry.file_type().expect("file_type");
-        let target = dst.join(entry.file_name());
-        if kind.is_dir() {
-            copy_dir(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), &target).expect("copy");
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // slice create
 // ---------------------------------------------------------------------------
@@ -98,7 +87,7 @@ fn slice_create_produces_directory_and_metadata() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["name"], "my-slice");
     assert_eq!(value["status"], "defining");
     let schema = value["schema"].as_str().expect("schema string");
@@ -479,7 +468,7 @@ fn slice_phase_outcome_stamps_success_on_define_json() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["outcome"], "success");
@@ -743,7 +732,7 @@ fn slice_outcome_returns_stamped_outcome_as_json() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["name"], "foo");
     let outcome = &value["outcome"];
     assert_eq!(outcome["phase"].as_str(), Some("build"));
@@ -1103,7 +1092,7 @@ fn slice_journal_append_appends_to_file() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["kind"], "question");
@@ -1253,7 +1242,7 @@ fn slice_journal_show_empty_then_populated() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["name"], "foo");
     assert!(
         value["entries"].as_array().unwrap().is_empty(),
@@ -1341,7 +1330,7 @@ fn phase_outcome_round_trips_through_serde() {
             let value = PhaseOutcome {
                 phase,
                 outcome: outcome.clone(),
-                at: Rfc3339Stamp::from_raw("2024-08-01T10:00:00+00:00".to_string()),
+                at: Rfc3339Stamp::new("2024-08-01T10:00:00+00:00".to_string()),
                 summary: "some summary".to_string(),
                 context,
             };

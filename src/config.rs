@@ -16,7 +16,7 @@
 //! `contracts_dir`) that this module used to expose. Domain-specific
 //! baseline locations are owned by the active capability and are
 //! synthesised at the binary-side merge call site (currently
-//! `src/commands/slice.rs::omnia_artifact_classes`). `ProjectConfig`
+//! `src/commands/slice.rs::artifact_classes`). `ProjectConfig`
 //! stays capability-agnostic.
 //!
 //! `ProjectConfig::load` is the single choke point for the

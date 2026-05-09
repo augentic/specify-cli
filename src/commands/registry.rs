@@ -11,7 +11,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, ProjectConfig};
+use specify::{Error, ProjectConfig, is_kebab};
 use specify_change::Plan;
 use specify_registry::{Registry, RegistryProject};
 
@@ -181,7 +181,7 @@ fn add_to_registry(
     let registry_path = Registry::path(&ctx.project_dir);
     let hub_mode = ctx.config.hub;
 
-    if !is_kebab_case(&name) {
+    if !is_kebab(&name) {
         return Err(Error::Config(format!(
             "registry add: project name `{name}` must be kebab-case \
              (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
@@ -399,25 +399,6 @@ fn print_registry_text(registry: &Registry, registry_path: &Path) {
         println!("    url: {}", project.url);
         println!("    schema: {}", project.schema);
     }
-}
-
-/// Local kebab-case predicate. Mirrors the schema crate's invariant
-/// (`registry::is_kebab_case`) and `specify_slice::is_valid_kebab_name`
-/// — duplicated rather than re-exported because the schema crate keeps
-/// the helper module-private and the change crate's diagnostic hard-codes
-/// "change name" in the error message, which would confuse operators
-/// hitting it via `specify registry add`.
-fn is_kebab_case(s: &str) -> bool {
-    if s.is_empty() {
-        return false;
-    }
-    if s.starts_with('-') || s.ends_with('-') {
-        return false;
-    }
-    if s.contains("--") {
-        return false;
-    }
-    s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 #[cfg(test)]
@@ -931,15 +912,4 @@ mod tests {
         assert_ok(remove_from_registry(&ctx, "alpha".to_string()), "remove alpha");
     }
 
-    // ---------- low-level invariants ----------
-
-    #[test]
-    fn is_kebab_case_local_matches_schema_invariant() {
-        for good in ["alpha", "alpha-beta", "a1", "alpha-1-beta", "a-b-c"] {
-            assert!(is_kebab_case(good), "expected `{good}` to pass");
-        }
-        for bad in ["", "-leading", "trailing-", "double--hyphen", "Upper", "snake_case"] {
-            assert!(!is_kebab_case(bad), "expected `{bad}` to fail");
-        }
-    }
 }

@@ -14,6 +14,9 @@ use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
+mod common;
+use common::copy_dir;
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -25,20 +28,6 @@ fn specify() -> Command {
 fn parse_json(stdout: &[u8]) -> Value {
     let text = std::str::from_utf8(stdout).expect("utf8 stdout");
     serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
-}
-
-fn copy_dir(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create_dir_all dst");
-    for entry in fs::read_dir(src).expect("read_dir src") {
-        let entry = entry.expect("dir entry");
-        let kind = entry.file_type().expect("file_type");
-        let target = dst.join(entry.file_name());
-        if kind.is_dir() {
-            copy_dir(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), &target).expect("copy");
-        }
-    }
 }
 
 struct Project {
@@ -93,7 +82,7 @@ fn capability_pipeline_define_lists_omnia_define_briefs_in_order() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["phase"], "define");
     assert_eq!(value["slice"], Value::Null);
 
@@ -245,7 +234,7 @@ fn capability_check_succeeds_on_omnia_capability_yaml() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["passed"], true, "omnia fixture must validate clean: {value}");
 }
 
@@ -297,7 +286,7 @@ fn capability_check_refuses_legacy_schema_yaml_with_schema_became_capability() {
     assert_eq!(code, 1, "schema-became-capability must exit non-zero (1)");
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(
         value["error"], "schema-became-capability",
         "JSON envelope must carry the stable kebab-case error code, got: {value}"

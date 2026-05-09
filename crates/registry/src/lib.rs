@@ -34,4 +34,3 @@ pub mod workspace;
 
 pub use gitignore::ensure_specify_gitignore_entries;
 pub use registry::{ContractRoles, Registry, RegistryProject};
-pub use validate::is_kebab_case;

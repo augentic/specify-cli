@@ -4,9 +4,9 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use serde::Serialize;
+use specify_error::is_kebab;
 
 use crate::registry::RegistryProject;
-use crate::validate::is_kebab_case;
 
 const ORIGIN_HEAD_UNRESOLVED: &str = "origin-head-unresolved";
 
@@ -235,7 +235,7 @@ fn target_branch(
     project: &RegistryProject, change_name: &str,
 ) -> Result<String, BranchPreparationDiagnostic> {
     let branch = format!("specify/{change_name}");
-    if is_kebab_case(change_name) && !change_name.contains('/') {
+    if is_kebab(change_name) && !change_name.contains('/') {
         return Ok(branch);
     }
     Err(BranchPreparationDiagnostic::new(

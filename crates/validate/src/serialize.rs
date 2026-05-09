@@ -1,20 +1,14 @@
 //! JSON serialization for [`ValidationReport`].
 //!
-//! The shape is pinned to `schema-version: 2` per RFC-2 §2 "JSON contract v2"
-//! (kebab keys everywhere) and is the source of truth for the goldens in
-//! `tests/fixtures/`. A future `schema-version: 3` would be introduced via
-//! a new serializer rather than mutating this one.
+//! Emits the report payload only; the surrounding `schema-version`
+//! envelope is added by the CLI's `emit_response`.
 
 use serde_json::{Value, json};
 use specify_capability::ValidationResult;
 
 use crate::ValidationReport;
 
-/// Serialise a [`ValidationReport`] to the canonical RFC-2 output shape.
-///
-/// The outermost object always carries `schema-version: 2`. Rule results
-/// are emitted with a lowercase `status` string (`"pass"` / `"fail"` /
-/// `"deferred"`) matching the RFC-1 examples.
+/// Serialise a [`ValidationReport`] as the canonical kebab-case payload.
 pub fn serialize_report(report: &ValidationReport) -> Value {
     let mut brief_results = serde_json::Map::new();
     for (key, results) in &report.brief_results {
@@ -25,7 +19,6 @@ pub fn serialize_report(report: &ValidationReport) -> Value {
         report.cross_checks.iter().map(validation_result_to_json).collect();
 
     json!({
-        "schema-version": 2,
         "passed": report.passed,
         "brief-results": Value::Object(brief_results),
         "cross-checks": Value::Array(cross_checks),
@@ -70,7 +63,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pass_report_schema_v2() {
+    fn pass_report_payload() {
         let mut brief_results: BTreeMap<String, Vec<ValidationResult>> = BTreeMap::new();
         brief_results.insert(
             "proposal".to_string(),
@@ -85,7 +78,6 @@ mod tests {
             passed: true,
         };
         let value = serialize_report(&report);
-        assert_eq!(value["schema-version"], 2);
         assert_eq!(value["passed"], true);
         assert_eq!(value["brief-results"]["proposal"][0]["status"], "pass");
     }

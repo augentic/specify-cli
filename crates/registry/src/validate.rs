@@ -13,7 +13,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use specify_error::Error;
+use specify_error::{Error, is_kebab};
 
 use crate::registry::Registry;
 
@@ -42,7 +42,7 @@ impl Registry {
             if project.name.is_empty() {
                 return Err(Error::Config(format!("registry.yaml: projects[{idx}].name is empty")));
             }
-            if !is_kebab_case(&project.name) {
+            if !is_kebab(&project.name) {
                 return Err(Error::Config(format!(
                     "registry.yaml: projects[{idx}].name `{}` must be kebab-case \
                      (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)",
@@ -239,23 +239,4 @@ fn looks_like_windows_drive_path(url: &str) -> bool {
         return false;
     };
     c.is_ascii_alphabetic() && chars.next() == Some(':')
-}
-
-/// Kebab-case predicate shared within `specify-registry`.
-///
-/// Identical contract to `specify_slice::actions::validate_name`;
-/// duplicated because `specify-registry` is upstream of `specify-slice`
-/// in the crate dep graph and cannot call through.
-#[must_use]
-pub fn is_kebab_case(s: &str) -> bool {
-    if s.is_empty() {
-        return false;
-    }
-    if s.starts_with('-') || s.ends_with('-') {
-        return false;
-    }
-    if s.contains("--") {
-        return false;
-    }
-    s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }

@@ -123,7 +123,7 @@ fn init_json_format_has_stable_shape() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["schema-name"], "omnia");
     assert!(value["config-path"].is_string());
     let config_path = value["config-path"].as_str().unwrap();
@@ -238,7 +238,7 @@ fn init_json_with_no_args_errors_with_stable_code() {
 
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("stdout is JSON");
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["error"], "init-requires-capability-or-hub");
     assert_eq!(value["exit-code"], 1);
     let message = value["message"].as_str().expect("message string");
@@ -352,7 +352,7 @@ fn version_too_old_exits_three_with_json_envelope() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["error"], "specify-version-too-old");
     assert_eq!(value["exit-code"], 3);
 }
@@ -577,7 +577,7 @@ fn registry_add_creates_entry_and_round_trips_through_show() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["ok"], true);
     assert_eq!(value["added"]["name"], "alpha");
     assert_eq!(value["added"]["url"], "git@github.com:augentic/alpha.git");
@@ -1336,7 +1336,7 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["schema-version"], 3);
     assert_eq!(value["ok"], false, "errors must mark ok=false: {value}");
 
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");

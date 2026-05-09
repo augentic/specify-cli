@@ -25,7 +25,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use specify_error::Error;
+use specify_error::{Error, is_kebab};
 
 use crate::brief::split_on_closing_delimiter;
 
@@ -45,25 +45,6 @@ pub const CHANGE_BRIEF_FILENAME: &str = "change.md";
 /// [`Error::ChangeBriefBecameChangeMd`] pointing the operator at the
 /// migration verb.
 pub const LEGACY_CHANGE_BRIEF_FILENAME: &str = "initiative.md";
-
-/// Kebab-case predicate. Duplicates the helper that lives in
-/// `specify_registry::validate::is_kebab_case` because RFC-13 chunk 2.1
-/// extracted registry parsing into its own crate; depending on
-/// `specify-registry` from here would re-introduce the
-/// "platform components are not capabilities" cycle (RFC-13 §Migration
-/// invariant 4). Kept private and inlined.
-fn is_kebab_case(s: &str) -> bool {
-    if s.is_empty() {
-        return false;
-    }
-    if s.starts_with('-') || s.ends_with('-') {
-        return false;
-    }
-    if s.contains("--") {
-        return false;
-    }
-    s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-}
 
 /// In-memory representation of `change.md` (at the repo root).
 ///
@@ -222,7 +203,7 @@ impl ChangeBrief {
         if self.frontmatter.name.is_empty() {
             return Err(Error::Config(format!("{CHANGE_BRIEF_FILENAME}: name is empty")));
         }
-        if !is_kebab_case(&self.frontmatter.name) {
+        if !is_kebab(&self.frontmatter.name) {
             return Err(Error::Config(format!(
                 "{CHANGE_BRIEF_FILENAME}: name `{}` must be kebab-case \
                  (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)",

@@ -17,7 +17,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
-use specify_error::Error;
+use specify_error::{Error, is_kebab};
 
 use crate::{
     LifecycleStatus, Outcome, Phase, PhaseOutcome, Rfc3339Stamp, SliceMetadata, SpecType,
@@ -74,48 +74,21 @@ pub struct Overlap {
 
 /// Validate a kebab-case slice name.
 ///
-/// Names must be non-empty, contain only `[a-z0-9-]`, and may not start,
-/// end, or contain consecutive hyphens. Identical contract to the
-/// `specify-slice` naming rules in `rfcs/rfc-1-cli.md`.
-///
-/// The same contract is expressed as a JSON Schema regex at
-/// `schemas/plan/plan.schema.json` `$defs.kebabName.pattern`
-/// (currently `^[a-z0-9]+(-[a-z0-9]+)*$`). Any change to the
-/// acceptance rules here MUST be mirrored in that regex — and in the
-/// copy in the `augentic/specify` repo — so that `specify plan
-/// validate` and `validate_name` never disagree on a name.
+/// Mirrors `schemas/plan/plan.schema.json` `$defs.kebabName.pattern`
+/// (`^[a-z0-9]+(-[a-z0-9]+)*$`).
 ///
 /// # Errors
 ///
 /// Returns `Error::InvalidName` if the name is not valid kebab-case.
 pub fn validate_name(name: &str) -> Result<(), Error> {
-    if name.is_empty() {
-        return Err(Error::InvalidName("slice name cannot be empty".to_string()));
+    if is_kebab(name) {
+        Ok(())
+    } else {
+        Err(Error::InvalidName(format!(
+            "slice name `{name}` must be kebab-case (lowercase ascii, digits, single hyphens; \
+             no leading/trailing/doubled hyphens)"
+        )))
     }
-    if name.starts_with('-') || name.ends_with('-') {
-        return Err(Error::InvalidName(format!(
-            "slice name `{name}` cannot start or end with a hyphen"
-        )));
-    }
-    if name.contains("--") {
-        return Err(Error::InvalidName(format!(
-            "slice name `{name}` cannot contain consecutive hyphens"
-        )));
-    }
-    for c in name.chars() {
-        if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-' {
-            return Err(Error::InvalidName(format!(
-                "slice name `{name}` must be kebab-case (lowercase ascii, digits, hyphens only)"
-            )));
-        }
-    }
-    Ok(())
-}
-
-/// Returns `true` if `s` is a valid kebab-case name per Specify naming rules.
-#[must_use]
-pub fn is_valid_kebab_name(s: &str) -> bool {
-    validate_name(s).is_ok()
 }
 
 /// Create `<slices_dir>/<name>/` and seed an initial `.metadata.yaml`.
@@ -467,7 +440,7 @@ pub fn drop(
 /// the same helper.
 #[must_use]
 pub fn format_rfc3339(now: DateTime<Utc>) -> Rfc3339Stamp {
-    Rfc3339Stamp::from_raw(now.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+    Rfc3339Stamp::new(now.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
 /// `EXDEV` ("cross-device") errno. The `std::fs::rename` fallback to

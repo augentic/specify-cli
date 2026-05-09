@@ -11,7 +11,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{ChangeBrief, Error, is_valid_kebab_name};
+use specify::{ChangeBrief, Error, is_kebab};
 use specify_change::{
     FinalizeError, FinalizeInputs, FinalizeOutcome, FinalizeProjectResult, FinalizeSummaryCounts,
     RealFinalizeProbe, load_plan_or_refuse, run_finalize,
@@ -38,7 +38,7 @@ pub fn run_change(ctx: &CommandContext, action: ChangeAction) -> Result<CliResul
 }
 
 fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
-    if !is_valid_kebab_name(&name) {
+    if !is_kebab(&name) {
         return Err(Error::Config(format!(
             "change brief: name `{name}` must be kebab-case \
              (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
