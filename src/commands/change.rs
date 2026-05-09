@@ -44,9 +44,9 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
 
     // RFC-13 chunk 3.7 hard cut-over: when only the pre-Phase-3.7
     // `initiative.md` exists, refuse to mint a fresh `change.md`
-    // alongside it. The operator must run `specify migrate change-noun`
-    // first; otherwise both filenames would coexist on disk and
-    // confuse every read-side helper.
+    // alongside it. The operator must rename the legacy brief first;
+    // otherwise both filenames would coexist on disk and confuse every
+    // read-side helper.
     ChangeBrief::refuse_legacy(&ctx.project_dir)?;
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     if brief_path.exists() {
@@ -108,10 +108,8 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
 }
 
 fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
-    // RFC-13 chunk 3.7: hard cut-over. If the operator has not yet run
-    // `specify migrate change-noun`, refuse loudly with the diagnostic
-    // pointing at the migration verb rather than silently reading the
-    // legacy filename.
+    // RFC-13 chunk 3.7: hard cut-over. If the operator still has the
+    // legacy filename, refuse loudly rather than silently reading it.
     ChangeBrief::refuse_legacy(&ctx.project_dir)?;
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     match ChangeBrief::load(&ctx.project_dir)? {
@@ -188,8 +186,7 @@ fn print_change_brief_text(brief: &ChangeBrief, brief_path: &Path) {
 fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResult, Error> {
     // RFC-13 chunk 3.7: refuse to finalize when the project still
     // carries the pre-Phase-3.7 `initiative.md` filename. Operators
-    // must run `specify migrate change-noun` first so the archive
-    // co-moves the correct file.
+    // must rename it first so the archive co-moves the correct file.
     ChangeBrief::refuse_legacy(&ctx.project_dir)?;
     let plan_or_refusal = finalize::load_plan(&ctx.project_dir)?;
     let plan = match plan_or_refusal {

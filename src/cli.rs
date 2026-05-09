@@ -287,7 +287,7 @@ pub enum PlanAction {
         force: bool,
     },
     /// Driver-lock primitives — `.specify/plan.lock` PID stamp used by
-    /// `/spec:execute` to serialise concurrent drivers.
+    /// `/change:execute` to serialise concurrent drivers.
     Lock {
         #[command(subcommand)]
         action: LockAction,
@@ -402,19 +402,6 @@ pub enum MigrateAction {
     /// Refuses to clobber existing destinations or run inside a workspace
     /// clone.
     V2Layout {
-        #[arg(long)]
-        dry_run: bool,
-    },
-    /// Rename `.specify/changes/` to `.specify/slices/` and rewrite
-    /// `$CHANGE_DIR` to `$SLICE_DIR` in vendored skill markdown. Refuses
-    /// when any slice is non-terminal or both directories already exist.
-    SliceLayout {
-        #[arg(long)]
-        dry_run: bool,
-    },
-    /// Rename `initiative.md` to `change.md` at the repo root. Refuses
-    /// when both files exist.
-    ChangeNoun {
         #[arg(long)]
         dry_run: bool,
     },

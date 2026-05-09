@@ -82,14 +82,6 @@ pub fn run(cli: Cli) -> CliResult {
                 let cwd = std::env::current_dir().map_err(Error::Io)?;
                 migrate::v2_layout(cli.format, &cwd, dry_run)
             }),
-            MigrateAction::SliceLayout { dry_run } => bare(cli.format, || {
-                let cwd = std::env::current_dir().map_err(Error::Io)?;
-                migrate::slice_layout(cli.format, &cwd, dry_run)
-            }),
-            MigrateAction::ChangeNoun { dry_run } => bare(cli.format, || {
-                let cwd = std::env::current_dir().map_err(Error::Io)?;
-                migrate::change_noun(cli.format, &cwd, dry_run)
-            }),
         },
         Commands::Completions { shell } => {
             let mut cmd = <crate::cli::Cli as clap::CommandFactory>::command();

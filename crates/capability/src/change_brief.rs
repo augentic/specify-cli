@@ -11,8 +11,8 @@
 //! body parsing, but today's consumers treat the body as prose.
 //!
 //! Pre-Phase-3.7 projects still carry the brief as `initiative.md`.
-//! `specify migrate change-noun` is the operator path that renames it
-//! into the post-RFC `change.md` location at the repo root.
+//! Current releases require operators to rename it to the post-RFC
+//! `change.md` location at the repo root before running change verbs.
 //! [`ChangeBrief::path`] returns the post-rename filename;
 //! [`ChangeBrief::legacy_path`] returns the pre-rename filename so
 //! migrators and the "found legacy file" diagnostic
@@ -31,19 +31,14 @@ use crate::brief::split_on_closing_delimiter;
 
 /// Filename of the post-RFC-13 operator brief at the repo root.
 ///
-/// Written by `specify change create <name>` and by
-/// `specify migrate change-noun` (the chunk 3.7 migrator that renames
-/// pre-Phase-3.7 [`LEGACY_FILENAME`] in place).
+/// Written by `specify change create <name>`.
 pub const FILENAME: &str = "change.md";
 
 /// Pre-Phase-3.7 filename of the operator brief at the repo root.
 ///
-/// Loaded only by the `specify migrate change-noun` migrator when
-/// renaming the file in place; the post-RFC CLI surface
-/// (`specify change {create, show, finalize}` and `specify change
-/// plan archive`) refuses to read this filename and emits
-/// [`Error::LegacyChangeBrief`] pointing the operator at the
-/// migration verb.
+/// Retained so the post-RFC CLI surface (`specify change {create,
+/// show, finalize}` and `specify change plan archive`) can refuse to
+/// read this filename and emit [`Error::LegacyChangeBrief`].
 pub const LEGACY_FILENAME: &str = "initiative.md";
 
 /// In-memory representation of `change.md` (at the repo root).
@@ -103,11 +98,9 @@ impl ChangeBrief {
     }
 
     /// Absolute path to `<project_dir>/initiative.md` — the
-    /// pre-Phase-3.7 filename. Used by `specify migrate change-noun`
-    /// to detect the legacy file before renaming, and by every
-    /// `specify change *` verb that wants to surface the
-    /// [`Error::LegacyChangeBrief`] diagnostic when a project
-    /// has not run the migration yet.
+    /// pre-Phase-3.7 filename. Used by every `specify change *` verb
+    /// that wants to surface the [`Error::LegacyChangeBrief`]
+    /// diagnostic when a project has not renamed the brief yet.
     #[must_use]
     pub fn legacy_path(project_dir: &Path) -> PathBuf {
         project_dir.join(LEGACY_FILENAME)
@@ -119,11 +112,9 @@ impl ChangeBrief {
     /// `<project_dir>/initiative.md` exists and `<project_dir>/change.md`
     /// does not — the caller (`specify change show` and
     /// `specify change finalize`) surfaces the diagnostic and points the
-    /// operator at `specify migrate change-noun`. Returns `Ok(())` when
+    /// operator at the manual rename to `change.md`. Returns `Ok(())` when
     /// the project is on the post-Phase-3.7 layout, when the brief is
-    /// absent altogether, or when both filenames are present (the
-    /// migration verb resolves that case via
-    /// [`Error::ChangeNounCollision`]).
+    /// absent altogether, or when both filenames are present.
     ///
     /// # Errors
     ///

@@ -1438,11 +1438,10 @@ fn change_brief_refuse_legacy_errors_when_only_legacy_present() {
 
 #[test]
 fn change_brief_refuse_legacy_passes_when_both_present() {
-    // Both files present is a [`Error::ChangeNounCollision`]
-    // condition resolved by the migration verb, not by the read-side
-    // helper. `refuse_legacy` should silently allow the call so
-    // callers like `specify change show` can still load `change.md`
-    // (the modern, canonical file).
+    // Both files present is an operator cleanup condition, not a
+    // read-side helper concern. `refuse_legacy` should silently allow
+    // the call so callers like `specify change show` can still load
+    // `change.md` (the modern, canonical file).
     let tmp = TempDir::new().unwrap();
     std::fs::write(ChangeBrief::path(tmp.path()), "---\nname: x\n---\n").unwrap();
     std::fs::write(ChangeBrief::legacy_path(tmp.path()), "---\nname: y\n---\n").unwrap();

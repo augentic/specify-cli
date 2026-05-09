@@ -164,9 +164,9 @@ pub enum Error {
         entries: Vec<String>,
     },
 
-    /// Another live `/spec:execute` driver holds `.specify/plan.lock`.
+    /// Another live `/change:execute` driver holds `.specify/plan.lock`.
     /// Stale locks (dead PID / malformed content) are reclaimed silently.
-    #[error("another /spec:execute driver is running (pid {pid}); refusing to proceed")]
+    #[error("another /change:execute driver is running (pid {pid}); refusing to proceed")]
     DriverBusy {
         /// PID of the process that holds the lock.
         pid: u32,
@@ -200,63 +200,12 @@ pub enum Error {
         paths: Vec<String>,
     },
 
-    /// `specify migrate slice-layout` refused because at least one slice
-    /// under `.specify/changes/<name>/` is non-terminal. Pairs are sorted
-    /// by name for stable diagnostics.
-    #[error(
-        "slice-migration-blocked-by-in-progress: {} slice(s) carry an unfinished phase. \
-         Finish or drop them before migrating: {}. \
-         Run `specify slice drop <name>` to discard each, or complete the slice loop \
-         (`specify slice merge run <name>` once it reaches `complete`).",
-        in_progress.len(),
-        format_in_progress(in_progress)
-    )]
-    SliceMigrationInProgress {
-        /// `(slice_name, lifecycle_status)` for each non-terminal
-        /// slice the detector found, sorted by slice name.
-        in_progress: Vec<(String, String)>,
-    },
-
-    /// `specify migrate slice-layout` refused because both source and
-    /// destination directories exist. Operator must reconcile manually.
-    #[error(
-        "slice-migration-target-exists: both `{}` and `{}` exist; the migration cannot proceed \
-         while the destination is non-empty. Inspect both directories, move any needed contents \
-         out of `.specify/slices/`, then remove the empty `.specify/slices/` and re-run \
-         `specify migrate slice-layout`.",
-        changes.display(),
-        slices.display()
-    )]
-    SliceMigrationCollision {
-        /// Path to the v1 source directory (`.specify/changes/`).
-        changes: std::path::PathBuf,
-        /// Path to the post-migration destination (`.specify/slices/`).
-        slices: std::path::PathBuf,
-    },
-
-    /// `specify migrate change-noun` refused because both `initiative.md`
-    /// and `change.md` exist at the repo root. Operator must reconcile.
-    #[error(
-        "change-noun-migration-target-exists: both `{}` and `{}` exist at the repo root; \
-         the migration cannot proceed while the destination is already in place. Inspect \
-         both files, move the canonical content into `change.md`, remove the legacy \
-         `initiative.md`, and re-run `specify migrate change-noun`.",
-        initiative.display(),
-        change.display()
-    )]
-    ChangeNounCollision {
-        /// Path to the pre-Phase-3.7 source file (`initiative.md`).
-        initiative: std::path::PathBuf,
-        /// Path to the post-migration destination file (`change.md`).
-        change: std::path::PathBuf,
-    },
-
     /// Legacy `initiative.md` found without a `change.md` companion.
-    /// Operator must run `specify migrate change-noun`.
+    /// Operator must rename the file to `change.md`.
     #[error(
         "change-brief-became-change-md: found legacy `initiative.md` at {} but expected \
          `change.md`. RFC-13 renamed the umbrella brief filename: `initiative.md` is now \
-         `change.md`. Run `specify migrate change-noun` to migrate. \
+         `change.md`. Rename the file to `change.md` before continuing. \
          See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
         path.display()
     )]
@@ -355,9 +304,6 @@ impl Error {
             Self::SliceNotFound { .. } => "slice-not-found",
             Self::RegistryMissing => "registry-missing",
             Self::LegacyLayout { .. } => "legacy-layout",
-            Self::SliceMigrationInProgress { .. } => "slice-migration-blocked-by-in-progress",
-            Self::SliceMigrationCollision { .. } => "slice-migration-target-exists",
-            Self::ChangeNounCollision { .. } => "change-noun-migration-target-exists",
             Self::LegacyChangeBrief { .. } => "change-brief-became-change-md",
             Self::LegacyCapabilityField { .. } => "schema-became-capability",
             Self::InitNeedsCapability => "init-requires-capability-or-hub",
@@ -371,10 +317,6 @@ impl Error {
             Self::YamlSer(_) => "yaml-ser",
         }
     }
-}
-
-fn format_in_progress(items: &[(String, String)]) -> String {
-    items.iter().map(|(name, status)| format!("{name} ({status})")).collect::<Vec<_>>().join(", ")
 }
 
 #[cfg(test)]
@@ -481,7 +423,7 @@ mod tests {
         let err = Error::DriverBusy { pid: 4242 };
         assert_eq!(
             err.to_string(),
-            "another /spec:execute driver is running (pid 4242); refusing to proceed"
+            "another /change:execute driver is running (pid 4242); refusing to proceed"
         );
     }
 
@@ -583,72 +525,6 @@ mod tests {
     }
 
     #[test]
-    fn slice_migration_blocked_by_in_progress_display() {
-        let err = Error::SliceMigrationInProgress {
-            in_progress: vec![
-                ("demo".to_string(), "defining".to_string()),
-                ("other-thing".to_string(), "building".to_string()),
-            ],
-        };
-        let s = err.to_string();
-        assert!(
-            s.starts_with("slice-migration-blocked-by-in-progress:"),
-            "diagnostic must carry the kebab-case prefix, got: {s}"
-        );
-        assert!(s.contains("2 slice(s)"), "diagnostic must surface the count, got: {s}");
-        assert!(
-            s.contains("demo (defining)"),
-            "diagnostic must surface the (name, status) pair, got: {s}"
-        );
-        assert!(
-            s.contains("other-thing (building)"),
-            "diagnostic must surface every offender, got: {s}"
-        );
-        assert!(
-            s.contains("specify slice drop"),
-            "diagnostic must point operator at the recovery verb, got: {s}"
-        );
-        assert!(
-            s.contains("specify slice merge run"),
-            "diagnostic must mention the canonical completion verb, got: {s}"
-        );
-    }
-
-    #[test]
-    fn slice_migration_blocked_singular_form_round_trips() {
-        // Single-offender variant: the same diagnostic must still
-        // render cleanly so the operator's first read names the
-        // problematic slice.
-        let err = Error::SliceMigrationInProgress {
-            in_progress: vec![("demo".to_string(), "defining".to_string())],
-        };
-        let s = err.to_string();
-        assert!(s.contains("1 slice(s)"), "diagnostic must surface the count, got: {s}");
-        assert!(s.contains("demo (defining)"), "diagnostic must surface the offender, got: {s}");
-    }
-
-    #[test]
-    fn change_noun_migration_target_exists_display() {
-        let err = Error::ChangeNounCollision {
-            initiative: std::path::PathBuf::from("/proj/initiative.md"),
-            change: std::path::PathBuf::from("/proj/change.md"),
-        };
-        let s = err.to_string();
-        assert!(
-            s.starts_with("change-noun-migration-target-exists:"),
-            "diagnostic must carry the kebab-case prefix, got: {s}"
-        );
-        assert!(
-            s.contains("/proj/initiative.md") && s.contains("/proj/change.md"),
-            "diagnostic must surface both colliding paths, got: {s}"
-        );
-        assert!(
-            s.contains("specify migrate change-noun"),
-            "diagnostic must reference the migration verb, got: {s}"
-        );
-    }
-
-    #[test]
     fn change_brief_became_change_md_display() {
         let err = Error::LegacyChangeBrief {
             path: std::path::PathBuf::from("/proj/initiative.md"),
@@ -664,33 +540,12 @@ mod tests {
         );
         assert!(s.contains("change.md"), "diagnostic must name the post-rename filename, got: {s}");
         assert!(
-            s.contains("specify migrate change-noun"),
-            "diagnostic must point operator at the migration verb, got: {s}"
+            s.contains("Rename the file to `change.md`"),
+            "diagnostic must point operator at the manual rename, got: {s}"
         );
         assert!(
             s.contains("rfcs/rfc-13-extensibility.md#migration"),
             "diagnostic must link the RFC-13 §Migration anchor, got: {s}"
-        );
-    }
-
-    #[test]
-    fn slice_migration_target_exists_display() {
-        let err = Error::SliceMigrationCollision {
-            changes: std::path::PathBuf::from("/proj/.specify/changes"),
-            slices: std::path::PathBuf::from("/proj/.specify/slices"),
-        };
-        let s = err.to_string();
-        assert!(
-            s.starts_with("slice-migration-target-exists:"),
-            "diagnostic must carry the kebab-case prefix, got: {s}"
-        );
-        assert!(
-            s.contains("/proj/.specify/changes") && s.contains("/proj/.specify/slices"),
-            "diagnostic must surface both colliding paths, got: {s}"
-        );
-        assert!(
-            s.contains("specify migrate slice-layout"),
-            "diagnostic must reference the migration verb, got: {s}"
         );
     }
 

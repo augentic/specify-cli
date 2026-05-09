@@ -462,7 +462,7 @@ fn outcome_set(
 /// and `--rationale`; `--proposed-description` is optional. When
 /// `--summary` is omitted for the new variant the CLI synthesises a
 /// canonical `registry-amendment-required: <name>` summary so
-/// `/spec:execute` can carry the `<name>` into the journal entry's
+/// `/change:execute` can carry the `<name>` into the journal entry's
 /// `cross-project-warning:`-style prefix.
 fn build_outcome(args: OutcomeSetArgs) -> Result<(Outcome, String), Error> {
     let OutcomeSetArgs {
@@ -565,7 +565,7 @@ const fn kind_str(kind: OutcomeKind) -> &'static str {
 /// Report the stamped `.metadata.yaml.outcome` for `name`.
 ///
 /// Symmetric with [`outcome_set`] (the writer): this is
-/// the read verb `/spec:execute` consumes after a phase returns.
+/// the read verb `/change:execute` consumes after a phase returns.
 /// Emits `"outcome": null` when the slice exists but nothing has
 /// been stamped; exits `CliResult::Success` in both cases — an unstamped
 /// slice is not an error, just an absence.
@@ -624,7 +624,7 @@ fn outcome_show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
 /// the CLI shape is flatter — `outcome.outcome` stays a kebab-case
 /// string and the structured payload is hoisted into a sibling
 /// `outcome.proposal` object so existing consumers that only read
-/// `.outcome.outcome` (the historical contract `/spec:execute` pins)
+/// `.outcome.outcome` (the historical contract `/change:execute` pins)
 /// keep working unchanged.
 fn emit_outcome_show_json(name: String, metadata: &SliceMetadata) -> Result<(), Error> {
     #[derive(Serialize)]

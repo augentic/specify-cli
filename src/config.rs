@@ -151,10 +151,8 @@ impl ProjectConfig {
 
     /// Absolute path to `<project_dir>/.specify/slices/`.
     ///
-    /// Pre-RFC-13 projects used `.specify/changes/`; the on-disk
-    /// migration to the new name lives at `specify migrate
-    /// slice-layout` (RFC-13 chunk 3.6). Fresh `specify init` writes
-    /// here from chunk 3.3 onward.
+    /// Pre-RFC-13 projects used `.specify/changes/`; fresh
+    /// `specify init` writes here from chunk 3.3 onward.
     #[must_use]
     pub fn slices_dir(project_dir: &Path) -> PathBuf {
         Self::specify_dir(project_dir).join(specify_slice::SLICES_DIR_NAME)
@@ -175,11 +173,10 @@ impl ProjectConfig {
     }
 
     /// Absolute path to `<project_dir>/initiative.md` — the
-    /// pre-Phase-3.7 operator brief filename. Retained so the
-    /// v1-layout detector and `specify migrate change-noun` migrator
-    /// have a single source of truth for the legacy basename;
-    /// post-RFC-13-chunk-3.7 callers should use [`Self::change_brief_path`]
-    /// instead.
+    /// pre-Phase-3.7 operator brief filename. Retained so the v1-layout
+    /// detector has a single source of truth for the legacy basename;
+    /// post-RFC-13-chunk-3.7 callers should use
+    /// [`Self::change_brief_path`] instead.
     #[must_use]
     pub fn initiative_path(project_dir: &Path) -> PathBuf {
         project_dir.join(specify_capability::LEGACY_CHANGE_BRIEF_FILENAME)

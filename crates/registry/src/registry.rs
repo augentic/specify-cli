@@ -4,7 +4,7 @@
 //! `registry.yaml` (at the repo root) enumerates the repos that
 //! comprise the platform and the schema each of them uses. The file
 //! is optional: an absent or single-entry registry is equivalent to
-//! single-repo mode. Multi-entry registries activate the `/spec:plan`
+//! single-repo mode. Multi-entry registries activate the `/change:plan`
 //! *sync peers* phase — but that behaviour lands in C28/C30; this
 //! module only handles shape parsing.
 //!
@@ -32,7 +32,7 @@ pub struct Registry {
     /// with an actionable diagnostic.
     pub version: u32,
     /// Platform catalogue. Empty or single-entry is equivalent to
-    /// "single-repo mode"; multi-entry activates the `/spec:plan`
+    /// "single-repo mode"; multi-entry activates the `/change:plan`
     /// *sync peers* phase (C28/C30).
     #[serde(default)]
     pub projects: Vec<RegistryProject>,
@@ -123,7 +123,7 @@ impl Registry {
     /// `true` when the registry declares at most one project.
     ///
     /// Absent registry + single-entry registry behave identically in
-    /// the `/spec:plan` flow (RFC-3a §*When are `registry.yaml` and
+    /// the `/change:plan` flow (RFC-3a §*When are `registry.yaml` and
     /// `initiative.md` required?*). Useful to C28/C30 where the
     /// *sync peers* phase is gated on `len(projects) > 1`.
     #[must_use]

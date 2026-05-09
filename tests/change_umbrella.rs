@@ -1,7 +1,7 @@
 //! Integration tests for `specify change *` (the umbrella orchestration
 //! surface) and `specify registry *` — `change` owns the operator brief
 //! at `change.md` (renamed from the pre-Phase-3.7 `initiative.md` by
-//! `specify migrate change-noun`) plus the executable plan at
+//! the RFC-13 change brief rename plus the executable plan at
 //! `plan.yaml`, and `registry` covers `registry.yaml`. All three
 //! platform-component artifacts live at the repo root per RFC-9 §1B.
 //!
@@ -2157,7 +2157,7 @@ inputs: []
     /// exists, `specify change create` refuses with the loud
     /// `change-brief-became-change-md` diagnostic rather than silently
     /// minting a `change.md` alongside the legacy file. The operator
-    /// path is `specify migrate change-noun`.
+    /// path is to rename the file to `change.md`.
     #[test]
     fn change_create_refuses_when_only_legacy_brief_present() {
         let project = Project::init();
@@ -2220,7 +2220,7 @@ inputs: []
     /// RFC-13 chunk 3.7: when only the pre-Phase-3.7 `initiative.md`
     /// exists, `specify change show` refuses with the loud
     /// `change-brief-became-change-md` diagnostic and points the
-    /// operator at `specify migrate change-noun`.
+    /// operator at the manual rename to `change.md`.
     #[test]
     fn change_show_refuses_when_only_legacy_brief_present() {
         let project = Project::init();
@@ -2235,7 +2235,7 @@ inputs: []
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
         assert_eq!(actual["error"], "change-brief-became-change-md");
         let msg = actual["message"].as_str().expect("message string");
-        assert!(msg.contains("specify migrate change-noun"), "msg: {msg}");
+        assert!(msg.contains("Rename the file to `change.md`"), "msg: {msg}");
         assert!(msg.contains("change.md"), "msg: {msg}");
         assert!(msg.contains("initiative.md"), "msg: {msg}");
     }

@@ -179,7 +179,7 @@ pub struct Entry {
     pub sources: Vec<String>,
     /// Baseline paths relevant to this change, relative to `.specify/`.
     /// Briefs use these as a focus hint when scanning baseline directories.
-    /// Populated by `/spec:plan` or manually via `specify plan add --context`.
+    /// Populated by `/change:plan` or manually via `specify change plan add --context`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub context: Vec<String>,
     /// Free-form human-readable description.
