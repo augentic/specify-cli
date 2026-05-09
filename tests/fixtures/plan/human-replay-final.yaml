@@ -3,7 +3,7 @@ sources: {}
 changes:
 - name: user-registration
   project: default
-  schema: null
+  capability: null
   status: done
   depends-on: []
   sources: []
@@ -11,7 +11,7 @@ changes:
   status-reason: null
 - name: registration-duplicate-email-crash
   project: null
-  schema: contracts@v1
+  capability: contracts@v1
   status: done
   depends-on: []
   sources: []

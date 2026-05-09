@@ -45,8 +45,8 @@ pub struct SliceMetadata {
     /// discriminant, not this field.
     #[serde(default = "default_metadata_version")]
     pub version: u32,
-    /// Capability identifier stored in this slice's on-disk `schema` field.
-    pub schema: String,
+    /// Capability identifier (e.g. `omnia@v1`).
+    pub capability: String,
     /// Current lifecycle state.
     pub status: LifecycleStatus,
     /// When the slice was created.
@@ -121,7 +121,7 @@ pub enum Outcome {
         /// `git+...`). Same shape rules as `specify registry add --url`.
         proposed_url: String,
         /// Capability identifier (e.g. `omnia@v1`).
-        proposed_schema: String,
+        proposed_capability: String,
         /// Optional human-readable description of the proposed project.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         proposed_description: Option<String>,
@@ -418,7 +418,7 @@ mod tests {
     fn sample_metadata() -> SliceMetadata {
         SliceMetadata {
             version: METADATA_VERSION,
-            schema: "omnia".to_string(),
+            capability: "omnia".to_string(),
             status: LifecycleStatus::Building,
             created_at: Some(Rfc3339Stamp::new("2024-08-01T10:00:00Z".to_string())),
             defined_at: Some(Rfc3339Stamp::new("2024-08-01T12:00:00Z".to_string())),
@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn deserializes_yaml_sample() {
-        let yaml = r#"schema: omnia
+        let yaml = r#"capability: omnia
 status: building
 created-at: "2024-08-01T10:00:00Z"
 defined-at: "2024-08-01T12:00:00Z"
@@ -509,7 +509,7 @@ touched-specs:
     fn serializes_kebab_case_and_lowercase_enums() {
         let meta = SliceMetadata {
             version: METADATA_VERSION,
-            schema: "omnia".to_string(),
+            capability: "omnia".to_string(),
             status: LifecycleStatus::Building,
             created_at: Some(Rfc3339Stamp::new("2024-08-01T10:00:00Z".to_string())),
             defined_at: None,
@@ -598,7 +598,7 @@ touched-specs:
         let proposal = Outcome::RegistryAmendmentRequired {
             proposed_name: "alpha-gateway".to_string(),
             proposed_url: "git@github.com:augentic/alpha-gateway.git".to_string(),
-            proposed_schema: "omnia@v1".to_string(),
+            proposed_capability: "omnia@v1".to_string(),
             proposed_description: None,
             rationale: "build discovered tangled code".to_string(),
         };
@@ -616,7 +616,7 @@ touched-specs:
     /// round-trip through the new reader. Resolved version is `1`.
     #[test]
     fn metadata_pre_rfc9_round_trips_with_default_version_one() {
-        let yaml = r#"schema: omnia
+        let yaml = r#"capability: omnia
 status: complete
 created-at: "2024-08-01T10:00:00Z"
 defined-at: "2024-08-01T12:00:00Z"
@@ -650,7 +650,7 @@ outcome:
             outcome: Outcome::RegistryAmendmentRequired {
                 proposed_name: "alpha-gateway".to_string(),
                 proposed_url: "git@github.com:augentic/alpha-gateway.git".to_string(),
-                proposed_schema: "omnia@v1".to_string(),
+                proposed_capability: "omnia@v1".to_string(),
                 proposed_description: Some("Gateway for alpha capability.".to_string()),
                 rationale: "build discovered tangled code requiring a split".to_string(),
             },
@@ -683,7 +683,7 @@ outcome:
             outcome: Outcome::RegistryAmendmentRequired {
                 proposed_name: "alpha-gateway".to_string(),
                 proposed_url: "git@github.com:augentic/alpha-gateway.git".to_string(),
-                proposed_schema: "omnia@v1".to_string(),
+                proposed_capability: "omnia@v1".to_string(),
                 proposed_description: Some("Gateway for alpha capability.".to_string()),
                 rationale: "build discovered tangled code requiring a split".to_string(),
             },

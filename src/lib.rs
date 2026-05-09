@@ -16,8 +16,8 @@ pub use specify_capability::{
     Capability, CapabilitySource, ChangeBrief, ChangeFrontmatter, ChangeInput, CodexApplicability,
     CodexCatalogSource, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexProvenance,
     CodexReference, CodexResolver, CodexReviewMode, CodexRule, CodexRuleFrontmatter, CodexSeverity,
-    DEFAULT_CODEX_CAPABILITY, InputKind, ManifestProbe, Phase, Pipeline, PipelineEntry,
-    PipelineView, ResolvedCapability, ResolvedCodex, ResolvedCodexRule,
+    DEFAULT_CODEX_CAPABILITY, InputKind, Phase, Pipeline, PipelineEntry, PipelineView,
+    ResolvedCapability, ResolvedCodex, ResolvedCodexRule,
 };
 pub use specify_error::{Error, ValidationStatus, ValidationSummary, is_kebab};
 pub use specify_merge::{

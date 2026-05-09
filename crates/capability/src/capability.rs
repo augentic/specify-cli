@@ -114,17 +114,6 @@ impl fmt::Display for Phase {
 /// Filename of a post-RFC-13 capability manifest.
 pub const CAPABILITY_FILENAME: &str = "capability.yaml";
 
-/// Result of [`Capability::probe_dir`]. Names whether the directory
-/// carries a `capability.yaml` manifest — without doing any I/O
-/// beyond a single `is_file` probe.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ManifestProbe {
-    /// `<dir>/capability.yaml` exists.
-    Found(PathBuf),
-    /// `<dir>/capability.yaml` is not present.
-    Missing,
-}
-
 impl Capability {
     /// Resolve `schema_value` against `project_dir`.
     ///
@@ -141,24 +130,24 @@ impl Capability {
     /// Returns an error if the operation fails.
     pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedCapability, Error> {
         let (root_dir, source) = Self::locate(schema_value, project_dir)?;
-        let manifest_path = match Self::probe_dir(&root_dir) {
-            ManifestProbe::Found(path) => path,
-            ManifestProbe::Missing => {
-                return Err(Error::SchemaResolution(format!(
-                    "no capability manifest at {} (expected `{}`)",
-                    root_dir.display(),
-                    CAPABILITY_FILENAME,
-                )));
-            }
-        };
+        let manifest_path = Self::probe_dir(&root_dir).ok_or_else(|| {
+            Error::CapabilityResolution(format!(
+                "no capability manifest at {} (expected `{}`)",
+                root_dir.display(),
+                CAPABILITY_FILENAME,
+            ))
+        })?;
         let raw = std::fs::read_to_string(&manifest_path).map_err(|err| {
-            Error::SchemaResolution(format!(
+            Error::CapabilityResolution(format!(
                 "failed to read capability manifest {}: {err}",
                 manifest_path.display()
             ))
         })?;
         let manifest: Self = serde_saphyr::from_str(&raw).map_err(|err| {
-            Error::SchemaResolution(format!("failed to parse {}: {err}", manifest_path.display()))
+            Error::CapabilityResolution(format!(
+                "failed to parse {}: {err}",
+                manifest_path.display()
+            ))
         })?;
 
         Ok(ResolvedCapability {
@@ -174,7 +163,7 @@ impl Capability {
     ///
     /// # Errors
     ///
-    /// Returns the same `SchemaResolution` errors `resolve` would.
+    /// Returns the same `CapabilityResolution` errors `resolve` would.
     pub fn locate(
         schema_value: &str, project_dir: &Path,
     ) -> Result<(PathBuf, CapabilitySource), Error> {
@@ -182,13 +171,11 @@ impl Capability {
     }
 
     /// Probe `dir` for a `capability.yaml` manifest without reading it.
+    /// Returns `Some(path)` when present, `None` otherwise.
     #[must_use]
-    pub fn probe_dir(dir: &Path) -> ManifestProbe {
+    pub fn probe_dir(dir: &Path) -> Option<PathBuf> {
         let cap = dir.join(CAPABILITY_FILENAME);
-        if cap.is_file() {
-            return ManifestProbe::Found(cap);
-        }
-        ManifestProbe::Missing
+        cap.is_file().then_some(cap)
     }
 
     /// Validate this in-memory capability against the embedded
@@ -305,7 +292,7 @@ fn locate_capability_root(
             .find(|seg| !seg.is_empty())
             .map(|seg| seg.split('@').next().unwrap_or(seg))
             .ok_or_else(|| {
-                Error::SchemaResolution(format!(
+                Error::CapabilityResolution(format!(
                     "cannot derive a capability name from URL `{schema_value}`"
                 ))
             })?;
@@ -313,14 +300,14 @@ fn locate_capability_root(
         if candidate.is_dir() {
             return Ok((candidate.clone(), CapabilitySource::Cached(candidate)));
         }
-        return Err(Error::SchemaResolution(format!(
+        return Err(Error::CapabilityResolution(format!(
             "capability `{schema_value}` not present under {}; the agent must fetch it before the CLI can resolve",
             cache_dir.display()
         )));
     }
 
     if schema_value.contains('/') {
-        return Err(Error::SchemaResolution(format!(
+        return Err(Error::CapabilityResolution(format!(
             "capability value `{schema_value}` looks like a path but is not a URL; use a bare name or a full URL"
         )));
     }
@@ -335,7 +322,7 @@ fn locate_capability_root(
         return Ok((local.clone(), CapabilitySource::Local(local)));
     }
 
-    Err(Error::SchemaResolution(format!(
+    Err(Error::CapabilityResolution(format!(
         "capability `{schema_value}` not found under {} or {}",
         cached.display(),
         local.display()

@@ -689,7 +689,7 @@ fn codex_resolver_names_missing_default_capability() {
     let err = ResolvedCodex::resolve(tmp.path(), None, true)
         .expect_err("missing default capability should fail");
 
-    let Error::SchemaResolution(detail) = err else {
+    let Error::CapabilityResolution(detail) = err else {
         panic!("expected schema resolution error");
     };
     assert!(
@@ -959,7 +959,7 @@ fn pipeline_view_load_detects_id_mismatch() {
 
     let err = PipelineView::load("demo", tmp.path()).expect_err("id mismatch detected");
     match err {
-        Error::SchemaResolution(msg) => {
+        Error::CapabilityResolution(msg) => {
             assert!(msg.contains("not-proposal"), "msg: {msg}");
             assert!(msg.contains("proposal"), "msg: {msg}");
         }
@@ -976,7 +976,7 @@ fn pipeline_view_load_rejects_needs_pointing_at_later_brief() {
 
     let err = PipelineView::load("demo", tmp.path()).expect_err("forward needs detected");
     match err {
-        Error::SchemaResolution(msg) => {
+        Error::CapabilityResolution(msg) => {
             assert!(msg.contains("proposal"), "msg: {msg}");
             assert!(msg.contains("specs"), "msg: {msg}");
             assert!(msg.contains("earlier"), "msg: {msg}");
@@ -993,7 +993,7 @@ fn pipeline_view_load_rejects_tracks_pointing_at_unknown_brief() {
 
     let err = PipelineView::load("demo", tmp.path()).expect_err("unknown tracks detected");
     match err {
-        Error::SchemaResolution(msg) => {
+        Error::CapabilityResolution(msg) => {
             assert!(msg.contains("ghost"), "msg: {msg}");
             assert!(msg.contains("build"), "msg: {msg}");
         }
@@ -1007,7 +1007,7 @@ fn schema_resolve_errors_when_url_schema_not_in_cache() {
     let err = Capability::resolve("https://example.com/schemas/nope", tmp.path())
         .expect_err("url with empty cache fails");
     match err {
-        Error::SchemaResolution(msg) => assert!(msg.contains(".cache"), "msg: {msg}"),
+        Error::CapabilityResolution(msg) => assert!(msg.contains(".cache"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }

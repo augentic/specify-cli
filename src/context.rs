@@ -36,7 +36,7 @@ impl CommandContext {
     /// Hub projects (`hub: true`, `capability:` omitted) do not declare
     /// a capability and have no pipeline to walk, so this returns a
     /// [`Error::Config`] diagnostic naming the hub case rather than a
-    /// stray `SchemaResolution` lower down the stack.
+    /// stray `CapabilityResolution` lower down the stack.
     pub fn load_pipeline(&self) -> Result<PipelineView, Error> {
         let Some(capability) = self.config.capability.as_deref() else {
             return Err(Error::Config(

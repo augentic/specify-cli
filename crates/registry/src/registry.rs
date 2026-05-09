@@ -52,8 +52,7 @@ pub struct RegistryProject {
     pub url: String,
     /// Capability identifier — e.g. `omnia@v1`. Opaque at this layer;
     /// the `name@version` suffix is **not** parsed here.
-    // TODO(RFC-13 Phase 3): rename to `capability`.
-    pub schema: String,
+    pub capability: String,
     /// Domain-level characterisation of the project (RFC-3b).
     /// Required when `len(projects) > 1`; optional for single-project registries.
     #[serde(default)]

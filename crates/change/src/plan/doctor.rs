@@ -194,9 +194,9 @@ pub struct CloneSignature {
     /// `origin` for observed remote-backed slots.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    /// Capability identifier from the registry's `schema` field.
+    /// Capability identifier from the registry's `capability` field.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema: Option<String>,
+    pub capability: Option<String>,
     /// Canonical filesystem target for symlink-backed slots.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
@@ -387,13 +387,13 @@ fn diag_slot_problem(project: &RegistryProject, problem: &SlotProblem) -> Diagno
     let expected = CloneSignature {
         slot_kind: Some(problem.expected_kind.label().to_string()),
         url: Some(project.url.clone()),
-        schema: Some(project.schema.clone()),
+        capability: Some(project.capability.clone()),
         target: problem.expected_target.as_ref().map(|path| path.display().to_string()),
     };
     let observed = CloneSignature {
         slot_kind: problem.observed_kind.map(|kind| kind.label().to_string()),
         url: problem.observed_url.clone(),
-        schema: None,
+        capability: None,
         target: problem.observed_target.as_ref().map(|path| path.display().to_string()),
     };
     let reason = if problem.reason == SlotProblemReason::RemoteOriginMismatch {
@@ -580,7 +580,7 @@ mod tests {
         Entry {
             name: name.into(),
             project: Some("default".into()),
-            schema: None,
+            capability: None,
             status,
             depends_on: vec![],
             sources: vec![],
@@ -880,7 +880,7 @@ mod tests {
         RegistryProject {
             name: name.into(),
             url: url.into(),
-            schema: schema.into(),
+            capability: schema.into(),
             description: Some(description.into()),
             contracts: None,
         }

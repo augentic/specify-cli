@@ -1,8 +1,3 @@
-#![allow(
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to command handlers."
-)]
-
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 

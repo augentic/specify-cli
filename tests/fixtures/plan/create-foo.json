@@ -5,7 +5,7 @@
     "description": null,
     "name": "foo",
     "project": null,
-    "schema": "contracts@v1",
+    "capability": "contracts@v1",
     "sources": [],
     "status": "pending",
     "status-reason": null
@@ -14,5 +14,5 @@
     "name": "demo",
     "path": "<TEMPDIR>/plan.yaml"
   },
-  "schema-version": 3
+  "schema-version": 4
 }

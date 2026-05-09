@@ -1,7 +1,6 @@
 #![allow(
-    clippy::needless_pass_by_value,
     clippy::option_if_let_else,
-    reason = "Clap dispatch hands owned subcommand values to these command handlers."
+    reason = "Inline DTOs and chained Option flows keep the workspace dispatcher readable."
 )]
 
 use std::path::PathBuf;

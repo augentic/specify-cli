@@ -1,7 +1,6 @@
 #![allow(
     clippy::items_after_statements,
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to these command handlers."
+    reason = "JSON DTOs sit close to their emission sites for readability."
 )]
 
 use serde::Serialize;
@@ -88,16 +87,16 @@ pub fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
             if slot_project_yaml.exists()
                 && let Ok(content) = std::fs::read_to_string(&slot_project_yaml)
                 && let Ok(config) = serde_saphyr::from_str::<serde_json::Value>(&content)
-                && let Some(schema_val) = config.get("schema").and_then(|v| v.as_str())
-                && schema_val != rp.schema
+                && let Some(slot_capability) = config.get("capability").and_then(|v| v.as_str())
+                && slot_capability != rp.capability
             {
                 results.push(Finding {
                     level: Severity::Warning,
-                    code: "schema-mismatch-workspace",
+                    code: "capability-mismatch-workspace",
                     message: format!(
-                        "workspace clone '{}' has schema '{}' but registry declares '{}'; \
+                        "workspace clone '{}' has capability '{}' but registry declares '{}'; \
                          the clone's project.yaml is authoritative at execution time",
-                        rp.name, schema_val, rp.schema
+                        rp.name, slot_capability, rp.capability
                     ),
                     entry: None,
                 });
@@ -146,7 +145,7 @@ struct NextBody {
     reason: Option<String>,
     active: Option<String>,
     project: Option<String>,
-    schema: Option<String>,
+    capability: Option<String>,
     description: Option<String>,
     sources: Option<Vec<String>>,
 }
@@ -168,7 +167,7 @@ pub fn next(ctx: &CommandContext) -> Result<CliResult, Error> {
                 reason: Some("in-progress".to_string()),
                 active: Some(active.name.clone()),
                 project: None,
-                schema: None,
+                capability: None,
                 description: None,
                 sources: None,
             })?,
@@ -184,7 +183,7 @@ pub fn next(ctx: &CommandContext) -> Result<CliResult, Error> {
                 reason: None,
                 active: None,
                 project: entry.project.clone(),
-                schema: entry.schema.clone(),
+                capability: entry.capability.clone(),
                 description: entry.description.clone(),
                 sources: Some(entry.sources.clone()),
             })?,
@@ -207,7 +206,7 @@ pub fn next(ctx: &CommandContext) -> Result<CliResult, Error> {
                 reason: Some(reason.to_string()),
                 active: None,
                 project: None,
-                schema: None,
+                capability: None,
                 description: None,
                 sources: None,
             })?,

@@ -1,33 +1,22 @@
 //! `init` — the orchestration called by `specify init`.
 //!
 //! Creates `.specify/{slices,specs,archive,.cache}/`, resolves the
-//! requested capability identifier into `.specify/.cache/`, writes
+//! requested capability into `.specify/.cache/`, writes
 //! `.specify/project.yaml` with a `rules:` key scaffolded from the
-//! resolved capability's `pipeline.define` briefs, and upserts the
+//! capability's `pipeline.define` briefs, and upserts the
 //! `.specify/.cache/` and `.specify/workspace/` lines into the project
-//! `.gitignore`. Two calls with identical options are safe — the only
-//! effect of the second call is refreshing the cache and overwriting
-//! `project.yaml` with byte-identical content.
+//! `.gitignore`. Idempotent: a second call with the same options
+//! refreshes the cache and rewrites `project.yaml` byte-for-byte.
 //!
-//! Per RFC-13 chunk 2.9 ("Init wires components, not capabilities"),
-//! `init` writes only the per-project skeleton — `project.yaml` plus
-//! the `.specify/` tree. Platform-component artefacts at the repo
-//! root (`registry.yaml`, `change.md`, `plan.yaml`) are
-//! operator-managed: `specify registry add` mints `registry.yaml`,
-//! `specify change create` mints `change.md` (RFC-13 chunk 3.7
-//! renamed it from the pre-Phase-3.7 `initiative.md`), and
-//! `specify change plan create` mints `plan.yaml`. Init never
-//! pre-touches them.
+//! `init` writes only the per-project skeleton. Repo-root artefacts
+//! (`registry.yaml`, `change.md`, `plan.yaml`) are minted by their
+//! own verbs (`specify registry add`, `specify change create`,
+//! `specify change plan create`) and never pre-touched here.
 //!
-//! Hub mode (`InitOptions::hub: true`, RFC-9 §1D / RFC-13 §Migration)
-//! is the one principled exception: a registry-only platform hub
-//! exists *to* host a `registry.yaml`, so hub init scaffolds the
-//! empty registry alongside the sentinel `project.yaml { hub: true }`
-//! (with `capability:` omitted) under `.specify/`. It still does not
-//! pre-write `change.md` or `plan.yaml` — those are operator
-//! actions on a hub too. Hub init refuses to run when `.specify/`
-//! already exists so it never clobbers a regular single-repo
-//! project.
+//! Hub mode (`InitOptions::hub: true`) is the one exception: it
+//! scaffolds an empty `registry.yaml` alongside a sentinel
+//! `project.yaml { hub: true }` (with `capability:` omitted) and
+//! refuses to run when `.specify/` already exists.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -307,7 +296,7 @@ struct CachedCapability {
 
 fn cache_capability(capability: &str, project_dir: &Path) -> Result<CachedCapability, Error> {
     if capability.trim().is_empty() || capability != capability.trim() {
-        return Err(Error::SchemaResolution(
+        return Err(Error::CapabilityResolution(
             "<capability> must be non-empty and must not have leading or trailing whitespace"
                 .to_string(),
         ));
@@ -347,7 +336,7 @@ impl CapabilityUri {
         let source_dir = if path.is_absolute() { path } else { project_dir.join(path) };
         ensure_capability_dir(&source_dir, capability)?;
         let canonical = fs::canonicalize(&source_dir).map_err(|err| {
-            Error::SchemaResolution(format!(
+            Error::CapabilityResolution(format!(
                 "failed to canonicalize local capability `{capability}` at {}: {err}",
                 source_dir.display()
             ))
@@ -390,11 +379,11 @@ impl GithubCapabilityUri {
     fn parse(capability: &str) -> Result<Self, Error> {
         let (without_suffix, suffix_ref) = split_ref_suffix(capability);
         let pathless = without_suffix.strip_prefix("https://github.com/").ok_or_else(|| {
-            Error::SchemaResolution(format!("unsupported GitHub capability URI `{capability}`"))
+            Error::CapabilityResolution(format!("unsupported GitHub capability URI `{capability}`"))
         })?;
         let mut parts: Vec<&str> = pathless.split('/').filter(|part| !part.is_empty()).collect();
         if parts.len() < 3 {
-            return Err(Error::SchemaResolution(format!(
+            return Err(Error::CapabilityResolution(format!(
                 "GitHub capability URI `{capability}` must include owner, repo, and capability path"
             )));
         }
@@ -405,7 +394,7 @@ impl GithubCapabilityUri {
             == Some(&"tree")
         {
             if parts.len() < 3 {
-                return Err(Error::SchemaResolution(format!(
+                return Err(Error::CapabilityResolution(format!(
                     "GitHub tree capability URI `{capability}` must include a ref and capability path"
                 )));
             }
@@ -417,7 +406,9 @@ impl GithubCapabilityUri {
         let checkout_ref = suffix_ref.or(tree_ref).map(str::to_string);
         let capability_path = capability_parts.join("/");
         let capability_name = capability_parts.last().ok_or_else(|| {
-            Error::SchemaResolution(format!("cannot derive a capability name from `{capability}`"))
+            Error::CapabilityResolution(format!(
+                "cannot derive a capability name from `{capability}`"
+            ))
         })?;
 
         Ok(Self {
@@ -477,19 +468,21 @@ fn sparse_checkout_path(capability_path: &str) -> &str {
 
 fn run_git(args: &[&str], action: &str) -> Result<(), Error> {
     let output = Command::new("git").args(args).output().map_err(|err| {
-        Error::SchemaResolution(format!("failed to spawn `git` to {action}: {err}"))
+        Error::CapabilityResolution(format!("failed to spawn `git` to {action}: {err}"))
     })?;
     if output.status.success() {
         return Ok(());
     }
     let stderr = String::from_utf8_lossy(&output.stderr);
-    Err(Error::SchemaResolution(format!("git failed to {action}: {}", stderr.trim())))
+    Err(Error::CapabilityResolution(format!("git failed to {action}: {}", stderr.trim())))
 }
 
 fn unique_temp_dir(prefix: &str) -> Result<PathBuf, Error> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|err| Error::SchemaResolution(format!("system clock before unix epoch: {err}")))?
+        .map_err(|err| {
+            Error::CapabilityResolution(format!("system clock before unix epoch: {err}"))
+        })?
         .as_nanos();
     let path = std::env::temp_dir().join(format!("{prefix}-{}-{nonce}", std::process::id()));
     fs::create_dir_all(&path)?;
@@ -500,7 +493,7 @@ fn ensure_capability_dir(path: &Path, original: &str) -> Result<(), Error> {
     if path.join(specify_capability::CAPABILITY_FILENAME).is_file() {
         return Ok(());
     }
-    Err(Error::SchemaResolution(format!(
+    Err(Error::CapabilityResolution(format!(
         "capability `{original}` did not resolve to a directory with `{}` at {}",
         specify_capability::CAPABILITY_FILENAME,
         path.display()
@@ -509,7 +502,10 @@ fn ensure_capability_dir(path: &Path, original: &str) -> Result<(), Error> {
 
 fn capability_name_from_dir(path: &Path) -> Result<String, Error> {
     path.file_name().and_then(|name| name.to_str()).map(str::to_string).ok_or_else(|| {
-        Error::SchemaResolution(format!("cannot derive capability name from {}", path.display()))
+        Error::CapabilityResolution(format!(
+            "cannot derive capability name from {}",
+            path.display()
+        ))
     })
 }
 

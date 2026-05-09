@@ -132,17 +132,142 @@ Duplicate-version exemptions live in `clippy.toml` `allowed-duplicate-crates`. A
 
 ## Coding standards
 
+These rules are enforced by `cargo make standards-check` (run in CI) and by review. CI failure messages cite this section by anchor (e.g. `see AGENTS.md#comments`). When a rule fights you, add the case to the rule with a before/after — don't carve out a local exception.
+
 ### Comments
 
 Comments answer "why does this look like this *today*?" — non-obvious intent, trade-offs, or constraints the code itself can't convey. RFC numbers, migration trails, and "this used to be X" rationale belong in `rfcs/`, `DECISIONS.md`, or commit messages — not in code or doc comments. Doc comments on items that surface in `--help` (clap `#[derive]` fields) must be operator-facing one-liners; rationale moves below the derive block where it doesn't leak into help output.
 
+```rust
+// BAD
+//! Per RFC-13 chunk 2.9 ("Init wires components, not capabilities"),
+//! `init` writes only the per-project skeleton — `project.yaml` plus
+//! the `.specify/` tree. The pre-Phase-3.7 filename was `initiative.md`;
+//! RFC-13 chunk 3.7 renamed it to `change.md` …
+
+// GOOD
+//! Scaffolds `.specify/` plus `project.yaml`. Operator-facing artifacts
+//! (`registry.yaml`, `change.md`, `plan.yaml`) are minted by their
+//! owning verbs, not by `init`.
+```
+
 ### Naming
 
-Prefer short, idiomatic Rust names. Don't restate context the surrounding module, type, or function already supplies (`workspace::auto_commit_merge`, not `workspace_auto_commit_merge_baseline`). Avoid `_local` / `_value` / `_helper` suffixes. `is_kebab` over `is_valid_kebab_name`. New functions: 1–3 words. Public-API renames keep a deprecated alias for one release.
+Prefer short, idiomatic Rust names. Don't restate context the surrounding module, type, or function already supplies. Avoid `_local` / `_value` / `_helper` suffixes. New functions: 1–3 words. Predicates start with `is_` / `has_`.
+
+```rust
+// BAD
+fn workspace_auto_commit_merge_baseline(...) { ... }
+fn is_valid_kebab_name(s: &str) -> bool { ... }
+fn parse_touched_spec_set_value(...) { ... }
+
+// GOOD  (in mod workspace, mod kebab, mod touched_specs)
+fn auto_commit_merge(...) { ... }
+fn is_kebab(s: &str) -> bool { ... }
+fn parse_set(...) { ... }
+```
+
+### Format dispatch
+
+Handlers do **not** open-code `match ctx.format { Json, Text }`. Use the `Render` trait and the `emit` helper in [`src/output.rs`](./src/output.rs):
+
+```rust
+// BAD
+match ctx.format {
+    OutputFormat::Json => emit_response(SomeBody { ... })?,
+    OutputFormat::Text => println!("..."),
+}
+
+// GOOD
+emit(ctx.format, &SomeBody::from(result))?;
+```
+
+`Render::render_text(&self, w: &mut impl Write)` carries the text-mode body; the JSON path goes through `serde::Serialize`.
+
+### DTOs
+
+Response DTOs (`*Body`, `*Row`, `*Json`) are **top-level** structs under `mod`, never declared inside fn bodies. Inline DTOs trip `clippy::items_after_statements` and force per-file `#[allow]`s.
+
+```rust
+// BAD
+fn handle(...) {
+    #[derive(Serialize)]
+    struct Body { name: String }
+    emit(format, &Body { name })?;
+}
+
+// GOOD
+#[derive(Serialize, Render)]
+#[serde(rename_all = "kebab-case")]
+struct HandleBody { name: String }
+
+fn handle(...) {
+    emit(format, &HandleBody { name })?;
+}
+```
+
+### Errors
+
+`specify-error::Error` variants are **structured**, not `Variant(String)` catch-alls. New free-form `Error::Config(String)` / `Merge(String)` / `ToolResolver(String)` / `ToolRuntime(String)` / `CapabilityResolution(String)` call sites fail `standards-check`; add a typed variant or extend an existing one.
+
+```rust
+// BAD
+return Err(Error::Config(format!(
+    "--proposed-name is required when outcome is `registry-amendment-required`"
+)));
+
+// GOOD
+return Err(Error::Argument {
+    flag: "--proposed-name",
+    reason: "required when outcome is `registry-amendment-required`".into(),
+});
+```
+
+The kebab-case identifier in `#[error("…")]` is part of the public contract that skills and tests grep for; never rename without bumping `JSON_SCHEMA_VERSION`.
+
+### `#[non_exhaustive]`
+
+Every public `enum` or `struct` that may grow gets `#[non_exhaustive]`. The exception is structurally complete types (`enum OutputFormat { Json, Text }`); document the choice in a doc-line. This keeps adding a variant from being a SemVer break.
+
+### Deprecation cadence
+
+Public-API renames keep at most **one** release of `#[deprecated]` aliases, then delete. Indefinite `// kept for legacy callers` is YAGNI debt — it metastasises (see the pre-2026 `schema-name` JSON envelope key, which lived as "transitional" for several releases).
+
+### `#[allow]` posture
+
+`#[allow(<lint>, reason = "…")]` lives at the **smallest scope** that fixes the lint. Identical `reason = "…"` strings across three or more files mean you should promote a single `#![allow]` to the parent module — the file-level repetition is noise, not signal.
+
+```rust
+// BAD — same allow/reason in every commands/*.rs
+// (12 files, identical text)
+#![allow(
+    clippy::needless_pass_by_value,
+    reason = "Clap dispatch hands owned subcommand values to these command handlers."
+)]
+
+// GOOD — one allow at the parent
+// src/commands.rs
+#![allow(
+    clippy::needless_pass_by_value,
+    reason = "Clap dispatch hands owned subcommand values to handlers in this module."
+)]
+```
 
 ### Module layout
 
 Use the modern Rust module layout: prefer `src/<parent>/<module>.rs` as the module entry point, with child modules under `src/<parent>/<module>/`. Do not add new `mod.rs` files inside module directories unless an external constraint requires it.
+
+### Mechanical enforcement
+
+`cargo make standards-check` enforces the rules above with ripgrep predicates:
+
+| Rule | Predicate |
+|---|---|
+| No RFC numbers in code | `rg '\bRFC[- ]?\d+\b' src/ crates/ --type rust` returns zero hits outside `tests/` and `*_decisions.rs`. |
+| No DTOs inside fn bodies | `rg -U --multiline 'fn .*\{[^}]*#\[derive\(Serialize' src/ crates/` returns zero hits. |
+| No new free-form `Error::*(String)` call sites | `rg 'Error::(Config\|Merge\|ToolResolver\|ToolRuntime\|CapabilityResolution)\(' src/ crates/ --type rust` is bounded by an allowlist baseline; new hits fail. |
+
+The allowlist baseline lives at `scripts/standards-allowlist.txt`; reducing it is encouraged, growing it requires a PR comment justifying the new hit.
 
 ## Skill / CLI responsibility split (mirrors parent repo)
 

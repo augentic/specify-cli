@@ -105,7 +105,7 @@ pub fn validate_name(name: &str) -> Result<(), Error> {
 /// Returns an error if the operation fails.
 #[allow(clippy::similar_names)]
 pub fn create(
-    slices_dir: &Path, name: &str, schema: &str, if_exists: CreateIfExists, now: DateTime<Utc>,
+    slices_dir: &Path, name: &str, capability: &str, if_exists: CreateIfExists, now: DateTime<Utc>,
 ) -> Result<CreateOutcome, Error> {
     validate_name(name)?;
     let slice_dir = slices_dir.join(name);
@@ -143,7 +143,7 @@ pub fn create(
     std::fs::create_dir_all(slice_dir.join("specs"))?;
     let metadata = SliceMetadata {
         version: crate::METADATA_VERSION,
-        schema: schema.to_string(),
+        capability: capability.to_string(),
         status: LifecycleStatus::Defining,
         created_at: Some(format_rfc3339(now)),
         defined_at: None,

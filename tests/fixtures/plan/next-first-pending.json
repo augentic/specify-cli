@@ -4,7 +4,7 @@
   "next": "b",
   "project": "default",
   "reason": null,
-  "schema": null,
-  "schema-version": 3,
+  "capability": null,
+  "schema-version": 4,
   "sources": []
 }

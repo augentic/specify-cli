@@ -176,7 +176,7 @@ impl fmt::Display for CodexProvenance {
 fn resolve_default(project_dir: &Path) -> Result<crate::capability::ResolvedCapability, Error> {
     match Capability::resolve(DEFAULT_CODEX_CAPABILITY, project_dir) {
         Ok(capability) => Ok(capability),
-        Err(Error::SchemaResolution(detail)) => Err(Error::SchemaResolution(format!(
+        Err(Error::CapabilityResolution(detail)) => Err(Error::CapabilityResolution(format!(
             "codex-default-capability-unavailable: foundational `{DEFAULT_CODEX_CAPABILITY}` \
              capability could not be resolved: {detail}"
         ))),

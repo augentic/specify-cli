@@ -92,8 +92,7 @@ impl fmt::Display for Status {
 
 impl Status {
     /// Every variant in declaration order. Used by exhaustive transition
-    /// tests here and by validation/topological code in L1.D/E that
-    /// needs to enumerate states without depending on `strum`.
+    /// tests and dashboard counters that need to enumerate states.
     pub const ALL: [Self; 6] =
         [Self::Pending, Self::InProgress, Self::Done, Self::Blocked, Self::Failed, Self::Skipped];
 
@@ -162,12 +161,12 @@ pub struct Entry {
     /// Target registry project (RFC-3b). Required for multi-project registries.
     #[serde(default)]
     pub project: Option<String>,
-    /// Plan-entry `schema` target for project-less entries (e.g. `contracts@v1`).
+    /// Plan-entry `capability` target for project-less entries (e.g. `contracts@v1`).
     /// Required when `project` is `None`; optional override when `project`
     /// is `Some`. Mutually enriching with `project`: `project` identifies
-    /// the target codebase; `schema` identifies the target directly.
+    /// the target codebase; `capability` identifies the target directly.
     #[serde(default)]
-    pub schema: Option<String>,
+    pub capability: Option<String>,
     /// Current lifecycle state of this entry.
     pub status: Status,
     /// Names of other plan entries that must reach `done` before this
@@ -211,9 +210,9 @@ pub struct EntryPatch {
     /// Replace `project` when `Some(Some(..))`; clear when
     /// `Some(None)`; leave unchanged when `None`.
     pub project: Option<Option<String>>,
-    /// Replace `schema` when `Some(Some(..))`; clear when
+    /// Replace `capability` when `Some(Some(..))`; clear when
     /// `Some(None)`; leave unchanged when `None`.
-    pub schema: Option<Option<String>>,
+    pub capability: Option<Option<String>>,
     /// Replace `description` when `Some(Some(..))`; clear when
     /// `Some(None)`; leave unchanged when `None`.
     pub description: Option<Option<String>>,
@@ -516,8 +515,8 @@ impl Plan {
             if let Some(v) = patch.project {
                 entry.project = v;
             }
-            if let Some(v) = patch.schema {
-                entry.schema = v;
+            if let Some(v) = patch.capability {
+                entry.capability = v;
             }
             if let Some(v) = patch.description {
                 entry.description = v;
@@ -906,7 +905,7 @@ fn check_project_required_multi_repo(changes: &[Entry], registry: &Registry) -> 
     }
     let mut out = Vec::new();
     for entry in changes {
-        if entry.project.is_none() && entry.schema.is_none() {
+        if entry.project.is_none() && entry.capability.is_none() {
             out.push(Finding {
                 level: Severity::Error,
                 code: "project-missing-multi-repo",
@@ -925,7 +924,7 @@ fn check_project_required_multi_repo(changes: &[Entry], registry: &Registry) -> 
 fn missing_project_or_schema(changes: &[Entry]) -> Vec<Finding> {
     let mut out = Vec::new();
     for entry in changes {
-        if entry.project.is_none() && entry.schema.is_none() {
+        if entry.project.is_none() && entry.capability.is_none() {
             out.push(Finding {
                 level: Severity::Error,
                 code: "plan.entry-needs-project-or-schema",
@@ -1213,7 +1212,7 @@ changes:
             entries: vec![Entry {
                 name: "entry-one".to_string(),
                 project: Some("default".into()),
-                schema: None,
+                capability: None,
                 status: Status::InProgress,
                 depends_on: vec!["entry-zero".to_string()],
                 sources: vec![],
@@ -1319,7 +1318,7 @@ changes:
             entries: vec![Entry {
                 name: "only-entry".to_string(),
                 project: Some("default".into()),
-                schema: None,
+                capability: None,
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -1374,7 +1373,7 @@ changes:
             entries: vec![Entry {
                 name: "entry-one".to_string(),
                 project: Some("default".into()),
-                schema: None,
+                capability: None,
                 status: Status::InProgress,
                 depends_on: vec!["foo".to_string()],
                 sources: vec![],
@@ -1416,7 +1415,7 @@ changes:
         Entry {
             name: name.into(),
             project: Some("default".into()),
-            schema: None,
+            capability: None,
             status,
             depends_on: vec![],
             sources: vec![],
@@ -1603,7 +1602,7 @@ changes:
         Entry {
             name: name.into(),
             project: Some("default".into()),
-            schema: None,
+            capability: None,
             status,
             depends_on: deps.iter().map(|s| (*s).to_string()).collect(),
             sources: vec![],
@@ -1836,7 +1835,7 @@ changes:
             entries: vec![Entry {
                 name: "new-entry".to_string(),
                 project: Some("default".into()),
-                schema: None,
+                capability: None,
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -1864,7 +1863,7 @@ changes:
         let incoming = Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            schema: None,
+            capability: None,
             status: Status::Failed,
             depends_on: vec![],
             sources: vec![],
@@ -1974,7 +1973,7 @@ changes:
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            schema: None,
+            capability: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -2033,7 +2032,7 @@ changes:
                 Entry {
                     name: "foo".into(),
                     project: Some("default".into()),
-                    schema: None,
+                    capability: None,
                     status: Status::Pending,
                     depends_on: vec![],
                     sources: vec!["a".into()],
@@ -2130,7 +2129,7 @@ changes:
         assert!(patch.depends_on.is_none());
         assert!(patch.sources.is_none());
         assert!(patch.project.is_none());
-        assert!(patch.schema.is_none());
+        assert!(patch.capability.is_none());
         assert!(patch.description.is_none());
     }
 
@@ -2139,7 +2138,7 @@ changes:
         let mut plan = plan_with_changes(vec![Entry {
             name: "a".into(),
             project: Some("default".into()),
-            schema: None,
+            capability: None,
             status: Status::Failed,
             depends_on: vec![],
             sources: vec![],
@@ -2856,7 +2855,7 @@ status: pending
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("alpha".into()),
-            schema: None,
+            capability: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -2894,7 +2893,7 @@ status: pending
             "foo",
             EntryPatch {
                 project: Some(None),
-                schema: Some(Some("contracts@v1".into())),
+                capability: Some(Some("contracts@v1".into())),
                 ..EntryPatch::default()
             },
         )
@@ -2910,7 +2909,7 @@ status: pending
             entries: vec![Entry {
                 name: "a".to_string(),
                 project: Some("nonexistent".to_string()),
-                schema: None,
+                capability: None,
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -2924,7 +2923,7 @@ status: pending
             projects: vec![RegistryProject {
                 name: "real-project".to_string(),
                 url: ".".to_string(),
-                schema: "omnia@v1".to_string(),
+                capability: "omnia@v1".to_string(),
                 description: None,
                 contracts: None,
             }],
@@ -2941,7 +2940,7 @@ status: pending
             entries: vec![Entry {
                 name: "a".to_string(),
                 project: None,
-                schema: None,
+                capability: None,
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -2956,14 +2955,14 @@ status: pending
                 RegistryProject {
                     name: "alpha".to_string(),
                     url: ".".to_string(),
-                    schema: "omnia@v1".to_string(),
+                    capability: "omnia@v1".to_string(),
                     description: Some("Alpha project".to_string()),
                     contracts: None,
                 },
                 RegistryProject {
                     name: "beta".to_string(),
                     url: "git@github.com:org/beta.git".to_string(),
-                    schema: "omnia@v1".to_string(),
+                    capability: "omnia@v1".to_string(),
                     description: Some("Beta project".to_string()),
                     contracts: None,
                 },
@@ -2981,7 +2980,7 @@ status: pending
             entries: vec![Entry {
                 name: "contracts".to_string(),
                 project: None,
-                schema: Some("contracts@v1".into()),
+                capability: Some("contracts@v1".into()),
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -2996,14 +2995,14 @@ status: pending
                 RegistryProject {
                     name: "alpha".to_string(),
                     url: ".".to_string(),
-                    schema: "omnia@v1".to_string(),
+                    capability: "omnia@v1".to_string(),
                     description: Some("Alpha project".to_string()),
                     contracts: None,
                 },
                 RegistryProject {
                     name: "beta".to_string(),
                     url: "git@github.com:org/beta.git".to_string(),
-                    schema: "omnia@v1".to_string(),
+                    capability: "omnia@v1".to_string(),
                     description: Some("Beta project".to_string()),
                     contracts: None,
                 },
@@ -3024,7 +3023,7 @@ status: pending
             entries: vec![Entry {
                 name: "a".to_string(),
                 project: None,
-                schema: Some("contracts@v1".into()),
+                capability: Some("contracts@v1".into()),
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -3038,7 +3037,7 @@ status: pending
             projects: vec![RegistryProject {
                 name: "solo".to_string(),
                 url: ".".to_string(),
-                schema: "omnia@v1".to_string(),
+                capability: "omnia@v1".to_string(),
                 description: None,
                 contracts: None,
             }],
@@ -3056,7 +3055,7 @@ status: pending
             entries: vec![Entry {
                 name: "a".to_string(),
                 project: Some("alpha".to_string()),
-                schema: None,
+                capability: None,
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -3071,14 +3070,14 @@ status: pending
                 RegistryProject {
                     name: "alpha".to_string(),
                     url: ".".to_string(),
-                    schema: "omnia@v1".to_string(),
+                    capability: "omnia@v1".to_string(),
                     description: Some("Alpha".to_string()),
                     contracts: None,
                 },
                 RegistryProject {
                     name: "beta".to_string(),
                     url: "git@github.com:org/beta.git".to_string(),
-                    schema: "omnia@v1".to_string(),
+                    capability: "omnia@v1".to_string(),
                     description: Some("Beta".to_string()),
                     contracts: None,
                 },
@@ -3095,17 +3094,17 @@ status: pending
         let yaml = r"name: test
 changes:
   - name: define-contracts
-    schema: contracts@v1
+    capability: contracts@v1
     status: pending
   - name: impl-auth
     project: auth-service
-    schema: omnia@v1
+    capability: omnia@v1
     status: pending
 ";
         let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-        assert_eq!(plan.entries[0].schema.as_deref(), Some("contracts@v1"));
+        assert_eq!(plan.entries[0].capability.as_deref(), Some("contracts@v1"));
         assert_eq!(plan.entries[0].project, None);
-        assert_eq!(plan.entries[1].schema.as_deref(), Some("omnia@v1"));
+        assert_eq!(plan.entries[1].capability.as_deref(), Some("omnia@v1"));
         assert_eq!(plan.entries[1].project.as_deref(), Some("auth-service"));
 
         let rendered = serde_saphyr::to_string(&plan).expect("serialize");
@@ -3121,7 +3120,7 @@ changes:
             entries: vec![Entry {
                 name: "orphan".to_string(),
                 project: None,
-                schema: None,
+                capability: None,
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -3148,7 +3147,7 @@ changes:
             entries: vec![Entry {
                 name: "contracts".to_string(),
                 project: None,
-                schema: Some("contracts@v1".into()),
+                capability: Some("contracts@v1".into()),
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -3172,7 +3171,7 @@ changes:
             entries: vec![Entry {
                 name: "impl".to_string(),
                 project: Some("auth-service".into()),
-                schema: Some("omnia@v1".into()),
+                capability: Some("omnia@v1".into()),
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -3194,7 +3193,7 @@ changes:
         let entry = Entry {
             name: "bad".into(),
             project: None,
-            schema: None,
+            capability: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -3220,7 +3219,7 @@ changes:
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            schema: Some("omnia@v1".into()),
+            capability: Some("omnia@v1".into()),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -3232,7 +3231,7 @@ changes:
         // None leaves schema unchanged.
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
         assert_eq!(
-            plan.entries[0].schema.as_deref(),
+            plan.entries[0].capability.as_deref(),
             Some("omnia@v1"),
             "None must leave schema unchanged"
         );
@@ -3241,13 +3240,13 @@ changes:
         plan.amend(
             "foo",
             EntryPatch {
-                schema: Some(Some("contracts@v1".into())),
+                capability: Some(Some("contracts@v1".into())),
                 ..EntryPatch::default()
             },
         )
         .expect("amend replace ok");
         assert_eq!(
-            plan.entries[0].schema.as_deref(),
+            plan.entries[0].capability.as_deref(),
             Some("contracts@v1"),
             "Some(Some(s)) must replace schema"
         );
@@ -3256,12 +3255,12 @@ changes:
         plan.amend(
             "foo",
             EntryPatch {
-                schema: Some(None),
+                capability: Some(None),
                 ..EntryPatch::default()
             },
         )
         .expect("amend clear ok");
-        assert_eq!(plan.entries[0].schema, None, "Some(None) must clear schema");
+        assert_eq!(plan.entries[0].capability, None, "Some(None) must clear schema");
     }
 
     #[test]
@@ -3379,7 +3378,7 @@ changes:
         let entry = Entry {
             name: "with-ctx".into(),
             project: Some("default".into()),
-            schema: None,
+            capability: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -3401,7 +3400,7 @@ changes:
         let entry = Entry {
             name: "bad-ctx".into(),
             project: Some("default".into()),
-            schema: None,
+            capability: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],

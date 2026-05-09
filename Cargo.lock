@@ -2045,7 +2045,7 @@ dependencies = [
 
 [[package]]
 name = "specify"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -2074,7 +2074,7 @@ dependencies = [
 
 [[package]]
 name = "specify-capability"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "glob",
@@ -2088,7 +2088,7 @@ dependencies = [
 
 [[package]]
 name = "specify-change"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "clap",
@@ -2106,7 +2106,7 @@ dependencies = [
 
 [[package]]
 name = "specify-contract-validate"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -2117,7 +2117,7 @@ dependencies = [
 
 [[package]]
 name = "specify-error"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde-saphyr",
  "thiserror",
@@ -2125,7 +2125,7 @@ dependencies = [
 
 [[package]]
 name = "specify-merge"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "regex",
@@ -2140,7 +2140,7 @@ dependencies = [
 
 [[package]]
 name = "specify-registry"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde-saphyr",
@@ -2151,7 +2151,7 @@ dependencies = [
 
 [[package]]
 name = "specify-slice"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "clap",
@@ -2169,7 +2169,7 @@ dependencies = [
 
 [[package]]
 name = "specify-spec"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "regex",
  "specify-error",
@@ -2177,7 +2177,7 @@ dependencies = [
 
 [[package]]
 name = "specify-task"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "regex",
  "specify-error",
@@ -2185,7 +2185,7 @@ dependencies = [
 
 [[package]]
 name = "specify-tool"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "jsonschema",
@@ -2204,7 +2204,7 @@ dependencies = [
 
 [[package]]
 name = "specify-validate"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "glob",
  "regex",
@@ -2566,7 +2566,7 @@ dependencies = [
 
 [[package]]
 name = "vectis-scaffold"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "serde",
@@ -2579,7 +2579,7 @@ dependencies = [
 
 [[package]]
 name = "vectis-validate"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "assert_cmd",
  "clap",

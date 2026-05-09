@@ -14,9 +14,26 @@ pub struct Cli {
     #[command(subcommand)]
     pub(crate) command: Commands,
 
-    /// Output format
-    #[arg(long, default_value = "text", global = true)]
+    /// Output format. `text` by default; pass `--format json` (or set
+    /// `SPECIFY_FORMAT=json`) for structured envelopes when shelling
+    /// out from skills.
+    #[arg(long, env = "SPECIFY_FORMAT", default_value = "text", global = true)]
     pub(crate) format: OutputFormat,
+
+    /// Suppress non-essential text output (banners, progress lines).
+    /// No effect on JSON output, where everything is already
+    /// structured.
+    #[arg(long, short = 'q', global = true)]
+    pub(crate) quiet: bool,
+}
+
+impl Cli {
+    /// Resolve the effective output format. Currently a passthrough;
+    /// kept as a method so future changes (e.g. TTY-aware defaults) can
+    /// land without touching every call site.
+    pub(crate) const fn resolved_format(&self) -> OutputFormat {
+        self.format
+    }
 }
 
 #[derive(Copy, Clone, ValueEnum, PartialEq, Eq)]
@@ -112,6 +129,27 @@ pub enum Commands {
         /// Target shell
         #[arg(value_enum)]
         shell: clap_complete::Shell,
+    },
+
+    /// One-shot migrators for legacy on-disk vocabulary. Hidden — kept
+    /// for one minor release after the breaking rename, then deleted.
+    #[command(hide = true)]
+    Migrate {
+        #[command(subcommand)]
+        action: MigrateAction,
+    },
+}
+
+/// Hidden one-shot migrators. See `Commands::Migrate`.
+#[derive(Subcommand)]
+pub enum MigrateAction {
+    /// Rewrite legacy `schema:` keys to `capability:` in `registry.yaml`,
+    /// `plan.yaml`, and archived `plan-*.yaml` files. Idempotent — safe
+    /// to re-run. Pass `--dry-run` to preview without writing.
+    CapabilityNoun {
+        /// Show what would be rewritten without modifying files.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -244,9 +282,9 @@ pub enum PlanAction {
         /// Target registry project name (RFC-3b)
         #[arg(long)]
         project: Option<String>,
-        /// Plan-entry `schema` target for project-less entries (e.g. `contracts@v1`)
+        /// Plan-entry `capability` target for project-less entries (e.g. `contracts@v1`)
         #[arg(long)]
-        schema: Option<String>,
+        capability: Option<String>,
         /// Baseline paths relevant to this change, relative to `.specify/` (repeatable)
         #[arg(long)]
         context: Vec<String>,
@@ -271,10 +309,10 @@ pub enum PlanAction {
         /// Replace project. Pass `--project ""` to clear; omit the flag to leave it unchanged.
         #[arg(long)]
         project: Option<String>,
-        /// Replace the plan-entry `schema` target. Pass `--schema ""` to clear;
+        /// Replace the plan-entry `capability` target. Pass `--capability ""` to clear;
         /// omit the flag to leave it unchanged.
         #[arg(long)]
-        schema: Option<String>,
+        capability: Option<String>,
         /// Replace context paths. Pass `--context` (with no value) to clear; omit the
         /// flag to leave it unchanged.
         #[arg(long, num_args = 0.., value_delimiter = ',')]
@@ -385,7 +423,7 @@ pub enum RegistryAction {
         url: String,
         /// Capability identifier (e.g. `omnia@v1`). Non-empty after trim.
         #[arg(long)]
-        schema: String,
+        capability: String,
         /// Domain-level characterisation; required when the registry
         /// declares more than one project.
         #[arg(long)]
@@ -451,7 +489,7 @@ pub enum SliceAction {
         name: String,
         /// Capability identifier; defaults to the value in `.specify/project.yaml`
         #[arg(long)]
-        schema: Option<String>,
+        capability: Option<String>,
         /// Behaviour when `<slices_dir>/<name>/` already exists
         #[arg(long, value_enum, default_value = "fail")]
         if_exists: CreateIfExistsArg,
@@ -567,43 +605,17 @@ pub enum SliceTaskAction {
 /// Phase-outcome subcommands grouped under `slice outcome`.
 #[derive(Subcommand)]
 pub enum OutcomeAction {
-    /// Record the outcome of a phase (define|build|merge) on `.metadata.yaml`
+    /// Record the outcome of a phase (define|build|merge) on `.metadata.yaml`.
+    /// The outcome kind is itself a subcommand so each variant carries
+    /// only its own flags.
     Set {
         /// Slice name
         name: String,
         /// Phase this outcome applies to
         #[arg(value_enum)]
         phase: Phase,
-        /// Outcome classification. `registry-amendment-required` requires
-        /// the four `--proposed-*` flags plus `--rationale`.
-        #[arg(value_enum)]
-        outcome: OutcomeKind,
-        /// Short explanation of what happened. Optional for
-        /// `registry-amendment-required` (synthesised from `--proposed-name`).
-        #[arg(long)]
-        summary: Option<String>,
-        /// Optional verbatim detail (stderr, ambiguous-requirement text, etc.)
-        #[arg(long)]
-        context: Option<String>,
-        /// Proposed kebab-case project name. Required when
-        /// `<outcome>` is `registry-amendment-required`.
-        #[arg(long)]
-        proposed_name: Option<String>,
-        /// Proposed clone URL. Required when `<outcome>` is
-        /// `registry-amendment-required`.
-        #[arg(long)]
-        proposed_url: Option<String>,
-        /// Proposed capability identifier (e.g. `omnia@v1`). Required when
-        /// `<outcome>` is `registry-amendment-required`.
-        #[arg(long)]
-        proposed_schema: Option<String>,
-        /// Optional human-readable description of the proposed project.
-        #[arg(long)]
-        proposed_description: Option<String>,
-        /// Rationale prose. Required when `<outcome>` is
-        /// `registry-amendment-required`.
-        #[arg(long)]
-        rationale: Option<String>,
+        #[command(subcommand)]
+        kind: OutcomeKindAction,
     },
     /// Read the stamped `.metadata.yaml.outcome` for a slice. Exits 0
     /// whether or not an outcome has been stamped.
@@ -613,21 +625,61 @@ pub enum OutcomeAction {
     },
 }
 
-/// CLI-side discriminant for `slice outcome set <outcome>`. Mirrors
-/// the on-disk [`specify::Outcome`] kebab-case discriminants. Adding a
-/// variant requires extending [`specify::Outcome`] too.
-#[derive(Copy, Clone, ValueEnum, PartialEq, Eq, Debug)]
-pub enum OutcomeKind {
+/// Outcome-kind subcommands under `slice outcome set`. Each variant
+/// owns the flags that are valid for it; clap rejects everything else.
+#[derive(Subcommand)]
+pub enum OutcomeKindAction {
     /// Phase completed successfully.
-    Success,
+    Success {
+        /// Short explanation of what happened.
+        #[arg(long)]
+        summary: String,
+        /// Optional verbatim detail (stderr, log excerpt, ...).
+        #[arg(long)]
+        context: Option<String>,
+    },
     /// Phase failed.
-    Failure,
+    Failure {
+        /// Short explanation of what happened.
+        #[arg(long)]
+        summary: String,
+        /// Optional verbatim detail (stderr, log excerpt, ...).
+        #[arg(long)]
+        context: Option<String>,
+    },
     /// Phase deferred (needs human input).
-    Deferred,
-    /// Phase blocked on a registry amendment. Requires the
-    /// `--proposed-name` / `--proposed-url` / `--proposed-schema` /
-    /// `--rationale` flags.
-    RegistryAmendmentRequired,
+    Deferred {
+        /// Short explanation of what happened.
+        #[arg(long)]
+        summary: String,
+        /// Optional verbatim detail (stderr, ambiguous-requirement text, ...).
+        #[arg(long)]
+        context: Option<String>,
+    },
+    /// Phase blocked on a registry amendment.
+    RegistryAmendmentRequired {
+        /// Short explanation; defaults to `registry-amendment-required: <proposed-name>`.
+        #[arg(long)]
+        summary: Option<String>,
+        /// Optional verbatim detail.
+        #[arg(long)]
+        context: Option<String>,
+        /// Proposed kebab-case project name.
+        #[arg(long)]
+        proposed_name: String,
+        /// Proposed clone URL.
+        #[arg(long)]
+        proposed_url: String,
+        /// Proposed capability identifier (e.g. `omnia@v1`).
+        #[arg(long)]
+        proposed_capability: String,
+        /// Optional human-readable description of the proposed project.
+        #[arg(long)]
+        proposed_description: Option<String>,
+        /// Rationale prose.
+        #[arg(long)]
+        rationale: String,
+    },
 }
 
 /// Journal subcommands grouped under `slice journal`.

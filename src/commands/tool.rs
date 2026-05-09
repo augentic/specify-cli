@@ -1,8 +1,3 @@
-#![allow(
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to these command handlers."
-)]
-
 //! `specify tool {run,list,fetch,show,gc}` (RFC-15 chunk 5).
 
 use std::collections::{HashMap, HashSet};
@@ -11,8 +6,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use specify::{
-    CAPABILITY_FILENAME, Capability, Error, ManifestProbe, ResolvedCapability, ValidationStatus,
-    ValidationSummary,
+    CAPABILITY_FILENAME, Capability, Error, ResolvedCapability, ValidationStatus, ValidationSummary,
 };
 use specify_tool::cache::{self, CacheStatus};
 use specify_tool::host::{RunContext, WasiRunner};
@@ -278,12 +272,9 @@ fn resolve_project_capability(ctx: &CommandContext) -> Result<Option<ResolvedCap
 }
 
 fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
-    match Capability::probe_dir(dir) {
-        ManifestProbe::Found(_) => Ok(()),
-        ManifestProbe::Missing => {
-            Err(Error::SchemaResolution(format!("no `{CAPABILITY_FILENAME}` at {}", dir.display())))
-        }
-    }
+    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| {
+        Error::CapabilityResolution(format!("no `{CAPABILITY_FILENAME}` at {}", dir.display()))
+    })
 }
 
 fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<(), Error> {

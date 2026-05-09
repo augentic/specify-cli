@@ -87,12 +87,12 @@ fn slice_create_produces_directory_and_metadata() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["name"], "my-slice");
     assert_eq!(value["status"], "defining");
-    let schema = value["schema"].as_str().expect("schema string");
-    assert!(schema.starts_with("file://"));
-    assert!(schema.ends_with("/schemas/omnia"));
+    let capability = value["capability"].as_str().expect("capability string");
+    assert!(capability.starts_with("file://"));
+    assert!(capability.ends_with("/schemas/omnia"));
     assert_eq!(value["created"], true);
     assert_eq!(value["restarted"], false);
 
@@ -101,7 +101,7 @@ fn slice_create_produces_directory_and_metadata() {
     assert!(slice_dir.join("specs").is_dir(), "specs/ must exist");
     let meta = fs::read_to_string(slice_dir.join(".metadata.yaml")).expect("read metadata");
     assert!(meta.contains("status: defining"));
-    assert!(meta.contains("schema: file://"));
+    assert!(meta.contains("capability: file://"));
     assert!(meta.contains("created-at:"));
 }
 
@@ -468,7 +468,7 @@ fn slice_phase_outcome_stamps_success_on_define_json() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["outcome"], "success");
@@ -664,8 +664,8 @@ fn slice_phase_outcome_preserves_existing_metadata_fields() {
         meta_before["created-at"].as_str().expect("created-at populated after create").to_string();
     let status_before =
         meta_before["status"].as_str().expect("status populated after create").to_string();
-    let schema_before =
-        meta_before["schema"].as_str().expect("schema populated after create").to_string();
+    let capability_before =
+        meta_before["capability"].as_str().expect("capability populated after create").to_string();
 
     specify()
         .current_dir(project.root())
@@ -676,7 +676,7 @@ fn slice_phase_outcome_preserves_existing_metadata_fields() {
     let meta_after = read_metadata_yaml(&project, "foo");
     assert_eq!(meta_after["created-at"].as_str(), Some(created_at_before.as_str()));
     assert_eq!(meta_after["status"].as_str(), Some(status_before.as_str()));
-    assert_eq!(meta_after["schema"].as_str(), Some(schema_before.as_str()));
+    assert_eq!(meta_after["capability"].as_str(), Some(capability_before.as_str()));
     assert!(meta_after["outcome"].is_object(), "outcome should now be present");
 }
 
@@ -688,7 +688,7 @@ fn pre_existing_metadata_yaml_without_outcome_still_parses() {
     // `outcome` as None.
     let tmp = tempdir().expect("tempdir");
     let slice_dir = tmp.path();
-    let yaml = r#"schema: omnia
+    let yaml = r#"capability: omnia
 status: defining
 created-at: "2024-08-01T10:00:00Z"
 "#;
@@ -732,7 +732,7 @@ fn slice_outcome_returns_stamped_outcome_as_json() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["name"], "foo");
     let outcome = &value["outcome"];
     assert_eq!(outcome["phase"].as_str(), Some("build"));
@@ -893,7 +893,7 @@ fn slice_outcome_archive_fallback_picks_most_recent() {
             "2026-04-24T00:00:00Z"
         };
         let yaml = format!(
-            "schema: omnia\nstatus: merged\ncreated-at: \"{created_at}\"\noutcome:\n  phase: merge\n  outcome: success\n  at: \"{created_at}\"\n  summary: \"{summary}\"\n"
+            "capability: omnia\nstatus: merged\ncreated-at: \"{created_at}\"\noutcome:\n  phase: merge\n  outcome: success\n  at: \"{created_at}\"\n  summary: \"{summary}\"\n"
         );
         fs::write(dir.join(".metadata.yaml"), yaml).unwrap();
     }
@@ -937,7 +937,7 @@ fn slice_outcome_registry_amendment_required_writes_payload() {
             "alpha-gateway",
             "--proposed-url",
             "git@github.com:augentic/alpha-gateway.git",
-            "--proposed-schema",
+            "--proposed-capability",
             "omnia@v1",
             "--proposed-description",
             "Gateway for alpha capability.",
@@ -963,7 +963,8 @@ fn slice_outcome_registry_amendment_required_writes_payload() {
         "proposed-url should round-trip the verbatim URL, got:\n{raw}"
     );
     assert!(
-        raw.contains("proposed-schema: \"omnia@v1\"") || raw.contains("proposed-schema: omnia@v1"),
+        raw.contains("proposed-capability: \"omnia@v1\"")
+            || raw.contains("proposed-capability: omnia@v1"),
         "proposed-schema should round-trip, got:\n{raw}"
     );
     assert!(raw.contains("rationale:"), "rationale should be emitted, got:\n{raw}");
@@ -982,7 +983,7 @@ fn slice_outcome_registry_amendment_required_writes_payload() {
         proposal["proposed-url"].as_str(),
         Some("git@github.com:augentic/alpha-gateway.git"),
     );
-    assert_eq!(proposal["proposed-schema"].as_str(), Some("omnia@v1"));
+    assert_eq!(proposal["proposed-capability"].as_str(), Some("omnia@v1"));
     assert_eq!(proposal["proposed-description"].as_str(), Some("Gateway for alpha capability."),);
     assert_eq!(
         proposal["rationale"].as_str(),
@@ -1004,8 +1005,6 @@ fn slice_outcome_registry_amendment_required_missing_flags_errors() {
     let assert = specify()
         .current_dir(project.root())
         .args([
-            "--format",
-            "json",
             "slice",
             "outcome",
             "set",
@@ -1019,12 +1018,11 @@ fn slice_outcome_registry_amendment_required_missing_flags_errors() {
         ])
         .assert()
         .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
-    let msg = value["message"].as_str().unwrap_or("");
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
-        msg.contains("--proposed-schema") || msg.contains("--rationale"),
-        "expected diagnostic naming the missing required flag, got: {msg}",
+        stderr.contains("--proposed-capability") || stderr.contains("--rationale"),
+        "expected clap diagnostic naming the missing required flag, got: {stderr}",
     );
 }
 
@@ -1039,8 +1037,6 @@ fn slice_outcome_proposal_flags_rejected_for_other_kinds() {
     let assert = specify()
         .current_dir(project.root())
         .args([
-            "--format",
-            "json",
             "slice",
             "outcome",
             "set",
@@ -1054,12 +1050,11 @@ fn slice_outcome_proposal_flags_rejected_for_other_kinds() {
         ])
         .assert()
         .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
-    let msg = value["message"].as_str().unwrap_or("");
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
-        msg.contains("--proposed-name"),
-        "expected diagnostic naming the offending flag, got: {msg}",
+        stderr.contains("--proposed-name"),
+        "expected clap diagnostic naming the offending flag, got: {stderr}",
     );
 }
 
@@ -1092,7 +1087,7 @@ fn slice_journal_append_appends_to_file() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["kind"], "question");
@@ -1242,7 +1237,7 @@ fn slice_journal_show_empty_then_populated() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["name"], "foo");
     assert!(
         value["entries"].as_array().unwrap().is_empty(),

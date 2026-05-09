@@ -1,7 +1,3 @@
-#![allow(
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to these command handlers."
-)]
 //! `specify context {generate, check}` command surface.
 //!
 //! This module owns the deterministic renderer, fenced `AGENTS.md` write
@@ -19,8 +15,7 @@ mod render;
 
 use serde::Serialize;
 use specify::{
-    Capability, Error, ManifestProbe, PipelineView, ProjectConfig, SliceMetadata,
-    is_workspace_clone_path,
+    Capability, Error, PipelineView, ProjectConfig, SliceMetadata, is_workspace_clone_path,
 };
 use specify_registry::Registry;
 use specify_slice::atomic::atomic_bytes_write;
@@ -398,11 +393,8 @@ fn assemble_render_input(ctx: &CommandContext) -> Result<RenderAssembly, Error> 
 fn collect_capability_inputs(
     collector: &mut fingerprint::InputCollector, pipeline: &PipelineView,
 ) -> Result<(), Error> {
-    match Capability::probe_dir(&pipeline.capability.root_dir) {
-        ManifestProbe::Found(path) => {
-            collector.add_file(&path)?;
-        }
-        ManifestProbe::Missing => {}
+    if let Some(path) = Capability::probe_dir(&pipeline.capability.root_dir) {
+        collector.add_file(&path)?;
     }
     for (_phase, brief) in &pipeline.briefs {
         collector.add_file(&brief.path)?;
@@ -477,7 +469,7 @@ fn dependency_peers(registry: Option<&Registry>) -> Vec<render::DependencyPeer> 
         .iter()
         .map(|project| render::DependencyPeer {
             name: project.name.clone(),
-            capability: project.schema.clone(),
+            capability: project.capability.clone(),
             url: project.url.clone(),
             description: project.description.clone(),
         })
@@ -600,7 +592,7 @@ mod tests {
             .expect("alpha meta");
         fs::write(
             Registry::path(tmp.path()),
-            "version: 1\nprojects:\n  - name: zeta\n    url: ../zeta\n    schema: mini@v1\n    description: Zeta service\n  - name: alpha\n    url: ../alpha\n    schema: mini@v1\n    description: Alpha service\n",
+            "version: 1\nprojects:\n  - name: zeta\n    url: ../zeta\n    capability: mini@v1\n    description: Zeta service\n  - name: alpha\n    url: ../alpha\n    capability: mini@v1\n    description: Alpha service\n",
         )
         .expect("write registry");
         fs::create_dir_all(ProjectConfig::config_path(tmp.path()).parent().expect("config parent"))

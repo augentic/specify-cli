@@ -1,7 +1,7 @@
 {
   "complete": 2,
   "pending": 3,
-  "schema-version": 3,
+  "schema-version": 4,
   "tasks": [
     {
       "complete": false,

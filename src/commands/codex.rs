@@ -1,8 +1,3 @@
-#![allow(
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to these command handlers."
-)]
-
 use serde::Serialize;
 use specify::{
     CodexApplicability, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexProvenance,

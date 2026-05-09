@@ -200,7 +200,7 @@ fn tool_list_outside_project_preserves_not_initialized_error() {
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["error"], "not-initialized");
 }
 

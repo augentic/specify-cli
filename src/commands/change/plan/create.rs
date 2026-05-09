@@ -16,7 +16,7 @@ use crate::output::{CliResult, emit_response};
 
 pub fn add(
     ctx: &CommandContext, name: String, depends_on: Vec<String>, sources: Vec<String>,
-    description: Option<String>, project: Option<String>, schema: Option<String>,
+    description: Option<String>, project: Option<String>, capability: Option<String>,
     context: Vec<String>,
 ) -> Result<CliResult, Error> {
     let (plan_path, mut plan) = load_for_write(ctx)?;
@@ -28,7 +28,7 @@ pub fn add(
     let entry = Entry {
         name: name.clone(),
         project,
-        schema,
+        capability,
         status: Status::Pending,
         depends_on,
         sources,
@@ -65,7 +65,7 @@ pub fn add(
 pub fn amend(
     ctx: &CommandContext, name: String, depends_on: Option<Vec<String>>,
     sources: Option<Vec<String>>, description: Option<String>, project: Option<String>,
-    schema: Option<String>, context: Option<Vec<String>>,
+    capability: Option<String>, context: Option<Vec<String>>,
 ) -> Result<CliResult, Error> {
     let (plan_path, mut plan) = load_for_write(ctx)?;
 
@@ -79,14 +79,14 @@ pub fn amend(
         description.map(|s| if s.is_empty() { None } else { Some(s) });
     let project_patch: Option<Option<String>> =
         project.map(|s| if s.is_empty() { None } else { Some(s) });
-    let schema_patch: Option<Option<String>> =
-        schema.map(|s| if s.is_empty() { None } else { Some(s) });
+    let capability_patch: Option<Option<String>> =
+        capability.map(|s| if s.is_empty() { None } else { Some(s) });
 
     let patch = EntryPatch {
         depends_on,
         sources,
         project: project_patch,
-        schema: schema_patch,
+        capability: capability_patch,
         description: description_patch,
         context,
     };

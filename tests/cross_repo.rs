@@ -365,7 +365,7 @@ fn register_project(envs: &TestEnv, project: &FixtureProject, description: &str)
             project.name,
             "--url",
             &project.github_url(),
-            "--schema",
+            "--capability",
             project.capability,
             "--description",
             description,
@@ -383,7 +383,7 @@ fn seed_change_plan(envs: &TestEnv) {
             "plan",
             "add",
             "oauth-login-contract",
-            "--schema",
+            "--capability",
             "contracts@v1",
             "--description",
             "Author the shared OAuth login HTTP contract.",
@@ -449,7 +449,10 @@ fn assert_registry_and_plan_are_valid(envs: &TestEnv) {
     assert!(entries.iter().any(|entry| entry["name"] == "add-oauth-screens"));
 
     let plan_yaml = fs::read_to_string(envs.path().join("plan.yaml")).expect("read plan.yaml");
-    assert!(plan_yaml.contains("schema: contracts@v1"), "contract slice must target schema");
+    assert!(
+        plan_yaml.contains("capability: contracts@v1"),
+        "contract slice must target capability"
+    );
     assert!(plan_yaml.contains("project: shop-backend"), "backend slice must be routed");
     assert!(plan_yaml.contains("project: shop-mobile"), "mobile slice must be routed");
 }

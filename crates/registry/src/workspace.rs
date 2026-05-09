@@ -73,7 +73,7 @@ pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Resul
             if project.is_local() {
                 materialise_symlink(project_dir, &project.url, &dest)
             } else {
-                materialise_git_remote(&project.url, &dest, &project.schema, project_dir)
+                materialise_git_remote(&project.url, &dest, &project.capability, project_dir)
             }
         });
         if let Err(err) = result {
@@ -767,7 +767,7 @@ fn symlink(target: &Path, link: &Path) -> Result<(), Error> {
 }
 
 fn materialise_git_remote(
-    url: &str, dest: &Path, schema: &str, initiating_project_dir: &Path,
+    url: &str, dest: &Path, capability: &str, initiating_project_dir: &Path,
 ) -> Result<(), Error> {
     match std::fs::symlink_metadata(dest) {
         Ok(meta) if meta.file_type().is_symlink() => Err(Error::Config(format!(
@@ -792,7 +792,7 @@ fn materialise_git_remote(
                 .or(Ok(()))
             } else {
                 // Partial greenfield bootstrap: .git/ present but .specify/project.yaml absent
-                greenfield_init(dest, schema, initiating_project_dir, true)
+                greenfield_init(dest, capability, initiating_project_dir, true)
             }
         }
         Ok(_) => Err(Error::Config(format!(
@@ -820,7 +820,7 @@ fn materialise_git_remote(
                 Ok(())
             } else {
                 // Clone failed — treat as greenfield
-                greenfield_bootstrap(url, dest, schema, initiating_project_dir)
+                greenfield_bootstrap(url, dest, capability, initiating_project_dir)
             }
         }
         Err(err) => Err(Error::Io(err)),
@@ -844,14 +844,14 @@ fn ensure_origin_matches(dest: &Path, expected_url: &str) -> Result<(), Error> {
 
 /// Full greenfield bootstrap: mkdir, git init, git remote add, specify init, git add+commit.
 fn greenfield_bootstrap(
-    url: &str, dest: &Path, schema: &str, initiating_project_dir: &Path,
+    url: &str, dest: &Path, capability: &str, initiating_project_dir: &Path,
 ) -> Result<(), Error> {
     std::fs::create_dir_all(dest).map_err(Error::Io)?;
 
     run_git(dest, &["init"], &format!("git init in {}", dest.display()))?;
     run_git(dest, &["remote", "add", "origin", url], &format!("git remote add origin {url}"))?;
 
-    greenfield_init(dest, schema, initiating_project_dir, false)?;
+    greenfield_init(dest, capability, initiating_project_dir, false)?;
 
     Ok(())
 }
@@ -859,9 +859,9 @@ fn greenfield_bootstrap(
 /// Scaffold a greenfield slot locally, then git add + commit.
 /// `is_rerun` controls whether we amend the commit or create a new one.
 fn greenfield_init(
-    dest: &Path, schema: &str, initiating_project_dir: &Path, is_rerun: bool,
+    dest: &Path, capability: &str, initiating_project_dir: &Path, is_rerun: bool,
 ) -> Result<(), Error> {
-    let capability = resolve_greenfield_capability(schema, initiating_project_dir)?;
+    let capability = resolve_greenfield_capability(capability, initiating_project_dir)?;
 
     scaffold_greenfield_specify_tree(dest, &capability)?;
 
@@ -916,20 +916,19 @@ fn scaffold_greenfield_specify_tree(dest: &Path, capability: &str) -> Result<(),
 /// capability identifiers are local to the initiating repo's cache, so
 /// convert them into a file URI the spawned init can copy directly.
 fn resolve_greenfield_capability(
-    schema: &str, initiating_project_dir: &Path,
+    capability: &str, initiating_project_dir: &Path,
 ) -> Result<String, Error> {
-    if schema.contains("://") {
-        return Ok(schema.to_string());
+    if capability.contains("://") {
+        return Ok(capability.to_string());
     }
     let cache_base = initiating_project_dir.join(".specify").join(".cache");
 
-    let direct = cache_base.join(schema);
+    let direct = cache_base.join(capability);
     if direct.is_dir() {
         return Ok(format!("file://{}", direct.display()));
     }
 
-    // Try the last path segment before any @ref for older cached layouts.
-    let without_ref = schema.split('@').next().unwrap_or(schema);
+    let without_ref = capability.split('@').next().unwrap_or(capability);
     if let Some(segment) = without_ref.rsplit('/').find(|s| !s.is_empty()) {
         let by_segment = cache_base.join(segment);
         if by_segment.is_dir() {
@@ -938,8 +937,8 @@ fn resolve_greenfield_capability(
     }
 
     Err(Error::Config(format!(
-        "schema '{}' not cached in {}; run /spec:init in the initiating repo first",
-        schema,
+        "capability '{}' not cached in {}; run /spec:init in the initiating repo first",
+        capability,
         cache_base.display()
     )))
 }
@@ -1761,7 +1760,7 @@ mod tests {
         RegistryProject {
             name: "alpha".to_string(),
             url: url.into(),
-            schema: "omnia@v1".to_string(),
+            capability: "omnia@v1".to_string(),
             description: Some("alpha service".to_string()),
             contracts: None,
         }
@@ -2315,7 +2314,7 @@ mod tests {
         let project = RegistryProject {
             name: "alpha".to_string(),
             url: github_url.to_string(),
-            schema: "omnia@v1".to_string(),
+            capability: "omnia@v1".to_string(),
             description: Some("alpha service".to_string()),
             contracts: None,
         };
@@ -2367,7 +2366,7 @@ mod tests {
         let project = RegistryProject {
             name: "alpha".to_string(),
             url: github_url.to_string(),
-            schema: "omnia@v1".to_string(),
+            capability: "omnia@v1".to_string(),
             description: Some("alpha service".to_string()),
             contracts: None,
         };

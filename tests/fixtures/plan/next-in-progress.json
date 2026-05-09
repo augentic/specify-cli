@@ -4,7 +4,7 @@
   "next": null,
   "project": null,
   "reason": "in-progress",
-  "schema": null,
-  "schema-version": 3,
+  "capability": null,
+  "schema-version": 4,
   "sources": null
 }

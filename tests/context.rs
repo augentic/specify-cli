@@ -336,7 +336,7 @@ fn context_generate_json_uses_existing_envelope_and_kebab_case_keys() {
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("stdout json");
 
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["status"], "written");
     assert_eq!(value["path"], "AGENTS.md");
     assert_eq!(value["check"], false);
@@ -380,11 +380,11 @@ version: 1
 projects:
   - name: billing
     url: billing-src
-    schema: omnia@v1
+    capability: omnia@v1
     description: Billing service
   - name: orders
     url: orders-src
-    schema: omnia@v1
+    capability: omnia@v1
     description: Orders service
 ",
     );
@@ -417,11 +417,11 @@ version: 1
 projects:
   - name: billing
     url: billing-src
-    schema: omnia@v1
+    capability: omnia@v1
     description: Billing service
   - name: orders
     url: orders-src
-    schema: omnia@v1
+    capability: omnia@v1
     description: Orders service
 ",
     );
@@ -605,7 +605,7 @@ version: 1
 projects:
   - name: context-demo
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Context demo
 ",
     );
@@ -617,11 +617,11 @@ version: 1
 projects:
   - name: context-demo
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Context demo
   - name: billing
     url: ../billing
-    schema: omnia@v1
+    capability: omnia@v1
     description: Billing service
 ",
     );

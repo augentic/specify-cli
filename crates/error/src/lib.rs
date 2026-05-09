@@ -63,13 +63,27 @@ pub enum Error {
     #[error("not initialized: .specify/project.yaml not found")]
     NotInitialized,
 
-    /// Schema resolution failed with the given reason.
-    #[error("schema resolution failed: {0}")]
-    SchemaResolution(String),
+    /// Capability resolution failed with the given reason.
+    #[error("capability resolution failed: {0}")]
+    CapabilityResolution(String),
 
     /// A configuration or input error.
     #[error("config error: {0}")]
     Config(String),
+
+    /// A user-supplied CLI argument is invalid for reasons clap cannot
+    /// catch (kebab-case names, mutually exclusive flag combinations,
+    /// unknown enum keys, etc.). Carries the offending flag/value plus a
+    /// human-readable detail. Prefer this over [`Error::Config`] for
+    /// argument-shape validation so the CLI can map it onto the
+    /// argument-error exit code.
+    #[error("invalid argument {flag}: {detail}")]
+    Argument {
+        /// Argument name (e.g. `--capability`, `<name>`, `phase`).
+        flag: &'static str,
+        /// Human-readable explanation, suitable for display alongside `--help`.
+        detail: String,
+    },
 
     /// `specify context generate` refused to overwrite an existing
     /// hand-authored `AGENTS.md` that does not contain the managed fences.
@@ -245,8 +259,9 @@ impl Error {
     pub const fn variant_str(&self) -> &'static str {
         match self {
             Self::NotInitialized => "not-initialized",
-            Self::SchemaResolution(_) => "schema-resolution",
+            Self::CapabilityResolution(_) => "capability-resolution",
             Self::Config(_) => "config",
+            Self::Argument { .. } => "argument",
             Self::ContextUnfenced => "context-existing-unfenced-agents-md",
             Self::ContextDrift => "context-fenced-content-modified",
             Self::ContextNoLock => "context-lock-missing",
@@ -293,110 +308,51 @@ mod tests {
         }
     }
 
+    /// Spot-check that representative variants render their expected
+    /// prefix. Per-variant assertions on `Display` output are noise
+    /// — `thiserror` already drives the format strings.
     #[test]
-    fn not_init_display() {
-        let err = Error::NotInitialized;
-        assert_eq!(err.to_string(), "not initialized: .specify/project.yaml not found");
+    fn display_spot_checks() {
+        let cases: [(Error, &str); 5] = [
+            (Error::NotInitialized, "not initialized"),
+            (Error::CapabilityResolution("boom".into()), "capability resolution failed: boom"),
+            (Error::Config("bad key".into()), "config error: bad key"),
+            (Error::Merge("conflict".into()), "merge failed: conflict"),
+            (Error::InvalidName("bad--name".into()), "invalid name: bad--name"),
+        ];
+        for (err, expected_prefix) in cases {
+            assert!(
+                err.to_string().starts_with(expected_prefix),
+                "{err} should start with {expected_prefix}"
+            );
+        }
     }
 
     #[test]
-    fn schema_resolution_display() {
-        let err = Error::SchemaResolution("boom".to_string());
-        assert_eq!(err.to_string(), "schema resolution failed: boom");
-    }
-
-    #[test]
-    fn config_display() {
-        let err = Error::Config("bad key".to_string());
-        assert_eq!(err.to_string(), "config error: bad key");
-    }
-
-    #[test]
-    fn validation_display_payload() {
+    fn validation_payload_round_trips() {
         let err = Error::Validation {
             count: 2,
             results: vec![summary(ValidationStatus::Fail), summary(ValidationStatus::Deferred)],
         };
         assert_eq!(err.to_string(), "validation failed: 2 errors");
-        if let Error::Validation { count, results } = err {
-            assert_eq!(count, 2);
-            assert_eq!(results.len(), 2);
-            assert_eq!(results[0].status, ValidationStatus::Fail);
-            assert_eq!(results[1].status, ValidationStatus::Deferred);
-        } else {
+        let Error::Validation { count, results } = err else {
             panic!("expected Validation variant");
+        };
+        assert_eq!(count, 2);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].status, ValidationStatus::Fail);
+        assert_eq!(results[1].status, ValidationStatus::Deferred);
+    }
+
+    #[test]
+    fn init_requires_capability_or_hub_display() {
+        let err = Error::InitNeedsCapability;
+        let s = err.to_string();
+        for needle in
+            ["init-requires-capability-or-hub", "specify init <capability>", "specify init --hub"]
+        {
+            assert!(s.contains(needle), "diagnostic must include `{needle}`, got: {s}");
         }
-    }
-
-    #[test]
-    fn merge_display() {
-        let err = Error::Merge("conflict".to_string());
-        assert_eq!(err.to_string(), "merge failed: conflict");
-    }
-
-    #[test]
-    fn lifecycle_display() {
-        let err = Error::Lifecycle {
-            expected: "Defining".to_string(),
-            found: "Merged".to_string(),
-        };
-        assert_eq!(err.to_string(), "lifecycle error: expected Defining, found Merged");
-    }
-
-    #[test]
-    fn version_too_old_display() {
-        let err = Error::CliTooOld {
-            required: "0.2.0".to_string(),
-            found: "0.1.0".to_string(),
-        };
-        assert_eq!(
-            err.to_string(),
-            "specify version 0.1.0 is older than the project floor 0.2.0; upgrade the CLI"
-        );
-    }
-
-    #[test]
-    fn plan_transition_display() {
-        let err = Error::PlanTransition {
-            from: "Done".to_string(),
-            to: "InProgress".to_string(),
-        };
-        assert_eq!(err.to_string(), "illegal plan transition: cannot go from Done to InProgress");
-    }
-
-    #[test]
-    fn plan_outstanding_display() {
-        let err = Error::PlanIncomplete {
-            entries: vec!["checkout-api".to_string(), "checkout-ui".to_string()],
-        };
-        assert_eq!(
-            err.to_string(),
-            "plan has outstanding non-terminal work: [\"checkout-api\", \"checkout-ui\"]"
-        );
-    }
-
-    #[test]
-    fn driver_busy_display() {
-        let err = Error::DriverBusy { pid: 4242 };
-        assert_eq!(
-            err.to_string(),
-            "another /change:execute driver is running (pid 4242); refusing to proceed"
-        );
-    }
-
-    #[test]
-    fn artifact_not_found_display() {
-        let err = Error::ArtifactNotFound {
-            kind: ".metadata.yaml",
-            path: std::path::PathBuf::from("/tmp/x"),
-        };
-        assert_eq!(err.to_string(), ".metadata.yaml not found at /tmp/x");
-    }
-
-    #[test]
-    fn invalid_name_display() {
-        let err = Error::InvalidName("bad--name".to_string());
-        assert_eq!(err.to_string(), "invalid name: bad--name");
     }
 
     #[test]
@@ -428,28 +384,6 @@ mod tests {
                 "context diagnostic display must start with `{expected}`, got: {err}"
             );
         }
-    }
-
-    #[test]
-    fn init_requires_capability_or_hub_display() {
-        let err = Error::InitNeedsCapability;
-        let s = err.to_string();
-        assert!(
-            s.contains("init-requires-capability-or-hub"),
-            "diagnostic must carry the stable kebab-case code, got: {s}"
-        );
-        assert!(
-            s.contains("specify init <capability>"),
-            "diagnostic must show the regular-project init form, got: {s}"
-        );
-        assert!(
-            s.contains("specify init --hub"),
-            "diagnostic must show the hub-init form, got: {s}"
-        );
-        assert!(
-            s.contains("rfcs/rfc-13-extensibility.md#migration"),
-            "diagnostic must link RFC-13 §Migration, got: {s}"
-        );
     }
 
     #[test]

@@ -72,7 +72,7 @@ homepage = "https://augentic.io"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/augentic/specify-cli"
 rust-version = "1.93"
-version = "0.2.0"
+version = "0.3.0"
 
 [workspace.lints.rust]
 # https://dirname.github.io/rust-std-doc/rustc/lints/listing/allowed-by-default.html
@@ -96,6 +96,7 @@ pedantic = "warn"
 as_pointer_underscore = "warn"
 assertions_on_result_states = "warn"
 clone_on_ref_ptr = "warn"
+dbg_macro = "warn"
 deref_by_slicing = "warn"
 disallowed_script_idents = "warn"
 empty_drop = "warn"
@@ -107,6 +108,7 @@ map_err_ignore = "warn"
 redundant_type_annotations = "warn"
 renamed_function_params = "warn"
 semicolon_outside_block = "warn"
+todo = "warn"
 undocumented_unsafe_blocks = "warn"
 unnecessary_safety_comment = "warn"
 unnecessary_safety_doc = "warn"
@@ -124,7 +126,7 @@ specify-slice = { path = "crates/slice" }
 specify-change = { path = "crates/change" }
 specify-validate = { path = "crates/validate" }
 specify-tool = { path = "crates/tool" }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }

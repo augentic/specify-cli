@@ -1,4 +1,4 @@
-schema: omnia
+capability: omnia
 status: complete
 touched-specs:
   - name: login

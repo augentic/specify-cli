@@ -48,7 +48,7 @@ impl PipelineView {
             let brief = Brief::load(&brief_path)?;
 
             if brief.frontmatter.id != entry.id {
-                return Err(Error::SchemaResolution(format!(
+                return Err(Error::CapabilityResolution(format!(
                     "brief at {} declares id `{}` but pipeline entry references id `{}`",
                     brief_path.display(),
                     brief.frontmatter.id,
@@ -65,7 +65,7 @@ impl PipelineView {
         for (_phase, brief) in &briefs {
             for needed in &brief.frontmatter.needs {
                 if !seen.contains(needed.as_str()) {
-                    return Err(Error::SchemaResolution(format!(
+                    return Err(Error::CapabilityResolution(format!(
                         "brief `{}` needs `{}` but that brief is not earlier in pipeline order",
                         brief.frontmatter.id, needed
                     )));
@@ -74,7 +74,7 @@ impl PipelineView {
             if let Some(tracked) = &brief.frontmatter.tracks
                 && !known_ids.contains(tracked.as_str())
             {
-                return Err(Error::SchemaResolution(format!(
+                return Err(Error::CapabilityResolution(format!(
                     "brief `{}` tracks `{}` but no such brief exists in this schema",
                     brief.frontmatter.id, tracked
                 )));
@@ -173,7 +173,7 @@ impl PipelineView {
         }
 
         if order.len() != briefs.len() {
-            return Err(Error::SchemaResolution(format!(
+            return Err(Error::CapabilityResolution(format!(
                 "cycle detected in {phase:?} `needs` graph"
             )));
         }

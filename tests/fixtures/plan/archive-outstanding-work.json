@@ -4,5 +4,5 @@
   ],
   "error": "plan-has-outstanding-work",
   "exit-code": 1,
-  "schema-version": 3
+  "schema-version": 4
 }

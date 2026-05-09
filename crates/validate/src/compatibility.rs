@@ -977,7 +977,7 @@ mod tests {
         write_file(&tmp.path().join(".specify/project.yaml"), "name: hub\nhub: true\nrules: {}\n");
         write_file(
             &tmp.path().join("registry.yaml"),
-            "version: 1\nprojects:\n  - name: backend\n    url: ../backend\n    schema: omnia@v1\n    description: Backend service.\n    contracts:\n      produces:\n        - schemas/user.yaml\n  - name: mobile\n    url: ../mobile\n    schema: vectis@v1\n    description: Mobile client.\n    contracts:\n      consumes:\n        - schemas/user.yaml\n",
+            "version: 1\nprojects:\n  - name: backend\n    url: ../backend\n    capability: omnia@v1\n    description: Backend service.\n    contracts:\n      produces:\n        - schemas/user.yaml\n  - name: mobile\n    url: ../mobile\n    capability: vectis@v1\n    description: Mobile client.\n    contracts:\n      consumes:\n        - schemas/user.yaml\n",
         );
     }
 

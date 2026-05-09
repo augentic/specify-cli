@@ -19,12 +19,7 @@ use crate::cli::{ChangeAction, OutputFormat};
 use crate::context::CommandContext;
 use crate::output::{CliResult, absolute_string, emit_response};
 
-/// Dispatch `specify change *` (RFC-13 §"What becomes a capability").
-///
-/// `change` is the umbrella orchestration verb family — operator
-/// brief, executable plan, and finalize. The `Plan { action }`
-/// arm threads through to the plan submodule so the durable surface
-/// reads `specify change plan {add,amend,next,status,...}`.
+/// Dispatch `specify change *` — operator brief, plan, finalize.
 pub fn run(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult, Error> {
     match action {
         ChangeAction::Create { name } => brief_create(ctx, name),

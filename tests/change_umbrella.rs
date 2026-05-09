@@ -378,7 +378,7 @@ changes:
         assert_eq!(assert.get_output().status.code(), Some(0));
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["passed"], true);
         assert_eq!(actual["results"], Value::Array(vec![]));
         assert_golden("validate-clean.json", actual);
@@ -405,7 +405,7 @@ changes:
         );
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(
             actual["passed"], true,
             "in-progress-without-slice-dir is a warning, so passed must be true: {actual}"
@@ -439,7 +439,7 @@ changes:
         );
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["passed"], false);
         let results = actual["results"].as_array().expect("results array");
         assert!(
@@ -476,7 +476,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["next"], "b");
         assert_eq!(actual["reason"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -508,7 +508,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["reason"], "in-progress");
         assert_eq!(actual["active"], "a");
@@ -534,7 +534,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["reason"], "all-done");
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -552,7 +552,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["reason"], "stuck");
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -573,7 +573,7 @@ changes:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         let counts = actual["counts"].as_object().expect("counts object");
         for key in ["done", "in-progress", "pending", "blocked", "failed", "skipped", "total"] {
             assert!(counts.contains_key(key), "counts missing key '{key}': {counts:?}");
@@ -618,7 +618,7 @@ changes:
             .success();
 
         let actual = parse_stdout(&output.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["order"], "list", "cycle must trigger list-order fallback");
 
         let names: Vec<&str> = actual["entries"]
@@ -722,12 +722,21 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "change", "plan", "add", "foo", "--schema", "contracts@v1"])
+            .args([
+                "--format",
+                "json",
+                "change",
+                "plan",
+                "add",
+                "foo",
+                "--capability",
+                "contracts@v1",
+            ])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["action"], "create");
         assert_eq!(actual["entry"]["name"], "foo");
         assert_eq!(actual["entry"]["status"], "pending");
@@ -748,13 +757,13 @@ changes:
 
         specify()
             .current_dir(project.root())
-            .args(["change", "plan", "add", "foo", "--schema", "contracts@v1"])
+            .args(["change", "plan", "add", "foo", "--capability", "contracts@v1"])
             .assert()
             .success();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["change", "plan", "add", "foo", "--schema", "contracts@v1"])
+            .args(["change", "plan", "add", "foo", "--capability", "contracts@v1"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -772,7 +781,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["change", "plan", "add", "NotKebab", "--schema", "contracts@v1"])
+            .args(["change", "plan", "add", "NotKebab", "--capability", "contracts@v1"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -920,7 +929,7 @@ changes:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["entry"]["name"], "foo");
         assert_eq!(actual["entry"]["status"], "done");
         assert_eq!(actual["entry"]["status-reason"], Value::Null);
@@ -1057,7 +1066,7 @@ changes:
                 "change", "plan",
                 "add",
                 "registration-duplicate-email-crash",
-                "--schema",
+                "--capability",
                 "contracts@v1",
                 "--description",
                 "Duplicate email submission returns 500 instead of 409. Modifies user-registration.",
@@ -1142,7 +1151,7 @@ changes:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["plan"]["name"], "my-change");
         let path_str = actual["plan"]["path"].as_str().expect("plan.path string");
         assert!(
@@ -1355,7 +1364,7 @@ changes:
             .success();
         let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["plan"]["name"], "demo");
         assert!(
             actual["archived"].as_str().unwrap_or_default().contains("demo-"),
@@ -1406,7 +1415,7 @@ changes:
         assert_eq!(assert.get_output().status.code(), Some(1));
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["error"], "plan-has-outstanding-work");
         let entries = actual["entries"].as_array().expect("entries array");
         let names: Vec<&str> = entries.iter().map(|v| v.as_str().unwrap()).collect();
@@ -1546,7 +1555,7 @@ changes: []
             .success();
         let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["schema-version"], 4);
         assert_eq!(actual["plan"]["name"], "demo");
         assert!(
             actual["archived"].as_str().unwrap_or_default().contains("demo-"),
@@ -1792,7 +1801,7 @@ changes: []
              projects:\n\
              \x20\x20- name: traffic\n\
              \x20\x20\x20\x20url: .\n\
-             \x20\x20\x20\x20schema: omnia@v1\n",
+             \x20\x20\x20\x20capability: omnia@v1\n",
         )
         .expect("write registry.yaml");
 
@@ -1802,7 +1811,7 @@ changes: []
         assert_eq!(loaded.projects.len(), 1);
         assert_eq!(loaded.projects[0].name, "traffic");
         assert_eq!(loaded.projects[0].url, ".");
-        assert_eq!(loaded.projects[0].schema, "omnia@v1");
+        assert_eq!(loaded.projects[0].capability, "omnia@v1");
         assert!(loaded.is_single_repo());
     }
 
@@ -1819,7 +1828,7 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
 ";
 
     const REGISTRY_THREE: &str = "\
@@ -1827,15 +1836,15 @@ version: 1
 projects:
   - name: monolith
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Core monolith service
   - name: orders
     url: ../orders
-    schema: omnia@v1
+    capability: omnia@v1
     description: Order management service
   - name: payments
     url: git@github.com:org/payments.git
-    schema: omnia@v1
+    capability: omnia@v1
     description: Payment processing service
 ";
 
@@ -1879,7 +1888,7 @@ projects:
         assert_eq!(projects.len(), 1);
         assert_eq!(projects[0]["name"], "traffic");
         assert_eq!(projects[0]["url"], ".");
-        assert_eq!(projects[0]["schema"], "omnia@v1");
+        assert_eq!(projects[0]["capability"], "omnia@v1");
     }
 
     #[test]
@@ -1890,7 +1899,7 @@ projects:
         let assert =
             specify().current_dir(project.root()).args(["registry", "show"]).assert().success();
         let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
-        for fragment in ["version: 1", "name: traffic", "url: .", "schema: omnia@v1"] {
+        for fragment in ["version: 1", "name: traffic", "url: .", "capability: omnia@v1"] {
             assert!(
                 stdout.contains(fragment),
                 "text show output should mention `{fragment}`, got:\n{stdout}"
@@ -1997,10 +2006,10 @@ version: 1
 projects:
   - name: dup
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
   - name: dup
     url: ../other
-    schema: omnia@v1
+    capability: omnia@v1
 ",
         );
 
@@ -2026,7 +2035,7 @@ version: 1
 projects:
   - name: NotKebab
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
 ",
         );
 
@@ -2369,11 +2378,11 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Root project
   - name: beta
     url: ../peer-proj
-    schema: omnia@v1
+    capability: omnia@v1
     description: Peer project
 ";
         fs::write(root.join("registry.yaml"), reg).expect("registry");

@@ -1,9 +1,8 @@
 #![allow(
     clippy::items_after_statements,
-    clippy::needless_pass_by_value,
     clippy::option_if_let_else,
     clippy::unnecessary_wraps,
-    reason = "Command handlers mirror Clap-owned inputs and keep JSON DTOs close to their emission sites."
+    reason = "Command handlers keep JSON DTOs close to their emission sites."
 )]
 
 use std::fs;
@@ -26,9 +25,9 @@ pub fn run(ctx: &CommandContext, action: RegistryAction) -> Result<CliResult, Er
         RegistryAction::Add {
             name,
             url,
-            schema,
+            capability,
             description,
-        } => add_to_registry(ctx, name, url, schema, description),
+        } => add_to_registry(ctx, name, url, capability, description),
         RegistryAction::Remove { name } => remove_from_registry(ctx, name),
     }
 }
@@ -176,7 +175,8 @@ fn validate_registry(ctx: &CommandContext) -> Result<CliResult, Error> {
 /// `description-missing-multi-repo` invariant produce the canonical
 /// error messages.
 fn add_to_registry(
-    ctx: &CommandContext, name: String, url: String, schema: String, description: Option<String>,
+    ctx: &CommandContext, name: String, url: String, capability: String,
+    description: Option<String>,
 ) -> Result<CliResult, Error> {
     let registry_path = Registry::path(&ctx.project_dir);
     let hub_mode = ctx.config.hub;
@@ -187,9 +187,9 @@ fn add_to_registry(
              (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
         )));
     }
-    if schema.trim().is_empty() {
+    if capability.trim().is_empty() {
         return Err(Error::Config(
-            "registry add: --schema must be non-empty (e.g. `omnia@v1`)".to_string(),
+            "registry add: --capability must be non-empty (e.g. `omnia@v1`)".to_string(),
         ));
     }
 
@@ -216,7 +216,7 @@ fn add_to_registry(
     let new_entry = RegistryProject {
         name: name.clone(),
         url,
-        schema,
+        capability,
         description: description.and_then(|s| {
             let trimmed = s.trim();
             if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
@@ -397,7 +397,7 @@ fn print_registry_text(registry: &Registry, registry_path: &Path) {
     for project in &registry.projects {
         println!("  - name: {}", project.name);
         println!("    url: {}", project.url);
-        println!("    schema: {}", project.schema);
+        println!("    capability: {}", project.capability);
     }
 }
 
@@ -483,13 +483,13 @@ mod tests {
     }
 
     #[test]
-    fn add_rejects_empty_schema() {
+    fn add_rejects_empty_capability() {
         let tmp = TempDir::new().unwrap();
         let ctx = ctx_for(&tmp, false);
         let err =
             add_to_registry(&ctx, "alpha".to_string(), ".".to_string(), "   ".to_string(), None)
-                .expect_err("empty schema rejected");
-        assert!(err.to_string().contains("--schema"));
+                .expect_err("empty capability rejected");
+        assert!(err.to_string().contains("--capability"));
     }
 
     // ---------- URL classification (delegated to validate_shape) ----------
@@ -550,7 +550,7 @@ mod tests {
         assert_eq!(registry.projects.len(), 1);
         assert_eq!(registry.projects[0].name, "alpha");
         assert_eq!(registry.projects[0].url, ".");
-        assert_eq!(registry.projects[0].schema, "omnia@v1");
+        assert_eq!(registry.projects[0].capability, "omnia@v1");
         assert!(registry.projects[0].description.is_none());
     }
 
@@ -837,7 +837,7 @@ mod tests {
                 Entry {
                     name: "alpha-feature".to_string(),
                     project: Some("alpha".to_string()),
-                    schema: None,
+                    capability: None,
                     status: Status::Pending,
                     depends_on: vec![],
                     sources: vec![],
@@ -848,7 +848,7 @@ mod tests {
                 Entry {
                     name: "beta-feature".to_string(),
                     project: Some("beta".to_string()),
-                    schema: None,
+                    capability: None,
                     status: Status::Pending,
                     depends_on: vec![],
                     sources: vec![],
@@ -859,7 +859,7 @@ mod tests {
                 Entry {
                     name: "another-alpha".to_string(),
                     project: Some("alpha".to_string()),
-                    schema: None,
+                    capability: None,
                     status: Status::Pending,
                     depends_on: vec![],
                     sources: vec![],

@@ -1,7 +1,6 @@
 #![allow(
-    clippy::needless_pass_by_value,
     clippy::too_many_arguments,
-    reason = "Clap dispatch hands owned subcommand values to these command handlers."
+    reason = "Plan dispatcher passes through clap-shaped argument tuples."
 )]
 
 mod create;
@@ -36,18 +35,20 @@ pub fn run(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, Error>
             sources,
             description,
             project,
-            schema,
+            capability,
             context,
-        } => create::add(ctx, name, depends_on, sources, description, project, schema, context),
+        } => create::add(ctx, name, depends_on, sources, description, project, capability, context),
         PlanAction::Amend {
             name,
             depends_on,
             sources,
             description,
             project,
-            schema,
+            capability,
             context,
-        } => create::amend(ctx, name, depends_on, sources, description, project, schema, context),
+        } => {
+            create::amend(ctx, name, depends_on, sources, description, project, capability, context)
+        }
         PlanAction::Transition { name, target, reason } => {
             lifecycle::transition(ctx, name, target, reason)
         }

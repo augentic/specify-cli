@@ -26,7 +26,7 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
 ";
 
 const MULTI_PROJECT_REGISTRY_YAML: &str = "\
@@ -34,15 +34,15 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Real-time traffic routing service
   - name: ingest
     url: git@github.com:augentic/ingest.git
-    schema: omnia@v1
+    capability: omnia@v1
     description: Data ingestion pipeline
   - name: ops-runbook
     url: https://github.com/augentic/ops-runbook
-    schema: omnia@v1
+    capability: omnia@v1
     description: Operational runbook reference
 ";
 
@@ -61,7 +61,7 @@ fn registry_parses_canonical_rfc_example() {
     assert_eq!(registry.projects.len(), 1);
     assert_eq!(registry.projects[0].name, "traffic");
     assert_eq!(registry.projects[0].url, ".");
-    assert_eq!(registry.projects[0].schema, "omnia@v1");
+    assert_eq!(registry.projects[0].capability, "omnia@v1");
 }
 
 #[test]
@@ -97,7 +97,7 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     foo: bar
 ";
     let tmp = scaffold_registry(yaml);
@@ -144,7 +144,7 @@ fn registry_rejects_missing_name() {
 version: 1
 projects:
   - url: .
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing name");
@@ -157,7 +157,7 @@ fn registry_rejects_missing_url() {
 version: 1
 projects:
   - name: traffic
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing url");
@@ -180,8 +180,9 @@ projects:
 #[test]
 fn registry_rejects_non_kebab_case_name() {
     for bad in ["TrafficSystem", "traffic_system", "traffic--system", "-traffic", "traffic-"] {
-        let yaml =
-            format!("version: 1\nprojects:\n  - name: {bad}\n    url: .\n    schema: omnia@v1\n");
+        let yaml = format!(
+            "version: 1\nprojects:\n  - name: {bad}\n    url: .\n    capability: omnia@v1\n"
+        );
         let tmp = scaffold_registry(&yaml);
         let err = Registry::load(tmp.path()).expect_err(&format!("bad name `{bad}`"));
         match err {
@@ -201,7 +202,7 @@ version: 1
 projects:
   - name: \"\"
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("empty name");
@@ -220,7 +221,7 @@ version: 1
 projects:
   - name: traffic
     url: \"\"
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("empty url");
@@ -237,12 +238,12 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: \"\"
+    capability: \"\"
 ";
     let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("empty schema");
+    let err = Registry::load(tmp.path()).expect_err("empty capability");
     match err {
-        Error::Config(msg) => assert!(msg.contains("schema"), "msg: {msg}"),
+        Error::Config(msg) => assert!(msg.contains("capability"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -254,10 +255,10 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
   - name: traffic
     url: ../other
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("duplicate name");
@@ -303,14 +304,14 @@ fn registry_round_trip_serialize() {
             RegistryProject {
                 name: "traffic".into(),
                 url: ".".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Real-time traffic routing".into()),
                 contracts: None,
             },
             RegistryProject {
                 name: "ingest".into(),
                 url: "git@github.com:augentic/ingest.git".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Data ingestion pipeline".into()),
                 contracts: None,
             },
@@ -337,11 +338,11 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: The alpha service
   - name: beta
     url: ../beta
-    schema: omnia@v1
+    capability: omnia@v1
     description: The beta service
 ";
     let tmp = scaffold_registry(yaml);
@@ -358,11 +359,11 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: The alpha service
   - name: beta
     url: ../beta
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing description in multi-project");
@@ -382,11 +383,11 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: \"  \"
   - name: beta
     url: ../beta
-    schema: omnia@v1
+    capability: omnia@v1
     description: The beta service
 ";
     let tmp = scaffold_registry(yaml);
@@ -413,7 +414,7 @@ fn registry_description_round_trips_through_serde() {
     let original = RegistryProject {
         name: "traffic".into(),
         url: ".".into(),
-        schema: "omnia@v1".into(),
+        capability: "omnia@v1".into(),
         description: Some("Real-time traffic routing".into()),
         contracts: None,
     };
@@ -436,7 +437,7 @@ fn registry_with_one_url(url: &str) -> Registry {
         projects: vec![RegistryProject {
             name: "traffic".into(),
             url: url.into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: None,
         }],
@@ -461,7 +462,7 @@ fn registry_project_url_materialises_as_symlink_classification() {
         let p = RegistryProject {
             name: "traffic".into(),
             url: url.into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: None,
         };
@@ -571,14 +572,14 @@ fn registry_validate_shape_hub_accepts_non_dot_urls() {
             RegistryProject {
                 name: "alpha".into(),
                 url: "git@github.com:augentic/alpha.git".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Alpha service".into()),
                 contracts: None,
             },
             RegistryProject {
                 name: "beta".into(),
                 url: "../beta".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Beta service".into()),
                 contracts: None,
             },
@@ -594,7 +595,7 @@ fn registry_validate_shape_hub_rejects_dot_url_entry() {
         projects: vec![RegistryProject {
             name: "platform".into(),
             url: ".".into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: None,
         }],
@@ -621,14 +622,14 @@ fn registry_validate_shape_hub_rejects_dot_url_in_multi_project() {
             RegistryProject {
                 name: "alpha".into(),
                 url: "../alpha".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Alpha service".into()),
                 contracts: None,
             },
             RegistryProject {
                 name: "self-as-project".into(),
                 url: ".".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Should be the hub, not an entry".into()),
                 contracts: None,
             },
@@ -675,7 +676,7 @@ fn registry_validate_shape_unchanged_for_dot_url() {
         projects: vec![RegistryProject {
             name: "platform".into(),
             url: ".".into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: None,
         }],
@@ -690,7 +691,7 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Real-time traffic routing service
     contracts:
       produces:
@@ -699,7 +700,7 @@ projects:
         - http/ingest-api.yaml
   - name: ingest
     url: git@github.com:augentic/ingest.git
-    schema: omnia@v1
+    capability: omnia@v1
     description: Data ingestion pipeline
     contracts:
       produces:
@@ -741,7 +742,7 @@ fn registry_contract_roles_round_trip_omits_empty_fields() {
         projects: vec![RegistryProject {
             name: "traffic".into(),
             url: ".".into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: Some(ContractRoles {
                 produces: vec!["http/traffic-api.yaml".into()],
@@ -762,7 +763,7 @@ fn registry_contract_roles_none_omits_contracts_key() {
         projects: vec![RegistryProject {
             name: "traffic".into(),
             url: ".".into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: None,
         }],
@@ -778,14 +779,14 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Alpha service
     contracts:
       produces:
         - http/shared-api.yaml
   - name: beta
     url: ../beta
-    schema: omnia@v1
+    capability: omnia@v1
     description: Beta service
     contracts:
       produces:
@@ -813,7 +814,7 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     contracts:
       imports:
         - http/external-api.yaml
@@ -833,7 +834,7 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     contracts:
       produces:
         - /absolute/path.yaml
@@ -856,7 +857,7 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     contracts:
       consumes:
         - ../escape/path.yaml
@@ -879,7 +880,7 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     contracts:
       produces:
         - http/my-api.yaml
@@ -906,7 +907,7 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     contracts:
       produces:
         - http/api.yaml

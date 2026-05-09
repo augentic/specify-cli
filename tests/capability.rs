@@ -80,7 +80,7 @@ fn capability_pipeline_define_lists_omnia_define_briefs_in_order() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["phase"], "define");
     assert_eq!(value["slice"], Value::Null);
 
@@ -232,7 +232,7 @@ fn capability_check_succeeds_on_omnia_capability_yaml() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["passed"], true, "omnia fixture must validate clean: {value}");
 }
 

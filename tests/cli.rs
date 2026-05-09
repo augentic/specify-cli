@@ -123,7 +123,7 @@ fn init_json_format_has_stable_shape() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["capability-name"], "omnia");
     assert!(value["config-path"].is_string());
     let config_path = value["config-path"].as_str().unwrap();
@@ -144,7 +144,7 @@ fn init_rejects_removed_schema_dir_syntax() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
+        .args(["init", "omnia", "--capability-dir"])
         .arg(repo_root())
         .assert()
         .failure();
@@ -238,7 +238,7 @@ fn init_json_with_no_args_errors_with_stable_code() {
 
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("stdout is JSON");
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["error"], "init-requires-capability-or-hub");
     assert_eq!(value["exit-code"], 1);
     let message = value["message"].as_str().expect("message string");
@@ -275,12 +275,12 @@ fn init_with_capability_and_hub_errors_with_init_requires_capability_or_hub() {
 
 #[test]
 fn init_help_no_longer_advertises_schema_uri_flag() {
-    // RFC-13 §1.3: `--schema-uri` is gone from the post-Phase-1 surface.
+    // RFC-13 §1.3: `--capability-uri` is gone from the post-Phase-1 surface.
     let assert = specify().args(["init", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     assert!(
-        !stdout.contains("--schema-uri"),
-        "post-RFC-13 init --help must not advertise `--schema-uri`, got:\n{stdout}"
+        !stdout.contains("--capability-uri"),
+        "post-RFC-13 init --help must not advertise `--capability-uri`, got:\n{stdout}"
     );
     assert!(
         stdout.contains("CAPABILITY") || stdout.contains("capability"),
@@ -320,7 +320,7 @@ fn version_too_old_exits_three_with_json_envelope() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["error"], "specify-version-too-old");
     assert_eq!(value["exit-code"], 3);
 }
@@ -472,7 +472,7 @@ fn init_hub_then_registry_validate_rejects_dot_url_with_hub_diagnostic() {
          projects:\n\
          \x20\x20- name: platform\n\
          \x20\x20\x20\x20url: .\n\
-         \x20\x20\x20\x20schema: hub\n",
+         \x20\x20\x20\x20capability: hub\n",
     )
     .unwrap();
 
@@ -536,7 +536,7 @@ fn registry_add_creates_entry_and_round_trips_through_show() {
             "alpha",
             "--url",
             "git@github.com:augentic/alpha.git",
-            "--schema",
+            "--capability",
             "omnia@v1",
             "--description",
             "Alpha service",
@@ -545,11 +545,11 @@ fn registry_add_creates_entry_and_round_trips_through_show() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["ok"], true);
     assert_eq!(value["added"]["name"], "alpha");
     assert_eq!(value["added"]["url"], "git@github.com:augentic/alpha.git");
-    assert_eq!(value["added"]["schema"], "omnia@v1");
+    assert_eq!(value["added"]["capability"], "omnia@v1");
     assert_eq!(value["added"]["description"], "Alpha service");
     assert_eq!(value["registry"]["projects"].as_array().unwrap().len(), 1);
 
@@ -574,7 +574,17 @@ fn registry_add_rejects_dot_url_in_hub_mode() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "registry", "add", "self", "--url", ".", "--schema", "omnia@v1"])
+        .args([
+            "--format",
+            "json",
+            "registry",
+            "add",
+            "self",
+            "--url",
+            ".",
+            "--capability",
+            "omnia@v1",
+        ])
         .assert()
         .failure();
     let value: serde_json::Value =
@@ -602,7 +612,7 @@ fn registry_add_rejects_kebab_violations_at_clap_level() {
             "BadName",
             "--url",
             "git@github.com:org/bad.git",
-            "--schema",
+            "--capability",
             "omnia@v1",
         ])
         .assert()
@@ -635,7 +645,7 @@ fn registry_remove_succeeds_and_round_trips() {
                 name,
                 "--url",
                 url,
-                "--schema",
+                "--capability",
                 "omnia@v1",
                 "--description",
                 &format!("{name} service"),
@@ -680,7 +690,7 @@ fn registry_remove_warns_when_plan_references_project() {
                 name,
                 "--url",
                 url,
-                "--schema",
+                "--capability",
                 "omnia@v1",
                 "--description",
                 &format!("{name} service"),
@@ -787,7 +797,7 @@ fn rfc14_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
     let gitignore_before = fs::read_to_string(tmp.path().join(".gitignore")).ok();
@@ -824,7 +834,7 @@ fn rfc14_c01_workspace_status_unknown_selector_fails_before_side_effects() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
 
@@ -858,15 +868,15 @@ fn rfc14_c01_workspace_sync_and_status_select_projects_in_registry_order() {
          projects:\n\
          \x20\x20- name: billing\n\
          \x20\x20\x20\x20url: ./billing\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: billing service\n\
          \x20\x20- name: orders\n\
          \x20\x20\x20\x20url: ./orders\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: orders service\n\
          \x20\x20- name: inventory\n\
          \x20\x20\x20\x20url: ./inventory\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: inventory service\n",
     )
     .unwrap();
@@ -920,11 +930,11 @@ fn rfc14_c03_workspace_status_json_reports_enriched_slot_fields() {
          projects:\n\
          \x20\x20- name: billing\n\
          \x20\x20\x20\x20url: ./billing\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: billing service\n\
          \x20\x20- name: remote\n\
          \x20\x20\x20\x20url: git@github.com:org/remote.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: remote service\n",
     )
     .unwrap();
@@ -985,7 +995,7 @@ fn rfc14_c03_workspace_status_text_flags_mismatch_dirty_and_project_config() {
          projects:\n\
          \x20\x20- name: remote\n\
          \x20\x20\x20\x20url: git@github.com:org/remote.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: remote service\n",
     )
     .unwrap();
@@ -1020,7 +1030,7 @@ fn rfc14_c01_workspace_push_unknown_selector_fails_before_side_effects() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
 
@@ -1063,7 +1073,7 @@ fn rfc14_c04_workspace_prepare_branch_hidden_helper_returns_structured_json() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: ./alpha\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
 
@@ -1123,7 +1133,7 @@ fn rfc14_c04_workspace_prepare_branch_surfaces_origin_head_diagnostic_key() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: ./alpha\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
 
@@ -1199,23 +1209,23 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
          \x20\x20orphaned: /tmp/elsewhere\n\
          changes:\n\
          \x20\x20- name: cyclic-a\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyclic-b]\n\
          \x20\x20- name: cyclic-b\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyclic-a]\n\
          \x20\x20- name: failed-root\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: failed\n\
          \x20\x20\x20\x20status-reason: regression in upstream service\n\
          \x20\x20- name: unreachable-leaf\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [failed-root]\n\
          \x20\x20- name: orphaned-source-user\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20sources: [monolith]\n",
     )
@@ -1230,7 +1240,7 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
     let slot = tmp.path().join(".specify/workspace/alpha");
@@ -1257,7 +1267,7 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
     assert_eq!(value["ok"], false, "errors must mark ok=false: {value}");
 
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
@@ -1293,11 +1303,11 @@ fn plan_doctor_diagnostic_payloads_round_trip_typed() {
          \x20\x20orphan-key: /tmp/somewhere\n\
          changes:\n\
          \x20\x20- name: cyc-a\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyc-b]\n\
          \x20\x20- name: cyc-b\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyc-a]\n",
     )
@@ -1350,23 +1360,23 @@ fn plan_validate_unchanged_by_doctor_fixture() {
          \x20\x20orphaned: /tmp/elsewhere\n\
          changes:\n\
          \x20\x20- name: cyclic-a\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyclic-b]\n\
          \x20\x20- name: cyclic-b\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyclic-a]\n\
          \x20\x20- name: failed-root\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: failed\n\
          \x20\x20\x20\x20status-reason: regression in upstream service\n\
          \x20\x20- name: unreachable-leaf\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [failed-root]\n\
          \x20\x20- name: orphaned-source-user\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20sources: [monolith]\n",
     )
@@ -1513,10 +1523,10 @@ fn change_finalize_refuses_on_non_terminal_entries() {
         "name: foo\n\
          changes:\n\
          \x20\x20- name: a\n\
-         \x20\x20\x20\x20schema: contracts@v1\n\
+         \x20\x20\x20\x20capability: contracts@v1\n\
          \x20\x20\x20\x20status: done\n\
          \x20\x20- name: b\n\
-         \x20\x20\x20\x20schema: contracts@v1\n\
+         \x20\x20\x20\x20capability: contracts@v1\n\
          \x20\x20\x20\x20status: pending\n",
     )
     .unwrap();

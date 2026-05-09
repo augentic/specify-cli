@@ -18,7 +18,16 @@ skip_rust_env_info = true
 dependencies = ["audit", "fmt", "lint", "outdated", "deps"]
 
 [tasks.ci]
-dependencies = ["lint", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
+dependencies = ["lint", "standards-check", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
+
+# Mechanical enforcement of AGENTS.md#coding-standards. See
+# scripts/standards-check.sh for the predicates and
+# scripts/standards-allowlist.txt for the count baselines.
+[tasks.standards-check]
+script = '''
+set -euo pipefail
+bash scripts/standards-check.sh
+'''
 
 # -------------------------------------
 # Individual Actions

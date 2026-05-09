@@ -79,7 +79,7 @@ fn slice_merge_preview_reports_operations_without_writing() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["schema-version"], 4);
 
     let specs = value["specs"].as_array().expect("specs array");
     // Two-spec fixture: each spec uses `## ADDED Requirements` with one
@@ -191,7 +191,7 @@ fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "schema: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: modified\n",
+        "capability: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: modified\n",
     )
     .unwrap();
 
@@ -223,7 +223,7 @@ fn conflict_check_no_contract_drift_when_baseline_is_older() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "schema: omnia\nstatus: complete\ndefined-at: \"2099-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "capability: omnia\nstatus: complete\ndefined-at: \"2099-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 
@@ -259,7 +259,7 @@ fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "schema: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "capability: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 
@@ -295,7 +295,7 @@ fn conflict_check_no_drift_for_new_contract_files() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "schema: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "capability: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 
@@ -325,7 +325,7 @@ fn conflict_check_no_drift_when_slice_has_no_contracts_dir() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "schema: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "capability: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 

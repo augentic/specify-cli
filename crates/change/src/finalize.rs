@@ -813,7 +813,7 @@ mod tests {
         Entry {
             name: name.to_string(),
             project: None,
-            schema: Some("omnia@v1".to_string()),
+            capability: Some("omnia@v1".to_string()),
             status,
             depends_on: Vec::new(),
             sources: Vec::new(),
@@ -885,7 +885,7 @@ mod tests {
                 .map(|n| RegistryProject {
                     name: (*n).to_string(),
                     url: format!("git@github.com:org/{n}.git"),
-                    schema: "omnia@v1".to_string(),
+                    capability: "omnia@v1".to_string(),
                     description: Some(format!("{n} service")),
                     contracts: None,
                 })
@@ -1419,7 +1419,7 @@ mod tests {
             projects: vec![RegistryProject {
                 name: "alpha".to_string(),
                 url: ".".to_string(),
-                schema: "omnia@v1".to_string(),
+                capability: "omnia@v1".to_string(),
                 description: Some("alpha service".to_string()),
                 contracts: None,
             }],

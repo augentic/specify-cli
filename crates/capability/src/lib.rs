@@ -34,8 +34,8 @@ mod pipeline;
 pub use brief::{Brief, BriefFrontmatter};
 pub use cache::CacheMeta;
 pub use capability::{
-    CAPABILITY_FILENAME, Capability, CapabilitySource, ManifestProbe, Phase, Pipeline,
-    PipelineEntry, ResolvedCapability,
+    CAPABILITY_FILENAME, Capability, CapabilitySource, Phase, Pipeline, PipelineEntry,
+    ResolvedCapability,
 };
 pub use change_brief::{
     ChangeBrief, ChangeFrontmatter, ChangeInput, FILENAME as CHANGE_BRIEF_FILENAME, InputKind,

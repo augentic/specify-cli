@@ -1,7 +1,6 @@
 #![allow(
     clippy::items_after_statements,
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to these command handlers."
+    reason = "JSON DTOs sit close to their emission sites for readability."
 )]
 
 use std::collections::BTreeMap;
@@ -20,7 +19,7 @@ use specify::{
 };
 
 use crate::cli::{
-    JournalAction, OutcomeAction, OutcomeKind, OutputFormat, SliceAction, SliceMergeAction,
+    JournalAction, OutcomeAction, OutcomeKindAction, OutputFormat, SliceAction, SliceMergeAction,
     SliceTaskAction,
 };
 use crate::context::CommandContext;
@@ -52,9 +51,9 @@ pub fn run(ctx: &CommandContext, action: SliceAction) -> Result<CliResult, Error
     match action {
         SliceAction::Create {
             name,
-            schema,
+            capability,
             if_exists,
-        } => create(ctx, name, schema, if_exists.into()),
+        } => create(ctx, name, capability, if_exists.into()),
         SliceAction::List => list(ctx),
         SliceAction::Status { name } => status_one(ctx, name),
         SliceAction::Validate { name } => validate(ctx, name),
@@ -68,32 +67,7 @@ pub fn run(ctx: &CommandContext, action: SliceAction) -> Result<CliResult, Error
             SliceTaskAction::Mark { name, task_number } => task_mark(ctx, name, task_number),
         },
         SliceAction::Outcome { action } => match action {
-            OutcomeAction::Set {
-                name,
-                phase,
-                outcome,
-                summary,
-                context,
-                proposed_name,
-                proposed_url,
-                proposed_schema,
-                proposed_description,
-                rationale,
-            } => outcome_set(
-                ctx,
-                name,
-                phase,
-                OutcomeSetArgs {
-                    kind: outcome,
-                    summary,
-                    context,
-                    proposed_name,
-                    proposed_url,
-                    proposed_schema,
-                    proposed_description,
-                    rationale,
-                },
-            ),
+            OutcomeAction::Set { name, phase, kind } => outcome_set(ctx, name, phase, kind),
             OutcomeAction::Show { name } => outcome_show(ctx, name),
         },
         SliceAction::Journal { action } => match action {
@@ -115,22 +89,25 @@ pub fn run(ctx: &CommandContext, action: SliceAction) -> Result<CliResult, Error
 }
 
 fn create(
-    ctx: &CommandContext, name: String, schema: Option<String>, if_exists: CreateIfExists,
+    ctx: &CommandContext, name: String, capability: Option<String>, if_exists: CreateIfExists,
 ) -> Result<CliResult, Error> {
-    let schema_value = match schema {
-        Some(s) => s,
-        None => ctx.config.capability.clone().ok_or_else(|| {
-            Error::Config(
-                "no project capability declared; pass `--schema <id>` explicitly or run \
-                 `specify init <capability>` first (hub projects cannot create changes)"
-                    .to_string(),
-            )
-        })?,
-    };
+    let capability_value = capability.map_or_else(
+        || {
+            ctx.config.capability.clone().ok_or_else(|| {
+                Error::Config(
+                    "no project capability declared; pass `--capability <id>` explicitly or run \
+                     `specify init <capability>` first (hub projects cannot create changes)"
+                        .to_string(),
+                )
+            })
+        },
+        Ok,
+    )?;
     let slices_dir = ctx.slices_dir();
     std::fs::create_dir_all(&slices_dir)?;
 
-    let outcome = slice_actions::create(&slices_dir, &name, &schema_value, if_exists, Utc::now())?;
+    let outcome =
+        slice_actions::create(&slices_dir, &name, &capability_value, if_exists, Utc::now())?;
 
     emit_slice_create(ctx.format, &outcome)
 }
@@ -141,7 +118,7 @@ struct CreateBody {
     name: String,
     slice_dir: String,
     status: String,
-    schema: String,
+    capability: String,
     created: bool,
     restarted: bool,
 }
@@ -152,7 +129,7 @@ fn emit_slice_create(format: OutputFormat, outcome: &CreateOutcome) -> Result<Cl
             name: outcome.dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
             slice_dir: outcome.dir.display().to_string(),
             status: outcome.metadata.status.to_string(),
-            schema: outcome.metadata.schema.clone(),
+            capability: outcome.metadata.capability.clone(),
             created: outcome.created,
             restarted: outcome.restarted,
         })?,
@@ -165,7 +142,7 @@ fn emit_slice_create(format: OutputFormat, outcome: &CreateOutcome) -> Result<Cl
             if outcome.restarted {
                 println!("  (previous directory was removed)");
             }
-            println!("  schema: {}", outcome.metadata.schema);
+            println!("  capability: {}", outcome.metadata.capability);
             println!("  status: {}", outcome.metadata.status);
         }
     }
@@ -388,32 +365,15 @@ fn drop_slice(
     Ok(CliResult::Success)
 }
 
-/// Inputs for [`outcome_set`].
-///
-/// Bundling the `OutcomeAction::Set` flag soup into one struct avoids
-/// the eight-positional-args clippy lint while keeping the dispatcher
-/// in `run_slice` flat and readable.
-struct OutcomeSetArgs {
-    kind: OutcomeKind,
-    summary: Option<String>,
-    context: Option<String>,
-    proposed_name: Option<String>,
-    proposed_url: Option<String>,
-    proposed_schema: Option<String>,
-    proposed_description: Option<String>,
-    rationale: Option<String>,
-}
-
 fn outcome_set(
-    ctx: &CommandContext, name: String, phase: Phase, args: OutcomeSetArgs,
+    ctx: &CommandContext, name: String, phase: Phase, kind: OutcomeKindAction,
 ) -> Result<CliResult, Error> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
         return Err(Error::SliceNotFound { name });
     }
 
-    let context = args.context.clone();
-    let (outcome, summary) = build_outcome(args)?;
+    let (outcome, summary, context) = build_outcome(kind);
 
     let metadata = slice_actions::stamp_outcome(
         &slice_dir,
@@ -451,114 +411,34 @@ fn outcome_set(
     Ok(CliResult::Success)
 }
 
-/// Translate the CLI flag soup (`OutcomeKind` + optional `--proposed-*`
-/// flags) into the wire `Outcome` and the `summary` string written to
-/// `.metadata.yaml`.
-///
-/// The four original variants accept any `--summary`, ignore the
-/// `--proposed-*` flags, and reject them when supplied (they are
-/// outcome-specific). The `registry-amendment-required` variant
-/// requires `--proposed-name`, `--proposed-url`, `--proposed-schema`,
-/// and `--rationale`; `--proposed-description` is optional. When
-/// `--summary` is omitted for the new variant the CLI synthesises a
-/// canonical `registry-amendment-required: <name>` summary so
-/// `/change:execute` can carry the `<name>` into the journal entry's
-/// `cross-project-warning:`-style prefix.
-fn build_outcome(args: OutcomeSetArgs) -> Result<(Outcome, String), Error> {
-    let OutcomeSetArgs {
-        kind,
-        summary,
-        proposed_name,
-        proposed_url,
-        proposed_schema,
-        proposed_description,
-        rationale,
-        ..
-    } = args;
-
+/// Lower a `slice outcome set` subcommand into the wire `Outcome`,
+/// summary, and optional context. clap has already enforced
+/// per-variant flag presence; no runtime guard required.
+fn build_outcome(kind: OutcomeKindAction) -> (Outcome, String, Option<String>) {
     match kind {
-        OutcomeKind::Success | OutcomeKind::Failure | OutcomeKind::Deferred => {
-            ensure_no_proposal_flags(
-                kind,
-                proposed_name.as_deref(),
-                proposed_url.as_deref(),
-                proposed_schema.as_deref(),
-                proposed_description.as_deref(),
-                rationale.as_deref(),
-            )?;
-            let summary = summary.ok_or_else(|| {
-                Error::Config(format!("--summary is required for outcome `{}`", kind_str(kind)))
-            })?;
-            let outcome = match kind {
-                OutcomeKind::Success => Outcome::Success,
-                OutcomeKind::Failure => Outcome::Failure,
-                OutcomeKind::Deferred => Outcome::Deferred,
-                OutcomeKind::RegistryAmendmentRequired => unreachable!("guarded above"),
-            };
-            Ok((outcome, summary))
-        }
-        OutcomeKind::RegistryAmendmentRequired => {
-            let proposed_name = required_flag("--proposed-name", proposed_name)?;
-            let proposed_url = required_flag("--proposed-url", proposed_url)?;
-            let proposed_schema = required_flag("--proposed-schema", proposed_schema)?;
-            let rationale = required_flag("--rationale", rationale)?;
+        OutcomeKindAction::Success { summary, context } => (Outcome::Success, summary, context),
+        OutcomeKindAction::Failure { summary, context } => (Outcome::Failure, summary, context),
+        OutcomeKindAction::Deferred { summary, context } => (Outcome::Deferred, summary, context),
+        OutcomeKindAction::RegistryAmendmentRequired {
+            summary,
+            context,
+            proposed_name,
+            proposed_url,
+            proposed_capability,
+            proposed_description,
+            rationale,
+        } => {
             let summary =
                 summary.unwrap_or_else(|| format!("registry-amendment-required: {proposed_name}"));
             let outcome = Outcome::RegistryAmendmentRequired {
                 proposed_name,
                 proposed_url,
-                proposed_schema,
+                proposed_capability,
                 proposed_description,
                 rationale,
             };
-            Ok((outcome, summary))
+            (outcome, summary, context)
         }
-    }
-}
-
-fn ensure_no_proposal_flags(
-    kind: OutcomeKind, name: Option<&str>, url: Option<&str>, schema: Option<&str>,
-    description: Option<&str>, rationale: Option<&str>,
-) -> Result<(), Error> {
-    let mut offenders: Vec<&'static str> = Vec::new();
-    if name.is_some() {
-        offenders.push("--proposed-name");
-    }
-    if url.is_some() {
-        offenders.push("--proposed-url");
-    }
-    if schema.is_some() {
-        offenders.push("--proposed-schema");
-    }
-    if description.is_some() {
-        offenders.push("--proposed-description");
-    }
-    if rationale.is_some() {
-        offenders.push("--rationale");
-    }
-    if offenders.is_empty() {
-        Ok(())
-    } else {
-        Err(Error::Config(format!(
-            "{} are only valid with `--outcome registry-amendment-required` (got `{}`)",
-            offenders.join(", "),
-            kind_str(kind)
-        )))
-    }
-}
-
-fn required_flag(flag: &str, value: Option<String>) -> Result<String, Error> {
-    value.ok_or_else(|| {
-        Error::Config(format!("{flag} is required when outcome is `registry-amendment-required`"))
-    })
-}
-
-const fn kind_str(kind: OutcomeKind) -> &'static str {
-    match kind {
-        OutcomeKind::Success => "success",
-        OutcomeKind::Failure => "failure",
-        OutcomeKind::Deferred => "deferred",
-        OutcomeKind::RegistryAmendmentRequired => "registry-amendment-required",
     }
 }
 
@@ -592,14 +472,14 @@ fn outcome_show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
                 if let Outcome::RegistryAmendmentRequired {
                     proposed_name,
                     proposed_url,
-                    proposed_schema,
+                    proposed_capability,
                     proposed_description,
                     rationale,
                 } = &o.outcome
                 {
                     println!("  proposed-name: {proposed_name}");
                     println!("  proposed-url: {proposed_url}");
-                    println!("  proposed-schema: {proposed_schema}");
+                    println!("  proposed-capability: {proposed_capability}");
                     if let Some(desc) = proposed_description {
                         println!("  proposed-description: {desc}");
                     }
@@ -649,7 +529,7 @@ fn emit_outcome_show_json(name: String, metadata: &SliceMetadata) -> Result<(), 
     struct RegistryProposalRow {
         proposed_name: String,
         proposed_url: String,
-        proposed_schema: String,
+        proposed_capability: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         proposed_description: Option<String>,
         rationale: String,
@@ -658,7 +538,7 @@ fn emit_outcome_show_json(name: String, metadata: &SliceMetadata) -> Result<(), 
         if let Outcome::RegistryAmendmentRequired {
             proposed_name,
             proposed_url,
-            proposed_schema,
+            proposed_capability,
             proposed_description,
             rationale,
         } = outcome
@@ -666,7 +546,7 @@ fn emit_outcome_show_json(name: String, metadata: &SliceMetadata) -> Result<(), 
             Some(RegistryProposalRow {
                 proposed_name: proposed_name.clone(),
                 proposed_url: proposed_url.clone(),
-                proposed_schema: proposed_schema.clone(),
+                proposed_capability: proposed_capability.clone(),
                 proposed_description: proposed_description.clone(),
                 rationale: rationale.clone(),
             })
@@ -1389,11 +1269,11 @@ fn task_mark(ctx: &CommandContext, name: String, task_number: String) -> Result<
 /// honour schemas that rename `tasks.md` or nest it elsewhere.
 fn resolve_tasks_path(project_dir: &Path, slice_dir: &Path) -> Result<PathBuf, Error> {
     let metadata = SliceMetadata::load(slice_dir)?;
-    resolve_tasks_path_for(slice_dir, &metadata.schema, Some(project_dir))
+    resolve_tasks_path_for(slice_dir, &metadata.capability, Some(project_dir))
 }
 
 pub fn resolve_tasks_path_for(
-    slice_dir: &Path, schema_value: &str, project_hint: Option<&Path>,
+    slice_dir: &Path, capability_value: &str, project_hint: Option<&Path>,
 ) -> Result<PathBuf, Error> {
     // Use the hinted project dir when supplied; otherwise walk up from
     // the slice dir — convention is `<project>/.specify/slices/<name>`.
@@ -1411,10 +1291,10 @@ pub fn resolve_tasks_path_for(
                 ))
             })?,
     };
-    let pipeline = PipelineView::load(schema_value, &project_dir)?;
+    let pipeline = PipelineView::load(capability_value, &project_dir)?;
     let build_brief = pipeline
         .brief("build")
-        .ok_or_else(|| Error::Config("schema has no `build` brief".to_string()))?;
+        .ok_or_else(|| Error::Config("capability has no `build` brief".to_string()))?;
     let tracks_id = build_brief
         .frontmatter
         .tracks
@@ -1439,7 +1319,7 @@ fn brief_generates(brief: &Brief) -> Result<&str, Error> {
 
 pub(super) struct StatusEntry {
     pub name: String,
-    pub schema: String,
+    pub capability: String,
     pub status: String,
     pub tasks: Option<(usize, usize)>,
     pub artifacts: BTreeMap<String, bool>,
@@ -1450,7 +1330,7 @@ pub(super) struct StatusEntry {
 struct EntryJson {
     name: String,
     status: String,
-    schema: String,
+    capability: String,
     tasks: Option<TaskCounts>,
     artifacts: BTreeMap<String, bool>,
 }
@@ -1467,7 +1347,7 @@ pub(super) fn status_entry_to_json(e: &StatusEntry) -> Value {
     serde_json::to_value(EntryJson {
         name: e.name.clone(),
         status: e.status.clone(),
-        schema: e.schema.clone(),
+        capability: e.capability.clone(),
         tasks: tasks_value,
         artifacts: e.artifacts.clone(),
     })
@@ -1485,7 +1365,7 @@ pub(super) fn collect_status(
     // future skill callers — agrees on what "complete" means.
     let artifacts = pipeline.completion_for(Phase::Define, slice_dir);
 
-    let tasks = match resolve_tasks_path_for(slice_dir, &metadata.schema, Some(project_dir)) {
+    let tasks = match resolve_tasks_path_for(slice_dir, &metadata.capability, Some(project_dir)) {
         Ok(path) => {
             if path.is_file() {
                 let content = std::fs::read_to_string(&path)?;
@@ -1500,7 +1380,7 @@ pub(super) fn collect_status(
 
     Ok(StatusEntry {
         name: name.to_string(),
-        schema: metadata.schema,
+        capability: metadata.capability,
         status: status_str,
         tasks,
         artifacts,
@@ -1578,7 +1458,7 @@ fn print_slice_list_text(entries: &[StatusEntry]) {
     if entries.len() == 1 {
         let e = &entries[0];
         println!("{}", e.name);
-        println!("  schema: {}", e.schema);
+        println!("  capability: {}", e.capability);
         println!("  status: {}", e.status);
         match e.tasks {
             Some((complete, total)) => println!("  tasks: {complete}/{total}"),

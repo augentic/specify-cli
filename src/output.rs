@@ -13,6 +13,10 @@ pub enum CliResult {
     GenericFailure,
     ValidationFailed,
     VersionTooOld,
+    /// Argument-shape failure: `clap` exits 2 for unknown flags / missing
+    /// arguments; we mirror that for argument errors discovered after
+    /// parsing (kebab-case checks, mutually exclusive payloads, etc.).
+    ArgumentError,
     Exit(u8),
 }
 
@@ -21,7 +25,11 @@ impl CliResult {
         match self {
             Self::Success => 0,
             Self::GenericFailure => 1,
-            Self::ValidationFailed => 2,
+            // Both `Self::ArgumentError` and `Self::ValidationFailed` exit
+            // 2 to match clap's parser-error convention. Skills can
+            // disambiguate via the kebab-case `error` discriminant in the
+            // JSON envelope.
+            Self::ArgumentError | Self::ValidationFailed => 2,
             Self::VersionTooOld => 3,
             Self::Exit(code) => code,
         }
@@ -41,15 +49,15 @@ impl From<&Error> for CliResult {
             Error::Validation { .. } | Error::ToolDenied(_) | Error::ToolNotDeclared { .. } => {
                 Self::ValidationFailed
             }
+            Error::Argument { .. } => Self::ArgumentError,
             _ => Self::GenericFailure,
         }
     }
 }
 
-/// JSON contract version emitted on every structured response. Bumping
-/// it is a breaking change for skill authors. v3 fixes the `created-baseline`
-/// `MergeOp` discriminant (was `created_baseline` in v2).
-pub const JSON_SCHEMA_VERSION: u64 = 3;
+/// JSON contract version emitted on every structured response.
+/// Bumping it is a breaking change for skill authors.
+pub const JSON_SCHEMA_VERSION: u64 = 4;
 
 pub fn emit_error(format: OutputFormat, err: &Error) -> CliResult {
     let code = CliResult::from(err);
@@ -80,11 +88,40 @@ impl<T: Serialize> JsonEnvelope<T> {
 }
 
 pub fn emit_response<T: Serialize>(payload: T) -> Result<(), Error> {
+    use std::io::Write;
     let envelope = JsonEnvelope::wrap(payload);
-    let body = serde_json::to_string_pretty(&envelope)
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+    serde_json::to_writer_pretty(&mut handle, &envelope)
         .map_err(|err| Error::Config(format!("failed to serialize JSON response: {err}")))?;
-    println!("{body}");
+    writeln!(handle).map_err(Error::Io)?;
     Ok(())
+}
+
+/// Format-agnostic command-result rendering. JSON is derived from
+/// `serde::Serialize`; text rendering is delegated to `render_text`.
+///
+/// Implementors keep their text/JSON shapes side-by-side in one place,
+/// and command dispatchers stop hand-rolling `match ctx.format`.
+pub trait Render: Serialize {
+    /// Write the human-readable text representation. Implementations
+    /// should not append a trailing newline — `emit` adds one when the
+    /// renderer leaves stdout mid-line.
+    fn render_text(&self, w: &mut dyn std::io::Write) -> std::io::Result<()>;
+}
+
+/// Emit `payload` in the requested format. JSON wraps in the standard
+/// envelope; Text delegates to `Render::render_text` against locked
+/// stdout.
+pub fn emit<R: Render>(format: OutputFormat, payload: &R) -> Result<(), Error> {
+    match format {
+        OutputFormat::Json => emit_response(payload),
+        OutputFormat::Text => {
+            let stdout = std::io::stdout();
+            let mut handle = stdout.lock();
+            payload.render_text(&mut handle).map_err(Error::Io)
+        }
+    }
 }
 
 #[derive(Serialize)]
