@@ -3,8 +3,9 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-/// An RFC 3339 timestamp string. Stored transparently as a YAML/JSON string;
-/// callers are expected to construct via
+/// An RFC 3339 timestamp string.
+///
+/// Stored transparently as a YAML/JSON string; callers are expected to construct via
 /// [`format_rfc3339`](crate::actions::format_rfc3339) or another well-formed
 /// source — this type does not validate.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

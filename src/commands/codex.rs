@@ -253,7 +253,7 @@ struct ProvenanceFields<'a> {
     catalog_name: Option<&'a str>,
 }
 
-fn provenance_fields(provenance: &CodexProvenance) -> ProvenanceFields<'_> {
+const fn provenance_fields(provenance: &CodexProvenance) -> ProvenanceFields<'_> {
     match provenance {
         CodexProvenance::Capability { name, version } => ProvenanceFields {
             kind: "capability",
