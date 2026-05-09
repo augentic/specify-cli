@@ -425,4 +425,3 @@ pub fn push(
     let any_failed = results.iter().any(|r| r.status == PushOutcome::Failed);
     Ok(if any_failed { CliResult::GenericFailure } else { CliResult::Success })
 }
-
