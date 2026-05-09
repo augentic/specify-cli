@@ -42,7 +42,7 @@ pub enum CompatibilityClassification {
 }
 
 impl CompatibilityClassification {
-    fn as_str(self) -> &'static str {
+    const fn as_str(self) -> &'static str {
         match self {
             Self::Additive => "additive",
             Self::Breaking => "breaking",
@@ -468,18 +468,17 @@ fn compare_openapi_request_body(
     let producer_content =
         object_or_empty(producer.pointer("/requestBody/content").and_then(Value::as_object));
     for (media_type, consumer_media) in consumer_content {
-        if let Some(producer_media) = producer_content.get(media_type) {
-            if let (Some(consumer_schema), Some(producer_schema)) =
+        if let Some(producer_media) = producer_content.get(media_type)
+            && let (Some(consumer_schema), Some(producer_schema)) =
                 (consumer_media.get("schema"), producer_media.get("schema"))
-            {
-                classify_schema(
-                    consumer_schema,
-                    producer_schema,
-                    ctx,
-                    &format!("paths.{path_name}.{method}.requestBody.content.{media_type}.schema"),
-                    findings,
-                );
-            }
+        {
+            classify_schema(
+                consumer_schema,
+                producer_schema,
+                ctx,
+                &format!("paths.{path_name}.{method}.requestBody.content.{media_type}.schema"),
+                findings,
+            );
         }
     }
 }
@@ -507,20 +506,19 @@ fn compare_openapi_responses(
         let producer_content =
             object_or_empty(producer_response.pointer("/content").and_then(Value::as_object));
         for (media_type, consumer_media) in consumer_content {
-            if let Some(producer_media) = producer_content.get(media_type) {
-                if let (Some(consumer_schema), Some(producer_schema)) =
+            if let Some(producer_media) = producer_content.get(media_type)
+                && let (Some(consumer_schema), Some(producer_schema)) =
                     (consumer_media.get("schema"), producer_media.get("schema"))
-                {
-                    classify_schema(
-                        consumer_schema,
-                        producer_schema,
-                        ctx,
-                        &format!(
-                            "paths.{path_name}.{method}.responses.{status}.content.{media_type}.schema"
-                        ),
-                        findings,
-                    );
-                }
+            {
+                classify_schema(
+                    consumer_schema,
+                    producer_schema,
+                    ctx,
+                    &format!(
+                        "paths.{path_name}.{method}.responses.{status}.content.{media_type}.schema"
+                    ),
+                    findings,
+                );
             }
         }
     }
@@ -556,18 +554,17 @@ fn compare_asyncapi_payloads(
     let producer_messages =
         object_or_empty(producer.pointer("/components/messages").and_then(Value::as_object));
     for (name, consumer_message) in consumer_messages {
-        if let Some(producer_message) = producer_messages.get(name) {
-            if let (Some(consumer_payload), Some(producer_payload)) =
+        if let Some(producer_message) = producer_messages.get(name)
+            && let (Some(consumer_payload), Some(producer_payload)) =
                 (consumer_message.get("payload"), producer_message.get("payload"))
-            {
-                classify_schema(
-                    consumer_payload,
-                    producer_payload,
-                    ctx,
-                    &format!("components.messages.{name}.payload"),
-                    findings,
-                );
-            }
+        {
+            classify_schema(
+                consumer_payload,
+                producer_payload,
+                ctx,
+                &format!("components.messages.{name}.payload"),
+                findings,
+            );
         }
     }
 }
@@ -644,11 +641,8 @@ fn classify_schema(
         } else {
             CompatibilityClassification::Additive
         };
-        let kind = if classification == CompatibilityClassification::Breaking {
-            Some(KIND_REQUIRED_FIELD_ADDED)
-        } else {
-            None
-        };
+        let kind = (classification == CompatibilityClassification::Breaking)
+            .then_some(KIND_REQUIRED_FIELD_ADDED);
         findings.push(ctx.finding(
             classification,
             kind,
@@ -873,14 +867,15 @@ fn empty_object() -> &'static Map<String, Value> {
     EMPTY.get_or_init(Map::new)
 }
 
+#[allow(
+    clippy::option_if_let_else,
+    reason = "map_or_else cannot express the fallback's static lifetime without escaping the borrowed option"
+)]
 fn object_or_empty(value: Option<&Map<String, Value>>) -> &Map<String, Value> {
-    match value {
-        Some(object) => object,
-        None => empty_object(),
-    }
+    if let Some(object) = value { object } else { empty_object() }
 }
 
-fn http_methods() -> &'static [&'static str] {
+const fn http_methods() -> &'static [&'static str] {
     &["get", "put", "post", "delete", "options", "head", "patch", "trace"]
 }
 
