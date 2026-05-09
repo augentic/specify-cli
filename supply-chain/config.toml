@@ -366,12 +366,20 @@ criteria = "safe-to-deploy"
 version = "0.103.13"
 criteria = "safe-to-deploy"
 
+[[exemptions.same-file]]
+version = "1.0.6"
+criteria = "safe-to-deploy"
+
 [[exemptions.saphyr-parser-bw]]
 version = "0.0.611"
 criteria = "safe-to-deploy"
 
 [[exemptions.serde-saphyr]]
 version = "0.0.25"
+criteria = "safe-to-deploy"
+
+[[exemptions.serde_spanned]]
+version = "0.6.8"
 criteria = "safe-to-deploy"
 
 [[exemptions.serde_spanned]]
@@ -415,7 +423,15 @@ version = "1.52.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.toml]]
+version = "0.8.23"
+criteria = "safe-to-deploy"
+
+[[exemptions.toml]]
 version = "1.1.2+spec-1.1.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.toml_write]]
+version = "0.1.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.toml_writer]]
@@ -468,6 +484,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.vsimd]]
 version = "0.8.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.walkdir]]
+version = "2.5.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.wasi]]

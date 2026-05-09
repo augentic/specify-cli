@@ -52,10 +52,6 @@ fn repo_root() -> PathBuf {
         .args(["rev-parse", "--show-toplevel"])
         .output()
         .ok()
-        .and_then(|out| {
-            String::from_utf8(out.stdout)
-                .ok()
-                .map(|s| PathBuf::from(s.trim()))
-        })
+        .and_then(|out| String::from_utf8(out.stdout).ok().map(|s| PathBuf::from(s.trim())))
         .unwrap_or_else(|| PathBuf::from("."))
 }

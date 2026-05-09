@@ -37,8 +37,9 @@ impl Render for CapabilityNounBody {
     }
 }
 
-/// Rewrite legacy `schema:` keys to `capability:` in `registry.yaml`,
-/// `plan.yaml`, and archived `plan-*.yaml` under `.specify/archive/plans/`.
+/// Rewrite legacy `schema:` / `proposed-schema:` keys to `capability:` /
+/// `proposed-capability:` across `registry.yaml`, `plan.yaml`, archived
+/// plans, and all active/archived slice `.metadata.yaml` files.
 fn capability_noun(format: OutputFormat, dry_run: bool) -> Result<CliResult, Error> {
     let root = std::env::current_dir().map_err(Error::Io)?;
     let mut rewritten = Vec::new();
@@ -57,8 +58,8 @@ fn capability_noun(format: OutputFormat, dry_run: bool) -> Result<CliResult, Err
 
 fn candidates(root: &Path) -> Vec<PathBuf> {
     let mut out = vec![root.join("registry.yaml"), root.join("plan.yaml")];
-    let archive = root.join(".specify").join("archive").join("plans");
-    if let Ok(entries) = fs::read_dir(&archive) {
+    let archive_plans = root.join(".specify").join("archive").join("plans");
+    if let Ok(entries) = fs::read_dir(&archive_plans) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "yaml") {
@@ -66,7 +67,25 @@ fn candidates(root: &Path) -> Vec<PathBuf> {
             }
         }
     }
+    collect_metadata_files(&root.join(".specify").join("slices"), &mut out);
+    collect_metadata_files(&root.join(".specify").join("archive"), &mut out);
     out
+}
+
+/// Walk immediate subdirectories of `dir` and collect any
+/// `.metadata.yaml` files found one level deep.
+fn collect_metadata_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if entry.file_type().is_ok_and(|ft| ft.is_dir()) {
+            let meta = entry.path().join(".metadata.yaml");
+            if meta.exists() {
+                out.push(meta);
+            }
+        }
+    }
 }
 
 /// Rewrite one file in place. Returns `true` when the file was (or would
@@ -85,14 +104,19 @@ fn rewrite_one(path: &Path, dry_run: bool) -> Result<bool, Error> {
     Ok(true)
 }
 
-/// Replace `schema:` with `capability:` only when it appears as a YAML
-/// mapping key (start of line or after whitespace, followed by `:`).
+/// Replace `schema:` with `capability:` and `proposed-schema:` with
+/// `proposed-capability:` only when they appear as YAML mapping keys
+/// (start of line or after whitespace, followed by `:`).
 fn rewrite(source: &str) -> String {
     let mut out = String::with_capacity(source.len());
     for line in source.split_inclusive('\n') {
         let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("schema:") {
-            let indent = &line[..line.len() - trimmed.len()];
+        let indent = &line[..line.len() - trimmed.len()];
+        if let Some(rest) = trimmed.strip_prefix("proposed-schema:") {
+            out.push_str(indent);
+            out.push_str("proposed-capability:");
+            out.push_str(rest);
+        } else if let Some(rest) = trimmed.strip_prefix("schema:") {
             out.push_str(indent);
             out.push_str("capability:");
             out.push_str(rest);
@@ -125,5 +149,76 @@ mod tests {
     fn does_not_rewrite_substring_in_value() {
         let input = "description: schemas folder\n";
         assert_eq!(rewrite(input), input);
+    }
+
+    #[test]
+    fn rewrites_proposed_schema_to_proposed_capability() {
+        let input = "    proposed-schema: omnia@v1\n";
+        let expected = "    proposed-capability: omnia@v1\n";
+        assert_eq!(rewrite(input), expected);
+    }
+
+    #[test]
+    fn rewrites_metadata_yaml_with_outcome() {
+        let input = "\
+version: 2
+schema: omnia@v1
+status: defining
+outcome:
+  phase: define
+  outcome:
+    registry-amendment-required:
+      proposed-name: foo
+      proposed-url: https://x
+      proposed-schema: bar@v1
+      rationale: needed
+  at: \"2025-01-01T00:00:00Z\"
+  summary: done
+";
+        let expected = "\
+version: 2
+capability: omnia@v1
+status: defining
+outcome:
+  phase: define
+  outcome:
+    registry-amendment-required:
+      proposed-name: foo
+      proposed-url: https://x
+      proposed-capability: bar@v1
+      rationale: needed
+  at: \"2025-01-01T00:00:00Z\"
+  summary: done
+";
+        assert_eq!(rewrite(input), expected);
+    }
+
+    #[test]
+    fn candidates_includes_metadata_files() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+
+        let alpha = root.join(".specify").join("slices").join("alpha");
+        fs::create_dir_all(&alpha).expect("mkdir alpha");
+        fs::write(alpha.join(".metadata.yaml"), "schema: x\n").expect("write");
+
+        let archived = root.join(".specify").join("archive").join("2025-01-01-beta");
+        fs::create_dir_all(&archived).expect("mkdir archived");
+        fs::write(archived.join(".metadata.yaml"), "schema: y\n").expect("write");
+
+        let paths = candidates(root);
+        let rel: Vec<String> = paths
+            .iter()
+            .filter_map(|p| p.strip_prefix(root).ok())
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            rel.iter().any(|p| p.contains("alpha") && p.ends_with(".metadata.yaml")),
+            "expected alpha .metadata.yaml in candidates, got {rel:?}"
+        );
+        assert!(
+            rel.iter().any(|p| p.contains("2025-01-01-beta") && p.ends_with(".metadata.yaml")),
+            "expected archived .metadata.yaml in candidates, got {rel:?}"
+        );
     }
 }

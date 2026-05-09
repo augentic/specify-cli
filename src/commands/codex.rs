@@ -28,10 +28,13 @@ fn resolve(ctx: &CommandContext) -> Result<ResolvedCodex, Error> {
 fn list(ctx: &CommandContext) -> Result<CliResult, Error> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from_resolved).collect();
-    emit(ctx.format, &ListBody {
-        rule_count: rules.len(),
-        rules,
-    })?;
+    emit(
+        ctx.format,
+        &ListBody {
+            rule_count: rules.len(),
+            rules,
+        },
+    )?;
     Ok(CliResult::Success)
 }
 
@@ -47,30 +50,39 @@ fn show(ctx: &CommandContext, rule_id: &str) -> Result<CliResult, Error> {
             detail: format!("rule `{rule_id}` not found"),
         })?;
 
-    emit(ctx.format, &ShowBody {
-        rule: RuleExport::from_resolved(resolved),
-    })?;
+    emit(
+        ctx.format,
+        &ShowBody {
+            rule: RuleExport::from_resolved(resolved),
+        },
+    )?;
     Ok(CliResult::Success)
 }
 
 fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
     match resolve(ctx) {
         Ok(codex) => {
-            emit(ctx.format, &ValidateBody {
-                ok: true,
-                rule_count: Some(codex.rules.len()),
-                error_count: 0,
-                results: Vec::new(),
-            })?;
+            emit(
+                ctx.format,
+                &ValidateBody {
+                    ok: true,
+                    rule_count: Some(codex.rules.len()),
+                    error_count: 0,
+                    results: Vec::new(),
+                },
+            )?;
             Ok(CliResult::Success)
         }
         Err(Error::Validation { count, results }) => {
-            emit(ctx.format, &ValidateBody {
-                ok: false,
-                rule_count: None,
-                error_count: count,
-                results: results.iter().map(validation_row).collect(),
-            })?;
+            emit(
+                ctx.format,
+                &ValidateBody {
+                    ok: false,
+                    rule_count: None,
+                    error_count: count,
+                    results: results.iter().map(validation_row).collect(),
+                },
+            )?;
             Ok(CliResult::ValidationFailed)
         }
         Err(err) => Err(err),
@@ -80,10 +92,13 @@ fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
 fn export(ctx: &CommandContext) -> Result<CliResult, Error> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleExport::from_resolved).collect();
-    emit(ctx.format, &ExportBody {
-        rule_count: rules.len(),
-        rules,
-    })?;
+    emit(
+        ctx.format,
+        &ExportBody {
+            rule_count: rules.len(),
+            rules,
+        },
+    )?;
     Ok(CliResult::Success)
 }
 
@@ -335,7 +350,7 @@ fn validation_row(summary: &ValidationSummary) -> ValidationRow<'_> {
 fn provenance_text(rule: &RuleSummary<'_>) -> String {
     match rule.provenance_kind {
         "capability" => format!(
-            "capability {} v{}",
+            "capability {}@v{}",
             rule.capability_name.unwrap_or(""),
             rule.capability_version.unwrap_or(0)
         ),
@@ -347,7 +362,7 @@ fn provenance_text(rule: &RuleSummary<'_>) -> String {
 fn export_provenance_text(rule: &RuleExport<'_>) -> String {
     match rule.provenance_kind {
         "capability" => format!(
-            "capability {} v{}",
+            "capability {}@v{}",
             rule.capability_name.unwrap_or(""),
             rule.capability_version.unwrap_or(0)
         ),

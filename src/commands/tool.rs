@@ -216,10 +216,7 @@ pub fn gc(ctx: &CommandContext) -> Result<CliResult, Error> {
             warnings: inventory.warnings,
         })?,
         OutputFormat::Text => {
-            println!(
-                "Removed {} tool cache entrie(s) from current-project scopes.",
-                removed.len()
-            );
+            println!("Removed {} tool cache entrie(s) from current-project scopes.", removed.len());
             for path in &removed {
                 println!("  {path}");
             }

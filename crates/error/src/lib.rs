@@ -14,8 +14,7 @@
 pub fn is_kebab(s: &str) -> bool {
     !s.is_empty()
         && s.split('-').all(|seg| {
-            !seg.is_empty()
-                && seg.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            !seg.is_empty() && seg.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
         })
 }
 

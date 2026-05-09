@@ -188,9 +188,7 @@ fn count_name_suffix(path: &Path, source: &str) -> u32 {
 fn module_name(path: &Path) -> Option<String> {
     let stem = path.file_stem()?.to_string_lossy();
     if stem == "mod" || stem == "lib" || stem == "main" {
-        path.parent()?
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
+        path.parent()?.file_name().map(|n| n.to_string_lossy().into_owned())
     } else {
         Some(stem.into_owned())
     }
@@ -366,9 +364,7 @@ impl Report {
             let allowed = baseline.allowed(key);
             if value > allowed {
                 self.passed = false;
-                self.failures.push(format!(
-                    "  FAIL {rel}: {key} {value} > baseline {allowed}"
-                ));
+                self.failures.push(format!("  FAIL {rel}: {key} {value} > baseline {allowed}"));
             }
         }
     }

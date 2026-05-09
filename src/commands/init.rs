@@ -79,11 +79,7 @@ impl Render for InitBody {
         writeln!(w, "  config: {}", self.config_path)?;
         writeln!(w, "  cache present: {}", self.cache_present)?;
         if !self.directories_created.is_empty() {
-            writeln!(
-                w,
-                "  directories created: {}",
-                self.directories_created.join(", ")
-            )?;
+            writeln!(w, "  directories created: {}", self.directories_created.join(", "))?;
         }
         writeln!(w, "  specify_version: {}", self.specify_version)?;
         if self.context.skipped && self.context.skip_reason == Some("existing-agents-md") {
