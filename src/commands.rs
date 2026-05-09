@@ -1,5 +1,6 @@
 mod capability;
 mod change;
+mod codex;
 mod context;
 mod init;
 mod migrate;
@@ -43,6 +44,9 @@ pub fn run(cli: Cli) -> CliResult {
                 capability::run_capability_pipeline(ctx, phase, slice)
             }),
         },
+        Commands::Codex { action } => {
+            run_with_project(cli.format, |ctx| codex::run_codex(ctx, action))
+        }
         Commands::Tool { action } => match action {
             ToolAction::Run { name, args } => {
                 run_with_project(cli.format, |ctx| tool::run_tool_run(ctx, name, args))

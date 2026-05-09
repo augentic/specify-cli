@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use specify_capability::{CacheMeta, PipelineView};
+use specify_capability::{CacheMeta, DEFAULT_CODEX_CAPABILITY, PipelineView};
 use specify_error::{Error, is_kebab};
 use specify_registry::Registry;
 
@@ -317,6 +317,7 @@ fn cache_capability(capability: &str, project_dir: &Path) -> Result<CachedCapabi
     let cache_dir = ProjectConfig::cache_dir(project_dir);
     let target = cache_dir.join(&source.capability_name);
     refresh_cached_capability(&source.source_dir, &target)?;
+    cache_sibling_default_capability(&source.source_dir, &cache_dir)?;
     write_cache_meta(project_dir, &source.capability_value)?;
 
     Ok(CachedCapability {
@@ -459,11 +460,19 @@ fn sparse_checkout_github(
     run_git(&clone_args, "clone capability repository")?;
 
     let checkout_dir_arg = checkout_dir.to_string_lossy().to_string();
+    let sparse_path = sparse_checkout_path(capability_path);
     run_git(
-        &["-C", &checkout_dir_arg, "sparse-checkout", "set", "--", capability_path],
+        &["-C", &checkout_dir_arg, "sparse-checkout", "set", "--", sparse_path],
         "sparse-checkout capability path",
     )?;
     Ok(checkout_dir)
+}
+
+fn sparse_checkout_path(capability_path: &str) -> &str {
+    match capability_path.rsplit_once('/') {
+        Some((parent, _name)) if !parent.is_empty() => parent,
+        _ => capability_path,
+    }
 }
 
 fn run_git(args: &[&str], action: &str) -> Result<(), Error> {
@@ -512,6 +521,23 @@ fn capability_name_from_dir(path: &Path) -> Result<String, Error> {
     path.file_name().and_then(|name| name.to_str()).map(str::to_string).ok_or_else(|| {
         Error::SchemaResolution(format!("cannot derive capability name from {}", path.display()))
     })
+}
+
+fn cache_sibling_default_capability(source_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
+    if source_dir.file_name().and_then(|name| name.to_str()) == Some(DEFAULT_CODEX_CAPABILITY) {
+        return Ok(());
+    }
+
+    let Some(parent) = source_dir.parent() else {
+        return Ok(());
+    };
+    let default_source = parent.join(DEFAULT_CODEX_CAPABILITY);
+    if !default_source.is_dir() {
+        return Ok(());
+    }
+
+    ensure_capability_dir(&default_source, DEFAULT_CODEX_CAPABILITY)?;
+    refresh_cached_capability(&default_source, &cache_dir.join(DEFAULT_CODEX_CAPABILITY))
 }
 
 fn refresh_cached_capability(source: &Path, target: &Path) -> Result<(), Error> {
@@ -643,6 +669,13 @@ mod tests {
         assert_eq!(parsed.checkout_ref.as_deref(), Some("main"));
         assert_eq!(parsed.capability_path, "schemas/omnia");
         assert_eq!(parsed.capability_name, "omnia");
+    }
+
+    #[test]
+    fn github_sparse_checkout_uses_capability_parent() {
+        assert_eq!(sparse_checkout_path("capabilities/omnia"), "capabilities");
+        assert_eq!(sparse_checkout_path("schemas/omnia"), "schemas");
+        assert_eq!(sparse_checkout_path("omnia"), "omnia");
     }
 
     #[test]

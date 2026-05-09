@@ -64,6 +64,12 @@ pub enum Commands {
         action: CapabilityAction,
     },
 
+    /// Codex rule catalogue operations
+    Codex {
+        #[command(subcommand)]
+        action: CodexAction,
+    },
+
     /// WASI tool runner (RFC-15).
     Tool {
         #[command(subcommand)]
@@ -441,6 +447,22 @@ pub enum CapabilityAction {
         #[arg(long)]
         slice: Option<PathBuf>,
     },
+}
+
+/// Project-resolved codex rule catalogue verbs.
+#[derive(Subcommand)]
+pub enum CodexAction {
+    /// List resolved codex rules.
+    List,
+    /// Show one resolved codex rule.
+    Show {
+        /// Stable codex rule id, e.g. `UNI-002`.
+        rule_id: String,
+    },
+    /// Validate the resolved codex rule set.
+    Validate,
+    /// Export the resolved codex as JSON.
+    Export,
 }
 
 #[derive(Subcommand)]

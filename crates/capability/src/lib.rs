@@ -30,6 +30,8 @@ mod brief;
 mod cache;
 mod capability;
 mod change_brief;
+mod codex;
+mod codex_resolver;
 mod pipeline;
 
 pub use brief::{Brief, BriefFrontmatter};
@@ -41,6 +43,14 @@ pub use capability::{
 pub use change_brief::{
     CHANGE_BRIEF_FILENAME, ChangeBrief, ChangeFrontmatter, ChangeInput, InputKind,
     LEGACY_CHANGE_BRIEF_FILENAME,
+};
+pub use codex::{
+    CodexApplicability, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexReference,
+    CodexReviewMode, CodexRule, CodexRuleFrontmatter, CodexSeverity,
+};
+pub use codex_resolver::{
+    CODEX_DIR_NAME, CodexCatalogSource, CodexProvenance, CodexResolver, DEFAULT_CODEX_CAPABILITY,
+    ResolvedCodex, ResolvedCodexRule,
 };
 pub use pipeline::PipelineView;
 

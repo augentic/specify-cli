@@ -17,6 +17,8 @@ use crate::brief::Brief;
 use crate::cache::CacheMeta;
 use crate::capability::{Capability, CapabilitySource, Phase};
 use crate::change_brief::{ChangeBrief, InputKind};
+use crate::codex::{CodexReviewMode, CodexRule, CodexSeverity};
+use crate::codex_resolver::{CodexProvenance, ResolvedCodex};
 use crate::pipeline::PipelineView;
 
 /// Absolute path to the repo root (the Cargo workspace root).
@@ -32,6 +34,10 @@ fn repo_root() -> PathBuf {
 
 fn omnia_capability_path() -> PathBuf {
     repo_root().join("schemas").join("omnia").join("capability.yaml")
+}
+
+fn codex_fixture_path(name: &str) -> PathBuf {
+    repo_root().join("tests").join("fixtures").join(name)
 }
 
 // ---------- Capability parsing ----------
@@ -510,6 +516,303 @@ fn brief_parse_rejects_invalid_yaml_frontmatter() {
     let contents = "---\nid: [unclosed\n---\nbody\n";
     let err = Brief::parse(&path, contents).expect_err("malformed YAML");
     assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+}
+
+// ---------- Codex rule frontmatter ----------
+
+fn read_codex_fixture(name: &str) -> String {
+    std::fs::read_to_string(codex_fixture_path(name)).unwrap_or_else(|err| {
+        panic!("failed to read codex fixture `{name}`: {err}");
+    })
+}
+
+fn codex_fail_detail(results: &[ValidationResult], rule_id: &str) -> String {
+    results
+        .iter()
+        .find_map(|result| match result {
+            ValidationResult::Fail {
+                rule_id: candidate,
+                detail,
+                ..
+            } if *candidate == rule_id => Some(detail.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("expected codex failure `{rule_id}`, got: {results:?}"))
+}
+
+fn write_codex_capability(project_dir: &Path, name: &str, version: u32) -> PathBuf {
+    let root = project_dir.join("schemas").join(name);
+    std::fs::create_dir_all(&root).expect("create capability root");
+    std::fs::write(
+        root.join("capability.yaml"),
+        format!(
+            "\
+name: {name}
+version: {version}
+description: {name} test capability
+pipeline:
+  define: []
+  build: []
+  merge: []
+"
+        ),
+    )
+    .expect("write capability manifest");
+    root
+}
+
+fn write_codex_rule(source_root: &Path, relative_path: &str, id: &str) -> PathBuf {
+    let path = source_root.join("codex").join(relative_path);
+    let parent = path.parent().expect("codex rule path should have parent");
+    std::fs::create_dir_all(parent).expect("create codex rule directory");
+    std::fs::write(
+        &path,
+        format!(
+            "\
+---
+id: {id}
+title: Test Rule {id}
+severity: suggestion
+trigger: Test trigger for {id}.
+---
+
+## Rule
+
+Body for {id}.
+"
+        ),
+    )
+    .expect("write codex rule");
+    path
+}
+
+fn resolved_ids(codex: &ResolvedCodex) -> Vec<&str> {
+    codex.rules.iter().map(|resolved| resolved.rule.normalized_id.as_str()).collect()
+}
+
+#[test]
+fn codex_parse_accepts_minimal_rule() {
+    let path = codex_fixture_path("codex-valid-minimal.md");
+    let contents = read_codex_fixture("codex-valid-minimal.md");
+    let rule = CodexRule::parse(&path, &contents).expect("minimal codex rule parses");
+
+    assert_eq!(rule.path, path);
+    assert_eq!(rule.frontmatter.id, "UNI-002");
+    assert_eq!(rule.normalized_id, "UNI-002");
+    assert_eq!(rule.frontmatter.severity, CodexSeverity::Critical);
+    assert!(rule.body.contains("## Rule"));
+    assert!(rule.frontmatter.review_mode.is_none());
+
+    let results = CodexRule::validate_str(&rule.path, &contents);
+    assert!(
+        results.iter().all(|result| matches!(result, ValidationResult::Pass { .. })),
+        "valid minimal fixture should pass all codex checks, got: {results:?}"
+    );
+}
+
+#[test]
+fn codex_resolver_orders_sources_and_ignores_specify_codex() {
+    let tmp = TempDir::new().expect("tempdir");
+    let project_dir = tmp.path();
+    let default_root = write_codex_capability(project_dir, "default", 1);
+    let project_root = write_codex_capability(project_dir, "project", 2);
+
+    write_codex_rule(&default_root, "z-last.md", "UNI-002");
+    write_codex_rule(&default_root, "nested/a-first.md", "UNI-001");
+    write_codex_rule(&project_root, "a.md", "OMNIA-001");
+    write_codex_rule(project_dir, "repo.md", "ORG-001");
+    write_codex_rule(&project_dir.join(".specify"), "ignored.md", "SEC-001");
+
+    let codex =
+        ResolvedCodex::resolve(project_dir, Some("project"), false).expect("codex resolves");
+
+    assert_eq!(resolved_ids(&codex), vec!["UNI-001", "UNI-002", "OMNIA-001", "ORG-001"]);
+    assert_eq!(
+        codex.rules[0].provenance,
+        CodexProvenance::Capability {
+            name: "default".to_string(),
+            version: 1,
+        }
+    );
+    assert_eq!(
+        codex.rules[2].provenance,
+        CodexProvenance::Capability {
+            name: "project".to_string(),
+            version: 2,
+        }
+    );
+    assert_eq!(codex.rules[3].provenance, CodexProvenance::Repo);
+}
+
+#[test]
+fn codex_resolver_rejects_duplicate_ids_with_validation_error() {
+    let tmp = TempDir::new().expect("tempdir");
+    let project_dir = tmp.path();
+    let default_root = write_codex_capability(project_dir, "default", 1);
+    let project_root = write_codex_capability(project_dir, "project", 1);
+
+    write_codex_rule(&default_root, "default.md", "UNI-001");
+    write_codex_rule(&project_root, "project.md", "OMNIA-001");
+    write_codex_rule(project_dir, "repo.md", "UNI-001");
+
+    let err = ResolvedCodex::resolve(project_dir, Some("project"), false)
+        .expect_err("duplicate codex id should fail validation");
+
+    let Error::Validation { count, results } = err else {
+        panic!("expected validation error");
+    };
+    assert_eq!(count, 1);
+    assert_eq!(results[0].rule_id, "codex.rule-id-unique");
+    let detail = results[0].detail.as_deref().expect("duplicate detail");
+    assert!(detail.contains("codex-rule-id-duplicate"), "detail: {detail}");
+    assert!(detail.contains("UNI-001"), "detail: {detail}");
+}
+
+#[test]
+fn codex_resolver_hub_skips_project_capability_and_keeps_repo_overlay() {
+    let tmp = TempDir::new().expect("tempdir");
+    let project_dir = tmp.path();
+    let default_root = write_codex_capability(project_dir, "default", 1);
+
+    write_codex_rule(&default_root, "default.md", "UNI-001");
+    write_codex_rule(project_dir, "repo.md", "ORG-001");
+
+    let codex = ResolvedCodex::resolve(project_dir, None, true).expect("hub codex resolves");
+
+    assert_eq!(resolved_ids(&codex), vec!["UNI-001", "ORG-001"]);
+    assert_eq!(codex.rules[1].provenance, CodexProvenance::Repo);
+}
+
+#[test]
+fn codex_resolver_names_missing_default_capability() {
+    let tmp = TempDir::new().expect("tempdir");
+    let err = ResolvedCodex::resolve(tmp.path(), None, true)
+        .expect_err("missing default capability should fail");
+
+    let Error::SchemaResolution(detail) = err else {
+        panic!("expected schema resolution error");
+    };
+    assert!(
+        detail.contains("codex-default-capability-unavailable"),
+        "detail should name default codex diagnostic: {detail}"
+    );
+}
+
+#[test]
+fn codex_parse_accepts_full_rule_metadata() {
+    let path = codex_fixture_path("codex-valid-full.md");
+    let contents = read_codex_fixture("codex-valid-full.md");
+    let rule = CodexRule::parse(&path, &contents).expect("full codex rule parses");
+
+    assert_eq!(rule.frontmatter.id, "OMNIA-004");
+    assert_eq!(rule.normalized_id, "OMNIA-004");
+    assert_eq!(rule.frontmatter.severity, CodexSeverity::Important);
+    assert_eq!(rule.frontmatter.review_mode, Some(CodexReviewMode::Hybrid));
+    assert_eq!(rule.frontmatter.deterministic_hints.len(), 2);
+    assert_eq!(rule.frontmatter.references.len(), 2);
+    assert!(rule.frontmatter.deprecated.is_some());
+}
+
+#[test]
+fn codex_validate_rejects_malformed_yaml() {
+    let path = PathBuf::from("codex/bad-yaml.md");
+    let contents = "---\nid: [unclosed\n---\n\n## Rule\n\nbody\n";
+    let results = CodexRule::validate_str(&path, contents);
+    let detail = codex_fail_detail(&results, "codex.frontmatter-parseable");
+
+    assert!(detail.contains("codex-rule-frontmatter-malformed"), "detail: {detail}");
+    assert!(matches!(CodexRule::parse(&path, contents), Err(Error::Validation { count: 1, .. })));
+}
+
+#[test]
+fn codex_validate_rejects_missing_frontmatter() {
+    let path = PathBuf::from("codex/no-frontmatter.md");
+    let contents = "# Just markdown\n\n## Rule\n\nbody\n";
+    let results = CodexRule::validate_str(&path, contents);
+    let detail = codex_fail_detail(&results, "codex.frontmatter-delimited");
+
+    assert!(detail.contains("codex-rule-frontmatter-missing"), "detail: {detail}");
+    assert!(matches!(CodexRule::parse(&path, contents), Err(Error::Validation { count: 1, .. })));
+}
+
+#[test]
+fn codex_validate_rejects_missing_rule_heading() {
+    let path = PathBuf::from("codex/no-rule-heading.md");
+    let contents = "\
+---
+id: UNI-002
+title: Unvalidated Input
+severity: critical
+trigger: External input enters the system.
+---
+
+## Guidance
+
+body
+";
+    let results = CodexRule::validate_str(&path, contents);
+    let detail = codex_fail_detail(&results, "codex.body-has-rule-heading");
+
+    assert!(detail.contains("codex-rule-heading-missing"), "detail: {detail}");
+    assert!(matches!(CodexRule::parse(&path, contents), Err(Error::Validation { count: 1, .. })));
+}
+
+#[test]
+fn codex_validate_rejects_missing_required_frontmatter_fields() {
+    let path = codex_fixture_path("codex-invalid-missing-title.md");
+    let contents = read_codex_fixture("codex-invalid-missing-title.md");
+    let results = CodexRule::validate_str(&path, &contents);
+    let detail = codex_fail_detail(&results, "codex.frontmatter-valid");
+
+    assert!(detail.contains("title"), "detail should mention missing title: {detail}");
+}
+
+#[test]
+fn codex_validate_rejects_malformed_rule_ids() {
+    let path = codex_fixture_path("codex-invalid-malformed-id.md");
+    let contents = read_codex_fixture("codex-invalid-malformed-id.md");
+    let results = CodexRule::validate_str(&path, &contents);
+    let detail = codex_fail_detail(&results, "codex.frontmatter-valid");
+
+    assert!(detail.contains("/id"), "detail should point at id: {detail}");
+}
+
+#[test]
+fn codex_validate_rejects_legacy_severity_labels() {
+    for severity in ["Warning", "Info"] {
+        let path = PathBuf::from(format!("codex/{severity}.md"));
+        let contents = format!(
+            "\
+---
+id: UNI-002
+title: Legacy Severity
+severity: {severity}
+trigger: External input enters the system.
+---
+
+## Rule
+
+body
+"
+        );
+        let results = CodexRule::validate_str(&path, &contents);
+        let detail = codex_fail_detail(&results, "codex.frontmatter-valid");
+
+        assert!(
+            detail.contains("/severity"),
+            "detail for `{severity}` should point at severity: {detail}"
+        );
+    }
+}
+
+#[test]
+fn codex_validate_rejects_unknown_review_mode() {
+    let path = codex_fixture_path("codex-invalid-review-mode.md");
+    let contents = read_codex_fixture("codex-invalid-review-mode.md");
+    let results = CodexRule::validate_str(&path, &contents);
+    let detail = codex_fail_detail(&results, "codex.frontmatter-valid");
+
+    assert!(detail.contains("/review_mode"), "detail should point at review_mode: {detail}");
 }
 
 // ---------- PipelineView ----------
