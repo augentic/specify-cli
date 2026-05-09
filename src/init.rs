@@ -36,9 +36,8 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use specify_capability::{CacheMeta, PipelineView};
-use specify_error::Error;
+use specify_error::{Error, is_kebab};
 use specify_registry::Registry;
-use specify_error::is_kebab;
 
 use crate::config::ProjectConfig;
 

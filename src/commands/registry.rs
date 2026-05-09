@@ -911,5 +911,4 @@ mod tests {
         assert!(plan_references_for(tmp.path(), "alpha").is_empty());
         assert_ok(remove_from_registry(&ctx, "alpha".to_string()), "remove alpha");
     }
-
 }
