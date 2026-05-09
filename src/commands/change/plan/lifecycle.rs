@@ -272,11 +272,6 @@ pub fn archive(ctx: &CommandContext, force: bool) -> Result<CliResult, Error> {
         });
     }
     let archive_dir = ProjectConfig::archive_dir(&ctx.project_dir).join("plans");
-    // RFC-13 chunk 3.7: refuse to archive when the operator brief is
-    // still on the pre-Phase-3.7 filename. The archive co-moves the
-    // brief, so a stale `initiative.md` would land alongside the
-    // `change.md`-shaped surface and confuse downstream consumers.
-    ChangeBrief::refuse_legacy(&ctx.project_dir)?;
     let brief_path = ChangeBrief::path(&ctx.project_dir);
 
     let plan_name = Plan::load(&plan_path)?.name;

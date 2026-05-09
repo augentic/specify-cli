@@ -625,8 +625,7 @@ impl Plan {
 
     /// Move `plan.yaml` — and, when present, the Layer-3 authoring
     /// working directory `.specify/plans/<plan.name>/` and the
-    /// operator brief (`change.md` after RFC-13 chunk 3.7;
-    /// `initiative.md` before) — into the archive directory.
+    /// operator brief (`change.md`) — into the archive directory.
     ///
     /// Semantics (see `rfc-2-execution.md` §L1.G, §L3.B, and §"`specify
     /// plan archive`"):
@@ -640,7 +639,7 @@ impl Plan {
     ///    file preserves the statuses verbatim.
     /// 3. Preflight the on-disk destinations (before any mutation):
     ///    - `<archive_dir>/<plan.name>-<YYYYMMDD>.yaml` must not exist.
-    ///    - If a co-movable working directory or initiative brief
+    ///    - If a co-movable working directory or change brief
     ///      exists, `<archive_dir>/<plan.name>-<YYYYMMDD>/` must not
     ///      exist either.
     ///      Any collision errors out before any file or directory is
@@ -655,22 +654,19 @@ impl Plan {
     ///    second element is `Some` iff a working directory or brief
     ///    was co-moved.
     ///
-    /// `initiative_path` is the absolute location of the operator
-    /// brief — `<project_dir>/change.md` after RFC-13 chunk 3.7, or
-    /// `<project_dir>/initiative.md` for projects still on the
-    /// pre-Phase-3.7 filename. The archive co-moves whichever file is
-    /// passed in, preserving the source's basename inside the
-    /// archived `<name>-<date>/` directory so operators do not orphan
-    /// the brief alongside the closed plan. Takes `&Path` rather than
-    /// `&self` because it operates on the file on disk (it re-loads
-    /// the plan) — archiving is a filesystem operation, not a
-    /// mutation of an in-memory `Plan`.
+    /// `change_brief_path` is the absolute location of the operator
+    /// brief at `<project_dir>/change.md`. The archive co-moves the
+    /// file when present so operators do not orphan it alongside the
+    /// closed plan. Takes `&Path` rather than `&self` because it
+    /// operates on the file on disk (it re-loads the plan) —
+    /// archiving is a filesystem operation, not a mutation of an
+    /// in-memory `Plan`.
     ///
     /// # Errors
     ///
     /// Returns an error if the operation fails.
     pub fn archive(
-        path: &Path, initiative_path: &Path, archive_dir: &Path, force: bool,
+        path: &Path, change_brief_path: &Path, archive_dir: &Path, force: bool,
     ) -> Result<(PathBuf, Option<PathBuf>), Error> {
         let plan = Self::load(path)?;
 
@@ -700,23 +696,18 @@ impl Plan {
             project_root.map(|root| root.join(".specify").join("plans").join(&plan.name));
         let co_move_plans = plans_dir.as_ref().filter(|p| p.is_dir()).cloned();
 
-        // RFC-3a §"When are `registry.yaml` and `initiative.md`
-        // required?": the operator brief is umbrella-scoped so it
-        // travels with the archive. `workspace.md` and `slices/`
-        // under `.specify/plans/<name>/` are carried by the wholesale
-        // working-dir move above. This hook co-moves the operator
-        // brief at `initiative_path` when present so operators do not
-        // orphan it after archival. The basename is preserved from
-        // the source path so projects on either the post-Phase-3.7
-        // (`change.md`) or pre-Phase-3.7 (`initiative.md`) filename
-        // archive correctly.
-        let initiative_src = Some(initiative_path.to_path_buf()).filter(|p| p.is_file());
+        // The operator brief is umbrella-scoped so it travels with
+        // the archive. `workspace.md` and `slices/` under
+        // `.specify/plans/<name>/` are carried by the wholesale
+        // working-dir move above. This hook co-moves `change.md` when
+        // present so operators do not orphan it after archival.
+        let brief_src = Some(change_brief_path.to_path_buf()).filter(|p| p.is_file());
 
-        // Either the plans working directory OR the initiative brief
+        // Either the plans working directory OR the change brief
         // being present forces us to materialise the archived
         // `<name>-<date>/` directory so we have somewhere cohesive to
         // put both.
-        let dest_plans_dir = (co_move_plans.is_some() || initiative_src.is_some())
+        let dest_plans_dir = (co_move_plans.is_some() || brief_src.is_some())
             .then(|| archive_dir.join(format!("{}-{}", plan.name, today)));
 
         // Preflight: refuse both collisions BEFORE any mutation.
@@ -744,18 +735,9 @@ impl Plan {
         if let (Some(src), Some(dst)) = (co_move_plans.as_ref(), dest_plans_dir.as_ref()) {
             move_atomic(src, dst)?;
         }
-        if let (Some(src), Some(dst)) = (initiative_src.as_ref(), dest_plans_dir.as_ref()) {
+        if let (Some(src), Some(dst)) = (brief_src.as_ref(), dest_plans_dir.as_ref()) {
             std::fs::create_dir_all(dst)?;
-            // Preserve the source filename so the archive reflects
-            // the project's actual on-disk shape (post-Phase-3.7
-            // `change.md` or pre-Phase-3.7 `initiative.md`).
-            let basename = src.file_name().ok_or_else(|| {
-                Error::Config(format!(
-                    "operator brief path `{}` has no filename component",
-                    src.display()
-                ))
-            })?;
-            move_atomic(src, &dst.join(basename))?;
+            move_atomic(src, &dst.join("change.md"))?;
         }
 
         Ok((dest_plan, dest_plans_dir))
@@ -2271,16 +2253,16 @@ changes:
         path
     }
 
-    /// Test wrapper that derives `initiative_path` from the plan path's
-    /// parent directory (the project root), matching the v2 layout
-    /// where both `plan.yaml` and `initiative.md` live at the repo root.
+    /// Test wrapper that derives the change brief path from the plan
+    /// path's parent directory (the project root), matching the v2
+    /// layout where both `plan.yaml` and `change.md` live at the repo
+    /// root.
     fn archive_test(
         plan_path: &Path, archive_dir: &Path, force: bool,
     ) -> Result<(PathBuf, Option<PathBuf>), Error> {
-        let initiative = plan_path
-            .parent()
-            .map_or_else(|| PathBuf::from("initiative.md"), |p| p.join("initiative.md"));
-        Plan::archive(plan_path, &initiative, archive_dir, force)
+        let brief =
+            plan_path.parent().map_or_else(|| PathBuf::from("change.md"), |p| p.join("change.md"));
+        Plan::archive(plan_path, &brief, archive_dir, force)
     }
 
     fn today_yyyymmdd() -> String {
@@ -2636,31 +2618,31 @@ changes:
         assert!(!absent_dir.exists(), "co-move dir must not be created when source absent");
     }
 
-    /// RFC-3a C14 archive-sweep hook. `initiative.md` is initiative-
-    /// scoped and must travel with the archive. When there is no plans
-    /// working directory, the initiative brief alone still forces the
-    /// archived `<name>-<date>/` directory into existence. RFC-3a C33
-    /// asserts `workspace.md` + `slices/` under `.specify/plans/<name>/`
+    /// Archive-sweep hook. `change.md` is umbrella-scoped and must
+    /// travel with the archive. When there is no plans working
+    /// directory, the change brief alone still forces the archived
+    /// `<name>-<date>/` directory into existence. RFC-3a C33 asserts
+    /// `workspace.md` + `slices/` under `.specify/plans/<name>/`
     /// survive the wholesale co-move (see
     /// `archive_moves_workspace_md_and_slices_with_plan_working_dir`).
     #[test]
-    fn archive_sweeps_initiative_md() {
+    fn archive_sweeps_change_brief() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join(".specify/archive/plans");
         let plan_path = write_plan(tmp.path(), "solo", vec![change("a", Status::Done)]);
-        let brief_src = tmp.path().join("initiative.md");
+        let brief_src = tmp.path().join("change.md");
         let brief_bytes = b"---\nname: solo\n---\n\n# Solo\n";
-        std::fs::write(&brief_src, brief_bytes).expect("seed initiative.md");
+        std::fs::write(&brief_src, brief_bytes).expect("seed change.md");
 
         let (dest, dest_working) =
             archive_test(&plan_path, &archive_dir, false).expect("archive ok");
 
         assert!(dest.exists(), "archived plan.yaml must exist");
-        let dest_dir = dest_working.expect("initiative.md must force the archive dir");
-        let archived_brief = dest_dir.join("initiative.md");
+        let dest_dir = dest_working.expect("change.md must force the archive dir");
+        let archived_brief = dest_dir.join("change.md");
         assert!(
             archived_brief.is_file(),
-            "archived initiative.md missing at {}",
+            "archived change.md missing at {}",
             archived_brief.display()
         );
         assert_eq!(
@@ -2668,13 +2650,13 @@ changes:
             brief_bytes,
             "archived bytes must equal source bytes"
         );
-        assert!(!brief_src.exists(), "source initiative.md must be gone after move");
+        assert!(!brief_src.exists(), "source change.md must be gone after move");
     }
 
     /// Same sweep, but with a plans working directory also present.
     /// Both files land in the same archived `<name>-<date>/` dir.
     #[test]
-    fn archive_sweeps_initiative_md_and_working_dir() {
+    fn archive_sweeps_change_brief_and_working_dir() {
         let tmp = tempdir().expect("tempdir");
         let archive_dir = tmp.path().join(".specify/archive/plans");
         let plan_path = write_plan_with_working_dir(
@@ -2683,15 +2665,14 @@ changes:
             vec![change("a", Status::Done)],
             &[("notes.md", b"# notes\n")],
         );
-        let brief_src = tmp.path().join("initiative.md");
-        std::fs::write(&brief_src, b"---\nname: both\n---\n\n# Both\n")
-            .expect("seed initiative.md");
+        let brief_src = tmp.path().join("change.md");
+        std::fs::write(&brief_src, b"---\nname: both\n---\n\n# Both\n").expect("seed change.md");
 
         let (_, dest_working) = archive_test(&plan_path, &archive_dir, false).expect("archive ok");
 
         let dest_dir = dest_working.expect("co-moved");
         assert!(dest_dir.join("notes.md").is_file(), "working-dir file must co-move");
-        assert!(dest_dir.join("initiative.md").is_file(), "initiative.md must co-move");
+        assert!(dest_dir.join("change.md").is_file(), "change.md must co-move");
     }
 
     /// RFC-3a C33 — `workspace.md` and nested `slices/` under the plan

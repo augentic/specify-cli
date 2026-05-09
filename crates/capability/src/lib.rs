@@ -2,9 +2,7 @@
 //!
 //! This crate is the canonical home for:
 //!
-//! - Parsing capability manifests (`capability.yaml`; the resolver
-//!   still tolerates the pre-RFC-13 `schema.yaml` filename so internal
-//!   callers like `init` keep working during the cut-over) — see
+//! - Parsing capability manifests (`capability.yaml`) — see
 //!   [`Capability`].
 //! - Resolving a `capability` value from `.specify/project.yaml` to
 //!   either a workspace directory or the agent-populated cache
@@ -18,8 +16,7 @@
 //! - The on-disk `.cache-meta.yaml` format written by the agent
 //!   (see [`CacheMeta`]).
 //! - The on-disk `change.md` operator-authored brief at the repo
-//!   root (see [`ChangeBrief`]) introduced by RFC-3a as `initiative.md`
-//!   and migrated to `change.md` by RFC-13 chunk 3.7.
+//!   root (see [`ChangeBrief`]).
 //!
 //! Registry parsing and shape validation moved out into
 //! `specify-registry` in RFC-13 chunk 2.1; per the RFC's
@@ -37,12 +34,11 @@ mod pipeline;
 pub use brief::{Brief, BriefFrontmatter};
 pub use cache::CacheMeta;
 pub use capability::{
-    CAPABILITY_FILENAME, Capability, CapabilitySource, LEGACY_SCHEMA_FILENAME, ManifestProbe,
-    Phase, Pipeline, PipelineEntry, ResolvedCapability,
+    CAPABILITY_FILENAME, Capability, CapabilitySource, ManifestProbe, Phase, Pipeline,
+    PipelineEntry, ResolvedCapability,
 };
 pub use change_brief::{
     ChangeBrief, ChangeFrontmatter, ChangeInput, FILENAME as CHANGE_BRIEF_FILENAME, InputKind,
-    LEGACY_FILENAME as LEGACY_CHANGE_BRIEF_FILENAME,
 };
 pub use codex::{
     CodexApplicability, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexReference,

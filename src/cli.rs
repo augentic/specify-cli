@@ -77,7 +77,6 @@ pub enum Commands {
     },
 
     /// Cross-project contract compatibility reports.
-    #[command(alias = "compat")]
     Compatibility {
         #[command(subcommand)]
         action: CompatibilityAction,
@@ -105,12 +104,6 @@ pub enum Commands {
     Workspace {
         #[command(subcommand)]
         action: WorkspaceAction,
-    },
-
-    /// One-shot layout migrations. All idempotent.
-    Migrate {
-        #[command(subcommand)]
-        action: MigrateAction,
     },
 
     /// Generate shell completions for the given shell.
@@ -402,18 +395,6 @@ pub enum RegistryAction {
     Remove {
         /// Kebab-case project name to remove.
         name: String,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum MigrateAction {
-    /// Move v1 layout artifacts (`registry.yaml`, `plan.yaml`,
-    /// `initiative.md`, `contracts/`) from `.specify/` to the repo root.
-    /// Refuses to clobber existing destinations or run inside a workspace
-    /// clone.
-    V2Layout {
-        #[arg(long)]
-        dry_run: bool,
     },
 }
 

@@ -70,22 +70,6 @@ fn report_classifies_required_field_as_breaking() {
 }
 
 #[test]
-fn compat_alias_check_fails_on_breaking_findings() {
-    let fixture = Fixture::new();
-    fixture.write_consumer_contract(&openapi_contract(true, ""));
-    fixture.write_producer_contract(&openapi_contract(true, "                - phone\n"));
-
-    let assert = specify()
-        .current_dir(&fixture.project)
-        .args(["--format", "json", "compat", "check"])
-        .assert()
-        .code(2);
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["ok"], false);
-    assert!(value["summary"]["breaking"].as_u64().expect("breaking count") >= 1);
-}
-
-#[test]
 fn check_succeeds_for_additive_optional_field() {
     let fixture = Fixture::new();
     fixture.write_consumer_contract(&openapi_contract(false, ""));

@@ -192,46 +192,6 @@ pub enum Error {
     #[error("no registry declared at registry.yaml")]
     RegistryMissing,
 
-    /// Legacy v1-layout artifacts found under `.specify/`. Run
-    /// `specify migrate v2-layout` to relocate them.
-    #[error("legacy v1 layout detected; run `specify migrate v2-layout` to upgrade ({paths:?})")]
-    LegacyLayout {
-        /// Repo-relative paths of the legacy artifacts the detector found.
-        paths: Vec<String>,
-    },
-
-    /// Legacy `initiative.md` found without a `change.md` companion.
-    /// Operator must rename the file to `change.md`.
-    #[error(
-        "change-brief-became-change-md: found legacy `initiative.md` at {} but expected \
-         `change.md`. RFC-13 renamed the umbrella brief filename: `initiative.md` is now \
-         `change.md`. Rename the file to `change.md` before continuing. \
-         See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
-        path.display()
-    )]
-    LegacyChangeBrief {
-        /// Path to the pre-Phase-3.7 file the detector found.
-        path: std::path::PathBuf,
-    },
-
-    /// Legacy `schema.yaml` (or `project.yaml: schema:` field) found where
-    /// `capability.yaml` / `capability:` is expected.
-    #[error(
-        "schema-became-capability: found legacy `schema` shape at `{}` but expected the \
-         post-RFC-13 `capability` shape. RFC-13 renamed the Specify extension primitive: \
-         `schema` is now `capability` (rename `schema.yaml` → `capability.yaml`, and rewrite \
-         `project.yaml: schema:` → `project.yaml: capability:`). Re-run \
-         `specify init <capability>` if you have not already migrated. \
-         See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration",
-        path.display()
-    )]
-    LegacyCapabilityField {
-        /// Path to the file that triggered the diagnostic (a legacy
-        /// `schema.yaml`, or a `project.yaml` carrying the v1 `schema:`
-        /// field).
-        path: std::path::PathBuf,
-    },
-
     /// `specify init` requires either a `<capability>` positional or
     /// `--hub` (mutually exclusive).
     #[error(
@@ -303,9 +263,6 @@ impl Error {
             Self::ArtifactNotFound { .. } => "artifact-not-found",
             Self::SliceNotFound { .. } => "slice-not-found",
             Self::RegistryMissing => "registry-missing",
-            Self::LegacyLayout { .. } => "legacy-layout",
-            Self::LegacyChangeBrief { .. } => "change-brief-became-change-md",
-            Self::LegacyCapabilityField { .. } => "schema-became-capability",
             Self::InitNeedsCapability => "init-requires-capability-or-hub",
             Self::ToolResolver(_) => "tool-resolver",
             Self::ToolRuntime(_) => "tool-runtime",
@@ -474,35 +431,6 @@ mod tests {
     }
 
     #[test]
-    fn schema_became_capability_display() {
-        let err = Error::LegacyCapabilityField {
-            path: std::path::PathBuf::from("./.specify/.cache/omnia/schema.yaml"),
-        };
-        let s = err.to_string();
-        assert!(
-            s.contains("schema-became-capability"),
-            "diagnostic must carry the stable kebab-case code, got: {s}"
-        );
-        assert!(
-            s.contains("./.specify/.cache/omnia/schema.yaml"),
-            "diagnostic must surface the offending path, got: {s}"
-        );
-        assert!(
-            s.contains("capability.yaml"),
-            "diagnostic must name the post-rename filename, got: {s}"
-        );
-        assert!(s.contains("RFC-13"), "diagnostic must cite RFC-13, got: {s}");
-        assert!(
-            s.contains("specify init <capability>"),
-            "diagnostic must mention the post-rename init command, got: {s}"
-        );
-        assert!(
-            s.contains("rfcs/rfc-13-extensibility.md#migration"),
-            "diagnostic must link the RFC-13 §Migration anchor, got: {s}"
-        );
-    }
-
-    #[test]
     fn init_requires_capability_or_hub_display() {
         let err = Error::InitNeedsCapability;
         let s = err.to_string();
@@ -521,48 +449,6 @@ mod tests {
         assert!(
             s.contains("rfcs/rfc-13-extensibility.md#migration"),
             "diagnostic must link RFC-13 §Migration, got: {s}"
-        );
-    }
-
-    #[test]
-    fn change_brief_became_change_md_display() {
-        let err = Error::LegacyChangeBrief {
-            path: std::path::PathBuf::from("/proj/initiative.md"),
-        };
-        let s = err.to_string();
-        assert!(
-            s.starts_with("change-brief-became-change-md:"),
-            "diagnostic must carry the kebab-case prefix, got: {s}"
-        );
-        assert!(
-            s.contains("/proj/initiative.md"),
-            "diagnostic must surface the offending path, got: {s}"
-        );
-        assert!(s.contains("change.md"), "diagnostic must name the post-rename filename, got: {s}");
-        assert!(
-            s.contains("Rename the file to `change.md`"),
-            "diagnostic must point operator at the manual rename, got: {s}"
-        );
-        assert!(
-            s.contains("rfcs/rfc-13-extensibility.md#migration"),
-            "diagnostic must link the RFC-13 §Migration anchor, got: {s}"
-        );
-    }
-
-    #[test]
-    fn legacy_layout_display() {
-        let err = Error::LegacyLayout {
-            paths: vec![".specify/registry.yaml".to_string(), ".specify/plan.yaml".to_string()],
-        };
-        let s = err.to_string();
-        assert!(s.contains("legacy v1 layout detected"), "expected legacy-layout banner, got: {s}");
-        assert!(
-            s.contains("specify migrate v2-layout"),
-            "expected migration command in message, got: {s}"
-        );
-        assert!(
-            s.contains(".specify/registry.yaml") && s.contains(".specify/plan.yaml"),
-            "expected offending paths to surface, got: {s}"
         );
     }
 

@@ -3,9 +3,7 @@
 //! `specify capability resolve` and the `Cached` source flavour of
 //! `capability resolve` get extra coverage in `tests/e2e.rs`; this file
 //! focuses on `capability pipeline` (the verb the define / build / merge
-//! skill rewrites drive directly), the `capability check` happy path,
-//! and the RFC-13 §Migration `schema-became-capability` diagnostic that
-//! fires when a directory carries only the pre-RFC-13 manifest.
+//! skill rewrites drive directly) and the `capability check` happy path.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -250,100 +248,6 @@ fn capability_check_text_output_says_capability_ok() {
         stdout.contains("Capability OK"),
         "text mode must use the post-RFC-13 noun, got: {stdout}"
     );
-}
-
-// ---- RFC-13 §Migration: schema-became-capability ---------------------------
-
-/// Regression: a directory that carries ONLY the pre-RFC-13
-/// `schema.yaml` (no `capability.yaml`) must be refused with a clear
-/// `schema-became-capability` diagnostic. The message must name the
-/// offending file path, cite RFC-13, and point the operator at the
-/// post-RFC-13 init command.
-#[test]
-fn capability_check_refuses_legacy_schema_yaml_with_schema_became_capability() {
-    let tmp = tempdir().expect("tempdir");
-    let manifest_dir = tmp.path();
-    let legacy = manifest_dir.join("schema.yaml");
-    fs::write(
-        &legacy,
-        "name: legacy\nversion: 1\ndescription: pre-RFC-13 manifest\n\
-         pipeline:\n  define: []\n  build: []\n  merge: []\n",
-    )
-    .expect("write legacy schema.yaml");
-    assert!(legacy.is_file(), "test precondition: schema.yaml must exist");
-    assert!(
-        !manifest_dir.join("capability.yaml").exists(),
-        "test precondition: capability.yaml must be absent"
-    );
-
-    let assert = specify()
-        .args(["--format", "json", "capability", "check"])
-        .arg(manifest_dir)
-        .assert()
-        .failure();
-
-    let code = assert.get_output().status.code().expect("exit code");
-    assert_eq!(code, 1, "schema-became-capability must exit non-zero (1)");
-
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
-    assert_eq!(
-        value["error"], "schema-became-capability",
-        "JSON envelope must carry the stable kebab-case error code, got: {value}"
-    );
-    let msg = value["message"].as_str().expect("message string");
-    assert!(
-        msg.contains("schema-became-capability"),
-        "message must surface the stable code, got: {msg}"
-    );
-    assert!(msg.contains("RFC-13"), "message must cite RFC-13, got: {msg}");
-    assert!(
-        msg.contains("capability.yaml"),
-        "message must name the post-rename filename, got: {msg}"
-    );
-    assert!(msg.contains("schema.yaml"), "message must surface the offending file, got: {msg}");
-    assert!(
-        msg.contains("specify init <capability>"),
-        "message must hint at the post-rename init command, got: {msg}"
-    );
-    assert!(
-        msg.contains("rfcs/rfc-13-extensibility.md#migration"),
-        "message must link RFC-13 §Migration, got: {msg}"
-    );
-}
-
-#[test]
-fn capability_check_resolves_capability_yaml_when_both_files_present() {
-    // A directory carrying both manifests (e.g. the in-repo
-    // `schemas/omnia/` during the cut-over) must load the post-RFC-13
-    // `capability.yaml` and never trip the `schema-became-capability`
-    // diagnostic. This pins the priority order documented on
-    // `Capability::manifest_path_in`. We seed `schema.yaml` with a
-    // structurally-invalid manifest (empty pipeline phases violate
-    // `capability.schema.json`) so a regression that loaded the
-    // wrong file would surface as a `passed: false` validation
-    // failure rather than as silent success.
-    let tmp = tempdir().expect("tempdir");
-    let dir = tmp.path();
-    fs::write(
-        dir.join("schema.yaml"),
-        "name: from-schema\nversion: 1\ndescription: pre-RFC-13 (invalid)\n\
-         pipeline:\n  define: []\n  build: []\n  merge: []\n",
-    )
-    .expect("write schema.yaml");
-    fs::write(
-        dir.join("capability.yaml"),
-        "name: from-capability\nversion: 1\ndescription: post-RFC-13\n\
-         pipeline:\n  define:\n    - id: proposal\n      brief: briefs/proposal.md\n\
-         \x20\x20build:\n    - id: build\n      brief: briefs/build.md\n\
-         \x20\x20merge:\n    - id: merge\n      brief: briefs/merge.md\n",
-    )
-    .expect("write capability.yaml");
-
-    let assert =
-        specify().args(["--format", "json", "capability", "check"]).arg(dir).assert().success();
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["passed"], true, "capability.yaml content must win, got: {value}");
 }
 
 // ---- specify schema * is gone ----------------------------------------------

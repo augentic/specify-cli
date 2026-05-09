@@ -124,7 +124,7 @@ fn init_json_format_has_stable_shape() {
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
     assert_eq!(value["schema-version"], 3);
-    assert_eq!(value["schema-name"], "omnia");
+    assert_eq!(value["capability-name"], "omnia");
     assert!(value["config-path"].is_string());
     let config_path = value["config-path"].as_str().unwrap();
     // Canonicalized tmp path so substring match handles macOS
@@ -290,38 +290,6 @@ fn init_help_no_longer_advertises_schema_uri_flag() {
 }
 
 #[test]
-fn project_aware_command_refuses_legacy_schema_field_with_schema_became_capability() {
-    // Acceptance (e): a v1 `project.yaml` carrying `schema:` must be
-    // rejected loudly when a project-aware verb tries to load it.
-    // `specify status` is the canonical project-aware entry point and
-    // loads `ProjectConfig` first thing.
-    let tmp = tempdir().unwrap();
-    let specify_dir = tmp.path().join(".specify");
-    fs::create_dir_all(&specify_dir).unwrap();
-    fs::write(
-        specify_dir.join("project.yaml"),
-        // Deliberate v1 shape — `schema:` instead of the post-RFC-13
-        // `capability:` field.
-        "name: demo\nschema: omnia\n",
-    )
-    .unwrap();
-
-    let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "status"]).assert().failure();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(
-        value["error"], "schema-became-capability",
-        "expected schema-became-capability diagnostic, got: {value}"
-    );
-    let msg = value["message"].as_str().expect("message string");
-    assert!(msg.contains("schema-became-capability"), "msg: {msg}");
-    assert!(msg.contains("capability"), "msg: {msg}");
-    assert!(msg.contains("RFC-13"), "msg: {msg}");
-    assert!(msg.contains(".specify/project.yaml"), "msg should name the file, got: {msg}");
-}
-
-#[test]
 fn version_too_old_exits_three_with_json_envelope() {
     let tmp = tempdir().unwrap();
     // Fresh init to produce a real project.
@@ -376,7 +344,7 @@ fn init_hub_writes_canonical_on_disk_shape() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
     assert_eq!(value["hub"], true, "JSON response must surface hub: true, got: {value}");
-    assert_eq!(value["schema-name"], "hub");
+    assert_eq!(value["capability-name"], "hub");
     assert!(
         value["scaffolded-rule-keys"].as_array().expect("array").is_empty(),
         "hub init must not scaffold rule keys, got: {}",
@@ -1656,176 +1624,4 @@ fn change_finalize_idempotent_after_archive() {
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert_eq!(value["error"], "plan-not-found");
-}
-
-// ---- specify migrate v2-layout (Option-3 hard cutover) ----
-
-/// Seed a v1-layout project: a real `.specify/` (so `ProjectConfig::load`
-/// succeeds) plus the four legacy artifacts the detector watches for.
-/// Used by the `legacy-layout` cutover and `migrate v2-layout` tests.
-fn seed_v1_layout(tmp: &tempfile::TempDir) {
-    init_hub(tmp, "platform-hub");
-    let specify = tmp.path().join(".specify");
-    // Hub init writes `registry.yaml` at the repo root (per RFC-13
-    // chunk 2.9, that's the one platform-component artefact init
-    // touches); move it back to `.specify/` to simulate a v1-layout
-    // project that needs migrating.
-    fs::rename(tmp.path().join("registry.yaml"), specify.join("registry.yaml"))
-        .expect("move registry.yaml back to .specify/");
-    // `initiative.md` and `plan.yaml` are no longer scaffolded by
-    // init (operator-managed via `specify initiative create` /
-    // `specify plan create`). Hand-seed them at the v1 location so
-    // the detector and migrator have all four legacy artefacts to
-    // act on.
-    fs::write(specify.join("initiative.md"), "---\nname: demo\ninputs: []\n---\n\n# demo\n")
-        .expect("seed initiative.md");
-    fs::write(specify.join("plan.yaml"), "name: demo\nchanges: []\n").expect("seed plan.yaml");
-    let contracts = specify.join("contracts").join("schemas");
-    fs::create_dir_all(&contracts).expect("mkdir .specify/contracts/schemas");
-    fs::write(contracts.join("payload.yaml"), "type: object\n").expect("seed contract");
-}
-
-#[test]
-fn project_aware_command_refuses_on_v1_layout_with_legacy_layout_error() {
-    let tmp = tempdir().unwrap();
-    seed_v1_layout(&tmp);
-
-    // `specify status` is the canonical project-aware entry point; the
-    // detector wired into `run_with_project` must surface
-    // `legacy-layout` before the dashboard even runs.
-    let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "status"]).assert().failure();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "legacy-layout");
-    let msg = value["message"].as_str().expect("message");
-    assert!(
-        msg.contains(".specify/registry.yaml"),
-        "legacy-layout message must enumerate the offenders, got: {msg}"
-    );
-    assert!(
-        msg.contains("specify migrate v2-layout"),
-        "legacy-layout message must point at the migrate verb, got: {msg}"
-    );
-}
-
-#[test]
-fn migrate_v2_layout_moves_every_artifact_and_succeeds() {
-    let tmp = tempdir().unwrap();
-    seed_v1_layout(&tmp);
-
-    let assert = specify()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "migrate", "v2-layout"])
-        .assert()
-        .success();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["any-collisions"], false);
-    assert_eq!(value["any-legacy-present"], true);
-
-    // v2 destinations now exist at the repo root.
-    assert!(tmp.path().join("registry.yaml").is_file());
-    assert!(tmp.path().join("plan.yaml").is_file());
-    assert!(tmp.path().join("initiative.md").is_file());
-    assert!(tmp.path().join("contracts").is_dir());
-
-    // v1 sources are gone.
-    assert!(!tmp.path().join(".specify/registry.yaml").exists());
-    assert!(!tmp.path().join(".specify/plan.yaml").exists());
-    assert!(!tmp.path().join(".specify/initiative.md").exists());
-    assert!(!tmp.path().join(".specify/contracts").exists());
-
-    // Re-running on the migrated repo is a no-op.
-    let assert = specify()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "migrate", "v2-layout"])
-        .assert()
-        .success();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["any-legacy-present"], false);
-
-    // After the migration, project-aware verbs work again.
-    specify().current_dir(tmp.path()).args(["registry", "show"]).assert().success();
-}
-
-#[test]
-fn migrate_v2_layout_dry_run_does_not_modify_disk() {
-    let tmp = tempdir().unwrap();
-    seed_v1_layout(&tmp);
-
-    let assert = specify()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "migrate", "v2-layout", "--dry-run"])
-        .assert()
-        .success();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["dry-run"], true);
-
-    // Sources still in .specify/, no destinations at root.
-    assert!(tmp.path().join(".specify/registry.yaml").is_file());
-    assert!(!tmp.path().join("registry.yaml").exists());
-}
-
-#[test]
-fn migrate_v2_layout_refuses_destination_collision() {
-    let tmp = tempdir().unwrap();
-    seed_v1_layout(&tmp);
-    // Plant a colliding file at the v2 destination.
-    fs::write(tmp.path().join("registry.yaml"), "pre-existing\n").unwrap();
-
-    let assert = specify()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "migrate", "v2-layout"])
-        .assert()
-        .failure();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["any-collisions"], true);
-
-    // Pre-existing destination must not be clobbered.
-    let pre = fs::read_to_string(tmp.path().join("registry.yaml")).expect("read pre-existing");
-    assert_eq!(pre, "pre-existing\n");
-    // v1 source must still be on disk so the operator can resolve.
-    assert!(tmp.path().join(".specify/registry.yaml").is_file());
-}
-
-/// `specify change show` against a project that still carries the
-/// pre-Phase-3.7 `initiative.md` (and no `change.md`) must refuse
-/// loud with the `change-brief-became-change-md` diagnostic and
-/// point the operator at the manual rename.
-#[test]
-fn change_show_refuses_when_only_legacy_brief_present() {
-    let tmp = tempdir().unwrap();
-    init_omnia_project(&tmp);
-    fs::write(tmp.path().join("initiative.md"), "---\nname: demo\ninputs: []\n---\n\n# demo\n")
-        .expect("seed initiative.md");
-
-    let assert = specify()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "change", "show"])
-        .assert()
-        .failure();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "change-brief-became-change-md");
-    let message = value["message"].as_str().expect("message string");
-    assert!(
-        message.contains("change-brief-became-change-md:"),
-        "diagnostic must lead with the kebab-case prefix, got: {message}"
-    );
-    assert!(
-        message.contains("initiative.md") && message.contains("change.md"),
-        "diagnostic must surface both filenames, got: {message}"
-    );
-    assert!(message.contains("Rename the file to `change.md`"), "message: {message}");
-    assert!(
-        message.contains("rfcs/rfc-13-extensibility.md#migration"),
-        "diagnostic must link RFC-13 §Migration, got: {message}"
-    );
-    // The on-disk state must be untouched.
-    assert!(tmp.path().join("initiative.md").is_file());
-    assert!(!tmp.path().join("change.md").exists());
 }

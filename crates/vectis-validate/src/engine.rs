@@ -92,17 +92,15 @@
 //! these fields at parse time; the runtime resolution layer is left
 //! for a follow-on RFC.
 //!
-//! Phase 1.10 brings `all` mode online and lands the
-//! `artifacts:`-block default-path resolver every mode shares:
+//! Phase 1.10 brings `all` mode online and lands the embedded
+//! default-path resolver every mode shares:
 //!
 //! 1. **Default-path resolution** (RFC-11 §H field semantics) --
 //!    when no `[path]` is supplied, walk up from CWD looking for a
 //!    `.specify/` directory and expand the canonical Vectis path
 //!    cascade (with `<name>` substituted from the alphabetically-first
-//!    slice directory under `.specify/slices/`). Older projects that
-//!    still carry an `artifacts:` block in a vendored `schema.yaml`
-//!    continue to work, but post-RFC-13 capability manifests use the
-//!    embedded canonical mapping.
+//!    slice directory under `.specify/slices/`). The cascade is
+//!    sourced from [`EMBEDDED_ARTIFACT_PATHS`].
 //!    The helper is shared with the cross-artifact discovery layer
 //!    Phase 1.7 (assets → composition) and Phase 1.9 (composition →
 //!    tokens / assets) introduced; the previous `find_sibling_*`
@@ -152,7 +150,7 @@ use jsonschema::Validator;
 use serde_json::{Value, json};
 
 use crate::error::VectisError;
-use crate::{CommandOutcome, ValidateArgs, ValidateMode};
+use crate::{Args, CommandOutcome, ValidateMode};
 
 /// Embedded `tokens.schema.json` (RFC-11 Appendix A). Vendored from
 /// the `specify` repo at `schemas/vectis/tokens.schema.json` (Phase
@@ -179,16 +177,14 @@ const ASSETS_SCHEMA_SOURCE: &str = include_str!("../embedded/assets.schema.json"
 /// references).
 const COMPOSITION_SCHEMA_SOURCE: &str = include_str!("../embedded/composition.schema.json");
 
-/// Embedded default paths for the four `vectis-validate` modes. This
-/// is the post-RFC-13 canonical Vectis cascade: slice-local files
-/// first, then project-level inputs or the merged composition baseline.
-/// Older projects with an on-disk `schema.yaml` `artifacts:` block can
-/// still override these paths via [`read_artifacts_block`].
+/// Embedded default paths for the four `vectis-validate` modes. The
+/// canonical Vectis cascade: slice-local files first, then
+/// project-level inputs or the merged composition baseline.
 ///
 /// The order of the inner array is the resolution order; the first
 /// existing file wins. The role label (first tuple element) is
-/// retained for parity with the schema YAML even though Phase 1.10
-/// only uses the template strings. The `<name>` placeholder is
+/// retained for parity with the schema YAML even though only the
+/// template strings are consumed. The `<name>` placeholder is
 /// expanded against `.specify/slices/<dir>/` (alphabetical first
 /// match) at resolution time.
 const EMBEDDED_ARTIFACT_PATHS: &[(&str, &[(&str, &str)])] = &[
@@ -240,10 +236,7 @@ static COMPOSITION_VALIDATOR: OnceLock<Result<Validator, String>> = OnceLock::ne
 /// Dispatch a `vectis validate` invocation to the per-mode handler.
 ///
 /// Phases 1.6 / 1.7 / 1.8 / 1.9 implement `tokens` / `assets` /
-/// `layout` / `composition`; Phase 1.10 lands `all`. Every mode
-/// returns [`CommandOutcome::Success`] now -- the
-/// [`CommandOutcome::Stub`] arm Phase 1.5 wired is unreachable and
-/// retained only to keep the contract surface forward-compatible.
+/// `layout` / `composition`; Phase 1.10 lands `all`.
 ///
 /// # Errors
 ///
@@ -258,7 +251,7 @@ static COMPOSITION_VALIDATOR: OnceLock<Result<Validator, String>> = OnceLock::ne
 /// layer; they are folded into the `errors` array of the per-mode
 /// envelope so the operator sees the full report alongside any other
 /// findings.
-pub fn run(args: &ValidateArgs) -> Result<CommandOutcome, VectisError> {
+pub fn run(args: &Args) -> Result<CommandOutcome, VectisError> {
     match args.mode {
         ValidateMode::Tokens => validate_tokens(args.path.as_deref()),
         ValidateMode::Assets => validate_assets(args.path.as_deref()),
@@ -697,25 +690,14 @@ fn validate_composition(path: Option<&Path>) -> Result<CommandOutcome, VectisErr
 ///
 /// Used by `composition` mode (Phase 1.9) to fold sibling `tokens` /
 /// `assets` envelopes into its own report. Phase 1.10's `all` mode
-/// will use the same helper to dispatch each sub-mode in turn.
-///
-/// A [`CommandOutcome::Stub`] from a sub-mode is treated as an
-/// invariant breach today (every mode `composition` auto-invokes is
-/// already wired) and surfaces as [`VectisError::Internal`] so the
-/// caller sees a clean failure rather than a silently-empty report.
+/// uses the same helper to dispatch each sub-mode in turn.
 fn run_inner(mode: ValidateMode, path: &Path) -> Result<Value, VectisError> {
-    let inner_args = ValidateArgs {
+    let inner_args = Args {
         mode,
         path: Some(path.to_path_buf()),
     };
-    match run(&inner_args)? {
-        CommandOutcome::Success(value) => Ok(value),
-        CommandOutcome::Stub { command } => Err(VectisError::Internal {
-            message: format!(
-                "auto-invoke folded a stub sub-mode `{command}`; this should never happen now that Phases 1.6/1.7 have landed",
-            ),
-        }),
-    }
+    let CommandOutcome::Success(value) = run(&inner_args)?;
+    Ok(value)
 }
 
 /// Read `path` and parse it as YAML into a [`serde_json::Value`].
@@ -1084,9 +1066,8 @@ fn default_project_root() -> PathBuf {
 /// hand-edited `artifacts:` block), it falls back to the embedded
 /// canonical name under `<root>/`.
 fn resolve_default_path_with_root(mode: ValidateMode, project_root: &Path) -> PathBuf {
-    let artifacts = read_artifacts_block(project_root);
     let key = artifact_key_for_mode(mode).unwrap_or("composition");
-    let templates = paths_for_key(artifacts.as_ref(), key);
+    let templates = paths_for_key(key);
 
     let mut last_candidate: Option<PathBuf> = None;
     for template in &templates {
@@ -1138,10 +1119,9 @@ fn discover_artifact(start: &Path, mode: ValidateMode) -> Option<PathBuf> {
         }
     }
 
-    // (2) Artifacts:-block cascade.
+    // (2) Embedded canonical cascade.
     let project_root = find_project_root(start)?;
-    let artifacts = read_artifacts_block(&project_root);
-    let templates = paths_for_key(artifacts.as_ref(), key);
+    let templates = paths_for_key(key);
 
     for template in &templates {
         for resolved in expand_path_template(template, &project_root) {
@@ -1183,59 +1163,6 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Read the `artifacts:` block from the project's on-disk
-/// `schema.yaml` (cached under `.specify/.cache/<schema>/schema.yaml`
-/// or vendored under `<root>/schemas/<schema>/schema.yaml`). Returns
-/// `None` when:
-///
-/// - There is no `.specify/project.yaml` at the supplied root.
-/// - `project.yaml` is unparseable or has no `schema:` key.
-/// - Neither candidate `schema.yaml` is on disk or parseable.
-/// - The schema has no `artifacts:` key.
-///
-/// The caller treats `None` as "use the embedded defaults" so the
-/// resolver still works for projects that have not vendored a
-/// `schema.yaml` (e.g. early-life projects, or projects whose schema
-/// only ships via the agent cache).
-fn read_artifacts_block(project_root: &Path) -> Option<Value> {
-    let project_yaml = project_root.join(".specify/project.yaml");
-    let project_text = std::fs::read_to_string(&project_yaml).ok()?;
-    let project: Value = serde_saphyr::from_str(&project_text).ok()?;
-    let schema_value = project.get("schema").and_then(Value::as_str)?;
-    let schema_name = schema_name_from_value(schema_value);
-    let candidates = [
-        project_root.join(".specify/.cache").join(&schema_name).join("schema.yaml"),
-        project_root.join("schemas").join(&schema_name).join("schema.yaml"),
-    ];
-    for candidate in &candidates {
-        let Some(schema) = parse_yaml_file(candidate) else {
-            continue;
-        };
-        if let Some(artifacts) = schema.get("artifacts") {
-            return Some(artifacts.clone());
-        }
-    }
-    None
-}
-
-/// Derive a schema directory name from a `schema:` value in
-/// `project.yaml`. Mirrors the resolution in
-/// `crates/schema/src/schema.rs::locate_schema_root`:
-///
-/// - URL-shaped values (`https://.../<name>@<ref>`) → take the last
-///   non-empty path segment, drop any `@<ref>` suffix.
-/// - Bare names (`vectis`, `omnia`, ...) → use as-is.
-fn schema_name_from_value(value: &str) -> String {
-    if value.contains("://") {
-        value.rsplit('/').find(|seg| !seg.is_empty()).map_or_else(
-            || value.to_string(),
-            |seg| seg.split('@').next().unwrap_or(seg).to_string(),
-        )
-    } else {
-        value.to_string()
-    }
-}
-
 /// Map a [`ValidateMode`] to the `artifacts:` map key it resolves
 /// against. `ValidateMode::All` has no per-mode key (the convenience
 /// verb dispatches each per-mode handler in turn) and returns `None`.
@@ -1250,31 +1177,9 @@ const fn artifact_key_for_mode(mode: ValidateMode) -> Option<&'static str> {
 }
 
 /// Return the ordered list of `paths.<role>` templates for the given
-/// artifact `key`. When `artifacts` carries an on-disk entry, its
-/// `paths` map's values become the resolution order
-/// (`change_local`, `project`, `baseline`); otherwise the embedded
-/// defaults from [`EMBEDDED_ARTIFACT_PATHS`] are used.
-fn paths_for_key(artifacts: Option<&Value>, key: &str) -> Vec<String> {
-    if let Some(artifacts) = artifacts
-        && let Some(entry) = artifacts.get(key)
-        && let Some(paths) = entry.get("paths")
-    {
-        let mut out = Vec::new();
-        // Honour the canonical resolution order regardless of the
-        // YAML map's insertion order. `change_local` is the
-        // active-change-first signal; `project` (inputs) and
-        // `baseline` (composition) are mutually exclusive in v1 but
-        // we walk both keys defensively so a hand-edited schema with
-        // both still works.
-        for role in ["change_local", "project", "baseline"] {
-            if let Some(template) = paths.get(role).and_then(Value::as_str) {
-                out.push(template.to_string());
-            }
-        }
-        if !out.is_empty() {
-            return out;
-        }
-    }
+/// artifact `key`. The resolution order comes from the embedded
+/// canonical mapping in [`EMBEDDED_ARTIFACT_PATHS`].
+fn paths_for_key(key: &str) -> Vec<String> {
     EMBEDDED_ARTIFACT_PATHS
         .iter()
         .find(|(k, _)| *k == key)
@@ -1919,12 +1824,8 @@ assets:
     }
 
     fn extract_envelope(outcome: CommandOutcome) -> Value {
-        match outcome {
-            CommandOutcome::Success(value) => value,
-            CommandOutcome::Stub { command } => {
-                panic!("expected Success envelope from active mode, got Stub({command})")
-            }
-        }
+        let CommandOutcome::Success(value) = outcome;
+        value
     }
 
     fn errors_array(envelope: &Value) -> &[Value] {
@@ -1986,7 +1887,7 @@ assets:
     #[test]
     fn appendix_d_validates_cleanly() {
         let file = write_tokens(APPENDIX_D_TOKENS_YAML);
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Tokens,
             path: Some(file.path().to_path_buf()),
         };
@@ -1999,7 +1900,7 @@ assets:
     #[test]
     fn minimal_version_only_document_is_valid() {
         let file = write_tokens("version: 1\n");
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Tokens,
             path: Some(file.path().to_path_buf()),
         };
@@ -2011,7 +1912,7 @@ assets:
     fn broken_hex_reports_a_pathful_error() {
         let yaml = "version: 1\ncolors:\n  primary:\n    light: \"#xyz\"\n    dark: \"#000000\"\n";
         let file = write_tokens(yaml);
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Tokens,
             path: Some(file.path().to_path_buf()),
         };
@@ -2033,7 +1934,7 @@ assets:
     fn unknown_provenance_kind_is_rejected() {
         let yaml = "version: 1\nprovenance:\n  sources:\n    - kind: screenshots\n";
         let file = write_tokens(yaml);
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Tokens,
             path: Some(file.path().to_path_buf()),
         };
@@ -2052,7 +1953,7 @@ assets:
     #[test]
     fn invalid_yaml_surfaces_as_a_single_error_entry() {
         let file = write_tokens(": : not valid yaml :::\n");
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Tokens,
             path: Some(file.path().to_path_buf()),
         };
@@ -2068,7 +1969,7 @@ assets:
 
     #[test]
     fn missing_file_returns_invalid_project_error() {
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Tokens,
             path: Some(PathBuf::from("/definitely/not/here/tokens.yaml")),
         };
@@ -2164,7 +2065,7 @@ screens:
 ",
         );
 
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Assets,
             path: Some(assets_path),
         };
@@ -2198,7 +2099,7 @@ screens:
         files.retain(|p| *p != "assets/empty-tasks-hero.png");
         let (_tmp, assets_path) = write_assets_project(APPENDIX_E_ASSETS_YAML, &files);
 
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Assets,
             path: Some(assets_path),
         };
@@ -2259,7 +2160,7 @@ screens:
 ",
         );
 
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Assets,
             path: Some(assets_path),
         };
@@ -2298,7 +2199,7 @@ screens:
 ",
         );
 
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Assets,
             path: Some(assets_path),
         };
@@ -2343,7 +2244,7 @@ screens:
 ",
         );
 
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Assets,
             path: Some(assets_path),
         };
@@ -2376,7 +2277,7 @@ assets:
 ";
         let (_tmp, assets_path) = write_assets_project(yaml, &["assets/empty-tasks-hero@2x.png"]);
 
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Assets,
             path: Some(assets_path),
         };
@@ -2390,7 +2291,7 @@ assets:
 
     #[test]
     fn assets_missing_file_returns_invalid_project_error() {
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Assets,
             path: Some(PathBuf::from("/definitely/not/here/assets.yaml")),
         };
@@ -2420,7 +2321,7 @@ assets:
         1x: assets/bad.png
 ";
         let (_tmp, assets_path) = write_assets_project(yaml, &["assets/bad.png"]);
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Assets,
             path: Some(assets_path),
         };
@@ -2446,7 +2347,7 @@ assets:
       ios: foo
 ";
         let (_tmp, assets_path) = write_assets_project(yaml, &[]);
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Assets,
             path: Some(assets_path),
         };
@@ -2625,7 +2526,7 @@ screens:
 
     fn run_layout(content: &str) -> Value {
         let file = write_layout(content);
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Layout,
             path: Some(file.path().to_path_buf()),
         };
@@ -3046,7 +2947,7 @@ screens:
 
     #[test]
     fn layout_missing_file_returns_invalid_project_error() {
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Layout,
             path: Some(PathBuf::from("/definitely/not/here/layout.yaml")),
         };
@@ -3096,7 +2997,7 @@ screens:
     /// runs through the public `run` dispatcher so the dispatch
     /// arm stays exercised.
     fn run_composition(comp_path: &Path) -> Value {
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Composition,
             path: Some(comp_path.to_path_buf()),
         };
@@ -3728,7 +3629,7 @@ screens:
 
     #[test]
     fn composition_missing_file_returns_invalid_project_error() {
-        let args = ValidateArgs {
+        let args = Args {
             mode: ValidateMode::Composition,
             path: Some(PathBuf::from("/definitely/not/here/composition.yaml")),
         };
@@ -3747,63 +3648,18 @@ screens:
     // Phase 1.10: artifacts:-block resolver + `validate all`
     // -------------------------------------------------------------
 
-    /// Materialise a minimal Specify project under a fresh tempdir
-    /// matching the canonical layout `read_artifacts_block` walks:
-    /// `<root>/.specify/project.yaml` plus
-    /// `<root>/schemas/vectis/schema.yaml` (the local-shape schema
-    /// path; the cached shape under `.specify/.cache/<name>/` works
-    /// the same way and is exercised by a sibling test below). The
-    /// schema content embeds the v2 `artifacts:` block from
-    /// `schemas/vectis/schema.yaml` (so the resolver picks up the
-    /// on-disk shape rather than the embedded fallback).
-    fn write_specify_project(extra_schema_yaml: Option<&str>) -> TempDir {
+    /// Materialise a minimal Specify project under a fresh tempdir:
+    /// `<root>/.specify/project.yaml`. The default-path resolver
+    /// uses the embedded `EMBEDDED_ARTIFACT_PATHS` cascade so no
+    /// on-disk schema material is needed.
+    fn write_specify_project() -> TempDir {
         let tmp = tempfile::tempdir().expect("tempdir");
         let dot_specify = tmp.path().join(".specify");
         std::fs::create_dir_all(&dot_specify).expect("mkdir .specify");
-        std::fs::write(dot_specify.join("project.yaml"), "name: demo\nschema: vectis\n")
+        std::fs::write(dot_specify.join("project.yaml"), "name: demo\ncapability: vectis\n")
             .expect("write project.yaml");
-        if let Some(yaml) = extra_schema_yaml {
-            let schema_dir = tmp.path().join("schemas").join("vectis");
-            std::fs::create_dir_all(&schema_dir).expect("mkdir schemas/vectis");
-            std::fs::write(schema_dir.join("schema.yaml"), yaml).expect("write schema.yaml");
-        }
         tmp
     }
-
-    /// Minimal `schema.yaml` body carrying just the v2 `artifacts:`
-    /// block. Mirrors the four artifact entries the resolver knows
-    /// about; deliberately scoped to v1 keys so a future schema
-    /// extension (e.g. `components.yaml`) does not silently change
-    /// what this test exercises.
-    const V2_SCHEMA_YAML: &str = r"name: vectis
-version: 2
-description: test
-pipeline:
-  define: []
-  build: []
-  merge: []
-artifacts:
-  layout:
-    role: input
-    paths:
-      change_local: .specify/slices/<name>/layout.yaml
-      project: design-system/layout.yaml
-  tokens:
-    role: input
-    paths:
-      change_local: .specify/slices/<name>/tokens.yaml
-      project: design-system/tokens.yaml
-  assets:
-    role: input
-    paths:
-      change_local: .specify/slices/<name>/assets.yaml
-      project: design-system/assets.yaml
-  composition:
-    role: define-output
-    paths:
-      change_local: .specify/slices/<name>/composition.yaml
-      baseline: .specify/specs/composition.yaml
-";
 
     /// `find_project_root` walks up from a starting path until it
     /// finds a `.specify/` ancestor. A starting path that is itself
@@ -3812,7 +3668,7 @@ artifacts:
     /// ancestor returns `None`.
     #[test]
     fn find_project_root_walks_up_to_specify_dir() {
-        let tmp = write_specify_project(None);
+        let tmp = write_specify_project();
         let nested = tmp.path().join("a/b/c");
         std::fs::create_dir_all(&nested).expect("mkdir nested");
 
@@ -3830,45 +3686,24 @@ artifacts:
         assert!(find_project_root(bare.path()).is_none());
     }
 
-    /// `paths_for_key` reads the on-disk `artifacts:` block when
-    /// present and falls back to [`EMBEDDED_ARTIFACT_PATHS`]
-    /// otherwise. Both paths produce the same canonical resolution
-    /// order for v1.
+    /// `paths_for_key` returns the canonical resolution order from
+    /// [`EMBEDDED_ARTIFACT_PATHS`] for known keys and an empty
+    /// candidate list for unknown keys.
     #[test]
-    fn paths_for_key_prefers_on_disk_block_over_embedded_default() {
-        // Embedded fallback (no project.yaml resolved).
-        let embedded = paths_for_key(None, "tokens");
+    fn paths_for_key_returns_embedded_canonical_order() {
+        let tokens = paths_for_key("tokens");
         assert_eq!(
-            embedded,
+            tokens,
             vec![
                 ".specify/slices/<name>/tokens.yaml".to_string(),
                 "design-system/tokens.yaml".to_string(),
             ]
         );
 
-        // On-disk override that swaps the project path. The on-disk
-        // value MUST win.
-        let custom = json!({
-            "tokens": {
-                "paths": {
-                    "change_local": ".specify/slices/<name>/tokens.yaml",
-                    "project": "custom/path/tokens.yaml",
-                }
-            }
-        });
-        let resolved = paths_for_key(Some(&custom), "tokens");
-        assert_eq!(
-            resolved,
-            vec![
-                ".specify/slices/<name>/tokens.yaml".to_string(),
-                "custom/path/tokens.yaml".to_string(),
-            ]
-        );
-
         // Unknown key (e.g. a future artifact) returns an empty
         // candidate list so the caller can fall back to the
         // canonical-default-template helper.
-        assert!(paths_for_key(None, "components").is_empty());
+        assert!(paths_for_key("components").is_empty());
     }
 
     /// `expand_path_template` substitutes `<name>` against every
@@ -3879,7 +3714,7 @@ artifacts:
     /// an empty list so the caller skips to the next template.
     #[test]
     fn expand_path_template_handles_name_substitution() {
-        let tmp = write_specify_project(None);
+        let tmp = write_specify_project();
         let slices_dir = tmp.path().join(".specify/slices");
         std::fs::create_dir_all(slices_dir.join("zeta")).expect("mkdir zeta");
         std::fs::create_dir_all(slices_dir.join("alpha")).expect("mkdir alpha");
@@ -3908,7 +3743,7 @@ artifacts:
     /// `design-system/layout.yaml` (the `project` template).
     #[test]
     fn resolve_default_path_prefers_change_local_over_project() {
-        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        let tmp = write_specify_project();
         let change_dir = tmp.path().join(".specify/slices/active");
         std::fs::create_dir_all(&change_dir).expect("mkdir change");
         std::fs::write(change_dir.join("layout.yaml"), "version: 1\nscreens: {}\n")
@@ -3932,7 +3767,7 @@ artifacts:
     /// exists, `validate layout` falls back to `design-system/`.
     #[test]
     fn resolve_default_path_falls_back_to_project_when_change_local_missing() {
-        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        let tmp = write_specify_project();
         let design = tmp.path().join("design-system");
         std::fs::create_dir_all(&design).expect("mkdir design-system");
         std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
@@ -3951,7 +3786,7 @@ artifacts:
     /// operator-friendly path.
     #[test]
     fn resolve_default_path_returns_last_candidate_when_nothing_exists() {
-        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        let tmp = write_specify_project();
         // No layout.yaml / tokens.yaml / etc. on disk.
         let layout = resolve_default_path_with_root(ValidateMode::Layout, tmp.path());
         assert!(
@@ -3967,36 +3802,6 @@ artifacts:
         );
     }
 
-    /// Removing the `artifacts:` block from `schema.yaml` (the v1
-    /// shape every other Specify schema ships today) MUST fall back
-    /// to the embedded defaults cleanly. Identical resolution shape
-    /// to the on-disk-block tests above.
-    #[test]
-    fn resolve_default_path_falls_back_to_embedded_defaults_without_block() {
-        // Schema file without an `artifacts:` block (mirroring the
-        // omnia / contracts schemas that don't carry the v1
-        // contract).
-        let schema_no_artifacts = r"name: vectis
-version: 2
-description: test
-pipeline:
-  define: []
-  build: []
-  merge: []
-";
-        let tmp = write_specify_project(Some(schema_no_artifacts));
-        let design = tmp.path().join("design-system");
-        std::fs::create_dir_all(&design).expect("mkdir design-system");
-        std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
-
-        let resolved = resolve_default_path_with_root(ValidateMode::Tokens, tmp.path());
-        assert!(
-            resolved.ends_with("design-system/tokens.yaml"),
-            "expected embedded-default resolution, got: {}",
-            resolved.display(),
-        );
-    }
-
     /// `discover_artifact` is the cross-artifact discovery helper
     /// `validate_assets` (Phase 1.7) and `validate_composition`
     /// (Phase 1.9) call. It returns `Some(path)` only when the file
@@ -4006,7 +3811,7 @@ pipeline:
     /// sibling was found, skip cross-artifact resolution".
     #[test]
     fn discover_artifact_returns_some_only_for_existing_files() {
-        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        let tmp = write_specify_project();
         let comp_dir = tmp.path().join(".specify/specs");
         std::fs::create_dir_all(&comp_dir).expect("mkdir specs");
         std::fs::write(comp_dir.join("composition.yaml"), "version: 1\nscreens: {}\n")
@@ -4039,45 +3844,6 @@ pipeline:
         );
     }
 
-    /// The `.specify/.cache/<schema>/schema.yaml` shape (cached by
-    /// the agent) must resolve identically to the local
-    /// `<root>/schemas/<schema>/schema.yaml` shape exercised by the
-    /// other tests. Pinning both paths so a future cache vs. local
-    /// preference flip surfaces here.
-    #[test]
-    fn read_artifacts_block_finds_cached_schema_when_local_is_absent() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let dot_specify = tmp.path().join(".specify");
-        std::fs::create_dir_all(&dot_specify).expect("mkdir .specify");
-        std::fs::write(dot_specify.join("project.yaml"), "name: demo\nschema: vectis\n")
-            .expect("write project.yaml");
-        // Place the schema under `.specify/.cache/vectis/schema.yaml`
-        // -- the agent-managed cache path -- and NOT under
-        // `<root>/schemas/vectis/`.
-        let cache_dir = dot_specify.join(".cache").join("vectis");
-        std::fs::create_dir_all(&cache_dir).expect("mkdir cache");
-        std::fs::write(cache_dir.join("schema.yaml"), V2_SCHEMA_YAML)
-            .expect("write cached schema.yaml");
-
-        let artifacts = read_artifacts_block(tmp.path()).expect("artifacts found in cache");
-        // Spot-check: every v1 key is present.
-        for key in ["layout", "tokens", "assets", "composition"] {
-            assert!(artifacts.get(key).is_some(), "expected `{key}` in artifacts: {artifacts}");
-        }
-    }
-
-    /// `read_artifacts_block` interprets URL-shaped `schema:`
-    /// values (e.g. `https://.../vectis@1`) by extracting the last
-    /// path segment minus any `@<ref>` suffix. This mirrors the
-    /// canonical resolution in `crates/schema/src/schema.rs`.
-    #[test]
-    fn schema_name_from_value_handles_urls_and_refs() {
-        assert_eq!(schema_name_from_value("vectis"), "vectis");
-        assert_eq!(schema_name_from_value("https://example.com/schemas/vectis"), "vectis");
-        assert_eq!(schema_name_from_value("https://example.com/schemas/vectis@1.2.3"), "vectis");
-        assert_eq!(schema_name_from_value("https://example.com/schemas/vectis@1.2.3/"), "vectis");
-    }
-
     // -------------------------------------------------------------
     // Phase 1.10: `validate all` envelope shape + sub-mode dispatch
     // -------------------------------------------------------------
@@ -4089,7 +3855,7 @@ pipeline:
     /// envelope under `report`.
     #[test]
     fn all_envelope_runs_every_mode_in_canonical_order() {
-        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        let tmp = write_specify_project();
 
         // Materialise every artifact at the project shape so each
         // sub-mode produces a real (non-skipped) report.
@@ -4106,7 +3872,7 @@ pipeline:
             .expect("write composition.yaml");
 
         let envelope = extract_envelope(
-            run(&ValidateArgs {
+            run(&Args {
                 mode: ValidateMode::All,
                 path: Some(tmp.path().to_path_buf()),
             })
@@ -4145,14 +3911,14 @@ pipeline:
     /// `validate all` keeps running through the rest of the modes.
     #[test]
     fn all_envelope_skips_missing_inputs_without_failing() {
-        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        let tmp = write_specify_project();
         // Provide ONLY tokens.yaml; the other three are absent.
         let design = tmp.path().join("design-system");
         std::fs::create_dir_all(&design).expect("mkdir design-system");
         std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
 
         let envelope = extract_envelope(
-            run(&ValidateArgs {
+            run(&Args {
                 mode: ValidateMode::All,
                 path: Some(tmp.path().to_path_buf()),
             })
@@ -4190,7 +3956,7 @@ pipeline:
     /// nested sub-report.
     #[test]
     fn all_envelope_propagates_sub_mode_errors_into_nested_report() {
-        let tmp = write_specify_project(Some(V2_SCHEMA_YAML));
+        let tmp = write_specify_project();
         let design = tmp.path().join("design-system");
         std::fs::create_dir_all(&design).expect("mkdir design-system");
         std::fs::write(
@@ -4200,7 +3966,7 @@ pipeline:
         .expect("write tokens.yaml");
 
         let envelope = extract_envelope(
-            run(&ValidateArgs {
+            run(&Args {
                 mode: ValidateMode::All,
                 path: Some(tmp.path().to_path_buf()),
             })

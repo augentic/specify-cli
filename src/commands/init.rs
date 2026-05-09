@@ -58,11 +58,8 @@ pub fn run(
 #[serde(rename_all = "kebab-case")]
 struct InitBody {
     config_path: String,
-    /// Resolved capability name (or `"hub"` for hub init). Kept under
-    /// the legacy JSON key `schema-name` so existing wire consumers
-    /// keep parsing while the vocabulary cut-over lands; renames live
-    /// behind a structured-output bump out of scope for chunk 1.3.
-    schema_name: String,
+    /// Resolved capability name (or `"hub"` for hub init).
+    capability_name: String,
     cache_present: bool,
     directories_created: Vec<String>,
     scaffolded_rule_keys: Vec<String>,
@@ -103,7 +100,7 @@ fn emit_init_result(
         OutputFormat::Json => {
             emit_response(InitBody {
                 config_path: absolute_string(&result.config_path),
-                schema_name: result.capability_name.clone(),
+                capability_name: result.capability_name.clone(),
                 cache_present: result.cache_present,
                 directories_created: result
                     .directories_created
