@@ -793,43 +793,19 @@ fn registry_remove_refuses_when_registry_absent() {
     assert!(msg.contains("no registry declared"), "msg: {msg}");
 }
 
-// ---- specify workspace merge deprecation shim (RFC-14 C08) ----
-//
-// The shim must keep old invocations parseable for one release while
-// refusing before any project, registry, PR lookup, or forge mutation.
-
 #[test]
-fn workspace_help_lists_merge_subcommand() {
+fn workspace_help_lists_active_subcommands_only() {
     let assert = specify().args(["workspace", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    for verb in ["sync", "status", "push", "merge"] {
+    for verb in ["sync", "status", "push"] {
         assert!(
             stdout.contains(verb),
             "expected `workspace --help` to mention `{verb}`, got:\n{stdout}",
         );
     }
-}
-
-#[test]
-fn workspace_merge_help_documents_dry_run_and_projects() {
-    let assert = specify().args(["workspace", "merge", "--help"]).assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     assert!(
-        stdout.contains("Deprecated") || stdout.contains("removed"),
-        "expected workspace merge help to explain removal, got:\n{stdout}",
-    );
-    assert!(
-        stdout.contains("--dry-run"),
-        "expected --dry-run flag in workspace merge --help, got:\n{stdout}",
-    );
-    // The positional `[PROJECTS]...` argument should be visible.
-    assert!(
-        stdout.to_lowercase().contains("project"),
-        "expected projects positional in workspace merge --help, got:\n{stdout}",
-    );
-    assert!(
-        stdout.contains("change finalize"),
-        "expected workspace merge help to point at change finalize, got:\n{stdout}",
+        !stdout.contains("merge"),
+        "`workspace merge` must not appear in active workspace help, got:\n{stdout}",
     );
 }
 
@@ -1207,38 +1183,15 @@ fn rfc14_c04_workspace_prepare_branch_surfaces_origin_head_diagnostic_key() {
 }
 
 #[test]
-fn workspace_merge_shim_exits_nonzero_with_migration_guidance() {
-    let tmp = tempdir().unwrap();
-    let assert = specify()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "workspace", "merge", "ghost", "--dry-run"])
-        .assert()
-        .failure();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "workspace-merge-removed");
-    assert_eq!(value["command"], "workspace merge");
-    assert_eq!(value["exit-code"], 1);
-    assert_eq!(value["projects"], serde_json::json!(["ghost"]));
-    assert_eq!(value["dry-run"], true);
-    assert_eq!(value["inspected-pull-requests"], false);
-    assert_eq!(value["merged-pull-requests"], false);
-    let msg = value["message"].as_str().expect("message");
-    assert!(msg.contains("gh pr merge"), "msg: {msg}");
-    assert!(msg.contains("change finalize"), "msg: {msg}");
-}
-
-#[test]
-fn workspace_merge_shim_does_not_require_project_context_or_touch_workspace() {
+fn workspace_merge_is_not_a_cli_subcommand() {
     let tmp = tempdir().unwrap();
     let assert =
         specify().current_dir(tmp.path()).args(["workspace", "merge", "alpha"]).assert().failure();
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
-    assert!(stderr.contains("was removed"), "stderr: {stderr}");
-    assert!(stderr.contains("change finalize"), "stderr: {stderr}");
+    assert!(stderr.contains("unrecognized subcommand"), "stderr: {stderr}");
     assert!(
         !tmp.path().join(".specify/workspace").exists(),
-        "workspace merge shim must not materialise workspace paths"
+        "unknown workspace merge command must not materialise workspace paths"
     );
 }
 

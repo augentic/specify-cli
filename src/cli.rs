@@ -353,16 +353,6 @@ pub enum WorkspaceAction {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Deprecated: automated PR merge was removed. Compatibility shim
-    /// that exits non-zero. Use `gh pr merge` then `specify change finalize`.
-    Merge {
-        /// Accepted for compatibility; ignored.
-        #[arg()]
-        projects: Vec<String>,
-        /// Accepted for compatibility; ignored.
-        #[arg(long)]
-        dry_run: bool,
-    },
 }
 
 #[derive(Subcommand)]

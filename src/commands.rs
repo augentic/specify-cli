@@ -77,9 +77,6 @@ pub fn run(cli: Cli) -> CliResult {
             WorkspaceAction::Push { projects, dry_run } => {
                 with_project(cli.format, |ctx| workspace::push(ctx, projects, dry_run))
             }
-            WorkspaceAction::Merge { projects, dry_run } => {
-                bare(cli.format, || workspace::merge_removed(cli.format, projects, dry_run))
-            }
         },
         Commands::Migrate { action } => match action {
             MigrateAction::V2Layout { dry_run } => bare(cli.format, || {
