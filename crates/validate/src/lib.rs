@@ -23,6 +23,7 @@ use specify_error as _; // dependency declared; re-exported via `Error` return t
 use specify_spec::ParsedSpec;
 use specify_task::TaskProgress;
 
+pub mod compatibility;
 pub mod contracts;
 mod primitives;
 mod registry;
@@ -30,6 +31,10 @@ pub mod rfc5;
 mod run;
 mod serialize;
 
+pub use compatibility::{
+    CompatibilityClassification, CompatibilityFinding, CompatibilityReport, CompatibilitySummary,
+    classify_project_compatibility,
+};
 pub use contracts::{ContractFinding, serialize_contract_findings, validate_baseline_contracts};
 pub use registry::{cross_rules, rules_for};
 pub use run::validate_slice;

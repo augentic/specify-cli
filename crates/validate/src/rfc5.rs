@@ -3,8 +3,9 @@
 //!
 //! `specify-validate` currently validates slice artifacts, not the entire
 //! Specify framework repository. The tool declaration checks below therefore
-//! live in `specify-tool` for now, while the skill/brief scanner remains a
-//! TODO for the eventual RFC-5 `specify check` surface.
+//! live in `specify-tool` for now. The plugin repository's Deno checks carry
+//! the interim skill/brief scanner until the eventual RFC-5 `specify check`
+//! port can own the same rule.
 
 /// Warns when a declared tool asks for write access to the whole project.
 ///
@@ -22,11 +23,10 @@ pub const TOOL_LIFECYCLE_STATE_WRITE_DENIED: &str = "tool.lifecycle-state-write-
 /// Warns when a skill or brief shells out to a host binary after an equivalent
 /// declared tool exists.
 ///
-/// TODO(rfc-5): scan capability `briefs/*.md` and plugin `SKILL.md` files for
-/// retired host-binary invocations once the merged tool list declares the
-/// corresponding tool. Fixture seed: a capability with
-/// `tools.yaml` declaring `contract` plus a merge brief that still invokes
-/// `specify-contract-validate`.
+/// The plugin repository currently scans active capability briefs and plugin
+/// skills in `scripts/checks.ts`. TODO(rfc-5): port that scanner into the
+/// eventual framework-level `specify check` surface without changing this rule
+/// id.
 pub const SKILL_INVOKES_HOST_BINARY_WITH_DECLARED_TOOL_EQUIVALENT: &str =
     "skill.invokes-host-binary-with-declared-tool-equivalent";
 

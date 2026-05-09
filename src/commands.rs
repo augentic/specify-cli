@@ -1,6 +1,7 @@
 mod capability;
 mod change;
 mod codex;
+mod compatibility;
 mod context;
 mod init;
 mod migrate;
@@ -43,6 +44,9 @@ pub fn run(cli: Cli) -> CliResult {
             }
         },
         Commands::Codex { action } => with_project(cli.format, |ctx| codex::run(ctx, action)),
+        Commands::Compatibility { action } => {
+            with_project(cli.format, |ctx| compatibility::run(ctx, action))
+        }
         Commands::Tool { action } => match action {
             ToolAction::Run { name, args } => {
                 with_project(cli.format, |ctx| tool::run(ctx, name, args))

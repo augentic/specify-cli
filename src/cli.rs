@@ -76,6 +76,13 @@ pub enum Commands {
         action: ToolAction,
     },
 
+    /// Cross-project contract compatibility reports.
+    #[command(alias = "compat")]
+    Compatibility {
+        #[command(subcommand)]
+        action: CompatibilityAction,
+    },
+
     /// Slice lifecycle operations — one `define → build → merge` loop.
     Slice {
         #[command(subcommand)]
@@ -188,6 +195,19 @@ pub enum ToolAction {
         /// Scan every current-project tool scope. Currently equivalent to the default scan.
         #[arg(long)]
         all: bool,
+    },
+}
+
+/// Contract compatibility classification verbs.
+#[derive(Subcommand)]
+pub enum CompatibilityAction {
+    /// Check current producer/consumer contract compatibility.
+    Check,
+    /// Render a classified compatibility report.
+    Report {
+        /// Kebab-case change name to echo in the report.
+        #[arg(long)]
+        change: String,
     },
 }
 
