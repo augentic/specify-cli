@@ -140,6 +140,10 @@ Comments answer "why does this look like this *today*?" — non-obvious intent, 
 
 Prefer short, idiomatic Rust names. Don't restate context the surrounding module, type, or function already supplies (`workspace::auto_commit_merge`, not `workspace_auto_commit_merge_baseline`). Avoid `_local` / `_value` / `_helper` suffixes. `is_kebab` over `is_valid_kebab_name`. New functions: 1–3 words. Public-API renames keep a deprecated alias for one release.
 
+### Module layout
+
+Use the modern Rust module layout: prefer `src/<parent>/<module>.rs` as the module entry point, with child modules under `src/<parent>/<module>/`. Do not add new `mod.rs` files inside module directories unless an external constraint requires it.
+
 ## Skill / CLI responsibility split (mirrors parent repo)
 
 Every deterministic operation lives in this CLI: kebab-case validation, `.metadata.yaml` reads/writes, lifecycle transitions, capability resolution, artifact-completion checks, spec-merge preview, baseline conflict detection, delta merge, coherence validation, archive moves, plan/registry validation. The plugin repo's phase skills (`/spec:define`, `/spec:build`, `/spec:merge`, `/spec:drop`, `/spec:init`, `/change:plan`, `/change:execute`) shell out for all of those.

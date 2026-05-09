@@ -9,6 +9,11 @@ use std::fs;
 use std::path::Path;
 
 /// Recursively copy `src` into `dst`, creating directories as needed.
+///
+/// # Panics
+///
+/// Panics if a fixture directory cannot be read or copied into the test
+/// workspace.
 #[allow(dead_code)]
 pub fn copy_dir(src: &Path, dst: &Path) {
     fs::create_dir_all(dst).expect("create_dir_all dst");
