@@ -66,9 +66,35 @@ pub fn emit_error(format: OutputFormat, err: &Error) -> CliResult {
         OutputFormat::Json => emit_json_error(err, code),
         OutputFormat::Text => {
             eprintln!("error: {err}");
+            emit_text_hint(err);
         }
     }
     code
+}
+
+/// Long-form recovery hints for tightened diagnostics. The
+/// `#[error("…")]` body carries the kebab discriminant + immediate
+/// cause; the renderer appends actionable follow-up so the
+/// machine-readable JSON envelope stays compact while operators see
+/// the full guidance on a TTY.
+fn emit_text_hint(err: &Error) {
+    match err {
+        Error::InitNeedsCapability => {
+            eprintln!(
+                "hint: `specify init <capability>` for a regular project, or `specify init --hub` for a platform hub."
+            );
+            eprintln!("see: docs/init.md");
+        }
+        Error::ContextUnfenced => {
+            eprintln!("hint: rerun with --force to rewrite AGENTS.md.");
+        }
+        Error::ContextDrift => {
+            eprintln!(
+                "hint: reconcile the edits or rerun with --force to replace the generated block."
+            );
+        }
+        _ => {}
+    }
 }
 
 #[derive(Serialize)]

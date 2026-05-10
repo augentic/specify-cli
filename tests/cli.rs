@@ -196,8 +196,10 @@ fn init_json_with_no_args_errors_with_stable_code() {
     assert_eq!(value["error"], "init-requires-capability-or-hub");
     assert_eq!(value["exit-code"], 1);
     let message = value["message"].as_str().expect("message string");
-    assert!(message.contains("specify init <capability>"), "message: {message}");
-    assert!(message.contains("specify init --hub"), "message: {message}");
+    assert!(
+        message.starts_with("init-requires-capability-or-hub:"),
+        "message must lead with the kebab discriminant, got: {message}"
+    );
     assert!(
         !tmp.path().join(".specify").exists(),
         "no .specify must be scaffolded on validation failure"

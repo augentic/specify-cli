@@ -135,7 +135,7 @@ format-match-dispatch = 1
 module-line-count = 142
 
 [file."crates/error/src/lib.rs"]
-module-line-count = 579
+module-line-count = 562
 
 [file."crates/init/src/cache.rs"]
 module-line-count = 89
@@ -610,5 +610,5 @@ module-line-count = 44
 
 [file."src/output.rs"]
 format-match-dispatch = 3
-module-line-count = 242
+module-line-count = 268
 

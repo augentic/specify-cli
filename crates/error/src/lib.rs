@@ -93,19 +93,14 @@ pub enum Error {
 
     /// `specify context generate` refused to overwrite an existing
     /// hand-authored `AGENTS.md` that does not contain the managed fences.
-    #[error(
-        "context-existing-unfenced-agents-md: AGENTS.md exists without Specify context fences; \
-         rerun with --force to rewrite it"
-    )]
+    /// The renderer adds a `--force` recovery hint.
+    #[error("context-existing-unfenced-agents-md: AGENTS.md exists without Specify fences")]
     ContextUnfenced,
 
     /// `specify context generate` refused to replace the managed block
     /// because the fenced content has diverged from `.specify/context.lock`.
-    #[error(
-        "context-fenced-content-modified: AGENTS.md content inside the Specify context fences \
-         has changed since .specify/context.lock was written; reconcile the edits or rerun \
-         with --force to replace the generated block"
-    )]
+    /// The renderer adds a reconcile-or-`--force` recovery hint.
+    #[error("context-fenced-content-modified: AGENTS.md drifted from .specify/context.lock")]
     ContextDrift,
 
     /// `.specify/context.lock` is absent for a context check.
@@ -117,10 +112,7 @@ pub enum Error {
     ContextMissing,
 
     /// `.specify/context.lock` declares a version newer than this CLI supports.
-    #[error(
-        "context-lock-version-too-new: lock version {found} is newer than supported version \
-         {supported}"
-    )]
+    #[error("context-lock-version-too-new: lock version {found} > supported {supported}")]
     ContextLockTooNew {
         /// Version declared by the lock file.
         found: u64,
@@ -283,14 +275,9 @@ pub enum Error {
     },
 
     /// `specify init` requires either a `<capability>` positional or
-    /// `--hub` (mutually exclusive).
-    #[error(
-        "init-requires-capability-or-hub: `specify init` requires either a capability \
-         identifier or `--hub`. Run `specify init <capability>` for a regular project \
-         (e.g. `specify init omnia` or `specify init https://...`), or `specify init --hub` \
-         for a registry-only platform hub. The two are mutually exclusive. \
-         See: https://github.com/augentic/specify/blob/main/rfcs/rfc-13-extensibility.md#migration"
-    )]
+    /// `--hub` (mutually exclusive). The renderer adds an
+    /// invocation-shape hint pointing at `docs/init.md`.
+    #[error("init-requires-capability-or-hub: pass <capability> or --hub")]
     InitNeedsCapability,
 
     /// A declared WASI tool requested filesystem authority outside its manifest policy.
@@ -426,12 +413,11 @@ mod tests {
     #[test]
     fn init_requires_capability_or_hub_display() {
         let err = Error::InitNeedsCapability;
-        let s = err.to_string();
-        for needle in
-            ["init-requires-capability-or-hub", "specify init <capability>", "specify init --hub"]
-        {
-            assert!(s.contains(needle), "diagnostic must include `{needle}`, got: {s}");
-        }
+        assert_eq!(err.variant_str(), "init-requires-capability-or-hub");
+        assert!(
+            err.to_string().starts_with("init-requires-capability-or-hub: "),
+            "InitNeedsCapability display must start with the kebab discriminant, got: {err}"
+        );
     }
 
     #[test]
