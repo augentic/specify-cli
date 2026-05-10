@@ -343,6 +343,12 @@ Flag whose doc-comment says "Currently equivalent to the default …" or whose h
 
 Handlers return `Result<T, specify_error::Error>` and let `emit_error` / `emit_err` in [`src/output.rs`](src/output.rs) shape the JSON wire envelope. Nobody constructs `output::ErrorResponse { … }` or `output::ValidationErrorResponse { … }` by hand outside `src/output.rs` — the envelope shape (and its `error` discriminant contract) is owned there, and inlining it at a call site forks the contract. The `error-envelope-inlined` predicate (added in CL-X1) fails any such hand-rolled envelope outside `src/output.rs`.
 
+### Quarterly migration cadence
+
+**Quarterly migration cadence.** A scheduled PR — first business week of each quarter — reviews `scripts/standards-allowlist.toml`, identifies the top five files by total grandfathered violations, and either drives them to zero or documents in this section why they cannot be reduced this quarter. PR title: `chore: q<N> standards-allowlist sweep`.
+
+See [`docs/contributing/maintenance.md`](docs/contributing/maintenance.md) for the operational playbook (picking targets, updating baselines, PR shape).
+
 ## Skill / CLI responsibility split (mirrors parent repo)
 
 Every deterministic operation lives in this CLI: kebab-case validation, `.metadata.yaml` reads/writes, lifecycle transitions, capability resolution, artifact-completion checks, spec-merge preview, baseline conflict detection, delta merge, coherence validation, archive moves, plan/registry validation. The plugin repo's phase skills (`/spec:define`, `/spec:build`, `/spec:merge`, `/spec:drop`, `/spec:init`, `/change:plan`, `/change:execute`) shell out for all of those.
