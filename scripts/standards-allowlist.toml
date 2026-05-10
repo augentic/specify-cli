@@ -189,9 +189,16 @@ module-line-count = 133
 module-line-count = 198
 
 [file."crates/registry/src/branch.rs"]
-rfc-numbers-in-code = 2
-name-suffix-duplication = 2
-module-line-count = 642
+module-line-count = 221
+
+[file."crates/registry/src/branch/infer.rs"]
+module-line-count = 166
+
+[file."crates/registry/src/branch/prepare.rs"]
+module-line-count = 154
+
+[file."crates/registry/src/branch/validate.rs"]
+module-line-count = 152
 
 [file."crates/registry/src/forge.rs"]
 rfc-numbers-in-code = 1
