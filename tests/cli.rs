@@ -1452,7 +1452,7 @@ fn change_finalize_refuses_on_non_terminal_entries() {
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert_eq!(value["error"], "non-terminal-entries-present");
-    assert_eq!(value["initiative"], "foo");
+    assert_eq!(value["change"], "foo");
     let entries = value["entries"].as_array().expect("entries array");
     let names: Vec<&str> = entries.iter().filter_map(|e| e.as_str()).collect();
     assert_eq!(names, ["b"], "entries must list the offending non-terminal name");

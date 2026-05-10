@@ -180,6 +180,41 @@ pub enum Error {
         entries: Vec<String>,
     },
 
+    /// `specify change finalize` was invoked but `plan.yaml` is absent.
+    /// Canonical "change is already finalized" signal — the recovery
+    /// is to start a new loop via `specify change plan create`.
+    #[error(
+        "plan-not-found: no plan to finalize: plan.yaml is absent. \
+         If the change was already finalized, the archive is at \
+         .specify/archive/plans/. Otherwise run \
+         `specify change plan create` (and `specify change create` \
+         if the change brief is also missing) to start the loop."
+    )]
+    PlanNotFound,
+
+    /// `specify change finalize` refused because the plan still has
+    /// non-terminal entries. `change` is the plan name; `entries`
+    /// lists the offending entry names. The handler at
+    /// `commands::change` renders a non-standard envelope so the
+    /// entries appear alongside the discriminant.
+    #[error("non-terminal-entries-present: plan `{change}` has non-terminal entries: {entries:?}")]
+    PlanNonTerminalEntries {
+        /// Change name (= `plan.yaml:name`).
+        change: String,
+        /// Names of plan entries not in a terminal state.
+        entries: Vec<String>,
+    },
+
+    /// `specify change create` refused to overwrite an existing
+    /// `change.md`. The handler at `commands::change` renders a
+    /// non-standard envelope (`action`/`ok`/`path`) so the brief path
+    /// surfaces alongside the `already-exists` discriminant.
+    #[error("already-exists: change brief already exists at {}", path.display())]
+    ChangeBriefExists {
+        /// Path of the existing change brief.
+        path: std::path::PathBuf,
+    },
+
     /// Another live `/change:execute` driver holds `.specify/plan.lock`.
     /// Stale locks (dead PID / malformed content) are reclaimed silently.
     #[error("another /change:execute driver is running (pid {pid}); refusing to proceed")]
@@ -266,6 +301,9 @@ impl Error {
             Self::CliTooOld { .. } => "specify-version-too-old",
             Self::PlanTransition { .. } => "plan-transition",
             Self::PlanIncomplete { .. } => "plan-has-outstanding-work",
+            Self::PlanNotFound => "plan-not-found",
+            Self::PlanNonTerminalEntries { .. } => "non-terminal-entries-present",
+            Self::ChangeBriefExists { .. } => "already-exists",
             Self::DriverBusy { .. } => "driver-busy",
             Self::ArtifactNotFound { .. } => "artifact-not-found",
             Self::SliceNotFound { .. } => "slice-not-found",
@@ -369,6 +407,34 @@ mod tests {
             assert!(
                 err.to_string().starts_with(expected),
                 "context diagnostic display must start with `{expected}`, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn change_finalize_variant_strings_are_stable() {
+        let cases = [
+            (Error::PlanNotFound, "plan-not-found"),
+            (
+                Error::PlanNonTerminalEntries {
+                    change: "foo".to_string(),
+                    entries: vec!["b".to_string()],
+                },
+                "non-terminal-entries-present",
+            ),
+            (
+                Error::ChangeBriefExists {
+                    path: std::path::PathBuf::from("/tmp/change.md"),
+                },
+                "already-exists",
+            ),
+        ];
+
+        for (err, expected) in cases {
+            assert_eq!(err.variant_str(), expected);
+            assert!(
+                err.to_string().starts_with(expected),
+                "change-finalize diagnostic display must start with `{expected}`, got: {err}"
             );
         }
     }

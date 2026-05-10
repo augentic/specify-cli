@@ -1,24 +1,16 @@
-#![allow(
-    clippy::items_after_statements,
-    clippy::option_if_let_else,
-    clippy::unnecessary_wraps,
-    reason = "Command handlers keep small JSON DTOs next to their emission sites."
-)]
-
 mod plan;
 
-use std::path::Path;
+use std::io::Write;
 
 use serde::Serialize;
-use serde_json::Value;
-use specify_capability::ChangeBrief;
+use specify_capability::{ChangeBrief, ChangeFrontmatter, InputKind};
 use specify_change::finalize;
 use specify_error::{Error, is_kebab};
 use specify_registry::Registry;
 
-use crate::cli::{ChangeAction, OutputFormat};
+use crate::cli::ChangeAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, absolute_string, emit_response};
+use crate::output::{CliResult, Render, absolute_string, emit, emit_err};
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
 pub fn run(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult, Error> {
@@ -43,143 +35,62 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
 
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     if brief_path.exists() {
-        match ctx.format {
-            OutputFormat::Json => {
-                #[derive(Serialize)]
-                #[serde(rename_all = "kebab-case")]
-                struct BriefCreateErr {
-                    action: &'static str,
-                    ok: bool,
-                    error: &'static str,
-                    path: String,
-                    exit_code: u8,
-                }
-                emit_response(BriefCreateErr {
-                    action: "init",
-                    ok: false,
-                    error: "already-exists",
-                    path: brief_path.display().to_string(),
-                    exit_code: CliResult::GenericFailure.code(),
-                })?;
-            }
-            OutputFormat::Text => {
-                eprintln!(
-                    "change brief already exists at {}; refusing to overwrite",
-                    brief_path.display()
-                );
-            }
-        }
-        return Ok(CliResult::GenericFailure);
+        let exit = CliResult::GenericFailure;
+        emit_err(
+            ctx.format,
+            &BriefCreateErrBody {
+                action: "init",
+                ok: false,
+                error: "already-exists",
+                path: brief_path.display().to_string(),
+                exit_code: exit.code(),
+            },
+        )?;
+        return Ok(exit);
     }
 
     if let Some(parent) = brief_path.parent() {
         std::fs::create_dir_all(parent).map_err(Error::Io)?;
     }
-    let rendered = ChangeBrief::template(&name);
-    std::fs::write(&brief_path, &rendered).map_err(Error::Io)?;
+    std::fs::write(&brief_path, ChangeBrief::template(&name)).map_err(Error::Io)?;
 
-    #[derive(Serialize)]
-    #[serde(rename_all = "kebab-case")]
-    struct BriefCreateOk {
-        action: &'static str,
-        ok: bool,
-        name: String,
-        path: String,
-    }
-    match ctx.format {
-        OutputFormat::Json => emit_response(BriefCreateOk {
+    emit(
+        ctx.format,
+        &BriefCreateBody {
             action: "init",
             ok: true,
             name,
             path: absolute_string(&brief_path),
-        })?,
-        OutputFormat::Text => {
-            println!("Created change brief for {name} at {}", brief_path.display());
-        }
-    }
+        },
+    )?;
     Ok(CliResult::Success)
 }
 
 fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
-    match ChangeBrief::load(&ctx.project_dir)? {
-        None => {
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct BriefAbsent {
-                brief: Value,
-                path: String,
-            }
-            match ctx.format {
-                OutputFormat::Json => emit_response(BriefAbsent {
-                    brief: Value::Null,
-                    path: brief_path.display().to_string(),
-                })?,
-                OutputFormat::Text => {
-                    println!("no change brief declared at {}", brief_path.display());
-                }
-            }
-            Ok(CliResult::Success)
-        }
-        Some(brief) => {
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct BriefBody {
-                brief: BriefJson,
-                path: String,
-            }
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct BriefJson {
-                frontmatter: specify_capability::ChangeFrontmatter,
-                body: String,
-            }
-            match ctx.format {
-                OutputFormat::Json => emit_response(BriefBody {
-                    brief: BriefJson {
-                        frontmatter: brief.frontmatter.clone(),
-                        body: brief.body,
-                    },
-                    path: brief_path.display().to_string(),
-                })?,
-                OutputFormat::Text => print_change_brief_text(&brief, &brief_path),
-            }
-            Ok(CliResult::Success)
-        }
-    }
-}
-
-fn print_change_brief_text(brief: &ChangeBrief, brief_path: &Path) {
-    println!("change brief: {}", brief_path.display());
-    println!("name: {}", brief.frontmatter.name);
-    if brief.frontmatter.inputs.is_empty() {
-        println!("inputs: (none)");
-    } else {
-        println!("inputs:");
-        for input in &brief.frontmatter.inputs {
-            let kind = match input.kind {
-                specify_capability::InputKind::LegacyCode => "legacy-code",
-                specify_capability::InputKind::Documentation => "documentation",
-            };
-            println!("  - path: {}", input.path);
-            println!("    kind: {kind}");
-        }
-    }
-    println!();
-    print!("{}", brief.body);
+    let brief = ChangeBrief::load(&ctx.project_dir)?.map(|b| BriefData {
+        frontmatter: b.frontmatter,
+        body: b.body,
+    });
+    emit(
+        ctx.format,
+        &BriefShowBody {
+            brief,
+            path: brief_path.display().to_string(),
+        },
+    )?;
+    Ok(CliResult::Success)
 }
 
 // ---------------------------------------------------------------------------
-// `specify change finalize` (RFC-9 §4C)
+// `specify change finalize`
 // ---------------------------------------------------------------------------
 
 fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResult, Error> {
     let plan_or_refusal = finalize::load_plan(&ctx.project_dir)?;
     let plan = match plan_or_refusal {
         Ok(plan) => plan,
-        Err(finalize::Refusal::PlanNotFound) => {
-            return emit_plan_not_found(ctx.format);
-        }
+        Err(finalize::Refusal::PlanNotFound) => return Err(Error::PlanNotFound),
         Err(finalize::Refusal::NonTerminalEntries(_)) => {
             unreachable!("finalize::load_plan only emits PlanNotFound");
         }
@@ -187,7 +98,7 @@ fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliR
 
     // Registry is optional — an empty registry means no per-project
     // probes to run, but the archive (and the `--clean` no-op) still
-    // make sense. RFC-9 §4C does not require a registry.
+    // make sense.
     let registry = Registry::load(&ctx.project_dir)?.unwrap_or(Registry {
         version: 1,
         projects: Vec::new(),
@@ -204,11 +115,34 @@ fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliR
 
     match finalize::run(inputs, &probe) {
         Ok(outcome) => {
-            emit_outcome(ctx.format, &outcome)?;
+            emit(ctx.format, &FinalizeBody { outcome: &outcome })?;
             Ok(if outcome.finalized { CliResult::Success } else { CliResult::GenericFailure })
         }
         Err(finalize::Refusal::NonTerminalEntries(entries)) => {
-            emit_non_terminal(ctx.format, &plan.name, &entries)
+            let exit = CliResult::GenericFailure;
+            let err = Error::PlanNonTerminalEntries {
+                change: plan.name.clone(),
+                entries: entries.clone(),
+            };
+            let detail = format!(
+                "non-terminal-entries-present: plan `{}` has {} entry(ies) not in a terminal \
+                 state: {}. Resolve them (transition done/failed/skipped) and re-run; see \
+                 `specify change plan status` for the full picture.",
+                plan.name,
+                entries.len(),
+                entries.join(", "),
+            );
+            emit_err(
+                ctx.format,
+                &FinalizeNonTerminalErrBody {
+                    error: err.variant_str(),
+                    change: &plan.name,
+                    entries: &entries,
+                    message: detail,
+                    exit_code: exit.code(),
+                },
+            )?;
+            Ok(exit)
         }
         Err(finalize::Refusal::PlanNotFound) => {
             unreachable!("PlanNotFound is handled by finalize::load_plan")
@@ -216,138 +150,169 @@ fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliR
     }
 }
 
-fn emit_plan_not_found(format: OutputFormat) -> Result<CliResult, Error> {
-    let msg = "no plan to finalize: plan.yaml is absent. \
-               If the change was already finalized, the archive is at \
-               .specify/archive/plans/. Otherwise run \
-               `specify change plan create` (and `specify change create` \
-               if the change brief is also missing) to start the loop.";
-    match format {
-        OutputFormat::Json => {
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct PlanNotFound {
-                error: &'static str,
-                message: String,
-                exit_code: u8,
-            }
-            emit_response(PlanNotFound {
-                error: "plan-not-found",
-                message: msg.to_string(),
-                exit_code: CliResult::GenericFailure.code(),
-            })?;
-        }
-        OutputFormat::Text => {
-            eprintln!("error: {msg}");
-        }
-    }
-    Ok(CliResult::GenericFailure)
+// ---------------------------------------------------------------------------
+// DTOs
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct BriefCreateBody {
+    action: &'static str,
+    ok: bool,
+    name: String,
+    path: String,
 }
 
-fn emit_non_terminal(
-    format: OutputFormat, change: &str, entries: &[String],
-) -> Result<CliResult, Error> {
-    let entry_list = entries.join(", ");
-    let msg = format!(
-        "non-terminal-entries-present: plan `{change}` has {} entry(ies) not in a terminal \
-         state: {entry_list}. Resolve them (transition done/failed/skipped) and re-run; see \
-         `specify change plan status` for the full picture.",
-        entries.len(),
-    );
-    match format {
-        OutputFormat::Json => {
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct NonTerminal<'a> {
-                error: &'static str,
-                initiative: &'a str,
-                entries: &'a [String],
-                message: String,
-                exit_code: u8,
-            }
-            emit_response(NonTerminal {
-                error: "non-terminal-entries-present",
-                initiative: change,
-                entries,
-                message: msg,
-                exit_code: CliResult::GenericFailure.code(),
-            })?;
-        }
-        OutputFormat::Text => {
-            eprintln!("error: {msg}");
-        }
+impl Render for BriefCreateBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(w, "Created change brief for {} at {}", self.name, self.path)
     }
-    Ok(CliResult::GenericFailure)
 }
 
-fn emit_outcome(format: OutputFormat, outcome: &finalize::Outcome) -> Result<(), Error> {
-    match format {
-        OutputFormat::Json => emit_response(outcome)?,
-        OutputFormat::Text => print_outcome_text(outcome),
+/// Non-standard failure envelope for `change create` colliding with an
+/// existing brief. Tests pin `action`, `ok`, `error`, and the brief
+/// path verbatim, so this body owns its own shape rather than routing
+/// through `output::ErrorResponse`. Triggered by
+/// [`Error::ChangeBriefExists`]; the typed variant is the source of
+/// truth for the discriminant.
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct BriefCreateErrBody {
+    action: &'static str,
+    ok: bool,
+    error: &'static str,
+    path: String,
+    exit_code: u8,
+}
+
+impl Render for BriefCreateErrBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(w, "change brief already exists at {}; refusing to overwrite", self.path)
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct BriefShowBody {
+    brief: Option<BriefData>,
+    path: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct BriefData {
+    frontmatter: ChangeFrontmatter,
+    body: String,
+}
+
+impl Render for BriefShowBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        match &self.brief {
+            None => writeln!(w, "no change brief declared at {}", self.path),
+            Some(brief) => render_brief(w, brief, &self.path),
+        }
+    }
+}
+
+fn render_brief(w: &mut dyn Write, brief: &BriefData, path: &str) -> std::io::Result<()> {
+    writeln!(w, "change brief: {path}")?;
+    writeln!(w, "name: {}", brief.frontmatter.name)?;
+    if brief.frontmatter.inputs.is_empty() {
+        writeln!(w, "inputs: (none)")?;
+    } else {
+        writeln!(w, "inputs:")?;
+        for input in &brief.frontmatter.inputs {
+            let kind = match input.kind {
+                InputKind::LegacyCode => "legacy-code",
+                InputKind::Documentation => "documentation",
+            };
+            writeln!(w, "  - path: {}", input.path)?;
+            writeln!(w, "    kind: {kind}")?;
+        }
+    }
+    writeln!(w)?;
+    write!(w, "{}", brief.body)
+}
+
+/// Wrapper around the upstream `finalize::Outcome` so the binary can
+/// own the text rendering without the `Render` orphan-rule fight.
+/// `#[serde(transparent)]` keeps the JSON envelope byte-identical.
+#[derive(Serialize)]
+#[serde(transparent)]
+struct FinalizeBody<'a> {
+    outcome: &'a finalize::Outcome,
+}
+
+impl Render for FinalizeBody<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        let outcome = self.outcome;
+        if outcome.dry_run == Some(true) {
+            writeln!(
+                w,
+                "[dry-run] specify: change finalize \u{2014} {} ({})",
+                outcome.name, outcome.expected_branch
+            )?;
+        } else {
+            writeln!(
+                w,
+                "specify: change finalize \u{2014} {} ({})",
+                outcome.name, outcome.expected_branch
+            )?;
+        }
+        writeln!(w)?;
+
+        for r in &outcome.projects {
+            render_project_row(w, r)?;
+        }
+        if !outcome.projects.is_empty() {
+            writeln!(w)?;
+        }
+        render_summary_line(w, &outcome.summary)?;
+        writeln!(w)?;
+
+        if outcome.finalized {
+            if outcome.dry_run == Some(true) {
+                writeln!(w, "[dry-run] Change `{}` would be finalized.", outcome.name)?;
+            } else {
+                writeln!(w, "Change `{}` finalized.", outcome.name)?;
+                if let Some(archived) = &outcome.archived {
+                    writeln!(w, "  archived plan: {archived}")?;
+                }
+                if let Some(dir) = &outcome.archived_plans_dir {
+                    writeln!(w, "  archived dir:  {dir}")?;
+                }
+                if !outcome.cleaned.is_empty() {
+                    writeln!(w, "  cleaned clones: {}", outcome.cleaned.join(", "))?;
+                }
+            }
+        } else {
+            let reason = blocked_reason(&outcome.summary);
+            writeln!(w, "Change `{}` blocked: {reason}.", outcome.name)?;
+            if let Some(message) = &outcome.message {
+                writeln!(w, "{message}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn render_project_row(w: &mut dyn Write, r: &finalize::ProjectResult) -> std::io::Result<()> {
+    let pr = r.pr_number.map(|n| format!("PR #{n}")).unwrap_or_default();
+    let url = r.url.as_deref().unwrap_or("");
+    writeln!(w, "  {:<20} {:<24} {:<10} {}", r.name, r.status, pr, url)?;
+    if let Some(detail) = &r.detail {
+        writeln!(w, "    {detail}")?;
     }
     Ok(())
 }
 
-fn print_outcome_text(outcome: &finalize::Outcome) {
-    if outcome.dry_run == Some(true) {
-        println!(
-            "[dry-run] specify: change finalize — {} ({})",
-            outcome.name, outcome.expected_branch
-        );
-    } else {
-        println!("specify: change finalize — {} ({})", outcome.name, outcome.expected_branch);
-    }
-    println!();
-
-    for r in &outcome.projects {
-        print_project_row(r);
-    }
-    if !outcome.projects.is_empty() {
-        println!();
-    }
-
-    print_summary_line(&outcome.summary);
-
-    println!();
-    if outcome.finalized {
-        if outcome.dry_run == Some(true) {
-            println!("[dry-run] Change `{}` would be finalized.", outcome.name);
-        } else {
-            println!("Change `{}` finalized.", outcome.name);
-            if let Some(archived) = &outcome.archived {
-                println!("  archived plan: {archived}");
-            }
-            if let Some(dir) = &outcome.archived_plans_dir {
-                println!("  archived dir:  {dir}");
-            }
-            if !outcome.cleaned.is_empty() {
-                println!("  cleaned clones: {}", outcome.cleaned.join(", "));
-            }
-        }
-    } else {
-        let reason = blocked_reason(&outcome.summary);
-        println!("Change `{}` blocked: {reason}.", outcome.name);
-        if let Some(message) = &outcome.message {
-            println!("{message}");
-        }
-    }
-}
-
-fn print_project_row(r: &finalize::ProjectResult) {
-    let pr = r.pr_number.map(|n| format!("PR #{n}")).unwrap_or_default();
-    let url = r.url.as_deref().unwrap_or("");
-    println!("  {:<20} {:<24} {:<10} {}", r.name, r.status, pr, url);
-    if let Some(detail) = &r.detail {
-        println!("    {detail}");
-    }
-}
-
-fn print_summary_line(s: &finalize::Summary) {
-    println!(
+fn render_summary_line(w: &mut dyn Write, s: &finalize::Summary) -> std::io::Result<()> {
+    writeln!(
+        w,
         "{} merged, {} unmerged, {} closed, {} no-branch, {} branch-pattern-mismatch, \
          {} dirty, {} failed.",
         s.merged, s.unmerged, s.closed, s.no_branch, s.branch_pattern_mismatch, s.dirty, s.failed,
-    );
+    )
 }
 
 fn blocked_reason(s: &finalize::Summary) -> String {
@@ -368,6 +333,29 @@ fn blocked_reason(s: &finalize::Summary) -> String {
         reasons.push(format!("{} probe failure(s)", s.failed));
     }
     if reasons.is_empty() { "see per-project status above".to_string() } else { reasons.join(", ") }
+}
+
+/// Non-standard failure envelope for `change finalize` blocked on
+/// non-terminal plan entries. Tests pin `error`, `change` (formerly
+/// `initiative`), `entries`, and `message` verbatim; this body owns
+/// the shape rather than routing through `output::ErrorResponse`.
+/// Triggered by [`Error::PlanNonTerminalEntries`]; the typed variant
+/// is the source of truth for the discriminant and the structured
+/// `change`/`entries` payload.
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct FinalizeNonTerminalErrBody<'a> {
+    error: &'static str,
+    change: &'a str,
+    entries: &'a [String],
+    message: String,
+    exit_code: u8,
+}
+
+impl Render for FinalizeNonTerminalErrBody<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(w, "error: {}", self.message)
+    }
 }
 
 // ---------------------------------------------------------------------------
