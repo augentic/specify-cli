@@ -47,9 +47,16 @@ ritual-doc-paragraphs = 2
 module-line-count = 229
 
 [file."crates/change/src/finalize.rs"]
-rfc-numbers-in-code = 4
-ritual-doc-paragraphs = 1
-module-line-count = 1541
+module-line-count = 360
+
+[file."crates/change/src/finalize/archive.rs"]
+module-line-count = 81
+
+[file."crates/change/src/finalize/probe.rs"]
+module-line-count = 186
+
+[file."crates/change/src/finalize/summary.rs"]
+module-line-count = 80
 
 [file."crates/change/src/lib.rs"]
 rfc-numbers-in-code = 4
