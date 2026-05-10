@@ -9,8 +9,8 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use serde_json::Value;
-use tempfile::{NamedTempFile, TempDir};
 use specify_vectis::validate::CommandOutcome;
+use tempfile::{NamedTempFile, TempDir};
 
 pub fn extract_envelope(outcome: CommandOutcome) -> Value {
     match outcome {

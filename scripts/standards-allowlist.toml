@@ -33,7 +33,7 @@ module-line-count = 211
 
 [file."crates/capability/src/codex.rs"]
 ritual-doc-paragraphs = 1
-module-line-count = 322
+module-line-count = 316
 
 [file."crates/capability/src/codex_resolver.rs"]
 module-line-count = 300
@@ -60,13 +60,13 @@ rfc-numbers-in-code = 1
 module-line-count = 15
 
 [file."crates/change/src/plan/core/amend.rs"]
-module-line-count = 371
+module-line-count = 370
 
 [file."crates/change/src/plan/core/archive/mod.rs"]
 module-line-count = 123
 
 [file."crates/change/src/plan/core/create.rs"]
-module-line-count = 307
+module-line-count = 304
 
 [file."crates/change/src/plan/core/io.rs"]
 module-line-count = 236
@@ -84,7 +84,7 @@ module-line-count = 327
 module-line-count = 103
 
 [file."crates/change/src/plan/core/transitions.rs"]
-module-line-count = 331
+module-line-count = 329
 
 [file."crates/change/src/plan/core/validate/mod.rs"]
 module-line-count = 312
@@ -101,7 +101,7 @@ module-line-count = 691
 
 [file."crates/contract/src/main.rs"]
 format-match-dispatch = 1
-module-line-count = 138
+module-line-count = 142
 
 [file."crates/error/src/lib.rs"]
 module-line-count = 413
@@ -159,25 +159,25 @@ module-line-count = 204
 [file."crates/registry/src/validate.rs"]
 rfc-numbers-in-code = 9
 ritual-doc-paragraphs = 1
-module-line-count = 292
+module-line-count = 289
 
 [file."crates/registry/src/workspace/bootstrap.rs"]
 module-line-count = 110
 
 [file."crates/registry/src/workspace/git.rs"]
-module-line-count = 92
+module-line-count = 90
 
 [file."crates/registry/src/workspace/mod.rs"]
-module-line-count = 84
+module-line-count = 83
 
 [file."crates/registry/src/workspace/push/forge.rs"]
-module-line-count = 175
+module-line-count = 173
 
 [file."crates/registry/src/workspace/push/mod.rs"]
-module-line-count = 346
+module-line-count = 345
 
 [file."crates/registry/src/workspace/push/remote.rs"]
-module-line-count = 185
+module-line-count = 184
 
 [file."crates/registry/src/workspace/slot_problem.rs"]
 module-line-count = 300
@@ -186,12 +186,12 @@ module-line-count = 300
 module-line-count = 223
 
 [file."crates/registry/src/workspace/sync.rs"]
-module-line-count = 342
+module-line-count = 340
 
 [file."crates/slice/src/actions.rs"]
 rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 8
-module-line-count = 533
+module-line-count = 529
 
 [file."crates/slice/src/atomic.rs"]
 module-line-count = 44
@@ -249,22 +249,22 @@ rfc-numbers-in-code = 1
 module-line-count = 444
 
 [file."crates/validate/src/compatibility/asyncapi_diff.rs"]
-module-line-count = 61
+module-line-count = 59
 
 [file."crates/validate/src/compatibility/mod.rs"]
-module-line-count = 270
+module-line-count = 269
 
 [file."crates/validate/src/compatibility/openapi_diff.rs"]
-module-line-count = 162
+module-line-count = 163
 
 [file."crates/validate/src/compatibility/pair.rs"]
-module-line-count = 157
+module-line-count = 155
 
 [file."crates/validate/src/compatibility/schema_diff.rs"]
 module-line-count = 310
 
 [file."crates/validate/src/compatibility/util.rs"]
-module-line-count = 97
+module-line-count = 96
 
 [file."crates/validate/src/contracts/envelope.rs"]
 module-line-count = 209
@@ -277,7 +277,7 @@ module-line-count = 106
 
 [file."crates/validate/src/lib.rs"]
 rfc-numbers-in-code = 3
-module-line-count = 216
+module-line-count = 217
 
 [file."crates/validate/src/primitives.rs"]
 module-line-count = 388
@@ -315,13 +315,58 @@ module-line-count = 232
 module-line-count = 117
 
 [file."crates/vectis/src/lib.rs"]
-inline-dtos = 1
+module-line-count = 84
+
+[file."crates/vectis/src/main.rs"]
+module-line-count = 13
 
 [file."crates/vectis/src/scaffold.rs"]
 module-line-count = 648
 
+[file."crates/vectis/src/scaffold/error.rs"]
+module-line-count = 61
+
+[file."crates/vectis/src/scaffold/templates.rs"]
+module-line-count = 201
+
+[file."crates/vectis/src/scaffold/templates/android.rs"]
+module-line-count = 134
+
+[file."crates/vectis/src/scaffold/templates/core.rs"]
+module-line-count = 65
+
+[file."crates/vectis/src/scaffold/templates/ios.rs"]
+module-line-count = 41
+
 [file."crates/vectis/src/scaffold/versions.rs"]
-rfc-numbers-in-code = 1
+module-line-count = 113
+
+[file."crates/vectis/src/validate.rs"]
+module-line-count = 233
+
+[file."crates/vectis/src/validate/engine.rs"]
+module-line-count = 76
+
+[file."crates/vectis/src/validate/engine/all.rs"]
+module-line-count = 69
+
+[file."crates/vectis/src/validate/engine/assets.rs"]
+module-line-count = 326
+
+[file."crates/vectis/src/validate/engine/composition.rs"]
+module-line-count = 431
+
+[file."crates/vectis/src/validate/engine/layout.rs"]
+module-line-count = 166
+
+[file."crates/vectis/src/validate/engine/paths.rs"]
+module-line-count = 239
+
+[file."crates/vectis/src/validate/engine/shared.rs"]
+module-line-count = 112
+
+[file."crates/vectis/src/validate/engine/tokens.rs"]
+module-line-count = 62
 
 [file."src/cli.rs"]
 rfc-numbers-in-code = 2
@@ -379,7 +424,7 @@ module-line-count = 80
 [file."src/commands/context.rs"]
 format-match-dispatch = 2
 name-suffix-duplication = 1
-module-line-count = 683
+module-line-count = 682
 
 [file."src/commands/context/detect.rs"]
 module-line-count = 735
@@ -407,10 +452,10 @@ inline-dtos = 7
 format-match-dispatch = 7
 rfc-numbers-in-code = 3
 name-suffix-duplication = 7
-module-line-count = 927
+module-line-count = 924
 
 [file."src/commands/slice.rs"]
-module-line-count = 92
+module-line-count = 90
 
 [file."src/commands/slice/journal.rs"]
 module-line-count = 127
@@ -431,7 +476,7 @@ module-line-count = 261
 module-line-count = 181
 
 [file."src/commands/slice/touched.rs"]
-module-line-count = 178
+module-line-count = 170
 
 [file."src/commands/slice/validate.rs"]
 module-line-count = 59
@@ -443,12 +488,12 @@ module-line-count = 202
 format-match-dispatch = 4
 rfc-numbers-in-code = 1
 name-suffix-duplication = 1
-module-line-count = 451
+module-line-count = 448
 
 [file."src/commands/workspace.rs"]
 inline-dtos = 8
 format-match-dispatch = 7
-module-line-count = 436
+module-line-count = 438
 
 [file."src/config.rs"]
 rfc-numbers-in-code = 3
@@ -462,7 +507,7 @@ module-line-count = 74
 [file."src/init.rs"]
 rfc-numbers-in-code = 12
 ritual-doc-paragraphs = 1
-module-line-count = 1024
+module-line-count = 1023
 
 [file."src/lib.rs"]
 rfc-numbers-in-code = 1

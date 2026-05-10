@@ -86,7 +86,9 @@ pub const TEMPLATES: &[AndroidTemplate] = &[
     },
     AndroidTemplate {
         target: "Android/app/src/main/res/xml/network_security_config.xml",
-        contents: include_str!("../../../../../templates/vectis/android/network-security-config.xml"),
+        contents: include_str!(
+            "../../../../../templates/vectis/android/network-security-config.xml"
+        ),
         include_when: IncludeWhen::AnyOf(&[Capability::Http, Capability::Sse]),
     },
     AndroidTemplate {

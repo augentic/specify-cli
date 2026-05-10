@@ -104,7 +104,7 @@ fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
             other => {
                 return Err(Error::Diag {
                     code: "touched-specs-kind-invalid",
-                    detail: format!("touched-specs kind `{other}` must be `new` or `modified`",),
+                    detail: format!("touched-specs kind `{other}` must be `new` or `modified`"),
                 });
             }
         };

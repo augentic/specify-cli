@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 
 use engine_support::{errors_array, extract_envelope, warnings_array};
 use serde_json::Value;
-use tempfile::TempDir;
 use specify_vectis::validate::error::VectisError;
 use specify_vectis::validate::{ValidateArgs as Args, ValidateMode, run};
+use tempfile::TempDir;
 
 /// Materialise a composition document plus optional sibling
 /// `tokens.yaml` and `assets.yaml` on disk under a fresh tempdir,

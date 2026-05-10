@@ -21,6 +21,16 @@ use serde_json::Value;
 /// JSON contract version emitted on every structured response.
 pub const JSON_SCHEMA_VERSION: u64 = 2;
 
+/// Wire shape for every structured response: the schema-version envelope
+/// plus a flattened payload supplied by the dispatching subcommand.
+#[derive(Serialize)]
+struct Envelope {
+    #[serde(rename = "schema-version")]
+    schema_version: u64,
+    #[serde(flatten)]
+    payload: Value,
+}
+
 /// Top-level argument parser for the `vectis` binary.
 #[derive(Parser, Debug, Clone, PartialEq, Eq)]
 #[command(
@@ -48,16 +58,14 @@ pub enum VectisCommand {
 }
 
 /// Render the v2 JSON envelope for a fully-formed payload.
+///
+/// # Panics
+///
+/// Panics only if `serde_json` cannot serialise the envelope, which is
+/// impossible for the `Envelope` shape (a `u64` plus an already-parsed
+/// `serde_json::Value`).
 #[must_use]
 pub fn envelope_json(payload: Value) -> String {
-    #[derive(Serialize)]
-    struct Envelope {
-        #[serde(rename = "schema-version")]
-        schema_version: u64,
-        #[serde(flatten)]
-        payload: Value,
-    }
-
     serde_json::to_string_pretty(&Envelope {
         schema_version: JSON_SCHEMA_VERSION,
         payload,

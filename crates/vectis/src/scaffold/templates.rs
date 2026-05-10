@@ -1,8 +1,8 @@
 //! Template engine -- placeholder substitution and capability-conditional sections.
 
-pub(crate) mod android;
-pub(crate) mod core;
-pub(crate) mod ios;
+pub mod android;
+pub mod core;
+pub mod ios;
 
 /// A single capability the user can enable via `--caps`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -211,6 +211,17 @@ _Codified in: `crates/vectis/src/validate.rs` (the public
 and `validate_exit_code` surface) and `src/main.rs` (the binary
 entry point)._
 
+### Scaffold version-pin resolution
+
+> `vectis scaffold` resolves Crux + toolchain pins from embedded
+> defaults plus an optional explicit complete TOML override. It
+> deliberately does not inspect project-local or user-local
+> configuration, keeping the WASI command surface deterministic
+> across hosts.
+
+_Codified in: `crates/vectis/src/scaffold/versions.rs::Versions::resolve`,
+`load_required`, and `load_embedded`._
+
 ## RFC 6901 — JSON Pointer
 
 > Every error / warning entry carries a `path` field shaped like a

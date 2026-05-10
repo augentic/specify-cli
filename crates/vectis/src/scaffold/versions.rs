@@ -1,8 +1,8 @@
 //! Version pin parsing for render-only Vectis scaffolds.
 //!
-//! RFC-16 narrows `vectis scaffold` resolution to embedded defaults plus an
-//! explicit complete TOML override. It deliberately does not inspect
-//! project-local or user-local configuration.
+//! Resolution is narrowed to embedded defaults plus an explicit complete
+//! TOML override; project-local and user-local configuration are
+//! deliberately not inspected.
 
 use std::path::Path;
 
