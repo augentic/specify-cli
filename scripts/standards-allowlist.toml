@@ -283,7 +283,16 @@ ritual-doc-paragraphs = 1
 module-line-count = 233
 
 [file."crates/tool/src/cache.rs"]
-module-line-count = 778
+module-line-count = 248
+
+[file."crates/tool/src/cache/fetch.rs"]
+module-line-count = 134
+
+[file."crates/tool/src/cache/gc.rs"]
+module-line-count = 74
+
+[file."crates/tool/src/cache/meta.rs"]
+module-line-count = 180
 
 [file."crates/tool/src/error.rs"]
 module-line-count = 288
