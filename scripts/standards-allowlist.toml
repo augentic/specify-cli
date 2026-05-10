@@ -53,7 +53,7 @@ module-line-count = 360
 module-line-count = 81
 
 [file."crates/change/src/finalize/probe.rs"]
-module-line-count = 186
+module-line-count = 184
 
 [file."crates/change/src/finalize/summary.rs"]
 module-line-count = 80
@@ -97,9 +97,19 @@ module-line-count = 329
 module-line-count = 312
 
 [file."crates/change/src/plan/doctor.rs"]
-rfc-numbers-in-code = 8
-name-suffix-duplication = 1
-module-line-count = 1128
+module-line-count = 267
+
+[file."crates/change/src/plan/doctor/cycle.rs"]
+module-line-count = 94
+
+[file."crates/change/src/plan/doctor/orphan_source.rs"]
+module-line-count = 41
+
+[file."crates/change/src/plan/doctor/stale_clone.rs"]
+module-line-count = 66
+
+[file."crates/change/src/plan/doctor/unreachable.rs"]
+module-line-count = 110
 
 [file."crates/change/src/plan/lock.rs"]
 rfc-numbers-in-code = 2
