@@ -259,8 +259,16 @@ name-suffix-duplication = 1
 module-line-count = 393
 
 [file."crates/slice/src/lib.rs"]
-rfc-numbers-in-code = 6
-module-line-count = 709
+module-line-count = 30
+
+[file."crates/slice/src/lifecycle.rs"]
+module-line-count = 220
+
+[file."crates/slice/src/metadata.rs"]
+module-line-count = 452
+
+[file."crates/slice/src/outcome.rs"]
+module-line-count = 84
 
 [file."crates/slice/src/timestamp.rs"]
 rfc-numbers-in-code = 1
