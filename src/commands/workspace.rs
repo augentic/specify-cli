@@ -1,135 +1,70 @@
-#![allow(
-    clippy::option_if_let_else,
-    reason = "Inline DTOs and chained Option flows keep the workspace dispatcher readable."
-)]
+//! `specify workspace *` handlers — `sync`, `status`, `prepare-branch`, `push`.
 
+use std::io::Write;
 use std::path::PathBuf;
 
-use serde::Serialize;
-use serde_json::Value;
+use serde::{Serialize, Serializer};
 use specify_change::Plan;
 use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_registry::Registry;
 use specify_registry::branch::{
-    self, Diagnostic as BranchDiagnostic, Prepared, Request as BranchRequest, prepare,
+    Diagnostic as BranchDiagnostic, Prepared, Request as BranchRequest, prepare,
 };
 use specify_registry::workspace::{
-    ConfiguredTargetKind, PushOutcome, SlotKind, SlotStatus, push_projects,
+    ConfiguredTargetKind, PushOutcome, SlotStatus, push_projects,
     status_projects as workspace_status_projects, sync_projects as workspace_sync_projects,
 };
 
-use crate::cli::OutputFormat;
 use crate::context::CommandContext;
-use crate::output::{CliResult, emit_response};
+use crate::output::{CliResult, Render, emit};
 
 pub fn sync(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, Error> {
-    match Registry::load(&ctx.project_dir)? {
-        None => {
-            if !projects.is_empty() {
-                return Err(Error::Diag {
-                    code: "workspace-no-registry",
-                    detail:
-                        "No registry.yaml found; workspace sync cannot resolve project selectors"
-                            .to_string(),
-                });
-            }
-            match ctx.format {
-                OutputFormat::Json => {
-                    #[derive(Serialize)]
-                    #[serde(rename_all = "kebab-case")]
-                    struct SyncAbsent {
-                        registry: Value,
-                        synced: bool,
-                        message: &'static str,
-                    }
-                    emit_response(SyncAbsent {
-                        registry: Value::Null,
-                        synced: false,
-                        message: "no registry declared at registry.yaml; nothing to sync",
-                    })?;
-                }
-                OutputFormat::Text => {
-                    println!("no registry declared at registry.yaml; nothing to sync");
-                }
-            }
-            Ok(CliResult::Success)
-        }
-        Some(registry) => {
-            let selected = registry.select(&projects)?;
-            workspace_sync_projects(&ctx.project_dir, &selected)?;
-            match ctx.format {
-                OutputFormat::Json => {
-                    #[derive(Serialize)]
-                    #[serde(rename_all = "kebab-case")]
-                    struct SyncBody {
-                        registry: Registry,
-                        synced: bool,
-                    }
-                    emit_response(SyncBody {
-                        registry,
-                        synced: true,
-                    })?;
-                }
-                OutputFormat::Text => println!("workspace sync complete"),
-            }
-            Ok(CliResult::Success)
-        }
-    }
+    let registry = match Registry::load(&ctx.project_dir)? {
+        None if !projects.is_empty() => return Err(Error::RegistryMissing),
+        other => other,
+    };
+    let synced = if let Some(reg) = registry.as_ref() {
+        let selected = reg.select(&projects)?;
+        workspace_sync_projects(&ctx.project_dir, &selected)?;
+        true
+    } else {
+        false
+    };
+    let message = (!synced).then_some("no registry declared at registry.yaml; nothing to sync");
+    emit(
+        ctx.format,
+        &SyncBody {
+            registry,
+            synced,
+            message,
+        },
+    )?;
+    Ok(CliResult::Success)
 }
 
 pub fn status(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, Error> {
-    match Registry::load(&ctx.project_dir)? {
+    let body = match Registry::load(&ctx.project_dir)? {
         None => {
             if !projects.is_empty() {
-                return Err(Error::Diag {
-                    code: "workspace-no-registry",
-                    detail:
-                        "No registry.yaml found; workspace status cannot resolve project selectors"
-                            .to_string(),
-                });
+                return Err(Error::RegistryMissing);
             }
-            match ctx.format {
-                OutputFormat::Json => {
-                    #[derive(Serialize)]
-                    #[serde(rename_all = "kebab-case")]
-                    struct StatusAbsent {
-                        registry: Value,
-                        slots: Value,
-                    }
-                    emit_response(StatusAbsent {
-                        registry: Value::Null,
-                        slots: Value::Null,
-                    })?;
-                }
-                OutputFormat::Text => {
-                    println!("no registry declared at registry.yaml");
-                }
+            StatusBody::Absent {
+                registry: None,
+                slots: None,
             }
-            Ok(CliResult::Success)
         }
         Some(registry) => {
             let selected = registry.select(&projects)?;
-            let slots = workspace_status_projects(&ctx.project_dir, &selected);
-            match ctx.format {
-                OutputFormat::Json => {
-                    #[derive(Serialize)]
-                    #[serde(rename_all = "kebab-case")]
-                    struct StatusBody {
-                        slots: Vec<Value>,
-                    }
-                    let items: Vec<Value> = slots.iter().map(slot_to_json).collect();
-                    emit_response(StatusBody { slots: items })?;
-                }
-                OutputFormat::Text => {
-                    for slot in &slots {
-                        print_slot(slot);
-                    }
-                }
-            }
-            Ok(CliResult::Success)
+            let slots = workspace_status_projects(&ctx.project_dir, &selected)
+                .iter()
+                .map(SlotRow::from_status)
+                .collect();
+            StatusBody::Present { slots }
         }
-    }
+    };
+    emit(ctx.format, &body)?;
+    Ok(CliResult::Success)
 }
 
 pub fn prepare_branch(
@@ -137,11 +72,7 @@ pub fn prepare_branch(
     outputs: Vec<PathBuf>,
 ) -> Result<CliResult, Error> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
-        return Err(Error::Diag {
-            code: "workspace-no-registry",
-            detail: "No registry.yaml found; workspace prepare-branch requires a registry"
-                .to_string(),
-        });
+        return Err(Error::RegistryMissing);
     };
     let selected = registry.select(std::slice::from_ref(&project))?;
     let Some(project) = selected.first() else {
@@ -158,197 +89,36 @@ pub fn prepare_branch(
 
     match prepare(&ctx.project_dir, project, &request) {
         Ok(prepared) => {
-            render_branch_preparation_success(ctx.format, &prepared)?;
+            emit(
+                ctx.format,
+                &PrepareBranchBody {
+                    prepared: true,
+                    inner: &prepared,
+                    diagnostics: Vec::new(),
+                },
+            )?;
             Ok(CliResult::Success)
         }
         Err(diagnostic) => {
-            render_branch_preparation_failure(ctx.format, &diagnostic)?;
-            Ok(CliResult::GenericFailure)
+            let exit = CliResult::GenericFailure;
+            emit(
+                ctx.format,
+                &PrepareBranchErrBody {
+                    error: "branch-preparation-failed",
+                    exit_code: exit.code(),
+                    diagnostic: &diagnostic,
+                },
+            )?;
+            Ok(exit)
         }
     }
-}
-
-fn render_branch_preparation_success(
-    format: OutputFormat, prepared: &Prepared,
-) -> Result<(), Error> {
-    match format {
-        OutputFormat::Json => {
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct PrepareBranchBody<'a> {
-                prepared: bool,
-                project: &'a str,
-                branch: &'a str,
-                slot_path: &'a str,
-                base_ref: &'a str,
-                base_sha: &'a str,
-                local_branch: &'a branch::LocalAction,
-                remote_branch: &'a branch::RemoteAction,
-                dirty: &'a branch::Dirty,
-                diagnostics: Vec<BranchDiagnostic>,
-            }
-            emit_response(PrepareBranchBody {
-                prepared: true,
-                project: &prepared.project,
-                branch: &prepared.branch,
-                slot_path: &prepared.slot_path,
-                base_ref: &prepared.base_ref,
-                base_sha: &prepared.base_sha,
-                local_branch: &prepared.local_branch,
-                remote_branch: &prepared.remote_branch,
-                dirty: &prepared.dirty,
-                diagnostics: Vec::new(),
-            })?;
-        }
-        OutputFormat::Text => {
-            println!(
-                "workspace branch prepared: {} {} ({:?}, {:?})",
-                prepared.project, prepared.branch, prepared.local_branch, prepared.remote_branch
-            );
-            if !prepared.dirty.tracked_allowed.is_empty() || !prepared.dirty.untracked.is_empty() {
-                println!(
-                    "dirty: {} tracked resume-safe, {} untracked",
-                    prepared.dirty.tracked_allowed.len(),
-                    prepared.dirty.untracked.len()
-                );
-            }
-        }
-    }
-    Ok(())
-}
-
-fn render_branch_preparation_failure(
-    format: OutputFormat, diagnostic: &BranchDiagnostic,
-) -> Result<(), Error> {
-    match format {
-        OutputFormat::Json => {
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct PrepareBranchFailure<'a> {
-                error: &'static str,
-                exit_code: u8,
-                diagnostic: &'a BranchDiagnostic,
-            }
-            emit_response(PrepareBranchFailure {
-                error: "branch-preparation-failed",
-                exit_code: CliResult::GenericFailure.code(),
-                diagnostic,
-            })?;
-        }
-        OutputFormat::Text => {
-            eprintln!("error: {}", diagnostic.message);
-            eprintln!("diagnostic: {}", diagnostic.key);
-            if !diagnostic.paths.is_empty() {
-                eprintln!("paths: {}", diagnostic.paths.join(", "));
-            }
-        }
-    }
-    Ok(())
-}
-
-const fn kind_label(kind: SlotKind) -> &'static str {
-    match kind {
-        SlotKind::Missing => "missing",
-        SlotKind::Symlink => "symlink",
-        SlotKind::GitClone => "git-clone",
-        SlotKind::Other => "other",
-    }
-}
-
-const fn configured_target_kind_label(kind: ConfiguredTargetKind) -> &'static str {
-    match kind {
-        ConfiguredTargetKind::Local => "local",
-        ConfiguredTargetKind::Remote => "remote",
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct SlotJson {
-    name: String,
-    kind: &'static str,
-    slot_path: String,
-    configured_target_kind: &'static str,
-    configured_target: String,
-    actual_symlink_target: Option<String>,
-    actual_origin: Option<String>,
-    current_branch: Option<String>,
-    head_sha: Option<String>,
-    dirty: Option<bool>,
-    branch_matches_change: Option<bool>,
-    project_config_present: bool,
-    active_slices: Vec<String>,
-}
-
-fn slot_to_json(slot: &SlotStatus) -> Value {
-    serde_json::to_value(SlotJson {
-        name: slot.name.clone(),
-        kind: kind_label(slot.kind),
-        slot_path: slot.slot_path.display().to_string(),
-        configured_target_kind: configured_target_kind_label(slot.configured_target_kind),
-        configured_target: slot.configured_target.clone(),
-        actual_symlink_target: slot
-            .actual_symlink_target
-            .as_ref()
-            .map(|path| path.display().to_string()),
-        actual_origin: slot.actual_origin.clone(),
-        current_branch: slot.current_branch.clone(),
-        head_sha: slot.head_sha.clone(),
-        dirty: slot.dirty,
-        branch_matches_change: slot.branch_matches_change,
-        project_config_present: slot.project_config_present,
-        active_slices: slot.active_slices.clone(),
-    })
-    .expect("SlotJson serialises")
-}
-
-fn print_slot(slot: &SlotStatus) {
-    let kind = kind_label(slot.kind);
-    let head = slot.head_sha.as_deref().unwrap_or("-");
-    let origin = slot.actual_origin.as_deref().unwrap_or("-");
-    let branch = slot.current_branch.as_deref().unwrap_or("-");
-    let symlink_target = slot
-        .actual_symlink_target
-        .as_ref()
-        .map_or_else(|| "-".to_string(), |path| path.display().to_string());
-    let dirty = match slot.dirty {
-        None => "-",
-        Some(true) => "yes",
-        Some(false) => "no",
-    };
-    let change_branch = match slot.branch_matches_change {
-        None => "-",
-        Some(true) => "match",
-        Some(false) => "mismatch",
-    };
-    let project_config = if slot.project_config_present { "present" } else { "missing" };
-    let slices =
-        if slot.active_slices.is_empty() { "-".to_string() } else { slot.active_slices.join(",") };
-    println!(
-        "{}: kind={kind} path={} configured-{}={} target={} origin={} branch={} change-branch={} head={} dirty={} project.yaml={} active-slices={}",
-        slot.name,
-        slot.slot_path.display(),
-        configured_target_kind_label(slot.configured_target_kind),
-        slot.configured_target,
-        symlink_target,
-        origin,
-        branch,
-        change_branch,
-        head,
-        dirty,
-        project_config,
-        slices
-    );
 }
 
 pub fn push(
     ctx: &CommandContext, projects: Vec<String>, dry_run: bool,
 ) -> Result<CliResult, Error> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
-        return Err(Error::Diag {
-            code: "workspace-no-registry",
-            detail: "No registry.yaml found; workspace push requires a registry".to_string(),
-        });
+        return Err(Error::RegistryMissing);
     };
     let selected = registry.select(&projects)?;
 
@@ -364,75 +134,267 @@ pub fn push(
     let plan = Plan::load(&plan_path)?;
 
     let results = push_projects(&ctx.project_dir, &plan.name, &selected, dry_run)?;
+    let any_failed = results.iter().any(|r| r.status == PushOutcome::Failed);
+    let items: Vec<PushItem> = results
+        .iter()
+        .map(|r| PushItem {
+            name: r.name.clone(),
+            status: r.status,
+            branch: r.branch.clone(),
+            pr: r.pr_number,
+            error: r.error.clone(),
+        })
+        .collect();
 
-    match ctx.format {
-        OutputFormat::Json => {
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct PushBody {
-                projects: Vec<PushItem>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                dry_run: Option<bool>,
-            }
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct PushItem {
-                name: String,
-                status: String,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                branch: Option<String>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                pr: Option<u64>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                error: Option<String>,
-            }
-            let items: Vec<PushItem> = results
-                .iter()
-                .map(|r| PushItem {
-                    name: r.name.clone(),
-                    status: r.status.to_string(),
-                    branch: r.branch.clone(),
-                    pr: r.pr_number,
-                    error: r.error.clone(),
-                })
-                .collect();
-            emit_response(PushBody {
-                projects: items,
-                dry_run: dry_run.then_some(true),
-            })?;
-        }
-        OutputFormat::Text => {
-            if dry_run {
-                println!("[dry-run] specify: workspace push — {}", plan.name);
-            } else {
-                println!("specify: workspace push — {}", plan.name);
-            }
-            println!();
-            for r in &results {
-                let status_label =
-                    if dry_run && matches!(r.status, PushOutcome::Pushed | PushOutcome::Created) {
-                        format!("would-{}", r.status)
-                    } else {
-                        r.status.to_string()
-                    };
-                let branch_part = r.branch.as_deref().unwrap_or("");
-                let pr_part = r.pr_number.map(|n| format!("PR #{n}")).unwrap_or_default();
-                println!("  {:<20} {:<14} {} {}", r.name, status_label, branch_part, pr_part);
-            }
-            let created = results.iter().filter(|r| r.status == PushOutcome::Created).count();
-            let pushed = results.iter().filter(|r| r.status == PushOutcome::Pushed).count();
-            let up_to_date = results.iter().filter(|r| r.status == PushOutcome::UpToDate).count();
-            let local_only = results.iter().filter(|r| r.status == PushOutcome::LocalOnly).count();
-            let no_branch = results.iter().filter(|r| r.status == PushOutcome::NoBranch).count();
-            let failed = results.iter().filter(|r| r.status == PushOutcome::Failed).count();
-            println!();
-            println!(
-                "{created} created, {pushed} pushed, {up_to_date} up-to-date, \
-                 {local_only} local-only, {no_branch} no-branch. \
-                 {failed} failed."
-            );
+    emit(
+        ctx.format,
+        &PushBody {
+            plan_name: plan.name,
+            dry_run_flag: dry_run,
+            projects: items,
+            dry_run: dry_run.then_some(true),
+        },
+    )?;
+
+    Ok(if any_failed { CliResult::GenericFailure } else { CliResult::Success })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct SyncBody {
+    registry: Option<Registry>,
+    synced: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'static str>,
+}
+
+impl Render for SyncBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        if self.synced {
+            writeln!(w, "workspace sync complete")
+        } else {
+            writeln!(w, "no registry declared at registry.yaml; nothing to sync")
         }
     }
-    let any_failed = results.iter().any(|r| r.status == PushOutcome::Failed);
-    Ok(if any_failed { CliResult::GenericFailure } else { CliResult::Success })
+}
+
+#[derive(Serialize)]
+#[serde(untagged, rename_all = "kebab-case")]
+enum StatusBody {
+    Absent { registry: Option<Registry>, slots: Option<Vec<SlotRow>> },
+    Present { slots: Vec<SlotRow> },
+}
+
+impl Render for StatusBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        match self {
+            Self::Absent { .. } => writeln!(w, "no registry declared at registry.yaml"),
+            Self::Present { slots } => {
+                for slot in slots {
+                    slot.render_line(w)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct SlotRow {
+    name: String,
+    kind: &'static str,
+    slot_path: String,
+    configured_target_kind: &'static str,
+    configured_target: String,
+    actual_symlink_target: Option<String>,
+    actual_origin: Option<String>,
+    current_branch: Option<String>,
+    head_sha: Option<String>,
+    dirty: Option<bool>,
+    branch_matches_change: Option<bool>,
+    project_config_present: bool,
+    active_slices: Vec<String>,
+}
+
+impl SlotRow {
+    fn from_status(slot: &SlotStatus) -> Self {
+        Self {
+            name: slot.name.clone(),
+            kind: slot.kind.label(),
+            slot_path: slot.slot_path.display().to_string(),
+            configured_target_kind: match slot.configured_target_kind {
+                ConfiguredTargetKind::Local => "local",
+                ConfiguredTargetKind::Remote => "remote",
+            },
+            configured_target: slot.configured_target.clone(),
+            actual_symlink_target: slot
+                .actual_symlink_target
+                .as_ref()
+                .map(|p| p.display().to_string()),
+            actual_origin: slot.actual_origin.clone(),
+            current_branch: slot.current_branch.clone(),
+            head_sha: slot.head_sha.clone(),
+            dirty: slot.dirty,
+            branch_matches_change: slot.branch_matches_change,
+            project_config_present: slot.project_config_present,
+            active_slices: slot.active_slices.clone(),
+        }
+    }
+
+    fn render_line(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(
+            w,
+            "{}: kind={} path={} configured-{}={} target={} origin={} branch={} change-branch={} head={} dirty={} project.yaml={} active-slices={}",
+            self.name,
+            self.kind,
+            self.slot_path,
+            self.configured_target_kind,
+            self.configured_target,
+            self.actual_symlink_target.as_deref().unwrap_or("-"),
+            self.actual_origin.as_deref().unwrap_or("-"),
+            self.current_branch.as_deref().unwrap_or("-"),
+            tristate(self.branch_matches_change, "match", "mismatch"),
+            self.head_sha.as_deref().unwrap_or("-"),
+            tristate(self.dirty, "yes", "no"),
+            if self.project_config_present { "present" } else { "missing" },
+            if self.active_slices.is_empty() {
+                "-".to_string()
+            } else {
+                self.active_slices.join(",")
+            },
+        )
+    }
+}
+
+const fn tristate(v: Option<bool>, t: &'static str, f: &'static str) -> &'static str {
+    match v {
+        None => "-",
+        Some(true) => t,
+        Some(false) => f,
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct PrepareBranchBody<'a> {
+    prepared: bool,
+    #[serde(flatten)]
+    inner: &'a Prepared,
+    diagnostics: Vec<BranchDiagnostic>,
+}
+
+impl Render for PrepareBranchBody<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        let p = self.inner;
+        writeln!(
+            w,
+            "workspace branch prepared: {} {} ({:?}, {:?})",
+            p.project, p.branch, p.local_branch, p.remote_branch
+        )?;
+        if !p.dirty.tracked_allowed.is_empty() || !p.dirty.untracked.is_empty() {
+            writeln!(
+                w,
+                "dirty: {} tracked resume-safe, {} untracked",
+                p.dirty.tracked_allowed.len(),
+                p.dirty.untracked.len()
+            )?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct PrepareBranchErrBody<'a> {
+    error: &'static str,
+    exit_code: u8,
+    diagnostic: &'a BranchDiagnostic,
+}
+
+impl Render for PrepareBranchErrBody<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(w, "error: {}", self.diagnostic.message)?;
+        writeln!(w, "diagnostic: {}", self.diagnostic.key)?;
+        if !self.diagnostic.paths.is_empty() {
+            writeln!(w, "paths: {}", self.diagnostic.paths.join(", "))?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct PushBody {
+    #[serde(skip)]
+    plan_name: String,
+    #[serde(skip)]
+    dry_run_flag: bool,
+    projects: Vec<PushItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dry_run: Option<bool>,
+}
+
+impl Render for PushBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        let prefix = if self.dry_run_flag { "[dry-run] " } else { "" };
+        writeln!(w, "{prefix}specify: workspace push — {}", self.plan_name)?;
+        writeln!(w)?;
+        let mut counts = [0usize; 6];
+        for r in &self.projects {
+            let raw = r.status.to_string();
+            let label = if self.dry_run_flag
+                && matches!(r.status, PushOutcome::Pushed | PushOutcome::Created)
+            {
+                format!("would-{raw}")
+            } else {
+                raw
+            };
+            let pr = r.pr.map_or_else(String::new, |n| format!("PR #{n}"));
+            writeln!(
+                w,
+                "  {:<20} {:<14} {} {}",
+                r.name,
+                label,
+                r.branch.as_deref().unwrap_or(""),
+                pr
+            )?;
+            counts[match r.status {
+                PushOutcome::Created => 0,
+                PushOutcome::Pushed => 1,
+                PushOutcome::UpToDate => 2,
+                PushOutcome::LocalOnly => 3,
+                PushOutcome::NoBranch => 4,
+                PushOutcome::Failed => 5,
+            }] += 1;
+        }
+        writeln!(w)?;
+        writeln!(
+            w,
+            "{} created, {} pushed, {} up-to-date, {} local-only, {} no-branch. {} failed.",
+            counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]
+        )
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct PushItem {
+    name: String,
+    #[serde(serialize_with = "serialize_push_outcome")]
+    status: PushOutcome,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pr: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde::serialize_with requires the `fn(&T, S) -> _` shape."
+)]
+fn serialize_push_outcome<S: Serializer>(o: &PushOutcome, s: S) -> Result<S::Ok, S::Error> {
+    s.collect_str(o)
 }

@@ -470,7 +470,7 @@ rfc-numbers-in-code = 3
 module-line-count = 196
 
 [file."src/commands/registry.rs"]
-module-line-count = 668
+module-line-count = 654
 
 [file."src/commands/slice.rs"]
 module-line-count = 90
@@ -509,9 +509,7 @@ name-suffix-duplication = 1
 module-line-count = 448
 
 [file."src/commands/workspace.rs"]
-inline-dtos = 8
-format-match-dispatch = 7
-module-line-count = 438
+module-line-count = 400
 
 [file."src/context.rs"]
 module-line-count = 62
