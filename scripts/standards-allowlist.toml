@@ -128,6 +128,8 @@ module-line-count = 463
 format-match-dispatch = 1
 module-line-count = 142
 
+# Justification: workspace-wide typed `Error` enum + helpers; deliberately
+# co-located so every `specify-*` crate has one source of truth.
 [file."crates/error/src/lib.rs"]
 module-line-count = 562
 
@@ -236,6 +238,9 @@ module-line-count = 223
 [file."crates/registry/src/workspace/sync.rs"]
 module-line-count = 340
 
+# Justification: every slice-lifecycle verb (`create`, `transition`,
+# `archive`, `drop`, …) lives here as a free function so the CLI can
+# dispatch with one import per verb.
 [file."crates/slice/src/actions.rs"]
 ritual-doc-paragraphs = 8
 module-line-count = 528
@@ -299,6 +304,8 @@ module-line-count = 210
 [file."crates/tool/src/permissions.rs"]
 module-line-count = 266
 
+# Justification: source resolution for local paths, `file:` URIs, and
+# `https:` URIs lives in one module so the cache invariants stay co-located.
 [file."crates/tool/src/resolver.rs"]
 module-line-count = 565
 
