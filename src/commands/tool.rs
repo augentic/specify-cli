@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::Path;
 
 use serde::Serialize;
-use specify_capability::{CAPABILITY_FILENAME, Capability, ResolvedCapability};
+use specify_capability::{Capability, ResolvedCapability};
 use specify_error::{Error, ValidationStatus, ValidationSummary};
 use specify_tool::cache::{self, CacheStatus};
 use specify_tool::host::{RunContext, WasiRunner};
@@ -324,9 +324,8 @@ fn resolve_project_capability(ctx: &CommandContext) -> Result<Option<ResolvedCap
 }
 
 fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
-    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::Diag {
-        code: "capability-manifest-missing",
-        detail: format!("no `{CAPABILITY_FILENAME}` at {}", dir.display()),
+    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::CapabilityManifestMissing {
+        dir: dir.to_path_buf(),
     })
 }
 

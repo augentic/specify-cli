@@ -130,14 +130,10 @@ impl Capability {
     /// Returns an error if the operation fails.
     pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedCapability, Error> {
         let (root_dir, source) = Self::locate(schema_value, project_dir)?;
-        let manifest_path = Self::probe_dir(&root_dir).ok_or_else(|| Error::Diag {
-            code: "capability-manifest-missing",
-            detail: format!(
-                "no capability manifest at {} (expected `{}`)",
-                root_dir.display(),
-                CAPABILITY_FILENAME,
-            ),
-        })?;
+        let manifest_path =
+            Self::probe_dir(&root_dir).ok_or_else(|| Error::CapabilityManifestMissing {
+                dir: root_dir.clone(),
+            })?;
         let raw = std::fs::read_to_string(&manifest_path).map_err(|err| Error::Diag {
             code: "capability-manifest-read-failed",
             detail: format!(

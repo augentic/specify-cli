@@ -24,7 +24,7 @@ module-line-count = 97
 [file."crates/capability/src/capability.rs"]
 rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 1
-module-line-count = 393
+module-line-count = 389
 
 [file."crates/capability/src/change_brief.rs"]
 rfc-numbers-in-code = 1
@@ -135,7 +135,7 @@ format-match-dispatch = 1
 module-line-count = 142
 
 [file."crates/error/src/lib.rs"]
-module-line-count = 501
+module-line-count = 579
 
 [file."crates/init/src/cache.rs"]
 module-line-count = 89
@@ -174,16 +174,16 @@ module-line-count = 356
 
 [file."crates/merge/src/slice.rs"]
 name-suffix-duplication = 2
-module-line-count = 330
+module-line-count = 332
 
 [file."crates/merge/src/slice/parse.rs"]
 module-line-count = 41
 
 [file."crates/merge/src/slice/read.rs"]
-module-line-count = 363
+module-line-count = 379
 
 [file."crates/merge/src/slice/write.rs"]
-module-line-count = 133
+module-line-count = 140
 
 [file."crates/merge/src/validate.rs"]
 module-line-count = 198
@@ -460,7 +460,7 @@ module-line-count = 123
 
 [file."src/commands/capability.rs"]
 name-suffix-duplication = 1
-module-line-count = 231
+module-line-count = 230
 
 [file."src/commands/capability/cli.rs"]
 module-line-count = 38
@@ -590,7 +590,7 @@ module-line-count = 59
 module-line-count = 202
 
 [file."src/commands/tool.rs"]
-module-line-count = 473
+module-line-count = 472
 
 [file."src/commands/tool/cli.rs"]
 module-line-count = 32

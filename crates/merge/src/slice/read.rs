@@ -61,13 +61,15 @@ pub(super) fn plan_three_way(
         let mut delta_specs: Vec<DeltaSpecRef> = Vec::new();
 
         if class.staged_dir.is_dir() {
-            for entry in fs::read_dir(&class.staged_dir).map_err(|err| Error::Diag {
-                code: "merge-readdir-failed",
-                detail: format!("failed to read {}: {err}", class.staged_dir.display()),
+            for entry in fs::read_dir(&class.staged_dir).map_err(|err| Error::Filesystem {
+                op: "readdir",
+                path: class.staged_dir.clone(),
+                source: err,
             })? {
-                let entry = entry.map_err(|err| Error::Diag {
-                    code: "merge-dir-entry-failed",
-                    detail: format!("dir entry error: {err}"),
+                let entry = entry.map_err(|err| Error::Filesystem {
+                    op: "dir-entry",
+                    path: class.staged_dir.clone(),
+                    source: err,
                 })?;
                 let file_type = entry.file_type().map_err(|err| Error::Diag {
                     code: "merge-file-type-failed",
@@ -278,21 +280,28 @@ fn collect_opaque_entries(
     base: &Path, current: &Path, baseline_dir: &Path, class_name: &str,
     entries: &mut Vec<OpaquePreviewEntry>,
 ) -> Result<(), Error> {
-    for entry in fs::read_dir(current).map_err(|err| Error::Diag {
-        code: "merge-readdir-failed",
-        detail: format!("failed to read {}: {err}", current.display()),
+    for entry in fs::read_dir(current).map_err(|err| Error::Filesystem {
+        op: "readdir",
+        path: current.to_path_buf(),
+        source: err,
     })? {
-        let entry = entry.map_err(|err| Error::Diag {
-            code: "merge-dir-entry-failed",
-            detail: format!("dir entry error: {err}"),
+        let entry = entry.map_err(|err| Error::Filesystem {
+            op: "dir-entry",
+            path: current.to_path_buf(),
+            source: err,
         })?;
         let path = entry.path();
         if path.is_dir() {
             collect_opaque_entries(base, &path, baseline_dir, class_name, entries)?;
         } else {
-            let relative = path.strip_prefix(base).map_err(|err| Error::Diag {
-                code: "merge-path-prefix-failed",
-                detail: format!("path prefix error: {err}"),
+            let relative = path.strip_prefix(base).map_err(|_err| Error::Filesystem {
+                op: "path-prefix",
+                path: path.clone(),
+                source: std::io::Error::other(format!(
+                    "path {} is not under base {}",
+                    path.display(),
+                    base.display()
+                )),
             })?;
             let baseline_path = baseline_dir.join(relative);
             let action =
@@ -319,13 +328,15 @@ pub(super) fn check_opaque_drift(
     if !current.is_dir() {
         return Ok(());
     }
-    for entry in fs::read_dir(current).map_err(|err| Error::Diag {
-        code: "merge-readdir-failed",
-        detail: format!("failed to read {}: {err}", current.display()),
+    for entry in fs::read_dir(current).map_err(|err| Error::Filesystem {
+        op: "readdir",
+        path: current.to_path_buf(),
+        source: err,
     })? {
-        let entry = entry.map_err(|err| Error::Diag {
-            code: "merge-dir-entry-failed",
-            detail: format!("dir entry error: {err}"),
+        let entry = entry.map_err(|err| Error::Filesystem {
+            op: "dir-entry",
+            path: current.to_path_buf(),
+            source: err,
         })?;
         let path = entry.path();
         if path.is_dir() {
@@ -339,9 +350,14 @@ pub(super) fn check_opaque_drift(
                 conflicts,
             )?;
         } else {
-            let relative = path.strip_prefix(base).map_err(|err| Error::Diag {
-                code: "merge-path-prefix-failed",
-                detail: format!("path prefix error: {err}"),
+            let relative = path.strip_prefix(base).map_err(|_err| Error::Filesystem {
+                op: "path-prefix",
+                path: path.clone(),
+                source: std::io::Error::other(format!(
+                    "path {} is not under base {}",
+                    path.display(),
+                    base.display()
+                )),
             })?;
             let baseline_path = baseline_dir.join(relative);
             let meta = match fs::metadata(&baseline_path) {

@@ -128,11 +128,13 @@ pub struct BaselineConflict {
 /// - [`Error::Diag { code: "merge-spec-conflicts" }`] aggregating every
 ///   per-spec merge conflict and post-merge `validate_baseline` failure
 ///   into a single newline-joined detail string.
-/// - [`Error::Diag { code: "merge-readdir-failed" | "merge-dir-entry-failed"
-///   | "merge-file-type-failed" | "merge-non-utf8-name" | "merge-read-delta-failed"
-///   | "merge-read-baseline-failed" | "merge-read-composition-delta-failed"
-///   | "merge-read-composition-baseline-failed" | "merge-path-prefix-failed" }`]
-///   for filesystem or path-prefix failures while scanning the staged trees.
+/// - [`Error::Filesystem`] (`op = "readdir" | "dir-entry" | "path-prefix"`)
+///   for directory-walk failures while scanning the staged trees.
+/// - [`Error::Diag { code: "merge-file-type-failed" | "merge-non-utf8-name"
+///   | "merge-read-delta-failed" | "merge-read-baseline-failed"
+///   | "merge-read-composition-delta-failed"
+///   | "merge-read-composition-baseline-failed" }`] for the per-file
+///   reads that have no `Error::Filesystem` op equivalent.
 /// - Whatever [`Error`] the inner [`crate::merge::merge`] or
 ///   [`crate::composition::merge_composition`] surfaces, propagated unchanged.
 pub fn preview_slice(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewResult, Error> {
@@ -164,10 +166,11 @@ pub fn preview_slice(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<Prev
 ///   re-entry).
 /// - Every error documented on [`preview_slice`] (the in-memory plan
 ///   is computed before any writes).
-/// - [`Error::Diag { code: "merge-mkdir-failed" | "merge-write-baseline-failed"
-///   | "merge-copy-failed" }`] when the commit phase fails to write a
-///   merged baseline, create a parent directory, or copy an
-///   opaque-replace file.
+/// - [`Error::Filesystem`] (`op = "mkdir" | "copy"`) when the commit
+///   phase fails to create a parent directory or copy an opaque-replace
+///   file.
+/// - [`Error::Diag { code: "merge-write-baseline-failed" }`] when the
+///   commit phase fails to write a merged baseline.
 /// - [`Error::Diag { code: "merge-archive-failed" }`] when the archive
 ///   move fails after metadata has already been flipped.
 /// - Whatever atomic-write [`Error`] [`SliceMetadata::save`] surfaces
@@ -244,9 +247,8 @@ pub fn merge_slice(
 ///   any reason other than `NotFound` (a missing baseline for a
 ///   `type: modified` entry is treated as a declaration mismatch and
 ///   silently skipped).
-/// - [`Error::Diag { code: "merge-readdir-failed" | "merge-dir-entry-failed"
-///   | "merge-path-prefix-failed" }`] while walking opaque-replace
-///   staged trees.
+/// - [`Error::Filesystem`] (`op = "readdir" | "dir-entry" | "path-prefix"`)
+///   while walking opaque-replace staged trees.
 /// - Whatever [`Error`] [`SliceMetadata::load`] surfaces.
 pub fn conflict_check(
     slice_dir: &Path, classes: &[ArtifactClass],

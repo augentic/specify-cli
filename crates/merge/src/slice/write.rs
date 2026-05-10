@@ -23,9 +23,10 @@ use crate::artifact_class::{ArtifactClass, MergeStrategy};
 pub(super) fn write_three_way_baselines(merged: &[MergePreviewEntry]) -> Result<(), Error> {
     for entry in merged {
         if let Some(parent) = entry.baseline_path.parent() {
-            fs::create_dir_all(parent).map_err(|err| Error::Diag {
-                code: "merge-mkdir-failed",
-                detail: format!("failed to create {}: {err}", parent.display()),
+            fs::create_dir_all(parent).map_err(|err| Error::Filesystem {
+                op: "mkdir",
+                path: parent.to_path_buf(),
+                source: err,
             })?;
         }
         fs::write(&entry.baseline_path, &entry.result.output).map_err(|err| Error::Diag {
@@ -68,41 +69,47 @@ fn copy_opaque(src: &Path, dest: &Path) -> Result<Vec<String>, Error> {
 fn copy_opaque_recursive(
     base: &Path, dest_base: &Path, current: &Path, copied: &mut Vec<String>,
 ) -> Result<(), Error> {
-    for entry in fs::read_dir(current).map_err(|err| Error::Diag {
-        code: "merge-readdir-failed",
-        detail: format!("failed to read {}: {err}", current.display()),
+    for entry in fs::read_dir(current).map_err(|err| Error::Filesystem {
+        op: "readdir",
+        path: current.to_path_buf(),
+        source: err,
     })? {
-        let entry = entry.map_err(|err| Error::Diag {
-            code: "merge-dir-entry-failed",
-            detail: format!("dir entry error: {err}"),
+        let entry = entry.map_err(|err| Error::Filesystem {
+            op: "dir-entry",
+            path: current.to_path_buf(),
+            source: err,
         })?;
         let path = entry.path();
-        let relative = path.strip_prefix(base).map_err(|err| Error::Diag {
-            code: "merge-path-prefix-failed",
-            detail: format!("path prefix error: {err}"),
+        let relative = path.strip_prefix(base).map_err(|_err| Error::Filesystem {
+            op: "path-prefix",
+            path: path.clone(),
+            source: std::io::Error::other(format!(
+                "path {} is not under base {}",
+                path.display(),
+                base.display()
+            )),
         })?;
         let dest_path = dest_base.join(relative);
 
         if path.is_dir() {
-            fs::create_dir_all(&dest_path).map_err(|err| Error::Diag {
-                code: "merge-mkdir-failed",
-                detail: format!("failed to create {}: {err}", dest_path.display()),
+            fs::create_dir_all(&dest_path).map_err(|err| Error::Filesystem {
+                op: "mkdir",
+                path: dest_path.clone(),
+                source: err,
             })?;
             copy_opaque_recursive(base, dest_base, &path, copied)?;
         } else {
             if let Some(parent) = dest_path.parent() {
-                fs::create_dir_all(parent).map_err(|err| Error::Diag {
-                    code: "merge-mkdir-failed",
-                    detail: format!("failed to create {}: {err}", parent.display()),
+                fs::create_dir_all(parent).map_err(|err| Error::Filesystem {
+                    op: "mkdir",
+                    path: parent.to_path_buf(),
+                    source: err,
                 })?;
             }
-            fs::copy(&path, &dest_path).map_err(|err| Error::Diag {
-                code: "merge-copy-failed",
-                detail: format!(
-                    "failed to copy {} to {}: {err}",
-                    path.display(),
-                    dest_path.display()
-                ),
+            fs::copy(&path, &dest_path).map_err(|err| Error::Filesystem {
+                op: "copy",
+                path: path.clone(),
+                source: err,
             })?;
             copied.push(relative.to_string_lossy().to_string());
         }

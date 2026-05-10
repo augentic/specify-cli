@@ -254,6 +254,34 @@ pub enum Error {
     #[error("no registry declared at registry.yaml")]
     RegistryMissing,
 
+    /// A capability directory does not contain `capability.yaml`.
+    /// Canonical call site: `specify_capability::Capability::resolve`
+    /// (and the `capability` / `tool` dispatchers under `src/commands`,
+    /// which probe the resolved directory before delegating).
+    #[error("capability-manifest-missing: no `capability.yaml` at {}", dir.display())]
+    CapabilityManifestMissing {
+        /// Directory expected to contain `capability.yaml`.
+        dir: std::path::PathBuf,
+    },
+
+    /// A filesystem operation failed. The `op` field is a stable
+    /// kebab-case suffix that, prefixed with `filesystem-`, becomes the
+    /// JSON envelope's `error` discriminant (e.g. `filesystem-readdir`).
+    /// Canonical call sites: the slice-merge engine
+    /// (`specify_merge::slice::{read, write}`), where every recursive
+    /// directory walk and file copy needs a stable, testable
+    /// discriminant for operator follow-up.
+    #[error("filesystem-{op}: {} ({source})", path.display())]
+    Filesystem {
+        /// Operation kind; the JSON discriminant is `filesystem-<op>`.
+        op: &'static str,
+        /// Path the operation acted on (or attempted to).
+        path: std::path::PathBuf,
+        /// The underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
     /// `specify init` requires either a `<capability>` positional or
     /// `--hub` (mutually exclusive).
     #[error(
@@ -295,8 +323,13 @@ pub enum Error {
 
 impl Error {
     /// Kebab-case identifier used in structured CLI error payloads.
+    ///
+    /// Not `const` because `Self::Filesystem` matches on its
+    /// `op: &'static str` to derive a stable `filesystem-<op>`
+    /// discriminant, and `match`ing on `&str` is not yet stable in
+    /// `const` context.
     #[must_use]
-    pub const fn variant_str(&self) -> &'static str {
+    pub fn variant_str(&self) -> &'static str {
         match self {
             Self::NotInitialized => "not-initialized",
             Self::Diag { code, .. } => code,
@@ -320,6 +353,15 @@ impl Error {
             Self::ArtifactNotFound { .. } => "artifact-not-found",
             Self::SliceNotFound { .. } => "slice-not-found",
             Self::RegistryMissing => "registry-missing",
+            Self::CapabilityManifestMissing { .. } => "capability-manifest-missing",
+            Self::Filesystem { op, .. } => match *op {
+                "readdir" => "filesystem-readdir",
+                "dir-entry" => "filesystem-dir-entry",
+                "mkdir" => "filesystem-mkdir",
+                "copy" => "filesystem-copy",
+                "path-prefix" => "filesystem-path-prefix",
+                _ => "filesystem",
+            },
             Self::InitNeedsCapability => "init-requires-capability-or-hub",
             Self::ToolDenied(_) => "tool-permission-denied",
             Self::ToolNotDeclared { .. } => "tool-not-declared",
@@ -459,6 +501,39 @@ mod tests {
                 "change-finalize diagnostic display must start with `{expected}`, got: {err}"
             );
         }
+    }
+
+    #[test]
+    fn filesystem_variant_strings_are_stable() {
+        let cases: [(&'static str, &'static str); 6] = [
+            ("readdir", "filesystem-readdir"),
+            ("dir-entry", "filesystem-dir-entry"),
+            ("mkdir", "filesystem-mkdir"),
+            ("copy", "filesystem-copy"),
+            ("path-prefix", "filesystem-path-prefix"),
+            ("unknown-op", "filesystem"),
+        ];
+        for (op, expected) in cases {
+            let err = Error::Filesystem {
+                op,
+                path: std::path::PathBuf::from("/tmp/x"),
+                source: std::io::Error::other("boom"),
+            };
+            assert_eq!(err.variant_str(), expected, "op `{op}` → variant_str");
+            assert!(
+                err.to_string().starts_with(&format!("filesystem-{op}: ")),
+                "op `{op}` display: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn capability_manifest_missing_variant_string_is_stable() {
+        let err = Error::CapabilityManifestMissing {
+            dir: std::path::PathBuf::from("/tmp/cap"),
+        };
+        assert_eq!(err.variant_str(), "capability-manifest-missing");
+        assert!(err.to_string().starts_with("capability-manifest-missing: "), "display: {err}");
     }
 
     #[test]
