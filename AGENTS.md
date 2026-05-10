@@ -4,19 +4,24 @@ This is a Rust workspace. It produces the `specify` binary that the [augentic/sp
 
 ## Workspace layout
 
-Binary + library crate (`name = "specify"`) at the repo root, with workspace member crates under `crates/`. Dependency direction is leaf → root:
+Binary crate (`name = "specify"`, `[[bin]]`-only after CL-02) at the repo root, with workspace member crates under `crates/`. Dependency direction is leaf → root:
 
 ```text
 specify-error                    # leaf — thiserror + serde-saphyr only
+specify-registry                 # depends on specify-error
 specify-capability               # depends on specify-error
-specify-spec | specify-task      # depend on specify-capability
-specify-slice | specify-merge    # depend on specify-spec
-specify-validate                 # depends on specify-spec
-specify-change                   # depends on specify-slice + specify-spec
-specify-tool                     # WASI tool runner (wasmtime); leaf-ish
-specify (root crate)             # wires everything for the CLI binary
-crates/contract                  # WASI component, builds for wasm32-wasip2
-crates/vectis                    # WASI component, ditto (validate + scaffold subcommands)
+specify-task                     # depends on specify-error
+specify-spec                     # leaf — no workspace deps (spec parser)
+specify-tool                     # depends on specify-error (WASI tool runner; wasmtime)
+specify-slice                    # depends on specify-{error,capability,registry}
+specify-merge                    # depends on specify-{error,spec,capability,slice}
+specify-config                   # depends on specify-{error,capability,slice,tool}    (NEW from CL-01)
+specify-validate                 # depends on specify-{error,spec,capability,registry,task}
+specify-change                   # depends on specify-{error,config,registry,slice}
+specify-init                     # depends on specify-{error,capability,config,registry} (NEW from CL-02)
+specify (root crate)             # wires every workspace crate above into the CLI binary
+crates/contract                  # standalone binary `specify-contract` (depends on specify-validate)
+crates/vectis                    # standalone WASI component `specify-vectis` (validate + scaffold subcommands)
 ```
 
 Every crate uses the shared `[workspace.package]` (`edition = "2024"`, `rust-version = "1.93"`, MIT/Apache-2.0) and the shared `[workspace.lints]` block in the root `Cargo.toml` (clippy `all`/`cargo`/`nursery`/`pedantic` warned, plus a hand-picked `restriction` subset).
@@ -95,7 +100,7 @@ Never put domain logic in the binary. If a function needs unit tests, it belongs
 
 ## Layout boundary
 
-`.specify/` is framework-managed state every CLI verb writes through (configuration under `project.yaml`, `slices/`, `archive/`, `.cache/`, `workspace/`, `plans/`, `plan.lock`). Operator-facing platform artifacts (`registry.yaml`, `plan.yaml`, `change.md`, `contracts/`) live at the repo root. The boundary is enforced by the `ProjectConfig::*_path` helpers in `src/config.rs` — every call site routes through them. Do not hard-code `.specify/registry.yaml` or sibling paths.
+`.specify/` is framework-managed state every CLI verb writes through (configuration under `project.yaml`, `slices/`, `archive/`, `.cache/`, `workspace/`, `plans/`, `plan.lock`). Operator-facing platform artifacts (`registry.yaml`, `plan.yaml`, `change.md`, `contracts/`) live at the repo root. The boundary is enforced by the `ProjectConfig::*_path` helpers in `specify-config` (`crates/config/src/lib.rs`) — every call site routes through them. Do not hard-code `.specify/registry.yaml` or sibling paths.
 
 `detect_legacy_layout` and the `Error::LegacyLayout` ("`legacy-layout`") cutover gate any project-aware verb that tries to run on a v1-layout repo. Never silently read both layouts.
 
@@ -330,6 +335,14 @@ A clap-parsed flag that is destructured and silently dropped (`let _ = cli.<flag
 
 Flag whose doc-comment says "Currently equivalent to the default …" or whose handler ignores the value is the same defect dressed up as documentation. Drop the flag from clap until the differentiated behaviour exists. The `currently-audit` predicate fails any new occurrence of the word `Currently` in a clap-derive doc comment under `src/cli.rs` or `src/commands/**/cli.rs`.
 
+### Path helpers live in one crate
+
+`.specify/` layout helpers (`specify_dir`, `plan_path`, `change_brief_path`, `archive_dir`, and friends) live in `specify-config`'s `ProjectConfig` impl in [`crates/config/src/lib.rs`](crates/config/src/lib.rs). Command modules call them through `ProjectConfig`; they do not redefine their own copies. CL-01 hoisted these out of the binary's old `src/config.rs` so every workspace consumer routes through one source of truth, and the `path-helper-inlined` predicate fails any new free-function `fn specify_dir|plan_path|change_brief_path|archive_dir` declared outside `crates/config/`.
+
+### Error envelopes are not constructed in handlers
+
+Handlers return `Result<T, specify_error::Error>` and let `emit_error` / `emit_err` in [`src/output.rs`](src/output.rs) shape the JSON wire envelope. Nobody constructs `output::ErrorResponse { … }` or `output::ValidationErrorResponse { … }` by hand outside `src/output.rs` — the envelope shape (and its `error` discriminant contract) is owned there, and inlining it at a call site forks the contract. The `error-envelope-inlined` predicate (added in CL-X1) fails any such hand-rolled envelope outside `src/output.rs`.
+
 ## Skill / CLI responsibility split (mirrors parent repo)
 
 Every deterministic operation lives in this CLI: kebab-case validation, `.metadata.yaml` reads/writes, lifecycle transitions, capability resolution, artifact-completion checks, spec-merge preview, baseline conflict detection, delta merge, coherence validation, archive moves, plan/registry validation. The plugin repo's phase skills (`/spec:define`, `/spec:build`, `/spec:merge`, `/spec:drop`, `/spec:init`, `/change:plan`, `/change:execute`) shell out for all of those.
@@ -342,7 +355,7 @@ The corollary: when a skill currently does something deterministic in prose (par
 - `specify init` bypasses the `specify_version` floor check (the file doesn't exist yet); every other project-aware verb inherits it for free via `ProjectConfig::load`. Don't reimplement the floor check at a subcommand site.
 - `cargo nextest` and `cargo test` differ on `--no-tests=pass`. CI uses nextest with `--no-tests=pass`, so an empty test target is fine — but a missing `[[test]]` declaration that should exist will silently produce no output. Cross-check `cargo test` output if you suspect a target is being skipped.
 - `cargo doc` is part of `cargo make ci`. Doc comments must compile. Reference paths inside backticks (`` `Self::config_path` ``) are fine; bare links (`[Foo]`) need a corresponding intra-doc target or rustdoc fails the build.
-- The `src/lib.rs` library hosts only the local `config` and `init` modules. Public types from member crates are imported directly with `use specify_<crate>::Foo`; do **not** re-export them through `lib.rs`.
+- The root `specify` crate is `[[bin]]`-only — there is no `src/lib.rs` (the legacy library shim that hosted local `config` and `init` modules was deleted by CL-02 once those modules moved to `specify-config` and `specify-init`). Public types from member crates are imported directly with `use specify_<crate>::Foo`; do **not** add a thin facade re-exporting them through a new `lib.rs`.
 
 ## Reference cross-links
 
