@@ -401,10 +401,13 @@ module-line-count = 84
 module-line-count = 13
 
 [file."crates/vectis/src/scaffold.rs"]
-module-line-count = 648
+module-line-count = 256
 
 [file."crates/vectis/src/scaffold/error.rs"]
 module-line-count = 61
+
+[file."crates/vectis/src/scaffold/runtime.rs"]
+module-line-count = 201
 
 [file."crates/vectis/src/scaffold/templates.rs"]
 module-line-count = 201
