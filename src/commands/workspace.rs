@@ -1,5 +1,7 @@
 //! `specify workspace *` handlers — `sync`, `status`, `prepare-branch`, `push`.
 
+pub mod cli;
+
 use std::io::Write;
 use std::path::PathBuf;
 

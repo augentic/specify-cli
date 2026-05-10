@@ -6,17 +6,17 @@
     reason = "Clap dispatch hands owned subcommand values to these command handlers."
 )]
 
-mod capability;
-mod change;
-mod codex;
-mod compatibility;
-mod context;
+pub mod capability;
+pub mod change;
+pub mod codex;
+pub mod compatibility;
+pub mod context;
 mod init;
-mod registry;
-mod slice;
+pub mod registry;
+pub mod slice;
 mod status;
-mod tool;
-mod workspace;
+pub mod tool;
+pub mod workspace;
 
 use specify_error::Error;
 

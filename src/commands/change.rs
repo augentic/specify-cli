@@ -1,4 +1,5 @@
-mod plan;
+pub mod cli;
+pub mod plan;
 
 use std::io::Write;
 

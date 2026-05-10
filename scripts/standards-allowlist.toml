@@ -452,21 +452,31 @@ module-line-count = 112
 module-line-count = 62
 
 [file."src/cli.rs"]
-rfc-numbers-in-code = 2
-module-line-count = 704
+rfc-numbers-in-code = 1
+module-line-count = 149
 
 [file."src/commands.rs"]
 module-line-count = 123
 
 [file."src/commands/capability.rs"]
 name-suffix-duplication = 1
-module-line-count = 229
+module-line-count = 231
+
+[file."src/commands/capability/cli.rs"]
+module-line-count = 38
 
 [file."src/commands/change.rs"]
-module-line-count = 401
+module-line-count = 402
+
+[file."src/commands/change/cli.rs"]
+module-line-count = 40
 
 [file."src/commands/change/plan.rs"]
-module-line-count = 126
+module-line-count = 127
+
+[file."src/commands/change/plan/cli.rs"]
+rfc-numbers-in-code = 1
+module-line-count = 133
 
 [file."src/commands/change/plan/create.rs"]
 module-line-count = 124
@@ -485,16 +495,25 @@ module-line-count = 149
 module-line-count = 213
 
 [file."src/commands/codex.rs"]
-module-line-count = 383
+module-line-count = 385
+
+[file."src/commands/codex/cli.rs"]
+module-line-count = 22
 
 [file."src/commands/compatibility.rs"]
-module-line-count = 80
+module-line-count = 82
+
+[file."src/commands/compatibility/cli.rs"]
+module-line-count = 19
 
 [file."src/commands/context.rs"]
-module-line-count = 417
+module-line-count = 418
 
 [file."src/commands/context/check.rs"]
 module-line-count = 141
+
+[file."src/commands/context/cli.rs"]
+module-line-count = 23
 
 [file."src/commands/context/detect.rs"]
 module-line-count = 154
@@ -532,10 +551,16 @@ rfc-numbers-in-code = 3
 module-line-count = 196
 
 [file."src/commands/registry.rs"]
-module-line-count = 654
+module-line-count = 656
+
+[file."src/commands/registry/cli.rs"]
+module-line-count = 37
 
 [file."src/commands/slice.rs"]
-module-line-count = 90
+module-line-count = 91
+
+[file."src/commands/slice/cli.rs"]
+module-line-count = 263
 
 [file."src/commands/slice/journal.rs"]
 module-line-count = 127
@@ -565,10 +590,16 @@ module-line-count = 59
 module-line-count = 202
 
 [file."src/commands/tool.rs"]
-module-line-count = 471
+module-line-count = 473
+
+[file."src/commands/tool/cli.rs"]
+module-line-count = 32
 
 [file."src/commands/workspace.rs"]
-module-line-count = 400
+module-line-count = 402
+
+[file."src/commands/workspace/cli.rs"]
+module-line-count = 49
 
 [file."src/context.rs"]
 module-line-count = 62

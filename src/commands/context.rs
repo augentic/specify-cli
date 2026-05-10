@@ -12,6 +12,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 mod check;
+pub mod cli;
 mod detect;
 mod fences;
 mod fingerprint;

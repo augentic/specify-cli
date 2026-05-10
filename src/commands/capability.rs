@@ -1,5 +1,7 @@
 //! `specify capability {resolve, check, pipeline}`.
 
+pub mod cli;
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 

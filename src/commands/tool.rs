@@ -1,5 +1,7 @@
 //! `specify tool {run,list,fetch,show,gc}` handlers.
 
+pub mod cli;
+
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;

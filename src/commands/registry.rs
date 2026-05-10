@@ -1,5 +1,7 @@
 //! `specify registry *` handlers — `show`, `validate`, `add`, `remove`.
 
+pub mod cli;
+
 use std::fs;
 use std::io::Write;
 use std::path::Path;

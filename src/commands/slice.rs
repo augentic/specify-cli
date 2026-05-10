@@ -14,6 +14,7 @@ use crate::cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, Sl
 use crate::context::CommandContext;
 use crate::output::CliResult;
 
+pub mod cli;
 mod journal;
 mod lifecycle;
 mod list;

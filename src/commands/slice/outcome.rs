@@ -11,7 +11,7 @@ use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_slice::{Outcome, Rfc3339Stamp, SliceMetadata, actions as slice_actions};
 
-use crate::cli::OutcomeKindAction;
+use crate::cli::{OutcomeKindAction, RegistryAmendmentArgs};
 use crate::context::CommandContext;
 use crate::output::{CliResult, Render, emit};
 
@@ -78,7 +78,7 @@ fn lower_kind(kind: OutcomeKindAction) -> (Outcome, String, Option<String>) {
         OutcomeKindAction::Success { summary, context } => (Outcome::Success, summary, context),
         OutcomeKindAction::Failure { summary, context } => (Outcome::Failure, summary, context),
         OutcomeKindAction::Deferred { summary, context } => (Outcome::Deferred, summary, context),
-        OutcomeKindAction::RegistryAmendmentRequired {
+        OutcomeKindAction::RegistryAmendmentRequired(RegistryAmendmentArgs {
             summary,
             context,
             proposed_name,
@@ -86,7 +86,7 @@ fn lower_kind(kind: OutcomeKindAction) -> (Outcome, String, Option<String>) {
             proposed_capability,
             proposed_description,
             rationale,
-        } => {
+        }) => {
             let summary =
                 summary.unwrap_or_else(|| format!("registry-amendment-required: {proposed_name}"));
             let outcome = Outcome::RegistryAmendmentRequired {
