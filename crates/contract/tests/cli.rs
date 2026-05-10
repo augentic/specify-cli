@@ -1,5 +1,4 @@
-//! Integration tests for the standalone `specify-contract-validate`
-//! binary (RFC-13 §4.2a).
+//! Integration tests for the standalone `specify-contract` binary.
 //!
 //! Each test materialises a synthetic baseline under a `TempDir`, runs
 //! the binary with `assert_cmd`, and asserts on exit code + stdout.
@@ -28,8 +27,7 @@ fn contracts_dir(tmp: &TempDir) -> PathBuf {
 }
 
 fn cmd() -> Command {
-    Command::cargo_bin("specify-contract-validate")
-        .expect("binary `specify-contract-validate` is present")
+    Command::cargo_bin("specify-contract").expect("binary `specify-contract` is present")
 }
 
 #[test]

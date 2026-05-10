@@ -200,7 +200,7 @@
 //! | Project context missing | 1 with the existing `not-initialized` envelope |
 //! | Tool name not found | 2 and a typed `tool-not-declared` envelope |
 //!
-//! This mirrors the `0 / 1 / 2` shape `specify-contract-validate` already
+//! This mirrors the `0 / 1 / 2` shape `specify-contract` already
 //! emits, so brief-side branching keeps working through the migration.
 //!
 //! ## Wasmtime configuration

@@ -2114,7 +2114,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "specify-contract-validate"
+name = "specify-contract"
 version = "0.3.0"
 dependencies = [
  "assert_cmd",
@@ -2224,6 +2224,22 @@ dependencies = [
  "specify-spec",
  "specify-task",
  "tempfile",
+]
+
+[[package]]
+name = "specify-vectis"
+version = "0.3.0"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "jsonschema",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
@@ -2567,33 +2583,6 @@ checksum = "23b082222b4f6619906941c17eb2297fff4c2fb96cb60164170522942a200bd8"
 dependencies = [
  "outref",
  "vsimd",
-]
-
-[[package]]
-name = "vectis-scaffold"
-version = "0.3.0"
-dependencies = [
- "clap",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "toml",
-]
-
-[[package]]
-name = "vectis-validate"
-version = "0.3.0"
-dependencies = [
- "assert_cmd",
- "clap",
- "jsonschema",
- "serde",
- "serde-saphyr",
- "serde_json",
- "tempfile",
- "thiserror",
 ]
 
 [[package]]

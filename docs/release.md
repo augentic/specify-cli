@@ -24,12 +24,11 @@ The `.github/workflows/release.yaml` workflow fires on the tag push and runs fou
 
    Each job produces a versioned archive (`specify-${TAG}-${TARGET}.tar.gz` on unix, `.zip` on Windows) plus a companion `.sha256` file, uploaded via `actions/upload-artifact@v4`.
 
-2. **`wasi-tools`.** Builds the first-party Vectis command components once for `wasm32-wasip2`:
+2. **`wasi-tools`.** Builds the first-party Vectis command component once for `wasm32-wasip2`:
 
-   - `vectis-validate.wasm`
-   - `vectis-scaffold.wasm`
+   - `vectis.wasm`
 
-   The release uploads both raw `.wasm` files for `tools.yaml` sources, each file's `.sha256` companion, and a `vectis-wasi-tools-${TAG}.tar.gz` archive containing both components plus individual `.sha256` files and `SHA256SUMS`.
+   The release uploads the raw `.wasm` file for `tools.yaml` sources, its `.sha256` companion, and a `vectis-wasi-tools-${TAG}.tar.gz` archive containing the component plus its `.sha256` file and `SHA256SUMS`.
 
 3. **`release`.** Waits for every native matrix leg and the Vectis WASI tools, downloads all artifacts, and creates the GitHub Release with `softprops/action-gh-release@v2`. Release notes are generated from `.github/release.yaml`.
 
@@ -41,16 +40,15 @@ The `.github/workflows/release.yaml` workflow fires on the tag push and runs fou
 
 ## Vectis WASI tool artifacts
 
-Released Vectis tool declarations should point directly at the raw release assets:
+Released Vectis tool declarations should point directly at the raw release asset:
 
 ```text
-https://github.com/augentic/specify-cli/releases/download/v${VERSION}/vectis-validate.wasm
-https://github.com/augentic/specify-cli/releases/download/v${VERSION}/vectis-scaffold.wasm
+https://github.com/augentic/specify-cli/releases/download/v${VERSION}/vectis.wasm
 ```
 
-Use the companion `.sha256` assets from the same release as the `tools.yaml` pins. Do not invent digest values before the workflow has built the release components.
+Use the companion `.sha256` asset from the same release as the `tools.yaml` pin. Do not invent digest values before the workflow has built the release component.
 
-For local development before a public release, build both components and checksum files into a deterministic local directory:
+For local development before a public release, build the component and checksum file into a deterministic local directory:
 
 ```bash
 cargo make vectis-wasi-artifacts
@@ -59,14 +57,12 @@ cargo make vectis-wasi-artifacts
 This writes:
 
 ```text
-target/vectis-wasi-tools/release/vectis-validate.wasm
-target/vectis-wasi-tools/release/vectis-validate.wasm.sha256
-target/vectis-wasi-tools/release/vectis-scaffold.wasm
-target/vectis-wasi-tools/release/vectis-scaffold.wasm.sha256
+target/vectis-wasi-tools/release/vectis.wasm
+target/vectis-wasi-tools/release/vectis.wasm.sha256
 target/vectis-wasi-tools/release/SHA256SUMS
 ```
 
-To smoke-test a capability before release, add project-scope tool declarations in `.specify/project.yaml` that keep the capability's version and permissions but override `source` to `file:///absolute/path/to/specify-cli/target/vectis-wasi-tools/release/<tool>.wasm`. Include the matching local `sha256` value if you want cache verification; otherwise omit `sha256` for rapid rebuilds and run `specify tool gc` when switching bytes without changing the declaration tuple.
+To smoke-test the capability before release, add a project-scope tool declaration in `.specify/project.yaml` that keeps the capability's version and permissions but overrides `source` to `file:///absolute/path/to/specify-cli/target/vectis-wasi-tools/release/vectis.wasm`. Include the matching local `sha256` value if you want cache verification; otherwise omit `sha256` for rapid rebuilds and run `specify tool gc` when switching bytes without changing the declaration tuple.
 
 ## Updating the Homebrew formula
 

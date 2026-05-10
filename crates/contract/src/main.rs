@@ -1,9 +1,9 @@
-//! `specify-contract-validate` — standalone validator binary for the
-//! contracts capability (RFC-13 §4.2a).
+//! `specify-contract` — standalone validator binary for the contracts
+//! capability.
 //!
 //! Wraps [`specify_validate::validate_baseline_contracts`] and
 //! [`specify_validate::serialize_contract_findings`] to surface the
-//! RFC-12 §Validation checks (`SemVer` `info.version`,
+//! contract Validation checks (`SemVer` `info.version`,
 //! `info.x-specify-id` format, cross-project id uniqueness) as a
 //! standalone executable that the contracts capability can shell out
 //! to from skill runtimes.
@@ -19,18 +19,13 @@
 //!   cross-project uniqueness violations).
 //! - `2` — validator failed to run (path missing, not a directory, …).
 //!
-//! Note that the legacy pre-Phase-2.7 `specify contract validate`
-//! command surfaced validation failures as exit code `2` (Specify's
-//! `CliResult::ValidationFailed`). This standalone binary uses the
-//! conventional shell-friendly mapping (`0` clean / `1` findings /
-//! `2` invocation error) so capability skills can branch on the exit
-//! code without needing the broader `CliResult` taxonomy. The JSON
-//! envelope's `"exit-code"` field reflects the same value.
+//! This binary uses the conventional shell-friendly exit-code mapping
+//! (`0` clean / `1` findings / `2` invocation error) so capability
+//! skills can branch on the exit code without needing the broader
+//! `CliResult` taxonomy. The JSON envelope's `"exit-code"` field
+//! reflects the same value.
 //!
 //! # JSON shape
-//!
-//! Identical to the legacy `specify contract validate --format json`
-//! envelope:
 //!
 //! ```json
 //! {
@@ -45,8 +40,8 @@
 //! ```
 //!
 //! Findings paths are rendered relative to the parent of
-//! `<baseline-dir>` when that prefix matches, mirroring the legacy
-//! behaviour where paths were reported relative to the project root.
+//! `<baseline-dir>` when that prefix matches, so paths are reported
+//! relative to the project root.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -58,14 +53,14 @@ const EXIT_OK: u8 = 0;
 const EXIT_FINDINGS: u8 = 1;
 const EXIT_INVOCATION_ERROR: u8 = 2;
 
-/// Arguments accepted by `specify-contract-validate`.
+/// Arguments accepted by `specify-contract`.
 #[derive(Parser, Debug)]
 #[command(
-    name = "specify-contract-validate",
+    name = "specify-contract",
     version,
-    about = "Standalone validator for the contracts capability — SemVer + info.x-specify-id + cross-project uniqueness checks (RFC-12 / RFC-13).",
+    about = "Standalone validator for the contracts capability — SemVer + info.x-specify-id + cross-project uniqueness checks.",
     long_about = "Walks <BASELINE_DIR> for top-level OpenAPI 3.1 / AsyncAPI 3.0 documents \
-                  (root key `openapi:` or `asyncapi:`) and runs the RFC-12 §Validation rules:\n\
+                  (root key `openapi:` or `asyncapi:`) and runs the contract Validation rules:\n\
                   \n  \
                   * contract.version-is-semver\n  \
                   * contract.id-format\n  \

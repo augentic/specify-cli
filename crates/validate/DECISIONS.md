@@ -52,7 +52,7 @@ Source: `rfcs/archive/rfc-13-contract-validate-binary.md` §4.2a.
 `serialize_contract_findings` in
 `crates/validate/src/contracts/envelope.rs` emits the canonical
 pretty-printed JSON envelope consumed by the standalone
-`specify-contract-validate` binary. The shape is byte-compatible with
+`specify-contract` binary. The shape is byte-compatible with
 the pre-Phase-2.7 `specify contract validate --format json` envelope:
 top-level keys `schema-version`, `contracts-dir`, `ok`, `findings`,
 `exit-code`; per-finding keys `path`, `rule-id`, `detail`. Field order

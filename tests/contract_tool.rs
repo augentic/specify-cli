@@ -10,7 +10,7 @@ mod common;
 use common::{parse_json, repo_root, specify};
 
 fn contract_wasm() -> PathBuf {
-    repo_root().join("crates/contract-validate/dist/contract-0.2.0.wasm")
+    repo_root().join("crates/contract/dist/contract-0.2.0.wasm")
 }
 
 fn sha256_hex(path: &Path) -> String {

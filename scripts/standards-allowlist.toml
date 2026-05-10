@@ -99,10 +99,9 @@ rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 7
 module-line-count = 691
 
-[file."crates/contract-validate/src/main.rs"]
+[file."crates/contract/src/main.rs"]
 format-match-dispatch = 1
-rfc-numbers-in-code = 5
-module-line-count = 147
+module-line-count = 138
 
 [file."crates/error/src/lib.rs"]
 module-line-count = 413
@@ -315,63 +314,14 @@ module-line-count = 232
 [file."crates/validate/src/serialize.rs"]
 module-line-count = 117
 
-[file."crates/vectis-scaffold/src/error.rs"]
-module-line-count = 61
-
-[file."crates/vectis-scaffold/src/lib.rs"]
+[file."crates/vectis/src/lib.rs"]
 inline-dtos = 1
-rfc-numbers-in-code = 2
-module-line-count = 684
 
-[file."crates/vectis-scaffold/src/main.rs"]
-module-line-count = 13
+[file."crates/vectis/src/scaffold.rs"]
+module-line-count = 648
 
-[file."crates/vectis-scaffold/src/templates.rs"]
-module-line-count = 201
-
-[file."crates/vectis-scaffold/src/templates/android.rs"]
-module-line-count = 132
-
-[file."crates/vectis-scaffold/src/templates/core.rs"]
-module-line-count = 65
-
-[file."crates/vectis-scaffold/src/templates/ios.rs"]
-module-line-count = 41
-
-[file."crates/vectis-scaffold/src/versions.rs"]
+[file."crates/vectis/src/scaffold/versions.rs"]
 rfc-numbers-in-code = 1
-module-line-count = 113
-
-[file."crates/vectis-validate/src/engine/all.rs"]
-module-line-count = 70
-
-[file."crates/vectis-validate/src/engine/assets.rs"]
-module-line-count = 327
-
-[file."crates/vectis-validate/src/engine/composition.rs"]
-module-line-count = 432
-
-[file."crates/vectis-validate/src/engine/layout.rs"]
-module-line-count = 167
-
-[file."crates/vectis-validate/src/engine/mod.rs"]
-module-line-count = 77
-
-[file."crates/vectis-validate/src/engine/paths.rs"]
-module-line-count = 239
-
-[file."crates/vectis-validate/src/engine/shared.rs"]
-module-line-count = 112
-
-[file."crates/vectis-validate/src/engine/tokens.rs"]
-module-line-count = 63
-
-[file."crates/vectis-validate/src/lib.rs"]
-inline-dtos = 1
-module-line-count = 262
-
-[file."crates/vectis-validate/src/main.rs"]
-module-line-count = 13
 
 [file."src/cli.rs"]
 rfc-numbers-in-code = 2

@@ -108,25 +108,19 @@ cp target/tools-test-fixtures/wasm32-wasip2/release/read-denied.wasm tests/fixtu
 wasm-tools parse tests/fixtures/tools-test-cap/src-wat/exit-seven.component.wat -o tests/fixtures/tools-test-cap/wasm/exit-seven.wasm
 '''
 
-[tasks.contract-validator-wasm]
+[tasks.contract-wasm]
 script = '''
 set -euo pipefail
-cargo build -p specify-contract-validate --target wasm32-wasip2 --release
-mkdir -p crates/contract-validate/dist
-cp target/wasm32-wasip2/release/specify-contract-validate.wasm crates/contract-validate/dist/contract-0.2.0.wasm
-shasum -a 256 crates/contract-validate/dist/contract-0.2.0.wasm
+cargo build -p specify-contract --target wasm32-wasip2 --release
+mkdir -p crates/contract/dist
+cp target/wasm32-wasip2/release/specify-contract.wasm crates/contract/dist/contract-0.2.0.wasm
+shasum -a 256 crates/contract/dist/contract-0.2.0.wasm
 '''
 
-[tasks.vectis-validate-wasm]
+[tasks.vectis-wasm]
 script = '''
 set -euo pipefail
-cargo build -p vectis-validate --target wasm32-wasip2 --release
-'''
-
-[tasks.vectis-scaffold-wasm]
-script = '''
-set -euo pipefail
-cargo build -p vectis-scaffold --target wasm32-wasip2 --release
+cargo build -p specify-vectis --target wasm32-wasip2 --release
 '''
 
 [tasks.vectis-wasi-artifacts]
@@ -135,19 +129,17 @@ set -euo pipefail
 
 DIST_DIR="${VECTIS_WASI_DIST_DIR:-target/vectis-wasi-tools/release}"
 
-cargo build -p vectis-validate -p vectis-scaffold --target wasm32-wasip2 --release --locked
+cargo build -p specify-vectis --target wasm32-wasip2 --release --locked
 mkdir -p "${DIST_DIR}"
-cp target/wasm32-wasip2/release/vectis-validate.wasm "${DIST_DIR}/vectis-validate.wasm"
-cp target/wasm32-wasip2/release/vectis-scaffold.wasm "${DIST_DIR}/vectis-scaffold.wasm"
+cp target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR}/vectis.wasm"
 
 (
   cd "${DIST_DIR}"
-  shasum -a 256 vectis-validate.wasm > vectis-validate.wasm.sha256
-  shasum -a 256 vectis-scaffold.wasm > vectis-scaffold.wasm.sha256
-  shasum -a 256 vectis-validate.wasm vectis-scaffold.wasm > SHA256SUMS
+  shasum -a 256 vectis.wasm > vectis.wasm.sha256
+  shasum -a 256 vectis.wasm > SHA256SUMS
 )
 
-echo "Vectis WASI artifacts written to ${DIST_DIR}"
+echo "Vectis WASI artifact written to ${DIST_DIR}"
 '''
 
 # Docs

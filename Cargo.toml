@@ -59,10 +59,9 @@ members = [
     "crates/validate",
     "crates/slice",
     "crates/change",
-    "crates/vectis-validate",
-    "crates/vectis-scaffold",
+    "crates/vectis",
     "crates/tool",
-    "crates/contract-validate",
+    "crates/contract",
     "xtask",
 ]
 exclude = []

@@ -1,4 +1,4 @@
-//! Canonical JSON envelope for the standalone `specify-contract-validate`
+//! Canonical JSON envelope for the standalone `specify-contract`
 //! binary. See `DECISIONS.md` §"Change D — Validate JSON envelope shape"
 //! for provenance.
 

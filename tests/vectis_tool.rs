@@ -1,4 +1,4 @@
-//! Integration coverage for Vectis tools declared through `specify tool`.
+//! Integration coverage for the Vectis WASI tool declared through `specify tool`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,62 +21,42 @@ fn sha256_hex(path: &Path) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-#[derive(Debug)]
-struct VectisWasiArtifacts {
-    validate: PathBuf,
-    scaffold: PathBuf,
-}
-
-fn vectis_wasi_artifacts() -> &'static VectisWasiArtifacts {
-    static ARTIFACTS: OnceLock<VectisWasiArtifacts> = OnceLock::new();
-    ARTIFACTS.get_or_init(|| {
+fn vectis_wasi_artifact() -> &'static PathBuf {
+    static ARTIFACT: OnceLock<PathBuf> = OnceLock::new();
+    ARTIFACT.get_or_init(|| {
         let root = repo_root();
         let dist = root.join("target/vectis-wasi-tools/release");
-        let validate = dist.join("vectis-validate.wasm");
-        let scaffold = dist.join("vectis-scaffold.wasm");
-        if !validate.is_file() || !scaffold.is_file() {
-            build_vectis_wasi_artifacts(&root, &dist, &validate, &scaffold);
+        let wasm = dist.join("vectis.wasm");
+        if !wasm.is_file() {
+            build_vectis_wasi_artifact(&root, &dist, &wasm);
         }
-        assert!(
-            validate.is_file(),
-            "missing Vectis validator WASI artifact at {}",
-            validate.display()
-        );
-        assert!(
-            scaffold.is_file(),
-            "missing Vectis scaffold WASI artifact at {}",
-            scaffold.display()
-        );
-        VectisWasiArtifacts { validate, scaffold }
+        assert!(wasm.is_file(), "missing Vectis WASI artifact at {}", wasm.display());
+        wasm
     })
 }
 
-fn build_vectis_wasi_artifacts(root: &Path, dist: &Path, validate: &Path, scaffold: &Path) {
+fn build_vectis_wasi_artifact(root: &Path, dist: &Path, wasm: &Path) {
     let status = ProcessCommand::new("cargo")
         .current_dir(root)
         .args([
             "build",
             "-p",
-            "vectis-validate",
-            "-p",
-            "vectis-scaffold",
+            "specify-vectis",
             "--target",
             "wasm32-wasip2",
             "--release",
             "--locked",
         ])
         .status()
-        .unwrap_or_else(|err| panic!("failed to invoke cargo for Vectis WASI artifacts: {err}"));
+        .unwrap_or_else(|err| panic!("failed to invoke cargo for Vectis WASI artifact: {err}"));
     assert!(
         status.success(),
-        "failed to build Vectis WASI artifacts with `cargo build -p vectis-validate -p vectis-scaffold --target wasm32-wasip2 --release --locked`"
+        "failed to build Vectis WASI artifact with `cargo build -p specify-vectis --target wasm32-wasip2 --release --locked`"
     );
 
     fs::create_dir_all(dist).expect("create Vectis WASI dist dir");
-    fs::copy(root.join("target/wasm32-wasip2/release/vectis-validate.wasm"), validate)
-        .expect("copy vectis-validate.wasm to dist");
-    fs::copy(root.join("target/wasm32-wasip2/release/vectis-scaffold.wasm"), scaffold)
-        .expect("copy vectis-scaffold.wasm to dist");
+    fs::copy(root.join("target/wasm32-wasip2/release/vectis.wasm"), wasm)
+        .expect("copy vectis.wasm to dist");
 }
 
 struct VectisToolFixture {
@@ -86,7 +66,7 @@ struct VectisToolFixture {
 }
 
 impl VectisToolFixture {
-    fn from_tempdir(tmp: TempDir, scaffold_write_permission: &str) -> Self {
+    fn from_tempdir(tmp: TempDir, write_permission: &str) -> Self {
         let project = tmp.path().join("project");
         let capability = project.join("schemas/vectis");
         let design = project.join("design-system");
@@ -110,15 +90,13 @@ impl VectisToolFixture {
         )
         .expect("write capability.yaml");
 
-        let artifacts = vectis_wasi_artifacts();
-        let validate_source = file_uri(&artifacts.validate);
-        let scaffold_source = file_uri(&artifacts.scaffold);
-        let validate_sha = sha256_hex(&artifacts.validate);
-        let scaffold_sha = sha256_hex(&artifacts.scaffold);
+        let artifact = vectis_wasi_artifact();
+        let source = file_uri(artifact);
+        let sha = sha256_hex(artifact);
         fs::write(
             capability.join("tools.yaml"),
             format!(
-                "tools:\n  - name: vectis-validate\n    version: 0.2.0\n    source: \"{validate_source}\"\n    sha256: \"{validate_sha}\"\n    permissions:\n      read:\n        - \"$PROJECT_DIR/design-system\"\n      write: []\n  - name: vectis-scaffold\n    version: 0.2.0\n    source: \"{scaffold_source}\"\n    sha256: \"{scaffold_sha}\"\n    permissions:\n      read: []\n      write:\n        - \"{scaffold_write_permission}\"\n"
+                "tools:\n  - name: vectis\n    version: 0.2.0\n    source: \"{source}\"\n    sha256: \"{sha}\"\n    permissions:\n      read:\n        - \"$PROJECT_DIR\"\n        - \"$CAPABILITY_DIR\"\n      write:\n        - \"{write_permission}\"\n"
             ),
         )
         .expect("write tools.yaml");
@@ -164,7 +142,7 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
     let scaffold = specify()
         .current_dir(&fixture.project)
         .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
-        .args(["tool", "run", "vectis-scaffold", "--", "core", "Counter"])
+        .args(["tool", "run", "vectis", "--", "scaffold", "core", "Counter"])
         .assert()
         .success();
     let scaffold_value = parse_json(&scaffold.get_output().stdout);
@@ -178,7 +156,7 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
     let overwrite = specify()
         .current_dir(&fixture.project)
         .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
-        .args(["tool", "run", "vectis-scaffold", "--", "core", "Counter"])
+        .args(["tool", "run", "vectis", "--", "scaffold", "core", "Counter"])
         .assert()
         .failure();
     assert_eq!(overwrite.get_output().status.code(), Some(1));
@@ -197,7 +175,7 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
     let denied_value = specify()
         .current_dir(&denied.project)
         .env("SPECIFY_TOOLS_CACHE", &denied.cache)
-        .args(["--format", "json", "tool", "run", "vectis-scaffold", "--", "core", "Counter"])
+        .args(["--format", "json", "tool", "run", "vectis", "--", "scaffold", "core", "Counter"])
         .assert()
         .failure();
     assert_eq!(denied_value.get_output().status.code(), Some(2));
@@ -213,7 +191,7 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
 }
 
 #[test]
-fn vectis_tools_run_through_fetch_cache_permissions_and_exit_codes() {
+fn vectis_tool_runs_through_fetch_cache_permissions_and_exit_codes() {
     let fixture = VectisToolFixture::with_project_write();
     let clean_tokens = fixture.write_tokens("tokens.yaml", "version: 1\n");
     let broken_tokens = fixture.write_tokens(
@@ -224,18 +202,18 @@ fn vectis_tools_run_through_fetch_cache_permissions_and_exit_codes() {
     let list = run_json(&fixture.project, &fixture.cache, &["tool", "list"]);
     let tools = list["tools"].as_array().expect("tools array");
     let names: Vec<&str> = tools.iter().map(|tool| tool["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["vectis-validate", "vectis-scaffold"], "{list}");
+    assert_eq!(names, ["vectis"], "{list}");
     assert!(tools.iter().all(|tool| tool["scope"] == "capability"), "{list}");
     assert!(tools.iter().all(|tool| tool["scope-detail"] == "vectis"), "{list}");
     assert!(tools.iter().all(|tool| tool["cache-status"] == "miss-not-found"), "{list}");
 
     let fetch = run_json(&fixture.project, &fixture.cache, &["tool", "fetch"]);
     let fetched = fetch["tools"].as_array().expect("fetched tools array");
-    assert_eq!(fetched.len(), 2, "{fetch}");
+    assert_eq!(fetched.len(), 1, "{fetch}");
     assert!(fetched.iter().all(|tool| tool["fetched"] == true), "{fetch}");
 
-    let show = run_json(&fixture.project, &fixture.cache, &["tool", "show", "vectis-scaffold"]);
-    assert_eq!(show["tool"]["name"], "vectis-scaffold");
+    let show = run_json(&fixture.project, &fixture.cache, &["tool", "show", "vectis"]);
+    assert_eq!(show["tool"]["name"], "vectis");
     assert_eq!(show["tool"]["cache-status"], "hit");
     assert_eq!(show["tool"]["permissions"]["write"], serde_json::json!(["$PROJECT_DIR"]));
     assert!(show["tool"]["sha256"].as_str().is_some_and(|sha| sha.len() == 64), "{show}");
@@ -246,8 +224,9 @@ fn vectis_tools_run_through_fetch_cache_permissions_and_exit_codes() {
         .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
         .arg("tool")
         .arg("run")
-        .arg("vectis-validate")
+        .arg("vectis")
         .arg("--")
+        .arg("validate")
         .arg("tokens")
         .arg(&clean_tokens)
         .assert()
@@ -262,8 +241,9 @@ fn vectis_tools_run_through_fetch_cache_permissions_and_exit_codes() {
         .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
         .arg("tool")
         .arg("run")
-        .arg("vectis-validate")
+        .arg("vectis")
         .arg("--")
+        .arg("validate")
         .arg("tokens")
         .arg(&broken_tokens)
         .assert()

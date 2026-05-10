@@ -1,0 +1,35 @@
+[package]
+name = "specify-vectis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WASI command tool for Vectis (validate + scaffold)"
+readme = "../../README.md"
+categories = ["development-tools", "command-line-utilities", "wasm"]
+keywords = ["specify", "vectis", "wasi"]
+
+[lib]
+name = "specify_vectis"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vectis"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+clap.workspace = true
+jsonschema.workspace = true
+serde.workspace = true
+serde-saphyr.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+toml = "1"
+
+[dev-dependencies]
+assert_cmd.workspace = true
+sha2.workspace = true
+tempfile.workspace = true

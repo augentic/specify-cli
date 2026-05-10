@@ -15,8 +15,8 @@ specify-validate                 # depends on specify-spec
 specify-change                   # depends on specify-slice + specify-spec
 specify-tool                     # WASI tool runner (wasmtime); leaf-ish
 specify (root crate)             # wires everything for the CLI binary
-crates/contract-validate         # WASI component, builds for wasm32-wasip2
-crates/vectis-{validate,scaffold} # WASI components, ditto
+crates/contract                  # WASI component, builds for wasm32-wasip2
+crates/vectis                    # WASI component, ditto (validate + scaffold subcommands)
 ```
 
 Every crate uses the shared `[workspace.package]` (`edition = "2024"`, `rust-version = "1.93"`, MIT/Apache-2.0) and the shared `[workspace.lints]` block in the root `Cargo.toml` (clippy `all`/`cargo`/`nursery`/`pedantic` warned, plus a hand-picked `restriction` subset).
@@ -45,7 +45,7 @@ All driven by `cargo make` (see `Makefile.toml`). The bare `Makefile` is a one-l
 - `cargo make fmt` — nightly `cargo fmt --all`.
 - `cargo make audit` / `deny` / `outdated` / `deps` — supply-chain checks (cargo-audit, cargo-deny, cargo-outdated, cargo-udeps). `cargo make vet` regenerates `supply-chain/{audits,exemptions,unpublished}.toml` and runs `cargo vet --locked`.
 - `cargo make tools-test-fixtures` — rebuild WASI fixture components used by `tests/tool.rs`.
-- `cargo make contract-validator-wasm` / `vectis-validate-wasm` / `vectis-scaffold-wasm` / `vectis-wasi-artifacts` — build the WASI tool components for distribution.
+- `cargo make contract-wasm` / `vectis-wasm` / `vectis-wasi-artifacts` — build the WASI tool components for distribution.
 
 Before committing, run the complete local CI suite with `cargo make ci` and fix any failures or warnings it surfaces. Do not rely on narrower substitutes such as `cargo test` or `cargo clippy`; if `cargo make ci` cannot be run, say exactly why and which checks were run instead.
 
@@ -114,7 +114,7 @@ Patterns to follow:
 
 ## WASI tooling
 
-`crates/contract-validate`, `crates/vectis-validate`, and `crates/vectis-scaffold` build for `wasm32-wasip2` and ship as WASI components. The `specify-tool` runner (`wasmtime` + `wasmtime-wasi`) loads them through `specify tool run <name>` per declared-tool permissions in `project.yaml.tools[]`. When editing these crates:
+`crates/contract` and `crates/vectis` build for `wasm32-wasip2` and ship as WASI components. The `specify-tool` runner (`wasmtime` + `wasmtime-wasi`) loads them through `specify tool run <name>` per declared-tool permissions in `project.yaml.tools[]`. When editing these crates:
 
 - They cannot use anything that isn't WASI-compatible. No threads, no networking primitives outside the declared WASI imports, no clock unless the manifest declares it.
 - Rebuild artifacts via the `cargo make` recipes listed above. Do not check the `.wasm` outputs into git unless promoting a new release version (the release workflow handles distribution).
