@@ -3,7 +3,7 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify::config::ProjectConfig;
+use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_merge::MergeStrategy;
 use specify_slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};

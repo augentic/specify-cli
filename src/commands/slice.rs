@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use specify::config::ProjectConfig;
+use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_merge::{ArtifactClass, MergeStrategy};
 

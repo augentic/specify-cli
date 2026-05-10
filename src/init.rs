@@ -25,10 +25,9 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use specify_capability::{CacheMeta, DEFAULT_CODEX_CAPABILITY, PipelineView};
+use specify_config::ProjectConfig;
 use specify_error::{Error, is_kebab};
 use specify_registry::Registry;
-
-use crate::config::ProjectConfig;
 
 /// Inputs to [`init`]. Borrow-shaped so callers (the CLI and tests) can
 /// build the struct without cloning path buffers.

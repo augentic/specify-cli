@@ -14,8 +14,8 @@ mod lock;
 mod render;
 
 use serde::Serialize;
-use specify::config::{ProjectConfig, is_workspace_clone_path};
 use specify_capability::{Capability, PipelineView};
+use specify_config::{ProjectConfig, is_workspace_clone_path};
 use specify_error::Error;
 use specify_registry::Registry;
 use specify_slice::SliceMetadata;

@@ -1,3 +1,8 @@
+#![allow(
+    clippy::multiple_crate_versions,
+    reason = "ProjectConfig re-exports `specify_tool::Tool`, which transitively pulls in Wasmtime/WASI duplicate versions."
+)]
+
 //! `ProjectConfig` — the in-memory model of `.specify/project.yaml`.
 //!
 //! Hosts the family of path helpers every subcommand reaches for when
@@ -9,22 +14,15 @@
 //! CLI owns (configuration, working slices, archive, cache, workspace
 //! clones, plan-authoring scratch, the advisory plan lock).
 //! Operator-facing platform artifacts that are PR-reviewed and durable
-//! live at the repo root. See [`docs/explanation/decision-log.md`](
-//! ../../docs/explanation/decision-log.md) for the full rationale.
+//! live at the repo root.
 //!
-//! RFC-13 §Migration invariant #3 ("concern-specific behaviour leaves
-//! core") removed the per-class baseline helpers (`specs_dir`,
-//! `contracts_dir`) that this module used to expose. Domain-specific
-//! baseline locations are owned by the active capability and are
-//! synthesised at the binary-side merge call site (currently
-//! `src/commands/slice.rs::artifact_classes`). `ProjectConfig`
-//! stays capability-agnostic.
+//! `ProjectConfig` stays capability-agnostic. Domain-specific baseline
+//! locations are owned by the active capability and synthesised at the
+//! call site (currently `src/commands/slice.rs::artifact_classes`).
 //!
 //! `ProjectConfig::load` is the single choke point for the
 //! `specify_version` floor check: any subcommand that parses
-//! `project.yaml` picks up the check automatically. See
-//! `DECISIONS.md` ("Change I — CLI exit codes and version-floor
-//! semantics") for the surrounding context.
+//! `project.yaml` picks up the check automatically.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -67,12 +65,12 @@ pub struct ProjectConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<specify_tool::Tool>,
 
-    /// `true` when this project is a registry-only **platform hub**
-    /// (RFC-9 §1D). Hubs hold platform-level state — `registry.yaml`,
-    /// `change.md`, `plan.yaml`, `workspace/` — but never appear in their
-    /// own `registry.yaml` and have phase pipelines disabled. Hubs
-    /// **omit** the `capability:` field entirely; the absence of
-    /// `capability:` together with `hub: true` is the discriminator.
+    /// `true` when this project is a registry-only **platform hub**.
+    /// Hubs hold platform-level state — `registry.yaml`, `change.md`,
+    /// `plan.yaml`, `workspace/` — but never appear in their own
+    /// `registry.yaml` and have phase pipelines disabled. Hubs **omit**
+    /// the `capability:` field entirely; the absence of `capability:`
+    /// together with `hub: true` is the discriminator.
     /// Defaults to `false`; serialised only when `true` so non-hub
     /// `project.yaml` files round-trip byte-stable.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -125,6 +123,26 @@ impl ProjectConfig {
         Ok(cfg)
     }
 
+    /// Walk `start_dir` and its ancestors looking for the first directory
+    /// that contains `.specify/project.yaml`. Returns `Ok(None)` when no
+    /// ancestor is initialised.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a filesystem probe fails (other than the
+    /// "not found" case, which is expressed as `Ok(None)` per ancestor).
+    pub fn find_root(start_dir: &Path) -> Result<Option<PathBuf>, Error> {
+        for candidate in start_dir.ancestors() {
+            let config_path = Self::config_path(candidate);
+            match config_path.try_exists() {
+                Ok(true) => return Ok(Some(candidate.to_path_buf())),
+                Ok(false) => {}
+                Err(err) => return Err(Error::Io(err)),
+            }
+        }
+        Ok(None)
+    }
+
     /// Absolute path to `<project_dir>/.specify/project.yaml`.
     #[must_use]
     pub fn config_path(project_dir: &Path) -> PathBuf {
@@ -170,9 +188,8 @@ impl ProjectConfig {
         Self::specify_dir(project_dir).join(".cache")
     }
 
-    /// Absolute path to `<project_dir>/.specify/archive/`. Not listed in
-    /// RFC-1 §`config.rs` but needed by the merge engine; centralised
-    /// here so there is still exactly one place the convention lives.
+    /// Absolute path to `<project_dir>/.specify/archive/`. Centralised
+    /// here so there is exactly one place the convention lives.
     #[must_use]
     pub fn archive_dir(project_dir: &Path) -> PathBuf {
         Self::specify_dir(project_dir).join("archive")
@@ -192,11 +209,11 @@ impl ProjectConfig {
 
 /// Detect whether `project_dir` lives below `.specify/workspace/<peer>/`.
 ///
-/// This is a path-ancestry predicate only. RM-02 context generation uses
-/// the shared posture to skip init-time `AGENTS.md` creation in workspace
-/// clones and to refuse standalone generation there; callers that need a
-/// fully initialized clone can layer `.specify/project.yaml` or plan-file
-/// guards on top.
+/// This is a path-ancestry predicate only. Context generation uses the
+/// shared posture to skip init-time `AGENTS.md` creation in workspace
+/// clones and to refuse standalone generation there; callers that need
+/// a fully initialized clone can layer `.specify/project.yaml` or
+/// plan-file guards on top.
 #[must_use]
 pub fn is_workspace_clone_path(project_dir: &Path) -> bool {
     let components: Vec<_> = project_dir.components().collect();
@@ -335,7 +352,6 @@ mod tests {
         assert_eq!(cfg.capability.as_deref(), Some("omnia"));
         assert!(cfg.tools.is_empty(), "tools must default empty when absent");
 
-        // Hub shape: no `capability:` field, just `hub: true`.
         let tmp = tempdir().unwrap();
         write_config(tmp.path(), "name: demo\nhub: true\n");
         let cfg = ProjectConfig::load(tmp.path()).expect("loads");
@@ -425,5 +441,23 @@ mod tests {
         assert!(!is_workspace_clone_path(Path::new("/repo")));
         assert!(!is_workspace_clone_path(Path::new("/repo/.specify")));
         assert!(!is_workspace_clone_path(Path::new("/repo/.specify/workspace")));
+    }
+
+    #[test]
+    fn find_root_walks_up_to_specify_project() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        let nested = root.join("sub").join("dir");
+        fs::create_dir_all(&nested).expect("mkdir nested");
+        write_config(root, "name: demo\ncapability: omnia\n");
+
+        assert_eq!(ProjectConfig::find_root(root).unwrap().as_deref(), Some(root));
+        assert_eq!(ProjectConfig::find_root(&nested).unwrap().as_deref(), Some(root));
+    }
+
+    #[test]
+    fn find_root_returns_none_outside_initialised_tree() {
+        let tmp = tempdir().unwrap();
+        assert!(ProjectConfig::find_root(tmp.path()).unwrap().is_none());
     }
 }

@@ -3,8 +3,8 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::config::ProjectConfig;
 use specify_change::{Entry, Plan, Severity, Status};
+use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_slice::SliceMetadata;
 

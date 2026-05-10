@@ -11,6 +11,7 @@ readme = "../../README.md"
 
 [dependencies]
 specify-error.workspace = true
+specify-config.workspace = true
 specify-registry.workspace = true
 specify-slice.workspace = true
 serde.workspace = true

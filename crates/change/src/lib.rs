@@ -1,3 +1,8 @@
+#![allow(
+    clippy::multiple_crate_versions,
+    reason = "specify-config (re-exports `specify_tool::Tool`) transitively pulls in Wasmtime/WASI duplicate versions."
+)]
+
 //! Specify change orchestration.
 //!
 //! Plan-driven multi-slice changes, the operator-facing `change.md`

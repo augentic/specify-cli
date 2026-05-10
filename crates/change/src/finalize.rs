@@ -47,10 +47,11 @@
 
 #![allow(clippy::needless_pass_by_value)]
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
+use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_registry::forge::{
     GhClient, PrState, PrView, RealGhClient, SPECIFY_BRANCH_PREFIX, branches_match, project_path,
@@ -58,35 +59,6 @@ use specify_registry::forge::{
 use specify_registry::{Registry, RegistryProject};
 
 use crate::plan::core::{Plan, Status};
-
-// ---------------------------------------------------------------------------
-// Path helpers
-// ---------------------------------------------------------------------------
-//
-// `crate::config::ProjectConfig::{specify_dir, plan_path,
-// change_brief_path, archive_dir}` lived in the binary lib pre-RFC-13
-// chunk 2.4. The lifted crate must not couple back to the binary; the
-// four path helpers are inlined here as `fn`s. They are pure
-// `Path::join` calls and the canonical layout (`registry.yaml` /
-// `plan.yaml` / `change.md` at repo root, `.specify/` for
-// framework-managed state) is fixed by RFC-9 / RFC-13.
-
-fn specify_dir(project_dir: &Path) -> PathBuf {
-    project_dir.join(".specify")
-}
-
-fn plan_path(project_dir: &Path) -> PathBuf {
-    project_dir.join("plan.yaml")
-}
-
-/// Repo-root path of the umbrella operator brief.
-fn change_brief_path(project_dir: &Path) -> PathBuf {
-    project_dir.join("change.md")
-}
-
-fn archive_dir(project_dir: &Path) -> PathBuf {
-    specify_dir(project_dir).join("archive")
-}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -447,7 +419,7 @@ pub fn run<P: Probe>(inputs: Inputs<'_>, probe: &P) -> Result<Outcome, Refusal> 
 
     let initiative_name = inputs.plan.name.clone();
     let expected_branch = format!("{SPECIFY_BRANCH_PREFIX}{initiative_name}");
-    let workspace_base = specify_dir(inputs.project_dir).join("workspace");
+    let workspace_base = ProjectConfig::specify_dir(inputs.project_dir).join("workspace");
 
     // Guard: per-project PR state + dirty clones.
     let mut projects: Vec<ProjectResult> = Vec::with_capacity(inputs.registry.projects.len());
@@ -484,9 +456,9 @@ pub fn run<P: Probe>(inputs: Inputs<'_>, probe: &P) -> Result<Outcome, Refusal> 
     }
 
     // All guards passed — archive (atomic) and optionally clean.
-    let plan_file = plan_path(inputs.project_dir);
-    let brief_file = change_brief_path(inputs.project_dir);
-    let archive_root = archive_dir(inputs.project_dir).join("plans");
+    let plan_file = ProjectConfig::plan_path(inputs.project_dir);
+    let brief_file = ProjectConfig::change_brief_path(inputs.project_dir);
+    let archive_root = ProjectConfig::archive_dir(inputs.project_dir).join("plans");
     match Plan::archive(&plan_file, &brief_file, &archive_root, /* force = */ true) {
         Ok((archived, archived_plans_dir)) => {
             outcome.archived = Some(archived.display().to_string());
@@ -693,7 +665,7 @@ fn clean_clones(workspace_base: &Path, registry: &Registry) -> Vec<String> {
 /// Bubbles up `Plan::load` errors verbatim — a malformed plan is a
 /// real failure, not a "plan absent" sentinel.
 pub fn load_plan(project_dir: &Path) -> Result<Result<Plan, Refusal>, Error> {
-    let plan_file = plan_path(project_dir);
+    let plan_file = ProjectConfig::plan_path(project_dir);
     if !plan_file.exists() {
         return Ok(Err(Refusal::PlanNotFound));
     }

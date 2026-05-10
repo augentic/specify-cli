@@ -6,8 +6,8 @@ use std::path::Path;
 use chrono::Utc;
 use serde::Serialize;
 use serde_json::Value;
-use specify::config::ProjectConfig;
 use specify_capability::Phase;
+use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_slice::{Outcome, Rfc3339Stamp, SliceMetadata, actions as slice_actions};
 

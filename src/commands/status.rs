@@ -9,8 +9,8 @@ use std::io::Write;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::config::ProjectConfig;
 use specify_change::{Plan, Status};
+use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_registry::Registry;
 

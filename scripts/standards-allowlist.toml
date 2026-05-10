@@ -47,13 +47,13 @@ ritual-doc-paragraphs = 2
 module-line-count = 229
 
 [file."crates/change/src/finalize.rs"]
-rfc-numbers-in-code = 7
+rfc-numbers-in-code = 4
 ritual-doc-paragraphs = 1
-module-line-count = 1569
+module-line-count = 1541
 
 [file."crates/change/src/lib.rs"]
 rfc-numbers-in-code = 4
-module-line-count = 35
+module-line-count = 40
 
 [file."crates/change/src/plan.rs"]
 rfc-numbers-in-code = 1
@@ -98,6 +98,10 @@ module-line-count = 1128
 rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 7
 module-line-count = 691
+
+[file."crates/config/src/lib.rs"]
+ritual-doc-paragraphs = 1
+module-line-count = 463
 
 [file."crates/contract/src/main.rs"]
 format-match-dispatch = 1
@@ -495,23 +499,17 @@ inline-dtos = 8
 format-match-dispatch = 7
 module-line-count = 438
 
-[file."src/config.rs"]
-rfc-numbers-in-code = 3
-ritual-doc-paragraphs = 1
-name-suffix-duplication = 1
-module-line-count = 429
-
 [file."src/context.rs"]
-module-line-count = 74
+module-line-count = 62
 
 [file."src/init.rs"]
 rfc-numbers-in-code = 12
 ritual-doc-paragraphs = 1
-module-line-count = 1023
+module-line-count = 1022
 
 [file."src/lib.rs"]
 rfc-numbers-in-code = 1
-module-line-count = 11
+module-line-count = 10
 
 [file."src/main.rs"]
 rfc-numbers-in-code = 1

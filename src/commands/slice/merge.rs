@@ -8,7 +8,7 @@ use std::path::Path;
 
 use chrono::Utc;
 use serde::Serialize;
-use specify::config::{ProjectConfig, is_workspace_clone_path};
+use specify_config::{ProjectConfig, is_workspace_clone_path};
 use specify_error::Error;
 use specify_merge::{
     BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check,

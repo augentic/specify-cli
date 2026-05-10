@@ -5,9 +5,9 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::config::ProjectConfig;
 use specify_capability::ChangeBrief;
 use specify_change::{Finding, Plan, Severity, Status};
+use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_registry::Registry;
 

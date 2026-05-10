@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use specify::config::ProjectConfig;
 use specify_capability::PipelineView;
+use specify_config::ProjectConfig;
 use specify_error::Error;
 
 use crate::cli::OutputFormat;
@@ -24,7 +24,7 @@ impl CommandContext {
     /// the format-aware exit code.
     pub fn require(format: OutputFormat) -> Result<Self, Error> {
         let current_dir = std::env::current_dir().map_err(Error::Io)?;
-        let project_dir = find_project_root(&current_dir)?.ok_or(Error::NotInitialized)?;
+        let project_dir = ProjectConfig::find_root(&current_dir)?.ok_or(Error::NotInitialized)?;
         let config = ProjectConfig::load(&project_dir)?;
         Ok(Self {
             format,
@@ -59,16 +59,4 @@ impl CommandContext {
     pub fn archive_dir(&self) -> PathBuf {
         ProjectConfig::archive_dir(&self.project_dir)
     }
-}
-
-fn find_project_root(start_dir: &Path) -> Result<Option<PathBuf>, Error> {
-    for candidate in start_dir.ancestors() {
-        let config_path = ProjectConfig::config_path(candidate);
-        match config_path.try_exists() {
-            Ok(true) => return Ok(Some(candidate.to_path_buf())),
-            Ok(false) => {}
-            Err(err) => return Err(Error::Io(err)),
-        }
-    }
-    Ok(None)
 }

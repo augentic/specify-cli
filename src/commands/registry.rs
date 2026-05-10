@@ -10,8 +10,8 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::config::ProjectConfig;
 use specify_change::Plan;
+use specify_config::ProjectConfig;
 use specify_error::{Error, is_kebab};
 use specify_registry::{Registry, RegistryProject};
 
