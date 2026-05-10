@@ -496,8 +496,13 @@ module-line-count = 251
 module-line-count = 368
 
 [file."src/commands/context/fences.rs"]
-name-suffix-duplication = 1
-module-line-count = 472
+module-line-count = 14
+
+[file."src/commands/context/fences/parse.rs"]
+module-line-count = 343
+
+[file."src/commands/context/fences/render.rs"]
+module-line-count = 141
 
 [file."src/commands/context/fingerprint.rs"]
 name-suffix-duplication = 2
