@@ -1,7 +1,8 @@
-//! `specify tool {run,list,fetch,show,gc}` (RFC-15 chunk 5).
+//! `specify tool {run,list,fetch,show,gc}` handlers.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 
 use serde::Serialize;
@@ -15,7 +16,7 @@ use specify_tool::{Tool, ToolManifest, ToolPermissions, ToolScope};
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
-use crate::output::{CliResult, emit_response};
+use crate::output::{CliResult, Render, emit};
 
 type CacheKey = (String, String, String);
 
@@ -77,11 +78,56 @@ struct ListBody {
     warnings: Vec<WarningRow>,
 }
 
+impl Render for ListBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        if self.tools.is_empty() {
+            writeln!(w, "No declared tools.")?;
+            return Ok(());
+        }
+        writeln!(w, "name\tversion\tscope\tcache\tcached path")?;
+        for row in &self.tools {
+            writeln!(
+                w,
+                "{}\t{}\t{}:{}\t{}\t{}",
+                row.name,
+                row.version,
+                row.scope,
+                row.scope_detail,
+                row.cache_status,
+                row.cached_path
+            )?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct FetchBody {
     tools: Vec<ToolFetchRow>,
     warnings: Vec<WarningRow>,
+}
+
+impl Render for FetchBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        if self.tools.is_empty() {
+            writeln!(w, "No declared tools to fetch.")?;
+            return Ok(());
+        }
+        for row in &self.tools {
+            let action = if row.fetched { "fetched" } else { "cached" };
+            writeln!(
+                w,
+                "{action}: {} {} [{}:{}] {}",
+                row.row.name,
+                row.row.version,
+                row.row.scope,
+                row.row.scope_detail,
+                row.row.cached_path
+            )?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Serialize)]
@@ -91,6 +137,28 @@ struct ShowBody {
     warnings: Vec<WarningRow>,
 }
 
+impl Render for ShowBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        let row = &self.tool;
+        writeln!(w, "name: {}", row.row.name)?;
+        writeln!(w, "version: {}", row.row.version)?;
+        writeln!(w, "source: {}", row.row.source)?;
+        writeln!(w, "scope: {}:{}", row.row.scope, row.row.scope_detail)?;
+        writeln!(w, "cache: {}", row.row.cache_status)?;
+        writeln!(w, "cached path: {}", row.row.cached_path)?;
+        if let Some(fetched_at) = &row.fetched_at {
+            writeln!(w, "fetched at: {fetched_at}")?;
+        }
+        if let Some(sha256) = &row.sha256 {
+            writeln!(w, "sha256: {sha256}")?;
+        }
+        writeln!(w, "permissions:")?;
+        writeln!(w, "  read: {}", format_permission_list(&row.permissions.read))?;
+        writeln!(w, "  write: {}", format_permission_list(&row.permissions.write))?;
+        Ok(())
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct GcBody {
@@ -98,11 +166,25 @@ struct GcBody {
     warnings: Vec<WarningRow>,
 }
 
+impl Render for GcBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(
+            w,
+            "Removed {} tool cache entrie(s) from current-project scopes.",
+            self.removed.len()
+        )?;
+        for path in &self.removed {
+            writeln!(w, "  {path}")?;
+        }
+        Ok(())
+    }
+}
+
 /// Run a declared WASI tool through the concrete WASI host.
 pub fn run(ctx: &CommandContext, name: String, args: Vec<String>) -> Result<CliResult, Error> {
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
-    let scoped = find_tool(&inventory, &name)?;
+    let scoped = find(&inventory, &name)?;
     let resolved = specify_tool::resolver::resolve(&scoped.scope, &scoped.tool)?;
     let mut run_ctx = RunContext::new(&ctx.project_dir, args);
     if let ToolScope::Capability { capability_dir, .. } = &scoped.scope {
@@ -118,15 +200,13 @@ pub fn run(ctx: &CommandContext, name: String, args: Vec<String>) -> Result<CliR
 pub fn list(ctx: &CommandContext) -> Result<CliResult, Error> {
     let inventory = build_inventory(ctx)?;
     let rows = rows_for(&inventory.tools)?;
-    match ctx.format {
-        OutputFormat::Json => emit_response(ListBody {
-            tools: rows,
-            warnings: inventory.warnings,
-        })?,
-        OutputFormat::Text => {
-            print_tool_rows(&rows);
-            emit_warnings_to_stderr(&inventory.warnings);
-        }
+    let body = ListBody {
+        tools: rows,
+        warnings: inventory.warnings,
+    };
+    emit(ctx.format, &body)?;
+    if matches!(ctx.format, OutputFormat::Text) {
+        emit_warnings_to_stderr(&body.warnings);
     }
     Ok(CliResult::Success)
 }
@@ -134,7 +214,7 @@ pub fn list(ctx: &CommandContext) -> Result<CliResult, Error> {
 /// Fetch one declared tool, or all declared tools when no name is supplied.
 pub fn fetch(ctx: &CommandContext, name: Option<String>) -> Result<CliResult, Error> {
     let inventory = build_inventory(ctx)?;
-    let selected = select_tools(&inventory, name.as_deref())?;
+    let selected = select(&inventory, name.as_deref())?;
     let mut rows = Vec::with_capacity(selected.len());
     for scoped in selected {
         let before = cache_status_for(scoped)?;
@@ -145,29 +225,13 @@ pub fn fetch(ctx: &CommandContext, name: Option<String>) -> Result<CliResult, Er
         });
     }
 
-    match ctx.format {
-        OutputFormat::Json => emit_response(FetchBody {
-            tools: rows,
-            warnings: inventory.warnings,
-        })?,
-        OutputFormat::Text => {
-            if rows.is_empty() {
-                println!("No declared tools to fetch.");
-            } else {
-                for row in &rows {
-                    let action = if row.fetched { "fetched" } else { "cached" };
-                    println!(
-                        "{action}: {} {} [{}:{}] {}",
-                        row.row.name,
-                        row.row.version,
-                        row.row.scope,
-                        row.row.scope_detail,
-                        row.row.cached_path
-                    );
-                }
-            }
-            emit_warnings_to_stderr(&inventory.warnings);
-        }
+    let body = FetchBody {
+        tools: rows,
+        warnings: inventory.warnings,
+    };
+    emit(ctx.format, &body)?;
+    if matches!(ctx.format, OutputFormat::Text) {
+        emit_warnings_to_stderr(&body.warnings);
     }
     Ok(CliResult::Success)
 }
@@ -175,17 +239,15 @@ pub fn fetch(ctx: &CommandContext, name: Option<String>) -> Result<CliResult, Er
 /// Show one declared tool's metadata and cache state.
 pub fn show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let inventory = build_inventory(ctx)?;
-    let scoped = find_tool(&inventory, &name)?;
+    let scoped = find(&inventory, &name)?;
     let row = show_row_for(scoped)?;
-    match ctx.format {
-        OutputFormat::Json => emit_response(ShowBody {
-            tool: row,
-            warnings: inventory.warnings,
-        })?,
-        OutputFormat::Text => {
-            print_show_row(&row);
-            emit_warnings_to_stderr(&inventory.warnings);
-        }
+    let body = ShowBody {
+        tool: row,
+        warnings: inventory.warnings,
+    };
+    emit(ctx.format, &body)?;
+    if matches!(ctx.format, OutputFormat::Text) {
+        emit_warnings_to_stderr(&body.warnings);
     }
     Ok(CliResult::Success)
 }
@@ -207,18 +269,13 @@ pub fn gc(ctx: &CommandContext) -> Result<CliResult, Error> {
     }
     removed.sort();
 
-    match ctx.format {
-        OutputFormat::Json => emit_response(GcBody {
-            removed,
-            warnings: inventory.warnings,
-        })?,
-        OutputFormat::Text => {
-            println!("Removed {} tool cache entrie(s) from current-project scopes.", removed.len());
-            for path in &removed {
-                println!("  {path}");
-            }
-            emit_warnings_to_stderr(&inventory.warnings);
-        }
+    let body = GcBody {
+        removed,
+        warnings: inventory.warnings,
+    };
+    emit(ctx.format, &body)?;
+    if matches!(ctx.format, OutputFormat::Text) {
+        emit_warnings_to_stderr(&body.warnings);
     }
     Ok(CliResult::Success)
 }
@@ -276,7 +333,7 @@ fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<(), Erro
         tools: tools.to_vec(),
     };
     let summaries: Vec<ValidationSummary> =
-        manifest.validate_structure(scope).iter().filter_map(tool_validation_failure).collect();
+        manifest.validate_structure(scope).iter().filter_map(validation_failure).collect();
     if summaries.is_empty() {
         Ok(())
     } else {
@@ -287,7 +344,7 @@ fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<(), Erro
     }
 }
 
-fn tool_validation_failure(result: &ToolValidationResult) -> Option<ValidationSummary> {
+fn validation_failure(result: &ToolValidationResult) -> Option<ValidationSummary> {
     match result {
         ToolValidationResult::Fail {
             rule_id,
@@ -315,7 +372,7 @@ fn warning_row(warning: Warning) -> WarningRow {
     }
 }
 
-fn find_tool<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool, Error> {
+fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool, Error> {
     inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| {
         Error::ToolNotDeclared {
             name: name.to_string(),
@@ -323,11 +380,9 @@ fn find_tool<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool,
     })
 }
 
-fn select_tools<'a>(
-    inventory: &'a Inventory, name: Option<&str>,
-) -> Result<Vec<&'a ScopedTool>, Error> {
+fn select<'a>(inventory: &'a Inventory, name: Option<&str>) -> Result<Vec<&'a ScopedTool>, Error> {
     match name {
-        Some(name) => Ok(vec![find_tool(inventory, name)?]),
+        Some(name) => Ok(vec![find(inventory, name)?]),
         None => Ok(inventory.tools.iter().collect()),
     }
 }
@@ -409,38 +464,6 @@ fn emit_warnings_to_stderr(warnings: &[WarningRow]) {
     for warning in warnings {
         eprintln!("warning: {}: {}", warning.code, warning.message);
     }
-}
-
-fn print_tool_rows(rows: &[ToolRow]) {
-    if rows.is_empty() {
-        println!("No declared tools.");
-        return;
-    }
-    println!("name\tversion\tscope\tcache\tcached path");
-    for row in rows {
-        println!(
-            "{}\t{}\t{}:{}\t{}\t{}",
-            row.name, row.version, row.scope, row.scope_detail, row.cache_status, row.cached_path
-        );
-    }
-}
-
-fn print_show_row(row: &ToolShowRow) {
-    println!("name: {}", row.row.name);
-    println!("version: {}", row.row.version);
-    println!("source: {}", row.row.source);
-    println!("scope: {}:{}", row.row.scope, row.row.scope_detail);
-    println!("cache: {}", row.row.cache_status);
-    println!("cached path: {}", row.row.cached_path);
-    if let Some(fetched_at) = &row.fetched_at {
-        println!("fetched at: {fetched_at}");
-    }
-    if let Some(sha256) = &row.sha256 {
-        println!("sha256: {sha256}");
-    }
-    println!("permissions:");
-    println!("  read: {}", format_permission_list(&row.permissions.read));
-    println!("  write: {}", format_permission_list(&row.permissions.write));
 }
 
 fn format_permission_list(values: &[String]) -> String {

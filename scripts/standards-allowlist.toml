@@ -498,10 +498,7 @@ module-line-count = 59
 module-line-count = 202
 
 [file."src/commands/tool.rs"]
-format-match-dispatch = 4
-rfc-numbers-in-code = 1
-name-suffix-duplication = 1
-module-line-count = 448
+module-line-count = 473
 
 [file."src/commands/workspace.rs"]
 module-line-count = 400
