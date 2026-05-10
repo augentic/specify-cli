@@ -126,6 +126,21 @@ pub fn emit<R: Render>(format: OutputFormat, payload: &R) -> Result<(), Error> {
     }
 }
 
+/// Emit a failure body. Mirrors [`emit`] but routes Text through
+/// stderr — typed failure envelopes (`<Action>ErrBody`) keep the
+/// stderr-on-failure UX that handlers used to spell out with
+/// `eprintln!`, so callers stay free of per-handler format matches.
+pub fn emit_err<R: Render>(format: OutputFormat, payload: &R) -> Result<(), Error> {
+    match format {
+        OutputFormat::Json => emit_response(payload),
+        OutputFormat::Text => {
+            let stderr = std::io::stderr();
+            let mut handle = stderr.lock();
+            payload.render_text(&mut handle).map_err(Error::Io)
+        }
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ErrorResponse {
@@ -134,31 +149,73 @@ pub struct ErrorResponse {
     pub exit_code: u8,
 }
 
+/// JSON row in a validation envelope. Mirrors `ValidationSummary`
+/// field-for-field so domain validators surface uniformly via
+/// `ValidationRow::from_summary`. Callers that need a different row
+/// shape (e.g. plan validate's `level/code/entry/message`) define
+/// their own row type and reuse [`Validation`] for the envelope.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct ValidationErrorResponse {
-    error: String,
-    message: String,
-    exit_code: u8,
-    results: Vec<ValidationResultResponse>,
+pub struct ValidationRow<'a> {
+    pub status: String,
+    pub rule_id: &'a str,
+    pub rule: &'a str,
+    pub detail: Option<&'a str>,
+}
+
+impl<'a> ValidationRow<'a> {
+    #[must_use]
+    pub fn from_summary(summary: &'a ValidationSummary) -> Self {
+        Self {
+            status: summary.status.to_string(),
+            rule_id: &summary.rule_id,
+            rule: &summary.rule,
+            detail: summary.detail.as_deref(),
+        }
+    }
+}
+
+/// Shared validation results envelope. Serialises as `{"results": [...]}`
+/// and renders text by delegating per-row formatting to each row's
+/// [`Render`] impl. Callers wrap it in a typed `*Body` and extend it
+/// with metadata fields via `#[serde(flatten)]`:
+///
+/// - `commands::codex::validate` adds `ok`, `rule-count`, `error-count`.
+/// - `commands::change::plan::lifecycle::validate` adds `plan`, `passed`.
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Validation<R> {
+    pub results: Vec<R>,
+}
+
+impl<R: Serialize + Render> Render for Validation<R> {
+    fn render_text(&self, w: &mut dyn std::io::Write) -> std::io::Result<()> {
+        for row in &self.results {
+            row.render_text(w)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct ValidationResultResponse {
-    status: String,
-    rule_id: String,
-    rule: String,
-    detail: Option<String>,
+struct ValidationErrorResponse<'a> {
+    error: &'static str,
+    message: String,
+    exit_code: u8,
+    #[serde(flatten)]
+    validation: Validation<ValidationRow<'a>>,
 }
 
 pub fn emit_json_error(err: &Error, code: CliResult) {
     if let Error::Validation { results, .. } = err {
         if let Err(serialise_err) = emit_response(ValidationErrorResponse {
-            error: "validation".to_string(),
+            error: "validation",
             message: err.to_string(),
             exit_code: code.code(),
-            results: results.iter().map(validation_result_response).collect(),
+            validation: Validation {
+                results: results.iter().map(ValidationRow::from_summary).collect(),
+            },
         }) {
             eprintln!("error: {err}");
             eprintln!("error: {serialise_err}");
@@ -174,15 +231,6 @@ pub fn emit_json_error(err: &Error, code: CliResult) {
     }) {
         eprintln!("error: {err}");
         eprintln!("error: {serialise_err}");
-    }
-}
-
-fn validation_result_response(summary: &ValidationSummary) -> ValidationResultResponse {
-    ValidationResultResponse {
-        status: summary.status.to_string(),
-        rule_id: summary.rule_id.clone(),
-        rule: summary.rule.clone(),
-        detail: summary.detail.clone(),
     }
 }
 

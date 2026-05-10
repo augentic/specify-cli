@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use specify_change::{Entry, Finding, Plan, Severity};
+use specify_change::{Entry, Plan};
 use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_registry::Registry;
@@ -78,13 +78,6 @@ pub fn require_file(project_dir: &Path) -> Result<PathBuf, Error> {
     Ok(path)
 }
 
-pub(super) const fn level_label(level: &Severity) -> &'static str {
-    match level {
-        Severity::Error => "error",
-        Severity::Warning => "warning",
-    }
-}
-
 /// Emit the stable "go run `specify change plan validate`" pointer when
 /// `change plan next` or `change plan status` is asked to operate on a
 /// structurally broken plan.
@@ -146,32 +139,4 @@ pub(super) fn check_project(project_dir: &Path, project_name: &str) -> Result<()
         }),
         Err(err) => Err(err),
     }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(super) struct ValidationRow<'a> {
-    level: &'a str,
-    code: &'a str,
-    entry: &'a Option<String>,
-    message: &'a str,
-}
-
-pub(super) fn validation_to_json(r: &Finding) -> Value {
-    serde_json::to_value(ValidationRow {
-        level: level_label(&r.level),
-        code: r.code,
-        entry: &r.entry,
-        message: &r.message,
-    })
-    .expect("ValidationRow serialises")
-}
-
-pub(super) fn print_validation_line(r: &Finding) {
-    let level = match r.level {
-        Severity::Error => "ERROR  ",
-        Severity::Warning => "WARNING",
-    };
-    let entry_col = r.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
-    println!("{level} {:<32} {:<24} {}", r.code, entry_col, r.message);
 }

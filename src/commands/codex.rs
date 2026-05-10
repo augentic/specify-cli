@@ -5,11 +5,11 @@ use specify_capability::{
     CodexApplicability, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexProvenance,
     CodexReference, CodexReviewMode, CodexSeverity, ResolvedCodex, ResolvedCodexRule,
 };
-use specify_error::{Error, ValidationSummary};
+use specify_error::Error;
 
 use crate::cli::CodexAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, absolute_string, emit};
+use crate::output::{CliResult, Render, Validation, ValidationRow, absolute_string, emit};
 
 /// Dispatch `specify codex *`.
 pub fn run(ctx: &CommandContext, action: CodexAction) -> Result<CliResult, Error> {
@@ -68,7 +68,7 @@ fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
                     ok: true,
                     rule_count: Some(codex.rules.len()),
                     error_count: 0,
-                    results: Vec::new(),
+                    validation: Validation { results: Vec::new() },
                 },
             )?;
             Ok(CliResult::Success)
@@ -80,7 +80,9 @@ fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
                     ok: false,
                     rule_count: None,
                     error_count: count,
-                    results: results.iter().map(validation_row).collect(),
+                    validation: Validation {
+                        results: results.iter().map(ValidationRow::from_summary).collect(),
+                    },
                 },
             )?;
             Ok(CliResult::ValidationFailed)
@@ -170,7 +172,8 @@ struct ValidateBody<'a> {
     ok: bool,
     rule_count: Option<usize>,
     error_count: usize,
-    results: Vec<ValidationRow<'a>>,
+    #[serde(flatten)]
+    validation: Validation<ValidationRow<'a>>,
 }
 
 impl Render for ValidateBody<'_> {
@@ -179,21 +182,12 @@ impl Render for ValidateBody<'_> {
             return writeln!(w, "Codex OK: {} rule(s)", self.rule_count.unwrap_or(0));
         }
         writeln!(w, "Codex invalid: {} error(s)", self.error_count)?;
-        for r in &self.results {
+        for r in &self.validation.results {
             let detail = r.detail.unwrap_or(r.rule);
             writeln!(w, "  [fail] {}: {detail}", r.rule_id)?;
         }
         Ok(())
     }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ValidationRow<'a> {
-    status: String,
-    rule_id: &'a str,
-    rule: &'a str,
-    detail: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -335,15 +329,6 @@ const fn provenance_fields(provenance: &CodexProvenance) -> ProvenanceFields<'_>
             capability_version: None,
             catalog_name: None,
         },
-    }
-}
-
-fn validation_row(summary: &ValidationSummary) -> ValidationRow<'_> {
-    ValidationRow {
-        status: summary.status.to_string(),
-        rule_id: &summary.rule_id,
-        rule: &summary.rule,
-        detail: summary.detail.as_deref(),
     }
 }
 

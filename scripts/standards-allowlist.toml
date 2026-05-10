@@ -409,7 +409,7 @@ module-line-count = 413
 
 [file."src/commands/change/plan.rs"]
 format-match-dispatch = 1
-module-line-count = 177
+module-line-count = 142
 
 [file."src/commands/change/plan/create.rs"]
 inline-dtos = 2
@@ -422,9 +422,7 @@ rfc-numbers-in-code = 1
 module-line-count = 117
 
 [file."src/commands/change/plan/lifecycle.rs"]
-inline-dtos = 7
-format-match-dispatch = 8
-module-line-count = 349
+module-line-count = 390
 
 [file."src/commands/change/plan/lock.rs"]
 inline-dtos = 3
@@ -438,7 +436,7 @@ name-suffix-duplication = 1
 module-line-count = 257
 
 [file."src/commands/codex.rs"]
-module-line-count = 398
+module-line-count = 383
 
 [file."src/commands/compatibility.rs"]
 module-line-count = 80
@@ -519,6 +517,6 @@ rfc-numbers-in-code = 1
 module-line-count = 44
 
 [file."src/output.rs"]
-format-match-dispatch = 2
-module-line-count = 193
+format-match-dispatch = 3
+module-line-count = 241
 
