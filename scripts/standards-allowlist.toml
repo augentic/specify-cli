@@ -109,12 +109,22 @@ module-line-count = 41
 module-line-count = 66
 
 [file."crates/change/src/plan/doctor/unreachable.rs"]
-module-line-count = 110
+module-line-count = 109
 
 [file."crates/change/src/plan/lock.rs"]
-rfc-numbers-in-code = 2
-ritual-doc-paragraphs = 7
-module-line-count = 691
+module-line-count = 169
+
+[file."crates/change/src/plan/lock/acquire.rs"]
+module-line-count = 175
+
+[file."crates/change/src/plan/lock/pid.rs"]
+module-line-count = 29
+
+[file."crates/change/src/plan/lock/release.rs"]
+module-line-count = 52
+
+[file."crates/change/src/plan/lock/status.rs"]
+module-line-count = 57
 
 [file."crates/config/src/lib.rs"]
 ritual-doc-paragraphs = 1
