@@ -310,6 +310,7 @@ Use the modern Rust module layout: prefer `src/<parent>/<module>.rs` as the modu
 | `ritual-doc-paragraphs` | The boilerplate `Returns an error if the operation fails.` doc paragraph. |
 | `no-op-forwarders` | `let _ = cli.<flag>;` — a parsed-but-unused CLI flag. |
 | `name-suffix-duplication` | `fn foo_<module>` inside `mod <module>` (e.g. `fn show_registry` in `commands/registry.rs`). |
+| `currently-audit` | The word `Currently` in a clap-derive doc comment (`src/cli.rs` and `src/commands/**/cli.rs`). Catches the AGENTS.md `Wired-but-ignored flags` smell ("Currently equivalent to the default …") at PR time. |
 | `module-line-count` | Non-test Rust source file length in lines. Default cap 500; per-file baselines grandfather oversized files until they are split. |
 
 A live count strictly greater than its per-file baseline fails CI; missing predicates default to zero (new files start clean) except `module-line-count`, which defaults to 500.
@@ -324,7 +325,7 @@ A clap-parsed flag that is destructured and silently dropped (`let _ = cli.<flag
 
 ### Wired-but-ignored flags
 
-Flag whose doc-comment says "Currently equivalent to the default …" or whose handler ignores the value is the same defect dressed up as documentation. Drop the flag from clap until the differentiated behaviour exists. `WorkspaceAction`/`ToolAction` audit at every PR — search clap doc-comments for the word "Currently".
+Flag whose doc-comment says "Currently equivalent to the default …" or whose handler ignores the value is the same defect dressed up as documentation. Drop the flag from clap until the differentiated behaviour exists. The `currently-audit` predicate fails any new occurrence of the word `Currently` in a clap-derive doc comment under `src/cli.rs` or `src/commands/**/cli.rs`.
 
 ## Skill / CLI responsibility split (mirrors parent repo)
 

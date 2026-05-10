@@ -28,6 +28,10 @@
 //!   parsed-but-unused flags.
 //! - `name-suffix-duplication` — `fn foo_<module>` inside `mod
 //!   <module>` (e.g. `fn show_registry` in `commands/registry.rs`).
+//! - `currently-audit` — the word `Currently` in a clap-derive doc
+//!   comment (`src/cli.rs` and `src/commands/**/cli.rs`). A doc that
+//!   says "Currently equivalent to the default …" is the AGENTS.md
+//!   `Wired-but-ignored flags` smell.
 //! - `module-line-count` — non-test Rust source file length in lines.
 //!   Default cap is 500; explicit per-file baselines grandfather oversized
 //!   files until they are split.
@@ -130,6 +134,7 @@ struct Counts {
     ritual_doc_paragraphs: u32,
     no_op_forwarders: u32,
     name_suffix_duplication: u32,
+    currently_audit: u32,
     module_line_count: u32,
 }
 
@@ -142,6 +147,7 @@ impl Counts {
             ("ritual-doc-paragraphs", self.ritual_doc_paragraphs),
             ("no-op-forwarders", self.no_op_forwarders),
             ("name-suffix-duplication", self.name_suffix_duplication),
+            ("currently-audit", self.currently_audit),
             ("module-line-count", self.module_line_count),
         ]
         .into_iter()
@@ -155,6 +161,7 @@ impl Counts {
             ritual_doc_paragraphs: self.ritual_doc_paragraphs,
             no_op_forwarders: self.no_op_forwarders,
             name_suffix_duplication: self.name_suffix_duplication,
+            currently_audit: self.currently_audit,
             module_line_count: self.module_line_count,
         }
     }
@@ -173,6 +180,7 @@ fn count_one(path: &Path, source: &str) -> Counts {
     c.ritual_doc_paragraphs = count_regex(&RITUAL_DOC_RE, source);
     c.no_op_forwarders = count_regex(&NO_OP_FORWARDER_RE, &stripped);
     c.name_suffix_duplication = count_name_suffix(path, &stripped);
+    c.currently_audit = count_currently_audit(path, source);
     c.module_line_count = u32::try_from(source.lines().count()).unwrap_or(u32::MAX);
     c
 }
@@ -245,6 +253,31 @@ static RITUAL_DOC_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
 
 static NO_OP_FORWARDER_RE: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| Regex::new(r"let\s+_\s*=\s*cli\.\w+\s*;").expect("static regex"));
+
+// ---------------------------------------------------------------------
+// currently-audit: the word `Currently` in a clap-derive doc comment.
+//
+// Scoped to `src/cli.rs` and `src/commands/**/cli.rs` — the post-CL-MS-CLI
+// clap-derive surface. A doc comment that says "Currently equivalent to the
+// default …" is the AGENTS.md `Wired-but-ignored flags` smell: drop the
+// flag from clap until the differentiated behaviour exists.
+//
+// Matches `Currently` (case-sensitive, word-bounded) in any doc comment
+// line: `///`, `//!`, or `#[doc = "…"]`.
+
+static CURRENTLY_DOC_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(?://[/!]|#\[doc\b).*\bCurrently\b").expect("static regex")
+});
+
+fn count_currently_audit(path: &Path, source: &str) -> u32 {
+    if is_clap_cli_file(path) { count_regex(&CURRENTLY_DOC_RE, source) } else { 0 }
+}
+
+fn is_clap_cli_file(path: &Path) -> bool {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    normalized.ends_with("src/cli.rs")
+        || (normalized.contains("src/commands/") && normalized.ends_with("/cli.rs"))
+}
 
 // ---------------------------------------------------------------------
 // Name-suffix duplication: fn foo_<module> in mod <module>.
@@ -377,6 +410,8 @@ struct FileBaseline {
     #[serde(default)]
     name_suffix_duplication: u32,
     #[serde(default)]
+    currently_audit: u32,
+    #[serde(default)]
     module_line_count: u32,
 }
 
@@ -389,6 +424,7 @@ impl FileBaseline {
             "ritual-doc-paragraphs" => self.ritual_doc_paragraphs,
             "no-op-forwarders" => self.no_op_forwarders,
             "name-suffix-duplication" => self.name_suffix_duplication,
+            "currently-audit" => self.currently_audit,
             "module-line-count" => self.module_line_count,
             _ => 0,
         }
@@ -482,6 +518,7 @@ fn baseline_iter(b: &FileBaseline) -> impl Iterator<Item = (&'static str, u32)> 
         ("ritual-doc-paragraphs", b.ritual_doc_paragraphs),
         ("no-op-forwarders", b.no_op_forwarders),
         ("name-suffix-duplication", b.name_suffix_duplication),
+        ("currently-audit", b.currently_audit),
         ("module-line-count", b.module_line_count),
     ]
     .into_iter()
