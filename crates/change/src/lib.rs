@@ -9,14 +9,7 @@
 //! brief, the `plan.yaml` state machine, and the closure verb
 //! `specify change finalize`.
 //!
-//! Lifted out of the binary lib (`src/initiative_finalize.rs`) and
-//! the per-loop unit crate (`crates/slice/src/{plan,plan_doctor,
-//! lock}.rs`) by RFC-13 chunk 2.4 and renamed from `specify-initiative`
-//! to `specify-change` by RFC-13 chunk 3.4. RFC-13 chunk 3.5 reshaped the
-//! action enums under `specify change`, and chunk 3.7 migrated the on-disk
-//! brief from `initiative.md` to `change.md`.
-//!
-//! Dependency direction (RFC-13 invariant #4):
+//! Dependency direction:
 //!
 //! ```text
 //! specify-change → specify-registry → specify-capability

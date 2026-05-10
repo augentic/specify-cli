@@ -17,19 +17,16 @@ ritual-doc-paragraphs = 2
 module-line-count = 114
 
 [file."crates/capability/src/cache.rs"]
-rfc-numbers-in-code = 1
 ritual-doc-paragraphs = 1
 module-line-count = 97
 
 [file."crates/capability/src/capability.rs"]
-rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 1
-module-line-count = 389
+module-line-count = 388
 
 [file."crates/capability/src/change_brief.rs"]
-rfc-numbers-in-code = 1
 ritual-doc-paragraphs = 3
-module-line-count = 211
+module-line-count = 207
 
 [file."crates/capability/src/codex.rs"]
 ritual-doc-paragraphs = 1
@@ -39,8 +36,7 @@ module-line-count = 316
 module-line-count = 300
 
 [file."crates/capability/src/lib.rs"]
-rfc-numbers-in-code = 2
-module-line-count = 92
+module-line-count = 90
 
 [file."crates/capability/src/pipeline.rs"]
 ritual-doc-paragraphs = 2
@@ -59,12 +55,10 @@ module-line-count = 184
 module-line-count = 80
 
 [file."crates/change/src/lib.rs"]
-rfc-numbers-in-code = 4
-module-line-count = 40
+module-line-count = 33
 
 [file."crates/change/src/plan.rs"]
-rfc-numbers-in-code = 1
-module-line-count = 15
+module-line-count = 14
 
 [file."crates/change/src/plan/core/amend.rs"]
 module-line-count = 370
@@ -156,16 +150,14 @@ module-line-count = 193
 module-line-count = 297
 
 [file."crates/merge/src/artifact_class.rs"]
-rfc-numbers-in-code = 2
-module-line-count = 67
+module-line-count = 62
 
 [file."crates/merge/src/composition.rs"]
 ritual-doc-paragraphs = 1
 module-line-count = 266
 
 [file."crates/merge/src/lib.rs"]
-rfc-numbers-in-code = 3
-module-line-count = 39
+module-line-count = 38
 
 [file."crates/merge/src/merge.rs"]
 ritual-doc-paragraphs = 1
@@ -199,28 +191,23 @@ module-line-count = 154
 module-line-count = 152
 
 [file."crates/registry/src/forge.rs"]
-rfc-numbers-in-code = 1
 ritual-doc-paragraphs = 1
 module-line-count = 144
 
 [file."crates/registry/src/gitignore.rs"]
-rfc-numbers-in-code = 3
 ritual-doc-paragraphs = 1
-module-line-count = 58
+module-line-count = 52
 
 [file."crates/registry/src/lib.rs"]
-rfc-numbers-in-code = 2
-module-line-count = 36
+module-line-count = 32
 
 [file."crates/registry/src/registry.rs"]
-rfc-numbers-in-code = 7
 ritual-doc-paragraphs = 1
-module-line-count = 204
+module-line-count = 198
 
 [file."crates/registry/src/validate.rs"]
-rfc-numbers-in-code = 9
 ritual-doc-paragraphs = 1
-module-line-count = 289
+module-line-count = 285
 
 [file."crates/registry/src/workspace/bootstrap.rs"]
 module-line-count = 110
@@ -250,15 +237,13 @@ module-line-count = 223
 module-line-count = 340
 
 [file."crates/slice/src/actions.rs"]
-rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 8
-module-line-count = 529
+module-line-count = 528
 
 [file."crates/slice/src/atomic.rs"]
 module-line-count = 44
 
 [file."crates/slice/src/journal.rs"]
-rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 2
 module-line-count = 393
 
@@ -275,16 +260,14 @@ module-line-count = 452
 module-line-count = 84
 
 [file."crates/slice/src/timestamp.rs"]
-rfc-numbers-in-code = 1
 module-line-count = 83
 
 [file."crates/spec/src/lib.rs"]
 module-line-count = 324
 
 [file."crates/task/src/lib.rs"]
-rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 1
-module-line-count = 233
+module-line-count = 232
 
 [file."crates/tool/src/cache.rs"]
 module-line-count = 248
@@ -305,8 +288,7 @@ module-line-count = 288
 module-line-count = 393
 
 [file."crates/tool/src/lib.rs"]
-rfc-numbers-in-code = 2
-module-line-count = 327
+module-line-count = 325
 
 [file."crates/tool/src/load.rs"]
 module-line-count = 191
@@ -315,14 +297,12 @@ module-line-count = 191
 module-line-count = 210
 
 [file."crates/tool/src/permissions.rs"]
-rfc-numbers-in-code = 1
 module-line-count = 266
 
 [file."crates/tool/src/resolver.rs"]
 module-line-count = 565
 
 [file."crates/tool/src/validate.rs"]
-rfc-numbers-in-code = 1
 module-line-count = 444
 
 [file."crates/validate/src/compatibility/asyncapi_diff.rs"]
@@ -353,7 +333,6 @@ module-line-count = 353
 module-line-count = 106
 
 [file."crates/validate/src/lib.rs"]
-rfc-numbers-in-code = 3
 module-line-count = 217
 
 [file."crates/validate/src/primitives.rs"]
@@ -384,9 +363,8 @@ module-line-count = 79
 module-line-count = 49
 
 [file."crates/validate/src/run.rs"]
-rfc-numbers-in-code = 1
 ritual-doc-paragraphs = 1
-module-line-count = 232
+module-line-count = 231
 
 [file."crates/validate/src/serialize.rs"]
 module-line-count = 117
@@ -449,7 +427,6 @@ module-line-count = 112
 module-line-count = 62
 
 [file."src/cli.rs"]
-rfc-numbers-in-code = 1
 module-line-count = 149
 
 [file."src/commands.rs"]
@@ -471,14 +448,12 @@ module-line-count = 40
 module-line-count = 127
 
 [file."src/commands/change/plan/cli.rs"]
-rfc-numbers-in-code = 1
 module-line-count = 133
 
 [file."src/commands/change/plan/create.rs"]
 module-line-count = 124
 
 [file."src/commands/change/plan/doctor.rs"]
-rfc-numbers-in-code = 1
 module-line-count = 119
 
 [file."src/commands/change/plan/lifecycle.rs"]
@@ -542,8 +517,7 @@ module-line-count = 222
 module-line-count = 393
 
 [file."src/commands/init.rs"]
-rfc-numbers-in-code = 3
-module-line-count = 192
+module-line-count = 191
 
 [file."src/commands/registry.rs"]
 module-line-count = 616
@@ -600,7 +574,6 @@ module-line-count = 49
 module-line-count = 62
 
 [file."src/main.rs"]
-rfc-numbers-in-code = 1
 module-line-count = 44
 
 [file."src/output.rs"]

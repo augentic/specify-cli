@@ -182,10 +182,6 @@ impl ChangeBrief {
 /// Canonical template shipped by `specify change create`. The
 /// golden-fixture test pins this byte-for-byte; any edit here must be
 /// mirrored in the test constant.
-///
-/// RFC-13 chunk 3.7 refreshed the prose to name the artefact a
-/// "change" (matching the new filename and the surface verbs); the
-/// frontmatter shape is unchanged.
 const CHANGE_TEMPLATE: &str = "\
 ---
 name: {name}

@@ -90,7 +90,7 @@ pub enum Commands {
         action: CodexAction,
     },
 
-    /// WASI tool runner (RFC-15).
+    /// WASI tool runner.
     Tool {
         #[command(subcommand)]
         action: ToolAction,

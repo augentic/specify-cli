@@ -2,8 +2,8 @@
 //! append-only audit log that phase skills (`define`, `build`, `merge`)
 //! write while they run.
 //!
-//! See RFC-2 §"Question Recording" and §"Failure and Resumption" for
-//! the canonical shape and writer contract.
+//! Canonical shape and writer contract: append-only, second-precision
+//! UTC timestamps, no in-place mutation.
 //!
 //! ## Contracts
 //!
@@ -64,7 +64,7 @@ pub struct Journal {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct JournalEntry {
-    /// RFC3339 UTC timestamp.
+    /// Second-precision UTC timestamp (`%Y-%m-%dT%H:%M:%SZ`).
     pub timestamp: Rfc3339Stamp,
     /// Phase that wrote the entry (`define | build | merge`).
     pub step: Phase,

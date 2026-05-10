@@ -7,8 +7,7 @@
 //! - Resolving a `capability` value from `.specify/project.yaml` to
 //!   either a workspace directory or the agent-populated cache
 //!   (see [`Capability::resolve`]). Remote (HTTP) resolution is
-//!   explicitly the agent's job per RFC-1 — the CLI only walks the
-//!   filesystem.
+//!   explicitly the agent's job — the CLI only walks the filesystem.
 //! - Parsing YAML frontmatter on brief markdown files
 //!   (see [`Brief`], [`BriefFrontmatter`]).
 //! - The fully-resolved `capability + briefs` view used by almost every
@@ -18,10 +17,9 @@
 //! - The on-disk `change.md` operator-authored brief at the repo
 //!   root (see [`ChangeBrief`]).
 //!
-//! Registry parsing and shape validation moved out into
-//! `specify-registry` in RFC-13 chunk 2.1; per the RFC's
-//! "platform components are not capabilities" invariant this crate
-//! must not depend on `specify-registry`.
+//! Registry parsing and shape validation live in `specify-registry`;
+//! per the "platform components are not capabilities" invariant this
+//! crate must not depend on `specify-registry`.
 
 mod brief;
 mod cache;

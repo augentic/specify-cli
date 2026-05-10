@@ -3,7 +3,7 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-/// An RFC 3339 timestamp string.
+/// A second-precision UTC timestamp string in `%Y-%m-%dT%H:%M:%SZ` form.
 ///
 /// Stored transparently as a YAML/JSON string; callers are expected to construct via
 /// [`format_rfc3339`](crate::actions::format_rfc3339) or another well-formed

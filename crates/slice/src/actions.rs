@@ -426,8 +426,8 @@ pub fn drop(
 // Internals
 // ---------------------------------------------------------------------------
 
-/// Canonical RFC3339 timestamp shape used by every `.specify/*` writer in
-/// this crate.
+/// Canonical ISO 8601 timestamp shape used by every `.specify/*` writer
+/// in this crate.
 ///
 /// Pinned to the second-precision `%Y-%m-%dT%H:%M:%SZ` form so every
 /// on-disk timestamp matches the regex
@@ -469,8 +469,7 @@ const EXDEV: i32 = 18;
 /// (`move_file_atomic`, `move_dir_atomic`) were identical modulo that
 /// one branch — collapsing them keeps the cross-device semantics in a
 /// single implementation shared by `specify_merge::slice` (archive
-/// move) and `specify_change::plan` (plan archive move, lifted
-/// out of this crate by RFC-13 chunk 2.4).
+/// move) and `specify_change::plan` (plan archive move).
 ///
 /// # Errors
 ///

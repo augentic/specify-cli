@@ -47,7 +47,7 @@ pub enum PlanAction {
         /// Free-text scoping hint for the define step
         #[arg(long)]
         description: Option<String>,
-        /// Target registry project name (RFC-3b)
+        /// Target registry project name
         #[arg(long)]
         project: Option<String>,
         /// Plan-entry `capability` target for project-less entries (e.g. `contracts@v1`)

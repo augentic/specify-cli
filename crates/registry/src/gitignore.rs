@@ -1,13 +1,8 @@
 //! `.gitignore` upkeep for `.specify/`-internal directories.
 //!
-//! Lifted from `src/init.rs` by RFC-13 chunk 2.2 so the registry crate
-//! (which now owns `.specify/workspace/` materialisation) can enforce
-//! the convention without reaching back into the binary lib.
-//!
-//! `init` and `specify workspace sync` both call
-//! [`ensure_specify_gitignore_entries`] directly; RFC-13 chunk 2.3 dropped
-//! the temporary `specify::ensure_specify_gitignore_entries` re-export
-//! from the binary lib.
+//! The registry crate owns `.specify/workspace/` materialisation and so
+//! enforces the convention here. `init` and `specify workspace sync`
+//! both call [`ensure_specify_gitignore_entries`] directly.
 
 use std::fs;
 use std::path::Path;
@@ -23,8 +18,7 @@ const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/works
 /// exactly once (matched with `trim()` per line) in the project
 /// `.gitignore`, appending missing lines with a trailing newline.
 ///
-/// Used by `specify init` and by `specify workspace sync` (RFC-3a
-/// C29).
+/// Used by `specify init` and by `specify workspace sync`.
 ///
 /// # Errors
 ///

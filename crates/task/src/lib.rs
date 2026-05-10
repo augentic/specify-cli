@@ -2,13 +2,12 @@
 //!
 //! The on-disk format is documented in
 //! `plugins/spec/references/specify.md` §"Tasks Document" and §"Skill
-//! Directive Tags". See `DECISIONS.md` ("Change E — Task skill directive
-//! format") for why the skill-directive parser looks for an HTML comment
-//! (`<!-- skill: plugin:skill -->`) rather than the bracket form mentioned
-//! in RFC-1's plan.
+//! Directive Tags". See the workspace `DECISIONS.md` ("Change E — Task
+//! skill directive format") for why the skill-directive parser looks
+//! for an HTML comment (`<!-- skill: plugin:skill -->`).
 //!
-//! Phase 1 ships only `parse_tasks` and `mark_complete`; selection helpers
-//! (`next_pending`, etc.) are deferred per RFC-1 plan line 134.
+//! Public surface: `parse_tasks` and `mark_complete`. Selection
+//! helpers (`next_pending`, etc.) are deliberately not exposed.
 
 use std::sync::OnceLock;
 

@@ -1,4 +1,4 @@
-//! `specify change plan doctor` — RFC-9 §4B.
+//! `specify change plan doctor`.
 //!
 //! Thin handler over [`specify_change::plan_doctor`]: load the
 //! plan + registry, run the doctor pipeline (which is a strict

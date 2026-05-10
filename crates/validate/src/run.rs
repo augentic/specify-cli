@@ -16,8 +16,7 @@ use crate::{BriefContext, Classification, CrossContext, RuleOutcome, ValidationR
 /// Discovers artifacts via the `generates` path on each brief's
 /// frontmatter (expanding `*` via the `glob` crate when present). Briefs
 /// without a `generates` field are skipped because they have no artifact
-/// to inspect — this matches the RFC-1 contract that only define-phase
-/// briefs produce validate-able outputs.
+/// to inspect — only define-phase briefs produce validate-able outputs.
 ///
 /// # Errors
 ///

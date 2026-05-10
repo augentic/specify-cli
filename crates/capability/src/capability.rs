@@ -1,8 +1,7 @@
 //! `Capability`, `Pipeline`, `PipelineEntry`, `Phase`, `ResolvedCapability`,
 //! `CapabilitySource` — the in-memory model of `capability.yaml` plus
 //! the local / cache resolution algorithm. Remote (HTTP) resolution is
-//! explicitly the agent's job per RFC-1; this crate only walks the
-//! filesystem.
+//! explicitly the agent's job; this crate only walks the filesystem.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -111,7 +110,7 @@ impl fmt::Display for Phase {
     }
 }
 
-/// Filename of a post-RFC-13 capability manifest.
+/// Filename of a capability manifest.
 pub const CAPABILITY_FILENAME: &str = "capability.yaml";
 
 impl Capability {

@@ -1,12 +1,11 @@
-//! Registry-shape validators (RFC-3a §"The Registry", RFC-8 §Layer 2,
-//! RFC-9 §1D).
+//! Registry-shape validators.
 //!
 //! Enforces invariants that `serde` cannot express on its own:
 //! `version == 1`, kebab-case project names, non-empty required strings,
 //! unique project names, well-formed URLs, the multi-project description
 //! requirement, and the contract-roles consistency rules. Hub-mode
-//! validation (RFC-9 §1D) layers an additional `hub-cannot-be-project`
-//! check on top of the base shape rules.
+//! validation layers an additional `hub-cannot-be-project` check on top
+//! of the base shape rules.
 //!
 //! The methods are exposed on [`Registry`] itself so callers — including
 //! `Registry::load` — keep the same fluent shape they had pre-extraction.
@@ -21,9 +20,8 @@ impl Registry {
     /// Enforce invariants that serde cannot express on its own:
     /// `version == 1`, kebab-case project names, non-empty required
     /// strings, unique project names, and well-formed `projects[].url`
-    /// values (RFC-3a C28). Returns the first error encountered — the
-    /// convention used elsewhere in the registry crate for fast-fail
-    /// shape validation.
+    /// values. Returns the first error encountered — the convention used
+    /// elsewhere in the registry crate for fast-fail shape validation.
     ///
     /// # Errors
     ///
@@ -100,9 +98,7 @@ impl Registry {
             }
         }
 
-        // --- Contract role invariants (RFC-8 Layer 2; RFC-12 collapsed
-        // the role set to `produces` + `consumes` and dropped the
-        // produce/import mutual-exclusion check) ---
+        // --- Contract role invariants ---
 
         // Invariant 3: Path validity — no absolute or `..` paths.
         for project in &self.projects {
@@ -164,7 +160,7 @@ impl Registry {
         Ok(())
     }
 
-    /// Hub-only shape check (RFC-9 §1D).
+    /// Hub-only shape check.
     ///
     /// Runs the base [`Registry::validate_shape`] first, then layers on
     /// the additional invariant that a **registry-only platform hub**
@@ -202,9 +198,9 @@ impl Registry {
     }
 }
 
-/// RFC-3a C28 — reject malformed `projects[].url` while accepting:
-/// `.`, repo-relative paths, `http(s)://`, `git@host:path`, `ssh://`,
-/// and `git+http(s)://` / `git+ssh://` forms.
+/// Reject malformed `projects[].url` while accepting: `.`,
+/// repo-relative paths, `http(s)://`, `git@host:path`, `ssh://`, and
+/// `git+http(s)://` / `git+ssh://` forms.
 fn validate_project_url(url: &str, idx: usize, project_name: &str) -> Result<(), Error> {
     const ALLOWED_SCHEMES: &[&str] = &["http", "https", "ssh", "git+https", "git+http", "git+ssh"];
 

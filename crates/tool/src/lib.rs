@@ -16,11 +16,9 @@
 //!
 //! # Decisions captured up-front
 //!
-//! These resolve the ambiguities flagged in the RFC-15 readiness review so
-//! implementation chunks do not re-derive them. Where a choice deviates from
-//! a plain reading of the RFC, the rationale is recorded; if any of these
-//! turns out to be wrong on contact with the implementation, fix the plan and
-//! the code together.
+//! These resolve ambiguities surfaced during the readiness review so
+//! implementation chunks do not re-derive them. Where a choice deviates
+//! from a plain reading of the design, the rationale is recorded.
 //!
 //! ## Declaration sites
 //!
@@ -128,7 +126,7 @@
 //! tool-name: <name>
 //! tool-version: <version>
 //! source: <literal source string from manifest>
-//! fetched-at: <RFC-3339 timestamp>
+//! fetched-at: <YYYY-MM-DDThh:mm:ssZ UTC timestamp>
 //! permissions-snapshot:
 //!   read:  [...]
 //!   write: [...]

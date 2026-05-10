@@ -1,11 +1,11 @@
-//! Hardcoded validation rule registry and runner (Pass/Fail/Deferred per
-//! RFC-1a).
+//! Hardcoded validation rule registry and runner (Pass/Fail/Deferred).
 //!
-//! The public surface follows RFC-1 §`validate.rs`:
+//! Public surface:
 //!
 //! - [`ValidationResult`] is re-exported from `specify-capability`;
-//!   that crate is the canonical home (see `DECISIONS.md` §"Change G —
-//!   `ValidationResult` canonical home" for why it doesn't live here).
+//!   that crate is the canonical home (see the workspace `DECISIONS.md`
+//!   §"Change G — `ValidationResult` canonical home" for why it doesn't
+//!   live here).
 //! - [`ValidationReport`] is the structured output produced by
 //!   [`validate_slice`].
 //! - [`Rule`] / [`CrossRule`] declare their [`Classification`]
@@ -60,7 +60,7 @@ pub struct ValidationReport {
 }
 
 /// How the CLI decides a rule's outcome — declared at the rule's
-/// definition site per RFC-1a.
+/// definition site.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Classification {
     /// CLI decides Pass/Fail deterministically.

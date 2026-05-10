@@ -82,7 +82,7 @@ impl CacheMeta {
 
     /// True when the cache on disk was populated from `schema_value`.
     ///
-    /// Encoding (per RFC-1 §cache-meta):
+    /// Encoding:
     /// - Bare names (no `://`) → `schema_url == format!("local:{name}")`.
     /// - URL-shaped values → `schema_url == schema_value` (exact match,
     ///   including `@ref` if present).

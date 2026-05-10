@@ -1,7 +1,7 @@
 //! Read-only forge helpers shared by workspace push/finalize flows.
 //!
-//! RFC-14 removes Specify-owned pull-request merging. This module keeps
-//! the small PR inspection surface still needed by `change finalize`:
+//! Specify does not perform pull-request merging. This module keeps the
+//! small PR inspection surface still needed by `change finalize`:
 //! discover the PR for a `specify/<change>` branch, view its state, and
 //! validate that the head branch is exactly the branch Specify created.
 

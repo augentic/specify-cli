@@ -13,8 +13,8 @@ use crate::output::{CliResult, Render, emit, path_string};
 
 /// Dispatcher for `specify init`.
 ///
-/// Enforces the RFC-13 Phase 1.3 mutual-exclusion invariant between the
-/// `<capability>` positional and `--hub`:
+/// Enforces mutual exclusion between the `<capability>` positional and
+/// `--hub`:
 ///
 /// - regular project init requires `<capability>`;
 /// - hub init requires `--hub` and refuses a `<capability>` positional;
@@ -29,8 +29,8 @@ pub fn run(
     let capability = match (hub, capability) {
         (false, Some(cap)) => Some(cap),
         (true, None) => None,
-        // Both unset, or both set: the diagnostic is the same per
-        // RFC-13 §1.3 — the operator must pick one.
+        // Both unset, or both set: the diagnostic is the same — the
+        // operator must pick one.
         (false, None) | (true, Some(_)) => return Err(Error::InitNeedsCapability),
     };
 
@@ -59,10 +59,9 @@ struct InitBody {
     directories_created: Vec<String>,
     scaffolded_rule_keys: Vec<String>,
     specify_version: String,
-    /// `true` when this init scaffolded a registry-only platform hub
-    /// (RFC-9 §1D). Always present so consumers can distinguish hub
-    /// from regular initialisations without parsing the capability
-    /// name.
+    /// `true` when this init scaffolded a registry-only platform hub.
+    /// Always present so consumers can distinguish hub from regular
+    /// initialisations without parsing the capability name.
     hub: bool,
     #[serde(flatten)]
     context: InitContextBody,
