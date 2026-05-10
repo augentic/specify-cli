@@ -41,7 +41,6 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
             ctx.format,
             &BriefCreateErrBody {
                 action: "init",
-                ok: false,
                 error: "already-exists",
                 path: brief_path.display().to_string(),
                 exit_code: exit.code(),
@@ -59,7 +58,6 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
         ctx.format,
         &BriefCreateBody {
             action: "init",
-            ok: true,
             name,
             path: absolute_string(&brief_path),
         },
@@ -159,7 +157,6 @@ fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliR
 #[serde(rename_all = "kebab-case")]
 struct BriefCreateBody {
     action: &'static str,
-    ok: bool,
     name: String,
     path: String,
 }
@@ -171,16 +168,15 @@ impl Render for BriefCreateBody {
 }
 
 /// Non-standard failure envelope for `change create` colliding with an
-/// existing brief. Tests pin `action`, `ok`, `error`, and the brief
-/// path verbatim, so this body owns its own shape rather than routing
-/// through `output::ErrorResponse`. Triggered by
+/// existing brief. Tests pin `action`, `error`, and the brief path
+/// verbatim, so this body owns its own shape rather than routing
+/// through the default `Error` envelope. Triggered by
 /// [`Error::ChangeBriefExists`]; the typed variant is the source of
 /// truth for the discriminant.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct BriefCreateErrBody {
     action: &'static str,
-    ok: bool,
     error: &'static str,
     path: String,
     exit_code: u8,

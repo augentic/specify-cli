@@ -405,7 +405,6 @@ fn codex_validate_duplicate_ids_exits_two() {
     let value = parse_json(&assert.get_output().stdout);
 
     assert!(value.get("schema-version").is_some(), "JSON envelope must include schema-version");
-    assert_eq!(value["ok"], false);
     assert_eq!(value["error-count"], 1);
     assert_eq!(value["results"][0]["rule-id"], "codex.rule-id-unique");
     assert!(

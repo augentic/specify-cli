@@ -67,7 +67,6 @@ fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
             emit(
                 ctx.format,
                 &ValidateBody {
-                    ok: true,
                     rule_count: Some(codex.rules.len()),
                     error_count: 0,
                     validation: Validation { results: Vec::new() },
@@ -79,7 +78,6 @@ fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
             emit(
                 ctx.format,
                 &ValidateBody {
-                    ok: false,
                     rule_count: None,
                     error_count: count,
                     validation: Validation {
@@ -171,7 +169,6 @@ impl Render for ExportBody<'_> {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ValidateBody<'a> {
-    ok: bool,
     rule_count: Option<usize>,
     error_count: usize,
     #[serde(flatten)]
@@ -180,7 +177,7 @@ struct ValidateBody<'a> {
 
 impl Render for ValidateBody<'_> {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.ok {
+        if self.error_count == 0 {
             return writeln!(w, "Codex OK: {} rule(s)", self.rule_count.unwrap_or(0));
         }
         writeln!(w, "Codex invalid: {} error(s)", self.error_count)?;

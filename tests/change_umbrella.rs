@@ -1836,7 +1836,7 @@ projects:
         assert_eq!(assert.get_output().status.code(), Some(0));
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
         assert_eq!(actual["registry"], Value::Null);
-        assert_eq!(actual["ok"], true);
+        assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
 
         let text =
             specify().current_dir(project.root()).args(["registry", "validate"]).assert().success();
@@ -1858,7 +1858,7 @@ projects:
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["ok"], true);
+        assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
         let registry = actual["registry"].as_object().expect("registry object");
         assert_eq!(registry["version"], 1);
     }
@@ -1874,7 +1874,7 @@ projects:
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["ok"], true);
+        assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
         let projects = actual["registry"]["projects"].as_array().expect("projects array");
         assert_eq!(projects.len(), 3);
     }
@@ -1889,13 +1889,12 @@ projects:
             .args(["--format", "json", "registry", "validate"])
             .assert()
             .failure();
-        assert_eq!(assert.get_output().status.code(), Some(2));
+        assert_eq!(assert.get_output().status.code(), Some(1));
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["ok"], false);
-        assert_eq!(actual["kind"], "config");
-        let msg = actual["error"].as_str().expect("error string");
-        assert!(msg.contains("version"), "error should mention version, got: {msg}");
-        assert!(msg.contains("registry.yaml"), "error should mention registry.yaml, got: {msg}");
+        assert_eq!(actual["error"], "registry-version-unsupported");
+        let msg = actual["message"].as_str().expect("message string");
+        assert!(msg.contains("version"), "message should mention version, got: {msg}");
+        assert!(msg.contains("registry.yaml"), "message should mention registry.yaml, got: {msg}");
     }
 
     #[test]
@@ -1920,11 +1919,11 @@ projects:
             .args(["--format", "json", "registry", "validate"])
             .assert()
             .failure();
-        assert_eq!(assert.get_output().status.code(), Some(2));
+        assert_eq!(assert.get_output().status.code(), Some(1));
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["ok"], false);
-        let msg = actual["error"].as_str().expect("error string");
-        assert!(msg.contains("duplicate"), "error should mention duplicate, got: {msg}");
+        assert_eq!(actual["error"], "registry-project-name-duplicate");
+        let msg = actual["message"].as_str().expect("message string");
+        assert!(msg.contains("duplicate"), "message should mention duplicate, got: {msg}");
     }
 
     #[test]
@@ -1943,7 +1942,7 @@ projects:
 
         let assert =
             specify().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
-        assert_eq!(assert.get_output().status.code(), Some(2));
+        assert_eq!(assert.get_output().status.code(), Some(1));
     }
 
     #[test]
@@ -1953,7 +1952,7 @@ projects:
 
         let assert =
             specify().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
-        assert_eq!(assert.get_output().status.code(), Some(2));
+        assert_eq!(assert.get_output().status.code(), Some(1));
     }
 
     /// Plan "Done when" criterion: on a scaffolded project with no
@@ -2025,7 +2024,7 @@ inputs: []
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
         assert_eq!(actual["action"], "init");
-        assert_eq!(actual["ok"], true);
+        assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
         assert_eq!(actual["name"], "my-change");
         assert!(
             actual["path"].as_str().expect("path string").ends_with("/change.md"),
@@ -2046,7 +2045,6 @@ inputs: []
             .failure();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
         assert_eq!(actual["action"], "init");
-        assert_eq!(actual["ok"], false);
         assert_eq!(actual["error"], "already-exists");
 
         // And the file must be untouched.

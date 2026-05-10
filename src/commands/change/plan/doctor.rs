@@ -38,7 +38,6 @@ struct DiagnosticRow<'a> {
 struct DoctorBody {
     plan: PlanRef,
     diagnostics: Vec<Value>,
-    ok: bool,
 }
 
 impl Render for DoctorBody {
@@ -94,7 +93,6 @@ pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
         &DoctorBody {
             plan: plan_ref(&plan, &plan_path),
             diagnostics: rows,
-            ok: !has_errors,
         },
     )?;
 

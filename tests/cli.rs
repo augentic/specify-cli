@@ -390,7 +390,7 @@ fn init_hub_then_registry_validate_succeeds_on_empty_projects() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["ok"], true);
+    assert!(value["error"].is_null(), "success envelope must omit error: {value}");
 }
 
 #[test]
@@ -421,16 +421,15 @@ fn init_hub_then_registry_validate_rejects_dot_url_with_hub_diagnostic() {
         .args(["--format", "json", "registry", "validate"])
         .assert()
         .failure();
-    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_eq!(assert.get_output().status.code(), Some(1));
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["ok"], false);
-    let msg = value["error"].as_str().expect("error string");
-    assert!(
-        msg.contains("hub-cannot-be-project"),
-        "error must carry the stable diagnostic code, got: {msg}"
+    assert_eq!(
+        value["error"], "hub-cannot-be-project",
+        "error must carry the stable diagnostic code, got: {value}"
     );
-    assert!(msg.contains("registry.yaml"), "error must scope the file: {msg}");
+    let msg = value["message"].as_str().expect("message string");
+    assert!(msg.contains("registry.yaml"), "message must scope the file: {msg}");
 }
 
 /// Tiny YAML→JSON helper — we only need it for the hub on-disk shape
@@ -477,7 +476,7 @@ fn registry_add_creates_entry_and_round_trips_through_show() {
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert_eq!(value["schema-version"], 4);
-    assert_eq!(value["ok"], true);
+    assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["added"]["name"], "alpha");
     assert_eq!(value["added"]["url"], "git@github.com:augentic/alpha.git");
     assert_eq!(value["added"]["capability"], "omnia@v1");
@@ -592,7 +591,7 @@ fn registry_remove_succeeds_and_round_trips() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["ok"], true);
+    assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["removed"], "beta");
     assert!(
         value["warnings"].as_array().expect("warnings array").is_empty(),
@@ -649,7 +648,7 @@ fn registry_remove_warns_when_plan_references_project() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["ok"], true);
+    assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["removed"], "alpha");
     let warnings = value["warnings"].as_array().expect("warnings array");
     assert_eq!(warnings.len(), 1, "expected a single warning, got: {value}");
@@ -1182,9 +1181,9 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
     assert_eq!(value["schema-version"], 4);
-    assert_eq!(value["ok"], false, "errors must mark ok=false: {value}");
 
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
+    assert!(!diagnostics.is_empty(), "doctor with broken plan must surface diagnostics: {value}");
     let codes: Vec<&str> = diagnostics.iter().filter_map(|d| d["code"].as_str()).collect();
 
     for expected in
@@ -1344,11 +1343,10 @@ fn plan_doctor_healthy_plan_exits_zero() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["ok"], true, "empty plan must be ok");
     assert_eq!(
         value["diagnostics"].as_array().unwrap().len(),
         0,
-        "empty plan must emit zero diagnostics"
+        "empty plan must emit zero diagnostics: {value}"
     );
 }
 

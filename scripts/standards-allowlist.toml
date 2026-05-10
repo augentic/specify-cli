@@ -466,7 +466,7 @@ module-line-count = 230
 module-line-count = 38
 
 [file."src/commands/change.rs"]
-module-line-count = 402
+module-line-count = 398
 
 [file."src/commands/change/cli.rs"]
 module-line-count = 40
@@ -483,7 +483,7 @@ module-line-count = 124
 
 [file."src/commands/change/plan/doctor.rs"]
 rfc-numbers-in-code = 1
-module-line-count = 121
+module-line-count = 119
 
 [file."src/commands/change/plan/lifecycle.rs"]
 module-line-count = 388
@@ -495,7 +495,7 @@ module-line-count = 149
 module-line-count = 213
 
 [file."src/commands/codex.rs"]
-module-line-count = 385
+module-line-count = 382
 
 [file."src/commands/codex/cli.rs"]
 module-line-count = 22
@@ -551,7 +551,7 @@ rfc-numbers-in-code = 3
 module-line-count = 196
 
 [file."src/commands/registry.rs"]
-module-line-count = 656
+module-line-count = 618
 
 [file."src/commands/registry/cli.rs"]
 module-line-count = 37

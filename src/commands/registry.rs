@@ -51,38 +51,19 @@ fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
     // init`, in which case there is no hub flag to honour and the base
     // shape check is the right behaviour.
     let hub_mode = ProjectConfig::load(&ctx.project_dir).is_ok_and(|cfg| cfg.hub);
-    let result = match Registry::load(&ctx.project_dir) {
-        Ok(Some(reg)) if hub_mode => reg.validate_shape_hub().map(|()| Some(reg)),
-        other => other,
-    };
-    match result {
-        Ok(registry) => {
-            emit(
-                ctx.format,
-                &ValidateBody {
-                    registry,
-                    path,
-                    ok: true,
-                    hub_mode,
-                },
-            )?;
-            Ok(CliResult::Success)
-        }
-        Err(err) => {
-            let exit = CliResult::ValidationFailed;
-            emit(
-                ctx.format,
-                &ValidateErrBody {
-                    path,
-                    ok: false,
-                    error: err.to_string(),
-                    kind: "config",
-                    exit_code: exit.code(),
-                },
-            )?;
-            Ok(exit)
-        }
+    let registry = Registry::load(&ctx.project_dir)?;
+    if hub_mode && let Some(reg) = registry.as_ref() {
+        reg.validate_shape_hub()?;
     }
+    emit(
+        ctx.format,
+        &ValidateBody {
+            registry,
+            path,
+            hub_mode,
+        },
+    )?;
+    Ok(CliResult::Success)
 }
 
 fn add(
@@ -157,7 +138,6 @@ fn add(
             registry,
             path: path.display().to_string(),
             added,
-            ok: true,
         },
     )?;
     Ok(CliResult::Success)
@@ -201,7 +181,6 @@ fn remove(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
             path: path.display().to_string(),
             removed: name,
             warnings,
-            ok: true,
         },
     )?;
     Ok(CliResult::Success)
@@ -287,7 +266,6 @@ impl Render for ShowBody {
 struct ValidateBody {
     registry: Option<Registry>,
     path: String,
-    ok: bool,
     #[serde(skip)]
     hub_mode: bool,
 }
@@ -308,27 +286,10 @@ impl Render for ValidateBody {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct ValidateErrBody {
-    path: String,
-    ok: bool,
-    error: String,
-    kind: &'static str,
-    exit_code: u8,
-}
-
-impl Render for ValidateErrBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "error: {}", self.error)
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
 struct AddBody {
     registry: Registry,
     path: String,
     added: RegistryProject,
-    ok: bool,
 }
 
 impl Render for AddBody {
@@ -345,7 +306,6 @@ struct RemoveBody {
     path: String,
     removed: String,
     warnings: Vec<String>,
-    ok: bool,
 }
 
 impl Render for RemoveBody {
