@@ -502,15 +502,6 @@ module-line-count = 438
 [file."src/context.rs"]
 module-line-count = 62
 
-[file."src/init.rs"]
-rfc-numbers-in-code = 12
-ritual-doc-paragraphs = 1
-module-line-count = 1022
-
-[file."src/lib.rs"]
-rfc-numbers-in-code = 1
-module-line-count = 10
-
 [file."src/main.rs"]
 rfc-numbers-in-code = 1
 module-line-count = 44

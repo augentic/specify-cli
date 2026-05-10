@@ -2072,6 +2072,7 @@ dependencies = [
  "specify-change",
  "specify-config",
  "specify-error",
+ "specify-init",
  "specify-merge",
  "specify-registry",
  "specify-slice",
@@ -2146,6 +2147,19 @@ version = "0.3.0"
 dependencies = [
  "serde-saphyr",
  "thiserror",
+]
+
+[[package]]
+name = "specify-init"
+version = "0.3.0"
+dependencies = [
+ "chrono",
+ "serde-saphyr",
+ "specify-capability",
+ "specify-config",
+ "specify-error",
+ "specify-registry",
+ "tempfile",
 ]
 
 [[package]]

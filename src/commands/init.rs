@@ -2,9 +2,9 @@ use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use specify::init::{InitOptions, InitResult, VersionMode, init};
 use specify_config::{ProjectConfig, is_workspace_clone_path};
 use specify_error::Error;
+use specify_init::{InitOptions, InitResult, VersionMode, init};
 
 use crate::cli::OutputFormat;
 use crate::commands::context;

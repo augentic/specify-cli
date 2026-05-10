@@ -13,14 +13,11 @@ readme = "README.md"
 name = "specify"
 path = "src/main.rs"
 
-[lib]
-name = "specify"
-path = "src/lib.rs"
-
 [dependencies]
 specify-error.workspace = true
 specify-capability.workspace = true
 specify-config.workspace = true
+specify-init.workspace = true
 specify-registry.workspace = true
 specify-spec.workspace = true
 specify-merge.workspace = true
@@ -54,6 +51,7 @@ members = [
     "crates/error",
     "crates/capability",
     "crates/config",
+    "crates/init",
     "crates/registry",
     "crates/spec",
     "crates/merge",
@@ -125,6 +123,7 @@ unused_result_ok = "warn"
 specify-error = { path = "crates/error" }
 specify-capability = { path = "crates/capability" }
 specify-config = { path = "crates/config" }
+specify-init = { path = "crates/init" }
 specify-registry = { path = "crates/registry" }
 specify-spec = { path = "crates/spec" }
 specify-merge = { path = "crates/merge" }
