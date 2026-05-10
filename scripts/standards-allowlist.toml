@@ -110,6 +110,24 @@ module-line-count = 142
 [file."crates/error/src/lib.rs"]
 module-line-count = 413
 
+[file."crates/init/src/cache.rs"]
+module-line-count = 89
+
+[file."crates/init/src/capability_uri.rs"]
+module-line-count = 201
+
+[file."crates/init/src/git.rs"]
+module-line-count = 80
+
+[file."crates/init/src/hub.rs"]
+module-line-count = 249
+
+[file."crates/init/src/lib.rs"]
+module-line-count = 193
+
+[file."crates/init/src/regular.rs"]
+module-line-count = 297
+
 [file."crates/merge/src/artifact_class.rs"]
 rfc-numbers-in-code = 2
 module-line-count = 67
@@ -452,11 +470,7 @@ rfc-numbers-in-code = 3
 module-line-count = 196
 
 [file."src/commands/registry.rs"]
-inline-dtos = 7
-format-match-dispatch = 7
-rfc-numbers-in-code = 3
-name-suffix-duplication = 7
-module-line-count = 924
+module-line-count = 668
 
 [file."src/commands/slice.rs"]
 module-line-count = 90
