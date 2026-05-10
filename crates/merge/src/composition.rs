@@ -52,7 +52,7 @@ pub enum MergeOp {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn merge_composition(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Error> {
+pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Error> {
     let delta_doc: Value = serde_saphyr::from_str(delta_text).map_err(|e| Error::Diag {
         code: "composition-delta-malformed",
         detail: format!("failed to parse composition delta: {e}"),
@@ -160,7 +160,7 @@ mod tests {
     fn screens_creates_baseline() {
         let delta =
             "version: 1\nscreens:\n  home:\n    title: Home\n  settings:\n    title: Settings\n";
-        let result = merge_composition(None, delta).unwrap();
+        let result = merge(None, delta).unwrap();
         assert_eq!(result.output, delta);
         assert_eq!(result.operations, vec![MergeOp::CreatedBaseline { screen_count: 2 }]);
     }
@@ -169,7 +169,7 @@ mod tests {
     fn delta_adds_screen() {
         let baseline = "version: 1\nscreens:\n  home:\n    title: Home\n";
         let delta = "delta:\n  added:\n    settings:\n      title: Settings\n";
-        let result = merge_composition(Some(baseline), delta).unwrap();
+        let result = merge(Some(baseline), delta).unwrap();
         assert!(result.output.contains("settings"));
         assert!(result.output.contains("home"));
         assert_eq!(
@@ -184,7 +184,7 @@ mod tests {
     fn delta_modifies_screen() {
         let baseline = "version: 1\nscreens:\n  home:\n    title: Home\n";
         let delta = "delta:\n  modified:\n    home:\n      title: Home v2\n";
-        let result = merge_composition(Some(baseline), delta).unwrap();
+        let result = merge(Some(baseline), delta).unwrap();
         assert!(result.output.contains("Home v2"));
         assert_eq!(
             result.operations,
@@ -199,7 +199,7 @@ mod tests {
         let baseline =
             "version: 1\nscreens:\n  home:\n    title: Home\n  settings:\n    title: Settings\n";
         let delta = "delta:\n  removed:\n    settings:\n      reason: deprecated\n";
-        let result = merge_composition(Some(baseline), delta).unwrap();
+        let result = merge(Some(baseline), delta).unwrap();
         assert!(!result.output.contains("settings"));
         assert!(result.output.contains("home"));
         assert_eq!(
@@ -214,7 +214,7 @@ mod tests {
     fn duplicate_add_errors() {
         let baseline = "version: 1\nscreens:\n  home:\n    title: Home\n";
         let delta = "delta:\n  added:\n    home:\n      title: Another Home\n";
-        let err = merge_composition(Some(baseline), delta).unwrap_err();
+        let err = merge(Some(baseline), delta).unwrap_err();
         match err {
             Error::Diag { code, detail } => {
                 assert_eq!(code, "composition-screen-conflict");
@@ -228,7 +228,7 @@ mod tests {
     fn missing_screen_errors() {
         let baseline = "version: 1\nscreens:\n  home:\n    title: Home\n";
         let delta = "delta:\n  modified:\n    ghost:\n      title: Ghost\n";
-        let err = merge_composition(Some(baseline), delta).unwrap_err();
+        let err = merge(Some(baseline), delta).unwrap_err();
         match err {
             Error::Diag { code, detail } => {
                 assert_eq!(code, "composition-screen-conflict");
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn missing_screens_and_delta_errors() {
         let delta = "version: 1\nfoo: bar\n";
-        let err = merge_composition(None, delta).unwrap_err();
+        let err = merge(None, delta).unwrap_err();
         match err {
             Error::Diag { code, detail } => {
                 assert_eq!(code, "composition-delta-empty");
@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn delta_on_empty_baseline() {
         let delta = "delta:\n  added:\n    home:\n      title: Home\n";
-        let result = merge_composition(None, delta).unwrap();
+        let result = merge(None, delta).unwrap();
         assert!(result.output.contains("home"));
         assert_eq!(
             result.operations,

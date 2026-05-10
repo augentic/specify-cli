@@ -7,8 +7,8 @@
 //! - [`merge`] — pure in-memory merge of one delta into one (optional) baseline.
 //! - [`validate_baseline`] — post-merge coherence checks, ported from the
 //!   Python `validate_baseline` (preserves one documented regex quirk).
-//! - [`merge_slice`] — transactional multi-class merge + archive that consumes
-//!   [`specify_slice::SliceMetadata`] plus a caller-supplied
+//! - [`slice::commit`] — transactional multi-class merge + archive that
+//!   consumes [`specify_slice::SliceMetadata`] plus a caller-supplied
 //!   `&[ArtifactClass]` slice (RFC-13 §"Domain behavior is encoded in
 //!   Rust"); discovers per-class staged content, promotes it through the
 //!   class's [`MergeStrategy`], and moves the slice directory under
@@ -27,13 +27,13 @@
 mod artifact_class;
 pub mod composition;
 mod merge;
-mod slice;
+pub mod slice;
 mod validate;
 
 pub use artifact_class::{ArtifactClass, MergeStrategy};
 pub use merge::{MergeOperation, MergeResult, merge};
 pub use slice::{
     BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, PreviewResult,
-    conflict_check, merge_slice, preview_slice,
+    conflict_check,
 };
 pub use validate::validate_baseline;

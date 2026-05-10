@@ -9,7 +9,7 @@ use specify_init::{InitOptions, InitResult, VersionMode, init};
 use crate::cli::OutputFormat;
 use crate::commands::context;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, absolute_string, emit};
+use crate::output::{CliResult, Render, emit, path_string};
 
 /// Dispatcher for `specify init`.
 ///
@@ -125,14 +125,10 @@ fn emit_init_result(
     format: OutputFormat, result: &InitResult, hub: bool, context_generation: InitContextGeneration,
 ) -> Result<CliResult, Error> {
     let body = InitBody {
-        config_path: absolute_string(&result.config_path),
+        config_path: path_string(&result.config_path),
         capability_name: result.capability_name.clone(),
         cache_present: result.cache_present,
-        directories_created: result
-            .directories_created
-            .iter()
-            .map(|p| absolute_string(p))
-            .collect(),
+        directories_created: result.directories_created.iter().map(|p| path_string(p)).collect(),
         scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
         specify_version: result.specify_version.clone(),
         hub,

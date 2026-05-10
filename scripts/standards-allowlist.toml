@@ -161,7 +161,6 @@ module-line-count = 67
 
 [file."crates/merge/src/composition.rs"]
 ritual-doc-paragraphs = 1
-name-suffix-duplication = 1
 module-line-count = 266
 
 [file."crates/merge/src/lib.rs"]
@@ -173,7 +172,6 @@ ritual-doc-paragraphs = 1
 module-line-count = 356
 
 [file."crates/merge/src/slice.rs"]
-name-suffix-duplication = 2
 module-line-count = 332
 
 [file."crates/merge/src/slice/parse.rs"]
@@ -262,7 +260,6 @@ module-line-count = 44
 [file."crates/slice/src/journal.rs"]
 rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 2
-name-suffix-duplication = 1
 module-line-count = 393
 
 [file."crates/slice/src/lib.rs"]
@@ -459,7 +456,6 @@ module-line-count = 149
 module-line-count = 123
 
 [file."src/commands/capability.rs"]
-name-suffix-duplication = 1
 module-line-count = 230
 
 [file."src/commands/capability/cli.rs"]
@@ -534,8 +530,7 @@ module-line-count = 343
 module-line-count = 141
 
 [file."src/commands/context/fingerprint.rs"]
-name-suffix-duplication = 2
-module-line-count = 209
+module-line-count = 207
 
 [file."src/commands/context/generate.rs"]
 module-line-count = 150
@@ -548,10 +543,10 @@ module-line-count = 393
 
 [file."src/commands/init.rs"]
 rfc-numbers-in-code = 3
-module-line-count = 196
+module-line-count = 192
 
 [file."src/commands/registry.rs"]
-module-line-count = 618
+module-line-count = 616
 
 [file."src/commands/registry/cli.rs"]
 module-line-count = 37
@@ -572,7 +567,7 @@ module-line-count = 180
 module-line-count = 218
 
 [file."src/commands/slice/merge.rs"]
-module-line-count = 475
+module-line-count = 474
 
 [file."src/commands/slice/outcome.rs"]
 module-line-count = 261
@@ -610,5 +605,5 @@ module-line-count = 44
 
 [file."src/output.rs"]
 format-match-dispatch = 3
-module-line-count = 268
+module-line-count = 272
 

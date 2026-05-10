@@ -17,7 +17,7 @@ pub enum CliResult {
     /// arguments; we mirror that for argument errors discovered after
     /// parsing (kebab-case checks, mutually exclusive payloads, etc.).
     ArgumentError,
-    Exit(u8),
+    Code(u8),
 }
 
 impl CliResult {
@@ -31,7 +31,7 @@ impl CliResult {
             // JSON envelope.
             Self::ArgumentError | Self::ValidationFailed => 2,
             Self::VersionTooOld => 3,
-            Self::Exit(code) => code,
+            Self::Code(code) => code,
         }
     }
 }
@@ -56,9 +56,10 @@ impl From<&Error> for CliResult {
     }
 }
 
-/// JSON contract version emitted on every structured response.
+/// JSON envelope version emitted on every structured response (the
+/// `schema-version` field of the wire shape, not a JSON-Schema spec).
 /// Bumping it is a breaking change for skill authors.
-pub const JSON_SCHEMA_VERSION: u64 = 4;
+pub const JSON_ENVELOPE_VERSION: u64 = 4;
 
 pub fn emit_error(format: OutputFormat, err: &Error) -> CliResult {
     let code = CliResult::from(err);
@@ -108,7 +109,7 @@ pub struct JsonEnvelope<T> {
 impl<T: Serialize> JsonEnvelope<T> {
     const fn wrap(payload: T) -> Self {
         Self {
-            schema_version: JSON_SCHEMA_VERSION,
+            schema_version: JSON_ENVELOPE_VERSION,
             payload,
         }
     }
@@ -261,7 +262,10 @@ pub fn emit_json_error(err: &Error, code: CliResult) {
     }
 }
 
-pub fn absolute_string(path: &Path) -> String {
+/// Render `path` as a UTF-8 string, preferring the `canonicalize`
+/// result when the entry exists and falling back to `to_string_lossy`
+/// otherwise.
+pub fn path_string(path: &Path) -> String {
     std::fs::canonicalize(path)
         .ok()
         .map_or_else(|| path.to_string_lossy().into_owned(), |p| p.to_string_lossy().into_owned())

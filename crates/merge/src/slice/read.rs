@@ -178,7 +178,7 @@ pub(super) fn plan_three_way(
                     None
                 };
 
-                match crate::composition::merge_composition(baseline_text.as_deref(), &delta_text) {
+                match crate::composition::merge(baseline_text.as_deref(), &delta_text) {
                     Ok(comp_result) => {
                         let spec_merge_result = MergeResult {
                             output: comp_result.output,

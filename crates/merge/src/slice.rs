@@ -1,10 +1,10 @@
-//! Transactional multi-class merge + archive (`merge_slice`), plus the
-//! no-write `preview_slice` variant and the `conflict_check` baseline
+//! Transactional multi-class merge + archive (`commit`), plus the
+//! no-write `preview` variant and the `conflict_check` baseline
 //! drift detector.
 //!
 //! Everything is computed in memory first. We only touch the filesystem
 //! after every delta has merged cleanly *and* every merged baseline has
-//! passed [`crate::validate_baseline`]. On success `merge_slice`:
+//! passed [`crate::validate_baseline`]. On success `commit`:
 //!
 //!   1. Writes each merged baseline under the
 //!      [`MergeStrategy::ThreeWayMerge`] class's `baseline_dir`, and
@@ -42,7 +42,7 @@ use read::{
 use write::{build_merge_summary, commit_opaque, write_three_way_baselines};
 
 /// One 3-way merged spec entry kept in memory by both
-/// [`preview_slice`] and [`merge_slice`].
+/// [`preview`] and [`commit`].
 ///
 /// `class_name` carries the originating
 /// [`ArtifactClass::name`] so callers can group results without the
@@ -118,7 +118,7 @@ pub struct BaselineConflict {
 /// every file that would be promoted by an
 /// [`MergeStrategy::OpaqueReplace`] class.
 ///
-/// Unlike [`merge_slice`] this does not gate on
+/// Unlike [`commit`] this does not gate on
 /// `LifecycleStatus::Complete` — the define / build / merge skill pipeline
 /// previews while the slice is still `building` or `complete` so the
 /// human can confirm operations before the merge skill commits.
@@ -136,8 +136,8 @@ pub struct BaselineConflict {
 ///   | "merge-read-composition-baseline-failed" }`] for the per-file
 ///   reads that have no `Error::Filesystem` op equivalent.
 /// - Whatever [`Error`] the inner [`crate::merge::merge`] or
-///   [`crate::composition::merge_composition`] surfaces, propagated unchanged.
-pub fn preview_slice(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewResult, Error> {
+///   [`crate::composition::merge`] surfaces, propagated unchanged.
+pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewResult, Error> {
     let three_way = plan_three_way(slice_dir, classes)?;
     let opaque = preview_opaque(classes)?;
     Ok(PreviewResult { three_way, opaque })
@@ -145,7 +145,7 @@ pub fn preview_slice(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<Prev
 
 /// Atomic multi-class merge plus archive.
 ///
-/// Gates on `LifecycleStatus::Complete`, runs [`preview_slice`]'s
+/// Gates on `LifecycleStatus::Complete`, runs [`preview`]'s
 /// in-memory plan, writes each merged baseline, transitions status to
 /// `Merged` with `merged_at`/`completed_at` timestamps, stamps a
 /// `PhaseOutcome { phase: Merge, outcome: Success }` into
@@ -164,7 +164,7 @@ pub fn preview_slice(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<Prev
 ///   [`LifecycleStatus::Complete`] on entry, or when the
 ///   `Complete → Merged` transition is rejected (e.g. terminal-state
 ///   re-entry).
-/// - Every error documented on [`preview_slice`] (the in-memory plan
+/// - Every error documented on [`preview`] (the in-memory plan
 ///   is computed before any writes).
 /// - [`Error::Filesystem`] (`op = "mkdir" | "copy"`) when the commit
 ///   phase fails to create a parent directory or copy an opaque-replace
@@ -175,7 +175,7 @@ pub fn preview_slice(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<Prev
 ///   move fails after metadata has already been flipped.
 /// - Whatever atomic-write [`Error`] [`SliceMetadata::save`] surfaces
 ///   (`Error::Io`, `Error::YamlSer`).
-pub fn merge_slice(
+pub fn commit(
     slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path,
 ) -> Result<Vec<MergePreviewEntry>, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;

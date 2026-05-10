@@ -11,7 +11,7 @@ use specify_error::Error;
 
 use crate::cli::CodexAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, Validation, ValidationRow, absolute_string, emit};
+use crate::output::{CliResult, Render, Validation, ValidationRow, emit, path_string};
 
 /// Dispatch `specify codex *`.
 pub fn run(ctx: &CommandContext, action: CodexAction) -> Result<CliResult, Error> {
@@ -244,7 +244,7 @@ impl<'a> RuleSummary<'a> {
             id: &resolved.rule.frontmatter.id,
             title: &resolved.rule.frontmatter.title,
             severity: severity_label(resolved.rule.frontmatter.severity),
-            source_path: absolute_string(&resolved.rule.path),
+            source_path: path_string(&resolved.rule.path),
             provenance_kind: provenance.kind,
             capability_name: provenance.capability_name,
             capability_version: provenance.capability_version,
@@ -273,7 +273,7 @@ impl<'a> RuleExport<'a> {
             references: &frontmatter.references,
             deprecated: frontmatter.deprecated.as_ref().map(DeprecationExport::from_deprecation),
             body: &rule.body,
-            source_path: absolute_string(&rule.path),
+            source_path: path_string(&rule.path),
             provenance_kind: provenance.kind,
             capability_name: provenance.capability_name,
             capability_version: provenance.capability_version,

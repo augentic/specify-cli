@@ -264,7 +264,7 @@ return Err(Error::Diag {
 });
 ```
 
-The kebab-case identifier in `#[error("…")]` (and in `Error::Diag.code`) is part of the public contract that skills and tests grep for; never rename without bumping `JSON_SCHEMA_VERSION`.
+The kebab-case identifier in `#[error("…")]` (and in `Error::Diag.code`) is part of the public contract that skills and tests grep for; never rename without bumping `JSON_ENVELOPE_VERSION`.
 
 ### `#[non_exhaustive]`
 

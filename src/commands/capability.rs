@@ -159,7 +159,7 @@ pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult,
         Capability::probe_dir(&capability_dir).ok_or_else(|| Error::CapabilityManifestMissing {
             dir: capability_dir.clone(),
         })?;
-    let capability = load_capability(&manifest_path)?;
+    let capability = load_manifest(&manifest_path)?;
     let results = capability.validate_structure();
     let passed = !results.iter().any(|r| matches!(r, ValidationResult::Fail { .. }));
 
@@ -179,7 +179,7 @@ fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
     })
 }
 
-fn load_capability(manifest_path: &Path) -> Result<Capability, Error> {
+fn load_manifest(manifest_path: &Path) -> Result<Capability, Error> {
     let text = std::fs::read_to_string(manifest_path)?;
     let capability: Capability = serde_saphyr::from_str(&text)?;
     Ok(capability)

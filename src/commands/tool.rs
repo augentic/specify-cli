@@ -195,7 +195,7 @@ pub fn run(ctx: &CommandContext, name: String, args: Vec<String>) -> Result<CliR
     let runner = WasiRunner::new()?;
     let exit = runner.run(&resolved, &run_ctx)?;
     let code = u8::try_from(exit.clamp(0, 255)).expect("tool exit code is clamped to u8 range");
-    Ok(if code == 0 { CliResult::Success } else { CliResult::Exit(code) })
+    Ok(if code == 0 { CliResult::Success } else { CliResult::Code(code) })
 }
 
 /// List the merged tool declarations for the current project.

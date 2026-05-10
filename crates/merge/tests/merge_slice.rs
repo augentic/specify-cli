@@ -1,8 +1,8 @@
-//! End-to-end filesystem tests for `merge_slice`.
+//! End-to-end filesystem tests for `specify_merge::slice::commit`.
 //!
 //! Each test builds a throw-away project under `tempfile::TempDir`, seeds a
 //! slice directory with delta specs at `specs/<name>/spec.md`, and drives
-//! `merge_slice` through its happy + sad paths. Discovery is
+//! `slice::commit` through its happy + sad paths. Discovery is
 //! convention-based — no schema or `generates` directive is needed.
 
 use std::fs;
@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use regex::Regex;
 use specify_error::Error;
-use specify_merge::{ArtifactClass, MergeStrategy, OpaqueAction, merge_slice, preview_slice};
+use specify_merge::{ArtifactClass, MergeStrategy, OpaqueAction, slice};
 use specify_slice::{
     LifecycleStatus, METADATA_VERSION, Outcome, Phase, PhaseOutcome, Rfc3339Stamp, SLICES_DIR_NAME,
     SliceMetadata,
@@ -115,7 +115,7 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     let classes = omnia_classes(&slice_dir, &project.root);
 
     let merged =
-        merge_slice(&slice_dir, &classes, &archive_dir).expect("merge_slice should succeed");
+        slice::commit(&slice_dir, &classes, &archive_dir).expect("slice::commit should succeed");
 
     // Results sorted by (class_name, name).
     let names: Vec<&str> = merged.iter().map(|e| e.name.as_str()).collect();
@@ -151,10 +151,10 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     assert_eq!(new_meta.status, LifecycleStatus::Merged);
     assert!(new_meta.completed_at.is_some(), "expected completed_at to be set after merge");
 
-    // merge_slice stamps the phase outcome before archiving. Per
+    // slice::commit stamps the phase outcome before archiving. Per
     // RFC-13 Phase 2.8 the summary is generic — it lists each
     // contributing class name and entry count.
-    let outcome = new_meta.outcome.expect("expected outcome to be stamped by merge_slice");
+    let outcome = new_meta.outcome.expect("expected outcome to be stamped by slice::commit");
     assert_eq!(outcome.phase, Phase::Merge);
     assert_eq!(outcome.outcome, Outcome::Success);
     assert!(outcome.summary.contains("2 specs"), "unexpected summary: {}", outcome.summary);
@@ -175,7 +175,7 @@ fn wrong_precondition_aborts_cleanly() {
     meta.save(&slice_dir).unwrap();
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let err = merge_slice(&slice_dir, &classes, &project.archive_dir())
+    let err = slice::commit(&slice_dir, &classes, &project.archive_dir())
         .expect_err("should refuse on Building status");
     match err {
         Error::Lifecycle { expected, found } => {
@@ -213,7 +213,7 @@ fn coherence_failure_rolls_back_all_writes() {
     .unwrap();
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let err = merge_slice(&slice_dir, &classes, &project.archive_dir())
+    let err = slice::commit(&slice_dir, &classes, &project.archive_dir())
         .expect_err("expected coherence failure");
     match err {
         Error::Diag { detail: msg, .. } => {
@@ -246,7 +246,7 @@ fn coherence_failure_rolls_back_all_writes() {
 fn archive_subdirectory_is_date_prefixed() {
     let project = build_project();
     let classes = omnia_classes(&project.slice_dir(), &project.root);
-    merge_slice(&project.slice_dir(), &classes, &project.archive_dir()).expect("merge ok");
+    slice::commit(&project.slice_dir(), &classes, &project.archive_dir()).expect("merge ok");
 
     let re = Regex::new(r"^\d{4}-\d{2}-\d{2}-feature-x$").unwrap();
     let names: Vec<String> = fs::read_dir(project.archive_dir())
@@ -276,7 +276,7 @@ fn merge_copies_contract_files_to_baseline() {
     fs::write(slice_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write api");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let merged = merge_slice(&slice_dir, &classes, &project.archive_dir()).expect("merge ok");
+    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir()).expect("merge ok");
 
     let baseline_contracts = project.contracts_dir();
     assert!(
@@ -312,7 +312,7 @@ fn merge_replaces_existing_baseline_contract_files() {
         .expect("write new slice");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    merge_slice(&slice_dir, &classes, &project.archive_dir()).expect("merge ok");
+    slice::commit(&slice_dir, &classes, &project.archive_dir()).expect("merge ok");
 
     let content = fs::read_to_string(baseline_contracts.join("schemas/test.yaml")).unwrap();
     assert_eq!(content, "new content\n", "contract file should be replaced");
@@ -332,7 +332,7 @@ fn merge_leaves_untouched_baseline_contract_files() {
     fs::write(slice_dir.join("contracts/schemas/new.yaml"), "new content\n").expect("write new");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    merge_slice(&slice_dir, &classes, &project.archive_dir()).expect("merge ok");
+    slice::commit(&slice_dir, &classes, &project.archive_dir()).expect("merge ok");
 
     assert!(
         baseline_contracts.join("schemas/existing.yaml").is_file(),
@@ -354,7 +354,7 @@ fn merge_without_contracts_dir_works_as_before() {
     assert!(!slice_dir.join("contracts").exists(), "precondition: no contracts dir");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let merged = merge_slice(&slice_dir, &classes, &project.archive_dir()).expect("merge ok");
+    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir()).expect("merge ok");
     assert!(!merged.is_empty(), "should still merge specs");
 
     let baseline_contracts = project.contracts_dir();
@@ -388,14 +388,14 @@ fn find_archived_metadata(project: &Project) -> PhaseOutcome {
 }
 
 // ---------------------------------------------------------------------------
-// preview_slice — contract entries
+// slice::preview — contract entries
 // ---------------------------------------------------------------------------
 
 #[test]
 fn preview_no_contracts_returns_empty_list() {
     let project = build_project();
     let classes = omnia_classes(&project.slice_dir(), &project.root);
-    let result = preview_slice(&project.slice_dir(), &classes).expect("preview should succeed");
+    let result = slice::preview(&project.slice_dir(), &classes).expect("preview should succeed");
     assert!(!result.three_way.is_empty(), "should have spec entries");
     assert!(result.opaque.is_empty(), "should have no opaque-replace entries");
 }
@@ -411,7 +411,7 @@ fn preview_new_contract_files_reported_as_added() {
     fs::write(slice_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let result = preview_slice(&slice_dir, &classes).expect("preview should succeed");
+    let result = slice::preview(&slice_dir, &classes).expect("preview should succeed");
 
     assert_eq!(result.opaque.len(), 2);
     // Sorted by (class_name, relative_path) — both entries are in the
@@ -439,7 +439,7 @@ fn preview_existing_baseline_contracts_reported_as_replaced() {
     fs::write(slice_dir.join("contracts/schemas/order.yaml"), "new\n").expect("write slice");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let result = preview_slice(&slice_dir, &classes).expect("preview should succeed");
+    let result = slice::preview(&slice_dir, &classes).expect("preview should succeed");
 
     assert_eq!(result.opaque.len(), 2);
     let order = result.opaque.iter().find(|c| c.relative_path == "schemas/order.yaml").unwrap();

@@ -363,7 +363,7 @@ pub fn archive(
 ///
 /// Primary writer of [`SliceMetadata::outcome`] for the define and
 /// build phases, and for merge failure/deferred outcomes. The merge
-/// success path is handled by `specify_merge::merge_slice`, which
+/// success path is handled by `specify_merge::slice::commit`, which
 /// stamps the outcome atomically before archiving (the archive move
 /// removes `slice_dir` from `.specify/slices/`, so a post-merge call
 /// to this function would fail with "not found").

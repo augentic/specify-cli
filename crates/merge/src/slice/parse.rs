@@ -1,4 +1,4 @@
-//! Time conversions shared by [`super::merge_slice`] and
+//! Time conversions shared by [`super::commit`] and
 //! [`super::conflict_check`].
 //!
 //! The slice merge engine consumes two flavours of timestamp:

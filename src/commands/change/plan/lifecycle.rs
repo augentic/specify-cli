@@ -7,7 +7,7 @@ use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_registry::Registry;
 
-use super::{PlanRef, absolute_string, load_for_write, plan_ref, require_file};
+use super::{PlanRef, load_for_write, path_string, plan_ref, require_file};
 use crate::context::CommandContext;
 use crate::output::{CliResult, Render, Validation, emit, emit_err};
 
@@ -45,7 +45,7 @@ pub fn create(
         &CreateBody {
             plan: PlanRef {
                 name,
-                path: absolute_string(&plan_path),
+                path: path_string(&plan_path),
             },
         },
     )?;
@@ -199,8 +199,8 @@ pub fn archive(ctx: &CommandContext, force: bool) -> Result<CliResult, Error> {
             emit(
                 ctx.format,
                 &ArchiveBody {
-                    archived: absolute_string(&archived),
-                    archived_plans_dir: archived_plans_dir.as_deref().map(absolute_string),
+                    archived: path_string(&archived),
+                    archived_plans_dir: archived_plans_dir.as_deref().map(path_string),
                     plan: ArchivedPlan { name: plan_name },
                 },
             )?;

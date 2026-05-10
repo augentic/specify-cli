@@ -8,7 +8,7 @@ use crate::cli::OutputFormat;
 
 /// Shared context for every subcommand that operates inside an
 /// initialised `.specify/` project. Created once at the top of each
-/// command handler via [`CommandContext::require`].
+/// command handler via [`CommandContext::load`].
 pub struct CommandContext {
     pub format: OutputFormat,
     pub project_dir: PathBuf,
@@ -22,7 +22,7 @@ impl CommandContext {
     /// Returns `Err(Error)` on failure so callers can propagate with `?`.
     /// The top-level dispatcher (`run_with_project`) converts `Error` to
     /// the format-aware exit code.
-    pub fn require(format: OutputFormat) -> Result<Self, Error> {
+    pub fn load(format: OutputFormat) -> Result<Self, Error> {
         let current_dir = std::env::current_dir().map_err(Error::Io)?;
         let project_dir = ProjectConfig::find_root(&current_dir)?.ok_or(Error::NotInitialized)?;
         let config = ProjectConfig::load(&project_dir)?;

@@ -32,16 +32,16 @@ pub fn run(cli: Cli) -> CliResult {
             name,
             domain,
             hub,
-        } => bare(format, || init::run(format, capability, name, domain, hub)),
+        } => unscoped(format, || init::run(format, capability, name, domain, hub)),
         Commands::Status => with_project(format, status::run),
         Commands::Context { action } => with_project(format, |ctx| context::run(ctx, action)),
         Commands::Capability { action } => match action {
             CapabilityAction::Resolve {
                 capability_value,
                 project_dir,
-            } => bare(format, || capability::resolve(format, capability_value, project_dir)),
+            } => unscoped(format, || capability::resolve(format, capability_value, project_dir)),
             CapabilityAction::Check { capability_dir } => {
-                bare(format, || capability::check(format, capability_dir))
+                unscoped(format, || capability::check(format, capability_dir))
             }
             CapabilityAction::Pipeline { phase, slice } => {
                 with_project(format, |ctx| capability::pipeline(ctx, phase, slice))
@@ -100,7 +100,7 @@ fn with_project<F>(format: OutputFormat, f: F) -> CliResult
 where
     F: FnOnce(&CommandContext) -> Result<CliResult, Error>,
 {
-    let ctx = match CommandContext::require(format) {
+    let ctx = match CommandContext::load(format) {
         Ok(ctx) => ctx,
         Err(err) => return emit_error(format, &err),
     };
@@ -112,7 +112,7 @@ where
 
 /// Run a command that does NOT need project context but may still fail
 /// with an `Error` (e.g. `capability resolve`, `capability check`).
-fn bare<F>(format: OutputFormat, f: F) -> CliResult
+fn unscoped<F>(format: OutputFormat, f: F) -> CliResult
 where
     F: FnOnce() -> Result<CliResult, Error>,
 {

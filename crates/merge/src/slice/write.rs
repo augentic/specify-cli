@@ -3,7 +3,7 @@
 //! summary-string builder stamped into `.metadata.yaml.outcome`.
 //!
 //! Every helper here mutates the filesystem. They are only invoked
-//! from [`super::merge_slice`] *after* the in-memory plan from
+//! from [`super::commit`] *after* the in-memory plan from
 //! [`super::read::plan_three_way`] has merged and validated cleanly,
 //! so partial writes here imply a real disk failure rather than a
 //! recoverable conflict.

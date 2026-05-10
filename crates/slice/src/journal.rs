@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn load_missing_file_returns_empty_journal() {
+    fn load_missing_file_returns_empty() {
         let dir = tempdir().expect("tempdir");
         let journal = Journal::load(dir.path()).expect("load ok");
         assert_eq!(journal, Journal { entries: vec![] });

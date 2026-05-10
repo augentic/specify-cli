@@ -22,7 +22,7 @@ use specify_registry::Registry;
 use crate::cli::{LockAction, PlanAction};
 use crate::context::CommandContext;
 use crate::output::CliResult;
-pub(super) use crate::output::absolute_string;
+pub(super) use crate::output::path_string;
 
 pub fn run(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, Error> {
     match action {

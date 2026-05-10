@@ -66,7 +66,7 @@ pub struct SliceMetadata {
     #[serde(default)]
     pub touched_specs: Vec<TouchedSpec>,
     /// Latest phase outcome. Written atomically by
-    /// `specify slice outcome set` or by `merge_slice` (stamps `Success`
+    /// `specify slice outcome set` or by `specify_merge::slice::commit` (stamps `Success`
     /// before the archive move). New stamps overwrite; history lives in
     /// `journal.yaml`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

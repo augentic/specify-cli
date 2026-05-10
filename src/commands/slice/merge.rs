@@ -11,8 +11,7 @@ use serde::Serialize;
 use specify_config::{ProjectConfig, is_workspace_clone_path};
 use specify_error::Error;
 use specify_merge::{
-    BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check,
-    merge_slice, preview_slice,
+    BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check, slice,
 };
 
 use super::artifact_classes;
@@ -26,7 +25,7 @@ pub(super) fn run(ctx: &CommandContext, name: String) -> Result<CliResult, Error
     let archive_dir = ctx.archive_dir();
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
 
-    let merged = merge_slice(&slice_dir, &classes, &archive_dir)?;
+    let merged = slice::commit(&slice_dir, &classes, &archive_dir)?;
 
     // The merge-owned workspace commit is limited to the baseline spec
     // tree and archived slice. Opaque/generated outputs remain as residue
@@ -52,7 +51,7 @@ pub(super) fn run(ctx: &CommandContext, name: String) -> Result<CliResult, Error
 pub(super) fn preview(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     let slice_dir = ctx.slices_dir().join(&name);
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
-    let result = preview_slice(&slice_dir, &classes)?;
+    let result = slice::preview(&slice_dir, &classes)?;
 
     // The JSON preview surface keeps its `specs` and `contracts` arrays
     // by grouping the engine's class-tagged entries by their `class_name`.

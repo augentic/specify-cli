@@ -42,8 +42,7 @@ fn render_document(
     ctx: &CommandContext,
 ) -> Result<(String, fingerprint::ContextFingerprint), Error> {
     let assembly = assemble_render_input(ctx)?;
-    let aggregate =
-        fingerprint::aggregate_fingerprint(env!("CARGO_PKG_VERSION"), assembly.inputs.clone());
+    let aggregate = fingerprint::aggregate(env!("CARGO_PKG_VERSION"), assembly.inputs.clone());
     let generated = render::render_document_with_fingerprint(&assembly.input, &aggregate);
     let fenced = fences::parse_document(generated.as_bytes())
         .map_err(|err| Error::Diag {
@@ -55,7 +54,7 @@ fn render_document(
             detail: "generated AGENTS.md content must contain a Specify context fence".to_string(),
         })?;
     let context_fingerprint =
-        fingerprint::context_fingerprint(env!("CARGO_PKG_VERSION"), assembly.inputs, fenced.body());
+        fingerprint::for_context(env!("CARGO_PKG_VERSION"), assembly.inputs, fenced.body());
     Ok((generated, context_fingerprint))
 }
 

@@ -13,8 +13,8 @@ The on-disk and CLI vocabulary is unified under `capability`. The legacy
 `schema-name` JSON key were half-renamed in earlier releases; this
 release completes the cut. There is no transitional alias.
 
-- `JSON_SCHEMA_VERSION` bumped from `3` to `4`. Skills that pin a
-  schema version must update.
+- `JSON_ENVELOPE_VERSION` (formerly `JSON_SCHEMA_VERSION`) bumped from
+  `3` to `4`. Skills that pin a schema version must update.
 - CLI flags renamed:
   - `specify slice create --schema X` → `--capability X`
   - `specify registry add --schema X` → `--capability X`
@@ -56,6 +56,14 @@ the next minor release.
   `items_after_statements`).
 - New `cargo make standards-check` target wired into `cargo make ci`.
 - Expanded coding standards in [`AGENTS.md`](AGENTS.md).
+- Internal renames (no skill-visible behaviour change):
+  `CommandContext::require` → `::load`,
+  `commands::bare` → `commands::unscoped`,
+  `JSON_SCHEMA_VERSION` → `JSON_ENVELOPE_VERSION`,
+  `CliResult::Exit(u8)` → `CliResult::Code(u8)` (avoids clash with
+  `std::process::ExitCode`),
+  `output::absolute_string` → `output::path_string` (the function
+  falls back when `canonicalize` fails; "absolute" over-promised).
 
 ## [0.2.0]
 

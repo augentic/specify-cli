@@ -11,7 +11,7 @@ use specify_registry::Registry;
 
 use crate::cli::ChangeAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, absolute_string, emit, emit_err};
+use crate::output::{CliResult, Render, emit, emit_err, path_string};
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
 pub fn run(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult, Error> {
@@ -59,7 +59,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
         &BriefCreateBody {
             action: "init",
             name,
-            path: absolute_string(&brief_path),
+            path: path_string(&brief_path),
         },
     )?;
     Ok(CliResult::Success)
