@@ -422,12 +422,10 @@ module-line-count = 117
 module-line-count = 390
 
 [file."src/commands/change/plan/lock.rs"]
-inline-dtos = 3
-format-match-dispatch = 3
-module-line-count = 140
+module-line-count = 149
 
 [file."src/commands/change/plan/status.rs"]
-module-line-count = 216
+module-line-count = 213
 
 [file."src/commands/codex.rs"]
 module-line-count = 383
