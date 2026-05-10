@@ -11,8 +11,9 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{ChangeBrief, Error, is_kebab};
+use specify_capability::ChangeBrief;
 use specify_change::finalize;
+use specify_error::{Error, is_kebab};
 use specify_registry::Registry;
 
 use crate::cli::{ChangeAction, OutputFormat};
@@ -31,10 +32,13 @@ pub fn run(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult, Erro
 
 fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     if !is_kebab(&name) {
-        return Err(Error::Config(format!(
-            "change brief: name `{name}` must be kebab-case \
-             (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
-        )));
+        return Err(Error::Diag {
+            code: "change-brief-name-not-kebab",
+            detail: format!(
+                "change brief: name `{name}` must be kebab-case \
+                 (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
+            ),
+        });
     }
 
     let brief_path = ChangeBrief::path(&ctx.project_dir);
@@ -127,7 +131,7 @@ fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
             #[derive(Serialize)]
             #[serde(rename_all = "kebab-case")]
             struct BriefJson {
-                frontmatter: specify::ChangeFrontmatter,
+                frontmatter: specify_capability::ChangeFrontmatter,
                 body: String,
             }
             match ctx.format {
@@ -154,8 +158,8 @@ fn print_change_brief_text(brief: &ChangeBrief, brief_path: &Path) {
         println!("inputs:");
         for input in &brief.frontmatter.inputs {
             let kind = match input.kind {
-                specify::InputKind::LegacyCode => "legacy-code",
-                specify::InputKind::Documentation => "documentation",
+                specify_capability::InputKind::LegacyCode => "legacy-code",
+                specify_capability::InputKind::Documentation => "documentation",
             };
             println!("  - path: {}", input.path);
             println!("    kind: {kind}");

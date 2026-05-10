@@ -64,14 +64,11 @@ pub enum Error {
     #[error("not initialized: .specify/project.yaml not found")]
     NotInitialized,
 
-    /// Structured catch-all for diagnostics that don't have (yet) a
-    /// dedicated variant. The `code` is a stable kebab-case
-    /// discriminant surfaced in JSON envelopes; `detail` is the
-    /// human-readable message. Prefer this over [`Error::Config`] /
-    /// [`Error::Merge`] / [`Error::ToolResolver`] / [`Error::ToolRuntime`]
-    /// / [`Error::CapabilityResolution`] for new diagnostics, and
-    /// promote a `Diag` site to its own variant once the call shape
-    /// stabilises.
+    /// Structured catch-all for diagnostics that don't have a dedicated
+    /// variant. The `code` is a stable kebab-case discriminant surfaced
+    /// in JSON envelopes; `detail` is the human-readable message.
+    /// Promote a recurring `Diag` site to its own variant once the call
+    /// shape stabilises.
     #[error("{code}: {detail}")]
     Diag {
         /// Stable kebab-case discriminant surfaced as the JSON `error` field.
@@ -80,26 +77,10 @@ pub enum Error {
         detail: String,
     },
 
-    /// Capability resolution failed with the given reason.
-    ///
-    /// **Frozen.** New diagnostics use [`Error::Diag`]. The `xtask
-    /// standards-check` `free-form-error-strings` predicate caps every
-    /// existing call site at its current per-file baseline; no new
-    /// occurrence is permitted.
-    #[error("capability resolution failed: {0}")]
-    CapabilityResolution(String),
-
-    /// A configuration or input error.
-    ///
-    /// **Frozen.** New diagnostics use [`Error::Diag`]. See
-    /// [`Error::CapabilityResolution`] for the policy.
-    #[error("config error: {0}")]
-    Config(String),
-
     /// A user-supplied CLI argument is invalid for reasons clap cannot
     /// catch (kebab-case names, mutually exclusive flag combinations,
     /// unknown enum keys, etc.). Carries the offending flag/value plus a
-    /// human-readable detail. Prefer this over [`Error::Config`] for
+    /// human-readable detail. Prefer this over [`Error::Diag`] for
     /// argument-shape validation so the CLI can map it onto the
     /// argument-error exit code.
     #[error("invalid argument {flag}: {detail}")]
@@ -162,12 +143,6 @@ pub enum Error {
         /// Individual validation results.
         results: Vec<ValidationSummary>,
     },
-
-    /// Spec merge failed.
-    ///
-    /// **Frozen.** New diagnostics use [`Error::Diag`].
-    #[error("merge failed: {0}")]
-    Merge(String),
 
     /// An illegal lifecycle transition was attempted.
     #[error("lifecycle error: expected {expected}, found {found}")]
@@ -244,18 +219,6 @@ pub enum Error {
     )]
     InitNeedsCapability,
 
-    /// A declared WASI tool could not be resolved or fetched.
-    ///
-    /// **Frozen.** New diagnostics use [`Error::Diag`].
-    #[error("tool resolver error: {0}")]
-    ToolResolver(String),
-
-    /// A declared WASI tool failed while compiling, linking, instantiating, or running.
-    ///
-    /// **Frozen.** New diagnostics use [`Error::Diag`].
-    #[error("tool runtime error: {0}")]
-    ToolRuntime(String),
-
     /// A declared WASI tool requested filesystem authority outside its manifest policy.
     #[error("tool permission denied: {0}")]
     ToolDenied(String),
@@ -291,8 +254,6 @@ impl Error {
         match self {
             Self::NotInitialized => "not-initialized",
             Self::Diag { code, .. } => code,
-            Self::CapabilityResolution(_) => "capability-resolution",
-            Self::Config(_) => "config",
             Self::Argument { .. } => "argument",
             Self::ContextUnfenced => "context-existing-unfenced-agents-md",
             Self::ContextDrift => "context-fenced-content-modified",
@@ -301,7 +262,6 @@ impl Error {
             Self::ContextLockTooNew { .. } => "context-lock-version-too-new",
             Self::ContextLockMalformed { .. } => "context-lock-malformed",
             Self::Validation { .. } => "validation",
-            Self::Merge(_) => "merge",
             Self::Lifecycle { .. } => "lifecycle",
             Self::CliTooOld { .. } => "specify-version-too-old",
             Self::PlanTransition { .. } => "plan-transition",
@@ -311,8 +271,6 @@ impl Error {
             Self::SliceNotFound { .. } => "slice-not-found",
             Self::RegistryMissing => "registry-missing",
             Self::InitNeedsCapability => "init-requires-capability-or-hub",
-            Self::ToolResolver(_) => "tool-resolver",
-            Self::ToolRuntime(_) => "tool-runtime",
             Self::ToolDenied(_) => "tool-permission-denied",
             Self::ToolNotDeclared { .. } => "tool-not-declared",
             Self::InvalidName(_) => "invalid-name",
@@ -345,11 +303,8 @@ mod tests {
     /// — `thiserror` already drives the format strings.
     #[test]
     fn display_spot_checks() {
-        let cases: [(Error, &str); 5] = [
+        let cases: [(Error, &str); 2] = [
             (Error::NotInitialized, "not initialized"),
-            (Error::CapabilityResolution("boom".into()), "capability resolution failed: boom"),
-            (Error::Config("bad key".into()), "config error: bad key"),
-            (Error::Merge("conflict".into()), "merge failed: conflict"),
             (Error::InvalidName("bad--name".into()), "invalid name: bad--name"),
         ];
         for (err, expected_prefix) in cases {

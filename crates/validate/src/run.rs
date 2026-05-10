@@ -100,18 +100,24 @@ fn expand_generates(slice_dir: &Path, generates: &str) -> Result<Vec<PathBuf>, E
     if !generates.contains('*') {
         return Ok(vec![joined]);
     }
-    let pattern = joined
-        .to_str()
-        .ok_or_else(|| Error::Config(format!("non-UTF8 glob pattern `{}`", joined.display())))?;
+    let pattern = joined.to_str().ok_or_else(|| Error::Diag {
+        code: "validate-glob-non-utf8",
+        detail: format!("non-UTF8 glob pattern `{}`", joined.display()),
+    })?;
     let mut out: Vec<PathBuf> = Vec::new();
-    let entries = glob::glob(pattern)
-        .map_err(|err| Error::Config(format!("invalid glob `{pattern}`: {err}")))?;
+    let entries = glob::glob(pattern).map_err(|err| Error::Diag {
+        code: "validate-glob-invalid",
+        detail: format!("invalid glob `{pattern}`: {err}"),
+    })?;
     for entry in entries {
         match entry {
             Ok(path) if path.is_file() => out.push(path),
             Ok(_) => {}
             Err(err) => {
-                return Err(Error::Config(format!("glob traversal failure: {err}")));
+                return Err(Error::Diag {
+                    code: "validate-glob-traversal-failed",
+                    detail: format!("glob traversal failure: {err}"),
+                });
             }
         }
     }

@@ -3,289 +3,526 @@
 # Each `[file."<rel-path>"]` table caps the number of violations of each
 # predicate for that file. A live count strictly greater than the
 # baseline fails CI; missing predicates default to zero (new files
-# start clean). Reductions are encouraged in any PR that touches a file;
-# raising a number requires a justification in the PR description.
+# start clean) except `module-line-count`, which defaults to 500.
+# Reductions are encouraged in any PR that touches a file; the CI
+# `--check-tightenable` mode fails when an unrelated PR could lower a
+# baseline without code changes.
 #
 # Predicate definitions live in `xtask/src/standards.rs`. AGENTS.md
 # §Mechanical enforcement explains what each predicate enforces and how
 # to drive its baselines down.
 
 [file."crates/capability/src/brief.rs"]
-free-form-error-strings = 4
 ritual-doc-paragraphs = 2
+module-line-count = 114
 
 [file."crates/capability/src/cache.rs"]
-free-form-error-strings = 2
 rfc-numbers-in-code = 1
 ritual-doc-paragraphs = 1
+module-line-count = 97
 
 [file."crates/capability/src/capability.rs"]
-free-form-error-strings = 7
 rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 1
+module-line-count = 393
 
 [file."crates/capability/src/change_brief.rs"]
-free-form-error-strings = 7
 rfc-numbers-in-code = 1
 ritual-doc-paragraphs = 3
+module-line-count = 211
 
 [file."crates/capability/src/codex.rs"]
-free-form-error-strings = 4
 ritual-doc-paragraphs = 1
+module-line-count = 322
 
 [file."crates/capability/src/codex_resolver.rs"]
-free-form-error-strings = 6
+module-line-count = 300
 
 [file."crates/capability/src/lib.rs"]
 rfc-numbers-in-code = 2
+module-line-count = 92
 
 [file."crates/capability/src/pipeline.rs"]
-free-form-error-strings = 4
 ritual-doc-paragraphs = 2
+module-line-count = 229
 
 [file."crates/change/src/finalize.rs"]
 rfc-numbers-in-code = 7
 ritual-doc-paragraphs = 1
+module-line-count = 1569
 
 [file."crates/change/src/lib.rs"]
 rfc-numbers-in-code = 4
+module-line-count = 35
 
 [file."crates/change/src/plan.rs"]
 rfc-numbers-in-code = 1
+module-line-count = 15
 
-[file."crates/change/src/plan/core.rs"]
-free-form-error-strings = 22
-rfc-numbers-in-code = 13
-ritual-doc-paragraphs = 8
+[file."crates/change/src/plan/core/amend.rs"]
+module-line-count = 371
+
+[file."crates/change/src/plan/core/archive/mod.rs"]
+module-line-count = 123
+
+[file."crates/change/src/plan/core/create.rs"]
+module-line-count = 307
+
+[file."crates/change/src/plan/core/io.rs"]
+module-line-count = 236
+
+[file."crates/change/src/plan/core/mod.rs"]
+module-line-count = 51
+
+[file."crates/change/src/plan/core/model.rs"]
+module-line-count = 357
+
+[file."crates/change/src/plan/core/next.rs"]
+module-line-count = 327
+
+[file."crates/change/src/plan/core/test_support.rs"]
+module-line-count = 103
+
+[file."crates/change/src/plan/core/transitions.rs"]
+module-line-count = 331
+
+[file."crates/change/src/plan/core/validate/mod.rs"]
+module-line-count = 312
 
 [file."crates/change/src/plan/doctor.rs"]
-name-suffix-duplication = 1
 rfc-numbers-in-code = 8
+name-suffix-duplication = 1
+module-line-count = 1128
 
 [file."crates/change/src/plan/lock.rs"]
 rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 7
+module-line-count = 691
 
 [file."crates/contract-validate/src/main.rs"]
 format-match-dispatch = 1
 rfc-numbers-in-code = 5
+module-line-count = 147
 
 [file."crates/error/src/lib.rs"]
-free-form-error-strings = 3
+module-line-count = 413
 
 [file."crates/merge/src/artifact_class.rs"]
 rfc-numbers-in-code = 2
+module-line-count = 67
 
 [file."crates/merge/src/composition.rs"]
-free-form-error-strings = 10
-name-suffix-duplication = 1
 ritual-doc-paragraphs = 1
+name-suffix-duplication = 1
+module-line-count = 266
 
 [file."crates/merge/src/lib.rs"]
 rfc-numbers-in-code = 3
+module-line-count = 39
 
 [file."crates/merge/src/merge.rs"]
-free-form-error-strings = 3
 ritual-doc-paragraphs = 1
+module-line-count = 356
 
 [file."crates/merge/src/slice.rs"]
-free-form-error-strings = 30
-name-suffix-duplication = 2
 rfc-numbers-in-code = 3
 ritual-doc-paragraphs = 3
+name-suffix-duplication = 2
+module-line-count = 761
+
+[file."crates/merge/src/validate.rs"]
+module-line-count = 198
 
 [file."crates/registry/src/branch.rs"]
-name-suffix-duplication = 2
 rfc-numbers-in-code = 2
+name-suffix-duplication = 2
+module-line-count = 642
 
 [file."crates/registry/src/forge.rs"]
 rfc-numbers-in-code = 1
 ritual-doc-paragraphs = 1
+module-line-count = 144
 
 [file."crates/registry/src/gitignore.rs"]
 rfc-numbers-in-code = 3
 ritual-doc-paragraphs = 1
+module-line-count = 58
 
 [file."crates/registry/src/lib.rs"]
 rfc-numbers-in-code = 2
+module-line-count = 36
 
 [file."crates/registry/src/registry.rs"]
-free-form-error-strings = 3
 rfc-numbers-in-code = 7
 ritual-doc-paragraphs = 1
+module-line-count = 204
 
 [file."crates/registry/src/validate.rs"]
-free-form-error-strings = 17
 rfc-numbers-in-code = 9
 ritual-doc-paragraphs = 1
+module-line-count = 292
 
-[file."crates/registry/src/workspace.rs"]
-free-form-error-strings = 46
-rfc-numbers-in-code = 4
-ritual-doc-paragraphs = 5
+[file."crates/registry/src/workspace/bootstrap.rs"]
+module-line-count = 110
+
+[file."crates/registry/src/workspace/git.rs"]
+module-line-count = 92
+
+[file."crates/registry/src/workspace/mod.rs"]
+module-line-count = 84
+
+[file."crates/registry/src/workspace/push/forge.rs"]
+module-line-count = 175
+
+[file."crates/registry/src/workspace/push/mod.rs"]
+module-line-count = 346
+
+[file."crates/registry/src/workspace/push/remote.rs"]
+module-line-count = 185
+
+[file."crates/registry/src/workspace/slot_problem.rs"]
+module-line-count = 300
+
+[file."crates/registry/src/workspace/status.rs"]
+module-line-count = 223
+
+[file."crates/registry/src/workspace/sync.rs"]
+module-line-count = 342
 
 [file."crates/slice/src/actions.rs"]
-free-form-error-strings = 3
 rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 8
+module-line-count = 533
+
+[file."crates/slice/src/atomic.rs"]
+module-line-count = 44
 
 [file."crates/slice/src/journal.rs"]
-name-suffix-duplication = 1
 rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 2
+name-suffix-duplication = 1
+module-line-count = 393
 
 [file."crates/slice/src/lib.rs"]
-free-form-error-strings = 1
 rfc-numbers-in-code = 6
+module-line-count = 709
 
 [file."crates/slice/src/timestamp.rs"]
 rfc-numbers-in-code = 1
+module-line-count = 83
+
+[file."crates/spec/src/lib.rs"]
+module-line-count = 324
 
 [file."crates/task/src/lib.rs"]
-free-form-error-strings = 1
 rfc-numbers-in-code = 2
 ritual-doc-paragraphs = 1
+module-line-count = 233
+
+[file."crates/tool/src/cache.rs"]
+module-line-count = 778
+
+[file."crates/tool/src/error.rs"]
+module-line-count = 288
+
+[file."crates/tool/src/host.rs"]
+module-line-count = 393
 
 [file."crates/tool/src/lib.rs"]
 rfc-numbers-in-code = 2
+module-line-count = 327
+
+[file."crates/tool/src/load.rs"]
+module-line-count = 191
+
+[file."crates/tool/src/manifest.rs"]
+module-line-count = 210
 
 [file."crates/tool/src/permissions.rs"]
 rfc-numbers-in-code = 1
+module-line-count = 266
+
+[file."crates/tool/src/resolver.rs"]
+module-line-count = 565
 
 [file."crates/tool/src/validate.rs"]
 rfc-numbers-in-code = 1
+module-line-count = 444
 
-[file."crates/validate/src/compatibility.rs"]
-name-suffix-duplication = 1
+[file."crates/validate/src/compatibility/asyncapi_diff.rs"]
+module-line-count = 61
 
-[file."crates/validate/src/contracts.rs"]
-name-suffix-duplication = 1
-rfc-numbers-in-code = 8
+[file."crates/validate/src/compatibility/mod.rs"]
+module-line-count = 270
+
+[file."crates/validate/src/compatibility/openapi_diff.rs"]
+module-line-count = 162
+
+[file."crates/validate/src/compatibility/pair.rs"]
+module-line-count = 157
+
+[file."crates/validate/src/compatibility/schema_diff.rs"]
+module-line-count = 310
+
+[file."crates/validate/src/compatibility/util.rs"]
+module-line-count = 97
+
+[file."crates/validate/src/contracts/envelope.rs"]
+module-line-count = 209
+
+[file."crates/validate/src/contracts/mod.rs"]
+module-line-count = 353
+
+[file."crates/validate/src/contracts/parse.rs"]
+module-line-count = 106
 
 [file."crates/validate/src/lib.rs"]
 rfc-numbers-in-code = 3
+module-line-count = 216
 
-[file."crates/validate/src/registry.rs"]
-rfc-numbers-in-code = 1
+[file."crates/validate/src/primitives.rs"]
+module-line-count = 388
+
+[file."crates/validate/src/registry/composition.rs"]
+module-line-count = 131
+
+[file."crates/validate/src/registry/contract_rules.rs"]
+module-line-count = 306
+
+[file."crates/validate/src/registry/cross.rs"]
+module-line-count = 146
+
+[file."crates/validate/src/registry/design.rs"]
+module-line-count = 21
+
+[file."crates/validate/src/registry/mod.rs"]
+module-line-count = 39
+
+[file."crates/validate/src/registry/proposal.rs"]
+module-line-count = 54
+
+[file."crates/validate/src/registry/specs.rs"]
+module-line-count = 79
+
+[file."crates/validate/src/registry/tasks.rs"]
+module-line-count = 49
 
 [file."crates/validate/src/run.rs"]
-free-form-error-strings = 3
 rfc-numbers-in-code = 1
 ritual-doc-paragraphs = 1
+module-line-count = 232
+
+[file."crates/validate/src/serialize.rs"]
+module-line-count = 117
+
+[file."crates/vectis-scaffold/src/error.rs"]
+module-line-count = 61
 
 [file."crates/vectis-scaffold/src/lib.rs"]
 inline-dtos = 1
 rfc-numbers-in-code = 2
+module-line-count = 684
+
+[file."crates/vectis-scaffold/src/main.rs"]
+module-line-count = 13
+
+[file."crates/vectis-scaffold/src/templates.rs"]
+module-line-count = 201
+
+[file."crates/vectis-scaffold/src/templates/android.rs"]
+module-line-count = 132
+
+[file."crates/vectis-scaffold/src/templates/core.rs"]
+module-line-count = 65
+
+[file."crates/vectis-scaffold/src/templates/ios.rs"]
+module-line-count = 41
 
 [file."crates/vectis-scaffold/src/versions.rs"]
 rfc-numbers-in-code = 1
+module-line-count = 113
 
-[file."crates/vectis-validate/src/engine.rs"]
-rfc-numbers-in-code = 39
+[file."crates/vectis-validate/src/engine/all.rs"]
+module-line-count = 70
+
+[file."crates/vectis-validate/src/engine/assets.rs"]
+module-line-count = 327
+
+[file."crates/vectis-validate/src/engine/composition.rs"]
+module-line-count = 432
+
+[file."crates/vectis-validate/src/engine/layout.rs"]
+module-line-count = 167
+
+[file."crates/vectis-validate/src/engine/mod.rs"]
+module-line-count = 77
+
+[file."crates/vectis-validate/src/engine/paths.rs"]
+module-line-count = 239
+
+[file."crates/vectis-validate/src/engine/shared.rs"]
+module-line-count = 112
+
+[file."crates/vectis-validate/src/engine/tokens.rs"]
+module-line-count = 63
 
 [file."crates/vectis-validate/src/lib.rs"]
 inline-dtos = 1
-rfc-numbers-in-code = 2
+module-line-count = 262
+
+[file."crates/vectis-validate/src/main.rs"]
+module-line-count = 13
 
 [file."src/cli.rs"]
 rfc-numbers-in-code = 2
+module-line-count = 704
+
+[file."src/commands.rs"]
+module-line-count = 123
 
 [file."src/commands/capability.rs"]
-free-form-error-strings = 2
 name-suffix-duplication = 1
+module-line-count = 229
 
 [file."src/commands/change.rs"]
-format-match-dispatch = 7
-free-form-error-strings = 1
 inline-dtos = 7
+format-match-dispatch = 7
 rfc-numbers-in-code = 2
+module-line-count = 413
 
 [file."src/commands/change/plan.rs"]
 format-match-dispatch = 1
-free-form-error-strings = 2
+module-line-count = 177
 
 [file."src/commands/change/plan/create.rs"]
-format-match-dispatch = 2
 inline-dtos = 2
+format-match-dispatch = 2
+module-line-count = 117
 
 [file."src/commands/change/plan/doctor.rs"]
 format-match-dispatch = 1
 rfc-numbers-in-code = 1
+module-line-count = 117
 
 [file."src/commands/change/plan/lifecycle.rs"]
-format-match-dispatch = 8
-free-form-error-strings = 3
 inline-dtos = 7
+format-match-dispatch = 8
+module-line-count = 349
 
 [file."src/commands/change/plan/lock.rs"]
-format-match-dispatch = 3
 inline-dtos = 3
+format-match-dispatch = 3
+module-line-count = 140
 
 [file."src/commands/change/plan/status.rs"]
-format-match-dispatch = 2
 inline-dtos = 4
+format-match-dispatch = 2
 name-suffix-duplication = 1
+module-line-count = 257
 
+[file."src/commands/codex.rs"]
+module-line-count = 398
+
+[file."src/commands/compatibility.rs"]
+module-line-count = 80
 
 [file."src/commands/context.rs"]
 format-match-dispatch = 2
-free-form-error-strings = 4
 name-suffix-duplication = 1
+module-line-count = 683
+
+[file."src/commands/context/detect.rs"]
+module-line-count = 735
 
 [file."src/commands/context/fences.rs"]
 name-suffix-duplication = 1
+module-line-count = 472
 
 [file."src/commands/context/fingerprint.rs"]
-free-form-error-strings = 1
 name-suffix-duplication = 2
+module-line-count = 209
+
+[file."src/commands/context/lock.rs"]
+module-line-count = 222
+
+[file."src/commands/context/render.rs"]
+module-line-count = 393
 
 [file."src/commands/init.rs"]
 rfc-numbers-in-code = 3
+module-line-count = 196
 
 [file."src/commands/registry.rs"]
-format-match-dispatch = 7
-free-form-error-strings = 5
 inline-dtos = 7
-name-suffix-duplication = 7
+format-match-dispatch = 7
 rfc-numbers-in-code = 3
+name-suffix-duplication = 7
+module-line-count = 927
 
 [file."src/commands/slice.rs"]
-format-match-dispatch = 17
-free-form-error-strings = 8
-inline-dtos = 16
-name-suffix-duplication = 1
-rfc-numbers-in-code = 3
+module-line-count = 92
+
+[file."src/commands/slice/journal.rs"]
+module-line-count = 127
+
+[file."src/commands/slice/lifecycle.rs"]
+module-line-count = 180
+
+[file."src/commands/slice/list.rs"]
+module-line-count = 218
+
+[file."src/commands/slice/merge.rs"]
+module-line-count = 475
+
+[file."src/commands/slice/outcome.rs"]
+module-line-count = 261
+
+[file."src/commands/slice/task.rs"]
+module-line-count = 181
+
+[file."src/commands/slice/touched.rs"]
+module-line-count = 178
+
+[file."src/commands/slice/validate.rs"]
+module-line-count = 59
+
+[file."src/commands/status.rs"]
+module-line-count = 202
 
 [file."src/commands/tool.rs"]
 format-match-dispatch = 4
-free-form-error-strings = 2
-name-suffix-duplication = 1
 rfc-numbers-in-code = 1
+name-suffix-duplication = 1
+module-line-count = 451
 
 [file."src/commands/workspace.rs"]
-format-match-dispatch = 7
-free-form-error-strings = 6
 inline-dtos = 8
+format-match-dispatch = 7
+module-line-count = 436
 
 [file."src/config.rs"]
-name-suffix-duplication = 1
 rfc-numbers-in-code = 3
 ritual-doc-paragraphs = 1
+name-suffix-duplication = 1
+module-line-count = 429
 
 [file."src/context.rs"]
-free-form-error-strings = 1
+module-line-count = 74
 
 [file."src/init.rs"]
-free-form-error-strings = 15
 rfc-numbers-in-code = 12
 ritual-doc-paragraphs = 1
+module-line-count = 1024
 
 [file."src/lib.rs"]
 rfc-numbers-in-code = 1
+module-line-count = 11
 
 [file."src/main.rs"]
 rfc-numbers-in-code = 1
+module-line-count = 44
 
 [file."src/output.rs"]
 format-match-dispatch = 2
+module-line-count = 193
 

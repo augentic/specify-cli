@@ -7,8 +7,9 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, ProjectConfig};
+use specify::config::ProjectConfig;
 use specify_change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
+use specify_error::Error;
 use specify_registry::Registry;
 
 use super::{PlanRef, plan_ref, require_file};

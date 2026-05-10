@@ -147,7 +147,7 @@ fn plan_schema_rejects_non_kebab_name() {
 #[test]
 fn kebab_name_regex_matches_validate_name() {
     use regex::Regex;
-    use specify::slice_actions;
+    use specify_slice::actions as slice_actions;
 
     // Extract the pattern from the compiled schema to keep this test
     // honest against drift — the schema file is the source of truth.

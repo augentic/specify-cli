@@ -229,20 +229,26 @@ fn init_hub(opts: InitOptions<'_>) -> Result<InitResult, Error> {
 
     let specify_dir = ProjectConfig::specify_dir(opts.project_dir);
     if specify_dir.exists() {
-        return Err(Error::Config(format!(
-            "init --hub: refusing to scaffold over an existing `.specify/` at {}; \
-             remove it first or run without --hub for a regular project",
-            specify_dir.display()
-        )));
+        return Err(Error::Diag {
+            code: "hub-init-specify-dir-exists",
+            detail: format!(
+                "init --hub: refusing to scaffold over an existing `.specify/` at {}; \
+                 remove it first or run without --hub for a regular project",
+                specify_dir.display()
+            ),
+        });
     }
 
     let name = resolved_name(opts.project_dir, opts.name);
     if !is_kebab(&name) {
-        return Err(Error::Config(format!(
-            "init --hub: project name `{name}` must be kebab-case \
-             (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens). \
-             Pass --name <kebab-name> to override the directory basename."
-        )));
+        return Err(Error::Diag {
+            code: "hub-init-name-not-kebab",
+            detail: format!(
+                "init --hub: project name `{name}` must be kebab-case \
+                 (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens). \
+                 Pass --name <kebab-name> to override the directory basename."
+            ),
+        });
     }
 
     fs::create_dir_all(&specify_dir)?;
@@ -296,10 +302,12 @@ struct CachedCapability {
 
 fn cache_capability(capability: &str, project_dir: &Path) -> Result<CachedCapability, Error> {
     if capability.trim().is_empty() || capability != capability.trim() {
-        return Err(Error::CapabilityResolution(
-            "<capability> must be non-empty and must not have leading or trailing whitespace"
-                .to_string(),
-        ));
+        return Err(Error::Diag {
+            code: "capability-arg-malformed",
+            detail:
+                "<capability> must be non-empty and must not have leading or trailing whitespace"
+                    .to_string(),
+        });
     }
 
     let source = CapabilityUri::parse(capability, project_dir)?;
@@ -335,11 +343,12 @@ impl CapabilityUri {
             .map_or_else(|| PathBuf::from(capability), PathBuf::from);
         let source_dir = if path.is_absolute() { path } else { project_dir.join(path) };
         ensure_capability_dir(&source_dir, capability)?;
-        let canonical = fs::canonicalize(&source_dir).map_err(|err| {
-            Error::CapabilityResolution(format!(
+        let canonical = fs::canonicalize(&source_dir).map_err(|err| Error::Diag {
+            code: "capability-canonicalize-failed",
+            detail: format!(
                 "failed to canonicalize local capability `{capability}` at {}: {err}",
                 source_dir.display()
-            ))
+            ),
         })?;
         let capability_name = capability_name_from_dir(&canonical)?;
         let capability_value = format!("file://{}", canonical.display());
@@ -378,14 +387,19 @@ struct GithubCapabilityUri {
 impl GithubCapabilityUri {
     fn parse(capability: &str) -> Result<Self, Error> {
         let (without_suffix, suffix_ref) = split_ref_suffix(capability);
-        let pathless = without_suffix.strip_prefix("https://github.com/").ok_or_else(|| {
-            Error::CapabilityResolution(format!("unsupported GitHub capability URI `{capability}`"))
-        })?;
+        let pathless =
+            without_suffix.strip_prefix("https://github.com/").ok_or_else(|| Error::Diag {
+                code: "capability-github-uri-unsupported",
+                detail: format!("unsupported GitHub capability URI `{capability}`"),
+            })?;
         let mut parts: Vec<&str> = pathless.split('/').filter(|part| !part.is_empty()).collect();
         if parts.len() < 3 {
-            return Err(Error::CapabilityResolution(format!(
-                "GitHub capability URI `{capability}` must include owner, repo, and capability path"
-            )));
+            return Err(Error::Diag {
+                code: "capability-github-uri-malformed",
+                detail: format!(
+                    "GitHub capability URI `{capability}` must include owner, repo, and capability path"
+                ),
+            });
         }
         let owner = parts.remove(0).to_string();
         let repo = parts.remove(0).to_string();
@@ -394,9 +408,12 @@ impl GithubCapabilityUri {
             == Some(&"tree")
         {
             if parts.len() < 3 {
-                return Err(Error::CapabilityResolution(format!(
-                    "GitHub tree capability URI `{capability}` must include a ref and capability path"
-                )));
+                return Err(Error::Diag {
+                    code: "capability-github-uri-malformed",
+                    detail: format!(
+                        "GitHub tree capability URI `{capability}` must include a ref and capability path"
+                    ),
+                });
             }
             (Some(parts[1]), parts[2..].to_vec())
         } else {
@@ -405,10 +422,9 @@ impl GithubCapabilityUri {
 
         let checkout_ref = suffix_ref.or(tree_ref).map(str::to_string);
         let capability_path = capability_parts.join("/");
-        let capability_name = capability_parts.last().ok_or_else(|| {
-            Error::CapabilityResolution(format!(
-                "cannot derive a capability name from `{capability}`"
-            ))
+        let capability_name = capability_parts.last().ok_or_else(|| Error::Diag {
+            code: "capability-url-name-unresolved",
+            detail: format!("cannot derive a capability name from `{capability}`"),
         })?;
 
         Ok(Self {
@@ -467,21 +483,26 @@ fn sparse_checkout_path(capability_path: &str) -> &str {
 }
 
 fn run_git(args: &[&str], action: &str) -> Result<(), Error> {
-    let output = Command::new("git").args(args).output().map_err(|err| {
-        Error::CapabilityResolution(format!("failed to spawn `git` to {action}: {err}"))
+    let output = Command::new("git").args(args).output().map_err(|err| Error::Diag {
+        code: "capability-git-spawn-failed",
+        detail: format!("failed to spawn `git` to {action}: {err}"),
     })?;
     if output.status.success() {
         return Ok(());
     }
     let stderr = String::from_utf8_lossy(&output.stderr);
-    Err(Error::CapabilityResolution(format!("git failed to {action}: {}", stderr.trim())))
+    Err(Error::Diag {
+        code: "capability-git-failed",
+        detail: format!("git failed to {action}: {}", stderr.trim()),
+    })
 }
 
 fn unique_temp_dir(prefix: &str) -> Result<PathBuf, Error> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|err| {
-            Error::CapabilityResolution(format!("system clock before unix epoch: {err}"))
+        .map_err(|err| Error::Diag {
+            code: "capability-clock-pre-epoch",
+            detail: format!("system clock before unix epoch: {err}"),
         })?
         .as_nanos();
     let path = std::env::temp_dir().join(format!("{prefix}-{}-{nonce}", std::process::id()));
@@ -493,19 +514,20 @@ fn ensure_capability_dir(path: &Path, original: &str) -> Result<(), Error> {
     if path.join(specify_capability::CAPABILITY_FILENAME).is_file() {
         return Ok(());
     }
-    Err(Error::CapabilityResolution(format!(
-        "capability `{original}` did not resolve to a directory with `{}` at {}",
-        specify_capability::CAPABILITY_FILENAME,
-        path.display()
-    )))
+    Err(Error::Diag {
+        code: "capability-dir-missing-manifest",
+        detail: format!(
+            "capability `{original}` did not resolve to a directory with `{}` at {}",
+            specify_capability::CAPABILITY_FILENAME,
+            path.display()
+        ),
+    })
 }
 
 fn capability_name_from_dir(path: &Path) -> Result<String, Error> {
-    path.file_name().and_then(|name| name.to_str()).map(str::to_string).ok_or_else(|| {
-        Error::CapabilityResolution(format!(
-            "cannot derive capability name from {}",
-            path.display()
-        ))
+    path.file_name().and_then(|name| name.to_str()).map(str::to_string).ok_or_else(|| Error::Diag {
+        code: "capability-dir-name-unresolved",
+        detail: format!("cannot derive capability name from {}", path.display()),
     })
 }
 
@@ -930,12 +952,16 @@ mod tests {
         let err =
             init(hub_opts(tmp.path(), "platform-hub")).expect_err("must refuse over existing dir");
         match err {
-            Error::Config(msg) => {
+            Error::Diag { code, detail } => {
+                assert_eq!(code, "hub-init-specify-dir-exists");
                 assert!(
-                    msg.contains("refusing to scaffold"),
-                    "diagnostic should explain the refusal, got: {msg}"
+                    detail.contains("refusing to scaffold"),
+                    "diagnostic should explain the refusal, got: {detail}"
                 );
-                assert!(msg.contains(".specify"), "diagnostic should mention .specify, got: {msg}");
+                assert!(
+                    detail.contains(".specify"),
+                    "diagnostic should mention .specify, got: {detail}"
+                );
             }
             other => panic!("wrong error variant: {other:?}"),
         }
@@ -949,9 +975,13 @@ mod tests {
         let tmp = tempdir().unwrap();
         let err = init(hub_opts(tmp.path(), "BadName")).expect_err("non-kebab name");
         match err {
-            Error::Config(msg) => {
-                assert!(msg.contains("kebab-case"), "diagnostic should cite the rule: {msg}");
-                assert!(msg.contains("BadName"), "diagnostic should echo the bad name: {msg}");
+            Error::Diag { code, detail } => {
+                assert_eq!(code, "hub-init-name-not-kebab");
+                assert!(detail.contains("kebab-case"), "diagnostic should cite the rule: {detail}");
+                assert!(
+                    detail.contains("BadName"),
+                    "diagnostic should echo the bad name: {detail}"
+                );
             }
             other => panic!("wrong error variant: {other:?}"),
         }

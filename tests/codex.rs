@@ -7,18 +7,12 @@
 use std::fs;
 use std::path::PathBuf;
 
-use assert_cmd::Command;
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
 use tempfile::{TempDir, tempdir};
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
+mod common;
+use common::{parse_json, repo_root, specify};
 
 fn schema_path() -> PathBuf {
     repo_root().join("schemas/codex-rule.schema.json")
@@ -62,11 +56,6 @@ fn assert_invalid_fixture_at(name: &str, path: &str) {
         errors.iter().any(|candidate| candidate == path),
         "{name} should fail at {path}; got {errors:#?}"
     );
-}
-
-fn parse_json(stdout: &[u8]) -> JsonValue {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
 }
 
 struct Project {

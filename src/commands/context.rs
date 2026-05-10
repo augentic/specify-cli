@@ -14,10 +14,11 @@ mod lock;
 mod render;
 
 use serde::Serialize;
-use specify::{
-    Capability, Error, PipelineView, ProjectConfig, SliceMetadata, is_workspace_clone_path,
-};
+use specify::config::{ProjectConfig, is_workspace_clone_path};
+use specify_capability::{Capability, PipelineView};
+use specify_error::Error;
 use specify_registry::Registry;
+use specify_slice::SliceMetadata;
 use specify_slice::atomic::atomic_bytes_write;
 
 use crate::cli::{ContextAction, OutputFormat};
@@ -33,11 +34,14 @@ pub fn run(ctx: &CommandContext, action: ContextAction) -> Result<CliResult, Err
 
 pub fn run_generate(ctx: &CommandContext, check: bool, force: bool) -> Result<CliResult, Error> {
     if is_workspace_clone_path(&ctx.project_dir) {
-        return Err(Error::Config(format!(
-            "specify context generate: refusing to run inside a workspace clone at {}; \
-             run context generation in the owning project instead",
-            ctx.project_dir.display()
-        )));
+        return Err(Error::Diag {
+            code: "context-workspace-clone-refused",
+            detail: format!(
+                "specify context generate: refusing to run inside a workspace clone at {}; \
+                 run context generation in the owning project instead",
+                ctx.project_dir.display()
+            ),
+        });
     }
 
     let body = generate(ctx, check, force)?;
@@ -103,13 +107,13 @@ fn render_context(
         fingerprint::aggregate_fingerprint(env!("CARGO_PKG_VERSION"), assembly.inputs.clone());
     let generated = render::render_document_with_fingerprint(&assembly.input, &aggregate);
     let fenced = fences::parse_document(generated.as_bytes())
-        .map_err(|err| Error::Config(err.to_string()))?
-        .ok_or_else(|| {
-            Error::Config(
-                "context-generated-document-missing-fences: generated AGENTS.md content must \
-                 contain a Specify context fence"
-                    .to_string(),
-            )
+        .map_err(|err| Error::Diag {
+            code: "context-generated-document-fence-error",
+            detail: err.to_string(),
+        })?
+        .ok_or_else(|| Error::Diag {
+            code: "context-generated-document-missing-fences",
+            detail: "generated AGENTS.md content must contain a Specify context fence".to_string(),
         })?;
     let context_fingerprint =
         fingerprint::context_fingerprint(env!("CARGO_PKG_VERSION"), assembly.inputs, fenced.body());
@@ -331,7 +335,10 @@ fn refuse_modified_fenced_body(
 fn error_from_fence(err: fences::FenceError) -> Error {
     match err {
         fences::FenceError::ExistingUnfencedAgentsMd => Error::ContextUnfenced,
-        other => Error::Config(other.to_string()),
+        other => Error::Diag {
+            code: "context-fence-error",
+            detail: other.to_string(),
+        },
     }
 }
 

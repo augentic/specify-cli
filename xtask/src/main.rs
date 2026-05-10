@@ -27,15 +27,35 @@ enum Command {
         /// Repository root (defaults to git toplevel).
         #[arg(long)]
         root: Option<PathBuf>,
+        /// Rewrite `scripts/standards-allowlist.toml` so every per-file
+        /// baseline matches today's actual count. Use after a
+        /// migration shrinks a file's count to lock in the gain.
+        #[arg(long, conflicts_with = "check_tightenable")]
+        tighten: bool,
+        /// Fail (exit 1) when any per-file baseline could be tightened.
+        /// CI runs this so unrelated PRs cannot mask incidental progress.
+        #[arg(long)]
+        check_tightenable: bool,
     },
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::StandardsCheck { root } => {
+        Command::StandardsCheck {
+            root,
+            tighten,
+            check_tightenable,
+        } => {
             let root = root.unwrap_or_else(repo_root);
-            match standards::run(&root) {
+            let mode = if tighten {
+                standards::Mode::Tighten
+            } else if check_tightenable {
+                standards::Mode::CheckTightenable
+            } else {
+                standards::Mode::Check
+            };
+            match standards::run(&root, mode) {
                 Ok(true) => ExitCode::SUCCESS,
                 Ok(false) => ExitCode::from(1),
                 Err(err) => {

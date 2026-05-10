@@ -94,8 +94,10 @@ impl ChangeBrief {
         if !path.exists() {
             return Ok(None);
         }
-        let content = std::fs::read_to_string(&path)
-            .map_err(|err| Error::Config(format!("failed to read {}: {err}", path.display())))?;
+        let content = std::fs::read_to_string(&path).map_err(|err| Error::Diag {
+            code: "change-brief-read-failed",
+            detail: format!("failed to read {}: {err}", path.display()),
+        })?;
         Self::parse_str(&content).map(Some)
     }
 
@@ -109,13 +111,21 @@ impl ChangeBrief {
         let after_open = content
             .strip_prefix("---\n")
             .or_else(|| content.strip_prefix("---\r\n"))
-            .ok_or_else(|| Error::Config(format!("{FILENAME}: missing YAML frontmatter")))?;
-        let (frontmatter_text, body) = split_on_closing_delimiter(after_open).ok_or_else(|| {
-            Error::Config(format!("{FILENAME}: opening `---` has no closing `---` delimiter"))
-        })?;
+            .ok_or_else(|| Error::Diag {
+                code: "change-brief-frontmatter-missing",
+                detail: format!("{FILENAME}: missing YAML frontmatter"),
+            })?;
+        let (frontmatter_text, body) =
+            split_on_closing_delimiter(after_open).ok_or_else(|| Error::Diag {
+                code: "change-brief-frontmatter-unclosed",
+                detail: format!("{FILENAME}: opening `---` has no closing `---` delimiter"),
+            })?;
 
-        let frontmatter: ChangeFrontmatter = serde_saphyr::from_str(frontmatter_text)
-            .map_err(|err| Error::Config(format!("{FILENAME}: invalid frontmatter: {err}")))?;
+        let frontmatter: ChangeFrontmatter =
+            serde_saphyr::from_str(frontmatter_text).map_err(|err| Error::Diag {
+                code: "change-brief-frontmatter-malformed",
+                detail: format!("{FILENAME}: invalid frontmatter: {err}"),
+            })?;
 
         let brief = Self {
             frontmatter,
@@ -133,18 +143,27 @@ impl ChangeBrief {
     /// Returns an error if the operation fails.
     pub fn validate_shape(&self) -> Result<(), Error> {
         if self.frontmatter.name.is_empty() {
-            return Err(Error::Config(format!("{FILENAME}: name is empty")));
+            return Err(Error::Diag {
+                code: "change-brief-name-empty",
+                detail: format!("{FILENAME}: name is empty"),
+            });
         }
         if !is_kebab(&self.frontmatter.name) {
-            return Err(Error::Config(format!(
-                "{FILENAME}: name `{}` must be kebab-case \
-                 (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)",
-                self.frontmatter.name
-            )));
+            return Err(Error::Diag {
+                code: "change-brief-name-not-kebab",
+                detail: format!(
+                    "{FILENAME}: name `{}` must be kebab-case \
+                     (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)",
+                    self.frontmatter.name
+                ),
+            });
         }
         for (idx, input) in self.frontmatter.inputs.iter().enumerate() {
             if input.path.is_empty() {
-                return Err(Error::Config(format!("{FILENAME}: inputs[{idx}].path is empty")));
+                return Err(Error::Diag {
+                    code: "change-brief-input-path-empty",
+                    detail: format!("{FILENAME}: inputs[{idx}].path is empty"),
+                });
             }
         }
         Ok(())

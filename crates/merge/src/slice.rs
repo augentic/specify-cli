@@ -171,15 +171,14 @@ pub fn merge_slice(
 
     for entry in &merged {
         if let Some(parent) = entry.baseline_path.parent() {
-            fs::create_dir_all(parent).map_err(|err| {
-                Error::Merge(format!("failed to create {}: {err}", parent.display()))
+            fs::create_dir_all(parent).map_err(|err| Error::Diag {
+                code: "merge-mkdir-failed",
+                detail: format!("failed to create {}: {err}", parent.display()),
             })?;
         }
-        fs::write(&entry.baseline_path, &entry.result.output).map_err(|err| {
-            Error::Merge(format!(
-                "failed to write baseline {}: {err}",
-                entry.baseline_path.display()
-            ))
+        fs::write(&entry.baseline_path, &entry.result.output).map_err(|err| Error::Diag {
+            code: "merge-write-baseline-failed",
+            detail: format!("failed to write baseline {}: {err}", entry.baseline_path.display()),
         })?;
     }
 
@@ -215,8 +214,10 @@ pub fn merge_slice(
     });
     metadata.save(slice_dir)?;
 
-    actions::archive(slice_dir, archive_dir, now)
-        .map_err(|err| Error::Merge(format!("archive move failed: {err}")))?;
+    actions::archive(slice_dir, archive_dir, now).map_err(|err| Error::Diag {
+        code: "merge-archive-failed",
+        detail: format!("archive move failed: {err}"),
+    })?;
 
     let mut output: Vec<MergePreviewEntry> = merged;
     output.sort_by(|a, b| {
@@ -250,8 +251,10 @@ pub fn conflict_check(
     let Some(defined_raw) = metadata.defined_at.as_deref() else {
         return Ok(Vec::new());
     };
-    let defined_at = parse_rfc3339(defined_raw)
-        .map_err(|err| Error::Merge(format!("cannot parse defined_at `{defined_raw}`: {err}")))?;
+    let defined_at = parse_rfc3339(defined_raw).map_err(|err| Error::Diag {
+        code: "merge-defined-at-malformed",
+        detail: format!("cannot parse defined_at `{defined_raw}`: {err}"),
+    })?;
 
     let mut conflicts: Vec<BaselineConflict> = Vec::new();
 
@@ -336,10 +339,14 @@ fn check_opaque_drift(
     if !current.is_dir() {
         return Ok(());
     }
-    for entry in fs::read_dir(current)
-        .map_err(|err| Error::Merge(format!("failed to read {}: {err}", current.display())))?
-    {
-        let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
+    for entry in fs::read_dir(current).map_err(|err| Error::Diag {
+        code: "merge-readdir-failed",
+        detail: format!("failed to read {}: {err}", current.display()),
+    })? {
+        let entry = entry.map_err(|err| Error::Diag {
+            code: "merge-dir-entry-failed",
+            detail: format!("dir entry error: {err}"),
+        })?;
         let path = entry.path();
         if path.is_dir() {
             check_opaque_drift(
@@ -352,9 +359,10 @@ fn check_opaque_drift(
                 conflicts,
             )?;
         } else {
-            let relative = path
-                .strip_prefix(base)
-                .map_err(|err| Error::Merge(format!("path prefix error: {err}")))?;
+            let relative = path.strip_prefix(base).map_err(|err| Error::Diag {
+                code: "merge-path-prefix-failed",
+                detail: format!("path prefix error: {err}"),
+            })?;
             let baseline_path = baseline_dir.join(relative);
             let meta = match fs::metadata(&baseline_path) {
                 Ok(m) => m,
@@ -394,15 +402,20 @@ fn plan_three_way(
         let mut delta_specs: Vec<DeltaSpecRef> = Vec::new();
 
         if class.staged_dir.is_dir() {
-            for entry in fs::read_dir(&class.staged_dir).map_err(|err| {
-                Error::Merge(format!("failed to read {}: {err}", class.staged_dir.display()))
+            for entry in fs::read_dir(&class.staged_dir).map_err(|err| Error::Diag {
+                code: "merge-readdir-failed",
+                detail: format!("failed to read {}: {err}", class.staged_dir.display()),
             })? {
-                let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
-                let file_type = entry.file_type().map_err(|err| {
-                    Error::Merge(format!(
+                let entry = entry.map_err(|err| Error::Diag {
+                    code: "merge-dir-entry-failed",
+                    detail: format!("dir entry error: {err}"),
+                })?;
+                let file_type = entry.file_type().map_err(|err| Error::Diag {
+                    code: "merge-file-type-failed",
+                    detail: format!(
                         "failed to read file type for {}: {err}",
                         entry.path().display()
-                    ))
+                    ),
                 })?;
                 if !file_type.is_dir() {
                     continue;
@@ -414,7 +427,10 @@ fn plan_three_way(
                 let spec_name = entry
                     .file_name()
                     .to_str()
-                    .ok_or_else(|| Error::Merge("non-UTF8 spec directory name".into()))?
+                    .ok_or_else(|| Error::Diag {
+                        code: "merge-non-utf8-name",
+                        detail: "non-UTF8 spec directory name".into(),
+                    })?
                     .to_string();
                 let baseline_path = class.baseline_dir.join(&spec_name).join("spec.md");
                 delta_specs.push(DeltaSpecRef {
@@ -428,16 +444,18 @@ fn plan_three_way(
         delta_specs.sort_by(|a, b| a.delta_path.cmp(&b.delta_path));
 
         for spec in delta_specs {
-            let delta_text = fs::read_to_string(&spec.delta_path).map_err(|err| {
-                Error::Merge(format!("failed to read delta {}: {err}", spec.delta_path.display()))
+            let delta_text = fs::read_to_string(&spec.delta_path).map_err(|err| Error::Diag {
+                code: "merge-read-delta-failed",
+                detail: format!("failed to read delta {}: {err}", spec.delta_path.display()),
             })?;
 
             let baseline_text = if spec.baseline_path.is_file() {
-                Some(fs::read_to_string(&spec.baseline_path).map_err(|err| {
-                    Error::Merge(format!(
+                Some(fs::read_to_string(&spec.baseline_path).map_err(|err| Error::Diag {
+                    code: "merge-read-baseline-failed",
+                    detail: format!(
                         "failed to read baseline {}: {err}",
                         spec.baseline_path.display()
-                    ))
+                    ),
                 })?)
             } else {
                 None
@@ -445,8 +463,11 @@ fn plan_three_way(
 
             let result = match merge(baseline_text.as_deref(), &delta_text) {
                 Ok(r) => r,
-                Err(Error::Merge(msg)) => {
-                    aborts.push(format!("{}: {msg}", spec.spec_name));
+                Err(Error::Diag {
+                    code: "merge-spec-conflicts",
+                    detail,
+                }) => {
+                    aborts.push(format!("{}: {detail}", spec.spec_name));
                     continue;
                 }
                 Err(other) => return Err(other),
@@ -474,20 +495,23 @@ fn plan_three_way(
             composition_handled = true;
             let composition_delta_path = slice_dir.join(COMPOSITION_FILENAME);
             if composition_delta_path.is_file() {
-                let delta_text = fs::read_to_string(&composition_delta_path).map_err(|err| {
-                    Error::Merge(format!(
-                        "failed to read composition delta {}: {err}",
-                        composition_delta_path.display()
-                    ))
-                })?;
+                let delta_text =
+                    fs::read_to_string(&composition_delta_path).map_err(|err| Error::Diag {
+                        code: "merge-read-composition-delta-failed",
+                        detail: format!(
+                            "failed to read composition delta {}: {err}",
+                            composition_delta_path.display()
+                        ),
+                    })?;
 
                 let baseline_path = class.baseline_dir.join(COMPOSITION_FILENAME);
                 let baseline_text = if baseline_path.is_file() {
-                    Some(fs::read_to_string(&baseline_path).map_err(|err| {
-                        Error::Merge(format!(
+                    Some(fs::read_to_string(&baseline_path).map_err(|err| Error::Diag {
+                        code: "merge-read-composition-baseline-failed",
+                        detail: format!(
                             "failed to read composition baseline {}: {err}",
                             baseline_path.display()
-                        ))
+                        ),
                     })?)
                 } else {
                     None
@@ -534,8 +558,18 @@ fn plan_three_way(
                             result: spec_merge_result,
                         });
                     }
-                    Err(Error::Merge(msg)) => {
-                        aborts.push(format!("composition: {msg}"));
+                    Err(Error::Diag {
+                        code:
+                            "composition-delta-malformed"
+                            | "composition-delta-empty"
+                            | "composition-delta-not-mapping"
+                            | "composition-baseline-malformed"
+                            | "composition-baseline-no-screens"
+                            | "composition-screen-conflict"
+                            | "composition-serialize-failed",
+                        detail,
+                    }) => {
+                        aborts.push(format!("composition: {detail}"));
                     }
                     Err(other) => return Err(other),
                 }
@@ -544,7 +578,10 @@ fn plan_three_way(
     }
 
     if !aborts.is_empty() {
-        return Err(Error::Merge(aborts.join("\n")));
+        return Err(Error::Diag {
+            code: "merge-spec-conflicts",
+            detail: aborts.join("\n"),
+        });
     }
 
     merged.sort_by(|a, b| {
@@ -578,17 +615,22 @@ fn collect_opaque_entries(
     base: &Path, current: &Path, baseline_dir: &Path, class_name: &str,
     entries: &mut Vec<OpaquePreviewEntry>,
 ) -> Result<(), Error> {
-    for entry in fs::read_dir(current)
-        .map_err(|err| Error::Merge(format!("failed to read {}: {err}", current.display())))?
-    {
-        let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
+    for entry in fs::read_dir(current).map_err(|err| Error::Diag {
+        code: "merge-readdir-failed",
+        detail: format!("failed to read {}: {err}", current.display()),
+    })? {
+        let entry = entry.map_err(|err| Error::Diag {
+            code: "merge-dir-entry-failed",
+            detail: format!("dir entry error: {err}"),
+        })?;
         let path = entry.path();
         if path.is_dir() {
             collect_opaque_entries(base, &path, baseline_dir, class_name, entries)?;
         } else {
-            let relative = path
-                .strip_prefix(base)
-                .map_err(|err| Error::Merge(format!("path prefix error: {err}")))?;
+            let relative = path.strip_prefix(base).map_err(|err| Error::Diag {
+                code: "merge-path-prefix-failed",
+                detail: format!("path prefix error: {err}"),
+            })?;
             let baseline_path = baseline_dir.join(relative);
             let action =
                 if baseline_path.is_file() { OpaqueAction::Replaced } else { OpaqueAction::Added };
@@ -617,14 +659,19 @@ fn parse_rfc3339(s: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
 }
 
 fn system_time_to_utc(t: SystemTime) -> Result<DateTime<Utc>, Error> {
-    let duration = t
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map_err(|err| Error::Merge(format!("baseline mtime predates the UNIX epoch: {err}")))?;
-    let secs = i64::try_from(duration.as_secs())
-        .map_err(|err| Error::Merge(format!("baseline mtime overflow: {err}")))?;
+    let duration = t.duration_since(SystemTime::UNIX_EPOCH).map_err(|err| Error::Diag {
+        code: "merge-mtime-pre-epoch",
+        detail: format!("baseline mtime predates the UNIX epoch: {err}"),
+    })?;
+    let secs = i64::try_from(duration.as_secs()).map_err(|err| Error::Diag {
+        code: "merge-mtime-overflow",
+        detail: format!("baseline mtime overflow: {err}"),
+    })?;
     let nanos = duration.subsec_nanos();
-    DateTime::<Utc>::from_timestamp(secs, nanos)
-        .ok_or_else(|| Error::Merge("baseline mtime out of range".to_string()))
+    DateTime::<Utc>::from_timestamp(secs, nanos).ok_or_else(|| Error::Diag {
+        code: "merge-mtime-out-of-range",
+        detail: "baseline mtime out of range".to_string(),
+    })
 }
 
 /// Build the operator-facing summary stamped onto the merge phase
@@ -666,33 +713,41 @@ fn copy_opaque(src: &Path, dest: &Path) -> Result<Vec<String>, Error> {
 fn copy_opaque_recursive(
     base: &Path, dest_base: &Path, current: &Path, copied: &mut Vec<String>,
 ) -> Result<(), Error> {
-    for entry in fs::read_dir(current)
-        .map_err(|err| Error::Merge(format!("failed to read {}: {err}", current.display())))?
-    {
-        let entry = entry.map_err(|err| Error::Merge(format!("dir entry error: {err}")))?;
+    for entry in fs::read_dir(current).map_err(|err| Error::Diag {
+        code: "merge-readdir-failed",
+        detail: format!("failed to read {}: {err}", current.display()),
+    })? {
+        let entry = entry.map_err(|err| Error::Diag {
+            code: "merge-dir-entry-failed",
+            detail: format!("dir entry error: {err}"),
+        })?;
         let path = entry.path();
-        let relative = path
-            .strip_prefix(base)
-            .map_err(|err| Error::Merge(format!("path prefix error: {err}")))?;
+        let relative = path.strip_prefix(base).map_err(|err| Error::Diag {
+            code: "merge-path-prefix-failed",
+            detail: format!("path prefix error: {err}"),
+        })?;
         let dest_path = dest_base.join(relative);
 
         if path.is_dir() {
-            fs::create_dir_all(&dest_path).map_err(|err| {
-                Error::Merge(format!("failed to create {}: {err}", dest_path.display()))
+            fs::create_dir_all(&dest_path).map_err(|err| Error::Diag {
+                code: "merge-mkdir-failed",
+                detail: format!("failed to create {}: {err}", dest_path.display()),
             })?;
             copy_opaque_recursive(base, dest_base, &path, copied)?;
         } else {
             if let Some(parent) = dest_path.parent() {
-                fs::create_dir_all(parent).map_err(|err| {
-                    Error::Merge(format!("failed to create {}: {err}", parent.display()))
+                fs::create_dir_all(parent).map_err(|err| Error::Diag {
+                    code: "merge-mkdir-failed",
+                    detail: format!("failed to create {}: {err}", parent.display()),
                 })?;
             }
-            fs::copy(&path, &dest_path).map_err(|err| {
-                Error::Merge(format!(
+            fs::copy(&path, &dest_path).map_err(|err| Error::Diag {
+                code: "merge-copy-failed",
+                detail: format!(
                     "failed to copy {} to {}: {err}",
                     path.display(),
                     dest_path.display()
-                ))
+                ),
             })?;
             copied.push(relative.to_string_lossy().to_string());
         }

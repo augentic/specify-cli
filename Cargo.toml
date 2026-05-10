@@ -143,6 +143,7 @@ chrono = { version = "0.4", features = ["serde"] }
 jsonschema = { version = "0.46", default-features = false }
 semver = "1"
 tempfile = "3"
+toml = "1"
 sha2 = "0.10"
 ureq = { version = "3", features = ["json"] }
 wasmtime = { version = "44.0.1", default-features = false, features = ["component-model", "runtime", "cranelift"] }

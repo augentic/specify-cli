@@ -47,8 +47,9 @@ impl Brief {
     ///
     /// Returns an error if the operation fails.
     pub fn load(path: &Path) -> Result<Self, Error> {
-        let contents = std::fs::read_to_string(path).map_err(|err| {
-            Error::Config(format!("failed to read brief {}: {err}", path.display()))
+        let contents = std::fs::read_to_string(path).map_err(|err| Error::Diag {
+            code: "brief-read-failed",
+            detail: format!("failed to read brief {}: {err}", path.display()),
         })?;
         Self::parse(path, &contents)
     }
@@ -64,26 +65,27 @@ impl Brief {
         let stripped = contents
             .strip_prefix("---\n")
             .or_else(|| contents.strip_prefix("---\r\n"))
-            .ok_or_else(|| {
-                Error::Config(format!(
+            .ok_or_else(|| Error::Diag {
+                code: "brief-frontmatter-missing",
+                detail: format!(
                     "brief {} is missing a leading `---` frontmatter delimiter",
                     path.display()
-                ))
+                ),
             })?;
 
-        let (frontmatter_text, body) = split_on_closing_delimiter(stripped).ok_or_else(|| {
-            Error::Config(format!(
-                "brief {} has an opening `---` but no closing `---` delimiter",
-                path.display()
-            ))
-        })?;
+        let (frontmatter_text, body) =
+            split_on_closing_delimiter(stripped).ok_or_else(|| Error::Diag {
+                code: "brief-frontmatter-unclosed",
+                detail: format!(
+                    "brief {} has an opening `---` but no closing `---` delimiter",
+                    path.display()
+                ),
+            })?;
 
         let frontmatter: BriefFrontmatter =
-            serde_saphyr::from_str(frontmatter_text).map_err(|err| {
-                Error::Config(format!(
-                    "brief {} has invalid frontmatter YAML: {err}",
-                    path.display()
-                ))
+            serde_saphyr::from_str(frontmatter_text).map_err(|err| Error::Diag {
+                code: "brief-frontmatter-malformed",
+                detail: format!("brief {} has invalid frontmatter YAML: {err}", path.display()),
             })?;
 
         Ok(Self {

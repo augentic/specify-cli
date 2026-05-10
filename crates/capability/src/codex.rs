@@ -166,11 +166,9 @@ impl CodexRule {
     ///
     /// Returns an error if the operation fails.
     pub fn load(path: &Path) -> Result<Self, Error> {
-        let contents = std::fs::read_to_string(path).map_err(|err| {
-            Error::Config(format!(
-                "codex-rule-read-failed: failed to read {}: {err}",
-                path.display()
-            ))
+        let contents = std::fs::read_to_string(path).map_err(|err| Error::Diag {
+            code: "codex-rule-read-failed",
+            detail: format!("failed to read {}: {err}", path.display()),
         })?;
         Self::parse(path, &contents)
     }
@@ -181,7 +179,7 @@ impl CodexRule {
     /// # Errors
     ///
     /// Returns [`Error::Validation`] when the rule file does not satisfy
-    /// the codex rule format, or [`Error::Config`] when a post-validation
+    /// the codex rule format, or an `Error::Diag` when a post-validation
     /// parser invariant fails.
     pub fn parse(path: &Path, contents: &str) -> Result<Self, Error> {
         let results = Self::validate_str(path, contents);
@@ -195,11 +193,12 @@ impl CodexRule {
 
         let (frontmatter_text, body) = frontmatter_parts(path, contents)?;
         let frontmatter: CodexRuleFrontmatter =
-            serde_saphyr::from_str(frontmatter_text).map_err(|err| {
-                Error::Config(format!(
-                    "codex-rule-frontmatter-unreadable: {} frontmatter passed validation but could not be parsed: {err}",
+            serde_saphyr::from_str(frontmatter_text).map_err(|err| Error::Diag {
+                code: "codex-rule-frontmatter-unreadable",
+                detail: format!(
+                    "{} frontmatter passed validation but could not be parsed: {err}",
                     path.display()
-                ))
+                ),
             })?;
         let normalized_id = frontmatter.id.to_ascii_uppercase();
         Ok(Self {
@@ -261,21 +260,17 @@ impl CodexRule {
 }
 
 fn frontmatter_parts<'a>(path: &Path, contents: &'a str) -> Result<(&'a str, &'a str), Error> {
-    let stripped =
-        contents.strip_prefix("---\n").or_else(|| contents.strip_prefix("---\r\n")).ok_or_else(
-            || {
-                Error::Config(format!(
-                    "codex-rule-frontmatter-missing: {} is missing a leading `---` frontmatter delimiter",
-                    path.display()
-                ))
-            },
-        )?;
+    let stripped = contents
+        .strip_prefix("---\n")
+        .or_else(|| contents.strip_prefix("---\r\n"))
+        .ok_or_else(|| Error::Diag {
+            code: "codex-rule-frontmatter-missing",
+            detail: format!("{} is missing a leading `---` frontmatter delimiter", path.display()),
+        })?;
 
-    split_on_closing_delimiter(stripped).ok_or_else(|| {
-        Error::Config(format!(
-            "codex-rule-frontmatter-unclosed: {} has an opening `---` but no closing `---` delimiter",
-            path.display()
-        ))
+    split_on_closing_delimiter(stripped).ok_or_else(|| Error::Diag {
+        code: "codex-rule-frontmatter-unclosed",
+        detail: format!("{} has an opening `---` but no closing `---` delimiter", path.display()),
     })
 }
 

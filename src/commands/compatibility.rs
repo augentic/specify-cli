@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use specify::Error;
+use specify_error::Error;
 use specify_validate::{
     CompatibilityClassification, CompatibilityFinding, CompatibilityReport,
     classify_project_compatibility,

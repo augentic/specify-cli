@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use specify::{Error, PipelineView, ProjectConfig};
+use specify::config::ProjectConfig;
+use specify_capability::PipelineView;
+use specify_error::Error;
 
 use crate::cli::OutputFormat;
 
@@ -35,16 +37,17 @@ impl CommandContext {
     ///
     /// Hub projects (`hub: true`, `capability:` omitted) do not declare
     /// a capability and have no pipeline to walk, so this returns a
-    /// [`Error::Config`] diagnostic naming the hub case rather than a
-    /// stray `CapabilityResolution` lower down the stack.
+    /// `hub-no-capability` diagnostic naming the hub case rather than a
+    /// stray capability-resolution error lower down the stack.
     pub fn load_pipeline(&self) -> Result<PipelineView, Error> {
         let Some(capability) = self.config.capability.as_deref() else {
-            return Err(Error::Config(
-                "this project has no capability declared (hub projects do not run \
-                 phase pipelines); only `specify registry` and `specify change` \
-                 verbs are supported on hubs"
+            return Err(Error::Diag {
+                code: "hub-no-capability",
+                detail: "this project has no capability declared (hub projects do not run \
+                         phase pipelines); only `specify registry` and `specify change` \
+                         verbs are supported on hubs"
                     .to_string(),
-            ));
+            });
         };
         PipelineView::load(capability, &self.project_dir)
     }

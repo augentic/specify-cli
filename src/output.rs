@@ -2,7 +2,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use serde::Serialize;
-use specify::{Error, ValidationSummary};
+use specify_error::{Error, ValidationSummary};
 
 use crate::cli::OutputFormat;
 

@@ -10,8 +10,9 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, ProjectConfig, is_kebab};
+use specify::config::ProjectConfig;
 use specify_change::Plan;
+use specify_error::{Error, is_kebab};
 use specify_registry::{Registry, RegistryProject};
 
 use crate::cli::{OutputFormat, RegistryAction};
@@ -182,15 +183,19 @@ fn add_to_registry(
     let hub_mode = ctx.config.hub;
 
     if !is_kebab(&name) {
-        return Err(Error::Config(format!(
-            "registry add: project name `{name}` must be kebab-case \
-             (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
-        )));
+        return Err(Error::Diag {
+            code: "registry-add-name-not-kebab",
+            detail: format!(
+                "registry add: project name `{name}` must be kebab-case \
+                 (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
+            ),
+        });
     }
     if capability.trim().is_empty() {
-        return Err(Error::Config(
-            "registry add: --capability must be non-empty (e.g. `omnia@v1`)".to_string(),
-        ));
+        return Err(Error::Diag {
+            code: "registry-add-capability-empty",
+            detail: "registry add: --capability must be non-empty (e.g. `omnia@v1`)".to_string(),
+        });
     }
 
     // Load the existing registry (if any) without applying hub-mode
@@ -207,10 +212,13 @@ fn add_to_registry(
     };
 
     if registry.projects.iter().any(|p| p.name == name) {
-        return Err(Error::Config(format!(
-            "registry add: project `{name}` already exists in {}",
-            registry_path.display()
-        )));
+        return Err(Error::Diag {
+            code: "registry-add-name-duplicate",
+            detail: format!(
+                "registry add: project `{name}` already exists in {}",
+                registry_path.display()
+            ),
+        });
     }
 
     let new_entry = RegistryProject {
@@ -282,18 +290,20 @@ fn remove_from_registry(ctx: &CommandContext, name: String) -> Result<CliResult,
     let hub_mode = ctx.config.hub;
 
     let Some(mut registry) = Registry::load(&ctx.project_dir)? else {
-        return Err(Error::Config(format!(
-            "registry remove: no registry declared at {}",
-            registry_path.display()
-        )));
+        return Err(Error::Diag {
+            code: "registry-remove-no-registry",
+            detail: format!("registry remove: no registry declared at {}", registry_path.display()),
+        });
     };
 
-    let position = registry.projects.iter().position(|p| p.name == name).ok_or_else(|| {
-        Error::Config(format!(
-            "registry remove: project `{name}` not found in {}",
-            registry_path.display()
-        ))
-    })?;
+    let position =
+        registry.projects.iter().position(|p| p.name == name).ok_or_else(|| Error::Diag {
+            code: "registry-remove-not-found",
+            detail: format!(
+                "registry remove: project `{name}` not found in {}",
+                registry_path.display()
+            ),
+        })?;
     registry.projects.remove(position);
 
     if hub_mode {

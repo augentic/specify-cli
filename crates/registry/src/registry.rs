@@ -111,10 +111,14 @@ impl Registry {
         if !path.exists() {
             return Ok(None);
         }
-        let content = std::fs::read_to_string(&path)
-            .map_err(|err| Error::Config(format!("failed to read {}: {err}", path.display())))?;
-        let registry: Self = serde_saphyr::from_str(&content)
-            .map_err(|err| Error::Config(format!("registry.yaml: invalid YAML: {err}")))?;
+        let content = std::fs::read_to_string(&path).map_err(|err| Error::Diag {
+            code: "registry-read-failed",
+            detail: format!("failed to read {}: {err}", path.display()),
+        })?;
+        let registry: Self = serde_saphyr::from_str(&content).map_err(|err| Error::Diag {
+            code: "registry-malformed",
+            detail: format!("registry.yaml: invalid YAML: {err}"),
+        })?;
         registry.validate_shape()?;
         Ok(Some(registry))
     }
@@ -176,9 +180,12 @@ impl Registry {
         let unknown_list =
             unknown.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", ");
         let noun = if unknown.len() == 1 { "selector" } else { "selectors" };
-        Err(Error::Config(format!(
-            "registry.yaml: unknown project {noun} {unknown_list}; expected one of: {known}"
-        )))
+        Err(Error::Diag {
+            code: "registry-project-selector-unknown",
+            detail: format!(
+                "registry.yaml: unknown project {noun} {unknown_list}; expected one of: {known}"
+            ),
+        })
     }
 }
 

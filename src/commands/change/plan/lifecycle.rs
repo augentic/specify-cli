@@ -5,8 +5,10 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{ChangeBrief, Error, ProjectConfig};
+use specify::config::ProjectConfig;
+use specify_capability::ChangeBrief;
 use specify_change::{Finding, Plan, Severity, Status};
+use specify_error::Error;
 use specify_registry::Registry;
 
 use super::{
@@ -22,17 +24,23 @@ pub fn create(
 ) -> Result<CliResult, Error> {
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if plan_path.exists() {
-        return Err(Error::Config(format!(
-            "plan already exists at {}; run `specify change plan archive` first",
-            plan_path.display()
-        )));
+        return Err(Error::Diag {
+            code: "plan-already-exists",
+            detail: format!(
+                "plan already exists at {}; run `specify change plan archive` first",
+                plan_path.display()
+            ),
+        });
     }
 
     let mut source_map: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
     for (k, v) in sources {
         if source_map.contains_key(&k) {
-            return Err(Error::Config(format!("duplicate key `{k}` in --source arguments")));
+            return Err(Error::Diag {
+                code: "plan-source-duplicate-key",
+                detail: format!("duplicate key `{k}` in --source arguments"),
+            });
         }
         source_map.insert(k, v);
     }
@@ -225,7 +233,10 @@ pub fn transition(
         .entries
         .iter()
         .find(|c| c.name == name)
-        .ok_or_else(|| Error::Config(format!("no change named '{name}' in plan")))?
+        .ok_or_else(|| Error::Diag {
+            code: "plan-entry-not-found",
+            detail: format!("no change named '{name}' in plan"),
+        })?
         .status;
 
     plan.transition(&name, target, reason.as_deref())?;

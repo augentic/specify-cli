@@ -6,8 +6,8 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::Error;
 use specify_change::{Entry, EntryPatch, Status};
+use specify_error::Error;
 
 use super::{PlanRef, change_entry_json, check_project, load_for_write, plan_ref};
 use crate::cli::OutputFormat;

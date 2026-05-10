@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
-use specify::{CreateIfExists, EntryKind, LifecycleStatus, Phase};
+use specify_capability::Phase;
 use specify_change::Status;
+use specify_slice::{CreateIfExists, EntryKind, LifecycleStatus};
 
 #[derive(Parser)]
 #[command(
@@ -114,27 +115,6 @@ pub enum Commands {
         /// Target shell
         #[arg(value_enum)]
         shell: clap_complete::Shell,
-    },
-
-    /// One-shot migrators for legacy on-disk vocabulary. Hidden — kept
-    /// for one minor release after the breaking rename, then deleted.
-    #[command(hide = true)]
-    Migrate {
-        #[command(subcommand)]
-        action: MigrateAction,
-    },
-}
-
-/// Hidden one-shot migrators. See `Commands::Migrate`.
-#[derive(Subcommand)]
-pub enum MigrateAction {
-    /// Rewrite legacy `schema:` keys to `capability:` in `registry.yaml`,
-    /// `plan.yaml`, and archived `plan-*.yaml` files. Idempotent — safe
-    /// to re-run. Pass `--dry-run` to preview without writing.
-    CapabilityNoun {
-        /// Show what would be rewritten without modifying files.
-        #[arg(long)]
-        dry_run: bool,
     },
 }
 

@@ -12,6 +12,9 @@ use jsonschema::Validator;
 use serde_json::Value as JsonValue;
 use tempfile::{TempDir, tempdir};
 
+mod common;
+use common::{omnia_schema_dir, repo_root, specify};
+
 const CONTEXT_LOCK_EXAMPLE: &str = r"
 version: 1
 fingerprint: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -24,14 +27,6 @@ inputs:
 fences:
   body_sha256: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 ";
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn omnia_schema_dir() -> PathBuf {
-    repo_root().join("schemas").join("omnia")
-}
 
 fn context_lock_schema_path() -> PathBuf {
     repo_root().join("schemas").join("context-lock.schema.json")
@@ -47,10 +42,6 @@ fn load_context_lock_validator() -> Validator {
 
 fn yaml_to_json(yaml: &str) -> JsonValue {
     serde_saphyr::from_str(yaml).expect("fixture parses as YAML")
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
 }
 
 struct ContextProject {

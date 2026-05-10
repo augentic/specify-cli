@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{CAPABILITY_FILENAME, Capability, CapabilitySource, Error, Phase, ValidationResult};
+use specify_capability::{CAPABILITY_FILENAME, Capability, CapabilitySource, Phase};
+use specify_error::Error;
+use specify_validate::ValidationResult;
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
@@ -151,11 +153,9 @@ impl Render for CheckBody {
 }
 
 pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult, Error> {
-    let manifest_path = Capability::probe_dir(&capability_dir).ok_or_else(|| {
-        Error::CapabilityResolution(format!(
-            "no `{CAPABILITY_FILENAME}` at {}",
-            capability_dir.display()
-        ))
+    let manifest_path = Capability::probe_dir(&capability_dir).ok_or_else(|| Error::Diag {
+        code: "capability-manifest-missing",
+        detail: format!("no `{CAPABILITY_FILENAME}` at {}", capability_dir.display()),
     })?;
     let capability = load_capability(&manifest_path)?;
     let results = capability.validate_structure();
@@ -169,11 +169,12 @@ pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult,
     Ok(if passed { CliResult::Success } else { CliResult::ValidationFailed })
 }
 
-/// Surface a `CapabilityResolution` error when `dir` does not carry a
-/// `capability.yaml`.
+/// Surface a `capability-manifest-missing` diagnostic when `dir` does
+/// not carry a `capability.yaml`.
 fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
-    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| {
-        Error::CapabilityResolution(format!("no `{CAPABILITY_FILENAME}` at {}", dir.display()))
+    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::Diag {
+        code: "capability-manifest-missing",
+        detail: format!("no `{CAPABILITY_FILENAME}` at {}", dir.display()),
     })
 }
 

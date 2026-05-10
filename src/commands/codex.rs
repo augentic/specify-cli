@@ -1,11 +1,11 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify::{
+use specify_capability::{
     CodexApplicability, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexProvenance,
-    CodexReference, CodexReviewMode, CodexSeverity, Error, ResolvedCodex, ResolvedCodexRule,
-    ValidationSummary,
+    CodexReference, CodexReviewMode, CodexSeverity, ResolvedCodex, ResolvedCodexRule,
 };
+use specify_error::{Error, ValidationSummary};
 
 use crate::cli::CodexAction;
 use crate::context::CommandContext;

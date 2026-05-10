@@ -12,25 +12,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use assert_cmd::Command;
-use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::copy_dir;
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
-
-fn parse_json(stdout: &[u8]) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
-}
+use common::{copy_dir, parse_json, repo_root, specify};
 
 struct Project {
     _tmp: TempDir,
@@ -133,7 +118,7 @@ fn slice_create_fails_when_dir_exists_by_default() {
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["error"], "config");
+    assert_eq!(value["error"], "slice-already-exists");
     assert!(value["message"].as_str().unwrap().contains("already exists"));
 }
 
@@ -682,7 +667,7 @@ fn slice_phase_outcome_preserves_existing_metadata_fields() {
 
 #[test]
 fn pre_existing_metadata_yaml_without_outcome_still_parses() {
-    use specify::SliceMetadata;
+    use specify_slice::SliceMetadata;
     // Hand-craft a `.metadata.yaml` that predates the `outcome` field
     // and assert that SliceMetadata::load accepts it and leaves
     // `outcome` as None.
@@ -996,7 +981,7 @@ fn slice_outcome_registry_amendment_required_writes_payload() {
     );
 }
 
-/// Missing required flags surface a clear `Error::Config` (exit code 1).
+/// Missing required flags surface a clear `Error::Diag` (exit code 1).
 #[test]
 fn slice_outcome_registry_amendment_required_missing_flags_errors() {
     let project = Project::init();
@@ -1314,7 +1299,7 @@ fn slice_journal_show_on_nonexistent_slice_errors() {
 
 #[test]
 fn phase_outcome_round_trips_through_serde() {
-    use specify::{Outcome, Phase, PhaseOutcome, Rfc3339Stamp};
+    use specify_slice::{Outcome, Phase, PhaseOutcome, Rfc3339Stamp};
     for outcome in [Outcome::Success, Outcome::Failure, Outcome::Deferred] {
         for phase in [Phase::Define, Phase::Build, Phase::Merge] {
             let context = if matches!(outcome, Outcome::Success) {
@@ -1336,74 +1321,15 @@ fn phase_outcome_round_trips_through_serde() {
     }
 }
 
-// ---- specify {initiative, plan} * are gone (RFC-13 Phase 3.5 cut-over) ----
-//
-// Phase 3.2 deleted the pre-RFC `change` per-loop-unit verb (renamed to
-// `slice`). Phase 3.5 then re-uses the `change` noun as the operator-
-// facing umbrella that nests the plan sub-resource: `Commands::Change`
-// folds in what used to be `Commands::Initiative` and adds a nested
-// `change plan *` family that replaces top-level `Commands::Plan`. The
-// regression tests below pin the post-3.5 surface — `change` is back as
-// a top-level subcommand, while `initiative` and `plan` are gone from
-// the binary's `--help` and trip clap's unrecognised-subcommand path.
+// ---- specify change is the umbrella for the operator surface ----
 
 #[test]
 fn change_umbrella_is_listed_in_top_level_help() {
     let assert = specify().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(stdout.contains("slice"), "post-RFC-13 --help must list `slice`, got:\n{stdout}");
-    // `--help` lists subcommand names one-per-line (clap default).
-    // After Phase 3.5, the umbrella `change` subcommand is back.
     assert!(
         stdout.lines().any(|line| line.trim_start().starts_with("change ")),
         "post-3.5 --help must list `change` as the umbrella subcommand, got:\n{stdout}"
-    );
-}
-
-#[test]
-fn initiative_subcommand_is_gone_from_top_level_help() {
-    let assert = specify().arg("--help").assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        !stdout.lines().any(|line| {
-            line.trim_start().starts_with("initiative ") || line.trim_start() == "initiative"
-        }),
-        "post-3.5 --help must not list `initiative` (folded into `change`), got:\n{stdout}"
-    );
-}
-
-#[test]
-fn plan_subcommand_is_gone_from_top_level_help() {
-    let assert = specify().arg("--help").assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        !stdout
-            .lines()
-            .any(|line| line.trim_start().starts_with("plan ") || line.trim_start() == "plan"),
-        "post-3.5 --help must not list top-level `plan` (folded into `change plan`), got:\n{stdout}"
-    );
-}
-
-#[test]
-fn initiative_subcommand_returns_clap_unrecognised_subcommand_error() {
-    let assert = specify().args(["initiative", "create", "demo"]).assert().failure();
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
-    assert!(
-        stderr.to_lowercase().contains("unrecognized")
-            || stderr.to_lowercase().contains("unrecognised")
-            || stderr.to_lowercase().contains("unexpected argument"),
-        "post-3.5 `specify initiative *` must be a clap-level error, got stderr:\n{stderr}"
-    );
-}
-
-#[test]
-fn plan_subcommand_returns_clap_unrecognised_subcommand_error() {
-    let assert = specify().args(["plan", "add", "foo"]).assert().failure();
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
-    assert!(
-        stderr.to_lowercase().contains("unrecognized")
-            || stderr.to_lowercase().contains("unrecognised")
-            || stderr.to_lowercase().contains("unexpected argument"),
-        "post-3.5 top-level `specify plan *` must be a clap-level error, got stderr:\n{stderr}"
     );
 }

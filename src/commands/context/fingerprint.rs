@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
-use specify::Error;
+use specify_error::Error;
 
 /// One renderer input file and its content digest.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,12 +133,13 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn repo_relative_path(project_dir: &Path, path: &Path) -> Result<String, Error> {
-    let relative = path.strip_prefix(project_dir).map_err(|_err| {
-        Error::Config(format!(
+    let relative = path.strip_prefix(project_dir).map_err(|_err| Error::Diag {
+        code: "context-fingerprint-input-outside-project",
+        detail: format!(
             "context fingerprint input {} is outside project root {}",
             path.display(),
             project_dir.display()
-        ))
+        ),
     })?;
     Ok(relative
         .components()

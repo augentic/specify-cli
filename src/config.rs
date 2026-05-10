@@ -1,8 +1,9 @@
-//! `ProjectConfig` — the in-memory model of `.specify/project.yaml` plus
-//! the family of path helpers every subcommand reaches for when it needs
-//! to locate `.specify/slices/`, `.specify/.cache/`, `.specify/archive/`,
-//! or the operator-facing platform artifacts at the repo root
-//! (`registry.yaml`, `plan.yaml`, `change.md`).
+//! `ProjectConfig` — the in-memory model of `.specify/project.yaml`.
+//!
+//! Hosts the family of path helpers every subcommand reaches for when
+//! it needs to locate `.specify/slices/`, `.specify/.cache/`,
+//! `.specify/archive/`, or the operator-facing platform artifacts at
+//! the repo root (`registry.yaml`, `plan.yaml`, `change.md`).
 //!
 //! Layout boundary: `.specify/` holds framework-managed state that the
 //! CLI owns (configuration, working slices, archive, cache, workspace

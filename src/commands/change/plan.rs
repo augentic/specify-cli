@@ -13,8 +13,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, ProjectConfig};
+use specify::config::ProjectConfig;
 use specify_change::{Entry, Finding, Plan, Severity};
+use specify_error::Error;
 use specify_registry::Registry;
 
 use crate::cli::{LockAction, OutputFormat, PlanAction};
@@ -130,15 +131,19 @@ pub(super) fn check_project(project_dir: &Path, project_name: &str) -> Result<()
     match Registry::load(project_dir) {
         Ok(Some(registry)) => {
             if !registry.projects.iter().any(|p| p.name == project_name) {
-                return Err(Error::Config(format!(
-                    "--project '{project_name}' does not match any project in registry.yaml"
-                )));
+                return Err(Error::Diag {
+                    code: "plan-project-unknown",
+                    detail: format!(
+                        "--project '{project_name}' does not match any project in registry.yaml"
+                    ),
+                });
             }
             Ok(())
         }
-        Ok(None) => {
-            Err(Error::Config("--project was specified but no registry.yaml exists".to_string()))
-        }
+        Ok(None) => Err(Error::Diag {
+            code: "plan-project-no-registry",
+            detail: "--project was specified but no registry.yaml exists".to_string(),
+        }),
         Err(err) => Err(err),
     }
 }

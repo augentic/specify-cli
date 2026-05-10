@@ -32,9 +32,11 @@ mod serialize;
 
 pub use compatibility::{
     CompatibilityClassification, CompatibilityFinding, CompatibilityReport, CompatibilitySummary,
-    classify_project_compatibility,
+    classify_project as classify_project_compatibility,
 };
-pub use contracts::{ContractFinding, serialize_contract_findings, validate_baseline_contracts};
+pub use contracts::{
+    ContractFinding, serialize_contract_findings, validate_baseline as validate_baseline_contracts,
+};
 pub use registry::{cross_rules, rules_for};
 pub use run::validate_slice;
 pub use serialize::serialize_report;

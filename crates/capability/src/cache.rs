@@ -33,7 +33,8 @@ impl CacheMeta {
     /// Load `.cache-meta.yaml`:
     /// - `Ok(None)` if the file is missing (cache empty).
     /// - `Ok(Some(meta))` on a successful parse.
-    /// - `Err(Error::Config(_))` if the file exists but cannot be parsed.
+    /// - `Err(Error::Diag { code: "cache-meta-malformed" | "cache-meta-read-failed", .. })`
+    ///   if the file exists but cannot be parsed.
     ///
     /// # Errors
     ///
@@ -44,11 +45,15 @@ impl CacheMeta {
             Ok(contents) => contents,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(err) => {
-                return Err(Error::Config(format!("failed to read {}: {err}", path.display())));
+                return Err(Error::Diag {
+                    code: "cache-meta-read-failed",
+                    detail: format!("failed to read {}: {err}", path.display()),
+                });
             }
         };
-        let meta: Self = serde_saphyr::from_str(&contents).map_err(|err| {
-            Error::Config(format!("invalid cache-meta at {}: {err}", path.display()))
+        let meta: Self = serde_saphyr::from_str(&contents).map_err(|err| Error::Diag {
+            code: "cache-meta-malformed",
+            detail: format!("invalid cache-meta at {}: {err}", path.display()),
         })?;
         Ok(Some(meta))
     }

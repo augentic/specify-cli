@@ -17,19 +17,11 @@ use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
+mod common;
+use common::{GIT_TEST_ENV, parse_json, specify};
+
 const CHANGE_NAME: &str = "oauth-login";
 const BRANCH_NAME: &str = "specify/oauth-login";
-
-const GIT_TEST_ENV: [(&str, &str); 4] = [
-    ("GIT_AUTHOR_NAME", "Specify Test"),
-    ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
-    ("GIT_COMMITTER_NAME", "Specify Test"),
-    ("GIT_COMMITTER_EMAIL", "specify-test@example.com"),
-];
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
 
 fn run_git(root: &Path, args: &[&str], envs: &TestEnv) -> String {
     let output = ProcessCommand::new("git")
@@ -54,11 +46,6 @@ fn run_git(root: &Path, args: &[&str], envs: &TestEnv) -> String {
 
 fn git_output(root: &Path, args: &[&str], envs: &TestEnv) -> String {
     run_git(root, args, envs).trim().to_string()
-}
-
-fn parse_json(stdout: &[u8]) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
 }
 
 struct TestEnv {

@@ -15,7 +15,7 @@ clap.workspace = true
 regex.workspace = true
 syn = { version = "2", features = ["full", "visit", "extra-traits"] }
 walkdir = "2"
-toml = "0.8"
+toml.workspace = true
 serde = { workspace = true }
 
 [lints.rust]

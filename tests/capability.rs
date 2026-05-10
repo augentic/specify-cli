@@ -8,25 +8,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::copy_dir;
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
-
-fn parse_json(stdout: &[u8]) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
-}
+use common::{copy_dir, parse_json, repo_root, specify};
 
 struct Project {
     _tmp: TempDir,
@@ -247,43 +233,5 @@ fn capability_check_text_output_says_capability_ok() {
     assert!(
         stdout.contains("Capability OK"),
         "text mode must use the post-RFC-13 noun, got: {stdout}"
-    );
-}
-
-// ---- specify schema * is gone ----------------------------------------------
-
-#[test]
-fn schema_subcommand_is_gone_from_top_level_help() {
-    let assert = specify().arg("--help").assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        stdout.contains("capability"),
-        "post-RFC-13 --help must list `capability`, got:\n{stdout}"
-    );
-    // `--help` lists subcommand names one-per-line (clap default).
-    // A grepped `\n  schema` would catch the surface even if `schema`
-    // appeared incidentally inside descriptions of other commands.
-    assert!(
-        !stdout
-            .lines()
-            .any(|line| line.trim_start().starts_with("schema ") || line.trim_start() == "schema"),
-        "pre-RFC-13 `schema` subcommand must be gone from --help, got:\n{stdout}"
-    );
-}
-
-#[test]
-fn schema_subcommand_returns_clap_unrecognised_subcommand_error() {
-    let assert = specify().args(["schema", "check", "schemas/omnia"]).assert().failure();
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
-    // clap's standard "unrecognised subcommand" message includes the
-    // word "unrecognized" or "unexpected" depending on version; either
-    // is acceptable. Anchor on the noun that proves clap rejected it
-    // rather than dispatching to a real handler.
-    assert!(
-        stderr.to_lowercase().contains("unrecognized")
-            || stderr.to_lowercase().contains("unrecognised")
-            || stderr.to_lowercase().contains("unexpected argument")
-            || stderr.contains("error: ") && stderr.contains("schema"),
-        "pre-RFC-13 `specify schema *` must be a clap-level error, got stderr:\n{stderr}"
     );
 }

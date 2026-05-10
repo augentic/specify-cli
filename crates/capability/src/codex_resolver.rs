@@ -144,10 +144,10 @@ impl CodexResolver {
                 rules.extend(load_capability_rules(&project)?);
             }
         } else if !self.hub {
-            return Err(Error::Config(
-                "codex-project-capability-missing: non-hub projects must declare a capability"
-                    .to_string(),
-            ));
+            return Err(Error::Diag {
+                code: "codex-project-capability-missing",
+                detail: "non-hub projects must declare a capability".to_string(),
+            });
         }
 
         for catalog in &self.catalogs {
@@ -176,10 +176,16 @@ impl fmt::Display for CodexProvenance {
 fn resolve_default(project_dir: &Path) -> Result<crate::capability::ResolvedCapability, Error> {
     match Capability::resolve(DEFAULT_CODEX_CAPABILITY, project_dir) {
         Ok(capability) => Ok(capability),
-        Err(Error::CapabilityResolution(detail)) => Err(Error::CapabilityResolution(format!(
-            "codex-default-capability-unavailable: foundational `{DEFAULT_CODEX_CAPABILITY}` \
-             capability could not be resolved: {detail}"
-        ))),
+        Err(err @ Error::Diag { .. }) => {
+            let detail = err.to_string();
+            Err(Error::Diag {
+                code: "codex-default-capability-unavailable",
+                detail: format!(
+                    "foundational `{DEFAULT_CODEX_CAPABILITY}` capability could not be resolved: \
+                     {detail}"
+                ),
+            })
+        }
         Err(err) => Err(err),
     }
 }
@@ -222,26 +228,20 @@ fn markdown_files(codex_dir: &Path) -> Result<Vec<PathBuf>, Error> {
 }
 
 fn collect_markdown_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Error> {
-    let entries = std::fs::read_dir(dir).map_err(|err| {
-        Error::Config(format!(
-            "codex-source-read-failed: failed to read codex directory {}: {err}",
-            dir.display()
-        ))
+    let entries = std::fs::read_dir(dir).map_err(|err| Error::Diag {
+        code: "codex-source-read-failed",
+        detail: format!("failed to read codex directory {}: {err}", dir.display()),
     })?;
 
     for entry in entries {
-        let entry = entry.map_err(|err| {
-            Error::Config(format!(
-                "codex-source-read-failed: failed to read an entry under {}: {err}",
-                dir.display()
-            ))
+        let entry = entry.map_err(|err| Error::Diag {
+            code: "codex-source-read-failed",
+            detail: format!("failed to read an entry under {}: {err}", dir.display()),
         })?;
         let path = entry.path();
-        let file_type = entry.file_type().map_err(|err| {
-            Error::Config(format!(
-                "codex-source-read-failed: failed to inspect {}: {err}",
-                path.display()
-            ))
+        let file_type = entry.file_type().map_err(|err| Error::Diag {
+            code: "codex-source-read-failed",
+            detail: format!("failed to inspect {}: {err}", path.display()),
         })?;
         if file_type.is_dir() {
             collect_markdown_files(&path, files)?;

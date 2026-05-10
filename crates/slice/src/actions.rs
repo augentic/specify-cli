@@ -29,7 +29,7 @@ use crate::{
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CreateIfExists {
-    /// Default. Refuse and return `Error::Config`.
+    /// Default. Refuse and return `Error::Diag`.
     Fail,
     /// Reuse the existing directory. The function reloads its
     /// `.metadata.yaml` and returns it without writing. Intended for the
@@ -114,17 +114,20 @@ pub fn create(
     if slice_dir.exists() {
         match if_exists {
             CreateIfExists::Fail => {
-                return Err(Error::Config(format!(
-                    "slice `{name}` already exists at {}",
-                    slice_dir.display()
-                )));
+                return Err(Error::Diag {
+                    code: "slice-already-exists",
+                    detail: format!("slice `{name}` already exists at {}", slice_dir.display()),
+                });
             }
             CreateIfExists::Continue => {
                 if !metadata_path.exists() {
-                    return Err(Error::Config(format!(
-                        "slice dir {} exists but has no .metadata.yaml; refusing to reuse",
-                        slice_dir.display()
-                    )));
+                    return Err(Error::Diag {
+                        code: "slice-dir-missing-metadata",
+                        detail: format!(
+                            "slice dir {} exists but has no .metadata.yaml; refusing to reuse",
+                            slice_dir.display()
+                        ),
+                    });
                 }
                 let metadata = SliceMetadata::load(&slice_dir)?;
                 return Ok(CreateOutcome {
@@ -345,8 +348,9 @@ pub fn overlap(slices_dir: &Path, slice_name: &str) -> Result<Vec<Overlap>, Erro
 pub fn archive(
     slice_dir: &Path, archive_dir: &Path, today: DateTime<Utc>,
 ) -> Result<PathBuf, Error> {
-    let slice_name = slice_dir.file_name().and_then(|s| s.to_str()).ok_or_else(|| {
-        Error::Config(format!("slice dir {} has no basename", slice_dir.display()))
+    let slice_name = slice_dir.file_name().and_then(|s| s.to_str()).ok_or_else(|| Error::Diag {
+        code: "slice-dir-no-basename",
+        detail: format!("slice dir {} has no basename", slice_dir.display()),
     })?;
     let date = today.format("%Y-%m-%d").to_string();
     let target = archive_dir.join(format!("{date}-{slice_name}"));

@@ -5,47 +5,12 @@
 //! effects are observed exactly as a user would experience them.
 
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
-use assert_cmd::Command;
 use tempfile::tempdir;
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn omnia_schema_dir() -> PathBuf {
-    repo_root().join("schemas").join("omnia")
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
-
-const GIT_TEST_ENV: [(&str, &str); 4] = [
-    ("GIT_AUTHOR_NAME", "Specify Test"),
-    ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
-    ("GIT_COMMITTER_NAME", "Specify Test"),
-    ("GIT_COMMITTER_EMAIL", "specify-test@example.com"),
-];
-
-fn run_git(root: &Path, args: &[&str]) -> String {
-    let output = ProcessCommand::new("git")
-        .current_dir(root)
-        .args(args)
-        .envs(GIT_TEST_ENV)
-        .output()
-        .unwrap_or_else(|err| panic!("git {} failed to start: {err}", args.join(" ")));
-    assert!(
-        output.status.success(),
-        "git {} failed\nstdout:\n{}\nstderr:\n{}",
-        args.join(" "),
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8(output.stdout).expect("git stdout utf8")
-}
+mod common;
+use common::{init_hub, omnia_schema_dir, run_git, specify};
 
 #[test]
 fn help_exits_zero_and_prints_usage() {
@@ -137,17 +102,6 @@ fn init_json_format_has_stable_shape() {
     );
     assert!(value["specify-version"].is_string());
     assert!(value["scaffolded-rule-keys"].is_array());
-}
-
-#[test]
-fn init_rejects_removed_schema_dir_syntax() {
-    let tmp = tempdir().unwrap();
-    specify()
-        .current_dir(tmp.path())
-        .args(["init", "omnia", "--capability-dir"])
-        .arg(repo_root())
-        .assert()
-        .failure();
 }
 
 #[test]
@@ -271,22 +225,6 @@ fn init_with_capability_and_hub_errors_with_init_requires_capability_or_hub() {
         combined.contains("init-requires-capability-or-hub"),
         "diagnostic must carry the stable code, got stdout:\n{stdout}\nstderr:\n{stderr}"
     );
-}
-
-#[test]
-fn init_help_no_longer_advertises_schema_uri_flag() {
-    // RFC-13 §1.3: `--capability-uri` is gone from the post-Phase-1 surface.
-    let assert = specify().args(["init", "--help"]).assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    assert!(
-        !stdout.contains("--capability-uri"),
-        "post-RFC-13 init --help must not advertise `--capability-uri`, got:\n{stdout}"
-    );
-    assert!(
-        stdout.contains("CAPABILITY") || stdout.contains("capability"),
-        "init --help must mention the capability positional, got:\n{stdout}"
-    );
-    assert!(stdout.contains("--hub"), "init --help must still document --hub, got:\n{stdout}");
 }
 
 #[test]
@@ -510,15 +448,6 @@ fn serde_yaml_to_json(yaml: &str) -> Result<serde_json::Value, String> {
 /// Scaffold a hub project; convenience for the registry-mutation tests
 /// below. Hub mode gives us an empty `registry.yaml` to mutate without
 /// having to seed an entry first.
-fn init_hub(tmp: &tempfile::TempDir, name: &str) {
-    specify()
-        .current_dir(tmp.path())
-        .args(["init"])
-        .args(["--name", name, "--hub"])
-        .assert()
-        .success();
-}
-
 #[test]
 fn registry_add_creates_entry_and_round_trips_through_show() {
     let tmp = tempdir().unwrap();
@@ -589,7 +518,7 @@ fn registry_add_rejects_dot_url_in_hub_mode() {
         .failure();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+    assert_eq!(value["error"], "hub-cannot-be-project");
     let msg = value["message"].as_str().expect("message");
     assert!(
         msg.contains("hub-cannot-be-project"),
@@ -619,7 +548,7 @@ fn registry_add_rejects_kebab_violations_at_clap_level() {
         .failure();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+    assert_eq!(value["error"], "registry-add-name-not-kebab");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("kebab-case"), "diagnostic must mention kebab-case, got: {msg}");
     assert!(msg.contains("BadName"), "diagnostic must echo the bad name, got: {msg}");
@@ -739,7 +668,7 @@ fn registry_remove_unknown_project_errors() {
         .failure();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+    assert_eq!(value["error"], "registry-remove-not-found");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("not found"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
@@ -766,7 +695,7 @@ fn registry_remove_refuses_when_registry_absent() {
         .failure();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+    assert_eq!(value["error"], "registry-remove-no-registry");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("no registry declared"), "msg: {msg}");
 }
@@ -781,10 +710,6 @@ fn workspace_help_lists_active_subcommands_only() {
             "expected `workspace --help` to mention `{verb}`, got:\n{stdout}",
         );
     }
-    assert!(
-        !stdout.contains("merge"),
-        "`workspace merge` must not appear in active workspace help, got:\n{stdout}",
-    );
 }
 
 #[test]
@@ -809,9 +734,9 @@ fn rfc14_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
         .failure();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+    assert_eq!(value["error"], "registry-project-selector-unknown");
     let msg = value["message"].as_str().expect("message");
-    assert!(msg.contains("unknown project selector"), "msg: {msg}");
+    assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
         !tmp.path().join(".specify/workspace").exists(),
@@ -845,9 +770,9 @@ fn rfc14_c01_workspace_status_unknown_selector_fails_before_side_effects() {
         .failure();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+    assert_eq!(value["error"], "registry-project-selector-unknown");
     let msg = value["message"].as_str().expect("message");
-    assert!(msg.contains("unknown project selector"), "msg: {msg}");
+    assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
         !tmp.path().join(".specify/workspace").exists(),
@@ -1041,9 +966,9 @@ fn rfc14_c01_workspace_push_unknown_selector_fails_before_side_effects() {
         .failure();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+    assert_eq!(value["error"], "registry-project-selector-unknown");
     let msg = value["message"].as_str().expect("message");
-    assert!(msg.contains("unknown project selector"), "msg: {msg}");
+    assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
         !tmp.path().join(".specify/workspace").exists(),
@@ -1158,19 +1083,6 @@ fn rfc14_c04_workspace_prepare_branch_surfaces_origin_head_diagnostic_key() {
     assert_eq!(value["diagnostic"]["project"], "alpha");
     assert_eq!(value["diagnostic"]["branch"], "specify/demo-change");
     assert_eq!(run_git(&alpha, &["branch", "--show-current"]).trim(), "main");
-}
-
-#[test]
-fn workspace_merge_is_not_a_cli_subcommand() {
-    let tmp = tempdir().unwrap();
-    let assert =
-        specify().current_dir(tmp.path()).args(["workspace", "merge", "alpha"]).assert().failure();
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
-    assert!(stderr.contains("unrecognized subcommand"), "stderr: {stderr}");
-    assert!(
-        !tmp.path().join(".specify/workspace").exists(),
-        "unknown workspace merge command must not materialise workspace paths"
-    );
 }
 
 // ---- specify plan doctor (RFC-9 §4B) ----

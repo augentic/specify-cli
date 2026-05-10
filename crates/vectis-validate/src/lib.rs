@@ -1,7 +1,9 @@
 //! Library surface for the `vectis-validate` WASI command tool.
 //!
-//! The deterministic validation engine and embedded schemas live in this crate
-//! so the RFC-16 WASI command surface has a single source of truth.
+//! The deterministic validation engine and embedded schemas live in
+//! this crate so the WASI command surface has a single source of
+//! truth. Provenance for every rule lives in the sidecar
+//! `DECISIONS.md` at the crate root.
 
 use std::path::PathBuf;
 
@@ -27,7 +29,7 @@ pub const EXIT_FAILURE: u8 = 2;
     name = "vectis-validate",
     version,
     about = "Validate Vectis UI artifacts.",
-    long_about = "Validate Vectis UI artifacts using the RFC-16 WASI command surface.\n\
+    long_about = "Validate Vectis UI artifacts using the WASI command surface.\n\
                   \nModes: tokens, assets, layout, composition, all. When PATH is omitted, \
                   PROJECT_DIR is used as the default project root if set; otherwise the \
                   command falls back to the current directory for native development."
@@ -139,6 +141,19 @@ pub use error::VectisError;
 mod engine;
 
 pub use engine::run;
+
+/// Hidden re-exports for integration tests under
+/// `crates/vectis-validate/tests/`. These items are not part of the
+/// stable public API; they exist so the per-mode test suites can
+/// exercise the internal resolver and validator helpers without
+/// duplicating fixtures.
+#[doc(hidden)]
+pub mod __test_internals {
+    pub use crate::engine::{
+        assets_validator, composition_validator, discover_artifact, expand_path_template,
+        find_project_root, paths_for_key, resolve_default_path_with_root, tokens_validator,
+    };
+}
 
 /// Render a validation outcome as the v2 JSON envelope, without a trailing
 /// newline, and return the process exit code that should accompany it.

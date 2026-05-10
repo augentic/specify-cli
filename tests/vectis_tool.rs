@@ -5,23 +5,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::sync::OnceLock;
 
-use assert_cmd::Command;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tempfile::{TempDir, tempdir};
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
-
-fn parse_json(stdout: &[u8]) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
-}
+mod common;
+use common::{parse_json, repo_root, specify};
 
 fn file_uri(path: &Path) -> String {
     format!("file://{}", path.display())

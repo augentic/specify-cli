@@ -5,6 +5,14 @@
 //! count must not exceed its baseline; the baseline defaults to 0 when
 //! omitted (i.e. new files start clean).
 //!
+//! Three run modes:
+//!
+//! - [`Mode::Check`] — default; fail when any live count exceeds its baseline.
+//! - [`Mode::Tighten`] — rewrite the allowlist so each baseline equals today's
+//!   actual count. Use after a migration shrinks a file's count to lock it in.
+//! - [`Mode::CheckTightenable`] — fail when any baseline could be tightened.
+//!   CI runs this so unrelated PRs cannot mask incidental progress.
+//!
 //! Predicates:
 //!
 //! - `inline-dtos` — `#[derive(Serialize)]` declared inside any
@@ -12,9 +20,6 @@
 //!   sees DTOs defined in match arms that the prior bash regex missed.
 //! - `format-match-dispatch` — `match … format { Json => … }`. Should
 //!   route through `Render::render_text` + `emit` instead.
-//! - `free-form-error-strings` — `Error::(Config|Merge|ToolResolver|
-//!   ToolRuntime|CapabilityResolution)(`. Replaced by
-//!   `Error::Diag { code, detail }`.
 //! - `rfc-numbers-in-code` — `RFC[- ]?\d+` outside `tests/`,
 //!   `DECISIONS.md`, and `rfcs/`.
 //! - `ritual-doc-paragraphs` — the boilerplate `Returns an error if
@@ -23,8 +28,12 @@
 //!   parsed-but-unused flags.
 //! - `name-suffix-duplication` — `fn foo_<module>` inside `mod
 //!   <module>` (e.g. `fn show_registry` in `commands/registry.rs`).
+//! - `module-line-count` — non-test Rust source file length in lines.
+//!   Default cap is 500; explicit per-file baselines grandfather oversized
+//!   files until they are split.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -34,15 +43,28 @@ use syn::visit::Visit;
 use walkdir::WalkDir;
 
 const ALLOWLIST: &str = "scripts/standards-allowlist.toml";
+const DEFAULT_LINE_CAP: u32 = 500;
 
-/// Run every predicate against `root` and report. Returns `Ok(true)`
-/// when every file is at or below its baseline, `Ok(false)` if any
-/// regression, `Err(_)` on I/O / parse failure.
-pub fn run(root: &Path) -> std::io::Result<bool> {
-    let allowlist = load_allowlist(&root.join(ALLOWLIST))?;
+/// How `run` interprets the result.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Mode {
+    /// Standard CI check — fail when current > baseline.
+    Check,
+    /// Rewrite the allowlist to lock in today's actual counts.
+    Tighten,
+    /// Fail when any baseline could be lowered without code changes.
+    CheckTightenable,
+}
+
+/// Run every predicate against `root` and act per `mode`. Returns
+/// `Ok(true)` on success, `Ok(false)` on failure, `Err(_)` on I/O / parse.
+pub fn run(root: &Path, mode: Mode) -> std::io::Result<bool> {
+    let allowlist_path = root.join(ALLOWLIST);
+    let allowlist = load_allowlist(&allowlist_path)?;
     let files = rust_files(root);
 
     let mut report = Report::default();
+    let mut current_counts: BTreeMap<String, FileBaseline> = BTreeMap::new();
     for path in &files {
         let rel = path.strip_prefix(root).unwrap_or(path);
         let rel_str = rel.to_string_lossy().into_owned();
@@ -50,21 +72,65 @@ pub fn run(root: &Path) -> std::io::Result<bool> {
         let counts = count_one(path, &source);
         let baseline = allowlist.for_file(&rel_str);
         report.merge(&rel_str, &counts, &baseline);
+        current_counts.insert(rel_str, counts.into_baseline());
     }
 
-    report.print();
-    Ok(report.passed)
+    match mode {
+        Mode::Check => {
+            report.print();
+            Ok(report.passed)
+        }
+        Mode::Tighten => {
+            let rewrites = compute_rewrites(&allowlist, &current_counts);
+            if rewrites.is_empty() {
+                println!("standards-check: nothing to tighten.");
+                return Ok(true);
+            }
+            write_allowlist(&allowlist_path, &current_counts)?;
+            println!(
+                "standards-check: tightened {} entr{}",
+                rewrites.len(),
+                pluralise(rewrites.len())
+            );
+            for line in &rewrites {
+                println!("  {line}");
+            }
+            Ok(true)
+        }
+        Mode::CheckTightenable => {
+            let rewrites = compute_rewrites(&allowlist, &current_counts);
+            if rewrites.is_empty() {
+                println!("standards-check: allowlist is tight.");
+                return Ok(true);
+            }
+            println!(
+                "standards-check: {} allowlist entr{} can be tightened. Run \
+                `cargo run -p xtask -- standards-check --tighten` and commit \
+                the updated `{ALLOWLIST}`.",
+                rewrites.len(),
+                pluralise(rewrites.len())
+            );
+            for line in &rewrites {
+                println!("  {line}");
+            }
+            Ok(false)
+        }
+    }
+}
+
+const fn pluralise(n: usize) -> &'static str {
+    if n == 1 { "y" } else { "ies" }
 }
 
 #[derive(Default, Debug)]
 struct Counts {
     inline_dtos: u32,
     format_match_dispatch: u32,
-    free_form_error_strings: u32,
     rfc_numbers_in_code: u32,
     ritual_doc_paragraphs: u32,
     no_op_forwarders: u32,
     name_suffix_duplication: u32,
+    module_line_count: u32,
 }
 
 impl Counts {
@@ -72,13 +138,25 @@ impl Counts {
         [
             ("inline-dtos", self.inline_dtos),
             ("format-match-dispatch", self.format_match_dispatch),
-            ("free-form-error-strings", self.free_form_error_strings),
             ("rfc-numbers-in-code", self.rfc_numbers_in_code),
             ("ritual-doc-paragraphs", self.ritual_doc_paragraphs),
             ("no-op-forwarders", self.no_op_forwarders),
             ("name-suffix-duplication", self.name_suffix_duplication),
+            ("module-line-count", self.module_line_count),
         ]
         .into_iter()
+    }
+
+    const fn into_baseline(self) -> FileBaseline {
+        FileBaseline {
+            inline_dtos: self.inline_dtos,
+            format_match_dispatch: self.format_match_dispatch,
+            rfc_numbers_in_code: self.rfc_numbers_in_code,
+            ritual_doc_paragraphs: self.ritual_doc_paragraphs,
+            no_op_forwarders: self.no_op_forwarders,
+            name_suffix_duplication: self.name_suffix_duplication,
+            module_line_count: self.module_line_count,
+        }
     }
 }
 
@@ -91,11 +169,11 @@ fn count_one(path: &Path, source: &str) -> Counts {
     }
     let stripped = strip_comments(source);
     c.format_match_dispatch = count_regex(&FORMAT_MATCH_RE, &stripped);
-    c.free_form_error_strings = count_regex(&FREE_FORM_ERROR_RE, &stripped);
     c.rfc_numbers_in_code = count_regex(&RFC_RE, source);
     c.ritual_doc_paragraphs = count_regex(&RITUAL_DOC_RE, source);
     c.no_op_forwarders = count_regex(&NO_OP_FORWARDER_RE, &stripped);
     c.name_suffix_duplication = count_name_suffix(path, &stripped);
+    c.module_line_count = u32::try_from(source.lines().count()).unwrap_or(u32::MAX);
     c
 }
 
@@ -156,11 +234,6 @@ fn count_regex(re: &Regex, text: &str) -> u32 {
 
 static FORMAT_MATCH_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"match\s+(?:ctx\.|self\.)?format\s*\{").expect("static regex")
-});
-
-static FREE_FORM_ERROR_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"Error::(?:Config|Merge|ToolResolver|ToolRuntime|CapabilityResolution)\(")
-        .expect("static regex")
 });
 
 static RFC_RE: std::sync::LazyLock<Regex> =
@@ -288,15 +361,13 @@ struct AllowlistRaw {
     file: BTreeMap<String, FileBaseline>,
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 struct FileBaseline {
     #[serde(default)]
     inline_dtos: u32,
     #[serde(default)]
     format_match_dispatch: u32,
-    #[serde(default)]
-    free_form_error_strings: u32,
     #[serde(default)]
     rfc_numbers_in_code: u32,
     #[serde(default)]
@@ -305,6 +376,8 @@ struct FileBaseline {
     no_op_forwarders: u32,
     #[serde(default)]
     name_suffix_duplication: u32,
+    #[serde(default)]
+    module_line_count: u32,
 }
 
 impl FileBaseline {
@@ -312,13 +385,27 @@ impl FileBaseline {
         match key {
             "inline-dtos" => self.inline_dtos,
             "format-match-dispatch" => self.format_match_dispatch,
-            "free-form-error-strings" => self.free_form_error_strings,
             "rfc-numbers-in-code" => self.rfc_numbers_in_code,
             "ritual-doc-paragraphs" => self.ritual_doc_paragraphs,
             "no-op-forwarders" => self.no_op_forwarders,
             "name-suffix-duplication" => self.name_suffix_duplication,
+            "module-line-count" => self.module_line_count,
             _ => 0,
         }
+    }
+
+    /// Effective per-file cap. Most predicates default to 0 (new files
+    /// start clean); `module-line-count` defaults to `DEFAULT_LINE_CAP`.
+    fn cap(&self, key: &str) -> u32 {
+        if key == "module-line-count" && self.module_line_count == 0 {
+            DEFAULT_LINE_CAP
+        } else {
+            self.allowed(key)
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        *self == Self::default()
     }
 }
 
@@ -344,6 +431,97 @@ fn load_allowlist(path: &Path) -> std::io::Result<Allowlist> {
     Ok(Allowlist { files: raw.file })
 }
 
+/// Compute human-readable diff lines for any (file, predicate) where the
+/// recorded baseline differs from today's actual count. For
+/// `module-line-count` we accept moves in either direction (the baseline is
+/// a pure `LoC` snapshot, so growth from a routine edit should re-bake the
+/// baseline). For every other predicate we only surface reductions —
+/// growth is a violation, not a tightenable diff.
+fn compute_rewrites(
+    allowlist: &Allowlist, current: &BTreeMap<String, FileBaseline>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for (rel, baseline) in &allowlist.files {
+        seen.insert(rel.as_str());
+        let actual = current.get(rel).cloned().unwrap_or_default();
+        if &actual == baseline {
+            continue;
+        }
+        for (key, baseline_val) in baseline_iter(baseline) {
+            let actual_val = actual.allowed(key);
+            if actual_val == baseline_val {
+                continue;
+            }
+            if key == "module-line-count" || actual_val < baseline_val {
+                out.push(format!("{rel}: {key} {baseline_val} → {actual_val}"));
+            }
+        }
+    }
+    // New files that exceed DEFAULT_LINE_CAP need an explicit module-line-count
+    // entry; surface them so `--tighten` stamps a baseline.
+    for (rel, actual) in current {
+        if seen.contains(rel.as_str()) {
+            continue;
+        }
+        if actual.module_line_count > DEFAULT_LINE_CAP {
+            out.push(format!(
+                "{rel}: module-line-count {DEFAULT_LINE_CAP} → {} (new file over default cap)",
+                actual.module_line_count
+            ));
+        }
+    }
+    out
+}
+
+fn baseline_iter(b: &FileBaseline) -> impl Iterator<Item = (&'static str, u32)> + '_ {
+    [
+        ("inline-dtos", b.inline_dtos),
+        ("format-match-dispatch", b.format_match_dispatch),
+        ("rfc-numbers-in-code", b.rfc_numbers_in_code),
+        ("ritual-doc-paragraphs", b.ritual_doc_paragraphs),
+        ("no-op-forwarders", b.no_op_forwarders),
+        ("name-suffix-duplication", b.name_suffix_duplication),
+        ("module-line-count", b.module_line_count),
+    ]
+    .into_iter()
+}
+
+/// Serialise `current` back to `path` as TOML, skipping rows where every
+/// field equals its zero-default. Output is alphabetised by file path.
+fn write_allowlist(path: &Path, current: &BTreeMap<String, FileBaseline>) -> std::io::Result<()> {
+    let mut out = String::new();
+    out.push_str(
+        "# Per-file baselines for `cargo run -p xtask -- standards-check`.\n\
+         #\n\
+         # Each `[file.\"<rel-path>\"]` table caps the number of violations of each\n\
+         # predicate for that file. A live count strictly greater than the\n\
+         # baseline fails CI; missing predicates default to zero (new files\n\
+         # start clean) except `module-line-count`, which defaults to 500.\n\
+         # Reductions are encouraged in any PR that touches a file; the CI\n\
+         # `--check-tightenable` mode fails when an unrelated PR could lower a\n\
+         # baseline without code changes.\n\
+         #\n\
+         # Predicate definitions live in `xtask/src/standards.rs`. AGENTS.md\n\
+         # §Mechanical enforcement explains what each predicate enforces and how\n\
+         # to drive its baselines down.\n\n",
+    );
+    for (rel, baseline) in current {
+        if baseline.is_empty() {
+            continue;
+        }
+        let _ = writeln!(out, "[file.\"{rel}\"]");
+        for (key, value) in baseline_iter(baseline) {
+            if value == 0 {
+                continue;
+            }
+            let _ = writeln!(out, "{key} = {value}");
+        }
+        out.push('\n');
+    }
+    fs::write(path, out)
+}
+
 // ---------------------------------------------------------------------
 // Reporting.
 
@@ -360,11 +538,16 @@ impl Report {
             self.passed = true;
         }
         for (key, value) in counts.iter() {
-            *self.totals.entry(key).or_insert(0) += value;
-            let allowed = baseline.allowed(key);
-            if value > allowed {
+            // module-line-count contributes to totals only as an
+            // overflow indicator, not a sum (LoC totals would dwarf
+            // every other predicate).
+            if key != "module-line-count" {
+                *self.totals.entry(key).or_insert(0) += value;
+            }
+            let cap = baseline.cap(key);
+            if value > cap {
                 self.passed = false;
-                self.failures.push(format!("  FAIL {rel}: {key} {value} > baseline {allowed}"));
+                self.failures.push(format!("  FAIL {rel}: {key} {value} > baseline {cap}"));
             }
         }
     }

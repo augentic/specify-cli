@@ -83,7 +83,7 @@ projects: []
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("unknown top-level key");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("foo"), "msg: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
@@ -103,7 +103,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("unknown project key");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("foo"), "msg: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
@@ -119,7 +119,7 @@ projects: []
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("version != 1");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("version"), "msg should mention version: {msg}");
             assert!(msg.contains('2'), "msg should mention the offending value: {msg}");
         }
@@ -133,7 +133,7 @@ fn registry_rejects_missing_version() {
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing version");
     match err {
-        Error::Config(msg) => assert!(msg.contains("version"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("version"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -148,7 +148,7 @@ projects:
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing name");
-    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
 }
 
 #[test]
@@ -161,7 +161,7 @@ projects:
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing url");
-    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
 }
 
 #[test]
@@ -174,7 +174,7 @@ projects:
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing schema");
-    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
 }
 
 #[test]
@@ -186,7 +186,7 @@ fn registry_rejects_non_kebab_case_name() {
         let tmp = scaffold_registry(&yaml);
         let err = Registry::load(tmp.path()).expect_err(&format!("bad name `{bad}`"));
         match err {
-            Error::Config(msg) => {
+            Error::Diag { detail: msg, .. } => {
                 assert!(msg.contains("kebab-case"), "msg for `{bad}`: {msg}");
                 assert!(msg.contains(bad), "msg for `{bad}`: {msg}");
             }
@@ -207,7 +207,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("empty name");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("empty") || msg.contains("kebab-case"), "msg: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
@@ -226,7 +226,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("empty url");
     match err {
-        Error::Config(msg) => assert!(msg.contains("url"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("url"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -243,7 +243,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("empty capability");
     match err {
-        Error::Config(msg) => assert!(msg.contains("capability"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("capability"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -263,7 +263,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("duplicate name");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("duplicate"), "msg: {msg}");
             assert!(msg.contains("traffic"), "msg: {msg}");
         }
@@ -368,8 +368,8 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing description in multi-project");
     match err {
-        Error::Config(msg) => {
-            assert!(msg.contains("description-missing-multi-repo"), "msg: {msg}");
+        Error::Diag { code, detail: msg } => {
+            assert_eq!(code, "registry-description-missing-multi-repo", "msg: {msg}");
             assert!(msg.contains("beta"), "msg should mention project name: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
@@ -393,8 +393,8 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("whitespace-only description in multi-project");
     match err {
-        Error::Config(msg) => {
-            assert!(msg.contains("description-missing-multi-repo"), "msg: {msg}");
+        Error::Diag { code, detail: msg } => {
+            assert_eq!(code, "registry-description-missing-multi-repo", "msg: {msg}");
             assert!(msg.contains("alpha"), "msg should mention project name: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
@@ -494,7 +494,7 @@ fn registry_rejects_unsupported_url_scheme() {
         .validate_shape()
         .expect_err("ftp must be rejected");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("ftp"), "msg: {msg}");
             assert!(msg.contains("scheme"), "msg: {msg}");
         }
@@ -507,7 +507,7 @@ fn registry_rejects_file_url_scheme() {
     let err = registry_with_one_url("file:///tmp/repo")
         .validate_shape()
         .expect_err("file:// must be rejected");
-    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
 }
 
 #[test]
@@ -516,7 +516,7 @@ fn registry_rejects_colon_without_scheme_or_git_at() {
         .validate_shape()
         .expect_err("colon form must be rejected");
     match err {
-        Error::Config(msg) => assert!(msg.contains(':'), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains(':'), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -527,7 +527,7 @@ fn registry_rejects_absolute_unix_path_as_url() {
         .validate_shape()
         .expect_err("absolute path must be rejected");
     match err {
-        Error::Config(msg) => assert!(msg.contains("relative"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("relative"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -537,7 +537,7 @@ fn registry_rejects_whitespace_only_url() {
     let err =
         registry_with_one_url("   ").validate_shape().expect_err("whitespace url must be rejected");
     match err {
-        Error::Config(msg) => assert!(msg.contains("whitespace"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("whitespace"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -548,7 +548,7 @@ fn registry_rejects_url_with_leading_whitespace() {
         .validate_shape()
         .expect_err("leading space must be rejected");
     match err {
-        Error::Config(msg) => assert!(msg.contains("whitespace"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("whitespace"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -602,9 +602,9 @@ fn registry_validate_shape_hub_rejects_dot_url_entry() {
     };
     let err = reg.validate_shape_hub().expect_err("hub mode must reject url: .");
     match err {
-        Error::Config(msg) => {
-            assert!(
-                msg.contains("hub-cannot-be-project"),
+        Error::Diag { code, detail: msg } => {
+            assert_eq!(
+                code, "hub-cannot-be-project",
                 "diagnostic must carry the stable code, got: {msg}"
             );
             assert!(msg.contains("platform"), "diagnostic must name the offending project: {msg}");
@@ -637,8 +637,8 @@ fn registry_validate_shape_hub_rejects_dot_url_in_multi_project() {
     };
     let err = reg.validate_shape_hub().expect_err("hub mode rejects `.` even alongside peers");
     match err {
-        Error::Config(msg) => {
-            assert!(msg.contains("hub-cannot-be-project"), "msg: {msg}");
+        Error::Diag { code, detail: msg } => {
+            assert_eq!(code, "hub-cannot-be-project", "msg: {msg}");
             assert!(msg.contains("self-as-project"), "msg should name the offender: {msg}");
         }
         other => panic!("wrong error variant: {other:?}"),
@@ -655,10 +655,10 @@ fn registry_validate_shape_hub_inherits_base_shape_errors() {
     };
     let err = reg.validate_shape_hub().expect_err("base shape error must propagate through");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { code, detail: msg } => {
             assert!(msg.contains("version"), "msg: {msg}");
-            assert!(
-                !msg.contains("hub-cannot-be-project"),
+            assert_ne!(
+                code, "hub-cannot-be-project",
                 "must not short-circuit base-shape errors with the hub diagnostic: {msg}"
             );
         }
@@ -795,7 +795,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("single producer violation");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("http/shared-api.yaml"), "msg: {msg}");
             assert!(msg.contains("produced by both"), "msg: {msg}");
         }
@@ -822,7 +822,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("legacy imports field rejected");
     match err {
-        Error::Config(msg) => assert!(msg.contains("imports"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("imports"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -842,7 +842,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("absolute path rejected");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("/absolute/path.yaml"), "msg: {msg}");
             assert!(msg.contains("relative"), "msg: {msg}");
         }
@@ -865,7 +865,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err(".. path rejected");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("../escape/path.yaml"), "msg: {msg}");
             assert!(msg.contains("relative"), "msg: {msg}");
         }
@@ -890,7 +890,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("self-consistency violation");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("alpha"), "msg: {msg}");
             assert!(msg.contains("http/my-api.yaml"), "msg: {msg}");
             assert!(msg.contains("produces"), "msg: {msg}");
@@ -917,7 +917,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("unknown contract key");
     match err {
-        Error::Config(msg) => assert!(msg.contains("bogus"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("bogus"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }

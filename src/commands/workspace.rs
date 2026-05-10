@@ -7,8 +7,9 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, ProjectConfig};
+use specify::config::ProjectConfig;
 use specify_change::Plan;
+use specify_error::Error;
 use specify_registry::Registry;
 use specify_registry::branch::{
     self, Diagnostic as BranchDiagnostic, Prepared, Request as BranchRequest, prepare,
@@ -26,10 +27,12 @@ pub fn sync(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, Er
     match Registry::load(&ctx.project_dir)? {
         None => {
             if !projects.is_empty() {
-                return Err(Error::Config(
-                    "No registry.yaml found; workspace sync cannot resolve project selectors"
-                        .to_string(),
-                ));
+                return Err(Error::Diag {
+                    code: "workspace-no-registry",
+                    detail:
+                        "No registry.yaml found; workspace sync cannot resolve project selectors"
+                            .to_string(),
+                });
             }
             match ctx.format {
                 OutputFormat::Json => {
@@ -79,10 +82,12 @@ pub fn status(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, 
     match Registry::load(&ctx.project_dir)? {
         None => {
             if !projects.is_empty() {
-                return Err(Error::Config(
-                    "No registry.yaml found; workspace status cannot resolve project selectors"
-                        .to_string(),
-                ));
+                return Err(Error::Diag {
+                    code: "workspace-no-registry",
+                    detail:
+                        "No registry.yaml found; workspace status cannot resolve project selectors"
+                            .to_string(),
+                });
             }
             match ctx.format {
                 OutputFormat::Json => {
@@ -132,13 +137,18 @@ pub fn prepare_branch(
     outputs: Vec<PathBuf>,
 ) -> Result<CliResult, Error> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
-        return Err(Error::Config(
-            "No registry.yaml found; workspace prepare-branch requires a registry".to_string(),
-        ));
+        return Err(Error::Diag {
+            code: "workspace-no-registry",
+            detail: "No registry.yaml found; workspace prepare-branch requires a registry"
+                .to_string(),
+        });
     };
     let selected = registry.select(std::slice::from_ref(&project))?;
     let Some(project) = selected.first() else {
-        return Err(Error::Config("workspace prepare-branch resolved no project".to_string()));
+        return Err(Error::Diag {
+            code: "workspace-prepare-branch-no-project",
+            detail: "workspace prepare-branch resolved no project".to_string(),
+        });
     };
     let request = BranchRequest {
         change_name: change,
@@ -335,19 +345,21 @@ pub fn push(
     ctx: &CommandContext, projects: Vec<String>, dry_run: bool,
 ) -> Result<CliResult, Error> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
-        return Err(Error::Config(
-            "No registry.yaml found; workspace push requires a registry".to_string(),
-        ));
+        return Err(Error::Diag {
+            code: "workspace-no-registry",
+            detail: "No registry.yaml found; workspace push requires a registry".to_string(),
+        });
     };
     let selected = registry.select(&projects)?;
 
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if !plan_path.exists() {
-        return Err(Error::Config(
-            "No active plan found at plan.yaml. Run 'specify change plan create' \
-             to create one, or check whether the plan was already archived."
+        return Err(Error::Diag {
+            code: "workspace-push-no-plan",
+            detail: "No active plan found at plan.yaml. Run 'specify change plan create' \
+                     to create one, or check whether the plan was already archived."
                 .to_string(),
-        ));
+        });
     }
     let plan = Plan::load(&plan_path)?;
 

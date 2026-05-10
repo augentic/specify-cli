@@ -5,9 +5,8 @@ use std::fs;
 use std::path::Path;
 
 use serde::Serialize;
-use specify::{
-    CAPABILITY_FILENAME, Capability, Error, ResolvedCapability, ValidationStatus, ValidationSummary,
-};
+use specify_capability::{CAPABILITY_FILENAME, Capability, ResolvedCapability};
+use specify_error::{Error, ValidationStatus, ValidationSummary};
 use specify_tool::cache::{self, CacheStatus};
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::load::{self, Warning};
@@ -199,11 +198,9 @@ pub fn gc(ctx: &CommandContext) -> Result<CliResult, Error> {
     for scope in &inventory.scopes {
         let kept = kept_by_scope.remove(scope).unwrap_or_default();
         for path in cache::scan_for_gc(scope, &kept)? {
-            fs::remove_dir_all(&path).map_err(|err| {
-                Error::ToolResolver(format!(
-                    "failed to remove tool cache directory {}: {err}",
-                    path.display()
-                ))
+            fs::remove_dir_all(&path).map_err(|err| Error::Diag {
+                code: "tool-cache-remove-failed",
+                detail: format!("failed to remove tool cache directory {}: {err}", path.display()),
             })?;
             removed.push(path.display().to_string());
         }
@@ -268,8 +265,9 @@ fn resolve_project_capability(ctx: &CommandContext) -> Result<Option<ResolvedCap
 }
 
 fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
-    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| {
-        Error::CapabilityResolution(format!("no `{CAPABILITY_FILENAME}` at {}", dir.display()))
+    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::Diag {
+        code: "capability-manifest-missing",
+        detail: format!("no `{CAPABILITY_FILENAME}` at {}", dir.display()),
     })
 }
 

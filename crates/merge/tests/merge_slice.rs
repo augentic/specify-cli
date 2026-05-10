@@ -216,13 +216,13 @@ fn coherence_failure_rolls_back_all_writes() {
     let err = merge_slice(&slice_dir, &classes, &project.archive_dir())
         .expect_err("expected coherence failure");
     match err {
-        Error::Merge(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(
                 msg.contains("login:") && msg.contains("has no ID: line"),
                 "unexpected merge error: {msg}"
             );
         }
-        other => panic!("expected Error::Merge, got {other:?}"),
+        other => panic!("expected Error::Diag, got {other:?}"),
     }
 
     // Nothing on disk has moved or been created.

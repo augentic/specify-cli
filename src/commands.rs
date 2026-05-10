@@ -12,14 +12,13 @@ mod codex;
 mod compatibility;
 mod context;
 mod init;
-mod migrate;
 mod registry;
 mod slice;
 mod status;
 mod tool;
 mod workspace;
 
-use specify::Error;
+use specify_error::Error;
 
 use crate::cli::{CapabilityAction, Cli, Commands, OutputFormat, ToolAction, WorkspaceAction};
 use crate::context::CommandContext;
@@ -88,7 +87,6 @@ pub fn run(cli: Cli) -> CliResult {
             clap_complete::generate(shell, &mut cmd, "specify", &mut std::io::stdout());
             CliResult::Success
         }
-        Commands::Migrate { action } => bare(format, || migrate::run(format, action)),
     }
 }
 

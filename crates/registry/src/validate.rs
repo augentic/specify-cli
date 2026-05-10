@@ -31,42 +31,57 @@ impl Registry {
     #[allow(clippy::too_many_lines)]
     pub fn validate_shape(&self) -> Result<(), Error> {
         if self.version != 1 {
-            return Err(Error::Config(format!(
-                "registry.yaml: unsupported version {}; v1 is the only accepted value",
-                self.version
-            )));
+            return Err(Error::Diag {
+                code: "registry-version-unsupported",
+                detail: format!(
+                    "registry.yaml: unsupported version {}; v1 is the only accepted value",
+                    self.version
+                ),
+            });
         }
 
         let mut seen_names: HashSet<&str> = HashSet::new();
         for (idx, project) in self.projects.iter().enumerate() {
             if project.name.is_empty() {
-                return Err(Error::Config(format!("registry.yaml: projects[{idx}].name is empty")));
+                return Err(Error::Diag {
+                    code: "registry-project-name-empty",
+                    detail: format!("registry.yaml: projects[{idx}].name is empty"),
+                });
             }
             if !is_kebab(&project.name) {
-                return Err(Error::Config(format!(
-                    "registry.yaml: projects[{idx}].name `{}` must be kebab-case \
-                     (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)",
-                    project.name
-                )));
+                return Err(Error::Diag {
+                    code: "registry-project-name-not-kebab",
+                    detail: format!(
+                        "registry.yaml: projects[{idx}].name `{}` must be kebab-case \
+                         (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)",
+                        project.name
+                    ),
+                });
             }
             if project.url.is_empty() {
-                return Err(Error::Config(format!(
-                    "registry.yaml: projects[{idx}] (`{}`).url is empty",
-                    project.name
-                )));
+                return Err(Error::Diag {
+                    code: "registry-project-url-empty",
+                    detail: format!(
+                        "registry.yaml: projects[{idx}] (`{}`).url is empty",
+                        project.name
+                    ),
+                });
             }
             validate_project_url(&project.url, idx, &project.name)?;
             if project.capability.is_empty() {
-                return Err(Error::Config(format!(
-                    "registry.yaml: projects[{idx}] (`{}`).capability is empty",
-                    project.name
-                )));
+                return Err(Error::Diag {
+                    code: "registry-project-capability-empty",
+                    detail: format!(
+                        "registry.yaml: projects[{idx}] (`{}`).capability is empty",
+                        project.name
+                    ),
+                });
             }
             if !seen_names.insert(project.name.as_str()) {
-                return Err(Error::Config(format!(
-                    "registry.yaml: duplicate project name `{}`",
-                    project.name
-                )));
+                return Err(Error::Diag {
+                    code: "registry-project-name-duplicate",
+                    detail: format!("registry.yaml: duplicate project name `{}`", project.name),
+                });
             }
         }
 
@@ -74,10 +89,13 @@ impl Registry {
             for (idx, project) in self.projects.iter().enumerate() {
                 let missing = project.description.as_ref().is_none_or(|s| s.trim().is_empty());
                 if missing {
-                    return Err(Error::Config(format!(
-                        "registry.yaml: projects[{idx}] (`{}`).description is required when the registry declares more than one project (description-missing-multi-repo)",
-                        project.name
-                    )));
+                    return Err(Error::Diag {
+                        code: "registry-description-missing-multi-repo",
+                        detail: format!(
+                            "registry.yaml: projects[{idx}] (`{}`).description is required when the registry declares more than one project",
+                            project.name
+                        ),
+                    });
                 }
             }
         }
@@ -91,10 +109,13 @@ impl Registry {
             if let Some(ref roles) = project.contracts {
                 for path in roles.produces.iter().chain(roles.consumes.iter()) {
                     if path.starts_with('/') || path.contains("..") {
-                        return Err(Error::Config(format!(
-                            "registry.yaml: contract path '{}' in project '{}' must be relative (no '..' or absolute paths)",
-                            path, project.name
-                        )));
+                        return Err(Error::Diag {
+                            code: "registry-contract-path-not-relative",
+                            detail: format!(
+                                "registry.yaml: contract path '{}' in project '{}' must be relative (no '..' or absolute paths)",
+                                path, project.name
+                            ),
+                        });
                     }
                 }
             }
@@ -108,10 +129,13 @@ impl Registry {
                     roles.produces.iter().map(std::string::String::as_str).collect();
                 for path in &roles.consumes {
                     if produced.contains(path.as_str()) {
-                        return Err(Error::Config(format!(
-                            "registry.yaml: project '{}' lists '{}' in both 'produces' and 'consumes'",
-                            project.name, path
-                        )));
+                        return Err(Error::Diag {
+                            code: "registry-contract-produces-and-consumes",
+                            detail: format!(
+                                "registry.yaml: project '{}' lists '{}' in both 'produces' and 'consumes'",
+                                project.name, path
+                            ),
+                        });
                     }
                 }
             }
@@ -124,10 +148,13 @@ impl Registry {
             if let Some(ref roles) = project.contracts {
                 for path in &roles.produces {
                     if let Some(existing) = producers.get(path.as_str()) {
-                        return Err(Error::Config(format!(
-                            "registry.yaml: contract path '{}' is produced by both '{}' and '{}'",
-                            path, existing, project.name
-                        )));
+                        return Err(Error::Diag {
+                            code: "registry-contract-multiple-producers",
+                            detail: format!(
+                                "registry.yaml: contract path '{}' is produced by both '{}' and '{}'",
+                                path, existing, project.name
+                            ),
+                        });
                     }
                     producers.insert(path, &project.name);
                 }
@@ -160,13 +187,15 @@ impl Registry {
         self.validate_shape()?;
         for (idx, project) in self.projects.iter().enumerate() {
             if project.url == "." {
-                return Err(Error::Config(format!(
-                    "registry.yaml: projects[{idx}] (`{}`).url is `.`; \
-                     a registry-only platform hub must not appear in its own \
-                     registry — code projects always live in their own repos \
-                     (hub-cannot-be-project)",
-                    project.name
-                )));
+                return Err(Error::Diag {
+                    code: "hub-cannot-be-project",
+                    detail: format!(
+                        "registry.yaml: projects[{idx}] (`{}`).url is `.`; \
+                         a registry-only platform hub must not appear in its own \
+                         registry — code projects always live in their own repos",
+                        project.name
+                    ),
+                });
             }
         }
         Ok(())
@@ -180,14 +209,20 @@ fn validate_project_url(url: &str, idx: usize, project_name: &str) -> Result<(),
     const ALLOWED_SCHEMES: &[&str] = &["http", "https", "ssh", "git+https", "git+http", "git+ssh"];
 
     if url.trim().is_empty() {
-        return Err(Error::Config(format!(
-            "registry.yaml: projects[{idx}] (`{project_name}`).url is empty or whitespace-only"
-        )));
+        return Err(Error::Diag {
+            code: "registry-project-url-empty",
+            detail: format!(
+                "registry.yaml: projects[{idx}] (`{project_name}`).url is empty or whitespace-only"
+            ),
+        });
     }
     if url != url.trim() {
-        return Err(Error::Config(format!(
-            "registry.yaml: projects[{idx}] (`{project_name}`).url must not have leading or trailing whitespace"
-        )));
+        return Err(Error::Diag {
+            code: "registry-project-url-whitespace",
+            detail: format!(
+                "registry.yaml: projects[{idx}] (`{project_name}`).url must not have leading or trailing whitespace"
+            ),
+        });
     }
 
     if url == "." {
@@ -201,32 +236,44 @@ fn validate_project_url(url: &str, idx: usize, project_name: &str) -> Result<(),
     if let Some(pos) = url.find("://") {
         let scheme = &url[..pos];
         if !ALLOWED_SCHEMES.contains(&scheme) {
-            return Err(Error::Config(format!(
-                "registry.yaml: projects[{idx}] (`{project_name}`).url has unsupported URL scheme `{scheme}`: \
-                 expected one of http, https, ssh, git+https, git+http, git+ssh, a `git@host:path` remote, `.`, or a relative path"
-            )));
+            return Err(Error::Diag {
+                code: "registry-project-url-scheme-unsupported",
+                detail: format!(
+                    "registry.yaml: projects[{idx}] (`{project_name}`).url has unsupported URL scheme `{scheme}`: \
+                     expected one of http, https, ssh, git+https, git+http, git+ssh, a `git@host:path` remote, `.`, or a relative path"
+                ),
+            });
         }
         return Ok(());
     }
 
     if url.contains(':') {
-        return Err(Error::Config(format!(
-            "registry.yaml: projects[{idx}] (`{project_name}`).url `{url}` is not valid: \
-             ':' is only allowed in `git@host:path` remotes or in `scheme://` URLs"
-        )));
+        return Err(Error::Diag {
+            code: "registry-project-url-malformed",
+            detail: format!(
+                "registry.yaml: projects[{idx}] (`{project_name}`).url `{url}` is not valid: \
+                 ':' is only allowed in `git@host:path` remotes or in `scheme://` URLs"
+            ),
+        });
     }
 
     if url.starts_with('/') {
-        return Err(Error::Config(format!(
-            "registry.yaml: projects[{idx}] (`{project_name}`).url must be a relative path, `.`, or a remote URL — absolute filesystem paths are not allowed"
-        )));
+        return Err(Error::Diag {
+            code: "registry-project-url-absolute",
+            detail: format!(
+                "registry.yaml: projects[{idx}] (`{project_name}`).url must be a relative path, `.`, or a remote URL — absolute filesystem paths are not allowed"
+            ),
+        });
     }
 
     #[cfg(windows)]
     if looks_like_windows_drive_path(url) {
-        return Err(Error::Config(format!(
-            "registry.yaml: projects[{idx}] (`{project_name}`).url must be a relative path, `.`, or a remote URL — absolute Windows paths are not allowed"
-        )));
+        return Err(Error::Diag {
+            code: "registry-project-url-absolute",
+            detail: format!(
+                "registry.yaml: projects[{idx}] (`{project_name}`).url must be a relative path, `.`, or a remote URL — absolute Windows paths are not allowed"
+            ),
+        });
     }
 
     Ok(())

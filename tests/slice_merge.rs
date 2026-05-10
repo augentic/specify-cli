@@ -11,25 +11,10 @@ use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::Duration;
 
-use assert_cmd::Command;
-use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::copy_dir;
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
-
-fn parse_json(stdout: &[u8]) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
-}
+use common::{copy_dir, parse_json, repo_root, specify};
 
 struct Project {
     _tmp: TempDir,

@@ -18,7 +18,7 @@ skip_rust_env_info = true
 dependencies = ["audit", "fmt", "lint", "outdated", "deps"]
 
 [tasks.ci]
-dependencies = ["lint", "standards-check", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
+dependencies = ["lint", "standards-check", "standards-check-tight", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
 
 # Mechanical enforcement of AGENTS.md#coding-standards. Predicates live
 # in `xtask/src/standards.rs`; per-file baselines in
@@ -26,6 +26,19 @@ dependencies = ["lint", "standards-check", "test", "test-docs", "doc", "vet", "o
 [tasks.standards-check]
 command = "cargo"
 args = ["run", "--quiet", "-p", "xtask", "--", "standards-check"]
+
+# Ratchet: fail when an unrelated PR could lower a baseline without code
+# changes. Run `cargo make standards-tighten` and commit the updated
+# `scripts/standards-allowlist.toml` to clear.
+[tasks.standards-check-tight]
+command = "cargo"
+args = ["run", "--quiet", "-p", "xtask", "--", "standards-check", "--check-tightenable"]
+
+# Rewrite `scripts/standards-allowlist.toml` so every per-file baseline
+# matches today's actual count. Use after a migration shrinks counts.
+[tasks.standards-tighten]
+command = "cargo"
+args = ["run", "--quiet", "-p", "xtask", "--", "standards-check", "--tighten"]
 
 # -------------------------------------
 # Individual Actions

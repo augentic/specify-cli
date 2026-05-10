@@ -163,7 +163,8 @@ fn extract_skill_directive(rest: &str) -> (String, Option<SkillDirective>) {
 /// Mark the first task line with `number == task_number` complete.
 ///
 /// Idempotent: if the task is already `[x]`/`[X]`, returns the input
-/// verbatim. Returns [`Error::Config`] if no task with that number exists.
+/// verbatim. Returns `Error::Diag { code: "task-not-found", .. }`
+/// if no task with that number exists.
 ///
 /// When multiple task lines share the same number (user mistake) this
 /// targets the first unmarked occurrence; if the first occurrence is already
@@ -203,7 +204,10 @@ pub fn mark_complete(content: &str, task_number: &str) -> Result<String, Error> 
     }
 
     let Some((line_start, line_len, already_complete)) = first_match else {
-        return Err(Error::Config(format!("task {task_number} not found")));
+        return Err(Error::Diag {
+            code: "task-not-found",
+            detail: format!("task {task_number} not found"),
+        });
     };
 
     if already_complete {

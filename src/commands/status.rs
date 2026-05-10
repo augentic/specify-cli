@@ -9,8 +9,9 @@ use std::io::Write;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{Error, ProjectConfig};
+use specify::config::ProjectConfig;
 use specify_change::{Plan, Status};
+use specify_error::Error;
 use specify_registry::Registry;
 
 use super::slice::{StatusEntry, collect_status, list_slice_names, status_entry_to_json};

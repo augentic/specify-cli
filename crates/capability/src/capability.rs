@@ -130,24 +130,24 @@ impl Capability {
     /// Returns an error if the operation fails.
     pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedCapability, Error> {
         let (root_dir, source) = Self::locate(schema_value, project_dir)?;
-        let manifest_path = Self::probe_dir(&root_dir).ok_or_else(|| {
-            Error::CapabilityResolution(format!(
+        let manifest_path = Self::probe_dir(&root_dir).ok_or_else(|| Error::Diag {
+            code: "capability-manifest-missing",
+            detail: format!(
                 "no capability manifest at {} (expected `{}`)",
                 root_dir.display(),
                 CAPABILITY_FILENAME,
-            ))
+            ),
         })?;
-        let raw = std::fs::read_to_string(&manifest_path).map_err(|err| {
-            Error::CapabilityResolution(format!(
+        let raw = std::fs::read_to_string(&manifest_path).map_err(|err| Error::Diag {
+            code: "capability-manifest-read-failed",
+            detail: format!(
                 "failed to read capability manifest {}: {err}",
                 manifest_path.display()
-            ))
+            ),
         })?;
-        let manifest: Self = serde_saphyr::from_str(&raw).map_err(|err| {
-            Error::CapabilityResolution(format!(
-                "failed to parse {}: {err}",
-                manifest_path.display()
-            ))
+        let manifest: Self = serde_saphyr::from_str(&raw).map_err(|err| Error::Diag {
+            code: "capability-manifest-malformed",
+            detail: format!("failed to parse {}: {err}", manifest_path.display()),
         })?;
 
         Ok(ResolvedCapability {
@@ -163,7 +163,7 @@ impl Capability {
     ///
     /// # Errors
     ///
-    /// Returns the same `CapabilityResolution` errors `resolve` would.
+    /// Returns the same resolution diagnostics `resolve` would.
     pub fn locate(
         schema_value: &str, project_dir: &Path,
     ) -> Result<(PathBuf, CapabilitySource), Error> {
@@ -291,25 +291,30 @@ fn locate_capability_root(
             .rsplit('/')
             .find(|seg| !seg.is_empty())
             .map(|seg| seg.split('@').next().unwrap_or(seg))
-            .ok_or_else(|| {
-                Error::CapabilityResolution(format!(
-                    "cannot derive a capability name from URL `{schema_value}`"
-                ))
+            .ok_or_else(|| Error::Diag {
+                code: "capability-url-name-unresolved",
+                detail: format!("cannot derive a capability name from URL `{schema_value}`"),
             })?;
         let candidate = cache_dir.join(name);
         if candidate.is_dir() {
             return Ok((candidate.clone(), CapabilitySource::Cached(candidate)));
         }
-        return Err(Error::CapabilityResolution(format!(
-            "capability `{schema_value}` not present under {}; the agent must fetch it before the CLI can resolve",
-            cache_dir.display()
-        )));
+        return Err(Error::Diag {
+            code: "capability-cache-missing",
+            detail: format!(
+                "capability `{schema_value}` not present under {}; the agent must fetch it before the CLI can resolve",
+                cache_dir.display()
+            ),
+        });
     }
 
     if schema_value.contains('/') {
-        return Err(Error::CapabilityResolution(format!(
-            "capability value `{schema_value}` looks like a path but is not a URL; use a bare name or a full URL"
-        )));
+        return Err(Error::Diag {
+            code: "capability-value-malformed",
+            detail: format!(
+                "capability value `{schema_value}` looks like a path but is not a URL; use a bare name or a full URL"
+            ),
+        });
     }
 
     let cached = cache_dir.join(schema_value);
@@ -322,11 +327,14 @@ fn locate_capability_root(
         return Ok((local.clone(), CapabilitySource::Local(local)));
     }
 
-    Err(Error::CapabilityResolution(format!(
-        "capability `{schema_value}` not found under {} or {}",
-        cached.display(),
-        local.display()
-    )))
+    Err(Error::Diag {
+        code: "capability-not-found",
+        detail: format!(
+            "capability `{schema_value}` not found under {} or {}",
+            cached.display(),
+            local.display()
+        ),
+    })
 }
 
 pub fn validate_against_schema(

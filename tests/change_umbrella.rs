@@ -13,25 +13,20 @@
 //! regenerate them with
 //! `REGENERATE_GOLDENS=1 cargo test --test change_umbrella`.
 
+mod common;
+
 #[cfg(test)]
 mod cli {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use assert_cmd::Command;
     use serde_json::Value;
     use tempfile::{TempDir, tempdir};
 
-    fn repo_root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    }
+    use crate::common::{assert_golden_at, parse_stdout, repo_root, specify};
 
     fn plan_fixtures() -> PathBuf {
         repo_root().join("tests/fixtures/plan")
-    }
-
-    fn specify() -> Command {
-        Command::cargo_bin("specify").expect("cargo_bin(specify)")
     }
 
     /// A `.specify/` project rooted in a throwaway tempdir.
@@ -75,101 +70,8 @@ mod cli {
         }
     }
 
-    // -- substitution / golden comparison (mirrors tests/e2e.rs) -------
-
-    const TEMPDIR_PLACEHOLDER: &str = "<TEMPDIR>";
-
-    struct Sub {
-        from: String,
-        to: &'static str,
-    }
-
-    /// Apply the longest candidate first. On macOS the canonical
-    /// tempdir path (`/private/var/folders/...`) is a superstring of
-    /// the raw path (`/var/folders/...`); if we substitute the raw
-    /// path first, we strip *inside* the canonical one and leave the
-    /// stray `/private` prefix in the golden. Sorting by length
-    /// descending avoids that.
-    fn tempdir_subs(root: &Path) -> Vec<Sub> {
-        let mut subs: Vec<Sub> = Vec::new();
-        if let Some(raw) = root.to_str() {
-            subs.push(Sub {
-                from: raw.to_string(),
-                to: TEMPDIR_PLACEHOLDER,
-            });
-        }
-        if let Ok(canonical) = fs::canonicalize(root)
-            && let Some(canonical_str) = canonical.to_str()
-            && Some(canonical_str) != root.to_str()
-        {
-            subs.push(Sub {
-                from: canonical_str.to_string(),
-                to: TEMPDIR_PLACEHOLDER,
-            });
-        }
-        subs.sort_by_key(|b| std::cmp::Reverse(b.from.len()));
-        subs
-    }
-
-    fn strip_substitutions(value: &mut Value, subs: &[Sub]) {
-        match value {
-            Value::String(s) => {
-                for sub in subs {
-                    if s.contains(&sub.from) {
-                        *s = s.replace(&sub.from, sub.to);
-                    }
-                }
-            }
-            Value::Array(items) => {
-                for item in items {
-                    strip_substitutions(item, subs);
-                }
-            }
-            Value::Object(map) => {
-                for (_k, v) in map.iter_mut() {
-                    strip_substitutions(v, subs);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn parse_stdout(stdout: &[u8], root: &Path) -> Value {
-        let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-        let mut value: Value = serde_json::from_str(text)
-            .unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"));
-        strip_substitutions(&mut value, &tempdir_subs(root));
-        value
-    }
-
-    /// Compare `actual` against a checked-in golden, or rewrite it when
-    /// `REGENERATE_GOLDENS=1` is set. Mirrors `tests/e2e.rs`.
-    #[allow(clippy::needless_pass_by_value)]
     fn assert_golden(name: &str, actual: Value) {
-        let golden_path = plan_fixtures().join(name);
-        let rendered = serde_json::to_string_pretty(&actual).expect("pretty json");
-
-        if std::env::var_os("REGENERATE_GOLDENS").is_some() {
-            fs::create_dir_all(plan_fixtures()).expect("mkdir plan fixtures");
-            fs::write(&golden_path, format!("{rendered}\n")).expect("write golden");
-            return;
-        }
-
-        let expected_raw = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
-            panic!(
-                "golden {} missing ({err}); regenerate via REGENERATE_GOLDENS=1 cargo test --test change_umbrella",
-                golden_path.display()
-            )
-        });
-        let expected: Value = serde_json::from_str(&expected_raw)
-            .unwrap_or_else(|err| panic!("golden {} is not JSON: {err}", golden_path.display()));
-
-        assert_eq!(
-            actual,
-            expected,
-            "stdout diverged from golden {}\n--- actual ---\n{rendered}\n--- expected ---\n{expected_raw}",
-            golden_path.display()
-        );
+        assert_golden_at(&plan_fixtures(), name, actual);
     }
 
     // -- test seeds --------------------------------------------------------
@@ -2162,7 +2064,7 @@ inputs: []
             .assert()
             .failure();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["error"], "config");
+        assert_eq!(actual["error"], "change-brief-name-not-kebab");
         let msg = actual["message"].as_str().expect("message");
         assert!(msg.contains("kebab-case"), "msg should mention kebab-case: {msg}");
         assert!(msg.contains("NotKebab"), "msg should mention the bad name: {msg}");

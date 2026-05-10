@@ -474,8 +474,8 @@ mod tests {
             .expect("write ok");
         let err = SliceMetadata::load(dir.path()).expect_err("expected error");
         assert!(
-            matches!(err, Error::Yaml(_) | Error::Config(_)),
-            "expected Yaml/Config error, got {err:?}"
+            matches!(err, Error::Yaml(_) | Error::Diag { .. }),
+            "expected Yaml or Diag error, got {err:?}"
         );
     }
 

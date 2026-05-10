@@ -18,7 +18,7 @@ use crate::cache::CacheMeta;
 use crate::capability::{Capability, CapabilitySource, Phase};
 use crate::change_brief::{ChangeBrief, InputKind};
 use crate::codex::{CodexReviewMode, CodexRule, CodexSeverity};
-use crate::codex_resolver::{CodexProvenance, ResolvedCodex};
+use crate::codex_resolver::{CodexProvenance, DEFAULT_CODEX_CAPABILITY, ResolvedCodex};
 use crate::pipeline::PipelineView;
 
 /// Absolute path to the repo root (the Cargo workspace root).
@@ -496,7 +496,7 @@ fn brief_parse_rejects_missing_frontmatter() {
     let path = PathBuf::from("no-frontmatter.md");
     let contents = "# plain markdown\nno frontmatter at all\n";
     let err = Brief::parse(&path, contents).expect_err("missing frontmatter");
-    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
 }
 
 #[test]
@@ -505,7 +505,7 @@ fn brief_parse_rejects_missing_closing_delimiter() {
     let contents = "---\nid: proposal\ndescription: demo\n";
     let err = Brief::parse(&path, contents).expect_err("missing closing ---");
     match err {
-        Error::Config(msg) => assert!(msg.contains("closing `---`"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("closing `---`"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -515,7 +515,7 @@ fn brief_parse_rejects_invalid_yaml_frontmatter() {
     let path = PathBuf::from("bad-yaml.md");
     let contents = "---\nid: [unclosed\n---\nbody\n";
     let err = Brief::parse(&path, contents).expect_err("malformed YAML");
-    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
 }
 
 // ---------- Codex rule frontmatter ----------
@@ -689,12 +689,13 @@ fn codex_resolver_names_missing_default_capability() {
     let err = ResolvedCodex::resolve(tmp.path(), None, true)
         .expect_err("missing default capability should fail");
 
-    let Error::CapabilityResolution(detail) = err else {
+    let Error::Diag { code, detail } = err else {
         panic!("expected schema resolution error");
     };
+    assert_eq!(code, "codex-default-capability-unavailable", "detail: {detail}");
     assert!(
-        detail.contains("codex-default-capability-unavailable"),
-        "detail should name default codex diagnostic: {detail}"
+        detail.contains(DEFAULT_CODEX_CAPABILITY),
+        "detail should name default codex capability: {detail}"
     );
 }
 
@@ -959,7 +960,7 @@ fn pipeline_view_load_detects_id_mismatch() {
 
     let err = PipelineView::load("demo", tmp.path()).expect_err("id mismatch detected");
     match err {
-        Error::CapabilityResolution(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("not-proposal"), "msg: {msg}");
             assert!(msg.contains("proposal"), "msg: {msg}");
         }
@@ -976,7 +977,7 @@ fn pipeline_view_load_rejects_needs_pointing_at_later_brief() {
 
     let err = PipelineView::load("demo", tmp.path()).expect_err("forward needs detected");
     match err {
-        Error::CapabilityResolution(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("proposal"), "msg: {msg}");
             assert!(msg.contains("specs"), "msg: {msg}");
             assert!(msg.contains("earlier"), "msg: {msg}");
@@ -993,7 +994,7 @@ fn pipeline_view_load_rejects_tracks_pointing_at_unknown_brief() {
 
     let err = PipelineView::load("demo", tmp.path()).expect_err("unknown tracks detected");
     match err {
-        Error::CapabilityResolution(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("ghost"), "msg: {msg}");
             assert!(msg.contains("build"), "msg: {msg}");
         }
@@ -1007,7 +1008,7 @@ fn schema_resolve_errors_when_url_schema_not_in_cache() {
     let err = Capability::resolve("https://example.com/schemas/nope", tmp.path())
         .expect_err("url with empty cache fails");
     match err {
-        Error::CapabilityResolution(msg) => assert!(msg.contains(".cache"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains(".cache"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -1061,7 +1062,7 @@ fn cache_meta_load_roundtrip_and_malformed() {
 
     std::fs::write(&path, ": not: valid: yaml:\n\t-garbage").unwrap();
     let err = CacheMeta::load(tmp.path()).expect_err("malformed parse fails");
-    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
 }
 
 #[test]
@@ -1190,7 +1191,7 @@ fn initiative_brief_rejects_missing_frontmatter() {
     let tmp = scaffold_initiative_brief("# Just markdown, no frontmatter\n");
     let err = ChangeBrief::load(tmp.path()).expect_err("missing frontmatter");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             // Post-RFC-13 chunk 3.7: parser names the file as
             // `change.md` since that is the on-disk filename it loads
             // from.
@@ -1206,7 +1207,7 @@ fn initiative_brief_rejects_unclosed_frontmatter() {
     let tmp = scaffold_initiative_brief("---\nname: solo\n# body has no closing ---\n");
     let err = ChangeBrief::load(tmp.path()).expect_err("no closing delimiter");
     match err {
-        Error::Config(msg) => assert!(msg.contains("closing"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("closing"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -1216,7 +1217,7 @@ fn initiative_brief_rejects_missing_name() {
     let tmp = scaffold_initiative_brief("---\ninputs: []\n---\n\nbody\n");
     let err = ChangeBrief::load(tmp.path()).expect_err("missing name");
     match err {
-        Error::Config(msg) => assert!(msg.contains("name"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("name"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -1228,7 +1229,7 @@ fn initiative_brief_rejects_non_kebab_name() {
         let tmp = scaffold_initiative_brief(&yaml);
         let err = ChangeBrief::load(tmp.path()).expect_err(&format!("bad name `{bad}`"));
         match err {
-            Error::Config(msg) => {
+            Error::Diag { detail: msg, .. } => {
                 assert!(msg.contains("kebab-case"), "msg for `{bad}`: {msg}");
                 assert!(msg.contains(bad), "msg for `{bad}`: {msg}");
             }
@@ -1243,7 +1244,7 @@ fn initiative_brief_rejects_unknown_top_level_frontmatter_key() {
     let tmp = scaffold_initiative_brief(yaml);
     let err = ChangeBrief::load(tmp.path()).expect_err("unknown top-level key");
     match err {
-        Error::Config(msg) => assert!(msg.contains("foo"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("foo"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -1264,7 +1265,7 @@ body
     let tmp = scaffold_initiative_brief(yaml);
     let err = ChangeBrief::load(tmp.path()).expect_err("unknown input key");
     match err {
-        Error::Config(msg) => assert!(msg.contains("extra"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("extra"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -1284,7 +1285,7 @@ body
     let tmp = scaffold_initiative_brief(yaml);
     let err = ChangeBrief::load(tmp.path()).expect_err("unknown kind");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("whatever"), "msg should mention bad value: {msg}");
             assert!(
                 msg.contains("legacy-code")
@@ -1311,7 +1312,7 @@ body
     let tmp = scaffold_initiative_brief(yaml);
     let err = ChangeBrief::load(tmp.path()).expect_err("missing path");
     match err {
-        Error::Config(msg) => assert!(msg.contains("path"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("path"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -1330,7 +1331,7 @@ body
     let tmp = scaffold_initiative_brief(yaml);
     let err = ChangeBrief::load(tmp.path()).expect_err("missing kind");
     match err {
-        Error::Config(msg) => assert!(msg.contains("kind"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("kind"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -1350,7 +1351,7 @@ body
     let tmp = scaffold_initiative_brief(yaml);
     let err = ChangeBrief::load(tmp.path()).expect_err("empty path");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("path"), "msg: {msg}");
             assert!(msg.contains("empty"), "msg: {msg}");
         }

@@ -202,7 +202,7 @@ match ctx.format {
 emit(ctx.format, &SomeBody::from(result))?;
 ```
 
-`Render::render_text(&self, w: &mut dyn Write)` carries the text-mode body; the JSON path goes through `serde::Serialize`. New code must not introduce `match … format`; the `format-match-dispatch` predicate fails new occurrences. See [`src/commands/migrate.rs`](src/commands/migrate.rs) and [`src/commands/codex.rs`](src/commands/codex.rs) for the canonical pattern.
+`Render::render_text(&self, w: &mut dyn Write)` carries the text-mode body; the JSON path goes through `serde::Serialize`. New code must not introduce `match … format`; the `format-match-dispatch` predicate fails new occurrences. See [`src/commands/codex.rs`](src/commands/codex.rs) for the canonical pattern.
 
 ### DTOs
 
@@ -245,19 +245,12 @@ fn handle(...) {
 
 ### Errors
 
-`specify-error::Error` variants are **structured**, not `Variant(String)` catch-alls. The catch-all variants (`Error::Config(String)` / `Merge(String)` / `ToolResolver(String)` / `ToolRuntime(String)` / `CapabilityResolution(String)`) are **frozen**: the `xtask standards-check` `free-form-error-strings` predicate caps every existing call site at its current per-file baseline; new occurrences fail CI.
-
-For new diagnostics, prefer in this order:
+`specify-error::Error` variants are **structured**, not `Variant(String)` catch-alls. For new diagnostics, prefer in this order:
 
 1. A dedicated typed variant (e.g. `Error::Argument`, `Error::PlanTransition`, `Error::ContextLockMalformed`) when the call shape recurs or carries structured payload.
 2. `Error::Diag { code: "<kebab>", detail: format!(…) }` when it doesn't (yet). The `code` is the JSON envelope's stable `error` discriminant; `detail` is the human-readable message. Promote a recurring `Diag` site to its own variant once the call shape stabilises.
 
 ```rust
-// BAD — frozen catch-all
-return Err(Error::Config(format!(
-    "--proposed-name is required when outcome is `registry-amendment-required`"
-)));
-
 // GOOD — typed variant when the shape exists
 return Err(Error::Argument {
     flag: "--proposed-name",
@@ -313,13 +306,17 @@ Use the modern Rust module layout: prefer `src/<parent>/<module>.rs` as the modu
 |---|---|
 | `inline-dtos` | Structs/enums with `#[derive(Serialize)]` declared inside any `Block`. |
 | `format-match-dispatch` | Hand-rolled `match … format { Json => … }`. Use `Render::render_text` + `emit` instead. |
-| `free-form-error-strings` | `Error::(Config\|Merge\|ToolResolver\|ToolRuntime\|CapabilityResolution)(...)` call sites. Use `Error::Diag { code, detail }`. |
 | `rfc-numbers-in-code` | `RFC[- ]?\d+` outside `tests/`, `DECISIONS.md`, and `rfcs/`. |
 | `ritual-doc-paragraphs` | The boilerplate `Returns an error if the operation fails.` doc paragraph. |
 | `no-op-forwarders` | `let _ = cli.<flag>;` — a parsed-but-unused CLI flag. |
 | `name-suffix-duplication` | `fn foo_<module>` inside `mod <module>` (e.g. `fn show_registry` in `commands/registry.rs`). |
+| `module-line-count` | Non-test Rust source file length in lines. Default cap 500; per-file baselines grandfather oversized files until they are split. |
 
-A live count strictly greater than its per-file baseline fails CI; missing predicates default to zero (new files start clean). Reductions are encouraged in any PR that touches a file; raising a number requires a justification in the PR description.
+A live count strictly greater than its per-file baseline fails CI; missing predicates default to zero (new files start clean) except `module-line-count`, which defaults to 500.
+
+**Ratchet** — any PR that touches a file with allowlist baselines is expected to reduce them where it can. CI runs `cargo run -p xtask -- standards-check --check-tightenable`, which fails when an unrelated PR could lower a baseline without code changes. Run `cargo make standards-tighten` and commit the updated `scripts/standards-allowlist.toml` to clear.
+
+**Module length cap** — keep new modules ≤ 500 lines. When a file outgrows that, split by concern (one verb per file, model vs IO vs transitions, etc.) before adding more code. Prefer `src/<parent>/<module>.rs` + `src/<parent>/<module>/<concern>.rs` over a single fat file with `// ---` separators.
 
 ### No-op forwarders
 
@@ -341,7 +338,7 @@ The corollary: when a skill currently does something deterministic in prose (par
 - `specify init` bypasses the `specify_version` floor check (the file doesn't exist yet); every other project-aware verb inherits it for free via `ProjectConfig::load`. Don't reimplement the floor check at a subcommand site.
 - `cargo nextest` and `cargo test` differ on `--no-tests=pass`. CI uses nextest with `--no-tests=pass`, so an empty test target is fine — but a missing `[[test]]` declaration that should exist will silently produce no output. Cross-check `cargo test` output if you suspect a target is being skipped.
 - `cargo doc` is part of `cargo make ci`. Doc comments must compile. Reference paths inside backticks (`` `Self::config_path` ``) are fine; bare links (`[Foo]`) need a corresponding intra-doc target or rustdoc fails the build.
-- Some workspace crates re-export types so the CLI can `use specify::{…}` instead of pulling each crate. Maintain those re-exports in `src/lib.rs` when adding a new public type that the CLI needs.
+- The `src/lib.rs` library hosts only the local `config` and `init` modules. Public types from member crates are imported directly with `use specify_<crate>::Foo`; do **not** re-export them through `lib.rs`.
 
 ## Reference cross-links
 

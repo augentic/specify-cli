@@ -9,14 +9,6 @@
 //! is surfaced as structural data rather than rejected here, because
 //! coherence checking is `specify-merge`'s job.
 
-// specify-error is listed as a dependency in Cargo.toml for workspace
-// consistency, but nothing in this crate is currently fallible. Referenced
-// here to satisfy `unused_crate_dependencies` should it ever be enabled.
-// Same story for regex — declared in Cargo.toml per the change scope;
-// validation that needs it lives in specify-merge / specify-validate.
-use regex as _;
-use specify_error as _;
-
 // ---------------------------------------------------------------------------
 // Hard-coded spec format (matches plugins/spec/references/spec-format.md).
 // ---------------------------------------------------------------------------
