@@ -427,10 +427,7 @@ format-match-dispatch = 3
 module-line-count = 140
 
 [file."src/commands/change/plan/status.rs"]
-inline-dtos = 4
-format-match-dispatch = 2
-name-suffix-duplication = 1
-module-line-count = 257
+module-line-count = 216
 
 [file."src/commands/codex.rs"]
 module-line-count = 383
@@ -498,7 +495,7 @@ module-line-count = 59
 module-line-count = 202
 
 [file."src/commands/tool.rs"]
-module-line-count = 473
+module-line-count = 471
 
 [file."src/commands/workspace.rs"]
 module-line-count = 400
