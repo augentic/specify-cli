@@ -32,6 +32,27 @@
 //!   comment (`src/cli.rs` and `src/commands/**/cli.rs`). A doc that
 //!   says "Currently equivalent to the default …" is the AGENTS.md
 //!   `Wired-but-ignored flags` smell.
+//! - `error-envelope-inlined` — `output::ErrorResponse { … }` /
+//!   `output::ValidationErrorResponse { … }` constructed outside
+//!   `src/output.rs`. Hand-rolled error envelopes bypass the
+//!   `emit_error` / `emit_err` path; nobody outside `output.rs`
+//!   should be building the envelope DTO directly.
+//! - `path-helper-inlined` — `fn specify_dir|plan_path|
+//!   change_brief_path|archive_dir` declared outside `crates/config/`.
+//!   Path helpers live in `specify-config`; command modules call them,
+//!   they do not redefine them. Thin facade methods that take `&self`
+//!   are excluded by the regex shape (the predicate targets free
+//!   functions, not delegating accessors).
+//! - `ok-literal-in-body` — `pub ok: bool` field on a Serialize DTO
+//!   outside the two carve-outs (`crates/validate/src/contracts/envelope.rs`
+//!   and `crates/validate/src/compatibility/mod.rs`). The JSON envelope
+//!   encodes success-vs-failure via the presence/absence of `error:`;
+//!   the redundant `ok` field was removed in CL-E3 and this predicate
+//!   keeps it gone. Pragmatic regex on `pub ok: bool` rather than an
+//!   AST walk — the field is always `pub` on Serialize DTOs in this
+//!   workspace, so the simpler form catches every regression while
+//!   missing only private `ok: bool` fields (which are not part of any
+//!   wire envelope and were not flagged by CL-E3 either).
 //! - `module-line-count` — non-test Rust source file length in lines.
 //!   Default cap is 500; explicit per-file baselines grandfather oversized
 //!   files until they are split.
@@ -135,6 +156,9 @@ struct Counts {
     no_op_forwarders: u32,
     name_suffix_duplication: u32,
     currently_audit: u32,
+    error_envelope_inlined: u32,
+    path_helper_inlined: u32,
+    ok_literal_in_body: u32,
     module_line_count: u32,
 }
 
@@ -148,6 +172,9 @@ impl Counts {
             ("no-op-forwarders", self.no_op_forwarders),
             ("name-suffix-duplication", self.name_suffix_duplication),
             ("currently-audit", self.currently_audit),
+            ("error-envelope-inlined", self.error_envelope_inlined),
+            ("path-helper-inlined", self.path_helper_inlined),
+            ("ok-literal-in-body", self.ok_literal_in_body),
             ("module-line-count", self.module_line_count),
         ]
         .into_iter()
@@ -162,6 +189,9 @@ impl Counts {
             no_op_forwarders: self.no_op_forwarders,
             name_suffix_duplication: self.name_suffix_duplication,
             currently_audit: self.currently_audit,
+            error_envelope_inlined: self.error_envelope_inlined,
+            path_helper_inlined: self.path_helper_inlined,
+            ok_literal_in_body: self.ok_literal_in_body,
             module_line_count: self.module_line_count,
         }
     }
@@ -181,6 +211,9 @@ fn count_one(path: &Path, source: &str) -> Counts {
     c.no_op_forwarders = count_regex(&NO_OP_FORWARDER_RE, &stripped);
     c.name_suffix_duplication = count_name_suffix(path, &stripped);
     c.currently_audit = count_currently_audit(path, source);
+    c.error_envelope_inlined = count_error_envelope(path, &stripped);
+    c.path_helper_inlined = count_path_helper(path, &stripped);
+    c.ok_literal_in_body = count_ok_literal(path, &stripped);
     c.module_line_count = u32::try_from(source.lines().count()).unwrap_or(u32::MAX);
     c
 }
@@ -277,6 +310,86 @@ fn is_clap_cli_file(path: &Path) -> bool {
     let normalized = path.to_string_lossy().replace('\\', "/");
     normalized.ends_with("src/cli.rs")
         || (normalized.contains("src/commands/") && normalized.ends_with("/cli.rs"))
+}
+
+// ---------------------------------------------------------------------
+// error-envelope-inlined: `output::ErrorResponse { … }` /
+// `output::ValidationErrorResponse { … }` constructed outside `src/output.rs`.
+//
+// Hand-rolled error envelopes bypass the `emit_error` / `emit_err` path.
+// CL-E3 removed the last hand-rolled construction (in `src/commands/registry.rs`);
+// this predicate keeps it gone.
+
+static ERROR_ENVELOPE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"output::ErrorResponse\s*\{|output::ValidationErrorResponse\s*\{")
+        .expect("static regex")
+});
+
+fn count_error_envelope(path: &Path, stripped: &str) -> u32 {
+    if is_output_module(path) { 0 } else { count_regex(&ERROR_ENVELOPE_RE, stripped) }
+}
+
+fn is_output_module(path: &Path) -> bool {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    normalized.ends_with("src/output.rs")
+}
+
+// ---------------------------------------------------------------------
+// path-helper-inlined: `fn specify_dir|plan_path|change_brief_path|archive_dir`
+// declared outside `crates/config/`.
+//
+// Path helpers live in `specify-config` (CL-01); command modules call them,
+// they do not redefine them. The regex requires the function's first
+// argument to start with an identifier (e.g. `project_dir: &Path`) rather
+// than `&self`, so thin facade methods like `CommandContext::archive_dir`
+// that delegate to `ProjectConfig::archive_dir` are not flagged. The Rust
+// `regex` crate has no lookarounds, so the negative ("not a self method")
+// is encoded as a positive ("first arg is a normal identifier").
+
+static PATH_HELPER_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"fn\s+(specify_dir|plan_path|change_brief_path|archive_dir)\s*\(\s*[A-Za-z_]")
+        .expect("static regex")
+});
+
+fn count_path_helper(path: &Path, stripped: &str) -> u32 {
+    if is_config_crate(path) { 0 } else { count_regex(&PATH_HELPER_RE, stripped) }
+}
+
+fn is_config_crate(path: &Path) -> bool {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    normalized.contains("crates/config/")
+}
+
+// ---------------------------------------------------------------------
+// ok-literal-in-body: `pub ok: bool` field outside the carve-outs.
+//
+// CL-E3 dropped the redundant `ok: bool` field from every success / error
+// DTO under `src/commands/`. The JSON envelope encodes success-vs-failure
+// via the presence/absence of `error:`; the `ok` field was duplicative
+// wire noise. The two carve-outs are intentional:
+//
+//   - `crates/validate/src/contracts/envelope.rs` — the contract-validate
+//     WASI tool envelope (schema-version 2, not routed through specify-error).
+//   - `crates/validate/src/compatibility/mod.rs` — `CompatibilityReport.ok`
+//     is a computed semantic flag consumed by `is_compatible()`.
+//
+// Pragmatic regex on `pub\s+ok:\s*bool` rather than an AST walk that
+// verifies a surrounding `#[derive(Serialize)]`. Serialize DTOs in this
+// workspace always declare their fields `pub`, so the simpler regex
+// catches every regression while ignoring private `ok: bool` fields
+// (which are not part of any wire envelope and were not flagged by CL-E3).
+
+static OK_LITERAL_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"pub\s+ok:\s*bool\b").expect("static regex"));
+
+fn count_ok_literal(path: &Path, stripped: &str) -> u32 {
+    if is_ok_literal_carveout(path) { 0 } else { count_regex(&OK_LITERAL_RE, stripped) }
+}
+
+fn is_ok_literal_carveout(path: &Path) -> bool {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    normalized.ends_with("crates/validate/src/contracts/envelope.rs")
+        || normalized.ends_with("crates/validate/src/compatibility/mod.rs")
 }
 
 // ---------------------------------------------------------------------
@@ -412,6 +525,12 @@ struct FileBaseline {
     #[serde(default)]
     currently_audit: u32,
     #[serde(default)]
+    error_envelope_inlined: u32,
+    #[serde(default)]
+    path_helper_inlined: u32,
+    #[serde(default)]
+    ok_literal_in_body: u32,
+    #[serde(default)]
     module_line_count: u32,
 }
 
@@ -425,6 +544,9 @@ impl FileBaseline {
             "no-op-forwarders" => self.no_op_forwarders,
             "name-suffix-duplication" => self.name_suffix_duplication,
             "currently-audit" => self.currently_audit,
+            "error-envelope-inlined" => self.error_envelope_inlined,
+            "path-helper-inlined" => self.path_helper_inlined,
+            "ok-literal-in-body" => self.ok_literal_in_body,
             "module-line-count" => self.module_line_count,
             _ => 0,
         }
@@ -519,6 +641,9 @@ fn baseline_iter(b: &FileBaseline) -> impl Iterator<Item = (&'static str, u32)> 
         ("no-op-forwarders", b.no_op_forwarders),
         ("name-suffix-duplication", b.name_suffix_duplication),
         ("currently-audit", b.currently_audit),
+        ("error-envelope-inlined", b.error_envelope_inlined),
+        ("path-helper-inlined", b.path_helper_inlined),
+        ("ok-literal-in-body", b.ok_literal_in_body),
         ("module-line-count", b.module_line_count),
     ]
     .into_iter()
