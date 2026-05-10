@@ -409,9 +409,7 @@ format-match-dispatch = 1
 module-line-count = 142
 
 [file."src/commands/change/plan/create.rs"]
-inline-dtos = 2
-format-match-dispatch = 2
-module-line-count = 117
+module-line-count = 124
 
 [file."src/commands/change/plan/doctor.rs"]
 format-match-dispatch = 1

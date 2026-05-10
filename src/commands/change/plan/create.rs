@@ -1,8 +1,4 @@
-#![allow(
-    clippy::items_after_statements,
-    clippy::too_many_arguments,
-    reason = "Command handlers mirror the Clap option set for each subcommand."
-)]
+use std::io::Write;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -10,9 +6,8 @@ use specify_change::{Entry, EntryPatch, Status};
 use specify_error::Error;
 
 use super::{PlanRef, change_entry_json, check_project, load_for_write, plan_ref};
-use crate::cli::OutputFormat;
 use crate::context::CommandContext;
-use crate::output::{CliResult, emit_response};
+use crate::output::{CliResult, Render, emit};
 
 pub fn add(
     ctx: &CommandContext, name: String, depends_on: Vec<String>, sources: Vec<String>,
@@ -26,7 +21,7 @@ pub fn add(
     }
 
     let entry = Entry {
-        name: name.clone(),
+        name,
         project,
         capability,
         status: Status::Pending,
@@ -42,23 +37,14 @@ pub fn add(
 
     let created = plan.entries.last().expect("Plan::create appended an entry that is now missing");
 
-    #[derive(Serialize)]
-    #[serde(rename_all = "kebab-case")]
-    struct AddBody {
-        plan: PlanRef,
-        action: &'static str,
-        entry: Value,
-    }
-    match ctx.format {
-        OutputFormat::Json => emit_response(AddBody {
+    emit(
+        ctx.format,
+        &AddBody {
             plan: plan_ref(&plan, &plan_path),
             action: "create",
             entry: change_entry_json(created),
-        })?,
-        OutputFormat::Text => {
-            println!("Created plan entry '{name}' with status 'pending'.");
-        }
-    }
+        },
+    )?;
     Ok(CliResult::Success)
 }
 
@@ -96,22 +82,43 @@ pub fn amend(
 
     let amended = plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
 
-    #[derive(Serialize)]
-    #[serde(rename_all = "kebab-case")]
-    struct AmendBody {
-        plan: PlanRef,
-        action: &'static str,
-        entry: Value,
-    }
-    match ctx.format {
-        OutputFormat::Json => emit_response(AmendBody {
+    emit(
+        ctx.format,
+        &AmendBody {
             plan: plan_ref(&plan, &plan_path),
             action: "amend",
             entry: change_entry_json(amended),
-        })?,
-        OutputFormat::Text => {
-            println!("Amended plan entry '{name}'.");
-        }
-    }
+        },
+    )?;
     Ok(CliResult::Success)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct AddBody {
+    plan: PlanRef,
+    action: &'static str,
+    entry: Value,
+}
+
+impl Render for AddBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        let name = self.entry.get("name").and_then(Value::as_str).unwrap_or("");
+        writeln!(w, "Created plan entry '{name}' with status 'pending'.")
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct AmendBody {
+    plan: PlanRef,
+    action: &'static str,
+    entry: Value,
+}
+
+impl Render for AmendBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        let name = self.entry.get("name").and_then(Value::as_str).unwrap_or("");
+        writeln!(w, "Amended plan entry '{name}'.")
+    }
 }
