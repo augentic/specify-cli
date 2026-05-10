@@ -481,13 +481,19 @@ module-line-count = 383
 module-line-count = 80
 
 [file."src/commands/context.rs"]
-module-line-count = 418
+module-line-count = 417
 
 [file."src/commands/context/check.rs"]
 module-line-count = 141
 
 [file."src/commands/context/detect.rs"]
-module-line-count = 735
+module-line-count = 154
+
+[file."src/commands/context/detect/markers.rs"]
+module-line-count = 251
+
+[file."src/commands/context/detect/runtimes.rs"]
+module-line-count = 368
 
 [file."src/commands/context/fences.rs"]
 name-suffix-duplication = 1
@@ -498,7 +504,7 @@ name-suffix-duplication = 2
 module-line-count = 209
 
 [file."src/commands/context/generate.rs"]
-module-line-count = 152
+module-line-count = 150
 
 [file."src/commands/context/lock.rs"]
 module-line-count = 222
