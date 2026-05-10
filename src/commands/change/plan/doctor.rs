@@ -5,6 +5,8 @@
 //! superset of `Plan::validate`), then render the diagnostic stream as
 //! text or JSON.
 
+use std::io::Write;
+
 use serde::Serialize;
 use serde_json::Value;
 use specify_change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
@@ -13,9 +15,8 @@ use specify_error::Error;
 use specify_registry::Registry;
 
 use super::{PlanRef, plan_ref, require_file};
-use crate::cli::OutputFormat;
 use crate::context::CommandContext;
-use crate::output::{CliResult, emit_response};
+use crate::output::{CliResult, Render, emit};
 
 /// Wire shape of the JSON `diagnostics:` row. Mirrors
 /// [`PlanDoctorDiagnostic`] but with `severity` rendered as the
@@ -38,6 +39,26 @@ struct DoctorBody {
     plan: PlanRef,
     diagnostics: Vec<Value>,
     ok: bool,
+}
+
+impl Render for DoctorBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        if self.diagnostics.is_empty() {
+            return writeln!(w, "Plan OK");
+        }
+        for d in &self.diagnostics {
+            let severity = d.get("severity").and_then(Value::as_str).unwrap_or("");
+            let prefix = if severity == "error" { "ERROR  " } else { "WARNING" };
+            let code = d.get("code").and_then(Value::as_str).unwrap_or("");
+            let message = d.get("message").and_then(Value::as_str).unwrap_or("");
+            let entry_col = d
+                .get("entry")
+                .and_then(Value::as_str)
+                .map_or_else(String::new, |e| format!("[{e}]"));
+            writeln!(w, "{prefix} {code:<24} {entry_col:<24} {message}")?;
+        }
+        Ok(())
+    }
 }
 
 pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
@@ -66,18 +87,16 @@ pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
     }
 
     let has_errors = diagnostics.iter().any(|d| matches!(d.severity, PlanDoctorSeverity::Error));
+    let rows: Vec<Value> = diagnostics.iter().map(diagnostic_to_json).collect();
 
-    match ctx.format {
-        OutputFormat::Json => {
-            let rows: Vec<Value> = diagnostics.iter().map(diagnostic_to_json).collect();
-            emit_response(DoctorBody {
-                plan: plan_ref(&plan, &plan_path),
-                diagnostics: rows,
-                ok: !has_errors,
-            })?;
-        }
-        OutputFormat::Text => render_text(&diagnostics),
-    }
+    emit(
+        ctx.format,
+        &DoctorBody {
+            plan: plan_ref(&plan, &plan_path),
+            diagnostics: rows,
+            ok: !has_errors,
+        },
+    )?;
 
     Ok(if has_errors { CliResult::ValidationFailed } else { CliResult::Success })
 }
@@ -99,19 +118,4 @@ fn diagnostic_to_json(d: &PlanDoctorDiagnostic) -> Value {
         data,
     })
     .expect("DiagnosticRow serialises as JSON")
-}
-
-fn render_text(diagnostics: &[PlanDoctorDiagnostic]) {
-    if diagnostics.is_empty() {
-        println!("Plan OK");
-        return;
-    }
-    for d in diagnostics {
-        let prefix = match d.severity {
-            PlanDoctorSeverity::Error => "ERROR  ",
-            PlanDoctorSeverity::Warning => "WARNING",
-        };
-        let entry_col = d.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
-        println!("{prefix} {:<24} {:<24} {}", d.code, entry_col, d.message);
-    }
 }

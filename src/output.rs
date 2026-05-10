@@ -46,9 +46,10 @@ impl From<&Error> for CliResult {
     fn from(err: &Error) -> Self {
         match err {
             Error::CliTooOld { .. } => Self::VersionTooOld,
-            Error::Validation { .. } | Error::ToolDenied(_) | Error::ToolNotDeclared { .. } => {
-                Self::ValidationFailed
-            }
+            Error::Validation { .. }
+            | Error::ToolDenied(_)
+            | Error::ToolNotDeclared { .. }
+            | Error::PlanStructural => Self::ValidationFailed,
             Error::Argument { .. } => Self::ArgumentError,
             _ => Self::GenericFailure,
         }

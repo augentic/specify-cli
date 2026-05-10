@@ -7,9 +7,7 @@ use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_registry::Registry;
 
-use super::{
-    PlanRef, absolute_string, emit_structural_error, load_for_write, plan_ref, require_file,
-};
+use super::{PlanRef, absolute_string, load_for_write, plan_ref, require_file};
 use crate::context::CommandContext;
 use crate::output::{CliResult, Render, Validation, emit, emit_err};
 
@@ -120,7 +118,7 @@ pub fn next(ctx: &CommandContext) -> Result<CliResult, Error> {
 
     let results = plan.validate(Some(&slices_dir), None);
     if results.iter().any(|r| matches!(r.level, Severity::Error)) {
-        return emit_structural_error(ctx.format);
+        return Err(Error::PlanStructural);
     }
 
     let body = if let Some(active) = plan.entries.iter().find(|c| c.status == Status::InProgress) {

@@ -192,6 +192,17 @@ pub enum Error {
     )]
     PlanNotFound,
 
+    /// `specify change plan {next, status}` short-circuited because
+    /// the plan has structural errors (anything `Plan::validate`
+    /// surfaces at error severity except `dependency-cycle`, which
+    /// `status` falls back through). Operator follow-up is to run
+    /// `specify change plan validate` for the per-finding detail.
+    #[error(
+        "plan-structural-errors: plan has structural errors; run 'specify change plan validate' \
+         for detail"
+    )]
+    PlanStructural,
+
     /// `specify change finalize` refused because the plan still has
     /// non-terminal entries. `change` is the plan name; `entries`
     /// lists the offending entry names. The handler at
@@ -302,6 +313,7 @@ impl Error {
             Self::PlanTransition { .. } => "plan-transition",
             Self::PlanIncomplete { .. } => "plan-has-outstanding-work",
             Self::PlanNotFound => "plan-not-found",
+            Self::PlanStructural => "plan-structural-errors",
             Self::PlanNonTerminalEntries { .. } => "non-terminal-entries-present",
             Self::ChangeBriefExists { .. } => "already-exists",
             Self::DriverBusy { .. } => "driver-busy",
@@ -409,6 +421,16 @@ mod tests {
                 "context diagnostic display must start with `{expected}`, got: {err}"
             );
         }
+    }
+
+    #[test]
+    fn plan_structural_variant_string_is_stable() {
+        let err = Error::PlanStructural;
+        assert_eq!(err.variant_str(), "plan-structural-errors");
+        assert!(
+            err.to_string().starts_with("plan-structural-errors"),
+            "PlanStructural display must start with `plan-structural-errors`, got: {err}"
+        );
     }
 
     #[test]

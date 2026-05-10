@@ -8,7 +8,7 @@ use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_slice::SliceMetadata;
 
-use super::{PlanRef, emit_structural_error, require_file};
+use super::{PlanRef, require_file};
 use crate::context::CommandContext;
 use crate::output::{CliResult, Render, emit};
 
@@ -119,7 +119,7 @@ pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
     let has_other_structural_errors =
         results.iter().any(|r| matches!(r.level, Severity::Error) && r.code != "dependency-cycle");
     if has_other_structural_errors {
-        return emit_structural_error(ctx.format);
+        return Err(Error::PlanStructural);
     }
 
     let (ordered, order_label) = if let Ok(v) = plan.topological_order() {

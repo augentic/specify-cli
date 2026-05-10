@@ -4,7 +4,7 @@
 //! policy, and `.specify/context.lock` drift checks.
 
 use std::fs;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::Path;
 
 mod detect;
@@ -21,9 +21,9 @@ use specify_registry::Registry;
 use specify_slice::SliceMetadata;
 use specify_slice::atomic::atomic_bytes_write;
 
-use crate::cli::{ContextAction, OutputFormat};
+use crate::cli::ContextAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, emit_response};
+use crate::output::{CliResult, Render, emit};
 
 pub fn run(ctx: &CommandContext, action: ContextAction) -> Result<CliResult, Error> {
     match action {
@@ -45,7 +45,7 @@ pub fn run_generate(ctx: &CommandContext, check: bool, force: bool) -> Result<Cl
     }
 
     let body = generate(ctx, check, force)?;
-    emit_generate_output(ctx.format, &body)?;
+    emit(ctx.format, &body)?;
 
     Ok(if check && body.changed { CliResult::GenericFailure } else { CliResult::Success })
 }
@@ -65,7 +65,7 @@ pub(super) struct ContextGenerateOutcome {
 }
 
 fn generate(ctx: &CommandContext, check: bool, force: bool) -> Result<GenerateBody, Error> {
-    let (generated, context_fingerprint) = render_context(ctx)?;
+    let (generated, context_fingerprint) = render_document(ctx)?;
     let expected_lock = lock::ContextLock::from_fingerprint(&context_fingerprint);
     let lock_path = context_lock_path(ctx);
     let existing_lock = lock::load(&lock_path)?;
@@ -99,7 +99,7 @@ fn generate(ctx: &CommandContext, check: bool, force: bool) -> Result<GenerateBo
     })
 }
 
-fn render_context(
+fn render_document(
     ctx: &CommandContext,
 ) -> Result<(String, fingerprint::ContextFingerprint), Error> {
     let assembly = assemble_render_input(ctx)?;
@@ -122,7 +122,7 @@ fn render_context(
 
 pub fn run_check(ctx: &CommandContext) -> Result<CliResult, Error> {
     let body = check(ctx)?;
-    emit_check_output(ctx.format, &body)?;
+    emit(ctx.format, &body)?;
     Ok(if body.status == "up-to-date" { CliResult::Success } else { CliResult::GenericFailure })
 }
 
@@ -161,23 +161,17 @@ struct CheckFingerprint {
     actual: Option<String>,
 }
 
-fn emit_generate_output(format: OutputFormat, body: &GenerateBody) -> Result<(), Error> {
-    match format {
-        OutputFormat::Json => emit_response(body)?,
-        OutputFormat::Text => print_generate_text(body),
-    }
-    Ok(())
-}
-
-fn print_generate_text(body: &GenerateBody) {
-    match body.status {
-        "would-update" => {
-            println!("context is out of date; run `specify context generate` to refresh it");
+impl Render for GenerateBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        match self.status {
+            "would-update" => {
+                writeln!(w, "context is out of date; run `specify context generate` to refresh it")
+            }
+            "unchanged" => writeln!(w, "AGENTS.md is up to date"),
+            "written" if self.agents_changed => writeln!(w, "wrote AGENTS.md"),
+            "written" => writeln!(w, "wrote .specify/context.lock"),
+            _ => writeln!(w, "context generate finished"),
         }
-        "unchanged" => println!("AGENTS.md is up to date"),
-        "written" if body.agents_changed => println!("wrote AGENTS.md"),
-        "written" => println!("wrote .specify/context.lock"),
-        _ => println!("context generate finished"),
     }
 }
 
@@ -210,7 +204,7 @@ fn check(ctx: &CommandContext) -> Result<CheckBody, Error> {
     let agents_path = ctx.project_dir.join("AGENTS.md");
     let agents = read_optional(&agents_path)?;
     let existing_lock = lock::load(&context_lock_path(ctx))?;
-    let (_generated, actual_fingerprint) = render_context(ctx)?;
+    let (_generated, actual_fingerprint) = render_document(ctx)?;
     let actual_lock = lock::ContextLock::from_fingerprint(&actual_fingerprint);
 
     if agents.is_none() {
@@ -261,38 +255,34 @@ fn check(ctx: &CommandContext) -> Result<CheckBody, Error> {
     })
 }
 
-fn emit_check_output(format: OutputFormat, body: &CheckBody) -> Result<(), Error> {
-    match format {
-        OutputFormat::Json => emit_response(body)?,
-        OutputFormat::Text => print_check_text(body),
-    }
-    Ok(())
-}
-
-fn print_check_text(body: &CheckBody) {
-    match body.status {
-        "up-to-date" => println!("context up to date"),
-        "context-not-generated" => println!("context-not-generated: AGENTS.md is missing"),
-        "context-lock-missing" => {
-            println!("context-lock-missing: .specify/context.lock is missing");
-        }
-        "drift" => {
-            println!("context drift detected");
-            print_drift_list("inputs changed", &body.inputs_changed);
-            print_drift_list("inputs added", &body.inputs_added);
-            print_drift_list("inputs removed", &body.inputs_removed);
-            if body.fences_modified {
-                println!("fences modified: true");
+impl Render for CheckBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        match self.status {
+            "up-to-date" => writeln!(w, "context up to date"),
+            "context-not-generated" => writeln!(w, "context-not-generated: AGENTS.md is missing"),
+            "context-lock-missing" => {
+                writeln!(w, "context-lock-missing: .specify/context.lock is missing")
             }
+            "drift" => {
+                writeln!(w, "context drift detected")?;
+                write_drift_list(w, "inputs changed", &self.inputs_changed)?;
+                write_drift_list(w, "inputs added", &self.inputs_added)?;
+                write_drift_list(w, "inputs removed", &self.inputs_removed)?;
+                if self.fences_modified {
+                    writeln!(w, "fences modified: true")?;
+                }
+                Ok(())
+            }
+            _ => writeln!(w, "context check finished"),
         }
-        _ => println!("context check finished"),
     }
 }
 
-fn print_drift_list(label: &str, paths: &[String]) {
-    if !paths.is_empty() {
-        println!("{label}: {}", paths.join(", "));
+fn write_drift_list(w: &mut dyn Write, label: &str, paths: &[String]) -> std::io::Result<()> {
+    if paths.is_empty() {
+        return Ok(());
     }
+    writeln!(w, "{label}: {}", paths.join(", "))
 }
 
 fn check_fingerprint(
@@ -556,6 +546,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+    use crate::cli::OutputFormat;
 
     fn write_minimal_capability(project_dir: &Path) {
         let capability_dir = project_dir.join("schemas").join("mini");

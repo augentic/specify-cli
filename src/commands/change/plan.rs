@@ -18,10 +18,10 @@ use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_registry::Registry;
 
-use crate::cli::{LockAction, OutputFormat, PlanAction};
+use crate::cli::{LockAction, PlanAction};
 use crate::context::CommandContext;
+use crate::output::CliResult;
 pub(super) use crate::output::absolute_string;
-use crate::output::{CliResult, emit_response};
 
 pub fn run(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, Error> {
     match action {
@@ -76,22 +76,6 @@ pub fn require_file(project_dir: &Path) -> Result<PathBuf, Error> {
         });
     }
     Ok(path)
-}
-
-/// Emit the stable "go run `specify change plan validate`" pointer when
-/// `change plan next` or `change plan status` is asked to operate on a
-/// structurally broken plan.
-pub(super) fn emit_structural_error(format: OutputFormat) -> Result<CliResult, Error> {
-    let msg = "plan has structural errors; run 'specify change plan validate' for detail";
-    match format {
-        OutputFormat::Json => emit_response(crate::output::ErrorResponse {
-            error: "validation".to_string(),
-            message: msg.to_string(),
-            exit_code: CliResult::ValidationFailed.code(),
-        })?,
-        OutputFormat::Text => eprintln!("error: {msg}"),
-    }
-    Ok(CliResult::ValidationFailed)
 }
 
 pub(super) fn load_for_write(ctx: &CommandContext) -> Result<(PathBuf, Plan), Error> {

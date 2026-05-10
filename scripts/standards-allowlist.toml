@@ -108,7 +108,7 @@ format-match-dispatch = 1
 module-line-count = 142
 
 [file."crates/error/src/lib.rs"]
-module-line-count = 479
+module-line-count = 501
 
 [file."crates/init/src/cache.rs"]
 module-line-count = 89
@@ -405,19 +405,17 @@ module-line-count = 229
 module-line-count = 401
 
 [file."src/commands/change/plan.rs"]
-format-match-dispatch = 1
-module-line-count = 142
+module-line-count = 126
 
 [file."src/commands/change/plan/create.rs"]
 module-line-count = 124
 
 [file."src/commands/change/plan/doctor.rs"]
-format-match-dispatch = 1
 rfc-numbers-in-code = 1
-module-line-count = 117
+module-line-count = 121
 
 [file."src/commands/change/plan/lifecycle.rs"]
-module-line-count = 390
+module-line-count = 388
 
 [file."src/commands/change/plan/lock.rs"]
 module-line-count = 149
@@ -432,9 +430,7 @@ module-line-count = 383
 module-line-count = 80
 
 [file."src/commands/context.rs"]
-format-match-dispatch = 2
-name-suffix-duplication = 1
-module-line-count = 682
+module-line-count = 673
 
 [file."src/commands/context/detect.rs"]
 module-line-count = 735
@@ -505,5 +501,5 @@ module-line-count = 44
 
 [file."src/output.rs"]
 format-match-dispatch = 3
-module-line-count = 241
+module-line-count = 242
 
