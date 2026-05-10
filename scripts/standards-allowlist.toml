@@ -481,7 +481,10 @@ module-line-count = 383
 module-line-count = 80
 
 [file."src/commands/context.rs"]
-module-line-count = 673
+module-line-count = 418
+
+[file."src/commands/context/check.rs"]
+module-line-count = 141
 
 [file."src/commands/context/detect.rs"]
 module-line-count = 735
@@ -493,6 +496,9 @@ module-line-count = 472
 [file."src/commands/context/fingerprint.rs"]
 name-suffix-duplication = 2
 module-line-count = 209
+
+[file."src/commands/context/generate.rs"]
+module-line-count = 152
 
 [file."src/commands/context/lock.rs"]
 module-line-count = 222

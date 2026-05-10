@@ -1,102 +1,40 @@
 //! `specify context {generate, check}` command surface.
 //!
-//! This module owns the deterministic renderer, fenced `AGENTS.md` write
-//! policy, and `.specify/context.lock` drift checks.
+//! The parent owns the verb-level dispatcher and the shared infrastructure
+//! that both subcommands lean on: input fingerprint assembly, the document
+//! render wrapper, and a couple of tiny IO helpers. Sub-handlers under
+//! `context/` carry the per-verb policy:
+//! [`generate`] writes AGENTS.md plus `.specify/context.lock`,
+//! [`check`] compares the live render against the lock and reports drift.
 
 use std::fs;
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
 use std::path::Path;
 
+mod check;
 mod detect;
 mod fences;
 mod fingerprint;
+mod generate;
 mod lock;
 mod render;
 
-use serde::Serialize;
+pub(super) use generate::for_init as generate_for_init;
 use specify_capability::{Capability, PipelineView};
-use specify_config::{ProjectConfig, is_workspace_clone_path};
+use specify_config::ProjectConfig;
 use specify_error::Error;
 use specify_registry::Registry;
 use specify_slice::SliceMetadata;
-use specify_slice::atomic::atomic_bytes_write;
 
 use crate::cli::ContextAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::CliResult;
 
 pub fn run(ctx: &CommandContext, action: ContextAction) -> Result<CliResult, Error> {
     match action {
-        ContextAction::Generate { check, force } => run_generate(ctx, check, force),
-        ContextAction::Check => run_check(ctx),
+        ContextAction::Generate { check, force } => generate::run(ctx, check, force),
+        ContextAction::Check => check::run(ctx),
     }
-}
-
-pub fn run_generate(ctx: &CommandContext, check: bool, force: bool) -> Result<CliResult, Error> {
-    if is_workspace_clone_path(&ctx.project_dir) {
-        return Err(Error::Diag {
-            code: "context-workspace-clone-refused",
-            detail: format!(
-                "specify context generate: refusing to run inside a workspace clone at {}; \
-                 run context generation in the owning project instead",
-                ctx.project_dir.display()
-            ),
-        });
-    }
-
-    let body = generate(ctx, check, force)?;
-    emit(ctx.format, &body)?;
-
-    Ok(if check && body.changed { CliResult::GenericFailure } else { CliResult::Success })
-}
-
-pub(super) fn generate_for_init(ctx: &CommandContext) -> Result<ContextGenerateOutcome, Error> {
-    let body = generate(ctx, false, false)?;
-    Ok(ContextGenerateOutcome {
-        changed: body.changed,
-        disposition: body.disposition,
-    })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct ContextGenerateOutcome {
-    pub(super) changed: bool,
-    pub(super) disposition: &'static str,
-}
-
-fn generate(ctx: &CommandContext, check: bool, force: bool) -> Result<GenerateBody, Error> {
-    let (generated, context_fingerprint) = render_document(ctx)?;
-    let expected_lock = lock::ContextLock::from_fingerprint(&context_fingerprint);
-    let lock_path = context_lock_path(ctx);
-    let existing_lock = lock::load(&lock_path)?;
-    let agents_path = ctx.project_dir.join("AGENTS.md");
-    let existing = read_optional(&agents_path)?;
-    if !check {
-        refuse_modified_fenced_body(existing.as_deref(), existing_lock.as_ref(), force)?;
-    }
-    let planned = fences::plan_agents_write(existing.as_deref(), generated.as_bytes(), force)
-        .map_err(error_from_fence)?;
-    let agents_changed = planned.disposition != fences::WriteDisposition::Unchanged;
-    let lock_changed = existing_lock.as_ref() != Some(&expected_lock);
-    let changed = agents_changed || lock_changed;
-
-    if agents_changed && !check {
-        atomic_bytes_write(&agents_path, &planned.bytes)?;
-    }
-    if lock_changed && !check {
-        lock::save(&lock_path, &expected_lock)?;
-    }
-
-    Ok(GenerateBody {
-        status: generate_status(check, changed),
-        path: "AGENTS.md",
-        check,
-        force,
-        changed,
-        agents_changed,
-        lock_changed,
-        disposition: disposition_label(planned.disposition),
-    })
 }
 
 fn render_document(
@@ -120,206 +58,12 @@ fn render_document(
     Ok((generated, context_fingerprint))
 }
 
-pub fn run_check(ctx: &CommandContext) -> Result<CliResult, Error> {
-    let body = check(ctx)?;
-    emit(ctx.format, &body)?;
-    Ok(if body.status == "up-to-date" { CliResult::Success } else { CliResult::GenericFailure })
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "CLI JSON response mirrors independent check flags and write outcomes."
-)]
-struct GenerateBody {
-    status: &'static str,
-    path: &'static str,
-    check: bool,
-    force: bool,
-    changed: bool,
-    agents_changed: bool,
-    lock_changed: bool,
-    disposition: &'static str,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct CheckBody {
-    status: &'static str,
-    fingerprint: CheckFingerprint,
-    inputs_changed: Vec<String>,
-    inputs_added: Vec<String>,
-    inputs_removed: Vec<String>,
-    fences_modified: bool,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct CheckFingerprint {
-    expected: Option<String>,
-    actual: Option<String>,
-}
-
-impl Render for GenerateBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        match self.status {
-            "would-update" => {
-                writeln!(w, "context is out of date; run `specify context generate` to refresh it")
-            }
-            "unchanged" => writeln!(w, "AGENTS.md is up to date"),
-            "written" if self.agents_changed => writeln!(w, "wrote AGENTS.md"),
-            "written" => writeln!(w, "wrote .specify/context.lock"),
-            _ => writeln!(w, "context generate finished"),
-        }
-    }
-}
-
-const fn generate_status(check: bool, changed: bool) -> &'static str {
-    match (check, changed) {
-        (true, true) => "would-update",
-        (_, false) => "unchanged",
-        (false, true) => "written",
-    }
-}
-
-const fn disposition_label(disposition: fences::WriteDisposition) -> &'static str {
-    match disposition {
-        fences::WriteDisposition::Create => "create",
-        fences::WriteDisposition::ForceRewriteUnfenced => "force-rewrite-unfenced",
-        fences::WriteDisposition::ReplaceFencedBlock => "replace-fenced-block",
-        fences::WriteDisposition::Unchanged => "unchanged",
-    }
-}
-
 fn read_optional(path: &Path) -> Result<Option<Vec<u8>>, Error> {
     match fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
         Err(err) => Err(Error::Io(err)),
     }
-}
-
-fn check(ctx: &CommandContext) -> Result<CheckBody, Error> {
-    let agents_path = ctx.project_dir.join("AGENTS.md");
-    let agents = read_optional(&agents_path)?;
-    let existing_lock = lock::load(&context_lock_path(ctx))?;
-    let (_generated, actual_fingerprint) = render_document(ctx)?;
-    let actual_lock = lock::ContextLock::from_fingerprint(&actual_fingerprint);
-
-    if agents.is_none() {
-        return Ok(CheckBody {
-            status: "context-not-generated",
-            fingerprint: check_fingerprint(existing_lock.as_ref(), Some(&actual_lock)),
-            inputs_changed: Vec::new(),
-            inputs_added: Vec::new(),
-            inputs_removed: Vec::new(),
-            fences_modified: false,
-        });
-    }
-
-    let Some(expected_lock) = existing_lock else {
-        return Ok(CheckBody {
-            status: "context-lock-missing",
-            fingerprint: check_fingerprint(None, Some(&actual_lock)),
-            inputs_changed: Vec::new(),
-            inputs_added: Vec::new(),
-            inputs_removed: Vec::new(),
-            fences_modified: false,
-        });
-    };
-
-    let diff = lock::diff_inputs(&expected_lock.inputs, &actual_lock.inputs);
-    let fences_modified = fences_modified(
-        agents
-            .as_deref()
-            .expect("agents bytes are present because missing AGENTS.md returned above"),
-        &expected_lock,
-    );
-    let has_input_drift =
-        !diff.changed.is_empty() || !diff.added.is_empty() || !diff.removed.is_empty();
-    let has_fingerprint_drift = expected_lock.fingerprint != actual_lock.fingerprint;
-    let status = if has_fingerprint_drift || has_input_drift || fences_modified {
-        "drift"
-    } else {
-        "up-to-date"
-    };
-
-    Ok(CheckBody {
-        status,
-        fingerprint: check_fingerprint(Some(&expected_lock), Some(&actual_lock)),
-        inputs_changed: diff.changed,
-        inputs_added: diff.added,
-        inputs_removed: diff.removed,
-        fences_modified,
-    })
-}
-
-impl Render for CheckBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        match self.status {
-            "up-to-date" => writeln!(w, "context up to date"),
-            "context-not-generated" => writeln!(w, "context-not-generated: AGENTS.md is missing"),
-            "context-lock-missing" => {
-                writeln!(w, "context-lock-missing: .specify/context.lock is missing")
-            }
-            "drift" => {
-                writeln!(w, "context drift detected")?;
-                write_drift_list(w, "inputs changed", &self.inputs_changed)?;
-                write_drift_list(w, "inputs added", &self.inputs_added)?;
-                write_drift_list(w, "inputs removed", &self.inputs_removed)?;
-                if self.fences_modified {
-                    writeln!(w, "fences modified: true")?;
-                }
-                Ok(())
-            }
-            _ => writeln!(w, "context check finished"),
-        }
-    }
-}
-
-fn write_drift_list(w: &mut dyn Write, label: &str, paths: &[String]) -> std::io::Result<()> {
-    if paths.is_empty() {
-        return Ok(());
-    }
-    writeln!(w, "{label}: {}", paths.join(", "))
-}
-
-fn check_fingerprint(
-    expected: Option<&lock::ContextLock>, actual: Option<&lock::ContextLock>,
-) -> CheckFingerprint {
-    CheckFingerprint {
-        expected: expected.map(|lock| lock.fingerprint.clone()),
-        actual: actual.map(|lock| lock.fingerprint.clone()),
-    }
-}
-
-fn fences_modified(agents: &[u8], expected_lock: &lock::ContextLock) -> bool {
-    match fences::parse_document(agents) {
-        Ok(Some(current)) => {
-            fingerprint::body_sha256(current.body()) != expected_lock.fences.body_sha256
-        }
-        Ok(None) | Err(_) => true,
-    }
-}
-
-fn refuse_modified_fenced_body(
-    agents: Option<&[u8]>, existing_lock: Option<&lock::ContextLock>, force: bool,
-) -> Result<(), Error> {
-    if force {
-        return Ok(());
-    }
-    let (Some(agents), Some(existing_lock)) = (agents, existing_lock) else {
-        return Ok(());
-    };
-    let Some(current) = fences::parse_document(agents).map_err(error_from_fence)? else {
-        return Ok(());
-    };
-    let actual_body = fingerprint::body_sha256(current.body());
-    if actual_body != existing_lock.fences.body_sha256 {
-        return Err(Error::ContextDrift);
-    }
-    Ok(())
 }
 
 fn error_from_fence(err: fences::FenceError) -> Error {
