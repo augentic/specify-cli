@@ -12,19 +12,22 @@
 //!
 //! # Exit codes — documented contract for skill authors
 //!
-//! - `0` ([`CliResult::Success`]): Success.
-//! - `1` ([`CliResult::GenericFailure`]): Generic failure (I/O, parse,
-//!   tool resolver/runtime, unknown).
-//! - `2` ([`CliResult::ValidationFailed`]): Validation failed —
-//!   `specify validate` returned a report whose `passed` flag is `false`.
-//! - `3` ([`CliResult::VersionTooOld`]): The CLI binary is older than the
-//!   `specify_version` floor in `.specify/project.yaml`.
+//! - `0` ([`crate::output::CliResult::Success`]): Success.
+//! - `1` ([`crate::output::CliResult::GenericFailure`]): Generic failure
+//!   (I/O, parse, tool resolver/runtime, unknown).
+//! - `2` ([`crate::output::CliResult::ValidationFailed`]): Validation
+//!   failed — `specify validate` returned a report whose `passed` flag
+//!   is `false`.
+//! - `3` ([`crate::output::CliResult::VersionTooOld`]): The CLI binary
+//!   is older than the `specify_version` floor in
+//!   `.specify/project.yaml`.
 //!
 //! Error → exit code mapping:
-//! - [`Error::CliTooOld`] → `3`.
-//! - [`Error::Validation`], [`Error::ToolDenied`], and
-//!   [`Error::ToolNotDeclared`] → `2`.
-//! - Any other [`Error`] variant → `1`.
+//! - [`specify_error::Error::CliTooOld`] → `3`.
+//! - [`specify_error::Error::Validation`],
+//!   [`specify_error::Error::ToolDenied`], and
+//!   [`specify_error::Error::ToolNotDeclared`] → `2`.
+//! - Any other [`specify_error::Error`] variant → `1`.
 //! - A successful `Commands::Validate` where `report.passed == false` →
 //!   `2` (even though no `Error` is produced).
 

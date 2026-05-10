@@ -22,7 +22,7 @@ impl Plan {
     ///
     /// An unknown `depends_on` target is treated as "not done", so the
     /// entry is not eligible. Orphan-reference diagnostics belong to
-    /// [`Plan::validate`](super::validate).
+    /// [`Plan::validate`].
     #[must_use]
     pub fn next_eligible(&self) -> Option<&Entry> {
         if self.entries.iter().any(|c| c.status == Status::InProgress) {
@@ -49,7 +49,7 @@ impl Plan {
     ///
     /// Unknown `depends_on` targets are treated as satisfied for
     /// ordering purposes so orphan references cannot deadlock the sort;
-    /// surfacing them is [`Plan::validate`](super::validate)'s job.
+    /// surfacing them is [`Plan::validate`]'s job.
     ///
     /// Implementation: we build a `DiGraph`, use `petgraph::toposort`
     /// (plus `tarjan_scc` on failure) for cycle detection and

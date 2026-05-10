@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// The enum is `Copy + Eq + Hash` so it can appear in `HashSet`s,
 /// `match` guards, and hash-keyed lookups without clones. Transition
-/// table methods live in [`super::transitions`].
+/// table methods live alongside [`Plan::transition`].
 #[derive(
     Debug,
     Copy,
@@ -75,7 +75,7 @@ pub struct Plan {
     pub sources: BTreeMap<String, String>,
     /// Ordered list of plan entries. Order is the *intended* execution
     /// order; the authoritative dependency-respecting order comes from
-    /// [`Plan::topological_order`](super::next).
+    /// [`Plan::topological_order`].
     #[serde(rename = "changes")]
     pub entries: Vec<Entry>,
 }
@@ -120,12 +120,12 @@ pub struct Entry {
     pub status_reason: Option<String>,
 }
 
-/// Patch applied by [`Plan::amend`](super::amend) to an existing entry.
+/// Patch applied by [`Plan::amend`] to an existing entry.
 ///
 /// Every field is `Option<T>`; `None` means "leave unchanged", `Some(v)`
 /// means "replace with v". `status` and `status_reason` are deliberately
 /// absent — status transitions are made via
-/// [`Plan::transition`](super::transitions), never through `amend`, and
+/// [`Plan::transition`], never through `amend`, and
 /// the reason field travels with the transition.
 ///
 /// The absence of a `status` field is a type-system guarantee: `amend`
@@ -150,7 +150,7 @@ pub struct EntryPatch {
 }
 
 /// Severity of a validation finding produced by
-/// [`Plan::validate`](super::validate).
+/// [`Plan::validate`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Severity {
     /// Blocking problem — the plan is not usable as-is.
@@ -160,7 +160,7 @@ pub enum Severity {
     Warning,
 }
 
-/// A single finding reported by [`Plan::validate`](super::validate).
+/// A single finding reported by [`Plan::validate`].
 #[derive(Debug, Clone)]
 pub struct Finding {
     /// Severity bucket.

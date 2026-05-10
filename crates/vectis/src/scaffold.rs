@@ -4,7 +4,8 @@
 //! declared by the WASI host. It renders embedded templates, plans
 //! every target file, then refuses all overwrites before creating
 //! directories or writing bytes. Per-target planning, the on-disk
-//! write step, and `app_name` validation live in [`runtime`]; this
+//! write step, and `app_name` validation live in the private `runtime`
+//! submodule; this
 //! parent module owns the clap derive surface, the public DTOs, the
 //! v2 envelope wrapper, and the dispatch path.
 

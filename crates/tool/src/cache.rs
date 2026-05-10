@@ -140,7 +140,7 @@ pub fn sidecar_path(scope: &ToolScope, name: &str, version: &str) -> Result<Path
 ///
 /// # Errors
 ///
-/// Forwards every error returned by [`module_path`], [`sidecar_path`], and
+/// Forwards every error returned by [`module_path()`], [`sidecar_path`], and
 /// [`read_sidecar`] — the latter surfaces `ToolError::CacheIo`,
 /// `ToolError::SidecarParse`, and `ToolError::SidecarSchema` when an
 /// existing `meta.yaml` is unreadable or malformed (a missing sidecar is

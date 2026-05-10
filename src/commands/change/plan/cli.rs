@@ -17,7 +17,7 @@ pub enum PlanAction {
     Create {
         /// Kebab-case change name
         name: String,
-        /// Named source, repeated: --source <key>=<path-or-url>
+        /// Named source, repeated: --source `<key>`=`<path-or-url>`
         #[arg(long = "source", value_parser = parse_source_kv)]
         sources: Vec<(String, String)>,
     },
@@ -98,7 +98,7 @@ pub enum PlanAction {
         #[arg(long)]
         reason: Option<String>,
     },
-    /// Archive the current plan to .specify/archive/plans/<name>-<YYYYMMDD>.yaml
+    /// Archive the current plan to `.specify/archive/plans/<name>-<YYYYMMDD>.yaml`
     Archive {
         /// Archive even when the plan has pending/in-progress/blocked/failed entries.
         /// Without --force, these outstanding statuses block the archive.

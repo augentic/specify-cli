@@ -35,7 +35,7 @@ impl Plan {
     /// [`Status::Pending`] (and `status_reason` cleared) so that
     /// creation cannot introduce a pre-occupied lifecycle state — the
     /// single-writer-for-status invariant documented in
-    /// [`super::transitions`].
+    /// [`Plan::transition`].
     ///
     /// After mutation, the plan is re-validated. Any `Error`-level
     /// finding (unknown `depends_on`/`sources`, cycle introduced by the

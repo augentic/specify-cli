@@ -85,7 +85,7 @@ pub(super) fn default_project_root() -> PathBuf {
 
 /// Resolve a per-mode default path against an explicit project root.
 ///
-/// Used both by [`resolve_default_path`] (where the root is derived
+/// Used both by `resolve_default_path` (where the root is derived
 /// from CWD) and by `validate all` (where the root is the operator's
 /// `[path]` positional, defaulting to CWD). When no candidate exists
 /// the function returns the *last* candidate it considered; if the
@@ -192,7 +192,7 @@ const fn artifact_key_for_mode(mode: ValidateMode) -> Option<&'static str> {
 
 /// Return the ordered list of `paths.<role>` templates for the given
 /// artifact `key`. The resolution order comes from the embedded
-/// canonical mapping in [`EMBEDDED_ARTIFACT_PATHS`].
+/// canonical mapping table held privately in this module.
 #[must_use]
 pub fn paths_for_key(key: &str) -> Vec<String> {
     EMBEDDED_ARTIFACT_PATHS

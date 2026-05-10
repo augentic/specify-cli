@@ -97,8 +97,8 @@ pub struct InitResult {
 /// new directories, doesn't duplicate the `.gitignore` entry, and writes
 /// byte-identical `project.yaml` contents.
 ///
-/// When [`InitOptions::hub`] is `true`, dispatches to the hub path —
-/// see [`hub::run`] for the platform-hub on-disk shape.
+/// When [`InitOptions::hub`] is `true`, dispatches to the private hub
+/// runner for the platform-hub on-disk shape.
 ///
 /// # Errors
 ///

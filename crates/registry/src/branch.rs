@@ -1,10 +1,11 @@
 //! Deterministic workspace branch preparation.
 //!
-//! [`prepare`] resolves the workspace slot for one registry project,
+//! [`prepare()`] resolves the workspace slot for one registry project,
 //! checks out (or creates) `specify/<change-name>`, and reports the
-//! action taken. Per-concern helpers live in [`infer`] (branch / slot /
-//! base-ref derivation), [`validate`] (worktree + dirty-state guards),
-//! and [`prepare`] (the orchestrator + remote fast-forward).
+//! action taken. Per-concern helpers live in private submodules: `infer`
+//! (branch / slot / base-ref derivation), `validate` (worktree +
+//! dirty-state guards), and `prepare` (the orchestrator + remote
+//! fast-forward).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

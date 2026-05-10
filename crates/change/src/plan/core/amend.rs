@@ -10,7 +10,7 @@ impl Plan {
     /// unchanged; `Some(v)` replaces wholesale. `description` is
     /// three-way: `None` = leave, `Some(None)` = clear, `Some(Some(s))` =
     /// replace. `status` is intentionally not patchable — see
-    /// [`EntryPatch`] and [`super::transitions`] for the
+    /// [`EntryPatch`] and [`Plan::transition`] for the
     /// single-writer-for-status note.
     ///
     /// After mutation, the plan is re-validated. Any `Error`-level

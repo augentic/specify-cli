@@ -118,7 +118,7 @@ pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ToolError> {
 /// schema, `ToolError::CacheRoot` when `path` has no parent directory,
 /// `ToolError::CacheIo` when the parent directory cannot be created or the
 /// temp file cannot be written, `ToolError::CacheCollision` when a unique
-/// temp path could not be picked after [`super::MAX_TEMP_ATTEMPTS`] retries,
+/// temp path could not be picked after the configured maximum retries,
 /// and `ToolError::AtomicMoveFailed` when the final rename into place fails
 /// (a crash here leaves the destination untouched).
 pub fn write_sidecar(path: &Path, sidecar: &Sidecar) -> Result<(), ToolError> {

@@ -27,7 +27,7 @@ use crate::error::ToolError;
 /// be created, or any individual file copy fails. Returns
 /// `ToolError::CacheRoot` when `dest` has no parent component,
 /// `ToolError::CacheCollision` when a unique sibling temp path could not be
-/// chosen after [`super::MAX_TEMP_ATTEMPTS`] attempts, and
+/// chosen after the configured maximum number of attempts, and
 /// `ToolError::AtomicMoveFailed` when the rename of the existing destination
 /// to a sibling backup or the rename of the new tree into place fails (in
 /// the latter case the previous tree is restored on a best-effort basis and
