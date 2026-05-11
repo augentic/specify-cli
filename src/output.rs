@@ -17,20 +17,37 @@ pub enum CliResult {
     /// arguments; we mirror that for argument errors discovered after
     /// parsing (kebab-case checks, mutually exclusive payloads, etc.).
     ArgumentError,
+    /// WASI tool exit-code passthrough. The only legitimate caller is
+    /// `commands::tool::run`, which forwards the guest's exit code so
+    /// `specify tool run` is a transparent shim over the underlying
+    /// WASI binary. Other handlers MUST route through the typed
+    /// variants above so the four-slot exit-code contract
+    /// (0/1/2/3) stays auditable.
     Code(u8),
 }
 
 impl CliResult {
     pub const fn code(self) -> u8 {
         match self {
+            // exit 0: handler-reported success.
             Self::Success => 0,
+            // exit 1: catch-all failure (kebab discriminants: `io`,
+            // `yaml`, `lifecycle`, plan/context/registry variants,
+            // …anything `From<&Error>` doesn't map to a typed slot).
             Self::GenericFailure => 1,
-            // Both `Self::ArgumentError` and `Self::ValidationFailed` exit
-            // 2 to match clap's parser-error convention. Skills can
-            // disambiguate via the kebab-case `error` discriminant in the
-            // JSON envelope.
+            // exit 2: argument-shape error (kebab discriminant: `argument`).
+            // exit 2: validation failure (kebab discriminant: `validation`,
+            //         plus `tool-permission-denied`, `tool-not-declared`,
+            //         `plan-structural-errors`).
+            // Skills disambiguate the two by reading the kebab-case
+            // `error` field of the JSON envelope; the numeric collapse
+            // matches clap's own parser-error convention.
             Self::ArgumentError | Self::ValidationFailed => 2,
+            // exit 3: CLI too old for the project's pinned floor
+            // (kebab discriminant: `specify-version-too-old`).
             Self::VersionTooOld => 3,
+            // exit N: opaque WASI-tool exit code, forwarded verbatim
+            // by `commands::tool::run` (see `Code` doc-comment).
             Self::Code(code) => code,
         }
     }

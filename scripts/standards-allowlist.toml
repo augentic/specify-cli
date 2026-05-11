@@ -33,7 +33,7 @@ ritual-doc-paragraphs = 1
 module-line-count = 313
 
 [file."crates/capability/src/codex_resolver.rs"]
-module-line-count = 297
+module-line-count = 293
 
 [file."crates/capability/src/lib.rs"]
 module-line-count = 92
@@ -583,7 +583,7 @@ module-line-count = 59
 module-line-count = 202
 
 [file."src/commands/tool.rs"]
-module-line-count = 469
+module-line-count = 465
 
 [file."src/commands/tool/cli.rs"]
 module-line-count = 32
@@ -602,5 +602,5 @@ module-line-count = 46
 
 [file."src/output.rs"]
 format-match-dispatch = 3
-module-line-count = 272
+module-line-count = 289
 
