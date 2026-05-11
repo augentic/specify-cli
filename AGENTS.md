@@ -316,7 +316,7 @@ Use the modern Rust module layout: prefer `src/<parent>/<module>.rs` as the modu
 | `no-op-forwarders` | `let _ = cli.<flag>;` — a parsed-but-unused CLI flag. |
 | `name-suffix-duplication` | `fn foo_<module>` inside `mod <module>` (e.g. `fn show_registry` in `commands/registry.rs`). |
 | `currently-audit` | The word `Currently` in a clap-derive doc comment (`src/cli.rs` and `src/commands/**/cli.rs`). Catches the AGENTS.md `Wired-but-ignored flags` smell ("Currently equivalent to the default …") at PR time. |
-| `error-envelope-inlined` | `output::ErrorResponse { … }` / `output::ValidationErrorResponse { … }` constructed outside `src/output.rs`. Error envelopes are emitted via `report_error`, not hand-rolled at the call site. |
+| `error-envelope-inlined` | `output::ErrorBody { … }` / `output::ValidationErrBody { … }` constructed outside `src/output.rs`. Error envelopes are emitted via `report_error`, not hand-rolled at the call site. |
 | `path-helper-inlined` | `fn specify_dir|plan_path|change_brief_path|archive_dir` declared outside `crates/config/`. Path helpers live in `specify-config`; command modules call them, they do not redefine them. Thin facade methods that take `&self` are exempted by the regex shape. |
 | `ok-literal-in-body` | `pub ok: bool` field outside the carve-outs (`crates/validate/src/contracts/envelope.rs`, `crates/validate/src/compatibility/mod.rs`). The JSON envelope encodes success-vs-failure via the presence/absence of `error:`; the redundant `ok` field was removed in CL-E3 and this predicate keeps it gone. |
 | `direct-fs-write` | Direct `fs::write` / `std::fs::write` in non-test Rust. Managed state must use the atomic helpers; any remaining scratch-only use needs an allowlist baseline and a comment. |
@@ -343,7 +343,7 @@ Flag whose doc-comment says "Currently equivalent to the default …" or whose h
 
 ### Error envelopes are not constructed in handlers
 
-Handlers return `Result<T, specify_error::Error>` and let `report_error` in [`src/output.rs`](src/output.rs) shape the JSON wire envelope. Nobody constructs `output::ErrorResponse { … }` or `output::ValidationErrorResponse { … }` by hand outside `src/output.rs` — the envelope shape (and its `error` discriminant contract) is owned there, and inlining it at a call site forks the contract. The `error-envelope-inlined` predicate (added in CL-X1) fails any such hand-rolled envelope outside `src/output.rs`.
+Handlers return `Result<T, specify_error::Error>` and let `report_error` in [`src/output.rs`](src/output.rs) shape the JSON wire envelope. Nobody constructs `output::ErrorBody { … }` or `output::ValidationErrBody { … }` by hand outside `src/output.rs` — the envelope shape (and its `error` discriminant contract) is owned there, and inlining it at a call site forks the contract. The `error-envelope-inlined` predicate (added in CL-X1) fails any such hand-rolled envelope outside `src/output.rs`.
 
 ### Quarterly migration cadence
 

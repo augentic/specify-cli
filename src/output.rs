@@ -2,7 +2,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
 
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 use specify_error::{Error, ValidationSummary};
 
 use crate::cli::OutputFormat;
@@ -98,13 +98,20 @@ pub const JSON_ENVELOPE_VERSION: u64 = 5;
 ///
 /// Single dispatcher entry point: handlers return
 /// `Result<T, specify_error::Error>` and the run loop in
-/// [`crate::commands`] hands the error here. Internally the body is
-/// the private [`ErrorBody`] enum; `Error::Validation` keeps its
-/// [`ValidationErrorResponse`] row shape (R5 collapses the carve-out
-/// into a single body type).
+/// [`crate::commands`] hands the error here. The variant decides the
+/// payload: `Error::Validation` builds a [`ValidationErrBody`]
+/// (envelope keys + per-row `results`), every other variant builds an
+/// [`ErrorBody`] (envelope keys only). Both wire shapes carry the
+/// shared `error` / `message` / `exit-code` envelope fields.
 pub fn report_error(format: OutputFormat, err: &Error) -> CliResult {
     let code = CliResult::from(err);
-    if let Err(serialise_err) = emit(Stream::Stderr, format, &ErrorBody::from(err)) {
+    let result = match err {
+        Error::Validation { results } => {
+            emit(Stream::Stderr, format, &ValidationErrBody::from((err, results.as_slice())))
+        }
+        _ => emit(Stream::Stderr, format, &ErrorBody::from(err)),
+    };
+    if let Err(serialise_err) = result {
         eprintln!("error: {err}");
         eprintln!("error: {serialise_err}");
     }
@@ -116,7 +123,7 @@ pub fn report_error(format: OutputFormat, err: &Error) -> CliResult {
 /// cause; the renderer appends actionable follow-up so the
 /// machine-readable JSON envelope stays compact while operators see
 /// the full guidance on a TTY. Free function (not a method on
-/// [`ErrorResponse`]) so it can be reused by any error renderer
+/// [`ErrorBody`]) so it can be reused by any error renderer
 /// without forcing the body type to own the variant identity.
 fn write_text_hint(w: &mut dyn Write, err: &Error) -> std::io::Result<()> {
     match err {
@@ -226,9 +233,13 @@ pub fn emit<R: Render>(stream: Stream, format: OutputFormat, payload: &R) -> Res
 /// originating error reference; it carries no JSON-visible state
 /// (`#[serde(skip)]`) and exists solely so the [`Render`] impl can
 /// dispatch to [`write_text_hint`] without re-deriving the variant.
+///
+/// Construct via `ErrorBody::from(&err)` — never inline at a call
+/// site (the `error-envelope-inlined` xtask predicate fails any
+/// hand-rolled construction outside `src/output.rs`).
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct ErrorResponse<'a> {
+pub struct ErrorBody<'a> {
     pub error: String,
     pub message: String,
     pub exit_code: u8,
@@ -236,7 +247,18 @@ pub struct ErrorResponse<'a> {
     hint_source: &'a Error,
 }
 
-impl Render for ErrorResponse<'_> {
+impl<'a> From<&'a Error> for ErrorBody<'a> {
+    fn from(err: &'a Error) -> Self {
+        Self {
+            error: err.variant_str().to_string(),
+            message: err.to_string(),
+            exit_code: CliResult::from(err).code(),
+            hint_source: err,
+        }
+    }
+}
+
+impl Render for ErrorBody<'_> {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         writeln!(w, "error: {}", self.message)?;
         write_text_hint(w, self.hint_source)
@@ -292,79 +314,45 @@ impl<R: Serialize + Render> Render for Validation<R> {
 }
 
 /// Validation-specific failure envelope used by [`report_error`]
-/// when the variant is `Error::Validation`. The JSON shape flattens
-/// `Validation<ValidationRow>` into the envelope so skills see
-/// `error`/`message`/`exit-code` alongside the row-level results.
-/// R5 will refactor this back into the [`ErrorResponse`] family.
+/// when the variant is `Error::Validation`. Peer to [`ErrorBody`]:
+/// shares the same envelope keys (`error`/`message`/`exit-code`) and
+/// flattens [`Validation<ValidationRow>`] for the per-row `results`
+/// list skills consume.
+///
+/// Construct via `ValidationErrBody::from((&err, results))` — never
+/// inline at a call site (the `error-envelope-inlined` xtask
+/// predicate fails any hand-rolled construction outside
+/// `src/output.rs`).
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct ValidationErrorResponse<'a> {
-    error: &'static str,
-    message: String,
-    exit_code: u8,
+pub struct ValidationErrBody<'a> {
+    pub error: &'static str,
+    pub message: String,
+    pub exit_code: u8,
     #[serde(flatten)]
-    validation: Validation<ValidationRow<'a>>,
+    pub validation: Validation<ValidationRow<'a>>,
     #[serde(skip)]
     hint_source: &'a Error,
 }
 
-impl Render for ValidationErrorResponse<'_> {
+impl<'a> From<(&'a Error, &'a [ValidationSummary])> for ValidationErrBody<'a> {
+    fn from((err, results): (&'a Error, &'a [ValidationSummary])) -> Self {
+        Self {
+            error: "validation",
+            message: err.to_string(),
+            exit_code: CliResult::from(err).code(),
+            validation: Validation {
+                results: results.iter().map(ValidationRow::from_summary).collect(),
+            },
+            hint_source: err,
+        }
+    }
+}
+
+impl Render for ValidationErrBody<'_> {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         writeln!(w, "error: {}", self.message)?;
         write_text_hint(w, self.hint_source)
-    }
-}
-
-/// Private body type that picks the right wire shape per error
-/// variant: `Error::Validation` routes through
-/// [`ValidationErrorResponse`], every other variant through
-/// [`ErrorResponse`]. The enum gives [`report_error`] one
-/// `impl Render` payload to hand to [`emit`] while keeping the two
-/// wire shapes intact for skill consumers. R5 collapses the
-/// variants into a single body.
-enum ErrorBody<'a> {
-    Generic(ErrorResponse<'a>),
-    Validation(ValidationErrorResponse<'a>),
-}
-
-impl<'a> From<&'a Error> for ErrorBody<'a> {
-    fn from(err: &'a Error) -> Self {
-        let exit_code = CliResult::from(err).code();
-        match err {
-            Error::Validation { results, .. } => Self::Validation(ValidationErrorResponse {
-                error: "validation",
-                message: err.to_string(),
-                exit_code,
-                validation: Validation {
-                    results: results.iter().map(ValidationRow::from_summary).collect(),
-                },
-                hint_source: err,
-            }),
-            _ => Self::Generic(ErrorResponse {
-                error: err.variant_str().to_string(),
-                message: err.to_string(),
-                exit_code,
-                hint_source: err,
-            }),
-        }
-    }
-}
-
-impl Serialize for ErrorBody<'_> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Self::Generic(body) => body.serialize(serializer),
-            Self::Validation(body) => body.serialize(serializer),
-        }
-    }
-}
-
-impl Render for ErrorBody<'_> {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        match self {
-            Self::Generic(body) => body.render_text(w),
-            Self::Validation(body) => body.render_text(w),
-        }
     }
 }
 

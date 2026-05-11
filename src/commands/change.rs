@@ -330,7 +330,7 @@ fn blocked_reason(s: &finalize::Summary) -> String {
 /// Non-standard failure envelope for `change finalize` blocked on
 /// non-terminal plan entries. Tests pin `error`, `change`, `entries`,
 /// and `message` verbatim; this body owns
-/// the shape rather than routing through `output::ErrorResponse`.
+/// the shape rather than routing through `output::ErrorBody`.
 /// Triggered by [`Error::PlanNonTerminalEntries`]; the typed variant
 /// is the source of truth for the discriminant and the structured
 /// `change`/`entries` payload.

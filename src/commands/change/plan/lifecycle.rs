@@ -371,7 +371,7 @@ struct ArchivedPlan {
 /// Non-standard failure envelope for `Plan::archive` blocked on
 /// non-terminal entries. Tests pin `error`, `entries`, and
 /// `exit-code` verbatim, so this body owns its own shape rather than
-/// routing through `output::ErrorResponse`.
+/// routing through `output::ErrorBody`.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ArchiveErrBody {

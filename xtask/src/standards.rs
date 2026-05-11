@@ -32,8 +32,8 @@
 //!   comment (`src/cli.rs` and `src/commands/**/cli.rs`). A doc that
 //!   says "Currently equivalent to the default …" is the AGENTS.md
 //!   `Wired-but-ignored flags` smell.
-//! - `error-envelope-inlined` — `output::ErrorResponse { … }` /
-//!   `output::ValidationErrorResponse { … }` constructed outside
+//! - `error-envelope-inlined` — `output::ErrorBody { … }` /
+//!   `output::ValidationErrBody { … }` constructed outside
 //!   `src/output.rs`. Hand-rolled error envelopes bypass the
 //!   `report_error` path; nobody outside `output.rs` should be
 //!   building the envelope DTO directly.
@@ -335,16 +335,16 @@ fn is_clap_cli_file(path: &Path) -> bool {
 }
 
 // ---------------------------------------------------------------------
-// error-envelope-inlined: `output::ErrorResponse { … }` /
-// `output::ValidationErrorResponse { … }` constructed outside `src/output.rs`.
+// error-envelope-inlined: `output::ErrorBody { … }` /
+// `output::ValidationErrBody { … }` constructed outside `src/output.rs`.
 //
 // Hand-rolled error envelopes bypass the `report_error` path.
 // CL-E3 removed the last hand-rolled construction (in `src/commands/registry.rs`);
-// this predicate keeps it gone.
+// R5 renamed the body types but kept this predicate as the only legitimate
+// construction guard.
 
 static ERROR_ENVELOPE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"output::ErrorResponse\s*\{|output::ValidationErrorResponse\s*\{")
-        .expect("static regex")
+    Regex::new(r"output::ErrorBody\s*\{|output::ValidationErrBody\s*\{").expect("static regex")
 });
 
 fn count_error_envelope(path: &Path, stripped: &str) -> u32 {
