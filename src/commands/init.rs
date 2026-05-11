@@ -20,7 +20,7 @@ use crate::output::{self, Render, display};
 /// so by the time this function runs the `(hub, capability)` pair is
 /// guaranteed to be one of `(false, Some(_))` or `(true, None)`.
 pub(super) fn run(
-    format: Format, capability: Option<String>, name: Option<&str>, domain: Option<&str>, hub: bool,
+    format: Format, capability: Option<&str>, name: Option<&str>, domain: Option<&str>, hub: bool,
 ) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
@@ -31,7 +31,7 @@ pub(super) fn run(
 
     let opts = InitOptions {
         project_dir: &project_dir,
-        capability: capability.as_deref(),
+        capability,
         name,
         domain,
         version_mode: VersionMode::WriteCurrent,

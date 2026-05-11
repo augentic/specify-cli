@@ -140,10 +140,10 @@ fn acquire_source_bytes(
 ) -> Result<AcquiredBytes, ToolError> {
     match source {
         ToolSource::LocalPath(path) => buffered_into_acquired(
-            local::read_local_path(path, &path.to_string_lossy())?,
+            &local::read_local_path(path, &path.to_string_lossy())?,
             dest_hint,
         ),
-        ToolSource::FileUri(uri) => buffered_into_acquired(local::read_file_uri(uri)?, dest_hint),
+        ToolSource::FileUri(uri) => buffered_into_acquired(&local::read_file_uri(uri)?, dest_hint),
         ToolSource::HttpsUri(url) => http::download_https(url, dest_hint),
         ToolSource::Package(package) => package_client.fetch(package, dest_hint).map(
             |FetchedPackage {
@@ -160,7 +160,7 @@ fn acquire_source_bytes(
 }
 
 fn buffered_into_acquired(
-    bytes: Vec<u8>, dest_hint: &Path,
+    bytes: &[u8], dest_hint: &Path,
 ) -> Result<AcquiredBytes, ToolError> {
     let parent = dest_hint.parent().ok_or_else(|| {
         ToolError::CacheRoot(format!(
@@ -172,8 +172,8 @@ fn buffered_into_acquired(
         .map_err(|err| ToolError::cache_io("create local staging parent", parent, err))?;
     let temp = NamedTempFile::new_in(parent)
         .map_err(|err| ToolError::cache_io("create local staging tempfile", parent, err))?;
-    let sha256 = digest::sha256_hex(&bytes);
-    fs::write(temp.path(), &bytes)
+    let sha256 = digest::sha256_hex(bytes);
+    fs::write(temp.path(), bytes)
         .map_err(|err| ToolError::cache_io("write local staging tempfile", temp.path(), err))?;
     Ok(AcquiredBytes {
         temp,

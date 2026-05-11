@@ -177,18 +177,18 @@ impl<'de> Visitor<'de> for ToolVisitor {
         formatter.write_str("a package request string or a tool object")
     }
 
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
     where
         E: de::Error,
     {
-        Ok(Tool::from_package(value))
+        Ok(Tool::from_package(v))
     }
 
-    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
     where
         E: de::Error,
     {
-        Ok(Tool::from_package(&value))
+        Ok(Tool::from_package(&v))
     }
 
     fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>

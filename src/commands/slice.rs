@@ -55,7 +55,7 @@ pub(crate) fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
         } => lifecycle::create(ctx, &name, capability, if_exists.into()),
         SliceAction::List => list::run(ctx),
         SliceAction::Status { name } => list::status_one(ctx, &name),
-        SliceAction::Validate { name } => validate::run(ctx, name),
+        SliceAction::Validate { name } => validate::run(ctx, &name),
         SliceAction::Merge { action } => match action {
             SliceMergeAction::Run { name } => merge::run(ctx, &name),
             SliceMergeAction::Preview { name } => merge::preview(ctx, &name),

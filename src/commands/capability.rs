@@ -144,10 +144,10 @@ impl Render for CheckBody {
     }
 }
 
-pub(crate) fn check(format: Format, capability_dir: PathBuf) -> Result<()> {
+pub(crate) fn check(format: Format, capability_dir: &Path) -> Result<()> {
     let manifest_path =
-        Capability::probe_dir(&capability_dir).ok_or_else(|| Error::CapabilityManifestMissing {
-            dir: capability_dir.clone(),
+        Capability::probe_dir(capability_dir).ok_or_else(|| Error::CapabilityManifestMissing {
+            dir: capability_dir.to_path_buf(),
         })?;
     let capability = load_manifest(&manifest_path)?;
     let results = capability.validate_structure();

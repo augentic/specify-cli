@@ -24,6 +24,7 @@
 pub mod branch;
 pub mod forge;
 pub mod gitignore;
+#[allow(clippy::module_inception, reason = "preserves the per-concern split inherited from the pre-collapse `specify-registry` crate; rename would cascade across many imports")]
 pub mod registry;
 pub mod validate;
 pub mod workspace;

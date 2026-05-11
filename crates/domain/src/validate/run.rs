@@ -171,8 +171,13 @@ fn run_brief_rules(
 
     let mut out: Vec<ValidationResult> = Vec::new();
     for rule in rules_for(brief_id) {
-        let result = if let Some(check) = rule.check {
-            match check(&ctx) {
+        let result = rule.check.map_or_else(
+            || ValidationResult::Deferred {
+                rule_id: rule.id.into(),
+                rule: rule.description.into(),
+                reason: "Semantic check — requires LLM judgment",
+            },
+            |check| match check(&ctx) {
                 RuleOutcome::Pass => ValidationResult::Pass {
                     rule_id: rule.id.into(),
                     rule: rule.description.into(),
@@ -182,14 +187,8 @@ fn run_brief_rules(
                     rule: rule.description.into(),
                     detail,
                 },
-            }
-        } else {
-            ValidationResult::Deferred {
-                rule_id: rule.id.into(),
-                rule: rule.description.into(),
-                reason: "Semantic check — requires LLM judgment",
-            }
-        };
+            },
+        );
         out.push(result);
     }
     out

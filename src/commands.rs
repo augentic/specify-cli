@@ -26,7 +26,7 @@ pub(crate) fn run(cli: Cli) -> Exit {
             domain,
             hub,
         } => {
-            dispatch(format, || init::run(format, capability, name.as_deref(), domain.as_deref(), hub))
+            dispatch(format, || init::run(format, capability.as_deref(), name.as_deref(), domain.as_deref(), hub))
         }
         Commands::Status => scoped(format, status::run),
         Commands::Context { action } => scoped(format, |ctx| context::run(ctx, &action)),
@@ -36,7 +36,7 @@ pub(crate) fn run(cli: Cli) -> Exit {
                 project_dir,
             } => dispatch(format, || capability::resolve(format, capability_value, &project_dir)),
             CapabilityAction::Check { capability_dir } => {
-                dispatch(format, || capability::check(format, capability_dir))
+                dispatch(format, || capability::check(format, &capability_dir))
             }
             CapabilityAction::Pipeline { phase, slice } => {
                 scoped(format, |ctx| capability::pipeline(ctx, phase, slice.as_deref()))

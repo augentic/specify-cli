@@ -8,8 +8,8 @@ use specify_domain::validate::{ValidationReport, ValidationResult, serialize_rep
 use crate::context::Ctx;
 use crate::output::Render;
 
-pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
-    let slice_dir = ctx.slices_dir().join(&name);
+pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
+    let slice_dir = ctx.slices_dir().join(name);
     let pipeline = ctx.load_pipeline()?;
     let report = validate_slice(&slice_dir, &pipeline)?;
     let passed = report.passed;

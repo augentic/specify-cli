@@ -284,7 +284,7 @@ pub fn conflict_check(
             if mtime > defined_at {
                 conflicts.push(BaselineConflict {
                     capability: touched.name.clone(),
-                    defined_at: defined_raw.to_string(),
+                    defined_at: defined_raw.clone(),
                     baseline_modified_at: mtime,
                 });
             }
@@ -304,7 +304,7 @@ pub fn conflict_check(
             if mtime > defined_at {
                 conflicts.push(BaselineConflict {
                     capability: "composition".to_string(),
-                    defined_at: defined_raw.to_string(),
+                    defined_at: defined_raw.clone(),
                     baseline_modified_at: mtime,
                 });
             }

@@ -270,7 +270,7 @@ impl SlotRow {
 /// status row: present-and-true is `match`, present-and-false is
 /// `mismatch`, absent is `-`. JSON keeps the raw `Option<bool>` —
 /// this only governs text rendering.
-fn match_state(b: Option<bool>) -> &'static str {
+const fn match_state(b: Option<bool>) -> &'static str {
     match b {
         Some(true) => "match",
         Some(false) => "mismatch",
