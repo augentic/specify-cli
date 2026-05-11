@@ -36,6 +36,7 @@ exceptions = [
   { name = "im-rc", allow = ["MPL-2.0"] },
   { name = "option-ext", allow = ["MPL-2.0"] },
   { name = "sized-chunks", allow = ["MPL-2.0"] },
+  { name = "tiny-keccak", allow = ["CC0-1.0"] },
 ]
 
 [licenses.private]
