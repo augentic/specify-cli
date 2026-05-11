@@ -3,7 +3,7 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_config::ProjectConfig;
+use specify_config::LayoutExt;
 use specify_error::{Error, Result};
 use specify_merge::MergeStrategy;
 use specify_slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
@@ -31,7 +31,7 @@ pub(super) fn touched_specs(
             .iter()
             .find(|c| matches!(c.strategy, MergeStrategy::ThreeWayMerge))
             .map_or_else(
-                || ProjectConfig::specify_dir(&ctx.project_dir).join("specs"),
+                || ctx.project_dir.layout().specify_dir().join("specs"),
                 |c| c.baseline_dir.clone(),
             );
         let scanned = slice_actions::scan_touched(&slice_dir, &baseline_dir)?;

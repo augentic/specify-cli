@@ -8,7 +8,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use specify_capability::CacheMeta;
-use specify_config::ProjectConfig;
+use specify_config::{LayoutExt, ProjectConfig};
 use specify_error::{Error, is_kebab};
 use specify_registry::Registry;
 
@@ -52,7 +52,8 @@ pub fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         return Err(Error::InitNeedsCapability);
     }
 
-    let specify_dir = ProjectConfig::specify_dir(opts.project_dir);
+    let layout = opts.project_dir.layout();
+    let specify_dir = layout.specify_dir();
     if specify_dir.exists() {
         return Err(Error::Diag {
             code: "hub-init-specify-dir-exists",
@@ -90,7 +91,7 @@ pub fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         tools: Vec::new(),
         hub: true,
     };
-    let config_path = ProjectConfig::config_path(opts.project_dir);
+    let config_path = layout.config_path();
     let serialised = serde_saphyr::to_string(&cfg)?;
     fs::write(&config_path, serialised)?;
 

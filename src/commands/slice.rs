@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use specify_config::ProjectConfig;
+use specify_config::LayoutExt;
 use specify_error::Result;
 use specify_merge::{ArtifactClass, MergeStrategy};
 
@@ -35,7 +35,7 @@ pub(super) fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<Art
         ArtifactClass {
             name: "specs".to_string(),
             staged_dir: slice_dir.join("specs"),
-            baseline_dir: ProjectConfig::specify_dir(project_root).join("specs"),
+            baseline_dir: project_root.layout().specify_dir().join("specs"),
             strategy: MergeStrategy::ThreeWayMerge,
         },
         ArtifactClass {

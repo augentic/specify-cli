@@ -3,7 +3,7 @@ use std::io::Write;
 use serde::Serialize;
 use specify_capability::ChangeBrief;
 use specify_change::{Finding, Plan, Severity, Status};
-use specify_config::ProjectConfig;
+use specify_config::LayoutExt;
 use specify_error::{Error, Result};
 use specify_registry::Registry;
 
@@ -12,7 +12,7 @@ use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, Validation, emit};
 
 pub fn create(ctx: &Ctx, name: String, sources: Vec<(String, String)>) -> Result<()> {
-    let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
+    let plan_path = ctx.project_dir.layout().plan_path();
     if plan_path.exists() {
         return Err(Error::Diag {
             code: "plan-already-exists",
@@ -54,7 +54,7 @@ pub fn create(ctx: &Ctx, name: String, sources: Vec<(String, String)>) -> Result
 pub fn validate(ctx: &Ctx) -> Result<CliResult> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
+    let slices_dir = ctx.project_dir.layout().slices_dir();
 
     let (registry, registry_err) = match Registry::load(&ctx.project_dir) {
         Ok(reg) => (reg, None),
@@ -70,7 +70,7 @@ pub fn validate(ctx: &Ctx) -> Result<CliResult> {
         });
     }
     if let Some(ref reg) = registry {
-        let workspace_base = ProjectConfig::specify_dir(&ctx.project_dir).join("workspace");
+        let workspace_base = ctx.project_dir.layout().specify_dir().join("workspace");
         for rp in &reg.projects {
             let slot_project_yaml =
                 workspace_base.join(&rp.name).join(".specify").join("project.yaml");
@@ -114,7 +114,7 @@ pub fn validate(ctx: &Ctx) -> Result<CliResult> {
 pub fn next(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
+    let slices_dir = ctx.project_dir.layout().slices_dir();
 
     let results = plan.validate(Some(&slices_dir), None);
     if results.iter().any(|r| matches!(r.level, Severity::Error)) {
@@ -184,14 +184,15 @@ pub fn transition(
 }
 
 pub fn archive(ctx: &Ctx, force: bool) -> Result<CliResult> {
-    let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
+    let layout = ctx.project_dir.layout();
+    let plan_path = layout.plan_path();
     if !plan_path.exists() {
         return Err(Error::ArtifactNotFound {
             kind: "plan.yaml",
             path: plan_path,
         });
     }
-    let archive_dir = ProjectConfig::archive_dir(&ctx.project_dir).join("plans");
+    let archive_dir = layout.archive_dir().join("plans");
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let plan_name = Plan::load(&plan_path)?.name;
 

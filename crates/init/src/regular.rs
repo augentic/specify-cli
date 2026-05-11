@@ -7,7 +7,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use specify_capability::{CacheMeta, PipelineView};
-use specify_config::ProjectConfig;
+use specify_config::{LayoutExt, ProjectConfig};
 use specify_error::Error;
 
 use crate::cache::cache_capability;
@@ -17,6 +17,7 @@ use crate::{InitOptions, InitResult, resolve_version, resolved_name, upsert_giti
 pub fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let capability = opts.capability.ok_or(Error::InitNeedsCapability)?;
     let name = resolved_name(opts.project_dir, opts.name);
+    let layout = opts.project_dir.layout();
 
     let mut directories_created: Vec<PathBuf> = Vec::new();
     // Repo-root artefacts (`registry.yaml`, `change.md`, `plan.yaml`)
@@ -24,11 +25,11 @@ pub fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     // `.specify/specs/` is retained as a per-project convention used
     // by the bundled `omnia` capability.
     for dir in [
-        ProjectConfig::specify_dir(opts.project_dir),
-        ProjectConfig::slices_dir(opts.project_dir),
-        ProjectConfig::specify_dir(opts.project_dir).join("specs"),
-        ProjectConfig::archive_dir(opts.project_dir),
-        ProjectConfig::cache_dir(opts.project_dir),
+        layout.specify_dir(),
+        layout.slices_dir(),
+        layout.specify_dir().join("specs"),
+        layout.archive_dir(),
+        layout.cache_dir(),
     ] {
         let already = dir.exists();
         fs::create_dir_all(&dir)?;
@@ -59,7 +60,7 @@ pub fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         hub: false,
     };
 
-    let config_path = ProjectConfig::config_path(opts.project_dir);
+    let config_path = layout.config_path();
     let serialised = serde_saphyr::to_string(&cfg)?;
     fs::write(&config_path, serialised)?;
 
@@ -83,7 +84,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use specify_capability::CacheMeta;
-    use specify_config::ProjectConfig;
+    use specify_config::{LayoutExt, ProjectConfig};
     use tempfile::tempdir;
 
     use crate::{InitOptions, VersionMode, init};
@@ -257,7 +258,7 @@ mod tests {
 
         // Manually edit the pinned version to an older one; Preserve
         // should keep it on re-init.
-        let config_path = ProjectConfig::config_path(tmp.path());
+        let config_path = tmp.path().layout().config_path();
         let original = fs::read_to_string(&config_path).expect("read");
         let edited = original.replace(
             &format!("specify_version: {}", env!("CARGO_PKG_VERSION")),

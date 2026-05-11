@@ -22,7 +22,7 @@ mod render;
 
 pub(super) use generate::for_init as generate_for_init;
 use specify_capability::{Capability, PipelineView};
-use specify_config::ProjectConfig;
+use specify_config::{LayoutExt, ProjectConfig};
 use specify_error::{Error, Result};
 use specify_registry::Registry;
 use specify_slice::SliceMetadata;
@@ -75,7 +75,7 @@ fn error_from_fence(err: fences::FenceError) -> Error {
 }
 
 fn context_lock_path(ctx: &Ctx) -> std::path::PathBuf {
-    ProjectConfig::specify_dir(&ctx.project_dir).join("context.lock")
+    ctx.project_dir.layout().specify_dir().join("context.lock")
 }
 
 struct RenderAssembly {
@@ -84,11 +84,12 @@ struct RenderAssembly {
 }
 
 fn assemble_render_input(ctx: &Ctx) -> Result<RenderAssembly> {
+    let layout = ctx.project_dir.layout();
     let mut collector = fingerprint::InputCollector::new(&ctx.project_dir);
-    collector.add_file(&ProjectConfig::config_path(&ctx.project_dir))?;
+    collector.add_file(&layout.config_path())?;
 
     let registry = Registry::load(&ctx.project_dir)?;
-    collector.add_file_if_present(&ProjectConfig::registry_path(&ctx.project_dir))?;
+    collector.add_file_if_present(&layout.registry_path())?;
 
     let capability = if ctx.config.hub {
         None
@@ -108,8 +109,7 @@ fn assemble_render_input(ctx: &Ctx) -> Result<RenderAssembly> {
     // The renderer's `plan.yaml` guidance is unconditional navigation text. It
     // does not inspect `plan.yaml` existence or content, so that file is not
     // fingerprinted unless a future renderer contract actually reads it.
-    let active_slices =
-        active_slice_names(&ProjectConfig::slices_dir(&ctx.project_dir), &mut collector)?;
+    let active_slices = active_slice_names(&layout.slices_dir(), &mut collector)?;
 
     let input = render::ContextRenderInput {
         project_name: ctx.config.name.clone(),
@@ -229,7 +229,7 @@ fn materialized_workspace_peers(
         return Ok(Vec::new());
     }
 
-    let workspace_dir = ProjectConfig::specify_dir(project_dir).join("workspace");
+    let workspace_dir = project_dir.layout().specify_dir().join("workspace");
     let mut peers = Vec::new();
     for project in &registry.projects {
         let path = workspace_dir.join(&project.name);
@@ -324,7 +324,7 @@ mod tests {
     fn assemble_render_input_reads_existing_metadata_in_sorted_order() {
         let tmp = tempdir().expect("tempdir");
         write_minimal_capability(tmp.path());
-        let slices_dir = ProjectConfig::slices_dir(tmp.path());
+        let slices_dir = tmp.path().layout().slices_dir();
         fs::create_dir_all(slices_dir.join("zeta")).expect("create zeta");
         fs::create_dir_all(slices_dir.join("alpha")).expect("create alpha");
         fs::write(slices_dir.join("zeta").join(".metadata.yaml"), "not parsed").expect("zeta meta");
@@ -335,10 +335,10 @@ mod tests {
             "version: 1\nprojects:\n  - name: zeta\n    url: ../zeta\n    capability: mini@v1\n    description: Zeta service\n  - name: alpha\n    url: ../alpha\n    capability: mini@v1\n    description: Alpha service\n",
         )
         .expect("write registry");
-        fs::create_dir_all(ProjectConfig::config_path(tmp.path()).parent().expect("config parent"))
-            .expect("create .specify");
+        let cfg_path = tmp.path().layout().config_path();
+        fs::create_dir_all(cfg_path.parent().expect("config parent")).expect("create .specify");
         fs::write(
-            ProjectConfig::config_path(tmp.path()),
+            &cfg_path,
             "name: demo\ncapability: mini\nrules:\n  proposal: rules/proposal.md\n",
         )
         .expect("write project config");
@@ -383,10 +383,9 @@ mod tests {
     #[test]
     fn assemble_render_input_skips_pipeline_for_hubs() {
         let tmp = tempdir().expect("tempdir");
-        fs::create_dir_all(ProjectConfig::config_path(tmp.path()).parent().expect("config parent"))
-            .expect("create .specify");
-        fs::write(ProjectConfig::config_path(tmp.path()), "name: platform\nhub: true\n")
-            .expect("write project config");
+        let cfg_path = tmp.path().layout().config_path();
+        fs::create_dir_all(cfg_path.parent().expect("config parent")).expect("create .specify");
+        fs::write(&cfg_path, "name: platform\nhub: true\n").expect("write project config");
         let ctx = Ctx {
             format: OutputFormat::Text,
             project_dir: tmp.path().to_path_buf(),

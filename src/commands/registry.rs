@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use specify_change::Plan;
-use specify_config::ProjectConfig;
+use specify_config::{LayoutExt, ProjectConfig};
 use specify_error::{Error, Result, is_kebab};
 use specify_registry::{Registry, RegistryProject};
 use specify_slice::atomic::atomic_yaml_write;
@@ -197,7 +197,7 @@ fn save(registry: &Registry, path: &Path) -> Result<()> {
 /// write has already landed, so the operator needs to learn about
 /// both halves).
 fn plan_refs(project_dir: &Path, removed: &str) -> Vec<String> {
-    let plan_path = ProjectConfig::plan_path(project_dir);
+    let plan_path = project_dir.layout().plan_path();
     if !plan_path.exists() {
         return Vec::new();
     }
@@ -346,7 +346,7 @@ mod tests {
             tools: Vec::new(),
             hub,
         };
-        let cfg_path = ProjectConfig::config_path(tmp.path());
+        let cfg_path = tmp.path().layout().config_path();
         let serialised = serde_saphyr::to_string(&cfg).expect("serialise project.yaml");
         fs::write(&cfg_path, serialised).expect("write project.yaml");
 
@@ -585,7 +585,7 @@ mod tests {
                 entry("another-alpha", "alpha"),
             ],
         };
-        plan.save(&ProjectConfig::plan_path(tmp.path())).expect("save plan");
+        plan.save(&tmp.path().layout().plan_path()).expect("save plan");
 
         let warnings = plan_refs(tmp.path(), "alpha");
         assert_eq!(warnings.len(), 1);

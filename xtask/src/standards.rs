@@ -360,13 +360,15 @@ fn is_output_module(path: &Path) -> bool {
 // path-helper-inlined: `fn specify_dir|plan_path|change_brief_path|archive_dir`
 // declared outside `crates/config/`.
 //
-// Path helpers live in `specify-config` (CL-01); command modules call them,
-// they do not redefine them. The regex requires the function's first
-// argument to start with an identifier (e.g. `project_dir: &Path`) rather
-// than `&self`, so thin facade methods like `Ctx::archive_dir`
-// that delegate to `ProjectConfig::archive_dir` are not flagged. The Rust
-// `regex` crate has no lookarounds, so the negative ("not a self method")
-// is encoded as a positive ("first arg is a normal identifier").
+// Path helpers live in `specify-config` (`Layout<'a>` inherent methods on
+// the typed `.specify/` view); command modules call them through
+// `dir.layout().plan_path()` and friends, they do not redefine them.
+// The regex requires the function's first argument to start with an
+// identifier (e.g. `project_dir: &Path`) rather than `&self`, so the
+// `Layout` inherent methods inside `crates/config/` and any thin facade
+// methods on `Ctx` are not flagged. The Rust `regex` crate has no
+// lookarounds, so the negative ("not a self method") is encoded as a
+// positive ("first arg is a normal identifier").
 
 static PATH_HELPER_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"fn\s+(specify_dir|plan_path|change_brief_path|archive_dir)\s*\(\s*[A-Za-z_]")

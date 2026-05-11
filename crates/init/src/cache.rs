@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use specify_capability::{CacheMeta, DEFAULT_CODEX_CAPABILITY};
-use specify_config::ProjectConfig;
+use specify_config::LayoutExt;
 use specify_error::Error;
 
 use crate::capability_uri::{CapabilityUri, ensure_capability_dir};
@@ -27,7 +27,7 @@ pub fn cache_capability(capability: &str, project_dir: &Path) -> Result<CachedCa
     }
 
     let source = CapabilityUri::parse(capability, project_dir)?;
-    let cache_dir = ProjectConfig::cache_dir(project_dir);
+    let cache_dir = project_dir.layout().cache_dir();
     let target = cache_dir.join(&source.capability_name);
     refresh_cached_capability(&source.source_dir, &target)?;
     cache_sibling_default_capability(&source.source_dir, &cache_dir)?;

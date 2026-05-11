@@ -7,7 +7,7 @@ use chrono::Utc;
 use serde::Serialize;
 use serde_json::Value;
 use specify_capability::Phase;
-use specify_config::ProjectConfig;
+use specify_config::LayoutExt;
 use specify_error::{Error, Result};
 use specify_slice::{Outcome, Rfc3339Stamp, SliceMetadata, actions as slice_actions};
 
@@ -232,7 +232,7 @@ impl RegistryProposalRow {
 /// `created-at`. Used as a fallback when the active slice
 /// directory has been archived by `slice merge run`.
 fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<SliceMetadata> {
-    let archive_dir = ProjectConfig::archive_dir(project_dir);
+    let archive_dir = project_dir.layout().archive_dir();
     let suffix = format!("-{slice_name}");
     let mut candidates: Vec<(String, SliceMetadata)> = Vec::new();
 

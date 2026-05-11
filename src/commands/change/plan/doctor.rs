@@ -9,7 +9,7 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
-use specify_config::ProjectConfig;
+use specify_config::LayoutExt;
 use specify_error::Result;
 use specify_registry::Registry;
 
@@ -56,7 +56,7 @@ impl Render for DoctorBody {
 pub fn run(ctx: &Ctx) -> Result<CliResult> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
+    let slices_dir = ctx.project_dir.layout().slices_dir();
 
     // We tolerate a malformed registry by surfacing it as a synthetic
     // diagnostic (matching the `plan validate` posture) so doctor

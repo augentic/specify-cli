@@ -8,7 +8,7 @@ use std::path::Path;
 
 use chrono::Utc;
 use serde::Serialize;
-use specify_config::{ProjectConfig, is_workspace_clone_path};
+use specify_config::{LayoutExt, is_workspace_clone_path};
 use specify_error::Result;
 use specify_merge::{
     BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check, slice,
@@ -373,7 +373,7 @@ fn is_workspace_clone(project_dir: &Path) -> bool {
         return false;
     }
     let has_project_yaml = project_dir.join(".specify").join("project.yaml").exists();
-    let has_plan_yaml = ProjectConfig::plan_path(project_dir).exists();
+    let has_plan_yaml = project_dir.layout().plan_path().exists();
     has_project_yaml && !has_plan_yaml
 }
 

@@ -32,7 +32,7 @@ mod regular;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_config::ProjectConfig;
+use specify_config::{LayoutExt, ProjectConfig};
 use specify_error::Error;
 
 /// Inputs to [`init`]. Borrow-shaped so callers (the CLI and tests) can
@@ -138,7 +138,7 @@ pub(crate) fn resolve_version(project_dir: &Path, mode: VersionMode) -> Result<S
     // reject the load when the existing floor is newer than the
     // running binary — but `Preserve` is meant precisely for that
     // case).
-    let path = ProjectConfig::config_path(project_dir);
+    let path = project_dir.layout().config_path();
     let text = match fs::read_to_string(&path) {
         Ok(text) => text,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(current),

@@ -100,7 +100,7 @@ Never put domain logic in the binary. If a function needs unit tests, it belongs
 
 ## Layout boundary
 
-`.specify/` is framework-managed state every CLI verb writes through (configuration under `project.yaml`, `slices/`, `archive/`, `.cache/`, `workspace/`, `plans/`, `plan.lock`). Operator-facing platform artifacts (`registry.yaml`, `plan.yaml`, `change.md`, `contracts/`) live at the repo root. The boundary is enforced by the `ProjectConfig::*_path` helpers in `specify-config` (`crates/config/src/lib.rs`) — every call site routes through them. Do not hard-code `.specify/registry.yaml` or sibling paths.
+`.specify/` is framework-managed state every CLI verb writes through (configuration under `project.yaml`, `slices/`, `archive/`, `.cache/`, `workspace/`, `plans/`, `plan.lock`). Operator-facing platform artifacts (`registry.yaml`, `plan.yaml`, `change.md`, `contracts/`) live at the repo root. The boundary is enforced by the `Layout<'a>` newtype in `specify-config` (`crates/config/src/lib.rs`): call sites write `dir.layout().plan_path()` (via the `LayoutExt` trait) or `Layout::new(&dir).plan_path()`. Do not hard-code `.specify/registry.yaml` or sibling paths.
 
 `detect_legacy_layout` and the `Error::LegacyLayout` ("`legacy-layout`") cutover gate any project-aware verb that tries to run on a v1-layout repo. Never silently read both layouts.
 
@@ -339,7 +339,7 @@ Flag whose doc-comment says "Currently equivalent to the default …" or whose h
 
 ### Path helpers live in one crate
 
-`.specify/` layout helpers (`specify_dir`, `plan_path`, `change_brief_path`, `archive_dir`, and friends) live in `specify-config`'s `ProjectConfig` impl in [`crates/config/src/lib.rs`](crates/config/src/lib.rs). Command modules call them through `ProjectConfig`; they do not redefine their own copies. CL-01 hoisted these out of the binary's old `src/config.rs` so every workspace consumer routes through one source of truth, and the `path-helper-inlined` predicate fails any new free-function `fn specify_dir|plan_path|change_brief_path|archive_dir` declared outside `crates/config/`.
+`.specify/` layout helpers (`specify_dir`, `plan_path`, `change_brief_path`, `archive_dir`, and friends) live in `specify-config` as inherent methods on the `Layout<'a>` newtype in [`crates/config/src/lib.rs`](crates/config/src/lib.rs). Call sites write `project_dir.layout().plan_path()` (via the `LayoutExt` trait on `&Path`) or `Layout::new(&project_dir).plan_path()` — they do not redefine their own copies. CL-01 hoisted these out of the binary's old `src/config.rs` so every workspace consumer routes through one source of truth, and R10 moved the helpers from associated functions on `ProjectConfig` to inherent methods on `Layout<'a>` so the `.specify/` boundary has one typed receiver. The `path-helper-inlined` predicate fails any new free-function `fn specify_dir|plan_path|change_brief_path|archive_dir` declared outside `crates/config/`.
 
 ### Error envelopes are not constructed in handlers
 

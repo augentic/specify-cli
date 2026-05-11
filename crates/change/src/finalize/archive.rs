@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use specify_config::ProjectConfig;
+use specify_config::LayoutExt;
 use specify_registry::Registry;
 
 use super::{Landing, Outcome, ProjectResult};
@@ -20,9 +20,10 @@ use crate::plan::core::Plan;
 /// project row (or a synthetic `<archive>` row when the registry is
 /// empty), records a summary message, and returns `false`.
 pub(super) fn sweep(project_dir: &Path, outcome: &mut Outcome) -> bool {
-    let plan_file = ProjectConfig::plan_path(project_dir);
-    let brief_file = ProjectConfig::change_brief_path(project_dir);
-    let archive_root = ProjectConfig::archive_dir(project_dir).join("plans");
+    let layout = project_dir.layout();
+    let plan_file = layout.plan_path();
+    let brief_file = layout.change_brief_path();
+    let archive_root = layout.archive_dir().join("plans");
     match Plan::archive(&plan_file, &brief_file, &archive_root, /* force = */ true) {
         Ok((archived, archived_plans_dir)) => {
             outcome.archived = Some(archived.display().to_string());

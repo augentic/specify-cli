@@ -10,7 +10,7 @@ use std::io::Write;
 use serde::Serialize;
 use serde_json::Value;
 use specify_change::{Plan, Status};
-use specify_config::ProjectConfig;
+use specify_config::LayoutExt;
 use specify_error::Result;
 use specify_registry::Registry;
 
@@ -101,7 +101,7 @@ struct PlanCounts {
 }
 
 fn load_plan_summary(ctx: &Ctx) -> Option<PlanSummary> {
-    let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
+    let plan_path = ctx.project_dir.layout().plan_path();
     if !plan_path.exists() {
         return None;
     }

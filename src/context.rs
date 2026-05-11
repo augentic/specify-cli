@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use specify_capability::PipelineView;
-use specify_config::ProjectConfig;
+use specify_config::{LayoutExt, ProjectConfig};
 use specify_error::Error;
 
 use crate::cli::OutputFormat;
@@ -53,10 +53,10 @@ impl Ctx {
     }
 
     pub fn slices_dir(&self) -> PathBuf {
-        ProjectConfig::slices_dir(&self.project_dir)
+        self.project_dir.layout().slices_dir()
     }
 
     pub fn archive_dir(&self) -> PathBuf {
-        ProjectConfig::archive_dir(&self.project_dir)
+        self.project_dir.layout().archive_dir()
     }
 }

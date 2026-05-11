@@ -50,7 +50,7 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use specify_config::ProjectConfig;
+use specify_config::LayoutExt;
 use specify_error::Error;
 use specify_registry::Registry;
 use specify_registry::forge::{SPECIFY_BRANCH_PREFIX, project_path};
@@ -300,7 +300,7 @@ pub fn run<P: Probe>(inputs: Inputs<'_>, probe: &P) -> Result<Outcome, Refusal> 
 
     let change_name = inputs.plan.name.clone();
     let expected_branch = format!("{SPECIFY_BRANCH_PREFIX}{change_name}");
-    let workspace_base = ProjectConfig::specify_dir(inputs.project_dir).join("workspace");
+    let workspace_base = inputs.project_dir.layout().specify_dir().join("workspace");
 
     // Guard: per-project PR state + dirty clones.
     let mut projects: Vec<ProjectResult> = Vec::with_capacity(inputs.registry.projects.len());
@@ -357,7 +357,7 @@ pub fn run<P: Probe>(inputs: Inputs<'_>, probe: &P) -> Result<Outcome, Refusal> 
 /// Bubbles up `Plan::load` errors verbatim — a malformed plan is a
 /// real failure, not a "plan absent" sentinel.
 pub fn load_plan(project_dir: &Path) -> Result<PlanLoad, Error> {
-    let plan_file = ProjectConfig::plan_path(project_dir);
+    let plan_file = project_dir.layout().plan_path();
     if !plan_file.exists() {
         return Ok(PlanLoad::Missing);
     }

@@ -3,12 +3,15 @@
     reason = "ProjectConfig re-exports `specify_tool::Tool`, which transitively pulls in Wasmtime/WASI duplicate versions."
 )]
 
-//! `ProjectConfig` — the in-memory model of `.specify/project.yaml`.
+//! `ProjectConfig` — the in-memory model of `.specify/project.yaml`,
+//! and `Layout<'a>` — the typed home for every `.specify/` and
+//! repo-root path helper the CLI reaches for.
 //!
-//! Hosts the family of path helpers every subcommand reaches for when
-//! it needs to locate `.specify/slices/`, `.specify/.cache/`,
-//! `.specify/archive/`, or the operator-facing platform artifacts at
-//! the repo root (`registry.yaml`, `plan.yaml`, `change.md`).
+//! Call sites write `project_dir.layout().plan_path()` (or
+//! `Layout::new(project_dir).plan_path()`); the path helpers no longer
+//! live as associated functions on `ProjectConfig`. The `Layout`
+//! newtype concentrates the `.specify/` boundary in one typed receiver
+//! so the rest of the workspace never hard-codes `.specify/...` literals.
 //!
 //! Layout boundary: `.specify/` holds framework-managed state that the
 //! CLI owns (configuration, working slices, archive, cache, workspace
@@ -99,7 +102,7 @@ impl ProjectConfig {
     ///
     /// Returns an error if the operation fails.
     pub fn load(project_dir: &Path) -> Result<Self, Error> {
-        let path = Self::config_path(project_dir);
+        let path = project_dir.layout().config_path();
         let text = match std::fs::read_to_string(&path) {
             Ok(text) => text,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -133,7 +136,7 @@ impl ProjectConfig {
     /// "not found" case, which is expressed as `Ok(None)` per ancestor).
     pub fn find_root(start_dir: &Path) -> Result<Option<PathBuf>, Error> {
         for candidate in start_dir.ancestors() {
-            let config_path = Self::config_path(candidate);
+            let config_path = candidate.layout().config_path();
             match config_path.try_exists() {
                 Ok(true) => return Ok(Some(candidate.to_path_buf())),
                 Ok(false) => {}
@@ -141,58 +144,6 @@ impl ProjectConfig {
             }
         }
         Ok(None)
-    }
-
-    /// Absolute path to `<project_dir>/.specify/project.yaml`.
-    #[must_use]
-    pub fn config_path(project_dir: &Path) -> PathBuf {
-        Self::specify_dir(project_dir).join("project.yaml")
-    }
-
-    /// Absolute path to `<project_dir>/.specify/`.
-    #[must_use]
-    pub fn specify_dir(project_dir: &Path) -> PathBuf {
-        project_dir.join(".specify")
-    }
-
-    /// Absolute path to `<project_dir>/.specify/slices/`.
-    #[must_use]
-    pub fn slices_dir(project_dir: &Path) -> PathBuf {
-        Self::specify_dir(project_dir).join(specify_slice::SLICES_DIR_NAME)
-    }
-
-    /// Absolute path to `<project_dir>/registry.yaml` — the platform
-    /// catalogue. Platform-level artifact, lives at the repo root.
-    #[must_use]
-    pub fn registry_path(project_dir: &Path) -> PathBuf {
-        project_dir.join("registry.yaml")
-    }
-
-    /// Absolute path to `<project_dir>/plan.yaml` — the change
-    /// plan. Platform-level artifact, lives at the repo root.
-    #[must_use]
-    pub fn plan_path(project_dir: &Path) -> PathBuf {
-        project_dir.join("plan.yaml")
-    }
-
-    /// Absolute path to `<project_dir>/change.md` — the umbrella
-    /// operator brief at the repo root. Platform-level artifact.
-    #[must_use]
-    pub fn change_brief_path(project_dir: &Path) -> PathBuf {
-        project_dir.join(specify_capability::CHANGE_BRIEF_FILENAME)
-    }
-
-    /// Absolute path to `<project_dir>/.specify/.cache/`.
-    #[must_use]
-    pub fn cache_dir(project_dir: &Path) -> PathBuf {
-        Self::specify_dir(project_dir).join(".cache")
-    }
-
-    /// Absolute path to `<project_dir>/.specify/archive/`. Centralised
-    /// here so there is exactly one place the convention lives.
-    #[must_use]
-    pub fn archive_dir(project_dir: &Path) -> PathBuf {
-        Self::specify_dir(project_dir).join("archive")
     }
 
     /// Resolve a `rules` value to an absolute path under `.specify/`.
@@ -203,7 +154,99 @@ impl ProjectConfig {
         if value.is_empty() {
             return None;
         }
-        Some(Self::specify_dir(project_dir).join(value))
+        Some(project_dir.layout().specify_dir().join(value))
+    }
+}
+
+/// Typed view over a project root that exposes every `.specify/` and
+/// repo-root path helper as an inherent method.
+///
+/// Construct with [`Layout::new`] or through the [`LayoutExt`] trait
+/// (`project_dir.layout()`). The newtype concentrates the
+/// `.specify/` boundary in one place: callers never join
+/// `.specify/...` literally; they ask the layout for the directory
+/// they want.
+#[derive(Debug, Clone, Copy)]
+pub struct Layout<'a> {
+    project_dir: &'a Path,
+}
+
+impl<'a> Layout<'a> {
+    /// Wrap `project_dir` as the typed root for path lookups.
+    #[must_use]
+    pub const fn new(project_dir: &'a Path) -> Self {
+        Self { project_dir }
+    }
+
+    /// Project root the layout is anchored at.
+    #[must_use]
+    pub const fn project_dir(&self) -> &'a Path {
+        self.project_dir
+    }
+
+    /// Absolute path to `<project_dir>/.specify/`.
+    #[must_use]
+    pub fn specify_dir(&self) -> PathBuf {
+        self.project_dir.join(".specify")
+    }
+
+    /// Absolute path to `<project_dir>/.specify/project.yaml`.
+    #[must_use]
+    pub fn config_path(&self) -> PathBuf {
+        self.specify_dir().join("project.yaml")
+    }
+
+    /// Absolute path to `<project_dir>/.specify/slices/`.
+    #[must_use]
+    pub fn slices_dir(&self) -> PathBuf {
+        self.specify_dir().join(specify_slice::SLICES_DIR_NAME)
+    }
+
+    /// Absolute path to `<project_dir>/.specify/.cache/`.
+    #[must_use]
+    pub fn cache_dir(&self) -> PathBuf {
+        self.specify_dir().join(".cache")
+    }
+
+    /// Absolute path to `<project_dir>/.specify/archive/`. Centralised
+    /// here so there is exactly one place the convention lives.
+    #[must_use]
+    pub fn archive_dir(&self) -> PathBuf {
+        self.specify_dir().join("archive")
+    }
+
+    /// Absolute path to `<project_dir>/registry.yaml` — the platform
+    /// catalogue. Platform-level artifact, lives at the repo root.
+    #[must_use]
+    pub fn registry_path(&self) -> PathBuf {
+        self.project_dir.join("registry.yaml")
+    }
+
+    /// Absolute path to `<project_dir>/plan.yaml` — the change
+    /// plan. Platform-level artifact, lives at the repo root.
+    #[must_use]
+    pub fn plan_path(&self) -> PathBuf {
+        self.project_dir.join("plan.yaml")
+    }
+
+    /// Absolute path to `<project_dir>/change.md` — the umbrella
+    /// operator brief at the repo root. Platform-level artifact.
+    #[must_use]
+    pub fn change_brief_path(&self) -> PathBuf {
+        self.project_dir.join(specify_capability::CHANGE_BRIEF_FILENAME)
+    }
+}
+
+/// Extension trait so any `&Path` (and, by deref, `&PathBuf`) can be
+/// promoted into a [`Layout`] with `project_dir.layout()`.
+pub trait LayoutExt {
+    /// Wrap `self` as a [`Layout`].
+    fn layout(&self) -> Layout<'_>;
+}
+
+impl LayoutExt for Path {
+    fn layout(&self) -> Layout<'_> {
+        Layout::new(self)
     }
 }
 
@@ -252,14 +295,19 @@ mod tests {
     #[test]
     fn specify_subpaths() {
         let base = Path::new("/a/b");
-        assert_eq!(ProjectConfig::specify_dir(base), PathBuf::from("/a/b/.specify"));
-        assert_eq!(ProjectConfig::config_path(base), PathBuf::from("/a/b/.specify/project.yaml"));
-        assert_eq!(ProjectConfig::slices_dir(base), PathBuf::from("/a/b/.specify/slices"));
-        assert_eq!(ProjectConfig::registry_path(base), PathBuf::from("/a/b/registry.yaml"));
-        assert_eq!(ProjectConfig::plan_path(base), PathBuf::from("/a/b/plan.yaml"));
-        assert_eq!(ProjectConfig::change_brief_path(base), PathBuf::from("/a/b/change.md"));
-        assert_eq!(ProjectConfig::cache_dir(base), PathBuf::from("/a/b/.specify/.cache"));
-        assert_eq!(ProjectConfig::archive_dir(base), PathBuf::from("/a/b/.specify/archive"));
+        let layout = base.layout();
+        assert_eq!(layout.project_dir(), base);
+        assert_eq!(layout.specify_dir(), PathBuf::from("/a/b/.specify"));
+        assert_eq!(layout.config_path(), PathBuf::from("/a/b/.specify/project.yaml"));
+        assert_eq!(layout.slices_dir(), PathBuf::from("/a/b/.specify/slices"));
+        assert_eq!(layout.registry_path(), PathBuf::from("/a/b/registry.yaml"));
+        assert_eq!(layout.plan_path(), PathBuf::from("/a/b/plan.yaml"));
+        assert_eq!(layout.change_brief_path(), PathBuf::from("/a/b/change.md"));
+        assert_eq!(layout.cache_dir(), PathBuf::from("/a/b/.specify/.cache"));
+        assert_eq!(layout.archive_dir(), PathBuf::from("/a/b/.specify/archive"));
+
+        let same = Layout::new(base);
+        assert_eq!(same.plan_path(), layout.plan_path());
     }
 
     fn sample_cfg(rules: BTreeMap<String, String>) -> ProjectConfig {

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use specify_change::{Entry, Plan, Severity, Status};
-use specify_config::ProjectConfig;
+use specify_config::LayoutExt;
 use specify_error::{Error, Result};
 use specify_slice::SliceMetadata;
 
@@ -113,7 +113,7 @@ impl Render for StatusBody {
 pub fn run(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
+    let slices_dir = ctx.project_dir.layout().slices_dir();
 
     let results = plan.validate(Some(&slices_dir), None);
     let has_other_structural_errors =

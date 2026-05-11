@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use serde::{Serialize, Serializer};
 use specify_change::Plan;
-use specify_config::ProjectConfig;
+use specify_config::LayoutExt;
 use specify_error::{Error, Result};
 use specify_registry::Registry;
 use specify_registry::branch::{
@@ -126,7 +126,7 @@ pub fn push(ctx: &Ctx, projects: Vec<String>, dry_run: bool) -> Result<CliResult
     };
     let selected = registry.select(&projects)?;
 
-    let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
+    let plan_path = ctx.project_dir.layout().plan_path();
     if !plan_path.exists() {
         return Err(Error::Diag {
             code: "workspace-push-no-plan",
