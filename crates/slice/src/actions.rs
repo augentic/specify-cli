@@ -10,8 +10,8 @@
 //! Every verb is expressed as a free function rather than a struct method
 //! so the CLI can dispatch each subcommand with one import per verb. They
 //! all round-trip through [`crate::SliceMetadata::save`] for the metadata
-//! writes and share the cross-device-safe [`io::move_atomic`] helper for
-//! archive moves.
+//! writes and share the cross-device-safe [`crate::actions::io::move_atomic`]
+//! helper for archive moves.
 
 pub mod archive;
 pub mod create;
