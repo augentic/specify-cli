@@ -121,6 +121,13 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 command = "cargo"
 args = ["run", "--quiet", "-p", "xtask", "--", "${@}"]
 
+# Render clap_mangen roff man pages for the `specify` binary and every
+# leaf subcommand into `target/man/`. Output is gitignored; release
+# tooling reads from there. See `xtask/src/manpage.rs`.
+[tasks.gen-man]
+command = "cargo"
+args = ["run", "--quiet", "-p", "xtask", "--", "gen-man"]
+
 [tasks.tools-test-fixtures]
 script = '''
 set -euo pipefail

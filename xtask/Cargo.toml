@@ -12,6 +12,11 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+clap_mangen = "0.3"
+# Pulled in for the `gen-man` subcommand: xtask reflects the binary's
+# clap command tree via `specify::command()` and renders roff with
+# `clap_mangen`.
+specify = { path = ".." }
 regex.workspace = true
 syn = { version = "2", features = ["full", "visit", "extra-traits"] }
 walkdir = "2"

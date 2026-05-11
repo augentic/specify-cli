@@ -1,14 +1,21 @@
 //! Workspace task runner.
 //!
-//! Currently exposes `standards-check`, the AST + regex enforcer for the
-//! mechanical rules in [AGENTS.md#coding-standards]. CI runs this via
-//! `cargo run -p xtask -- standards-check`.
+//! Subcommands:
+//!
+//! - `standards-check` — AST + regex enforcer for the mechanical rules
+//!   in [AGENTS.md#coding-standards]. CI runs this via
+//!   `cargo run -p xtask -- standards-check`.
+//! - `gen-man` — render `clap_mangen` roff man pages for the `specify`
+//!   binary and every leaf subcommand into a target directory
+//!   (`target/man/` by default). Output is gitignored; release
+//!   tooling picks it up from there.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
+mod manpage;
 mod standards;
 
 #[derive(Parser)]
@@ -37,6 +44,16 @@ enum Command {
         #[arg(long)]
         check_tightenable: bool,
     },
+    /// Render roff man pages for the `specify` binary and every
+    /// (non-`help`) subcommand into `out_dir` via `clap_mangen`. One
+    /// `.1` file per command, named `specify[-sub...].1`. The default
+    /// `target/man/` is gitignored; release tooling reads from there.
+    GenMan {
+        /// Output directory for the rendered `.1` files. Created if
+        /// missing.
+        #[arg(long, default_value = "target/man")]
+        out_dir: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -64,6 +81,19 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Command::GenMan { out_dir } => match manpage::render(&out_dir) {
+            Ok(count) => {
+                eprintln!(
+                    "xtask gen-man: wrote {count} man page(s) to {}",
+                    out_dir.display()
+                );
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                eprintln!("xtask gen-man: {err}");
+                ExitCode::from(2)
+            }
+        },
     }
 }
 
