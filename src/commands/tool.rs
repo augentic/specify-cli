@@ -335,14 +335,7 @@ fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {
     };
     let summaries: Vec<ValidationSummary> =
         manifest.validate_structure(scope).iter().filter_map(validation_failure).collect();
-    if summaries.is_empty() {
-        Ok(())
-    } else {
-        Err(Error::Validation {
-            count: summaries.len(),
-            results: summaries,
-        })
-    }
+    if summaries.is_empty() { Ok(()) } else { Err(Error::Validation { results: summaries }) }
 }
 
 fn validation_failure(result: &ToolValidationResult) -> Option<ValidationSummary> {

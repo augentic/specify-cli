@@ -136,10 +136,8 @@ pub enum Error {
     },
 
     /// Validation failed with one or more findings.
-    #[error("validation failed: {count} errors")]
+    #[error("validation failed: {} errors", results.len())]
     Validation {
-        /// Number of error-level findings.
-        count: usize,
         /// Individual validation results.
         results: Vec<ValidationSummary>,
     },
@@ -405,14 +403,12 @@ mod tests {
     #[test]
     fn validation_payload_round_trips() {
         let err = Error::Validation {
-            count: 2,
             results: vec![summary(ValidationStatus::Fail), summary(ValidationStatus::Deferred)],
         };
         assert_eq!(err.to_string(), "validation failed: 2 errors");
-        let Error::Validation { count, results } = err else {
+        let Error::Validation { results } = err else {
             panic!("expected Validation variant");
         };
-        assert_eq!(count, 2);
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].status, ValidationStatus::Fail);
         assert_eq!(results[1].status, ValidationStatus::Deferred);

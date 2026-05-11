@@ -78,12 +78,12 @@ fn validate(ctx: &CommandContext) -> Result<CliResult> {
             )?;
             Ok(CliResult::Success)
         }
-        Err(Error::Validation { count, results }) => {
+        Err(Error::Validation { results }) => {
             emit(
                 ctx.format,
                 &ValidateBody {
                     rule_count: None,
-                    error_count: count,
+                    error_count: results.len(),
                     validation: Validation {
                         results: results.iter().map(ValidationRow::from_summary).collect(),
                     },

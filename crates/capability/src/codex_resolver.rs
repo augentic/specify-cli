@@ -289,12 +289,5 @@ fn reject_duplicate_ids(rules: &[ResolvedCodexRule]) -> Result<(), Error> {
         }
     }
 
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(Error::Validation {
-            count: failures.len(),
-            results: failures,
-        })
-    }
+    if failures.is_empty() { Ok(()) } else { Err(Error::Validation { results: failures }) }
 }

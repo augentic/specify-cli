@@ -185,10 +185,7 @@ impl CodexRule {
         let results = Self::validate_str(path, contents);
         let failures = validation_failures(&results);
         if !failures.is_empty() {
-            return Err(Error::Validation {
-                count: failures.len(),
-                results: failures,
-            });
+            return Err(Error::Validation { results: failures });
         }
 
         let (frontmatter_text, body) = frontmatter_parts(path, contents)?;

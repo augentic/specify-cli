@@ -658,10 +658,10 @@ fn codex_resolver_rejects_duplicate_ids_with_validation_error() {
     let err = ResolvedCodex::resolve(project_dir, Some("project"), false)
         .expect_err("duplicate codex id should fail validation");
 
-    let Error::Validation { count, results } = err else {
+    let Error::Validation { results } = err else {
         panic!("expected validation error");
     };
-    assert_eq!(count, 1);
+    assert_eq!(results.len(), 1);
     assert_eq!(results[0].rule_id, "codex.rule-id-unique");
     let detail = results[0].detail.as_deref().expect("duplicate detail");
     assert!(detail.contains("codex-rule-id-duplicate"), "detail: {detail}");
@@ -722,7 +722,11 @@ fn codex_validate_rejects_malformed_yaml() {
     let detail = codex_fail_detail(&results, "codex.frontmatter-parseable");
 
     assert!(detail.contains("codex-rule-frontmatter-malformed"), "detail: {detail}");
-    assert!(matches!(CodexRule::parse(&path, contents), Err(Error::Validation { count: 1, .. })));
+    let err = CodexRule::parse(&path, contents).expect_err("malformed YAML should fail");
+    let Error::Validation { results } = err else {
+        panic!("expected validation error");
+    };
+    assert_eq!(results.len(), 1);
 }
 
 #[test]
@@ -733,7 +737,11 @@ fn codex_validate_rejects_missing_frontmatter() {
     let detail = codex_fail_detail(&results, "codex.frontmatter-delimited");
 
     assert!(detail.contains("codex-rule-frontmatter-missing"), "detail: {detail}");
-    assert!(matches!(CodexRule::parse(&path, contents), Err(Error::Validation { count: 1, .. })));
+    let err = CodexRule::parse(&path, contents).expect_err("missing frontmatter should fail");
+    let Error::Validation { results } = err else {
+        panic!("expected validation error");
+    };
+    assert_eq!(results.len(), 1);
 }
 
 #[test]
@@ -755,7 +763,11 @@ body
     let detail = codex_fail_detail(&results, "codex.body-has-rule-heading");
 
     assert!(detail.contains("codex-rule-heading-missing"), "detail: {detail}");
-    assert!(matches!(CodexRule::parse(&path, contents), Err(Error::Validation { count: 1, .. })));
+    let err = CodexRule::parse(&path, contents).expect_err("missing rule heading should fail");
+    let Error::Validation { results } = err else {
+        panic!("expected validation error");
+    };
+    assert_eq!(results.len(), 1);
 }
 
 #[test]

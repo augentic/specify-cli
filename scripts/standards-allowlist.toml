@@ -30,10 +30,10 @@ module-line-count = 207
 
 [file."crates/capability/src/codex.rs"]
 ritual-doc-paragraphs = 1
-module-line-count = 316
+module-line-count = 313
 
 [file."crates/capability/src/codex_resolver.rs"]
-module-line-count = 300
+module-line-count = 297
 
 [file."crates/capability/src/lib.rs"]
 module-line-count = 92
@@ -131,7 +131,7 @@ format-match-dispatch = 1
 module-line-count = 142
 
 [file."crates/error/src/lib.rs"]
-module-line-count = 570
+module-line-count = 566
 
 [file."crates/init/src/cache.rs"]
 direct-fs-write = 1
@@ -533,7 +533,7 @@ module-line-count = 207
 module-line-count = 150
 
 [file."src/commands/context/lock.rs"]
-module-line-count = 222
+module-line-count = 221
 
 [file."src/commands/context/render.rs"]
 module-line-count = 393
@@ -583,7 +583,7 @@ module-line-count = 59
 module-line-count = 202
 
 [file."src/commands/tool.rs"]
-module-line-count = 472
+module-line-count = 469
 
 [file."src/commands/tool/cli.rs"]
 module-line-count = 32

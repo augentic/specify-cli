@@ -161,7 +161,6 @@ fn inputs_by_path(inputs: &[LockInput]) -> BTreeMap<String, String> {
 
 fn validation_error(rule_id: &'static str, detail: String) -> Error {
     Error::Validation {
-        count: 1,
         results: vec![ValidationSummary {
             status: ValidationStatus::Fail,
             rule_id: rule_id.to_string(),
