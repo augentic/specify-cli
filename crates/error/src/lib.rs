@@ -27,7 +27,8 @@ pub fn is_kebab(s: &str) -> bool {
 }
 
 /// Validation outcome for a single rule check.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ValidationStatus {
     /// Rule passed.
     Pass,

@@ -1,9 +1,10 @@
 //! Workspace status reporting: `SlotStatus` / `WorkspaceStatus`-shaped
 //! output that powers `specify workspace status` and friends.
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
 use super::git::{git_output_ok, git_porcelain_non_empty};
@@ -47,7 +48,8 @@ pub struct SlotStatus {
 }
 
 /// Whether a registry entry is configured as a local filesystem target or a remote URL.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ConfiguredTargetKind {
     /// Local filesystem target materialised as a symlink.
     Local,
@@ -55,8 +57,27 @@ pub enum ConfiguredTargetKind {
     Remote,
 }
 
+impl ConfiguredTargetKind {
+    /// Stable label used by CLI text/JSON output. Matches the kebab-case
+    /// `Serialize` form so callers may use either interchangeably.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Remote => "remote",
+        }
+    }
+}
+
+impl fmt::Display for ConfiguredTargetKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
 /// Classification of a workspace slot on disk.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum SlotKind {
     /// Path missing.
     Missing,
@@ -69,7 +90,9 @@ pub enum SlotKind {
 }
 
 impl SlotKind {
-    /// Stable label used by CLI text/JSON output and diagnostics.
+    /// Stable label used by CLI text/JSON output and diagnostics. Matches
+    /// the kebab-case `Serialize` form so callers may use either
+    /// interchangeably.
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -78,6 +101,12 @@ impl SlotKind {
             Self::GitClone => "git-clone",
             Self::Other => "other",
         }
+    }
+}
+
+impl fmt::Display for SlotKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.label())
     }
 }
 

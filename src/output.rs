@@ -3,7 +3,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use serde::Serialize;
-use specify_error::{Error, ValidationSummary};
+use specify_error::{Error, ValidationStatus, ValidationSummary};
 
 use crate::cli::OutputFormat;
 
@@ -273,7 +273,7 @@ impl Render for ErrorBody<'_> {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ValidationRow<'a> {
-    pub status: String,
+    pub status: ValidationStatus,
     pub rule_id: &'a str,
     pub rule: &'a str,
     pub detail: Option<&'a str>,
@@ -282,7 +282,7 @@ pub struct ValidationRow<'a> {
 impl<'a> From<&'a ValidationSummary> for ValidationRow<'a> {
     fn from(summary: &'a ValidationSummary) -> Self {
         Self {
-            status: summary.status.to_string(),
+            status: summary.status,
             rule_id: &summary.rule_id,
             rule: &summary.rule,
             detail: summary.detail.as_deref(),

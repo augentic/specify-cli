@@ -14,7 +14,7 @@ use specify_registry::branch::{
     Diagnostic as BranchDiagnostic, Prepared, Request as BranchRequest, prepare,
 };
 use specify_registry::workspace::{
-    ConfiguredTargetKind, PushOutcome, SlotStatus, push_projects,
+    ConfiguredTargetKind, PushOutcome, SlotKind, SlotStatus, push_projects,
     status_projects as workspace_status_projects, sync_projects as workspace_sync_projects,
 };
 
@@ -207,9 +207,9 @@ impl Render for StatusBody {
 #[serde(rename_all = "kebab-case")]
 struct SlotRow {
     name: String,
-    kind: &'static str,
+    kind: SlotKind,
     slot_path: String,
-    configured_target_kind: &'static str,
+    configured_target_kind: ConfiguredTargetKind,
     configured_target: String,
     actual_symlink_target: Option<String>,
     actual_origin: Option<String>,
@@ -225,12 +225,9 @@ impl From<&SlotStatus> for SlotRow {
     fn from(slot: &SlotStatus) -> Self {
         Self {
             name: slot.name.clone(),
-            kind: slot.kind.label(),
+            kind: slot.kind,
             slot_path: slot.slot_path.display().to_string(),
-            configured_target_kind: match slot.configured_target_kind {
-                ConfiguredTargetKind::Local => "local",
-                ConfiguredTargetKind::Remote => "remote",
-            },
+            configured_target_kind: slot.configured_target_kind,
             configured_target: slot.configured_target.clone(),
             actual_symlink_target: slot
                 .actual_symlink_target
