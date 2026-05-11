@@ -82,6 +82,7 @@ pub enum RuleOutcome {
 }
 
 /// A named rule attached to a specific brief id.
+#[derive(Debug)]
 pub struct Rule {
     /// Stable dot-namespaced identifier (e.g. `proposal.why-has-content`).
     pub id: &'static str,
@@ -95,6 +96,7 @@ pub struct Rule {
 }
 
 /// Inputs a brief-scoped structural checker needs.
+#[derive(Debug)]
 pub struct BriefContext<'a> {
     /// The brief id being validated.
     pub id: &'a str,
@@ -113,6 +115,7 @@ pub struct BriefContext<'a> {
 }
 
 /// A rule that spans multiple briefs.
+#[derive(Debug)]
 pub struct CrossRule {
     /// Stable dot-namespaced identifier (e.g. `cross.proposal-crates-have-specs`).
     pub id: &'static str,
@@ -125,6 +128,7 @@ pub struct CrossRule {
 }
 
 /// Inputs a cross-brief checker needs.
+#[derive(Debug)]
 pub struct CrossContext<'a> {
     /// Absolute path to the slice directory.
     pub slice_dir: &'a Path,

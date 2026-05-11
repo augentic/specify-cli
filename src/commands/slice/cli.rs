@@ -242,7 +242,7 @@ pub enum JournalAction {
     },
 }
 
-#[derive(Copy, Clone, ValueEnum)]
+#[derive(Debug, Copy, Clone, ValueEnum)]
 pub enum CreateIfExistsArg {
     /// Refuse when the directory exists (default)
     Fail,

@@ -81,6 +81,9 @@ version = "0.3.0"
 [workspace.lints.rust]
 # https://dirname.github.io/rust-std-doc/rustc/lints/listing/allowed-by-default.html
 missing_docs = "warn"
+missing_debug_implementations = "warn"
+redundant_lifetimes = "warn"
+single_use_lifetimes = "warn"
 trivial_numeric_casts = "warn"
 unsafe_op_in_unsafe_fn = "warn"
 unused_extern_crates = "warn"

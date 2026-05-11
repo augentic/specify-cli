@@ -238,6 +238,7 @@ pub struct Outcome {
 }
 
 /// Inputs that don't fit the per-project loop.
+#[derive(Debug)]
 pub struct Inputs<'a> {
     /// Project root directory (`.specify/` lives directly under here).
     pub project_dir: &'a Path,
@@ -267,6 +268,7 @@ pub enum Refusal {
 }
 
 /// Result of loading the optional finalize plan.
+#[derive(Debug)]
 pub enum PlanLoad {
     /// Plan file exists and parsed.
     Present(Plan),

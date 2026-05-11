@@ -38,6 +38,7 @@ use specify_error::Error;
 
 /// Inputs to [`init`]. Borrow-shaped so callers (the CLI and tests) can
 /// build the struct without cloning path buffers.
+#[derive(Debug)]
 pub struct InitOptions<'a> {
     /// Root of the project being initialised.
     pub project_dir: &'a Path,
