@@ -10,17 +10,16 @@
 //! without spawning the binary. The `[[bin]]` target in
 //! `src/main.rs` is a thin shim around [`run`].
 //!
-//! Exit-code contract for the dispatched [`run`]:
+//! Exit-code contract for the dispatched [`run`] (defined by the
+//! internal `CliResult` enum in `output`):
 //!
-//! - `0` ([`crate::output::CliResult::Success`]): Success.
-//! - `1` ([`crate::output::CliResult::GenericFailure`]): Generic failure
-//!   (I/O, parse, tool resolver/runtime, unknown).
-//! - `2` ([`crate::output::CliResult::ValidationFailed`] or
-//!   [`crate::output::CliResult::ArgumentError`]): validation failed or a
-//!   post-parse argument-shape check failed.
-//! - `3` ([`crate::output::CliResult::VersionTooOld`]): The CLI binary
-//!   is older than the `specify_version` floor in
-//!   `.specify/project.yaml`.
+//! - `0` `Success`: Success.
+//! - `1` `GenericFailure`: Generic failure (I/O, parse, tool
+//!   resolver/runtime, unknown).
+//! - `2` `ValidationFailed` or `ArgumentError`: validation failed or
+//!   a post-parse argument-shape check failed.
+//! - `3` `VersionTooOld`: The CLI binary is older than the
+//!   `specify_version` floor in `.specify/project.yaml`.
 //!
 //! Error → exit code mapping:
 //! - [`specify_error::Error::CliTooOld`] → `3`.

@@ -86,6 +86,7 @@ args = ["test", "--doc", "--all-features", "--workspace"]
 [tasks.doc]
 command = "cargo"
 args = ["doc", "--no-deps", "--workspace", "--all-features", "--locked"]
+env = { RUSTDOCFLAGS = "-Dwarnings" }
 
 # Miri
 [tasks.miri]
