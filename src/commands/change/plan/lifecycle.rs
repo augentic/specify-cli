@@ -13,7 +13,7 @@ use crate::cli::SourceArg;
 use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, Validation, emit};
 
-pub fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
+pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
     let plan_path = ctx.project_dir.layout().plan_path();
     if plan_path.exists() {
         return Err(Error::Diag {
@@ -53,7 +53,7 @@ pub fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
     Ok(())
 }
 
-pub fn validate(ctx: &Ctx) -> Result<CliResult> {
+pub(super) fn validate(ctx: &Ctx) -> Result<CliResult> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ctx.project_dir.layout().slices_dir();
@@ -113,7 +113,7 @@ pub fn validate(ctx: &Ctx) -> Result<CliResult> {
     Ok(if has_errors { CliResult::ValidationFailed } else { CliResult::Success })
 }
 
-pub fn next(ctx: &Ctx) -> Result<()> {
+pub(super) fn next(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ctx.project_dir.layout().slices_dir();
@@ -151,7 +151,7 @@ pub fn next(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
-pub fn transition(
+pub(super) fn transition(
     ctx: &Ctx, name: String, target: Status, reason: Option<String>,
 ) -> Result<()> {
     let (plan_path, mut plan) = load_for_write(ctx)?;
@@ -185,7 +185,7 @@ pub fn transition(
     Ok(())
 }
 
-pub fn archive(ctx: &Ctx, force: bool) -> Result<CliResult> {
+pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<CliResult> {
     let layout = ctx.project_dir.layout();
     let plan_path = layout.plan_path();
     if !plan_path.exists() {

@@ -36,14 +36,14 @@
 //!     for edge-legality and is the only place that writes
 //!     `entry.status` or `entry.status_reason`.
 
-pub mod amend;
-pub mod archive;
-pub mod create;
-pub mod io;
-pub mod model;
-pub mod next;
-pub mod transitions;
-pub mod validate;
+pub(crate) mod amend;
+pub(crate) mod archive;
+pub(crate) mod create;
+pub(crate) mod io;
+pub(crate) mod model;
+pub(crate) mod next;
+pub(crate) mod transitions;
+pub(crate) mod validate;
 
 #[cfg(test)]
 mod test_support;

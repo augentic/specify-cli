@@ -1,5 +1,5 @@
-pub mod cli;
-pub mod plan;
+pub(crate) mod cli;
+pub(crate) mod plan;
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -17,7 +17,7 @@ use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, emit, path_string, serialize_path};
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
-pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<CliResult> {
+pub(crate) fn run(ctx: &Ctx, action: ChangeAction) -> Result<CliResult> {
     match action {
         ChangeAction::Create { name } => brief_create(ctx, name),
         ChangeAction::Show => brief_show(ctx).map(|()| CliResult::Success),

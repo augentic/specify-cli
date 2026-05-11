@@ -53,7 +53,7 @@ impl Render for DoctorBody {
     }
 }
 
-pub fn run(ctx: &Ctx) -> Result<CliResult> {
+pub(super) fn run(ctx: &Ctx) -> Result<CliResult> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ctx.project_dir.layout().slices_dir();

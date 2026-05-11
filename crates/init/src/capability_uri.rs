@@ -10,14 +10,14 @@ use specify_error::Error;
 use crate::git::sparse_checkout_github;
 
 #[derive(Debug)]
-pub struct CapabilityUri {
-    pub capability_value: String,
-    pub capability_name: String,
-    pub source_dir: PathBuf,
+pub(crate) struct CapabilityUri {
+    pub(crate) capability_value: String,
+    pub(crate) capability_name: String,
+    pub(crate) source_dir: PathBuf,
 }
 
 impl CapabilityUri {
-    pub fn parse(capability: &str, project_dir: &Path) -> Result<Self, Error> {
+    pub(crate) fn parse(capability: &str, project_dir: &Path) -> Result<Self, Error> {
         if is_github_url(capability) {
             return Self::from_github(capability);
         }
@@ -139,7 +139,7 @@ fn split_ref_suffix(capability: &str) -> (&str, Option<&str>) {
     (capability, None)
 }
 
-pub fn ensure_capability_dir(path: &Path, original: &str) -> Result<(), Error> {
+pub(crate) fn ensure_capability_dir(path: &Path, original: &str) -> Result<(), Error> {
     if path.join(specify_capability::CAPABILITY_FILENAME).is_file() {
         return Ok(());
     }

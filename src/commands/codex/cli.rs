@@ -7,7 +7,7 @@ use clap::Subcommand;
 
 /// Project-resolved codex rule catalogue verbs.
 #[derive(Subcommand)]
-pub enum CodexAction {
+pub(crate) enum CodexAction {
     /// List resolved codex rules.
     List,
     /// Show one resolved codex rule.

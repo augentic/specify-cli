@@ -34,6 +34,6 @@ pub fn rules_for(brief_id: &str) -> &'static [Rule] {
 
 /// Stub used by every semantic rule. The runner never calls this; the
 /// panic exists as a tripwire to catch a future refactor that would.
-pub fn semantic_never_called(_ctx: &BriefContext<'_>) -> RuleOutcome {
+pub(crate) fn semantic_never_called(_ctx: &BriefContext<'_>) -> RuleOutcome {
     panic!("semantic rule checker should never be invoked");
 }

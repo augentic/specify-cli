@@ -7,7 +7,7 @@ use clap::Subcommand;
 
 /// Registry operations on `registry.yaml`.
 #[derive(Subcommand)]
-pub enum RegistryAction {
+pub(crate) enum RegistryAction {
     /// Print the parsed `registry.yaml` (text or JSON). Absent file exits 0.
     Show,
     /// Validate `registry.yaml` shape. Absent file exits 0.

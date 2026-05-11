@@ -9,6 +9,6 @@
 //! `.metadata.yaml` lifecycle, the per-slice journal, and the
 //! kebab-name validator.
 
-pub mod core;
-pub mod doctor;
-pub mod lock;
+pub(crate) mod core;
+pub(crate) mod doctor;
+pub(crate) mod lock;

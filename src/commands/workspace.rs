@@ -1,6 +1,6 @@
 //! `specify workspace *` handlers — `sync`, `status`, `prepare-branch`, `push`.
 
-pub mod cli;
+pub(crate) mod cli;
 
 use std::fmt;
 use std::io::Write;
@@ -22,7 +22,7 @@ use specify_registry::workspace::{
 use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, emit};
 
-pub fn sync(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
+pub(crate) fn sync(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
     let registry = match Registry::load(&ctx.project_dir)? {
         None if !projects.is_empty() => return Err(Error::RegistryMissing),
         other => other,
@@ -47,7 +47,7 @@ pub fn sync(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
     Ok(())
 }
 
-pub fn status(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
+pub(crate) fn status(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
     let body = match Registry::load(&ctx.project_dir)? {
         None => {
             if !projects.is_empty() {
@@ -71,7 +71,7 @@ pub fn status(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
     Ok(())
 }
 
-pub fn prepare_branch(
+pub(crate) fn prepare_branch(
     ctx: &Ctx, project: String, change: String, sources: Vec<PathBuf>,
     outputs: Vec<PathBuf>,
 ) -> Result<CliResult> {
@@ -120,7 +120,7 @@ pub fn prepare_branch(
     }
 }
 
-pub fn push(ctx: &Ctx, projects: Vec<String>, dry_run: bool) -> Result<CliResult> {
+pub(crate) fn push(ctx: &Ctx, projects: Vec<String>, dry_run: bool) -> Result<CliResult> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
         return Err(Error::RegistryMissing);
     };

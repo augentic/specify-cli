@@ -18,7 +18,7 @@ use super::slice::{StatusEntry, collect_status, list_slice_names, status_entry_t
 use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
-pub fn run(ctx: &Ctx) -> Result<()> {
+pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let slices_dir = ctx.slices_dir();
 

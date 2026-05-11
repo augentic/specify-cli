@@ -12,7 +12,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 mod check;
-pub mod cli;
+pub(crate) mod cli;
 mod detect;
 mod fences;
 mod fingerprint;
@@ -31,7 +31,7 @@ use crate::cli::ContextAction;
 use crate::context::Ctx;
 use crate::output::CliResult;
 
-pub fn run(ctx: &Ctx, action: ContextAction) -> Result<CliResult> {
+pub(crate) fn run(ctx: &Ctx, action: ContextAction) -> Result<CliResult> {
     match action {
         ContextAction::Generate { check, force } => generate::run(ctx, check, force),
         ContextAction::Check => check::run(ctx),

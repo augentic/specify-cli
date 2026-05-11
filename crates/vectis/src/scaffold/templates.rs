@@ -1,8 +1,8 @@
 //! Template engine -- placeholder substitution and capability-conditional sections.
 
-pub mod android;
-pub mod core;
-pub mod ios;
+pub(super) mod android;
+pub(super) mod core;
+pub(super) mod ios;
 
 /// A single capability the user can enable via `--caps`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -48,7 +48,7 @@ impl Capability {
 
 /// Placeholder values supplied per scaffold invocation.
 #[derive(Debug, Clone)]
-pub struct Params {
+pub(super) struct Params {
     /// App name in user-facing form.
     pub app_name: String,
     /// Rust app struct identifier.
@@ -89,20 +89,20 @@ pub struct Params {
 
 /// Render a template string with placeholder substitution and cap-marker handling.
 #[must_use]
-pub fn render(template: &str, params: &Params, caps: &[Capability]) -> String {
+pub(super) fn render(template: &str, params: &Params, caps: &[Capability]) -> String {
     let stripped = process_caps(template, caps);
     substitute_placeholders(&stripped, params)
 }
 
 /// Substitute placeholders that may appear in target paths.
 #[must_use]
-pub fn substitute_path(target: &str, params: &Params) -> String {
+pub(super) fn substitute_path(target: &str, params: &Params) -> String {
     substitute_path_with(target, params, None)
 }
 
 /// Path-segment substitution including `__ANDROID_PACKAGE_PATH__`.
 #[must_use]
-pub fn substitute_path_with(
+pub(super) fn substitute_path_with(
     target: &str, params: &Params, android_package_path: Option<&str>,
 ) -> String {
     let mut out = target.to_string();

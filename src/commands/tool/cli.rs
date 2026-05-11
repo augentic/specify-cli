@@ -6,7 +6,7 @@
 use clap::Subcommand;
 
 #[derive(Subcommand)]
-pub enum ToolAction {
+pub(crate) enum ToolAction {
     /// Fetch if needed, then run a declared WASI tool.
     Run {
         /// Declared tool name.

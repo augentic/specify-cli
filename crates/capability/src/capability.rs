@@ -332,7 +332,7 @@ fn locate_capability_root(
     })
 }
 
-pub fn validate_against_schema(
+pub(crate) fn validate_against_schema(
     schema_source: &str, pass_rule_id: &'static str, pass_rule: &'static str,
     instance: &serde_json::Value,
 ) -> Vec<ValidationResult> {

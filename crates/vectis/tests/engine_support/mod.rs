@@ -4,6 +4,10 @@
 //! does not call them; silence the lint at module scope.
 
 #![allow(dead_code)]
+#![expect(
+    unreachable_pub,
+    reason = "test helpers shared across integration test binaries; each `tests/engine_*.rs` is its own crate so `pub(crate)` is wrong here"
+)]
 
 use std::io::Write;
 use std::path::PathBuf;

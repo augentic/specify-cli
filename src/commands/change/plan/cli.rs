@@ -12,7 +12,7 @@ use crate::cli::SourceArg;
 
 /// Plan-authoring verbs (`specify change plan *`).
 #[derive(Subcommand)]
-pub enum PlanAction {
+pub(crate) enum PlanAction {
     /// Scaffold an empty plan.yaml at the repo root
     Create {
         /// Kebab-case change name
@@ -114,7 +114,7 @@ pub enum PlanAction {
 }
 
 #[derive(Subcommand)]
-pub enum LockAction {
+pub(crate) enum LockAction {
     /// Acquire the plan.lock PID stamp. Fails when another live PID holds
     /// it; stale stamps are reclaimed silently.
     Acquire {

@@ -13,11 +13,11 @@ use specify_error::Error;
 use crate::capability_uri::{CapabilityUri, ensure_capability_dir};
 
 #[derive(Debug)]
-pub struct CachedCapability {
-    pub capability_value: String,
+pub(crate) struct CachedCapability {
+    pub(crate) capability_value: String,
 }
 
-pub fn cache_capability(
+pub(crate) fn cache_capability(
     capability: &str, project_dir: &Path, now: DateTime<Utc>,
 ) -> Result<CachedCapability, Error> {
     if capability.trim().is_empty() || capability != capability.trim() {

@@ -9,7 +9,7 @@ use clap::Subcommand;
 use specify_capability::Phase;
 
 #[derive(Subcommand)]
-pub enum CapabilityAction {
+pub(crate) enum CapabilityAction {
     /// Resolve a capability value to a directory path
     Resolve {
         /// Capability value (bare name or URL) to resolve through the

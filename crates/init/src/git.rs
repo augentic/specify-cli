@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use specify_error::Error;
 
-pub fn sparse_checkout_github(
+pub(crate) fn sparse_checkout_github(
     repo_url: &str, checkout_ref: Option<&str>, capability_path: &str,
 ) -> Result<PathBuf, Error> {
     let checkout_dir = unique_temp_dir("specify-capability-checkout")?;

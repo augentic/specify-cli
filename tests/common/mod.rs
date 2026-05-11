@@ -5,6 +5,11 @@
 //! subset, so the items are tagged `#[allow(dead_code)]` to keep
 //! lints quiet.
 
+#![expect(
+    unreachable_pub,
+    reason = "test helpers shared across integration test binaries; each `tests/*.rs` is its own crate so `pub(crate)` is wrong here"
+)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;

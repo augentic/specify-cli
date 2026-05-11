@@ -1,6 +1,6 @@
 //! `specify capability {resolve, check, pipeline}`.
 
-pub mod cli;
+pub(crate) mod cli;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -29,7 +29,7 @@ impl Render for ResolveBody {
     }
 }
 
-pub fn resolve(format: OutputFormat, capability_value: String, project_dir: PathBuf) -> Result<()> {
+pub(crate) fn resolve(format: OutputFormat, capability_value: String, project_dir: PathBuf) -> Result<()> {
     let (root_dir, source) = Capability::locate(&capability_value, &project_dir)?;
     enforce_capability_filename(&root_dir)?;
     let (source_label, path) = match &source {
@@ -94,7 +94,7 @@ impl Render for PipelineBody {
     }
 }
 
-pub fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<PathBuf>) -> Result<()> {
+pub(crate) fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<PathBuf>) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let order = pipeline.topo_order(phase)?;
     let completion = slice.as_deref().map(|slice_dir| pipeline.completion_for(phase, slice_dir));
@@ -152,7 +152,7 @@ impl Render for CheckBody {
     }
 }
 
-pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult> {
+pub(crate) fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult> {
     let manifest_path =
         Capability::probe_dir(&capability_dir).ok_or_else(|| Error::CapabilityManifestMissing {
             dir: capability_dir.clone(),

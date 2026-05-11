@@ -1,6 +1,6 @@
 //! `specify registry *` handlers — `show`, `validate`, `add`, `remove`.
 
-pub mod cli;
+pub(crate) mod cli;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -16,7 +16,7 @@ use crate::cli::RegistryAction;
 use crate::context::Ctx;
 use crate::output::{Render, Stream, emit, path_string, serialize_path};
 
-pub fn run(ctx: &Ctx, action: RegistryAction) -> Result<()> {
+pub(crate) fn run(ctx: &Ctx, action: RegistryAction) -> Result<()> {
     match action {
         RegistryAction::Show => show(ctx),
         RegistryAction::Validate => validate(ctx),

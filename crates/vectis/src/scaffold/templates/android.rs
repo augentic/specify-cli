@@ -3,7 +3,7 @@
 use crate::scaffold::templates::Capability;
 
 /// One Android template entry.
-pub struct AndroidTemplate {
+pub(crate) struct AndroidTemplate {
     /// Target path under `PROJECT_DIR`, with app/package placeholders allowed.
     pub target: &'static str,
     /// Embedded template contents.
@@ -14,7 +14,7 @@ pub struct AndroidTemplate {
 
 /// Whole-file inclusion predicate.
 #[derive(Debug, Clone, Copy)]
-pub enum IncludeWhen {
+pub(crate) enum IncludeWhen {
     /// File is rendered regardless of selected capabilities.
     Always,
     /// File is rendered iff any listed capability is selected.
@@ -24,7 +24,7 @@ pub enum IncludeWhen {
 impl IncludeWhen {
     /// Should this entry be rendered for the given cap selection?
     #[must_use]
-    pub fn should_include(self, caps: &[Capability]) -> bool {
+    pub(crate) fn should_include(self, caps: &[Capability]) -> bool {
         match self {
             Self::Always => true,
             Self::AnyOf(needed) => needed.iter().any(|c| caps.contains(c)),
@@ -33,7 +33,7 @@ impl IncludeWhen {
 }
 
 /// Embedded Android registry in write/report order.
-pub const TEMPLATES: &[AndroidTemplate] = &[
+pub(crate) const TEMPLATES: &[AndroidTemplate] = &[
     AndroidTemplate {
         target: "Android/Makefile",
         contents: include_str!("../../../../../templates/vectis/android/Makefile"),

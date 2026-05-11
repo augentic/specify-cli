@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use clap::Subcommand;
 
 #[derive(Subcommand)]
-pub enum WorkspaceAction {
+pub(crate) enum WorkspaceAction {
     /// Create symlinks or git clones under `.specify/workspace/<name>/`.
     /// No-op when `registry.yaml` is absent.
     Sync {

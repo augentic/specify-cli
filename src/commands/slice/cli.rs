@@ -8,7 +8,7 @@ use specify_capability::Phase;
 use specify_slice::{CreateIfExists, EntryKind, LifecycleStatus};
 
 #[derive(Subcommand)]
-pub enum SliceAction {
+pub(crate) enum SliceAction {
     /// Create a new slice directory with an initial `.metadata.yaml`
     Create {
         /// Kebab-case slice name
@@ -93,7 +93,7 @@ pub enum SliceAction {
 
 /// Spec-merge subcommands grouped under `slice merge`.
 #[derive(Subcommand)]
-pub enum SliceMergeAction {
+pub(crate) enum SliceMergeAction {
     /// Merge all delta specs for the slice into baseline and archive the slice
     Run {
         /// Slice name
@@ -113,7 +113,7 @@ pub enum SliceMergeAction {
 
 /// Task-list subcommands grouped under `slice task`.
 #[derive(Subcommand)]
-pub enum SliceTaskAction {
+pub(crate) enum SliceTaskAction {
     /// Report task completion counts (total, complete, pending)
     Progress {
         /// Slice name
@@ -130,7 +130,7 @@ pub enum SliceTaskAction {
 
 /// Phase-outcome subcommands grouped under `slice outcome`.
 #[derive(Subcommand)]
-pub enum OutcomeAction {
+pub(crate) enum OutcomeAction {
     /// Record the outcome of a phase (define|build|merge) on `.metadata.yaml`.
     /// The outcome kind is itself a subcommand so each variant carries
     /// only its own flags.
@@ -154,7 +154,7 @@ pub enum OutcomeAction {
 /// Outcome-kind subcommands under `slice outcome set`. Each variant
 /// owns the flags that are valid for it; clap rejects everything else.
 #[derive(Subcommand)]
-pub enum OutcomeKindAction {
+pub(crate) enum OutcomeKindAction {
     /// Phase completed successfully.
     Success {
         /// Short explanation of what happened.
@@ -191,33 +191,33 @@ pub enum OutcomeKindAction {
 /// each `#[arg(long)]` exactly as if it were declared inline on the
 /// variant.
 #[derive(Args)]
-pub struct RegistryAmendmentArgs {
+pub(crate) struct RegistryAmendmentArgs {
     /// Short explanation; defaults to `registry-amendment-required: <proposed-name>`.
     #[arg(long)]
-    pub summary: Option<String>,
+    pub(crate) summary: Option<String>,
     /// Optional verbatim detail.
     #[arg(long)]
-    pub context: Option<String>,
+    pub(crate) context: Option<String>,
     /// Proposed kebab-case project name.
     #[arg(long)]
-    pub proposed_name: String,
+    pub(crate) proposed_name: String,
     /// Proposed clone URL.
     #[arg(long)]
-    pub proposed_url: String,
+    pub(crate) proposed_url: String,
     /// Proposed capability identifier (e.g. `omnia@v1`).
     #[arg(long)]
-    pub proposed_capability: String,
+    pub(crate) proposed_capability: String,
     /// Optional human-readable description of the proposed project.
     #[arg(long)]
-    pub proposed_description: Option<String>,
+    pub(crate) proposed_description: Option<String>,
     /// Rationale prose.
     #[arg(long)]
-    pub rationale: String,
+    pub(crate) rationale: String,
 }
 
 /// Journal subcommands grouped under `slice journal`.
 #[derive(Subcommand)]
-pub enum JournalAction {
+pub(crate) enum JournalAction {
     /// Append an entry to the slice's `journal.yaml`
     Append {
         /// Slice name
@@ -243,7 +243,7 @@ pub enum JournalAction {
 }
 
 #[derive(Debug, Copy, Clone, ValueEnum)]
-pub enum CreateIfExistsArg {
+pub(crate) enum CreateIfExistsArg {
     /// Refuse when the directory exists (default)
     Fail,
     /// Reuse the existing directory — requires a valid `.metadata.yaml`

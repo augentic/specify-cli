@@ -110,7 +110,7 @@ impl Render for StatusBody {
     }
 }
 
-pub fn run(ctx: &Ctx) -> Result<()> {
+pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ctx.project_dir.layout().slices_dir();

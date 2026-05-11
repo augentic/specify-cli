@@ -14,7 +14,7 @@ use crate::cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, Sl
 use crate::context::Ctx;
 use crate::output::CliResult;
 
-pub mod cli;
+pub(crate) mod cli;
 mod journal;
 mod lifecycle;
 mod list;
@@ -47,7 +47,7 @@ pub(super) fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<Art
     ]
 }
 
-pub fn run(ctx: &Ctx, action: SliceAction) -> Result<CliResult> {
+pub(crate) fn run(ctx: &Ctx, action: SliceAction) -> Result<CliResult> {
     // Most arms are pure-Success leaf handlers (return `Result<()>`)
     // — only `validate::run` conditionally surfaces a non-success
     // exit, so we lift the rest into `CliResult::Success` here.

@@ -260,7 +260,7 @@ pub(crate) mod test_support {
     static SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     /// Lock guarding process-wide environment mutations in tests.
-    pub fn env_lock() -> MutexGuard<'static, ()> {
+    pub(crate) fn env_lock() -> MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
             .lock()
@@ -268,7 +268,7 @@ pub(crate) mod test_support {
     }
 
     /// Create a unique temporary directory for tests.
-    pub fn scratch_dir(label: &str) -> PathBuf {
+    pub(crate) fn scratch_dir(label: &str) -> PathBuf {
         let n = SCRATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
         let nanos =
             SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_nanos());
@@ -279,7 +279,7 @@ pub(crate) mod test_support {
     }
 
     /// Run a closure with cache-related environment variables set.
-    pub fn with_cache_env<T>(
+    pub(crate) fn with_cache_env<T>(
         specify_cache: Option<&Path>, xdg_cache: Option<&Path>, home: Option<&Path>,
         f: impl FnOnce() -> T,
     ) -> T {

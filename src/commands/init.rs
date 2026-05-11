@@ -21,7 +21,7 @@ use crate::output::{Render, Stream, emit, path_string};
 /// - hub init requires `--hub` and refuses a `<capability>` positional;
 /// - missing both, or both at once, errors with
 ///   `init-requires-capability-or-hub`.
-pub fn run(
+pub(super) fn run(
     format: OutputFormat, capability: Option<String>, name: Option<String>, domain: Option<String>,
     hub: bool,
 ) -> Result<()> {

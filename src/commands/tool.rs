@@ -1,6 +1,6 @@
 //! `specify tool {run,list,fetch,show,gc}` handlers.
 
-pub mod cli;
+pub(crate) mod cli;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -184,7 +184,7 @@ impl Render for GcBody {
 }
 
 /// Run a declared WASI tool through the concrete WASI host.
-pub fn run(ctx: &Ctx, name: String, args: Vec<String>) -> Result<CliResult> {
+pub(crate) fn run(ctx: &Ctx, name: String, args: Vec<String>) -> Result<CliResult> {
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
     let scoped = find(&inventory, &name)?;
@@ -200,7 +200,7 @@ pub fn run(ctx: &Ctx, name: String, args: Vec<String>) -> Result<CliResult> {
 }
 
 /// List the merged tool declarations for the current project.
-pub fn list(ctx: &Ctx) -> Result<()> {
+pub(crate) fn list(ctx: &Ctx) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let rows = rows_for(&inventory.tools)?;
     let body = ListBody {
@@ -215,7 +215,7 @@ pub fn list(ctx: &Ctx) -> Result<()> {
 }
 
 /// Fetch one declared tool, or all declared tools when no name is supplied.
-pub fn fetch(ctx: &Ctx, name: Option<String>) -> Result<()> {
+pub(crate) fn fetch(ctx: &Ctx, name: Option<String>) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let selected = select(&inventory, name.as_deref())?;
     let mut rows = Vec::with_capacity(selected.len());
@@ -240,7 +240,7 @@ pub fn fetch(ctx: &Ctx, name: Option<String>) -> Result<()> {
 }
 
 /// Show one declared tool's metadata and cache state.
-pub fn show(ctx: &Ctx, name: String) -> Result<()> {
+pub(crate) fn show(ctx: &Ctx, name: String) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let scoped = find(&inventory, &name)?;
     let row = show_row_for(scoped)?;
@@ -256,7 +256,7 @@ pub fn show(ctx: &Ctx, name: String) -> Result<()> {
 }
 
 /// Remove cache entries not referenced by the current project's merged tool list.
-pub fn gc(ctx: &Ctx) -> Result<()> {
+pub(crate) fn gc(ctx: &Ctx) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let mut kept_by_scope = kept_by_scope(&inventory);
     let mut removed = Vec::new();

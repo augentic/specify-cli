@@ -6,7 +6,7 @@ use super::model::{Entry, Plan, Status};
 
 /// Verbatim reproduction of the `rfc-2-execution.md` §"The Plan"
 /// fixture, used by model, io, validate, and next-selector tests.
-pub const RFC_EXAMPLE_YAML: &str = r"name: platform-v2
+pub(super) const RFC_EXAMPLE_YAML: &str = r"name: platform-v2
 sources:
   monolith: /path/to/legacy-codebase
   orders: git@github.com:org/orders-service.git
@@ -66,7 +66,7 @@ slices:
     status: pending
 ";
 
-pub fn plan_with_changes(changes: Vec<Entry>) -> Plan {
+pub(super) fn plan_with_changes(changes: Vec<Entry>) -> Plan {
     Plan {
         name: "test".into(),
         sources: BTreeMap::new(),
@@ -74,7 +74,7 @@ pub fn plan_with_changes(changes: Vec<Entry>) -> Plan {
     }
 }
 
-pub fn change(name: &str, status: Status) -> Entry {
+pub(super) fn change(name: &str, status: Status) -> Entry {
     Entry {
         name: name.into(),
         project: Some("default".into()),
@@ -88,7 +88,7 @@ pub fn change(name: &str, status: Status) -> Entry {
     }
 }
 
-pub fn change_with_deps(name: &str, status: Status, deps: &[&str]) -> Entry {
+pub(super) fn change_with_deps(name: &str, status: Status, deps: &[&str]) -> Entry {
     Entry {
         name: name.into(),
         project: Some("default".into()),

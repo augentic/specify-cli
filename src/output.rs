@@ -12,7 +12,7 @@ use crate::cli::OutputFormat;
 /// rendering that should not interleave with the structured success
 /// stream skills consume.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Stream {
+pub(crate) enum Stream {
     Stdout,
     Stderr,
 }
@@ -108,7 +108,7 @@ impl From<&Error> for CliResult {
 /// - v5 — `initiative → change` / `changes → slices` rename
 ///   (commit `53d19d39`): JSON keys for the change-and-slices
 ///   vocabulary lined up with the on-disk taxonomy.
-pub const JSON_ENVELOPE_VERSION: u64 = 5;
+pub(crate) const JSON_ENVELOPE_VERSION: u64 = 5;
 
 /// Render `err` as a failure envelope and return the matching exit
 /// code. JSON serialises the typed body directly; Text writes
@@ -124,7 +124,7 @@ pub const JSON_ENVELOPE_VERSION: u64 = 5;
 /// (envelope keys + per-row `results`), every other variant builds an
 /// [`ErrorBody`] (envelope keys only). Both wire shapes carry the
 /// shared `error` / `message` / `exit-code` envelope fields.
-pub fn report_error(format: OutputFormat, err: &Error) -> CliResult {
+pub(crate) fn report_error(format: OutputFormat, err: &Error) -> CliResult {
     let code = CliResult::from(err);
     let result = match err {
         Error::Validation { results } => {
@@ -170,7 +170,7 @@ fn write_text_hint(w: &mut dyn Write, err: &Error) -> std::io::Result<()> {
 }
 
 #[derive(Serialize)]
-pub struct JsonEnvelope<T> {
+pub(crate) struct JsonEnvelope<T> {
     #[serde(rename = "schema-version")]
     schema_version: u64,
     #[serde(flatten)]
@@ -217,7 +217,7 @@ fn emit_json<T: Serialize>(stream: Stream, payload: &T) -> Result<(), Error> {
 ///
 /// Implementors keep their text/JSON shapes side-by-side in one place,
 /// and command dispatchers stop hand-rolling `match ctx.format`.
-pub trait Render: Serialize {
+pub(crate) trait Render: Serialize {
     /// Write the human-readable text representation. Implementations
     /// should not append a trailing newline — `emit` adds one when the
     /// renderer leaves the underlying handle mid-line.
@@ -231,7 +231,7 @@ pub trait Render: Serialize {
 /// (`Stream::Stderr`) — there is one entry point for all structured
 /// output. Failure envelopes go through [`report_error`], which
 /// builds the typed body and routes it back through this function.
-pub fn emit<R: Render>(stream: Stream, format: OutputFormat, payload: &R) -> Result<(), Error> {
+pub(crate) fn emit<R: Render>(stream: Stream, format: OutputFormat, payload: &R) -> Result<(), Error> {
     match format {
         OutputFormat::Json => emit_json(stream, payload),
         OutputFormat::Text => match stream {
@@ -260,10 +260,10 @@ pub fn emit<R: Render>(stream: Stream, format: OutputFormat, payload: &R) -> Res
 /// hand-rolled construction outside `src/output.rs`).
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct ErrorBody<'a> {
-    pub error: String,
-    pub message: String,
-    pub exit_code: u8,
+pub(crate) struct ErrorBody<'a> {
+    pub(crate) error: String,
+    pub(crate) message: String,
+    pub(crate) exit_code: u8,
     #[serde(skip)]
     hint_source: &'a Error,
 }
@@ -293,11 +293,11 @@ impl Render for ErrorBody<'_> {
 /// their own row type and reuse [`Validation`] for the envelope.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct ValidationRow<'a> {
-    pub status: ValidationStatus,
-    pub rule_id: &'a str,
-    pub rule: &'a str,
-    pub detail: Option<&'a str>,
+pub(crate) struct ValidationRow<'a> {
+    pub(crate) status: ValidationStatus,
+    pub(crate) rule_id: &'a str,
+    pub(crate) rule: &'a str,
+    pub(crate) detail: Option<&'a str>,
 }
 
 impl<'a> From<&'a ValidationSummary> for ValidationRow<'a> {
@@ -320,8 +320,8 @@ impl<'a> From<&'a ValidationSummary> for ValidationRow<'a> {
 /// - `commands::change::plan::lifecycle::validate` adds `plan`, `passed`.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct Validation<R> {
-    pub results: Vec<R>,
+pub(crate) struct Validation<R> {
+    pub(crate) results: Vec<R>,
 }
 
 impl<R: Serialize + Render> Render for Validation<R> {
@@ -345,12 +345,12 @@ impl<R: Serialize + Render> Render for Validation<R> {
 /// `src/output.rs`).
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct ValidationErrBody<'a> {
-    pub error: &'static str,
-    pub message: String,
-    pub exit_code: u8,
+pub(crate) struct ValidationErrBody<'a> {
+    pub(crate) error: &'static str,
+    pub(crate) message: String,
+    pub(crate) exit_code: u8,
     #[serde(flatten)]
-    pub validation: Validation<ValidationRow<'a>>,
+    pub(crate) validation: Validation<ValidationRow<'a>>,
     #[serde(skip)]
     hint_source: &'a Error,
 }
@@ -379,7 +379,7 @@ impl Render for ValidationErrBody<'_> {
 /// Render `path` as a UTF-8 string, preferring the `canonicalize`
 /// result when the entry exists and falling back to `to_string_lossy`
 /// otherwise.
-pub fn path_string(path: &Path) -> String {
+pub(crate) fn path_string(path: &Path) -> String {
     std::fs::canonicalize(path)
         .ok()
         .map_or_else(|| path.to_string_lossy().into_owned(), |p| p.to_string_lossy().into_owned())
@@ -389,6 +389,6 @@ pub fn path_string(path: &Path) -> String {
 /// fields. Wraps [`path_string`] so the wire shape stays a plain
 /// JSON string with the canonical-or-fallback path representation
 /// every renderer used before paths became typed.
-pub fn serialize_path<S: Serializer>(p: &Path, s: S) -> Result<S::Ok, S::Error> {
+pub(crate) fn serialize_path<S: Serializer>(p: &Path, s: S) -> Result<S::Ok, S::Error> {
     s.collect_str(&path_string(p))
 }

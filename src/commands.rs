@@ -6,17 +6,17 @@
     reason = "Clap dispatch hands owned subcommand values to these command handlers."
 )]
 
-pub mod capability;
-pub mod change;
-pub mod codex;
-pub mod compatibility;
-pub mod context;
+pub(crate) mod capability;
+pub(crate) mod change;
+pub(crate) mod codex;
+pub(crate) mod compatibility;
+pub(crate) mod context;
 mod init;
-pub mod registry;
-pub mod slice;
+pub(crate) mod registry;
+pub(crate) mod slice;
 mod status;
-pub mod tool;
-pub mod workspace;
+pub(crate) mod tool;
+pub(crate) mod workspace;
 
 use specify_error::Result;
 
@@ -46,7 +46,7 @@ impl IntoCliResult for () {
     }
 }
 
-pub fn run(cli: Cli) -> CliResult {
+pub(crate) fn run(cli: Cli) -> CliResult {
     let format = cli.format;
     match cli.command {
         Commands::Init {

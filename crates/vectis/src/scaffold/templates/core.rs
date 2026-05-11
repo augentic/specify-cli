@@ -1,7 +1,7 @@
 //! Embedded core templates plus their source-to-target path mapping.
 
 /// One core template entry.
-pub struct CoreTemplate {
+pub(crate) struct CoreTemplate {
     /// Target path under `PROJECT_DIR`.
     pub target: &'static str,
     /// Embedded template contents.
@@ -9,7 +9,7 @@ pub struct CoreTemplate {
 }
 
 /// Embedded core registry in write/report order.
-pub const TEMPLATES: &[CoreTemplate] = &[
+pub(crate) const TEMPLATES: &[CoreTemplate] = &[
     CoreTemplate {
         target: "Cargo.toml",
         contents: include_str!("../../../../../templates/vectis/core/workspace-cargo.toml"),

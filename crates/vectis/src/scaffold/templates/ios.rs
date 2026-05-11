@@ -1,7 +1,7 @@
 //! Embedded iOS templates plus their source-to-target path mapping.
 
 /// One iOS template entry.
-pub struct IosTemplate {
+pub(crate) struct IosTemplate {
     /// Target path under `PROJECT_DIR`, with app placeholders allowed.
     pub target: &'static str,
     /// Embedded template contents.
@@ -9,7 +9,7 @@ pub struct IosTemplate {
 }
 
 /// Embedded iOS registry in write/report order.
-pub const TEMPLATES: &[IosTemplate] = &[
+pub(crate) const TEMPLATES: &[IosTemplate] = &[
     IosTemplate {
         target: "iOS/project.yml",
         contents: include_str!("../../../../../templates/vectis/ios/project.yml"),

@@ -8,7 +8,7 @@ use clap::Subcommand;
 
 /// Refreshable repository context for agent-facing guidance.
 #[derive(Subcommand)]
-pub enum ContextAction {
+pub(crate) enum ContextAction {
     /// Generate or refresh the managed `AGENTS.md` context block.
     Generate {
         /// Exit non-zero if AGENTS.md or the context lock would change; do not write.

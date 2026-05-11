@@ -9,7 +9,7 @@ use super::{PlanRef, change_entry_json, check_project, load_for_write, plan_ref}
 use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
-pub fn add(
+pub(super) fn add(
     ctx: &Ctx, name: String, depends_on: Vec<String>, sources: Vec<String>,
     description: Option<String>, project: Option<String>, capability: Option<String>,
     context: Vec<String>,
@@ -49,7 +49,7 @@ pub fn add(
     Ok(())
 }
 
-pub fn amend(
+pub(super) fn amend(
     ctx: &Ctx, name: String, depends_on: Option<Vec<String>>,
     sources: Option<Vec<String>>, description: Option<String>, project: Option<String>,
     capability: Option<String>, context: Option<Vec<String>>,

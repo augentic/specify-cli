@@ -3,7 +3,7 @@
     reason = "Plan dispatcher passes through clap-shaped argument tuples."
 )]
 
-pub mod cli;
+pub(crate) mod cli;
 mod create;
 mod doctor;
 mod lifecycle;
@@ -24,7 +24,7 @@ use crate::context::Ctx;
 use crate::output::CliResult;
 pub(super) use crate::output::path_string;
 
-pub fn run(ctx: &Ctx, action: PlanAction) -> Result<CliResult> {
+pub(super) fn run(ctx: &Ctx, action: PlanAction) -> Result<CliResult> {
     // Most arms emit unconditionally and return `Result<()>`; only
     // `validate`, `doctor`, and `archive` surface non-success exits
     // (`ValidationFailed` / `GenericFailure`). Lift the rest into
@@ -76,7 +76,7 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<CliResult> {
 /// Ensure the plan file exists before we try to load it. Error text is
 /// the stable "plan file not found: plan.yaml" string that skill
 /// authors match on.
-pub fn require_file(project_dir: &Path) -> Result<PathBuf> {
+pub(super) fn require_file(project_dir: &Path) -> Result<PathBuf> {
     let path = project_dir.layout().plan_path();
     if !path.exists() {
         return Err(Error::ArtifactNotFound {

@@ -66,7 +66,7 @@ pub fn run(args: &ValidateArgs) -> Result<CommandOutcome, VectisError> {
 /// inside [`CommandOutcome::Success`]). Used by composition mode to
 /// fold sibling tokens / assets envelopes, and by `validate all` to
 /// dispatch each sub-mode in turn.
-pub fn run_inner(mode: ValidateMode, path: &Path) -> Result<Value, VectisError> {
+pub(super) fn run_inner(mode: ValidateMode, path: &Path) -> Result<Value, VectisError> {
     let inner_args = ValidateArgs {
         mode,
         path: Some(path.to_path_buf()),

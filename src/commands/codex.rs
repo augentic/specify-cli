@@ -1,4 +1,4 @@
-pub mod cli;
+pub(crate) mod cli;
 
 use std::io::Write;
 
@@ -11,7 +11,7 @@ use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, Validation, ValidationRow, emit, path_string};
 
 /// Dispatch `specify codex *`.
-pub fn run(ctx: &Ctx, action: CodexAction) -> Result<CliResult> {
+pub(crate) fn run(ctx: &Ctx, action: CodexAction) -> Result<CliResult> {
     // `validate` is the only arm that surfaces a non-success exit
     // (`CliResult::ValidationFailed` when the codex is malformed);
     // the others return `Result<()>` and lift to `Success` here.
