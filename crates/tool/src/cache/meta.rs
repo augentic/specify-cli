@@ -59,6 +59,9 @@ pub struct Sidecar {
 impl Sidecar {
     /// Construct a v1 sidecar from a live declaration tuple.
     ///
+    /// `now` records the `fetched_at` stamp; the resolver supplies
+    /// `Utc::now` and tests pin a deterministic value.
+    ///
     /// # Errors
     ///
     /// Returns `ToolError::InvalidCacheSegment` when the scope's project name
@@ -68,7 +71,7 @@ impl Sidecar {
     pub fn new(
         scope: &ToolScope, tool_name: impl Into<String>, tool_version: impl Into<String>,
         source: impl Into<String>, permissions_snapshot: PermissionsSnapshot,
-        sha256: Option<String>,
+        sha256: Option<String>, now: DateTime<Utc>,
     ) -> Result<Self, ToolError> {
         Ok(Self {
             schema_version: SIDECAR_SCHEMA_VERSION,
@@ -76,7 +79,7 @@ impl Sidecar {
             tool_name: tool_name.into(),
             tool_version: tool_version.into(),
             source: source.into(),
-            fetched_at: Utc::now(),
+            fetched_at: now,
             permissions_snapshot,
             sha256,
         })

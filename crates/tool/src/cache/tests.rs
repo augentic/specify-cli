@@ -20,7 +20,7 @@ fn capability_scope() -> ToolScope {
 }
 
 fn fixed_sidecar(scope: &ToolScope, name: &str, version: &str, source: &str) -> Sidecar {
-    let mut sidecar = Sidecar::new(
+    Sidecar::new(
         scope,
         name,
         version,
@@ -30,10 +30,9 @@ fn fixed_sidecar(scope: &ToolScope, name: &str, version: &str, source: &str) -> 
             write: Vec::new(),
         },
         Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string()),
+        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp"),
     )
-    .expect("sidecar");
-    sidecar.fetched_at = "2026-05-07T00:00:00Z".parse().expect("timestamp");
-    sidecar
+    .expect("sidecar")
 }
 
 fn write_cached_version(scope: &ToolScope, name: &str, version: &str, source: &str) -> PathBuf {

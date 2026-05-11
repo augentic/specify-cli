@@ -49,6 +49,7 @@
 
 use std::path::Path;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use specify_config::LayoutExt;
 use specify_error::Error;
@@ -248,6 +249,9 @@ pub struct Inputs<'a> {
     pub clean: bool,
     /// `--dry-run` flag.
     pub dry_run: bool,
+    /// Wall-clock instant supplied by the dispatcher; the archive sweep
+    /// stamps the `<plan>-<YYYYMMDD>` segment from this value.
+    pub now: DateTime<Utc>,
 }
 
 /// Top-level error sentinel for finalize.
@@ -337,7 +341,7 @@ pub fn run<P: Probe>(inputs: Inputs<'_>, probe: &P) -> Result<Outcome, Refusal> 
     }
 
     // All guards passed — archive (atomic) and optionally clean.
-    if !archive::sweep(inputs.project_dir, &mut outcome) {
+    if !archive::sweep(inputs.project_dir, &mut outcome, inputs.now) {
         return Ok(outcome);
     }
 

@@ -1,5 +1,6 @@
 use std::io::Write;
 
+use chrono::Utc;
 use serde::Serialize;
 use specify_capability::ChangeBrief;
 use specify_change::{Finding, Plan, Severity, Status};
@@ -197,7 +198,7 @@ pub fn archive(ctx: &Ctx, force: bool) -> Result<CliResult> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let plan_name = Plan::load(&plan_path)?.name;
 
-    match Plan::archive(&plan_path, &brief_path, &archive_dir, force) {
+    match Plan::archive(&plan_path, &brief_path, &archive_dir, force, Utc::now()) {
         Ok((archived, archived_plans_dir)) => {
             emit(
                 Stream::Stdout,

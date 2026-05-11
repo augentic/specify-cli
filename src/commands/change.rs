@@ -4,6 +4,7 @@ pub mod plan;
 use std::io::Write;
 use std::path::PathBuf;
 
+use chrono::Utc;
 use serde::Serialize;
 use specify_capability::{ChangeBrief, ChangeFrontmatter, InputKind};
 use specify_change::finalize;
@@ -108,6 +109,7 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<CliResult> {
         registry: &registry,
         clean,
         dry_run,
+        now: Utc::now(),
     };
 
     match finalize::run(inputs, &probe) {

@@ -1,6 +1,7 @@
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
+use chrono::Utc;
 use serde::Serialize;
 use specify_config::{ProjectConfig, is_workspace_clone_path};
 use specify_error::{Error, Result};
@@ -43,7 +44,7 @@ pub fn run(
         hub,
     };
 
-    let result = init(opts)?;
+    let result = init(opts, Utc::now())?;
     let current_dir = std::env::current_dir().map_err(Error::Io)?;
     let context_generation = generate_initial_context(format, &current_dir)?;
     emit_init_result(format, &result, hub, context_generation)

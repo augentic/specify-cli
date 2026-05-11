@@ -32,6 +32,7 @@ mod regular;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Utc};
 use specify_config::{LayoutExt, ProjectConfig};
 use specify_error::Error;
 
@@ -100,6 +101,9 @@ pub struct InitResult {
 /// When [`InitOptions::hub`] is `true`, dispatches to the private hub
 /// runner for the platform-hub on-disk shape.
 ///
+/// `now` records the `cache_meta.yaml::fetched_at` stamp; the dispatcher
+/// passes `Utc::now` and tests pin a deterministic value.
+///
 /// # Errors
 ///
 /// Pre-condition: regular (non-hub) init requires
@@ -109,11 +113,11 @@ pub struct InitResult {
 /// filesystem, capability resolution, and serialisation errors from
 /// the underlying calls.
 #[allow(clippy::needless_pass_by_value)]
-pub fn init(opts: InitOptions<'_>) -> Result<InitResult, Error> {
+pub fn init(opts: InitOptions<'_>, now: DateTime<Utc>) -> Result<InitResult, Error> {
     if opts.hub {
         return hub::run(opts);
     }
-    regular::run(opts)
+    regular::run(opts, now)
 }
 
 pub(crate) fn resolved_name(project_dir: &Path, explicit: Option<&str>) -> String {
@@ -158,17 +162,24 @@ mod tests {
 
     use super::*;
 
+    fn fixed_now() -> DateTime<Utc> {
+        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
+    }
+
     #[test]
     fn regular_init_rejects_missing_capability() {
         let tmp = tempdir().unwrap();
-        let err = init(InitOptions {
-            project_dir: tmp.path(),
-            capability: None,
-            name: Some("demo"),
-            domain: None,
-            version_mode: VersionMode::WriteCurrent,
-            hub: false,
-        })
+        let err = init(
+            InitOptions {
+                project_dir: tmp.path(),
+                capability: None,
+                name: Some("demo"),
+                domain: None,
+                version_mode: VersionMode::WriteCurrent,
+                hub: false,
+            },
+            fixed_now(),
+        )
         .expect_err("missing capability must error");
         assert!(matches!(err, Error::InitNeedsCapability), "got: {err:?}");
     }
@@ -179,14 +190,17 @@ mod tests {
         // orchestrator re-checks even when the CLI layer already
         // filtered.
         let tmp = tempdir().unwrap();
-        let err = init(InitOptions {
-            project_dir: tmp.path(),
-            capability: Some("omnia"),
-            name: Some("platform-hub"),
-            domain: None,
-            version_mode: VersionMode::WriteCurrent,
-            hub: true,
-        })
+        let err = init(
+            InitOptions {
+                project_dir: tmp.path(),
+                capability: Some("omnia"),
+                name: Some("platform-hub"),
+                domain: None,
+                version_mode: VersionMode::WriteCurrent,
+                hub: true,
+            },
+            fixed_now(),
+        )
         .expect_err("hub + capability must error");
         assert!(matches!(err, Error::InitNeedsCapability), "got: {err:?}");
     }

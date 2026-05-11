@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Utc};
 use specify_error::Error;
 use specify_slice::actions::move_atomic;
 
@@ -48,6 +49,9 @@ impl Plan {
     /// file when present so operators do not orphan it alongside the
     /// closed plan.
     ///
+    /// `now` supplies the `YYYYMMDD` segment in the destination name;
+    /// dispatchers pass `Utc::now` and tests pin a fixed value.
+    ///
     /// # Errors
     ///
     /// Errors when archive targets already exist, when load/move
@@ -55,6 +59,7 @@ impl Plan {
     /// `force`.
     pub fn archive(
         path: &Path, change_brief_path: &Path, archive_dir: &Path, force: bool,
+        now: DateTime<Utc>,
     ) -> Result<(PathBuf, Option<PathBuf>), Error> {
         let plan = Self::load(path)?;
 
@@ -70,7 +75,7 @@ impl Plan {
             }
         }
 
-        let today = chrono::Utc::now().format("%Y%m%d").to_string();
+        let today = now.format("%Y%m%d").to_string();
         let dest_plan = archive_dir.join(format!("{}-{}.yaml", plan.name, today));
 
         let project_root = path.parent();

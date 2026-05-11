@@ -1,12 +1,14 @@
 //! Source resolution for local paths, `file:` URIs, and `https:` URIs.
 
 use std::ffi::OsStr;
-use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{fs, io};
 
 use sha2::{Digest, Sha256};
+use tempfile::NamedTempFile;
 use ureq::ResponseExt;
 
 use crate::cache::{
@@ -15,8 +17,22 @@ use crate::cache::{
 use crate::error::ToolError;
 use crate::manifest::{Tool, ToolScope, ToolSource};
 
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Whole-call cap; covers DNS + connect + headers + body.
+const REQUEST_TIMEOUT: Duration = Duration::from_mins(2);
+/// TCP + TLS handshake.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Sending request headers / body. WASI tool fetches issue empty bodies, but
+/// the explicit cap defends against a peer that stalls during the request.
+const SEND_TIMEOUT: Duration = Duration::from_secs(30);
+/// Receiving the response body. Generous to allow large WASI components on
+/// slow links without breaching the global cap.
+const RECV_BODY_TIMEOUT: Duration = Duration::from_mins(1);
+/// Receiving the response headers.
+const RECV_HEADERS_TIMEOUT: Duration = Duration::from_secs(30);
+/// Maximum accepted WASI component download size. Larger payloads abort
+/// streaming before they exhaust the cache filesystem.
 const MAX_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
+const STREAM_CHUNK_BYTES: usize = 64 * 1024;
 const MAX_TEMP_ATTEMPTS: u8 = 64;
 const USER_AGENT: &str =
     concat!("specify-tool/", env!("CARGO_PKG_VERSION"), " (+https://github.com/augentic/specify)");
@@ -41,11 +57,16 @@ pub struct ResolvedTool {
 /// digest. Misses and digest refreshes stage `module.wasm` and `meta.yaml`
 /// together, then atomically install the complete version directory.
 ///
+/// `now` records the sidecar `fetched_at`; the dispatcher passes
+/// `Utc::now`, tests pin a deterministic stamp.
+///
 /// # Errors
 ///
 /// Returns cache errors, source read errors, digest mismatches, or typed network
 /// resolver errors.
-pub fn resolve(scope: &ToolScope, tool: &Tool) -> Result<ResolvedTool, ToolError> {
+pub fn resolve(
+    scope: &ToolScope, tool: &Tool, now: chrono::DateTime<chrono::Utc>,
+) -> Result<ResolvedTool, ToolError> {
     let source = tool.source.to_wire_string().into_owned();
     let module = cache::module_path(scope, &tool.name, &tool.version)?;
     if cache::cache_status(scope, &tool.name, &tool.version, &source, tool.sha256.as_deref())?
@@ -55,10 +76,44 @@ pub fn resolve(scope: &ToolScope, tool: &Tool) -> Result<ResolvedTool, ToolError
         return Ok(resolved(scope, tool, module));
     }
 
-    let bytes = read_source_bytes(&tool.source)?;
-    validate_resolved_bytes(&source, &bytes, tool.sha256.as_deref())?;
-    let bytes_path = install_bytes(scope, tool, &source, &bytes)?;
-    Ok(resolved(scope, tool, bytes_path))
+    let dest = cache::tool_dir(scope, &tool.name, &tool.version)?;
+    let staged = unique_staging_dir(&dest)?;
+    let install_result = stage_and_install(scope, tool, &source, &staged, &dest, now);
+    // The atomic install moves `staged/` into `dest/`, so its absence on
+    // success is expected. On failure we tear down the staging tree.
+    let cleanup_result = if install_result.is_ok() && !staged.exists() {
+        Ok(())
+    } else {
+        fs::remove_dir_all(&staged)
+    };
+    match (install_result, cleanup_result) {
+        (Ok(()), Ok(())) => Ok(resolved(scope, tool, dest.join(MODULE_FILENAME))),
+        (Ok(()), Err(err)) => {
+            Err(ToolError::cache_io("remove resolver staging directory", staged, err))
+        }
+        (Err(err), _) => Err(err),
+    }
+}
+
+fn stage_and_install(
+    scope: &ToolScope, tool: &Tool, source: &str, staged: &Path, dest: &Path,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), ToolError> {
+    let module_dest = staged.join(MODULE_FILENAME);
+    let acquired = acquire_source_bytes(&tool.source, &module_dest)?;
+    validate_acquired_bytes(source, &acquired, tool.sha256.as_deref())?;
+    acquired.persist_to(&module_dest)?;
+    let sidecar = Sidecar::new(
+        scope,
+        &tool.name,
+        &tool.version,
+        source,
+        PermissionsSnapshot::from(&tool.permissions),
+        tool.sha256.clone(),
+        now,
+    )?;
+    cache::write_sidecar(&staged.join(SIDECAR_FILENAME), &sidecar)?;
+    cache::stage_and_install(staged, dest)
 }
 
 fn resolved(scope: &ToolScope, tool: &Tool, bytes_path: PathBuf) -> ResolvedTool {
@@ -79,11 +134,59 @@ fn cached_digest_matches(module: &Path, expected: Option<&str>) -> Result<bool, 
     Ok(sha256_hex(&bytes) == expected)
 }
 
-fn read_source_bytes(source: &ToolSource) -> Result<Vec<u8>, ToolError> {
+/// Bytes acquired from a tool source, ready for digest validation and
+/// installation into the cache. HTTPS streams to a sibling `NamedTempFile`
+/// (so the bytes never live in a `Vec`); local sources read into memory
+/// because their bodies are bounded by the on-disk source file.
+#[derive(Debug)]
+enum AcquiredBytes {
+    Buffered(Vec<u8>),
+    Streamed { temp: NamedTempFile, sha256: String },
+}
+
+impl AcquiredBytes {
+    fn len(&self) -> Result<u64, ToolError> {
+        match self {
+            Self::Buffered(bytes) => Ok(bytes.len() as u64),
+            Self::Streamed { temp, .. } => temp
+                .as_file()
+                .metadata()
+                .map(|m| m.len())
+                .map_err(|err| ToolError::cache_io("stat staged tool body", temp.path(), err)),
+        }
+    }
+
+    fn sha256_hex(&self) -> String {
+        match self {
+            Self::Buffered(bytes) => sha256_hex(bytes),
+            Self::Streamed { sha256, .. } => sha256.clone(),
+        }
+    }
+
+    fn persist_to(self, dest: &Path) -> Result<(), ToolError> {
+        match self {
+            Self::Buffered(bytes) => fs::write(dest, bytes)
+                .map_err(|err| ToolError::cache_io("write staged module", dest, err)),
+            Self::Streamed { temp, .. } => temp.persist(dest).map(|_| ()).map_err(|err| {
+                ToolError::AtomicMoveFailed {
+                    from: err.file.path().to_path_buf(),
+                    to: dest.to_path_buf(),
+                    source: err.error,
+                }
+            }),
+        }
+    }
+}
+
+fn acquire_source_bytes(
+    source: &ToolSource, dest_hint: &Path,
+) -> Result<AcquiredBytes, ToolError> {
     match source {
-        ToolSource::LocalPath(path) => read_local_path(path, &path.to_string_lossy()),
-        ToolSource::FileUri(uri) => read_file_uri(uri),
-        ToolSource::HttpsUri(url) => download_https(url),
+        ToolSource::LocalPath(path) => {
+            read_local_path(path, &path.to_string_lossy()).map(AcquiredBytes::Buffered)
+        }
+        ToolSource::FileUri(uri) => read_file_uri(uri).map(AcquiredBytes::Buffered),
+        ToolSource::HttpsUri(url) => download_https(url, dest_hint),
     }
 }
 
@@ -112,7 +215,7 @@ fn read_local_path(path: &Path, source: &str) -> Result<Vec<u8>, ToolError> {
     fs::read(path).map_err(|err| ToolError::source_io("read local source", path, err))
 }
 
-fn download_https(url: &str) -> Result<Vec<u8>, ToolError> {
+fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredBytes, ToolError> {
     if !url.starts_with("https://") {
         return Err(ToolError::invalid_source(
             url,
@@ -137,6 +240,8 @@ fn download_https(url: &str) -> Result<Vec<u8>, ToolError> {
         });
     }
 
+    // Fail fast when the server advertises a body larger than the cap. Without
+    // a Content-Length the cap is enforced while streaming below.
     if let Some(length) = response.body().content_length()
         && length > MAX_RESPONSE_BYTES
     {
@@ -147,25 +252,75 @@ fn download_https(url: &str) -> Result<Vec<u8>, ToolError> {
         });
     }
 
-    let bytes = response
-        .body_mut()
-        .with_config()
-        .limit(MAX_RESPONSE_BYTES + 1)
-        .read_to_vec()
-        .map_err(|err| map_network_body_error(url, err))?;
-    if bytes.len() as u64 > MAX_RESPONSE_BYTES {
-        return Err(ToolError::NetworkTooLarge {
-            url: url.to_string(),
-            limit: MAX_RESPONSE_BYTES,
-            actual: Some(bytes.len() as u64),
-        });
+    let temp_parent = dest_hint.parent().ok_or_else(|| {
+        ToolError::CacheRoot(format!(
+            "tool download destination has no parent: {}",
+            dest_hint.display()
+        ))
+    })?;
+    fs::create_dir_all(temp_parent)
+        .map_err(|err| ToolError::cache_io("create download staging parent", temp_parent, err))?;
+    let temp = NamedTempFile::new_in(temp_parent)
+        .map_err(|err| ToolError::cache_io("create download tempfile", temp_parent, err))?;
+
+    let mut reader = response.body_mut().with_config().limit(MAX_RESPONSE_BYTES + 1).reader();
+    let sha256 = stream_to_tempfile(url, &mut reader, &temp)?;
+    Ok(AcquiredBytes::Streamed { temp, sha256 })
+}
+
+fn stream_to_tempfile<R: Read>(
+    url: &str, reader: &mut R, temp: &NamedTempFile,
+) -> Result<String, ToolError> {
+    let mut hasher = Sha256::new();
+    let mut writer = io::BufWriter::with_capacity(STREAM_CHUNK_BYTES, temp.as_file());
+    let mut buf = vec![0u8; STREAM_CHUNK_BYTES];
+    let mut total: u64 = 0;
+    loop {
+        let n = match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(err) => {
+                if let Some(ureq_err) = err.get_ref().and_then(|e| e.downcast_ref::<ureq::Error>())
+                {
+                    return Err(map_streamed_body_error(url, ureq_err));
+                }
+                return Err(ToolError::Network {
+                    url: url.to_string(),
+                    detail: err.to_string(),
+                });
+            }
+        };
+        total = total.saturating_add(n as u64);
+        if total > MAX_RESPONSE_BYTES {
+            return Err(ToolError::NetworkTooLarge {
+                url: url.to_string(),
+                limit: MAX_RESPONSE_BYTES,
+                actual: Some(total),
+            });
+        }
+        hasher.update(&buf[..n]);
+        writer.write_all(&buf[..n]).map_err(|err| {
+            ToolError::cache_io("write download tempfile", temp.path(), err)
+        })?;
     }
-    Ok(bytes)
+    writer
+        .flush()
+        .map_err(|err| ToolError::cache_io("flush download tempfile", temp.path(), err))?;
+    drop(writer);
+    temp.as_file()
+        .sync_all()
+        .map_err(|err| ToolError::cache_io("sync download tempfile", temp.path(), err))?;
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn https_agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_global(Some(REQUEST_TIMEOUT))
+        .timeout_connect(Some(CONNECT_TIMEOUT))
+        .timeout_send_request(Some(SEND_TIMEOUT))
+        .timeout_send_body(Some(SEND_TIMEOUT))
+        .timeout_recv_response(Some(RECV_HEADERS_TIMEOUT))
+        .timeout_recv_body(Some(RECV_BODY_TIMEOUT))
         .https_only(true)
         .http_status_as_error(false)
         .user_agent(USER_AGENT)
@@ -204,7 +359,7 @@ fn map_network_error(url: &str, err: ureq::Error) -> ToolError {
     }
 }
 
-fn map_network_body_error(url: &str, err: ureq::Error) -> ToolError {
+fn map_streamed_body_error(url: &str, err: &ureq::Error) -> ToolError {
     match err {
         ureq::Error::Timeout(timeout) => ToolError::NetworkTimeout {
             url: url.to_string(),
@@ -213,7 +368,7 @@ fn map_network_body_error(url: &str, err: ureq::Error) -> ToolError {
         ureq::Error::BodyExceedsLimit(limit) => ToolError::NetworkTooLarge {
             url: url.to_string(),
             limit: MAX_RESPONSE_BYTES,
-            actual: Some(limit),
+            actual: Some(*limit),
         },
         err => ToolError::Network {
             url: url.to_string(),
@@ -222,17 +377,17 @@ fn map_network_body_error(url: &str, err: ureq::Error) -> ToolError {
     }
 }
 
-fn validate_resolved_bytes(
-    source: &str, bytes: &[u8], expected_sha256: Option<&str>,
+fn validate_acquired_bytes(
+    source: &str, acquired: &AcquiredBytes, expected_sha256: Option<&str>,
 ) -> Result<(), ToolError> {
-    if bytes.is_empty() {
+    if acquired.len()? == 0 {
         return Err(ToolError::EmptySource {
             source_value: source.to_string(),
         });
     }
 
     if let Some(expected) = expected_sha256 {
-        let actual = sha256_hex(bytes);
+        let actual = acquired.sha256_hex();
         if actual != expected {
             return Err(ToolError::DigestMismatch {
                 source_value: source.to_string(),
@@ -242,38 +397,6 @@ fn validate_resolved_bytes(
         }
     }
     Ok(())
-}
-
-fn install_bytes(
-    scope: &ToolScope, tool: &Tool, source: &str, bytes: &[u8],
-) -> Result<PathBuf, ToolError> {
-    let dest = cache::tool_dir(scope, &tool.name, &tool.version)?;
-    let staged = unique_staging_dir(&dest)?;
-    fs::write(staged.join(MODULE_FILENAME), bytes).map_err(|err| {
-        ToolError::cache_io("write staged module", staged.join(MODULE_FILENAME), err)
-    })?;
-    let sidecar = Sidecar::new(
-        scope,
-        &tool.name,
-        &tool.version,
-        source,
-        PermissionsSnapshot::from(&tool.permissions),
-        tool.sha256.clone(),
-    )?;
-    cache::write_sidecar(&staged.join(SIDECAR_FILENAME), &sidecar)?;
-
-    let install_result = cache::stage_and_install(&staged, &dest);
-    let cleanup_result = fs::remove_dir_all(&staged);
-    match (install_result, cleanup_result) {
-        (Ok(()), Ok(())) => Ok(dest.join(MODULE_FILENAME)),
-        (Ok(()), Err(err)) => {
-            Err(ToolError::cache_io("remove resolver staging directory", staged, err))
-        }
-        (Err(err), _) => {
-            let _ = fs::remove_dir_all(&staged);
-            Err(err)
-        }
-    }
 }
 
 fn unique_staging_dir(dest: &Path) -> Result<PathBuf, ToolError> {
@@ -321,9 +444,15 @@ mod tests {
     use std::fs;
     use std::net::TcpListener;
 
+    use chrono::{DateTime, Utc};
+
     use super::*;
     use crate::manifest::{ToolPermissions, ToolSource};
     use crate::test_support::{scratch_dir, with_cache_env};
+
+    fn fixed_now() -> DateTime<Utc> {
+        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
+    }
 
     fn project_scope() -> ToolScope {
         ToolScope::Project {
@@ -376,16 +505,16 @@ mod tests {
         let first_tool = tool(ToolSource::LocalPath(first.clone()), None);
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let resolved = resolve(&scope, &first_tool).expect("cache miss resolves");
+            let resolved = resolve(&scope, &first_tool, fixed_now()).expect("cache miss resolves");
             assert_eq!(fs::read(&resolved.bytes_path).expect("cached bytes"), b"first");
 
             fs::write(&first, b"changed-at-source").expect("mutate source");
-            let hit = resolve(&scope, &first_tool).expect("cache hit resolves");
+            let hit = resolve(&scope, &first_tool, fixed_now()).expect("cache hit resolves");
             assert_eq!(hit.bytes_path, resolved.bytes_path);
             assert_eq!(cached_bytes(&scope, &first_tool), b"first");
 
             let changed_tool = tool(ToolSource::LocalPath(second), None);
-            let changed = resolve(&scope, &changed_tool).expect("changed source re-stages");
+            let changed = resolve(&scope, &changed_tool, fixed_now()).expect("changed source re-stages");
             assert_eq!(changed.bytes_path, resolved.bytes_path);
             assert_eq!(cached_bytes(&scope, &changed_tool), b"second");
         });
@@ -405,14 +534,14 @@ mod tests {
         let wrong_tool = tool(ToolSource::LocalPath(new_source.clone()), Some(wrong_sha));
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            resolve(&scope, &old_tool).expect("initial digest install");
-            let err = resolve(&scope, &wrong_tool).expect_err("wrong digest must fail");
+            resolve(&scope, &old_tool, fixed_now()).expect("initial digest install");
+            let err = resolve(&scope, &wrong_tool, fixed_now()).expect_err("wrong digest must fail");
             assert!(matches!(err, ToolError::DigestMismatch { .. }), "{err}");
             assert_eq!(cached_bytes(&scope, &old_tool), b"old-good");
 
             let correct_tool =
                 tool(ToolSource::LocalPath(new_source), Some(sha256_hex(b"new-good")));
-            resolve(&scope, &correct_tool).expect("correct digest updates cache");
+            resolve(&scope, &correct_tool, fixed_now()).expect("correct digest updates cache");
             assert_eq!(cached_bytes(&scope, &correct_tool), b"new-good");
         });
     }
@@ -426,9 +555,9 @@ mod tests {
         let pinned = tool(ToolSource::LocalPath(source), Some(sha256_hex(b"trusted")));
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let resolved = resolve(&scope, &pinned).expect("install pinned");
+            let resolved = resolve(&scope, &pinned, fixed_now()).expect("install pinned");
             fs::write(&resolved.bytes_path, b"corrupt").expect("corrupt cache");
-            let repaired = resolve(&scope, &pinned).expect("digest mismatch re-fetches");
+            let repaired = resolve(&scope, &pinned, fixed_now()).expect("digest mismatch re-fetches");
             assert_eq!(repaired.bytes_path, resolved.bytes_path);
             assert_eq!(fs::read(repaired.bytes_path).expect("repaired bytes"), b"trusted");
         });
@@ -448,8 +577,8 @@ mod tests {
         );
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let local = resolve(&scope, &local).expect("local resolves");
-            let uri = resolve(&scope, &file_uri).expect("file URI resolves");
+            let local = resolve(&scope, &local, fixed_now()).expect("local resolves");
+            let uri = resolve(&scope, &file_uri, fixed_now()).expect("file URI resolves");
             assert_eq!(fs::read(local.bytes_path).expect("local bytes"), b"file-uri");
             assert_eq!(fs::read(uri.bytes_path).expect("uri bytes"), b"file-uri");
         });
@@ -463,12 +592,17 @@ mod tests {
         let scope = project_scope();
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let dir_err = resolve(&scope, &tool(ToolSource::LocalPath(source_dir.clone()), None))
-                .expect_err("directory source must fail");
+            let dir_err = resolve(
+                &scope,
+                &tool(ToolSource::LocalPath(source_dir.clone()), None),
+                fixed_now(),
+            )
+            .expect_err("directory source must fail");
             assert!(matches!(dir_err, ToolError::InvalidSource { .. }), "{dir_err}");
 
             let empty_err =
-                resolve(&scope, &tool(ToolSource::LocalPath(empty), None)).expect_err("empty file");
+                resolve(&scope, &tool(ToolSource::LocalPath(empty), None), fixed_now())
+                    .expect_err("empty file");
             assert!(matches!(empty_err, ToolError::EmptySource { .. }), "{empty_err}");
         });
     }
@@ -485,7 +619,7 @@ mod tests {
         let symlink_tool = tool(ToolSource::LocalPath(link), None);
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let resolved = resolve(&scope, &symlink_tool).expect("symlink resolves");
+            let resolved = resolve(&scope, &symlink_tool, fixed_now()).expect("symlink resolves");
             assert_eq!(fs::read(resolved.bytes_path).expect("cached bytes"), b"symlink-target");
         });
     }
@@ -501,8 +635,8 @@ mod tests {
         let declared = tool(ToolSource::LocalPath(source), None);
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let project_resolved = resolve(&project, &declared).expect("project resolve");
-            let capability_resolved = resolve(&capability, &declared).expect("capability resolve");
+            let project_resolved = resolve(&project, &declared, fixed_now()).expect("project resolve");
+            let capability_resolved = resolve(&capability, &declared, fixed_now()).expect("capability resolve");
             assert_ne!(project_resolved.bytes_path, capability_resolved.bytes_path);
             assert!(project_resolved.bytes_path.to_string_lossy().contains("project--demo"));
             assert!(
@@ -518,14 +652,15 @@ mod tests {
         let declared = tool(ToolSource::HttpsUri("http://127.0.0.1/tool.wasm".to_string()), None);
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let err = resolve(&scope, &declared).expect_err("http must be rejected");
+            let err = resolve(&scope, &declared, fixed_now()).expect_err("http must be rejected");
             assert!(matches!(err, ToolError::InvalidSource { .. }), "{err}");
         });
     }
 
     #[test]
     fn malformed_https_url_returns_typed_error() {
-        let err = download_https("https://").expect_err("malformed URL must fail");
+        let dest = scratch_dir("resolver-malformed-https").join("module.wasm");
+        let err = download_https("https://", &dest).expect_err("malformed URL must fail");
         assert!(matches!(err, ToolError::NetworkMalformed { .. }), "{err}");
     }
 
@@ -535,7 +670,8 @@ mod tests {
         let addr = listener.local_addr().expect("local addr");
         drop(listener);
         let url = format!("https://{addr}/tool.wasm");
-        let err = download_https(&url).expect_err("closed local port must fail");
+        let dest = scratch_dir("resolver-air-gapped-https").join("module.wasm");
+        let err = download_https(&url, &dest).expect_err("closed local port must fail");
         assert!(err.to_string().contains(&url), "{err}");
         assert!(
             matches!(
@@ -556,9 +692,9 @@ mod tests {
         );
         assert!(matches!(timeout, ToolError::NetworkTimeout { .. }), "{timeout}");
 
-        let too_large = map_network_body_error(
+        let too_large = map_streamed_body_error(
             "https://example.test/tool.wasm",
-            ureq::Error::BodyExceedsLimit(1),
+            &ureq::Error::BodyExceedsLimit(1),
         );
         assert!(matches!(too_large, ToolError::NetworkTooLarge { .. }), "{too_large}");
     }

@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
 use specify_capability::{CacheMeta, PipelineView};
 use specify_config::{LayoutExt, ProjectConfig};
 use specify_error::Error;
@@ -14,7 +15,7 @@ use crate::cache::cache_capability;
 use crate::{InitOptions, InitResult, resolve_version, resolved_name, upsert_gitignore};
 
 #[allow(clippy::needless_pass_by_value)]
-pub fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
+pub fn run(opts: InitOptions<'_>, now: DateTime<Utc>) -> Result<InitResult, Error> {
     let capability = opts.capability.ok_or(Error::InitNeedsCapability)?;
     let name = resolved_name(opts.project_dir, opts.name);
     let layout = opts.project_dir.layout();
@@ -38,7 +39,7 @@ pub fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         }
     }
 
-    let resolved = cache_capability(capability, opts.project_dir)?;
+    let resolved = cache_capability(capability, opts.project_dir, now)?;
     let view = PipelineView::load(&resolved.capability_value, opts.project_dir)?;
     let capability_name = view.capability.manifest.name.clone();
     let scaffolded_rule_keys: Vec<String> =
@@ -83,11 +84,16 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
+    use chrono::{DateTime, Utc};
     use specify_capability::CacheMeta;
     use specify_config::{LayoutExt, ProjectConfig};
     use tempfile::tempdir;
 
     use crate::{InitOptions, VersionMode, init};
+
+    fn fixed_now() -> DateTime<Utc> {
+        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
+    }
 
     fn repo_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -116,7 +122,7 @@ mod tests {
     fn init_creates_specify_tree() {
         let tmp = tempdir().unwrap();
         let schema_dir = omnia_schema_dir();
-        let result = init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
+        let result = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
 
         for sub in
             [".specify", ".specify/slices", ".specify/specs", ".specify/archive", ".specify/.cache"]
@@ -162,10 +168,10 @@ mod tests {
     fn reinit_idempotent() {
         let tmp = tempdir().unwrap();
         let schema_dir = omnia_schema_dir();
-        let first = init(base_opts(tmp.path(), &schema_dir)).expect("first init");
+        let first = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("first init");
         let config = fs::read(&first.config_path).expect("read first config");
 
-        let second = init(base_opts(tmp.path(), &schema_dir)).expect("second init");
+        let second = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("second init");
         assert!(second.directories_created.is_empty());
 
         let reread = fs::read(&second.config_path).expect("read second config");
@@ -178,12 +184,12 @@ mod tests {
         let schema_dir = omnia_schema_dir();
         let gitignore = tmp.path().join(".gitignore");
 
-        init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
+        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
         let text = fs::read_to_string(&gitignore).expect("read gitignore");
         assert!(text.contains(".specify/.cache/"));
         assert!(text.contains(".specify/workspace/"));
 
-        init(base_opts(tmp.path(), &schema_dir)).expect("re-init ok");
+        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("re-init ok");
         let text = fs::read_to_string(&gitignore).expect("reread gitignore");
         let occurrences = text.matches(".specify/.cache/").count();
         assert_eq!(occurrences, 1);
@@ -196,7 +202,7 @@ mod tests {
         let schema_dir = omnia_schema_dir();
         fs::write(tmp.path().join(".gitignore"), "target/\n").expect("seed gitignore");
 
-        init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
+        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
 
         let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read gitignore");
         assert!(text.contains("target/"));
@@ -216,7 +222,7 @@ mod tests {
         )
         .expect("seed gitignore");
 
-        init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
+        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
 
         let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
         assert_eq!(text.matches(".specify/.cache/").count(), 1);
@@ -230,7 +236,7 @@ mod tests {
         fs::write(tmp.path().join(".gitignore"), "target/\n.specify/.cache/\n")
             .expect("seed gitignore");
 
-        init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
+        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
 
         let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
         assert_eq!(text.matches(".specify/.cache/").count(), 1);
@@ -241,7 +247,7 @@ mod tests {
     fn cache_present_matches_cache_meta() {
         let tmp = tempdir().unwrap();
         let schema_dir = omnia_schema_dir();
-        let result = init(base_opts(tmp.path(), &schema_dir)).expect("init ok");
+        let result = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
         assert!(result.cache_present);
 
         let cache_meta = CacheMeta::path(tmp.path());
@@ -254,7 +260,7 @@ mod tests {
     fn preserve_mode_keeps_existing_pinned_version() {
         let tmp = tempdir().unwrap();
         let schema_dir = omnia_schema_dir();
-        init(base_opts(tmp.path(), &schema_dir)).expect("fresh init");
+        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("fresh init");
 
         // Manually edit the pinned version to an older one; Preserve
         // should keep it on re-init.
@@ -266,10 +272,13 @@ mod tests {
         );
         fs::write(&config_path, edited).expect("write edited");
 
-        let result = init(InitOptions {
-            version_mode: VersionMode::Preserve,
-            ..base_opts(tmp.path(), &schema_dir)
-        })
+        let result = init(
+            InitOptions {
+                version_mode: VersionMode::Preserve,
+                ..base_opts(tmp.path(), &schema_dir)
+            },
+            fixed_now(),
+        )
         .expect("preserve init");
         assert_eq!(result.specify_version, "0.0.1");
     }
@@ -281,14 +290,17 @@ mod tests {
         fs::create_dir_all(&project).expect("create project dir");
         let schema_dir = omnia_schema_dir();
 
-        let result = init(InitOptions {
-            project_dir: &project,
-            capability: Some(schema_dir.to_str().expect("schema path utf8")),
-            name: None,
-            domain: None,
-            version_mode: VersionMode::WriteCurrent,
-            hub: false,
-        })
+        let result = init(
+            InitOptions {
+                project_dir: &project,
+                capability: Some(schema_dir.to_str().expect("schema path utf8")),
+                name: None,
+                domain: None,
+                version_mode: VersionMode::WriteCurrent,
+                hub: false,
+            },
+            fixed_now(),
+        )
         .expect("init ok");
 
         let cfg = ProjectConfig::load(&project).expect("reload");

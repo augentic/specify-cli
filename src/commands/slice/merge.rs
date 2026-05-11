@@ -25,7 +25,7 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
     let archive_dir = ctx.archive_dir();
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
 
-    let merged = slice::commit(&slice_dir, &classes, &archive_dir)?;
+    let merged = slice::commit(&slice_dir, &classes, &archive_dir, Utc::now())?;
 
     // The merge-owned workspace commit is limited to the baseline spec
     // tree and archived slice. Opaque/generated outputs remain as residue

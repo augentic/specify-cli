@@ -7,6 +7,7 @@
 
 use std::path::Path;
 
+use chrono::{DateTime, Utc};
 use specify_config::LayoutExt;
 use specify_registry::Registry;
 
@@ -19,12 +20,12 @@ use crate::plan::core::Plan;
 /// `true`. On failure, stamps an explanatory `detail` onto the first
 /// project row (or a synthetic `<archive>` row when the registry is
 /// empty), records a summary message, and returns `false`.
-pub(super) fn sweep(project_dir: &Path, outcome: &mut Outcome) -> bool {
+pub(super) fn sweep(project_dir: &Path, outcome: &mut Outcome, now: DateTime<Utc>) -> bool {
     let layout = project_dir.layout();
     let plan_file = layout.plan_path();
     let brief_file = layout.change_brief_path();
     let archive_root = layout.archive_dir().join("plans");
-    match Plan::archive(&plan_file, &brief_file, &archive_root, /* force = */ true) {
+    match Plan::archive(&plan_file, &brief_file, &archive_root, /* force = */ true, now) {
         Ok((archived, archived_plans_dir)) => {
             outcome.archived = Some(archived.display().to_string());
             outcome.archived_plans_dir =

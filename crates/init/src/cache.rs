@@ -5,6 +5,7 @@
 use std::fs;
 use std::path::Path;
 
+use chrono::{DateTime, Utc};
 use specify_capability::{CacheMeta, DEFAULT_CODEX_CAPABILITY};
 use specify_config::LayoutExt;
 use specify_error::Error;
@@ -16,7 +17,9 @@ pub struct CachedCapability {
     pub capability_value: String,
 }
 
-pub fn cache_capability(capability: &str, project_dir: &Path) -> Result<CachedCapability, Error> {
+pub fn cache_capability(
+    capability: &str, project_dir: &Path, now: DateTime<Utc>,
+) -> Result<CachedCapability, Error> {
     if capability.trim().is_empty() || capability != capability.trim() {
         return Err(Error::Diag {
             code: "capability-arg-malformed",
@@ -31,7 +34,7 @@ pub fn cache_capability(capability: &str, project_dir: &Path) -> Result<CachedCa
     let target = cache_dir.join(&source.capability_name);
     refresh_cached_capability(&source.source_dir, &target)?;
     cache_sibling_default_capability(&source.source_dir, &cache_dir)?;
-    write_cache_meta(project_dir, &source.capability_value)?;
+    write_cache_meta(project_dir, &source.capability_value, now)?;
 
     Ok(CachedCapability {
         capability_value: source.capability_value,
@@ -77,10 +80,12 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-fn write_cache_meta(project_dir: &Path, capability_value: &str) -> Result<(), Error> {
+fn write_cache_meta(
+    project_dir: &Path, capability_value: &str, now: DateTime<Utc>,
+) -> Result<(), Error> {
     let meta = CacheMeta {
         schema_url: capability_value.to_string(),
-        fetched_at: chrono::Utc::now().to_rfc3339(),
+        fetched_at: now.to_rfc3339(),
     };
     let meta_path = CacheMeta::path(project_dir);
     let serialised = serde_saphyr::to_string(&meta)?;

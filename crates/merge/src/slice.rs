@@ -158,6 +158,9 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// it via `specify slice outcome show` (which falls back to the archive
 /// when the active slice directory no longer exists).
 ///
+/// `now` records the `merged_at`, `completed_at`, and outcome stamp;
+/// dispatchers pass `Utc::now` and tests pin a deterministic value.
+///
 /// # Errors
 ///
 /// - [`Error::Lifecycle`] when the slice's status is not
@@ -176,7 +179,7 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// - Whatever atomic-write [`Error`] [`SliceMetadata::save`] surfaces
 ///   (`Error::Io`, `Error::YamlSer`).
 pub fn commit(
-    slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path,
+    slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path, now: DateTime<Utc>,
 ) -> Result<Vec<MergePreviewEntry>, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     if metadata.status != LifecycleStatus::Complete {
@@ -191,7 +194,6 @@ pub fn commit(
     write_three_way_baselines(&merged)?;
     let opaque_counts = commit_opaque(classes)?;
 
-    let now = Utc::now();
     metadata.status = metadata.status.transition(LifecycleStatus::Merged)?;
     if metadata.completed_at.is_none() {
         metadata.completed_at = Some(format_rfc3339(now));

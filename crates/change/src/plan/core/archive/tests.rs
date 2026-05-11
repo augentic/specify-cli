@@ -43,7 +43,7 @@ fn archive_test(
 ) -> Result<(PathBuf, Option<PathBuf>), Error> {
     let brief =
         plan_path.parent().map_or_else(|| PathBuf::from("change.md"), |p| p.join("change.md"));
-    Plan::archive(plan_path, &brief, archive_dir, force)
+    Plan::archive(plan_path, &brief, archive_dir, force, chrono::Utc::now())
 }
 
 fn today_yyyymmdd() -> String {

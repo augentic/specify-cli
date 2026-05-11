@@ -127,11 +127,16 @@ mod tests {
     use std::path::Path;
 
     use specify_config::ProjectConfig;
+    use chrono::{DateTime, Utc};
     use specify_registry::Registry;
     use tempfile::tempdir;
 
     use super::HUB_INIT_NAME;
     use crate::{InitOptions, VersionMode, init};
+
+    fn fixed_now() -> DateTime<Utc> {
+        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
+    }
 
     fn hub_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
         InitOptions {
@@ -147,7 +152,7 @@ mod tests {
     #[test]
     fn hub_init_writes_canonical_on_disk_shape() {
         let tmp = tempdir().unwrap();
-        let result = init(hub_opts(tmp.path(), "platform-hub")).expect("hub init ok");
+        let result = init(hub_opts(tmp.path(), "platform-hub"), fixed_now()).expect("hub init ok");
 
         let project_yaml = tmp.path().join(".specify/project.yaml");
         let registry_yaml = tmp.path().join("registry.yaml");
@@ -210,7 +215,7 @@ mod tests {
             .unwrap();
 
         let err =
-            init(hub_opts(tmp.path(), "platform-hub")).expect_err("must refuse over existing dir");
+            init(hub_opts(tmp.path(), "platform-hub"), fixed_now()).expect_err("must refuse over existing dir");
         match err {
             specify_error::Error::Diag { code, detail } => {
                 assert_eq!(code, "hub-init-specify-dir-exists");
@@ -232,7 +237,7 @@ mod tests {
     #[test]
     fn hub_init_rejects_non_kebab_name() {
         let tmp = tempdir().unwrap();
-        let err = init(hub_opts(tmp.path(), "BadName")).expect_err("non-kebab name");
+        let err = init(hub_opts(tmp.path(), "BadName"), fixed_now()).expect_err("non-kebab name");
         match err {
             specify_error::Error::Diag { code, detail } => {
                 assert_eq!(code, "hub-init-name-not-kebab");

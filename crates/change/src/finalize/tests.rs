@@ -217,6 +217,7 @@ fn refuses_when_plan_has_outstanding() {
         registry: &registry,
         clean: false,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let err = run(inputs, &probe).expect_err("non-terminal must refuse");
     assert!(matches!(err, Refusal::NonTerminalEntries(ref names) if names == &["b"]));
@@ -248,6 +249,7 @@ fn finalizes_with_no_clones_and_no_registry_passes() {
         registry: &registry,
         clean: false,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(outcome.finalized);
@@ -281,6 +283,7 @@ fn refuses_when_one_project_pr_is_unmerged() {
         registry: &registry,
         clean: false,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(!outcome.finalized);
@@ -337,6 +340,7 @@ fn passes_when_pr_is_merged() {
         registry: &registry,
         clean: false,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(outcome.finalized);
@@ -360,6 +364,7 @@ fn passes_when_no_branch_for_project() {
         registry: &registry,
         clean: false,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(outcome.finalized);
@@ -390,6 +395,7 @@ fn refuses_on_branch_pattern_mismatch() {
         registry: &registry,
         clean: false,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(!outcome.finalized);
@@ -421,6 +427,7 @@ fn refuses_on_gh_shell_error() {
         registry: &registry,
         clean: false,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(!outcome.finalized);
@@ -458,6 +465,7 @@ fn refuses_dirty_workspace_without_clean() {
         registry: &registry,
         clean: false,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(!outcome.finalized);
@@ -508,6 +516,7 @@ fn refuses_dirty_workspace_with_clean() {
         registry: &registry,
         clean: true,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(!outcome.finalized);
@@ -560,6 +569,7 @@ fn dry_run_does_not_archive_or_clean() {
         registry: &registry,
         clean: true,
         dry_run: true,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(outcome.finalized, "dry-run with all-passing must report finalized=true");
@@ -594,6 +604,7 @@ fn dry_run_with_unmerged_pr_reports_not_finalized() {
         registry: &registry,
         clean: false,
         dry_run: true,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(!outcome.finalized);
@@ -633,6 +644,7 @@ fn clean_removes_clones_after_archive() {
         registry: &registry,
         clean: true,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(outcome.finalized);
@@ -677,6 +689,7 @@ fn clean_waits_until_archive_succeeds() {
         registry: &registry,
         clean: true,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(!outcome.finalized, "archive collision must refuse finalize");
@@ -720,6 +733,7 @@ fn clean_skips_symlink_projects() {
         registry: &registry,
         clean: true,
         dry_run: false,
+        now: chrono::Utc::now(),
     };
     let outcome = run(inputs, &probe).expect("ok");
     assert!(outcome.finalized);
@@ -759,6 +773,7 @@ fn idempotent_after_manual_merge() {
             registry: &registry,
             clean: false,
             dry_run: false,
+            now: chrono::Utc::now(),
         },
         &probe1,
     )
@@ -786,6 +801,7 @@ fn idempotent_after_manual_merge() {
             registry: &registry,
             clean: false,
             dry_run: false,
+            now: chrono::Utc::now(),
         },
         &probe2,
     )

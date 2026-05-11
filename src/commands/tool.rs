@@ -7,6 +7,7 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
+use chrono::Utc;
 use serde::Serialize;
 use specify_capability::{Capability, ResolvedCapability};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
@@ -187,7 +188,7 @@ pub fn run(ctx: &Ctx, name: String, args: Vec<String>) -> Result<CliResult> {
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
     let scoped = find(&inventory, &name)?;
-    let resolved = specify_tool::resolver::resolve(&scoped.scope, &scoped.tool)?;
+    let resolved = specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, Utc::now())?;
     let mut run_ctx = RunContext::new(&ctx.project_dir, args);
     if let ToolScope::Capability { capability_dir, .. } = &scoped.scope {
         run_ctx = run_ctx.with_capability_dir(capability_dir);
@@ -220,7 +221,7 @@ pub fn fetch(ctx: &Ctx, name: Option<String>) -> Result<()> {
     let mut rows = Vec::with_capacity(selected.len());
     for scoped in selected {
         let before = cache_status_for(scoped)?;
-        specify_tool::resolver::resolve(&scoped.scope, &scoped.tool)?;
+        specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, Utc::now())?;
         rows.push(ToolFetchRow {
             row: row_for(scoped)?,
             fetched: before != CacheStatus::Hit,
