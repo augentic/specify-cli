@@ -158,7 +158,7 @@ fn run_json_failure(project: &Path, cache: &Path, args: &[&str], code: i32) -> V
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(code));
-    parse_json(&assert.get_output().stdout)
+    parse_json(&assert.get_output().stderr)
 }
 
 fn assert_validation_rule(value: &Value, rule_id: &str) {
@@ -188,7 +188,7 @@ fn tool_list_outside_project_preserves_not_initialized_error() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     assert_eq!(value["schema-version"], 5);
     assert_eq!(value["error"], "not-initialized");
 }

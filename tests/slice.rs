@@ -99,7 +99,7 @@ fn slice_create_rejects_uppercase_name() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     assert_eq!(value["error"], "invalid-name");
     assert!(
         value["message"].as_str().unwrap().contains("kebab-case")
@@ -117,7 +117,7 @@ fn slice_create_fails_when_dir_exists_by_default() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     assert_eq!(value["error"], "slice-already-exists");
     assert!(value["message"].as_str().unwrap().contains("already exists"));
 }
@@ -173,7 +173,7 @@ fn slice_transition_rejects_illegal_edge() {
         .args(["--format", "json", "slice", "transition", "my-slice", "building"])
         .assert()
         .failure();
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     assert_eq!(value["error"], "lifecycle");
 }
 
@@ -563,7 +563,7 @@ fn slice_phase_outcome_on_nonexistent_slice_errors() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     let msg = value["message"].as_str().unwrap_or("");
     assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
 }
@@ -816,7 +816,7 @@ fn slice_outcome_on_nonexistent_slice_errors() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     let msg = value["message"].as_str().unwrap_or("");
     assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
 }
@@ -1201,7 +1201,7 @@ fn slice_journal_append_on_nonexistent_slice_errors() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     let msg = value["message"].as_str().unwrap_or("");
     assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
 }
@@ -1292,7 +1292,7 @@ fn slice_journal_show_on_nonexistent_slice_errors() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     let msg = value["message"].as_str().unwrap_or("");
     assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
 }

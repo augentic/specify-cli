@@ -179,7 +179,7 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
         .assert()
         .failure();
     assert_eq!(denied_value.get_output().status.code(), Some(2));
-    let denied_json = parse_json(&denied_value.get_output().stdout);
+    let denied_json = parse_json(&denied_value.get_output().stderr);
     assert_eq!(denied_json["error"], "tool-permission-denied", "{denied_json}");
     assert!(
         denied_json["message"]

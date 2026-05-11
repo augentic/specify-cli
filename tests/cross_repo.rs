@@ -612,6 +612,6 @@ fn finalize_and_assert_archive(envs: &TestEnv) {
 
 fn assert_finalize_is_idempotent(envs: &TestEnv) {
     let second = envs.command().args(["--format", "json", "change", "finalize"]).assert().failure();
-    let second = parse_json(&second.get_output().stdout);
+    let second = parse_json(&second.get_output().stderr);
     assert_eq!(second["error"], "plan-not-found");
 }

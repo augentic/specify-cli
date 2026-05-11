@@ -719,7 +719,7 @@ fn context_generate_refuses_to_overwrite_modified_fenced_content_without_force()
 
     let mut cmd = project.command();
     let generate = cmd.args(["--format", "json", "context", "generate"]).assert().code(1);
-    let value = stdout_json(&generate);
+    let value = stderr_json(&generate);
 
     assert_eq!(value["error"], "context-fenced-content-modified");
     assert_eq!(value["exit-code"], 1);

@@ -622,8 +622,11 @@ cli-help-shape = 3
 [file."src/context.rs"]
 module-line-count = 62
 
+[file."src/lib.rs"]
+module-line-count = 56
+
 [file."src/main.rs"]
-module-line-count = 46
+module-line-count = 15
 
 [file."src/output.rs"]
 format-match-dispatch = 1
