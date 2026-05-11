@@ -181,7 +181,16 @@ mod tests {
             fixed_now(),
         )
         .expect_err("missing capability must error");
-        assert!(matches!(err, Error::InitNeedsCapability), "got: {err:?}");
+        assert!(
+            matches!(
+                &err,
+                Error::Diag {
+                    code: "init-requires-capability-or-hub",
+                    ..
+                }
+            ),
+            "got: {err:?}"
+        );
     }
 
     #[test]
@@ -202,6 +211,15 @@ mod tests {
             fixed_now(),
         )
         .expect_err("hub + capability must error");
-        assert!(matches!(err, Error::InitNeedsCapability), "got: {err:?}");
+        assert!(
+            matches!(
+                &err,
+                Error::Diag {
+                    code: "init-requires-capability-or-hub",
+                    ..
+                }
+            ),
+            "got: {err:?}"
+        );
     }
 }

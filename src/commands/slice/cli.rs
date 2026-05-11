@@ -188,8 +188,8 @@ pub(crate) enum OutcomeKindAction {
 
 /// Flags consumed by `slice outcome set <phase> registry-amendment-required`.
 /// Folded into a single struct so the variant stays narrow; clap renders
-/// each `#[arg(long)]` exactly as if it were declared inline on the
-/// variant.
+/// each `#[arg(long = "...")]` so the CLI surface keeps the
+/// `--proposed-*` flag names while the Rust fields drop the prefix.
 #[derive(Args)]
 pub(crate) struct RegistryAmendmentArgs {
     /// Short explanation; defaults to `registry-amendment-required: <proposed-name>`.
@@ -199,17 +199,17 @@ pub(crate) struct RegistryAmendmentArgs {
     #[arg(long)]
     pub(crate) context: Option<String>,
     /// Proposed kebab-case project name.
-    #[arg(long)]
-    pub(crate) proposed_name: String,
+    #[arg(long = "proposed-name")]
+    pub(crate) name: String,
     /// Proposed clone URL.
-    #[arg(long)]
-    pub(crate) proposed_url: String,
+    #[arg(long = "proposed-url")]
+    pub(crate) url: String,
     /// Proposed capability identifier (e.g. `omnia@v1`).
-    #[arg(long)]
-    pub(crate) proposed_capability: String,
+    #[arg(long = "proposed-capability")]
+    pub(crate) capability: String,
     /// Optional human-readable description of the proposed project.
-    #[arg(long)]
-    pub(crate) proposed_description: Option<String>,
+    #[arg(long = "proposed-description")]
+    pub(crate) description: Option<String>,
     /// Rationale prose.
     #[arg(long)]
     pub(crate) rationale: String,

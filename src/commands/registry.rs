@@ -1,307 +1,31 @@
-//! `specify registry *` handlers — `show`, `validate`, `add`, `remove`.
+//! `specify registry *` dispatcher.
+//!
+//! Per-subcommand handlers live in `registry/{show, validate, add, remove}.rs`;
+//! the shared response DTOs live in `registry/dto.rs`.
 
+mod add;
 pub(crate) mod cli;
+mod dto;
+mod remove;
+mod show;
+mod validate;
 
-use std::io::Write;
-use std::path::{Path, PathBuf};
-
-use serde::Serialize;
-use specify_change::Plan;
-use specify_config::{LayoutExt, ProjectConfig, with_existing_state, with_state};
-use specify_error::{Error, Result, is_kebab};
-use specify_registry::{Registry, RegistryProject};
+use specify_error::Result;
 
 use crate::cli::RegistryAction;
 use crate::context::Ctx;
-use crate::output::{Render, display, serialize_path};
 
 pub(crate) fn run(ctx: &Ctx, action: RegistryAction) -> Result<()> {
     match action {
-        RegistryAction::Show => show(ctx),
-        RegistryAction::Validate => validate(ctx),
+        RegistryAction::Show => show::run(ctx),
+        RegistryAction::Validate => validate::run(ctx),
         RegistryAction::Add {
             name,
             url,
             capability,
             description,
-        } => add(ctx, name, url, capability, description),
-        RegistryAction::Remove { name } => remove(ctx, name),
-    }
-}
-
-fn show(ctx: &Ctx) -> Result<()> {
-    let path = Registry::path(&ctx.project_dir);
-    let registry = Registry::load(&ctx.project_dir)?;
-    ctx.out().write(&ShowBody { registry, path })?;
-    Ok(())
-}
-
-fn validate(ctx: &Ctx) -> Result<()> {
-    let path = Registry::path(&ctx.project_dir);
-    // Hub repos opt into the stricter shape via `project.yaml:hub:
-    // true`. Tolerate a missing/unparseable project.yaml here —
-    // `specify registry validate` is allowed to run before `specify
-    // init`, in which case there is no hub flag to honour and the base
-    // shape check is the right behaviour.
-    let hub_mode = ProjectConfig::load(&ctx.project_dir).is_ok_and(|cfg| cfg.hub);
-    let registry = Registry::load(&ctx.project_dir)?;
-    if hub_mode && let Some(reg) = registry.as_ref() {
-        reg.validate_shape_hub()?;
-    }
-    ctx.out().write(&ValidateBody {
-        registry,
-        path,
-        hub_mode,
-    })?;
-    Ok(())
-}
-
-fn add(
-    ctx: &Ctx, name: String, url: String, capability: String, description: Option<String>,
-) -> Result<()> {
-    if !is_kebab(&name) {
-        return Err(Error::Diag {
-            code: "registry-add-name-not-kebab",
-            detail: format!(
-                "registry add: project name `{name}` must be kebab-case \
-                 (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
-            ),
-        });
-    }
-    if capability.trim().is_empty() {
-        return Err(Error::Diag {
-            code: "registry-add-capability-empty",
-            detail: "registry add: --capability must be non-empty (e.g. `omnia@v1`)".into(),
-        });
-    }
-
-    let path = Registry::path(&ctx.project_dir);
-    let hub_mode = ctx.config.hub;
-    let candidate = RegistryProject {
-        name,
-        url,
-        capability,
-        description: description.and_then(|s| {
-            let trimmed = s.trim();
-            if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
-        }),
-        contracts: None,
-    };
-
-    let body = with_state::<Registry, _, _>(ctx.layout(), move |registry| {
-        if registry.projects.iter().any(|p| p.name == candidate.name) {
-            return Err(Error::Diag {
-                code: "registry-add-name-duplicate",
-                detail: format!(
-                    "registry add: project `{}` already exists in {}",
-                    candidate.name,
-                    path.display()
-                ),
-            });
-        }
-
-        registry.projects.push(candidate);
-
-        // Surface validate_shape / validate_shape_hub errors verbatim —
-        // their diagnostic codes (`description-missing-multi-repo`,
-        // `hub-cannot-be-project`, etc.) are the documented contract.
-        // Returning Err here aborts `with_state` before the atomic
-        // write, so the on-disk registry is never left in a
-        // shape-invalid state.
-        if hub_mode {
-            registry.validate_shape_hub()?;
-        } else {
-            registry.validate_shape()?;
-        }
-
-        let added = registry
-            .projects
-            .last()
-            .expect("we just pushed an entry; non-empty by construction")
-            .clone();
-        Ok(AddBody {
-            registry: registry.clone(),
-            path,
-            added,
-        })
-    })?;
-
-    ctx.out().write(&body)?;
-    Ok(())
-}
-
-fn remove(ctx: &Ctx, name: String) -> Result<()> {
-    let path = Registry::path(&ctx.project_dir);
-    let hub_mode = ctx.config.hub;
-
-    // Pre-flight: surface the legacy `registry-remove-no-registry`
-    // diagnostic when the file is absent. `with_existing_state` would
-    // emit the generic `Error::ArtifactNotFound`; the registry-specific
-    // diag is part of the wire contract.
-    if !path.exists() {
-        return Err(Error::Diag {
-            code: "registry-remove-no-registry",
-            detail: format!("registry remove: no registry declared at {}", path.display()),
-        });
-    }
-
-    let body =
-        with_existing_state::<Registry, _, _>(ctx.layout(), "registry.yaml", move |registry| {
-            let position =
-                registry.projects.iter().position(|p| p.name == name).ok_or_else(|| {
-                    Error::Diag {
-                        code: "registry-remove-not-found",
-                        detail: format!(
-                            "registry remove: project `{name}` not found in {}",
-                            path.display()
-                        ),
-                    }
-                })?;
-            registry.projects.remove(position);
-
-            // A removal can only relax the multi-repo description
-            // invariant, so the post-write check should always
-            // succeed; we run it anyway to pin the contract.
-            if hub_mode {
-                registry.validate_shape_hub()?;
-            } else {
-                registry.validate_shape()?;
-            }
-
-            let warnings = plan_refs(&ctx.project_dir, &name);
-            Ok(RemoveBody {
-                registry: registry.clone(),
-                path,
-                removed: name,
-                warnings,
-            })
-        })?;
-
-    ctx.out().write(&body)?;
-    Ok(())
-}
-
-/// Scan `plan.yaml` (when present) for plan entries whose `project`
-/// field equals `removed`. Returns one human-readable warning per
-/// affected entry. Best-effort: any parse error is surfaced as a
-/// single advisory string instead of failing the remove (the registry
-/// write has already landed, so the operator needs to learn about
-/// both halves).
-fn plan_refs(project_dir: &Path, removed: &str) -> Vec<String> {
-    let plan_path = project_dir.layout().plan_path();
-    if !plan_path.exists() {
-        return Vec::new();
-    }
-    match Plan::load(&plan_path) {
-        Ok(plan) => {
-            let referencing: Vec<&str> = plan
-                .entries
-                .iter()
-                .filter(|entry| entry.project.as_deref() == Some(removed))
-                .map(|entry| entry.name.as_str())
-                .collect();
-            if referencing.is_empty() {
-                Vec::new()
-            } else {
-                vec![format!(
-                    "plan.yaml has {n} entry(ies) still referencing project `{removed}`: {entries}. \
-                     Run `specify change plan amend <change> --project <other>` to rewire them.",
-                    n = referencing.len(),
-                    entries = referencing.join(", "),
-                )]
-            }
-        }
-        Err(err) => vec![format!(
-            "plan.yaml present but unreadable; cannot check for stale references to `{removed}`: {err}"
-        )],
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ShowBody {
-    registry: Option<Registry>,
-    #[serde(serialize_with = "serialize_path")]
-    path: PathBuf,
-}
-
-impl Render for ShowBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let Some(reg) = self.registry.as_ref() else {
-            return writeln!(w, "no registry declared at registry.yaml");
-        };
-        writeln!(w, "registry.yaml: {}", display(&self.path))?;
-        writeln!(w, "version: {}", reg.version)?;
-        if reg.projects.is_empty() {
-            return writeln!(w, "projects: (none)");
-        }
-        writeln!(w, "projects:")?;
-        for project in &reg.projects {
-            writeln!(w, "  - name: {}", project.name)?;
-            writeln!(w, "    url: {}", project.url)?;
-            writeln!(w, "    capability: {}", project.capability)?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ValidateBody {
-    registry: Option<Registry>,
-    #[serde(serialize_with = "serialize_path")]
-    path: PathBuf,
-    #[serde(skip)]
-    hub_mode: bool,
-}
-
-impl Render for ValidateBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let Some(reg) = self.registry.as_ref() else {
-            return writeln!(w, "no registry declared at registry.yaml");
-        };
-        let count = reg.projects.len();
-        if self.hub_mode {
-            writeln!(w, "registry.yaml is well-formed in hub mode ({count} project(s))")
-        } else {
-            writeln!(w, "registry.yaml is well-formed ({count} project(s))")
-        }
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct AddBody {
-    registry: Registry,
-    #[serde(serialize_with = "serialize_path")]
-    path: PathBuf,
-    added: RegistryProject,
-}
-
-impl Render for AddBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Added `{}` to {}", self.added.name, display(&self.path))?;
-        writeln!(w, "registry now declares {} project(s)", self.registry.projects.len())
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct RemoveBody {
-    registry: Registry,
-    #[serde(serialize_with = "serialize_path")]
-    path: PathBuf,
-    removed: String,
-    warnings: Vec<String>,
-}
-
-impl Render for RemoveBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Removed `{}` from {}", self.removed, display(&self.path))?;
-        for warning in &self.warnings {
-            writeln!(w, "warning: {warning}")?;
-        }
-        Ok(())
+        } => add::run(ctx, name, url, capability, description),
+        RegistryAction::Remove { name } => remove::run(ctx, name),
     }
 }
 
@@ -310,7 +34,9 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
 
-    use specify_change::{Entry, Status};
+    use specify_change::{Entry, Plan, Status};
+    use specify_config::{LayoutExt, ProjectConfig};
+    use specify_registry::Registry;
     use tempfile::TempDir;
 
     use super::*;
@@ -358,7 +84,7 @@ mod tests {
 
     /// Helper for tests: invoke `add` with a fixed `omnia@v1` capability.
     fn seed(ctx: &Ctx, name: &str, url: &str, description: Option<&str>) -> Result<()> {
-        add(
+        add::run(
             ctx,
             name.to_string(),
             url.to_string(),
@@ -395,7 +121,7 @@ mod tests {
     fn add_rejects_empty_capability() {
         let tmp = TempDir::new().unwrap();
         let ctx = ctx_for(&tmp, false);
-        let err = add(&ctx, "alpha".to_string(), ".".to_string(), "   ".to_string(), None)
+        let err = add::run(&ctx, "alpha".to_string(), ".".to_string(), "   ".to_string(), None)
             .expect_err("empty capability rejected");
         assert!(err.to_string().contains("--capability"));
     }
@@ -524,7 +250,7 @@ mod tests {
         ok_seed(&ctx, "alpha", ".", Some("Alpha service"));
         ok_seed(&ctx, "beta", "../beta", Some("Beta service"));
 
-        assert_ok(remove(&ctx, "beta".to_string()), "remove beta");
+        assert_ok(remove::run(&ctx, "beta".to_string()), "remove beta");
         assert_eq!(names(&loaded(&tmp)), vec!["alpha"]);
     }
 
@@ -534,7 +260,7 @@ mod tests {
         let ctx = ctx_for(&tmp, false);
         ok_seed(&ctx, "alpha", ".", None);
 
-        let err = remove(&ctx, "nope".to_string()).expect_err("unknown name rejected");
+        let err = remove::run(&ctx, "nope".to_string()).expect_err("unknown name rejected");
         assert!(err.to_string().contains("not found"));
     }
 
@@ -542,7 +268,7 @@ mod tests {
     fn remove_when_absent_errors() {
         let tmp = TempDir::new().unwrap();
         let ctx = ctx_for(&tmp, false);
-        let err = remove(&ctx, "alpha".to_string()).expect_err("absent registry rejected");
+        let err = remove::run(&ctx, "alpha".to_string()).expect_err("absent registry rejected");
         assert!(err.to_string().contains("no registry declared"));
     }
 
@@ -578,7 +304,7 @@ mod tests {
         };
         plan.save(&tmp.path().layout().plan_path()).expect("save plan");
 
-        let warnings = plan_refs(tmp.path(), "alpha");
+        let warnings = remove::plan_refs(tmp.path(), "alpha");
         assert_eq!(warnings.len(), 1);
         let warning = &warnings[0];
         assert!(warning.contains("alpha-feature"), "warning lists alpha-feature: {warning}");
@@ -586,7 +312,7 @@ mod tests {
         assert!(!warning.contains("beta-feature"), "warning excludes beta-feature: {warning}");
         assert!(warning.contains("plan amend"), "warning hints at remediation: {warning}");
 
-        assert_ok(remove(&ctx, "alpha".to_string()), "remove alpha");
+        assert_ok(remove::run(&ctx, "alpha".to_string()), "remove alpha");
         assert_eq!(names(&loaded(&tmp)), vec!["beta"]);
     }
 
@@ -596,7 +322,7 @@ mod tests {
         let ctx = ctx_for(&tmp, false);
         ok_seed(&ctx, "alpha", ".", None);
 
-        assert!(plan_refs(tmp.path(), "alpha").is_empty());
-        assert_ok(remove(&ctx, "alpha".to_string()), "remove alpha");
+        assert!(remove::plan_refs(tmp.path(), "alpha").is_empty());
+        assert_ok(remove::run(&ctx, "alpha".to_string()), "remove alpha");
     }
 }

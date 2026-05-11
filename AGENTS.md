@@ -212,6 +212,18 @@ fn validate(ctx: &Ctx) -> ... { ... }
 fn add(ctx: &Ctx) -> ... { ... }
 ```
 
+### Brevity
+
+The codebase optimises for short reading over short writing. Concretely:
+
+- **Names**: 1–3 words. Predicates start with `is_` / `has_`. Avoid `_local` / `_value` / `_helper` / `_path` / `_dir` suffixes when the parameter type or surrounding context already says so (`is_workspace_clone(p: &Path)`, not `is_workspace_clone_path`).
+- **Cross-module redundancy**: `WorkspaceBranchPreparationFailed` inside `Error` reads as `Error::WorkspaceBranchPreparationFailed` — drop the `Workspace` prefix when every variant in the cluster already operates on a workspace. Clippy's `module_name_repetitions` catches the in-module cases; cross-module redundancy is on you and reviewers.
+- **One-variant enums** are dead overhead. Drop the variant or the enum. If the type's name already discriminates, the enum adds nothing.
+- **Field prefixes**: a struct named `RegistryAmendmentArgs` does not carry `proposed_` on every field — the struct name already says "proposal".
+- **Comment redundancy**: don't paraphrase a `match` arm's variant in a `// …` comment when the variant's doc-comment already explains it. The same rule applies to `Exit::code()`'s inline comments mirroring variant docs.
+
+`verbose-doc-paragraphs` (8-line cap on `pub` items) and `ritual-doc-paragraphs` (boilerplate "Returns an error if …") catch the mechanical cases. Brevity at the type, field, and variant level is on you.
+
 ### Format dispatch
 
 Handlers do **not** open-code `match ctx.format { Json, Text }`. There is one entry point — `ctx.out().write(&SomeBody::from(&result))` for success bodies, and `report(ctx.format, &err)` (which dispatches `ErrorBody` / `ValidationErrBody` to `Stream::Stderr`) for failures. `Stream::Stdout` / `Stream::Stderr` and the underlying `emit` function are private to `src/output.rs`; handlers never spell them. `emit_err` / `emit_response` / `emit_error` / `emit_json_error` have all been collapsed into this single surface.
@@ -244,6 +256,18 @@ Response DTOs (`*Body`, `*Row`) are **top-level** structs under `mod`. Inline DT
 **Typed fields, not stringly-typed ones.** `pub status` / `pub kind` (and any other field whose domain has a finite enum) carry the underlying domain enum with `#[derive(Serialize)]` + `#[serde(rename_all = "kebab-case")]`. Drop `.to_string()` at construction sites; the wire shape is unchanged.
 
 **`PathBuf` for path fields, with `serialize_path`.** `*Body` fields that hold a filesystem path are `path: PathBuf`, serialised through `#[serde(serialize_with = "crate::output::serialize_path")]` (the helper falls back when `canonicalize` fails). Do not store `String` paths in DTOs.
+
+**Field-type allowlist.** DTO fields use the strictest type the wire shape supports:
+
+| Domain | Type | Notes |
+|---|---|---|
+| Filesystem path | `PathBuf` + `serialize_path` | never `String` |
+| Status / kind / phase with finite domain | the underlying enum + `#[serde(rename_all = "kebab-case")]` | drop `.to_string()` at construction |
+| Stable kebab discriminant | `&'static str` | lives in the binary |
+| Timestamp written into JSON | `chrono::DateTime<Utc>` or `Rfc3339Stamp` | serde owns the format |
+| Count | `usize` | JSON has neither `u32` nor `u64` |
+
+**Single-variant enums are dead overhead.** Drop either the variant or the enum; the type's name already says "this DTO represents kind X". The `BriefAction::Init` pattern is the canonical example of what not to add.
 
 ```rust
 // BAD — DTO inside fn body
@@ -291,12 +315,19 @@ fn handle(ctx: &Ctx, outcome: &Outcome) -> Result<()> {
 
 ### Errors
 
-`specify-error::Error` variants are **structured**, not `Variant(String)` catch-alls. For new diagnostics, prefer in this order:
+`specify-error::Error` variants are **structured**, not `Variant(String)` catch-alls. The kebab-case identifier in `#[error("…")]` (and in `Error::Diag.code`) is part of the public contract that skills and tests grep for; never rename without bumping `ENVELOPE_VERSION`.
 
-1. A dedicated typed variant (e.g. `Error::Argument`, `Error::PlanTransition`, `Error::ContextLockMalformed`) when the call shape recurs or carries structured payload.
-2. `Error::Diag { code: "<kebab>", detail: format!(…) }` when it doesn't (yet). The `code` is the JSON envelope's stable `error` discriminant; `detail` is the human-readable message. Promote a recurring `Diag` site to its own variant once the call shape stabilises.
+**Diag-first error policy.** New diagnostic sites use `Error::Diag { code: "<kebab>", detail: format!(…) }`. Promote to a typed `Error::*` variant **only** when:
 
-The kebab-case identifier in `#[error("…")]` (and in `Error::Diag.code`) is part of the public contract that skills and tests grep for; never rename without bumping `ENVELOPE_VERSION`.
+1. A test or skill destructures the variant's payload, **or**
+2. The variant routes to a non-default `Exit` slot (validation / argument / version-too-old), **or**
+3. Three or more call sites share the variant's exact shape.
+
+The kebab `code` is the wire contract; the Rust variant is for callers that pattern-match. Adding a typed variant for a one-site diagnostic doubles the `variant_str` table for no functional gain. When in doubt, stay on `Diag`.
+
+A dedicated typed variant remains correct for entries that already meet the criteria above (`Error::Argument`, `Error::Validation`, `Error::PlanTransition`, `Error::ContextLockMalformed`, …).
+
+**Hint colocation.** Long-form recovery hints live on the error, not on the renderer. `Error::hint(&self) -> Option<&'static str>` is the single hint surface; `ErrorBody::render_text` calls it. Adding a new hint means extending `Error::hint`, not the renderer.
 
 ### `#[non_exhaustive]`
 

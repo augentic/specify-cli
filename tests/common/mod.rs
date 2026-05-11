@@ -16,7 +16,20 @@ use std::process::Command as ProcessCommand;
 
 use assert_cmd::Command;
 use serde_json::Value;
+use specify_error::Result;
 use tempfile::TempDir;
+
+/// Panic with a descriptive message when a handler returned an error.
+///
+/// Mirrors the inline `assert_ok` previously colocated with `specify
+/// registry`'s unit tests. Hoisted here so future integration tests can
+/// share the same `Result<()>`-shaped success check without re-inventing
+/// the wrapper.
+#[allow(dead_code)]
+#[track_caller]
+pub fn assert_ok(result: Result<()>, what: &str) {
+    result.unwrap_or_else(|err| panic!("{what} failed: {err}"));
+}
 
 /// Path to the workspace root for the `specify` crate (where the
 /// integration tests live).

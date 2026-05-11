@@ -19,7 +19,10 @@ use crate::{InitOptions, InitResult, resolve_version, resolved_name, upsert_giti
     reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
 )]
 pub(crate) fn run(opts: InitOptions<'_>, now: DateTime<Utc>) -> Result<InitResult, Error> {
-    let capability = opts.capability.ok_or(Error::InitNeedsCapability)?;
+    let capability = opts.capability.ok_or_else(|| Error::Diag {
+        code: "init-requires-capability-or-hub",
+        detail: "pass <capability> or --hub".to_string(),
+    })?;
     let name = resolved_name(opts.project_dir, opts.name);
     let layout = opts.project_dir.layout();
 

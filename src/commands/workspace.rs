@@ -24,7 +24,7 @@ use crate::output::Render;
 
 pub(crate) fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
     let registry = match Registry::load(&ctx.project_dir)? {
-        None if !projects.is_empty() => return Err(Error::RegistryMissing),
+        None if !projects.is_empty() => return Err(registry_missing()),
         other => other,
     };
     let synced = if let Some(reg) = registry.as_ref() {
@@ -47,7 +47,7 @@ pub(crate) fn status(ctx: &Ctx, projects: &[String]) -> Result<()> {
     let body = match Registry::load(&ctx.project_dir)? {
         None => {
             if !projects.is_empty() {
-                return Err(Error::RegistryMissing);
+                return Err(registry_missing());
             }
             StatusBody::Absent {
                 registry: None,
@@ -71,7 +71,7 @@ pub(crate) fn prepare_branch(
     ctx: &Ctx, project: &str, change: String, sources: Vec<PathBuf>, outputs: Vec<PathBuf>,
 ) -> Result<()> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
-        return Err(Error::RegistryMissing);
+        return Err(registry_missing());
     };
     let project_filter = [project.to_string()];
     let selected = registry.select(&project_filter)?;
@@ -96,7 +96,7 @@ pub(crate) fn prepare_branch(
             })?;
             Ok(())
         }
-        Err(diagnostic) => Err(Error::WorkspaceBranchPreparationFailed {
+        Err(diagnostic) => Err(Error::BranchPrepareFailed {
             project: project.name.clone(),
             key: diagnostic.key,
             detail: diagnostic.message,
@@ -107,7 +107,7 @@ pub(crate) fn prepare_branch(
 
 pub(crate) fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
-        return Err(Error::RegistryMissing);
+        return Err(registry_missing());
     };
     let selected = registry.select(projects)?;
 
@@ -143,7 +143,24 @@ pub(crate) fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> 
         dry_run: dry_run.then_some(true),
     })?;
 
-    if any_failed { Err(Error::WorkspacePushFailed { plan: plan_name }) } else { Ok(()) }
+    if any_failed {
+        Err(Error::Diag {
+            code: "workspace-push-failed",
+            detail: format!(
+                "workspace push for plan `{plan_name}` had at least one failed project; \
+                 see the stdout body for per-project status"
+            ),
+        })
+    } else {
+        Ok(())
+    }
+}
+
+fn registry_missing() -> Error {
+    Error::Diag {
+        code: "registry-missing",
+        detail: "no registry declared at registry.yaml".to_string(),
+    }
 }
 
 #[derive(Serialize)]

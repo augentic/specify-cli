@@ -24,7 +24,14 @@ fn check(ctx: &Ctx) -> Result<()> {
     let report = classify_project_compatibility(&ctx.project_dir, None)?;
     let compatible = report.is_compatible();
     ctx.out().write(&report)?;
-    if compatible { Ok(()) } else { Err(Error::CompatibilityCheckFailed) }
+    if compatible {
+        Ok(())
+    } else {
+        Err(Error::Diag {
+            code: "compatibility-check-failed",
+            detail: "cross-project contracts are not all compatible".to_string(),
+        })
+    }
 }
 
 fn report(ctx: &Ctx, change: String) -> Result<()> {

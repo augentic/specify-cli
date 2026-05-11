@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use serde::Serialize;
-use specify_config::{ProjectConfig, is_workspace_clone_path};
+use specify_config::{ProjectConfig, is_workspace_clone};
 use specify_error::{Error, Result};
 use specify_init::{InitOptions, InitResult, VersionMode, init};
 
@@ -31,7 +31,12 @@ pub(super) fn run(
         (true, None) => None,
         // Both unset, or both set: the diagnostic is the same — the
         // operator must pick one.
-        (false, None) | (true, Some(_)) => return Err(Error::InitNeedsCapability),
+        (false, None) | (true, Some(_)) => {
+            return Err(Error::Diag {
+                code: "init-requires-capability-or-hub",
+                detail: "pass <capability> or --hub".to_string(),
+            });
+        }
     };
 
     let opts = InitOptions {
@@ -140,34 +145,38 @@ fn emit_init_result(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InitContextGeneration {
     Generated,
-    SkippedExistingAgents,
-    SkippedWorkspaceClone,
+    Skipped { reason: &'static str },
 }
 
 impl InitContextGeneration {
-    const fn generated(self) -> bool {
+    const fn generated(&self) -> bool {
         matches!(self, Self::Generated)
     }
 
-    const fn skipped(self) -> bool {
-        matches!(self, Self::SkippedExistingAgents | Self::SkippedWorkspaceClone)
-    }
-
-    const fn skip_reason(self) -> Option<&'static str> {
+    const fn skip_reason(&self) -> Option<&'static str> {
         match self {
             Self::Generated => None,
-            Self::SkippedExistingAgents => Some("existing-agents-md"),
-            Self::SkippedWorkspaceClone => Some("workspace-clone"),
+            Self::Skipped { reason } => Some(*reason),
         }
+    }
+
+    const fn skipped(&self) -> bool {
+        self.skip_reason().is_some()
     }
 }
 
 fn generate_initial_context(format: Format, project_dir: &Path) -> Result<InitContextGeneration> {
-    if is_workspace_clone_path(project_dir) {
-        return Ok(InitContextGeneration::SkippedWorkspaceClone);
+    if is_workspace_clone(project_dir) {
+        return Ok(InitContextGeneration::Skipped {
+            reason: "workspace-clone",
+        });
     }
     match project_dir.join("AGENTS.md").try_exists() {
-        Ok(true) => return Ok(InitContextGeneration::SkippedExistingAgents),
+        Ok(true) => {
+            return Ok(InitContextGeneration::Skipped {
+                reason: "existing-agents-md",
+            });
+        }
         Ok(false) => {}
         Err(err) if err.kind() == ErrorKind::NotFound => {}
         Err(err) => return Err(Error::Io(err)),

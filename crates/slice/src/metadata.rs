@@ -1,6 +1,6 @@
 //! On-disk `<slice_dir>/.metadata.yaml` representation.
 //!
-//! [`SliceMetadata`] is the document itself; [`PhaseOutcome`] is the
+//! [`SliceMetadata`] is the document itself; [`Outcome`] is the
 //! latest phase return surface read by `/change:execute`; the
 //! [`TouchedSpec`] entries list the specs a slice mutates. The save
 //! path goes through [`crate::atomic::yaml_write`] — readers
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use specify_capability::Phase;
 use specify_error::Error;
 
-use crate::{Outcome, Rfc3339Stamp};
+use crate::{OutcomeKind, Rfc3339Stamp};
 
 /// Basename of the slice working directory under `.specify/`.
 pub const SLICES_DIR_NAME: &str = "slices";
@@ -70,7 +70,7 @@ pub struct SliceMetadata {
     /// before the archive move). New stamps overwrite; history lives in
     /// `journal.yaml`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub outcome: Option<PhaseOutcome>,
+    pub outcome: Option<Outcome>,
 }
 
 /// Result of a phase run (define | build | merge) as recorded in
@@ -78,11 +78,11 @@ pub struct SliceMetadata {
 /// decide the next plan transition.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub struct PhaseOutcome {
+pub struct Outcome {
     /// Which phase produced this outcome.
     pub phase: Phase,
     /// Success, failure, or deferred classification.
-    pub outcome: Outcome,
+    pub outcome: OutcomeKind,
     /// When the outcome was recorded.
     pub at: Rfc3339Stamp,
     /// Short human-readable summary.
@@ -181,7 +181,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::{LifecycleStatus, Outcome, Rfc3339Stamp};
+    use crate::{LifecycleStatus, OutcomeKind, Rfc3339Stamp};
 
     fn sample() -> SliceMetadata {
         SliceMetadata {
@@ -354,8 +354,9 @@ touched-specs:
     }
 
     /// Back-compat invariant: the implicit pre-v2 metadata schema
-    /// (no `version:` field, closed `Outcome`) must round-trip through
-    /// the current reader, and the absent version resolves to `1`.
+    /// (no `version:` field, closed `OutcomeKind`) must round-trip
+    /// through the current reader, and the absent version resolves to
+    /// `1`.
     #[test]
     fn defaults_version_when_absent() {
         let yaml = r#"capability: omnia
@@ -379,7 +380,7 @@ outcome:
         assert_eq!(meta.status, LifecycleStatus::Complete);
         let stamped = meta.outcome.expect("outcome should round-trip");
         assert_eq!(stamped.phase, Phase::Merge);
-        assert_eq!(stamped.outcome, Outcome::Success);
+        assert_eq!(stamped.outcome, OutcomeKind::Success);
     }
 
     /// `RegistryAmendmentRequired` round-trips through serde
@@ -388,9 +389,9 @@ outcome:
     #[test]
     fn registry_amendment_required_round_trips_through_serde() {
         let stamp = Rfc3339Stamp::new("2024-08-04T11:22:33Z".to_string());
-        let original = PhaseOutcome {
+        let original = Outcome {
             phase: Phase::Build,
-            outcome: Outcome::RegistryAmendmentRequired {
+            outcome: OutcomeKind::RegistryAmendmentRequired {
                 proposed_name: "alpha-gateway".to_string(),
                 proposed_url: "git@github.com:augentic/alpha-gateway.git".to_string(),
                 proposed_capability: "omnia@v1".to_string(),
@@ -410,7 +411,7 @@ outcome:
             yaml.contains("proposed-name: alpha-gateway"),
             "wire shape must kebab-case proposal fields, got:\n{yaml}"
         );
-        let parsed: PhaseOutcome = serde_saphyr::from_str(&yaml).expect("parse");
+        let parsed: Outcome = serde_saphyr::from_str(&yaml).expect("parse");
         assert_eq!(parsed, original);
     }
 
@@ -421,9 +422,9 @@ outcome:
     fn metadata_with_registry_amendment_required_round_trips() {
         let dir = tempdir().expect("tempdir");
         let mut meta = sample();
-        meta.outcome = Some(PhaseOutcome {
+        meta.outcome = Some(Outcome {
             phase: Phase::Build,
-            outcome: Outcome::RegistryAmendmentRequired {
+            outcome: OutcomeKind::RegistryAmendmentRequired {
                 proposed_name: "alpha-gateway".to_string(),
                 proposed_url: "git@github.com:augentic/alpha-gateway.git".to_string(),
                 proposed_capability: "omnia@v1".to_string(),

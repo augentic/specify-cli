@@ -7,37 +7,41 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_config::is_workspace_clone_path;
-use specify_error::{Error, Result};
+use specify_config::is_workspace_clone;
+use specify_error::Result;
 use specify_slice::atomic::bytes_write;
 
-use super::{context_lock_path, error_from_fence, fences, lock, read_optional, render_document};
+use super::{
+    context_lock_path, diag, error_from_fence, fences, lock, read_optional, render_document,
+};
 use crate::context::Ctx;
 use crate::output::Render;
 
+const WOULD_UPDATE_MSG: &str =
+    "context is out of date; run `specify context generate` to refresh it";
+
 pub(super) fn run(ctx: &Ctx, check: bool, force: bool) -> Result<()> {
-    if is_workspace_clone_path(&ctx.project_dir) {
-        return Err(Error::Diag {
-            code: "context-workspace-clone-refused",
-            detail: format!(
+    if is_workspace_clone(&ctx.project_dir) {
+        return Err(diag(
+            "context-workspace-clone-refused",
+            format!(
                 "specify context generate: refusing to run inside a workspace clone at {}; \
                  run context generation in the owning project instead",
                 ctx.project_dir.display()
             ),
-        });
+        ));
     }
 
     let body = body(ctx, check, force)?;
     let would_update = check && body.changed;
     ctx.out().write(&body)?;
-    if would_update { Err(Error::ContextWouldUpdate) } else { Ok(()) }
+    if would_update { Err(diag("context-would-update", WOULD_UPDATE_MSG)) } else { Ok(()) }
 }
 
 pub(in crate::commands) fn for_init(ctx: &Ctx) -> Result<Outcome> {
-    let body = body(ctx, false, false)?;
-    Ok(Outcome {
-        changed: body.changed,
-        disposition: body.disposition,
+    body(ctx, false, false).map(|b| Outcome {
+        changed: b.changed,
+        disposition: b.disposition,
     })
 }
 
@@ -70,15 +74,26 @@ fn body(ctx: &Ctx, check: bool, force: bool) -> Result<GenerateBody> {
         lock::save(&lock_path, &expected_lock)?;
     }
 
+    let status = match (check, changed) {
+        (true, true) => "would-update",
+        (_, false) => "unchanged",
+        (false, true) => "written",
+    };
+    let disposition = match planned.disposition {
+        fences::WriteDisposition::Create => "create",
+        fences::WriteDisposition::ForceRewriteUnfenced => "force-rewrite-unfenced",
+        fences::WriteDisposition::ReplaceFencedBlock => "replace-fenced-block",
+        fences::WriteDisposition::Unchanged => "unchanged",
+    };
     Ok(GenerateBody {
-        status: status(check, changed),
+        status,
         path: "AGENTS.md",
         check,
         force,
         changed,
         agents_changed,
         lock_changed,
-        disposition: disposition_label(planned.disposition),
+        disposition,
     })
 }
 
@@ -102,31 +117,12 @@ struct GenerateBody {
 impl Render for GenerateBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         match self.status {
-            "would-update" => {
-                writeln!(w, "context is out of date; run `specify context generate` to refresh it")
-            }
+            "would-update" => writeln!(w, "{WOULD_UPDATE_MSG}"),
             "unchanged" => writeln!(w, "AGENTS.md is up to date"),
             "written" if self.agents_changed => writeln!(w, "wrote AGENTS.md"),
             "written" => writeln!(w, "wrote .specify/context.lock"),
             _ => writeln!(w, "context generate finished"),
         }
-    }
-}
-
-const fn status(check: bool, changed: bool) -> &'static str {
-    match (check, changed) {
-        (true, true) => "would-update",
-        (_, false) => "unchanged",
-        (false, true) => "written",
-    }
-}
-
-const fn disposition_label(disposition: fences::WriteDisposition) -> &'static str {
-    match disposition {
-        fences::WriteDisposition::Create => "create",
-        fences::WriteDisposition::ForceRewriteUnfenced => "force-rewrite-unfenced",
-        fences::WriteDisposition::ReplaceFencedBlock => "replace-fenced-block",
-        fences::WriteDisposition::Unchanged => "unchanged",
     }
 }
 
@@ -144,7 +140,10 @@ fn refuse_modified_fenced_body(
     };
     let actual_body = super::fingerprint::body_sha256(current.body());
     if actual_body != existing_lock.fences.body_sha256 {
-        return Err(Error::ContextDrift);
+        return Err(diag(
+            "context-fenced-content-modified",
+            "AGENTS.md drifted from .specify/context.lock",
+        ));
     }
     Ok(())
 }

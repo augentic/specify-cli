@@ -45,7 +45,6 @@ fn brief_create(ctx: &Ctx, name: String) -> Result<()> {
     bytes_write(&brief_path, ChangeBrief::template(&name).as_bytes())?;
 
     ctx.out().write(&BriefCreateBody {
-        action: BriefAction::Init,
         name,
         path: brief_path,
     })?;
@@ -69,7 +68,17 @@ fn brief_show(ctx: &Ctx) -> Result<()> {
 fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
     let plan = match finalize::load_plan(&ctx.project_dir)? {
         finalize::PlanLoad::Present(plan) => plan,
-        finalize::PlanLoad::Missing => return Err(Error::PlanNotFound),
+        finalize::PlanLoad::Missing => {
+            return Err(Error::Diag {
+                code: "plan-not-found",
+                detail: "no plan to finalize: plan.yaml is absent. \
+                         If the change was already finalized, the archive is at \
+                         .specify/archive/plans/. Otherwise run \
+                         `specify change plan create` (and `specify change create` \
+                         if the change brief is also missing) to start the loop."
+                    .to_string(),
+            });
+        }
     };
 
     // Registry is optional — an empty registry means no per-project
@@ -119,16 +128,9 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct BriefCreateBody {
-    action: BriefAction,
     name: String,
     #[serde(serialize_with = "serialize_path")]
     path: PathBuf,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-enum BriefAction {
-    Init,
 }
 
 impl Render for BriefCreateBody {

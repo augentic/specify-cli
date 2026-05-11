@@ -8,13 +8,12 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use serde::Serialize;
-use serde_json::Value;
 use specify_change::{Plan, Status};
 use specify_config::LayoutExt;
 use specify_error::Result;
 use specify_registry::Registry;
 
-use super::slice::{StatusEntry, collect_status, list_slice_names, status_entry_to_json};
+use super::slice::{StatusEntry, collect_status, list_slice_names};
 use crate::context::Ctx;
 use crate::output::Render;
 
@@ -37,47 +36,28 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
+#[derive(Serialize)]
 struct DashboardBody {
     registry: Option<Registry>,
     plan: Option<PlanSummary>,
-    entries: Vec<StatusEntry>,
+    slices: Vec<StatusEntry>,
 }
 
 impl DashboardBody {
     const fn new(
-        registry: Option<Registry>, plan: Option<PlanSummary>, entries: Vec<StatusEntry>,
+        registry: Option<Registry>, plan: Option<PlanSummary>, slices: Vec<StatusEntry>,
     ) -> Self {
         Self {
             registry,
             plan,
-            entries,
+            slices,
         }
-    }
-}
-
-impl Serialize for DashboardBody {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let registry_json = self
-            .registry
-            .as_ref()
-            .map_or(Value::Null, |r| serde_json::to_value(r).expect("Registry serialises"));
-        let plan_json = self
-            .plan
-            .as_ref()
-            .map_or(Value::Null, |p| serde_json::to_value(p).expect("PlanSummary serialises"));
-        let slices_json: Vec<Value> = self.entries.iter().map(status_entry_to_json).collect();
-        let mut s = serializer.serialize_struct("DashboardBody", 3)?;
-        s.serialize_field("registry", &registry_json)?;
-        s.serialize_field("plan", &plan_json)?;
-        s.serialize_field("slices", &slices_json)?;
-        s.end()
     }
 }
 
 impl Render for DashboardBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        render_dashboard(w, self.registry.as_ref(), self.plan.as_ref(), &self.entries)
+        render_dashboard(w, self.registry.as_ref(), self.plan.as_ref(), &self.slices)
     }
 }
 

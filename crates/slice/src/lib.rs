@@ -19,12 +19,12 @@ pub mod outcome;
 /// Timestamp newtype.
 pub mod timestamp;
 
-pub use actions::{CreateIfExists, CreateOutcome, Overlap, format_rfc3339};
+pub use actions::{CreateIfExists, Created, Overlap};
 pub use journal::{EntryKind, Journal, JournalEntry};
 pub use lifecycle::LifecycleStatus;
 pub use metadata::{
-    METADATA_VERSION, PhaseOutcome, SLICES_DIR_NAME, SliceMetadata, SpecKind, TouchedSpec,
+    METADATA_VERSION, Outcome, SLICES_DIR_NAME, SliceMetadata, SpecKind, TouchedSpec,
 };
-pub use outcome::Outcome;
+pub use outcome::OutcomeKind;
 pub use specify_capability::Phase;
 pub use timestamp::Rfc3339Stamp;

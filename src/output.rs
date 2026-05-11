@@ -119,10 +119,17 @@ impl From<&Error> for Exit {
             Error::Validation { .. }
             | Error::ToolDenied(_)
             | Error::ToolNotDeclared { .. }
-            | Error::PlanStructural
             | Error::CapabilityCheckFailed { .. }
-            | Error::CompatibilityCheckFailed
             | Error::SliceValidationFailed { .. } => Self::ValidationFailed,
+            // Diag-routed siblings of the typed validation cluster.
+            // Their typed variants collapsed to `Diag` but their exit
+            // slot stays exit 2 — the kebab `code` is the wire contract
+            // and skills branch on it.
+            Error::Diag { code, .. }
+                if matches!(*code, "plan-structural-errors" | "compatibility-check-failed") =>
+            {
+                Self::ValidationFailed
+            }
             Error::Argument { .. } => Self::ArgumentError,
             _ => Self::GenericFailure,
         }
@@ -162,38 +169,18 @@ pub(crate) fn report(format: Format, err: &Error) -> Exit {
     code
 }
 
-/// Long-form recovery hints for tightened diagnostics. The
-/// `#[error("…")]` body carries the kebab discriminant + immediate
-/// cause; the renderer appends actionable follow-up so the
-/// machine-readable JSON envelope stays compact while operators see
-/// the full guidance on a TTY. Free function (not a method on
-/// [`ErrorBody`]) so it can be reused by any error renderer
-/// without forcing the body type to own the variant identity.
-fn write_text_hint(w: &mut dyn Write, err: &Error) -> std::io::Result<()> {
-    match err {
-        Error::InitNeedsCapability => {
-            writeln!(
-                w,
-                "hint: `specify init <capability>` for a regular project, or `specify init --hub` for a platform hub."
-            )?;
-            writeln!(w, "see: docs/init.md")?;
+/// Surface `err`'s long-form recovery hint (when defined) on `w`.
+/// Embedded `\n` newlines split into per-line writes; the first line
+/// gets the `hint: ` prefix, follow-up lines print verbatim so a
+/// trailing `see: docs/…` reference renders unprefixed.
+fn write_hint(w: &mut dyn Write, err: &Error) -> std::io::Result<()> {
+    let Some(hint) = err.hint() else { return Ok(()) };
+    for (idx, line) in hint.lines().enumerate() {
+        if idx == 0 {
+            writeln!(w, "hint: {line}")?;
+        } else {
+            writeln!(w, "{line}")?;
         }
-        Error::ContextUnfenced => {
-            writeln!(w, "hint: rerun with --force to rewrite AGENTS.md.")?;
-        }
-        Error::ContextDrift => {
-            writeln!(
-                w,
-                "hint: reconcile the edits or rerun with --force to replace the generated block."
-            )?;
-        }
-        Error::PlanIncomplete { .. } => {
-            writeln!(
-                w,
-                "hint: complete or drop the listed entries, or rerun with --force to archive anyway."
-            )?;
-        }
-        _ => {}
     }
     Ok(())
 }
@@ -313,7 +300,7 @@ impl<'a> From<&'a Error> for ErrorBody<'a> {
 impl Render for ErrorBody<'_> {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         writeln!(w, "error: {}", self.message)?;
-        write_text_hint(w, self.hint_source)
+        write_hint(w, self.hint_source)
     }
 }
 
@@ -403,7 +390,7 @@ impl<'a> From<(&'a Error, &'a [ValidationSummary])> for ValidationErrBody<'a> {
 impl Render for ValidationErrBody<'_> {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         writeln!(w, "error: {}", self.message)?;
-        write_text_hint(w, self.hint_source)
+        write_hint(w, self.hint_source)
     }
 }
 

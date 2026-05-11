@@ -2028,7 +2028,7 @@ inputs: []
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["action"], "init");
+        assert!(actual["action"].is_null(), "BriefCreateBody no longer carries an `action` field");
         assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
         assert_eq!(actual["name"], "my-change");
         assert!(

@@ -1,309 +1,35 @@
-//! `specify tool {run,list,fetch,show,gc}` handlers.
+//! `specify tool *` dispatcher.
+//!
+//! Per-subcommand handlers live in `tool/{run, list, fetch, show, gc}.rs`;
+//! shared response DTOs and row builders live in `tool/dto.rs`. Shared
+//! inventory assembly (declared-tool merge, capability resolution,
+//! manifest validation) is colocated here because every handler in the
+//! tree consumes it.
 
 pub(crate) mod cli;
+mod dto;
+mod fetch;
+mod gc;
+mod list;
+mod run;
+mod show;
 
 use std::collections::{HashMap, HashSet};
-use std::io::Write;
 use std::path::Path;
-use std::{fmt, fs};
 
-use chrono::Utc;
-use serde::Serialize;
+pub(super) use fetch::run as fetch;
+pub(super) use gc::run as gc;
+pub(super) use list::run as list;
+pub(super) use run::run;
+pub(super) use show::run as show;
 use specify_capability::{Capability, ResolvedCapability};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
-use specify_tool::cache::{self, CacheStatus};
-use specify_tool::host::{RunContext, WasiRunner};
-use specify_tool::load::{self, Warning};
+use specify_tool::load::{self};
 use specify_tool::validate::ValidationResult as ToolValidationResult;
-use specify_tool::{Tool, ToolManifest, ToolPermissions, ToolScope};
+use specify_tool::{Tool, ToolManifest, ToolScope};
 
-use crate::cli::Format;
+use self::dto::{CacheKey, Inventory, ScopedTool, WarningRow, warning_row};
 use crate::context::Ctx;
-use crate::output::Render;
-
-type CacheKey = (String, String, String);
-
-#[derive(Debug, Clone)]
-struct ScopedTool {
-    scope: ToolScope,
-    tool: Tool,
-}
-
-#[derive(Debug)]
-struct Inventory {
-    tools: Vec<ScopedTool>,
-    warnings: Vec<WarningRow>,
-    scopes: Vec<ToolScope>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct WarningRow {
-    code: &'static str,
-    name: String,
-    message: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ToolRow {
-    name: String,
-    version: String,
-    source: String,
-    scope: ToolScopeKind,
-    scope_detail: String,
-    cache_status: CacheStatus,
-    cached_path: String,
-}
-
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "kebab-case")]
-enum ToolScopeKind {
-    Project,
-    Capability,
-}
-
-impl fmt::Display for ToolScopeKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Project => "project",
-            Self::Capability => "capability",
-        })
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ToolFetchRow {
-    #[serde(flatten)]
-    row: ToolRow,
-    fetched: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ToolShowRow {
-    #[serde(flatten)]
-    row: ToolRow,
-    permissions: ToolPermissions,
-    sha256: Option<String>,
-    fetched_at: Option<String>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ListBody {
-    tools: Vec<ToolRow>,
-    warnings: Vec<WarningRow>,
-}
-
-impl Render for ListBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.tools.is_empty() {
-            writeln!(w, "No declared tools.")?;
-            return Ok(());
-        }
-        writeln!(w, "name\tversion\tscope\tcache\tcached path")?;
-        for row in &self.tools {
-            writeln!(
-                w,
-                "{}\t{}\t{}:{}\t{}\t{}",
-                row.name,
-                row.version,
-                row.scope,
-                row.scope_detail,
-                cache_status_label(row.cache_status),
-                row.cached_path
-            )?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct FetchBody {
-    tools: Vec<ToolFetchRow>,
-    warnings: Vec<WarningRow>,
-}
-
-impl Render for FetchBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.tools.is_empty() {
-            writeln!(w, "No declared tools to fetch.")?;
-            return Ok(());
-        }
-        for row in &self.tools {
-            let action = if row.fetched { "fetched" } else { "cached" };
-            writeln!(
-                w,
-                "{action}: {} {} [{}:{}] {}",
-                row.row.name,
-                row.row.version,
-                row.row.scope,
-                row.row.scope_detail,
-                row.row.cached_path
-            )?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ShowBody {
-    tool: ToolShowRow,
-    warnings: Vec<WarningRow>,
-}
-
-impl Render for ShowBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let row = &self.tool;
-        writeln!(w, "name: {}", row.row.name)?;
-        writeln!(w, "version: {}", row.row.version)?;
-        writeln!(w, "source: {}", row.row.source)?;
-        writeln!(w, "scope: {}:{}", row.row.scope, row.row.scope_detail)?;
-        writeln!(w, "cache: {}", cache_status_label(row.row.cache_status))?;
-        writeln!(w, "cached path: {}", row.row.cached_path)?;
-        if let Some(fetched_at) = &row.fetched_at {
-            writeln!(w, "fetched at: {fetched_at}")?;
-        }
-        if let Some(sha256) = &row.sha256 {
-            writeln!(w, "sha256: {sha256}")?;
-        }
-        writeln!(w, "permissions:")?;
-        writeln!(w, "  read: {}", format_permission_list(&row.permissions.read))?;
-        writeln!(w, "  write: {}", format_permission_list(&row.permissions.write))?;
-        Ok(())
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct GcBody {
-    removed: Vec<String>,
-    warnings: Vec<WarningRow>,
-}
-
-impl Render for GcBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(
-            w,
-            "Removed {} tool cache entrie(s) from current-project scopes.",
-            self.removed.len()
-        )?;
-        for path in &self.removed {
-            writeln!(w, "  {path}")?;
-        }
-        Ok(())
-    }
-}
-
-/// Run a declared WASI tool through the concrete WASI host.
-///
-/// Returns the guest's exit byte (0 for success). The dispatcher
-/// promotes a non-zero exit into [`Exit::Code`] verbatim so
-/// `specify tool run` is a transparent shim over the underlying WASI
-/// binary; this is the only legitimate site that mints a `Code(_)`
-/// exit. Domain failures (resolver, host) propagate as `Error` and
-/// land on the canonical exit-code table.
-pub(crate) fn run(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<u8> {
-    let inventory = build_inventory(ctx)?;
-    emit_warnings_to_stderr(&inventory.warnings);
-    let scoped = find(&inventory, name)?;
-    let resolved = specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, Utc::now())?;
-    let mut run_ctx = RunContext::new(&ctx.project_dir, args);
-    if let ToolScope::Capability { capability_dir, .. } = &scoped.scope {
-        run_ctx = run_ctx.with_capability_dir(capability_dir);
-    }
-    let runner = WasiRunner::new()?;
-    let exit = runner.run(&resolved, &run_ctx)?;
-    Ok(u8::try_from(exit.clamp(0, 255)).expect("tool exit code is clamped to u8 range"))
-}
-
-/// List the merged tool declarations for the current project.
-pub(crate) fn list(ctx: &Ctx) -> Result<()> {
-    let inventory = build_inventory(ctx)?;
-    let rows = rows_for(&inventory.tools)?;
-    let body = ListBody {
-        tools: rows,
-        warnings: inventory.warnings,
-    };
-    ctx.out().write(&body)?;
-    if matches!(ctx.format, Format::Text) {
-        emit_warnings_to_stderr(&body.warnings);
-    }
-    Ok(())
-}
-
-/// Fetch one declared tool, or all declared tools when no name is supplied.
-pub(crate) fn fetch(ctx: &Ctx, name: Option<&str>) -> Result<()> {
-    let inventory = build_inventory(ctx)?;
-    let selected = select(&inventory, name)?;
-    let mut rows = Vec::with_capacity(selected.len());
-    for scoped in selected {
-        let before = cache_status_for(scoped)?;
-        specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, Utc::now())?;
-        rows.push(ToolFetchRow {
-            row: row_for(scoped)?,
-            fetched: before != CacheStatus::Hit,
-        });
-    }
-
-    let body = FetchBody {
-        tools: rows,
-        warnings: inventory.warnings,
-    };
-    ctx.out().write(&body)?;
-    if matches!(ctx.format, Format::Text) {
-        emit_warnings_to_stderr(&body.warnings);
-    }
-    Ok(())
-}
-
-/// Show one declared tool's metadata and cache state.
-pub(crate) fn show(ctx: &Ctx, name: &str) -> Result<()> {
-    let inventory = build_inventory(ctx)?;
-    let scoped = find(&inventory, name)?;
-    let row = show_row_for(scoped)?;
-    let body = ShowBody {
-        tool: row,
-        warnings: inventory.warnings,
-    };
-    ctx.out().write(&body)?;
-    if matches!(ctx.format, Format::Text) {
-        emit_warnings_to_stderr(&body.warnings);
-    }
-    Ok(())
-}
-
-/// Remove cache entries not referenced by the current project's merged tool list.
-pub(crate) fn gc(ctx: &Ctx) -> Result<()> {
-    let inventory = build_inventory(ctx)?;
-    let mut kept_by_scope = kept_by_scope(&inventory);
-    let mut removed = Vec::new();
-    for scope in &inventory.scopes {
-        let kept = kept_by_scope.remove(scope).unwrap_or_default();
-        for path in cache::scan_for_gc(scope, &kept)? {
-            fs::remove_dir_all(&path).map_err(|err| Error::Diag {
-                code: "tool-cache-remove-failed",
-                detail: format!("failed to remove tool cache directory {}: {err}", path.display()),
-            })?;
-            removed.push(path.display().to_string());
-        }
-    }
-    removed.sort();
-
-    let body = GcBody {
-        removed,
-        warnings: inventory.warnings,
-    };
-    ctx.out().write(&body)?;
-    if matches!(ctx.format, Format::Text) {
-        emit_warnings_to_stderr(&body.warnings);
-    }
-    Ok(())
-}
 
 fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let project_scope = ToolScope::Project {
@@ -377,18 +103,6 @@ fn validation_failure(result: &ToolValidationResult) -> Option<ValidationSummary
     }
 }
 
-fn warning_row(warning: Warning) -> WarningRow {
-    match warning {
-        Warning::ToolNameCollision { name } => WarningRow {
-            code: "tool-name-collision",
-            message: format!(
-                "project-scope declaration for `{name}` overrides the capability-scope declaration"
-            ),
-            name,
-        },
-    }
-}
-
 fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool> {
     inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| {
         Error::ToolNotDeclared {
@@ -401,66 +115,6 @@ fn select<'a>(inventory: &'a Inventory, name: Option<&str>) -> Result<Vec<&'a Sc
     match name {
         Some(name) => Ok(vec![find(inventory, name)?]),
         None => Ok(inventory.tools.iter().collect()),
-    }
-}
-
-fn rows_for(tools: &[ScopedTool]) -> Result<Vec<ToolRow>> {
-    tools.iter().map(row_for).collect()
-}
-
-fn row_for(scoped: &ScopedTool) -> Result<ToolRow> {
-    let source = scoped.tool.source.to_wire_string().into_owned();
-    let cache_status = cache_status_for(scoped)?;
-    let cached_path = cache::module_path(&scoped.scope, &scoped.tool.name, &scoped.tool.version)?;
-    let (scope, scope_detail) = scope_labels(&scoped.scope);
-    Ok(ToolRow {
-        name: scoped.tool.name.clone(),
-        version: scoped.tool.version.clone(),
-        source,
-        scope,
-        scope_detail,
-        cache_status,
-        cached_path: cached_path.display().to_string(),
-    })
-}
-
-fn show_row_for(scoped: &ScopedTool) -> Result<ToolShowRow> {
-    let row = row_for(scoped)?;
-    let sidecar_path = cache::sidecar_path(&scoped.scope, &scoped.tool.name, &scoped.tool.version)?;
-    let fetched_at =
-        cache::read_sidecar(&sidecar_path)?.map(|sidecar| sidecar.fetched_at.to_rfc3339());
-    Ok(ToolShowRow {
-        row,
-        permissions: scoped.tool.permissions.clone(),
-        sha256: scoped.tool.sha256.clone(),
-        fetched_at,
-    })
-}
-
-fn cache_status_for(scoped: &ScopedTool) -> Result<CacheStatus> {
-    Ok(cache::cache_status(
-        &scoped.scope,
-        &scoped.tool.name,
-        &scoped.tool.version,
-        scoped.tool.source.to_wire_string().as_ref(),
-        scoped.tool.sha256.as_deref(),
-    )?)
-}
-
-const fn cache_status_label(status: CacheStatus) -> &'static str {
-    match status {
-        CacheStatus::Hit => "hit",
-        CacheStatus::MissNotFound => "miss-not-found",
-        CacheStatus::MissChanged => "miss-changed",
-    }
-}
-
-fn scope_labels(scope: &ToolScope) -> (ToolScopeKind, String) {
-    match scope {
-        ToolScope::Project { project_name } => (ToolScopeKind::Project, project_name.clone()),
-        ToolScope::Capability { capability_slug, .. } => {
-            (ToolScopeKind::Capability, capability_slug.clone())
-        }
     }
 }
 
@@ -481,8 +135,4 @@ fn emit_warnings_to_stderr(warnings: &[WarningRow]) {
     for warning in warnings {
         eprintln!("warning: {}: {}", warning.code, warning.message);
     }
-}
-
-fn format_permission_list(values: &[String]) -> String {
-    if values.is_empty() { "(none)".to_string() } else { values.join(", ") }
 }

@@ -12,7 +12,7 @@ use regex::Regex;
 use specify_error::Error;
 use specify_merge::{ArtifactClass, MergeStrategy, OpaqueAction, slice};
 use specify_slice::{
-    LifecycleStatus, METADATA_VERSION, Outcome, Phase, PhaseOutcome, Rfc3339Stamp, SLICES_DIR_NAME,
+    LifecycleStatus, METADATA_VERSION, Outcome, OutcomeKind, Phase, Rfc3339Stamp, SLICES_DIR_NAME,
     SliceMetadata,
 };
 use tempfile::TempDir;
@@ -156,7 +156,7 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     // contributing class name and entry count.
     let outcome = new_meta.outcome.expect("expected outcome to be stamped by slice::commit");
     assert_eq!(outcome.phase, Phase::Merge);
-    assert_eq!(outcome.outcome, Outcome::Success);
+    assert_eq!(outcome.outcome, OutcomeKind::Success);
     assert!(outcome.summary.contains("2 specs"), "unexpected summary: {}", outcome.summary);
 }
 
@@ -381,7 +381,7 @@ fn merge_without_contracts_dir_works_as_before() {
 }
 
 /// Helper: find the archived `.metadata.yaml` and return its phase outcome.
-fn find_archived_metadata(project: &Project) -> PhaseOutcome {
+fn find_archived_metadata(project: &Project) -> Outcome {
     let archived: Vec<_> = fs::read_dir(project.archive_dir())
         .unwrap()
         .filter_map(Result::ok)

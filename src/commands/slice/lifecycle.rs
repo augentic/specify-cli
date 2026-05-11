@@ -6,7 +6,7 @@ use chrono::Utc;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_slice::{
-    CreateIfExists, CreateOutcome, LifecycleStatus, Rfc3339Stamp, actions as slice_actions,
+    CreateIfExists, Created, LifecycleStatus, Rfc3339Stamp, actions as slice_actions,
 };
 
 use crate::context::Ctx;
@@ -48,8 +48,8 @@ struct CreateBody {
     restarted: bool,
 }
 
-impl From<&CreateOutcome> for CreateBody {
-    fn from(outcome: &CreateOutcome) -> Self {
+impl From<&Created> for CreateBody {
+    fn from(outcome: &Created) -> Self {
         Self {
             name: outcome.dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
             slice_dir: outcome.dir.display().to_string(),
@@ -133,11 +133,11 @@ impl Render for ArchiveBody {
     }
 }
 
-pub(super) fn drop_slice(ctx: &Ctx, name: String, reason: Option<&str>) -> Result<()> {
+pub(super) fn discard_slice(ctx: &Ctx, name: String, reason: Option<&str>) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let (metadata, archive_path) =
-        slice_actions::drop(&slice_dir, &archive_dir, reason, Utc::now())?;
+        slice_actions::discard(&slice_dir, &archive_dir, reason, Utc::now())?;
     ctx.out().write(&DropBody {
         name,
         status: metadata.status,

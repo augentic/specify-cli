@@ -9,7 +9,7 @@ use serde_json::Value;
 use specify_capability::Phase;
 use specify_config::LayoutExt;
 use specify_error::{Error, Result};
-use specify_slice::{Outcome, Rfc3339Stamp, SliceMetadata, actions as slice_actions};
+use specify_slice::{OutcomeKind, Rfc3339Stamp, SliceMetadata, actions as slice_actions};
 
 use crate::cli::{OutcomeKindAction, RegistryAmendmentArgs};
 use crate::context::Ctx;
@@ -65,30 +65,31 @@ impl Render for PhaseStampBody {
     }
 }
 
-/// Lower a `slice outcome set` subcommand into the wire `Outcome`,
+/// Lower a `slice outcome set` subcommand into the wire `OutcomeKind`,
 /// summary, and optional context. clap has already enforced
 /// per-variant flag presence; no runtime guard required.
-fn lower_kind(kind: OutcomeKindAction) -> (Outcome, String, Option<String>) {
+fn lower_kind(kind: OutcomeKindAction) -> (OutcomeKind, String, Option<String>) {
     match kind {
-        OutcomeKindAction::Success { summary, context } => (Outcome::Success, summary, context),
-        OutcomeKindAction::Failure { summary, context } => (Outcome::Failure, summary, context),
-        OutcomeKindAction::Deferred { summary, context } => (Outcome::Deferred, summary, context),
+        OutcomeKindAction::Success { summary, context } => (OutcomeKind::Success, summary, context),
+        OutcomeKindAction::Failure { summary, context } => (OutcomeKind::Failure, summary, context),
+        OutcomeKindAction::Deferred { summary, context } => {
+            (OutcomeKind::Deferred, summary, context)
+        }
         OutcomeKindAction::RegistryAmendmentRequired(RegistryAmendmentArgs {
             summary,
             context,
-            proposed_name,
-            proposed_url,
-            proposed_capability,
-            proposed_description,
+            name,
+            url,
+            capability,
+            description,
             rationale,
         }) => {
-            let summary =
-                summary.unwrap_or_else(|| format!("registry-amendment-required: {proposed_name}"));
-            let outcome = Outcome::RegistryAmendmentRequired {
-                proposed_name,
-                proposed_url,
-                proposed_capability,
-                proposed_description,
+            let summary = summary.unwrap_or_else(|| format!("registry-amendment-required: {name}"));
+            let outcome = OutcomeKind::RegistryAmendmentRequired {
+                proposed_name: name,
+                proposed_url: url,
+                proposed_capability: capability,
+                proposed_description: description,
                 rationale,
             };
             (outcome, summary, context)
@@ -170,8 +171,8 @@ struct OutcomeRow {
     proposal: Option<RegistryProposalRow>,
 }
 
-impl From<&specify_slice::PhaseOutcome> for OutcomeRow {
-    fn from(o: &specify_slice::PhaseOutcome) -> Self {
+impl From<&specify_slice::Outcome> for OutcomeRow {
+    fn from(o: &specify_slice::Outcome) -> Self {
         Self {
             phase: o.phase.to_string(),
             outcome: o.outcome.discriminant().to_string(),
@@ -195,11 +196,11 @@ struct RegistryProposalRow {
 }
 
 impl RegistryProposalRow {
-    // Filters on `Outcome::RegistryAmendmentRequired`; returns `Option<Self>`
-    // rather than `Self`, so a `From` impl would be a poor fit. Kept as a
-    // named constructor.
-    fn from_kind(outcome: &Outcome) -> Option<Self> {
-        if let Outcome::RegistryAmendmentRequired {
+    // Filters on `OutcomeKind::RegistryAmendmentRequired`; returns
+    // `Option<Self>` rather than `Self`, so a `From` impl would be a
+    // poor fit. Kept as a named constructor.
+    fn from_kind(outcome: &OutcomeKind) -> Option<Self> {
+        if let OutcomeKind::RegistryAmendmentRequired {
             proposed_name,
             proposed_url,
             proposed_capability,

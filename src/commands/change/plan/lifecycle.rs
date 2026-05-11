@@ -104,7 +104,15 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         validation: Validation { results: rows },
         passed: !has_errors,
     })?;
-    if has_errors { Err(Error::PlanStructural) } else { Ok(()) }
+    if has_errors {
+        Err(Error::Diag {
+            code: "plan-structural-errors",
+            detail: "plan has structural errors; run 'specify change plan validate' for detail"
+                .to_string(),
+        })
+    } else {
+        Ok(())
+    }
 }
 
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
@@ -114,7 +122,11 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 
     let results = plan.validate(Some(&slices_dir), None);
     if results.iter().any(|r| matches!(r.level, Severity::Error)) {
-        return Err(Error::PlanStructural);
+        return Err(Error::Diag {
+            code: "plan-structural-errors",
+            detail: "plan has structural errors; run 'specify change plan validate' for detail"
+                .to_string(),
+        });
     }
 
     let body = if let Some(active) = plan.entries.iter().find(|c| c.status == Status::InProgress) {

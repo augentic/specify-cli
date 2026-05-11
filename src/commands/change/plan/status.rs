@@ -127,7 +127,11 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let has_other_structural_errors =
         results.iter().any(|r| matches!(r.level, Severity::Error) && r.code != "dependency-cycle");
     if has_other_structural_errors {
-        return Err(Error::PlanStructural);
+        return Err(Error::Diag {
+            code: "plan-structural-errors",
+            detail: "plan has structural errors; run 'specify change plan validate' for detail"
+                .to_string(),
+        });
     }
 
     let (ordered, order_label) = if let Ok(v) = plan.topological_order() {

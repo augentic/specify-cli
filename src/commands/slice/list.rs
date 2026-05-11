@@ -9,7 +9,6 @@ use std::io::Write;
 use std::path::Path;
 
 use serde::Serialize;
-use serde_json::Value;
 use specify_capability::{Phase, PipelineView};
 use specify_error::Result;
 use specify_slice::{LifecycleStatus, SliceMetadata};
@@ -28,31 +27,33 @@ pub(in crate::commands) struct StatusEntry {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct EntryJson {
-    name: String,
+struct EntryJson<'a> {
+    name: &'a str,
     status: LifecycleStatus,
-    capability: String,
+    capability: &'a str,
     tasks: Option<TaskCounts>,
-    artifacts: BTreeMap<String, bool>,
+    artifacts: &'a BTreeMap<String, bool>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Copy, Clone)]
 #[serde(rename_all = "kebab-case")]
 struct TaskCounts {
     total: usize,
     complete: usize,
 }
 
-pub(in crate::commands) fn status_entry_to_json(e: &StatusEntry) -> Value {
-    let tasks_value = e.tasks.map(|(complete, total)| TaskCounts { total, complete });
-    serde_json::to_value(EntryJson {
-        name: e.name.clone(),
-        status: e.status,
-        capability: e.capability.clone(),
-        tasks: tasks_value,
-        artifacts: e.artifacts.clone(),
-    })
-    .expect("EntryJson serialises")
+impl Serialize for StatusEntry {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let tasks = self.tasks.map(|(complete, total)| TaskCounts { total, complete });
+        EntryJson {
+            name: &self.name,
+            status: self.status,
+            capability: &self.capability,
+            tasks,
+            artifacts: &self.artifacts,
+        }
+        .serialize(serializer)
+    }
 }
 
 pub(in crate::commands) fn collect_status(
@@ -137,35 +138,26 @@ pub(super) fn status_one(ctx: &Ctx, name: &str) -> Result<()> {
     Ok(())
 }
 
+#[derive(Serialize)]
 struct StatusListBody<'a> {
-    entries: &'a [StatusEntry],
+    slices: &'a [StatusEntry],
 }
 
 impl<'a> StatusListBody<'a> {
-    const fn new(entries: &'a [StatusEntry]) -> Self {
-        Self { entries }
-    }
-}
-
-impl Serialize for StatusListBody<'_> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let slices: Vec<Value> = self.entries.iter().map(status_entry_to_json).collect();
-        let mut s = serializer.serialize_struct("StatusListBody", 1)?;
-        s.serialize_field("slices", &slices)?;
-        s.end()
+    const fn new(slices: &'a [StatusEntry]) -> Self {
+        Self { slices }
     }
 }
 
 impl Render for StatusListBody<'_> {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.entries.is_empty() {
+        if self.slices.is_empty() {
             return writeln!(w, "No slices.");
         }
-        if self.entries.len() == 1 {
-            return render_single(w, &self.entries[0]);
+        if self.slices.len() == 1 {
+            return render_single(w, &self.slices[0]);
         }
-        render_table(w, self.entries)
+        render_table(w, self.slices)
     }
 }
 

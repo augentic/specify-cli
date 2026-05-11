@@ -8,7 +8,7 @@ use std::path::Path;
 
 use chrono::Utc;
 use serde::Serialize;
-use specify_config::{LayoutExt, is_workspace_clone_path};
+use specify_config::{LayoutExt, is_workspace_clone};
 use specify_error::Result;
 use specify_merge::{
     BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check, slice,
@@ -30,7 +30,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // The merge-owned workspace commit is limited to the baseline spec
     // tree and archived slice. Opaque/generated outputs remain as residue
     // for the execute driver.
-    if is_workspace_clone(&ctx.project_dir) {
+    if is_clone_eligible(&ctx.project_dir) {
         auto_commit(&ctx.project_dir, name);
     }
 
@@ -113,14 +113,14 @@ impl Render for MergeRunBody {
 #[serde(rename_all = "kebab-case")]
 struct MergedEntry {
     name: String,
-    operations: Vec<MergeOpJson>,
+    operations: Vec<MergeOp>,
 }
 
 impl From<&MergePreviewEntry> for MergedEntry {
     fn from(entry: &MergePreviewEntry) -> Self {
         Self {
             name: entry.name.clone(),
-            operations: entry.result.operations.iter().map(MergeOpJson::from).collect(),
+            operations: entry.result.operations.iter().map(MergeOp::from).collect(),
         }
     }
 }
@@ -165,7 +165,7 @@ impl Render for PreviewBody {
 struct SpecPreviewEntry {
     name: String,
     baseline_path: String,
-    operations: Vec<MergeOpJson>,
+    operations: Vec<MergeOp>,
 }
 
 impl From<&MergePreviewEntry> for SpecPreviewEntry {
@@ -173,7 +173,7 @@ impl From<&MergePreviewEntry> for SpecPreviewEntry {
         Self {
             name: entry.name.clone(),
             baseline_path: entry.baseline_path.display().to_string(),
-            operations: entry.result.operations.iter().map(MergeOpJson::from).collect(),
+            operations: entry.result.operations.iter().map(MergeOp::from).collect(),
         }
     }
 }
@@ -249,12 +249,12 @@ impl From<&BaselineConflict> for ConflictRow {
 }
 
 // ---------------------------------------------------------------------------
-// MergeOpJson — typed wire representation of a `MergeOperation`.
+// MergeOp — typed wire representation of a `MergeOperation`.
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
-enum MergeOpJson {
+enum MergeOp {
     Added { id: String, name: String },
     Modified { id: String, name: String },
     Removed { id: String, name: String },
@@ -263,7 +263,7 @@ enum MergeOpJson {
     Unknown,
 }
 
-impl From<&specify_merge::MergeOperation> for MergeOpJson {
+impl From<&specify_merge::MergeOperation> for MergeOp {
     fn from(op: &specify_merge::MergeOperation) -> Self {
         use specify_merge::MergeOperation;
         match op {
@@ -298,24 +298,24 @@ impl From<&specify_merge::MergeOperation> for MergeOpJson {
     }
 }
 
-fn operation_label(op: &MergeOpJson) -> String {
+fn operation_label(op: &MergeOp) -> String {
     match op {
-        MergeOpJson::Added { id, name } => format!("ADDING: {id} — {name}"),
-        MergeOpJson::Modified { id, name } => format!("MODIFYING: {id} — {name}"),
-        MergeOpJson::Removed { id, name } => format!("REMOVING: {id} — {name}"),
-        MergeOpJson::Renamed {
+        MergeOp::Added { id, name } => format!("ADDING: {id} — {name}"),
+        MergeOp::Modified { id, name } => format!("MODIFYING: {id} — {name}"),
+        MergeOp::Removed { id, name } => format!("REMOVING: {id} — {name}"),
+        MergeOp::Renamed {
             id,
             old_name,
             new_name,
         } => format!("RENAMING: {id} — {old_name} -> {new_name}"),
-        MergeOpJson::CreatedBaseline { requirement_count } => {
+        MergeOp::CreatedBaseline { requirement_count } => {
             format!("CREATING baseline with {requirement_count} requirement(s)")
         }
-        MergeOpJson::Unknown => "UNKNOWN operation".to_string(),
+        MergeOp::Unknown => "UNKNOWN operation".to_string(),
     }
 }
 
-fn summarise_ops(ops: &[MergeOpJson]) -> String {
+fn summarise_ops(ops: &[MergeOp]) -> String {
     let mut added = 0;
     let mut modified = 0;
     let mut removed = 0;
@@ -323,14 +323,14 @@ fn summarise_ops(ops: &[MergeOpJson]) -> String {
     let mut created_baseline = None;
     for op in ops {
         match op {
-            MergeOpJson::Added { .. } => added += 1,
-            MergeOpJson::Modified { .. } => modified += 1,
-            MergeOpJson::Removed { .. } => removed += 1,
-            MergeOpJson::Renamed { .. } => renamed += 1,
-            MergeOpJson::CreatedBaseline { requirement_count } => {
+            MergeOp::Added { .. } => added += 1,
+            MergeOp::Modified { .. } => modified += 1,
+            MergeOp::Removed { .. } => removed += 1,
+            MergeOp::Renamed { .. } => renamed += 1,
+            MergeOp::CreatedBaseline { requirement_count } => {
                 created_baseline = Some(*requirement_count);
             }
-            MergeOpJson::Unknown => {}
+            MergeOp::Unknown => {}
         }
     }
     if let Some(count) = created_baseline {
@@ -364,8 +364,8 @@ fn summarise_ops(ops: &[MergeOpJson]) -> String {
 /// retained as a safety check but is not sufficient on its own
 /// because `plan.yaml` may be absent after `specify change plan
 /// archive`.
-fn is_workspace_clone(project_dir: &Path) -> bool {
-    if !is_workspace_clone_path(project_dir) {
+fn is_clone_eligible(project_dir: &Path) -> bool {
+    if !is_workspace_clone(project_dir) {
         return false;
     }
     let has_project_yaml = project_dir.join(".specify").join("project.yaml").exists();
@@ -446,19 +446,19 @@ mod tests {
     fn workspace_clone_path() {
         let tmp = workspace_clone_dir("traffic");
         let path = tmp.path().join(".specify").join("workspace").join("traffic");
-        assert!(is_workspace_clone(&path));
+        assert!(is_clone_eligible(&path));
     }
 
     #[test]
     fn rejects_normal_project_root() {
         let path = Path::new("/home/user/project/");
-        assert!(!is_workspace_clone(path));
+        assert!(!is_clone_eligible(path));
     }
 
     #[test]
     fn rejects_bare_specify_dir() {
         let path = Path::new("/home/user/project/.specify/");
-        assert!(!is_workspace_clone(path));
+        assert!(!is_clone_eligible(path));
     }
 
     #[test]
@@ -468,6 +468,6 @@ mod tests {
             tmp.path().join(".specify").join("workspace").join("mobile").join("sub").join("dir");
         std::fs::create_dir_all(path.join(".specify")).unwrap();
         std::fs::write(path.join(".specify").join("project.yaml"), "name: stub\n").unwrap();
-        assert!(is_workspace_clone(&path));
+        assert!(is_clone_eligible(&path));
     }
 }

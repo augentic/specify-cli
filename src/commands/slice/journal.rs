@@ -8,9 +8,7 @@ use serde::Serialize;
 use serde_json::Value;
 use specify_capability::Phase;
 use specify_error::{Error, Result};
-use specify_slice::{
-    EntryKind, Journal, JournalEntry, Rfc3339Stamp, SliceMetadata, format_rfc3339,
-};
+use specify_slice::{EntryKind, Journal, JournalEntry, Rfc3339Stamp, SliceMetadata};
 
 use crate::context::Ctx;
 use crate::output::Render;
@@ -24,7 +22,7 @@ pub(super) fn append(
         return Err(Error::SliceNotFound { name });
     }
 
-    let timestamp = format_rfc3339(Utc::now());
+    let timestamp = Rfc3339Stamp::from(Utc::now());
     let entry = JournalEntry {
         timestamp: timestamp.clone(),
         step: phase,

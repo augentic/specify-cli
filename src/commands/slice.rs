@@ -23,7 +23,7 @@ mod task;
 mod touched;
 mod validate;
 
-pub(super) use list::{StatusEntry, collect_status, list_slice_names, status_entry_to_json};
+pub(super) use list::{StatusEntry, collect_status, list_slice_names};
 
 /// Default omnia [`ArtifactClass`] set: `specs` (3-way merge) and
 /// `contracts` (opaque replace). Single source of truth in the
@@ -85,6 +85,8 @@ pub(crate) fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
         }
         SliceAction::Overlap { name } => touched::overlap(ctx, name),
         SliceAction::Archive { name } => lifecycle::archive(ctx, name),
-        SliceAction::Drop { name, reason } => lifecycle::drop_slice(ctx, name, reason.as_deref()),
+        SliceAction::Drop { name, reason } => {
+            lifecycle::discard_slice(ctx, name, reason.as_deref())
+        }
     }
 }

@@ -4,7 +4,8 @@
 use std::collections::{HashMap, HashSet};
 
 use specify_error::Error;
-use specify_spec::{REQ_HEADING, Requirement, has_delta_headers, parse_baseline, parse_delta};
+use specify_spec::format::REQ_HEADING;
+use specify_spec::{Requirement, has_delta_headers, parse_baseline, parse_delta};
 
 /// Result of a successful [`merge`] call.
 ///

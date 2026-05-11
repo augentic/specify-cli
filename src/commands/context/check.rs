@@ -7,9 +7,9 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_error::{Error, Result};
+use specify_error::Result;
 
-use super::{context_lock_path, fences, fingerprint, lock, read_optional, render_document};
+use super::{context_lock_path, diag, fences, fingerprint, lock, read_optional, render_document};
 use crate::context::Ctx;
 use crate::output::Render;
 
@@ -19,13 +19,19 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     ctx.out().write(&body)?;
     match status {
         "up-to-date" => Ok(()),
-        "context-not-generated" => Err(Error::ContextMissing),
-        "context-lock-missing" => Err(Error::ContextNoLock),
-        "drift" => Err(Error::ContextDriftDetected),
-        other => Err(Error::Diag {
-            code: "context-check-unknown-status",
-            detail: format!("context check returned unexpected status `{other}`"),
-        }),
+        "context-not-generated" => Err(diag("context-not-generated", "AGENTS.md is missing")),
+        "context-lock-missing" => {
+            Err(diag("context-lock-missing", ".specify/context.lock is missing"))
+        }
+        "drift" => Err(diag(
+            "context-drift-detected",
+            "AGENTS.md / .specify/context.lock drift detected; \
+             see the stdout body for affected inputs",
+        )),
+        other => Err(diag(
+            "context-check-unknown-status",
+            format!("context check returned unexpected status `{other}`"),
+        )),
     }
 }
 
@@ -78,42 +84,24 @@ fn body(ctx: &Ctx) -> Result<CheckBody> {
     let actual_lock = lock::ContextLock::from_fingerprint(&actual_fingerprint);
 
     if agents.is_none() {
-        return Ok(CheckBody {
-            status: "context-not-generated",
-            fingerprint: check_fingerprint(existing_lock.as_ref(), Some(&actual_lock)),
-            inputs_changed: Vec::new(),
-            inputs_added: Vec::new(),
-            inputs_removed: Vec::new(),
-            fences_modified: false,
-        });
+        let fp = check_fingerprint(existing_lock.as_ref(), Some(&actual_lock));
+        return Ok(no_drift("context-not-generated", fp));
     }
 
     let Some(expected_lock) = existing_lock else {
-        return Ok(CheckBody {
-            status: "context-lock-missing",
-            fingerprint: check_fingerprint(None, Some(&actual_lock)),
-            inputs_changed: Vec::new(),
-            inputs_added: Vec::new(),
-            inputs_removed: Vec::new(),
-            fences_modified: false,
-        });
+        let fp = check_fingerprint(None, Some(&actual_lock));
+        return Ok(no_drift("context-lock-missing", fp));
     };
 
     let diff = lock::diff_inputs(&expected_lock.inputs, &actual_lock.inputs);
-    let fences_modified = fences_modified(
-        agents
-            .as_deref()
-            .expect("agents bytes are present because missing AGENTS.md returned above"),
-        &expected_lock,
-    );
-    let has_input_drift =
-        !diff.changed.is_empty() || !diff.added.is_empty() || !diff.removed.is_empty();
-    let has_fingerprint_drift = expected_lock.fingerprint != actual_lock.fingerprint;
-    let status = if has_fingerprint_drift || has_input_drift || fences_modified {
-        "drift"
-    } else {
-        "up-to-date"
-    };
+    let agents = agents.as_deref().expect("agents bytes present (early return above)");
+    let fences_modified = fences_modified(agents, &expected_lock);
+    let has_drift = !diff.changed.is_empty()
+        || !diff.added.is_empty()
+        || !diff.removed.is_empty()
+        || expected_lock.fingerprint != actual_lock.fingerprint
+        || fences_modified;
+    let status = if has_drift { "drift" } else { "up-to-date" };
 
     Ok(CheckBody {
         status,
@@ -125,11 +113,19 @@ fn body(ctx: &Ctx) -> Result<CheckBody> {
     })
 }
 
-fn write_drift_list(w: &mut dyn Write, label: &str, paths: &[String]) -> std::io::Result<()> {
-    if paths.is_empty() {
-        return Ok(());
+const fn no_drift(status: &'static str, fingerprint: CheckFingerprint) -> CheckBody {
+    CheckBody {
+        status,
+        fingerprint,
+        inputs_changed: Vec::new(),
+        inputs_added: Vec::new(),
+        inputs_removed: Vec::new(),
+        fences_modified: false,
     }
-    writeln!(w, "{label}: {}", paths.join(", "))
+}
+
+fn write_drift_list(w: &mut dyn Write, label: &str, paths: &[String]) -> std::io::Result<()> {
+    if paths.is_empty() { Ok(()) } else { writeln!(w, "{label}: {}", paths.join(", ")) }
 }
 
 fn check_fingerprint(

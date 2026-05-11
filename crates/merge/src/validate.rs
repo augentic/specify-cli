@@ -5,7 +5,8 @@ use std::collections::HashSet;
 
 use regex::Regex;
 use specify_capability::ValidationResult;
-use specify_spec::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING, parse_baseline};
+use specify_spec::format::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING};
+use specify_spec::parse_baseline;
 
 const RULE_NO_DUPLICATE_IDS: &str = "merge.no-duplicate-ids";
 const RULE_NO_DUPLICATE_IDS_DESC: &str = "baseline has no duplicate requirement IDs";

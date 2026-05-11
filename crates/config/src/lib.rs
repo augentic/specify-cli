@@ -264,7 +264,7 @@ impl LayoutExt for Path {
 /// a fully initialized clone can layer `.specify/project.yaml` or
 /// plan-file guards on top.
 #[must_use]
-pub fn is_workspace_clone_path(project_dir: &Path) -> bool {
+pub fn is_workspace_clone(project_dir: &Path) -> bool {
     let components: Vec<_> = project_dir.components().collect();
     components.windows(3).any(|w| {
         w[0].as_os_str() == ".specify"
@@ -479,22 +479,22 @@ mod tests {
     }
 
     #[test]
-    fn workspace_clone_path_detects_literal_workspace_slot() {
+    fn workspace_clone_detects_literal_workspace_slot() {
         let path = Path::new("/repo/.specify/workspace/orders");
-        assert!(is_workspace_clone_path(path));
+        assert!(is_workspace_clone(path));
     }
 
     #[test]
-    fn workspace_clone_path_detects_nested_directory_inside_slot() {
+    fn workspace_clone_detects_nested_directory_inside_slot() {
         let path = Path::new("/repo/.specify/workspace/orders/src/service");
-        assert!(is_workspace_clone_path(path));
+        assert!(is_workspace_clone(path));
     }
 
     #[test]
-    fn workspace_clone_path_rejects_non_workspace_paths() {
-        assert!(!is_workspace_clone_path(Path::new("/repo")));
-        assert!(!is_workspace_clone_path(Path::new("/repo/.specify")));
-        assert!(!is_workspace_clone_path(Path::new("/repo/.specify/workspace")));
+    fn workspace_clone_rejects_non_workspace_paths() {
+        assert!(!is_workspace_clone(Path::new("/repo")));
+        assert!(!is_workspace_clone(Path::new("/repo/.specify")));
+        assert!(!is_workspace_clone(Path::new("/repo/.specify/workspace")));
     }
 
     #[test]

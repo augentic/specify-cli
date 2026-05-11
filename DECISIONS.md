@@ -48,3 +48,27 @@ actively maintained, in contrast to `serde_yaml` (deprecated) and
 `serde_json::Value`. Its separate deser/ser error types are wrapped
 behind `specify_error::YamlError` / `YamlSerError` so the upstream crate
 name does not leak through every public surface.
+
+## Diag-first error policy
+
+`Error::Diag { code, detail }` is the default for new diagnostics. A
+typed `Error::*` variant exists only when (a) a test or skill
+destructures the variant's payload, (b) the variant routes to a
+non-default `Exit` slot, or (c) three or more call sites share the
+exact shape. The kebab `code` is the wire contract; the Rust variant is
+for callers that pattern-match. See AGENTS.md §"Errors" for the full
+rule. Twelve historical one-site variants
+(`RegistryMissing`, `PlanNotFound`, `PlanStructural`,
+`CompatibilityCheckFailed`, `ContextDriftDetected`,
+`ContextWouldUpdate`, `ContextNoLock`, `ContextMissing`,
+`ContextUnfenced`, `ContextDrift`, `InitNeedsCapability`,
+`WorkspacePushFailed`) collapsed to `Diag` under this policy with their
+kebab discriminants preserved.
+
+## Hint colocation
+
+Long-form recovery hints live on `Error::hint(&self) -> Option<&'static
+str>`, not on the renderer. `ErrorBody::render_text` calls it. Adding a
+new hint means extending `Error::hint`, not the renderer. Hints for
+collapsed `Diag` codes are looked up by the kebab `code` so a `Diag`
+site without a typed variant can still surface guidance.

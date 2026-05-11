@@ -86,7 +86,15 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         diagnostics: rows,
     })?;
 
-    if has_errors { Err(Error::PlanStructural) } else { Ok(()) }
+    if has_errors {
+        Err(Error::Diag {
+            code: "plan-structural-errors",
+            detail: "plan has structural errors; run 'specify change plan validate' for detail"
+                .to_string(),
+        })
+    } else {
+        Ok(())
+    }
 }
 
 fn diagnostic_row(d: &PlanDoctorDiagnostic) -> DiagnosticRow {

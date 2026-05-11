@@ -52,7 +52,10 @@ const HUB_INIT_NAME: &str = "hub";
 )]
 pub(crate) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.capability.is_some() {
-        return Err(Error::InitNeedsCapability);
+        return Err(Error::Diag {
+            code: "init-requires-capability-or-hub",
+            detail: "pass <capability> or --hub".to_string(),
+        });
     }
 
     let layout = opts.project_dir.layout();

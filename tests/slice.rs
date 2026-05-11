@@ -1299,15 +1299,15 @@ fn journal_show_errors_on_missing() {
 
 #[test]
 fn phase_outcome_round_trips_serde() {
-    use specify_slice::{Outcome, Phase, PhaseOutcome, Rfc3339Stamp};
-    for outcome in [Outcome::Success, Outcome::Failure, Outcome::Deferred] {
+    use specify_slice::{Outcome, OutcomeKind, Phase, Rfc3339Stamp};
+    for outcome in [OutcomeKind::Success, OutcomeKind::Failure, OutcomeKind::Deferred] {
         for phase in [Phase::Define, Phase::Build, Phase::Merge] {
-            let context = if matches!(outcome, Outcome::Success) {
+            let context = if matches!(outcome, OutcomeKind::Success) {
                 None
             } else {
                 Some("verbatim detail".to_string())
             };
-            let value = PhaseOutcome {
+            let value = Outcome {
                 phase,
                 outcome: outcome.clone(),
                 at: Rfc3339Stamp::new("2024-08-01T10:00:00+00:00".to_string()),
@@ -1315,7 +1315,7 @@ fn phase_outcome_round_trips_serde() {
                 context,
             };
             let yaml = serde_saphyr::to_string(&value).expect("serialize");
-            let parsed: PhaseOutcome = serde_saphyr::from_str(&yaml).expect("parse");
+            let parsed: Outcome = serde_saphyr::from_str(&yaml).expect("parse");
             assert_eq!(parsed, value, "round-trip failed for yaml:\n{yaml}");
         }
     }

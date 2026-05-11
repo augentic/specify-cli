@@ -12,7 +12,7 @@
 //!      [`MergeStrategy::OpaqueReplace`] class's `staged_dir` into its
 //!      `baseline_dir`.
 //!   2. Flips `.metadata.yaml.status` from `Complete` to `Merged` and
-//!      stamps `PhaseOutcome { phase: Merge, outcome: Success }`.
+//!      stamps `Outcome { phase: Merge, outcome: Success }`.
 //!   3. Moves the slice directory under `archive_dir` as
 //!      `YYYY-MM-DD-<slice-name>/` via `specify_slice::actions::archive`.
 //!
@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use specify_error::Error;
 use specify_slice::{
-    LifecycleStatus, Outcome, Phase, PhaseOutcome, SliceMetadata, SpecKind, actions, format_rfc3339,
+    LifecycleStatus, Outcome, OutcomeKind, Phase, Rfc3339Stamp, SliceMetadata, SpecKind, actions,
 };
 
 use crate::artifact_class::{ArtifactClass, MergeStrategy};
@@ -147,8 +147,8 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 ///
 /// Gates on `LifecycleStatus::Complete`, runs [`preview`]'s
 /// in-memory plan, writes each merged baseline, transitions status to
-/// `Merged` with `merged_at`/`completed_at` timestamps, stamps a
-/// `PhaseOutcome { phase: Merge, outcome: Success }` into
+/// `Merged` with `merged_at`/`completed_at` timestamps, stamps an
+/// `Outcome { phase: Merge, outcome: Success }` into
 /// `.metadata.yaml`, then archives the slice directory via
 /// `specify_slice::actions::archive`.
 ///
@@ -196,15 +196,15 @@ pub fn commit(
 
     metadata.status = metadata.status.transition(LifecycleStatus::Merged)?;
     if metadata.completed_at.is_none() {
-        metadata.completed_at = Some(format_rfc3339(now));
+        metadata.completed_at = Some(Rfc3339Stamp::from(now));
     }
     if metadata.merged_at.is_none() {
-        metadata.merged_at = Some(format_rfc3339(now));
+        metadata.merged_at = Some(Rfc3339Stamp::from(now));
     }
-    metadata.outcome = Some(PhaseOutcome {
+    metadata.outcome = Some(Outcome {
         phase: Phase::Merge,
-        outcome: Outcome::Success,
-        at: format_rfc3339(now),
+        outcome: OutcomeKind::Success,
+        at: Rfc3339Stamp::from(now),
         summary: build_merge_summary(&merged, &opaque_counts),
         context: None,
     });
