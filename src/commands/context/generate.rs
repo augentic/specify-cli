@@ -84,7 +84,7 @@ fn body(ctx: &Ctx, check: bool, force: bool) -> Result<GenerateBody> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[allow(
+#[expect(
     clippy::struct_excessive_bools,
     reason = "CLI JSON response mirrors independent check flags and write outcomes."
 )]

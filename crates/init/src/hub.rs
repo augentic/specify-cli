@@ -46,7 +46,7 @@ const HUB_INIT_NAME: &str = "hub";
 /// Returns an error if [`InitOptions::capability`] is set (mutually
 /// exclusive with `--hub`), if the project name is not kebab-case, if
 /// `.specify/` already exists, or if any filesystem write fails.
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value, reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value.")]
 pub fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.capability.is_some() {
         return Err(Error::InitNeedsCapability);

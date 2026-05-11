@@ -26,7 +26,7 @@ impl Registry {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines, reason = "Single fast-fail validator: one block per shape rule keeps the policy table auditable.")]
     pub fn validate_shape(&self) -> Result<(), Error> {
         if self.version != 1 {
             return Err(Error::Diag {

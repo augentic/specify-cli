@@ -112,7 +112,6 @@ pub struct InitResult {
 /// but `init` re-validates as a defence in depth. Bubbles up
 /// filesystem, capability resolution, and serialisation errors from
 /// the underlying calls.
-#[allow(clippy::needless_pass_by_value)]
 pub fn init(opts: InitOptions<'_>, now: DateTime<Utc>) -> Result<InitResult, Error> {
     if opts.hub {
         return hub::run(opts);

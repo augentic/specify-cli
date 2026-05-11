@@ -15,7 +15,6 @@ use tempfile::{NamedTempFile, TempDir};
 pub fn extract_envelope(outcome: CommandOutcome) -> Value {
     match outcome {
         CommandOutcome::Success(value) => value,
-        #[allow(unreachable_patterns)]
         _ => panic!("unexpected non-success outcome"),
     }
 }

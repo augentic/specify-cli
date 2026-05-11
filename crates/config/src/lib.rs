@@ -82,7 +82,7 @@ pub struct ProjectConfig {
 
 // `serde`'s `skip_serializing_if` requires `Fn(&T) -> bool`, so the
 // `&bool` parameter is forced — we can't take by value.
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde's skip_serializing_if requires `Fn(&T) -> bool`.")]
 const fn is_false(value: &bool) -> bool {
     !*value
 }

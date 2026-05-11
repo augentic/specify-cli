@@ -11,10 +11,6 @@ use super::{
     KIND_ENUM_VALUE_REMOVED, KIND_REMOVED_FIELD, KIND_REQUIRED_FIELD_ADDED, KIND_TYPE_NARROWED,
 };
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "The schema diff is intentionally local so the policy table is easy to audit."
-)]
 pub(super) fn diff_schema(
     consumer: &Value, producer: &Value, ctx: &PairContext<'_>, locator: &str,
     findings: &mut Vec<CompatibilityFinding>,

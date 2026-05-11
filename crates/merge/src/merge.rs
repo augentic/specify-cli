@@ -88,7 +88,7 @@ pub enum MergeOperation {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines, reason = "Single-shot merge driver: heading walk + delta classification + conflict aggregation in one pass.")]
 pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> {
     let baseline_text = baseline.unwrap_or("");
     let is_new = baseline_text.trim().is_empty();

@@ -160,7 +160,6 @@ fn run_writes_under_project_dir() {
     let dir = tempdir().unwrap();
     let previous = std::env::var_os("PROJECT_DIR");
     // SAFETY: this test serializes PROJECT_DIR mutation with `env_lock`.
-    #[allow(clippy::semicolon_if_nothing_returned)]
     let () = unsafe { std::env::set_var("PROJECT_DIR", dir.path()) };
 
     let command = ScaffoldCommand::Core(CoreArgs {

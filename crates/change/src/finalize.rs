@@ -163,7 +163,7 @@ pub struct ProjectResult {
     pub detail: Option<String>,
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde's `serialize_with` signature requires `&T`.")]
 fn serialize_status<S: serde::Serializer>(status: &Landing, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(status.as_str())
 }

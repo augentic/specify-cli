@@ -10,7 +10,7 @@ pub(super) fn empty_object() -> &'static Map<String, Value> {
     EMPTY.get_or_init(Map::new)
 }
 
-#[allow(
+#[expect(
     clippy::option_if_let_else,
     reason = "map_or_else cannot express the fallback's static lifetime without escaping the borrowed option"
 )]

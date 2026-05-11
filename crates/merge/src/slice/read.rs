@@ -49,7 +49,7 @@ pub(super) fn first_three_way(classes: &[ArtifactClass]) -> Option<&ArtifactClas
 /// Per-spec merge or coherence-validation conflicts are aggregated into
 /// a single `Error::Diag { code: "merge-spec-conflicts" }` so callers
 /// can surface every conflict at once instead of bailing on the first.
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines, reason = "Single planner walks every artifact class and aggregates conflicts; splitting hides the merge policy.")]
 pub(super) fn plan_three_way(
     slice_dir: &Path, classes: &[ArtifactClass],
 ) -> Result<Vec<MergePreviewEntry>, Error> {

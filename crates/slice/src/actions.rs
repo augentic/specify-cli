@@ -103,7 +103,7 @@ pub fn validate_name(name: &str) -> Result<(), Error> {
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-#[allow(clippy::similar_names)]
+#[expect(clippy::similar_names, reason = "`slices_dir` and `slice_dir` name distinct concepts (parent dir vs. this slice's dir).")]
 pub fn create(
     slices_dir: &Path, name: &str, capability: &str, if_exists: CreateIfExists, now: DateTime<Utc>,
 ) -> Result<CreateOutcome, Error> {

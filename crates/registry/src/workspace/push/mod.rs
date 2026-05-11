@@ -163,7 +163,7 @@ fn push_result(
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines, reason = "Per-project push driver inlines the dirty/clone/branch/push pipeline so each step's failure mode stays local.")]
 pub(in crate::workspace) fn push_single_project(
     project_dir: &Path, workspace_base: &Path, rp: &RegistryProject, branch_name: &str,
     change_name: &str, dry_run: bool, forge: &dyn WorkspacePushForge,

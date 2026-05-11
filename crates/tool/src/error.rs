@@ -213,7 +213,6 @@ impl ToolError {
         }
     }
 
-    #[allow(dead_code, reason = "Chunk 2 introduces cache errors before every call site lands.")]
     pub(crate) fn cache_io(
         action: &'static str, path: impl Into<PathBuf>, source: std::io::Error,
     ) -> Self {
