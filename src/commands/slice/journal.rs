@@ -70,7 +70,7 @@ pub(super) fn show(ctx: &CommandContext, name: String) -> Result<()> {
     }
 
     let journal = Journal::load(&slice_dir)?;
-    let entries: Vec<EntryRow> = journal.entries.iter().map(EntryRow::from_entry).collect();
+    let entries: Vec<EntryRow> = journal.entries.iter().map(EntryRow::from).collect();
     emit(Stream::Stdout, ctx.format, &ShowBody { name, entries })?;
     Ok(())
 }
@@ -115,8 +115,8 @@ struct EntryRow {
     context: Value,
 }
 
-impl EntryRow {
-    fn from_entry(entry: &JournalEntry) -> Self {
+impl From<&JournalEntry> for EntryRow {
+    fn from(entry: &JournalEntry) -> Self {
         Self {
             timestamp: entry.timestamp.clone(),
             phase: entry.step.to_string(),

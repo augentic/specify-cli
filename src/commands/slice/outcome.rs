@@ -123,7 +123,7 @@ pub(super) fn show(ctx: &CommandContext, name: String) -> Result<()> {
         resolve_archived_metadata(&ctx.project_dir, &name)?
     };
 
-    let outcome = metadata.outcome.as_ref().map(OutcomeRow::from_stamped);
+    let outcome = metadata.outcome.as_ref().map(OutcomeRow::from);
     emit(Stream::Stdout, ctx.format, &OutcomeShowBody { name, outcome })?;
     Ok(())
 }
@@ -176,8 +176,8 @@ struct OutcomeRow {
     proposal: Option<RegistryProposalRow>,
 }
 
-impl OutcomeRow {
-    fn from_stamped(o: &specify_slice::PhaseOutcome) -> Self {
+impl From<&specify_slice::PhaseOutcome> for OutcomeRow {
+    fn from(o: &specify_slice::PhaseOutcome) -> Self {
         Self {
             phase: o.phase.to_string(),
             outcome: o.outcome.discriminant().to_string(),
@@ -201,6 +201,9 @@ struct RegistryProposalRow {
 }
 
 impl RegistryProposalRow {
+    // Filters on `Outcome::RegistryAmendmentRequired`; returns `Option<Self>`
+    // rather than `Self`, so a `From` impl would be a poor fit. Kept as a
+    // named constructor.
     fn from_kind(outcome: &Outcome) -> Option<Self> {
         if let Outcome::RegistryAmendmentRequired {
             proposed_name,

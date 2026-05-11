@@ -95,7 +95,7 @@ pub fn validate(ctx: &CommandContext) -> Result<CliResult> {
     }
 
     let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
-    let rows: Vec<FindingRow<'_>> = results.iter().map(FindingRow::from_finding).collect();
+    let rows: Vec<FindingRow<'_>> = results.iter().map(FindingRow::from).collect();
     emit(
         Stream::Stdout,
         ctx.format,
@@ -264,8 +264,8 @@ struct FindingRow<'a> {
     message: &'a str,
 }
 
-impl<'a> FindingRow<'a> {
-    fn from_finding(finding: &'a Finding) -> Self {
+impl<'a> From<&'a Finding> for FindingRow<'a> {
+    fn from(finding: &'a Finding) -> Self {
         let level = match finding.level {
             Severity::Error => "error",
             Severity::Warning => "warning",

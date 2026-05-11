@@ -61,7 +61,7 @@ pub fn status(ctx: &CommandContext, projects: Vec<String>) -> Result<()> {
             let selected = registry.select(&projects)?;
             let slots = workspace_status_projects(&ctx.project_dir, &selected)
                 .iter()
-                .map(SlotRow::from_status)
+                .map(SlotRow::from)
                 .collect();
             StatusBody::Present { slots }
         }
@@ -221,8 +221,8 @@ struct SlotRow {
     active_slices: Vec<String>,
 }
 
-impl SlotRow {
-    fn from_status(slot: &SlotStatus) -> Self {
+impl From<&SlotStatus> for SlotRow {
+    fn from(slot: &SlotStatus) -> Self {
         Self {
             name: slot.name.clone(),
             kind: slot.kind.label(),
@@ -245,7 +245,9 @@ impl SlotRow {
             active_slices: slot.active_slices.clone(),
         }
     }
+}
 
+impl SlotRow {
     fn render_line(&self, w: &mut dyn Write) -> std::io::Result<()> {
         writeln!(
             w,

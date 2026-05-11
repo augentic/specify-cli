@@ -33,7 +33,7 @@ fn resolve(ctx: &CommandContext) -> Result<ResolvedCodex> {
 
 fn list(ctx: &CommandContext) -> Result<()> {
     let codex = resolve(ctx)?;
-    let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from_resolved).collect();
+    let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from).collect();
     emit(
         Stream::Stdout,
         ctx.format,
@@ -61,7 +61,7 @@ fn show(ctx: &CommandContext, rule_id: &str) -> Result<()> {
         Stream::Stdout,
         ctx.format,
         &ShowBody {
-            rule: RuleExport::from_resolved(resolved),
+            rule: RuleExport::from(resolved),
         },
     )?;
     Ok(())
@@ -89,7 +89,7 @@ fn validate(ctx: &CommandContext) -> Result<CliResult> {
                     rule_count: None,
                     error_count: results.len(),
                     validation: Validation {
-                        results: results.iter().map(ValidationRow::from_summary).collect(),
+                        results: results.iter().map(ValidationRow::from).collect(),
                     },
                 },
             )?;
@@ -101,7 +101,7 @@ fn validate(ctx: &CommandContext) -> Result<CliResult> {
 
 fn export(ctx: &CommandContext) -> Result<()> {
     let codex = resolve(ctx)?;
-    let rules: Vec<_> = codex.rules.iter().map(RuleExport::from_resolved).collect();
+    let rules: Vec<_> = codex.rules.iter().map(RuleExport::from).collect();
     emit(
         Stream::Stdout,
         ctx.format,
@@ -246,8 +246,8 @@ struct DeprecationExport<'a> {
     replaced_by: Option<&'a str>,
 }
 
-impl<'a> RuleSummary<'a> {
-    fn from_resolved(resolved: &'a ResolvedCodexRule) -> Self {
+impl<'a> From<&'a ResolvedCodexRule> for RuleSummary<'a> {
+    fn from(resolved: &'a ResolvedCodexRule) -> Self {
         let provenance = provenance_fields(&resolved.provenance);
         Self {
             id: &resolved.rule.frontmatter.id,
@@ -262,8 +262,8 @@ impl<'a> RuleSummary<'a> {
     }
 }
 
-impl<'a> RuleExport<'a> {
-    fn from_resolved(resolved: &'a ResolvedCodexRule) -> Self {
+impl<'a> From<&'a ResolvedCodexRule> for RuleExport<'a> {
+    fn from(resolved: &'a ResolvedCodexRule) -> Self {
         let rule = &resolved.rule;
         let frontmatter = &rule.frontmatter;
         let provenance = provenance_fields(&resolved.provenance);
@@ -277,10 +277,10 @@ impl<'a> RuleExport<'a> {
             deterministic_hints: frontmatter
                 .deterministic_hints
                 .iter()
-                .map(HintExport::from_hint)
+                .map(HintExport::from)
                 .collect(),
             references: &frontmatter.references,
-            deprecated: frontmatter.deprecated.as_ref().map(DeprecationExport::from_deprecation),
+            deprecated: frontmatter.deprecated.as_ref().map(DeprecationExport::from),
             body: &rule.body,
             source_path: path_string(&rule.path),
             provenance_kind: provenance.kind,
@@ -291,8 +291,8 @@ impl<'a> RuleExport<'a> {
     }
 }
 
-impl<'a> DeprecationExport<'a> {
-    fn from_deprecation(deprecation: &'a CodexDeprecation) -> Self {
+impl<'a> From<&'a CodexDeprecation> for DeprecationExport<'a> {
+    fn from(deprecation: &'a CodexDeprecation) -> Self {
         Self {
             reason: &deprecation.reason,
             replaced_by: deprecation.replaced_by.as_deref(),
@@ -300,8 +300,8 @@ impl<'a> DeprecationExport<'a> {
     }
 }
 
-impl<'a> HintExport<'a> {
-    fn from_hint(hint: &'a CodexDeterministicHint) -> Self {
+impl<'a> From<&'a CodexDeterministicHint> for HintExport<'a> {
+    fn from(hint: &'a CodexDeterministicHint) -> Self {
         Self {
             kind: hint_kind_label(hint.kind),
             value: &hint.value,

@@ -163,7 +163,7 @@ pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult>
 
     let body = CheckBody {
         passed,
-        results: results.iter().map(CheckRow::from_validation).collect(),
+        results: results.iter().map(CheckRow::from).collect(),
     };
     emit(Stream::Stdout, format, &body)?;
     Ok(if passed { CliResult::Success } else { CliResult::ValidationFailed })
@@ -197,8 +197,8 @@ enum CheckRow {
     Unknown,
 }
 
-impl CheckRow {
-    fn from_validation(r: &ValidationResult) -> Self {
+impl From<&ValidationResult> for CheckRow {
+    fn from(r: &ValidationResult) -> Self {
         match r {
             ValidationResult::Pass { rule_id, rule } => Self::Pass {
                 rule_id: rule_id.to_string(),

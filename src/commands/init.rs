@@ -110,8 +110,8 @@ struct InitContextBody {
     skip_reason: Option<&'static str>,
 }
 
-impl InitContextBody {
-    const fn from_generation(context_generation: InitContextGeneration) -> Self {
+impl From<InitContextGeneration> for InitContextBody {
+    fn from(context_generation: InitContextGeneration) -> Self {
         Self {
             generated: context_generation.generated(),
             skipped: context_generation.skipped(),
@@ -131,7 +131,7 @@ fn emit_init_result(
         scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
         specify_version: result.specify_version.clone(),
         hub,
-        context: InitContextBody::from_generation(context_generation),
+        context: InitContextBody::from(context_generation),
     };
     emit(Stream::Stdout, format, &body)?;
     Ok(())

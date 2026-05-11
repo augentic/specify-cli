@@ -42,7 +42,7 @@ pub(super) fn touched_specs(
         metadata.touched_specs
     };
 
-    let touched: Vec<TouchedSpecRow> = entries.iter().map(TouchedSpecRow::from_spec).collect();
+    let touched: Vec<TouchedSpecRow> = entries.iter().map(TouchedSpecRow::from).collect();
     emit(
         Stream::Stdout,
         ctx.format,
@@ -81,8 +81,8 @@ struct TouchedSpecRow {
     r#type: String,
 }
 
-impl TouchedSpecRow {
-    fn from_spec(t: &TouchedSpec) -> Self {
+impl From<&TouchedSpec> for TouchedSpecRow {
+    fn from(t: &TouchedSpec) -> Self {
         Self {
             name: t.name.clone(),
             r#type: t.kind.to_string(),
@@ -121,7 +121,7 @@ fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>> {
 pub(super) fn overlap(ctx: &CommandContext, name: String) -> Result<()> {
     let slices_dir = ctx.slices_dir();
     let overlaps = slice_actions::overlap(&slices_dir, &name)?;
-    let rows: Vec<OverlapRow> = overlaps.iter().map(OverlapRow::from_overlap).collect();
+    let rows: Vec<OverlapRow> = overlaps.iter().map(OverlapRow::from).collect();
 
     emit(Stream::Stdout, ctx.format, &OverlapBody { name, overlaps: rows })?;
     Ok(())
@@ -159,8 +159,8 @@ struct OverlapRow {
     other_spec_type: String,
 }
 
-impl OverlapRow {
-    fn from_overlap(o: &specify_slice::Overlap) -> Self {
+impl From<&specify_slice::Overlap> for OverlapRow {
+    fn from(o: &specify_slice::Overlap) -> Self {
         Self {
             capability: o.capability.clone(),
             other_slice: o.other.clone(),

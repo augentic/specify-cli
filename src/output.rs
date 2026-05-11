@@ -267,7 +267,7 @@ impl Render for ErrorBody<'_> {
 
 /// JSON row in a validation envelope. Mirrors `ValidationSummary`
 /// field-for-field so domain validators surface uniformly via
-/// `ValidationRow::from_summary`. Callers that need a different row
+/// `ValidationRow::from(&summary)`. Callers that need a different row
 /// shape (e.g. plan validate's `level/code/entry/message`) define
 /// their own row type and reuse [`Validation`] for the envelope.
 #[derive(Serialize)]
@@ -279,9 +279,8 @@ pub struct ValidationRow<'a> {
     pub detail: Option<&'a str>,
 }
 
-impl<'a> ValidationRow<'a> {
-    #[must_use]
-    pub fn from_summary(summary: &'a ValidationSummary) -> Self {
+impl<'a> From<&'a ValidationSummary> for ValidationRow<'a> {
+    fn from(summary: &'a ValidationSummary) -> Self {
         Self {
             status: summary.status.to_string(),
             rule_id: &summary.rule_id,
@@ -342,7 +341,7 @@ impl<'a> From<(&'a Error, &'a [ValidationSummary])> for ValidationErrBody<'a> {
             message: err.to_string(),
             exit_code: CliResult::from(err).code(),
             validation: Validation {
-                results: results.iter().map(ValidationRow::from_summary).collect(),
+                results: results.iter().map(ValidationRow::from).collect(),
             },
             hint_source: err,
         }

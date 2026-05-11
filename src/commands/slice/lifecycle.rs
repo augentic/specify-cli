@@ -33,7 +33,7 @@ pub(super) fn create(
     let outcome =
         slice_actions::create(&slices_dir, &name, &capability_value, if_exists, Utc::now())?;
 
-    emit(Stream::Stdout, ctx.format, &CreateBody::from_outcome(&outcome))?;
+    emit(Stream::Stdout, ctx.format, &CreateBody::from(&outcome))?;
     Ok(())
 }
 
@@ -48,8 +48,8 @@ struct CreateBody {
     restarted: bool,
 }
 
-impl CreateBody {
-    fn from_outcome(outcome: &CreateOutcome) -> Self {
+impl From<&CreateOutcome> for CreateBody {
+    fn from(outcome: &CreateOutcome) -> Self {
         Self {
             name: outcome.dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
             slice_dir: outcome.dir.display().to_string(),

@@ -37,7 +37,7 @@ pub(super) fn run(ctx: &CommandContext, name: String) -> Result<()> {
     let today = Utc::now().format("%Y-%m-%d").to_string();
     let archive_path = archive_dir.join(format!("{today}-{name}"));
 
-    let entries: Vec<MergedEntry> = merged.iter().map(MergedEntry::from_preview).collect();
+    let entries: Vec<MergedEntry> = merged.iter().map(MergedEntry::from).collect();
     emit(
         Stream::Stdout,
         ctx.format,
@@ -62,13 +62,13 @@ pub(super) fn preview(ctx: &CommandContext, name: String) -> Result<()> {
         .three_way
         .iter()
         .filter(|e| e.class_name == "specs")
-        .map(SpecPreviewEntry::from_preview)
+        .map(SpecPreviewEntry::from)
         .collect();
     let contracts: Vec<ContractItem> = result
         .opaque
         .iter()
         .filter(|e| e.class_name == "contracts")
-        .map(ContractItem::from_preview)
+        .map(ContractItem::from)
         .collect();
 
     emit(
@@ -87,7 +87,7 @@ pub(super) fn conflicts(ctx: &CommandContext, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
     let conflicts = conflict_check(&slice_dir, &classes)?;
-    let rows: Vec<ConflictRow> = conflicts.iter().map(ConflictRow::from_baseline).collect();
+    let rows: Vec<ConflictRow> = conflicts.iter().map(ConflictRow::from).collect();
 
     emit(
         Stream::Stdout,
@@ -128,11 +128,11 @@ struct MergedEntry {
     operations: Vec<MergeOpJson>,
 }
 
-impl MergedEntry {
-    fn from_preview(entry: &MergePreviewEntry) -> Self {
+impl From<&MergePreviewEntry> for MergedEntry {
+    fn from(entry: &MergePreviewEntry) -> Self {
         Self {
             name: entry.name.clone(),
-            operations: entry.result.operations.iter().map(MergeOpJson::from_op).collect(),
+            operations: entry.result.operations.iter().map(MergeOpJson::from).collect(),
         }
     }
 }
@@ -180,12 +180,12 @@ struct SpecPreviewEntry {
     operations: Vec<MergeOpJson>,
 }
 
-impl SpecPreviewEntry {
-    fn from_preview(entry: &MergePreviewEntry) -> Self {
+impl From<&MergePreviewEntry> for SpecPreviewEntry {
+    fn from(entry: &MergePreviewEntry) -> Self {
         Self {
             name: entry.name.clone(),
             baseline_path: entry.baseline_path.display().to_string(),
-            operations: entry.result.operations.iter().map(MergeOpJson::from_op).collect(),
+            operations: entry.result.operations.iter().map(MergeOpJson::from).collect(),
         }
     }
 }
@@ -197,8 +197,8 @@ struct ContractItem {
     action: &'static str,
 }
 
-impl ContractItem {
-    fn from_preview(entry: &OpaquePreviewEntry) -> Self {
+impl From<&OpaquePreviewEntry> for ContractItem {
+    fn from(entry: &OpaquePreviewEntry) -> Self {
         let action = match entry.action {
             OpaqueAction::Added => "added",
             OpaqueAction::Replaced => "replaced",
@@ -242,8 +242,8 @@ struct ConflictRow {
     baseline_modified_at: String,
 }
 
-impl ConflictRow {
-    fn from_baseline(c: &BaselineConflict) -> Self {
+impl From<&BaselineConflict> for ConflictRow {
+    fn from(c: &BaselineConflict) -> Self {
         Self {
             capability: c.capability.clone(),
             defined_at: c.defined_at.clone(),
@@ -267,8 +267,8 @@ enum MergeOpJson {
     Unknown,
 }
 
-impl MergeOpJson {
-    fn from_op(op: &specify_merge::MergeOperation) -> Self {
+impl From<&specify_merge::MergeOperation> for MergeOpJson {
+    fn from(op: &specify_merge::MergeOperation) -> Self {
         use specify_merge::MergeOperation;
         match op {
             MergeOperation::Added { id, name } => Self::Added {

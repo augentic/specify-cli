@@ -22,7 +22,7 @@ pub(super) fn progress(ctx: &CommandContext, name: String) -> Result<()> {
     let content = std::fs::read_to_string(&tasks_path)?;
     let progress = parse_tasks(&content);
 
-    let tasks: Vec<TaskRow> = progress.tasks.iter().map(TaskRow::from_parsed).collect();
+    let tasks: Vec<TaskRow> = progress.tasks.iter().map(TaskRow::from).collect();
     emit(
         Stream::Stdout,
         ctx.format,
@@ -66,8 +66,8 @@ struct TaskRow {
     skill_directive: Option<DirectiveRow>,
 }
 
-impl TaskRow {
-    fn from_parsed(t: &Task) -> Self {
+impl From<&Task> for TaskRow {
+    fn from(t: &Task) -> Self {
         Self {
             group: t.group.clone(),
             number: t.number.clone(),

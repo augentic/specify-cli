@@ -49,6 +49,8 @@ struct LockVersion {
 }
 
 impl ContextLock {
+    // YAML sidecar persisted to disk — not a wire DTO. Kept as a named
+    // constructor; R6's `From`-for-Body/Row migration does not apply.
     pub(super) fn from_fingerprint(fingerprint: &ContextFingerprint) -> Self {
         Self {
             version: CURRENT_LOCK_VERSION,
