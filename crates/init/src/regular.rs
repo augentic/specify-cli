@@ -14,7 +14,10 @@ use specify_error::Error;
 use crate::cache::cache_capability;
 use crate::{InitOptions, InitResult, resolve_version, resolved_name, upsert_gitignore};
 
-#[expect(clippy::needless_pass_by_value, reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value.")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
+)]
 pub(crate) fn run(opts: InitOptions<'_>, now: DateTime<Utc>) -> Result<InitResult, Error> {
     let capability = opts.capability.ok_or(Error::InitNeedsCapability)?;
     let name = resolved_name(opts.project_dir, opts.name);

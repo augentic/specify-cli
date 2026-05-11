@@ -72,8 +72,7 @@ pub(crate) fn status(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
 }
 
 pub(crate) fn prepare_branch(
-    ctx: &Ctx, project: String, change: String, sources: Vec<PathBuf>,
-    outputs: Vec<PathBuf>,
+    ctx: &Ctx, project: String, change: String, sources: Vec<PathBuf>, outputs: Vec<PathBuf>,
 ) -> Result<CliResult> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
         return Err(Error::RegistryMissing);

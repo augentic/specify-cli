@@ -114,8 +114,8 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     let archive_dir = project.archive_dir();
     let classes = omnia_classes(&slice_dir, &project.root);
 
-    let merged =
-        slice::commit(&slice_dir, &classes, &archive_dir, chrono::Utc::now()).expect("slice::commit should succeed");
+    let merged = slice::commit(&slice_dir, &classes, &archive_dir, chrono::Utc::now())
+        .expect("slice::commit should succeed");
 
     // Results sorted by (class_name, name).
     let names: Vec<&str> = merged.iter().map(|e| e.name.as_str()).collect();
@@ -246,7 +246,8 @@ fn coherence_failure_rolls_back_all_writes() {
 fn archive_subdirectory_is_date_prefixed() {
     let project = build_project();
     let classes = omnia_classes(&project.slice_dir(), &project.root);
-    slice::commit(&project.slice_dir(), &classes, &project.archive_dir(), chrono::Utc::now()).expect("merge ok");
+    slice::commit(&project.slice_dir(), &classes, &project.archive_dir(), chrono::Utc::now())
+        .expect("merge ok");
 
     let re = Regex::new(r"^\d{4}-\d{2}-\d{2}-feature-x$").unwrap();
     let names: Vec<String> = fs::read_dir(project.archive_dir())
@@ -276,7 +277,8 @@ fn merge_copies_contract_files_to_baseline() {
     fs::write(slice_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write api");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now()).expect("merge ok");
+    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now())
+        .expect("merge ok");
 
     let baseline_contracts = project.contracts_dir();
     assert!(
@@ -312,7 +314,8 @@ fn merge_replaces_existing_baseline_contract_files() {
         .expect("write new slice");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now()).expect("merge ok");
+    slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now())
+        .expect("merge ok");
 
     let content = fs::read_to_string(baseline_contracts.join("schemas/test.yaml")).unwrap();
     assert_eq!(content, "new content\n", "contract file should be replaced");
@@ -332,7 +335,8 @@ fn merge_leaves_untouched_baseline_contract_files() {
     fs::write(slice_dir.join("contracts/schemas/new.yaml"), "new content\n").expect("write new");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now()).expect("merge ok");
+    slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now())
+        .expect("merge ok");
 
     assert!(
         baseline_contracts.join("schemas/existing.yaml").is_file(),
@@ -354,7 +358,8 @@ fn merge_without_contracts_dir_works_as_before() {
     assert!(!slice_dir.join("contracts").exists(), "precondition: no contracts dir");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now()).expect("merge ok");
+    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now())
+        .expect("merge ok");
     assert!(!merged.is_empty(), "should still merge specs");
 
     let baseline_contracts = project.contracts_dir();

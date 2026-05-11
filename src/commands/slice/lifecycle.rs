@@ -76,9 +76,7 @@ impl Render for CreateBody {
     }
 }
 
-pub(super) fn transition(
-    ctx: &Ctx, name: String, target: LifecycleStatus,
-) -> Result<()> {
+pub(super) fn transition(ctx: &Ctx, name: String, target: LifecycleStatus) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let metadata = slice_actions::transition(&slice_dir, target, Utc::now())?;
     emit(

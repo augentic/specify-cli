@@ -29,7 +29,9 @@ impl Render for ResolveBody {
     }
 }
 
-pub(crate) fn resolve(format: OutputFormat, capability_value: String, project_dir: PathBuf) -> Result<()> {
+pub(crate) fn resolve(
+    format: OutputFormat, capability_value: String, project_dir: PathBuf,
+) -> Result<()> {
     let (root_dir, source) = Capability::locate(&capability_value, &project_dir)?;
     enforce_capability_filename(&root_dir)?;
     let (source_label, path) = match &source {

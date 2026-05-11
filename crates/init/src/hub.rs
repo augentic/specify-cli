@@ -46,7 +46,10 @@ const HUB_INIT_NAME: &str = "hub";
 /// Returns an error if [`InitOptions::capability`] is set (mutually
 /// exclusive with `--hub`), if the project name is not kebab-case, if
 /// `.specify/` already exists, or if any filesystem write fails.
-#[expect(clippy::needless_pass_by_value, reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value.")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
+)]
 pub(crate) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.capability.is_some() {
         return Err(Error::InitNeedsCapability);
@@ -126,8 +129,8 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use specify_config::ProjectConfig;
     use chrono::{DateTime, Utc};
+    use specify_config::ProjectConfig;
     use specify_registry::Registry;
     use tempfile::tempdir;
 
@@ -214,8 +217,8 @@ mod tests {
         fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\ncapability: omnia\n")
             .unwrap();
 
-        let err =
-            init(hub_opts(tmp.path(), "platform-hub"), fixed_now()).expect_err("must refuse over existing dir");
+        let err = init(hub_opts(tmp.path(), "platform-hub"), fixed_now())
+            .expect_err("must refuse over existing dir");
         match err {
             specify_error::Error::Diag { code, detail } => {
                 assert_eq!(code, "hub-init-specify-dir-exists");

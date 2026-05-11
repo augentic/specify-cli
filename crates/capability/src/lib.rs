@@ -31,28 +31,25 @@ mod pipeline;
 
 use std::borrow::Cow;
 
+// --- Brief frontmatter ---
+pub use brief::{Brief, BriefFrontmatter};
+// --- Agent-populated cache ---
+pub use cache::CacheMeta;
 // --- Capability core ---
 pub use capability::{
     CAPABILITY_FILENAME, Capability, CapabilitySource, Phase, Pipeline, PipelineEntry,
     ResolvedCapability,
 };
-pub use pipeline::PipelineView;
-
-// --- Brief frontmatter ---
-pub use brief::{Brief, BriefFrontmatter};
 pub use change_brief::{
     ChangeBrief, ChangeFrontmatter, ChangeInput, FILENAME as CHANGE_BRIEF_FILENAME, InputKind,
 };
-
-// --- Agent-populated cache ---
-pub use cache::CacheMeta;
-
 // --- Codex (rules catalog) ---
 pub use codex::{CodexRule, CodexRuleFrontmatter, CodexSeverity};
 pub use codex_resolver::{
     CODEX_DIR_NAME, CodexCatalogSource, CodexProvenance, CodexResolver, DEFAULT_CODEX_CAPABILITY,
     ResolvedCodex, ResolvedCodexRule,
 };
+pub use pipeline::PipelineView;
 
 /// Outcome of a structural validation rule.
 ///

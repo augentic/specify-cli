@@ -58,8 +58,7 @@ impl Plan {
     /// underlying calls fail, or when entries are non-terminal without
     /// `force`.
     pub fn archive(
-        path: &Path, change_brief_path: &Path, archive_dir: &Path, force: bool,
-        now: DateTime<Utc>,
+        path: &Path, change_brief_path: &Path, archive_dir: &Path, force: bool, now: DateTime<Utc>,
     ) -> Result<(PathBuf, Option<PathBuf>), Error> {
         let plan = Self::load(path)?;
 

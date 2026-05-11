@@ -50,9 +50,9 @@ pub(super) fn add(
 }
 
 pub(super) fn amend(
-    ctx: &Ctx, name: String, depends_on: Option<Vec<String>>,
-    sources: Option<Vec<String>>, description: Option<String>, project: Option<String>,
-    capability: Option<String>, context: Option<Vec<String>>,
+    ctx: &Ctx, name: String, depends_on: Option<Vec<String>>, sources: Option<Vec<String>>,
+    description: Option<String>, project: Option<String>, capability: Option<String>,
+    context: Option<Vec<String>>,
 ) -> Result<()> {
     let (plan_path, mut plan) = load_for_write(ctx)?;
 

@@ -115,7 +115,9 @@ pub(crate) fn tasks_grouped_under_headings(tasks: &TaskProgress) -> bool {
 /// `specs/<name>/spec.md` on disk. If no deliverable section is present,
 /// or the section is empty, returns `true` — the sibling
 /// `has-content-after-heading` rule is responsible for that case.
-pub(crate) fn proposal_deliverables_have_specs(proposal: &str, specs_dir: &Path, term: &str) -> bool {
+pub(crate) fn proposal_deliverables_have_specs(
+    proposal: &str, specs_dir: &Path, term: &str,
+) -> bool {
     let headings: Vec<&str> = match term {
         "crate" => vec!["## Crates"],
         "feature" => vec!["## Features"],

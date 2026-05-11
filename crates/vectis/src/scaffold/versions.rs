@@ -15,7 +15,10 @@ const EMBEDDED_DEFAULTS: &str = include_str!("../../embedded/versions.toml");
 
 /// Top-level pinned version document.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[expect(missing_docs, reason = "Field names map 1:1 to the version-file TOML keys; docs would just restate the key.")]
+#[expect(
+    missing_docs,
+    reason = "Field names map 1:1 to the version-file TOML keys; docs would just restate the key."
+)]
 pub struct Versions {
     pub crux: Crux,
     pub android: Android,
@@ -26,7 +29,10 @@ pub struct Versions {
 
 /// Crux + transitive Rust pins.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[expect(clippy::struct_field_names, reason = "Each field carries the `crux_` prefix because the TOML keys do; renaming would break version-file parity.")]
+#[expect(
+    clippy::struct_field_names,
+    reason = "Each field carries the `crux_` prefix because the TOML keys do; renaming would break version-file parity."
+)]
 pub struct Crux {
     pub crux_core: String,
     pub crux_http: String,
@@ -56,7 +62,10 @@ pub struct Android {
 
 /// iOS pins. Empty today, but part of the complete version-file shape.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
-#[expect(clippy::empty_structs_with_brackets, reason = "Brackets keep the struct shape symmetric with siblings; a future iOS pin lands here.")]
+#[expect(
+    clippy::empty_structs_with_brackets,
+    reason = "Brackets keep the struct shape symmetric with siblings; a future iOS pin lands here."
+)]
 pub struct Ios {}
 
 /// Tooling pins retained in the complete version-file shape.

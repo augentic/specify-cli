@@ -3,9 +3,8 @@
 //! directory. The output is gitignored (`target/man/` by default);
 //! release tooling can pick it up from there.
 
-use std::fs;
-use std::io;
 use std::path::Path;
+use std::{fs, io};
 
 /// Recursively render man pages for `cmd` and its subcommands into
 /// `out_dir`. Returns the number of `.1` files written.
@@ -22,10 +21,7 @@ pub fn render(out_dir: &Path) -> io::Result<usize> {
 }
 
 fn write_recursive(
-    out_dir: &Path,
-    cmd: &clap::Command,
-    page_name: &str,
-    count: &mut usize,
+    out_dir: &Path, cmd: &clap::Command, page_name: &str, count: &mut usize,
 ) -> io::Result<()> {
     let mut buffer = Vec::new();
     clap_mangen::Man::new(cmd.clone()).render(&mut buffer)?;

@@ -231,7 +231,9 @@ pub(crate) trait Render: Serialize {
 /// (`Stream::Stderr`) — there is one entry point for all structured
 /// output. Failure envelopes go through [`report_error`], which
 /// builds the typed body and routes it back through this function.
-pub(crate) fn emit<R: Render>(stream: Stream, format: OutputFormat, payload: &R) -> Result<(), Error> {
+pub(crate) fn emit<R: Render>(
+    stream: Stream, format: OutputFormat, payload: &R,
+) -> Result<(), Error> {
     match format {
         OutputFormat::Json => emit_json(stream, payload),
         OutputFormat::Text => match stream {

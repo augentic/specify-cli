@@ -83,10 +83,7 @@ fn main() -> ExitCode {
         }
         Command::GenMan { out_dir } => match manpage::render(&out_dir) {
             Ok(count) => {
-                eprintln!(
-                    "xtask gen-man: wrote {count} man page(s) to {}",
-                    out_dir.display()
-                );
+                eprintln!("xtask gen-man: wrote {count} man page(s) to {}", out_dir.display());
                 ExitCode::SUCCESS
             }
             Err(err) => {

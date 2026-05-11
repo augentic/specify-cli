@@ -62,8 +62,7 @@ fn validate(ctx: &Ctx) -> Result<()> {
 }
 
 fn add(
-    ctx: &Ctx, name: String, url: String, capability: String,
-    description: Option<String>,
+    ctx: &Ctx, name: String, url: String, capability: String, description: Option<String>,
 ) -> Result<()> {
     let path = Registry::path(&ctx.project_dir);
     let hub_mode = ctx.config.hub;

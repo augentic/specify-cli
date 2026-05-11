@@ -173,7 +173,10 @@ impl ChangeBrief {
     /// kebab-case change name. Byte-stable — the `change create` CLI
     /// verb compares against a golden fixture.
     #[must_use]
-    #[expect(clippy::literal_string_with_formatting_args, reason = "Template uses {name}/{title} as plain-text placeholders, not format args.")]
+    #[expect(
+        clippy::literal_string_with_formatting_args,
+        reason = "Template uses {name}/{title} as plain-text placeholders, not format args."
+    )]
     pub fn template(name: &str) -> String {
         CHANGE_TEMPLATE.replace("{name}", name).replace("{title}", &title_case(name))
     }

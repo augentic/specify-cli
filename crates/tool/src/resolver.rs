@@ -167,20 +167,18 @@ impl AcquiredBytes {
         match self {
             Self::Buffered(bytes) => fs::write(dest, bytes)
                 .map_err(|err| ToolError::cache_io("write staged module", dest, err)),
-            Self::Streamed { temp, .. } => temp.persist(dest).map(|_| ()).map_err(|err| {
-                ToolError::AtomicMoveFailed {
+            Self::Streamed { temp, .. } => {
+                temp.persist(dest).map(|_| ()).map_err(|err| ToolError::AtomicMoveFailed {
                     from: err.file.path().to_path_buf(),
                     to: dest.to_path_buf(),
                     source: err.error,
-                }
-            }),
+                })
+            }
         }
     }
 }
 
-fn acquire_source_bytes(
-    source: &ToolSource, dest_hint: &Path,
-) -> Result<AcquiredBytes, ToolError> {
+fn acquire_source_bytes(source: &ToolSource, dest_hint: &Path) -> Result<AcquiredBytes, ToolError> {
     match source {
         ToolSource::LocalPath(path) => {
             read_local_path(path, &path.to_string_lossy()).map(AcquiredBytes::Buffered)
@@ -299,9 +297,9 @@ fn stream_to_tempfile<R: Read>(
             });
         }
         hasher.update(&buf[..n]);
-        writer.write_all(&buf[..n]).map_err(|err| {
-            ToolError::cache_io("write download tempfile", temp.path(), err)
-        })?;
+        writer
+            .write_all(&buf[..n])
+            .map_err(|err| ToolError::cache_io("write download tempfile", temp.path(), err))?;
     }
     writer
         .flush()
@@ -514,7 +512,8 @@ mod tests {
             assert_eq!(cached_bytes(&scope, &first_tool), b"first");
 
             let changed_tool = tool(ToolSource::LocalPath(second), None);
-            let changed = resolve(&scope, &changed_tool, fixed_now()).expect("changed source re-stages");
+            let changed =
+                resolve(&scope, &changed_tool, fixed_now()).expect("changed source re-stages");
             assert_eq!(changed.bytes_path, resolved.bytes_path);
             assert_eq!(cached_bytes(&scope, &changed_tool), b"second");
         });
@@ -535,7 +534,8 @@ mod tests {
 
         with_cache_env(Some(&cache_dir), None, None, || {
             resolve(&scope, &old_tool, fixed_now()).expect("initial digest install");
-            let err = resolve(&scope, &wrong_tool, fixed_now()).expect_err("wrong digest must fail");
+            let err =
+                resolve(&scope, &wrong_tool, fixed_now()).expect_err("wrong digest must fail");
             assert!(matches!(err, ToolError::DigestMismatch { .. }), "{err}");
             assert_eq!(cached_bytes(&scope, &old_tool), b"old-good");
 
@@ -557,7 +557,8 @@ mod tests {
         with_cache_env(Some(&cache_dir), None, None, || {
             let resolved = resolve(&scope, &pinned, fixed_now()).expect("install pinned");
             fs::write(&resolved.bytes_path, b"corrupt").expect("corrupt cache");
-            let repaired = resolve(&scope, &pinned, fixed_now()).expect("digest mismatch re-fetches");
+            let repaired =
+                resolve(&scope, &pinned, fixed_now()).expect("digest mismatch re-fetches");
             assert_eq!(repaired.bytes_path, resolved.bytes_path);
             assert_eq!(fs::read(repaired.bytes_path).expect("repaired bytes"), b"trusted");
         });
@@ -600,9 +601,8 @@ mod tests {
             .expect_err("directory source must fail");
             assert!(matches!(dir_err, ToolError::InvalidSource { .. }), "{dir_err}");
 
-            let empty_err =
-                resolve(&scope, &tool(ToolSource::LocalPath(empty), None), fixed_now())
-                    .expect_err("empty file");
+            let empty_err = resolve(&scope, &tool(ToolSource::LocalPath(empty), None), fixed_now())
+                .expect_err("empty file");
             assert!(matches!(empty_err, ToolError::EmptySource { .. }), "{empty_err}");
         });
     }
@@ -635,8 +635,10 @@ mod tests {
         let declared = tool(ToolSource::LocalPath(source), None);
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let project_resolved = resolve(&project, &declared, fixed_now()).expect("project resolve");
-            let capability_resolved = resolve(&capability, &declared, fixed_now()).expect("capability resolve");
+            let project_resolved =
+                resolve(&project, &declared, fixed_now()).expect("project resolve");
+            let capability_resolved =
+                resolve(&capability, &declared, fixed_now()).expect("capability resolve");
             assert_ne!(project_resolved.bytes_path, capability_resolved.bytes_path);
             assert!(project_resolved.bytes_path.to_string_lossy().contains("project--demo"));
             assert!(

@@ -15,9 +15,7 @@ use crate::cli::{OutcomeKindAction, RegistryAmendmentArgs};
 use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
-pub(super) fn set(
-    ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction,
-) -> Result<()> {
+pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
         return Err(Error::SliceNotFound { name });

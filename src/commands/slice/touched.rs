@@ -12,9 +12,7 @@ use super::artifact_classes;
 use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
-pub(super) fn touched_specs(
-    ctx: &Ctx, name: String, scan: bool, set: Vec<String>,
-) -> Result<()> {
+pub(super) fn touched_specs(ctx: &Ctx, name: String, scan: bool, set: Vec<String>) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
 
     let entries = if !set.is_empty() {

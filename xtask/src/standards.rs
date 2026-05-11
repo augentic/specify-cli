@@ -520,10 +520,7 @@ fn count_verbose_doc_paragraphs(source: &str) -> u32 {
 fn is_pub_non_trait_item(line: &str) -> bool {
     let trimmed = line.trim_start();
     let rest = trimmed.strip_prefix("pub ").unwrap_or("");
-    matches!(
-        rest.split_whitespace().next(),
-        Some("fn" | "struct" | "enum" | "const" | "type")
-    )
+    matches!(rest.split_whitespace().next(), Some("fn" | "struct" | "enum" | "const" | "type"))
 }
 
 /// Length of the doc paragraph immediately preceding `idx`. Walks
