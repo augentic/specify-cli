@@ -3,9 +3,10 @@
 //! Lifted out of `src/cli.rs`; `cli.rs` re-exports the action enums so
 //! the umbrella `Cli` / `Commands` derives resolve at expansion time.
 
-use clap::{Args, Subcommand, ValueEnum};
-use specify_capability::Phase;
-use specify_slice::{CreateIfExists, EntryKind, LifecycleStatus};
+use clap::{Subcommand, ValueEnum};
+use serde::Deserialize;
+use specify_domain::capability::Phase;
+use specify_domain::slice::{CreateIfExists, EntryKind, LifecycleStatus};
 
 #[derive(Subcommand)]
 pub(crate) enum SliceAction {
@@ -183,36 +184,53 @@ pub(crate) enum OutcomeKindAction {
         context: Option<String>,
     },
     /// Phase blocked on a registry amendment.
-    RegistryAmendmentRequired(#[command(flatten)] RegistryAmendmentArgs),
+    RegistryAmendmentRequired {
+        /// Short explanation; defaults to `registry-amendment-required: <proposed-name>`.
+        #[arg(long)]
+        summary: Option<String>,
+        /// Optional verbatim detail.
+        #[arg(long)]
+        context: Option<String>,
+        /// Structured proposal payload as a single JSON object.
+        ///
+        /// Required keys: `proposed-name`, `proposed-url`,
+        /// `proposed-capability`, `rationale`. Optional:
+        /// `proposed-description`. Skill drivers build the JSON object;
+        /// humans never type it. Parsed via `serde_json::from_str` —
+        /// malformed JSON or missing required keys exit `2` with a
+        /// kebab-case `proposal-invalid` diagnostic.
+        #[arg(long, value_parser = parse_proposal)]
+        proposal: RegistryAmendmentProposal,
+    },
 }
 
-/// Flags consumed by `slice outcome set <phase> registry-amendment-required`.
-/// Folded into a single struct so the variant stays narrow; clap renders
-/// each `#[arg(long = "...")]` so the CLI surface keeps the
-/// `--proposed-*` flag names while the Rust fields drop the prefix.
-#[derive(Args)]
-pub(crate) struct RegistryAmendmentArgs {
-    /// Short explanation; defaults to `registry-amendment-required: <proposed-name>`.
-    #[arg(long)]
-    pub(crate) summary: Option<String>,
-    /// Optional verbatim detail.
-    #[arg(long)]
-    pub(crate) context: Option<String>,
+/// Structured payload supplied via `--proposal '<json>'`.
+///
+/// Mirrors the on-disk `outcome.outcome.registry-amendment-required.*`
+/// shape one-for-one (kebab-case keys); `lower_kind` lifts it into
+/// `OutcomeKind::RegistryAmendmentRequired` without further validation.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(crate) struct RegistryAmendmentProposal {
     /// Proposed kebab-case project name.
-    #[arg(long = "proposed-name")]
-    pub(crate) name: String,
+    pub(crate) proposed_name: String,
     /// Proposed clone URL.
-    #[arg(long = "proposed-url")]
-    pub(crate) url: String,
+    pub(crate) proposed_url: String,
     /// Proposed capability identifier (e.g. `omnia@v1`).
-    #[arg(long = "proposed-capability")]
-    pub(crate) capability: String,
+    pub(crate) proposed_capability: String,
     /// Optional human-readable description of the proposed project.
-    #[arg(long = "proposed-description")]
-    pub(crate) description: Option<String>,
+    #[serde(default)]
+    pub(crate) proposed_description: Option<String>,
     /// Rationale prose.
-    #[arg(long)]
     pub(crate) rationale: String,
+}
+
+/// `value_parser` for `--proposal <json>`. Maps `serde_json` errors
+/// onto a clap-friendly `String` so the standard parse-error exit path
+/// (exit `2`, plain stderr) handles them — matching every other typed
+/// `value_parser` in the surface.
+fn parse_proposal(raw: &str) -> Result<RegistryAmendmentProposal, String> {
+    serde_json::from_str(raw).map_err(|err| format!("--proposal: {err}"))
 }
 
 /// Journal subcommands grouped under `slice journal`.

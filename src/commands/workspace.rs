@@ -2,19 +2,16 @@
 
 pub(crate) mod cli;
 
-use std::fmt;
 use std::io::Write;
 use std::path::PathBuf;
 
 use serde::{Serialize, Serializer};
-use specify_change::Plan;
-use specify_config::LayoutExt;
+use specify_domain::change::Plan;
+use specify_domain::config::LayoutExt;
 use specify_error::{Error, Result};
-use specify_registry::Registry;
-use specify_registry::branch::{
-    Diagnostic as BranchDiagnostic, Prepared, Request as BranchRequest, prepare,
-};
-use specify_registry::workspace::{
+use specify_domain::registry::Registry;
+use specify_domain::registry::branch::{Prepared, Request as BranchRequest, prepare};
+use specify_domain::registry::workspace::{
     ConfiguredTargetKind, PushOutcome, SlotKind, SlotStatus, push_projects,
     status_projects as workspace_status_projects, sync_projects as workspace_sync_projects,
 };
@@ -35,7 +32,7 @@ pub(crate) fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
         false
     };
     let message = (!synced).then_some("no registry declared at registry.yaml; nothing to sync");
-    ctx.out().write(&SyncBody {
+    ctx.write(&SyncBody {
         registry,
         synced,
         message,
@@ -63,7 +60,7 @@ pub(crate) fn status(ctx: &Ctx, projects: &[String]) -> Result<()> {
             StatusBody::Present { slots }
         }
     };
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     Ok(())
 }
 
@@ -89,10 +86,9 @@ pub(crate) fn prepare_branch(
 
     match prepare(&ctx.project_dir, project, &request) {
         Ok(prepared) => {
-            ctx.out().write(&PrepareBranchBody {
+            ctx.write(&PrepareBranchBody {
                 prepared: true,
                 inner: &prepared,
-                diagnostics: Vec::new(),
             })?;
             Ok(())
         }
@@ -136,7 +132,7 @@ pub(crate) fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> 
         .collect();
 
     let plan_name = plan.name.clone();
-    ctx.out().write(&PushBody {
+    ctx.write(&PushBody {
         plan_name: plan.name,
         dry_run_flag: dry_run,
         projects: items,
@@ -257,7 +253,7 @@ impl SlotRow {
             self.actual_symlink_target.as_deref().unwrap_or("-"),
             self.actual_origin.as_deref().unwrap_or("-"),
             self.current_branch.as_deref().unwrap_or("-"),
-            MatchState::from(self.branch_matches_change),
+            match_state(self.branch_matches_change),
             self.head_sha.as_deref().unwrap_or("-"),
             self.dirty.map_or("-", |v| if v { "yes" } else { "no" }),
             if self.project_config_present { "present" } else { "missing" },
@@ -274,29 +270,11 @@ impl SlotRow {
 /// status row: present-and-true is `match`, present-and-false is
 /// `mismatch`, absent is `-`. JSON keeps the raw `Option<bool>` —
 /// this only governs text rendering.
-enum MatchState {
-    Match,
-    Mismatch,
-    Unknown,
-}
-
-impl From<Option<bool>> for MatchState {
-    fn from(v: Option<bool>) -> Self {
-        match v {
-            Some(true) => Self::Match,
-            Some(false) => Self::Mismatch,
-            None => Self::Unknown,
-        }
-    }
-}
-
-impl fmt::Display for MatchState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Match => "match",
-            Self::Mismatch => "mismatch",
-            Self::Unknown => "-",
-        })
+fn match_state(b: Option<bool>) -> &'static str {
+    match b {
+        Some(true) => "match",
+        Some(false) => "mismatch",
+        None => "-",
     }
 }
 
@@ -306,7 +284,6 @@ struct PrepareBranchBody<'a> {
     prepared: bool,
     #[serde(flatten)]
     inner: &'a Prepared,
-    diagnostics: Vec<BranchDiagnostic>,
 }
 
 impl Render for PrepareBranchBody<'_> {

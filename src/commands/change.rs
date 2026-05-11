@@ -6,11 +6,11 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 use serde::Serialize;
-use specify_capability::ChangeBrief;
-use specify_change::finalize;
+use specify_domain::capability::ChangeBrief;
+use specify_domain::change::finalize;
 use specify_error::{Error, Result, is_kebab};
-use specify_registry::Registry;
-use specify_slice::atomic::bytes_write;
+use specify_domain::registry::Registry;
+use specify_domain::slice::atomic::bytes_write;
 
 use crate::cli::ChangeAction;
 use crate::context::Ctx;
@@ -39,12 +39,15 @@ fn brief_create(ctx: &Ctx, name: String) -> Result<()> {
 
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     if brief_path.exists() {
-        return Err(Error::ChangeBriefExists { path: brief_path });
+        return Err(Error::Diag {
+            code: "already-exists",
+            detail: format!("change brief already exists at {}", brief_path.display()),
+        });
     }
 
     bytes_write(&brief_path, ChangeBrief::template(&name).as_bytes())?;
 
-    ctx.out().write(&BriefCreateBody {
+    ctx.write(&BriefCreateBody {
         name,
         path: brief_path,
     })?;
@@ -54,7 +57,7 @@ fn brief_create(ctx: &Ctx, name: String) -> Result<()> {
 fn brief_show(ctx: &Ctx) -> Result<()> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let brief = ChangeBrief::load(&ctx.project_dir)?;
-    ctx.out().write(&BriefShowBody {
+    ctx.write(&BriefShowBody {
         brief,
         path: brief_path,
     })?;
@@ -104,7 +107,7 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
             let finalized = outcome.finalized;
             let summary = blocked_reason(&outcome.summary);
             let plan_name = outcome.name.clone();
-            ctx.out().write(&FinalizeBody { outcome: &outcome })?;
+            ctx.write(&FinalizeBody { outcome: &outcome })?;
             if finalized {
                 Ok(())
             } else {
@@ -277,13 +280,13 @@ fn blocked_reason(s: &finalize::Summary) -> String {
 
 // ---------------------------------------------------------------------------
 // Tests for the CLI handler — keep them lean; the heavy lifting lives in
-// `specify_change::finalize` (orchestrator) and `tests/cli.rs`
+// `specify_domain::change::finalize` (orchestrator) and `tests/cli.rs`
 // (end-to-end with the real binary).
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
-    use specify_change::finalize::Landing;
+    use specify_domain::change::finalize::Landing;
 
     use super::*;
 

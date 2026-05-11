@@ -6,9 +6,9 @@
 
 use std::path::Path;
 
-use specify_config::LayoutExt;
+use specify_domain::config::LayoutExt;
 use specify_error::Result;
-use specify_merge::{ArtifactClass, MergeStrategy};
+use specify_domain::merge::{ArtifactClass, MergeStrategy};
 
 use crate::cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
 use crate::context::Ctx;

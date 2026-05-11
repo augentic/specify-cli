@@ -3,7 +3,7 @@ pub(crate) mod cli;
 use std::io::Write;
 
 use serde::Serialize;
-use specify_capability::{CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule};
+use specify_domain::capability::{CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule};
 use specify_error::{Error, Result};
 
 use crate::cli::CodexAction;
@@ -27,7 +27,7 @@ fn resolve(ctx: &Ctx) -> Result<ResolvedCodex> {
 fn list(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from).collect();
-    ctx.out().write(&ListBody {
+    ctx.write(&ListBody {
         rule_count: rules.len(),
         rules,
     })?;
@@ -46,7 +46,7 @@ fn show(ctx: &Ctx, rule_id: &str) -> Result<()> {
             detail: format!("rule `{rule_id}` not found"),
         })?;
 
-    ctx.out().write(&ShowBody {
+    ctx.write(&ShowBody {
         rule: RuleExport::from(resolved),
     })?;
     Ok(())
@@ -55,7 +55,7 @@ fn show(ctx: &Ctx, rule_id: &str) -> Result<()> {
 fn validate(ctx: &Ctx) -> Result<()> {
     match resolve(ctx) {
         Ok(codex) => {
-            ctx.out().write(&ValidateBody {
+            ctx.write(&ValidateBody {
                 rule_count: Some(codex.rules.len()),
                 error_count: 0,
                 validation: Validation { results: Vec::new() },
@@ -63,7 +63,7 @@ fn validate(ctx: &Ctx) -> Result<()> {
             Ok(())
         }
         Err(Error::Validation { results }) => {
-            ctx.out().write(&ValidateBody {
+            ctx.write(&ValidateBody {
                 rule_count: None,
                 error_count: results.len(),
                 validation: Validation {
@@ -79,7 +79,7 @@ fn validate(ctx: &Ctx) -> Result<()> {
 fn export(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleExport::from).collect();
-    ctx.out().write(&ExportBody {
+    ctx.write(&ExportBody {
         rule_count: rules.len(),
         rules,
     })?;

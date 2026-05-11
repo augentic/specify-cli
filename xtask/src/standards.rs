@@ -61,12 +61,28 @@
 //! - `cli-help-shape` — clap-derive `///` doc lines longer than 80
 //!   characters in `src/cli.rs` and `src/commands/**/cli.rs`. Help
 //!   output is operator-facing and must wrap cleanly in a terminal.
+//! - `display-serde-mirror` — `impl Display for T` where `T` derives
+//!   `Serialize` and the body is a `match self { ... }` whose arms map
+//!   unit variants to bare string literals. The `kebab_enum!` macro
+//!   replaces this pattern; a hand-rolled mirror is a regression.
+//! - `crate-root-prose` — a `lib.rs` or `main.rs` with more than 30
+//!   consecutive `//!` doc lines at the top of the file. Long
+//!   architectural prose belongs in `docs/standards/` or an in-repo
+//!   RFC, not the crate root.
+//! - `unit-test-serde-roundtrip` — a `#[test]` whose body contains a
+//!   matching `serde_*::to_string` and `serde_*::from_str` pair. Soft
+//!   smell — round-trip tests usually belong in `tests/` driven through
+//!   a CLI command; allowlist when a custom Visitor or similar
+//!   genuinely warrants the in-crate test.
 
 mod allowlist;
 mod ast_predicates;
+mod crate_root_prose;
+mod display_serde_mirror;
 mod regex_predicates;
 mod report;
 mod types;
+mod unit_test_serde_roundtrip;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -173,6 +189,9 @@ fn count_one(path: &Path, source: &str) -> Counts {
         result_cliresult_default: regex_predicates::result_cliresult_default(path, &stripped),
         verbose_doc_paragraphs: regex_predicates::verbose_doc_paragraphs(source),
         cli_help_shape: regex_predicates::cli_help_shape(path, source),
+        display_serde_mirror: display_serde_mirror::count(source),
+        crate_root_prose: crate_root_prose::count(path, source),
+        unit_test_serde_roundtrip: unit_test_serde_roundtrip::count(source),
     }
 }
 

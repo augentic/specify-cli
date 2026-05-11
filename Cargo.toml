@@ -15,18 +15,10 @@ path = "src/main.rs"
 
 [dependencies]
 specify-error.workspace = true
-specify-capability.workspace = true
-specify-config.workspace = true
-specify-init.workspace = true
-specify-registry.workspace = true
-specify-spec.workspace = true
-specify-merge.workspace = true
-specify-task.workspace = true
-specify-slice.workspace = true
-specify-change.workspace = true
-specify-validate.workspace = true
-specify-tool.workspace = true
+specify-domain.workspace = true
+specify-tool = { workspace = true, features = ["host"] }
 clap.workspace = true
+clap_complete.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
@@ -48,16 +40,7 @@ workspace = true
 [workspace]
 members = [
     "crates/error",
-    "crates/capability",
-    "crates/config",
-    "crates/init",
-    "crates/registry",
-    "crates/spec",
-    "crates/merge",
-    "crates/task",
-    "crates/validate",
-    "crates/slice",
-    "crates/change",
+    "crates/domain",
     "crates/tool",
     "xtask",
 ]
@@ -138,16 +121,7 @@ unused_result_ok = "warn"
 
 [workspace.dependencies]
 specify-error = { path = "crates/error" }
-specify-capability = { path = "crates/capability" }
-specify-config = { path = "crates/config" }
-specify-init = { path = "crates/init" }
-specify-registry = { path = "crates/registry" }
-specify-spec = { path = "crates/spec" }
-specify-merge = { path = "crates/merge" }
-specify-task = { path = "crates/task" }
-specify-slice = { path = "crates/slice" }
-specify-change = { path = "crates/change" }
-specify-validate = { path = "crates/validate" }
+specify-domain = { path = "crates/domain" }
 specify-tool = { path = "crates/tool" }
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
@@ -170,7 +144,6 @@ wasm-pkg-client = "0.15"
 wasmtime = { version = "44.0.1", default-features = false, features = ["component-model", "runtime", "cranelift"] }
 wasmtime-wasi = { version = "44.0.1", default-features = false, features = ["p2"] }
 assert_cmd = "2"
-fs2 = "0.4"
 libc = "0.2"
 petgraph = "0.8"
 

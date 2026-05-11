@@ -23,7 +23,7 @@ mod lock;
 mod render;
 
 pub(super) use generate::for_init as generate_for_init;
-use specify_config::LayoutExt;
+use specify_domain::config::LayoutExt;
 use specify_error::{Error, Result};
 
 use crate::cli::ContextAction;
@@ -90,8 +90,8 @@ fn context_lock_path(ctx: &Ctx) -> PathBuf {
 mod tests {
     use std::collections::BTreeMap;
 
-    use specify_config::ProjectConfig;
-    use specify_registry::Registry;
+    use specify_domain::config::ProjectConfig;
+    use specify_domain::registry::Registry;
     use tempfile::tempdir;
 
     use super::*;

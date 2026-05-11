@@ -5,8 +5,9 @@ use std::{fs, io};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use tempfile::Builder;
 
-use super::{SIDECAR_FILENAME, scope_segment, unique_sibling_path};
+use super::{SIDECAR_FILENAME, scope_segment};
 use crate::error::ToolError;
 use crate::manifest::{ToolPermissions, ToolScope};
 use crate::package::PackageMetadata;
@@ -93,36 +94,6 @@ pub struct Sidecar {
     pub oci: Option<OciSnapshot>,
 }
 
-/// Inputs copied from the live declaration into a cache sidecar.
-#[derive(Debug, Clone)]
-pub struct SidecarInput {
-    tool_name: String,
-    tool_version: String,
-    source: String,
-    permissions_snapshot: PermissionsSnapshot,
-    sha256: Option<String>,
-    package_metadata: Option<PackageMetadata>,
-}
-
-impl SidecarInput {
-    /// Build sidecar inputs from a live declaration tuple.
-    #[must_use]
-    pub fn new(
-        tool_name: impl Into<String>, tool_version: impl Into<String>, source: impl Into<String>,
-        permissions_snapshot: PermissionsSnapshot, sha256: Option<String>,
-        package_metadata: Option<PackageMetadata>,
-    ) -> Self {
-        Self {
-            tool_name: tool_name.into(),
-            tool_version: tool_version.into(),
-            source: source.into(),
-            permissions_snapshot,
-            sha256,
-            package_metadata,
-        }
-    }
-}
-
 impl Sidecar {
     /// Construct a v1 sidecar from a live declaration tuple.
     ///
@@ -135,10 +106,13 @@ impl Sidecar {
     /// or capability slug is empty, contains a path separator, or would escape
     /// the cache directory. Other fields are accepted verbatim and validated
     /// against the v1 schema by [`write_sidecar`] before persistence.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        scope: &ToolScope, input: SidecarInput, now: DateTime<Utc>,
+        scope: &ToolScope, tool_name: impl Into<String>, tool_version: impl Into<String>,
+        source: impl Into<String>, permissions_snapshot: PermissionsSnapshot,
+        sha256: Option<String>, package_metadata: Option<PackageMetadata>, now: DateTime<Utc>,
     ) -> Result<Self, ToolError> {
-        let (package, oci) = input.package_metadata.map_or((None, None), |metadata| {
+        let (package, oci) = package_metadata.map_or((None, None), |metadata| {
             let package = Some(PackageSnapshot::from(&metadata));
             let oci = metadata.oci_reference.map(|reference| OciSnapshot { reference });
             (package, oci)
@@ -146,12 +120,12 @@ impl Sidecar {
         Ok(Self {
             schema_version: SIDECAR_SCHEMA_VERSION,
             scope: scope_segment(scope)?,
-            tool_name: input.tool_name,
-            tool_version: input.tool_version,
-            source: input.source,
+            tool_name: tool_name.into(),
+            tool_version: tool_version.into(),
+            source: source.into(),
             fetched_at: now,
-            permissions_snapshot: input.permissions_snapshot,
-            sha256: input.sha256,
+            permissions_snapshot,
+            sha256,
             package,
             oci,
         })
@@ -191,9 +165,8 @@ pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ToolError> {
 ///
 /// Returns `ToolError::SidecarSchema` when `sidecar` does not satisfy the v1
 /// schema, `ToolError::CacheRoot` when `path` has no parent directory,
-/// `ToolError::CacheIo` when the parent directory cannot be created or the
-/// temp file cannot be written, `ToolError::CacheCollision` when a unique
-/// temp path could not be picked after the configured maximum retries,
+/// `ToolError::CacheIo` when the parent directory cannot be created, a
+/// unique temp path cannot be allocated, or the temp file cannot be written,
 /// and `ToolError::AtomicMoveFailed` when the final rename into place fails
 /// (a crash here leaves the destination untouched).
 pub fn write_sidecar(path: &Path, sidecar: &Sidecar) -> Result<(), ToolError> {
@@ -210,15 +183,19 @@ pub fn write_sidecar(path: &Path, sidecar: &Sidecar) -> Result<(), ToolError> {
         path: path.to_path_buf(),
         detail: format!("failed to serialize sidecar: {err}"),
     })?;
-    let tmp = unique_sibling_path(parent, SIDECAR_FILENAME)?;
-    fs::write(&tmp, contents)
-        .map_err(|err| ToolError::cache_io("write sidecar temp", &tmp, err))?;
-    fs::rename(&tmp, path).map_err(|err| ToolError::AtomicMoveFailed {
-        from: tmp,
+    let prefix = format!(".{SIDECAR_FILENAME}.");
+    let tmp = Builder::new()
+        .prefix(&prefix)
+        .suffix(".tmp")
+        .tempfile_in(parent)
+        .map_err(|err| ToolError::cache_io("create sidecar temp", parent, err))?;
+    fs::write(tmp.path(), contents)
+        .map_err(|err| ToolError::cache_io("write sidecar temp", tmp.path(), err))?;
+    tmp.persist(path).map(|_| ()).map_err(|err| ToolError::AtomicMoveFailed {
+        from: err.file.path().to_path_buf(),
         to: path.to_path_buf(),
-        source: err,
-    })?;
-    Ok(())
+        source: err.error,
+    })
 }
 
 fn validate_sidecar_schema(path: &Path, sidecar: &Sidecar) -> Result<(), ToolError> {

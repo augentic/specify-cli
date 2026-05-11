@@ -10,11 +10,11 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use specify_capability::{Capability, PipelineView};
-use specify_config::{LayoutExt, ProjectConfig};
+use specify_domain::capability::{Capability, PipelineView};
+use specify_domain::config::{LayoutExt, ProjectConfig};
 use specify_error::{Error, Result};
-use specify_registry::Registry;
-use specify_slice::SliceMetadata;
+use specify_domain::registry::Registry;
+use specify_domain::slice::SliceMetadata;
 
 use super::{detect, fingerprint, render};
 use crate::context::Ctx;

@@ -4,7 +4,7 @@
 )]
 #![allow(
     clippy::multiple_crate_versions,
-    reason = "Wasmtime and WASI carry unavoidable duplicate transitive crates in the workspace."
+    reason = "Wasmtime, WASI, and `wasm-pkg-client` carry unavoidable duplicate transitive crates in the workspace; surfaces in both `--features host` and `--no-default-features` builds."
 )]
 
 //! `specify-tool` owns Specify's declared WASI tool model, cache, resolver,
@@ -235,6 +235,10 @@
 
 pub mod cache;
 pub mod error;
+#[cfg(feature = "host")]
+pub mod host;
+#[cfg(not(feature = "host"))]
+#[path = "host_stub.rs"]
 pub mod host;
 pub mod load;
 pub mod manifest;
@@ -254,7 +258,57 @@ pub(crate) mod test_support {
     use std::time::{SystemTime, UNIX_EPOCH};
     use std::{env, fs};
 
+    use chrono::{DateTime, Utc};
+
+    use crate::cache;
+    use crate::manifest::{Tool, ToolPermissions, ToolScope, ToolSource};
+
     static SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    pub(crate) fn fixed_now() -> DateTime<Utc> {
+        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
+    }
+
+    pub(crate) fn project_scope() -> ToolScope {
+        ToolScope::Project {
+            project_name: "demo".to_string(),
+        }
+    }
+
+    pub(crate) fn capability_scope(root: &Path) -> ToolScope {
+        ToolScope::Capability {
+            capability_slug: "contracts".to_string(),
+            capability_dir: root.to_path_buf(),
+        }
+    }
+
+    pub(crate) fn tool(source: ToolSource, sha256: Option<String>) -> Tool {
+        Tool {
+            name: "contract".to_string(),
+            version: "1.0.0".to_string(),
+            source,
+            sha256,
+            permissions: ToolPermissions::default(),
+        }
+    }
+
+    pub(crate) fn named_tool(name: &str, source: ToolSource, sha256: Option<String>) -> Tool {
+        Tool {
+            name: name.to_string(),
+            ..tool(source, sha256)
+        }
+    }
+
+    pub(crate) fn write_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
+        let path = root.join(name);
+        std::fs::write(&path, bytes).expect("write source");
+        path
+    }
+
+    pub(crate) fn cached_bytes(scope: &ToolScope, tool: &Tool) -> Vec<u8> {
+        std::fs::read(cache::module_path(scope, &tool.name, &tool.version).expect("module path"))
+            .expect("read cached module")
+    }
 
     /// Lock guarding process-wide environment mutations in tests.
     pub(crate) fn env_lock() -> MutexGuard<'static, ()> {

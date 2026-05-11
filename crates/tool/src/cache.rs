@@ -10,10 +10,7 @@
 //! pure path/scope helpers and the [`CacheStatus`] decision API that ties
 //! them together.
 
-use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs, io};
 
 use crate::error::ToolError;
@@ -29,8 +26,7 @@ mod tests;
 pub use fetch::stage_and_install;
 pub use gc::scan as scan_for_gc;
 pub use meta::{
-    OciSnapshot, PackageSnapshot, PermissionsSnapshot, Sidecar, SidecarInput, read_sidecar,
-    write_sidecar,
+    OciSnapshot, PackageSnapshot, PermissionsSnapshot, Sidecar, read_sidecar, write_sidecar,
 };
 
 /// Filename used for cached component bytes.
@@ -41,9 +37,6 @@ pub const SIDECAR_FILENAME: &str = "meta.yaml";
 
 /// Embedded JSON Schema for cache sidecars.
 pub const TOOL_SIDECAR_JSON_SCHEMA: &str = include_str!("../schemas/tool-sidecar.schema.json");
-
-const MAX_TEMP_ATTEMPTS: u8 = 64;
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Cache reuse state for a declared tool.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize)]
@@ -223,23 +216,6 @@ fn invalid_segment(field: &'static str, value: &str, reason: &'static str) -> To
         value: value.to_string(),
         reason,
     }
-}
-
-fn unique_sibling_path(parent: &Path, stem: impl AsRef<OsStr>) -> Result<PathBuf, ToolError> {
-    let stem = stem.as_ref().to_string_lossy();
-    let nanos =
-        SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_nanos());
-    for _ in 0..MAX_TEMP_ATTEMPTS {
-        let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let candidate = parent.join(format!(".{stem}.{}.{}.{}.tmp", std::process::id(), nanos, n));
-        if !candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-    Err(ToolError::CacheCollision {
-        parent: parent.to_path_buf(),
-        stem: stem.into_owned(),
-    })
 }
 
 fn sorted_dir_entries(path: &Path) -> Result<Vec<fs::DirEntry>, ToolError> {

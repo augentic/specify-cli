@@ -11,52 +11,25 @@ use crate::cli::Format;
 /// `Stderr` is reserved for failure envelopes and any diagnostic
 /// rendering that should not interleave with the structured success
 /// stream skills consume. Private to `src/output.rs`: handlers route
-/// through the [`Out`] handle (via `ctx.out()` or
-/// [`Out::for_format`]); `Stream::Stderr` is reached only by
-/// [`report`].
+/// through `ctx.write(&Body)?;` (or [`write`] for the rare `Ctx`-less
+/// verbs); `Stream::Stderr` is reached only by [`report`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Stream {
     Stdout,
     Stderr,
 }
 
-/// Stdout handle for handler success-path emission. Constructed via
-/// [`crate::context::Ctx::out`] for project-aware verbs, or
-/// [`Out::for_format`] for the format-only handlers that run before
-/// (or outside of) a `Ctx` — `commands::init::run`,
-/// `commands::capability::resolve`, and `commands::capability::check`.
+/// Serialise `body` and write it to stdout in `format`. Use only in
+/// `Ctx`-less handlers (`init`, `capability::resolve`,
+/// `capability::check`); every other handler reaches for
+/// `ctx.write(&Body)?;`.
 ///
-/// Handlers should reach for `ctx.out().write(&Body)?;`; the
-/// `Stream::Stdout` constant lives inside this module so call sites
-/// never spell it.
-#[derive(Clone, Copy)]
-pub(crate) struct Out {
-    format: Format,
-}
-
-impl std::fmt::Debug for Out {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Out").finish_non_exhaustive()
-    }
-}
-
-impl Out {
-    /// Construct an `Out` from a bare `Format`. Use only in
-    /// `Ctx`-less handlers (`init`, `capability::resolve`,
-    /// `capability::check`) — every other call site goes through
-    /// `ctx.out()`.
-    pub(crate) const fn for_format(format: Format) -> Self {
-        Self { format }
-    }
-
-    /// Serialise `body` and write it to stdout in the requested
-    /// format. The `Render` bound carries the text path; JSON is
-    /// derived from `serde::Serialize`. Takes `self` by value —
-    /// `Out` is `Copy` and the cost of the handle is one `Format`
-    /// byte.
-    pub(crate) fn write<R: Render>(self, body: &R) -> Result<(), Error> {
-        emit(Stream::Stdout, self.format, body)
-    }
+/// # Errors
+///
+/// Propagates the underlying serialization or I/O error from
+/// [`emit`].
+pub(crate) fn write<R: Render>(format: Format, body: &R) -> Result<(), Error> {
+    emit(Stream::Stdout, format, body)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,15 +91,19 @@ impl From<&Error> for Exit {
             Error::CliTooOld { .. } => Self::VersionTooOld,
             Error::Validation { .. }
             | Error::ToolDenied(_)
-            | Error::ToolNotDeclared { .. }
-            | Error::CapabilityCheckFailed { .. }
-            | Error::SliceValidationFailed { .. } => Self::ValidationFailed,
+            | Error::ToolNotDeclared { .. } => Self::ValidationFailed,
             // Diag-routed siblings of the typed validation cluster.
             // Their typed variants collapsed to `Diag` but their exit
             // slot stays exit 2 — the kebab `code` is the wire contract
             // and skills branch on it.
             Error::Diag { code, .. }
-                if matches!(*code, "plan-structural-errors" | "compatibility-check-failed") =>
+                if matches!(
+                    *code,
+                    "plan-structural-errors"
+                        | "compatibility-check-failed"
+                        | "capability-check-failed"
+                        | "slice-validation-failed"
+                ) =>
             {
                 Self::ValidationFailed
             }
@@ -169,22 +146,6 @@ pub(crate) fn report(format: Format, err: &Error) -> Exit {
     code
 }
 
-/// Surface `err`'s long-form recovery hint (when defined) on `w`.
-/// Embedded `\n` newlines split into per-line writes; the first line
-/// gets the `hint: ` prefix, follow-up lines print verbatim so a
-/// trailing `see: docs/…` reference renders unprefixed.
-fn write_hint(w: &mut dyn Write, err: &Error) -> std::io::Result<()> {
-    let Some(hint) = err.hint() else { return Ok(()) };
-    for (idx, line) in hint.lines().enumerate() {
-        if idx == 0 {
-            writeln!(w, "hint: {line}")?;
-        } else {
-            writeln!(w, "{line}")?;
-        }
-    }
-    Ok(())
-}
-
 #[derive(Serialize)]
 pub(crate) struct Envelope<T> {
     #[serde(rename = "envelope-version")]
@@ -207,25 +168,21 @@ impl<T: Serialize> Envelope<T> {
 /// should touch the wire envelope shape directly.
 fn emit_json<T: Serialize>(stream: Stream, payload: &T) -> Result<(), Error> {
     let envelope = Envelope::new(payload);
-    let map_serde = |err: serde_json::Error| Error::Diag {
+    let mut writer = writer_for(stream);
+    serde_json::to_writer_pretty(&mut writer, &envelope).map_err(|err| Error::Diag {
         code: "json-serialize-failed",
         detail: format!("failed to serialize JSON response: {err}"),
-    };
+    })?;
+    writeln!(writer).map_err(Error::Io)
+}
+
+/// Return a locked stdout/stderr writer for `stream`. Boxed to keep
+/// the JSON and text emitter signatures uniform across both sinks.
+fn writer_for(stream: Stream) -> Box<dyn Write> {
     match stream {
-        Stream::Stdout => {
-            let stdout = std::io::stdout();
-            let mut handle = stdout.lock();
-            serde_json::to_writer_pretty(&mut handle, &envelope).map_err(map_serde)?;
-            writeln!(handle).map_err(Error::Io)?;
-        }
-        Stream::Stderr => {
-            let stderr = std::io::stderr();
-            let mut handle = stderr.lock();
-            serde_json::to_writer_pretty(&mut handle, &envelope).map_err(map_serde)?;
-            writeln!(handle).map_err(Error::Io)?;
-        }
+        Stream::Stdout => Box::new(std::io::stdout().lock()),
+        Stream::Stderr => Box::new(std::io::stderr().lock()),
     }
-    Ok(())
 }
 
 /// Format-agnostic command-result rendering. JSON is derived from
@@ -246,24 +203,16 @@ pub(crate) trait Render: Serialize {
 /// covers both success (`Stream::Stdout`) and failure
 /// (`Stream::Stderr`) — there is one entry point for all structured
 /// output. Private to this module: success-path handlers route
-/// through the [`Out`] handle; failure envelopes go through
-/// [`report`], which builds the typed body and routes it back through
-/// this function.
+/// through `ctx.write(&body)` (or [`write`] for the rare `Ctx`-less
+/// verbs); failure envelopes go through [`report`], which builds the
+/// typed body and routes it back through this function.
 fn emit<R: Render>(stream: Stream, format: Format, payload: &R) -> Result<(), Error> {
     match format {
         Format::Json => emit_json(stream, payload),
-        Format::Text => match stream {
-            Stream::Stdout => {
-                let stdout = std::io::stdout();
-                let mut handle = stdout.lock();
-                payload.render_text(&mut handle).map_err(Error::Io)
-            }
-            Stream::Stderr => {
-                let stderr = std::io::stderr();
-                let mut handle = stderr.lock();
-                payload.render_text(&mut handle).map_err(Error::Io)
-            }
-        },
+        Format::Text => {
+            let mut writer = writer_for(stream);
+            payload.render_text(&mut writer).map_err(Error::Io)
+        }
     }
 }
 
@@ -300,7 +249,10 @@ impl<'a> From<&'a Error> for ErrorBody<'a> {
 impl Render for ErrorBody<'_> {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         writeln!(w, "error: {}", self.message)?;
-        write_hint(w, self.hint_source)
+        if let Some(hint) = self.hint_source.hint() {
+            writeln!(w, "hint: {hint}")?;
+        }
+        Ok(())
     }
 }
 
@@ -390,7 +342,10 @@ impl<'a> From<(&'a Error, &'a [ValidationSummary])> for ValidationErrBody<'a> {
 impl Render for ValidationErrBody<'_> {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         writeln!(w, "error: {}", self.message)?;
-        write_hint(w, self.hint_source)
+        if let Some(hint) = self.hint_source.hint() {
+            writeln!(w, "hint: {hint}")?;
+        }
+        Ok(())
     }
 }
 
@@ -404,9 +359,10 @@ pub(crate) fn display(path: &Path) -> String {
 }
 
 /// `#[serde(serialize_with)]` adapter for `*Body { path: PathBuf }`
-/// fields. Wraps [`display`] so the wire shape stays a plain
-/// JSON string with the canonical-or-fallback path representation
-/// every renderer used before paths became typed.
+/// fields. Always emits `Path::to_string_lossy` so the wire shape is a
+/// pure function of the input path — no filesystem dependency, no
+/// canonicalisation that varies with whether the file exists at
+/// serialise time. Test fixtures and goldens stay reproducible.
 pub(crate) fn serialize_path<S: Serializer>(p: &Path, s: S) -> Result<S::Ok, S::Error> {
-    s.collect_str(&display(p))
+    s.serialize_str(&p.to_string_lossy())
 }

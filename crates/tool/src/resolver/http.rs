@@ -85,7 +85,11 @@ pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredByte
 
     let mut reader = response.body_mut().with_config().limit(MAX_RESPONSE_BYTES + 1).reader();
     let sha256 = stream_to_tempfile(url, &mut reader, &temp)?;
-    Ok(AcquiredBytes::Streamed { temp, sha256 })
+    Ok(AcquiredBytes {
+        temp,
+        sha256,
+        package_metadata: None,
+    })
 }
 
 fn stream_to_tempfile<R: Read>(
@@ -202,11 +206,10 @@ mod tests {
     use std::net::TcpListener;
 
     use super::super::resolve;
-    use super::super::tests_common::*;
     use super::*;
     use crate::error::ToolError;
     use crate::manifest::ToolSource;
-    use crate::test_support::{scratch_dir, with_cache_env};
+    use crate::test_support::{fixed_now, project_scope, scratch_dir, tool, with_cache_env};
 
     #[test]
     fn http_sources_are_rejected_before_network_access() {

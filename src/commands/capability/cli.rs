@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use clap::Subcommand;
-use specify_capability::Phase;
+use specify_domain::capability::Phase;
 
 #[derive(Subcommand)]
 pub(crate) enum CapabilityAction {

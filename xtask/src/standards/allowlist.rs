@@ -102,6 +102,9 @@ fn baseline_iter(b: &FileBaseline) -> impl Iterator<Item = (&'static str, u32)> 
         ("result-cliresult-default", b.result_cliresult_default),
         ("verbose-doc-paragraphs", b.verbose_doc_paragraphs),
         ("cli-help-shape", b.cli_help_shape),
+        ("display-serde-mirror", b.display_serde_mirror),
+        ("crate-root-prose", b.crate_root_prose),
+        ("unit-test-serde-roundtrip", b.unit_test_serde_roundtrip),
     ]
     .into_iter()
 }

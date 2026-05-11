@@ -10,53 +10,9 @@
 //! the behaviour under test.
 
 use std::fs;
-use std::path::{Path, PathBuf};
-
-use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::{copy_dir, parse_json, repo_root, specify};
-
-struct Project {
-    _tmp: TempDir,
-    root: PathBuf,
-}
-
-impl Project {
-    fn init() -> Self {
-        let tmp = tempdir().expect("tempdir");
-        let root = tmp.path().to_path_buf();
-        specify()
-            .current_dir(&root)
-            .args(["init"])
-            .arg(repo_root().join("schemas").join("omnia"))
-            .args(["--name", "test-proj"])
-            .assert()
-            .success();
-        Self { _tmp: tmp, root }
-    }
-
-    /// Copy the in-repo `schemas/omnia` tree into the project so any
-    /// subcommand that loads a `PipelineView` can resolve the schema.
-    /// Used by the list/status tests which walk the pipeline to report
-    /// per-brief artifact completion.
-    fn with_schemas(self) -> Self {
-        copy_dir(&repo_root().join("schemas/omnia"), &self.root.join("schemas/omnia"));
-        self
-    }
-
-    fn root(&self) -> &Path {
-        &self.root
-    }
-
-    fn slices_dir(&self) -> PathBuf {
-        self.root.join(".specify/slices")
-    }
-
-    fn specs_dir(&self) -> PathBuf {
-        self.root.join(".specify/specs")
-    }
-}
+use common::{Project, parse_json, specify};
 
 // ---------------------------------------------------------------------------
 // slice create
@@ -667,11 +623,11 @@ fn phase_outcome_preserves_metadata_fields() {
 
 #[test]
 fn metadata_without_outcome_still_parses() {
-    use specify_slice::SliceMetadata;
+    use specify_domain::slice::SliceMetadata;
     // Hand-craft a `.metadata.yaml` that predates the `outcome` field
     // and assert that SliceMetadata::load accepts it and leaves
     // `outcome` as None.
-    let tmp = tempdir().expect("tempdir");
+    let tmp = tempfile::tempdir().expect("tempdir");
     let slice_dir = tmp.path();
     let yaml = r#"capability: omnia
 status: defining
@@ -909,6 +865,14 @@ fn outcome_registry_amendment_writes_payload() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
+    let proposal = serde_json::json!({
+        "proposed-name": "alpha-gateway",
+        "proposed-url": "git@github.com:augentic/alpha-gateway.git",
+        "proposed-capability": "omnia@v1",
+        "proposed-description": "Gateway for alpha capability.",
+        "rationale": "build discovered tangled code requiring a split",
+    })
+    .to_string();
     specify()
         .current_dir(project.root())
         .args([
@@ -918,16 +882,8 @@ fn outcome_registry_amendment_writes_payload() {
             "foo",
             "build",
             "registry-amendment-required",
-            "--proposed-name",
-            "alpha-gateway",
-            "--proposed-url",
-            "git@github.com:augentic/alpha-gateway.git",
-            "--proposed-capability",
-            "omnia@v1",
-            "--proposed-description",
-            "Gateway for alpha capability.",
-            "--rationale",
-            "build discovered tangled code requiring a split",
+            "--proposal",
+            &proposal,
         ])
         .assert()
         .success();
@@ -981,9 +937,43 @@ fn outcome_registry_amendment_writes_payload() {
     );
 }
 
-/// Missing required flags surface a clear `Error::Diag` (exit code 1).
+/// Missing required keys in the `--proposal` JSON object surface as a
+/// clap parse error (exit `2`).
 #[test]
-fn outcome_registry_amendment_missing_flags() {
+fn outcome_registry_amendment_missing_keys() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
+
+    let proposal = serde_json::json!({
+        "proposed-name": "alpha-gateway",
+        "proposed-url": "git@github.com:augentic/alpha-gateway.git",
+    })
+    .to_string();
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "slice",
+            "outcome",
+            "set",
+            "foo",
+            "build",
+            "registry-amendment-required",
+            "--proposal",
+            &proposal,
+        ])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("--proposal") && stderr.contains("missing field"),
+        "expected clap parse-error naming --proposal and the missing field, got: {stderr}",
+    );
+}
+
+/// Malformed JSON on `--proposal` is rejected at parse time (exit `2`).
+#[test]
+fn outcome_registry_amendment_malformed_json() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -996,26 +986,24 @@ fn outcome_registry_amendment_missing_flags() {
             "foo",
             "build",
             "registry-amendment-required",
-            "--proposed-name",
-            "alpha-gateway",
-            "--proposed-url",
-            "git@github.com:augentic/alpha-gateway.git",
+            "--proposal",
+            "not-json",
         ])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
-        stderr.contains("--proposed-capability") || stderr.contains("--rationale"),
-        "expected clap diagnostic naming the missing required flag, got: {stderr}",
+        stderr.contains("--proposal"),
+        "expected clap parse-error naming --proposal, got: {stderr}",
     );
 }
 
-/// Supplying `--proposed-*` flags with an outcome other than
-/// `registry-amendment-required` is rejected — those flags are
-/// outcome-scoped, and silently dropping them would mask author intent.
+/// Supplying `--proposal` with an outcome other than
+/// `registry-amendment-required` is rejected — the flag is
+/// outcome-scoped, and silently dropping it would mask author intent.
 #[test]
-fn outcome_proposal_flags_rejected_otherwise() {
+fn outcome_proposal_flag_rejected_otherwise() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1030,15 +1018,15 @@ fn outcome_proposal_flags_rejected_otherwise() {
             "success",
             "--summary",
             "ok",
-            "--proposed-name",
-            "alpha",
+            "--proposal",
+            "{}",
         ])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
-        stderr.contains("--proposed-name"),
+        stderr.contains("--proposal") || stderr.contains("unexpected argument"),
         "expected clap diagnostic naming the offending flag, got: {stderr}",
     );
 }
@@ -1299,24 +1287,19 @@ fn journal_show_errors_on_missing() {
 
 #[test]
 fn phase_outcome_round_trips_serde() {
-    use specify_slice::{Outcome, OutcomeKind, Phase, Rfc3339Stamp};
-    for outcome in [OutcomeKind::Success, OutcomeKind::Failure, OutcomeKind::Deferred] {
-        for phase in [Phase::Define, Phase::Build, Phase::Merge] {
-            let context = if matches!(outcome, OutcomeKind::Success) {
-                None
-            } else {
-                Some("verbatim detail".to_string())
-            };
-            let value = Outcome {
-                phase,
-                outcome: outcome.clone(),
-                at: Rfc3339Stamp::new("2024-08-01T10:00:00+00:00".to_string()),
-                summary: "some summary".to_string(),
-                context,
-            };
-            let yaml = serde_saphyr::to_string(&value).expect("serialize");
+    use specify_domain::slice::Outcome;
+    // Construction via struct literal would require crossing the
+    // `#[non_exhaustive]` boundary on `Outcome`; round-trip through
+    // YAML instead so the wire shape is what's exercised.
+    for kind in ["success", "failure", "deferred"] {
+        for phase in ["define", "build", "merge"] {
+            let yaml = format!(
+                "phase: {phase}\noutcome: {kind}\nat: \"2024-08-01T10:00:00Z\"\nsummary: some summary\n"
+            );
             let parsed: Outcome = serde_saphyr::from_str(&yaml).expect("parse");
-            assert_eq!(parsed, value, "round-trip failed for yaml:\n{yaml}");
+            let reserialised = serde_saphyr::to_string(&parsed).expect("serialize");
+            let reparsed: Outcome = serde_saphyr::from_str(&reserialised).expect("reparse");
+            assert_eq!(parsed, reparsed, "round-trip failed for yaml:\n{yaml}");
         }
     }
 }

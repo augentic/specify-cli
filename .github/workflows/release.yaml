@@ -228,33 +228,8 @@ jobs:
       - name: Wait for index
         run: sleep 30
 
-      - name: Publish specify-capability
-        run: cargo publish --package specify-capability --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Wait for index
-        run: sleep 30
-
-      - name: Publish specify-spec
-        run: cargo publish --package specify-spec --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Wait for index
-        run: sleep 30
-
-      - name: Publish specify-task
-        run: cargo publish --package specify-task --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Wait for index
-        run: sleep 30
-
-      - name: Publish specify-slice
-        run: cargo publish --package specify-slice --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Wait for index
-        run: sleep 30
-
-      - name: Publish specify-merge
-        run: cargo publish --package specify-merge --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Wait for index
-        run: sleep 30
-
-      - name: Publish specify-validate
-        run: cargo publish --package specify-validate --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish specify-domain
+        run: cargo publish --package specify-domain --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Wait for index
         run: sleep 30
 

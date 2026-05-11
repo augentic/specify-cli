@@ -12,10 +12,18 @@ readme = "../../README.md"
 [lints]
 workspace = true
 
+[features]
+default = ["host"]
+# Compile the Wasmtime-backed WASI Preview 2 runner. Disable to build the
+# manifest, cache, resolver, and validator surface without dragging Wasmtime
+# (and its duplicate transitive deps) into the dependency graph; callers get a
+# stub `WasiRunner` that returns `tool-host-not-built` at run time.
+host = ["dep:wasmtime", "dep:wasmtime-wasi"]
+
 [dependencies]
 specify-error.workspace = true
-wasmtime.workspace = true
-wasmtime-wasi.workspace = true
+wasmtime = { workspace = true, optional = true }
+wasmtime-wasi = { workspace = true, optional = true }
 ureq.workspace = true
 sha2.workspace = true
 serde.workspace = true

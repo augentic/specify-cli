@@ -3,10 +3,10 @@ use std::io::Write;
 use std::path::Path;
 
 use serde::Serialize;
-use specify_change::{Entry, Plan, Severity, Status};
-use specify_config::LayoutExt;
+use specify_domain::change::{Entry, Plan, Severity, Status};
+use specify_domain::config::LayoutExt;
 use specify_error::{Error, Result};
-use specify_slice::{LifecycleStatus, SliceMetadata};
+use specify_domain::slice::{LifecycleStatus, SliceMetadata};
 
 use super::{PlanRef, require_file};
 use crate::context::Ctx;
@@ -193,7 +193,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         next_eligible: plan.next_eligible().map(|e| e.name.clone()),
     };
 
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     Ok(())
 }
 

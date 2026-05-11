@@ -3,41 +3,31 @@ use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use serde::Serialize;
-use specify_config::{ProjectConfig, is_workspace_clone};
+use specify_domain::config::{ProjectConfig, is_workspace_clone};
 use specify_error::{Error, Result};
-use specify_init::{InitOptions, InitResult, VersionMode, init};
+use specify_domain::init::{InitOptions, InitResult, VersionMode, init};
 
 use crate::cli::Format;
 use crate::commands::context;
 use crate::context::Ctx;
-use crate::output::{Out, Render, display};
+use crate::output::{self, Render, display};
 
 /// Dispatcher for `specify init`.
 ///
-/// Enforces mutual exclusion between the `<capability>` positional and
-/// `--hub`:
-///
-/// - regular project init requires `<capability>`;
-/// - hub init requires `--hub` and refuses a `<capability>` positional;
-/// - missing both, or both at once, errors with
-///   `init-requires-capability-or-hub`.
+/// The `<capability>` xor `--hub` invariant is enforced by clap (see
+/// `#[arg(conflicts_with = "hub", required_unless_present = "hub")]`
+/// on the `capability` positional in `crate::cli::Commands::Init`),
+/// so by the time this function runs the `(hub, capability)` pair is
+/// guaranteed to be one of `(false, Some(_))` or `(true, None)`.
 pub(super) fn run(
     format: Format, capability: Option<String>, name: Option<&str>, domain: Option<&str>, hub: bool,
 ) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
-    let capability = match (hub, capability) {
-        (false, Some(cap)) => Some(cap),
-        (true, None) => None,
-        // Both unset, or both set: the diagnostic is the same — the
-        // operator must pick one.
-        (false, None) | (true, Some(_)) => {
-            return Err(Error::Diag {
-                code: "init-requires-capability-or-hub",
-                detail: "pass <capability> or --hub".to_string(),
-            });
-        }
-    };
+    debug_assert!(
+        hub != capability.is_some(),
+        "clap enforces <capability> xor --hub; reached dispatcher with hub={hub}, capability={capability:?}",
+    );
 
     let opts = InitOptions {
         project_dir: &project_dir,
@@ -118,7 +108,7 @@ struct InitContextBody {
 impl From<InitContextGeneration> for InitContextBody {
     fn from(context_generation: InitContextGeneration) -> Self {
         Self {
-            generated: context_generation.generated(),
+            generated: matches!(context_generation, InitContextGeneration::Generated),
             skipped: context_generation.skipped(),
             skip_reason: context_generation.skip_reason(),
         }
@@ -138,7 +128,7 @@ fn emit_init_result(
         hub,
         context: InitContextBody::from(context_generation),
     };
-    Out::for_format(format).write(&body)?;
+    output::write(format, &body)?;
     Ok(())
 }
 
@@ -149,10 +139,6 @@ enum InitContextGeneration {
 }
 
 impl InitContextGeneration {
-    const fn generated(&self) -> bool {
-        matches!(self, Self::Generated)
-    }
-
     const fn skip_reason(&self) -> Option<&'static str> {
         match self {
             Self::Generated => None,

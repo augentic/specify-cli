@@ -13,14 +13,16 @@
 //! [DECISIONS.md](../DECISIONS.md) §"Change J — golden JSON generation".
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use assert_cmd::Command;
 use serde_json::Value;
-use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::{GIT_ENV, assert_golden_at, copy_dir, parse_stdout, repo_root, run_git, specify};
+use common::{
+    GIT_ENV, Project, assert_golden_at, copy_dir, parse_stdout, repo_root, run_git, specify,
+};
+use tempfile::tempdir;
 
 // ---------------------------------------------------------------------------
 // Paths + setup helpers
@@ -40,54 +42,6 @@ fn specify_with_git_identity() -> Command {
     cmd
 }
 
-/// A throwaway `.specify/` project anchored in a temp directory.
-struct Project {
-    _tmp: TempDir,
-    root: PathBuf,
-}
-
-impl Project {
-    /// Build an empty tempdir and run `specify init` with the in-repo
-    /// Omnia capability fixture.
-    fn init() -> Self {
-        let tmp = tempdir().expect("tempdir");
-        let root = tmp.path().to_path_buf();
-        specify()
-            .current_dir(&root)
-            .args(["init"])
-            .arg(repo_root().join("schemas").join("omnia"))
-            .args(["--name", "test-proj"])
-            .assert()
-            .success();
-        Self { _tmp: tmp, root }
-    }
-
-    /// Mirror the in-repo `schemas/` tree into the project so
-    /// `Capability::resolve("omnia", …)` succeeds.
-    fn with_schemas(self) -> Self {
-        copy_dir(&repo_root().join("schemas/omnia"), &self.root.join("schemas/omnia"));
-        self
-    }
-
-    /// Populate the schema cache instead of the local `schemas/` tree so
-    /// `Capability::resolve` picks the `CapabilitySource::Cached` branch.
-    fn with_cached_schema(self) -> Self {
-        copy_dir(&repo_root().join("schemas/omnia"), &self.root.join(".specify/.cache/omnia"));
-        self
-    }
-
-    /// Copy a fixture subtree into `.specify/slices/my-slice/`.
-    fn stage_slice(&self, fixture: &str) -> PathBuf {
-        let dst = self.root.join(".specify/slices/my-slice");
-        fs::create_dir_all(&dst).expect("mkdir slice");
-        copy_dir(&e2e_fixtures().join(fixture), &dst);
-        dst
-    }
-
-    fn root(&self) -> &Path {
-        &self.root
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Substitution / golden comparison

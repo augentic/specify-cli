@@ -3,7 +3,7 @@
 use std::io::Write;
 
 use specify_error::{Error, Result};
-use specify_validate::{ValidationReport, ValidationResult, serialize_report, validate_slice};
+use specify_domain::validate::{ValidationReport, ValidationResult, serialize_report, validate_slice};
 
 use crate::context::Ctx;
 use crate::output::Render;
@@ -14,8 +14,15 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
     let report = validate_slice(&slice_dir, &pipeline)?;
     let passed = report.passed;
 
-    ctx.out().write(&ValidateBody { report: &report })?;
-    if passed { Ok(()) } else { Err(Error::SliceValidationFailed { name }) }
+    ctx.write(&ValidateBody { report: &report })?;
+    if passed {
+        Ok(())
+    } else {
+        Err(Error::Diag {
+            code: "slice-validation-failed",
+            detail: format!("slice `{name}` failed validation"),
+        })
+    }
 }
 
 struct ValidateBody<'a> {

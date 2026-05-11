@@ -6,7 +6,7 @@
 //! expansion time.
 
 use clap::{ArgAction, Subcommand};
-use specify_change::Status;
+use specify_domain::change::Status;
 
 use crate::cli::SourceArg;
 

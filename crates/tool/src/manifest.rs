@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
-use serde::de::{self, Visitor};
+use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -162,35 +162,90 @@ impl<'de> Deserialize<'de> for Tool {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct ToolObject {
-            name: String,
-            version: String,
-            source: ToolSource,
-            #[serde(default)]
-            sha256: Option<String>,
-            #[serde(default)]
-            permissions: ToolPermissions,
+        deserializer.deserialize_any(ToolVisitor)
+    }
+}
+
+struct ToolVisitor;
+
+const TOOL_FIELDS: &[&str] = &["name", "version", "source", "sha256", "permissions"];
+
+impl<'de> Visitor<'de> for ToolVisitor {
+    type Value = Tool;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a package request string or a tool object")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(Tool::from_package(value))
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(Tool::from_package(&value))
+    }
+
+    fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut name: Option<String> = None;
+        let mut version: Option<String> = None;
+        let mut source: Option<ToolSource> = None;
+        let mut sha256: Option<Option<String>> = None;
+        let mut permissions: Option<ToolPermissions> = None;
+
+        while let Some(key) = map.next_key::<String>()? {
+            match key.as_str() {
+                "name" => {
+                    if name.is_some() {
+                        return Err(<M::Error as de::Error>::duplicate_field("name"));
+                    }
+                    name = Some(map.next_value()?);
+                }
+                "version" => {
+                    if version.is_some() {
+                        return Err(<M::Error as de::Error>::duplicate_field("version"));
+                    }
+                    version = Some(map.next_value()?);
+                }
+                "source" => {
+                    if source.is_some() {
+                        return Err(<M::Error as de::Error>::duplicate_field("source"));
+                    }
+                    source = Some(map.next_value()?);
+                }
+                "sha256" => {
+                    if sha256.is_some() {
+                        return Err(<M::Error as de::Error>::duplicate_field("sha256"));
+                    }
+                    sha256 = Some(map.next_value()?);
+                }
+                "permissions" => {
+                    if permissions.is_some() {
+                        return Err(<M::Error as de::Error>::duplicate_field("permissions"));
+                    }
+                    permissions = Some(map.next_value()?);
+                }
+                other => {
+                    return Err(<M::Error as de::Error>::unknown_field(other, TOOL_FIELDS));
+                }
+            }
         }
 
-        let value = serde_json::Value::deserialize(deserializer)?;
-        match value {
-            serde_json::Value::String(package) => Ok(Self::from_package(&package)),
-            serde_json::Value::Object(_) => {
-                let tool: ToolObject = serde_json::from_value(value).map_err(de::Error::custom)?;
-                Ok(Self {
-                    name: tool.name,
-                    version: tool.version,
-                    source: tool.source,
-                    sha256: tool.sha256,
-                    permissions: tool.permissions,
-                })
-            }
-            other => Err(de::Error::custom(format!(
-                "expected a package request string or tool object, got {other}"
-            ))),
-        }
+        Ok(Tool {
+            name: name.ok_or_else(|| <M::Error as de::Error>::missing_field("name"))?,
+            version: version.ok_or_else(|| <M::Error as de::Error>::missing_field("version"))?,
+            source: source.ok_or_else(|| <M::Error as de::Error>::missing_field("source"))?,
+            sha256: sha256.unwrap_or_default(),
+            permissions: permissions.unwrap_or_default(),
+        })
     }
 }
 

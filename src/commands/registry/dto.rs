@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use serde::Serialize;
-use specify_registry::{Registry, RegistryProject};
+use specify_domain::registry::{Registry, RegistryProject};
 
 use crate::output::{Render, display, serialize_path};
 

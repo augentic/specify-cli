@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_change::{PlanLockReleased, Stamp};
+use specify_domain::change::{PlanLockReleased, Stamp};
 use specify_error::Result;
 
 use crate::cli::Format;
@@ -11,7 +11,7 @@ use crate::output::Render;
 pub(super) fn acquire(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let acquired = Stamp::acquire(&ctx.project_dir, our_pid)?;
-    ctx.out().write(&AcquireBody {
+    ctx.write(&AcquireBody {
         held: true,
         pid: acquired.pid,
         already_held: acquired.already_held,
@@ -40,7 +40,7 @@ pub(super) fn release(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
             our_pid: Some(our_pid),
         },
     };
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     if matches!(ctx.format, Format::Text) {
         match outcome {
             PlanLockReleased::HeldByOther { pid: Some(other) } => {
@@ -61,7 +61,7 @@ pub(super) fn release(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
 
 pub(super) fn status(ctx: &Ctx) -> Result<()> {
     let state = Stamp::status(&ctx.project_dir)?;
-    ctx.out().write(&StatusBody {
+    ctx.write(&StatusBody {
         held: state.held,
         pid: state.pid,
         stale: state.stale,

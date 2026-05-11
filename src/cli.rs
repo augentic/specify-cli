@@ -9,6 +9,7 @@
 use std::str::FromStr;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 
 pub(crate) use crate::commands::capability::cli::CapabilityAction;
 pub(crate) use crate::commands::change::cli::ChangeAction;
@@ -18,7 +19,7 @@ pub(crate) use crate::commands::compatibility::cli::CompatibilityAction;
 pub(crate) use crate::commands::context::cli::ContextAction;
 pub(crate) use crate::commands::registry::cli::RegistryAction;
 pub(crate) use crate::commands::slice::cli::{
-    JournalAction, OutcomeAction, OutcomeKindAction, RegistryAmendmentArgs, SliceAction,
+    JournalAction, OutcomeAction, OutcomeKindAction, RegistryAmendmentProposal, SliceAction,
     SliceMergeAction, SliceTaskAction,
 };
 pub(crate) use crate::commands::tool::cli::ToolAction;
@@ -53,11 +54,14 @@ pub(crate) enum Commands {
     ///
     /// Pass `<capability>` (bare name or URL) for a regular project, or
     /// `--hub` for a registry-only platform hub. The two are mutually
-    /// exclusive.
+    /// exclusive — clap enforces the `<capability>` xor `--hub` shape
+    /// and exits `2` with its standard parse-error diagnostic when the
+    /// invariant is violated.
     Init {
         /// Capability identifier or URL (e.g. `omnia`,
         /// `https://github.com/<owner>/<repo>/capabilities/<name>`).
-        /// Required unless `--hub` is set.
+        /// Required unless `--hub` is set; mutually exclusive with `--hub`.
+        #[arg(conflicts_with = "hub", required_unless_present = "hub")]
         capability: Option<String>,
         /// Project name (defaults to the project directory name)
         #[arg(long)]
@@ -126,6 +130,17 @@ pub(crate) enum Commands {
     Workspace {
         #[command(subcommand)]
         action: WorkspaceAction,
+    },
+
+    /// Print a shell-completion script for `<shell>` to stdout.
+    ///
+    /// Pipe into your shell's completion directory (e.g.
+    /// `specify completions zsh > ~/.zsh/_specify`). Generated via
+    /// `clap_complete`; the output tracks the live clap surface so
+    /// every new verb is auto-discovered.
+    Completions {
+        /// Target shell — one of `bash`, `elvish`, `fish`, `powershell`, `zsh`.
+        shell: Shell,
     },
 }
 

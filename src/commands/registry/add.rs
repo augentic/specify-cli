@@ -1,8 +1,8 @@
 //! `specify registry add` handler.
 
-use specify_config::with_state;
+use specify_domain::config::with_state;
 use specify_error::{Error, Result, is_kebab};
-use specify_registry::{Registry, RegistryProject};
+use specify_domain::registry::{Registry, RegistryProject};
 
 use super::dto::AddBody;
 use crate::context::Ctx;
@@ -77,6 +77,6 @@ pub(super) fn run(
         })
     })?;
 
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     Ok(())
 }

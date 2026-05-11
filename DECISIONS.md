@@ -28,6 +28,15 @@ run` WASI passthrough.
 | 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, or a tool request rejected as undeclared.           |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
+## File locks
+
+Advisory `flock(2)` on `.specify/plan.lock` (see `crates/domain/src/change/plan/lock/acquire.rs`)
+goes through the std-library inherent method `std::fs::File::try_lock`,
+stable since Rust 1.89 and matched by the workspace MSRV (1.93).
+Returns `Result<(), TryLockError>` with `TryLockError::WouldBlock` for
+the contended case. The previous `fs2` dependency was dropped — std
+ships the same syscall and `cargo deny` flags `fs2` as unmaintained.
+
 ## Atomic writes
 
 Use `yaml_write` (in `crates/slice/src/atomic.rs`) for any file a
@@ -72,3 +81,134 @@ str>`, not on the renderer. `ErrorBody::render_text` calls it. Adding a
 new hint means extending `Error::hint`, not the renderer. Hints for
 collapsed `Diag` codes are looked up by the kebab `code` so a `Diag`
 site without a typed variant can still surface guidance.
+
+## Wire compatibility
+
+`ENVELOPE_VERSION` (defined in `src/output.rs`, currently `6`) tags
+every JSON envelope the CLI writes. Skills and downstream consumers
+read it to refuse output they cannot parse. Bump rules:
+
+- **Minor bump (additive):** adding a new top-level field to a
+  success-body envelope is a minor bump *only* when existing consumers
+  can ignore the field with no behaviour change. Adding an optional
+  field next to required fields qualifies; adding a required field that
+  consumers must read does not.
+- **Major bump (breaking):** renaming or removing any envelope field,
+  changing a field's type or domain (e.g. string → enum, scalar →
+  array), or changing the kebab-case `code` discriminant on an existing
+  `Error::*` variant is a major bump. Skills grep on those discriminants
+  and tests assert on them.
+- **Always major:** any change to the `error` envelope shape itself —
+  the structure of `ErrorBody` / `ValidationErrBody`, the keys inside,
+  or the relationship between `code`, `detail`, and `hint`.
+
+The `error` envelope is the most-grepped surface in the workflow and
+the most expensive to bump; treat it accordingly. Adding a new
+`Error::*` variant with a fresh kebab-case `code` is not a bump
+(consumers see a new discriminant in the same shape). Renaming an
+existing one is.
+
+CLI **input** flags are a peer wire surface — skill drivers shell out
+through them. The same minor/major rules apply: adding a new optional
+flag is additive, removing or renaming a flag is breaking. Two
+non-additive input changes have shipped under the version reflected
+above:
+
+- `slice outcome set <slice> <phase> registry-amendment-required`
+  takes a single `--proposal '<json>'` instead of seven
+  `--proposed-*` flags. Skills build the proposal as a JSON object
+  (`{"proposed-name": ..., "proposed-url": ..., "proposed-capability":
+  ..., "proposed-description": ..., "rationale": ...}`) and pass it
+  verbatim. The on-disk `outcome.outcome.registry-amendment-required.*`
+  shape and the `outcome.proposal` JSON returned by `slice outcome
+  show` are unchanged.
+- `specify init` enforces the `<capability>` xor `--hub` invariant
+  through clap. The historical post-parse
+  `init-requires-capability-or-hub` envelope is gone on the CLI
+  surface; clap parse errors exit `2` with the standard "required
+  arguments were not provided" / "the argument cannot be used with"
+  diagnostics. The discriminant survives in the domain library
+  (`crates/domain/src/init/`) as defence-in-depth for embedders that
+  call `init()` directly.
+
+## Shell completions
+
+`specify completions <shell>` writes a clap-generated completion script
+to stdout for any shell `clap_complete::Shell` covers (`bash`,
+`elvish`, `fish`, `powershell`, `zsh`). The script is a pure function
+of the live clap surface, so verb additions/removals are auto-tracked
+without extra plumbing.
+
+## Crate layout
+
+Four workspace crates: `specify-error` (leaf), `specify-domain` (every
+domain module), `specify-tool` (WASI host, gated), and the `specify`
+binary.
+
+History: until Phase 1B of the 2026-05 cleanup the workspace had 13
+crates; the fragmentation cost more than it earned (wide build graph,
+redundant `Cargo.toml` files, indirect re-export hops, repeated
+`multiple_crate_versions` waivers). Module boundaries inside
+`specify-domain` preserve the original separation; `pub` cross-module
+surfaces match the prior cross-crate `pub use` exports.
+
+Rule: new functionality lands in an existing module by default. New
+workspace crates require a paragraph in this file justifying why an
+existing module cannot host the code, and what dependency-direction
+invariant the new crate enforces (i.e. which leaf-→-root edge it
+preserves, and which existing crate would have grown a cycle if the
+code had gone there). A new crate that does not strengthen the
+dependency direction is overhead; refactor within an existing module
+instead.
+
+## Follow-up: wasm-pkg-client HTTP duplication
+
+`wasm-pkg-client` (0.15) is wired in as a non-optional dep of
+`specify-tool` and used at one site (`crates/tool/src/package.rs`)
+behind the `PackageClient` trait. It wraps both `warg-client`
+(WebAssembly registries) and `oci-client` / `oci-wasm` (OCI), so it
+pulls *two* full HTTP stacks:
+
+- `reqwest 0.12.28` (via `warg-client`) and `reqwest 0.13.3` (via
+  `oci-client` / `oci-wasm`) — both used concurrently.
+- `base64 0.21.7` and `base64 0.22.1`.
+- `hyper-util 0.1.x`, `hyper-rustls 0.27`, `tower-http 0.6` shared
+  across both reqwest versions.
+- `rustls-platform-verifier`, `security-framework 3.x`, `keyring`,
+  `oci-spec`, the `warg-*` family, `pbjson`, `prost-build`,
+  `dialoguer`, `config`, `ron`, `ptree`, `ordered-multimap`, etc.
+
+With `--no-default-features` on `specify-tool` (Wasmtime gated off),
+the dep tree still contains roughly 344 unique crates — about 90% of
+which are `wasm-pkg-client` transitives. Building with the default
+`host` feature pushes that to ~380 unique crates. The duplicate
+`reqwest`/`base64`/`hyper`/`tower-http` versions are why
+`crates/tool/src/lib.rs` carries an `allow(clippy::multiple_crate_versions)`
+waiver covering "Wasmtime, WASI, and `wasm-pkg-client`".
+
+Realistic options, ranked by cost:
+
+1. **Gate `wasm-pkg-client` behind a `wasm-pkg` feature** (smallest
+   delta). Make the dep optional, fold the package-resolution path in
+   `package.rs` behind `cfg(feature = "wasm-pkg")`, and let callers
+   that only need manifest/cache/resolver/validator surface drop the
+   ~344-crate tail. The host CLI keeps the feature on; downstream
+   embedders and the `--no-default-features` path get a stub
+   `WasmPkgClient` analogous to the existing `WasiRunner`
+   "tool-host-not-built" stub. Recommended.
+2. **Replace with direct `ureq` + minimal OCI client** (medium).
+   `specify-tool` already depends on `ureq` v3. Implementing the
+   subset of OCI / warg resolution the CLI actually exercises (one
+   first-party registry, one OCI prefix, sha-streaming download)
+   removes the entire `reqwest`/`hyper`/`tower-http` duplication.
+   Cost: writing and maintaining registry-resolution code that
+   `wasm-pkg-client` currently provides for free, plus losing
+   compatibility with `WKG_CONFIG`-flavoured registry configs.
+3. **Accept as-is.** Status quo. Already covered by the
+   `multiple_crate_versions` allow.
+
+Recommendation: option (1). It removes dependency weight from the
+non-host build path (where the duplication is least justified) at
+roughly the same cost as the existing `host` feature pattern, and
+leaves option (2) on the table for a later pass if `wasm-pkg-client`
+becomes the long-pole on host-feature build times or audit surface.

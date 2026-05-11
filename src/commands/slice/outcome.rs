@@ -3,15 +3,15 @@
 use std::io::Write;
 use std::path::Path;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
-use specify_capability::Phase;
-use specify_config::LayoutExt;
+use specify_domain::capability::Phase;
+use specify_domain::config::LayoutExt;
 use specify_error::{Error, Result};
-use specify_slice::{OutcomeKind, Rfc3339Stamp, SliceMetadata, actions as slice_actions};
+use specify_domain::slice::{OutcomeKind, SliceMetadata, actions as slice_actions};
 
-use crate::cli::{OutcomeKindAction, RegistryAmendmentArgs};
+use crate::cli::{OutcomeKindAction, RegistryAmendmentProposal};
 use crate::context::Ctx;
 use crate::output::Render;
 
@@ -37,11 +37,11 @@ pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction
         .as_ref()
         .expect("stamp_outcome action must set metadata.outcome on success");
 
-    ctx.out().write(&PhaseStampBody {
+    ctx.write(&PhaseStampBody {
         slice: name,
         phase: phase.to_string(),
         outcome: outcome.discriminant().to_string(),
-        at: stamped.at.to_string(),
+        at: stamped.at,
     })?;
     Ok(())
 }
@@ -52,7 +52,8 @@ struct PhaseStampBody {
     slice: String,
     phase: String,
     outcome: String,
-    at: String,
+    #[serde(with = "specify_domain::serde_rfc3339")]
+    at: DateTime<Utc>,
 }
 
 impl Render for PhaseStampBody {
@@ -75,21 +76,25 @@ fn lower_kind(kind: OutcomeKindAction) -> (OutcomeKind, String, Option<String>) 
         OutcomeKindAction::Deferred { summary, context } => {
             (OutcomeKind::Deferred, summary, context)
         }
-        OutcomeKindAction::RegistryAmendmentRequired(RegistryAmendmentArgs {
+        OutcomeKindAction::RegistryAmendmentRequired {
             summary,
             context,
-            name,
-            url,
-            capability,
-            description,
-            rationale,
-        }) => {
-            let summary = summary.unwrap_or_else(|| format!("registry-amendment-required: {name}"));
+            proposal:
+                RegistryAmendmentProposal {
+                    proposed_name,
+                    proposed_url,
+                    proposed_capability,
+                    proposed_description,
+                    rationale,
+                },
+        } => {
+            let summary = summary
+                .unwrap_or_else(|| format!("registry-amendment-required: {proposed_name}"));
             let outcome = OutcomeKind::RegistryAmendmentRequired {
-                proposed_name: name,
-                proposed_url: url,
-                proposed_capability: capability,
-                proposed_description: description,
+                proposed_name,
+                proposed_url,
+                proposed_capability,
+                proposed_description,
                 rationale,
             };
             (outcome, summary, context)
@@ -119,7 +124,7 @@ pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
     };
 
     let outcome = metadata.outcome.as_ref().map(OutcomeRow::from);
-    ctx.out().write(&OutcomeShowBody { name, outcome })?;
+    ctx.write(&OutcomeShowBody { name, outcome })?;
     Ok(())
 }
 
@@ -164,22 +169,23 @@ impl Render for OutcomeShowBody {
 struct OutcomeRow {
     phase: String,
     outcome: String,
-    at: Rfc3339Stamp,
+    #[serde(with = "specify_domain::serde_rfc3339")]
+    at: DateTime<Utc>,
     summary: String,
     context: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     proposal: Option<RegistryProposalRow>,
 }
 
-impl From<&specify_slice::Outcome> for OutcomeRow {
-    fn from(o: &specify_slice::Outcome) -> Self {
+impl From<&specify_domain::slice::Outcome> for OutcomeRow {
+    fn from(o: &specify_domain::slice::Outcome) -> Self {
         Self {
             phase: o.phase.to_string(),
-            outcome: o.outcome.discriminant().to_string(),
-            at: o.at.clone(),
+            outcome: o.kind.discriminant().to_string(),
+            at: o.at,
             summary: o.summary.clone(),
             context: o.context.clone().map_or(Value::Null, Value::from),
-            proposal: RegistryProposalRow::from_kind(&o.outcome),
+            proposal: RegistryProposalRow::from_kind(&o.kind),
         }
     }
 }
@@ -229,7 +235,7 @@ impl RegistryProposalRow {
 fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<SliceMetadata> {
     let archive_dir = project_dir.layout().archive_dir();
     let suffix = format!("-{slice_name}");
-    let mut candidates: Vec<(String, SliceMetadata)> = Vec::new();
+    let mut candidates: Vec<(Option<DateTime<Utc>>, SliceMetadata)> = Vec::new();
 
     if archive_dir.is_dir() {
         let entries = std::fs::read_dir(&archive_dir)?;
@@ -240,7 +246,7 @@ fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<Sli
                 continue;
             }
             if let Ok(meta) = SliceMetadata::load(&entry.path()) {
-                let created = meta.created_at.as_deref().unwrap_or("").to_string();
+                let created = meta.created_at;
                 candidates.push((created, meta));
             }
         }

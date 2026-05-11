@@ -30,7 +30,7 @@ pub(crate) fn run(ctx: &Ctx) -> Result<()> {
         removed,
         warnings: inventory.warnings,
     };
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     if matches!(ctx.format, Format::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }

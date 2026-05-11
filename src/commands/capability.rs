@@ -7,13 +7,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use specify_capability::{Capability, CapabilitySource, Phase};
+use specify_domain::capability::{Capability, CapabilitySource, Phase};
 use specify_error::{Error, Result};
-use specify_validate::ValidationResult;
+use specify_domain::validate::ValidationResult;
 
 use crate::cli::Format;
 use crate::context::Ctx;
-use crate::output::{Out, Render};
+use crate::output::{self, Render};
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -38,7 +38,7 @@ pub(crate) fn resolve(format: Format, capability_value: String, project_dir: &Pa
         _ => ("unknown", PathBuf::new()),
     };
 
-    Out::for_format(format).write(&ResolveBody {
+    output::write(format, &ResolveBody {
         capability_value,
         resolved_path: path.display().to_string(),
         source: source_label,
@@ -111,7 +111,7 @@ pub(crate) fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<&Path>) -> Result<
         })
         .collect();
 
-    ctx.out().write(&PipelineBody {
+    ctx.write(&PipelineBody {
         phase: phase.to_string(),
         slice: slice.map(|p| p.display().to_string()),
         briefs,
@@ -157,8 +157,18 @@ pub(crate) fn check(format: Format, capability_dir: PathBuf) -> Result<()> {
         passed,
         results: results.iter().map(CheckRow::from).collect(),
     };
-    Out::for_format(format).write(&body)?;
-    if passed { Ok(()) } else { Err(Error::CapabilityCheckFailed { dir: capability_dir }) }
+    output::write(format, &body)?;
+    if passed {
+        Ok(())
+    } else {
+        Err(Error::Diag {
+            code: "capability-check-failed",
+            detail: format!(
+                "capability at {} failed validation",
+                capability_dir.display()
+            ),
+        })
+    }
 }
 
 /// Surface a `capability-manifest-missing` diagnostic when `dir` does

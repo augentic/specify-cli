@@ -52,11 +52,12 @@ mod tests {
     use std::path::Path;
 
     use super::super::resolve;
-    use super::super::tests_common::*;
     use super::*;
     use crate::error::ToolError;
     use crate::manifest::ToolSource;
-    use crate::test_support::{scratch_dir, with_cache_env};
+    use crate::test_support::{
+        cached_bytes, fixed_now, project_scope, scratch_dir, tool, with_cache_env, write_source,
+    };
 
     fn corrupt_cached_module(path: &Path, bytes: &[u8]) {
         let mut file = OpenOptions::new()

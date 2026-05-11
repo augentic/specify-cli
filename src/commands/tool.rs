@@ -22,7 +22,7 @@ pub(super) use gc::run as gc;
 pub(super) use list::run as list;
 pub(super) use run::run;
 pub(super) use show::run as show;
-use specify_capability::{Capability, ResolvedCapability};
+use specify_domain::capability::{Capability, ResolvedCapability};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
 use specify_tool::validate::ValidationResult as ToolValidationResult;

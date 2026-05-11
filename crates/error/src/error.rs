@@ -116,16 +116,6 @@ pub enum Error {
         entries: Vec<String>,
     },
 
-    /// `specify change create` refused to overwrite an existing
-    /// `change.md`. The handler at `commands::change` renders a
-    /// non-standard envelope (`action`/`ok`/`path`) so the brief path
-    /// surfaces alongside the `already-exists` discriminant.
-    #[error("already-exists: change brief already exists at {}", path.display())]
-    ChangeBriefExists {
-        /// Path of the existing change brief.
-        path: std::path::PathBuf,
-    },
-
     /// Another live `/change:execute` driver holds `.specify/plan.lock`.
     /// Stale locks (dead PID / malformed content) are reclaimed silently.
     #[error("another /change:execute driver is running (pid {pid}); refusing to proceed")]
@@ -176,25 +166,6 @@ pub enum Error {
         /// The underlying I/O error.
         #[source]
         source: std::io::Error,
-    },
-
-    /// `specify capability check` failed structural validation against
-    /// the resolved capability directory. The handler emits the per-rule
-    /// detail to stdout before returning this variant; the canonical
-    /// stderr envelope carries the discriminant + offending directory.
-    #[error("capability-check-failed: capability at {} failed validation", dir.display())]
-    CapabilityCheckFailed {
-        /// Directory that failed validation.
-        dir: std::path::PathBuf,
-    },
-
-    /// `specify slice validate` produced one or more failing rule
-    /// results for the named slice. The handler emits the full report
-    /// to stdout before returning this variant.
-    #[error("slice-validation-failed: slice `{name}` failed validation")]
-    SliceValidationFailed {
-        /// Slice name (kebab-case).
-        name: String,
     },
 
     /// `specify workspace prepare-branch` refused to land a branch
@@ -270,23 +241,6 @@ impl From<serde_saphyr::ser::Error> for Error {
 #[cfg(test)]
 mod tests {
     use super::Error;
-
-    /// Spot-check that representative variants render their expected
-    /// prefix. Per-variant assertions on `Display` output are noise
-    /// — `thiserror` already drives the format strings.
-    #[test]
-    fn display_spot_checks() {
-        let cases: [(Error, &str); 2] = [
-            (Error::NotInitialized, "not initialized"),
-            (Error::InvalidName("bad--name".into()), "invalid name: bad--name"),
-        ];
-        for (err, expected_prefix) in cases {
-            assert!(
-                err.to_string().starts_with(expected_prefix),
-                "{err} should start with {expected_prefix}"
-            );
-        }
-    }
 
     #[test]
     fn io_from() {

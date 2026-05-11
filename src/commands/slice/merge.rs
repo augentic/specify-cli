@@ -8,9 +8,9 @@ use std::path::Path;
 
 use chrono::Utc;
 use serde::Serialize;
-use specify_config::{LayoutExt, is_workspace_clone};
+use specify_domain::config::{LayoutExt, is_workspace_clone};
 use specify_error::Result;
-use specify_merge::{
+use specify_domain::merge::{
     BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check, slice,
 };
 
@@ -38,7 +38,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let archive_path = archive_dir.join(format!("{today}-{name}"));
 
     let entries: Vec<MergedEntry> = merged.iter().map(MergedEntry::from).collect();
-    ctx.out().write(&MergeRunBody {
+    ctx.write(&MergeRunBody {
         merged_specs: entries,
         archive_path: archive_path.display().to_string(),
     })?;
@@ -67,7 +67,7 @@ pub(super) fn preview(ctx: &Ctx, name: &str) -> Result<()> {
         .map(ContractItem::from)
         .collect();
 
-    ctx.out().write(&PreviewBody {
+    ctx.write(&PreviewBody {
         slice_dir: slice_dir.display().to_string(),
         specs,
         contracts,
@@ -81,7 +81,7 @@ pub(super) fn conflicts(ctx: &Ctx, name: &str) -> Result<()> {
     let conflicts = conflict_check(&slice_dir, &classes)?;
     let rows: Vec<ConflictRow> = conflicts.iter().map(ConflictRow::from).collect();
 
-    ctx.out().write(&ConflictCheckBody {
+    ctx.write(&ConflictCheckBody {
         slice_dir: slice_dir.display().to_string(),
         conflicts: rows,
     })?;
@@ -263,9 +263,9 @@ enum MergeOp {
     Unknown,
 }
 
-impl From<&specify_merge::MergeOperation> for MergeOp {
-    fn from(op: &specify_merge::MergeOperation) -> Self {
-        use specify_merge::MergeOperation;
+impl From<&specify_domain::merge::MergeOperation> for MergeOp {
+    fn from(op: &specify_domain::merge::MergeOperation) -> Self {
+        use specify_domain::merge::MergeOperation;
         match op {
             MergeOperation::Added { id, name } => Self::Added {
                 id: id.clone(),

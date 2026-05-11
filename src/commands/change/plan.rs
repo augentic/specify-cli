@@ -14,10 +14,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use specify_change::{Entry, Plan};
-use specify_config::LayoutExt;
+use specify_domain::change::{Entry, Plan};
+use specify_domain::config::LayoutExt;
 use specify_error::{Error, Result};
-use specify_registry::Registry;
+use specify_domain::registry::Registry;
 
 use crate::cli::{LockAction, PlanAction};
 use crate::context::Ctx;

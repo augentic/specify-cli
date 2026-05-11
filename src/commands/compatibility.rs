@@ -3,7 +3,7 @@ pub(crate) mod cli;
 use std::io::Write;
 
 use specify_error::{Error, Result};
-use specify_validate::{
+use specify_domain::validate::{
     CompatibilityClassification, CompatibilityFinding, CompatibilityReport,
     classify_project_compatibility,
 };
@@ -23,7 +23,7 @@ pub(crate) fn run(ctx: &Ctx, action: CompatibilityAction) -> Result<()> {
 fn check(ctx: &Ctx) -> Result<()> {
     let report = classify_project_compatibility(&ctx.project_dir, None)?;
     let compatible = report.is_compatible();
-    ctx.out().write(&report)?;
+    ctx.write(&report)?;
     if compatible {
         Ok(())
     } else {
@@ -36,7 +36,7 @@ fn check(ctx: &Ctx) -> Result<()> {
 
 fn report(ctx: &Ctx, change: String) -> Result<()> {
     let report = classify_project_compatibility(&ctx.project_dir, Some(change))?;
-    ctx.out().write(&report)?;
+    ctx.write(&report)?;
     Ok(())
 }
 

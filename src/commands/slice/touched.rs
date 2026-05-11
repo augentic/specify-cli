@@ -3,10 +3,10 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_config::LayoutExt;
+use specify_domain::config::LayoutExt;
 use specify_error::{Error, Result};
-use specify_merge::MergeStrategy;
-use specify_slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
+use specify_domain::merge::MergeStrategy;
+use specify_domain::slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
 
 use super::artifact_classes;
 use crate::context::Ctx;
@@ -41,7 +41,7 @@ pub(super) fn touched_specs(ctx: &Ctx, name: String, scan: bool, set: &[String])
     };
 
     let touched: Vec<TouchedSpecRow> = entries.iter().map(TouchedSpecRow::from).collect();
-    ctx.out().write(&TouchedSpecsBody {
+    ctx.write(&TouchedSpecsBody {
         name,
         touched_specs: touched,
     })?;
@@ -117,7 +117,7 @@ pub(super) fn overlap(ctx: &Ctx, name: String) -> Result<()> {
     let overlaps = slice_actions::overlap(&slices_dir, &name)?;
     let rows: Vec<OverlapRow> = overlaps.iter().map(OverlapRow::from).collect();
 
-    ctx.out().write(&OverlapBody { name, overlaps: rows })?;
+    ctx.write(&OverlapBody { name, overlaps: rows })?;
     Ok(())
 }
 
@@ -153,8 +153,8 @@ struct OverlapRow {
     other_spec_type: String,
 }
 
-impl From<&specify_slice::Overlap> for OverlapRow {
-    fn from(o: &specify_slice::Overlap) -> Self {
+impl From<&specify_domain::slice::Overlap> for OverlapRow {
+    fn from(o: &specify_domain::slice::Overlap) -> Self {
         Self {
             capability: o.capability.clone(),
             other_slice: o.other.clone(),

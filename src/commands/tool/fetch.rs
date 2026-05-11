@@ -26,7 +26,7 @@ pub(crate) fn run(ctx: &Ctx, name: Option<&str>) -> Result<()> {
         tools: rows,
         warnings: inventory.warnings,
     };
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     if matches!(ctx.format, Format::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }

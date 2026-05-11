@@ -3,12 +3,12 @@
 
 use std::io::Write;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
-use specify_capability::Phase;
+use specify_domain::capability::Phase;
 use specify_error::{Error, Result};
-use specify_slice::{EntryKind, Journal, JournalEntry, Rfc3339Stamp, SliceMetadata};
+use specify_domain::slice::{EntryKind, Journal, JournalEntry, SliceMetadata};
 
 use crate::context::Ctx;
 use crate::output::Render;
@@ -22,9 +22,9 @@ pub(super) fn append(
         return Err(Error::SliceNotFound { name });
     }
 
-    let timestamp = Rfc3339Stamp::from(Utc::now());
+    let timestamp = Utc::now();
     let entry = JournalEntry {
-        timestamp: timestamp.clone(),
+        timestamp,
         step: phase,
         r#type: kind,
         summary,
@@ -33,7 +33,7 @@ pub(super) fn append(
 
     Journal::append(&slice_dir, entry)?;
 
-    ctx.out().write(&AppendBody {
+    ctx.write(&AppendBody {
         slice: name,
         phase: phase.to_string(),
         kind: kind.to_string(),
@@ -48,7 +48,8 @@ struct AppendBody {
     slice: String,
     phase: String,
     kind: String,
-    timestamp: Rfc3339Stamp,
+    #[serde(with = "specify_domain::serde_rfc3339")]
+    timestamp: DateTime<Utc>,
 }
 
 impl Render for AppendBody {
@@ -65,7 +66,7 @@ pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
 
     let journal = Journal::load(&slice_dir)?;
     let entries: Vec<EntryRow> = journal.entries.iter().map(EntryRow::from).collect();
-    ctx.out().write(&ShowBody { name, entries })?;
+    ctx.write(&ShowBody { name, entries })?;
     Ok(())
 }
 
@@ -87,7 +88,10 @@ impl Render for ShowBody {
             writeln!(
                 w,
                 "  [{}] {}/{} — {}",
-                entry.timestamp, entry.phase, entry.kind, entry.summary,
+                entry.timestamp.format("%Y-%m-%dT%H:%M:%SZ"),
+                entry.phase,
+                entry.kind,
+                entry.summary,
             )?;
             if let Value::String(context) = &entry.context {
                 for line in context.lines() {
@@ -102,7 +106,8 @@ impl Render for ShowBody {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct EntryRow {
-    timestamp: Rfc3339Stamp,
+    #[serde(with = "specify_domain::serde_rfc3339")]
+    timestamp: DateTime<Utc>,
     phase: String,
     kind: String,
     summary: String,
@@ -112,7 +117,7 @@ struct EntryRow {
 impl From<&JournalEntry> for EntryRow {
     fn from(entry: &JournalEntry) -> Self {
         Self {
-            timestamp: entry.timestamp.clone(),
+            timestamp: entry.timestamp,
             phase: entry.step.to_string(),
             kind: entry.r#type.to_string(),
             summary: entry.summary.clone(),

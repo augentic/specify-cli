@@ -18,56 +18,15 @@ mod common;
 #[cfg(test)]
 mod cli {
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     use serde_json::Value;
-    use tempfile::{TempDir, tempdir};
+    use tempfile::tempdir;
 
-    use crate::common::{assert_golden_at, parse_stderr, parse_stdout, repo_root, specify};
+    use crate::common::{Project, assert_golden_at, parse_stderr, parse_stdout, repo_root, specify};
 
     fn plan_fixtures() -> PathBuf {
         repo_root().join("tests/fixtures/plan")
-    }
-
-    /// A `.specify/` project rooted in a throwaway tempdir.
-    ///
-    /// Mirrors the harness in `tests/slice.rs`: run `specify init` with
-    /// the in-repo Omnia capability fixture, then let the test body seed whatever
-    /// `plan.yaml` / `slices/` content it needs.
-    struct Project {
-        _tmp: TempDir,
-        root: PathBuf,
-    }
-
-    impl Project {
-        fn init() -> Self {
-            let tmp = tempdir().expect("tempdir");
-            let root = tmp.path().to_path_buf();
-            specify()
-                .current_dir(&root)
-                .args(["init"])
-                .arg(repo_root().join("schemas").join("omnia"))
-                .args(["--name", "test-proj"])
-                .assert()
-                .success();
-            Self { _tmp: tmp, root }
-        }
-
-        fn root(&self) -> &Path {
-            &self.root
-        }
-
-        fn plan_path(&self) -> PathBuf {
-            self.root.join("plan.yaml")
-        }
-
-        /// Seed `plan.yaml` (at the repo root) with arbitrary YAML.
-        /// The tests drive the file directly (not the library's
-        /// `Plan::save`) for convenience and isolation from the
-        /// `create` verb.
-        fn seed_plan(&self, yaml: &str) {
-            fs::write(self.plan_path(), yaml).expect("write plan.yaml");
-        }
     }
 
     fn assert_golden(name: &str, actual: Value) {
@@ -1696,7 +1655,7 @@ slices: []
 
     #[test]
     fn registry_load_from_tempdir() {
-        use specify_registry::Registry;
+        use specify_domain::registry::Registry;
 
         let project = Project::init();
         let registry_path = project.root().join("registry.yaml");

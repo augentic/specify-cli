@@ -16,7 +16,7 @@ use crate::output::Render;
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let body = body(ctx)?;
     let status = body.status;
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     match status {
         "up-to-date" => Ok(()),
         "context-not-generated" => Err(diag("context-not-generated", "AGENTS.md is missing")),

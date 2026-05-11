@@ -9,10 +9,10 @@ use std::io::Write;
 use std::path::Path;
 
 use serde::Serialize;
-use specify_capability::{Phase, PipelineView};
+use specify_domain::capability::{Phase, PipelineView};
 use specify_error::Result;
-use specify_slice::{LifecycleStatus, SliceMetadata};
-use specify_task::parse_tasks;
+use specify_domain::slice::{LifecycleStatus, SliceMetadata};
+use specify_domain::task::parse_tasks;
 
 use crate::context::Ctx;
 use crate::output::Render;
@@ -125,7 +125,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         entries.push(entry);
     }
 
-    ctx.out().write(&StatusListBody::new(&entries))?;
+    ctx.write(&StatusListBody::new(&entries))?;
     Ok(())
 }
 
@@ -134,7 +134,7 @@ pub(super) fn status_one(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
     let entry = collect_status(&slice_dir, name, &pipeline, &ctx.project_dir)?;
 
-    ctx.out().write(&StatusListBody::new(std::slice::from_ref(&entry)))?;
+    ctx.write(&StatusListBody::new(std::slice::from_ref(&entry)))?;
     Ok(())
 }
 

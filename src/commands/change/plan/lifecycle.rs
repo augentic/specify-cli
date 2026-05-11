@@ -2,11 +2,11 @@ use std::io::Write;
 
 use chrono::Utc;
 use serde::Serialize;
-use specify_capability::ChangeBrief;
-use specify_change::{Finding, Plan, Severity, Status};
-use specify_config::{LayoutExt, with_existing_state};
+use specify_domain::capability::ChangeBrief;
+use specify_domain::change::{Finding, Plan, Severity, Status};
+use specify_domain::config::{LayoutExt, with_existing_state};
 use specify_error::{Error, Result};
-use specify_registry::Registry;
+use specify_domain::registry::Registry;
 
 use super::{PlanRef, display, plan_ref, require_file};
 use crate::cli::SourceArg;
@@ -42,7 +42,7 @@ pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result
     // and the pre-existence check above is the documented contract.
     plan.save(&plan_path)?;
 
-    ctx.out().write(&CreateBody {
+    ctx.write(&CreateBody {
         plan: PlanRef {
             name,
             path: plan_path,
@@ -96,7 +96,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 
     let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
     let rows: Vec<FindingRow<'_>> = results.iter().map(FindingRow::from).collect();
-    ctx.out().write(&PlanValidateBody {
+    ctx.write(&PlanValidateBody {
         plan: PlanRef {
             name: plan.name,
             path: plan_path,
@@ -153,7 +153,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
             ..NextBody::default()
         }
     };
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     Ok(())
 }
 
@@ -186,7 +186,7 @@ pub(super) fn transition(
             previous_status: old_status,
         })
     })?;
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     Ok(())
 }
 
@@ -205,7 +205,7 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
 
     let (archived, archived_plans_dir) =
         Plan::archive(&plan_path, &brief_path, &archive_dir, force, Utc::now())?;
-    ctx.out().write(&ArchiveBody {
+    ctx.write(&ArchiveBody {
         archived: display(&archived),
         archived_plans_dir: archived_plans_dir.as_deref().map(display),
         plan: ArchivedPlan { name: plan_name },

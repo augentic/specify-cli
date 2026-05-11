@@ -24,6 +24,9 @@ pub(super) struct Counts {
     pub(super) result_cliresult_default: u32,
     pub(super) verbose_doc_paragraphs: u32,
     pub(super) cli_help_shape: u32,
+    pub(super) display_serde_mirror: u32,
+    pub(super) crate_root_prose: u32,
+    pub(super) unit_test_serde_roundtrip: u32,
 }
 
 impl Counts {
@@ -42,6 +45,9 @@ impl Counts {
             ("result-cliresult-default", self.result_cliresult_default),
             ("verbose-doc-paragraphs", self.verbose_doc_paragraphs),
             ("cli-help-shape", self.cli_help_shape),
+            ("display-serde-mirror", self.display_serde_mirror),
+            ("crate-root-prose", self.crate_root_prose),
+            ("unit-test-serde-roundtrip", self.unit_test_serde_roundtrip),
         ]
         .into_iter()
     }
@@ -61,6 +67,9 @@ impl Counts {
             result_cliresult_default: self.result_cliresult_default,
             verbose_doc_paragraphs: self.verbose_doc_paragraphs,
             cli_help_shape: self.cli_help_shape,
+            display_serde_mirror: self.display_serde_mirror,
+            crate_root_prose: self.crate_root_prose,
+            unit_test_serde_roundtrip: self.unit_test_serde_roundtrip,
         }
     }
 }
@@ -94,6 +103,12 @@ pub(super) struct FileBaseline {
     pub(super) verbose_doc_paragraphs: u32,
     #[serde(default)]
     pub(super) cli_help_shape: u32,
+    #[serde(default)]
+    pub(super) display_serde_mirror: u32,
+    #[serde(default)]
+    pub(super) crate_root_prose: u32,
+    #[serde(default)]
+    pub(super) unit_test_serde_roundtrip: u32,
 }
 
 impl FileBaseline {
@@ -112,6 +127,9 @@ impl FileBaseline {
             "result-cliresult-default" => self.result_cliresult_default,
             "verbose-doc-paragraphs" => self.verbose_doc_paragraphs,
             "cli-help-shape" => self.cli_help_shape,
+            "display-serde-mirror" => self.display_serde_mirror,
+            "crate-root-prose" => self.crate_root_prose,
+            "unit-test-serde-roundtrip" => self.unit_test_serde_roundtrip,
             _ => 0,
         }
     }

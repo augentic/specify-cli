@@ -2,13 +2,24 @@ use std::io::Write;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify_change::{Entry, EntryPatch, Plan, Status};
-use specify_config::with_existing_state;
+use specify_domain::change::{Entry, EntryPatch, Patch, Plan, Status};
+use specify_domain::config::with_existing_state;
 use specify_error::Result;
 
 use super::{PlanRef, change_entry_json, check_project, plan_ref};
 use crate::context::Ctx;
 use crate::output::Render;
+
+/// Convert a CLI-supplied optional string to a [`Patch<String>`]: an
+/// absent flag leaves the field unchanged, an empty value clears it,
+/// any other value replaces it.
+fn cli_patch(value: Option<String>) -> Patch<String> {
+    match value {
+        None => Patch::keep(),
+        Some(s) if s.is_empty() => Patch::clear(),
+        Some(s) => Patch::set(s),
+    }
+}
 
 pub(super) fn add(
     ctx: &Ctx, name: String, depends_on: Vec<String>, sources: Vec<String>,
@@ -42,7 +53,7 @@ pub(super) fn add(
         })
     })?;
 
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     Ok(())
 }
 
@@ -57,19 +68,12 @@ pub(super) fn amend(
         check_project(&ctx.project_dir, proj)?;
     }
 
-    let description_patch: Option<Option<String>> =
-        description.map(|s| if s.is_empty() { None } else { Some(s) });
-    let project_patch: Option<Option<String>> =
-        project.map(|s| if s.is_empty() { None } else { Some(s) });
-    let capability_patch: Option<Option<String>> =
-        capability.map(|s| if s.is_empty() { None } else { Some(s) });
-
     let patch = EntryPatch {
         depends_on,
         sources,
-        project: project_patch,
-        capability: capability_patch,
-        description: description_patch,
+        project: cli_patch(project),
+        capability: cli_patch(capability),
+        description: cli_patch(description),
         context,
     };
     let plan_path = ctx.layout().plan_path();
@@ -83,7 +87,7 @@ pub(super) fn amend(
         })
     })?;
 
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     Ok(())
 }
 

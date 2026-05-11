@@ -7,9 +7,9 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_config::is_workspace_clone;
+use specify_domain::config::is_workspace_clone;
 use specify_error::Result;
-use specify_slice::atomic::bytes_write;
+use specify_domain::slice::atomic::bytes_write;
 
 use super::{
     context_lock_path, diag, error_from_fence, fences, lock, read_optional, render_document,
@@ -34,7 +34,7 @@ pub(super) fn run(ctx: &Ctx, check: bool, force: bool) -> Result<()> {
 
     let body = body(ctx, check, force)?;
     let would_update = check && body.changed;
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     if would_update { Err(diag("context-would-update", WOULD_UPDATE_MSG)) } else { Ok(()) }
 }
 

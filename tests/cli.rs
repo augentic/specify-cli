@@ -161,52 +161,35 @@ fn init_writes_capability_field_for_url_arg() {
 #[test]
 fn init_with_no_args_errors() {
     // Acceptance (c): `specify init` (no positional, no `--hub`) must
-    // exit non-zero with the `init-requires-capability-or-hub`
-    // diagnostic.
+    // exit `2` (clap's parse-error slot) with clap's standard
+    // "required arguments were not provided" diagnostic. The historical
+    // post-parse `init-requires-capability-or-hub` diagnostic was lifted
+    // into the clap surface (`required_unless_present = "hub"`).
     let tmp = tempdir().unwrap();
     let assert = specify().current_dir(tmp.path()).args(["init"]).assert().failure();
-    let code = assert.get_output().status.code().expect("exit code");
-    assert_ne!(code, 0, "init with no args must exit non-zero");
+    assert_eq!(
+        assert.get_output().status.code(),
+        Some(2),
+        "clap parse errors map to exit code 2"
+    );
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    let combined = format!("{stdout}{stderr}");
     assert!(
-        combined.contains("init-requires-capability-or-hub"),
-        "diagnostic must carry the stable code, got stdout:\n{stdout}\nstderr:\n{stderr}"
+        stderr.contains("required arguments were not provided")
+            && stderr.contains("CAPABILITY"),
+        "diagnostic must surface clap's required-arg parse error, got stderr:\n{stderr}"
     );
     assert!(
         !tmp.path().join(".specify").exists(),
-        "no .specify must be scaffolded on validation failure"
-    );
-}
-
-#[test]
-fn init_json_no_args_errors_stable() {
-    let tmp = tempdir().unwrap();
-    let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "init"]).assert().failure();
-
-    // R4 routes every error envelope through Stream::Stderr.
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stderr).expect("stderr is JSON");
-    assert_eq!(value["envelope-version"], 6);
-    assert_eq!(value["error"], "init-requires-capability-or-hub");
-    assert_eq!(value["exit-code"], 1);
-    let message = value["message"].as_str().expect("message string");
-    assert!(
-        message.starts_with("init-requires-capability-or-hub:"),
-        "message must lead with the kebab discriminant, got: {message}"
-    );
-    assert!(
-        !tmp.path().join(".specify").exists(),
-        "no .specify must be scaffolded on validation failure"
+        "no .specify must be scaffolded on parse failure"
     );
 }
 
 #[test]
 fn init_with_capability_and_hub_errors() {
-    // Acceptance (d): `specify init <url> --hub` must exit non-zero
-    // with the same diagnostic.
+    // Acceptance (d): `specify init <url> --hub` must exit `2` with
+    // clap's "the argument cannot be used with" diagnostic. Same
+    // motivation as `init_with_no_args_errors`: the invariant lives in
+    // clap (`conflicts_with = "hub"`), not a post-parse diagnostic.
     let tmp = tempdir().unwrap();
     let assert = specify()
         .current_dir(tmp.path())
@@ -215,14 +198,15 @@ fn init_with_capability_and_hub_errors() {
         .arg("--hub")
         .assert()
         .failure();
-    let code = assert.get_output().status.code().expect("exit code");
-    assert_ne!(code, 0, "init with both capability and --hub must exit non-zero");
+    assert_eq!(
+        assert.get_output().status.code(),
+        Some(2),
+        "clap parse errors map to exit code 2"
+    );
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    let combined = format!("{stdout}{stderr}");
     assert!(
-        combined.contains("init-requires-capability-or-hub"),
-        "diagnostic must carry the stable code, got stdout:\n{stdout}\nstderr:\n{stderr}"
+        stderr.contains("cannot be used with") && stderr.contains("--hub"),
+        "diagnostic must mention the conflicts_with rule, got stderr:\n{stderr}"
     );
 }
 
@@ -1025,7 +1009,10 @@ fn rfc14_c04_workspace_prepare_branch_hidden_helper_returns_structured_json() {
     assert_eq!(value["local-branch"], "created");
     assert_eq!(value["remote-branch"], "absent");
     assert_eq!(value["dirty"]["tracked-blocked"], serde_json::json!([]));
-    assert_eq!(value["diagnostics"], serde_json::json!([]));
+    assert!(
+        value.get("diagnostics").is_none(),
+        "PrepareBranchBody no longer carries a diagnostics field, got: {value}"
+    );
     assert_eq!(run_git(&alpha, &["branch", "--show-current"]).trim(), "specify/demo-change");
 }
 

@@ -1,6 +1,5 @@
 //! Response DTOs and row builders for `specify tool *` handlers.
 
-use std::fmt;
 use std::io::Write;
 
 use serde::Serialize;
@@ -46,19 +45,11 @@ pub(super) struct ToolRow {
     pub(super) cached_path: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(super) enum ToolScopeKind {
-    Project,
-    Capability,
-}
-
-impl fmt::Display for ToolScopeKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Project => "project",
-            Self::Capability => "capability",
-        })
+specify_domain::kebab_enum! {
+    #[derive(Debug)]
+    pub(super) enum ToolScopeKind {
+        Project => "project",
+        Capability => "capability",
     }
 }
 

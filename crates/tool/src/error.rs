@@ -110,6 +110,12 @@ pub enum ToolError {
     /// Wasmtime failed to compile, link, instantiate, or run a tool component.
     #[error("tool runtime error: {0}")]
     Runtime(String),
+    /// The CLI was compiled without the `host` Cargo feature, so the WASI
+    /// runner is a stub. Surfaces as the `tool-host-not-built` diagnostic.
+    #[error(
+        "tool host runtime not built: this build of the `specify` CLI was compiled without the `host` feature; rebuild with `--features host` (or use the default install) to run WASI tools"
+    )]
+    HostNotBuilt,
     /// A source declaration is not usable by the resolver.
     #[error("tool source `{source_value}` is invalid: {reason}")]
     InvalidSource {
@@ -293,6 +299,13 @@ impl From<ToolError> for specify_error::Error {
             ToolError::Runtime(detail) => Self::Diag {
                 code: "tool-runtime",
                 detail,
+            },
+            ToolError::HostNotBuilt => Self::Diag {
+                code: "tool-host-not-built",
+                detail: "this build of the `specify` CLI was compiled without the `host` \
+                         feature; rebuild with `--features host` (or use the default install) \
+                         to run WASI tools"
+                    .to_string(),
             },
             err @ (ToolError::InvalidPermission { .. } | ToolError::PermissionDenied { .. }) => {
                 Self::ToolDenied(err.to_string())
