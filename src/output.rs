@@ -2,7 +2,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use specify_error::{Error, ValidationStatus, ValidationSummary};
 
 use crate::cli::OutputFormat;
@@ -362,4 +362,12 @@ pub fn path_string(path: &Path) -> String {
     std::fs::canonicalize(path)
         .ok()
         .map_or_else(|| path.to_string_lossy().into_owned(), |p| p.to_string_lossy().into_owned())
+}
+
+/// `#[serde(serialize_with)]` adapter for `*Body { path: PathBuf }`
+/// fields. Wraps [`path_string`] so the wire shape stays a plain
+/// JSON string with the canonical-or-fallback path representation
+/// every renderer used before paths became typed.
+pub fn serialize_path<S: Serializer>(p: &Path, s: S) -> Result<S::Ok, S::Error> {
+    s.collect_str(&path_string(p))
 }

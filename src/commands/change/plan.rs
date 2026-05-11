@@ -97,13 +97,14 @@ pub(super) fn load_for_write(ctx: &CommandContext) -> Result<(PathBuf, Plan)> {
 #[serde(rename_all = "kebab-case")]
 pub(super) struct PlanRef {
     pub name: String,
-    pub path: String,
+    #[serde(serialize_with = "crate::output::serialize_path")]
+    pub path: PathBuf,
 }
 
 pub(super) fn plan_ref(plan: &Plan, plan_path: &Path) -> PlanRef {
     PlanRef {
         name: plan.name.clone(),
-        path: plan_path.display().to_string(),
+        path: plan_path.to_path_buf(),
     }
 }
 

@@ -3,7 +3,7 @@
 pub mod cli;
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use specify_change::Plan;
@@ -14,7 +14,7 @@ use specify_slice::atomic::atomic_yaml_write;
 
 use crate::cli::RegistryAction;
 use crate::context::CommandContext;
-use crate::output::{Render, Stream, emit};
+use crate::output::{Render, Stream, emit, path_string, serialize_path};
 
 pub fn run(ctx: &CommandContext, action: RegistryAction) -> Result<()> {
     match action {
@@ -33,19 +33,12 @@ pub fn run(ctx: &CommandContext, action: RegistryAction) -> Result<()> {
 fn show(ctx: &CommandContext) -> Result<()> {
     let path = Registry::path(&ctx.project_dir);
     let registry = Registry::load(&ctx.project_dir)?;
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &ShowBody {
-            registry,
-            path: path.display().to_string(),
-        },
-    )?;
+    emit(Stream::Stdout, ctx.format, &ShowBody { registry, path })?;
     Ok(())
 }
 
 fn validate(ctx: &CommandContext) -> Result<()> {
-    let path = Registry::path(&ctx.project_dir).display().to_string();
+    let path = Registry::path(&ctx.project_dir);
     // Hub repos opt into the stricter shape via `project.yaml:hub:
     // true`. Tolerate a missing/unparseable project.yaml here —
     // `specify registry validate` is allowed to run before `specify
@@ -139,7 +132,7 @@ fn add(
         ctx.format,
         &AddBody {
             registry,
-            path: path.display().to_string(),
+            path,
             added,
         },
     )?;
@@ -182,7 +175,7 @@ fn remove(ctx: &CommandContext, name: String) -> Result<()> {
         ctx.format,
         &RemoveBody {
             registry,
-            path: path.display().to_string(),
+            path,
             removed: name,
             warnings,
         },
@@ -237,7 +230,8 @@ fn plan_refs(project_dir: &Path, removed: &str) -> Vec<String> {
 #[serde(rename_all = "kebab-case")]
 struct ShowBody {
     registry: Option<Registry>,
-    path: String,
+    #[serde(serialize_with = "serialize_path")]
+    path: PathBuf,
 }
 
 impl Render for ShowBody {
@@ -245,7 +239,7 @@ impl Render for ShowBody {
         let Some(reg) = self.registry.as_ref() else {
             return writeln!(w, "no registry declared at registry.yaml");
         };
-        writeln!(w, "registry.yaml: {}", self.path)?;
+        writeln!(w, "registry.yaml: {}", path_string(&self.path))?;
         writeln!(w, "version: {}", reg.version)?;
         if reg.projects.is_empty() {
             return writeln!(w, "projects: (none)");
@@ -264,7 +258,8 @@ impl Render for ShowBody {
 #[serde(rename_all = "kebab-case")]
 struct ValidateBody {
     registry: Option<Registry>,
-    path: String,
+    #[serde(serialize_with = "serialize_path")]
+    path: PathBuf,
     #[serde(skip)]
     hub_mode: bool,
 }
@@ -287,13 +282,14 @@ impl Render for ValidateBody {
 #[serde(rename_all = "kebab-case")]
 struct AddBody {
     registry: Registry,
-    path: String,
+    #[serde(serialize_with = "serialize_path")]
+    path: PathBuf,
     added: RegistryProject,
 }
 
 impl Render for AddBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Added `{}` to {}", self.added.name, self.path)?;
+        writeln!(w, "Added `{}` to {}", self.added.name, path_string(&self.path))?;
         writeln!(w, "registry now declares {} project(s)", self.registry.projects.len())
     }
 }
@@ -302,14 +298,15 @@ impl Render for AddBody {
 #[serde(rename_all = "kebab-case")]
 struct RemoveBody {
     registry: Registry,
-    path: String,
+    #[serde(serialize_with = "serialize_path")]
+    path: PathBuf,
     removed: String,
     warnings: Vec<String>,
 }
 
 impl Render for RemoveBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Removed `{}` from {}", self.removed, self.path)?;
+        writeln!(w, "Removed `{}` from {}", self.removed, path_string(&self.path))?;
         for warning in &self.warnings {
             writeln!(w, "warning: {warning}")?;
         }

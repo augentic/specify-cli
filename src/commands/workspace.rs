@@ -2,6 +2,7 @@
 
 pub mod cli;
 
+use std::fmt;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -257,9 +258,9 @@ impl SlotRow {
             self.actual_symlink_target.as_deref().unwrap_or("-"),
             self.actual_origin.as_deref().unwrap_or("-"),
             self.current_branch.as_deref().unwrap_or("-"),
-            tristate(self.branch_matches_change, "match", "mismatch"),
+            MatchState::from(self.branch_matches_change),
             self.head_sha.as_deref().unwrap_or("-"),
-            tristate(self.dirty, "yes", "no"),
+            self.dirty.map_or("-", |v| if v { "yes" } else { "no" }),
             if self.project_config_present { "present" } else { "missing" },
             if self.active_slices.is_empty() {
                 "-".to_string()
@@ -270,11 +271,33 @@ impl SlotRow {
     }
 }
 
-const fn tristate(v: Option<bool>, t: &'static str, f: &'static str) -> &'static str {
-    match v {
-        None => "-",
-        Some(true) => t,
-        Some(false) => f,
+/// Tri-state for `branch_matches_change` in the human-readable
+/// status row: present-and-true is `match`, present-and-false is
+/// `mismatch`, absent is `-`. JSON keeps the raw `Option<bool>` —
+/// this only governs text rendering.
+enum MatchState {
+    Match,
+    Mismatch,
+    Unknown,
+}
+
+impl From<Option<bool>> for MatchState {
+    fn from(v: Option<bool>) -> Self {
+        match v {
+            Some(true) => Self::Match,
+            Some(false) => Self::Mismatch,
+            None => Self::Unknown,
+        }
+    }
+}
+
+impl fmt::Display for MatchState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Match => "match",
+            Self::Mismatch => "mismatch",
+            Self::Unknown => "-",
+        })
     }
 }
 

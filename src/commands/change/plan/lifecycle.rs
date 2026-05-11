@@ -44,7 +44,7 @@ pub fn create(ctx: &CommandContext, name: String, sources: Vec<(String, String)>
         &CreateBody {
             plan: PlanRef {
                 name,
-                path: path_string(&plan_path),
+                path: plan_path,
             },
         },
     )?;
@@ -102,7 +102,7 @@ pub fn validate(ctx: &CommandContext) -> Result<CliResult> {
         &PlanValidateBody {
             plan: PlanRef {
                 name: plan.name,
-                path: plan_path.display().to_string(),
+                path: plan_path,
             },
             validation: Validation { results: rows },
             passed: !has_errors,
@@ -233,7 +233,7 @@ struct CreateBody {
 
 impl Render for CreateBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Initialised plan '{}' at {}.", self.plan.name, self.plan.path)
+        writeln!(w, "Initialised plan '{}' at {}.", self.plan.name, path_string(&self.plan.path))
     }
 }
 

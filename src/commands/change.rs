@@ -2,6 +2,7 @@ pub mod cli;
 pub mod plan;
 
 use std::io::Write;
+use std::path::PathBuf;
 
 use serde::Serialize;
 use specify_capability::{ChangeBrief, ChangeFrontmatter, InputKind};
@@ -12,7 +13,7 @@ use specify_slice::atomic::atomic_bytes_write;
 
 use crate::cli::ChangeAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, Stream, emit, path_string};
+use crate::output::{CliResult, Render, Stream, emit, path_string, serialize_path};
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
 pub fn run(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult> {
@@ -44,7 +45,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult> {
             &BriefCreateErrBody {
                 action: "init",
                 error: "already-exists",
-                path: brief_path.display().to_string(),
+                path: brief_path,
                 exit_code: exit.code(),
             },
         )?;
@@ -59,7 +60,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult> {
         &BriefCreateBody {
             action: "init",
             name,
-            path: path_string(&brief_path),
+            path: brief_path,
         },
     )?;
     Ok(CliResult::Success)
@@ -76,7 +77,7 @@ fn brief_show(ctx: &CommandContext) -> Result<()> {
         ctx.format,
         &BriefShowBody {
             brief,
-            path: brief_path.display().to_string(),
+            path: brief_path,
         },
     )?;
     Ok(())
@@ -153,12 +154,13 @@ fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliR
 struct BriefCreateBody {
     action: &'static str,
     name: String,
-    path: String,
+    #[serde(serialize_with = "serialize_path")]
+    path: PathBuf,
 }
 
 impl Render for BriefCreateBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Created change brief for {} at {}", self.name, self.path)
+        writeln!(w, "Created change brief for {} at {}", self.name, path_string(&self.path))
     }
 }
 
@@ -173,13 +175,18 @@ impl Render for BriefCreateBody {
 struct BriefCreateErrBody {
     action: &'static str,
     error: &'static str,
-    path: String,
+    #[serde(serialize_with = "serialize_path")]
+    path: PathBuf,
     exit_code: u8,
 }
 
 impl Render for BriefCreateErrBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "change brief already exists at {}; refusing to overwrite", self.path)
+        writeln!(
+            w,
+            "change brief already exists at {}; refusing to overwrite",
+            path_string(&self.path)
+        )
     }
 }
 
@@ -187,7 +194,8 @@ impl Render for BriefCreateErrBody {
 #[serde(rename_all = "kebab-case")]
 struct BriefShowBody {
     brief: Option<BriefData>,
-    path: String,
+    #[serde(serialize_with = "serialize_path")]
+    path: PathBuf,
 }
 
 #[derive(Serialize)]
@@ -199,9 +207,10 @@ struct BriefData {
 
 impl Render for BriefShowBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        let path = path_string(&self.path);
         match &self.brief {
-            None => writeln!(w, "no change brief declared at {}", self.path),
-            Some(brief) => render_brief(w, brief, &self.path),
+            None => writeln!(w, "no change brief declared at {path}"),
+            Some(brief) => render_brief(w, brief, &path),
         }
     }
 }

@@ -162,7 +162,7 @@ pub fn run(ctx: &CommandContext) -> Result<()> {
     let body = StatusBody {
         plan: PlanRef {
             name: plan.name.clone(),
-            path: plan_path.display().to_string(),
+            path: plan_path,
         },
         counts: Counts {
             done: counts[&Status::Done],
