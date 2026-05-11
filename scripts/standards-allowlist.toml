@@ -3,7 +3,7 @@
 # Each `[file."<rel-path>"]` table caps the number of violations of each
 # predicate for that file. A live count strictly greater than the
 # baseline fails CI; missing predicates default to zero (new files
-# start clean) except `module-line-count`, which defaults to 500.
+# start clean) except `module-line-count`, which defaults to 400.
 # Reductions are encouraged in any PR that touches a file; the CI
 # `--check-tightenable` mode fails when an unrelated PR could lower a
 # baseline without code changes.
@@ -26,7 +26,7 @@ module-line-count = 388
 
 [file."crates/capability/src/change_brief.rs"]
 ritual-doc-paragraphs = 3
-module-line-count = 210
+module-line-count = 229
 
 [file."crates/capability/src/codex.rs"]
 ritual-doc-paragraphs = 1
@@ -71,7 +71,7 @@ module-line-count = 304
 
 [file."crates/change/src/plan/core/io.rs"]
 direct-fs-write = 2
-module-line-count = 236
+module-line-count = 271
 
 [file."crates/change/src/plan/core/mod.rs"]
 module-line-count = 51
@@ -93,7 +93,6 @@ module-line-count = 312
 
 [file."crates/change/src/plan/doctor.rs"]
 module-line-count = 267
-from-not-builder = 1
 verbose-doc-paragraphs = 1
 
 [file."crates/change/src/plan/doctor/cycle.rs"]
@@ -123,17 +122,16 @@ module-line-count = 52
 [file."crates/change/src/plan/lock/status.rs"]
 module-line-count = 57
 
+[file."crates/config/src/atomic.rs"]
+module-line-count = 312
+
 [file."crates/config/src/lib.rs"]
 ritual-doc-paragraphs = 1
 direct-fs-write = 1
-module-line-count = 514
-
-[file."crates/contract/src/main.rs"]
-format-match-dispatch = 1
-module-line-count = 154
+module-line-count = 517
 
 [file."crates/error/src/lib.rs"]
-module-line-count = 594
+module-line-count = 690
 
 [file."crates/init/src/cache.rs"]
 direct-fs-write = 1
@@ -283,7 +281,7 @@ ritual-doc-paragraphs = 1
 module-line-count = 232
 
 [file."crates/tool/src/cache.rs"]
-module-line-count = 248
+module-line-count = 249
 
 [file."crates/tool/src/cache/fetch.rs"]
 module-line-count = 134
@@ -329,7 +327,6 @@ module-line-count = 59
 [file."crates/validate/src/compatibility/mod.rs"]
 direct-fs-write = 1
 module-line-count = 269
-from-not-builder = 1
 
 [file."crates/validate/src/compatibility/openapi_diff.rs"]
 module-line-count = 163
@@ -393,132 +390,64 @@ module-line-count = 229
 [file."crates/validate/src/serialize.rs"]
 module-line-count = 117
 
-[file."crates/vectis/src/lib.rs"]
-module-line-count = 96
-
-[file."crates/vectis/src/main.rs"]
-module-line-count = 13
-
-[file."crates/vectis/src/scaffold.rs"]
-module-line-count = 257
-
-[file."crates/vectis/src/scaffold/error.rs"]
-module-line-count = 61
-
-[file."crates/vectis/src/scaffold/runtime.rs"]
-direct-fs-write = 1
-module-line-count = 201
-
-[file."crates/vectis/src/scaffold/templates.rs"]
-module-line-count = 201
-
-[file."crates/vectis/src/scaffold/templates/android.rs"]
-module-line-count = 134
-
-[file."crates/vectis/src/scaffold/templates/core.rs"]
-module-line-count = 65
-
-[file."crates/vectis/src/scaffold/templates/ios.rs"]
-module-line-count = 41
-
-[file."crates/vectis/src/scaffold/versions.rs"]
-module-line-count = 120
-
-[file."crates/vectis/src/validate.rs"]
-module-line-count = 233
-
-[file."crates/vectis/src/validate/engine.rs"]
-module-line-count = 76
-verbose-doc-paragraphs = 1
-
-[file."crates/vectis/src/validate/engine/all.rs"]
-module-line-count = 69
-
-[file."crates/vectis/src/validate/engine/assets.rs"]
-module-line-count = 326
-
-[file."crates/vectis/src/validate/engine/composition.rs"]
-module-line-count = 431
-
-[file."crates/vectis/src/validate/engine/layout.rs"]
-module-line-count = 166
-
-[file."crates/vectis/src/validate/engine/paths.rs"]
-module-line-count = 239
-
-[file."crates/vectis/src/validate/engine/shared.rs"]
-module-line-count = 112
-
-[file."crates/vectis/src/validate/engine/tokens.rs"]
-module-line-count = 62
-
 [file."src/cli.rs"]
-module-line-count = 167
+module-line-count = 160
 
 [file."src/commands.rs"]
-module-line-count = 150
+module-line-count = 123
 
 [file."src/commands/capability.rs"]
-module-line-count = 230
-result-cliresult-default = 1
+module-line-count = 222
 
 [file."src/commands/capability/cli.rs"]
 module-line-count = 38
 
 [file."src/commands/change.rs"]
-module-line-count = 404
-result-cliresult-default = 3
+module-line-count = 316
 
 [file."src/commands/change/cli.rs"]
 module-line-count = 40
 
 [file."src/commands/change/plan.rs"]
-module-line-count = 136
-result-cliresult-default = 1
+module-line-count = 121
 
 [file."src/commands/change/plan/cli.rs"]
 module-line-count = 133
 cli-help-shape = 11
 
 [file."src/commands/change/plan/create.rs"]
-module-line-count = 126
+module-line-count = 125
 
 [file."src/commands/change/plan/doctor.rs"]
-module-line-count = 108
-result-cliresult-default = 1
+module-line-count = 104
 
 [file."src/commands/change/plan/lifecycle.rs"]
-module-line-count = 394
-result-cliresult-default = 2
+module-line-count = 352
 
 [file."src/commands/change/plan/lock.rs"]
-module-line-count = 151
+module-line-count = 143
 
 [file."src/commands/change/plan/status.rs"]
-module-line-count = 213
+module-line-count = 222
 
 [file."src/commands/codex.rs"]
-module-line-count = 320
-result-cliresult-default = 2
+module-line-count = 296
 
 [file."src/commands/codex/cli.rs"]
 module-line-count = 22
 
 [file."src/commands/compatibility.rs"]
-module-line-count = 82
-result-cliresult-default = 2
+module-line-count = 83
 
 [file."src/commands/compatibility/cli.rs"]
 module-line-count = 19
 
 [file."src/commands/context.rs"]
 direct-fs-write = 7
-module-line-count = 414
-result-cliresult-default = 1
+module-line-count = 413
 
 [file."src/commands/context/check.rs"]
-module-line-count = 141
-result-cliresult-default = 1
+module-line-count = 151
 
 [file."src/commands/context/cli.rs"]
 module-line-count = 23
@@ -548,89 +477,81 @@ module-line-count = 207
 
 [file."src/commands/context/generate.rs"]
 module-line-count = 150
-result-cliresult-default = 1
 
 [file."src/commands/context/lock.rs"]
-module-line-count = 223
-from-not-builder = 1
+module-line-count = 226
 
 [file."src/commands/context/render.rs"]
 module-line-count = 393
 
 [file."src/commands/init.rs"]
-module-line-count = 192
+module-line-count = 190
 
 [file."src/commands/registry.rs"]
 direct-fs-write = 1
-module-line-count = 610
+module-line-count = 602
 
 [file."src/commands/registry/cli.rs"]
 module-line-count = 37
 
 [file."src/commands/slice.rs"]
-module-line-count = 101
-result-cliresult-default = 1
+module-line-count = 90
 
 [file."src/commands/slice/cli.rs"]
 module-line-count = 263
 cli-help-shape = 6
 
 [file."src/commands/slice/journal.rs"]
-module-line-count = 128
+module-line-count = 124
 
 [file."src/commands/slice/lifecycle.rs"]
-module-line-count = 179
+module-line-count = 167
 
 [file."src/commands/slice/list.rs"]
-module-line-count = 218
+module-line-count = 217
 
 [file."src/commands/slice/merge.rs"]
 direct-fs-write = 2
-module-line-count = 477
+module-line-count = 473
 
 [file."src/commands/slice/outcome.rs"]
-module-line-count = 263
+module-line-count = 259
 
 [file."src/commands/slice/task.rs"]
-module-line-count = 182
+module-line-count = 174
 
 [file."src/commands/slice/touched.rs"]
-module-line-count = 169
+module-line-count = 167
 
 [file."src/commands/slice/validate.rs"]
 module-line-count = 59
-result-cliresult-default = 1
 
 [file."src/commands/status.rs"]
 module-line-count = 202
 
 [file."src/commands/tool.rs"]
-module-line-count = 466
-result-cliresult-default = 1
+module-line-count = 488
 
 [file."src/commands/tool/cli.rs"]
 module-line-count = 32
 
 [file."src/commands/workspace.rs"]
-module-line-count = 425
-result-cliresult-default = 2
+module-line-count = 389
 
 [file."src/commands/workspace/cli.rs"]
 module-line-count = 49
 cli-help-shape = 3
 
 [file."src/context.rs"]
-module-line-count = 62
+module-line-count = 78
 
 [file."src/lib.rs"]
-module-line-count = 56
+module-line-count = 55
 
 [file."src/main.rs"]
 module-line-count = 15
 
 [file."src/output.rs"]
 format-match-dispatch = 1
-rfc-numbers-in-code = 2
-stale-cli-vocab = 1
-module-line-count = 396
+module-line-count = 425
 

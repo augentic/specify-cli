@@ -8,7 +8,7 @@ Canonical JSON Schema (2020-12) for the response body emitted by `specify change
 
 ```json
 {
-  "schema-version": 5,
+  "envelope-version": 6,
   "plan": {
     "name": "<kebab-change-name>",
     "path": "<absolute-or-relative-path-to-plan.yaml>"

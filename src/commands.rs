@@ -1,11 +1,3 @@
-// Clap dispatch hands owned subcommand values down through every
-// handler module — promote the lint waiver here rather than repeat it
-// per file.
-#![allow(
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to these command handlers."
-)]
-
 pub(crate) mod capability;
 pub(crate) mod change;
 pub(crate) mod codex;
@@ -20,33 +12,11 @@ pub(crate) mod workspace;
 
 use specify_error::Result;
 
-use crate::cli::{CapabilityAction, Cli, Commands, OutputFormat, ToolAction, WorkspaceAction};
+use crate::cli::{CapabilityAction, Cli, Commands, Format, ToolAction, WorkspaceAction};
 use crate::context::Ctx;
-use crate::output::{CliResult, report_error};
+use crate::output::{Exit, report};
 
-/// Map a handler's success payload onto a [`CliResult`] exit code.
-///
-/// Lets the dispatcher accept both `Result<()>` (the common case —
-/// success is unconditional and maps to `CliResult::Success`) and
-/// `Result<CliResult>` (handlers that conditionally surface a
-/// non-success exit like `GenericFailure` / `ValidationFailed`).
-trait IntoCliResult {
-    fn into_cli_result(self) -> CliResult;
-}
-
-impl IntoCliResult for CliResult {
-    fn into_cli_result(self) -> CliResult {
-        self
-    }
-}
-
-impl IntoCliResult for () {
-    fn into_cli_result(self) -> CliResult {
-        CliResult::Success
-    }
-}
-
-pub(crate) fn run(cli: Cli) -> CliResult {
+pub(crate) fn run(cli: Cli) -> Exit {
     let format = cli.format;
     match cli.command {
         Commands::Init {
@@ -54,97 +24,102 @@ pub(crate) fn run(cli: Cli) -> CliResult {
             name,
             domain,
             hub,
-        } => unscoped(format, || init::run(format, capability, name, domain, hub)),
-        Commands::Status => with_project(format, status::run),
-        Commands::Context { action } => with_project(format, |ctx| context::run(ctx, action)),
+        } => {
+            bare(format, || init::run(format, capability, name.as_deref(), domain.as_deref(), hub))
+        }
+        Commands::Status => scoped(format, status::run),
+        Commands::Context { action } => scoped(format, |ctx| context::run(ctx, &action)),
         Commands::Capability { action } => match action {
             CapabilityAction::Resolve {
                 capability_value,
                 project_dir,
-            } => unscoped(format, || capability::resolve(format, capability_value, project_dir)),
+            } => bare(format, || capability::resolve(format, capability_value, &project_dir)),
             CapabilityAction::Check { capability_dir } => {
-                unscoped(format, || capability::check(format, capability_dir))
+                bare(format, || capability::check(format, capability_dir))
             }
             CapabilityAction::Pipeline { phase, slice } => {
-                with_project(format, |ctx| capability::pipeline(ctx, phase, slice))
+                scoped(format, |ctx| capability::pipeline(ctx, phase, slice.as_deref()))
             }
         },
-        Commands::Codex { action } => with_project(format, |ctx| codex::run(ctx, action)),
-        Commands::Compatibility { action } => {
-            with_project(format, |ctx| compatibility::run(ctx, action))
-        }
+        Commands::Codex { action } => scoped(format, |ctx| codex::run(ctx, action)),
+        Commands::Compatibility { action } => scoped(format, |ctx| compatibility::run(ctx, action)),
         Commands::Tool { action } => match action {
-            ToolAction::Run { name, args } => {
-                with_project(format, |ctx| tool::run(ctx, name, args))
-            }
-            ToolAction::List => with_project(format, tool::list),
-            ToolAction::Fetch { name } => with_project(format, |ctx| tool::fetch(ctx, name)),
-            ToolAction::Show { name } => with_project(format, |ctx| tool::show(ctx, name)),
-            ToolAction::Gc => with_project(format, tool::gc),
+            ToolAction::Run { name, args } => run_tool(format, &name, args),
+            ToolAction::List => scoped(format, tool::list),
+            ToolAction::Fetch { name } => scoped(format, |ctx| tool::fetch(ctx, name.as_deref())),
+            ToolAction::Show { name } => scoped(format, |ctx| tool::show(ctx, &name)),
+            ToolAction::Gc => scoped(format, tool::gc),
         },
-        Commands::Slice { action } => with_project(format, |ctx| slice::run(ctx, action)),
-        Commands::Change { action } => with_project(format, |ctx| change::run(ctx, action)),
-        Commands::Registry { action } => with_project(format, |ctx| registry::run(ctx, action)),
+        Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
+        Commands::Change { action } => scoped(format, |ctx| change::run(ctx, action)),
+        Commands::Registry { action } => scoped(format, |ctx| registry::run(ctx, action)),
         Commands::Workspace { action } => match action {
             WorkspaceAction::Sync { projects } => {
-                with_project(format, |ctx| workspace::sync(ctx, projects))
+                scoped(format, |ctx| workspace::sync(ctx, &projects))
             }
             WorkspaceAction::Status { projects } => {
-                with_project(format, |ctx| workspace::status(ctx, projects))
+                scoped(format, |ctx| workspace::status(ctx, &projects))
             }
             WorkspaceAction::PrepareBranch {
                 project,
                 change,
                 sources,
                 outputs,
-            } => with_project(format, |ctx| {
-                workspace::prepare_branch(ctx, project, change, sources, outputs)
+            } => scoped(format, |ctx| {
+                workspace::prepare_branch(ctx, &project, change, sources, outputs)
             }),
             WorkspaceAction::Push { projects, dry_run } => {
-                with_project(format, |ctx| workspace::push(ctx, projects, dry_run))
+                scoped(format, |ctx| workspace::push(ctx, &projects, dry_run))
             }
         },
-        Commands::Completions { shell } => {
-            let mut cmd = <crate::cli::Cli as clap::CommandFactory>::command();
-            clap_complete::generate(shell, &mut cmd, "specify", &mut std::io::stdout());
-            CliResult::Success
-        }
     }
 }
 
 /// Run a command that requires an initialised `.specify/` project.
 ///
-/// Loads `Ctx` (project config + pipeline), calls `f`, and
-/// maps any `Error` to the appropriate format-aware exit code. This
-/// is the single error-handling boundary for project-aware commands —
-/// handlers can use `?` freely inside `f`. Handlers that return
-/// `Result<()>` collapse to `CliResult::Success` here; handlers that
-/// return `Result<CliResult>` flow through unchanged (the
-/// non-success-exit case).
-fn with_project<F, R>(format: OutputFormat, f: F) -> CliResult
+/// Loads `Ctx` (project config + pipeline), calls `f`, and maps any
+/// `Error` to the appropriate format-aware exit code via
+/// [`report`]. This is the single error-handling boundary for
+/// project-aware handlers — they can use `?` freely inside `f`.
+fn scoped<F>(format: Format, f: F) -> Exit
 where
-    F: FnOnce(&Ctx) -> Result<R>,
-    R: IntoCliResult,
+    F: FnOnce(&Ctx) -> Result<()>,
 {
     let ctx = match Ctx::load(format) {
         Ok(ctx) => ctx,
-        Err(err) => return report_error(format, &err),
+        Err(err) => return report(format, &err),
     };
     match f(&ctx) {
-        Ok(value) => value.into_cli_result(),
-        Err(err) => report_error(format, &err),
+        Ok(()) => Exit::Success,
+        Err(err) => report(format, &err),
     }
 }
 
 /// Run a command that does NOT need project context but may still fail
 /// with an `Error` (e.g. `capability resolve`, `capability check`).
-fn unscoped<F, R>(format: OutputFormat, f: F) -> CliResult
+fn bare<F>(format: Format, f: F) -> Exit
 where
-    F: FnOnce() -> Result<R>,
-    R: IntoCliResult,
+    F: FnOnce() -> Result<()>,
 {
     match f() {
-        Ok(value) => value.into_cli_result(),
-        Err(err) => report_error(format, &err),
+        Ok(()) => Exit::Success,
+        Err(err) => report(format, &err),
+    }
+}
+
+/// `tool run` is the only handler that mints a [`Exit::Code`]
+/// exit — the WASI guest's exit byte is forwarded verbatim so
+/// `specify tool run` is a transparent shim. Handled outside the
+/// `Result<()>` channel because the success branch carries the
+/// guest's exit code rather than collapsing to `Success`.
+fn run_tool(format: Format, name: &str, args: Vec<String>) -> Exit {
+    let ctx = match Ctx::load(format) {
+        Ok(ctx) => ctx,
+        Err(err) => return report(format, &err),
+    };
+    match tool::run(&ctx, name, args) {
+        Ok(0) => Exit::Success,
+        Ok(code) => Exit::Code(code),
+        Err(err) => report(format, &err),
     }
 }

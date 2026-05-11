@@ -378,9 +378,9 @@ dependencies = [
 
 [[package]]
 name = "clap_complete"
-version = "4.6.2"
+version = "4.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ff7a1dccbdd8b078c2bdebff47e404615151534d5043da397ec50286816f9cb"
+checksum = "e3e962dae2b1e5007fe9e3db363ddc43a8bf25546d279f7a8a4401204690e80c"
 dependencies = [
  "clap",
 ]
@@ -2075,7 +2075,6 @@ dependencies = [
  "assert_cmd",
  "chrono",
  "clap",
- "clap_complete",
  "glob",
  "jsonschema",
  "regex",
@@ -2141,19 +2140,9 @@ dependencies = [
  "serde-saphyr",
  "specify-capability",
  "specify-error",
+ "specify-registry",
  "specify-slice",
  "specify-tool",
- "tempfile",
-]
-
-[[package]]
-name = "specify-contract"
-version = "0.3.0"
-dependencies = [
- "assert_cmd",
- "clap",
- "serde_json",
- "specify-validate",
  "tempfile",
 ]
 
@@ -2271,22 +2260,6 @@ dependencies = [
  "specify-spec",
  "specify-task",
  "tempfile",
-]
-
-[[package]]
-name = "specify-vectis"
-version = "0.3.0"
-dependencies = [
- "assert_cmd",
- "clap",
- "jsonschema",
- "serde",
- "serde-saphyr",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "toml",
 ]
 
 [[package]]
@@ -3405,6 +3378,7 @@ name = "xtask"
 version = "0.3.0"
 dependencies = [
  "clap",
+ "clap_complete",
  "clap_mangen",
  "regex",
  "serde",

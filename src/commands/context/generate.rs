@@ -9,13 +9,13 @@ use std::io::Write;
 use serde::Serialize;
 use specify_config::is_workspace_clone_path;
 use specify_error::{Error, Result};
-use specify_slice::atomic::atomic_bytes_write;
+use specify_slice::atomic::bytes_write;
 
 use super::{context_lock_path, error_from_fence, fences, lock, read_optional, render_document};
 use crate::context::Ctx;
-use crate::output::{CliResult, Render, Stream, emit};
+use crate::output::Render;
 
-pub(super) fn run(ctx: &Ctx, check: bool, force: bool) -> Result<CliResult> {
+pub(super) fn run(ctx: &Ctx, check: bool, force: bool) -> Result<()> {
     if is_workspace_clone_path(&ctx.project_dir) {
         return Err(Error::Diag {
             code: "context-workspace-clone-refused",
@@ -28,9 +28,9 @@ pub(super) fn run(ctx: &Ctx, check: bool, force: bool) -> Result<CliResult> {
     }
 
     let body = body(ctx, check, force)?;
-    emit(Stream::Stdout, ctx.format, &body)?;
-
-    Ok(if check && body.changed { CliResult::GenericFailure } else { CliResult::Success })
+    let would_update = check && body.changed;
+    ctx.out().write(&body)?;
+    if would_update { Err(Error::ContextWouldUpdate) } else { Ok(()) }
 }
 
 pub(in crate::commands) fn for_init(ctx: &Ctx) -> Result<Outcome> {
@@ -64,7 +64,7 @@ fn body(ctx: &Ctx, check: bool, force: bool) -> Result<GenerateBody> {
     let changed = agents_changed || lock_changed;
 
     if agents_changed && !check {
-        atomic_bytes_write(&agents_path, &planned.bytes)?;
+        bytes_write(&agents_path, &planned.bytes)?;
     }
     if lock_changed && !check {
         lock::save(&lock_path, &expected_lock)?;

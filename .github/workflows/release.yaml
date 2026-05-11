@@ -121,6 +121,7 @@ jobs:
 
       - name: Build Vectis WASI tool
         shell: bash
+        working-directory: wasi-tools
         run: cargo build --release --locked --target wasm32-wasip2 -p specify-vectis
 
       - name: Package Vectis WASI tool
@@ -131,7 +132,7 @@ jobs:
           ARCHIVE="vectis-wasi-tools-${VERSION}.tar.gz"
 
           mkdir -p "${DIST_DIR}"
-          cp target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR}/vectis.wasm"
+          cp wasi-tools/target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR}/vectis.wasm"
 
           (
             cd "${DIST_DIR}"

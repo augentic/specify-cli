@@ -43,7 +43,8 @@ const MAX_TEMP_ATTEMPTS: u8 = 64;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Cache reuse state for a declared tool.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum CacheStatus {
     /// Cached bytes and sidecar metadata match the live declaration tuple.
     Hit,

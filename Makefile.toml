@@ -128,6 +128,20 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 command = "cargo"
 args = ["run", "--quiet", "-p", "xtask", "--", "${@}"]
 
+# Render roff man pages for the `specify` binary and every leaf
+# subcommand into `target/man/` (gitignored). Release tooling picks
+# the artifacts up from there.
+[tasks.gen-man]
+command = "cargo"
+args = ["run", "--quiet", "-p", "xtask", "--", "gen-man"]
+
+# Render shell-completion scripts for the `specify` binary into
+# `target/completions/<shell>/specify.<ext>` (gitignored). Release
+# tooling picks the artifacts up from there.
+[tasks.gen-completions]
+command = "cargo"
+args = ["run", "--quiet", "-p", "xtask", "--", "gen-completions"]
+
 [tasks.wasm-fixtures]
 script = '''
 set -euo pipefail
@@ -143,15 +157,17 @@ wasm-tools parse tests/fixtures/tools-test-cap/src-wat/exit-seven.component.wat 
 [tasks.contract-wasm]
 script = '''
 set -euo pipefail
+cd wasi-tools
 cargo build -p specify-contract --target wasm32-wasip2 --release
-mkdir -p crates/contract/dist
-cp target/wasm32-wasip2/release/specify-contract.wasm crates/contract/dist/contract-0.2.0.wasm
-shasum -a 256 crates/contract/dist/contract-0.2.0.wasm
+mkdir -p contract/dist
+cp target/wasm32-wasip2/release/specify-contract.wasm contract/dist/contract-0.2.0.wasm
+shasum -a 256 contract/dist/contract-0.2.0.wasm
 '''
 
 [tasks.vectis-wasm]
 script = '''
 set -euo pipefail
+cd wasi-tools
 cargo build -p specify-vectis --target wasm32-wasip2 --release
 '''
 
@@ -160,16 +176,20 @@ script = '''
 set -euo pipefail
 
 DIST_DIR="${VECTIS_WASI_DIST_DIR:-target/vectis-wasi-tools/release}"
-
-cargo build -p specify-vectis --target wasm32-wasip2 --release --locked
 mkdir -p "${DIST_DIR}"
-cp target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR}/vectis.wasm"
+DIST_DIR_ABS="$(cd "${DIST_DIR}" && pwd)"
 
 (
-  cd "${DIST_DIR}"
+  cd wasi-tools
+  cargo build -p specify-vectis --target wasm32-wasip2 --release --locked
+  cp target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR_ABS}/vectis.wasm"
+)
+
+(
+  cd "${DIST_DIR_ABS}"
   shasum -a 256 vectis.wasm > vectis.wasm.sha256
   shasum -a 256 vectis.wasm > SHA256SUMS
 )
 
-echo "Vectis WASI artifact written to ${DIST_DIR}"
+echo "Vectis WASI artifact written to ${DIST_DIR_ABS}"
 '''

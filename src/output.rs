@@ -5,21 +5,63 @@ use std::process::ExitCode;
 use serde::{Serialize, Serializer};
 use specify_error::{Error, ValidationStatus, ValidationSummary};
 
-use crate::cli::OutputFormat;
+use crate::cli::Format;
 
 /// Output sink for [`emit`]. `Stdout` is the default success channel;
 /// `Stderr` is reserved for failure envelopes and any diagnostic
 /// rendering that should not interleave with the structured success
-/// stream skills consume.
+/// stream skills consume. Private to `src/output.rs`: handlers route
+/// through the [`Out`] handle (via `ctx.out()` or
+/// [`Out::for_format`]); `Stream::Stderr` is reached only by
+/// [`report`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Stream {
+enum Stream {
     Stdout,
     Stderr,
 }
 
+/// Stdout handle for handler success-path emission. Constructed via
+/// [`crate::context::Ctx::out`] for project-aware verbs, or
+/// [`Out::for_format`] for the format-only handlers that run before
+/// (or outside of) a `Ctx` — `commands::init::run`,
+/// `commands::capability::resolve`, and `commands::capability::check`.
+///
+/// Handlers should reach for `ctx.out().write(&Body)?;`; the
+/// `Stream::Stdout` constant lives inside this module so call sites
+/// never spell it.
+#[derive(Clone, Copy)]
+pub(crate) struct Out {
+    format: Format,
+}
+
+impl std::fmt::Debug for Out {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Out").finish_non_exhaustive()
+    }
+}
+
+impl Out {
+    /// Construct an `Out` from a bare `Format`. Use only in
+    /// `Ctx`-less handlers (`init`, `capability::resolve`,
+    /// `capability::check`) — every other call site goes through
+    /// `ctx.out()`.
+    pub(crate) const fn for_format(format: Format) -> Self {
+        Self { format }
+    }
+
+    /// Serialise `body` and write it to stdout in the requested
+    /// format. The `Render` bound carries the text path; JSON is
+    /// derived from `serde::Serialize`. Takes `self` by value —
+    /// `Out` is `Copy` and the cost of the handle is one `Format`
+    /// byte.
+    pub(crate) fn write<R: Render>(self, body: &R) -> Result<(), Error> {
+        emit(Stream::Stdout, self.format, body)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
-pub enum CliResult {
+pub enum Exit {
     Success,
     GenericFailure,
     ValidationFailed,
@@ -37,7 +79,7 @@ pub enum CliResult {
     Code(u8),
 }
 
-impl CliResult {
+impl Exit {
     pub const fn code(self) -> u8 {
         match self {
             // exit 0: handler-reported success.
@@ -64,51 +106,32 @@ impl CliResult {
     }
 }
 
-impl From<CliResult> for ExitCode {
-    fn from(r: CliResult) -> Self {
+impl From<Exit> for ExitCode {
+    fn from(r: Exit) -> Self {
         Self::from(r.code())
     }
 }
 
-impl From<&Error> for CliResult {
+impl From<&Error> for Exit {
     fn from(err: &Error) -> Self {
         match err {
             Error::CliTooOld { .. } => Self::VersionTooOld,
             Error::Validation { .. }
             | Error::ToolDenied(_)
             | Error::ToolNotDeclared { .. }
-            | Error::PlanStructural => Self::ValidationFailed,
+            | Error::PlanStructural
+            | Error::CapabilityCheckFailed { .. }
+            | Error::CompatibilityCheckFailed
+            | Error::SliceValidationFailed { .. } => Self::ValidationFailed,
             Error::Argument { .. } => Self::ArgumentError,
             _ => Self::GenericFailure,
         }
     }
 }
 
-/// JSON envelope version (the `schema-version` field on every wire
-/// body — not a JSON-Schema spec).
-///
-/// Bumping this is a breaking change for skill authors. History:
-///
-/// - v1 — unknown — pre-2026 trail; the codebase was already at v2
-///   when `JSON_SCHEMA_VERSION` was first introduced (RFC-2,
-///   commit `f39cb288`), so v1 (if it ever shipped) predates the
-///   public history.
-/// - v2 — initial envelope shape that landed with RFC-2 "Iterative
-///   Execution" (commit `f39cb288`).
-/// - v3 — Codex catalog (#29, commit `9e11e9d9`): added the codex
-///   payload shapes and renamed error kebab discriminants
-///   (`Error::SpecifyVersionTooOld` → `CliTooOld`,
-///   `ToolPermissionDenied` → `ToolDenied`).
-/// - v4 — `schema → capability` rename (commit `a7363b91`, see
-///   `CHANGELOG.md` 0.3.0): on-disk YAML keys, CLI flags, JSON
-///   keys, and the `Error::SchemaResolution` discriminant all moved
-///   from the `schema` noun to `capability`. The constant itself was
-///   renamed `JSON_SCHEMA_VERSION` → `JSON_ENVELOPE_VERSION` shortly
-///   afterwards (commit `a9b43981`) without a wire change.
-/// - v5 — `initiative → change` / `changes → slices` rename
-///   (commit `53d19d39`): JSON keys for the change-and-slices
-///   vocabulary lined up with the on-disk taxonomy.
-pub(crate) const JSON_ENVELOPE_VERSION: u64 = 5;
+/// Wire envelope version stamped onto every `--format json` body.
+/// Bump on any incompatible shape change.
+pub(crate) const ENVELOPE_VERSION: u64 = 6;
 
 /// Render `err` as a failure envelope and return the matching exit
 /// code. JSON serialises the typed body directly; Text writes
@@ -124,8 +147,8 @@ pub(crate) const JSON_ENVELOPE_VERSION: u64 = 5;
 /// (envelope keys + per-row `results`), every other variant builds an
 /// [`ErrorBody`] (envelope keys only). Both wire shapes carry the
 /// shared `error` / `message` / `exit-code` envelope fields.
-pub(crate) fn report_error(format: OutputFormat, err: &Error) -> CliResult {
-    let code = CliResult::from(err);
+pub(crate) fn report(format: Format, err: &Error) -> Exit {
+    let code = Exit::from(err);
     let result = match err {
         Error::Validation { results } => {
             emit(Stream::Stderr, format, &ValidationErrBody::from((err, results.as_slice())))
@@ -164,33 +187,39 @@ fn write_text_hint(w: &mut dyn Write, err: &Error) -> std::io::Result<()> {
                 "hint: reconcile the edits or rerun with --force to replace the generated block."
             )?;
         }
+        Error::PlanIncomplete { .. } => {
+            writeln!(
+                w,
+                "hint: complete or drop the listed entries, or rerun with --force to archive anyway."
+            )?;
+        }
         _ => {}
     }
     Ok(())
 }
 
 #[derive(Serialize)]
-pub(crate) struct JsonEnvelope<T> {
-    #[serde(rename = "schema-version")]
-    schema_version: u64,
+pub(crate) struct Envelope<T> {
+    #[serde(rename = "envelope-version")]
+    envelope_version: u64,
     #[serde(flatten)]
     payload: T,
 }
 
-impl<T: Serialize> JsonEnvelope<T> {
-    const fn wrap(payload: T) -> Self {
+impl<T: Serialize> Envelope<T> {
+    const fn new(payload: T) -> Self {
         Self {
-            schema_version: JSON_ENVELOPE_VERSION,
+            envelope_version: ENVELOPE_VERSION,
             payload,
         }
     }
 }
 
-/// Serialise `payload` inside the [`JsonEnvelope`] and write it to
+/// Serialise `payload` inside the [`Envelope`] and write it to
 /// `stream`. Private helper for [`emit`]'s JSON path; nothing else
 /// should touch the wire envelope shape directly.
 fn emit_json<T: Serialize>(stream: Stream, payload: &T) -> Result<(), Error> {
-    let envelope = JsonEnvelope::wrap(payload);
+    let envelope = Envelope::new(payload);
     let map_serde = |err: serde_json::Error| Error::Diag {
         code: "json-serialize-failed",
         detail: format!("failed to serialize JSON response: {err}"),
@@ -229,14 +258,14 @@ pub(crate) trait Render: Serialize {
 /// sink and delegates to [`Render::render_text`]. The single signature
 /// covers both success (`Stream::Stdout`) and failure
 /// (`Stream::Stderr`) — there is one entry point for all structured
-/// output. Failure envelopes go through [`report_error`], which
-/// builds the typed body and routes it back through this function.
-pub(crate) fn emit<R: Render>(
-    stream: Stream, format: OutputFormat, payload: &R,
-) -> Result<(), Error> {
+/// output. Private to this module: success-path handlers route
+/// through the [`Out`] handle; failure envelopes go through
+/// [`report`], which builds the typed body and routes it back through
+/// this function.
+fn emit<R: Render>(stream: Stream, format: Format, payload: &R) -> Result<(), Error> {
     match format {
-        OutputFormat::Json => emit_json(stream, payload),
-        OutputFormat::Text => match stream {
+        Format::Json => emit_json(stream, payload),
+        Format::Text => match stream {
             Stream::Stdout => {
                 let stdout = std::io::stdout();
                 let mut handle = stdout.lock();
@@ -251,7 +280,7 @@ pub(crate) fn emit<R: Render>(
     }
 }
 
-/// Generic failure envelope used by [`report_error`] for every
+/// Generic failure envelope used by [`report`] for every
 /// variant outside `Error::Validation`. `hint_source` is the
 /// originating error reference; it carries no JSON-visible state
 /// (`#[serde(skip)]`) and exists solely so the [`Render`] impl can
@@ -275,7 +304,7 @@ impl<'a> From<&'a Error> for ErrorBody<'a> {
         Self {
             error: err.variant_str().to_string(),
             message: err.to_string(),
-            exit_code: CliResult::from(err).code(),
+            exit_code: Exit::from(err).code(),
             hint_source: err,
         }
     }
@@ -335,7 +364,7 @@ impl<R: Serialize + Render> Render for Validation<R> {
     }
 }
 
-/// Validation-specific failure envelope used by [`report_error`]
+/// Validation-specific failure envelope used by [`report`]
 /// when the variant is `Error::Validation`. Peer to [`ErrorBody`]:
 /// shares the same envelope keys (`error`/`message`/`exit-code`) and
 /// flattens [`Validation<ValidationRow>`] for the per-row `results`
@@ -362,7 +391,7 @@ impl<'a> From<(&'a Error, &'a [ValidationSummary])> for ValidationErrBody<'a> {
         Self {
             error: "validation",
             message: err.to_string(),
-            exit_code: CliResult::from(err).code(),
+            exit_code: Exit::from(err).code(),
             validation: Validation {
                 results: results.iter().map(ValidationRow::from).collect(),
             },
@@ -381,16 +410,16 @@ impl Render for ValidationErrBody<'_> {
 /// Render `path` as a UTF-8 string, preferring the `canonicalize`
 /// result when the entry exists and falling back to `to_string_lossy`
 /// otherwise.
-pub(crate) fn path_string(path: &Path) -> String {
+pub(crate) fn display(path: &Path) -> String {
     std::fs::canonicalize(path)
         .ok()
         .map_or_else(|| path.to_string_lossy().into_owned(), |p| p.to_string_lossy().into_owned())
 }
 
 /// `#[serde(serialize_with)]` adapter for `*Body { path: PathBuf }`
-/// fields. Wraps [`path_string`] so the wire shape stays a plain
+/// fields. Wraps [`display`] so the wire shape stays a plain
 /// JSON string with the canonical-or-fallback path representation
 /// every renderer used before paths became typed.
 pub(crate) fn serialize_path<S: Serializer>(p: &Path, s: S) -> Result<S::Ok, S::Error> {
-    s.collect_str(&path_string(p))
+    s.collect_str(&display(p))
 }

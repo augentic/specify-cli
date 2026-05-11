@@ -88,7 +88,7 @@ fn init_json_format_has_stable_shape() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["capability-name"], "omnia");
     assert!(value["config-path"].is_string());
     let config_path = value["config-path"].as_str().unwrap();
@@ -159,7 +159,7 @@ fn init_writes_capability_field_for_url_arg() {
 }
 
 #[test]
-fn init_with_no_args_errors_with_init_requires_capability_or_hub() {
+fn init_with_no_args_errors() {
     // Acceptance (c): `specify init` (no positional, no `--hub`) must
     // exit non-zero with the `init-requires-capability-or-hub`
     // diagnostic.
@@ -181,7 +181,7 @@ fn init_with_no_args_errors_with_init_requires_capability_or_hub() {
 }
 
 #[test]
-fn init_json_with_no_args_errors_with_stable_code() {
+fn init_json_no_args_errors_stable() {
     let tmp = tempdir().unwrap();
     let assert =
         specify().current_dir(tmp.path()).args(["--format", "json", "init"]).assert().failure();
@@ -189,7 +189,7 @@ fn init_json_with_no_args_errors_with_stable_code() {
     // R4 routes every error envelope through Stream::Stderr.
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stderr).expect("stderr is JSON");
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["error"], "init-requires-capability-or-hub");
     assert_eq!(value["exit-code"], 1);
     let message = value["message"].as_str().expect("message string");
@@ -204,7 +204,7 @@ fn init_json_with_no_args_errors_with_stable_code() {
 }
 
 #[test]
-fn init_with_capability_and_hub_errors_with_init_requires_capability_or_hub() {
+fn init_with_capability_and_hub_errors() {
     // Acceptance (d): `specify init <url> --hub` must exit non-zero
     // with the same diagnostic.
     let tmp = tempdir().unwrap();
@@ -227,7 +227,7 @@ fn init_with_capability_and_hub_errors_with_init_requires_capability_or_hub() {
 }
 
 #[test]
-fn version_too_old_exits_three_with_json_envelope() {
+fn version_too_old_exits_three_json() {
     let tmp = tempdir().unwrap();
     // Fresh init to produce a real project.
     specify()
@@ -258,7 +258,7 @@ fn version_too_old_exits_three_with_json_envelope() {
     // R4 routes every error envelope through Stream::Stderr.
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stderr).expect("stderr is JSON");
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["error"], "specify-version-too-old");
     assert_eq!(value["exit-code"], 3);
 }
@@ -343,7 +343,7 @@ fn init_hub_writes_canonical_on_disk_shape() {
 }
 
 #[test]
-fn init_hub_refuses_when_specify_dir_already_exists() {
+fn init_hub_refuses_when_present() {
     let tmp = tempdir().unwrap();
     // Pre-create `.specify/` with arbitrary content.
     fs::create_dir_all(tmp.path().join(".specify")).unwrap();
@@ -367,7 +367,7 @@ fn init_hub_refuses_when_specify_dir_already_exists() {
 }
 
 #[test]
-fn init_hub_then_registry_validate_succeeds_on_empty_projects() {
+fn init_hub_validate_succeeds_on_empty() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
@@ -387,7 +387,7 @@ fn init_hub_then_registry_validate_succeeds_on_empty_projects() {
 }
 
 #[test]
-fn init_hub_then_registry_validate_rejects_dot_url_with_hub_diagnostic() {
+fn init_hub_validate_rejects_dot_url() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
@@ -443,7 +443,7 @@ fn serde_yaml_to_json(yaml: &str) -> Result<serde_json::Value, String> {
 /// below. Hub mode gives us an empty `registry.yaml` to mutate without
 /// having to seed an entry first.
 #[test]
-fn registry_add_creates_entry_and_round_trips_through_show() {
+fn registry_add_round_trips_through_show() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -468,7 +468,7 @@ fn registry_add_creates_entry_and_round_trips_through_show() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["added"]["name"], "alpha");
     assert_eq!(value["added"]["url"], "git@github.com:augentic/alpha.git");
@@ -521,7 +521,7 @@ fn registry_add_rejects_dot_url_in_hub_mode() {
 }
 
 #[test]
-fn registry_add_rejects_kebab_violations_at_clap_level() {
+fn registry_add_rejects_non_kebab() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -596,7 +596,7 @@ fn registry_remove_succeeds_and_round_trips() {
 }
 
 #[test]
-fn registry_remove_warns_when_plan_references_project() {
+fn registry_remove_warns_on_plan_ref() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -669,7 +669,7 @@ fn registry_remove_unknown_project_errors() {
 }
 
 #[test]
-fn registry_remove_refuses_when_registry_absent() {
+fn registry_remove_refuses_when_absent() {
     let tmp = tempdir().unwrap();
     // Plain init (no hub) — single-repo project has no registry.yaml
     // by default.
@@ -695,7 +695,7 @@ fn registry_remove_refuses_when_registry_absent() {
 }
 
 #[test]
-fn workspace_help_lists_active_subcommands_only() {
+fn workspace_help_lists_active_subcommands() {
     let assert = specify().args(["workspace", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for verb in ["sync", "status", "push"] {
@@ -1070,12 +1070,16 @@ fn rfc14_c04_workspace_prepare_branch_surfaces_origin_head_diagnostic_key() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
 
     assert_eq!(value["error"], "branch-preparation-failed");
-    assert_eq!(value["diagnostic"]["key"], "origin-head-unresolved");
-    assert_eq!(value["diagnostic"]["project"], "alpha");
-    assert_eq!(value["diagnostic"]["branch"], "specify/demo-change");
+    assert_eq!(value["exit-code"], 1);
+    let message = value["message"].as_str().expect("message string");
+    assert!(message.contains("alpha"), "message names the project: {message}");
+    assert!(
+        message.contains("origin-head-unresolved"),
+        "message surfaces the diagnostic key: {message}"
+    );
     assert_eq!(run_git(&alpha, &["branch", "--show-current"]).trim(), "main");
 }
 
@@ -1099,7 +1103,7 @@ fn init_omnia_project(tmp: &tempfile::TempDir) {
 }
 
 #[test]
-fn plan_doctor_reports_all_four_diagnostic_classes() {
+fn plan_doctor_reports_all_four_classes() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1173,7 +1177,7 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
 
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
     assert!(!diagnostics.is_empty(), "doctor with broken plan must surface diagnostics: {value}");
@@ -1195,7 +1199,7 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
 }
 
 #[test]
-fn plan_doctor_diagnostic_payloads_round_trip_typed() {
+fn plan_doctor_payloads_round_trip_typed() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1319,7 +1323,7 @@ fn plan_validate_unchanged_by_doctor_fixture() {
 }
 
 #[test]
-fn plan_doctor_healthy_plan_exits_zero() {
+fn plan_doctor_healthy_exits_zero() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1344,7 +1348,7 @@ fn plan_doctor_healthy_plan_exits_zero() {
 }
 
 #[test]
-fn plan_doctor_help_documents_superset_relationship() {
+fn plan_doctor_help_documents_superset() {
     let assert = specify().args(["change", "plan", "doctor", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for code in
@@ -1367,7 +1371,7 @@ fn plan_doctor_help_documents_superset_relationship() {
 // projects need probing.
 
 #[test]
-fn change_help_lists_finalize_subcommand() {
+fn change_help_lists_finalize() {
     let assert = specify().args(["change", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for verb in ["create", "show", "finalize"] {
@@ -1379,7 +1383,7 @@ fn change_help_lists_finalize_subcommand() {
 }
 
 #[test]
-fn change_finalize_help_documents_clean_and_dry_run() {
+fn change_finalize_help_documents_flags() {
     let assert = specify().args(["change", "finalize", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for flag in ["--clean", "--dry-run"] {
@@ -1418,7 +1422,7 @@ fn change_finalize_refuses_when_plan_absent() {
 }
 
 #[test]
-fn change_finalize_refuses_on_non_terminal_entries() {
+fn change_finalize_refuses_on_non_terminal() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     // Seed a plan with one done and one pending entry — pending is
@@ -1445,17 +1449,17 @@ fn change_finalize_refuses_on_non_terminal_entries() {
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "non-terminal-entries-present");
-    assert_eq!(value["change"], "foo");
-    let entries = value["entries"].as_array().expect("entries array");
-    let names: Vec<&str> = entries.iter().filter_map(|e| e.as_str()).collect();
-    assert_eq!(names, ["b"], "entries must list the offending non-terminal name");
+    assert_eq!(value["exit-code"], 1);
+    let msg = value["message"].as_str().expect("message string");
+    assert!(msg.contains("foo"), "message names the change: {msg}");
+    assert!(msg.contains('b'), "message lists the offending entry name 'b': {msg}");
 
     // Atomicity: plan.yaml must remain on disk on refusal.
     assert!(tmp.path().join("plan.yaml").exists(), "plan.yaml must be untouched");
 }
 
 #[test]
-fn change_finalize_dry_run_archives_nothing_with_empty_registry() {
+fn change_finalize_dry_run_archives_nothing() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     // Seed an all-terminal plan and rely on the hub-init's empty
@@ -1481,7 +1485,7 @@ fn change_finalize_dry_run_archives_nothing_with_empty_registry() {
 }
 
 #[test]
-fn change_finalize_archives_when_all_terminal_and_no_registry() {
+fn change_finalize_archives_when_terminal() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();

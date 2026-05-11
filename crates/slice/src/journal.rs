@@ -138,7 +138,7 @@ impl Journal {
     ///
     /// Read-modify-write: loads the existing file (or an empty
     /// `Journal` when absent), pushes `entry`, and routes the
-    /// serialised journal through the crate's `atomic_yaml_write`
+    /// serialised journal through the crate's `yaml_write`
     /// helper. That emits a trailing newline and bottoms out at
     /// `fs::rename` (atomic on a single filesystem), so a mid-write
     /// crash leaves the prior file intact.
@@ -154,7 +154,7 @@ impl Journal {
         journal.entries.push(entry);
 
         let path = Self::path(slice_dir);
-        crate::atomic::atomic_yaml_write(&path, &journal)
+        crate::atomic::yaml_write(&path, &journal)
     }
 }
 

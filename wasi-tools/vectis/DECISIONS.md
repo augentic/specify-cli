@@ -202,7 +202,7 @@ composition mode reuses)._
 > `vectis validate` is a WASI command tool. The library crate carries
 > the deterministic engine and the embedded schemas so the WASI
 > command surface has a single source of truth. The dispatcher
-> renders an envelope with `schema-version: 2`, `errors: [...]`,
+> renders an envelope with `envelope-version: 2`, `errors: [...]`,
 > `warnings: [...]`, and (for `all` / auto-invoke) `results: [...]`,
 > and exits non-zero only when a real sub-report carries errors.
 

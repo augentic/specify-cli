@@ -7,16 +7,26 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_error::Result;
+use specify_error::{Error, Result};
 
 use super::{context_lock_path, fences, fingerprint, lock, read_optional, render_document};
 use crate::context::Ctx;
-use crate::output::{CliResult, Render, Stream, emit};
+use crate::output::Render;
 
-pub(super) fn run(ctx: &Ctx) -> Result<CliResult> {
+pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let body = body(ctx)?;
-    emit(Stream::Stdout, ctx.format, &body)?;
-    Ok(if body.status == "up-to-date" { CliResult::Success } else { CliResult::GenericFailure })
+    let status = body.status;
+    ctx.out().write(&body)?;
+    match status {
+        "up-to-date" => Ok(()),
+        "context-not-generated" => Err(Error::ContextMissing),
+        "context-lock-missing" => Err(Error::ContextNoLock),
+        "drift" => Err(Error::ContextDriftDetected),
+        other => Err(Error::Diag {
+            code: "context-check-unknown-status",
+            detail: format!("context check returned unexpected status `{other}`"),
+        }),
+    }
 }
 
 #[derive(Serialize)]

@@ -26,16 +26,10 @@
 //!   the operation fails.` doc paragraph.
 //! - `no-op-forwarders` — `let _ = cli.<flag>;` style ignores of
 //!   parsed-but-unused flags.
-//! - `name-suffix-duplication` — `fn foo_<module>` inside `mod
-//!   <module>` (e.g. `fn show_registry` in `commands/registry.rs`).
-//! - `currently-audit` — the word `Currently` in a clap-derive doc
-//!   comment (`src/cli.rs` and `src/commands/**/cli.rs`). A doc that
-//!   says "Currently equivalent to the default …" is the AGENTS.md
-//!   `Wired-but-ignored flags` smell.
 //! - `error-envelope-inlined` — `output::ErrorBody { … }` /
 //!   `output::ValidationErrBody { … }` constructed outside
 //!   `src/output.rs`. Hand-rolled error envelopes bypass the
-//!   `report_error` path; nobody outside `output.rs` should be
+//!   `report` path; nobody outside `output.rs` should be
 //!   building the envelope DTO directly.
 //! - `path-helper-inlined` — `fn specify_dir|plan_path|
 //!   change_brief_path|archive_dir` declared outside `crates/config/`.
@@ -43,16 +37,6 @@
 //!   they do not redefine them. Thin facade methods that take `&self`
 //!   are excluded by the regex shape (the predicate targets free
 //!   functions, not delegating accessors).
-//! - `ok-literal-in-body` — `pub ok: bool` field on a Serialize DTO
-//!   outside the two carve-outs (`crates/validate/src/contracts/envelope.rs`
-//!   and `crates/validate/src/compatibility/mod.rs`). The JSON envelope
-//!   encodes success-vs-failure via the presence/absence of `error:`;
-//!   the redundant `ok` field was removed in CL-E3 and this predicate
-//!   keeps it gone. Pragmatic regex on `pub ok: bool` rather than an
-//!   AST walk — the field is always `pub` on Serialize DTOs in this
-//!   workspace, so the simpler form catches every regression while
-//!   missing only private `ok: bool` fields (which are not part of any
-//!   wire envelope and were not flagged by CL-E3 either).
 //! - `direct-fs-write` — direct `fs::write` / `std::fs::write` in
 //!   non-test Rust. Managed state should go through the atomic helpers
 //!   unless a file has an explicit baseline.
@@ -60,20 +44,15 @@
 //!   `initiative`, `initiative.md`, retired top-level `specify plan`,
 //!   `specify merge`, or `specify validate` strings.
 //! - `module-line-count` — non-test Rust source file length in lines.
-//!   Default cap is 500; explicit per-file baselines grandfather oversized
+//!   Default cap is 400; explicit per-file baselines grandfather oversized
 //!   files until they are split.
 //! - `result-cliresult-default` — free function returning
-//!   `Result<CliResult>` outside `src/commands.rs`. The dispatcher
-//!   legitimately accepts both `Result<()>` and `Result<CliResult>`
-//!   shapes via `IntoCliResult`; new handlers should default to
-//!   `Result<()>` and let success collapse to `CliResult::Success`.
-//!   Genuine non-success-exit handlers (typed `*ErrBody` paths) are
-//!   grandfathered via per-file baselines.
-//! - `from-not-builder` — pre-R6 builder pattern: an inherent `impl T`
-//!   block whose only method is `fn from_<word>(<one arg>) -> Self`.
-//!   New code uses `impl From<&Source> for T` instead so the conversion
-//!   is discoverable at the trait surface and not a named constructor.
-//!   AST-based via `syn`.
+//!   `Result<Exit>` outside `src/commands.rs`. The dispatcher
+//!   legitimately accepts both `Result<()>` and `Result<Exit>`
+//!   shapes; new handlers should default to `Result<()>` and let
+//!   success collapse to `Exit::Success`. Genuine non-success-exit
+//!   handlers (typed `*ErrBody` paths) are grandfathered via
+//!   per-file baselines.
 //! - `verbose-doc-paragraphs` — a `///` doc paragraph longer than 8
 //!   consecutive lines on a `pub fn|struct|enum|const|type`. Long
 //!   prose blocks belong in `rfcs/` or `DECISIONS.md`; the doc comment
@@ -82,8 +61,6 @@
 //! - `cli-help-shape` — clap-derive `///` doc lines longer than 80
 //!   characters in `src/cli.rs` and `src/commands/**/cli.rs`. Help
 //!   output is operator-facing and must wrap cleanly in a terminal.
-//!   `currently-audit` covers the "Currently equivalent to the
-//!   default …" anti-pattern; this predicate adds the line-length cap.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -96,7 +73,7 @@ use syn::visit::Visit;
 use walkdir::WalkDir;
 
 const ALLOWLIST: &str = "scripts/standards-allowlist.toml";
-const DEFAULT_LINE_CAP: u32 = 500;
+const DEFAULT_LINE_CAP: u32 = 400;
 
 /// How `run` interprets the result.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -182,16 +159,12 @@ struct Counts {
     rfc_numbers_in_code: u32,
     ritual_doc_paragraphs: u32,
     no_op_forwarders: u32,
-    name_suffix_duplication: u32,
-    currently_audit: u32,
     error_envelope_inlined: u32,
     path_helper_inlined: u32,
-    ok_literal_in_body: u32,
     direct_fs_write: u32,
     stale_cli_vocab: u32,
     module_line_count: u32,
     result_cliresult_default: u32,
-    from_not_builder: u32,
     verbose_doc_paragraphs: u32,
     cli_help_shape: u32,
 }
@@ -204,16 +177,12 @@ impl Counts {
             ("rfc-numbers-in-code", self.rfc_numbers_in_code),
             ("ritual-doc-paragraphs", self.ritual_doc_paragraphs),
             ("no-op-forwarders", self.no_op_forwarders),
-            ("name-suffix-duplication", self.name_suffix_duplication),
-            ("currently-audit", self.currently_audit),
             ("error-envelope-inlined", self.error_envelope_inlined),
             ("path-helper-inlined", self.path_helper_inlined),
-            ("ok-literal-in-body", self.ok_literal_in_body),
             ("direct-fs-write", self.direct_fs_write),
             ("stale-cli-vocab", self.stale_cli_vocab),
             ("module-line-count", self.module_line_count),
             ("result-cliresult-default", self.result_cliresult_default),
-            ("from-not-builder", self.from_not_builder),
             ("verbose-doc-paragraphs", self.verbose_doc_paragraphs),
             ("cli-help-shape", self.cli_help_shape),
         ]
@@ -227,16 +196,12 @@ impl Counts {
             rfc_numbers_in_code: self.rfc_numbers_in_code,
             ritual_doc_paragraphs: self.ritual_doc_paragraphs,
             no_op_forwarders: self.no_op_forwarders,
-            name_suffix_duplication: self.name_suffix_duplication,
-            currently_audit: self.currently_audit,
             error_envelope_inlined: self.error_envelope_inlined,
             path_helper_inlined: self.path_helper_inlined,
-            ok_literal_in_body: self.ok_literal_in_body,
             direct_fs_write: self.direct_fs_write,
             stale_cli_vocab: self.stale_cli_vocab,
             module_line_count: self.module_line_count,
             result_cliresult_default: self.result_cliresult_default,
-            from_not_builder: self.from_not_builder,
             verbose_doc_paragraphs: self.verbose_doc_paragraphs,
             cli_help_shape: self.cli_help_shape,
         }
@@ -250,21 +215,14 @@ fn count_one(path: &Path, source: &str) -> Counts {
         let mut visitor = InlineDtoVisitor { hits: 0, depth: 0 };
         visitor.visit_file(file);
         c.inline_dtos = visitor.hits;
-
-        let mut from_visitor = FromBuilderVisitor { hits: 0 };
-        from_visitor.visit_file(file);
-        c.from_not_builder = from_visitor.hits;
     }
     let stripped = strip_comments(source);
     c.format_match_dispatch = count_regex(&FORMAT_MATCH_RE, &stripped);
     c.rfc_numbers_in_code = count_regex(&RFC_RE, source);
     c.ritual_doc_paragraphs = count_regex(&RITUAL_DOC_RE, source);
     c.no_op_forwarders = count_regex(&NO_OP_FORWARDER_RE, &stripped);
-    c.name_suffix_duplication = count_name_suffix(path, &stripped);
-    c.currently_audit = count_currently_audit(path, source);
     c.error_envelope_inlined = count_error_envelope(path, &stripped);
     c.path_helper_inlined = count_path_helper(path, &stripped);
-    c.ok_literal_in_body = count_ok_literal(path, &stripped);
     c.direct_fs_write = count_regex(&DIRECT_FS_WRITE_RE, &stripped);
     c.stale_cli_vocab = count_stale_cli_vocab(path, source);
     c.module_line_count = u32::try_from(source.lines().count()).unwrap_or(u32::MAX);
@@ -352,35 +310,10 @@ static STALE_CLI_VOCAB_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new
 });
 
 // ---------------------------------------------------------------------
-// currently-audit: the word `Currently` in a clap-derive doc comment.
-//
-// Scoped to `src/cli.rs` and `src/commands/**/cli.rs` — the post-CL-MS-CLI
-// clap-derive surface. A doc comment that says "Currently equivalent to the
-// default …" is the AGENTS.md `Wired-but-ignored flags` smell: drop the
-// flag from clap until the differentiated behaviour exists.
-//
-// Matches `Currently` (case-sensitive, word-bounded) in any doc comment
-// line: `///`, `//!`, or `#[doc = "…"]`.
-
-static CURRENTLY_DOC_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"(?m)^\s*(?://[/!]|#\[doc\b).*\bCurrently\b").expect("static regex")
-});
-
-fn count_currently_audit(path: &Path, source: &str) -> u32 {
-    if is_clap_cli_file(path) { count_regex(&CURRENTLY_DOC_RE, source) } else { 0 }
-}
-
-fn is_clap_cli_file(path: &Path) -> bool {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    normalized.ends_with("src/cli.rs")
-        || (normalized.contains("src/commands/") && normalized.ends_with("/cli.rs"))
-}
-
-// ---------------------------------------------------------------------
 // error-envelope-inlined: `output::ErrorBody { … }` /
 // `output::ValidationErrBody { … }` constructed outside `src/output.rs`.
 //
-// Hand-rolled error envelopes bypass the `report_error` path.
+// Hand-rolled error envelopes bypass the `report` path.
 // CL-E3 removed the last hand-rolled construction (in `src/commands/registry.rs`);
 // R5 renamed the body types but kept this predicate as the only legitimate
 // construction guard.
@@ -426,38 +359,6 @@ fn is_config_crate(path: &Path) -> bool {
     normalized.contains("crates/config/")
 }
 
-// ---------------------------------------------------------------------
-// ok-literal-in-body: `pub ok: bool` field outside the carve-outs.
-//
-// CL-E3 dropped the redundant `ok: bool` field from every success / error
-// DTO under `src/commands/`. The JSON envelope encodes success-vs-failure
-// via the presence/absence of `error:`; the `ok` field was duplicative
-// wire noise. The two carve-outs are intentional:
-//
-//   - `crates/validate/src/contracts/envelope.rs` — the contract-validate
-//     WASI tool envelope (schema-version 2, not routed through specify-error).
-//   - `crates/validate/src/compatibility/mod.rs` — `CompatibilityReport.ok`
-//     is a computed semantic flag consumed by `is_compatible()`.
-//
-// Pragmatic regex on `pub\s+ok:\s*bool` rather than an AST walk that
-// verifies a surrounding `#[derive(Serialize)]`. Serialize DTOs in this
-// workspace always declare their fields `pub`, so the simpler regex
-// catches every regression while ignoring private `ok: bool` fields
-// (which are not part of any wire envelope and were not flagged by CL-E3).
-
-static OK_LITERAL_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"pub\s+ok:\s*bool\b").expect("static regex"));
-
-fn count_ok_literal(path: &Path, stripped: &str) -> u32 {
-    if is_ok_literal_carveout(path) { 0 } else { count_regex(&OK_LITERAL_RE, stripped) }
-}
-
-fn is_ok_literal_carveout(path: &Path) -> bool {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    normalized.ends_with("crates/validate/src/contracts/envelope.rs")
-        || normalized.ends_with("crates/validate/src/compatibility/mod.rs")
-}
-
 fn count_stale_cli_vocab(path: &Path, source: &str) -> u32 {
     let normalized = path.to_string_lossy().replace('\\', "/");
     if normalized.contains("/tests/") || normalized.ends_with("/tests.rs") {
@@ -468,16 +369,15 @@ fn count_stale_cli_vocab(path: &Path, source: &str) -> u32 {
 }
 
 // ---------------------------------------------------------------------
-// result-cliresult-default: free `fn ... -> Result<CliResult>` outside
+// result-cliresult-default: free `fn ... -> Result<Exit>` outside
 // `src/commands.rs`. New handlers should default to `Result<()>` and let
-// `IntoCliResult` collapse the success path. The dispatcher legitimately
-// keeps `Result<CliResult>` to pass through both shapes; legacy handlers
+// the dispatcher collapse the success path. The dispatcher legitimately
+// keeps `Result<Exit>` to pass through both shapes; legacy handlers
 // that surface a non-success exit via a typed `*ErrBody` are
 // grandfathered via per-file baselines until they migrate.
 
 static RESULT_CLIRESULT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"\bfn\s+[a-z_][a-z0-9_]*\s*\([^)]*\)\s*->\s*Result<CliResult\b")
-        .expect("static regex")
+    Regex::new(r"\bfn\s+[a-z_][a-z0-9_]*\s*\([^)]*\)\s*->\s*Result<Exit\b").expect("static regex")
 });
 
 fn count_result_cliresult(path: &Path, stripped: &str) -> u32 {
@@ -571,9 +471,8 @@ fn is_non_blank_doc(line: &str) -> bool {
 // ---------------------------------------------------------------------
 // cli-help-shape: clap-derive `///` doc lines longer than 80 characters
 // in `src/cli.rs` and `src/commands/**/cli.rs`. Help output is
-// operator-facing and wraps poorly past 80 columns. The "Currently"
-// anti-pattern is already covered by `currently-audit`; capital-letter
-// and verb-shape checks are punted (verb detection is expensive).
+// operator-facing and wraps poorly past 80 columns. Capital-letter and
+// verb-shape checks are punted (verb detection is expensive).
 
 const CLI_HELP_LINE_CAP: usize = 80;
 
@@ -594,83 +493,10 @@ fn count_cli_help_shape(path: &Path, source: &str) -> u32 {
     hits
 }
 
-// ---------------------------------------------------------------------
-// AST: from-not-builder — inherent `impl T { fn from_<word>(<one arg>) -> Self }`.
-//
-// The pre-R6 builder pattern declared a named constructor whose only
-// job was to rebuild a wire DTO from a domain value. R6 migrated those
-// to `impl From<&Source> for T` so the conversion is discoverable at
-// the trait surface and tooling (`Into`, `?`) plumbs through. The
-// predicate counts inherent impl blocks containing exactly one item: a
-// `fn from_<word>` taking a single non-self argument and returning
-// `Self`. Trait impls (e.g. `impl From<&T> for Body`) are not flagged.
-
-struct FromBuilderVisitor {
-    hits: u32,
-}
-
-impl FromBuilderVisitor {
-    fn matches_impl(item: &syn::ItemImpl) -> bool {
-        if item.trait_.is_some() {
-            return false;
-        }
-        if item.items.len() != 1 {
-            return false;
-        }
-        let syn::ImplItem::Fn(method) = &item.items[0] else {
-            return false;
-        };
-        let name = method.sig.ident.to_string();
-        let Some(rest) = name.strip_prefix("from_") else {
-            return false;
-        };
-        if rest.is_empty() {
-            return false;
-        }
-        if method.sig.inputs.len() != 1 {
-            return false;
-        }
-        if matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
-            return false;
-        }
-        let syn::ReturnType::Type(_, ty) = &method.sig.output else {
-            return false;
-        };
-        let syn::Type::Path(type_path) = ty.as_ref() else {
-            return false;
-        };
-        type_path.path.is_ident("Self")
-    }
-}
-
-impl<'ast> Visit<'ast> for FromBuilderVisitor {
-    fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
-        if Self::matches_impl(node) {
-            self.hits = self.hits.saturating_add(1);
-        }
-        syn::visit::visit_item_impl(self, node);
-    }
-}
-
-// ---------------------------------------------------------------------
-// Name-suffix duplication: fn foo_<module> in mod <module>.
-
-fn count_name_suffix(path: &Path, source: &str) -> u32 {
-    let Some(module) = module_name(path) else {
-        return 0;
-    };
-    let pattern = format!(r"fn\s+\w+_{module}\b");
-    let re = Regex::new(&pattern).expect("dynamic regex");
-    count_regex(&re, source)
-}
-
-fn module_name(path: &Path) -> Option<String> {
-    let stem = path.file_stem()?.to_string_lossy();
-    if stem == "mod" || stem == "lib" || stem == "main" {
-        path.parent()?.file_name().map(|n| n.to_string_lossy().into_owned())
-    } else {
-        Some(stem.into_owned())
-    }
+fn is_clap_cli_file(path: &Path) -> bool {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    normalized.ends_with("src/cli.rs")
+        || (normalized.contains("src/commands/") && normalized.ends_with("/cli.rs"))
 }
 
 // ---------------------------------------------------------------------
@@ -781,15 +607,9 @@ struct FileBaseline {
     #[serde(default)]
     no_op_forwarders: u32,
     #[serde(default)]
-    name_suffix_duplication: u32,
-    #[serde(default)]
-    currently_audit: u32,
-    #[serde(default)]
     error_envelope_inlined: u32,
     #[serde(default)]
     path_helper_inlined: u32,
-    #[serde(default)]
-    ok_literal_in_body: u32,
     #[serde(default)]
     direct_fs_write: u32,
     #[serde(default)]
@@ -798,8 +618,6 @@ struct FileBaseline {
     module_line_count: u32,
     #[serde(default)]
     result_cliresult_default: u32,
-    #[serde(default)]
-    from_not_builder: u32,
     #[serde(default)]
     verbose_doc_paragraphs: u32,
     #[serde(default)]
@@ -814,16 +632,12 @@ impl FileBaseline {
             "rfc-numbers-in-code" => self.rfc_numbers_in_code,
             "ritual-doc-paragraphs" => self.ritual_doc_paragraphs,
             "no-op-forwarders" => self.no_op_forwarders,
-            "name-suffix-duplication" => self.name_suffix_duplication,
-            "currently-audit" => self.currently_audit,
             "error-envelope-inlined" => self.error_envelope_inlined,
             "path-helper-inlined" => self.path_helper_inlined,
-            "ok-literal-in-body" => self.ok_literal_in_body,
             "direct-fs-write" => self.direct_fs_write,
             "stale-cli-vocab" => self.stale_cli_vocab,
             "module-line-count" => self.module_line_count,
             "result-cliresult-default" => self.result_cliresult_default,
-            "from-not-builder" => self.from_not_builder,
             "verbose-doc-paragraphs" => self.verbose_doc_paragraphs,
             "cli-help-shape" => self.cli_help_shape,
             _ => 0,
@@ -917,16 +731,12 @@ fn baseline_iter(b: &FileBaseline) -> impl Iterator<Item = (&'static str, u32)> 
         ("rfc-numbers-in-code", b.rfc_numbers_in_code),
         ("ritual-doc-paragraphs", b.ritual_doc_paragraphs),
         ("no-op-forwarders", b.no_op_forwarders),
-        ("name-suffix-duplication", b.name_suffix_duplication),
-        ("currently-audit", b.currently_audit),
         ("error-envelope-inlined", b.error_envelope_inlined),
         ("path-helper-inlined", b.path_helper_inlined),
-        ("ok-literal-in-body", b.ok_literal_in_body),
         ("direct-fs-write", b.direct_fs_write),
         ("stale-cli-vocab", b.stale_cli_vocab),
         ("module-line-count", b.module_line_count),
         ("result-cliresult-default", b.result_cliresult_default),
-        ("from-not-builder", b.from_not_builder),
         ("verbose-doc-paragraphs", b.verbose_doc_paragraphs),
         ("cli-help-shape", b.cli_help_shape),
     ]
@@ -943,7 +753,7 @@ fn write_allowlist(path: &Path, current: &BTreeMap<String, FileBaseline>) -> std
          # Each `[file.\"<rel-path>\"]` table caps the number of violations of each\n\
          # predicate for that file. A live count strictly greater than the\n\
          # baseline fails CI; missing predicates default to zero (new files\n\
-         # start clean) except `module-line-count`, which defaults to 500.\n\
+         # start clean) except `module-line-count`, which defaults to 400.\n\
          # Reductions are encouraged in any PR that touches a file; the CI\n\
          # `--check-tightenable` mode fails when an unrelated PR could lower a\n\
          # baseline without code changes.\n\

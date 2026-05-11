@@ -1,9 +1,9 @@
 {
+  "envelope-version": 6,
   "passed": true,
   "plan": {
     "name": "demo",
     "path": "<TEMPDIR>/plan.yaml"
   },
-  "results": [],
-  "schema-version": 5
+  "results": []
 }

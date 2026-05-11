@@ -85,6 +85,6 @@
       "status": "pass"
     }
   ],
-  "passed": false,
-  "schema-version": 5
+  "envelope-version": 6,
+  "passed": false
 }

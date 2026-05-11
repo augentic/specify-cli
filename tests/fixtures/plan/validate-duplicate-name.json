@@ -1,4 +1,5 @@
 {
+  "envelope-version": 6,
   "passed": false,
   "plan": {
     "name": "demo",
@@ -11,6 +12,5 @@
       "level": "error",
       "message": "duplicate plan entry name 'foo'"
     }
-  ],
-  "schema-version": 5
+  ]
 }

@@ -10,10 +10,10 @@ use specify_slice::{
 };
 
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit};
+use crate::output::Render;
 
 pub(super) fn create(
-    ctx: &Ctx, name: String, capability: Option<String>, if_exists: CreateIfExists,
+    ctx: &Ctx, name: &str, capability: Option<String>, if_exists: CreateIfExists,
 ) -> Result<()> {
     let capability_value = capability.map_or_else(
         || {
@@ -31,9 +31,9 @@ pub(super) fn create(
     std::fs::create_dir_all(&slices_dir)?;
 
     let outcome =
-        slice_actions::create(&slices_dir, &name, &capability_value, if_exists, Utc::now())?;
+        slice_actions::create(&slices_dir, name, &capability_value, if_exists, Utc::now())?;
 
-    emit(Stream::Stdout, ctx.format, &CreateBody::from(&outcome))?;
+    ctx.out().write(&CreateBody::from(&outcome))?;
     Ok(())
 }
 
@@ -42,7 +42,7 @@ pub(super) fn create(
 struct CreateBody {
     name: String,
     slice_dir: String,
-    status: String,
+    status: LifecycleStatus,
     capability: String,
     created: bool,
     restarted: bool,
@@ -53,7 +53,7 @@ impl From<&CreateOutcome> for CreateBody {
         Self {
             name: outcome.dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
             slice_dir: outcome.dir.display().to_string(),
-            status: outcome.metadata.status.to_string(),
+            status: outcome.metadata.status,
             capability: outcome.metadata.capability.clone(),
             created: outcome.created,
             restarted: outcome.restarted,
@@ -79,19 +79,15 @@ impl Render for CreateBody {
 pub(super) fn transition(ctx: &Ctx, name: String, target: LifecycleStatus) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let metadata = slice_actions::transition(&slice_dir, target, Utc::now())?;
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &TransitionBody {
-            name,
-            status: metadata.status.to_string(),
-            defined_at: metadata.defined_at.clone(),
-            build_started_at: metadata.build_started_at.clone(),
-            completed_at: metadata.completed_at.clone(),
-            merged_at: metadata.merged_at.clone(),
-            dropped_at: metadata.dropped_at,
-        },
-    )?;
+    ctx.out().write(&TransitionBody {
+        name,
+        status: metadata.status,
+        defined_at: metadata.defined_at.clone(),
+        build_started_at: metadata.build_started_at.clone(),
+        completed_at: metadata.completed_at.clone(),
+        merged_at: metadata.merged_at.clone(),
+        dropped_at: metadata.dropped_at,
+    })?;
     Ok(())
 }
 
@@ -99,7 +95,7 @@ pub(super) fn transition(ctx: &Ctx, name: String, target: LifecycleStatus) -> Re
 #[serde(rename_all = "kebab-case")]
 struct TransitionBody {
     name: String,
-    status: String,
+    status: LifecycleStatus,
     defined_at: Option<Rfc3339Stamp>,
     build_started_at: Option<Rfc3339Stamp>,
     completed_at: Option<Rfc3339Stamp>,
@@ -117,14 +113,10 @@ pub(super) fn archive(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let target = slice_actions::archive(&slice_dir, &archive_dir, Utc::now())?;
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &ArchiveBody {
-            name,
-            archive_path: target.display().to_string(),
-        },
-    )?;
+    ctx.out().write(&ArchiveBody {
+        name,
+        archive_path: target.display().to_string(),
+    })?;
     Ok(())
 }
 
@@ -141,21 +133,17 @@ impl Render for ArchiveBody {
     }
 }
 
-pub(super) fn drop_slice(ctx: &Ctx, name: String, reason: Option<String>) -> Result<()> {
+pub(super) fn drop_slice(ctx: &Ctx, name: String, reason: Option<&str>) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let (metadata, archive_path) =
-        slice_actions::drop(&slice_dir, &archive_dir, reason.as_deref(), Utc::now())?;
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &DropBody {
-            name,
-            status: metadata.status.to_string(),
-            archive_path: archive_path.display().to_string(),
-            drop_reason: metadata.drop_reason,
-        },
-    )?;
+        slice_actions::drop(&slice_dir, &archive_dir, reason, Utc::now())?;
+    ctx.out().write(&DropBody {
+        name,
+        status: metadata.status,
+        archive_path: archive_path.display().to_string(),
+        drop_reason: metadata.drop_reason,
+    })?;
     Ok(())
 }
 
@@ -163,7 +151,7 @@ pub(super) fn drop_slice(ctx: &Ctx, name: String, reason: Option<String>) -> Res
 #[serde(rename_all = "kebab-case")]
 struct DropBody {
     name: String,
-    status: String,
+    status: LifecycleStatus,
     archive_path: String,
     drop_reason: Option<String>,
 }

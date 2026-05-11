@@ -16,7 +16,7 @@ use specify_registry::Registry;
 
 use super::slice::{StatusEntry, collect_status, list_slice_names, status_entry_to_json};
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit};
+use crate::output::Render;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
@@ -33,7 +33,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     }
 
     let body = DashboardBody::new(registry, plan_summary, entries);
-    emit(Stream::Stdout, ctx.format, &body)?;
+    ctx.out().write(&body)?;
     Ok(())
 }
 
@@ -174,7 +174,7 @@ fn render_dashboard(
         return Ok(());
     }
     let name_w = entries.iter().map(|e| e.name.len()).max().unwrap_or(6).max(6);
-    let status_w = entries.iter().map(|e| e.status.len()).max().unwrap_or(6).max(6);
+    let status_w = entries.iter().map(|e| e.status.to_string().len()).max().unwrap_or(6).max(6);
     writeln!(
         w,
         "  {:<name_w$}  {:<status_w$}  tasks",

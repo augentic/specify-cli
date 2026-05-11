@@ -7,7 +7,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use specify_error::{Error, ValidationStatus, ValidationSummary};
-use specify_slice::atomic::atomic_yaml_write;
+use specify_slice::atomic::yaml_write;
 
 use super::fingerprint::ContextFingerprint;
 
@@ -123,7 +123,10 @@ pub(super) fn load(path: &Path) -> Result<Option<ContextLock>, Error> {
 }
 
 pub(super) fn save(path: &Path, lock: &ContextLock) -> Result<(), Error> {
-    atomic_yaml_write(path, lock)
+    // ContextLock isn't a Plan/Registry/ProjectConfig sibling; its load
+    // path returns a typed Validation envelope rather than `Option<Self>`,
+    // so it doesn't fit the AtomicYaml shape.
+    yaml_write(path, lock)
 }
 
 pub(super) fn diff_inputs(expected: &[LockInput], actual: &[LockInput]) -> InputDiff {

@@ -41,7 +41,7 @@ impl Fixture {
 }
 
 #[test]
-fn report_classifies_required_field_as_breaking() {
+fn classifies_required_field_as_breaking() {
     let fixture = Fixture::new();
     fixture.write_consumer_contract(&openapi_contract(true, ""));
     fixture.write_producer_contract(&openapi_contract(true, "                - phone\n"));

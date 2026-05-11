@@ -4,9 +4,9 @@
     "status": "in-progress",
     "status-reason": null
   },
+  "envelope-version": 6,
   "plan": {
     "name": "demo",
     "path": "<TEMPDIR>/plan.yaml"
-  },
-  "schema-version": 5
+  }
 }

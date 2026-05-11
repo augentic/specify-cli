@@ -7,10 +7,10 @@ use specify_config::{ProjectConfig, is_workspace_clone_path};
 use specify_error::{Error, Result};
 use specify_init::{InitOptions, InitResult, VersionMode, init};
 
-use crate::cli::OutputFormat;
+use crate::cli::Format;
 use crate::commands::context;
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit, path_string};
+use crate::output::{Out, Render, display};
 
 /// Dispatcher for `specify init`.
 ///
@@ -22,8 +22,7 @@ use crate::output::{Render, Stream, emit, path_string};
 /// - missing both, or both at once, errors with
 ///   `init-requires-capability-or-hub`.
 pub(super) fn run(
-    format: OutputFormat, capability: Option<String>, name: Option<String>, domain: Option<String>,
-    hub: bool,
+    format: Format, capability: Option<String>, name: Option<&str>, domain: Option<&str>, hub: bool,
 ) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
@@ -38,8 +37,8 @@ pub(super) fn run(
     let opts = InitOptions {
         project_dir: &project_dir,
         capability: capability.as_deref(),
-        name: name.as_deref(),
-        domain: domain.as_deref(),
+        name,
+        domain,
         version_mode: VersionMode::WriteCurrent,
         hub,
     };
@@ -122,19 +121,19 @@ impl From<InitContextGeneration> for InitContextBody {
 }
 
 fn emit_init_result(
-    format: OutputFormat, result: &InitResult, hub: bool, context_generation: InitContextGeneration,
+    format: Format, result: &InitResult, hub: bool, context_generation: InitContextGeneration,
 ) -> Result<()> {
     let body = InitBody {
-        config_path: path_string(&result.config_path),
+        config_path: display(&result.config_path),
         capability_name: result.capability_name.clone(),
         cache_present: result.cache_present,
-        directories_created: result.directories_created.iter().map(|p| path_string(p)).collect(),
+        directories_created: result.directories_created.iter().map(|p| display(p)).collect(),
         scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
         specify_version: result.specify_version.clone(),
         hub,
         context: InitContextBody::from(context_generation),
     };
-    emit(Stream::Stdout, format, &body)?;
+    Out::for_format(format).write(&body)?;
     Ok(())
 }
 
@@ -163,9 +162,7 @@ impl InitContextGeneration {
     }
 }
 
-fn generate_initial_context(
-    format: OutputFormat, project_dir: &Path,
-) -> Result<InitContextGeneration> {
+fn generate_initial_context(format: Format, project_dir: &Path) -> Result<InitContextGeneration> {
     if is_workspace_clone_path(project_dir) {
         return Ok(InitContextGeneration::SkippedWorkspaceClone);
     }

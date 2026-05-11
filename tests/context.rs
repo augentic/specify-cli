@@ -186,7 +186,7 @@ fn section_bullets<'a>(contents: &'a str, heading: &str, next_heading: &str) -> 
 }
 
 #[test]
-fn context_lock_schema_validates_yaml_shape() {
+fn lock_schema_validates_yaml_shape() {
     let validator = load_context_lock_validator();
     let instance = yaml_to_json(CONTEXT_LOCK_EXAMPLE);
     let errors: Vec<String> =
@@ -196,7 +196,7 @@ fn context_lock_schema_validates_yaml_shape() {
 }
 
 #[test]
-fn context_lock_schema_rejects_json_output_key_names() {
+fn lock_schema_rejects_json_keys() {
     let validator = load_context_lock_validator();
     let output_style = CONTEXT_LOCK_EXAMPLE
         .replace("cli_version", "cli-version")
@@ -229,7 +229,7 @@ fn init_regular_project_creates_agents_md() {
 }
 
 #[test]
-fn init_hub_project_creates_hub_shaped_agents_md() {
+fn init_hub_creates_hub_shaped_agents_md() {
     let project = ContextProject::new();
     project.init_hub().success();
 
@@ -254,7 +254,7 @@ fn init_hub_project_creates_hub_shaped_agents_md() {
 }
 
 #[test]
-fn init_preserves_pre_existing_agents_md_byte_for_byte() {
+fn init_preserves_existing_agents_md() {
     let project = ContextProject::new();
     let hand_authored = "# Hand Authored\n\nKeep this exact file.\n";
     project.write_agents(hand_authored);
@@ -266,7 +266,7 @@ fn init_preserves_pre_existing_agents_md_byte_for_byte() {
 }
 
 #[test]
-fn context_generate_writes_agents_md_when_missing() {
+fn generate_writes_agents_when_missing() {
     let project = ContextProject::initialized();
     project.remove_agents();
 
@@ -291,7 +291,7 @@ fn context_generate_writes_agents_md_when_missing() {
 }
 
 #[test]
-fn context_generate_check_succeeds_when_clean() {
+fn generate_check_succeeds_when_clean() {
     let project = ContextProject::initialized();
     let before = project.read_agents();
 
@@ -302,7 +302,7 @@ fn context_generate_check_succeeds_when_clean() {
 }
 
 #[test]
-fn context_generate_check_fails_when_generation_would_update_file() {
+fn generate_check_fails_when_drift() {
     let project = ContextProject::initialized();
     let stale =
         project.read_agents().replace("## Runtime\n- not detected\n", "## Runtime\n- stale\n");
@@ -315,7 +315,7 @@ fn context_generate_check_fails_when_generation_would_update_file() {
 }
 
 #[test]
-fn context_generate_check_fails_when_agents_md_is_missing() {
+fn generate_check_fails_when_missing() {
     let project = ContextProject::initialized();
     project.remove_agents();
 
@@ -326,7 +326,7 @@ fn context_generate_check_fails_when_agents_md_is_missing() {
 }
 
 #[test]
-fn context_generate_json_uses_existing_envelope_and_kebab_case_keys() {
+fn generate_json_uses_envelope_and_kebab() {
     let project = ContextProject::initialized();
     project.remove_agents();
     let mut cmd = project.command();
@@ -334,18 +334,18 @@ fn context_generate_json_uses_existing_envelope_and_kebab_case_keys() {
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("stdout json");
 
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["status"], "written");
     assert_eq!(value["path"], "AGENTS.md");
     assert_eq!(value["check"], false);
     assert_eq!(value["force"], false);
     assert_eq!(value["changed"], true);
     assert_eq!(value["disposition"], "create");
-    assert!(value.get("schema_version").is_none(), "JSON keys must stay kebab-case");
+    assert!(value.get("envelope_version").is_none(), "JSON keys must stay kebab-case");
 }
 
 #[test]
-fn context_generate_reports_unfenced_agents_md_with_stable_error() {
+fn generate_reports_unfenced_agents() {
     let project = ContextProject::initialized();
     project.write_agents("# Hand Authored\n\nKeep me.\n");
 
@@ -370,7 +370,7 @@ fn context_generate_reports_unfenced_agents_md_with_stable_error() {
 }
 
 #[test]
-fn context_hub_dependencies_include_peer_descriptions() {
+fn hub_deps_include_peer_descriptions() {
     let project = ContextProject::new();
     project.init_hub().success();
     project.write_registry(
@@ -405,7 +405,7 @@ projects:
 }
 
 #[test]
-fn context_navigation_lists_synced_workspace_clones() {
+fn navigation_lists_synced_clones() {
     let project = ContextProject::new();
     project.init_hub().success();
     fs::create_dir_all(project.path().join("billing-src")).expect("billing peer dir");
@@ -444,7 +444,7 @@ projects:
 }
 
 #[test]
-fn context_single_repo_project_renders_no_registered_peers() {
+fn single_repo_renders_no_peers() {
     let project = ContextProject::initialized();
 
     let agents = project.read_agents();
@@ -456,7 +456,7 @@ fn context_single_repo_project_renders_no_registered_peers() {
 }
 
 #[test]
-fn context_detects_cargo_runtime_tests_and_clippy() {
+fn detects_cargo_runtime_tests_clippy() {
     let project = ContextProject::initialized();
     fs::write(project.path().join("Cargo.toml"), "[package]\nname = \"demo\"\n")
         .expect("write Cargo.toml");
@@ -474,7 +474,7 @@ fn context_detects_cargo_runtime_tests_and_clippy() {
 }
 
 #[test]
-fn context_detects_npm_runtime_tests_and_lint_script() {
+fn detects_npm_runtime_tests_and_lint() {
     let project = ContextProject::initialized();
     fs::write(
         project.path().join("package.json"),
@@ -494,7 +494,7 @@ fn context_detects_npm_runtime_tests_and_lint_script() {
 }
 
 #[test]
-fn context_orders_mixed_runtime_bullets_deterministically() {
+fn orders_mixed_runtime_bullets() {
     let project = ContextProject::initialized();
     fs::write(project.path().join("Cargo.toml"), "[package]\nname = \"demo\"\n")
         .expect("write Cargo.toml");
@@ -520,7 +520,7 @@ fn context_orders_mixed_runtime_bullets_deterministically() {
 }
 
 #[test]
-fn context_warns_for_corrupt_markers_and_renders_not_detected() {
+fn warns_for_corrupt_markers() {
     let project = ContextProject::initialized();
     fs::write(project.path().join("Cargo.toml"), "package = [").expect("write Cargo.toml");
     fs::write(project.path().join("package.json"), "{").expect("write package.json");
@@ -540,7 +540,7 @@ fn context_warns_for_corrupt_markers_and_renders_not_detected() {
 }
 
 #[test]
-fn context_generate_refuses_inside_workspace_clone() {
+fn generate_refuses_inside_clone() {
     let hub = ContextProject::initialized();
     let clone_root = hub.path().join(".specify/workspace/peer");
     fs::create_dir_all(&clone_root).expect("create workspace clone");
@@ -560,7 +560,7 @@ fn context_generate_refuses_inside_workspace_clone() {
 }
 
 #[test]
-fn context_harness_reads_agents_and_asserts_fences() {
+fn harness_reads_agents_and_asserts_fences() {
     let project = ContextProject::new();
     project.write_agents(
         "# context-demo - Agent Instructions\n\n\
@@ -577,7 +577,7 @@ fn context_harness_reads_agents_and_asserts_fences() {
 }
 
 #[test]
-fn context_check_is_green_after_repeated_generate() {
+fn check_is_green_after_repeated_generate() {
     let project = ContextProject::initialized();
     let initial_agents = project.read_agents();
     let initial_lock = project.read_lock();
@@ -596,7 +596,7 @@ fn context_check_is_green_after_repeated_generate() {
 }
 
 #[test]
-fn context_check_reports_registry_input_drift() {
+fn check_reports_registry_input_drift() {
     let project = ContextProject::initialized();
     project.write_registry(
         "\
@@ -636,7 +636,7 @@ projects:
 }
 
 #[test]
-fn context_check_reports_fenced_body_drift() {
+fn check_reports_fenced_body_drift() {
     let project = ContextProject::initialized();
     let edited =
         project.read_agents().replace("## Runtime\n- not detected\n", "## Runtime\n- edited\n");
@@ -653,7 +653,7 @@ fn context_check_reports_fenced_body_drift() {
 }
 
 #[test]
-fn context_check_distinguishes_missing_agents_and_missing_lock() {
+fn check_distinguishes_missing_agents_lock() {
     let missing_agents = ContextProject::initialized();
     missing_agents.remove_agents();
 
@@ -670,7 +670,7 @@ fn context_check_distinguishes_missing_agents_and_missing_lock() {
 }
 
 #[test]
-fn context_check_rejects_newer_lock_version_as_validation_error() {
+fn check_rejects_newer_lock_version() {
     let project = ContextProject::initialized();
     let newer = project.read_lock().replacen("version: 1", "version: 999", 1);
     project.write_lock(&newer);
@@ -691,7 +691,7 @@ fn context_check_rejects_newer_lock_version_as_validation_error() {
 }
 
 #[test]
-fn context_check_rejects_malformed_lock_with_stable_validation_rule() {
+fn check_rejects_malformed_lock() {
     let project = ContextProject::initialized();
     project.write_lock("version: one\n");
 
@@ -711,7 +711,7 @@ fn context_check_rejects_malformed_lock_with_stable_validation_rule() {
 }
 
 #[test]
-fn context_generate_refuses_to_overwrite_modified_fenced_content_without_force() {
+fn generate_refuses_overwrite_without_force() {
     let project = ContextProject::initialized();
     let edited =
         project.read_agents().replace("## Runtime\n- not detected\n", "## Runtime\n- edited\n");

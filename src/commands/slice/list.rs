@@ -12,16 +12,16 @@ use serde::Serialize;
 use serde_json::Value;
 use specify_capability::{Phase, PipelineView};
 use specify_error::Result;
-use specify_slice::SliceMetadata;
+use specify_slice::{LifecycleStatus, SliceMetadata};
 use specify_task::parse_tasks;
 
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit};
+use crate::output::Render;
 
 pub(in crate::commands) struct StatusEntry {
     pub name: String,
     pub capability: String,
-    pub status: String,
+    pub status: LifecycleStatus,
     pub tasks: Option<(usize, usize)>,
     pub artifacts: BTreeMap<String, bool>,
 }
@@ -30,7 +30,7 @@ pub(in crate::commands) struct StatusEntry {
 #[serde(rename_all = "kebab-case")]
 struct EntryJson {
     name: String,
-    status: String,
+    status: LifecycleStatus,
     capability: String,
     tasks: Option<TaskCounts>,
     artifacts: BTreeMap<String, bool>,
@@ -47,7 +47,7 @@ pub(in crate::commands) fn status_entry_to_json(e: &StatusEntry) -> Value {
     let tasks_value = e.tasks.map(|(complete, total)| TaskCounts { total, complete });
     serde_json::to_value(EntryJson {
         name: e.name.clone(),
-        status: e.status.clone(),
+        status: e.status,
         capability: e.capability.clone(),
         tasks: tasks_value,
         artifacts: e.artifacts.clone(),
@@ -59,7 +59,6 @@ pub(in crate::commands) fn collect_status(
     slice_dir: &Path, name: &str, pipeline: &PipelineView, project_dir: &Path,
 ) -> Result<StatusEntry> {
     let metadata = SliceMetadata::load(slice_dir)?;
-    let status_str = metadata.status.to_string();
 
     // Delegate per-brief artifact completion to `PipelineView` so every
     // consumer agrees on what "complete" means.
@@ -85,7 +84,7 @@ pub(in crate::commands) fn collect_status(
     Ok(StatusEntry {
         name: name.to_string(),
         capability: metadata.capability,
-        status: status_str,
+        status: metadata.status,
         tasks,
         artifacts,
     })
@@ -125,16 +124,16 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         entries.push(entry);
     }
 
-    emit(Stream::Stdout, ctx.format, &StatusListBody::new(&entries))?;
+    ctx.out().write(&StatusListBody::new(&entries))?;
     Ok(())
 }
 
-pub(super) fn status_one(ctx: &Ctx, name: String) -> Result<()> {
+pub(super) fn status_one(ctx: &Ctx, name: &str) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
-    let slice_dir = ctx.slices_dir().join(&name);
-    let entry = collect_status(&slice_dir, &name, &pipeline, &ctx.project_dir)?;
+    let slice_dir = ctx.slices_dir().join(name);
+    let entry = collect_status(&slice_dir, name, &pipeline, &ctx.project_dir)?;
 
-    emit(Stream::Stdout, ctx.format, &StatusListBody::new(std::slice::from_ref(&entry)))?;
+    ctx.out().write(&StatusListBody::new(std::slice::from_ref(&entry)))?;
     Ok(())
 }
 
@@ -190,7 +189,7 @@ fn render_single(w: &mut dyn Write, e: &StatusEntry) -> std::io::Result<()> {
 
 fn render_table(w: &mut dyn Write, entries: &[StatusEntry]) -> std::io::Result<()> {
     let name_w = entries.iter().map(|e| e.name.len()).max().unwrap_or(6).max(6);
-    let status_w = entries.iter().map(|e| e.status.len()).max().unwrap_or(6).max(6);
+    let status_w = entries.iter().map(|e| e.status.to_string().len()).max().unwrap_or(6).max(6);
     writeln!(
         w,
         "{:<name_w$}  {:<status_w$}  tasks",

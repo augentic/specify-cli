@@ -6,23 +6,30 @@ use serde::Serialize;
 use specify_change::{Entry, Plan, Severity, Status};
 use specify_config::LayoutExt;
 use specify_error::{Error, Result};
-use specify_slice::SliceMetadata;
+use specify_slice::{LifecycleStatus, SliceMetadata};
 
 use super::{PlanRef, require_file};
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit};
+use crate::output::Render;
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct StatusBody {
     plan: PlanRef,
     counts: Counts,
-    order: &'static str,
+    order: OrderLabel,
     entries: Vec<EntryRow>,
     in_progress: Option<Active>,
     blocked: Vec<NameReason>,
     failed: Vec<NameReason>,
     next_eligible: Option<String>,
+}
+
+#[derive(Serialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+enum OrderLabel {
+    Topological,
+    List,
 }
 
 #[derive(Serialize)]
@@ -41,7 +48,7 @@ struct Counts {
 #[serde(rename_all = "kebab-case")]
 struct Active {
     name: String,
-    lifecycle: Option<String>,
+    lifecycle: Option<LifecycleStatus>,
 }
 
 #[derive(Serialize)]
@@ -55,12 +62,12 @@ struct NameReason {
 #[serde(rename_all = "kebab-case")]
 struct EntryRow {
     name: String,
-    status: String,
+    status: Status,
     depends_on: Vec<String>,
     sources: Vec<String>,
     status_reason: Option<String>,
     description: Option<String>,
-    lifecycle: Option<String>,
+    lifecycle: Option<LifecycleStatus>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     context: Vec<String>,
 }
@@ -78,7 +85,8 @@ impl Render for StatusBody {
         )?;
 
         if let Some(a) = &self.in_progress {
-            let lifecycle_label = a.lifecycle.as_deref().unwrap_or("<no slice dir yet>");
+            let lifecycle_label =
+                a.lifecycle.map_or_else(|| "<no slice dir yet>".to_string(), |l| l.to_string());
             writeln!(w)?;
             writeln!(w, "In progress: {} (lifecycle: {lifecycle_label})", a.name)?;
         }
@@ -123,12 +131,12 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     }
 
     let (ordered, order_label) = if let Ok(v) = plan.topological_order() {
-        (v, "topological")
+        (v, OrderLabel::Topological)
     } else {
         eprintln!(
             "warning: dependency cycle detected — falling back to list order. Run 'specify change plan validate' for detail."
         );
-        (plan.entries.iter().collect::<Vec<_>>(), "list")
+        (plan.entries.iter().collect::<Vec<_>>(), OrderLabel::List)
     };
 
     let mut counts: BTreeMap<Status, usize> = Status::ALL.iter().map(|&s| (s, 0)).collect();
@@ -144,7 +152,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         .iter()
         .map(|entry| {
             let lifecycle =
-                if entry.status == Status::InProgress { active_lifecycle.clone() } else { None };
+                if entry.status == Status::InProgress { active_lifecycle } else { None };
             entry_row(entry, lifecycle)
         })
         .collect();
@@ -156,7 +164,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
 
     let in_progress = active.map(|a| Active {
         name: a.name.clone(),
-        lifecycle: active_lifecycle.clone(),
+        lifecycle: active_lifecycle,
     });
 
     let body = StatusBody {
@@ -181,7 +189,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         next_eligible: plan.next_eligible().map(|e| e.name.clone()),
     };
 
-    emit(Stream::Stdout, ctx.format, &body)?;
+    ctx.out().write(&body)?;
     Ok(())
 }
 
@@ -192,10 +200,10 @@ fn name_reason(entry: &Entry) -> NameReason {
     }
 }
 
-fn entry_row(entry: &Entry, lifecycle: Option<String>) -> EntryRow {
+fn entry_row(entry: &Entry, lifecycle: Option<LifecycleStatus>) -> EntryRow {
     EntryRow {
         name: entry.name.clone(),
-        status: entry.status.to_string(),
+        status: entry.status,
         depends_on: entry.depends_on.clone(),
         sources: entry.sources.clone(),
         status_reason: entry.status_reason.clone(),
@@ -205,9 +213,9 @@ fn entry_row(entry: &Entry, lifecycle: Option<String>) -> EntryRow {
     }
 }
 
-fn read_lifecycle(slice_dir: &Path) -> Option<String> {
+fn read_lifecycle(slice_dir: &Path) -> Option<LifecycleStatus> {
     if !SliceMetadata::path(slice_dir).exists() {
         return None;
     }
-    SliceMetadata::load(slice_dir).ok().map(|m| m.status.to_string())
+    SliceMetadata::load(slice_dir).ok().map(|m| m.status)
 }

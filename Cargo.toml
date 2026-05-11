@@ -27,7 +27,6 @@ specify-change.workspace = true
 specify-validate.workspace = true
 specify-tool.workspace = true
 clap.workspace = true
-clap_complete.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
@@ -59,12 +58,16 @@ members = [
     "crates/validate",
     "crates/slice",
     "crates/change",
-    "crates/vectis",
     "crates/tool",
-    "crates/contract",
     "xtask",
 ]
-exclude = []
+# `wasi-tools/` is a sibling workspace (`specify-contract` and `specify-vectis`
+# ship as standalone `wasm32-wasip2` components and stay out of the host CLI's
+# Render/emit/`specify-error` discipline). Listing the directory under
+# `exclude` keeps cargo from recursing into it from this workspace; cargo
+# still stops at its own `[workspace]` declaration without this, but the
+# explicit entry documents the boundary.
+exclude = ["wasi-tools"]
 
 # `xtask` is a workspace-internal task runner (`cargo run -p xtask -- ...`)
 # rather than a library or published binary.

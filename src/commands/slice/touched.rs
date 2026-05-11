@@ -10,13 +10,13 @@ use specify_slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actio
 
 use super::artifact_classes;
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit};
+use crate::output::Render;
 
-pub(super) fn touched_specs(ctx: &Ctx, name: String, scan: bool, set: Vec<String>) -> Result<()> {
+pub(super) fn touched_specs(ctx: &Ctx, name: String, scan: bool, set: &[String]) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
 
     let entries = if !set.is_empty() {
-        let v = parse_touched_spec_set(&set)?;
+        let v = parse_touched_spec_set(set)?;
         let metadata = slice_actions::write_touched(&slice_dir, v)?;
         metadata.touched_specs
     } else if scan {
@@ -41,14 +41,10 @@ pub(super) fn touched_specs(ctx: &Ctx, name: String, scan: bool, set: Vec<String
     };
 
     let touched: Vec<TouchedSpecRow> = entries.iter().map(TouchedSpecRow::from).collect();
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &TouchedSpecsBody {
-            name,
-            touched_specs: touched,
-        },
-    )?;
+    ctx.out().write(&TouchedSpecsBody {
+        name,
+        touched_specs: touched,
+    })?;
     Ok(())
 }
 
@@ -121,7 +117,7 @@ pub(super) fn overlap(ctx: &Ctx, name: String) -> Result<()> {
     let overlaps = slice_actions::overlap(&slices_dir, &name)?;
     let rows: Vec<OverlapRow> = overlaps.iter().map(OverlapRow::from).collect();
 
-    emit(Stream::Stdout, ctx.format, &OverlapBody { name, overlaps: rows })?;
+    ctx.out().write(&OverlapBody { name, overlaps: rows })?;
     Ok(())
 }
 

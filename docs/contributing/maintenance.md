@@ -24,7 +24,7 @@ Predicates worth watching, in roughly decreasing migration friction:
 - `ritual-doc-paragraphs` — almost always a one-line deletion.
 - `format-match-dispatch` — requires introducing a `Render` impl; see [`src/commands/codex.rs`](../../src/commands/codex.rs) for the canonical pattern.
 - `module-line-count` — split by concern (one verb per file, model vs IO vs transitions); see AGENTS.md §"Module layout".
-- The CL-X1 predicates (`error-envelope-inlined`, `path-helper-inlined`, `ok-literal-in-body`, `currently-audit`) — start at zero and should stay at zero; if one drifts, that's a regression, not a sweep target.
+- The zero-baseline predicates (`error-envelope-inlined`, `path-helper-inlined`) — start at zero and should stay at zero; if one drifts, that's a regression, not a sweep target.
 
 ## How to update baselines
 

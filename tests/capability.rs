@@ -58,7 +58,7 @@ impl Project {
 }
 
 #[test]
-fn capability_pipeline_define_lists_omnia_define_briefs_in_order() {
+fn pipeline_define_lists_briefs_in_order() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -66,7 +66,7 @@ fn capability_pipeline_define_lists_omnia_define_briefs_in_order() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["phase"], "define");
     assert_eq!(value["slice"], Value::Null);
 
@@ -86,7 +86,7 @@ fn capability_pipeline_define_lists_omnia_define_briefs_in_order() {
 }
 
 #[test]
-fn capability_pipeline_build_and_merge_each_have_their_brief() {
+fn pipeline_build_and_merge_each_have_brief() {
     let project = Project::init();
 
     let assert = specify()
@@ -111,7 +111,7 @@ fn capability_pipeline_build_and_merge_each_have_their_brief() {
 }
 
 #[test]
-fn capability_pipeline_phase_plan_lists_plan_briefs_in_topo_order() {
+fn pipeline_phase_plan_lists_briefs_in_topo() {
     let fixture = repo_root().join("tests/fixtures/schema/plan-pipeline");
     let project = Project::init_from_fixture("plan-pipeline", &fixture);
 
@@ -137,7 +137,7 @@ fn capability_pipeline_phase_plan_lists_plan_briefs_in_topo_order() {
 }
 
 #[test]
-fn capability_pipeline_phase_plan_is_empty_for_capabilities_without_plan_block() {
+fn pipeline_phase_plan_empty_without_block() {
     // Omnia (the in-repo capability) does not declare pipeline.plan at
     // all. Asking for --phase plan must succeed and return an empty
     // briefs list rather than erroring out, so callers can probe for
@@ -155,7 +155,7 @@ fn capability_pipeline_phase_plan_is_empty_for_capabilities_without_plan_block()
 }
 
 #[test]
-fn capability_pipeline_phase_plan_does_not_perturb_define_output() {
+fn pipeline_phase_plan_preserves_define() {
     // Regression: adding pipeline.plan (with briefs before the define
     // phase in load order) must not change what `--phase define`
     // returns.
@@ -174,7 +174,7 @@ fn capability_pipeline_phase_plan_does_not_perturb_define_output() {
 }
 
 #[test]
-fn capability_pipeline_with_slice_reports_completion() {
+fn pipeline_with_slice_reports_completion() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let slice_dir = project.root().join(".specify/slices/my-slice");
@@ -211,19 +211,19 @@ fn capability_pipeline_with_slice_reports_completion() {
 // ---- specify capability check ------------------------------------------------
 
 #[test]
-fn capability_check_succeeds_on_omnia_capability_yaml() {
+fn check_succeeds_on_omnia_yaml() {
     let assert = specify()
         .args(["--format", "json", "capability", "check"])
         .arg(repo_root().join("schemas").join("omnia"))
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["passed"], true, "omnia fixture must validate clean: {value}");
 }
 
 #[test]
-fn capability_check_text_output_says_capability_ok() {
+fn check_text_says_ok() {
     let assert = specify()
         .args(["capability", "check"])
         .arg(repo_root().join("schemas").join("omnia"))

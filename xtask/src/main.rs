@@ -9,12 +9,16 @@
 //!   binary and every leaf subcommand into a target directory
 //!   (`target/man/` by default). Output is gitignored; release
 //!   tooling picks it up from there.
+//! - `gen-completions` — render `clap_complete` shell completion
+//!   scripts for every `clap_complete::Shell` value under
+//!   `target/completions/` by default.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
+mod completions;
 mod manpage;
 mod standards;
 
@@ -54,6 +58,16 @@ enum Command {
         #[arg(long, default_value = "target/man")]
         out_dir: PathBuf,
     },
+    /// Render `clap_complete` shell-completion scripts for the
+    /// `specify` binary into `out_dir/<shell>/specify.<ext>` for every
+    /// `clap_complete::Shell` value. The default `target/completions/`
+    /// is gitignored; release tooling reads from there.
+    GenCompletions {
+        /// Output directory for the rendered completion scripts.
+        /// Created (with one subdirectory per shell) if missing.
+        #[arg(long, default_value = "target/completions")]
+        out_dir: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -88,6 +102,19 @@ fn main() -> ExitCode {
             }
             Err(err) => {
                 eprintln!("xtask gen-man: {err}");
+                ExitCode::from(2)
+            }
+        },
+        Command::GenCompletions { out_dir } => match completions::render(&out_dir) {
+            Ok(count) => {
+                eprintln!(
+                    "xtask gen-completions: wrote {count} completion script(s) to {}",
+                    out_dir.display()
+                );
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                eprintln!("xtask gen-completions: {err}");
                 ExitCode::from(2)
             }
         },

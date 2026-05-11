@@ -27,7 +27,7 @@ pub const FILENAME: &str = "change.md";
 /// Structured frontmatter (YAML) + free-form body (markdown). The
 /// body is preserved byte-for-byte so round-tripping is faithful;
 /// structured body interpretation is explicitly deferred.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChangeBrief {
     /// Parsed YAML frontmatter.
     pub frontmatter: ChangeFrontmatter,
@@ -68,6 +68,25 @@ pub enum InputKind {
     LegacyCode,
     /// Human-authored references (runbooks, PDFs, design docs).
     Documentation,
+}
+
+impl InputKind {
+    /// Kebab-case wire label — the single source of truth shared by
+    /// the JSON envelope (via `Serialize`) and human-readable text
+    /// renderers.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LegacyCode => "legacy-code",
+            Self::Documentation => "documentation",
+        }
+    }
+}
+
+impl std::fmt::Display for InputKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 impl ChangeBrief {

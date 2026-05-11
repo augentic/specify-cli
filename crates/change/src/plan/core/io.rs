@@ -2,12 +2,47 @@
 //!
 //! Filesystem moves for archival live in [`super::archive`].
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use specify_config::{AtomicYaml, Layout};
 use specify_error::Error;
-use specify_slice::atomic::atomic_yaml_write;
+use specify_slice::atomic::yaml_write;
 
 use super::model::Plan;
+
+impl AtomicYaml for Plan {
+    fn path(layout: Layout<'_>) -> PathBuf {
+        layout.plan_path()
+    }
+
+    /// `plan.yaml` is created by `specify change plan create`, never
+    /// synthesised implicitly. Mutation handlers (`add`, `amend`,
+    /// `transition`) should drive `with_existing_state` to surface
+    /// absence as a typed [`Error::ArtifactNotFound`].
+    fn default_for_load() -> Option<Self> {
+        None
+    }
+
+    /// Trait-side loader: `Ok(None)` when the file is absent, mirroring
+    /// the contract documented on [`AtomicYaml::load`]. Disambiguated
+    /// from the inherent [`Plan::load`] (which returns
+    /// `Error::ArtifactNotFound` on absence) so the trait helper can
+    /// branch on `None` without inspecting the error variant. The
+    /// explicit `Plan::` prefix selects the inherent associated
+    /// function; `Self::load` would resolve to this trait method and
+    /// recurse.
+    #[expect(
+        clippy::use_self,
+        reason = "explicit type prefix disambiguates the inherent `Plan::load` from this trait method of the same name"
+    )]
+    fn load(layout: Layout<'_>) -> Result<Option<Self>, Error> {
+        let path = Self::path(layout);
+        if !path.exists() {
+            return Ok(None);
+        }
+        Plan::load(&path).map(Some)
+    }
+}
 
 impl Plan {
     /// Load `plan.yaml` (at the repo root) from disk.
@@ -53,7 +88,7 @@ impl Plan {
     /// Returns `Error::Io` on any I/O failure and `Error::Yaml` if
     /// serialization fails.
     pub fn save(&self, path: &Path) -> Result<(), Error> {
-        atomic_yaml_write(path, self)
+        yaml_write(path, self)
     }
 }
 

@@ -13,7 +13,7 @@ use specify_slice::{
 };
 
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit};
+use crate::output::Render;
 
 pub(super) fn append(
     ctx: &Ctx, name: String, phase: Phase, kind: EntryKind, summary: String,
@@ -35,16 +35,12 @@ pub(super) fn append(
 
     Journal::append(&slice_dir, entry)?;
 
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &AppendBody {
-            slice: name,
-            phase: phase.to_string(),
-            kind: kind.to_string(),
-            timestamp,
-        },
-    )?;
+    ctx.out().write(&AppendBody {
+        slice: name,
+        phase: phase.to_string(),
+        kind: kind.to_string(),
+        timestamp,
+    })?;
     Ok(())
 }
 
@@ -71,7 +67,7 @@ pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
 
     let journal = Journal::load(&slice_dir)?;
     let entries: Vec<EntryRow> = journal.entries.iter().map(EntryRow::from).collect();
-    emit(Stream::Stdout, ctx.format, &ShowBody { name, entries })?;
+    ctx.out().write(&ShowBody { name, entries })?;
     Ok(())
 }
 

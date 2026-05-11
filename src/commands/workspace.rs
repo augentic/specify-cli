@@ -20,34 +20,30 @@ use specify_registry::workspace::{
 };
 
 use crate::context::Ctx;
-use crate::output::{CliResult, Render, Stream, emit};
+use crate::output::Render;
 
-pub(crate) fn sync(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
+pub(crate) fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
     let registry = match Registry::load(&ctx.project_dir)? {
         None if !projects.is_empty() => return Err(Error::RegistryMissing),
         other => other,
     };
     let synced = if let Some(reg) = registry.as_ref() {
-        let selected = reg.select(&projects)?;
+        let selected = reg.select(projects)?;
         workspace_sync_projects(&ctx.project_dir, &selected)?;
         true
     } else {
         false
     };
     let message = (!synced).then_some("no registry declared at registry.yaml; nothing to sync");
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &SyncBody {
-            registry,
-            synced,
-            message,
-        },
-    )?;
+    ctx.out().write(&SyncBody {
+        registry,
+        synced,
+        message,
+    })?;
     Ok(())
 }
 
-pub(crate) fn status(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
+pub(crate) fn status(ctx: &Ctx, projects: &[String]) -> Result<()> {
     let body = match Registry::load(&ctx.project_dir)? {
         None => {
             if !projects.is_empty() {
@@ -59,7 +55,7 @@ pub(crate) fn status(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
             }
         }
         Some(registry) => {
-            let selected = registry.select(&projects)?;
+            let selected = registry.select(projects)?;
             let slots = workspace_status_projects(&ctx.project_dir, &selected)
                 .iter()
                 .map(SlotRow::from)
@@ -67,17 +63,18 @@ pub(crate) fn status(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
             StatusBody::Present { slots }
         }
     };
-    emit(Stream::Stdout, ctx.format, &body)?;
+    ctx.out().write(&body)?;
     Ok(())
 }
 
 pub(crate) fn prepare_branch(
-    ctx: &Ctx, project: String, change: String, sources: Vec<PathBuf>, outputs: Vec<PathBuf>,
-) -> Result<CliResult> {
+    ctx: &Ctx, project: &str, change: String, sources: Vec<PathBuf>, outputs: Vec<PathBuf>,
+) -> Result<()> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
         return Err(Error::RegistryMissing);
     };
-    let selected = registry.select(std::slice::from_ref(&project))?;
+    let project_filter = [project.to_string()];
+    let selected = registry.select(&project_filter)?;
     let Some(project) = selected.first() else {
         return Err(Error::Diag {
             code: "workspace-prepare-branch-no-project",
@@ -92,38 +89,27 @@ pub(crate) fn prepare_branch(
 
     match prepare(&ctx.project_dir, project, &request) {
         Ok(prepared) => {
-            emit(
-                Stream::Stdout,
-                ctx.format,
-                &PrepareBranchBody {
-                    prepared: true,
-                    inner: &prepared,
-                    diagnostics: Vec::new(),
-                },
-            )?;
-            Ok(CliResult::Success)
+            ctx.out().write(&PrepareBranchBody {
+                prepared: true,
+                inner: &prepared,
+                diagnostics: Vec::new(),
+            })?;
+            Ok(())
         }
-        Err(diagnostic) => {
-            let exit = CliResult::GenericFailure;
-            emit(
-                Stream::Stdout,
-                ctx.format,
-                &PrepareBranchErrBody {
-                    error: "branch-preparation-failed",
-                    exit_code: exit.code(),
-                    diagnostic: &diagnostic,
-                },
-            )?;
-            Ok(exit)
-        }
+        Err(diagnostic) => Err(Error::WorkspaceBranchPreparationFailed {
+            project: project.name.clone(),
+            key: diagnostic.key,
+            detail: diagnostic.message,
+            paths: diagnostic.paths,
+        }),
     }
 }
 
-pub(crate) fn push(ctx: &Ctx, projects: Vec<String>, dry_run: bool) -> Result<CliResult> {
+pub(crate) fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
         return Err(Error::RegistryMissing);
     };
-    let selected = registry.select(&projects)?;
+    let selected = registry.select(projects)?;
 
     let plan_path = ctx.project_dir.layout().plan_path();
     if !plan_path.exists() {
@@ -149,18 +135,15 @@ pub(crate) fn push(ctx: &Ctx, projects: Vec<String>, dry_run: bool) -> Result<Cl
         })
         .collect();
 
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &PushBody {
-            plan_name: plan.name,
-            dry_run_flag: dry_run,
-            projects: items,
-            dry_run: dry_run.then_some(true),
-        },
-    )?;
+    let plan_name = plan.name.clone();
+    ctx.out().write(&PushBody {
+        plan_name: plan.name,
+        dry_run_flag: dry_run,
+        projects: items,
+        dry_run: dry_run.then_some(true),
+    })?;
 
-    Ok(if any_failed { CliResult::GenericFailure } else { CliResult::Success })
+    if any_failed { Err(Error::WorkspacePushFailed { plan: plan_name }) } else { Ok(()) }
 }
 
 #[derive(Serialize)]
@@ -324,25 +307,6 @@ impl Render for PrepareBranchBody<'_> {
                 p.dirty.tracked_allowed.len(),
                 p.dirty.untracked.len()
             )?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct PrepareBranchErrBody<'a> {
-    error: &'static str,
-    exit_code: u8,
-    diagnostic: &'a BranchDiagnostic,
-}
-
-impl Render for PrepareBranchErrBody<'_> {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "error: {}", self.diagnostic.message)?;
-        writeln!(w, "diagnostic: {}", self.diagnostic.key)?;
-        if !self.diagnostic.paths.is_empty() {
-            writeln!(w, "paths: {}", self.diagnostic.paths.join(", "))?;
         }
         Ok(())
     }

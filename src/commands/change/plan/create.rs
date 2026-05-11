@@ -2,20 +2,19 @@ use std::io::Write;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify_change::{Entry, EntryPatch, Status};
+use specify_change::{Entry, EntryPatch, Plan, Status};
+use specify_config::with_existing_state;
 use specify_error::Result;
 
-use super::{PlanRef, change_entry_json, check_project, load_for_write, plan_ref};
+use super::{PlanRef, change_entry_json, check_project, plan_ref};
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit};
+use crate::output::Render;
 
 pub(super) fn add(
     ctx: &Ctx, name: String, depends_on: Vec<String>, sources: Vec<String>,
     description: Option<String>, project: Option<String>, capability: Option<String>,
     context: Vec<String>,
 ) -> Result<()> {
-    let (plan_path, mut plan) = load_for_write(ctx)?;
-
     if let Some(ref proj) = project {
         check_project(&ctx.project_dir, proj)?;
     }
@@ -31,21 +30,19 @@ pub(super) fn add(
         description,
         status_reason: None,
     };
-
-    plan.create(entry)?;
-    plan.save(&plan_path)?;
-
-    let created = plan.entries.last().expect("Plan::create appended an entry that is now missing");
-
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &AddBody {
-            plan: plan_ref(&plan, &plan_path),
-            action: "create",
+    let plan_path = ctx.layout().plan_path();
+    let body = with_existing_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
+        plan.create(entry)?;
+        let created =
+            plan.entries.last().expect("Plan::create appended an entry that is now missing");
+        Ok(AddBody {
+            plan: plan_ref(plan, &plan_path),
+            action: PlanAction::Create,
             entry: change_entry_json(created),
-        },
-    )?;
+        })
+    })?;
+
+    ctx.out().write(&body)?;
     Ok(())
 }
 
@@ -54,8 +51,6 @@ pub(super) fn amend(
     description: Option<String>, project: Option<String>, capability: Option<String>,
     context: Option<Vec<String>>,
 ) -> Result<()> {
-    let (plan_path, mut plan) = load_for_write(ctx)?;
-
     if let Some(ref proj) = project
         && !proj.is_empty()
     {
@@ -77,21 +72,18 @@ pub(super) fn amend(
         description: description_patch,
         context,
     };
-
-    plan.amend(&name, patch)?;
-    plan.save(&plan_path)?;
-
-    let amended = plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
-
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &AmendBody {
-            plan: plan_ref(&plan, &plan_path),
-            action: "amend",
+    let plan_path = ctx.layout().plan_path();
+    let body = with_existing_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
+        plan.amend(&name, patch)?;
+        let amended = plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
+        Ok(AmendBody {
+            plan: plan_ref(plan, &plan_path),
+            action: PlanAction::Amend,
             entry: change_entry_json(amended),
-        },
-    )?;
+        })
+    })?;
+
+    ctx.out().write(&body)?;
     Ok(())
 }
 
@@ -99,7 +91,7 @@ pub(super) fn amend(
 #[serde(rename_all = "kebab-case")]
 struct AddBody {
     plan: PlanRef,
-    action: &'static str,
+    action: PlanAction,
     entry: Value,
 }
 
@@ -114,8 +106,15 @@ impl Render for AddBody {
 #[serde(rename_all = "kebab-case")]
 struct AmendBody {
     plan: PlanRef,
-    action: &'static str,
+    action: PlanAction,
     entry: Value,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum PlanAction {
+    Create,
+    Amend,
 }
 
 impl Render for AmendBody {

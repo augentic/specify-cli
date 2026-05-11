@@ -4,11 +4,11 @@
   "title": "specify change plan validate --format json response",
   "description": "Validates the JSON response body emitted by `specify change plan validate --format json`. The CLI exits 0 when `passed` is true and 2 (EXIT_VALIDATION_FAILED) otherwise; downstream skills should match on the structured payload rather than the exit code alone.",
   "type": "object",
-  "required": ["schema-version", "plan", "results", "passed"],
+  "required": ["envelope-version", "plan", "results", "passed"],
   "additionalProperties": false,
   "properties": {
-    "schema-version": {
-      "const": 5,
+    "envelope-version": {
+      "const": 6,
       "description": "JSON envelope version. Bumped in lockstep with breaking changes to the CLI's JSON payloads."
     },
     "plan": {

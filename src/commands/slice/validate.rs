@@ -2,20 +2,20 @@
 
 use std::io::Write;
 
-use specify_error::Result;
+use specify_error::{Error, Result};
 use specify_validate::{ValidationReport, ValidationResult, serialize_report, validate_slice};
 
 use crate::context::Ctx;
-use crate::output::{CliResult, Render, Stream, emit};
+use crate::output::Render;
 
-pub(super) fn run(ctx: &Ctx, name: String) -> Result<CliResult> {
+pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let pipeline = ctx.load_pipeline()?;
     let report = validate_slice(&slice_dir, &pipeline)?;
-    let exit = if report.passed { CliResult::Success } else { CliResult::ValidationFailed };
+    let passed = report.passed;
 
-    emit(Stream::Stdout, ctx.format, &ValidateBody { report: &report })?;
-    Ok(exit)
+    ctx.out().write(&ValidateBody { report: &report })?;
+    if passed { Ok(()) } else { Err(Error::SliceValidationFailed { name }) }
 }
 
 struct ValidateBody<'a> {

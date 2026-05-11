@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 specify-capability.workspace = true
 specify-error.workspace = true
+specify-registry.workspace = true
 specify-slice.workspace = true
 specify-tool.workspace = true
 semver.workspace = true

@@ -4,8 +4,8 @@
 //! the binary with `assert_cmd`, and asserts on exit code + stdout.
 //! The JSON output is parsed back into `serde_json::Value` for
 //! structural assertions, while the byte sequence is also pinned by a
-//! field-order check so any future drift in the legacy envelope shape
-//! fails loud.
+//! field-order check so any future drift in the envelope shape fails
+//! loud.
 
 use std::fs;
 use std::path::PathBuf;
@@ -43,7 +43,7 @@ fn clean_baseline_exits_zero_with_empty_findings() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let value: Value = serde_json::from_str(&stdout).expect("valid JSON");
 
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["envelope-version"], 2);
     assert_eq!(value["ok"], true);
     assert_eq!(value["findings"], serde_json::json!([]));
     assert_eq!(value["exit-code"], 0);
@@ -150,13 +150,13 @@ fn text_format_fail_lists_findings_on_stderr() {
     assert!(stderr.contains("contract.version-is-semver"), "rule id surfaces on stderr: {stderr}");
 }
 
-/// Pin the legacy envelope key order on the JSON output. Operator
-/// scripts parsing line-by-line (e.g. `head` + `grep`) rely on
-/// `schema-version` being first and `findings`/`exit-code` being
+/// Pin the envelope key order on the JSON output. Operator scripts
+/// parsing line-by-line (e.g. `head` + `grep`) rely on
+/// `envelope-version` being first and `findings`/`exit-code` being
 /// last; the typed `Serialize` structs in
 /// `specify_validate::serialize_contract_findings` lock that order in.
 #[test]
-fn json_envelope_preserves_legacy_field_order() {
+fn json_envelope_preserves_field_order() {
     let tmp = TempDir::new().unwrap();
     write_contract(
         &tmp,
@@ -167,7 +167,7 @@ fn json_envelope_preserves_legacy_field_order() {
     let assert = cmd().arg(contracts_dir(&tmp)).assert().code(1);
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
 
-    let p_schema = stdout.find("\"schema-version\"").expect("schema-version present");
+    let p_schema = stdout.find("\"envelope-version\"").expect("envelope-version present");
     let p_contracts = stdout.find("\"contracts-dir\"").expect("contracts-dir present");
     let p_ok = stdout.find("\"ok\"").expect("ok present");
     let p_findings = stdout.find("\"findings\"").expect("findings present");
@@ -185,14 +185,13 @@ fn json_envelope_preserves_legacy_field_order() {
 }
 
 /// Pin the **byte sequence** of the JSON envelope on a known
-/// fixture. This is the parity check the prompt asked for: any
-/// future drift from the legacy `specify contract validate` shape
-/// fails this golden snapshot.
+/// fixture. Any future drift from the wire shape fails this golden
+/// snapshot.
 ///
 /// Volatile parts of the path (the tempdir prefix) are masked out
 /// with `<TMP>` before comparison so the snapshot is portable.
 #[test]
-fn json_envelope_matches_legacy_byte_sequence() {
+fn json_envelope_matches_byte_sequence() {
     let tmp = TempDir::new().unwrap();
     write_contract(
         &tmp,
@@ -208,7 +207,7 @@ fn json_envelope_matches_legacy_byte_sequence() {
     let masked = stdout.replace(&tmp_str, "<TMP>");
 
     let expected = "{\n  \
-        \"schema-version\": 2,\n  \
+        \"envelope-version\": 2,\n  \
         \"contracts-dir\": \"<TMP>/contracts\",\n  \
         \"ok\": false,\n  \
         \"findings\": [\n    \

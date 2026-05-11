@@ -1,7 +1,7 @@
 //! Top-level clap derive surface for the `specify` binary.
 //!
 //! This module owns only the umbrella types: [`Cli`], [`Commands`],
-//! [`OutputFormat`], and the [`SourceArg`] `--source key=value` parser.
+//! [`Format`], and the [`SourceArg`] `--source key=value` parser.
 //! Per-verb action enums live next to their dispatchers in
 //! `src/commands/<verb>/cli.rs` and are re-exported below so the clap
 //! derive on [`Commands`] resolves them at expansion time.
@@ -28,7 +28,7 @@ pub(crate) use crate::commands::workspace::cli::WorkspaceAction;
 #[command(
     name = "specify",
     version,
-    about = "Specify CLI — deterministic operations for spec-driven development"
+    about = "Deterministic primitives for spec-driven development"
 )]
 pub(crate) struct Cli {
     #[command(subcommand)]
@@ -38,11 +38,11 @@ pub(crate) struct Cli {
     /// `SPECIFY_FORMAT=json`) for structured envelopes when shelling
     /// out from skills.
     #[arg(long, env = "SPECIFY_FORMAT", default_value = "text", global = true)]
-    pub(crate) format: OutputFormat,
+    pub(crate) format: Format,
 }
 
 #[derive(Copy, Clone, ValueEnum, PartialEq, Eq)]
-pub(crate) enum OutputFormat {
+pub(crate) enum Format {
     Text,
     Json,
 }
@@ -127,13 +127,6 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: WorkspaceAction,
     },
-
-    /// Generate shell completions for the given shell.
-    Completions {
-        /// Target shell
-        #[arg(value_enum)]
-        shell: clap_complete::Shell,
-    },
 }
 
 /// Typed `--source <key>=<path-or-url>` CLI value.
@@ -141,7 +134,7 @@ pub(crate) enum Commands {
 /// The [`FromStr`] impl returns a `String` error on malformed input so
 /// clap surfaces a standard usage diagnostic (exit code 2). Call sites
 /// read `arg.key` / `arg.value` instead of unpacking a positional tuple.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct SourceArg {
     /// Source key (left of `=`).
     pub(crate) key: String,

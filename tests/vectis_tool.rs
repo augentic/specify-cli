@@ -36,8 +36,9 @@ fn vectis_wasi_artifact() -> &'static PathBuf {
 }
 
 fn build_vectis_wasi_artifact(root: &Path, dist: &Path, wasm: &Path) {
+    let wasi_workspace = root.join("wasi-tools");
     let status = ProcessCommand::new("cargo")
-        .current_dir(root)
+        .current_dir(&wasi_workspace)
         .args([
             "build",
             "-p",
@@ -57,7 +58,7 @@ fn build_vectis_wasi_artifact(root: &Path, dist: &Path, wasm: &Path) {
     );
 
     fs::create_dir_all(dist).expect("create Vectis WASI dist dir");
-    fs::copy(root.join("target/wasm32-wasip2/release/vectis.wasm"), wasm)
+    fs::copy(wasi_workspace.join("target/wasm32-wasip2/release/vectis.wasm"), wasm)
         .expect("copy vectis.wasm to dist");
 }
 
@@ -148,7 +149,7 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
         .assert()
         .success();
     let scaffold_value = parse_json(&scaffold.get_output().stdout);
-    assert_eq!(scaffold_value["schema-version"], 2);
+    assert_eq!(scaffold_value["envelope-version"], 2);
     assert_eq!(scaffold_value["target"], "core");
     assert_eq!(scaffold_value["app-name"], "Counter");
     assert!(fixture.project.join("shared/src/app.rs").is_file());
@@ -163,7 +164,7 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
         .failure();
     assert_eq!(overwrite.get_output().status.code(), Some(1));
     let overwrite_value = parse_json(&overwrite.get_output().stdout);
-    assert_eq!(overwrite_value["schema-version"], 2);
+    assert_eq!(overwrite_value["envelope-version"], 2);
     assert_eq!(overwrite_value["error"], "invalid-project");
     assert!(
         overwrite_value["message"]
@@ -193,7 +194,7 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
 }
 
 #[test]
-fn vectis_tool_runs_through_fetch_cache_permissions_and_exit_codes() {
+fn runs_through_fetch_cache_perms_and_exits() {
     let fixture = VectisToolFixture::with_project_write();
     let clean_tokens = fixture.write_tokens("tokens.yaml", "version: 1\n");
     let broken_tokens = fixture.write_tokens(
@@ -234,7 +235,7 @@ fn vectis_tool_runs_through_fetch_cache_permissions_and_exit_codes() {
         .assert()
         .success();
     let clean_value = parse_json(&clean.get_output().stdout);
-    assert_eq!(clean_value["schema-version"], 2);
+    assert_eq!(clean_value["envelope-version"], 2);
     assert_eq!(clean_value["mode"], "tokens");
     assert_eq!(clean_value["errors"].as_array().map(Vec::len), Some(0), "{clean_value}");
 
@@ -252,7 +253,7 @@ fn vectis_tool_runs_through_fetch_cache_permissions_and_exit_codes() {
         .failure();
     assert_eq!(findings.get_output().status.code(), Some(1));
     let findings_value = parse_json(&findings.get_output().stdout);
-    assert_eq!(findings_value["schema-version"], 2);
+    assert_eq!(findings_value["envelope-version"], 2);
     assert_eq!(findings_value["mode"], "tokens");
     assert_eq!(findings_value["errors"].as_array().map(Vec::len), Some(1), "{findings_value}");
 

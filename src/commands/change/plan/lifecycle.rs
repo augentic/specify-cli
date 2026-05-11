@@ -4,14 +4,14 @@ use chrono::Utc;
 use serde::Serialize;
 use specify_capability::ChangeBrief;
 use specify_change::{Finding, Plan, Severity, Status};
-use specify_config::LayoutExt;
+use specify_config::{LayoutExt, with_existing_state};
 use specify_error::{Error, Result};
 use specify_registry::Registry;
 
-use super::{PlanRef, load_for_write, path_string, plan_ref, require_file};
+use super::{PlanRef, display, plan_ref, require_file};
 use crate::cli::SourceArg;
 use crate::context::Ctx;
-use crate::output::{CliResult, Render, Stream, Validation, emit};
+use crate::output::{Render, Validation};
 
 pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
     let plan_path = ctx.project_dir.layout().plan_path();
@@ -38,22 +38,20 @@ pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result
     }
 
     let plan = Plan::init(&name, source_map)?;
+    // `with_state` is for load → mutate → save; `create` writes a fresh plan
+    // and the pre-existence check above is the documented contract.
     plan.save(&plan_path)?;
 
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &CreateBody {
-            plan: PlanRef {
-                name,
-                path: plan_path,
-            },
+    ctx.out().write(&CreateBody {
+        plan: PlanRef {
+            name,
+            path: plan_path,
         },
-    )?;
+    })?;
     Ok(())
 }
 
-pub(super) fn validate(ctx: &Ctx) -> Result<CliResult> {
+pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ctx.project_dir.layout().slices_dir();
@@ -98,19 +96,15 @@ pub(super) fn validate(ctx: &Ctx) -> Result<CliResult> {
 
     let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
     let rows: Vec<FindingRow<'_>> = results.iter().map(FindingRow::from).collect();
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &PlanValidateBody {
-            plan: PlanRef {
-                name: plan.name,
-                path: plan_path,
-            },
-            validation: Validation { results: rows },
-            passed: !has_errors,
+    ctx.out().write(&PlanValidateBody {
+        plan: PlanRef {
+            name: plan.name,
+            path: plan_path,
         },
-    )?;
-    Ok(if has_errors { CliResult::ValidationFailed } else { CliResult::Success })
+        validation: Validation { results: rows },
+        passed: !has_errors,
+    })?;
+    if has_errors { Err(Error::PlanStructural) } else { Ok(()) }
 }
 
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
@@ -147,45 +141,44 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
             ..NextBody::default()
         }
     };
-    emit(Stream::Stdout, ctx.format, &body)?;
+    ctx.out().write(&body)?;
     Ok(())
 }
 
 pub(super) fn transition(
     ctx: &Ctx, name: String, target: Status, reason: Option<String>,
 ) -> Result<()> {
-    let (plan_path, mut plan) = load_for_write(ctx)?;
-    let old_status = plan
-        .entries
-        .iter()
-        .find(|c| c.name == name)
-        .ok_or_else(|| Error::Diag {
-            code: "plan-entry-not-found",
-            detail: format!("no slice named '{name}' in plan"),
-        })?
-        .status;
+    let plan_path = ctx.layout().plan_path();
+    let body = with_existing_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
+        let old_status = plan
+            .entries
+            .iter()
+            .find(|c| c.name == name)
+            .ok_or_else(|| Error::Diag {
+                code: "plan-entry-not-found",
+                detail: format!("no slice named '{name}' in plan"),
+            })?
+            .status;
 
-    plan.transition(&name, target, reason.as_deref())?;
-    plan.save(&plan_path)?;
+        plan.transition(&name, target, reason.as_deref())?;
 
-    let entry = plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &TransitionBody {
-            plan: plan_ref(&plan, &plan_path),
+        let entry =
+            plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
+        Ok(TransitionBody {
+            plan: plan_ref(plan, &plan_path),
             entry: TransitionRow {
                 name: entry.name.clone(),
-                status: entry.status.to_string(),
+                status: entry.status,
                 status_reason: entry.status_reason.clone(),
             },
-            previous_status: old_status.to_string(),
-        },
-    )?;
+            previous_status: old_status,
+        })
+    })?;
+    ctx.out().write(&body)?;
     Ok(())
 }
 
-pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<CliResult> {
+pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
     let layout = ctx.project_dir.layout();
     let plan_path = layout.plan_path();
     if !plan_path.exists() {
@@ -198,34 +191,14 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<CliResult> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let plan_name = Plan::load(&plan_path)?.name;
 
-    match Plan::archive(&plan_path, &brief_path, &archive_dir, force, Utc::now()) {
-        Ok((archived, archived_plans_dir)) => {
-            emit(
-                Stream::Stdout,
-                ctx.format,
-                &ArchiveBody {
-                    archived: path_string(&archived),
-                    archived_plans_dir: archived_plans_dir.as_deref().map(path_string),
-                    plan: ArchivedPlan { name: plan_name },
-                },
-            )?;
-            Ok(CliResult::Success)
-        }
-        Err(Error::PlanIncomplete { entries }) => {
-            let exit = CliResult::GenericFailure;
-            emit(
-                Stream::Stderr,
-                ctx.format,
-                &ArchiveErrBody {
-                    error: "plan-has-outstanding-work",
-                    entries,
-                    exit_code: exit.code(),
-                },
-            )?;
-            Ok(exit)
-        }
-        Err(err) => Err(err),
-    }
+    let (archived, archived_plans_dir) =
+        Plan::archive(&plan_path, &brief_path, &archive_dir, force, Utc::now())?;
+    ctx.out().write(&ArchiveBody {
+        archived: display(&archived),
+        archived_plans_dir: archived_plans_dir.as_deref().map(display),
+        plan: ArchivedPlan { name: plan_name },
+    })?;
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -236,7 +209,7 @@ struct CreateBody {
 
 impl Render for CreateBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Initialised plan '{}' at {}.", self.plan.name, path_string(&self.plan.path))
+        writeln!(w, "Initialised plan '{}' at {}.", self.plan.name, display(&self.plan.path))
     }
 }
 
@@ -261,17 +234,24 @@ impl Render for PlanValidateBody<'_> {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct FindingRow<'a> {
-    level: &'static str,
+    level: FindingLevel,
     code: &'static str,
     entry: &'a Option<String>,
     message: &'a str,
 }
 
+#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum FindingLevel {
+    Error,
+    Warning,
+}
+
 impl<'a> From<&'a Finding> for FindingRow<'a> {
     fn from(finding: &'a Finding) -> Self {
         let level = match finding.level {
-            Severity::Error => "error",
-            Severity::Warning => "warning",
+            Severity::Error => FindingLevel::Error,
+            Severity::Warning => FindingLevel::Warning,
         };
         Self {
             level,
@@ -284,7 +264,7 @@ impl<'a> From<&'a Finding> for FindingRow<'a> {
 
 impl Render for FindingRow<'_> {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let label = if self.level == "error" { "ERROR  " } else { "WARNING" };
+        let label = if self.level == FindingLevel::Error { "ERROR  " } else { "WARNING" };
         let entry_col = self.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
         writeln!(w, "{label} {:<32} {:<24} {}", self.code, entry_col, self.message)
     }
@@ -325,7 +305,7 @@ struct TransitionBody {
     plan: PlanRef,
     entry: TransitionRow,
     #[serde(skip)]
-    previous_status: String,
+    previous_status: Status,
 }
 
 impl Render for TransitionBody {
@@ -342,7 +322,7 @@ impl Render for TransitionBody {
 #[serde(rename_all = "kebab-case")]
 struct TransitionRow {
     name: String,
-    status: String,
+    status: Status,
     status_reason: Option<String>,
 }
 
@@ -369,26 +349,4 @@ impl Render for ArchiveBody {
 #[serde(rename_all = "kebab-case")]
 struct ArchivedPlan {
     name: String,
-}
-
-/// Non-standard failure envelope for `Plan::archive` blocked on
-/// non-terminal entries. Tests pin `error`, `entries`, and
-/// `exit-code` verbatim, so this body owns its own shape rather than
-/// routing through `output::ErrorBody`.
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ArchiveErrBody {
-    error: &'static str,
-    entries: Vec<String>,
-    exit_code: u8,
-}
-
-impl Render for ArchiveErrBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(
-            w,
-            "Refusing to archive \u{2014} outstanding non-terminal entries: {}. Re-run with --force to archive anyway.",
-            self.entries.join(", ")
-        )
-    }
 }

@@ -34,14 +34,14 @@
 //! This binary uses the conventional shell-friendly exit-code mapping
 //! (`0` clean / `1` findings / `2` invocation error) so capability
 //! skills can branch on the exit code without needing the broader
-//! `CliResult` taxonomy. The JSON envelope's `"exit-code"` field
+//! `Exit` taxonomy. The JSON envelope's `"exit-code"` field
 //! reflects the same value.
 //!
 //! # JSON shape
 //!
 //! ```json
 //! {
-//!   "schema-version": 2,
+//!   "envelope-version": 2,
 //!   "contracts-dir": "<baseline-dir>",
 //!   "ok": true,
 //!   "findings": [

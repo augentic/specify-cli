@@ -96,7 +96,7 @@ fn yaml_to_json(yaml: &str) -> JsonValue {
 }
 
 #[test]
-fn plan_schema_validates_rfc_example() {
+fn schema_validates_rfc_example() {
     let validator = load_validator();
     let instance = yaml_to_json(RFC_EXAMPLE);
     let errors: Vec<String> =
@@ -105,7 +105,7 @@ fn plan_schema_validates_rfc_example() {
 }
 
 #[test]
-fn plan_schema_rejects_unknown_status_value() {
+fn schema_rejects_unknown_status() {
     let validator = load_validator();
     let mutated = RFC_EXAMPLE.replacen("status: in-progress", "status: maybe", 1);
     let instance = yaml_to_json(&mutated);
@@ -123,7 +123,7 @@ fn plan_schema_rejects_unknown_status_value() {
 }
 
 #[test]
-fn plan_schema_rejects_non_kebab_name() {
+fn schema_rejects_non_kebab_name() {
     let validator = load_validator();
     let mutated = RFC_EXAMPLE.replacen("name: platform-v2", "name: Platform V2", 1);
     let instance = yaml_to_json(&mutated);

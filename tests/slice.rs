@@ -63,7 +63,7 @@ impl Project {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_create_produces_directory_and_metadata() {
+fn create_writes_dir_and_metadata() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -72,7 +72,7 @@ fn slice_create_produces_directory_and_metadata() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "my-slice");
     assert_eq!(value["status"], "defining");
     let capability = value["capability"].as_str().expect("capability string");
@@ -91,7 +91,7 @@ fn slice_create_produces_directory_and_metadata() {
 }
 
 #[test]
-fn slice_create_rejects_uppercase_name() {
+fn create_rejects_uppercase_name() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -108,7 +108,7 @@ fn slice_create_rejects_uppercase_name() {
 }
 
 #[test]
-fn slice_create_fails_when_dir_exists_by_default() {
+fn create_errors_on_collision() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let assert = specify()
@@ -123,7 +123,7 @@ fn slice_create_fails_when_dir_exists_by_default() {
 }
 
 #[test]
-fn slice_create_continue_reuses_existing_directory() {
+fn create_continue_reuses_existing_dir() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let assert = specify()
@@ -141,7 +141,7 @@ fn slice_create_continue_reuses_existing_directory() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_transition_walks_the_happy_path() {
+fn transition_walks_happy_path() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
@@ -164,7 +164,7 @@ fn slice_transition_walks_the_happy_path() {
 }
 
 #[test]
-fn slice_transition_rejects_illegal_edge() {
+fn transition_rejects_illegal_edge() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     // Defining -> Building is not a legal edge.
@@ -182,7 +182,7 @@ fn slice_transition_rejects_illegal_edge() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_touched_specs_scan_classifies_new_vs_modified() {
+fn touched_specs_classifies_new_vs_modified() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let slice_dir = project.slices_dir().join("my-slice");
@@ -220,7 +220,7 @@ fn slice_touched_specs_scan_classifies_new_vs_modified() {
 }
 
 #[test]
-fn slice_touched_specs_set_accepts_explicit_list() {
+fn touched_specs_accepts_explicit_list() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
@@ -249,7 +249,7 @@ fn slice_touched_specs_set_accepts_explicit_list() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_overlap_reports_shared_capabilities() {
+fn overlap_reports_shared_capabilities() {
     let project = Project::init();
     // Two active slices both claim `login`.
     specify().current_dir(project.root()).args(["slice", "create", "first"]).assert().success();
@@ -280,7 +280,7 @@ fn slice_overlap_reports_shared_capabilities() {
 }
 
 #[test]
-fn slice_overlap_empty_for_disjoint_slices() {
+fn overlap_empty_for_disjoint_slices() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
     specify().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
@@ -309,7 +309,7 @@ fn slice_overlap_empty_for_disjoint_slices() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_archive_moves_dir_into_dated_archive() {
+fn archive_moves_dir_into_dated_path() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
@@ -333,7 +333,7 @@ fn slice_archive_moves_dir_into_dated_archive() {
 }
 
 #[test]
-fn slice_drop_transitions_and_archives_with_reason() {
+fn drop_transitions_and_archives() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
@@ -368,7 +368,7 @@ fn slice_drop_transitions_and_archives_with_reason() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_list_shows_every_active_slice() {
+fn list_shows_every_active_slice() {
     let project = Project::init().with_schemas();
     specify().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
     specify().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
@@ -389,7 +389,7 @@ fn slice_list_shows_every_active_slice() {
 }
 
 #[test]
-fn slice_status_by_name_returns_single_entry() {
+fn status_by_name_returns_single_entry() {
     let project = Project::init().with_schemas();
     specify()
         .current_dir(project.root())
@@ -431,7 +431,7 @@ fn looks_like_rfc3339(s: &str) -> bool {
 }
 
 #[test]
-fn slice_phase_outcome_stamps_success_on_define_json() {
+fn phase_outcome_stamps_success_on_define() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -453,7 +453,7 @@ fn slice_phase_outcome_stamps_success_on_define_json() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["outcome"], "success");
@@ -474,7 +474,7 @@ fn slice_phase_outcome_stamps_success_on_define_json() {
 }
 
 #[test]
-fn slice_phase_outcome_stamps_failure_with_context() {
+fn phase_outcome_stamps_failure_with_context() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -504,7 +504,7 @@ fn slice_phase_outcome_stamps_failure_with_context() {
 }
 
 #[test]
-fn slice_phase_outcome_stamps_deferred_on_build() {
+fn phase_outcome_stamps_deferred_on_build() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -530,7 +530,7 @@ fn slice_phase_outcome_stamps_deferred_on_build() {
 }
 
 #[test]
-fn slice_phase_outcome_text_output() {
+fn phase_outcome_text_output() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -544,7 +544,7 @@ fn slice_phase_outcome_text_output() {
 }
 
 #[test]
-fn slice_phase_outcome_on_nonexistent_slice_errors() {
+fn phase_outcome_errors_on_missing_slice() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -569,7 +569,7 @@ fn slice_phase_outcome_on_nonexistent_slice_errors() {
 }
 
 #[test]
-fn slice_phase_outcome_writes_trailing_newline() {
+fn phase_outcome_writes_trailing_newline() {
     // Atomicity is an OS-level guarantee (NamedTempFile + rename) so it
     // is not directly unit-testable. Instead assert the saved file
     // shape: trailing newline, mirroring the Plan::save atomic-save
@@ -594,7 +594,7 @@ fn slice_phase_outcome_writes_trailing_newline() {
 }
 
 #[test]
-fn slice_phase_outcome_overwrites_previous_outcome() {
+fn phase_outcome_overwrites_previous() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -640,7 +640,7 @@ fn slice_phase_outcome_overwrites_previous_outcome() {
 }
 
 #[test]
-fn slice_phase_outcome_preserves_existing_metadata_fields() {
+fn phase_outcome_preserves_metadata_fields() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -666,7 +666,7 @@ fn slice_phase_outcome_preserves_existing_metadata_fields() {
 }
 
 #[test]
-fn pre_existing_metadata_yaml_without_outcome_still_parses() {
+fn metadata_without_outcome_still_parses() {
     use specify_slice::SliceMetadata;
     // Hand-craft a `.metadata.yaml` that predates the `outcome` field
     // and assert that SliceMetadata::load accepts it and leaves
@@ -690,7 +690,7 @@ created-at: "2024-08-01T10:00:00Z"
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_outcome_returns_stamped_outcome_as_json() {
+fn outcome_returns_stamped_as_json() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
@@ -717,7 +717,7 @@ fn slice_outcome_returns_stamped_outcome_as_json() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "foo");
     let outcome = &value["outcome"];
     assert_eq!(outcome["phase"].as_str(), Some("build"));
@@ -729,7 +729,7 @@ fn slice_outcome_returns_stamped_outcome_as_json() {
 }
 
 #[test]
-fn slice_outcome_emits_null_when_unstamped() {
+fn outcome_emits_null_when_unstamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -750,7 +750,7 @@ fn slice_outcome_emits_null_when_unstamped() {
 }
 
 #[test]
-fn slice_outcome_null_context_when_stamped_without_context() {
+fn outcome_null_context_when_unstamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
@@ -775,7 +775,7 @@ fn slice_outcome_null_context_when_stamped_without_context() {
 }
 
 #[test]
-fn slice_outcome_text_output_stamped() {
+fn outcome_text_output_stamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
@@ -794,7 +794,7 @@ fn slice_outcome_text_output_stamped() {
 }
 
 #[test]
-fn slice_outcome_text_output_unstamped() {
+fn outcome_text_output_unstamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -808,7 +808,7 @@ fn slice_outcome_text_output_unstamped() {
 }
 
 #[test]
-fn slice_outcome_on_nonexistent_slice_errors() {
+fn outcome_errors_on_missing_slice() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -822,7 +822,7 @@ fn slice_outcome_on_nonexistent_slice_errors() {
 }
 
 #[test]
-fn slice_outcome_falls_back_to_archive() {
+fn outcome_falls_back_to_archive() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "bar"]).assert().success();
     specify()
@@ -862,7 +862,7 @@ fn slice_outcome_falls_back_to_archive() {
 }
 
 #[test]
-fn slice_outcome_archive_fallback_picks_most_recent() {
+fn outcome_archive_picks_most_recent() {
     let project = Project::init();
 
     // Create and stamp two archived versions with different created-at timestamps.
@@ -905,7 +905,7 @@ fn slice_outcome_archive_fallback_picks_most_recent() {
 /// payload to `.metadata.yaml` under `outcome.outcome.registry-amendment-required.*`
 /// (kebab-case external-tag form). Round-trips through the writer.
 #[test]
-fn slice_outcome_registry_amendment_required_writes_payload() {
+fn outcome_registry_amendment_writes_payload() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -983,7 +983,7 @@ fn slice_outcome_registry_amendment_required_writes_payload() {
 
 /// Missing required flags surface a clear `Error::Diag` (exit code 1).
 #[test]
-fn slice_outcome_registry_amendment_required_missing_flags_errors() {
+fn outcome_registry_amendment_missing_flags() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1015,7 +1015,7 @@ fn slice_outcome_registry_amendment_required_missing_flags_errors() {
 /// `registry-amendment-required` is rejected — those flags are
 /// outcome-scoped, and silently dropping them would mask author intent.
 #[test]
-fn slice_outcome_proposal_flags_rejected_for_other_kinds() {
+fn outcome_proposal_flags_rejected_otherwise() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1048,7 +1048,7 @@ fn slice_outcome_proposal_flags_rejected_for_other_kinds() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_journal_append_appends_to_file() {
+fn journal_append_writes_to_file() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1072,7 +1072,7 @@ fn slice_journal_append_appends_to_file() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["kind"], "question");
@@ -1102,7 +1102,7 @@ fn slice_journal_append_appends_to_file() {
 }
 
 #[test]
-fn slice_journal_append_stamps_rfc3339_timestamp() {
+fn journal_append_stamps_rfc3339() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1141,7 +1141,7 @@ fn slice_journal_append_stamps_rfc3339_timestamp() {
 }
 
 #[test]
-fn slice_journal_append_preserves_existing_entries() {
+fn journal_append_preserves_entries() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1168,7 +1168,7 @@ fn slice_journal_append_preserves_existing_entries() {
 }
 
 #[test]
-fn slice_journal_append_text_output() {
+fn journal_append_text_output() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1182,7 +1182,7 @@ fn slice_journal_append_text_output() {
 }
 
 #[test]
-fn slice_journal_append_on_nonexistent_slice_errors() {
+fn journal_append_errors_on_missing() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -1211,7 +1211,7 @@ fn slice_journal_append_on_nonexistent_slice_errors() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_journal_show_empty_then_populated() {
+fn journal_show_empty_then_populated() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1222,7 +1222,7 @@ fn slice_journal_show_empty_then_populated() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "foo");
     assert!(
         value["entries"].as_array().unwrap().is_empty(),
@@ -1284,7 +1284,7 @@ fn slice_journal_show_empty_then_populated() {
 }
 
 #[test]
-fn slice_journal_show_on_nonexistent_slice_errors() {
+fn journal_show_errors_on_missing() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -1298,7 +1298,7 @@ fn slice_journal_show_on_nonexistent_slice_errors() {
 }
 
 #[test]
-fn phase_outcome_round_trips_through_serde() {
+fn phase_outcome_round_trips_serde() {
     use specify_slice::{Outcome, Phase, PhaseOutcome, Rfc3339Stamp};
     for outcome in [Outcome::Success, Outcome::Failure, Outcome::Deferred] {
         for phase in [Phase::Define, Phase::Build, Phase::Merge] {

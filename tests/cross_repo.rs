@@ -18,7 +18,7 @@ use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::{GIT_TEST_ENV, parse_json, specify};
+use common::{GIT_ENV, parse_json, specify};
 
 const CHANGE_NAME: &str = "oauth-login";
 const BRANCH_NAME: &str = "specify/oauth-login";
@@ -27,7 +27,7 @@ fn run_git(root: &Path, args: &[&str], envs: &TestEnv) -> String {
     let output = ProcessCommand::new("git")
         .current_dir(root)
         .args(args)
-        .envs(GIT_TEST_ENV)
+        .envs(GIT_ENV)
         .env("GIT_CONFIG_GLOBAL", &envs.git_config)
         .env("GIT_SSH_COMMAND", &envs.ssh_script)
         .env("FAKE_GITHUB_REMOTE_ROOT", envs.remotes_dir())
@@ -96,7 +96,7 @@ impl TestEnv {
     fn command(&self) -> Command {
         let mut cmd = specify();
         cmd.current_dir(self.path())
-            .envs(GIT_TEST_ENV)
+            .envs(GIT_ENV)
             .env("GIT_CONFIG_GLOBAL", &self.git_config)
             .env("GIT_SSH_COMMAND", &self.ssh_script)
             .env("FAKE_GITHUB_REMOTE_ROOT", self.remotes_dir())
@@ -307,7 +307,7 @@ impl FixtureProject {
 }
 
 #[test]
-fn rm01_replays_cross_repo_happy_path_through_push_and_finalize() {
+fn rm01_replays_cross_repo_through_finalize() {
     let envs = TestEnv::new();
     let backend = FixtureProject::new(&envs, "shop-backend", "omnia@v1");
     let mobile = FixtureProject::new(&envs, "shop-mobile", "vectis@v1");

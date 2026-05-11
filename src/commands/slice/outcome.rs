@@ -13,7 +13,7 @@ use specify_slice::{Outcome, Rfc3339Stamp, SliceMetadata, actions as slice_actio
 
 use crate::cli::{OutcomeKindAction, RegistryAmendmentArgs};
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit};
+use crate::output::Render;
 
 pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
@@ -37,16 +37,12 @@ pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction
         .as_ref()
         .expect("stamp_outcome action must set metadata.outcome on success");
 
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &PhaseStampBody {
-            slice: name,
-            phase: phase.to_string(),
-            outcome: outcome.discriminant().to_string(),
-            at: stamped.at.to_string(),
-        },
-    )?;
+    ctx.out().write(&PhaseStampBody {
+        slice: name,
+        phase: phase.to_string(),
+        outcome: outcome.discriminant().to_string(),
+        at: stamped.at.to_string(),
+    })?;
     Ok(())
 }
 
@@ -105,7 +101,7 @@ fn lower_kind(kind: OutcomeKindAction) -> (Outcome, String, Option<String>) {
 /// Symmetric with [`set`]: this is the read verb `/change:execute`
 /// consumes after a phase returns. Emits a null `outcome` when the
 /// slice exists but nothing has been stamped; exits
-/// `CliResult::Success` in both cases — an unstamped slice is not an
+/// `Exit::Success` in both cases — an unstamped slice is not an
 /// error, just an absence.
 ///
 /// Falls back to `.specify/archive/` when the slice is not found
@@ -122,7 +118,7 @@ pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
     };
 
     let outcome = metadata.outcome.as_ref().map(OutcomeRow::from);
-    emit(Stream::Stdout, ctx.format, &OutcomeShowBody { name, outcome })?;
+    ctx.out().write(&OutcomeShowBody { name, outcome })?;
     Ok(())
 }
 

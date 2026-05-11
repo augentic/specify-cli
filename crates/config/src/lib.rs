@@ -27,9 +27,12 @@
 //! `specify_version` floor check: any subcommand that parses
 //! `project.yaml` picks up the check automatically.
 
+mod atomic;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+pub use atomic::{AtomicYaml, with_existing_state, with_state};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 

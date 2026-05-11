@@ -1,7 +1,7 @@
 {
+  "envelope-version": 6,
   "plan": {
     "name": "my-change",
     "path": "<TEMPDIR>/plan.yaml"
-  },
-  "schema-version": 5
+  }
 }

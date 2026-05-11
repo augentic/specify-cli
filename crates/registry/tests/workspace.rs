@@ -34,7 +34,7 @@ fn symlink_dir(target: &Path, link: &Path) {
     std::os::windows::fs::symlink_dir(target, link).expect("symlink");
 }
 
-const GIT_TEST_ENV: [(&str, &str); 4] = [
+const GIT_ENV: [(&str, &str); 4] = [
     ("GIT_AUTHOR_NAME", "Specify Test"),
     ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
     ("GIT_COMMITTER_NAME", "Specify Test"),
@@ -45,7 +45,7 @@ fn run_git(root: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
         .current_dir(root)
         .args(args)
-        .envs(GIT_TEST_ENV)
+        .envs(GIT_ENV)
         .output()
         .unwrap_or_else(|err| panic!("git {} failed to start: {err}", args.join(" ")));
     assert!(

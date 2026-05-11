@@ -29,11 +29,10 @@ use specify_slice::SliceMetadata;
 
 use crate::cli::ContextAction;
 use crate::context::Ctx;
-use crate::output::CliResult;
 
-pub(crate) fn run(ctx: &Ctx, action: ContextAction) -> Result<CliResult> {
+pub(crate) fn run(ctx: &Ctx, action: &ContextAction) -> Result<()> {
     match action {
-        ContextAction::Generate { check, force } => generate::run(ctx, check, force),
+        ContextAction::Generate { check, force } => generate::run(ctx, *check, *force),
         ContextAction::Check => check::run(ctx),
     }
 }
@@ -288,7 +287,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::cli::OutputFormat;
+    use crate::cli::Format;
 
     fn write_minimal_capability(project_dir: &Path) {
         let capability_dir = project_dir.join("schemas").join("mini");
@@ -343,7 +342,7 @@ mod tests {
         )
         .expect("write project config");
         let ctx = Ctx {
-            format: OutputFormat::Text,
+            format: Format::Text,
             project_dir: tmp.path().to_path_buf(),
             config: sample_config(),
         };
@@ -387,7 +386,7 @@ mod tests {
         fs::create_dir_all(cfg_path.parent().expect("config parent")).expect("create .specify");
         fs::write(&cfg_path, "name: platform\nhub: true\n").expect("write project config");
         let ctx = Ctx {
-            format: OutputFormat::Text,
+            format: Format::Text,
             project_dir: tmp.path().to_path_buf(),
             config: ProjectConfig {
                 name: "platform".to_string(),

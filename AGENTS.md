@@ -20,15 +20,15 @@ specify-validate                 # depends on specify-{error,spec,capability,reg
 specify-change                   # depends on specify-{error,config,registry,slice}
 specify-init                     # depends on specify-{error,capability,config,registry}
 specify (root crate)             # wires every workspace crate above into the CLI binary
-crates/contract                  # standalone binary `specify-contract` (depends on specify-validate)
-crates/vectis                    # standalone WASI component `specify-vectis` (validate + scaffold subcommands)
 ```
+
+WASI tools live in `wasi-tools/`, a sibling workspace excluded from the main lint posture. Members are `wasi-tools/contract` (`specify-contract`) and `wasi-tools/vectis` (`specify-vectis`). Build them through the `cargo make contract-wasm` / `vectis-wasm` recipes — those `cd wasi-tools` first so the sibling workspace's lockfile and target dir are used.
 
 Every crate uses the shared `[workspace.package]` (`edition = "2024"`, `rust-version = "1.93"`, MIT/Apache-2.0) and the shared `[workspace.lints]` block in the root `Cargo.toml` (clippy `all`/`cargo`/`nursery`/`pedantic` warned, plus a hand-picked `restriction` subset and a tightened rust lint set — `missing_debug_implementations`, `unreachable_pub`, `single_use_lifetimes`, `redundant_lifetimes`).
 
 Hard dependency rule: `specify-error` is the leaf and depends on no other workspace crate. Adding a workspace dep to `specify-error` re-introduces the cycle the layering was designed to avoid; do not.
 
-**WASI carve-outs.** `crates/contract` and `crates/vectis` are deliberate carve-outs from the workspace's Render/emit/`specify-error` discipline. They ship as standalone WASI components and must stay dependency-minimal. Do not pull `specify-error` (or any other workspace crate that drags in `wasmtime`, `tokio`, `ureq`, …) into either; the carve-out comments in `crates/contract/src/main.rs` and `crates/vectis/src/lib.rs` are authoritative.
+**WASI carve-outs.** `wasi-tools/contract` and `wasi-tools/vectis` are deliberate carve-outs from the workspace's Render/emit/`specify-error` discipline. They ship as standalone WASI components and live in their own sibling workspace at `wasi-tools/Cargo.toml`, which inherits a leaner lint posture and a minimal `[workspace.dependencies]` set. Do not pull `specify-error` (or any other host workspace crate that drags in `wasmtime`, `tokio`, `ureq`, …) into either; the carve-out comments in `wasi-tools/contract/src/main.rs` and `wasi-tools/vectis/src/lib.rs` are authoritative.
 
 ## Toolchain
 
@@ -79,13 +79,13 @@ The four-slot CLI exit-code table is fixed:
 | 2 | `EXIT_VALIDATION_FAILED` | `Error::Validation`, undeclared/over-permissioned tool, `Error::Argument` |
 | 3 | `EXIT_VERSION_TOO_OLD` | `Error::CliTooOld` (`specify-version-too-old` in JSON) |
 
-`CliResult::from(&Error)` in `src/output.rs` is the single source of truth. Every dispatcher in `src/commands/*` routes its terminal error through `report_error`, which calls `CliResult::from`. Do not invent new exit codes. `CliResult::Code(u8)` is a WASI passthrough used by `specify tool run` to forward a WASI guest exit verbatim; it is not for ad-hoc subcommand use.
+`Exit::from(&Error)` in `src/output.rs` is the single source of truth. Every dispatcher in `src/commands/*` routes its terminal error through `report`, which calls `Exit::from`. Do not invent new exit codes. `Exit::Code(u8)` is a WASI passthrough used by `specify tool run` to forward a WASI guest exit verbatim; it is not for ad-hoc subcommand use.
 
 `unwrap()` and `expect()` are reserved for invariants the type system can't express (e.g. "this enum variant covers `Status::ALL`"). Always include a justification string in `expect`. User-facing errors must surface as `Error::*` variants, not panics.
 
 ## Handler shape
 
-Command handlers default to `Result<()>` (success-path conversion happens at the dispatcher boundary). Surface non-success exits through typed errors that `CliResult::from(&Error)` maps to the four-slot exit table — do **not** return `Result<CliResult>` to thread a non-zero code by hand.
+Command handlers default to `Result<()>` (success-path conversion happens at the dispatcher boundary). Surface non-success exits through typed errors that `Exit::from(&Error)` maps to the four-slot exit table — do **not** return `Result<Exit>` to thread a non-zero code by hand.
 
 Handlers take `&Ctx` (renamed from `CommandContext` so the module path `crate::context::Ctx` carries the noun). `Ctx` exposes the resolved project dir, layout, output format, and a few thin facade methods for handler ergonomics; everything else flows through workspace crates.
 
@@ -93,22 +93,22 @@ Handlers take `&Ctx` (renamed from `CommandContext` so the module path `crate::c
 // GOOD — default shape
 pub(crate) fn handle(ctx: &Ctx, args: &SomeArgs) -> Result<()> {
     let body = some_crate::do_work(ctx.layout(), args)?;
-    emit(Stream::Stdout, ctx.format, &SomeBody::from(&body))?;
+    ctx.out().write(&SomeBody::from(&body))?;
     Ok(())
 }
 
-// GOOD — explicit Result<CliResult> only when the handler needs a
+// GOOD — explicit Result<Exit> only when the handler needs a
 // non-success exit and a typed *ErrBody (rare — workspace::push is one).
-pub(crate) fn handle(ctx: &Ctx) -> Result<CliResult, Error> { /* ... */ }
+pub(crate) fn handle(ctx: &Ctx) -> Result<Exit, Error> { /* ... */ }
 ```
 
-A free `fn ... -> Result<CliResult>` declared outside `src/commands.rs` trips the `result-cliresult-default` predicate; the surviving carve-outs are listed in `scripts/standards-allowlist.toml` and shrink as handlers are migrated.
+A free `fn ... -> Result<Exit>` declared outside `src/commands.rs` trips the `result-cliresult-default` predicate; the surviving carve-outs are listed in `scripts/standards-allowlist.toml` and shrink as handlers are migrated.
 
 ## YAML, JSON, and atomic writes
 
 YAML (de)serialization goes through `serde-saphyr`, not `serde_yaml_ng` (retired) or `serde_yaml` (deprecated). `serde-saphyr` has no `Value` type; for dynamic YAML access deserialize into `serde_json::Value`. Deser and ser errors are wrapped behind `specify_error::YamlError` / `specify_error::YamlSerError` so the upstream crate name does not leak through every `specify-*` public surface; `specify_error::Error` carries both via `Yaml(#[from] YamlError)` and `YamlSer(#[from] YamlSerError)`, and `?` on a raw `serde_saphyr` result still propagates because `Error` also implements `From<serde_saphyr::Error>` and `From<serde_saphyr::ser::Error>` through the wrappers. Library crates use the wrapper types in their public signatures; never expose `serde_saphyr::*::Error` directly.
 
-Writes that must not be observed mid-update use the shared atomic helpers in `specify_slice::atomic` (`atomic_yaml_write` / `atomic_bytes_write`). `fs::write` is fine for single-shot scratch files but never for files that other live processes read (`plan.yaml`, `registry.yaml`, `change.md`, `tasks.md`, `.specify/plan.lock`, `.metadata.yaml`). The `direct-fs-write` predicate fails any new `fs::write` / `std::fs::write` in non-test Rust.
+Writes that must not be observed mid-update use the shared atomic helpers in `specify_slice::atomic` (`yaml_write` / `bytes_write`). `fs::write` is fine for single-shot scratch files but never for files that other live processes read (`plan.yaml`, `registry.yaml`, `change.md`, `tasks.md`, `.specify/plan.lock`, `.metadata.yaml`). The `direct-fs-write` predicate fails any new `fs::write` / `std::fs::write` in non-test Rust.
 
 ## CLI architecture
 
@@ -121,15 +121,13 @@ Dispatchers live in `src/commands/<verb>.rs` and call back into the workspace cr
 1. Clap parses argv → `Commands` enum.
 2. `src/commands.rs` matches the variant and calls the dispatcher in `src/commands/<verb>.rs`.
 3. The dispatcher loads `ProjectConfig` (which enforces the `specify_version` floor for free) and any other state it needs.
-4. The dispatcher delegates the deterministic work to a workspace crate (`specify_slice`, `specify_change`, etc.) and converts the result to a `*Body` for `emit`.
+4. The dispatcher delegates the deterministic work to a workspace crate (`specify_slice`, `specify_change`, etc.) and converts the result to a `*Body` for `ctx.out().write(...)`.
 
 Never put domain logic in the binary. If a function needs unit tests, it belongs in a workspace crate. The binary owns argv parsing, formatting, and dispatch only.
 
 ## Layout boundary
 
 `.specify/` is framework-managed state every CLI verb writes through (configuration under `project.yaml`, `slices/`, `archive/`, `.cache/`, `workspace/`, `plans/`, `plan.lock`). Operator-facing platform artifacts (`registry.yaml`, `plan.yaml`, `change.md`, `contracts/`) live at the repo root. The boundary is enforced by the `Layout<'a>` newtype in `specify-config` (`crates/config/src/lib.rs`): path helpers are inherent methods on `Layout<'a>`, and call sites write `dir.layout().plan_path()` (via the `LayoutExt` trait on `&Path`) or `Layout::new(&dir).plan_path()`. Do not hard-code `.specify/registry.yaml` or sibling paths, and do not declare free path-helper functions outside `crates/config/`; any new `.specify/` path lands on `Layout`. The `path-helper-inlined` predicate enforces this.
-
-`detect_legacy_layout` and the `Error::LegacyLayout` ("`legacy-layout`") cutover gate any project-aware verb that tries to run on a v1-layout repo. Never silently read both layouts.
 
 ## Time injection
 
@@ -150,17 +148,17 @@ Patterns to follow:
 - Spin up a real `specify init` in a `tempfile::TempDir`. Reach for the existing helpers in `tests/cross_repo.rs` for multi-repo / fake-forge work; do not invent a parallel harness.
 - Compare stdout JSON against checked-in goldens under `tests/fixtures/e2e/goldens/`. Regenerate with `REGENERATE_GOLDENS=1 cargo nextest run --test e2e` and `git diff` before committing. The harness substitutes tempdir paths to `<TEMPDIR>` so goldens stay machine-independent.
 - Prefer structural assertions (status fields, exit codes, JSON shape) over byte-for-byte prose comparisons.
-- Tests that need git operations set the four `GIT_*` env vars from `cross_repo.rs::GIT_TEST_ENV` so authorship is deterministic.
+- Tests that need git operations set the four `GIT_*` env vars from `tests/common::GIT_ENV` so authorship is deterministic.
 
 `tests/cross_repo.rs` is the RM-01 happy-path acceptance harness — read it first when extending multi-repo coverage.
 
 ## WASI tooling
 
-`crates/contract` and `crates/vectis` build for `wasm32-wasip2` and ship as WASI components. The `specify-tool` runner (`wasmtime` + `wasmtime-wasi`) loads them through `specify tool run <name>` per declared-tool permissions in `project.yaml.tools[]`. When editing these crates:
+`wasi-tools/contract` and `wasi-tools/vectis` build for `wasm32-wasip2` and ship as WASI components from the sibling workspace at `wasi-tools/Cargo.toml`. The `specify-tool` runner (`wasmtime` + `wasmtime-wasi`) loads them through `specify tool run <name>` per declared-tool permissions in `project.yaml.tools[]`. When editing these crates:
 
 - They cannot use anything that isn't WASI-compatible. No threads, no networking primitives outside the declared WASI imports, no clock unless the manifest declares it.
-- They stay outside the workspace's Render/emit/`specify-error` discipline (see "WASI carve-outs" above). Do not pull workspace crates into either.
-- Rebuild artifacts via the `cargo make` recipes listed above. Do not check the `.wasm` outputs into git unless promoting a new release version (the release workflow handles distribution).
+- They stay outside the host workspace's Render/emit/`specify-error` discipline (see "WASI carve-outs" above). Do not pull host workspace crates into either; `specify-validate` is the only path-dep bridge and it lives in `wasi-tools/Cargo.toml`'s `[workspace.dependencies]`.
+- Rebuild artifacts via the `cargo make` recipes listed above (each one `cd`s into `wasi-tools/` so the sibling workspace's lockfile is used). Do not check the `.wasm` outputs into git unless promoting a new release version (the release workflow handles distribution).
 - Keep their crate dependency surface minimal — they ship as standalone components and bloat the WASM size if you pull in heavy crates.
 
 ## Supply chain
@@ -194,11 +192,13 @@ Comments answer "why does this look like this *today*?" — non-obvious intent, 
 //! owning verbs, not by `init`.
 ```
 
+Doc comments describe what this is today. Version-history tables, dated bumps, commit hashes, and migration notes belong in git log or `DECISIONS.md` — not in `///` blocks. Doc paragraphs over 8 consecutive non-blank lines on a `pub` item are flagged by `verbose-doc-paragraphs`.
+
 ### Naming
 
 Prefer short, idiomatic Rust names. Don't restate context the surrounding module, type, or function already supplies. Avoid `_local` / `_value` / `_helper` suffixes. New functions: 1–3 words. Predicates start with `is_` / `has_`. DTOs returned by handlers are `<Action>Body` / `<Action>Row`, never `<Action>Response` / `<Action>Json` (the type's role is `Body`; the format dispatch lives in `emit`).
 
-A function defined in `mod <name>` (or `commands/<name>.rs`) MUST NOT carry `<name>` as a suffix or prefix on its own name — the module path already supplies that context. The `name-suffix-duplication` predicate enforces this.
+A function defined in `mod <name>` (or `commands/<name>.rs`) MUST NOT carry `<name>` as a suffix or prefix on its own name — the module path already supplies that context. Clippy's `module_name_repetitions` (on by default through the `pedantic` group) catches this at lint time.
 
 ```rust
 // BAD — file is commands/registry.rs / mod registry
@@ -214,26 +214,32 @@ fn add(ctx: &Ctx) -> ... { ... }
 
 ### Format dispatch
 
-Handlers do **not** open-code `match ctx.format { Json, Text }`. There is one entry point — `emit(Stream::Stdout, ctx.format, &SomeBody::from(&result))` for success bodies, and `report_error(ctx.format, &err)` (which dispatches `ErrorBody` / `ValidationErrBody` to `Stream::Stderr`) for failures. `emit_err` / `emit_response` / `emit_error` / `emit_json_error` have all been collapsed into this single surface.
+Handlers do **not** open-code `match ctx.format { Json, Text }`. There is one entry point — `ctx.out().write(&SomeBody::from(&result))` for success bodies, and `report(ctx.format, &err)` (which dispatches `ErrorBody` / `ValidationErrBody` to `Stream::Stderr`) for failures. `Stream::Stdout` / `Stream::Stderr` and the underlying `emit` function are private to `src/output.rs`; handlers never spell them. `emit_err` / `emit_response` / `emit_error` / `emit_json_error` have all been collapsed into this single surface.
 
 ```rust
 // BAD
 match ctx.format {
-    OutputFormat::Json => serde_json::to_writer(stdout(), &SomeBody::from(&r))?,
-    OutputFormat::Text => println!("..."),
+    Format::Json => serde_json::to_writer(stdout(), &SomeBody::from(&r))?,
+    Format::Text => println!("..."),
 }
 
 // GOOD
-emit(Stream::Stdout, ctx.format, &SomeBody::from(&result))?;
+ctx.out().write(&SomeBody::from(&result))?;
 ```
 
+Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::capability::resolve`, `commands::capability::check` — receive a bare `Format` and reach for `Out::for_format(format).write(&Body)?;` instead.
+
 `Render::render_text(&self, w: &mut dyn Write)` carries the text-mode body; the JSON path goes through `serde::Serialize`. New code must not introduce `match … format`; the `format-match-dispatch` predicate fails new occurrences. See [`src/commands/codex.rs`](src/commands/codex.rs) for the canonical pattern.
+
+### One emit path
+
+Success bodies leave handlers via `ctx.out().write(&Body)?;` (or `Out::for_format(format).write(&Body)?;` for the rare `Ctx`-less verb). Failure envelopes leave handlers as `Err(Error::*)`; the dispatcher in `src/commands.rs` routes them through `output::report(format, &err)`. No handler emits its own `Stream::Stderr` envelope. If you need a bespoke failure shape, add an `Error` variant with a kebab-case discriminant; do not hand-roll a `*ErrBody` DTO. `Stream` and `emit` are private to `src/output.rs` and stay that way.
 
 ### DTOs
 
 Response DTOs (`*Body`, `*Row`) are **top-level** structs under `mod`. Inline DTOs trip the `inline-dtos` AST predicate (DTOs declared inside *any* `Block` — function bodies, match arms, closures — count) and force per-file `#![allow(items_after_statements, …)]` waivers. The waiver is itself a refactor signal: a file that needs it is a file whose handler hasn't been migrated yet.
 
-**Construct DTOs through `From` impls, not named builders.** Use `impl From<&Domain> for Body` so the conversion is discoverable at the trait surface and call sites read `Body::from(&domain)`. Named constructors are reserved for multi-arg or fallible builders (e.g. `RegistryProposalRow::from_kind` returns `Option<Self>`); each survivor carries a one-line doc justification. New `fn from_<word>(<one arg>) -> Self` inherent methods on a `*Body` / `*Row` trip the `from-not-builder` AST predicate.
+**Construct DTOs through `From` impls, not named builders.** Use `impl From<&Domain> for Body` so the conversion is discoverable at the trait surface and call sites read `Body::from(&domain)`. Named constructors are reserved for multi-arg or fallible builders (e.g. `RegistryProposalRow::from_kind` returns `Option<Self>`); each survivor carries a one-line doc justification.
 
 **Typed fields, not stringly-typed ones.** `pub status` / `pub kind` (and any other field whose domain has a finite enum) carry the underlying domain enum with `#[derive(Serialize)]` + `#[serde(rename_all = "kebab-case")]`. Drop `.to_string()` at construction sites; the wire shape is unchanged.
 
@@ -278,7 +284,7 @@ impl From<&Outcome> for HandleBody {
 }
 
 fn handle(ctx: &Ctx, outcome: &Outcome) -> Result<()> {
-    emit(Stream::Stdout, ctx.format, &HandleBody::from(outcome))?;
+    ctx.out().write(&HandleBody::from(outcome))?;
     Ok(())
 }
 ```
@@ -290,11 +296,11 @@ fn handle(ctx: &Ctx, outcome: &Outcome) -> Result<()> {
 1. A dedicated typed variant (e.g. `Error::Argument`, `Error::PlanTransition`, `Error::ContextLockMalformed`) when the call shape recurs or carries structured payload.
 2. `Error::Diag { code: "<kebab>", detail: format!(…) }` when it doesn't (yet). The `code` is the JSON envelope's stable `error` discriminant; `detail` is the human-readable message. Promote a recurring `Diag` site to its own variant once the call shape stabilises.
 
-The kebab-case identifier in `#[error("…")]` (and in `Error::Diag.code`) is part of the public contract that skills and tests grep for; never rename without bumping `JSON_ENVELOPE_VERSION`.
+The kebab-case identifier in `#[error("…")]` (and in `Error::Diag.code`) is part of the public contract that skills and tests grep for; never rename without bumping `ENVELOPE_VERSION`.
 
 ### `#[non_exhaustive]`
 
-Every public `enum` or `struct` that may grow gets `#[non_exhaustive]`. The exception is structurally complete types (`enum OutputFormat { Json, Text }`); document the choice in a doc-line. This keeps adding a variant from being a SemVer break.
+Every public `enum` or `struct` that may grow gets `#[non_exhaustive]`. The exception is structurally complete types (`enum Format { Json, Text }`); document the choice in a doc-line. This keeps adding a variant from being a SemVer break.
 
 ### Lint suppression posture
 
@@ -321,6 +327,10 @@ fn step(...) { ... }
 
 Use the modern Rust module layout: prefer `src/<parent>/<module>.rs` as the module entry point, with child modules under `src/<parent>/<module>/`. Do not add new `mod.rs` files inside module directories unless an external constraint requires it.
 
+### Drift audit
+
+When you remove a symbol, run `rg <SymbolName> -- AGENTS.md DECISIONS.md` and update every hit in the same PR. Stale symbol references in docs are worse than missing docs — they teach the reader something false. The `stale-cli-vocab` predicate catches retired CLI nouns; doc drift on internal symbols (error variants, type names, field keys) is caught only by this audit habit.
+
 ### Mechanical enforcement
 
 `cargo make standards-check` shells out to `cargo run -p xtask -- standards-check`. Predicates live in [`xtask/src/standards.rs`](xtask/src/standards.rs); per-file baselines live in [`scripts/standards-allowlist.toml`](scripts/standards-allowlist.toml). The xtask uses `syn` for AST predicates (so DTOs declared inside `match` arms count, where the prior regex missed them) and `regex` for textual predicates.
@@ -328,28 +338,24 @@ Use the modern Rust module layout: prefer `src/<parent>/<module>.rs` as the modu
 | Predicate | What it counts |
 |---|---|
 | `cli-help-shape` | Clap-derive `///` doc lines longer than 80 characters in `src/cli.rs` and `src/commands/**/cli.rs`. Help output is operator-facing and wraps poorly past 80 columns. |
-| `currently-audit` | The word `Currently` in a clap-derive doc comment (`src/cli.rs` and `src/commands/**/cli.rs`). Catches "Currently equivalent to the default …" at PR time. |
 | `direct-fs-write` | Direct `fs::write` / `std::fs::write` in non-test Rust. Managed state must use the atomic helpers. |
-| `error-envelope-inlined` | `output::ErrorBody { … }` / `output::ValidationErrBody { … }` constructed outside `src/output.rs`. Error envelopes are emitted via `report_error`, not hand-rolled at the call site. |
+| `error-envelope-inlined` | `output::ErrorBody { … }` / `output::ValidationErrBody { … }` constructed outside `src/output.rs`. Error envelopes are emitted via `report`, not hand-rolled at the call site. |
 | `format-match-dispatch` | Hand-rolled `match … format { Json => … }`. Use `Render::render_text` + `emit` instead. |
-| `from-not-builder` | Pre-R6 builder pattern — an inherent `impl T` block whose only method is `fn from_<word>(<one arg>) -> Self`. New code uses `impl From<&Source> for T`. AST-based via `syn`. |
 | `inline-dtos` | Structs/enums with `#[derive(Serialize)]` declared inside any `Block`. |
-| `module-line-count` | Non-test Rust source file length in lines. Default cap 500; per-file baselines grandfather oversized files until they are split. |
-| `name-suffix-duplication` | `fn foo_<module>` inside `mod <module>` (e.g. `fn show_registry` in `commands/registry.rs`). |
+| `module-line-count` | Non-test Rust source file length in lines. Default cap 400; per-file baselines grandfather oversized files until they are split. |
 | `no-op-forwarders` | `let _ = cli.<flag>;` — a parsed-but-unused CLI flag. |
-| `ok-literal-in-body` | `pub ok: bool` field outside the carve-outs (`crates/validate/src/contracts/envelope.rs`, `crates/validate/src/compatibility/mod.rs`). The JSON envelope encodes success-vs-failure via the presence/absence of `error:`. |
 | `path-helper-inlined` | `fn specify_dir|plan_path|change_brief_path|archive_dir` declared outside `crates/config/`. Path helpers live on `Layout<'a>` in `specify-config`. |
-| `result-cliresult-default` | Free `fn ... -> Result<CliResult>` outside `src/commands.rs`. New handlers default to `Result<()>` and let the dispatcher collapse the success path; surviving carve-outs are grandfathered. |
+| `result-cliresult-default` | Free `fn ... -> Result<Exit>` outside `src/commands.rs`. New handlers default to `Result<()>` and let the dispatcher collapse the success path; surviving carve-outs are grandfathered. |
 | `rfc-numbers-in-code` | `RFC[- ]?\d+` outside `tests/`, `DECISIONS.md`, and `rfcs/`. |
 | `ritual-doc-paragraphs` | The boilerplate `Returns an error if the operation fails.` doc paragraph. |
 | `stale-cli-vocab` | Legacy CLI vocabulary in non-test Rust (`initiative`, `initiative.md`, retired top-level `specify plan`, `specify merge`, `specify validate`). Use `change`, `slice`, and the current command surface. |
 | `verbose-doc-paragraphs` | A `///` doc paragraph longer than 8 consecutive non-blank lines on a `pub fn|struct|enum|const|type`. Long prose belongs in `rfcs/` or `DECISIONS.md`. `pub trait` is exempt. |
 
-A live count strictly greater than its per-file baseline fails CI; missing predicates default to zero (new files start clean) except `module-line-count`, which defaults to 500.
+A live count strictly greater than its per-file baseline fails CI; missing predicates default to zero (new files start clean) except `module-line-count`, which defaults to 400.
 
 **Ratchet** — any PR that touches a file with allowlist baselines is expected to reduce them where it can. CI runs `cargo run -p xtask -- standards-check --check-tightenable`, which fails when an unrelated PR could lower a baseline without code changes. Run `cargo make standards-tighten` and commit the updated `scripts/standards-allowlist.toml` to clear.
 
-**Module length cap** — keep new modules ≤ 500 lines. When a file outgrows that, split by concern (one verb per file, model vs IO vs transitions, etc.) before adding more code. Prefer `src/<parent>/<module>.rs` + `src/<parent>/<module>/<concern>.rs` over a single fat file with `// ---` separators.
+**Module length cap** — keep new modules ≤ 400 lines. When a file outgrows that, split by concern (one verb per file, model vs IO vs transitions, etc.) before adding more code. Prefer `src/<parent>/<module>.rs` + `src/<parent>/<module>/<concern>.rs` over a single fat file with `// ---` separators.
 
 ### No-op forwarders
 
@@ -357,13 +363,7 @@ A clap-parsed flag that is destructured and silently dropped (`let _ = cli.<flag
 
 ### Wired-but-ignored flags
 
-A flag whose doc-comment says "Currently equivalent to the default …" or whose handler ignores the value is the same defect dressed up as documentation. Drop the flag from clap until the differentiated behaviour exists. The `currently-audit` predicate fails any new occurrence of the word `Currently` in a clap-derive doc comment under `src/cli.rs` or `src/commands/**/cli.rs`.
-
-### Quarterly migration cadence
-
-A scheduled PR — first business week of each quarter — reviews `scripts/standards-allowlist.toml`, identifies the top five files by total grandfathered violations, and either drives them to zero or documents in this section why they cannot be reduced this quarter. PR title: `chore: q<N> standards-allowlist sweep`.
-
-See [`docs/contributing/maintenance.md`](docs/contributing/maintenance.md) for the operational playbook (picking targets, updating baselines, PR shape).
+A flag whose doc-comment says "Currently equivalent to the default …" or whose handler ignores the value is the same defect as `no-op-forwarders` dressed up as documentation. Drop the flag from clap until the differentiated behaviour exists.
 
 ## Skill / CLI responsibility split (mirrors parent repo)
 

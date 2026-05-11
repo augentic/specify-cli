@@ -10,12 +10,12 @@ use std::io::Write;
 use serde::Serialize;
 use specify_change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
 use specify_config::LayoutExt;
-use specify_error::Result;
+use specify_error::{Error, Result};
 use specify_registry::Registry;
 
 use super::{PlanRef, plan_ref, require_file};
 use crate::context::Ctx;
-use crate::output::{CliResult, Render, Stream, emit};
+use crate::output::Render;
 
 /// Wire shape of the JSON `diagnostics:` row. Mirrors
 /// [`PlanDoctorDiagnostic`] but with `severity` rendered as the
@@ -53,7 +53,7 @@ impl Render for DoctorBody {
     }
 }
 
-pub(super) fn run(ctx: &Ctx) -> Result<CliResult> {
+pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ctx.project_dir.layout().slices_dir();
@@ -81,16 +81,12 @@ pub(super) fn run(ctx: &Ctx) -> Result<CliResult> {
     let has_errors = diagnostics.iter().any(|d| matches!(d.severity, PlanDoctorSeverity::Error));
     let rows: Vec<DiagnosticRow> = diagnostics.iter().map(diagnostic_row).collect();
 
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &DoctorBody {
-            plan: plan_ref(&plan, &plan_path),
-            diagnostics: rows,
-        },
-    )?;
+    ctx.out().write(&DoctorBody {
+        plan: plan_ref(&plan, &plan_path),
+        diagnostics: rows,
+    })?;
 
-    Ok(if has_errors { CliResult::ValidationFailed } else { CliResult::Success })
+    if has_errors { Err(Error::PlanStructural) } else { Ok(()) }
 }
 
 fn diagnostic_row(d: &PlanDoctorDiagnostic) -> DiagnosticRow {

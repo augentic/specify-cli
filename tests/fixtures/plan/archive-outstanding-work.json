@@ -1,8 +1,6 @@
 {
-  "entries": [
-    "b"
-  ],
+  "envelope-version": 6,
   "error": "plan-has-outstanding-work",
   "exit-code": 1,
-  "schema-version": 5
+  "message": "plan has outstanding non-terminal work: [\"b\"]"
 }

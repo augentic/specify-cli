@@ -3,7 +3,7 @@
 //! [`SliceMetadata`] is the document itself; [`PhaseOutcome`] is the
 //! latest phase return surface read by `/change:execute`; the
 //! [`TouchedSpec`] entries list the specs a slice mutates. The save
-//! path goes through [`crate::atomic::atomic_yaml_write`] — readers
+//! path goes through [`crate::atomic::yaml_write`] — readers
 //! see either the full previous content or the full new content,
 //! never a partial write.
 
@@ -24,7 +24,7 @@ pub const SLICES_DIR_NAME: &str = "slices";
 /// not the version number. Pre-v2 files default to `1`.
 pub const METADATA_VERSION: u32 = 2;
 
-const fn default_metadata_version() -> u32 {
+const fn default_version() -> u32 {
     1
 }
 
@@ -35,7 +35,7 @@ pub struct SliceMetadata {
     /// On-disk schema version. Defaults to `1` for pre-v2 archives;
     /// current writers stamp [`METADATA_VERSION`]. Readers dispatch on
     /// the outcome discriminant, not this field.
-    #[serde(default = "default_metadata_version")]
+    #[serde(default = "default_version")]
     pub version: u32,
     /// Capability identifier (e.g. `omnia@v1`).
     pub capability: String,
@@ -165,12 +165,12 @@ impl SliceMetadata {
     /// since every field of [`SliceMetadata`] is YAML-safe by
     /// construction. Returns [`Error::Io`] when the temp-file create /
     /// write / `sync_all` / atomic rename in
-    /// [`crate::atomic::atomic_yaml_write`] fails. The atomicity
+    /// [`crate::atomic::yaml_write`] fails. The atomicity
     /// envelope is preserved: a failure here leaves any pre-existing
     /// `.metadata.yaml` intact.
     pub fn save(&self, slice_dir: &Path) -> Result<(), Error> {
         let path = Self::path(slice_dir);
-        crate::atomic::atomic_yaml_write(&path, self)
+        crate::atomic::yaml_write(&path, self)
     }
 }
 
@@ -357,7 +357,7 @@ touched-specs:
     /// (no `version:` field, closed `Outcome`) must round-trip through
     /// the current reader, and the absent version resolves to `1`.
     #[test]
-    fn legacy_metadata_round_trips_with_default_version_one() {
+    fn defaults_version_when_absent() {
         let yaml = r#"capability: omnia
 status: complete
 created-at: "2024-08-01T10:00:00Z"

@@ -54,7 +54,7 @@ impl Project {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_merge_preview_reports_operations_without_writing() {
+fn preview_reports_operations() {
     let project = Project::init();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
@@ -64,7 +64,7 @@ fn slice_merge_preview_reports_operations_without_writing() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
 
     let specs = value["specs"].as_array().expect("specs array");
     // Two-spec fixture: each spec uses `## ADDED Requirements` with one
@@ -105,7 +105,7 @@ fn slice_merge_preview_reports_operations_without_writing() {
 }
 
 #[test]
-fn slice_merge_preview_does_not_require_complete_status() {
+fn preview_doesnt_require_complete_status() {
     let project = Project::init();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
     // Downgrade status to `building` — `slice merge run` refuses this but
@@ -123,7 +123,7 @@ fn slice_merge_preview_does_not_require_complete_status() {
 }
 
 #[test]
-fn slice_merge_preview_emits_readable_text_output() {
+fn preview_emits_readable_text() {
     let project = Project::init();
     project.stage_slice("merge-two-spec-slice");
 
@@ -146,7 +146,7 @@ fn slice_merge_preview_emits_readable_text_output() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn conflict_check_reports_no_conflicts_when_no_modified_entries() {
+fn conflict_check_no_conflicts_when_unmodified() {
     let project = Project::init();
     project.stage_slice("merge-two-spec-slice");
 
@@ -161,7 +161,7 @@ fn conflict_check_reports_no_conflicts_when_no_modified_entries() {
 }
 
 #[test]
-fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
+fn conflict_check_flags_modified_newer() {
     let project = Project::init();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
@@ -200,7 +200,7 @@ fn conflict_check_flags_modified_baseline_newer_than_defined_at() {
 }
 
 #[test]
-fn conflict_check_no_contract_drift_when_baseline_is_older() {
+fn conflict_check_no_drift_when_older() {
     let project = Project::init();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
@@ -236,7 +236,7 @@ fn conflict_check_no_contract_drift_when_baseline_is_older() {
 }
 
 #[test]
-fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
+fn conflict_check_detects_drift_when_newer() {
     let project = Project::init();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
@@ -273,7 +273,7 @@ fn conflict_check_detects_contract_drift_when_baseline_is_newer() {
 }
 
 #[test]
-fn conflict_check_no_drift_for_new_contract_files() {
+fn conflict_check_no_drift_for_new_files() {
     let project = Project::init();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
@@ -303,7 +303,7 @@ fn conflict_check_no_drift_for_new_contract_files() {
 }
 
 #[test]
-fn conflict_check_no_drift_when_slice_has_no_contracts_dir() {
+fn conflict_check_no_drift_without_contracts() {
     let project = Project::init();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
@@ -333,7 +333,7 @@ fn conflict_check_no_drift_when_slice_has_no_contracts_dir() {
 }
 
 #[test]
-fn conflict_check_ignores_new_entries_even_with_existing_baseline() {
+fn conflict_check_ignores_new_entries() {
     // `type: new` baselines are "we're creating this capability" — even
     // if a file already exists at the baseline path, it is not a drift
     // conflict in the mtime-vs-defined_at sense, just a different kind

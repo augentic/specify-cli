@@ -6,7 +6,7 @@
 //! `validate_slice`, serialises the report via `serialize_report`, and
 //! compares the pretty-printed JSON against a checked-in golden file.
 //!
-//! The goldens pin `schema_version: 1` and the full shape of a
+//! The goldens pin `envelope_version: 1` and the full shape of a
 //! `ValidationReport` as observed by skill consumers. If you change the
 //! registry, rule wording, or `rule_id`, regenerate both goldens with
 //! `REGENERATE_GOLDENS=1 cargo test -p specify-validate --test goldens`.

@@ -11,7 +11,7 @@
 //! `src/main.rs` is a thin shim around [`run`].
 //!
 //! Exit-code contract for the dispatched [`run`] (defined by the
-//! internal `CliResult` enum in `output`):
+//! internal `Exit` enum in `output`):
 //!
 //! - `0` `Success`: Success.
 //! - `1` `GenericFailure`: Generic failure (I/O, parse, tool

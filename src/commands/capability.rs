@@ -11,9 +11,9 @@ use specify_capability::{Capability, CapabilitySource, Phase};
 use specify_error::{Error, Result};
 use specify_validate::ValidationResult;
 
-use crate::cli::OutputFormat;
+use crate::cli::Format;
 use crate::context::Ctx;
-use crate::output::{CliResult, Render, Stream, emit};
+use crate::output::{Out, Render};
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -29,10 +29,8 @@ impl Render for ResolveBody {
     }
 }
 
-pub(crate) fn resolve(
-    format: OutputFormat, capability_value: String, project_dir: PathBuf,
-) -> Result<()> {
-    let (root_dir, source) = Capability::locate(&capability_value, &project_dir)?;
+pub(crate) fn resolve(format: Format, capability_value: String, project_dir: &Path) -> Result<()> {
+    let (root_dir, source) = Capability::locate(&capability_value, project_dir)?;
     enforce_capability_filename(&root_dir)?;
     let (source_label, path) = match &source {
         CapabilitySource::Local(p) => ("local", p.clone()),
@@ -40,15 +38,11 @@ pub(crate) fn resolve(
         _ => ("unknown", PathBuf::new()),
     };
 
-    emit(
-        Stream::Stdout,
-        format,
-        &ResolveBody {
-            capability_value,
-            resolved_path: path.display().to_string(),
-            source: source_label,
-        },
-    )?;
+    Out::for_format(format).write(&ResolveBody {
+        capability_value,
+        resolved_path: path.display().to_string(),
+        source: source_label,
+    })?;
     Ok(())
 }
 
@@ -96,10 +90,10 @@ impl Render for PipelineBody {
     }
 }
 
-pub(crate) fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<PathBuf>) -> Result<()> {
+pub(crate) fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<&Path>) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let order = pipeline.topo_order(phase)?;
-    let completion = slice.as_deref().map(|slice_dir| pipeline.completion_for(phase, slice_dir));
+    let completion = slice.map(|slice_dir| pipeline.completion_for(phase, slice_dir));
 
     let briefs = order
         .iter()
@@ -117,15 +111,11 @@ pub(crate) fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<PathBuf>) -> Resul
         })
         .collect();
 
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &PipelineBody {
-            phase: phase.to_string(),
-            slice: slice.as_ref().map(|p| p.display().to_string()),
-            briefs,
-        },
-    )?;
+    ctx.out().write(&PipelineBody {
+        phase: phase.to_string(),
+        slice: slice.map(|p| p.display().to_string()),
+        briefs,
+    })?;
     Ok(())
 }
 
@@ -154,7 +144,7 @@ impl Render for CheckBody {
     }
 }
 
-pub(crate) fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult> {
+pub(crate) fn check(format: Format, capability_dir: PathBuf) -> Result<()> {
     let manifest_path =
         Capability::probe_dir(&capability_dir).ok_or_else(|| Error::CapabilityManifestMissing {
             dir: capability_dir.clone(),
@@ -167,8 +157,8 @@ pub(crate) fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<Cli
         passed,
         results: results.iter().map(CheckRow::from).collect(),
     };
-    emit(Stream::Stdout, format, &body)?;
-    Ok(if passed { CliResult::Success } else { CliResult::ValidationFailed })
+    Out::for_format(format).write(&body)?;
+    if passed { Ok(()) } else { Err(Error::CapabilityCheckFailed { dir: capability_dir }) }
 }
 
 /// Surface a `capability-manifest-missing` diagnostic when `dir` does

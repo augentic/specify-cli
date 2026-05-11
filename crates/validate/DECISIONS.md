@@ -54,7 +54,7 @@ Source: `rfcs/archive/rfc-13-contract-validate-binary.md` §4.2a.
 pretty-printed JSON envelope consumed by the standalone
 `specify-contract` binary. The shape is byte-compatible with
 the pre-Phase-2.7 `specify contract validate --format json` envelope:
-top-level keys `schema-version`, `contracts-dir`, `ok`, `findings`,
+top-level keys `envelope-version`, `contracts-dir`, `ok`, `findings`,
 `exit-code`; per-finding keys `path`, `rule-id`, `detail`. Field order
 is preserved (typed `Serialize` structs piped through
 `serde_json::to_string_pretty`) so the byte sequence is deterministic

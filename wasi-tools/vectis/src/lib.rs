@@ -20,7 +20,7 @@
 //!   Android shells).
 //!
 //! Each subcommand owns its own JSON envelope shape; the shared
-//! `schema-version: 2` framing lives in this crate so both halves stay
+//! `envelope-version: 2` framing lives in this crate so both halves stay
 //! byte-compatible with their pre-merge dispatchers.
 
 pub mod scaffold;
@@ -33,12 +33,12 @@ use serde_json::Value;
 /// JSON contract version emitted on every structured response.
 pub const JSON_SCHEMA_VERSION: u64 = 2;
 
-/// Wire shape for every structured response: the schema-version envelope
+/// Wire shape for every structured response: the envelope-version envelope
 /// plus a flattened payload supplied by the dispatching subcommand.
 #[derive(Serialize)]
 struct Envelope {
-    #[serde(rename = "schema-version")]
-    schema_version: u64,
+    #[serde(rename = "envelope-version")]
+    envelope_version: u64,
     #[serde(flatten)]
     payload: Value,
 }
@@ -79,7 +79,7 @@ pub enum VectisCommand {
 #[must_use]
 pub fn envelope_json(payload: Value) -> String {
     serde_json::to_string_pretty(&Envelope {
-        schema_version: JSON_SCHEMA_VERSION,
+        envelope_version: JSON_SCHEMA_VERSION,
         payload,
     })
     .expect("JSON serialise")

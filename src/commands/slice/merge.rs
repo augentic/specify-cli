@@ -16,12 +16,12 @@ use specify_merge::{
 
 use super::artifact_classes;
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit};
+use crate::output::Render;
 
 const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/archive"];
 
-pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
-    let slice_dir = ctx.slices_dir().join(&name);
+pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
+    let slice_dir = ctx.slices_dir().join(name);
     let archive_dir = ctx.archive_dir();
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
 
@@ -31,26 +31,22 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
     // tree and archived slice. Opaque/generated outputs remain as residue
     // for the execute driver.
     if is_workspace_clone(&ctx.project_dir) {
-        auto_commit(&ctx.project_dir, &name);
+        auto_commit(&ctx.project_dir, name);
     }
 
     let today = Utc::now().format("%Y-%m-%d").to_string();
     let archive_path = archive_dir.join(format!("{today}-{name}"));
 
     let entries: Vec<MergedEntry> = merged.iter().map(MergedEntry::from).collect();
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &MergeRunBody {
-            merged_specs: entries,
-            archive_path: archive_path.display().to_string(),
-        },
-    )?;
+    ctx.out().write(&MergeRunBody {
+        merged_specs: entries,
+        archive_path: archive_path.display().to_string(),
+    })?;
     Ok(())
 }
 
-pub(super) fn preview(ctx: &Ctx, name: String) -> Result<()> {
-    let slice_dir = ctx.slices_dir().join(&name);
+pub(super) fn preview(ctx: &Ctx, name: &str) -> Result<()> {
+    let slice_dir = ctx.slices_dir().join(name);
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
     let result = slice::preview(&slice_dir, &classes)?;
 
@@ -71,32 +67,24 @@ pub(super) fn preview(ctx: &Ctx, name: String) -> Result<()> {
         .map(ContractItem::from)
         .collect();
 
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &PreviewBody {
-            slice_dir: slice_dir.display().to_string(),
-            specs,
-            contracts,
-        },
-    )?;
+    ctx.out().write(&PreviewBody {
+        slice_dir: slice_dir.display().to_string(),
+        specs,
+        contracts,
+    })?;
     Ok(())
 }
 
-pub(super) fn conflicts(ctx: &Ctx, name: String) -> Result<()> {
-    let slice_dir = ctx.slices_dir().join(&name);
+pub(super) fn conflicts(ctx: &Ctx, name: &str) -> Result<()> {
+    let slice_dir = ctx.slices_dir().join(name);
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
     let conflicts = conflict_check(&slice_dir, &classes)?;
     let rows: Vec<ConflictRow> = conflicts.iter().map(ConflictRow::from).collect();
 
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &ConflictCheckBody {
-            slice_dir: slice_dir.display().to_string(),
-            conflicts: rows,
-        },
-    )?;
+    ctx.out().write(&ConflictCheckBody {
+        slice_dir: slice_dir.display().to_string(),
+        conflicts: rows,
+    })?;
     Ok(())
 }
 
@@ -161,9 +149,9 @@ impl Render for PreviewBody {
             writeln!(w, "\nContract changes:")?;
             for c in &self.contracts {
                 let (sigil, label) = match c.action {
-                    "added" => ("+", "added"),
-                    "replaced" => ("~", "replaced"),
-                    _ => ("?", "unknown"),
+                    ContractAction::Added => ("+", "added"),
+                    ContractAction::Replaced => ("~", "replaced"),
+                    ContractAction::Unknown => ("?", "unknown"),
                 };
                 writeln!(w, "  {sigil} contracts/{} ({label})", c.path)?;
             }
@@ -194,15 +182,23 @@ impl From<&MergePreviewEntry> for SpecPreviewEntry {
 #[serde(rename_all = "kebab-case")]
 struct ContractItem {
     path: String,
-    action: &'static str,
+    action: ContractAction,
+}
+
+#[derive(Serialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+enum ContractAction {
+    Added,
+    Replaced,
+    Unknown,
 }
 
 impl From<&OpaquePreviewEntry> for ContractItem {
     fn from(entry: &OpaquePreviewEntry) -> Self {
         let action = match entry.action {
-            OpaqueAction::Added => "added",
-            OpaqueAction::Replaced => "replaced",
-            _ => "unknown",
+            OpaqueAction::Added => ContractAction::Added,
+            OpaqueAction::Replaced => ContractAction::Replaced,
+            _ => ContractAction::Unknown,
         };
         Self {
             path: entry.relative_path.clone(),

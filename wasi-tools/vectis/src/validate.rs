@@ -187,7 +187,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn render_success_envelope_preserves_schema_version_and_payload() {
+    fn render_success_envelope_preserves_envelope_version_and_payload() {
         let (json, code) = render_envelope_json(Ok(CommandOutcome::Success(json!({
             "mode": "tokens",
             "path": "tokens.yaml",
@@ -197,7 +197,7 @@ mod tests {
 
         assert_eq!(code, EXIT_CLEAN);
         let value: Value = serde_json::from_str(&json).expect("json envelope");
-        assert_eq!(value["schema-version"], crate::JSON_SCHEMA_VERSION);
+        assert_eq!(value["envelope-version"], crate::JSON_SCHEMA_VERSION);
         assert_eq!(value["mode"], "tokens");
     }
 
@@ -226,7 +226,7 @@ mod tests {
 
         assert_eq!(code, EXIT_FAILURE);
         let value: Value = serde_json::from_str(&json).expect("json envelope");
-        assert_eq!(value["schema-version"], crate::JSON_SCHEMA_VERSION);
+        assert_eq!(value["envelope-version"], crate::JSON_SCHEMA_VERSION);
         assert_eq!(value["error"], "invalid-project");
         assert_eq!(value["exit-code"], EXIT_FAILURE);
     }

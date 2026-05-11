@@ -10,7 +10,7 @@ mod common;
 use common::{parse_json, repo_root, specify};
 
 fn contract_wasm() -> PathBuf {
-    repo_root().join("crates/contract/dist/contract-0.2.0.wasm")
+    repo_root().join("wasi-tools/contract/dist/contract-0.2.0.wasm")
 }
 
 fn sha256_hex(path: &Path) -> String {
@@ -76,7 +76,7 @@ impl ContractToolFixture {
 }
 
 #[test]
-fn contract_tool_lists_from_capability_sidecar() {
+fn lists_from_capability_sidecar() {
     let fixture = ContractToolFixture::new();
 
     let assert = specify()
@@ -95,7 +95,7 @@ fn contract_tool_lists_from_capability_sidecar() {
 }
 
 #[test]
-fn contract_tool_preserves_validator_json_for_clean_baseline() {
+fn preserves_validator_json_for_clean() {
     let fixture = ContractToolFixture::new();
     fixture.write_contract(
         "http/user-api.yaml",
@@ -114,7 +114,7 @@ fn contract_tool_preserves_validator_json_for_clean_baseline() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["envelope-version"], 2);
     assert_eq!(value["contracts-dir"], fixture.contracts_dir().display().to_string());
     assert_eq!(value["ok"], true);
     assert_eq!(value["findings"], serde_json::json!([]));
@@ -122,7 +122,7 @@ fn contract_tool_preserves_validator_json_for_clean_baseline() {
 }
 
 #[test]
-fn contract_tool_preserves_validator_findings_exit_code() {
+fn preserves_validator_findings_exit_code() {
     let fixture = ContractToolFixture::new();
     fixture.write_contract(
         "http/user-api.yaml",

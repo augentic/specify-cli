@@ -42,14 +42,14 @@ pub fn specify() -> Command {
 /// Deterministic git author/committer identity for tests that exercise
 /// real `git commit` invocations.
 #[allow(dead_code)]
-pub const GIT_TEST_ENV: [(&str, &str); 4] = [
+pub const GIT_ENV: [(&str, &str); 4] = [
     ("GIT_AUTHOR_NAME", "Specify Test"),
     ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
     ("GIT_COMMITTER_NAME", "Specify Test"),
     ("GIT_COMMITTER_EMAIL", "specify-test@example.com"),
 ];
 
-/// Run `git` in `root` with [`GIT_TEST_ENV`] applied, asserting success
+/// Run `git` in `root` with [`GIT_ENV`] applied, asserting success
 /// and returning captured stdout.
 ///
 /// # Panics
@@ -60,7 +60,7 @@ pub fn run_git(root: &Path, args: &[&str]) -> String {
     let output = ProcessCommand::new("git")
         .current_dir(root)
         .args(args)
-        .envs(GIT_TEST_ENV)
+        .envs(GIT_ENV)
         .output()
         .unwrap_or_else(|err| panic!("git {} failed to start: {err}", args.join(" ")));
     assert!(

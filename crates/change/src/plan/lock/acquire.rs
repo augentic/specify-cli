@@ -7,7 +7,7 @@ use std::path::Path;
 
 use fs2::FileExt;
 use specify_error::Error;
-use specify_slice::atomic::atomic_bytes_write;
+use specify_slice::atomic::bytes_write;
 
 use super::pid::is_pid_alive;
 use super::{Acquired, Guard, Stamp};
@@ -164,7 +164,7 @@ impl Stamp {
         // Atomic write via tempfile + rename, matching the convention
         // used by `Plan::save` and `SliceMetadata::save`. Readers
         // never observe a partial stamp.
-        atomic_bytes_write(&path, our_pid.to_string().as_bytes())?;
+        bytes_write(&path, our_pid.to_string().as_bytes())?;
 
         Ok(Acquired {
             pid: our_pid,

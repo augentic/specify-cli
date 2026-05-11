@@ -2,7 +2,7 @@ pub(crate) mod cli;
 
 use std::io::Write;
 
-use specify_error::Result;
+use specify_error::{Error, Result};
 use specify_validate::{
     CompatibilityClassification, CompatibilityFinding, CompatibilityReport,
     classify_project_compatibility,
@@ -10,25 +10,26 @@ use specify_validate::{
 
 use crate::cli::CompatibilityAction;
 use crate::context::Ctx;
-use crate::output::{CliResult, Render, Stream, emit};
+use crate::output::Render;
 
 /// Dispatch `specify compatibility *`.
-pub(crate) fn run(ctx: &Ctx, action: CompatibilityAction) -> Result<CliResult> {
+pub(crate) fn run(ctx: &Ctx, action: CompatibilityAction) -> Result<()> {
     match action {
         CompatibilityAction::Check => check(ctx),
-        CompatibilityAction::Report { change } => report(ctx, change).map(|()| CliResult::Success),
+        CompatibilityAction::Report { change } => report(ctx, change),
     }
 }
 
-fn check(ctx: &Ctx) -> Result<CliResult> {
+fn check(ctx: &Ctx) -> Result<()> {
     let report = classify_project_compatibility(&ctx.project_dir, None)?;
-    emit(Stream::Stdout, ctx.format, &report)?;
-    Ok(if report.is_compatible() { CliResult::Success } else { CliResult::ValidationFailed })
+    let compatible = report.is_compatible();
+    ctx.out().write(&report)?;
+    if compatible { Ok(()) } else { Err(Error::CompatibilityCheckFailed) }
 }
 
 fn report(ctx: &Ctx, change: String) -> Result<()> {
     let report = classify_project_compatibility(&ctx.project_dir, Some(change))?;
-    emit(Stream::Stdout, ctx.format, &report)?;
+    ctx.out().write(&report)?;
     Ok(())
 }
 

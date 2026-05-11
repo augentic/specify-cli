@@ -20,7 +20,7 @@ use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::{GIT_TEST_ENV, assert_golden_at, copy_dir, parse_stdout, repo_root, run_git, specify};
+use common::{GIT_ENV, assert_golden_at, copy_dir, parse_stdout, repo_root, run_git, specify};
 
 // ---------------------------------------------------------------------------
 // Paths + setup helpers
@@ -36,7 +36,7 @@ fn goldens_dir() -> PathBuf {
 
 fn specify_with_git_identity() -> Command {
     let mut cmd = specify();
-    cmd.envs(GIT_TEST_ENV);
+    cmd.envs(GIT_ENV);
     cmd
 }
 
@@ -142,7 +142,7 @@ fn validate_good_slice_passes() {
     assert_eq!(assert.get_output().status.code(), Some(0));
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 5);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["passed"], true);
     assert_golden("validate-good.json", actual);
 }
@@ -164,7 +164,7 @@ fn validate_bad_slice_fails_with_exit_two() {
     assert_eq!(assert.get_output().status.code(), Some(2), "validate on bad fixture must exit 2");
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 5);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["passed"], false);
     assert_golden("validate-bad.json", actual);
 }
@@ -174,7 +174,7 @@ fn validate_bad_slice_fails_with_exit_two() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn merge_two_spec_slice_produces_baselines_and_archive() {
+fn merge_two_spec_slice_produces_baselines() {
     let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
 
@@ -208,12 +208,12 @@ fn merge_two_spec_slice_produces_baselines_and_archive() {
     );
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 5);
+    assert_eq!(actual["envelope-version"], 6);
     assert_golden("merge-two-spec.json", actual);
 }
 
 #[test]
-fn workspace_merge_auto_commit_excludes_generated_residue() {
+fn workspace_merge_excludes_generated() {
     let tmp = tempdir().expect("tempdir");
     let project_root = tmp.path().join(".specify/workspace/orders");
     fs::create_dir_all(&project_root).expect("mkdir workspace project");
@@ -303,7 +303,7 @@ fn task_progress_reports_counts_and_items() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 5);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["total"], 5);
     assert_eq!(actual["complete"], 2);
     assert_eq!(actual["pending"], 3);
@@ -315,7 +315,7 @@ fn task_progress_reports_counts_and_items() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn task_mark_marks_then_is_idempotent() {
+fn task_mark_is_idempotent() {
     let project = Project::init().with_schemas();
     project.stage_slice("good-slice");
     let tasks_path = project.root().join(".specify/slices/my-slice/tasks.md");
@@ -330,7 +330,7 @@ fn task_mark_marks_then_is_idempotent() {
         .assert()
         .success();
     let first_value = parse_stdout(&first.get_output().stdout, project.root());
-    assert_eq!(first_value["schema-version"], 5);
+    assert_eq!(first_value["envelope-version"], 6);
     assert_eq!(first_value["marked"], "1.1");
     assert_eq!(first_value["idempotent"], false);
 
@@ -361,7 +361,7 @@ fn task_mark_marks_then_is_idempotent() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn capability_resolve_local_returns_local_source() {
+fn capability_resolve_local_returns_local() {
     let project = Project::init().with_schemas();
     fs::remove_dir_all(project.root().join(".specify/.cache/omnia"))
         .expect("remove cached capability");
@@ -375,7 +375,7 @@ fn capability_resolve_local_returns_local_source() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 5);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["capability-value"], "omnia");
     assert_eq!(actual["source"], "local");
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
@@ -390,7 +390,7 @@ fn capability_resolve_local_returns_local_source() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn capability_resolve_cached_returns_cached_source() {
+fn capability_resolve_returns_cached() {
     // `init` + cache-only layout (no `schemas/omnia` under the tempdir).
     let project = Project::init().with_cached_schema();
 
@@ -403,7 +403,7 @@ fn capability_resolve_cached_returns_cached_source() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 5);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["source"], "cached");
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
@@ -422,7 +422,7 @@ fn capability_resolve_cached_returns_cached_source() {
 /// `slice outcome show --format json`, and assert the full JSON
 /// shape. Also covers the unstamped case where `outcome` must be `null`.
 #[test]
-fn phase_outcome_round_trip_via_slice_outcome_verb() {
+fn phase_outcome_round_trip_via_slice() {
     let project = Project::init();
 
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
@@ -452,7 +452,7 @@ fn phase_outcome_round_trip_via_slice_outcome_verb() {
 
     let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-    assert_eq!(actual["schema-version"], 5);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["name"], "foo");
     let outcome = &actual["outcome"];
     assert_eq!(outcome["phase"], "build");
@@ -482,7 +482,7 @@ fn phase_outcome_round_trip_via_slice_outcome_verb() {
     assert_eq!(assert.get_output().status.code(), Some(0));
 
     let value = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(value["schema-version"], 5);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "bar");
     assert!(
         value["outcome"].is_null(),

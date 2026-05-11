@@ -16,7 +16,7 @@ use super::ContractFinding;
 ///
 /// ```json
 /// {
-///   "schema-version": 2,
+///   "envelope-version": 2,
 ///   "contracts-dir": "<baseline-dir>",
 ///   "ok": true,
 ///   "findings": [
@@ -68,7 +68,7 @@ pub fn serialize_contract_findings(
         .collect();
 
     let envelope = ValidateEnvelope {
-        schema_version: 2,
+        envelope_version: 2,
         contracts_dir: baseline_dir.display().to_string(),
         ok: findings.is_empty(),
         findings: payload,
@@ -80,8 +80,8 @@ pub fn serialize_contract_findings(
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ValidateEnvelope {
-    #[serde(rename = "schema-version")]
-    schema_version: u64,
+    #[serde(rename = "envelope-version")]
+    envelope_version: u64,
     contracts_dir: String,
     ok: bool,
     findings: Vec<FindingPayload>,
@@ -129,7 +129,7 @@ mod tests {
         fs::create_dir_all(&baseline).unwrap();
         let s = serialize_contract_findings(&baseline, &[], 0);
         let value = json_value(&s);
-        assert_eq!(value["schema-version"], 2);
+        assert_eq!(value["envelope-version"], 2);
         assert_eq!(value["contracts-dir"], baseline.display().to_string());
         assert_eq!(value["ok"], true);
         assert_eq!(value["findings"], serde_json::json!([]));
@@ -173,7 +173,7 @@ mod tests {
     }
 
     /// Field order in the rendered JSON must match the legacy envelope
-    /// (top-level keys: `schema-version`, `contracts-dir`, `ok`,
+    /// (top-level keys: `envelope-version`, `contracts-dir`, `ok`,
     /// `findings`, `exit-code`; per-finding keys: `path`, `rule-id`,
     /// `detail`).
     #[test]
@@ -191,7 +191,7 @@ mod tests {
             detail: "demo".to_string(),
         }];
         let s = serialize_contract_findings(&baseline, &findings, 1);
-        let p_schema = s.find("\"schema-version\"").expect("schema-version present");
+        let p_schema = s.find("\"envelope-version\"").expect("envelope-version present");
         let p_contracts = s.find("\"contracts-dir\"").expect("contracts-dir present");
         let p_ok = s.find("\"ok\"").expect("ok present");
         let p_findings = s.find("\"findings\"").expect("findings present");

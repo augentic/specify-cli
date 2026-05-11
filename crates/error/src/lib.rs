@@ -287,6 +287,48 @@ pub enum Error {
     #[error("init-requires-capability-or-hub: pass <capability> or --hub")]
     InitNeedsCapability,
 
+    /// `specify capability check` failed structural validation against
+    /// the resolved capability directory. The handler emits the per-rule
+    /// detail to stdout before returning this variant; the canonical
+    /// stderr envelope carries the discriminant + offending directory.
+    #[error("capability-check-failed: capability at {} failed validation", dir.display())]
+    CapabilityCheckFailed {
+        /// Directory that failed validation.
+        dir: std::path::PathBuf,
+    },
+
+    /// `specify compatibility check` surfaced one or more
+    /// non-additive findings. The handler emits the full
+    /// `CompatibilityReport` to stdout before returning this variant.
+    #[error("compatibility-check-failed: cross-project contracts are not all compatible")]
+    CompatibilityCheckFailed,
+
+    /// `specify slice validate` produced one or more failing rule
+    /// results for the named slice. The handler emits the full report
+    /// to stdout before returning this variant.
+    #[error("slice-validation-failed: slice `{name}` failed validation")]
+    SliceValidationFailed {
+        /// Slice name (kebab-case).
+        name: String,
+    },
+
+    /// `specify workspace prepare-branch` refused to land a branch
+    /// because `specify_registry::branch::prepare` returned a
+    /// diagnostic. The renderer surfaces the diagnostic key + paths
+    /// alongside the human-readable detail.
+    #[error("branch-preparation-failed: project `{project}`: {detail} ({key})")]
+    WorkspaceBranchPreparationFailed {
+        /// Project (registry slot) name.
+        project: String,
+        /// Stable diagnostic key from `specify_registry::branch`.
+        key: String,
+        /// Human-readable diagnostic message.
+        detail: String,
+        /// Repository-relative paths the diagnostic points at (may be
+        /// empty when the diagnostic is whole-clone scoped).
+        paths: Vec<String>,
+    },
+
     /// A declared WASI tool requested filesystem authority outside its manifest policy.
     #[error("tool permission denied: {0}")]
     ToolDenied(String),
@@ -301,6 +343,52 @@ pub enum Error {
     /// A name failed kebab-case validation.
     #[error("invalid name: {0}")]
     InvalidName(String),
+
+    /// `specify change finalize` ran successfully but the per-project
+    /// probes reported at least one blocker. The structured summary
+    /// (unmerged PRs, dirty clones, etc.) lives in the stdout body;
+    /// this variant carries the change name and a human-readable
+    /// summary of the blockers.
+    #[error("change-finalize-blocked: change `{change}` blocked: {summary}")]
+    ChangeFinalizeBlocked {
+        /// Change name (= `plan.yaml:name`).
+        change: String,
+        /// Human-readable summary of the per-project blockers.
+        summary: String,
+    },
+
+    /// `specify context check` detected drift between `AGENTS.md` /
+    /// `.specify/context.lock` and the live inputs. The per-input
+    /// detail lives in the stdout body; this variant flags the
+    /// failure for exit-code routing.
+    #[error(
+        "context-drift-detected: AGENTS.md / .specify/context.lock drift detected; \
+         see the stdout body for affected inputs"
+    )]
+    ContextDriftDetected,
+
+    /// `specify context generate --check` would have updated
+    /// `AGENTS.md` or `.specify/context.lock`. The diff itself rides
+    /// the stdout body; this variant routes the would-update signal
+    /// onto a non-zero exit.
+    #[error(
+        "context-would-update: context is out of date; \
+         run `specify context generate` to refresh it"
+    )]
+    ContextWouldUpdate,
+
+    /// `specify workspace push` reported at least one failed project.
+    /// The per-project status lives in the stdout body; this variant
+    /// carries the plan name and routes the failure onto a non-zero
+    /// exit.
+    #[error(
+        "workspace-push-failed: workspace push for plan `{plan}` had at least one failed project; \
+         see the stdout body for per-project status"
+    )]
+    WorkspacePushFailed {
+        /// Plan name (= `plan.yaml:name`).
+        plan: String,
+    },
 
     /// An I/O error propagated from the standard library.
     #[error(transparent)]
@@ -384,9 +472,17 @@ impl Error {
                 _ => "filesystem",
             },
             Self::InitNeedsCapability => "init-requires-capability-or-hub",
+            Self::CapabilityCheckFailed { .. } => "capability-check-failed",
+            Self::CompatibilityCheckFailed => "compatibility-check-failed",
+            Self::SliceValidationFailed { .. } => "slice-validation-failed",
+            Self::WorkspaceBranchPreparationFailed { .. } => "branch-preparation-failed",
             Self::ToolDenied(_) => "tool-permission-denied",
             Self::ToolNotDeclared { .. } => "tool-not-declared",
             Self::InvalidName(_) => "invalid-name",
+            Self::ChangeFinalizeBlocked { .. } => "change-finalize-blocked",
+            Self::ContextDriftDetected => "context-drift-detected",
+            Self::ContextWouldUpdate => "context-would-update",
+            Self::WorkspacePushFailed { .. } => "workspace-push-failed",
             Self::Io(_) => "io",
             Self::Yaml(_) => "yaml",
             Self::YamlSer(_) => "yaml-ser",

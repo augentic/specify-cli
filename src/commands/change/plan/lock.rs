@@ -4,23 +4,19 @@ use serde::Serialize;
 use specify_change::{PlanLockReleased, Stamp};
 use specify_error::Result;
 
-use crate::cli::OutputFormat;
+use crate::cli::Format;
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit};
+use crate::output::Render;
 
 pub(super) fn acquire(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let acquired = Stamp::acquire(&ctx.project_dir, our_pid)?;
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &AcquireBody {
-            held: true,
-            pid: acquired.pid,
-            already_held: acquired.already_held,
-            reclaimed_stale_pid: acquired.reclaimed_stale_pid,
-        },
-    )?;
+    ctx.out().write(&AcquireBody {
+        held: true,
+        pid: acquired.pid,
+        already_held: acquired.already_held,
+        reclaimed_stale_pid: acquired.reclaimed_stale_pid,
+    })?;
     Ok(())
 }
 
@@ -44,8 +40,8 @@ pub(super) fn release(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
             our_pid: Some(our_pid),
         },
     };
-    emit(Stream::Stdout, ctx.format, &body)?;
-    if matches!(ctx.format, OutputFormat::Text) {
+    ctx.out().write(&body)?;
+    if matches!(ctx.format, Format::Text) {
         match outcome {
             PlanLockReleased::HeldByOther { pid: Some(other) } => {
                 eprintln!(
@@ -65,15 +61,11 @@ pub(super) fn release(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
 
 pub(super) fn status(ctx: &Ctx) -> Result<()> {
     let state = Stamp::status(&ctx.project_dir)?;
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &StatusBody {
-            held: state.held,
-            pid: state.pid,
-            stale: state.stale,
-        },
-    )?;
+    ctx.out().write(&StatusBody {
+        held: state.held,
+        pid: state.pid,
+        stale: state.stale,
+    })?;
     Ok(())
 }
 

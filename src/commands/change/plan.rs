@@ -21,22 +21,15 @@ use specify_registry::Registry;
 
 use crate::cli::{LockAction, PlanAction};
 use crate::context::Ctx;
-use crate::output::CliResult;
-pub(super) use crate::output::path_string;
+pub(super) use crate::output::display;
 
-pub(super) fn run(ctx: &Ctx, action: PlanAction) -> Result<CliResult> {
-    // Most arms emit unconditionally and return `Result<()>`; only
-    // `validate`, `doctor`, and `archive` surface non-success exits
-    // (`ValidationFailed` / `GenericFailure`). Lift the rest into
-    // `CliResult::Success` here so each sub-handler can focus on its
-    // payload.
-    let ok = |()| CliResult::Success;
+pub(super) fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
     match action {
-        PlanAction::Create { name, sources } => lifecycle::create(ctx, name, sources).map(ok),
+        PlanAction::Create { name, sources } => lifecycle::create(ctx, name, sources),
         PlanAction::Validate => lifecycle::validate(ctx),
         PlanAction::Doctor => doctor::run(ctx),
-        PlanAction::Next => lifecycle::next(ctx).map(ok),
-        PlanAction::Status => status::run(ctx).map(ok),
+        PlanAction::Next => lifecycle::next(ctx),
+        PlanAction::Status => status::run(ctx),
         PlanAction::Add {
             name,
             depends_on,
@@ -45,8 +38,7 @@ pub(super) fn run(ctx: &Ctx, action: PlanAction) -> Result<CliResult> {
             project,
             capability,
             context,
-        } => create::add(ctx, name, depends_on, sources, description, project, capability, context)
-            .map(ok),
+        } => create::add(ctx, name, depends_on, sources, description, project, capability, context),
         PlanAction::Amend {
             name,
             depends_on,
@@ -57,16 +49,15 @@ pub(super) fn run(ctx: &Ctx, action: PlanAction) -> Result<CliResult> {
             context,
         } => {
             create::amend(ctx, name, depends_on, sources, description, project, capability, context)
-                .map(ok)
         }
         PlanAction::Transition { name, target, reason } => {
-            lifecycle::transition(ctx, name, target, reason).map(ok)
+            lifecycle::transition(ctx, name, target, reason)
         }
         PlanAction::Archive { force } => lifecycle::archive(ctx, force),
         PlanAction::Lock { action } => match action {
-            LockAction::Acquire { pid } => lock::acquire(ctx, pid).map(ok),
-            LockAction::Release { pid } => lock::release(ctx, pid).map(ok),
-            LockAction::Status => lock::status(ctx).map(ok),
+            LockAction::Acquire { pid } => lock::acquire(ctx, pid),
+            LockAction::Release { pid } => lock::release(ctx, pid),
+            LockAction::Status => lock::status(ctx),
         },
     }
 }
@@ -85,12 +76,6 @@ pub(super) fn require_file(project_dir: &Path) -> Result<PathBuf> {
         });
     }
     Ok(path)
-}
-
-pub(super) fn load_for_write(ctx: &Ctx) -> Result<(PathBuf, Plan)> {
-    let plan_path = require_file(&ctx.project_dir)?;
-    let plan = Plan::load(&plan_path)?;
-    Ok((plan_path, plan))
 }
 
 #[derive(Serialize)]

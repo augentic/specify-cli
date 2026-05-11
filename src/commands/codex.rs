@@ -8,19 +8,15 @@ use specify_error::{Error, Result};
 
 use crate::cli::CodexAction;
 use crate::context::Ctx;
-use crate::output::{CliResult, Render, Stream, Validation, ValidationRow, emit, path_string};
+use crate::output::{Render, Validation, ValidationRow, display};
 
 /// Dispatch `specify codex *`.
-pub(crate) fn run(ctx: &Ctx, action: CodexAction) -> Result<CliResult> {
-    // `validate` is the only arm that surfaces a non-success exit
-    // (`CliResult::ValidationFailed` when the codex is malformed);
-    // the others return `Result<()>` and lift to `Success` here.
-    let ok = |()| CliResult::Success;
+pub(crate) fn run(ctx: &Ctx, action: CodexAction) -> Result<()> {
     match action {
-        CodexAction::List => list(ctx).map(ok),
-        CodexAction::Show { rule_id } => show(ctx, &rule_id).map(ok),
+        CodexAction::List => list(ctx),
+        CodexAction::Show { rule_id } => show(ctx, &rule_id),
         CodexAction::Validate => validate(ctx),
-        CodexAction::Export => export(ctx).map(ok),
+        CodexAction::Export => export(ctx),
     }
 }
 
@@ -31,14 +27,10 @@ fn resolve(ctx: &Ctx) -> Result<ResolvedCodex> {
 fn list(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from).collect();
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &ListBody {
-            rule_count: rules.len(),
-            rules,
-        },
-    )?;
+    ctx.out().write(&ListBody {
+        rule_count: rules.len(),
+        rules,
+    })?;
     Ok(())
 }
 
@@ -54,43 +46,31 @@ fn show(ctx: &Ctx, rule_id: &str) -> Result<()> {
             detail: format!("rule `{rule_id}` not found"),
         })?;
 
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &ShowBody {
-            rule: RuleExport::from(resolved),
-        },
-    )?;
+    ctx.out().write(&ShowBody {
+        rule: RuleExport::from(resolved),
+    })?;
     Ok(())
 }
 
-fn validate(ctx: &Ctx) -> Result<CliResult> {
+fn validate(ctx: &Ctx) -> Result<()> {
     match resolve(ctx) {
         Ok(codex) => {
-            emit(
-                Stream::Stdout,
-                ctx.format,
-                &ValidateBody {
-                    rule_count: Some(codex.rules.len()),
-                    error_count: 0,
-                    validation: Validation { results: Vec::new() },
-                },
-            )?;
-            Ok(CliResult::Success)
+            ctx.out().write(&ValidateBody {
+                rule_count: Some(codex.rules.len()),
+                error_count: 0,
+                validation: Validation { results: Vec::new() },
+            })?;
+            Ok(())
         }
         Err(Error::Validation { results }) => {
-            emit(
-                Stream::Stdout,
-                ctx.format,
-                &ValidateBody {
-                    rule_count: None,
-                    error_count: results.len(),
-                    validation: Validation {
-                        results: results.iter().map(ValidationRow::from).collect(),
-                    },
+            ctx.out().write(&ValidateBody {
+                rule_count: None,
+                error_count: results.len(),
+                validation: Validation {
+                    results: results.iter().map(ValidationRow::from).collect(),
                 },
-            )?;
-            Ok(CliResult::ValidationFailed)
+            })?;
+            Err(Error::Validation { results })
         }
         Err(err) => Err(err),
     }
@@ -99,14 +79,10 @@ fn validate(ctx: &Ctx) -> Result<CliResult> {
 fn export(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleExport::from).collect();
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &ExportBody {
-            rule_count: rules.len(),
-            rules,
-        },
-    )?;
+    ctx.out().write(&ExportBody {
+        rule_count: rules.len(),
+        rules,
+    })?;
     Ok(())
 }
 
@@ -227,7 +203,7 @@ impl<'a> From<&'a ResolvedCodexRule> for RuleSummary<'a> {
             id: &resolved.rule.frontmatter.id,
             title: &resolved.rule.frontmatter.title,
             severity: severity_label(resolved.rule.frontmatter.severity),
-            source_path: path_string(&resolved.rule.path),
+            source_path: display(&resolved.rule.path),
             provenance_kind: provenance.kind,
             capability_name: provenance.capability_name,
             capability_version: provenance.capability_version,
@@ -247,7 +223,7 @@ impl<'a> From<&'a ResolvedCodexRule> for RuleExport<'a> {
             severity: severity_label(frontmatter.severity),
             trigger: &frontmatter.trigger,
             body: &rule.body,
-            source_path: path_string(&rule.path),
+            source_path: display(&rule.path),
             provenance_kind: provenance.kind,
             capability_name: provenance.capability_name,
             capability_version: provenance.capability_version,

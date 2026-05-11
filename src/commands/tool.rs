@@ -3,9 +3,9 @@
 pub(crate) mod cli;
 
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::io::Write;
 use std::path::Path;
+use std::{fmt, fs};
 
 use chrono::Utc;
 use serde::Serialize;
@@ -17,9 +17,9 @@ use specify_tool::load::{self, Warning};
 use specify_tool::validate::ValidationResult as ToolValidationResult;
 use specify_tool::{Tool, ToolManifest, ToolPermissions, ToolScope};
 
-use crate::cli::OutputFormat;
+use crate::cli::Format;
 use crate::context::Ctx;
-use crate::output::{CliResult, Render, Stream, emit};
+use crate::output::Render;
 
 type CacheKey = (String, String, String);
 
@@ -50,10 +50,26 @@ struct ToolRow {
     name: String,
     version: String,
     source: String,
-    scope: String,
+    scope: ToolScopeKind,
     scope_detail: String,
-    cache_status: String,
+    cache_status: CacheStatus,
     cached_path: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum ToolScopeKind {
+    Project,
+    Capability,
+}
+
+impl fmt::Display for ToolScopeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Project => "project",
+            Self::Capability => "capability",
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -96,7 +112,7 @@ impl Render for ListBody {
                 row.version,
                 row.scope,
                 row.scope_detail,
-                row.cache_status,
+                cache_status_label(row.cache_status),
                 row.cached_path
             )?;
         }
@@ -147,7 +163,7 @@ impl Render for ShowBody {
         writeln!(w, "version: {}", row.row.version)?;
         writeln!(w, "source: {}", row.row.source)?;
         writeln!(w, "scope: {}:{}", row.row.scope, row.row.scope_detail)?;
-        writeln!(w, "cache: {}", row.row.cache_status)?;
+        writeln!(w, "cache: {}", cache_status_label(row.row.cache_status))?;
         writeln!(w, "cached path: {}", row.row.cached_path)?;
         if let Some(fetched_at) = &row.fetched_at {
             writeln!(w, "fetched at: {fetched_at}")?;
@@ -184,10 +200,17 @@ impl Render for GcBody {
 }
 
 /// Run a declared WASI tool through the concrete WASI host.
-pub(crate) fn run(ctx: &Ctx, name: String, args: Vec<String>) -> Result<CliResult> {
+///
+/// Returns the guest's exit byte (0 for success). The dispatcher
+/// promotes a non-zero exit into [`Exit::Code`] verbatim so
+/// `specify tool run` is a transparent shim over the underlying WASI
+/// binary; this is the only legitimate site that mints a `Code(_)`
+/// exit. Domain failures (resolver, host) propagate as `Error` and
+/// land on the canonical exit-code table.
+pub(crate) fn run(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<u8> {
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
-    let scoped = find(&inventory, &name)?;
+    let scoped = find(&inventory, name)?;
     let resolved = specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, Utc::now())?;
     let mut run_ctx = RunContext::new(&ctx.project_dir, args);
     if let ToolScope::Capability { capability_dir, .. } = &scoped.scope {
@@ -195,8 +218,7 @@ pub(crate) fn run(ctx: &Ctx, name: String, args: Vec<String>) -> Result<CliResul
     }
     let runner = WasiRunner::new()?;
     let exit = runner.run(&resolved, &run_ctx)?;
-    let code = u8::try_from(exit.clamp(0, 255)).expect("tool exit code is clamped to u8 range");
-    Ok(if code == 0 { CliResult::Success } else { CliResult::Code(code) })
+    Ok(u8::try_from(exit.clamp(0, 255)).expect("tool exit code is clamped to u8 range"))
 }
 
 /// List the merged tool declarations for the current project.
@@ -207,17 +229,17 @@ pub(crate) fn list(ctx: &Ctx) -> Result<()> {
         tools: rows,
         warnings: inventory.warnings,
     };
-    emit(Stream::Stdout, ctx.format, &body)?;
-    if matches!(ctx.format, OutputFormat::Text) {
+    ctx.out().write(&body)?;
+    if matches!(ctx.format, Format::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
     Ok(())
 }
 
 /// Fetch one declared tool, or all declared tools when no name is supplied.
-pub(crate) fn fetch(ctx: &Ctx, name: Option<String>) -> Result<()> {
+pub(crate) fn fetch(ctx: &Ctx, name: Option<&str>) -> Result<()> {
     let inventory = build_inventory(ctx)?;
-    let selected = select(&inventory, name.as_deref())?;
+    let selected = select(&inventory, name)?;
     let mut rows = Vec::with_capacity(selected.len());
     for scoped in selected {
         let before = cache_status_for(scoped)?;
@@ -232,24 +254,24 @@ pub(crate) fn fetch(ctx: &Ctx, name: Option<String>) -> Result<()> {
         tools: rows,
         warnings: inventory.warnings,
     };
-    emit(Stream::Stdout, ctx.format, &body)?;
-    if matches!(ctx.format, OutputFormat::Text) {
+    ctx.out().write(&body)?;
+    if matches!(ctx.format, Format::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
     Ok(())
 }
 
 /// Show one declared tool's metadata and cache state.
-pub(crate) fn show(ctx: &Ctx, name: String) -> Result<()> {
+pub(crate) fn show(ctx: &Ctx, name: &str) -> Result<()> {
     let inventory = build_inventory(ctx)?;
-    let scoped = find(&inventory, &name)?;
+    let scoped = find(&inventory, name)?;
     let row = show_row_for(scoped)?;
     let body = ShowBody {
         tool: row,
         warnings: inventory.warnings,
     };
-    emit(Stream::Stdout, ctx.format, &body)?;
-    if matches!(ctx.format, OutputFormat::Text) {
+    ctx.out().write(&body)?;
+    if matches!(ctx.format, Format::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
     Ok(())
@@ -276,8 +298,8 @@ pub(crate) fn gc(ctx: &Ctx) -> Result<()> {
         removed,
         warnings: inventory.warnings,
     };
-    emit(Stream::Stdout, ctx.format, &body)?;
-    if matches!(ctx.format, OutputFormat::Text) {
+    ctx.out().write(&body)?;
+    if matches!(ctx.format, Format::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
     Ok(())
@@ -397,7 +419,7 @@ fn row_for(scoped: &ScopedTool) -> Result<ToolRow> {
         source,
         scope,
         scope_detail,
-        cache_status: cache_status_label(cache_status).to_string(),
+        cache_status,
         cached_path: cached_path.display().to_string(),
     })
 }
@@ -433,11 +455,11 @@ const fn cache_status_label(status: CacheStatus) -> &'static str {
     }
 }
 
-fn scope_labels(scope: &ToolScope) -> (String, String) {
+fn scope_labels(scope: &ToolScope) -> (ToolScopeKind, String) {
     match scope {
-        ToolScope::Project { project_name } => ("project".to_string(), project_name.clone()),
+        ToolScope::Project { project_name } => (ToolScopeKind::Project, project_name.clone()),
         ToolScope::Capability { capability_slug, .. } => {
-            ("capability".to_string(), capability_slug.clone())
+            (ToolScopeKind::Capability, capability_slug.clone())
         }
     }
 }

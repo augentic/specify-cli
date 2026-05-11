@@ -10,29 +10,25 @@ use serde::Serialize;
 use specify_capability::{Brief, PipelineView};
 use specify_error::{Error, Result};
 use specify_slice::SliceMetadata;
-use specify_slice::atomic::atomic_bytes_write;
+use specify_slice::atomic::bytes_write;
 use specify_task::{Task, mark_complete, parse_tasks};
 
 use crate::context::Ctx;
-use crate::output::{Render, Stream, emit};
+use crate::output::Render;
 
-pub(super) fn progress(ctx: &Ctx, name: String) -> Result<()> {
-    let slice_dir = ctx.slices_dir().join(&name);
+pub(super) fn progress(ctx: &Ctx, name: &str) -> Result<()> {
+    let slice_dir = ctx.slices_dir().join(name);
     let tasks_path = resolve_tasks_path(&ctx.project_dir, &slice_dir)?;
     let content = std::fs::read_to_string(&tasks_path)?;
     let progress = parse_tasks(&content);
 
     let tasks: Vec<TaskRow> = progress.tasks.iter().map(TaskRow::from).collect();
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &ProgressBody {
-            total: progress.total,
-            complete: progress.complete,
-            pending: progress.total.saturating_sub(progress.complete),
-            tasks,
-        },
-    )?;
+    ctx.out().write(&ProgressBody {
+        total: progress.total,
+        complete: progress.complete,
+        pending: progress.total.saturating_sub(progress.complete),
+        tasks,
+    })?;
     Ok(())
 }
 
@@ -88,25 +84,21 @@ struct DirectiveRow {
     skill: String,
 }
 
-pub(super) fn mark(ctx: &Ctx, name: String, task_number: String) -> Result<()> {
-    let slice_dir = ctx.slices_dir().join(&name);
+pub(super) fn mark(ctx: &Ctx, name: &str, task_number: String) -> Result<()> {
+    let slice_dir = ctx.slices_dir().join(name);
     let tasks_path = resolve_tasks_path(&ctx.project_dir, &slice_dir)?;
     let original = std::fs::read_to_string(&tasks_path)?;
     let updated = mark_complete(&original, &task_number)?;
     let idempotent = updated == original;
     if !idempotent {
-        atomic_bytes_write(&tasks_path, updated.as_bytes())?;
+        bytes_write(&tasks_path, updated.as_bytes())?;
     }
 
-    emit(
-        Stream::Stdout,
-        ctx.format,
-        &MarkBody {
-            marked: task_number,
-            new_content_path: tasks_path.display().to_string(),
-            idempotent,
-        },
-    )?;
+    ctx.out().write(&MarkBody {
+        marked: task_number,
+        new_content_path: tasks_path.display().to_string(),
+        idempotent,
+    })?;
     Ok(())
 }
 
