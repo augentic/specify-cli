@@ -17,7 +17,7 @@ use crate::brief::Brief;
 use crate::cache::CacheMeta;
 use crate::capability::{Capability, CapabilitySource, Phase};
 use crate::change_brief::{ChangeBrief, InputKind};
-use crate::codex::{CodexReviewMode, CodexRule, CodexSeverity};
+use crate::codex::{CodexRule, CodexSeverity};
 use crate::codex_resolver::{CodexProvenance, DEFAULT_CODEX_CAPABILITY, ResolvedCodex};
 use crate::pipeline::PipelineView;
 
@@ -601,7 +601,6 @@ fn codex_parse_accepts_minimal_rule() {
     assert_eq!(rule.normalized_id, "UNI-002");
     assert_eq!(rule.frontmatter.severity, CodexSeverity::Critical);
     assert!(rule.body.contains("## Rule"));
-    assert!(rule.frontmatter.review_mode.is_none());
 
     let results = CodexRule::validate_str(&rule.path, &contents);
     assert!(
@@ -697,21 +696,6 @@ fn codex_resolver_names_missing_default_capability() {
         detail.contains(DEFAULT_CODEX_CAPABILITY),
         "detail should name default codex capability: {detail}"
     );
-}
-
-#[test]
-fn codex_parse_accepts_full_rule_metadata() {
-    let path = codex_fixture_path("codex-valid-full.md");
-    let contents = read_codex_fixture("codex-valid-full.md");
-    let rule = CodexRule::parse(&path, &contents).expect("full codex rule parses");
-
-    assert_eq!(rule.frontmatter.id, "OMNIA-004");
-    assert_eq!(rule.normalized_id, "OMNIA-004");
-    assert_eq!(rule.frontmatter.severity, CodexSeverity::Important);
-    assert_eq!(rule.frontmatter.review_mode, Some(CodexReviewMode::Hybrid));
-    assert_eq!(rule.frontmatter.deterministic_hints.len(), 2);
-    assert_eq!(rule.frontmatter.references.len(), 2);
-    assert!(rule.frontmatter.deprecated.is_some());
 }
 
 #[test]
@@ -816,16 +800,6 @@ body
             "detail for `{severity}` should point at severity: {detail}"
         );
     }
-}
-
-#[test]
-fn codex_validate_rejects_unknown_review_mode() {
-    let path = codex_fixture_path("codex-invalid-review-mode.md");
-    let contents = read_codex_fixture("codex-invalid-review-mode.md");
-    let results = CodexRule::validate_str(&path, &contents);
-    let detail = codex_fail_detail(&results, "codex.frontmatter-valid");
-
-    assert!(detail.contains("/review_mode"), "detail should point at review_mode: {detail}");
 }
 
 // ---------- PipelineView ----------

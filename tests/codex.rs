@@ -191,11 +191,6 @@ fn codex_schema_accepts_only_required_body_heading_in_fixture() {
 }
 
 #[test]
-fn codex_schema_validates_optional_v1_metadata() {
-    assert_valid_fixture("codex-valid-full.md");
-}
-
-#[test]
 fn codex_schema_rejects_missing_required_fields() {
     let validator = load_validator();
     let instance = frontmatter_fixture("codex-invalid-missing-title.md");
@@ -213,11 +208,6 @@ fn codex_schema_rejects_unknown_severity() {
 #[test]
 fn codex_schema_rejects_malformed_rule_id() {
     assert_invalid_fixture_at("codex-invalid-malformed-id.md", "/id");
-}
-
-#[test]
-fn codex_schema_rejects_invalid_review_mode() {
-    assert_invalid_fixture_at("codex-invalid-review-mode.md", "/review_mode");
 }
 
 #[test]
@@ -292,7 +282,6 @@ fn codex_export_json_includes_rules_body_paths_and_provenance() {
     assert_eq!(value["rule-count"], 2);
     let rules = value["rules"].as_array().expect("rules array");
     assert_eq!(rules[0]["id"], "UNI-001");
-    assert_eq!(rules[0]["review-mode"], JsonValue::Null);
     assert_eq!(rules[0]["provenance-kind"], "capability");
     assert_eq!(rules[0]["capability-name"], "default");
     assert_eq!(rules[0]["capability-version"], 1);
@@ -328,7 +317,6 @@ fn codex_export_json_resolves_initialized_cache_and_repo_overlay_in_order() {
         "default rule should come from the init-populated default cache: {}",
         rules[0]["source-path"]
     );
-    assert_eq!(rules[0]["review-mode"], JsonValue::Null);
 
     assert_eq!(rules[2]["provenance-kind"], "capability");
     assert_eq!(rules[2]["capability-name"], "project");

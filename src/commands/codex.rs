@@ -3,10 +3,7 @@ pub mod cli;
 use std::io::Write;
 
 use serde::Serialize;
-use specify_capability::{
-    CodexApplicability, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexProvenance,
-    CodexReference, CodexReviewMode, CodexSeverity, ResolvedCodex, ResolvedCodexRule,
-};
+use specify_capability::{CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule};
 use specify_error::{Error, Result};
 
 use crate::cli::CodexAction;
@@ -149,9 +146,6 @@ impl Render for ShowBody<'_> {
         writeln!(w, "title: {}", r.title)?;
         writeln!(w, "severity: {}", r.severity)?;
         writeln!(w, "trigger: {}", r.trigger)?;
-        if let Some(review_mode) = r.review_mode {
-            writeln!(w, "review-mode: {review_mode}")?;
-        }
         writeln!(w, "source: {}", r.source_path)?;
         writeln!(w, "provenance: {}", export_provenance_text(r))?;
         writeln!(w)?;
@@ -218,32 +212,12 @@ struct RuleExport<'a> {
     title: &'a str,
     severity: &'static str,
     trigger: &'a str,
-    applicability: Option<&'a CodexApplicability>,
-    review_mode: Option<&'static str>,
-    deterministic_hints: Vec<HintExport<'a>>,
-    references: &'a [CodexReference],
-    deprecated: Option<DeprecationExport<'a>>,
     body: &'a str,
     source_path: String,
     provenance_kind: &'static str,
     capability_name: Option<&'a str>,
     capability_version: Option<u32>,
     catalog_name: Option<&'a str>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct HintExport<'a> {
-    kind: &'static str,
-    value: &'a str,
-    description: Option<&'a str>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct DeprecationExport<'a> {
-    reason: &'a str,
-    replaced_by: Option<&'a str>,
 }
 
 impl<'a> From<&'a ResolvedCodexRule> for RuleSummary<'a> {
@@ -272,40 +246,12 @@ impl<'a> From<&'a ResolvedCodexRule> for RuleExport<'a> {
             title: &frontmatter.title,
             severity: severity_label(frontmatter.severity),
             trigger: &frontmatter.trigger,
-            applicability: frontmatter.applicability.as_ref(),
-            review_mode: frontmatter.review_mode.map(review_mode_label),
-            deterministic_hints: frontmatter
-                .deterministic_hints
-                .iter()
-                .map(HintExport::from)
-                .collect(),
-            references: &frontmatter.references,
-            deprecated: frontmatter.deprecated.as_ref().map(DeprecationExport::from),
             body: &rule.body,
             source_path: path_string(&rule.path),
             provenance_kind: provenance.kind,
             capability_name: provenance.capability_name,
             capability_version: provenance.capability_version,
             catalog_name: provenance.catalog_name,
-        }
-    }
-}
-
-impl<'a> From<&'a CodexDeprecation> for DeprecationExport<'a> {
-    fn from(deprecation: &'a CodexDeprecation) -> Self {
-        Self {
-            reason: &deprecation.reason,
-            replaced_by: deprecation.replaced_by.as_deref(),
-        }
-    }
-}
-
-impl<'a> From<&'a CodexDeterministicHint> for HintExport<'a> {
-    fn from(hint: &'a CodexDeterministicHint) -> Self {
-        Self {
-            kind: hint_kind_label(hint.kind),
-            value: &hint.value,
-            description: hint.description.as_deref(),
         }
     }
 }
@@ -370,22 +316,5 @@ const fn severity_label(severity: CodexSeverity) -> &'static str {
         CodexSeverity::Important => "important",
         CodexSeverity::Suggestion => "suggestion",
         CodexSeverity::Optional => "optional",
-    }
-}
-
-const fn review_mode_label(mode: CodexReviewMode) -> &'static str {
-    match mode {
-        CodexReviewMode::Deterministic => "deterministic",
-        CodexReviewMode::ModelAssisted => "model-assisted",
-        CodexReviewMode::Hybrid => "hybrid",
-    }
-}
-
-const fn hint_kind_label(kind: CodexHintKind) -> &'static str {
-    match kind {
-        CodexHintKind::PathPattern => "path-pattern",
-        CodexHintKind::Regex => "regex",
-        CodexHintKind::Schema => "schema",
-        CodexHintKind::Tool => "tool",
     }
 }

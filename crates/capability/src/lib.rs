@@ -48,10 +48,7 @@ pub use change_brief::{
 pub use cache::CacheMeta;
 
 // --- Codex (rules catalog) ---
-pub use codex::{
-    CodexApplicability, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexReference,
-    CodexReviewMode, CodexRule, CodexRuleFrontmatter, CodexSeverity,
-};
+pub use codex::{CodexRule, CodexRuleFrontmatter, CodexSeverity};
 pub use codex_resolver::{
     CODEX_DIR_NAME, CodexCatalogSource, CodexProvenance, CodexResolver, DEFAULT_CODEX_CAPABILITY,
     ResolvedCodex, ResolvedCodexRule,

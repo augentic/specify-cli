@@ -35,6 +35,14 @@ pub struct CodexRule {
 }
 
 /// Parsed frontmatter of a codex rule markdown file.
+///
+/// Frontmatter is intentionally minimal pre-1.0: only the four required
+/// fields ship today. Earlier drafts carried optional metadata
+/// (applicability filters, review-mode classification, deterministic
+/// hints, references, deprecation) but no on-disk rule populated them
+/// and no Rust consumer branched on their values, so they were dropped
+/// to keep the surface honest. New optional fields should land with a
+/// real consumer in the same change.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct CodexRuleFrontmatter {
@@ -46,21 +54,6 @@ pub struct CodexRuleFrontmatter {
     pub severity: CodexSeverity,
     /// One-sentence condition that tells reviewers when the rule matters.
     pub trigger: String,
-    /// Optional applicability metadata.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub applicability: Option<CodexApplicability>,
-    /// Optional review execution classification.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub review_mode: Option<CodexReviewMode>,
-    /// Optional deterministic-review hints.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub deterministic_hints: Vec<CodexDeterministicHint>,
-    /// Optional reference material.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub references: Vec<CodexReference>,
-    /// Optional deprecation metadata.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deprecated: Option<CodexDeprecation>,
 }
 
 /// Canonical codex finding severity.
@@ -75,88 +68,6 @@ pub enum CodexSeverity {
     Suggestion,
     /// Optional guidance that may be useful but is not expected to block.
     Optional,
-}
-
-/// How a codex rule is expected to be reviewed.
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum CodexReviewMode {
-    /// Fully deterministic rule.
-    Deterministic,
-    /// Rule that requires model judgment.
-    ModelAssisted,
-    /// Rule that combines deterministic signals with model judgment.
-    Hybrid,
-}
-
-/// Optional V1 applicability filters.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct CodexApplicability {
-    /// Capability identifiers, optionally versioned as `<name>@v<major>`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub capabilities: Vec<String>,
-    /// Lowercase language or format tokens.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub languages: Vec<String>,
-    /// Lowercase artifact category tokens.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub artifacts: Vec<String>,
-    /// Relative path or glob patterns.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub paths: Vec<String>,
-}
-
-/// Optional deterministic-review hint.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct CodexDeterministicHint {
-    /// Kind of deterministic signal the hint describes.
-    pub kind: CodexHintKind,
-    /// Hint payload, interpreted by a future validator or review tool.
-    pub value: String,
-    /// Optional human explanation for the hint.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-}
-
-/// Supported deterministic hint kinds.
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum CodexHintKind {
-    /// Filesystem path pattern.
-    PathPattern,
-    /// Regular expression.
-    Regex,
-    /// Schema reference.
-    Schema,
-    /// Tool name or selector.
-    Tool,
-}
-
-/// Optional codex rule reference.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct CodexReference {
-    /// Short display label for the reference.
-    pub label: String,
-    /// HTTP(S) reference URL.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-    /// Repository-relative reference path.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
-}
-
-/// Optional codex rule deprecation metadata.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct CodexDeprecation {
-    /// Human-readable reason the rule is deprecated.
-    pub reason: String,
-    /// Replacement codex rule id, when there is a direct successor.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replaced_by: Option<String>,
 }
 
 impl CodexRule {
