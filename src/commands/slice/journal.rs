@@ -13,7 +13,7 @@ use specify_slice::{
 };
 
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 pub(super) fn append(
     ctx: &CommandContext, name: String, phase: Phase, kind: EntryKind, summary: String,
@@ -36,6 +36,7 @@ pub(super) fn append(
     Journal::append(&slice_dir, entry)?;
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &AppendBody {
             slice: name,
@@ -70,7 +71,7 @@ pub(super) fn show(ctx: &CommandContext, name: String) -> Result<()> {
 
     let journal = Journal::load(&slice_dir)?;
     let entries: Vec<EntryRow> = journal.entries.iter().map(EntryRow::from_entry).collect();
-    emit(ctx.format, &ShowBody { name, entries })?;
+    emit(Stream::Stdout, ctx.format, &ShowBody { name, entries })?;
     Ok(())
 }
 

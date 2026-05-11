@@ -16,7 +16,7 @@ use specify_slice::SliceMetadata;
 use specify_task::parse_tasks;
 
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 pub(in crate::commands) struct StatusEntry {
     pub name: String,
@@ -125,7 +125,7 @@ pub(super) fn run(ctx: &CommandContext) -> Result<()> {
         entries.push(entry);
     }
 
-    emit(ctx.format, &StatusListBody::new(&entries))?;
+    emit(Stream::Stdout, ctx.format, &StatusListBody::new(&entries))?;
     Ok(())
 }
 
@@ -134,7 +134,7 @@ pub(super) fn status_one(ctx: &CommandContext, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let entry = collect_status(&slice_dir, &name, &pipeline, &ctx.project_dir)?;
 
-    emit(ctx.format, &StatusListBody::new(std::slice::from_ref(&entry)))?;
+    emit(Stream::Stdout, ctx.format, &StatusListBody::new(std::slice::from_ref(&entry)))?;
     Ok(())
 }
 

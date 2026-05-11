@@ -6,7 +6,7 @@ use specify_error::Result;
 use specify_validate::{ValidationReport, ValidationResult, serialize_report, validate_slice};
 
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{CliResult, Render, Stream, emit};
 
 pub(super) fn run(ctx: &CommandContext, name: String) -> Result<CliResult> {
     let slice_dir = ctx.slices_dir().join(&name);
@@ -14,7 +14,7 @@ pub(super) fn run(ctx: &CommandContext, name: String) -> Result<CliResult> {
     let report = validate_slice(&slice_dir, &pipeline)?;
     let exit = if report.passed { CliResult::Success } else { CliResult::ValidationFailed };
 
-    emit(ctx.format, &ValidateBody { report: &report })?;
+    emit(Stream::Stdout, ctx.format, &ValidateBody { report: &report })?;
     Ok(exit)
 }
 

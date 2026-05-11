@@ -9,7 +9,7 @@ use specify_init::{InitOptions, InitResult, VersionMode, init};
 use crate::cli::OutputFormat;
 use crate::commands::context;
 use crate::context::CommandContext;
-use crate::output::{Render, emit, path_string};
+use crate::output::{Render, Stream, emit, path_string};
 
 /// Dispatcher for `specify init`.
 ///
@@ -133,7 +133,7 @@ fn emit_init_result(
         hub,
         context: InitContextBody::from_generation(context_generation),
     };
-    emit(format, &body)?;
+    emit(Stream::Stdout, format, &body)?;
     Ok(())
 }
 

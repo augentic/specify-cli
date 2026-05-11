@@ -1,10 +1,21 @@
+use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use specify_error::{Error, ValidationSummary};
 
 use crate::cli::OutputFormat;
+
+/// Output sink for [`emit`]. `Stdout` is the default success channel;
+/// `Stderr` is reserved for failure envelopes and any diagnostic
+/// rendering that should not interleave with the structured success
+/// stream skills consume.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stream {
+    Stdout,
+    Stderr,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
@@ -78,14 +89,24 @@ impl From<&Error> for CliResult {
 /// Bumping it is a breaking change for skill authors.
 pub const JSON_ENVELOPE_VERSION: u64 = 5;
 
-pub fn emit_error(format: OutputFormat, err: &Error) -> CliResult {
+/// Render `err` as a failure envelope and return the matching exit
+/// code. JSON serialises the typed body directly; Text writes
+/// `error: {err}` plus any long-form hint for the variant. Both
+/// formats route through [`emit`] against [`Stream::Stderr`] so
+/// failure output never interleaves with the structured success
+/// stream skills consume.
+///
+/// Single dispatcher entry point: handlers return
+/// `Result<T, specify_error::Error>` and the run loop in
+/// [`crate::commands`] hands the error here. Internally the body is
+/// the private [`ErrorBody`] enum; `Error::Validation` keeps its
+/// [`ValidationErrorResponse`] row shape (R5 collapses the carve-out
+/// into a single body type).
+pub fn report_error(format: OutputFormat, err: &Error) -> CliResult {
     let code = CliResult::from(err);
-    match format {
-        OutputFormat::Json => emit_json_error(err, code),
-        OutputFormat::Text => {
-            eprintln!("error: {err}");
-            emit_text_hint(err);
-        }
+    if let Err(serialise_err) = emit(Stream::Stderr, format, &ErrorBody::from(err)) {
+        eprintln!("error: {err}");
+        eprintln!("error: {serialise_err}");
     }
     code
 }
@@ -94,25 +115,30 @@ pub fn emit_error(format: OutputFormat, err: &Error) -> CliResult {
 /// `#[error("…")]` body carries the kebab discriminant + immediate
 /// cause; the renderer appends actionable follow-up so the
 /// machine-readable JSON envelope stays compact while operators see
-/// the full guidance on a TTY.
-fn emit_text_hint(err: &Error) {
+/// the full guidance on a TTY. Free function (not a method on
+/// [`ErrorResponse`]) so it can be reused by any error renderer
+/// without forcing the body type to own the variant identity.
+fn write_text_hint(w: &mut dyn Write, err: &Error) -> std::io::Result<()> {
     match err {
         Error::InitNeedsCapability => {
-            eprintln!(
+            writeln!(
+                w,
                 "hint: `specify init <capability>` for a regular project, or `specify init --hub` for a platform hub."
-            );
-            eprintln!("see: docs/init.md");
+            )?;
+            writeln!(w, "see: docs/init.md")?;
         }
         Error::ContextUnfenced => {
-            eprintln!("hint: rerun with --force to rewrite AGENTS.md.");
+            writeln!(w, "hint: rerun with --force to rewrite AGENTS.md.")?;
         }
         Error::ContextDrift => {
-            eprintln!(
+            writeln!(
+                w,
                 "hint: reconcile the edits or rerun with --force to replace the generated block."
-            );
+            )?;
         }
         _ => {}
     }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -132,16 +158,29 @@ impl<T: Serialize> JsonEnvelope<T> {
     }
 }
 
-pub fn emit_response<T: Serialize>(payload: T) -> Result<(), Error> {
-    use std::io::Write;
+/// Serialise `payload` inside the [`JsonEnvelope`] and write it to
+/// `stream`. Private helper for [`emit`]'s JSON path; nothing else
+/// should touch the wire envelope shape directly.
+fn emit_json<T: Serialize>(stream: Stream, payload: &T) -> Result<(), Error> {
     let envelope = JsonEnvelope::wrap(payload);
-    let stdout = std::io::stdout();
-    let mut handle = stdout.lock();
-    serde_json::to_writer_pretty(&mut handle, &envelope).map_err(|err| Error::Diag {
+    let map_serde = |err: serde_json::Error| Error::Diag {
         code: "json-serialize-failed",
         detail: format!("failed to serialize JSON response: {err}"),
-    })?;
-    writeln!(handle).map_err(Error::Io)?;
+    };
+    match stream {
+        Stream::Stdout => {
+            let stdout = std::io::stdout();
+            let mut handle = stdout.lock();
+            serde_json::to_writer_pretty(&mut handle, &envelope).map_err(map_serde)?;
+            writeln!(handle).map_err(Error::Io)?;
+        }
+        Stream::Stderr => {
+            let stderr = std::io::stderr();
+            let mut handle = stderr.lock();
+            serde_json::to_writer_pretty(&mut handle, &envelope).map_err(map_serde)?;
+            writeln!(handle).map_err(Error::Io)?;
+        }
+    }
     Ok(())
 }
 
@@ -153,45 +192,55 @@ pub fn emit_response<T: Serialize>(payload: T) -> Result<(), Error> {
 pub trait Render: Serialize {
     /// Write the human-readable text representation. Implementations
     /// should not append a trailing newline — `emit` adds one when the
-    /// renderer leaves stdout mid-line.
+    /// renderer leaves the underlying handle mid-line.
     fn render_text(&self, w: &mut dyn std::io::Write) -> std::io::Result<()>;
 }
 
-/// Emit `payload` in the requested format. JSON wraps in the standard
-/// envelope; Text delegates to `Render::render_text` against locked
-/// stdout.
-pub fn emit<R: Render>(format: OutputFormat, payload: &R) -> Result<(), Error> {
+/// Emit `payload` to `stream` in the requested format. JSON wraps in
+/// the standard envelope and writes to the chosen sink; Text locks the
+/// sink and delegates to [`Render::render_text`]. The single signature
+/// covers both success (`Stream::Stdout`) and failure
+/// (`Stream::Stderr`) — there is one entry point for all structured
+/// output. Failure envelopes go through [`report_error`], which
+/// builds the typed body and routes it back through this function.
+pub fn emit<R: Render>(stream: Stream, format: OutputFormat, payload: &R) -> Result<(), Error> {
     match format {
-        OutputFormat::Json => emit_response(payload),
-        OutputFormat::Text => {
-            let stdout = std::io::stdout();
-            let mut handle = stdout.lock();
-            payload.render_text(&mut handle).map_err(Error::Io)
-        }
+        OutputFormat::Json => emit_json(stream, payload),
+        OutputFormat::Text => match stream {
+            Stream::Stdout => {
+                let stdout = std::io::stdout();
+                let mut handle = stdout.lock();
+                payload.render_text(&mut handle).map_err(Error::Io)
+            }
+            Stream::Stderr => {
+                let stderr = std::io::stderr();
+                let mut handle = stderr.lock();
+                payload.render_text(&mut handle).map_err(Error::Io)
+            }
+        },
     }
 }
 
-/// Emit a failure body. Mirrors [`emit`] but routes Text through
-/// stderr — typed failure envelopes (`<Action>ErrBody`) keep the
-/// stderr-on-failure UX that handlers used to spell out with
-/// `eprintln!`, so callers stay free of per-handler format matches.
-pub fn emit_err<R: Render>(format: OutputFormat, payload: &R) -> Result<(), Error> {
-    match format {
-        OutputFormat::Json => emit_response(payload),
-        OutputFormat::Text => {
-            let stderr = std::io::stderr();
-            let mut handle = stderr.lock();
-            payload.render_text(&mut handle).map_err(Error::Io)
-        }
-    }
-}
-
+/// Generic failure envelope used by [`report_error`] for every
+/// variant outside `Error::Validation`. `hint_source` is the
+/// originating error reference; it carries no JSON-visible state
+/// (`#[serde(skip)]`) and exists solely so the [`Render`] impl can
+/// dispatch to [`write_text_hint`] without re-deriving the variant.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct ErrorResponse {
+pub struct ErrorResponse<'a> {
     pub error: String,
     pub message: String,
     pub exit_code: u8,
+    #[serde(skip)]
+    hint_source: &'a Error,
+}
+
+impl Render for ErrorResponse<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(w, "error: {}", self.message)?;
+        write_text_hint(w, self.hint_source)
+    }
 }
 
 /// JSON row in a validation envelope. Mirrors `ValidationSummary`
@@ -242,6 +291,11 @@ impl<R: Serialize + Render> Render for Validation<R> {
     }
 }
 
+/// Validation-specific failure envelope used by [`report_error`]
+/// when the variant is `Error::Validation`. The JSON shape flattens
+/// `Validation<ValidationRow>` into the envelope so skills see
+/// `error`/`message`/`exit-code` alongside the row-level results.
+/// R5 will refactor this back into the [`ErrorResponse`] family.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ValidationErrorResponse<'a> {
@@ -250,32 +304,67 @@ struct ValidationErrorResponse<'a> {
     exit_code: u8,
     #[serde(flatten)]
     validation: Validation<ValidationRow<'a>>,
+    #[serde(skip)]
+    hint_source: &'a Error,
 }
 
-pub fn emit_json_error(err: &Error, code: CliResult) {
-    if let Error::Validation { results, .. } = err {
-        if let Err(serialise_err) = emit_response(ValidationErrorResponse {
-            error: "validation",
-            message: err.to_string(),
-            exit_code: code.code(),
-            validation: Validation {
-                results: results.iter().map(ValidationRow::from_summary).collect(),
-            },
-        }) {
-            eprintln!("error: {err}");
-            eprintln!("error: {serialise_err}");
-        }
-        return;
+impl Render for ValidationErrorResponse<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(w, "error: {}", self.message)?;
+        write_text_hint(w, self.hint_source)
     }
+}
 
-    let variant = err.variant_str();
-    if let Err(serialise_err) = emit_response(ErrorResponse {
-        error: variant.to_string(),
-        message: err.to_string(),
-        exit_code: code.code(),
-    }) {
-        eprintln!("error: {err}");
-        eprintln!("error: {serialise_err}");
+/// Private body type that picks the right wire shape per error
+/// variant: `Error::Validation` routes through
+/// [`ValidationErrorResponse`], every other variant through
+/// [`ErrorResponse`]. The enum gives [`report_error`] one
+/// `impl Render` payload to hand to [`emit`] while keeping the two
+/// wire shapes intact for skill consumers. R5 collapses the
+/// variants into a single body.
+enum ErrorBody<'a> {
+    Generic(ErrorResponse<'a>),
+    Validation(ValidationErrorResponse<'a>),
+}
+
+impl<'a> From<&'a Error> for ErrorBody<'a> {
+    fn from(err: &'a Error) -> Self {
+        let exit_code = CliResult::from(err).code();
+        match err {
+            Error::Validation { results, .. } => Self::Validation(ValidationErrorResponse {
+                error: "validation",
+                message: err.to_string(),
+                exit_code,
+                validation: Validation {
+                    results: results.iter().map(ValidationRow::from_summary).collect(),
+                },
+                hint_source: err,
+            }),
+            _ => Self::Generic(ErrorResponse {
+                error: err.variant_str().to_string(),
+                message: err.to_string(),
+                exit_code,
+                hint_source: err,
+            }),
+        }
+    }
+}
+
+impl Serialize for ErrorBody<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Generic(body) => body.serialize(serializer),
+            Self::Validation(body) => body.serialize(serializer),
+        }
+    }
+}
+
+impl Render for ErrorBody<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        match self {
+            Self::Generic(body) => body.render_text(w),
+            Self::Validation(body) => body.render_text(w),
+        }
     }
 }
 

@@ -13,7 +13,7 @@ use specify_slice::{Outcome, Rfc3339Stamp, SliceMetadata, actions as slice_actio
 
 use crate::cli::{OutcomeKindAction, RegistryAmendmentArgs};
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 pub(super) fn set(
     ctx: &CommandContext, name: String, phase: Phase, kind: OutcomeKindAction,
@@ -40,6 +40,7 @@ pub(super) fn set(
         .expect("stamp_outcome action must set metadata.outcome on success");
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &PhaseStampBody {
             slice: name,
@@ -123,7 +124,7 @@ pub(super) fn show(ctx: &CommandContext, name: String) -> Result<()> {
     };
 
     let outcome = metadata.outcome.as_ref().map(OutcomeRow::from_stamped);
-    emit(ctx.format, &OutcomeShowBody { name, outcome })?;
+    emit(Stream::Stdout, ctx.format, &OutcomeShowBody { name, outcome })?;
     Ok(())
 }
 

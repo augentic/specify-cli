@@ -11,11 +11,11 @@ use specify_error::Result;
 
 use super::{context_lock_path, fences, fingerprint, lock, read_optional, render_document};
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{CliResult, Render, Stream, emit};
 
 pub(super) fn run(ctx: &CommandContext) -> Result<CliResult> {
     let body = body(ctx)?;
-    emit(ctx.format, &body)?;
+    emit(Stream::Stdout, ctx.format, &body)?;
     Ok(if body.status == "up-to-date" { CliResult::Success } else { CliResult::GenericFailure })
 }
 

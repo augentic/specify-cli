@@ -197,9 +197,25 @@ pub fn strip_substitutions(value: &mut Value, subs: &[Sub]) {
 /// Panics if `stdout` is not UTF-8 or not valid JSON.
 #[allow(dead_code)]
 pub fn parse_stdout(stdout: &[u8], root: &Path) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    let mut value: Value =
-        serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"));
+    parse_json_stream("stdout", stdout, root)
+}
+
+/// Mirror of [`parse_stdout`] for the stderr channel. Used by failure
+/// tests since R4 routes every error envelope (JSON or text) through
+/// `Stream::Stderr`.
+///
+/// # Panics
+///
+/// Panics if `stderr` is not UTF-8 or not valid JSON.
+#[allow(dead_code)]
+pub fn parse_stderr(stderr: &[u8], root: &Path) -> Value {
+    parse_json_stream("stderr", stderr, root)
+}
+
+fn parse_json_stream(label: &str, bytes: &[u8], root: &Path) -> Value {
+    let text = std::str::from_utf8(bytes).unwrap_or_else(|_| panic!("utf8 {label}"));
+    let mut value: Value = serde_json::from_str(text)
+        .unwrap_or_else(|err| panic!("{label} not JSON ({err}):\n{text}"));
     strip_substitutions(&mut value, &tempdir_subs(root));
     value
 }

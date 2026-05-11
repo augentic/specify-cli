@@ -7,7 +7,7 @@ use specify_error::Result;
 
 use super::{PlanRef, change_entry_json, check_project, load_for_write, plan_ref};
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 pub fn add(
     ctx: &CommandContext, name: String, depends_on: Vec<String>, sources: Vec<String>,
@@ -38,6 +38,7 @@ pub fn add(
     let created = plan.entries.last().expect("Plan::create appended an entry that is now missing");
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &AddBody {
             plan: plan_ref(&plan, &plan_path),
@@ -83,6 +84,7 @@ pub fn amend(
     let amended = plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &AmendBody {
             plan: plan_ref(&plan, &plan_path),

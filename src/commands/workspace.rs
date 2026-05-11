@@ -19,7 +19,7 @@ use specify_registry::workspace::{
 };
 
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{CliResult, Render, Stream, emit};
 
 pub fn sync(ctx: &CommandContext, projects: Vec<String>) -> Result<()> {
     let registry = match Registry::load(&ctx.project_dir)? {
@@ -35,6 +35,7 @@ pub fn sync(ctx: &CommandContext, projects: Vec<String>) -> Result<()> {
     };
     let message = (!synced).then_some("no registry declared at registry.yaml; nothing to sync");
     emit(
+        Stream::Stdout,
         ctx.format,
         &SyncBody {
             registry,
@@ -65,7 +66,7 @@ pub fn status(ctx: &CommandContext, projects: Vec<String>) -> Result<()> {
             StatusBody::Present { slots }
         }
     };
-    emit(ctx.format, &body)?;
+    emit(Stream::Stdout, ctx.format, &body)?;
     Ok(())
 }
 
@@ -92,6 +93,7 @@ pub fn prepare_branch(
     match prepare(&ctx.project_dir, project, &request) {
         Ok(prepared) => {
             emit(
+                Stream::Stdout,
                 ctx.format,
                 &PrepareBranchBody {
                     prepared: true,
@@ -104,6 +106,7 @@ pub fn prepare_branch(
         Err(diagnostic) => {
             let exit = CliResult::GenericFailure;
             emit(
+                Stream::Stdout,
                 ctx.format,
                 &PrepareBranchErrBody {
                     error: "branch-preparation-failed",
@@ -147,6 +150,7 @@ pub fn push(ctx: &CommandContext, projects: Vec<String>, dry_run: bool) -> Resul
         .collect();
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &PushBody {
             plan_name: plan.name,

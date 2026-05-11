@@ -10,7 +10,7 @@ use specify_validate::{
 
 use crate::cli::CompatibilityAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{CliResult, Render, Stream, emit};
 
 /// Dispatch `specify compatibility *`.
 pub fn run(ctx: &CommandContext, action: CompatibilityAction) -> Result<CliResult> {
@@ -22,13 +22,13 @@ pub fn run(ctx: &CommandContext, action: CompatibilityAction) -> Result<CliResul
 
 fn check(ctx: &CommandContext) -> Result<CliResult> {
     let report = classify_project_compatibility(&ctx.project_dir, None)?;
-    emit(ctx.format, &report)?;
+    emit(Stream::Stdout, ctx.format, &report)?;
     Ok(if report.is_compatible() { CliResult::Success } else { CliResult::ValidationFailed })
 }
 
 fn report(ctx: &CommandContext, change: String) -> Result<()> {
     let report = classify_project_compatibility(&ctx.project_dir, Some(change))?;
-    emit(ctx.format, &report)?;
+    emit(Stream::Stdout, ctx.format, &report)?;
     Ok(())
 }
 

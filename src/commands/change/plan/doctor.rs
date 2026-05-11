@@ -15,7 +15,7 @@ use specify_registry::Registry;
 
 use super::{PlanRef, plan_ref, require_file};
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{CliResult, Render, Stream, emit};
 
 /// Wire shape of the JSON `diagnostics:` row. Mirrors
 /// [`PlanDoctorDiagnostic`] but with `severity` rendered as the
@@ -82,6 +82,7 @@ pub fn run(ctx: &CommandContext) -> Result<CliResult> {
     let rows: Vec<DiagnosticRow> = diagnostics.iter().map(diagnostic_row).collect();
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &DoctorBody {
             plan: plan_ref(&plan, &plan_path),

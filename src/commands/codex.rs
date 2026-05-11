@@ -11,7 +11,7 @@ use specify_error::{Error, Result};
 
 use crate::cli::CodexAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, Validation, ValidationRow, emit, path_string};
+use crate::output::{CliResult, Render, Stream, Validation, ValidationRow, emit, path_string};
 
 /// Dispatch `specify codex *`.
 pub fn run(ctx: &CommandContext, action: CodexAction) -> Result<CliResult> {
@@ -35,6 +35,7 @@ fn list(ctx: &CommandContext) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from_resolved).collect();
     emit(
+        Stream::Stdout,
         ctx.format,
         &ListBody {
             rule_count: rules.len(),
@@ -57,6 +58,7 @@ fn show(ctx: &CommandContext, rule_id: &str) -> Result<()> {
         })?;
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &ShowBody {
             rule: RuleExport::from_resolved(resolved),
@@ -69,6 +71,7 @@ fn validate(ctx: &CommandContext) -> Result<CliResult> {
     match resolve(ctx) {
         Ok(codex) => {
             emit(
+                Stream::Stdout,
                 ctx.format,
                 &ValidateBody {
                     rule_count: Some(codex.rules.len()),
@@ -80,6 +83,7 @@ fn validate(ctx: &CommandContext) -> Result<CliResult> {
         }
         Err(Error::Validation { results }) => {
             emit(
+                Stream::Stdout,
                 ctx.format,
                 &ValidateBody {
                     rule_count: None,
@@ -99,6 +103,7 @@ fn export(ctx: &CommandContext) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleExport::from_resolved).collect();
     emit(
+        Stream::Stdout,
         ctx.format,
         &ExportBody {
             rule_count: rules.len(),

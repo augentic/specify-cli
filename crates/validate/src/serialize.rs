@@ -1,7 +1,7 @@
 //! JSON serialization for [`ValidationReport`].
 //!
 //! Emits the report payload only; the surrounding `schema-version`
-//! envelope is added by the CLI's `emit_response`.
+//! envelope is added by the CLI's `emit` helper in `src/output.rs`.
 
 use serde_json::{Value, json};
 use specify_capability::ValidationResult;

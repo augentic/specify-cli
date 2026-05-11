@@ -16,7 +16,7 @@ use specify_registry::Registry;
 
 use super::slice::{StatusEntry, collect_status, list_slice_names, status_entry_to_json};
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 pub fn run(ctx: &CommandContext) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
@@ -33,7 +33,7 @@ pub fn run(ctx: &CommandContext) -> Result<()> {
     }
 
     let body = DashboardBody::new(registry, plan_summary, entries);
-    emit(ctx.format, &body)?;
+    emit(Stream::Stdout, ctx.format, &body)?;
     Ok(())
 }
 

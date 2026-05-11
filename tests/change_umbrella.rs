@@ -23,7 +23,7 @@ mod cli {
     use serde_json::Value;
     use tempfile::{TempDir, tempdir};
 
-    use crate::common::{assert_golden_at, parse_stdout, repo_root, specify};
+    use crate::common::{assert_golden_at, parse_stderr, parse_stdout, repo_root, specify};
 
     fn plan_fixtures() -> PathBuf {
         repo_root().join("tests/fixtures/plan")
@@ -566,7 +566,8 @@ slices:
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
-        let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        // R4 routes every error envelope through Stream::Stderr.
+        let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
         assert_eq!(value["error"], "artifact-not-found");
         assert!(
             value["message"].as_str().unwrap_or_default().contains("plan.yaml not found at"),
@@ -1316,7 +1317,8 @@ slices:
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
 
-        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        // R4 routes the typed failure envelope through Stream::Stderr.
+        let actual = parse_stderr(&assert.get_output().stderr, project.root());
         assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["error"], "plan-has-outstanding-work");
         let entries = actual["entries"].as_array().expect("entries array");
@@ -1615,8 +1617,9 @@ slices: []
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
 
+        // R4 routes every error envelope through Stream::Stderr.
         let value: Value =
-            serde_json::from_slice(&assert.get_output().stdout).expect("json stdout");
+            serde_json::from_slice(&assert.get_output().stderr).expect("json stderr");
         assert_eq!(value["error"], "driver-busy");
         assert_eq!(value["exit-code"], 1, "DriverBusy must surface the generic-failure exit code");
         let msg = value["message"].as_str().unwrap_or_default();
@@ -1890,7 +1893,8 @@ projects:
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
-        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        // R4 routes every error envelope through Stream::Stderr.
+        let actual = parse_stderr(&assert.get_output().stderr, project.root());
         assert_eq!(actual["error"], "registry-version-unsupported");
         let msg = actual["message"].as_str().expect("message string");
         assert!(msg.contains("version"), "message should mention version, got: {msg}");
@@ -1920,7 +1924,8 @@ projects:
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
-        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        // R4 routes every error envelope through Stream::Stderr.
+        let actual = parse_stderr(&assert.get_output().stderr, project.root());
         assert_eq!(actual["error"], "registry-project-name-duplicate");
         let msg = actual["message"].as_str().expect("message string");
         assert!(msg.contains("duplicate"), "message should mention duplicate, got: {msg}");
@@ -2043,7 +2048,8 @@ inputs: []
             .args(["--format", "json", "change", "create", "pre-existing"])
             .assert()
             .failure();
-        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        // R4 routes the typed failure envelope through Stream::Stderr.
+        let actual = parse_stderr(&assert.get_output().stderr, project.root());
         assert_eq!(actual["action"], "init");
         assert_eq!(actual["error"], "already-exists");
 
@@ -2061,7 +2067,8 @@ inputs: []
             .args(["--format", "json", "change", "create", "NotKebab"])
             .assert()
             .failure();
-        let actual = parse_stdout(&assert.get_output().stdout, project.root());
+        // R4 routes every error envelope through Stream::Stderr.
+        let actual = parse_stderr(&assert.get_output().stderr, project.root());
         assert_eq!(actual["error"], "change-brief-name-not-kebab");
         let msg = actual["message"].as_str().expect("message");
         assert!(msg.contains("kebab-case"), "msg should mention kebab-case: {msg}");

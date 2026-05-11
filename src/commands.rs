@@ -22,7 +22,7 @@ use specify_error::Result;
 
 use crate::cli::{CapabilityAction, Cli, Commands, OutputFormat, ToolAction, WorkspaceAction};
 use crate::context::CommandContext;
-use crate::output::{CliResult, emit_error};
+use crate::output::{CliResult, report_error};
 
 /// Map a handler's success payload onto a [`CliResult`] exit code.
 ///
@@ -128,11 +128,11 @@ where
 {
     let ctx = match CommandContext::load(format) {
         Ok(ctx) => ctx,
-        Err(err) => return emit_error(format, &err),
+        Err(err) => return report_error(format, &err),
     };
     match f(&ctx) {
         Ok(value) => value.into_cli_result(),
-        Err(err) => emit_error(format, &err),
+        Err(err) => report_error(format, &err),
     }
 }
 
@@ -145,6 +145,6 @@ where
 {
     match f() {
         Ok(value) => value.into_cli_result(),
-        Err(err) => emit_error(format, &err),
+        Err(err) => report_error(format, &err),
     }
 }

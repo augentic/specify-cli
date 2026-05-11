@@ -13,7 +13,7 @@ use specify_validate::ValidationResult;
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{CliResult, Render, Stream, emit};
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -39,6 +39,7 @@ pub fn resolve(format: OutputFormat, capability_value: String, project_dir: Path
     };
 
     emit(
+        Stream::Stdout,
         format,
         &ResolveBody {
             capability_value,
@@ -115,6 +116,7 @@ pub fn pipeline(ctx: &CommandContext, phase: Phase, slice: Option<PathBuf>) -> R
         .collect();
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &PipelineBody {
             phase: phase.to_string(),
@@ -163,7 +165,7 @@ pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult>
         passed,
         results: results.iter().map(CheckRow::from_validation).collect(),
     };
-    emit(format, &body)?;
+    emit(Stream::Stdout, format, &body)?;
     Ok(if passed { CliResult::Success } else { CliResult::ValidationFailed })
 }
 

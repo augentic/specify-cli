@@ -161,6 +161,13 @@ fn stdout_json(assert: &Assert) -> JsonValue {
     serde_json::from_slice(&assert.get_output().stdout).expect("stdout json")
 }
 
+/// Mirror of [`stdout_json`] for the stderr channel. R4 routes every
+/// error envelope through `Stream::Stderr`, so failure tests read
+/// their JSON envelopes here.
+fn stderr_json(assert: &Assert) -> JsonValue {
+    serde_json::from_slice(&assert.get_output().stderr).expect("stderr json")
+}
+
 fn assert_context_lock_valid(project: &ContextProject) {
     let validator = load_context_lock_validator();
     let instance = yaml_to_json(&project.read_lock());
@@ -344,7 +351,8 @@ fn context_generate_reports_unfenced_agents_md_with_stable_error() {
 
     let mut cmd = project.command();
     let assert = cmd.args(["--format", "json", "context", "generate"]).assert().code(1);
-    let value = stdout_json(&assert);
+    // R4 routes every error envelope through Stream::Stderr.
+    let value = stderr_json(&assert);
 
     assert_eq!(value["error"], "context-existing-unfenced-agents-md");
     assert_eq!(value["exit-code"], 1);
@@ -668,7 +676,8 @@ fn context_check_rejects_newer_lock_version_as_validation_error() {
     project.write_lock(&newer);
 
     let check = project.context_check(&["--format", "json"]).code(2);
-    let value = stdout_json(&check);
+    // R4 routes every error envelope through Stream::Stderr.
+    let value = stderr_json(&check);
 
     assert_eq!(value["error"], "validation");
     assert_eq!(value["exit-code"], 2);
@@ -687,7 +696,8 @@ fn context_check_rejects_malformed_lock_with_stable_validation_rule() {
     project.write_lock("version: one\n");
 
     let check = project.context_check(&["--format", "json"]).code(2);
-    let value = stdout_json(&check);
+    // R4 routes every error envelope through Stream::Stderr.
+    let value = stderr_json(&check);
 
     assert_eq!(value["error"], "validation");
     assert_eq!(value["exit-code"], 2);

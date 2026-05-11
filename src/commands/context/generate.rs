@@ -13,7 +13,7 @@ use specify_slice::atomic::atomic_bytes_write;
 
 use super::{context_lock_path, error_from_fence, fences, lock, read_optional, render_document};
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{CliResult, Render, Stream, emit};
 
 pub(super) fn run(ctx: &CommandContext, check: bool, force: bool) -> Result<CliResult> {
     if is_workspace_clone_path(&ctx.project_dir) {
@@ -28,7 +28,7 @@ pub(super) fn run(ctx: &CommandContext, check: bool, force: bool) -> Result<CliR
     }
 
     let body = body(ctx, check, force)?;
-    emit(ctx.format, &body)?;
+    emit(Stream::Stdout, ctx.format, &body)?;
 
     Ok(if check && body.changed { CliResult::GenericFailure } else { CliResult::Success })
 }

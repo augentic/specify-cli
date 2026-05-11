@@ -12,7 +12,7 @@ use specify_slice::atomic::atomic_bytes_write;
 
 use crate::cli::ChangeAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit, emit_err, path_string};
+use crate::output::{CliResult, Render, Stream, emit, path_string};
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
 pub fn run(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult> {
@@ -38,7 +38,8 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     if brief_path.exists() {
         let exit = CliResult::GenericFailure;
-        emit_err(
+        emit(
+            Stream::Stderr,
             ctx.format,
             &BriefCreateErrBody {
                 action: "init",
@@ -53,6 +54,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult> {
     atomic_bytes_write(&brief_path, ChangeBrief::template(&name).as_bytes())?;
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &BriefCreateBody {
             action: "init",
@@ -70,6 +72,7 @@ fn brief_show(ctx: &CommandContext) -> Result<()> {
         body: b.body,
     });
     emit(
+        Stream::Stdout,
         ctx.format,
         &BriefShowBody {
             brief,
@@ -108,7 +111,7 @@ fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliR
 
     match finalize::run(inputs, &probe) {
         Ok(outcome) => {
-            emit(ctx.format, &FinalizeBody { outcome: &outcome })?;
+            emit(Stream::Stdout, ctx.format, &FinalizeBody { outcome: &outcome })?;
             Ok(if outcome.finalized { CliResult::Success } else { CliResult::GenericFailure })
         }
         Err(finalize::Refusal::NonTerminalEntries(entries)) => {
@@ -125,7 +128,8 @@ fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliR
                 entries.len(),
                 entries.join(", "),
             );
-            emit_err(
+            emit(
+                Stream::Stderr,
                 ctx.format,
                 &FinalizeNonTerminalErrBody {
                     error: err.variant_str(),

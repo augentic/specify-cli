@@ -10,7 +10,7 @@ use specify_slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actio
 
 use super::artifact_classes;
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 pub(super) fn touched_specs(
     ctx: &CommandContext, name: String, scan: bool, set: Vec<String>,
@@ -44,6 +44,7 @@ pub(super) fn touched_specs(
 
     let touched: Vec<TouchedSpecRow> = entries.iter().map(TouchedSpecRow::from_spec).collect();
     emit(
+        Stream::Stdout,
         ctx.format,
         &TouchedSpecsBody {
             name,
@@ -122,7 +123,7 @@ pub(super) fn overlap(ctx: &CommandContext, name: String) -> Result<()> {
     let overlaps = slice_actions::overlap(&slices_dir, &name)?;
     let rows: Vec<OverlapRow> = overlaps.iter().map(OverlapRow::from_overlap).collect();
 
-    emit(ctx.format, &OverlapBody { name, overlaps: rows })?;
+    emit(Stream::Stdout, ctx.format, &OverlapBody { name, overlaps: rows })?;
     Ok(())
 }
 

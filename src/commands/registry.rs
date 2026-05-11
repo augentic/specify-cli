@@ -14,7 +14,7 @@ use specify_slice::atomic::atomic_yaml_write;
 
 use crate::cli::RegistryAction;
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 pub fn run(ctx: &CommandContext, action: RegistryAction) -> Result<()> {
     match action {
@@ -34,6 +34,7 @@ fn show(ctx: &CommandContext) -> Result<()> {
     let path = Registry::path(&ctx.project_dir);
     let registry = Registry::load(&ctx.project_dir)?;
     emit(
+        Stream::Stdout,
         ctx.format,
         &ShowBody {
             registry,
@@ -56,6 +57,7 @@ fn validate(ctx: &CommandContext) -> Result<()> {
         reg.validate_shape_hub()?;
     }
     emit(
+        Stream::Stdout,
         ctx.format,
         &ValidateBody {
             registry,
@@ -133,6 +135,7 @@ fn add(
         .clone();
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &AddBody {
             registry,
@@ -175,6 +178,7 @@ fn remove(ctx: &CommandContext, name: String) -> Result<()> {
     let warnings = plan_refs(&ctx.project_dir, &name);
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &RemoveBody {
             registry,

@@ -6,12 +6,13 @@ use specify_error::Result;
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 pub fn acquire(ctx: &CommandContext, pid: Option<u32>) -> Result<()> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let acquired = Stamp::acquire(&ctx.project_dir, our_pid)?;
     emit(
+        Stream::Stdout,
         ctx.format,
         &AcquireBody {
             held: true,
@@ -43,7 +44,7 @@ pub fn release(ctx: &CommandContext, pid: Option<u32>) -> Result<()> {
             our_pid: Some(our_pid),
         },
     };
-    emit(ctx.format, &body)?;
+    emit(Stream::Stdout, ctx.format, &body)?;
     if matches!(ctx.format, OutputFormat::Text) {
         match outcome {
             PlanLockReleased::HeldByOther { pid: Some(other) } => {
@@ -65,6 +66,7 @@ pub fn release(ctx: &CommandContext, pid: Option<u32>) -> Result<()> {
 pub fn status(ctx: &CommandContext) -> Result<()> {
     let state = Stamp::status(&ctx.project_dir)?;
     emit(
+        Stream::Stdout,
         ctx.format,
         &StatusBody {
             held: state.held,

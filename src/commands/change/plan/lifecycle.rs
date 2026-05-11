@@ -9,7 +9,7 @@ use specify_registry::Registry;
 
 use super::{PlanRef, load_for_write, path_string, plan_ref, require_file};
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, Validation, emit, emit_err};
+use crate::output::{CliResult, Render, Stream, Validation, emit};
 
 pub fn create(ctx: &CommandContext, name: String, sources: Vec<(String, String)>) -> Result<()> {
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
@@ -39,6 +39,7 @@ pub fn create(ctx: &CommandContext, name: String, sources: Vec<(String, String)>
     plan.save(&plan_path)?;
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &CreateBody {
             plan: PlanRef {
@@ -96,6 +97,7 @@ pub fn validate(ctx: &CommandContext) -> Result<CliResult> {
     let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
     let rows: Vec<FindingRow<'_>> = results.iter().map(FindingRow::from_finding).collect();
     emit(
+        Stream::Stdout,
         ctx.format,
         &PlanValidateBody {
             plan: PlanRef {
@@ -143,7 +145,7 @@ pub fn next(ctx: &CommandContext) -> Result<()> {
             ..NextBody::default()
         }
     };
-    emit(ctx.format, &body)?;
+    emit(Stream::Stdout, ctx.format, &body)?;
     Ok(())
 }
 
@@ -166,6 +168,7 @@ pub fn transition(
 
     let entry = plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
     emit(
+        Stream::Stdout,
         ctx.format,
         &TransitionBody {
             plan: plan_ref(&plan, &plan_path),
@@ -195,6 +198,7 @@ pub fn archive(ctx: &CommandContext, force: bool) -> Result<CliResult> {
     match Plan::archive(&plan_path, &brief_path, &archive_dir, force) {
         Ok((archived, archived_plans_dir)) => {
             emit(
+                Stream::Stdout,
                 ctx.format,
                 &ArchiveBody {
                     archived: path_string(&archived),
@@ -206,7 +210,8 @@ pub fn archive(ctx: &CommandContext, force: bool) -> Result<CliResult> {
         }
         Err(Error::PlanIncomplete { entries }) => {
             let exit = CliResult::GenericFailure;
-            emit_err(
+            emit(
+                Stream::Stderr,
                 ctx.format,
                 &ArchiveErrBody {
                     error: "plan-has-outstanding-work",

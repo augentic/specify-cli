@@ -10,7 +10,7 @@ use specify_slice::SliceMetadata;
 
 use super::{PlanRef, require_file};
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -181,7 +181,7 @@ pub fn run(ctx: &CommandContext) -> Result<()> {
         next_eligible: plan.next_eligible().map(|e| e.name.clone()),
     };
 
-    emit(ctx.format, &body)?;
+    emit(Stream::Stdout, ctx.format, &body)?;
     Ok(())
 }
 

@@ -14,7 +14,7 @@ use specify_slice::atomic::atomic_bytes_write;
 use specify_task::{Task, mark_complete, parse_tasks};
 
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 pub(super) fn progress(ctx: &CommandContext, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
@@ -24,6 +24,7 @@ pub(super) fn progress(ctx: &CommandContext, name: String) -> Result<()> {
 
     let tasks: Vec<TaskRow> = progress.tasks.iter().map(TaskRow::from_parsed).collect();
     emit(
+        Stream::Stdout,
         ctx.format,
         &ProgressBody {
             total: progress.total,
@@ -98,6 +99,7 @@ pub(super) fn mark(ctx: &CommandContext, name: String, task_number: String) -> R
     }
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &MarkBody {
             marked: task_number,

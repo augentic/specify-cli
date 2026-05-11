@@ -16,7 +16,7 @@ use specify_merge::{
 
 use super::artifact_classes;
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/archive"];
 
@@ -39,6 +39,7 @@ pub(super) fn run(ctx: &CommandContext, name: String) -> Result<()> {
 
     let entries: Vec<MergedEntry> = merged.iter().map(MergedEntry::from_preview).collect();
     emit(
+        Stream::Stdout,
         ctx.format,
         &MergeRunBody {
             merged_specs: entries,
@@ -71,6 +72,7 @@ pub(super) fn preview(ctx: &CommandContext, name: String) -> Result<()> {
         .collect();
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &PreviewBody {
             slice_dir: slice_dir.display().to_string(),
@@ -88,6 +90,7 @@ pub(super) fn conflicts(ctx: &CommandContext, name: String) -> Result<()> {
     let rows: Vec<ConflictRow> = conflicts.iter().map(ConflictRow::from_baseline).collect();
 
     emit(
+        Stream::Stdout,
         ctx.format,
         &ConflictCheckBody {
             slice_dir: slice_dir.display().to_string(),

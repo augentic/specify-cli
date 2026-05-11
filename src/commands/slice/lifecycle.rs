@@ -10,7 +10,7 @@ use specify_slice::{
 };
 
 use crate::context::CommandContext;
-use crate::output::{Render, emit};
+use crate::output::{Render, Stream, emit};
 
 pub(super) fn create(
     ctx: &CommandContext, name: String, capability: Option<String>, if_exists: CreateIfExists,
@@ -33,7 +33,7 @@ pub(super) fn create(
     let outcome =
         slice_actions::create(&slices_dir, &name, &capability_value, if_exists, Utc::now())?;
 
-    emit(ctx.format, &CreateBody::from_outcome(&outcome))?;
+    emit(Stream::Stdout, ctx.format, &CreateBody::from_outcome(&outcome))?;
     Ok(())
 }
 
@@ -82,6 +82,7 @@ pub(super) fn transition(
     let slice_dir = ctx.slices_dir().join(&name);
     let metadata = slice_actions::transition(&slice_dir, target, Utc::now())?;
     emit(
+        Stream::Stdout,
         ctx.format,
         &TransitionBody {
             name,
@@ -119,6 +120,7 @@ pub(super) fn archive(ctx: &CommandContext, name: String) -> Result<()> {
     let archive_dir = ctx.archive_dir();
     let target = slice_actions::archive(&slice_dir, &archive_dir, Utc::now())?;
     emit(
+        Stream::Stdout,
         ctx.format,
         &ArchiveBody {
             name,
@@ -147,6 +149,7 @@ pub(super) fn drop_slice(ctx: &CommandContext, name: String, reason: Option<Stri
     let (metadata, archive_path) =
         slice_actions::drop(&slice_dir, &archive_dir, reason.as_deref(), Utc::now())?;
     emit(
+        Stream::Stdout,
         ctx.format,
         &DropBody {
             name,

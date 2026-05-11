@@ -186,8 +186,9 @@ fn init_json_with_no_args_errors_with_stable_code() {
     let assert =
         specify().current_dir(tmp.path()).args(["--format", "json", "init"]).assert().failure();
 
+    // R4 routes every error envelope through Stream::Stderr.
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("stdout is JSON");
+        serde_json::from_slice(&assert.get_output().stderr).expect("stderr is JSON");
     assert_eq!(value["schema-version"], 5);
     assert_eq!(value["error"], "init-requires-capability-or-hub");
     assert_eq!(value["exit-code"], 1);
@@ -254,8 +255,9 @@ fn version_too_old_exits_three_with_json_envelope() {
     let code = assert.get_output().status.code().expect("process exited with a code");
     assert_eq!(code, 3, "expected exit code 3 (version too old)");
 
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
+    // R4 routes every error envelope through Stream::Stderr.
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
+    let value: serde_json::Value = serde_json::from_str(&stderr).expect("stderr is JSON");
     assert_eq!(value["schema-version"], 5);
     assert_eq!(value["error"], "specify-version-too-old");
     assert_eq!(value["exit-code"], 3);
@@ -414,7 +416,7 @@ fn init_hub_then_registry_validate_rejects_dot_url_with_hub_diagnostic() {
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(
         value["error"], "hub-cannot-be-project",
         "error must carry the stable diagnostic code, got: {value}"
@@ -509,7 +511,7 @@ fn registry_add_rejects_dot_url_in_hub_mode() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "hub-cannot-be-project");
     let msg = value["message"].as_str().expect("message");
     assert!(
@@ -539,7 +541,7 @@ fn registry_add_rejects_kebab_violations_at_clap_level() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "registry-add-name-not-kebab");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("kebab-case"), "diagnostic must mention kebab-case, got: {msg}");
@@ -659,7 +661,7 @@ fn registry_remove_unknown_project_errors() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "registry-remove-not-found");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("not found"), "msg: {msg}");
@@ -686,7 +688,7 @@ fn registry_remove_refuses_when_registry_absent() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "registry-remove-no-registry");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("no registry declared"), "msg: {msg}");
@@ -725,7 +727,7 @@ fn rfc14_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "registry-project-selector-unknown");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("unknown project"), "msg: {msg}");
@@ -761,7 +763,7 @@ fn rfc14_c01_workspace_status_unknown_selector_fails_before_side_effects() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "registry-project-selector-unknown");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("unknown project"), "msg: {msg}");
@@ -957,7 +959,7 @@ fn rfc14_c01_workspace_push_unknown_selector_fails_before_side_effects() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "registry-project-selector-unknown");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("unknown project"), "msg: {msg}");
@@ -1402,7 +1404,7 @@ fn change_finalize_refuses_when_plan_absent() {
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "plan-not-found");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("plan.yaml"), "msg should reference plan.yaml: {msg}");
@@ -1441,7 +1443,7 @@ fn change_finalize_refuses_on_non_terminal_entries() {
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "non-terminal-entries-present");
     assert_eq!(value["change"], "foo");
     let entries = value["entries"].as_array().expect("entries array");
@@ -1535,6 +1537,6 @@ fn change_finalize_idempotent_after_archive() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "plan-not-found");
 }

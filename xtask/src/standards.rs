@@ -35,8 +35,8 @@
 //! - `error-envelope-inlined` — `output::ErrorResponse { … }` /
 //!   `output::ValidationErrorResponse { … }` constructed outside
 //!   `src/output.rs`. Hand-rolled error envelopes bypass the
-//!   `emit_error` / `emit_err` path; nobody outside `output.rs`
-//!   should be building the envelope DTO directly.
+//!   `report_error` path; nobody outside `output.rs` should be
+//!   building the envelope DTO directly.
 //! - `path-helper-inlined` — `fn specify_dir|plan_path|
 //!   change_brief_path|archive_dir` declared outside `crates/config/`.
 //!   Path helpers live in `specify-config`; command modules call them,
@@ -338,7 +338,7 @@ fn is_clap_cli_file(path: &Path) -> bool {
 // error-envelope-inlined: `output::ErrorResponse { … }` /
 // `output::ValidationErrorResponse { … }` constructed outside `src/output.rs`.
 //
-// Hand-rolled error envelopes bypass the `emit_error` / `emit_err` path.
+// Hand-rolled error envelopes bypass the `report_error` path.
 // CL-E3 removed the last hand-rolled construction (in `src/commands/registry.rs`);
 // this predicate keeps it gone.
 

@@ -18,7 +18,7 @@ use specify_tool::{Tool, ToolManifest, ToolPermissions, ToolScope};
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{CliResult, Render, Stream, emit};
 
 type CacheKey = (String, String, String);
 
@@ -206,7 +206,7 @@ pub fn list(ctx: &CommandContext) -> Result<()> {
         tools: rows,
         warnings: inventory.warnings,
     };
-    emit(ctx.format, &body)?;
+    emit(Stream::Stdout, ctx.format, &body)?;
     if matches!(ctx.format, OutputFormat::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
@@ -231,7 +231,7 @@ pub fn fetch(ctx: &CommandContext, name: Option<String>) -> Result<()> {
         tools: rows,
         warnings: inventory.warnings,
     };
-    emit(ctx.format, &body)?;
+    emit(Stream::Stdout, ctx.format, &body)?;
     if matches!(ctx.format, OutputFormat::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
@@ -247,7 +247,7 @@ pub fn show(ctx: &CommandContext, name: String) -> Result<()> {
         tool: row,
         warnings: inventory.warnings,
     };
-    emit(ctx.format, &body)?;
+    emit(Stream::Stdout, ctx.format, &body)?;
     if matches!(ctx.format, OutputFormat::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
@@ -275,7 +275,7 @@ pub fn gc(ctx: &CommandContext) -> Result<()> {
         removed,
         warnings: inventory.warnings,
     };
-    emit(ctx.format, &body)?;
+    emit(Stream::Stdout, ctx.format, &body)?;
     if matches!(ctx.format, OutputFormat::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
