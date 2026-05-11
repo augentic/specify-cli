@@ -166,7 +166,7 @@ impl Registry {
     /// the additional invariant that a **registry-only platform hub**
     /// must never list itself as a project: any entry with `url: .` is
     /// rejected with a `hub-cannot-be-project` diagnostic. The hub
-    /// holds platform-level state (registry, initiative brief, plan,
+    /// holds platform-level state (registry, change brief, plan,
     /// workspace clones) but is never a code project.
     ///
     /// Callers opt in by checking `project.yaml:hub: true` and

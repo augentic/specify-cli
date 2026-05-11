@@ -756,7 +756,7 @@ fn rfc14_c03_workspace_status_enriches_symlink_project_state() {
     run_git(&peer, &["add", "."]);
     run_git(&peer, &["commit", "-m", "initial"]);
     run_git(&peer, &["checkout", "-b", "specify/demo-change"]);
-    fs::write(project_dir.join("plan.yaml"), "name: demo-change\nchanges: []\n").unwrap();
+    fs::write(project_dir.join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
     fs::write(
         project_dir.join("registry.yaml"),
         "\
@@ -805,7 +805,7 @@ fn rfc14_c03_workspace_status_enriches_git_clone_mismatch_dirty_and_origin() {
     run_git(&slot_path, &["commit", "-m", "initial"]);
     run_git(&slot_path, &["checkout", "-b", "feature/work"]);
     fs::write(slot_path.join("dirty.txt"), "dirty\n").unwrap();
-    fs::write(project_dir.join("plan.yaml"), "name: demo-change\nchanges: []\n").unwrap();
+    fs::write(project_dir.join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
     let project = RegistryProject {
         name: "remote".to_string(),
         url: remote_url.to_string(),

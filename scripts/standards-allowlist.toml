@@ -36,14 +36,14 @@ module-line-count = 316
 module-line-count = 300
 
 [file."crates/capability/src/lib.rs"]
-module-line-count = 90
+module-line-count = 92
 
 [file."crates/capability/src/pipeline.rs"]
 ritual-doc-paragraphs = 2
 module-line-count = 229
 
 [file."crates/change/src/finalize.rs"]
-module-line-count = 360
+module-line-count = 365
 
 [file."crates/change/src/finalize/archive.rs"]
 module-line-count = 81
@@ -70,6 +70,7 @@ module-line-count = 123
 module-line-count = 304
 
 [file."crates/change/src/plan/core/io.rs"]
+direct-fs-write = 2
 module-line-count = 236
 
 [file."crates/change/src/plan/core/mod.rs"]
@@ -94,7 +95,7 @@ module-line-count = 312
 module-line-count = 267
 
 [file."crates/change/src/plan/doctor/cycle.rs"]
-module-line-count = 94
+module-line-count = 92
 
 [file."crates/change/src/plan/doctor/orphan_source.rs"]
 module-line-count = 41
@@ -122,18 +123,18 @@ module-line-count = 57
 
 [file."crates/config/src/lib.rs"]
 ritual-doc-paragraphs = 1
+direct-fs-write = 1
 module-line-count = 463
 
 [file."crates/contract/src/main.rs"]
 format-match-dispatch = 1
 module-line-count = 142
 
-# Justification: workspace-wide typed `Error` enum + helpers; deliberately
-# co-located so every `specify-*` crate has one source of truth.
 [file."crates/error/src/lib.rs"]
 module-line-count = 562
 
 [file."crates/init/src/cache.rs"]
+direct-fs-write = 1
 module-line-count = 89
 
 [file."crates/init/src/capability_uri.rs"]
@@ -143,12 +144,14 @@ module-line-count = 201
 module-line-count = 80
 
 [file."crates/init/src/hub.rs"]
-module-line-count = 249
+direct-fs-write = 3
+module-line-count = 248
 
 [file."crates/init/src/lib.rs"]
 module-line-count = 193
 
 [file."crates/init/src/regular.rs"]
+direct-fs-write = 5
 module-line-count = 297
 
 [file."crates/merge/src/artifact_class.rs"]
@@ -175,13 +178,14 @@ module-line-count = 41
 module-line-count = 379
 
 [file."crates/merge/src/slice/write.rs"]
+direct-fs-write = 1
 module-line-count = 140
 
 [file."crates/merge/src/validate.rs"]
-module-line-count = 198
+module-line-count = 200
 
 [file."crates/registry/src/branch.rs"]
-module-line-count = 221
+module-line-count = 222
 
 [file."crates/registry/src/branch/infer.rs"]
 module-line-count = 166
@@ -198,6 +202,7 @@ module-line-count = 144
 
 [file."crates/registry/src/gitignore.rs"]
 ritual-doc-paragraphs = 1
+direct-fs-write = 1
 module-line-count = 52
 
 [file."crates/registry/src/lib.rs"]
@@ -212,6 +217,7 @@ ritual-doc-paragraphs = 1
 module-line-count = 285
 
 [file."crates/registry/src/workspace/bootstrap.rs"]
+direct-fs-write = 1
 module-line-count = 110
 
 [file."crates/registry/src/workspace/git.rs"]
@@ -238,9 +244,6 @@ module-line-count = 223
 [file."crates/registry/src/workspace/sync.rs"]
 module-line-count = 340
 
-# Justification: every slice-lifecycle verb (`create`, `transition`,
-# `archive`, `drop`, …) lives here as a free function so the CLI can
-# dispatch with one import per verb.
 [file."crates/slice/src/actions.rs"]
 ritual-doc-paragraphs = 8
 module-line-count = 528
@@ -250,6 +253,7 @@ module-line-count = 44
 
 [file."crates/slice/src/journal.rs"]
 ritual-doc-paragraphs = 2
+direct-fs-write = 2
 module-line-count = 393
 
 [file."crates/slice/src/lib.rs"]
@@ -259,6 +263,7 @@ module-line-count = 30
 module-line-count = 220
 
 [file."crates/slice/src/metadata.rs"]
+direct-fs-write = 1
 module-line-count = 452
 
 [file."crates/slice/src/outcome.rs"]
@@ -284,18 +289,21 @@ module-line-count = 134
 module-line-count = 74
 
 [file."crates/tool/src/cache/meta.rs"]
+direct-fs-write = 1
 module-line-count = 180
 
 [file."crates/tool/src/error.rs"]
 module-line-count = 288
 
 [file."crates/tool/src/host.rs"]
+direct-fs-write = 1
 module-line-count = 393
 
 [file."crates/tool/src/lib.rs"]
 module-line-count = 325
 
 [file."crates/tool/src/load.rs"]
+direct-fs-write = 2
 module-line-count = 191
 
 [file."crates/tool/src/manifest.rs"]
@@ -304,9 +312,8 @@ module-line-count = 210
 [file."crates/tool/src/permissions.rs"]
 module-line-count = 266
 
-# Justification: source resolution for local paths, `file:` URIs, and
-# `https:` URIs lives in one module so the cache invariants stay co-located.
 [file."crates/tool/src/resolver.rs"]
+direct-fs-write = 4
 module-line-count = 565
 
 [file."crates/tool/src/validate.rs"]
@@ -316,6 +323,7 @@ module-line-count = 444
 module-line-count = 59
 
 [file."crates/validate/src/compatibility/mod.rs"]
+direct-fs-write = 1
 module-line-count = 269
 
 [file."crates/validate/src/compatibility/openapi_diff.rs"]
@@ -331,9 +339,11 @@ module-line-count = 310
 module-line-count = 96
 
 [file."crates/validate/src/contracts/envelope.rs"]
+direct-fs-write = 1
 module-line-count = 209
 
 [file."crates/validate/src/contracts/mod.rs"]
+direct-fs-write = 1
 module-line-count = 353
 
 [file."crates/validate/src/contracts/parse.rs"]
@@ -343,12 +353,14 @@ module-line-count = 106
 module-line-count = 217
 
 [file."crates/validate/src/primitives.rs"]
+direct-fs-write = 3
 module-line-count = 388
 
 [file."crates/validate/src/registry/composition.rs"]
 module-line-count = 131
 
 [file."crates/validate/src/registry/contract_rules.rs"]
+direct-fs-write = 7
 module-line-count = 306
 
 [file."crates/validate/src/registry/cross.rs"]
@@ -371,7 +383,7 @@ module-line-count = 49
 
 [file."crates/validate/src/run.rs"]
 ritual-doc-paragraphs = 1
-module-line-count = 231
+module-line-count = 229
 
 [file."crates/validate/src/serialize.rs"]
 module-line-count = 117
@@ -383,12 +395,13 @@ module-line-count = 84
 module-line-count = 13
 
 [file."crates/vectis/src/scaffold.rs"]
-module-line-count = 256
+module-line-count = 257
 
 [file."crates/vectis/src/scaffold/error.rs"]
 module-line-count = 61
 
 [file."crates/vectis/src/scaffold/runtime.rs"]
+direct-fs-write = 1
 module-line-count = 201
 
 [file."crates/vectis/src/scaffold/templates.rs"]
@@ -434,7 +447,7 @@ module-line-count = 112
 module-line-count = 62
 
 [file."src/cli.rs"]
-module-line-count = 149
+module-line-count = 148
 
 [file."src/commands.rs"]
 module-line-count = 123
@@ -446,7 +459,7 @@ module-line-count = 230
 module-line-count = 38
 
 [file."src/commands/change.rs"]
-module-line-count = 398
+module-line-count = 389
 
 [file."src/commands/change/cli.rs"]
 module-line-count = 40
@@ -461,7 +474,7 @@ module-line-count = 133
 module-line-count = 124
 
 [file."src/commands/change/plan/doctor.rs"]
-module-line-count = 119
+module-line-count = 107
 
 [file."src/commands/change/plan/lifecycle.rs"]
 module-line-count = 388
@@ -485,6 +498,7 @@ module-line-count = 82
 module-line-count = 19
 
 [file."src/commands/context.rs"]
+direct-fs-write = 7
 module-line-count = 417
 
 [file."src/commands/context/check.rs"]
@@ -494,6 +508,7 @@ module-line-count = 141
 module-line-count = 23
 
 [file."src/commands/context/detect.rs"]
+direct-fs-write = 6
 module-line-count = 154
 
 [file."src/commands/context/detect/markers.rs"]
@@ -527,7 +542,8 @@ module-line-count = 393
 module-line-count = 191
 
 [file."src/commands/registry.rs"]
-module-line-count = 616
+direct-fs-write = 1
+module-line-count = 612
 
 [file."src/commands/registry/cli.rs"]
 module-line-count = 37
@@ -548,13 +564,14 @@ module-line-count = 180
 module-line-count = 218
 
 [file."src/commands/slice/merge.rs"]
+direct-fs-write = 2
 module-line-count = 474
 
 [file."src/commands/slice/outcome.rs"]
 module-line-count = 261
 
 [file."src/commands/slice/task.rs"]
-module-line-count = 181
+module-line-count = 182
 
 [file."src/commands/slice/touched.rs"]
 module-line-count = 170
@@ -581,7 +598,7 @@ module-line-count = 49
 module-line-count = 62
 
 [file."src/main.rs"]
-module-line-count = 44
+module-line-count = 46
 
 [file."src/output.rs"]
 format-match-dispatch = 3

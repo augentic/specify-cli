@@ -10,6 +10,7 @@ use serde::Serialize;
 use specify_capability::{Brief, PipelineView};
 use specify_error::Error;
 use specify_slice::SliceMetadata;
+use specify_slice::atomic::atomic_bytes_write;
 use specify_task::{Task, mark_complete, parse_tasks};
 
 use crate::context::CommandContext;
@@ -95,7 +96,7 @@ pub(super) fn mark(
     let updated = mark_complete(&original, &task_number)?;
     let idempotent = updated == original;
     if !idempotent {
-        std::fs::write(&tasks_path, &updated)?;
+        atomic_bytes_write(&tasks_path, updated.as_bytes())?;
     }
 
     emit(

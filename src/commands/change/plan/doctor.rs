@@ -8,7 +8,6 @@
 use std::io::Write;
 
 use serde::Serialize;
-use serde_json::Value;
 use specify_change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
 use specify_config::ProjectConfig;
 use specify_error::Error;
@@ -23,21 +22,21 @@ use crate::output::{CliResult, Render, emit};
 /// kebab-case label string (`error` / `warning`).
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct DiagnosticRow<'a> {
-    severity: &'a str,
-    code: &'a str,
-    message: &'a str,
+struct DiagnosticRow {
+    severity: &'static str,
+    code: String,
+    message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    entry: Option<&'a str>,
+    entry: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<Value>,
+    data: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct DoctorBody {
     plan: PlanRef,
-    diagnostics: Vec<Value>,
+    diagnostics: Vec<DiagnosticRow>,
 }
 
 impl Render for DoctorBody {
@@ -46,15 +45,9 @@ impl Render for DoctorBody {
             return writeln!(w, "Plan OK");
         }
         for d in &self.diagnostics {
-            let severity = d.get("severity").and_then(Value::as_str).unwrap_or("");
-            let prefix = if severity == "error" { "ERROR  " } else { "WARNING" };
-            let code = d.get("code").and_then(Value::as_str).unwrap_or("");
-            let message = d.get("message").and_then(Value::as_str).unwrap_or("");
-            let entry_col = d
-                .get("entry")
-                .and_then(Value::as_str)
-                .map_or_else(String::new, |e| format!("[{e}]"));
-            writeln!(w, "{prefix} {code:<24} {entry_col:<24} {message}")?;
+            let prefix = if d.severity == "error" { "ERROR  " } else { "WARNING" };
+            let entry_col = d.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
+            writeln!(w, "{prefix} {:<24} {entry_col:<24} {}", d.code, d.message)?;
         }
         Ok(())
     }
@@ -86,7 +79,7 @@ pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
     }
 
     let has_errors = diagnostics.iter().any(|d| matches!(d.severity, PlanDoctorSeverity::Error));
-    let rows: Vec<Value> = diagnostics.iter().map(diagnostic_to_json).collect();
+    let rows: Vec<DiagnosticRow> = diagnostics.iter().map(diagnostic_row).collect();
 
     emit(
         ctx.format,
@@ -99,21 +92,16 @@ pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
     Ok(if has_errors { CliResult::ValidationFailed } else { CliResult::Success })
 }
 
-fn diagnostic_to_json(d: &PlanDoctorDiagnostic) -> Value {
-    // Two-step serialise so we can flatten the structured `data`
-    // payload into the same JSON object every diagnostic exposes,
-    // independent of which `code` produced it. `serde_json::to_value`
-    // never fails for well-typed structs.
+fn diagnostic_row(d: &PlanDoctorDiagnostic) -> DiagnosticRow {
     let data = d
         .data
         .as_ref()
         .map(|p| serde_json::to_value(p).expect("DiagnosticPayload serialises as JSON"));
-    serde_json::to_value(DiagnosticRow {
+    DiagnosticRow {
         severity: d.severity.label(),
-        code: &d.code,
-        message: &d.message,
-        entry: d.entry.as_deref(),
+        code: d.code.clone(),
+        message: d.message.clone(),
+        entry: d.entry.clone(),
         data,
-    })
-    .expect("DiagnosticRow serialises as JSON")
+    }
 }

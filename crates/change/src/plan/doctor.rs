@@ -1,4 +1,4 @@
-//! `specify plan doctor` — superset of `specify plan validate` plus four
+//! `specify change plan doctor` — superset of `specify change plan validate` plus four
 //! health diagnostics:
 //!
 //!   - `cycle-in-depends-on`   (error, payload: cycle path)
@@ -9,7 +9,7 @@
 //! Doctor is purely additive: it runs every check `Plan::validate` runs,
 //! preserves the existing diagnostic codes (`dependency-cycle`,
 //! `unknown-depends-on`, `unknown-source`, `multiple-in-progress`,
-//! `project-*`, `schema-mismatch-workspace`, …) bit-for-bit, and then
+//! `project-*`, `capability-mismatch-workspace`, …) bit-for-bit, and then
 //! layers the four codes above on top with structured payloads. The
 //! `Plan::validate` and `Plan::next_eligible` runtime semantics are not
 //! changed by anything in this module.
@@ -26,10 +26,10 @@
 //!
 //! ## Schema-mismatch overlap
 //!
-//! `Plan::validate` already emits `schema-mismatch-workspace` when a
-//! clone's `.specify/project.yaml:schema` disagrees with the registry's
-//! declared schema. Doctor's `stale-workspace-clone` is a *URL* check;
-//! the schema check stays on `validate`. Operators see both signals
+//! `Plan::validate` already emits `capability-mismatch-workspace` when a
+//! clone's `.specify/project.yaml:capability` disagrees with the registry's
+//! declared capability. Doctor's `stale-workspace-clone` is a *URL* check;
+//! the capability check stays on `validate`. Operators see both signals
 //! when the clone is out of sync on both axes, and the codes are
 //! orthogonal so dashboards can route each to the right runbook.
 
@@ -238,7 +238,7 @@ impl Diagnostic {
 ///
 /// `slices_dir` and `registry` are forwarded to `Plan::validate` so
 /// the validate-level findings are bit-identical to those emitted by
-/// `specify plan validate`. `project_dir` is consulted only by the
+/// `specify change plan validate`. `project_dir` is consulted only by the
 /// stale-workspace-clone check; pass `None` to skip that check
 /// (`Plan::doctor_pure` does the same — see the unit tests).
 ///

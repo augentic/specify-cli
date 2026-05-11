@@ -1,7 +1,7 @@
 //! Registry parser — platform-level catalogue of peer projects.
 //!
 //! `registry.yaml` (at the repo root) enumerates the repos that
-//! comprise the platform and the schema each of them uses. The file
+//! comprise the platform and the capability each of them uses. The file
 //! is optional: an absent or single-entry registry is equivalent to
 //! single-repo mode. Multi-entry registries activate the `/change:plan`
 //! *sync peers* phase; this module only handles shape parsing.

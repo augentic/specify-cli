@@ -150,7 +150,7 @@ mod tests {
     fn load_no_trailing_newline() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("plan.yaml");
-        std::fs::write(&path, "name: foo\nchanges: []").expect("write without trailing newline");
+        std::fs::write(&path, "name: foo\nslices: []").expect("write without trailing newline");
         let plan = Plan::load(&path).expect("load ok");
         assert_eq!(plan.name, "foo");
         assert!(plan.entries.is_empty());

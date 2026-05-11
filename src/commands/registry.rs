@@ -2,7 +2,6 @@
 
 pub mod cli;
 
-use std::fs;
 use std::io::Write;
 use std::path::Path;
 
@@ -11,6 +10,7 @@ use specify_change::Plan;
 use specify_config::ProjectConfig;
 use specify_error::{Error, is_kebab};
 use specify_registry::{Registry, RegistryProject};
+use specify_slice::atomic::atomic_yaml_write;
 
 use crate::cli::RegistryAction;
 use crate::context::CommandContext;
@@ -190,12 +190,7 @@ fn remove(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
 /// `validate_shape_hub` beforehand so the on-disk file is always
 /// shape-valid.
 fn save(registry: &Registry, path: &Path) -> Result<(), Error> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let yaml = serde_saphyr::to_string(registry)?;
-    fs::write(path, yaml)?;
-    Ok(())
+    atomic_yaml_write(path, registry)
 }
 
 /// Scan `plan.yaml` (when present) for plan entries whose `project`
@@ -321,6 +316,7 @@ impl Render for RemoveBody {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::fs;
 
     use specify_change::{Entry, Status};
     use tempfile::TempDir;

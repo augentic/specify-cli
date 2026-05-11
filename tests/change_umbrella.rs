@@ -78,7 +78,7 @@ mod cli {
 
     const CLEAN_PLAN: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: pending
@@ -90,7 +90,7 @@ changes:
 
     const DUPLICATE_NAME_PLAN: &str = "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: pending
@@ -101,7 +101,7 @@ changes:
 
     const A_DONE_B_PENDING: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: done
@@ -112,7 +112,7 @@ changes:
 
     const A_IN_PROGRESS: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: in-progress
@@ -120,7 +120,7 @@ changes:
 
     const ALL_DONE: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: done
@@ -133,7 +133,7 @@ changes:
     /// not every entry is terminal, so `next` reports `stuck`.
     const STUCK_PLAN: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: failed
@@ -146,7 +146,7 @@ changes:
 
     const CYCLE_PLAN: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: pending
@@ -163,7 +163,7 @@ changes:
 
     const FAILED_WITH_REASON: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: failed
@@ -181,7 +181,7 @@ sources:
   payments: git@github.com:org/payments-service.git
   frontend: git@github.com:org/web-app.git
 
-changes:
+slices:
   - name: user-registration
     project: platform
     sources: [monolith]
@@ -280,7 +280,7 @@ changes:
         assert_eq!(assert.get_output().status.code(), Some(0));
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["passed"], true);
         assert_eq!(actual["results"], Value::Array(vec![]));
         assert_golden("validate-clean.json", actual);
@@ -307,7 +307,7 @@ changes:
         );
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(
             actual["passed"], true,
             "in-progress-without-slice-dir is a warning, so passed must be true: {actual}"
@@ -341,7 +341,7 @@ changes:
         );
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["passed"], false);
         let results = actual["results"].as_array().expect("results array");
         assert!(
@@ -378,7 +378,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["next"], "b");
         assert_eq!(actual["reason"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -410,7 +410,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["reason"], "in-progress");
         assert_eq!(actual["active"], "a");
@@ -436,7 +436,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["reason"], "all-done");
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -454,7 +454,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["reason"], "stuck");
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -475,7 +475,7 @@ changes:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         let counts = actual["counts"].as_object().expect("counts object");
         for key in ["done", "in-progress", "pending", "blocked", "failed", "skipped", "total"] {
             assert!(counts.contains_key(key), "counts missing key '{key}': {counts:?}");
@@ -520,7 +520,7 @@ changes:
             .success();
 
         let actual = parse_stdout(&output.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["order"], "list", "cycle must trigger list-order fallback");
 
         let names: Vec<&str> = actual["entries"]
@@ -579,12 +579,12 @@ changes:
 
     const EMPTY_PLAN: &str = "\
 name: demo
-changes: []
+slices: []
 ";
 
     const SINGLE_PENDING: &str = "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: pending
@@ -592,7 +592,7 @@ changes:
 
     const SINGLE_IN_PROGRESS: &str = "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: in-progress
@@ -600,7 +600,7 @@ changes:
 
     const SINGLE_DONE: &str = "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: done
@@ -608,7 +608,7 @@ changes:
 
     const WITH_DESCRIPTION: &str = "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: pending
@@ -638,7 +638,7 @@ changes:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["action"], "create");
         assert_eq!(actual["entry"]["name"], "foo");
         assert_eq!(actual["entry"]["status"], "pending");
@@ -700,7 +700,7 @@ changes:
         project.seed_plan(
             "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: done
@@ -794,7 +794,7 @@ changes:
         assert_eq!(assert.get_output().status.code(), Some(1));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
         assert!(
-            stderr.contains("no change named"),
+            stderr.contains("no slice named"),
             "stderr should mention missing change, got: {stderr:?}"
         );
     }
@@ -831,7 +831,7 @@ changes:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["entry"]["name"], "foo");
         assert_eq!(actual["entry"]["status"], "done");
         assert_eq!(actual["entry"]["status-reason"], Value::Null);
@@ -925,7 +925,7 @@ changes:
         project.seed_plan(
             "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: failed
@@ -955,7 +955,7 @@ changes:
         project.seed_plan(
             "\
 name: demo
-changes:
+slices:
   - name: user-registration
     project: default
     status: done
@@ -1053,7 +1053,7 @@ changes:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["plan"]["name"], "my-change");
         let path_str = actual["plan"]["path"].as_str().expect("plan.path string");
         assert!(
@@ -1266,7 +1266,7 @@ changes:
             .success();
         let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["plan"]["name"], "demo");
         assert!(
             actual["archived"].as_str().unwrap_or_default().contains("demo-"),
@@ -1317,7 +1317,7 @@ changes:
         assert_eq!(assert.get_output().status.code(), Some(1));
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["error"], "plan-has-outstanding-work");
         let entries = actual["entries"].as_array().expect("entries array");
         let names: Vec<&str> = entries.iter().map(|v| v.as_str().unwrap()).collect();
@@ -1356,7 +1356,7 @@ changes:
         project.seed_plan(
             "\
 name: my-change
-changes: []
+slices: []
 ",
         );
 
@@ -1457,7 +1457,7 @@ changes: []
             .success();
         let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 4);
+        assert_eq!(actual["schema-version"], 5);
         assert_eq!(actual["plan"]["name"], "demo");
         assert!(
             actual["archived"].as_str().unwrap_or_default().contains("demo-"),
@@ -2198,7 +2198,7 @@ inputs: []
         let project = Project::init();
         // Seed a minimal, structurally-valid plan so `change plan validate`
         // doesn't exit on the plan load itself.
-        project.seed_plan("name: demo\nchanges: []\n");
+        project.seed_plan("name: demo\nslices: []\n");
         // Then stomp the registry with an illegal version.
         fs::write(project.root().join("registry.yaml"), "version: 2\nprojects: []\n")
             .expect("write bad registry");

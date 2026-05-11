@@ -1,6 +1,6 @@
 name: demo
 sources: {}
-changes:
+slices:
 - name: user-registration
   project: default
   capability: null

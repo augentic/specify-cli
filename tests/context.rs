@@ -327,7 +327,7 @@ fn context_generate_json_uses_existing_envelope_and_kebab_case_keys() {
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("stdout json");
 
-    assert_eq!(value["schema-version"], 4);
+    assert_eq!(value["schema-version"], 5);
     assert_eq!(value["status"], "written");
     assert_eq!(value["path"], "AGENTS.md");
     assert_eq!(value["check"], false);

@@ -127,7 +127,6 @@ pub enum Commands {
     },
 
     /// Generate shell completions for the given shell.
-    #[command(hide = true)]
     Completions {
         /// Target shell
         #[arg(value_enum)]

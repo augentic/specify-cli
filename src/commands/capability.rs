@@ -203,16 +203,16 @@ impl CheckRow {
     fn from_validation(r: &ValidationResult) -> Self {
         match r {
             ValidationResult::Pass { rule_id, rule } => Self::Pass {
-                rule_id: (*rule_id).into(),
-                rule: (*rule).into(),
+                rule_id: rule_id.to_string(),
+                rule: rule.to_string(),
             },
             ValidationResult::Fail {
                 rule_id,
                 rule,
                 detail,
             } => Self::Fail {
-                rule_id: (*rule_id).into(),
-                rule: (*rule).into(),
+                rule_id: rule_id.to_string(),
+                rule: rule.to_string(),
                 detail: detail.clone(),
             },
             ValidationResult::Deferred {
@@ -220,9 +220,9 @@ impl CheckRow {
                 rule,
                 reason,
             } => Self::Deferred {
-                rule_id: (*rule_id).into(),
-                rule: (*rule).into(),
-                reason: (*reason).into(),
+                rule_id: rule_id.to_string(),
+                rule: rule.to_string(),
+                reason: reason.to_string(),
             },
             _ => Self::Unknown,
         }

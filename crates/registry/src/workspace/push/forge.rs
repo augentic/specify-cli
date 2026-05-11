@@ -10,7 +10,7 @@ pub(in crate::workspace) trait WorkspacePushForge {
     fn repo_exists(&self, slug: &str, project_path: &Path) -> Result<bool, Error>;
     fn create_repo(&self, slug: &str, project_path: &Path) -> Result<(), Error>;
     fn ensure_pull_request(
-        &self, project_path: &Path, branch_name: &str, base_branch: &str, initiative_name: &str,
+        &self, project_path: &Path, branch_name: &str, base_branch: &str, change_name: &str,
     ) -> Result<u64, Error>;
 }
 
@@ -66,7 +66,7 @@ impl WorkspacePushForge for RealWorkspacePushForge {
     }
 
     fn ensure_pull_request(
-        &self, project_path: &Path, branch_name: &str, base_branch: &str, initiative_name: &str,
+        &self, project_path: &Path, branch_name: &str, base_branch: &str, change_name: &str,
     ) -> Result<u64, Error> {
         let existing = github_pr_for_branch(project_path, branch_name)?;
         if let Some(number) = existing {
@@ -90,10 +90,10 @@ impl WorkspacePushForge for RealWorkspacePushForge {
             });
         }
 
-        let pr_title = format!("specify: {initiative_name}");
+        let pr_title = format!("specify: {change_name}");
         let pr_body = format!(
-            "Automated push from specify workspace push for initiative \
-             `{initiative_name}`."
+            "Automated push from specify workspace push for change \
+             `{change_name}`."
         );
         let create = Command::new("gh")
             .args([

@@ -242,7 +242,7 @@ fn project_missing_multi_repo() {
 }
 
 #[test]
-fn schema_only_entry_valid_multi_repo() {
+fn capability_only_entry_valid_multi_repo() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
@@ -357,7 +357,7 @@ fn project_matches_registry() {
 }
 
 #[test]
-fn neither_project_nor_schema_error() {
+fn neither_project_nor_capability_error() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
@@ -377,13 +377,14 @@ fn neither_project_nor_schema_error() {
     assert!(
         results
             .iter()
-            .any(|r| r.code == "plan.entry-needs-project-or-schema" && r.level == Severity::Error),
-        "expected entry-needs-project-or-schema error, got: {results:#?}"
+            .any(|r| r.code == "plan.entry-needs-project-or-capability"
+                && r.level == Severity::Error),
+        "expected entry-needs-project-or-capability error, got: {results:#?}"
     );
 }
 
 #[test]
-fn schema_only_passes() {
+fn capability_only_passes() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
@@ -401,13 +402,13 @@ fn schema_only_passes() {
     };
     let results = plan.validate(None, None);
     assert!(
-        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-schema"),
-        "schema-only entry must not trigger project-or-schema error"
+        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-capability"),
+        "capability-only entry must not trigger project-or-capability error"
     );
 }
 
 #[test]
-fn project_and_schema_passes() {
+fn project_and_capability_passes() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
@@ -425,8 +426,8 @@ fn project_and_schema_passes() {
     };
     let results = plan.validate(None, None);
     assert!(
-        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-schema"),
-        "entry with both project and schema must pass"
+        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-capability"),
+        "entry with both project and capability must pass"
     );
 }
 

@@ -8,6 +8,7 @@ use specify_capability::{ChangeBrief, ChangeFrontmatter, InputKind};
 use specify_change::finalize;
 use specify_error::{Error, is_kebab};
 use specify_registry::Registry;
+use specify_slice::atomic::atomic_bytes_write;
 
 use crate::cli::ChangeAction;
 use crate::context::CommandContext;
@@ -49,10 +50,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
         return Ok(exit);
     }
 
-    if let Some(parent) = brief_path.parent() {
-        std::fs::create_dir_all(parent).map_err(Error::Io)?;
-    }
-    std::fs::write(&brief_path, ChangeBrief::template(&name)).map_err(Error::Io)?;
+    atomic_bytes_write(&brief_path, ChangeBrief::template(&name).as_bytes())?;
 
     emit(
         ctx.format,
@@ -86,13 +84,9 @@ fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
 // ---------------------------------------------------------------------------
 
 fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResult, Error> {
-    let plan_or_refusal = finalize::load_plan(&ctx.project_dir)?;
-    let plan = match plan_or_refusal {
-        Ok(plan) => plan,
-        Err(finalize::Refusal::PlanNotFound) => return Err(Error::PlanNotFound),
-        Err(finalize::Refusal::NonTerminalEntries(_)) => {
-            unreachable!("finalize::load_plan only emits PlanNotFound");
-        }
+    let plan = match finalize::load_plan(&ctx.project_dir)? {
+        finalize::PlanLoad::Present(plan) => plan,
+        finalize::PlanLoad::Missing => return Err(Error::PlanNotFound),
     };
 
     // Registry is optional — an empty registry means no per-project
@@ -142,9 +136,6 @@ fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliR
                 },
             )?;
             Ok(exit)
-        }
-        Err(finalize::Refusal::PlanNotFound) => {
-            unreachable!("PlanNotFound is handled by finalize::load_plan")
         }
     }
 }
@@ -333,8 +324,8 @@ fn blocked_reason(s: &finalize::Summary) -> String {
 }
 
 /// Non-standard failure envelope for `change finalize` blocked on
-/// non-terminal plan entries. Tests pin `error`, `change` (formerly
-/// `initiative`), `entries`, and `message` verbatim; this body owns
+/// non-terminal plan entries. Tests pin `error`, `change`, `entries`,
+/// and `message` verbatim; this body owns
 /// the shape rather than routing through `output::ErrorResponse`.
 /// Triggered by [`Error::PlanNonTerminalEntries`]; the typed variant
 /// is the source of truth for the discriminant and the structured

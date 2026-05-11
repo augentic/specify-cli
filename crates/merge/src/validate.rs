@@ -51,8 +51,8 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
         }
         if seen_ids.contains(block.id.as_str()) {
             results.push(ValidationResult::Fail {
-                rule_id: RULE_NO_DUPLICATE_IDS,
-                rule: RULE_NO_DUPLICATE_IDS_DESC,
+                rule_id: RULE_NO_DUPLICATE_IDS.into(),
+                rule: RULE_NO_DUPLICATE_IDS_DESC.into(),
                 detail: format!("Duplicate ID: {}", block.id),
             });
         }
@@ -64,8 +64,8 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
     for block in &blocks {
         if seen_names.contains(block.name.as_str()) {
             results.push(ValidationResult::Fail {
-                rule_id: RULE_NO_DUPLICATE_NAMES,
-                rule: RULE_NO_DUPLICATE_NAMES_DESC,
+                rule_id: RULE_NO_DUPLICATE_NAMES.into(),
+                rule: RULE_NO_DUPLICATE_NAMES_DESC.into(),
                 detail: format!("Duplicate requirement name: {}", block.name),
             });
         }
@@ -81,14 +81,14 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
     for block in &blocks {
         if block.id.is_empty() {
             results.push(ValidationResult::Fail {
-                rule_id: RULE_REQ_HAS_ID,
-                rule: RULE_REQ_HAS_ID_DESC,
+                rule_id: RULE_REQ_HAS_ID.into(),
+                rule: RULE_REQ_HAS_ID_DESC.into(),
                 detail: format!("Requirement '{}' has no {} line", block.name, REQ_ID_PREFIX),
             });
         } else if !id_pattern.is_match(&block.id) {
             results.push(ValidationResult::Fail {
-                rule_id: RULE_ID_MATCHES_PATTERN,
-                rule: RULE_ID_MATCHES_PATTERN_DESC,
+                rule_id: RULE_ID_MATCHES_PATTERN.into(),
+                rule: RULE_ID_MATCHES_PATTERN_DESC.into(),
                 detail: format!(
                     "Requirement '{}' has invalid ID '{}' (expected pattern: {})",
                     block.name, block.id, REQ_ID_PATTERN
@@ -97,8 +97,8 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
         }
         if !block.body.contains(scenario_needle) {
             results.push(ValidationResult::Fail {
-                rule_id: RULE_REQ_HAS_SCENARIO,
-                rule: RULE_REQ_HAS_SCENARIO_DESC,
+                rule_id: RULE_REQ_HAS_SCENARIO.into(),
+                rule: RULE_REQ_HAS_SCENARIO_DESC.into(),
                 detail: format!(
                     "Requirement '{}' ({}) has no {} section",
                     block.name, block.id, SCENARIO_HEADING
@@ -123,8 +123,8 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
             let ref_id = m.as_str();
             if !baseline_ids.contains(ref_id) {
                 results.push(ValidationResult::Fail {
-                    rule_id: RULE_DESIGN_REFS_EXIST,
-                    rule: RULE_DESIGN_REFS_EXIST_DESC,
+                    rule_id: RULE_DESIGN_REFS_EXIST.into(),
+                    rule: RULE_DESIGN_REFS_EXIST_DESC.into(),
                     detail: format!("Design references {ref_id} which does not exist in baseline"),
                 });
             }
@@ -189,9 +189,11 @@ mod tests {
         assert!(validate_baseline(baseline, Some(design)).is_empty());
     }
 
-    fn as_fail(result: &ValidationResult) -> Option<(&'static str, &str)> {
+    fn as_fail(result: &ValidationResult) -> Option<(&str, &str)> {
         match result {
-            ValidationResult::Fail { rule_id, detail, .. } => Some((*rule_id, detail.as_str())),
+            ValidationResult::Fail { rule_id, detail, .. } => {
+                Some((rule_id.as_ref(), detail.as_str()))
+            }
             _ => None,
         }
     }

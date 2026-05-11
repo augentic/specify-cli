@@ -38,7 +38,7 @@ impl Plan {
         results.extend(check_unknown_depends_on(&self.entries));
         results.extend(check_unknown_sources(self));
         results.extend(check_single_in_progress(&self.entries));
-        results.extend(missing_project_or_schema(&self.entries));
+        results.extend(missing_project_or_capability(&self.entries));
         results.extend(check_context_paths(&self.entries));
         if let Some(reg) = registry {
             results.extend(check_project_in_registry(&self.entries, reg));
@@ -134,7 +134,7 @@ fn check_unknown_depends_on(changes: &[Entry]) -> Vec<Finding> {
                 out.push(Finding {
                     level: Severity::Error,
                     code: "unknown-depends-on",
-                    message: format!("depends-on references unknown change '{target}'"),
+                    message: format!("depends-on references unknown slice '{target}'"),
                     entry: Some(entry.name.clone()),
                 });
             }
@@ -188,7 +188,7 @@ fn check_project_in_registry(changes: &[Entry], registry: &Registry) -> Vec<Find
                 level: Severity::Error,
                 code: "project-not-in-registry",
                 message: format!(
-                    "project '{}' on change '{}' does not match any project in registry.yaml",
+                    "project '{}' on slice '{}' does not match any project in registry.yaml",
                     project, entry.name
                 ),
                 entry: Some(entry.name.clone()),
@@ -209,7 +209,7 @@ fn check_project_required_multi_repo(changes: &[Entry], registry: &Registry) -> 
                 level: Severity::Error,
                 code: "project-missing-multi-repo",
                 message: format!(
-                    "change '{}' has no project or schema; multi-repo implementation changes must specify a project",
+                    "slice '{}' has no project or capability; multi-repo implementation slices must specify a project",
                     entry.name
                 ),
                 entry: Some(entry.name.clone()),
@@ -219,15 +219,15 @@ fn check_project_required_multi_repo(changes: &[Entry], registry: &Registry) -> 
     out
 }
 
-fn missing_project_or_schema(changes: &[Entry]) -> Vec<Finding> {
+fn missing_project_or_capability(changes: &[Entry]) -> Vec<Finding> {
     let mut out = Vec::new();
     for entry in changes {
         if entry.project.is_none() && entry.capability.is_none() {
             out.push(Finding {
                 level: Severity::Error,
-                code: "plan.entry-needs-project-or-schema",
+                code: "plan.entry-needs-project-or-capability",
                 message: format!(
-                    "entry '{}' has neither 'project' nor 'schema'; at least one is required",
+                    "entry '{}' has neither 'project' nor 'capability'; at least one is required",
                     entry.name
                 ),
                 entry: Some(entry.name.clone()),

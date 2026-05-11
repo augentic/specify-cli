@@ -1,7 +1,7 @@
 //! Archival move of `plan.yaml` (plus optional working directory and
 //! operator brief) into the archive tree.
 //!
-//! See `rfc-2-execution.md` §"`specify plan archive`" for the
+//! See `rfc-2-execution.md` §"`specify change plan archive`" for the
 //! preflight + execute flow exercised by the tests submodule.
 
 use std::path::{Path, PathBuf};
@@ -17,7 +17,7 @@ impl Plan {
     /// operator brief (`change.md`) — into the archive directory.
     ///
     /// Semantics (see `rfc-2-execution.md` §L1.G, §L3.B, and §"`specify
-    /// plan archive`"):
+    /// change plan archive`"):
     ///
     /// 1. Load the plan at `path`.
     /// 2. Collect every entry whose status is non-terminal for archival

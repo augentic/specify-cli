@@ -29,6 +29,8 @@ mod codex;
 mod codex_resolver;
 mod pipeline;
 
+use std::borrow::Cow;
+
 pub use brief::{Brief, BriefFrontmatter};
 pub use cache::CacheMeta;
 pub use capability::{
@@ -62,25 +64,25 @@ pub enum ValidationResult {
     /// Rule passed.
     Pass {
         /// Machine-readable rule identifier.
-        rule_id: &'static str,
+        rule_id: Cow<'static, str>,
         /// Human-readable rule description.
-        rule: &'static str,
+        rule: Cow<'static, str>,
     },
     /// Rule failed.
     Fail {
         /// Machine-readable rule identifier.
-        rule_id: &'static str,
+        rule_id: Cow<'static, str>,
         /// Human-readable rule description.
-        rule: &'static str,
+        rule: Cow<'static, str>,
         /// Detail message explaining the failure.
         detail: String,
     },
     /// Rule evaluation was deferred.
     Deferred {
         /// Machine-readable rule identifier.
-        rule_id: &'static str,
+        rule_id: Cow<'static, str>,
         /// Human-readable rule description.
-        rule: &'static str,
+        rule: Cow<'static, str>,
         /// Why the rule was deferred.
         reason: &'static str,
     },

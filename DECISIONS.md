@@ -131,8 +131,8 @@ and centralises the `specify_version` floor check inside
 |------|---------------------------|----------------------------------------------------------------------|
 | 0    | `EXIT_SUCCESS`            | Command succeeded.                                                   |
 | 1    | `EXIT_GENERIC_FAILURE`    | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, …). |
-| 2    | `EXIT_VALIDATION_FAILED`  | `specify validate` returned a report whose `passed` flag is `false` (Change J wires this), `Error::Validation { .. }` bubbles up, or a tool request is rejected as undeclared / outside its declared permissions. |
-| 3    | `EXIT_VERSION_TOO_OLD`    | `.specify/project.yaml.specify_version` is newer than `CARGO_PKG_VERSION` — surfaced as `Error::SpecifyVersionTooOld`. |
+| 2    | `EXIT_VALIDATION_FAILED`  | A validation command returns findings, `Error::Validation { .. }` bubbles up, or a tool request is rejected as undeclared / outside its declared permissions. |
+| 3    | `EXIT_VERSION_TOO_OLD`    | `.specify/project.yaml.specify_version` is newer than `CARGO_PKG_VERSION` — surfaced as `Error::CliTooOld` and JSON `specify-version-too-old`. |
 
 `CliResult::from(&Error)` is the single source of truth for the
 mapping; every subcommand dispatcher routes its error through it so the

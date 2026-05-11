@@ -168,7 +168,7 @@ impl ProjectConfig {
         project_dir.join("registry.yaml")
     }
 
-    /// Absolute path to `<project_dir>/plan.yaml` — the initiative
+    /// Absolute path to `<project_dir>/plan.yaml` — the change
     /// plan. Platform-level artifact, lives at the repo root.
     #[must_use]
     pub fn plan_path(project_dir: &Path) -> PathBuf {

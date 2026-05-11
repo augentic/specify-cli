@@ -85,8 +85,8 @@ pub enum Landing {
     Unmerged,
     /// PR was `CLOSED` without merging. Refuses finalize.
     Closed,
-    /// No PR on `specify/<initiative-name>` for this project — passing
-    /// (e.g. the project was assigned no work in this initiative, or
+    /// No PR on `specify/<change-name>` for this project — passing
+    /// (e.g. the project was assigned no work in this change, or
     /// the operator merged via the forge UI / `gh pr merge` and deleted
     /// the branch).
     NoBranch,
@@ -177,7 +177,7 @@ pub struct Summary {
     pub unmerged: usize,
     /// PRs in `CLOSED` state without merge — refuses finalize.
     pub closed: usize,
-    /// Projects without a `specify/<initiative-name>` PR — passes.
+    /// Projects without a `specify/<change-name>` PR — passes.
     pub no_branch: usize,
     /// PRs whose `headRefName` did not match — refuses finalize.
     pub branch_pattern_mismatch: usize,
@@ -196,13 +196,13 @@ pub struct Summary {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Outcome {
-    /// Initiative name (= `plan.yaml:name`).
-    #[serde(rename = "initiative")]
+    /// Change name (= `plan.yaml:name`).
+    #[serde(rename = "change")]
     pub name: String,
     /// `true` when the archive landed on a real run, or when a dry-run
-    /// preview classified the initiative as ready to finalize.
+    /// preview classified the change as ready to finalize.
     pub finalized: bool,
-    /// `specify/<initiative-name>` — surfaced for skill authors that
+    /// `specify/<change-name>` — surfaced for skill authors that
     /// echo the literal branch in operator-facing output.
     pub expected_branch: String,
     /// Per-project rows, one per registry entry.
@@ -240,7 +240,7 @@ pub struct Outcome {
 pub struct Inputs<'a> {
     /// Project root directory (`.specify/` lives directly under here).
     pub project_dir: &'a Path,
-    /// Loaded plan — owns the canonical initiative name.
+    /// Loaded plan — owns the canonical change name.
     pub plan: &'a Plan,
     /// Loaded registry — owns the project list.
     pub registry: &'a Registry,
@@ -253,16 +253,21 @@ pub struct Inputs<'a> {
 /// Top-level error sentinel for finalize.
 ///
 /// Distinct from per-project failures: these are the **whole-run**
-/// refusals (plan absent, non-terminal entries) that surface as a
+/// refusals (for example, non-terminal entries) that surface as a
 /// hard error from the CLI handler with their own diagnostic.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
-    /// `.specify/plan.yaml` does not exist. Recovery: this is the
-    /// signal that the initiative is already finalized.
-    PlanNotFound,
     /// One or more plan entries are not in a terminal state. Carries
     /// the offending entry names in plan order.
     NonTerminalEntries(Vec<String>),
+}
+
+/// Result of loading the optional finalize plan.
+pub enum PlanLoad {
+    /// Plan file exists and parsed.
+    Present(Plan),
+    /// Plan file is absent; finalize treats this as already closed.
+    Missing,
 }
 
 // ---------------------------------------------------------------------------
@@ -293,8 +298,8 @@ pub fn run<P: Probe>(inputs: Inputs<'_>, probe: &P) -> Result<Outcome, Refusal> 
         return Err(Refusal::NonTerminalEntries(outstanding));
     }
 
-    let initiative_name = inputs.plan.name.clone();
-    let expected_branch = format!("{SPECIFY_BRANCH_PREFIX}{initiative_name}");
+    let change_name = inputs.plan.name.clone();
+    let expected_branch = format!("{SPECIFY_BRANCH_PREFIX}{change_name}");
     let workspace_base = ProjectConfig::specify_dir(inputs.project_dir).join("workspace");
 
     // Guard: per-project PR state + dirty clones.
@@ -308,7 +313,7 @@ pub fn run<P: Probe>(inputs: Inputs<'_>, probe: &P) -> Result<Outcome, Refusal> 
     let any_refusing = projects.iter().any(|p| !p.status.is_passing());
 
     let mut outcome = Outcome {
-        name: initiative_name,
+        name: change_name,
         finalized: false,
         expected_branch,
         projects,
@@ -345,16 +350,16 @@ pub fn run<P: Probe>(inputs: Inputs<'_>, probe: &P) -> Result<Outcome, Refusal> 
 }
 
 /// Plan-presence guard: load `plan.yaml` (at the repo root) or return
-/// [`Refusal::PlanNotFound`].
+/// [`PlanLoad::Missing`].
 ///
 /// # Errors
 ///
 /// Bubbles up `Plan::load` errors verbatim — a malformed plan is a
 /// real failure, not a "plan absent" sentinel.
-pub fn load_plan(project_dir: &Path) -> Result<Result<Plan, Refusal>, Error> {
+pub fn load_plan(project_dir: &Path) -> Result<PlanLoad, Error> {
     let plan_file = ProjectConfig::plan_path(project_dir);
     if !plan_file.exists() {
-        return Ok(Err(Refusal::PlanNotFound));
+        return Ok(PlanLoad::Missing);
     }
-    Ok(Ok(Plan::load(&plan_file)?))
+    Ok(PlanLoad::Present(Plan::load(&plan_file)?))
 }

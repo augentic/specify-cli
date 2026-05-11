@@ -88,7 +88,7 @@ pub fn github_slug(url: &str) -> Option<String> {
 
 /// Core implementation of `specify workspace push`.
 ///
-/// `initiative_name` is `plan.name` from the binary side; the registry
+/// `change_name` is `plan.name` from the binary side; the registry
 /// crate cannot depend on `specify-slice` (which already depends on
 /// `specify-registry`), so callers flatten the field at the boundary.
 ///
@@ -97,11 +97,11 @@ pub fn github_slug(url: &str) -> Option<String> {
 /// Surfaces unknown selectors from `Registry::select` before any per-project
 /// push work runs.
 pub fn push_all(
-    project_dir: &Path, initiative_name: &str, registry: &Registry, filter_projects: &[String],
+    project_dir: &Path, change_name: &str, registry: &Registry, filter_projects: &[String],
     dry_run: bool,
 ) -> Result<Vec<PushResult>, Error> {
     let target_projects = registry.select(filter_projects)?;
-    push_projects(project_dir, initiative_name, &target_projects, dry_run)
+    push_projects(project_dir, change_name, &target_projects, dry_run)
 }
 
 /// Core implementation of `specify workspace push` for pre-resolved projects.
@@ -111,9 +111,9 @@ pub fn push_all(
 /// Per-project push outcomes are returned in the result vector; the outer
 /// `Result` is reserved for fatal errors that prevent any push from running.
 pub fn push_projects(
-    project_dir: &Path, initiative_name: &str, target_projects: &[&RegistryProject], dry_run: bool,
+    project_dir: &Path, change_name: &str, target_projects: &[&RegistryProject], dry_run: bool,
 ) -> Result<Vec<PushResult>, Error> {
-    let branch_name = format!("specify/{initiative_name}");
+    let branch_name = format!("specify/{change_name}");
     let workspace_base = workspace_base(project_dir);
     let real_forge = RealWorkspacePushForge;
 
@@ -125,7 +125,7 @@ pub fn push_projects(
             &workspace_base,
             rp,
             &branch_name,
-            initiative_name,
+            change_name,
             dry_run,
             &real_forge,
         );
@@ -166,7 +166,7 @@ fn push_result(
 #[allow(clippy::too_many_lines)]
 pub(in crate::workspace) fn push_single_project(
     project_dir: &Path, workspace_base: &Path, rp: &RegistryProject, branch_name: &str,
-    initiative_name: &str, dry_run: bool, forge: &dyn WorkspacePushForge,
+    change_name: &str, dry_run: bool, forge: &dyn WorkspacePushForge,
 ) -> PushResult {
     let project_path = project_path(project_dir, workspace_base, rp);
 
@@ -272,7 +272,7 @@ pub(in crate::workspace) fn push_single_project(
             &project_path,
             slug.as_deref(),
             branch_name,
-            initiative_name,
+            change_name,
             forge,
         )
         .map_or_else(
@@ -324,7 +324,7 @@ pub(in crate::workspace) fn push_single_project(
         &project_path,
         slug.as_deref(),
         branch_name,
-        initiative_name,
+        change_name,
         forge,
     ) {
         Ok(pr) => pr,

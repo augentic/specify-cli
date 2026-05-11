@@ -234,7 +234,7 @@ fn finalizes_with_no_clones_and_no_registry_passes() {
     let tmp = TempDir::new().expect("tempdir");
     seed_specify_dir(tmp.path());
     let plan_path = tmp.path().join("plan.yaml");
-    fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
+    fs::write(&plan_path, "name: foo\nslices: []\n").expect("seed plan");
 
     let plan = plan_named("foo");
     let registry = Registry {
@@ -261,7 +261,7 @@ fn refuses_when_one_project_pr_is_unmerged() {
     let tmp = TempDir::new().expect("tempdir");
     seed_specify_dir(tmp.path());
     let plan_path = tmp.path().join("plan.yaml");
-    fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
+    fs::write(&plan_path, "name: foo\nslices: []\n").expect("seed plan");
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
@@ -317,7 +317,7 @@ fn refuses_when_one_project_pr_is_unmerged() {
 fn passes_when_pr_is_merged() {
     let tmp = TempDir::new().expect("tempdir");
     seed_specify_dir(tmp.path());
-    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
@@ -348,7 +348,7 @@ fn passes_when_pr_is_merged() {
 fn passes_when_no_branch_for_project() {
     let tmp = TempDir::new().expect("tempdir");
     seed_specify_dir(tmp.path());
-    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
@@ -480,7 +480,7 @@ fn refuses_dirty_workspace_with_clean() {
     let tmp = TempDir::new().expect("tempdir");
     seed_specify_dir(tmp.path());
     let plan_path = tmp.path().join("plan.yaml");
-    fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
+    fs::write(&plan_path, "name: foo\nslices: []\n").expect("seed plan");
     let workspace_base = tmp.path().join(".specify/workspace");
     let alpha_path = workspace_base.join("alpha");
     let beta_path = workspace_base.join("beta");
@@ -537,7 +537,7 @@ fn dry_run_does_not_archive_or_clean() {
     let tmp = TempDir::new().expect("tempdir");
     seed_specify_dir(tmp.path());
     let plan_path = tmp.path().join("plan.yaml");
-    fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
+    fs::write(&plan_path, "name: foo\nslices: []\n").expect("seed plan");
     let workspace_base = tmp.path().join(".specify/workspace");
     let alpha_path = workspace_base.join("alpha");
     fs::create_dir_all(&alpha_path).expect("mkdir alpha");
@@ -608,7 +608,7 @@ fn clean_removes_clones_after_archive() {
     let tmp = TempDir::new().expect("tempdir");
     seed_specify_dir(tmp.path());
     let plan_path = tmp.path().join("plan.yaml");
-    fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
+    fs::write(&plan_path, "name: foo\nslices: []\n").expect("seed plan");
     let workspace_base = tmp.path().join(".specify/workspace");
     let alpha_path = workspace_base.join("alpha");
     fs::create_dir_all(&alpha_path).expect("mkdir alpha");
@@ -646,7 +646,7 @@ fn clean_waits_until_archive_succeeds() {
     let tmp = TempDir::new().expect("tempdir");
     seed_specify_dir(tmp.path());
     let plan_path = tmp.path().join("plan.yaml");
-    fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
+    fs::write(&plan_path, "name: foo\nslices: []\n").expect("seed plan");
     let archive_root = tmp.path().join(".specify/archive/plans");
     fs::create_dir_all(&archive_root).expect("mkdir archive");
     fs::write(
@@ -699,7 +699,7 @@ fn clean_waits_until_archive_succeeds() {
 fn clean_skips_symlink_projects() {
     let tmp = TempDir::new().expect("tempdir");
     seed_specify_dir(tmp.path());
-    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
 
     let plan = plan_named("foo");
     // url: "." → symlink-mode; clean must not delete the project_dir.
@@ -736,7 +736,7 @@ fn idempotent_after_manual_merge() {
     let tmp = TempDir::new().expect("tempdir");
     seed_specify_dir(tmp.path());
     let plan_path = tmp.path().join("plan.yaml");
-    fs::write(&plan_path, "name: foo\nchanges: []\n").expect("seed plan");
+    fs::write(&plan_path, "name: foo\nslices: []\n").expect("seed plan");
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);

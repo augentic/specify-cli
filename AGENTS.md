@@ -73,7 +73,7 @@ The four-slot CLI exit-code table is fixed (see [DECISIONS.md §"Change I"](./DE
 | 0 | `EXIT_SUCCESS` | Command succeeded |
 | 1 | `EXIT_GENERIC_FAILURE` | Default `Error` → exit 1 |
 | 2 | `EXIT_VALIDATION_FAILED` | `Error::Validation`, undeclared/over-permissioned tool |
-| 3 | `EXIT_VERSION_TOO_OLD` | `Error::SpecifyVersionTooOld` |
+| 3 | `EXIT_VERSION_TOO_OLD` | `Error::CliTooOld` (`specify-version-too-old` in JSON) |
 
 `CliResult::from(&Error)` in `src/output.rs` is the single source of truth. Every dispatcher in `src/commands/*` routes its terminal error through it. Do not invent new exit codes.
 
@@ -83,7 +83,7 @@ The four-slot CLI exit-code table is fixed (see [DECISIONS.md §"Change I"](./DE
 
 YAML (de)serialization goes through `serde-saphyr`, not `serde_yaml_ng` (retired) or `serde_yaml` (deprecated). `serde-saphyr` has no `Value` type; for dynamic YAML access deserialize into `serde_json::Value` (see [DECISIONS.md "YAML library"](./DECISIONS.md)). Errors split into `serde_saphyr::Error` (deser) and `serde_saphyr::ser::Error` (ser), and `specify-error::Error` carries both via `Yaml(#[from] …)` and `YamlSer(#[from] …)`.
 
-Writes that must not be observed mid-update use `tempfile::NamedTempFile::new_in(parent).persist(target)`. `Plan::save` is the canonical example; `ChangeMetadata::save` was migrated to the same pattern in L2.A. `fs::write` is fine for single-shot scratch files but never for files that other live processes read (`plan.yaml`, `.specify/plan.lock`, `.metadata.yaml`).
+Writes that must not be observed mid-update use the shared atomic helpers in `specify_slice::atomic` (`atomic_yaml_write` / `atomic_bytes_write`). `fs::write` is fine for single-shot scratch files but never for files that other live processes read (`plan.yaml`, `registry.yaml`, `change.md`, `tasks.md`, `.specify/plan.lock`, `.metadata.yaml`).
 
 ## CLI architecture
 
@@ -319,6 +319,8 @@ Use the modern Rust module layout: prefer `src/<parent>/<module>.rs` as the modu
 | `error-envelope-inlined` | `output::ErrorResponse { … }` / `output::ValidationErrorResponse { … }` constructed outside `src/output.rs`. Error envelopes are emitted via `emit_error` / `emit_err`, not hand-rolled at the call site. |
 | `path-helper-inlined` | `fn specify_dir|plan_path|change_brief_path|archive_dir` declared outside `crates/config/`. Path helpers live in `specify-config`; command modules call them, they do not redefine them. Thin facade methods that take `&self` are exempted by the regex shape. |
 | `ok-literal-in-body` | `pub ok: bool` field outside the carve-outs (`crates/validate/src/contracts/envelope.rs`, `crates/validate/src/compatibility/mod.rs`). The JSON envelope encodes success-vs-failure via the presence/absence of `error:`; the redundant `ok` field was removed in CL-E3 and this predicate keeps it gone. |
+| `direct-fs-write` | Direct `fs::write` / `std::fs::write` in non-test Rust. Managed state must use the atomic helpers; any remaining scratch-only use needs an allowlist baseline and a comment. |
+| `stale-cli-vocab` | Legacy CLI vocabulary in non-test Rust (`initiative`, `initiative.md`, retired top-level `specify plan`, `specify merge`, `specify validate`). Use `change`, `slice`, and the current command surface unless the file is an explicit historical record. |
 | `module-line-count` | Non-test Rust source file length in lines. Default cap 500; per-file baselines grandfather oversized files until they are split. |
 
 A live count strictly greater than its per-file baseline fails CI; missing predicates default to zero (new files start clean) except `module-line-count`, which defaults to 500.

@@ -182,8 +182,8 @@ impl Capability {
             Ok(value) => value,
             Err(err) => {
                 return vec![ValidationResult::Fail {
-                    rule_id: "capability.serializable",
-                    rule: "capability is serializable to JSON",
+                    rule_id: "capability.serializable".into(),
+                    rule: "capability is serializable to JSON".into(),
                     detail: err.to_string(),
                 }];
             }
@@ -340,8 +340,8 @@ pub fn validate_against_schema(
         Ok(value) => value,
         Err(err) => {
             return vec![ValidationResult::Fail {
-                rule_id: "schema.meta-loadable",
-                rule: "embedded JSON Schema parses as JSON",
+                rule_id: "schema.meta-loadable".into(),
+                rule: "embedded JSON Schema parses as JSON".into(),
                 detail: err.to_string(),
             }];
         }
@@ -350,8 +350,8 @@ pub fn validate_against_schema(
         Ok(v) => v,
         Err(err) => {
             return vec![ValidationResult::Fail {
-                rule_id: "schema.meta-compilable",
-                rule: "embedded JSON Schema compiles",
+                rule_id: "schema.meta-compilable".into(),
+                rule: "embedded JSON Schema compiles".into(),
                 detail: err.to_string(),
             }];
         }
@@ -362,13 +362,13 @@ pub fn validate_against_schema(
 
     if errors.is_empty() {
         vec![ValidationResult::Pass {
-            rule_id: pass_rule_id,
-            rule: pass_rule,
+            rule_id: pass_rule_id.into(),
+            rule: pass_rule.into(),
         }]
     } else {
         vec![ValidationResult::Fail {
-            rule_id: pass_rule_id,
-            rule: pass_rule,
+            rule_id: pass_rule_id.into(),
+            rule: pass_rule.into(),
             detail: errors.join("; "),
         }]
     }

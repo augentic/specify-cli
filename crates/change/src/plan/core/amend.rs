@@ -29,7 +29,7 @@ impl Plan {
     pub fn amend(&mut self, name: &str, patch: EntryPatch) -> Result<(), Error> {
         let idx = self.entries.iter().position(|c| c.name == name).ok_or_else(|| Error::Diag {
             code: "plan-entry-not-found",
-            detail: format!("no change named '{name}' in plan"),
+            detail: format!("no slice named '{name}' in plan"),
         })?;
 
         let snapshot = self.entries[idx].clone();
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    fn amend_schema_three_way() {
+    fn amend_capability_three_way() {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
@@ -305,7 +305,7 @@ mod tests {
         assert_eq!(
             plan.entries[0].capability.as_deref(),
             Some("omnia@v1"),
-            "None must leave schema unchanged"
+            "None must leave capability unchanged"
         );
 
         plan.amend(
@@ -319,7 +319,7 @@ mod tests {
         assert_eq!(
             plan.entries[0].capability.as_deref(),
             Some("contracts@v1"),
-            "Some(Some(s)) must replace schema"
+            "Some(Some(s)) must replace capability"
         );
 
         plan.amend(
@@ -330,7 +330,7 @@ mod tests {
             },
         )
         .expect("amend clear ok");
-        assert_eq!(plan.entries[0].capability, None, "Some(None) must clear schema");
+        assert_eq!(plan.entries[0].capability, None, "Some(None) must clear capability");
     }
 
     #[test]

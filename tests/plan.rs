@@ -28,7 +28,7 @@ sources:
   payments: git@github.com:org/payments-service.git
   frontend: git@github.com:org/web-app.git
 
-changes:
+slices:
   - name: user-registration
     sources: [monolith]
     status: done
@@ -113,12 +113,12 @@ fn plan_schema_rejects_unknown_status_value() {
     let offending_paths: Vec<String> = validator
         .iter_errors(&instance)
         .map(|e| e.instance_path().to_string())
-        .filter(|p| p.starts_with("/changes/") && p.ends_with("/status"))
+        .filter(|p| p.starts_with("/slices/") && p.ends_with("/status"))
         .collect();
 
     assert!(
         !offending_paths.is_empty(),
-        "unknown status should produce at least one error on /changes/*/status; got none"
+        "unknown status should produce at least one error on /slices/*/status; got none"
     );
 }
 

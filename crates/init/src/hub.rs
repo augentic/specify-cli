@@ -155,9 +155,8 @@ mod tests {
 
         // Hub init scaffolds `registry.yaml` (intrinsic to the hub's
         // purpose) but no other platform-component artefact.
-        // `initiative.md` and `plan.yaml` stay operator-managed even
-        // on a hub.
-        for absent in ["initiative.md", "plan.yaml", "change.md"] {
+        // `change.md` and `plan.yaml` stay operator-managed even on a hub.
+        for absent in ["plan.yaml", "change.md"] {
             assert!(
                 !tmp.path().join(absent).exists(),
                 "hub init must not pre-touch `{absent}` at the repo root"

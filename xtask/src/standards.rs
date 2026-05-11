@@ -53,6 +53,12 @@
 //!   workspace, so the simpler form catches every regression while
 //!   missing only private `ok: bool` fields (which are not part of any
 //!   wire envelope and were not flagged by CL-E3 either).
+//! - `direct-fs-write` — direct `fs::write` / `std::fs::write` in
+//!   non-test Rust. Managed state should go through the atomic helpers
+//!   unless a file has an explicit baseline.
+//! - `stale-cli-vocab` — legacy CLI vocabulary in non-test Rust:
+//!   `initiative`, `initiative.md`, retired top-level `specify plan`,
+//!   `specify merge`, or `specify validate` strings.
 //! - `module-line-count` — non-test Rust source file length in lines.
 //!   Default cap is 500; explicit per-file baselines grandfather oversized
 //!   files until they are split.
@@ -159,6 +165,8 @@ struct Counts {
     error_envelope_inlined: u32,
     path_helper_inlined: u32,
     ok_literal_in_body: u32,
+    direct_fs_write: u32,
+    stale_cli_vocab: u32,
     module_line_count: u32,
 }
 
@@ -175,6 +183,8 @@ impl Counts {
             ("error-envelope-inlined", self.error_envelope_inlined),
             ("path-helper-inlined", self.path_helper_inlined),
             ("ok-literal-in-body", self.ok_literal_in_body),
+            ("direct-fs-write", self.direct_fs_write),
+            ("stale-cli-vocab", self.stale_cli_vocab),
             ("module-line-count", self.module_line_count),
         ]
         .into_iter()
@@ -192,6 +202,8 @@ impl Counts {
             error_envelope_inlined: self.error_envelope_inlined,
             path_helper_inlined: self.path_helper_inlined,
             ok_literal_in_body: self.ok_literal_in_body,
+            direct_fs_write: self.direct_fs_write,
+            stale_cli_vocab: self.stale_cli_vocab,
             module_line_count: self.module_line_count,
         }
     }
@@ -214,6 +226,8 @@ fn count_one(path: &Path, source: &str) -> Counts {
     c.error_envelope_inlined = count_error_envelope(path, &stripped);
     c.path_helper_inlined = count_path_helper(path, &stripped);
     c.ok_literal_in_body = count_ok_literal(path, &stripped);
+    c.direct_fs_write = count_regex(&DIRECT_FS_WRITE_RE, &stripped);
+    c.stale_cli_vocab = count_stale_cli_vocab(path, source);
     c.module_line_count = u32::try_from(source.lines().count()).unwrap_or(u32::MAX);
     c
 }
@@ -286,6 +300,14 @@ static RITUAL_DOC_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
 
 static NO_OP_FORWARDER_RE: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| Regex::new(r"let\s+_\s*=\s*cli\.\w+\s*;").expect("static regex"));
+
+static DIRECT_FS_WRITE_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"\b(?:std::)?fs::write\s*\(").expect("static regex"));
+
+static STALE_CLI_VOCAB_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"\binitiative(?:\.md|_name)?\b|\bspecify (?:plan|merge|validate)\b")
+        .expect("static regex")
+});
 
 // ---------------------------------------------------------------------
 // currently-audit: the word `Currently` in a clap-derive doc comment.
@@ -390,6 +412,15 @@ fn is_ok_literal_carveout(path: &Path) -> bool {
     let normalized = path.to_string_lossy().replace('\\', "/");
     normalized.ends_with("crates/validate/src/contracts/envelope.rs")
         || normalized.ends_with("crates/validate/src/compatibility/mod.rs")
+}
+
+fn count_stale_cli_vocab(path: &Path, source: &str) -> u32 {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if normalized.contains("/tests/") || normalized.ends_with("/tests.rs") {
+        0
+    } else {
+        count_regex(&STALE_CLI_VOCAB_RE, source)
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -531,6 +562,10 @@ struct FileBaseline {
     #[serde(default)]
     ok_literal_in_body: u32,
     #[serde(default)]
+    direct_fs_write: u32,
+    #[serde(default)]
+    stale_cli_vocab: u32,
+    #[serde(default)]
     module_line_count: u32,
 }
 
@@ -547,6 +582,8 @@ impl FileBaseline {
             "error-envelope-inlined" => self.error_envelope_inlined,
             "path-helper-inlined" => self.path_helper_inlined,
             "ok-literal-in-body" => self.ok_literal_in_body,
+            "direct-fs-write" => self.direct_fs_write,
+            "stale-cli-vocab" => self.stale_cli_vocab,
             "module-line-count" => self.module_line_count,
             _ => 0,
         }
@@ -644,6 +681,8 @@ fn baseline_iter(b: &FileBaseline) -> impl Iterator<Item = (&'static str, u32)> 
         ("error-envelope-inlined", b.error_envelope_inlined),
         ("path-helper-inlined", b.path_helper_inlined),
         ("ok-literal-in-body", b.ok_literal_in_body),
+        ("direct-fs-write", b.direct_fs_write),
+        ("stale-cli-vocab", b.stale_cli_vocab),
         ("module-line-count", b.module_line_count),
     ]
     .into_iter()

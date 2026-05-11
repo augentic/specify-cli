@@ -59,7 +59,7 @@ impl From<&Error> for CliResult {
 /// JSON envelope version emitted on every structured response (the
 /// `schema-version` field of the wire shape, not a JSON-Schema spec).
 /// Bumping it is a breaking change for skill authors.
-pub const JSON_ENVELOPE_VERSION: u64 = 4;
+pub const JSON_ENVELOPE_VERSION: u64 = 5;
 
 pub fn emit_error(format: OutputFormat, err: &Error) -> CliResult {
     let code = CliResult::from(err);

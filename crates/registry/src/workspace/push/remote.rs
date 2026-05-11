@@ -56,7 +56,7 @@ pub(super) fn inspect_remote_branch(
 }
 
 pub(super) fn ensure_pr_if_supported(
-    project_path: &Path, slug: Option<&str>, branch_name: &str, initiative_name: &str,
+    project_path: &Path, slug: Option<&str>, branch_name: &str, change_name: &str,
     forge: &dyn WorkspacePushForge,
 ) -> Result<Option<u64>, Error> {
     if slug.is_none() {
@@ -72,7 +72,7 @@ pub(super) fn ensure_pr_if_supported(
             ),
         });
     }
-    forge.ensure_pull_request(project_path, branch_name, &base_branch, initiative_name).map(Some)
+    forge.ensure_pull_request(project_path, branch_name, &base_branch, change_name).map(Some)
 }
 
 pub(super) fn ensure_pr_base_resolves_if_supported(

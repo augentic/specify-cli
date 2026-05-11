@@ -590,7 +590,7 @@ fn finalize_and_assert_archive(envs: &TestEnv) {
     let finalized =
         envs.command().args(["--format", "json", "change", "finalize"]).assert().success();
     let finalized = parse_json(&finalized.get_output().stdout);
-    assert_eq!(finalized["initiative"], CHANGE_NAME);
+    assert_eq!(finalized["change"], CHANGE_NAME);
     assert_eq!(finalized["finalized"], true);
     let projects = finalized["projects"].as_array().expect("projects");
     assert_eq!(projects.len(), 2);

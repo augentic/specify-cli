@@ -76,7 +76,7 @@ pub struct Plan {
     /// Ordered list of plan entries. Order is the *intended* execution
     /// order; the authoritative dependency-respecting order comes from
     /// [`Plan::topological_order`].
-    #[serde(rename = "changes")]
+    #[serde(rename = "slices")]
     pub entries: Vec<Entry>,
 }
 
@@ -227,17 +227,17 @@ mod tests {
 
     #[test]
     fn missing_fields_default() {
-        let yaml = "name: foo\nchanges: []\n";
+        let yaml = "name: foo\nslices: []\n";
         let plan: Plan = serde_saphyr::from_str(yaml).expect("parse minimal plan");
         assert_eq!(plan.name, "foo");
         assert!(plan.sources.is_empty(), "sources should default to empty map");
-        assert!(plan.entries.is_empty(), "changes should be empty");
+        assert!(plan.entries.is_empty(), "slices should be empty");
     }
 
     #[test]
     fn status_reason_round_trips() {
         let yaml = r"name: demo
-changes:
+slices:
   - name: checkout-api
     sources: [payments]
     depends-on: [shopping-cart]
@@ -289,9 +289,9 @@ status: pending
     }
 
     #[test]
-    fn schema_field_round_trips() {
+    fn capability_field_round_trips() {
         let yaml = r"name: test
-changes:
+slices:
   - name: define-contracts
     capability: contracts@v1
     status: pending
@@ -315,7 +315,7 @@ changes:
     fn context_round_trips() {
         let yaml = r"
 name: ctx-test
-changes:
+slices:
   - name: with-ctx
     project: default
     status: pending

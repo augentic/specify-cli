@@ -192,12 +192,12 @@ impl WorkspacePushForge for RecordingForge {
     }
 
     fn ensure_pull_request(
-        &self, _project_path: &Path, branch_name: &str, base_branch: &str, initiative_name: &str,
+        &self, _project_path: &Path, branch_name: &str, base_branch: &str, change_name: &str,
     ) -> Result<u64, Error> {
         self.pr_calls.borrow_mut().push((
             branch_name.to_string(),
             base_branch.to_string(),
-            initiative_name.to_string(),
+            change_name.to_string(),
         ));
         Ok(42)
     }

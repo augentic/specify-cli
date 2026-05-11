@@ -314,7 +314,7 @@ fn codex_export_json_resolves_initialized_cache_and_repo_overlay_in_order() {
         .success();
     let value = parse_json(&assert.get_output().stdout);
 
-    assert_eq!(value["schema-version"], 4);
+    assert_eq!(value["schema-version"], 5);
     assert_eq!(value["rule-count"], 4);
     let rules = value["rules"].as_array().expect("rules array");
     let ids: Vec<_> = rules.iter().map(|rule| rule["id"].as_str().expect("id str")).collect();

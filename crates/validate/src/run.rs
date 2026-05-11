@@ -78,7 +78,7 @@ pub fn validate_slice(
     })
 }
 
-/// Infer whether to use "crate" or "feature" terminology from the schema
+/// Infer whether to use "crate" or "feature" terminology from the capability
 /// name. `vectis` uses "feature"; everything else defaults to "crate".
 /// See `DECISIONS.md` §"Change G — Terminology inference" for the
 /// rationale.
@@ -140,11 +140,9 @@ fn artifact_missing_result(
     brief_id: &str, artifact_path: &Path, slice_dir: &Path,
 ) -> ValidationResult {
     let rel = relative_key(slice_dir, artifact_path);
-    let rule_id: &'static str = Box::leak(format!("{brief_id}.artifact-exists").into_boxed_str());
-    let rule: &'static str = Box::leak(format!("Generated artifact {rel} exists").into_boxed_str());
     ValidationResult::Fail {
-        rule_id,
-        rule,
+        rule_id: format!("{brief_id}.artifact-exists").into(),
+        rule: format!("Generated artifact {rel} exists").into(),
         detail: format!("artifact `{rel}` not found under slice dir"),
     }
 }
@@ -175,18 +173,18 @@ fn run_brief_rules(
     for rule in rules_for(brief_id) {
         let result = match rule.classification {
             Classification::Semantic => ValidationResult::Deferred {
-                rule_id: rule.id,
-                rule: rule.description,
+                rule_id: rule.id.into(),
+                rule: rule.description.into(),
                 reason: "Semantic check — requires LLM judgment",
             },
             Classification::Structural => match (rule.check)(&ctx) {
                 RuleOutcome::Pass => ValidationResult::Pass {
-                    rule_id: rule.id,
-                    rule: rule.description,
+                    rule_id: rule.id.into(),
+                    rule: rule.description.into(),
                 },
                 RuleOutcome::Fail { detail } => ValidationResult::Fail {
-                    rule_id: rule.id,
-                    rule: rule.description,
+                    rule_id: rule.id.into(),
+                    rule: rule.description.into(),
                     detail,
                 },
             },
@@ -209,18 +207,18 @@ fn run_cross_rules(
     for rule in cross_rules() {
         let result = match rule.classification {
             Classification::Semantic => ValidationResult::Deferred {
-                rule_id: rule.id,
-                rule: rule.description,
+                rule_id: rule.id.into(),
+                rule: rule.description.into(),
                 reason: "Semantic check — requires LLM judgment",
             },
             Classification::Structural => match (rule.check)(&ctx) {
                 RuleOutcome::Pass => ValidationResult::Pass {
-                    rule_id: rule.id,
-                    rule: rule.description,
+                    rule_id: rule.id.into(),
+                    rule: rule.description.into(),
                 },
                 RuleOutcome::Fail { detail } => ValidationResult::Fail {
-                    rule_id: rule.id,
-                    rule: rule.description,
+                    rule_id: rule.id.into(),
+                    rule: rule.description.into(),
                     detail,
                 },
             },

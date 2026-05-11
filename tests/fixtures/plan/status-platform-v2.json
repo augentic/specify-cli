@@ -135,5 +135,5 @@
     "name": "platform-v2",
     "path": "<TEMPDIR>/plan.yaml"
   },
-  "schema-version": 4
+  "schema-version": 5
 }

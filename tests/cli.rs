@@ -88,7 +88,7 @@ fn init_json_format_has_stable_shape() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["schema-version"], 4);
+    assert_eq!(value["schema-version"], 5);
     assert_eq!(value["capability-name"], "omnia");
     assert!(value["config-path"].is_string());
     let config_path = value["config-path"].as_str().unwrap();
@@ -147,14 +147,10 @@ fn init_writes_capability_field_for_url_arg() {
         "non-hub init must not write `hub: true`, got:\n{project_yaml}"
     );
 
-    // RFC-13 chunk 2.9 — non-hub init writes only `project.yaml` and
-    // the `.specify/` skeleton at the project root. Platform-component
-    // artefacts at the repo root are operator-managed: `specify
-    // registry add` mints `registry.yaml`, `specify change create`
-    // mints `change.md` (post-Phase-3.7; the legacy filename was
-    // `initiative.md`), and `specify change plan create` mints
-    // `plan.yaml`. Init must not pre-touch any of them.
-    for absent in ["registry.yaml", "initiative.md", "plan.yaml", "change.md"] {
+    // Non-hub init writes only `project.yaml` and the `.specify/`
+    // skeleton at the project root. Platform-component artefacts at the
+    // repo root are operator-managed.
+    for absent in ["registry.yaml", "plan.yaml", "change.md"] {
         assert!(
             !tmp.path().join(absent).exists(),
             "non-hub init must not pre-touch `{absent}` at the repo root"
@@ -192,7 +188,7 @@ fn init_json_with_no_args_errors_with_stable_code() {
 
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("stdout is JSON");
-    assert_eq!(value["schema-version"], 4);
+    assert_eq!(value["schema-version"], 5);
     assert_eq!(value["error"], "init-requires-capability-or-hub");
     assert_eq!(value["exit-code"], 1);
     let message = value["message"].as_str().expect("message string");
@@ -260,7 +256,7 @@ fn version_too_old_exits_three_with_json_envelope() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
-    assert_eq!(value["schema-version"], 4);
+    assert_eq!(value["schema-version"], 5);
     assert_eq!(value["error"], "specify-version-too-old");
     assert_eq!(value["exit-code"], 3);
 }
@@ -291,15 +287,13 @@ fn init_hub_writes_canonical_on_disk_shape() {
         value["scaffolded-rule-keys"]
     );
 
-    // RFC-13 chunk 2.9 — hub init scaffolds `project.yaml` (under
-    // `.specify/`) plus `registry.yaml` at the repo root, and
-    // nothing else. `registry.yaml` survives because bootstrapping a
-    // hub *is* bootstrapping its registry; `change.md` and
-    // `plan.yaml` stay operator-managed (minted via `specify change
-    // create` / `specify change plan create` post-Phase-3.5).
+    // Hub init scaffolds `project.yaml` (under `.specify/`) plus
+    // `registry.yaml` at the repo root, and nothing else. `registry.yaml`
+    // survives because bootstrapping a hub is bootstrapping its registry;
+    // `change.md` and `plan.yaml` stay operator-managed.
     assert!(tmp.path().join(".specify/project.yaml").is_file());
     assert!(tmp.path().join("registry.yaml").is_file());
-    for absent in ["initiative.md", "plan.yaml", "change.md"] {
+    for absent in ["plan.yaml", "change.md"] {
         assert!(
             !tmp.path().join(absent).exists(),
             "hub init must not pre-touch `{absent}` at the repo root"
@@ -310,17 +304,17 @@ fn init_hub_writes_canonical_on_disk_shape() {
     assert!(!tmp.path().join(".specify/specs").exists());
     assert!(!tmp.path().join(".specify/.cache").exists());
 
-    // project.yaml shape — RFC-13 §Migration: `hub: true` only, no
-    // `capability:` field, and the legacy `schema:` sentinel is gone.
+    // project.yaml shape: `hub: true` only, no `capability:` field, and
+    // no stale `schema:` sentinel.
     let project_yaml =
         fs::read_to_string(tmp.path().join(".specify/project.yaml")).expect("read project.yaml");
     assert!(
         !project_yaml.lines().any(|l| l.trim_start().starts_with("schema:")),
-        "post-RFC-13 hub project.yaml must omit the legacy `schema:` field:\n{project_yaml}"
+        "hub project.yaml must omit the stale `schema:` field:\n{project_yaml}"
     );
     assert!(
         !project_yaml.lines().any(|l| l.trim_start().starts_with("capability:")),
-        "post-RFC-13 hub project.yaml must omit the `capability:` field:\n{project_yaml}"
+        "hub project.yaml must omit the `capability:` field:\n{project_yaml}"
     );
     assert!(
         project_yaml.contains("hub: true"),
@@ -342,11 +336,8 @@ fn init_hub_writes_canonical_on_disk_shape() {
         "registry.yaml `projects` must be an empty list, got: {registry}"
     );
 
-    // `change.md` is no longer scaffolded by hub init (RFC-13
-    // chunk 2.9; pre-Phase-3.7 the brief filename was `initiative.md`).
-    // The absence assertion above (in the on-disk shape block) is the
-    // post-2.9 contract; a `change.md` body appears only after the
-    // operator runs `specify change create <name>`.
+    // `change.md` is not scaffolded by hub init; it appears only after
+    // the operator runs `specify change create <name>`.
 }
 
 #[test]
@@ -475,7 +466,7 @@ fn registry_add_creates_entry_and_round_trips_through_show() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["schema-version"], 4);
+    assert_eq!(value["schema-version"], 5);
     assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["added"]["name"], "alpha");
     assert_eq!(value["added"]["url"], "git@github.com:augentic/alpha.git");
@@ -849,7 +840,7 @@ fn rfc14_c03_workspace_status_json_reports_enriched_slot_fields() {
         "name: billing\ncapability: omnia@v1\n",
     )
     .unwrap();
-    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
     fs::write(
         tmp.path().join("registry.yaml"),
         "version: 1\n\
@@ -914,7 +905,7 @@ fn rfc14_c03_workspace_status_text_flags_mismatch_dirty_and_project_config() {
     run_git(&slot_path, &["commit", "-m", "initial"]);
     run_git(&slot_path, &["checkout", "-b", "feature/work"]);
     fs::write(slot_path.join("dirty.txt"), "dirty\n").unwrap();
-    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
     fs::write(
         tmp.path().join("registry.yaml"),
         "version: 1\n\
@@ -949,7 +940,7 @@ fn rfc14_c03_workspace_status_text_flags_mismatch_dirty_and_project_config() {
 fn rfc14_c01_workspace_push_unknown_selector_fails_before_side_effects() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
-    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
     fs::write(
         tmp.path().join("registry.yaml"),
         "version: 1\n\
@@ -1120,7 +1111,7 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
          sources:\n\
          \x20\x20monolith: /tmp/legacy\n\
          \x20\x20orphaned: /tmp/elsewhere\n\
-         changes:\n\
+         slices:\n\
          \x20\x20- name: cyclic-a\n\
          \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
@@ -1180,7 +1171,7 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["schema-version"], 4);
+    assert_eq!(value["schema-version"], 5);
 
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
     assert!(!diagnostics.is_empty(), "doctor with broken plan must surface diagnostics: {value}");
@@ -1214,7 +1205,7 @@ fn plan_doctor_diagnostic_payloads_round_trip_typed() {
         "name: demo\n\
          sources:\n\
          \x20\x20orphan-key: /tmp/somewhere\n\
-         changes:\n\
+         slices:\n\
          \x20\x20- name: cyc-a\n\
          \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
@@ -1271,7 +1262,7 @@ fn plan_validate_unchanged_by_doctor_fixture() {
          sources:\n\
          \x20\x20monolith: /tmp/legacy\n\
          \x20\x20orphaned: /tmp/elsewhere\n\
-         changes:\n\
+         slices:\n\
          \x20\x20- name: cyclic-a\n\
          \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
@@ -1433,7 +1424,7 @@ fn change_finalize_refuses_on_non_terminal_entries() {
     fs::write(
         tmp.path().join("plan.yaml"),
         "name: foo\n\
-         changes:\n\
+         slices:\n\
          \x20\x20- name: a\n\
          \x20\x20\x20\x20capability: contracts@v1\n\
          \x20\x20\x20\x20status: done\n\
@@ -1467,7 +1458,7 @@ fn change_finalize_dry_run_archives_nothing_with_empty_registry() {
     init_hub(&tmp, "platform-hub");
     // Seed an all-terminal plan and rely on the hub-init's empty
     // registry — no per-project probes will run.
-    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -1476,7 +1467,7 @@ fn change_finalize_dry_run_archives_nothing_with_empty_registry() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["initiative"], "foo");
+    assert_eq!(value["change"], "foo");
     assert_eq!(value["finalized"], true);
     assert_eq!(value["dry-run"], true, "dry-run flag must echo into JSON");
     assert!(value.get("archived").is_none(), "dry-run must not stamp archived path");
@@ -1491,7 +1482,7 @@ fn change_finalize_dry_run_archives_nothing_with_empty_registry() {
 fn change_finalize_archives_when_all_terminal_and_no_registry() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
-    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -1500,7 +1491,7 @@ fn change_finalize_archives_when_all_terminal_and_no_registry() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["initiative"], "foo");
+    assert_eq!(value["change"], "foo");
     assert_eq!(value["finalized"], true);
     let archived = value["archived"].as_str().expect("archived path");
     assert!(archived.contains("foo-"), "archived path must contain plan name: {archived}");
@@ -1531,7 +1522,7 @@ fn change_finalize_idempotent_after_archive() {
     // canonical "change is already finalized" signal.
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
-    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
 
     // First run: archives the plan.
     specify().current_dir(tmp.path()).args(["change", "finalize"]).assert().success();

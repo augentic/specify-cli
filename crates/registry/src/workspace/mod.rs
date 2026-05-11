@@ -1,7 +1,7 @@
 //! Multi-project workspace materialisation under `.specify/workspace/`.
 //!
-//! All registry-derived state lives in this crate. The `Plan` argument
-//! is flattened to `&str initiative_name` to avoid a cycle with
+//! All registry-derived state lives in this crate. The plan name argument
+//! is flattened to `&str` to avoid a cycle with
 //! `specify-slice` (which already depends on `specify-registry`); the
 //! binary callers pass `&plan.name` and the same surface continues to
 //! be exposed as `crate::workspace::*` re-exports from `src/lib.rs`.

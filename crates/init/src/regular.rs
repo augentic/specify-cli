@@ -131,7 +131,7 @@ mod tests {
         // artefact at the repo root. Operators mint these via
         // `specify registry add`, `specify change create`, and
         // `specify change plan create`.
-        for absent in ["registry.yaml", "initiative.md", "plan.yaml", "change.md"] {
+        for absent in ["registry.yaml", "plan.yaml", "change.md"] {
             assert!(
                 !tmp.path().join(absent).exists(),
                 "non-hub init must not pre-touch `{absent}` at the repo root"

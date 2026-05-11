@@ -66,8 +66,8 @@ impl CacheMeta {
             Ok(v) => v,
             Err(err) => {
                 return vec![ValidationResult::Fail {
-                    rule_id: "cache-meta.serializable",
-                    rule: "cache-meta is serializable to JSON",
+                    rule_id: "cache-meta.serializable".into(),
+                    rule: "cache-meta is serializable to JSON".into(),
                     detail: err.to_string(),
                 }];
             }

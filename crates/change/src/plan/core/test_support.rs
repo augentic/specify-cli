@@ -12,7 +12,7 @@ sources:
   orders: git@github.com:org/orders-service.git
   payments: git@github.com:org/payments-service.git
   frontend: git@github.com:org/web-app.git
-changes:
+slices:
   - name: user-registration
     project: platform
     sources: [monolith]

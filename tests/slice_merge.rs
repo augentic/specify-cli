@@ -64,7 +64,7 @@ fn slice_merge_preview_reports_operations_without_writing() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 4);
+    assert_eq!(value["schema-version"], 5);
 
     let specs = value["specs"].as_array().expect("specs array");
     // Two-spec fixture: each spec uses `## ADDED Requirements` with one

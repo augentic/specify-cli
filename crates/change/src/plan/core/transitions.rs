@@ -72,7 +72,7 @@ impl Plan {
         let entry: &mut Entry =
             self.entries.iter_mut().find(|c| c.name == name).ok_or_else(|| Error::Diag {
                 code: "plan-entry-not-found",
-                detail: format!("no change named '{name}' in plan"),
+                detail: format!("no slice named '{name}' in plan"),
             })?;
 
         let new_status = entry.status.transition(target)?;

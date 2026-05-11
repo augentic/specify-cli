@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/plan-validate-output/schema.json",
-  "title": "specify plan validate --format json response",
-  "description": "Validates the JSON response body emitted by `specify plan validate --format json` under the v2 JSON contract (RFC-2 §2). The CLI exits 0 when `passed` is true and 2 (EXIT_VALIDATION_FAILED) otherwise; downstream skills should match on the structured payload rather than the exit code alone.",
+  "title": "specify change plan validate --format json response",
+  "description": "Validates the JSON response body emitted by `specify change plan validate --format json`. The CLI exits 0 when `passed` is true and 2 (EXIT_VALIDATION_FAILED) otherwise; downstream skills should match on the structured payload rather than the exit code alone.",
   "type": "object",
   "required": ["schema-version", "plan", "results", "passed"],
   "additionalProperties": false,
   "properties": {
     "schema-version": {
-      "const": 2,
-      "description": "JSON contract version (RFC-2 §2.2). Bumped in lockstep with breaking changes to the CLI's JSON payloads."
+      "const": 5,
+      "description": "JSON envelope version. Bumped in lockstep with breaking changes to the CLI's JSON payloads."
     },
     "plan": {
       "type": "object",
@@ -20,7 +20,7 @@
         "name": {
           "type": "string",
           "minLength": 1,
-          "description": "Initiative name lifted from `plan.yaml`. Expected to be kebab-case per `schemas/plan/plan.schema.json#/$defs/kebabName`."
+          "description": "Change name lifted from `plan.yaml`. Expected to be kebab-case per `schemas/plan/plan.schema.json#/$defs/kebabName`."
         },
         "path": {
           "type": "string",
@@ -44,7 +44,7 @@
       "type": "object",
       "required": ["level", "code", "message"],
       "additionalProperties": false,
-      "description": "One finding from `Plan::validate`. See `crates/initiative/src/plan/core.rs::PlanValidationResult` for the canonical producer type.",
+      "description": "One finding from `Plan::validate`. See `specify_change::Plan::validate` for the canonical producer.",
       "properties": {
         "level": {
           "type": "string",

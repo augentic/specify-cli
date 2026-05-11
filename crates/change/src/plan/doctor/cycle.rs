@@ -73,16 +73,14 @@ pub(super) fn membership(changes: &[Entry]) -> HashSet<&str> {
     members
 }
 
-fn build_graph(
-    changes: &[Entry],
-) -> (DiGraph<&str, ()>, HashMap<&str, petgraph::graph::NodeIndex>) {
+fn build_graph(slices: &[Entry]) -> (DiGraph<&str, ()>, HashMap<&str, petgraph::graph::NodeIndex>) {
     let mut graph: DiGraph<&str, ()> = DiGraph::new();
     let mut idx = HashMap::new();
-    for entry in changes {
+    for entry in slices {
         let node = graph.add_node(entry.name.as_str());
         idx.insert(entry.name.as_str(), node);
     }
-    for entry in changes {
+    for entry in slices {
         let to = idx[entry.name.as_str()];
         for dep in &entry.depends_on {
             if let Some(&from) = idx.get(dep.as_str()) {

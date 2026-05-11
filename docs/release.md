@@ -78,7 +78,7 @@ for target in \
     aarch64-unknown-linux-gnu \
     x86_64-unknown-linux-gnu; do
     curl -sSfL \
-        "https://github.com/augentic/specify/releases/download/v${VERSION}/specify-v${VERSION}-${target}.tar.gz.sha256"
+        "https://github.com/augentic/specify-cli/releases/download/v${VERSION}/specify-v${VERSION}-${target}.tar.gz.sha256"
 done
 ```
 
@@ -86,7 +86,7 @@ Then, for each target:
 
 ```bash
 brew bump-formula-pr \
-    --url="https://github.com/augentic/specify/releases/download/v${VERSION}/specify-v${VERSION}-aarch64-apple-darwin.tar.gz" \
+    --url="https://github.com/augentic/specify-cli/releases/download/v${VERSION}/specify-v${VERSION}-aarch64-apple-darwin.tar.gz" \
     --sha256="<value from above>" \
     augentic/tap/specify
 ```
@@ -95,12 +95,12 @@ Once the formula lands in `homebrew-core`, the tap step disappears entirely — 
 
 ## Install script hosting
 
-`install.sh` lives at the repo root and is served verbatim. Whether we front it on a `specify.sh` domain or serve it as a release asset (or both) is a Phase-2 choice: the skill-fallback prose in migrated skills already tolerates both, per [RFC-1 §CLI Distribution and Fallback](../rfcs/rfc-1-cli.md) (line 1155: *"An install script (`curl -sSf https://specify.sh/install.sh | sh` or equivalent, TBD as part of Phase 1)"*).
+`install.sh` lives at the repo root and is served verbatim. Whether we front it on a `specify.sh` domain or serve it as a release asset (or both) is a Phase-2 choice: the skill-fallback prose in migrated skills already tolerates both, per [RFC-1 §CLI Distribution and Fallback](https://github.com/augentic/specify/blob/main/rfcs/archive/rfc-1-cli.md#cli-distribution-and-fallback).
 
 Until a domain is purchased, users can still run:
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/augentic/specify/main/install.sh | sh
+curl -sSfL https://raw.githubusercontent.com/augentic/specify-cli/main/install.sh | sh
 ```
 
 That URL is stable and requires no infrastructure beyond the repo itself.

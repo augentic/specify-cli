@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn create_rejects_no_project_or_schema() {
+    fn create_rejects_no_project_or_capability() {
         let mut plan = plan_with_changes(vec![]);
         let entry = Entry {
             name: "bad".into(),
@@ -191,13 +191,13 @@ mod tests {
             description: None,
             status_reason: None,
         };
-        let err = plan.create(entry).expect_err("must reject entry without project or schema");
+        let err = plan.create(entry).expect_err("must reject entry without project or capability");
         match err {
             Error::Diag { code, detail } => {
                 assert_eq!(code, "plan-create-validation-failed");
                 assert!(
-                    detail.contains("project") && detail.contains("schema"),
-                    "error should mention project and schema: {detail}"
+                    detail.contains("project") && detail.contains("capability"),
+                    "error should mention project and capability: {detail}"
                 );
             }
             other => panic!("expected Error::Diag, got {other:?}"),
