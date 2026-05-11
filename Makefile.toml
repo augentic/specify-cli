@@ -18,27 +18,13 @@ skip_rust_env_info = true
 dependencies = ["audit", "fmt", "lint", "outdated", "deps"]
 
 [tasks.ci]
-dependencies = ["lint", "standards-check", "standards-check-tight", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
+dependencies = ["lint", "standards", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
 
-# Mechanical enforcement of AGENTS.md#coding-standards. Predicates live
-# in `xtask/src/standards.rs`; per-file baselines in
-# `scripts/standards-allowlist.toml`.
-[tasks.standards-check]
-command = "cargo"
-args = ["run", "--quiet", "-p", "xtask", "--", "standards-check"]
-
-# Ratchet: fail when an unrelated PR could lower a baseline without code
-# changes. Run `cargo make standards-tighten` and commit the updated
-# `scripts/standards-allowlist.toml` to clear.
-[tasks.standards-check-tight]
-command = "cargo"
-args = ["run", "--quiet", "-p", "xtask", "--", "standards-check", "--check-tightenable"]
-
-# Rewrite `scripts/standards-allowlist.toml` so every per-file baseline
-# matches today's actual count. Use after a migration shrinks counts.
-[tasks.standards-tighten]
-command = "cargo"
-args = ["run", "--quiet", "-p", "xtask", "--", "standards-check", "--tighten"]
+[tasks.standards]
+script = '''
+cargo run --quiet -p xtask -- standards-check
+cargo run --quiet -p xtask -- standards-check --check-tightenable
+'''
 
 # -------------------------------------
 # Individual Actions
@@ -141,14 +127,7 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 command = "cargo"
 args = ["run", "--quiet", "-p", "xtask", "--", "${@}"]
 
-# Render clap_mangen roff man pages for the `specify` binary and every
-# leaf subcommand into `target/man/`. Output is gitignored; release
-# tooling reads from there. See `xtask/src/manpage.rs`.
-[tasks.gen-man]
-command = "cargo"
-args = ["run", "--quiet", "-p", "xtask", "--", "gen-man"]
-
-[tasks.tools-test-fixtures]
+[tasks.wasm-fixtures]
 script = '''
 set -euo pipefail
 CARGO_TARGET_DIR=target/tools-test-fixtures cargo build --manifest-path tests/fixtures/tools-test-project/src-rust/Cargo.toml --target wasm32-wasip2 --release --bins
@@ -172,7 +151,7 @@ shasum -a 256 crates/contract/dist/contract-0.2.0.wasm
 [tasks.vectis-wasm]
 script = '''
 set -euo pipefail
-cargo build -p specify-vectis --bin vectis --target wasm32-wasip2 --release
+cargo build -p specify-vectis --target wasm32-wasip2 --release
 '''
 
 [tasks.vectis-wasi-artifacts]
@@ -181,7 +160,7 @@ set -euo pipefail
 
 DIST_DIR="${VECTIS_WASI_DIST_DIR:-target/vectis-wasi-tools/release}"
 
-cargo build -p specify-vectis --bin vectis --target wasm32-wasip2 --release --locked
+cargo build -p specify-vectis --target wasm32-wasip2 --release --locked
 mkdir -p "${DIST_DIR}"
 cp target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR}/vectis.wasm"
 
