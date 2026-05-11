@@ -536,3 +536,44 @@ the root) into `.specify/archive/plans/<name>-<YYYYMMDD>/`.
 or sibling paths breaks on upgrade. The migrate verb addresses every
 in-repo case; downstream tooling consumers must adopt the root paths
 in lockstep with the version bump.
+
+## Integration tests — keep per-file binaries (no `tests/it.rs` umbrella)
+
+**Decision.** The root crate's integration tests stay as 14 separate
+`tests/<name>.rs` binaries instead of being consolidated under a single
+`tests/it.rs` umbrella. Crate-level test suites (`crates/*/tests/`)
+likewise keep their per-file split.
+
+**Rationale.** The standard "umbrella `tests/it.rs`" optimisation
+([matklad's *Delete Cargo Integration Tests*](https://matklad.github.io/2021/02/27/delete-cargo-im.html))
+trades parallelism for fewer link steps. The win is large when each
+integration binary drags in a heavy dependency graph the parent crate
+does not, because the linker work is duplicated per binary. We
+measured it on this repo's `code-review` branch (post-R17):
+
+| Configuration                              | `cargo nextest run --no-run` (cargo-reported) | Wall-clock |
+|--------------------------------------------|-----------------------------------------------|------------|
+| Baseline (14 separate `tests/*.rs`)        | 34.06 s                                       | 40.77 s    |
+| Umbrella `tests/it.rs` (+ `e2e.rs` split)  | 31.58 s                                       | 33.25 s    |
+| Delta                                      | **−7.3 %**                                    | −18.4 %    |
+
+The R18 chunk in the "Idiomatic Rust Cleanup" plan gates consolidation
+on a ≥ 20 % cold-build improvement; both signals undershoot. The
+dominant cost is compiling third-party deps (`clap`, `wasmtime`,
+`ureq`, `assert_cmd`, …) plus the workspace crates, not linking the
+per-test binaries themselves — the test binaries each link the same
+`libspecify-*.rlib` set and `assert_cmd` only adds a thin shell.
+Collapsing 14 → 2 link steps saves ~2.5 s of a ~32 s cold build.
+
+**Risks of consolidating anyway.** Beyond the modest CI win, the
+umbrella pattern would hurt local iteration: `cargo test --test
+capability` against one file currently links one small binary, but
+under the umbrella any `cargo test --test it` recompiles every other
+`mod` in the umbrella. We would also lose nextest's per-binary process
+isolation for tests that mutate ambient env vars (`GIT_AUTHOR_NAME`,
+`REGENERATE_GOLDENS`, etc.).
+
+**Status.** R18 measured and dropped. Future chunks that revisit
+test-build time should target the dep graph (e.g. tightening feature
+flags on `wasmtime`, replacing `ureq` with a stub at test time) before
+re-litigating the umbrella shape.
