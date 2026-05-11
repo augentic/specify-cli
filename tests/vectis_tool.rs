@@ -42,6 +42,8 @@ fn build_vectis_wasi_artifact(root: &Path, dist: &Path, wasm: &Path) {
             "build",
             "-p",
             "specify-vectis",
+            "--bin",
+            "vectis",
             "--target",
             "wasm32-wasip2",
             "--release",
@@ -51,7 +53,7 @@ fn build_vectis_wasi_artifact(root: &Path, dist: &Path, wasm: &Path) {
         .unwrap_or_else(|err| panic!("failed to invoke cargo for Vectis WASI artifact: {err}"));
     assert!(
         status.success(),
-        "failed to build Vectis WASI artifact with `cargo build -p specify-vectis --target wasm32-wasip2 --release --locked`"
+        "failed to build Vectis WASI artifact with `cargo build -p specify-vectis --bin vectis --target wasm32-wasip2 --release --locked`"
     );
 
     fs::create_dir_all(dist).expect("create Vectis WASI dist dir");

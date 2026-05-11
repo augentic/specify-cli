@@ -172,7 +172,7 @@ shasum -a 256 crates/contract/dist/contract-0.2.0.wasm
 [tasks.vectis-wasm]
 script = '''
 set -euo pipefail
-cargo build -p specify-vectis --target wasm32-wasip2 --release
+cargo build -p specify-vectis --bin vectis --target wasm32-wasip2 --release
 '''
 
 [tasks.vectis-wasi-artifacts]
@@ -181,7 +181,7 @@ set -euo pipefail
 
 DIST_DIR="${VECTIS_WASI_DIST_DIR:-target/vectis-wasi-tools/release}"
 
-cargo build -p specify-vectis --target wasm32-wasip2 --release --locked
+cargo build -p specify-vectis --bin vectis --target wasm32-wasip2 --release --locked
 mkdir -p "${DIST_DIR}"
 cp target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR}/vectis.wasm"
 
