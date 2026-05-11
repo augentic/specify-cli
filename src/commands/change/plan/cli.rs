@@ -8,7 +8,7 @@
 use clap::{ArgAction, Subcommand};
 use specify_change::Status;
 
-use crate::cli::parse_source_kv;
+use crate::cli::SourceArg;
 
 /// Plan-authoring verbs (`specify change plan *`).
 #[derive(Subcommand)]
@@ -18,8 +18,8 @@ pub enum PlanAction {
         /// Kebab-case change name
         name: String,
         /// Named source, repeated: --source `<key>`=`<path-or-url>`
-        #[arg(long = "source", value_parser = parse_source_kv)]
-        sources: Vec<(String, String)>,
+        #[arg(long = "source")]
+        sources: Vec<SourceArg>,
     },
     /// Validate plan.yaml (structure + plan/change consistency)
     Validate,

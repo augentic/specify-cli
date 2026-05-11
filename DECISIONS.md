@@ -471,9 +471,14 @@ composition merge (JSON maps use `String` keys, removing
 
 `serde-saphyr` uses separate error types for deserialization
 (`serde_saphyr::Error`) and serialization (`serde_saphyr::ser::Error`),
-unlike `serde_yaml_ng`'s unified error. `specify-error::Error` carries
-both via `Yaml(#[from] serde_saphyr::Error)` and
-`YamlSer(#[from] serde_saphyr::ser::Error)`.
+unlike `serde_yaml_ng`'s unified error. Both are wrapped behind
+`specify_error::YamlError` / `specify_error::YamlSerError` so the
+upstream crate name does not leak through every `specify-*` public
+surface; `specify-error::Error` carries both via
+`Yaml(#[from] YamlError)` and `YamlSer(#[from] YamlSerError)`, plus
+explicit `From<serde_saphyr::Error>` and `From<serde_saphyr::ser::Error>`
+impls that go through the wrappers so `?` keeps working on raw saphyr
+results.
 
 **Risks.** `serde-saphyr` is pre-1.0 (0.0.x) and its API may shift.
 The dependency is pinned to `0.0.25`. YAML serialization output may

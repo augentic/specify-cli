@@ -81,7 +81,7 @@ The four-slot CLI exit-code table is fixed (see [DECISIONS.md §"Change I"](./DE
 
 ## YAML, JSON, and atomic writes
 
-YAML (de)serialization goes through `serde-saphyr`, not `serde_yaml_ng` (retired) or `serde_yaml` (deprecated). `serde-saphyr` has no `Value` type; for dynamic YAML access deserialize into `serde_json::Value` (see [DECISIONS.md "YAML library"](./DECISIONS.md)). Errors split into `serde_saphyr::Error` (deser) and `serde_saphyr::ser::Error` (ser), and `specify-error::Error` carries both via `Yaml(#[from] …)` and `YamlSer(#[from] …)`.
+YAML (de)serialization goes through `serde-saphyr`, not `serde_yaml_ng` (retired) or `serde_yaml` (deprecated). `serde-saphyr` has no `Value` type; for dynamic YAML access deserialize into `serde_json::Value` (see [DECISIONS.md "YAML library"](./DECISIONS.md)). Deser and ser errors are wrapped behind `specify_error::YamlError` / `specify_error::YamlSerError` so the upstream crate name does not leak through every `specify-*` public surface; `specify_error::Error` carries both via `Yaml(#[from] YamlError)` and `YamlSer(#[from] YamlSerError)`, and `?` on a `serde_saphyr` result still propagates because `Error` also implements `From<serde_saphyr::Error>` and `From<serde_saphyr::ser::Error>` through the wrappers.
 
 Writes that must not be observed mid-update use the shared atomic helpers in `specify_slice::atomic` (`atomic_yaml_write` / `atomic_bytes_write`). `fs::write` is fine for single-shot scratch files but never for files that other live processes read (`plan.yaml`, `registry.yaml`, `change.md`, `tasks.md`, `.specify/plan.lock`, `.metadata.yaml`).
 

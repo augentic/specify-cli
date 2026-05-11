@@ -104,7 +104,7 @@ pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ToolError> {
     let sidecar: Sidecar =
         serde_saphyr::from_str(&contents).map_err(|err| ToolError::SidecarParse {
             path: path.to_path_buf(),
-            source: Box::new(err),
+            source: Box::new(err.into()),
         })?;
     validate_sidecar_schema(path, &sidecar)?;
     Ok(Some(sidecar))

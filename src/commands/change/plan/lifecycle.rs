@@ -8,10 +8,11 @@ use specify_error::{Error, Result};
 use specify_registry::Registry;
 
 use super::{PlanRef, load_for_write, path_string, plan_ref, require_file};
+use crate::cli::SourceArg;
 use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, Validation, emit};
 
-pub fn create(ctx: &Ctx, name: String, sources: Vec<(String, String)>) -> Result<()> {
+pub fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
     let plan_path = ctx.project_dir.layout().plan_path();
     if plan_path.exists() {
         return Err(Error::Diag {
@@ -25,14 +26,14 @@ pub fn create(ctx: &Ctx, name: String, sources: Vec<(String, String)>) -> Result
 
     let mut source_map: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
-    for (k, v) in sources {
-        if source_map.contains_key(&k) {
+    for SourceArg { key, value } in sources {
+        if source_map.contains_key(&key) {
             return Err(Error::Diag {
                 code: "plan-source-duplicate-key",
-                detail: format!("duplicate key `{k}` in --source arguments"),
+                detail: format!("duplicate key `{key}` in --source arguments"),
             });
         }
-        source_map.insert(k, v);
+        source_map.insert(key, value);
     }
 
     let plan = Plan::init(&name, source_map)?;

@@ -1,10 +1,12 @@
 //! Top-level clap derive surface for the `specify` binary.
 //!
 //! This module owns only the umbrella types: [`Cli`], [`Commands`],
-//! [`OutputFormat`], and the `--source key=value` parser. Per-verb
-//! action enums live next to their dispatchers in
+//! [`OutputFormat`], and the [`SourceArg`] `--source key=value` parser.
+//! Per-verb action enums live next to their dispatchers in
 //! `src/commands/<verb>/cli.rs` and are re-exported below so the clap
 //! derive on [`Commands`] resolves them at expansion time.
+
+use std::str::FromStr;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
@@ -134,15 +136,32 @@ pub enum Commands {
     },
 }
 
-/// Parse a single `--source <key>=<path-or-url>` CLI value into a
-/// `(key, value)` pair. Returns a `String` error on malformed input so
-/// clap surfaces a standard usage diagnostic (exit code 2).
-pub fn parse_source_kv(s: &str) -> Result<(String, String), String> {
-    let (k, v) = s
-        .split_once('=')
-        .ok_or_else(|| format!("--source must be <key>=<path-or-url>, got `{s}`"))?;
-    if k.is_empty() || v.is_empty() {
-        return Err(format!("--source key and value must be non-empty, got `{s}`"));
+/// Typed `--source <key>=<path-or-url>` CLI value.
+///
+/// The [`FromStr`] impl returns a `String` error on malformed input so
+/// clap surfaces a standard usage diagnostic (exit code 2). Call sites
+/// read `arg.key` / `arg.value` instead of unpacking a positional tuple.
+#[derive(Debug, Clone)]
+pub struct SourceArg {
+    /// Source key (left of `=`).
+    pub key: String,
+    /// Source value — path or URL (right of `=`).
+    pub value: String,
+}
+
+impl FromStr for SourceArg {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (k, v) = s
+            .split_once('=')
+            .ok_or_else(|| format!("--source must be <key>=<path-or-url>, got `{s}`"))?;
+        if k.is_empty() || v.is_empty() {
+            return Err(format!("--source key and value must be non-empty, got `{s}`"));
+        }
+        Ok(Self {
+            key: k.to_string(),
+            value: v.to_string(),
+        })
     }
-    Ok((k.to_string(), v.to_string()))
 }

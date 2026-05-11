@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use specify_error::YamlError;
+
 /// Errors produced by declared-tool manifest loading, validation, and cache
 /// helpers.
 #[derive(Debug, thiserror::Error)]
@@ -23,7 +25,7 @@ pub enum ToolError {
         path: PathBuf,
         /// Underlying YAML error.
         #[source]
-        source: Box<serde_saphyr::Error>,
+        source: Box<YamlError>,
     },
     /// A deterministic cache root could not be selected from the environment.
     #[error("tool cache root error: {0}")]
@@ -46,7 +48,7 @@ pub enum ToolError {
         path: PathBuf,
         /// YAML parse or deserialize error.
         #[source]
-        source: Box<serde_saphyr::Error>,
+        source: Box<YamlError>,
     },
     /// `meta.yaml` parsed, but did not satisfy the sidecar schema.
     #[error("invalid tool sidecar schema at {}: {detail}", path.display())]
@@ -204,7 +206,7 @@ impl ToolError {
 
     /// Build a manifest-parse error with path context.
     #[must_use]
-    pub fn manifest_parse(path: PathBuf, source: serde_saphyr::Error) -> Self {
+    pub fn manifest_parse(path: PathBuf, source: YamlError) -> Self {
         Self::ManifestParse {
             path,
             source: Box::new(source),

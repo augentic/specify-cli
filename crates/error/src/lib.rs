@@ -308,11 +308,38 @@ pub enum Error {
 
     /// A YAML deserialization error.
     #[error(transparent)]
-    Yaml(#[from] serde_saphyr::Error),
+    Yaml(#[from] YamlError),
 
     /// A YAML serialization error.
     #[error(transparent)]
-    YamlSer(#[from] serde_saphyr::ser::Error),
+    YamlSer(#[from] YamlSerError),
+}
+
+/// Newtype wrapper around [`serde_saphyr::Error`].
+///
+/// Hides the upstream crate name from every `specify-*` public
+/// surface. Implements `From<serde_saphyr::Error>` so call sites can
+/// keep propagating saphyr deser errors via `?`.
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub struct YamlError(#[from] serde_saphyr::Error);
+
+/// Newtype wrapper around [`serde_saphyr::ser::Error`]. Pairs with
+/// [`YamlError`]; same rationale (no upstream-name leak).
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub struct YamlSerError(#[from] serde_saphyr::ser::Error);
+
+impl From<serde_saphyr::Error> for Error {
+    fn from(value: serde_saphyr::Error) -> Self {
+        Self::Yaml(YamlError(value))
+    }
+}
+
+impl From<serde_saphyr::ser::Error> for Error {
+    fn from(value: serde_saphyr::ser::Error) -> Self {
+        Self::YamlSer(YamlSerError(value))
+    }
 }
 
 impl Error {

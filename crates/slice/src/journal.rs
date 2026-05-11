@@ -37,7 +37,7 @@
 //!   multi-writer safety must add their own coordination.
 //!
 //! - **Malformed file rejection**: [`Journal::load`] surfaces a
-//!   `Error::Yaml` (via `From<serde_saphyr::Error>`) on malformed
+//!   `Error::Yaml` (via `From<YamlError>`) on malformed
 //!   content; it does **not** silently truncate or recover. The only
 //!   "graceful" branch is "file absent → empty journal".
 
@@ -118,7 +118,7 @@ impl Journal {
     /// Returns an empty [`Journal`] (not `Err`) when the file is
     /// absent — journals are lazily created on first [`Journal::append`].
     /// A malformed file surfaces `Error::Yaml` (via
-    /// `From<serde_saphyr::Error>`) with the underlying parser's
+    /// `From<YamlError>`) with the underlying parser's
     /// location hint; load never silently recovers from corruption.
     ///
     /// # Errors
