@@ -108,13 +108,13 @@ fn merge_failure_surfaces_consolidated_error_messages() {
     let delta = "## MODIFIED Requirements\n\n### Requirement: Missing\n\nID: REQ-999\n\n#### Scenario: none\n\n- none\n";
     let err = merge(Some(baseline), delta).expect_err("merge should fail");
     match err {
-        Error::Merge(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(
                 msg.contains("MODIFIED: ID REQ-999 not found in baseline"),
                 "missing expected MODIFIED error: {msg}"
             );
         }
-        other => panic!("expected Error::Merge, got {other:?}"),
+        other => panic!("expected Error::Diag, got {other:?}"),
     }
 }
 

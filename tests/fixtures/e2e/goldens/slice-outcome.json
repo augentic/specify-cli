@@ -1,4 +1,5 @@
 {
+  "envelope-version": 6,
   "name": "foo",
   "outcome": {
     "at": "<ISO8601>",
@@ -6,6 +7,5 @@
     "outcome": "success",
     "phase": "build",
     "summary": "5/5 tasks"
-  },
-  "schema-version": 3
+  }
 }

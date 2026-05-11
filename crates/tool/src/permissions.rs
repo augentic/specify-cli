@@ -8,7 +8,7 @@ const PROJECT_DIR_VAR: &str = "PROJECT_DIR";
 const CAPABILITY_DIR_VAR: &str = "CAPABILITY_DIR";
 const LIFECYCLE_RULE_ID: &str = "tool.lifecycle-state-write-denied";
 
-/// Substitute RFC-15 permission variables in one manifest permission entry.
+/// Substitute the permission variables (`$PROJECT_DIR`, `$CAPABILITY_DIR`) in one manifest permission entry.
 ///
 /// # Errors
 ///

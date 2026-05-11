@@ -35,6 +35,14 @@ pub struct CodexRule {
 }
 
 /// Parsed frontmatter of a codex rule markdown file.
+///
+/// Frontmatter is intentionally minimal pre-1.0: only the four required
+/// fields ship today. Earlier drafts carried optional metadata
+/// (applicability filters, review-mode classification, deterministic
+/// hints, references, deprecation) but no on-disk rule populated them
+/// and no Rust consumer branched on their values, so they were dropped
+/// to keep the surface honest. New optional fields should land with a
+/// real consumer in the same change.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct CodexRuleFrontmatter {
@@ -46,21 +54,6 @@ pub struct CodexRuleFrontmatter {
     pub severity: CodexSeverity,
     /// One-sentence condition that tells reviewers when the rule matters.
     pub trigger: String,
-    /// Optional applicability metadata.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub applicability: Option<CodexApplicability>,
-    /// Optional review execution classification.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub review_mode: Option<CodexReviewMode>,
-    /// Optional deterministic-review hints.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub deterministic_hints: Vec<CodexDeterministicHint>,
-    /// Optional reference material.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub references: Vec<CodexReference>,
-    /// Optional deprecation metadata.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deprecated: Option<CodexDeprecation>,
 }
 
 /// Canonical codex finding severity.
@@ -77,88 +70,6 @@ pub enum CodexSeverity {
     Optional,
 }
 
-/// How a codex rule is expected to be reviewed.
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum CodexReviewMode {
-    /// Fully deterministic rule.
-    Deterministic,
-    /// Rule that requires model judgment.
-    ModelAssisted,
-    /// Rule that combines deterministic signals with model judgment.
-    Hybrid,
-}
-
-/// Optional V1 applicability filters.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct CodexApplicability {
-    /// Capability identifiers, optionally versioned as `<name>@v<major>`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub capabilities: Vec<String>,
-    /// Lowercase language or format tokens.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub languages: Vec<String>,
-    /// Lowercase artifact category tokens.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub artifacts: Vec<String>,
-    /// Relative path or glob patterns.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub paths: Vec<String>,
-}
-
-/// Optional deterministic-review hint.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct CodexDeterministicHint {
-    /// Kind of deterministic signal the hint describes.
-    pub kind: CodexHintKind,
-    /// Hint payload, interpreted by a future validator or review tool.
-    pub value: String,
-    /// Optional human explanation for the hint.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-}
-
-/// Supported deterministic hint kinds.
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum CodexHintKind {
-    /// Filesystem path pattern.
-    PathPattern,
-    /// Regular expression.
-    Regex,
-    /// Schema reference.
-    Schema,
-    /// Tool name or selector.
-    Tool,
-}
-
-/// Optional codex rule reference.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct CodexReference {
-    /// Short display label for the reference.
-    pub label: String,
-    /// HTTP(S) reference URL.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-    /// Repository-relative reference path.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
-}
-
-/// Optional codex rule deprecation metadata.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct CodexDeprecation {
-    /// Human-readable reason the rule is deprecated.
-    pub reason: String,
-    /// Replacement codex rule id, when there is a direct successor.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replaced_by: Option<String>,
-}
-
 impl CodexRule {
     /// Read `path` and parse it via [`CodexRule::parse`].
     ///
@@ -166,11 +77,9 @@ impl CodexRule {
     ///
     /// Returns an error if the operation fails.
     pub fn load(path: &Path) -> Result<Self, Error> {
-        let contents = std::fs::read_to_string(path).map_err(|err| {
-            Error::Config(format!(
-                "codex-rule-read-failed: failed to read {}: {err}",
-                path.display()
-            ))
+        let contents = std::fs::read_to_string(path).map_err(|err| Error::Diag {
+            code: "codex-rule-read-failed",
+            detail: format!("failed to read {}: {err}", path.display()),
         })?;
         Self::parse(path, &contents)
     }
@@ -181,25 +90,23 @@ impl CodexRule {
     /// # Errors
     ///
     /// Returns [`Error::Validation`] when the rule file does not satisfy
-    /// the codex rule format, or [`Error::Config`] when a post-validation
+    /// the codex rule format, or an `Error::Diag` when a post-validation
     /// parser invariant fails.
     pub fn parse(path: &Path, contents: &str) -> Result<Self, Error> {
         let results = Self::validate_str(path, contents);
         let failures = validation_failures(&results);
         if !failures.is_empty() {
-            return Err(Error::Validation {
-                count: failures.len(),
-                results: failures,
-            });
+            return Err(Error::Validation { results: failures });
         }
 
         let (frontmatter_text, body) = frontmatter_parts(path, contents)?;
         let frontmatter: CodexRuleFrontmatter =
-            serde_saphyr::from_str(frontmatter_text).map_err(|err| {
-                Error::Config(format!(
-                    "codex-rule-frontmatter-unreadable: {} frontmatter passed validation but could not be parsed: {err}",
+            serde_saphyr::from_str(frontmatter_text).map_err(|err| Error::Diag {
+                code: "codex-rule-frontmatter-unreadable",
+                detail: format!(
+                    "{} frontmatter passed validation but could not be parsed: {err}",
                     path.display()
-                ))
+                ),
             })?;
         let normalized_id = frontmatter.id.to_ascii_uppercase();
         Ok(Self {
@@ -218,24 +125,24 @@ impl CodexRule {
             Ok(parts) => parts,
             Err(err) => {
                 return vec![ValidationResult::Fail {
-                    rule_id: RULE_FRONTMATTER_DELIMITED,
-                    rule: "codex rule has leading YAML frontmatter delimiters",
+                    rule_id: RULE_FRONTMATTER_DELIMITED.into(),
+                    rule: "codex rule has leading YAML frontmatter delimiters".into(),
                     detail: err.to_string(),
                 }];
             }
         };
 
         let mut results = vec![ValidationResult::Pass {
-            rule_id: RULE_FRONTMATTER_DELIMITED,
-            rule: "codex rule has leading YAML frontmatter delimiters",
+            rule_id: RULE_FRONTMATTER_DELIMITED.into(),
+            rule: "codex rule has leading YAML frontmatter delimiters".into(),
         }];
 
         let frontmatter_value: serde_json::Value = match serde_saphyr::from_str(frontmatter_text) {
             Ok(value) => value,
             Err(err) => {
                 results.push(ValidationResult::Fail {
-                    rule_id: RULE_FRONTMATTER_PARSEABLE,
-                    rule: "codex rule frontmatter parses as YAML",
+                    rule_id: RULE_FRONTMATTER_PARSEABLE.into(),
+                    rule: "codex rule frontmatter parses as YAML".into(),
                     detail: format!(
                         "codex-rule-frontmatter-malformed: {} has invalid frontmatter YAML: {err}",
                         path.display()
@@ -246,8 +153,8 @@ impl CodexRule {
         };
 
         results.push(ValidationResult::Pass {
-            rule_id: RULE_FRONTMATTER_PARSEABLE,
-            rule: "codex rule frontmatter parses as YAML",
+            rule_id: RULE_FRONTMATTER_PARSEABLE.into(),
+            rule: "codex rule frontmatter parses as YAML".into(),
         });
         results.extend(validate_against_schema(
             CODEX_RULE_JSON_SCHEMA,
@@ -261,34 +168,30 @@ impl CodexRule {
 }
 
 fn frontmatter_parts<'a>(path: &Path, contents: &'a str) -> Result<(&'a str, &'a str), Error> {
-    let stripped =
-        contents.strip_prefix("---\n").or_else(|| contents.strip_prefix("---\r\n")).ok_or_else(
-            || {
-                Error::Config(format!(
-                    "codex-rule-frontmatter-missing: {} is missing a leading `---` frontmatter delimiter",
-                    path.display()
-                ))
-            },
-        )?;
+    let stripped = contents
+        .strip_prefix("---\n")
+        .or_else(|| contents.strip_prefix("---\r\n"))
+        .ok_or_else(|| Error::Diag {
+            code: "codex-rule-frontmatter-missing",
+            detail: format!("{} is missing a leading `---` frontmatter delimiter", path.display()),
+        })?;
 
-    split_on_closing_delimiter(stripped).ok_or_else(|| {
-        Error::Config(format!(
-            "codex-rule-frontmatter-unclosed: {} has an opening `---` but no closing `---` delimiter",
-            path.display()
-        ))
+    split_on_closing_delimiter(stripped).ok_or_else(|| Error::Diag {
+        code: "codex-rule-frontmatter-unclosed",
+        detail: format!("{} has an opening `---` but no closing `---` delimiter", path.display()),
     })
 }
 
 fn validate_rule_heading(path: &Path, body: &str) -> ValidationResult {
     if has_rule_heading(body) {
         ValidationResult::Pass {
-            rule_id: RULE_BODY_HAS_RULE_HEADING,
-            rule: "codex rule body contains a `## Rule` heading",
+            rule_id: RULE_BODY_HAS_RULE_HEADING.into(),
+            rule: "codex rule body contains a `## Rule` heading".into(),
         }
     } else {
         ValidationResult::Fail {
-            rule_id: RULE_BODY_HAS_RULE_HEADING,
-            rule: "codex rule body contains a `## Rule` heading",
+            rule_id: RULE_BODY_HAS_RULE_HEADING.into(),
+            rule: "codex rule body contains a `## Rule` heading".into(),
             detail: format!(
                 "codex-rule-heading-missing: {} body must contain a `## Rule` heading",
                 path.display()

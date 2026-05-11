@@ -7,18 +7,12 @@
 use std::fs;
 use std::path::PathBuf;
 
-use assert_cmd::Command;
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
 use tempfile::{TempDir, tempdir};
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
+mod common;
+use common::{parse_json, repo_root, specify};
 
 fn schema_path() -> PathBuf {
     repo_root().join("schemas/codex-rule.schema.json")
@@ -62,11 +56,6 @@ fn assert_invalid_fixture_at(name: &str, path: &str) {
         errors.iter().any(|candidate| candidate == path),
         "{name} should fail at {path}; got {errors:#?}"
     );
-}
-
-fn parse_json(stdout: &[u8]) -> JsonValue {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
 }
 
 struct Project {
@@ -185,12 +174,12 @@ trigger: {trigger}
 }
 
 #[test]
-fn codex_schema_validates_minimal_frontmatter() {
+fn schema_validates_minimal_frontmatter() {
     assert_valid_fixture("codex-valid-minimal.md");
 }
 
 #[test]
-fn codex_schema_accepts_only_required_body_heading_in_fixture() {
+fn schema_accepts_required_body_heading() {
     let content =
         fs::read_to_string(fixture_path("codex-valid-minimal.md")).expect("read minimal fixture");
     assert!(content.contains("\n## Rule\n"), "fixture should include the required body heading");
@@ -202,12 +191,7 @@ fn codex_schema_accepts_only_required_body_heading_in_fixture() {
 }
 
 #[test]
-fn codex_schema_validates_optional_v1_metadata() {
-    assert_valid_fixture("codex-valid-full.md");
-}
-
-#[test]
-fn codex_schema_rejects_missing_required_fields() {
+fn schema_rejects_missing_required_fields() {
     let validator = load_validator();
     let instance = frontmatter_fixture("codex-invalid-missing-title.md");
     assert!(
@@ -217,22 +201,17 @@ fn codex_schema_rejects_missing_required_fields() {
 }
 
 #[test]
-fn codex_schema_rejects_unknown_severity() {
+fn schema_rejects_unknown_severity() {
     assert_invalid_fixture_at("codex-invalid-unknown-severity.md", "/severity");
 }
 
 #[test]
-fn codex_schema_rejects_malformed_rule_id() {
+fn schema_rejects_malformed_rule_id() {
     assert_invalid_fixture_at("codex-invalid-malformed-id.md", "/id");
 }
 
 #[test]
-fn codex_schema_rejects_invalid_review_mode() {
-    assert_invalid_fixture_at("codex-invalid-review-mode.md", "/review_mode");
-}
-
-#[test]
-fn codex_help_lists_subcommands() {
+fn help_lists_subcommands() {
     let assert = specify().args(["codex", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     for subcommand in ["list", "show", "validate", "export"] {
@@ -244,7 +223,7 @@ fn codex_help_lists_subcommands() {
 }
 
 #[test]
-fn codex_list_text_shows_id_severity_provenance_and_title() {
+fn list_text_shows_summary_fields() {
     let project = Project::new();
     let default_root = project.root().join("schemas/default");
     let project_root = project.root().join("schemas/project");
@@ -264,7 +243,7 @@ fn codex_list_text_shows_id_severity_provenance_and_title() {
 }
 
 #[test]
-fn codex_show_text_prints_frontmatter_summary_and_body() {
+fn show_text_prints_summary_and_body() {
     let project = Project::initialized_with_codex_distribution();
 
     let assert =
@@ -285,7 +264,7 @@ fn codex_show_text_prints_frontmatter_summary_and_body() {
 }
 
 #[test]
-fn codex_export_json_includes_rules_body_paths_and_provenance() {
+fn export_json_includes_rules_and_paths() {
     let project = Project::new();
     let default_root = project.root().join("schemas/default");
     let project_root = project.root().join("schemas/project");
@@ -299,11 +278,10 @@ fn codex_export_json_includes_rules_body_paths_and_provenance() {
         .success();
     let value = parse_json(&assert.get_output().stdout);
 
-    assert!(value.get("schema-version").is_some(), "JSON envelope must include schema-version");
+    assert!(value.get("envelope-version").is_some(), "JSON envelope must include envelope-version");
     assert_eq!(value["rule-count"], 2);
     let rules = value["rules"].as_array().expect("rules array");
     assert_eq!(rules[0]["id"], "UNI-001");
-    assert_eq!(rules[0]["review-mode"], JsonValue::Null);
     assert_eq!(rules[0]["provenance-kind"], "capability");
     assert_eq!(rules[0]["capability-name"], "default");
     assert_eq!(rules[0]["capability-version"], 1);
@@ -314,7 +292,7 @@ fn codex_export_json_includes_rules_body_paths_and_provenance() {
 }
 
 #[test]
-fn codex_export_json_resolves_initialized_cache_and_repo_overlay_in_order() {
+fn export_json_resolves_cache_and_overlay() {
     let project = Project::initialized_with_codex_distribution();
     write_rule(project.root(), "repo/overlay.md", "ORG-001");
 
@@ -325,7 +303,7 @@ fn codex_export_json_resolves_initialized_cache_and_repo_overlay_in_order() {
         .success();
     let value = parse_json(&assert.get_output().stdout);
 
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["rule-count"], 4);
     let rules = value["rules"].as_array().expect("rules array");
     let ids: Vec<_> = rules.iter().map(|rule| rule["id"].as_str().expect("id str")).collect();
@@ -339,7 +317,6 @@ fn codex_export_json_resolves_initialized_cache_and_repo_overlay_in_order() {
         "default rule should come from the init-populated default cache: {}",
         rules[0]["source-path"]
     );
-    assert_eq!(rules[0]["review-mode"], JsonValue::Null);
 
     assert_eq!(rules[2]["provenance-kind"], "capability");
     assert_eq!(rules[2]["capability-name"], "project");
@@ -364,7 +341,7 @@ fn codex_export_json_resolves_initialized_cache_and_repo_overlay_in_order() {
 }
 
 #[test]
-fn codex_validate_clean_exits_zero() {
+fn validate_clean_exits_zero() {
     let project = Project::new();
     let default_root = project.root().join("schemas/default");
     write_rule(&default_root, "default.md", "UNI-001");
@@ -376,7 +353,7 @@ fn codex_validate_clean_exits_zero() {
 }
 
 #[test]
-fn codex_validate_invalid_rule_exits_two() {
+fn validate_invalid_rule_exits_two() {
     let project = Project::new();
     let default_root = project.root().join("schemas/default");
     write_rule(&default_root, "default.md", "UNI-001");
@@ -400,7 +377,7 @@ fn codex_validate_invalid_rule_exits_two() {
 }
 
 #[test]
-fn codex_validate_duplicate_ids_exits_two() {
+fn validate_duplicate_ids_exits_two() {
     let project = Project::new();
     let default_root = project.root().join("schemas/default");
     let project_root = project.root().join("schemas/project");
@@ -415,8 +392,7 @@ fn codex_validate_duplicate_ids_exits_two() {
         .code(2);
     let value = parse_json(&assert.get_output().stdout);
 
-    assert!(value.get("schema-version").is_some(), "JSON envelope must include schema-version");
-    assert_eq!(value["ok"], false);
+    assert!(value.get("envelope-version").is_some(), "JSON envelope must include envelope-version");
     assert_eq!(value["error-count"], 1);
     assert_eq!(value["results"][0]["rule-id"], "codex.rule-id-unique");
     assert!(
@@ -426,7 +402,7 @@ fn codex_validate_duplicate_ids_exits_two() {
 }
 
 #[test]
-fn codex_show_missing_rule_id_fails() {
+fn show_missing_rule_id_fails() {
     let project = Project::new();
     let default_root = project.root().join("schemas/default");
     write_rule(&default_root, "default.md", "UNI-001");

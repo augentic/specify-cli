@@ -1,0 +1,144 @@
+//! `create` verb plus the kebab-name predicate it shares with the
+//! plan layer.
+
+use std::path::{Path, PathBuf};
+
+use chrono::{DateTime, Utc};
+use specify_error::{Error, is_kebab};
+
+use crate::{LifecycleStatus, Rfc3339Stamp, SliceMetadata};
+
+/// What to do when [`create`] finds an existing directory at the
+/// target path.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CreateIfExists {
+    /// Default. Refuse and return `Error::Diag`.
+    Fail,
+    /// Reuse the existing directory. The function reloads its
+    /// `.metadata.yaml` and returns it without writing. Intended for the
+    /// define skill's "continue in-flight slice" flow.
+    Continue,
+    /// Delete and recreate. Intended for the define skill's "restart"
+    /// flow. The caller is expected to have already archived anything it
+    /// wants to keep — this branch is destructive.
+    Restart,
+}
+
+/// Outcome of [`create`], surfacing whether a new directory was written
+/// or an existing one was reused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
+pub struct Created {
+    /// Path to the slice directory.
+    pub dir: PathBuf,
+    /// Loaded or freshly-created metadata.
+    pub metadata: SliceMetadata,
+    /// `true` when the call created a new directory; `false` when an
+    /// existing directory was reused (`CreateIfExists::Continue`).
+    pub created: bool,
+    /// `true` when the call replaced an existing directory
+    /// (`CreateIfExists::Restart`).
+    pub restarted: bool,
+}
+
+/// Validate a kebab-case slice name.
+///
+/// Mirrors `schemas/plan/plan.schema.json` `$defs.kebabName.pattern`
+/// (`^[a-z0-9]+(-[a-z0-9]+)*$`).
+///
+/// # Errors
+///
+/// Returns `Error::InvalidName` if the name is not valid kebab-case.
+pub fn validate_name(name: &str) -> Result<(), Error> {
+    if is_kebab(name) {
+        Ok(())
+    } else {
+        Err(Error::InvalidName(format!(
+            "slice name `{name}` must be kebab-case (lowercase ascii, digits, single hyphens; \
+             no leading/trailing/doubled hyphens)"
+        )))
+    }
+}
+
+/// Create `<slices_dir>/<name>/` and seed an initial `.metadata.yaml`.
+///
+/// - `slices_dir` is expected to be `<project>/.specify/slices/`.
+/// - `now` is plumbed in so tests can pin `created_at` deterministically.
+///
+/// On success returns a [`Created`] with the resolved directory and
+/// loaded metadata. Behaviour when the directory already exists is
+/// governed by `if_exists` — see [`CreateIfExists`].
+///
+/// # Errors
+///
+/// `Error::InvalidName` for a non-kebab `name`; `Error::Diag` with
+/// `slice-already-exists` / `slice-dir-missing-metadata` for the
+/// existing-dir branches; otherwise propagates I/O or save failures.
+#[expect(
+    clippy::similar_names,
+    reason = "`slices_dir` and `slice_dir` name distinct concepts (parent dir vs. this slice's dir)."
+)]
+pub fn create(
+    slices_dir: &Path, name: &str, capability: &str, if_exists: CreateIfExists, now: DateTime<Utc>,
+) -> Result<Created, Error> {
+    validate_name(name)?;
+    let slice_dir = slices_dir.join(name);
+    let metadata_path = SliceMetadata::path(&slice_dir);
+
+    if slice_dir.exists() {
+        match if_exists {
+            CreateIfExists::Fail => {
+                return Err(Error::Diag {
+                    code: "slice-already-exists",
+                    detail: format!("slice `{name}` already exists at {}", slice_dir.display()),
+                });
+            }
+            CreateIfExists::Continue => {
+                if !metadata_path.exists() {
+                    return Err(Error::Diag {
+                        code: "slice-dir-missing-metadata",
+                        detail: format!(
+                            "slice dir {} exists but has no .metadata.yaml; refusing to reuse",
+                            slice_dir.display()
+                        ),
+                    });
+                }
+                let metadata = SliceMetadata::load(&slice_dir)?;
+                return Ok(Created {
+                    dir: slice_dir,
+                    metadata,
+                    created: false,
+                    restarted: false,
+                });
+            }
+            CreateIfExists::Restart => {
+                std::fs::remove_dir_all(&slice_dir)?;
+            }
+        }
+    }
+
+    std::fs::create_dir_all(slice_dir.join("specs"))?;
+    let metadata = SliceMetadata {
+        version: crate::METADATA_VERSION,
+        capability: capability.to_string(),
+        status: LifecycleStatus::Defining,
+        created_at: Some(Rfc3339Stamp::from(now)),
+        defined_at: None,
+        build_started_at: None,
+        completed_at: None,
+        merged_at: None,
+        dropped_at: None,
+        drop_reason: None,
+        touched_specs: Vec::new(),
+        outcome: None,
+    };
+    metadata.save(&slice_dir)?;
+
+    Ok(Created {
+        dir: slice_dir,
+        metadata,
+        created: true,
+        restarted: matches!(if_exists, CreateIfExists::Restart),
+    })
+}

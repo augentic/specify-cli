@@ -2,28 +2,28 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/plan/plan.schema.json",
   "title": "Specify plan.yaml",
-  "description": "Validates the structure of `plan.yaml` (at the repo root): the initiative name, the optional named-sources map, and the ordered list of plan changes with their dependencies and status. Strict schema — unknown fields are rejected. Written by `specify change plan {create,add,amend,transition,archive}`; read by `/change:execute` and by humans driving the Layer 1 loop. Scope and delta-targeting intent are carried in the `description` field and inferred by the define skill at execution time.",
+  "description": "Validates the structure of `plan.yaml` (at the repo root): the change name, the optional named-sources map, and the ordered list of plan slices with their dependencies and status. Strict schema — unknown fields are rejected. Written by `specify change plan {create,add,amend,transition,archive}`; read by `/change:execute` and by humans driving the plan loop. Scope and delta-targeting intent are carried in the `description` field and inferred by the define skill at execution time.",
   "type": "object",
-  "required": ["name", "changes"],
+  "required": ["name", "slices"],
   "additionalProperties": false,
   "properties": {
     "name": {
       "$ref": "#/$defs/kebabName",
-      "description": "Initiative name. Kebab-case; becomes the archive filename prefix."
+      "description": "Change name. Kebab-case; becomes the archive filename prefix."
     },
     "sources": {
       "type": "object",
-      "description": "Named source repositories. Keys are kebab-case identifiers referenced by each change's `sources` list; values are paths or URLs. Parsed and validated in Layer 1; resolved to define-step arguments in Layer 2.",
+      "description": "Named source repositories. Keys are kebab-case identifiers referenced by each slice's `sources` list; values are paths or URLs. Parsed and validated by the plan commands; resolved to define-step arguments by execution.",
       "propertyNames": { "$ref": "#/$defs/kebabName" },
       "additionalProperties": {
         "type": "string",
         "minLength": 1
       }
     },
-    "changes": {
+    "slices": {
       "type": "array",
-      "description": "Ordered list of plan changes. Order is the tie-breaker for `specify plan next` when multiple entries are eligible.",
-      "items": { "$ref": "#/$defs/planChange" }
+      "description": "Ordered list of plan slices. Order is the tie-breaker for `specify change plan next` when multiple entries are eligible.",
+      "items": { "$ref": "#/$defs/planSlice" }
     }
   },
   "$defs": {
@@ -32,22 +32,22 @@
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
       "description": "Kebab-case identifier: lowercase letters and digits grouped by single internal hyphens; no leading, trailing, or consecutive hyphens. Matches `specify_slice::actions::validate_name`."
     },
-    "planChange": {
+    "planSlice": {
       "type": "object",
       "required": ["name", "status"],
       "additionalProperties": false,
       "properties": {
         "name": {
           "$ref": "#/$defs/kebabName",
-          "description": "Change name. Unique across the plan; becomes the Specify change directory name when the entry transitions to `in-progress`."
+          "description": "Slice name. Unique across the plan; becomes the Specify slice directory name when the entry transitions to `in-progress`."
         },
         "project": {
           "type": "string",
-          "description": "Target registry project name (RFC-3b). Required for multi-project registries; optional for single-project."
+          "description": "Target registry project name. Required for multi-project registries; optional for single-project."
         },
-        "schema": {
+        "capability": {
           "type": "string",
-          "description": "Schema identifier for project-less entries (e.g. `contracts@v1`). Required when `project` is absent; optional override when `project` is present."
+          "description": "Capability identifier for project-less entries (e.g. `contracts@v1`). Required when `project` is absent; optional override when `project` is present."
         },
         "status": {
           "type": "string",
@@ -63,7 +63,7 @@
         },
         "depends-on": {
           "type": "array",
-          "description": "Change names that must be `done` before this change is eligible. Consumed by `specify plan next`.",
+          "description": "Slice names that must be `done` before this slice is eligible. Consumed by `specify change plan next`.",
           "items": { "$ref": "#/$defs/kebabName" },
           "uniqueItems": true
         },
@@ -75,7 +75,7 @@
         },
         "context": {
           "type": "array",
-          "description": "Baseline paths relevant to this change, relative to `.specify/`. Briefs use these as a focus hint when scanning baseline directories. Populated by `/change:plan` or manually via `specify change plan add --context`.",
+          "description": "Baseline paths relevant to this slice, relative to `.specify/`. Briefs use these as a focus hint when scanning baseline directories. Populated by `/change:plan` or manually via `specify change plan add --context`.",
           "items": {
             "type": "string",
             "minLength": 1
@@ -84,11 +84,11 @@
         },
         "description": {
           "type": ["string", "null"],
-          "description": "Free-text scoping context for the define step. Carries file-path hints for scope inference and references to prior change names for delta-target inference. The define skill reads this field to determine extract filters and baseline targets."
+          "description": "Free-text scoping context for the define step. Carries file-path hints for scope inference and references to prior slice names for delta-target inference. The define skill reads this field to determine extract filters and baseline targets."
         },
         "status-reason": {
           "type": ["string", "null"],
-          "description": "Why the change is `failed`/`blocked`/`skipped`. Overwritten on each status transition; cleared when re-entering `pending`/`in-progress`/`done`."
+          "description": "Why the slice is `failed`/`blocked`/`skipped`. Overwritten on each status transition; cleared when re-entering `pending`/`in-progress`/`done`."
         }
       }
     }

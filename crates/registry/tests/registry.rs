@@ -26,7 +26,7 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
 ";
 
 const MULTI_PROJECT_REGISTRY_YAML: &str = "\
@@ -34,15 +34,15 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Real-time traffic routing service
   - name: ingest
     url: git@github.com:augentic/ingest.git
-    schema: omnia@v1
+    capability: omnia@v1
     description: Data ingestion pipeline
   - name: ops-runbook
     url: https://github.com/augentic/ops-runbook
-    schema: omnia@v1
+    capability: omnia@v1
     description: Operational runbook reference
 ";
 
@@ -61,7 +61,7 @@ fn registry_parses_canonical_rfc_example() {
     assert_eq!(registry.projects.len(), 1);
     assert_eq!(registry.projects[0].name, "traffic");
     assert_eq!(registry.projects[0].url, ".");
-    assert_eq!(registry.projects[0].schema, "omnia@v1");
+    assert_eq!(registry.projects[0].capability, "omnia@v1");
 }
 
 #[test]
@@ -83,7 +83,7 @@ projects: []
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("unknown top-level key");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("foo"), "msg: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
@@ -97,13 +97,13 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     foo: bar
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("unknown project key");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("foo"), "msg: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
@@ -119,7 +119,7 @@ projects: []
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("version != 1");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("version"), "msg should mention version: {msg}");
             assert!(msg.contains('2'), "msg should mention the offending value: {msg}");
         }
@@ -133,7 +133,7 @@ fn registry_rejects_missing_version() {
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing version");
     match err {
-        Error::Config(msg) => assert!(msg.contains("version"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("version"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -144,11 +144,11 @@ fn registry_rejects_missing_name() {
 version: 1
 projects:
   - url: .
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing name");
-    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
 }
 
 #[test]
@@ -157,11 +157,11 @@ fn registry_rejects_missing_url() {
 version: 1
 projects:
   - name: traffic
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing url");
-    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
 }
 
 #[test]
@@ -174,18 +174,19 @@ projects:
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing schema");
-    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
 }
 
 #[test]
 fn registry_rejects_non_kebab_case_name() {
     for bad in ["TrafficSystem", "traffic_system", "traffic--system", "-traffic", "traffic-"] {
-        let yaml =
-            format!("version: 1\nprojects:\n  - name: {bad}\n    url: .\n    schema: omnia@v1\n");
+        let yaml = format!(
+            "version: 1\nprojects:\n  - name: {bad}\n    url: .\n    capability: omnia@v1\n"
+        );
         let tmp = scaffold_registry(&yaml);
         let err = Registry::load(tmp.path()).expect_err(&format!("bad name `{bad}`"));
         match err {
-            Error::Config(msg) => {
+            Error::Diag { detail: msg, .. } => {
                 assert!(msg.contains("kebab-case"), "msg for `{bad}`: {msg}");
                 assert!(msg.contains(bad), "msg for `{bad}`: {msg}");
             }
@@ -201,12 +202,12 @@ version: 1
 projects:
   - name: \"\"
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("empty name");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("empty") || msg.contains("kebab-case"), "msg: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
@@ -220,12 +221,12 @@ version: 1
 projects:
   - name: traffic
     url: \"\"
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("empty url");
     match err {
-        Error::Config(msg) => assert!(msg.contains("url"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("url"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -237,12 +238,12 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: \"\"
+    capability: \"\"
 ";
     let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("empty schema");
+    let err = Registry::load(tmp.path()).expect_err("empty capability");
     match err {
-        Error::Config(msg) => assert!(msg.contains("schema"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("capability"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -254,15 +255,15 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
   - name: traffic
     url: ../other
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("duplicate name");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("duplicate"), "msg: {msg}");
             assert!(msg.contains("traffic"), "msg: {msg}");
         }
@@ -303,14 +304,14 @@ fn registry_round_trip_serialize() {
             RegistryProject {
                 name: "traffic".into(),
                 url: ".".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Real-time traffic routing".into()),
                 contracts: None,
             },
             RegistryProject {
                 name: "ingest".into(),
                 url: "git@github.com:augentic/ingest.git".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Data ingestion pipeline".into()),
                 contracts: None,
             },
@@ -337,11 +338,11 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: The alpha service
   - name: beta
     url: ../beta
-    schema: omnia@v1
+    capability: omnia@v1
     description: The beta service
 ";
     let tmp = scaffold_registry(yaml);
@@ -358,17 +359,17 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: The alpha service
   - name: beta
     url: ../beta
-    schema: omnia@v1
+    capability: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing description in multi-project");
     match err {
-        Error::Config(msg) => {
-            assert!(msg.contains("description-missing-multi-repo"), "msg: {msg}");
+        Error::Diag { code, detail: msg } => {
+            assert_eq!(code, "registry-description-missing-multi-repo", "msg: {msg}");
             assert!(msg.contains("beta"), "msg should mention project name: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
@@ -382,18 +383,18 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: \"  \"
   - name: beta
     url: ../beta
-    schema: omnia@v1
+    capability: omnia@v1
     description: The beta service
 ";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("whitespace-only description in multi-project");
     match err {
-        Error::Config(msg) => {
-            assert!(msg.contains("description-missing-multi-repo"), "msg: {msg}");
+        Error::Diag { code, detail: msg } => {
+            assert_eq!(code, "registry-description-missing-multi-repo", "msg: {msg}");
             assert!(msg.contains("alpha"), "msg should mention project name: {msg}");
         }
         other => panic!("wrong variant: {other:?}"),
@@ -413,7 +414,7 @@ fn registry_description_round_trips_through_serde() {
     let original = RegistryProject {
         name: "traffic".into(),
         url: ".".into(),
-        schema: "omnia@v1".into(),
+        capability: "omnia@v1".into(),
         description: Some("Real-time traffic routing".into()),
         contracts: None,
     };
@@ -436,7 +437,7 @@ fn registry_with_one_url(url: &str) -> Registry {
         projects: vec![RegistryProject {
             name: "traffic".into(),
             url: url.into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: None,
         }],
@@ -461,7 +462,7 @@ fn registry_project_url_materialises_as_symlink_classification() {
         let p = RegistryProject {
             name: "traffic".into(),
             url: url.into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: None,
         };
@@ -493,7 +494,7 @@ fn registry_rejects_unsupported_url_scheme() {
         .validate_shape()
         .expect_err("ftp must be rejected");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("ftp"), "msg: {msg}");
             assert!(msg.contains("scheme"), "msg: {msg}");
         }
@@ -506,7 +507,7 @@ fn registry_rejects_file_url_scheme() {
     let err = registry_with_one_url("file:///tmp/repo")
         .validate_shape()
         .expect_err("file:// must be rejected");
-    assert!(matches!(err, Error::Config(_)), "got: {err:?}");
+    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
 }
 
 #[test]
@@ -515,7 +516,7 @@ fn registry_rejects_colon_without_scheme_or_git_at() {
         .validate_shape()
         .expect_err("colon form must be rejected");
     match err {
-        Error::Config(msg) => assert!(msg.contains(':'), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains(':'), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -526,7 +527,7 @@ fn registry_rejects_absolute_unix_path_as_url() {
         .validate_shape()
         .expect_err("absolute path must be rejected");
     match err {
-        Error::Config(msg) => assert!(msg.contains("relative"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("relative"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -536,7 +537,7 @@ fn registry_rejects_whitespace_only_url() {
     let err =
         registry_with_one_url("   ").validate_shape().expect_err("whitespace url must be rejected");
     match err {
-        Error::Config(msg) => assert!(msg.contains("whitespace"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("whitespace"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -547,7 +548,7 @@ fn registry_rejects_url_with_leading_whitespace() {
         .validate_shape()
         .expect_err("leading space must be rejected");
     match err {
-        Error::Config(msg) => assert!(msg.contains("whitespace"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("whitespace"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -571,14 +572,14 @@ fn registry_validate_shape_hub_accepts_non_dot_urls() {
             RegistryProject {
                 name: "alpha".into(),
                 url: "git@github.com:augentic/alpha.git".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Alpha service".into()),
                 contracts: None,
             },
             RegistryProject {
                 name: "beta".into(),
                 url: "../beta".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Beta service".into()),
                 contracts: None,
             },
@@ -594,16 +595,16 @@ fn registry_validate_shape_hub_rejects_dot_url_entry() {
         projects: vec![RegistryProject {
             name: "platform".into(),
             url: ".".into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: None,
         }],
     };
     let err = reg.validate_shape_hub().expect_err("hub mode must reject url: .");
     match err {
-        Error::Config(msg) => {
-            assert!(
-                msg.contains("hub-cannot-be-project"),
+        Error::Diag { code, detail: msg } => {
+            assert_eq!(
+                code, "hub-cannot-be-project",
                 "diagnostic must carry the stable code, got: {msg}"
             );
             assert!(msg.contains("platform"), "diagnostic must name the offending project: {msg}");
@@ -621,14 +622,14 @@ fn registry_validate_shape_hub_rejects_dot_url_in_multi_project() {
             RegistryProject {
                 name: "alpha".into(),
                 url: "../alpha".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Alpha service".into()),
                 contracts: None,
             },
             RegistryProject {
                 name: "self-as-project".into(),
                 url: ".".into(),
-                schema: "omnia@v1".into(),
+                capability: "omnia@v1".into(),
                 description: Some("Should be the hub, not an entry".into()),
                 contracts: None,
             },
@@ -636,8 +637,8 @@ fn registry_validate_shape_hub_rejects_dot_url_in_multi_project() {
     };
     let err = reg.validate_shape_hub().expect_err("hub mode rejects `.` even alongside peers");
     match err {
-        Error::Config(msg) => {
-            assert!(msg.contains("hub-cannot-be-project"), "msg: {msg}");
+        Error::Diag { code, detail: msg } => {
+            assert_eq!(code, "hub-cannot-be-project", "msg: {msg}");
             assert!(msg.contains("self-as-project"), "msg should name the offender: {msg}");
         }
         other => panic!("wrong error variant: {other:?}"),
@@ -654,10 +655,10 @@ fn registry_validate_shape_hub_inherits_base_shape_errors() {
     };
     let err = reg.validate_shape_hub().expect_err("base shape error must propagate through");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { code, detail: msg } => {
             assert!(msg.contains("version"), "msg: {msg}");
-            assert!(
-                !msg.contains("hub-cannot-be-project"),
+            assert_ne!(
+                code, "hub-cannot-be-project",
                 "must not short-circuit base-shape errors with the hub diagnostic: {msg}"
             );
         }
@@ -675,7 +676,7 @@ fn registry_validate_shape_unchanged_for_dot_url() {
         projects: vec![RegistryProject {
             name: "platform".into(),
             url: ".".into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: None,
         }],
@@ -690,7 +691,7 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Real-time traffic routing service
     contracts:
       produces:
@@ -699,7 +700,7 @@ projects:
         - http/ingest-api.yaml
   - name: ingest
     url: git@github.com:augentic/ingest.git
-    schema: omnia@v1
+    capability: omnia@v1
     description: Data ingestion pipeline
     contracts:
       produces:
@@ -741,7 +742,7 @@ fn registry_contract_roles_round_trip_omits_empty_fields() {
         projects: vec![RegistryProject {
             name: "traffic".into(),
             url: ".".into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: Some(ContractRoles {
                 produces: vec!["http/traffic-api.yaml".into()],
@@ -762,7 +763,7 @@ fn registry_contract_roles_none_omits_contracts_key() {
         projects: vec![RegistryProject {
             name: "traffic".into(),
             url: ".".into(),
-            schema: "omnia@v1".into(),
+            capability: "omnia@v1".into(),
             description: None,
             contracts: None,
         }],
@@ -778,14 +779,14 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Alpha service
     contracts:
       produces:
         - http/shared-api.yaml
   - name: beta
     url: ../beta
-    schema: omnia@v1
+    capability: omnia@v1
     description: Beta service
     contracts:
       produces:
@@ -794,7 +795,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("single producer violation");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("http/shared-api.yaml"), "msg: {msg}");
             assert!(msg.contains("produced by both"), "msg: {msg}");
         }
@@ -813,7 +814,7 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     contracts:
       imports:
         - http/external-api.yaml
@@ -821,7 +822,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("legacy imports field rejected");
     match err {
-        Error::Config(msg) => assert!(msg.contains("imports"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("imports"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -833,7 +834,7 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     contracts:
       produces:
         - /absolute/path.yaml
@@ -841,7 +842,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("absolute path rejected");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("/absolute/path.yaml"), "msg: {msg}");
             assert!(msg.contains("relative"), "msg: {msg}");
         }
@@ -856,7 +857,7 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     contracts:
       consumes:
         - ../escape/path.yaml
@@ -864,7 +865,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err(".. path rejected");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("../escape/path.yaml"), "msg: {msg}");
             assert!(msg.contains("relative"), "msg: {msg}");
         }
@@ -879,7 +880,7 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     contracts:
       produces:
         - http/my-api.yaml
@@ -889,7 +890,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("self-consistency violation");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("alpha"), "msg: {msg}");
             assert!(msg.contains("http/my-api.yaml"), "msg: {msg}");
             assert!(msg.contains("produces"), "msg: {msg}");
@@ -906,7 +907,7 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     contracts:
       produces:
         - http/api.yaml
@@ -916,7 +917,7 @@ projects:
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("unknown contract key");
     match err {
-        Error::Config(msg) => assert!(msg.contains("bogus"), "msg: {msg}"),
+        Error::Diag { detail: msg, .. } => assert!(msg.contains("bogus"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }

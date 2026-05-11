@@ -102,7 +102,7 @@ jobs:
           retention-days: 7
 
   wasi-tools:
-    name: Build Vectis WASI tools
+    name: Build Vectis WASI tool
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -119,11 +119,12 @@ jobs:
         with:
           key: release-wasi-tools
 
-      - name: Build Vectis WASI tools
+      - name: Build Vectis WASI tool
         shell: bash
-        run: cargo build --release --locked --target wasm32-wasip2 -p vectis-validate -p vectis-scaffold
+        working-directory: wasi-tools
+        run: cargo build --release --locked --target wasm32-wasip2 -p specify-vectis
 
-      - name: Package Vectis WASI tools
+      - name: Package Vectis WASI tool
         shell: bash
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"
@@ -131,29 +132,23 @@ jobs:
           ARCHIVE="vectis-wasi-tools-${VERSION}.tar.gz"
 
           mkdir -p "${DIST_DIR}"
-          cp target/wasm32-wasip2/release/vectis-validate.wasm "${DIST_DIR}/vectis-validate.wasm"
-          cp target/wasm32-wasip2/release/vectis-scaffold.wasm "${DIST_DIR}/vectis-scaffold.wasm"
+          cp wasi-tools/target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR}/vectis.wasm"
 
           (
             cd "${DIST_DIR}"
-            shasum -a 256 vectis-validate.wasm > vectis-validate.wasm.sha256
-            shasum -a 256 vectis-scaffold.wasm > vectis-scaffold.wasm.sha256
-            shasum -a 256 vectis-validate.wasm vectis-scaffold.wasm > SHA256SUMS
+            shasum -a 256 vectis.wasm > vectis.wasm.sha256
+            shasum -a 256 vectis.wasm > SHA256SUMS
           )
 
-          cp "${DIST_DIR}/vectis-validate.wasm" .
-          cp "${DIST_DIR}/vectis-scaffold.wasm" .
-          cp "${DIST_DIR}/vectis-validate.wasm.sha256" .
-          cp "${DIST_DIR}/vectis-scaffold.wasm.sha256" .
+          cp "${DIST_DIR}/vectis.wasm" .
+          cp "${DIST_DIR}/vectis.wasm.sha256" .
 
           tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
             -czf "${ARCHIVE}" \
             -C "${DIST_DIR}" \
             SHA256SUMS \
-            vectis-scaffold.wasm \
-            vectis-scaffold.wasm.sha256 \
-            vectis-validate.wasm \
-            vectis-validate.wasm.sha256
+            vectis.wasm \
+            vectis.wasm.sha256
           shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
 
       - name: Upload artifact
@@ -161,10 +156,8 @@ jobs:
         with:
           name: specify-wasi-tools
           path: |
-            vectis-validate.wasm
-            vectis-scaffold.wasm
-            vectis-validate.wasm.sha256
-            vectis-scaffold.wasm.sha256
+            vectis.wasm
+            vectis.wasm.sha256
             vectis-wasi-tools-*.tar.gz
             vectis-wasi-tools-*.tar.gz.sha256
           if-no-files-found: error

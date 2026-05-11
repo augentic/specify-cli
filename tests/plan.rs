@@ -28,7 +28,7 @@ sources:
   payments: git@github.com:org/payments-service.git
   frontend: git@github.com:org/web-app.git
 
-changes:
+slices:
   - name: user-registration
     sources: [monolith]
     status: done
@@ -96,7 +96,7 @@ fn yaml_to_json(yaml: &str) -> JsonValue {
 }
 
 #[test]
-fn plan_schema_validates_rfc_example() {
+fn schema_validates_rfc_example() {
     let validator = load_validator();
     let instance = yaml_to_json(RFC_EXAMPLE);
     let errors: Vec<String> =
@@ -105,7 +105,7 @@ fn plan_schema_validates_rfc_example() {
 }
 
 #[test]
-fn plan_schema_rejects_unknown_status_value() {
+fn schema_rejects_unknown_status() {
     let validator = load_validator();
     let mutated = RFC_EXAMPLE.replacen("status: in-progress", "status: maybe", 1);
     let instance = yaml_to_json(&mutated);
@@ -113,17 +113,17 @@ fn plan_schema_rejects_unknown_status_value() {
     let offending_paths: Vec<String> = validator
         .iter_errors(&instance)
         .map(|e| e.instance_path().to_string())
-        .filter(|p| p.starts_with("/changes/") && p.ends_with("/status"))
+        .filter(|p| p.starts_with("/slices/") && p.ends_with("/status"))
         .collect();
 
     assert!(
         !offending_paths.is_empty(),
-        "unknown status should produce at least one error on /changes/*/status; got none"
+        "unknown status should produce at least one error on /slices/*/status; got none"
     );
 }
 
 #[test]
-fn plan_schema_rejects_non_kebab_name() {
+fn schema_rejects_non_kebab_name() {
     let validator = load_validator();
     let mutated = RFC_EXAMPLE.replacen("name: platform-v2", "name: Platform V2", 1);
     let instance = yaml_to_json(&mutated);
@@ -147,7 +147,7 @@ fn plan_schema_rejects_non_kebab_name() {
 #[test]
 fn kebab_name_regex_matches_validate_name() {
     use regex::Regex;
-    use specify::slice_actions;
+    use specify_slice::actions as slice_actions;
 
     // Extract the pattern from the compiled schema to keep this test
     // honest against drift — the schema file is the source of truth.

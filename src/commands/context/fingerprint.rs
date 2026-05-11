@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
-use specify::Error;
+use specify_error::Error;
 
 /// One renderer input file and its content digest.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,11 +89,11 @@ impl InputCollector {
 }
 
 /// Build the lock-ready fingerprint structure from input hashes and body bytes.
-pub(super) fn context_fingerprint(
+pub(super) fn for_context(
     cli_version: &str, inputs: Vec<InputFingerprint>, body: &[u8],
 ) -> ContextFingerprint {
     ContextFingerprint {
-        fingerprint: aggregate_fingerprint(cli_version, inputs.clone()),
+        fingerprint: aggregate(cli_version, inputs.clone()),
         cli_version: cli_version.to_string(),
         inputs,
         body_sha256: body_sha256(body),
@@ -101,9 +101,7 @@ pub(super) fn context_fingerprint(
 }
 
 /// Hash the canonical aggregate encoding used by `.specify/context.lock`.
-pub(super) fn aggregate_fingerprint(
-    cli_version: &str, mut inputs: Vec<InputFingerprint>,
-) -> String {
+pub(super) fn aggregate(cli_version: &str, mut inputs: Vec<InputFingerprint>) -> String {
     inputs.sort_by(|left, right| left.path.cmp(&right.path));
 
     let mut canonical = String::new();
@@ -133,12 +131,13 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn repo_relative_path(project_dir: &Path, path: &Path) -> Result<String, Error> {
-    let relative = path.strip_prefix(project_dir).map_err(|_err| {
-        Error::Config(format!(
+    let relative = path.strip_prefix(project_dir).map_err(|_err| Error::Diag {
+        code: "context-fingerprint-input-outside-project",
+        detail: format!(
             "context fingerprint input {} is outside project root {}",
             path.display(),
             project_dir.display()
-        ))
+        ),
     })?;
     Ok(relative
         .components()
@@ -171,7 +170,7 @@ mod tests {
             ),
         ];
 
-        let fingerprint = aggregate_fingerprint("0.2.0", inputs);
+        let fingerprint = aggregate("0.2.0", inputs);
 
         assert_eq!(
             fingerprint,
@@ -192,8 +191,8 @@ mod tests {
         let gamma =
             input("Cargo.toml", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");
 
-        let left = aggregate_fingerprint("0.2.0", vec![alpha.clone(), beta.clone(), gamma.clone()]);
-        let right = aggregate_fingerprint("0.2.0", vec![gamma, alpha, beta]);
+        let left = aggregate("0.2.0", vec![alpha.clone(), beta.clone(), gamma.clone()]);
+        let right = aggregate("0.2.0", vec![gamma, alpha, beta]);
 
         assert_eq!(left, right);
     }

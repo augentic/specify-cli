@@ -27,7 +27,7 @@ pub const FILENAME: &str = "change.md";
 /// Structured frontmatter (YAML) + free-form body (markdown). The
 /// body is preserved byte-for-byte so round-tripping is faithful;
 /// structured body interpretation is explicitly deferred.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChangeBrief {
     /// Parsed YAML frontmatter.
     pub frontmatter: ChangeFrontmatter,
@@ -70,6 +70,25 @@ pub enum InputKind {
     Documentation,
 }
 
+impl InputKind {
+    /// Kebab-case wire label — the single source of truth shared by
+    /// the JSON envelope (via `Serialize`) and human-readable text
+    /// renderers.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LegacyCode => "legacy-code",
+            Self::Documentation => "documentation",
+        }
+    }
+}
+
+impl std::fmt::Display for InputKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 impl ChangeBrief {
     /// Absolute path to `<project_dir>/change.md`. The operator brief
     /// lives at the repo root.
@@ -94,8 +113,10 @@ impl ChangeBrief {
         if !path.exists() {
             return Ok(None);
         }
-        let content = std::fs::read_to_string(&path)
-            .map_err(|err| Error::Config(format!("failed to read {}: {err}", path.display())))?;
+        let content = std::fs::read_to_string(&path).map_err(|err| Error::Diag {
+            code: "change-brief-read-failed",
+            detail: format!("failed to read {}: {err}", path.display()),
+        })?;
         Self::parse_str(&content).map(Some)
     }
 
@@ -109,13 +130,21 @@ impl ChangeBrief {
         let after_open = content
             .strip_prefix("---\n")
             .or_else(|| content.strip_prefix("---\r\n"))
-            .ok_or_else(|| Error::Config(format!("{FILENAME}: missing YAML frontmatter")))?;
-        let (frontmatter_text, body) = split_on_closing_delimiter(after_open).ok_or_else(|| {
-            Error::Config(format!("{FILENAME}: opening `---` has no closing `---` delimiter"))
-        })?;
+            .ok_or_else(|| Error::Diag {
+                code: "change-brief-frontmatter-missing",
+                detail: format!("{FILENAME}: missing YAML frontmatter"),
+            })?;
+        let (frontmatter_text, body) =
+            split_on_closing_delimiter(after_open).ok_or_else(|| Error::Diag {
+                code: "change-brief-frontmatter-unclosed",
+                detail: format!("{FILENAME}: opening `---` has no closing `---` delimiter"),
+            })?;
 
-        let frontmatter: ChangeFrontmatter = serde_saphyr::from_str(frontmatter_text)
-            .map_err(|err| Error::Config(format!("{FILENAME}: invalid frontmatter: {err}")))?;
+        let frontmatter: ChangeFrontmatter =
+            serde_saphyr::from_str(frontmatter_text).map_err(|err| Error::Diag {
+                code: "change-brief-frontmatter-malformed",
+                detail: format!("{FILENAME}: invalid frontmatter: {err}"),
+            })?;
 
         let brief = Self {
             frontmatter,
@@ -133,18 +162,27 @@ impl ChangeBrief {
     /// Returns an error if the operation fails.
     pub fn validate_shape(&self) -> Result<(), Error> {
         if self.frontmatter.name.is_empty() {
-            return Err(Error::Config(format!("{FILENAME}: name is empty")));
+            return Err(Error::Diag {
+                code: "change-brief-name-empty",
+                detail: format!("{FILENAME}: name is empty"),
+            });
         }
         if !is_kebab(&self.frontmatter.name) {
-            return Err(Error::Config(format!(
-                "{FILENAME}: name `{}` must be kebab-case \
-                 (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)",
-                self.frontmatter.name
-            )));
+            return Err(Error::Diag {
+                code: "change-brief-name-not-kebab",
+                detail: format!(
+                    "{FILENAME}: name `{}` must be kebab-case \
+                     (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)",
+                    self.frontmatter.name
+                ),
+            });
         }
         for (idx, input) in self.frontmatter.inputs.iter().enumerate() {
             if input.path.is_empty() {
-                return Err(Error::Config(format!("{FILENAME}: inputs[{idx}].path is empty")));
+                return Err(Error::Diag {
+                    code: "change-brief-input-path-empty",
+                    detail: format!("{FILENAME}: inputs[{idx}].path is empty"),
+                });
             }
         }
         Ok(())
@@ -154,7 +192,10 @@ impl ChangeBrief {
     /// kebab-case change name. Byte-stable — the `change create` CLI
     /// verb compares against a golden fixture.
     #[must_use]
-    #[allow(clippy::literal_string_with_formatting_args)]
+    #[expect(
+        clippy::literal_string_with_formatting_args,
+        reason = "Template uses {name}/{title} as plain-text placeholders, not format args."
+    )]
     pub fn template(name: &str) -> String {
         CHANGE_TEMPLATE.replace("{name}", name).replace("{title}", &title_case(name))
     }
@@ -163,10 +204,6 @@ impl ChangeBrief {
 /// Canonical template shipped by `specify change create`. The
 /// golden-fixture test pins this byte-for-byte; any edit here must be
 /// mirrored in the test constant.
-///
-/// RFC-13 chunk 3.7 refreshed the prose to name the artefact a
-/// "change" (matching the new filename and the surface verbs); the
-/// frontmatter shape is unchanged.
 const CHANGE_TEMPLATE: &str = "\
 ---
 name: {name}

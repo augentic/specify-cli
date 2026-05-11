@@ -17,25 +17,17 @@ use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
+mod common;
+use common::{GIT_ENV, parse_json, specify};
+
 const CHANGE_NAME: &str = "oauth-login";
 const BRANCH_NAME: &str = "specify/oauth-login";
-
-const GIT_TEST_ENV: [(&str, &str); 4] = [
-    ("GIT_AUTHOR_NAME", "Specify Test"),
-    ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
-    ("GIT_COMMITTER_NAME", "Specify Test"),
-    ("GIT_COMMITTER_EMAIL", "specify-test@example.com"),
-];
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
 
 fn run_git(root: &Path, args: &[&str], envs: &TestEnv) -> String {
     let output = ProcessCommand::new("git")
         .current_dir(root)
         .args(args)
-        .envs(GIT_TEST_ENV)
+        .envs(GIT_ENV)
         .env("GIT_CONFIG_GLOBAL", &envs.git_config)
         .env("GIT_SSH_COMMAND", &envs.ssh_script)
         .env("FAKE_GITHUB_REMOTE_ROOT", envs.remotes_dir())
@@ -54,11 +46,6 @@ fn run_git(root: &Path, args: &[&str], envs: &TestEnv) -> String {
 
 fn git_output(root: &Path, args: &[&str], envs: &TestEnv) -> String {
     run_git(root, args, envs).trim().to_string()
-}
-
-fn parse_json(stdout: &[u8]) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
 }
 
 struct TestEnv {
@@ -109,7 +96,7 @@ impl TestEnv {
     fn command(&self) -> Command {
         let mut cmd = specify();
         cmd.current_dir(self.path())
-            .envs(GIT_TEST_ENV)
+            .envs(GIT_ENV)
             .env("GIT_CONFIG_GLOBAL", &self.git_config)
             .env("GIT_SSH_COMMAND", &self.ssh_script)
             .env("FAKE_GITHUB_REMOTE_ROOT", self.remotes_dir())
@@ -320,7 +307,7 @@ impl FixtureProject {
 }
 
 #[test]
-fn rm01_replays_cross_repo_happy_path_through_push_and_finalize() {
+fn rm01_replays_cross_repo_through_finalize() {
     let envs = TestEnv::new();
     let backend = FixtureProject::new(&envs, "shop-backend", "omnia@v1");
     let mobile = FixtureProject::new(&envs, "shop-mobile", "vectis@v1");
@@ -365,7 +352,7 @@ fn register_project(envs: &TestEnv, project: &FixtureProject, description: &str)
             project.name,
             "--url",
             &project.github_url(),
-            "--schema",
+            "--capability",
             project.capability,
             "--description",
             description,
@@ -383,7 +370,7 @@ fn seed_change_plan(envs: &TestEnv) {
             "plan",
             "add",
             "oauth-login-contract",
-            "--schema",
+            "--capability",
             "contracts@v1",
             "--description",
             "Author the shared OAuth login HTTP contract.",
@@ -449,7 +436,10 @@ fn assert_registry_and_plan_are_valid(envs: &TestEnv) {
     assert!(entries.iter().any(|entry| entry["name"] == "add-oauth-screens"));
 
     let plan_yaml = fs::read_to_string(envs.path().join("plan.yaml")).expect("read plan.yaml");
-    assert!(plan_yaml.contains("schema: contracts@v1"), "contract slice must target schema");
+    assert!(
+        plan_yaml.contains("capability: contracts@v1"),
+        "contract slice must target capability"
+    );
     assert!(plan_yaml.contains("project: shop-backend"), "backend slice must be routed");
     assert!(plan_yaml.contains("project: shop-mobile"), "mobile slice must be routed");
 }
@@ -600,7 +590,7 @@ fn finalize_and_assert_archive(envs: &TestEnv) {
     let finalized =
         envs.command().args(["--format", "json", "change", "finalize"]).assert().success();
     let finalized = parse_json(&finalized.get_output().stdout);
-    assert_eq!(finalized["initiative"], CHANGE_NAME);
+    assert_eq!(finalized["change"], CHANGE_NAME);
     assert_eq!(finalized["finalized"], true);
     let projects = finalized["projects"].as_array().expect("projects");
     assert_eq!(projects.len(), 2);
@@ -622,6 +612,6 @@ fn finalize_and_assert_archive(envs: &TestEnv) {
 
 fn assert_finalize_is_idempotent(envs: &TestEnv) {
     let second = envs.command().args(["--format", "json", "change", "finalize"]).assert().failure();
-    let second = parse_json(&second.get_output().stdout);
+    let second = parse_json(&second.get_output().stderr);
     assert_eq!(second["error"], "plan-not-found");
 }

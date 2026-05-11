@@ -1,16 +1,13 @@
-//! Registry parser — platform-level catalogue of peer projects
-//! (RFC-3a §*The Registry*).
+//! Registry parser — platform-level catalogue of peer projects.
 //!
 //! `registry.yaml` (at the repo root) enumerates the repos that
-//! comprise the platform and the schema each of them uses. The file
+//! comprise the platform and the capability each of them uses. The file
 //! is optional: an absent or single-entry registry is equivalent to
 //! single-repo mode. Multi-entry registries activate the `/change:plan`
-//! *sync peers* phase — but that behaviour lands in C28/C30; this
-//! module only handles shape parsing.
+//! *sync peers* phase; this module only handles shape parsing.
 //!
-//! No JSON schema file ships for v1 per the RFC — the shape is
-//! enforced directly by [`Registry::validate_shape`] (in
-//! [`crate::validate`]).
+//! No JSON schema file ships for v1 — the shape is enforced directly
+//! by [`Registry::validate_shape`] (in [`crate::validate`]).
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -48,17 +45,16 @@ pub struct RegistryProject {
     /// Clone target — `.`, a repo-relative path (`../peer`, `./foo`,
     /// `pkg/sub`), `git@host:path`, or an `http(s)://`, `ssh://`, or
     /// `git+http(s)://` / `git+ssh://` remote. Shape-validated by
-    /// [`Registry::validate_shape`] (RFC-3a C28). Stored verbatim.
+    /// [`Registry::validate_shape`]. Stored verbatim.
     pub url: String,
     /// Capability identifier — e.g. `omnia@v1`. Opaque at this layer;
     /// the `name@version` suffix is **not** parsed here.
-    // TODO(RFC-13 Phase 3): rename to `capability`.
-    pub schema: String,
-    /// Domain-level characterisation of the project (RFC-3b).
-    /// Required when `len(projects) > 1`; optional for single-project registries.
+    pub capability: String,
+    /// Domain-level characterisation of the project. Required when
+    /// `len(projects) > 1`; optional for single-project registries.
     #[serde(default)]
     pub description: Option<String>,
-    /// Optional contract role declarations for this project (RFC-8 Layer 2).
+    /// Optional contract role declarations for this project.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contracts: Option<ContractRoles>,
 }
@@ -67,14 +63,12 @@ pub struct RegistryProject {
 /// All fields are optional — a project may only produce, only consume,
 /// or have no contract relationships at all.
 ///
-/// RFC-12 collapsed the role set to two: `produces` (this project
-/// authoritatively implements the contract) and `consumes` (this project
-/// calls or subscribes to the contract). A contract that no project
-/// produces is, by definition, externally authored — no separate
-/// `imports` field is needed to mark it. `#[serde(deny_unknown_fields)]`
-/// causes any surviving `imports:` key in `registry.yaml` to fail at
-/// parse time, which is the documented migration trigger (RFC-12
-/// §Migration).
+/// The role set is exactly two: `produces` (this project authoritatively
+/// implements the contract) and `consumes` (this project calls or
+/// subscribes to the contract). A contract that no project produces is,
+/// by definition, externally authored — no separate `imports` field is
+/// needed to mark it. `#[serde(deny_unknown_fields)]` causes any
+/// surviving `imports:` key in `registry.yaml` to fail at parse time.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContractRoles {
@@ -112,10 +106,14 @@ impl Registry {
         if !path.exists() {
             return Ok(None);
         }
-        let content = std::fs::read_to_string(&path)
-            .map_err(|err| Error::Config(format!("failed to read {}: {err}", path.display())))?;
-        let registry: Self = serde_saphyr::from_str(&content)
-            .map_err(|err| Error::Config(format!("registry.yaml: invalid YAML: {err}")))?;
+        let content = std::fs::read_to_string(&path).map_err(|err| Error::Diag {
+            code: "registry-read-failed",
+            detail: format!("failed to read {}: {err}", path.display()),
+        })?;
+        let registry: Self = serde_saphyr::from_str(&content).map_err(|err| Error::Diag {
+            code: "registry-malformed",
+            detail: format!("registry.yaml: invalid YAML: {err}"),
+        })?;
         registry.validate_shape()?;
         Ok(Some(registry))
     }
@@ -123,9 +121,8 @@ impl Registry {
     /// `true` when the registry declares at most one project.
     ///
     /// Absent registry + single-entry registry behave identically in
-    /// the `/change:plan` flow (RFC-3a §*When are `registry.yaml` and
-    /// `initiative.md` required?*). Useful to C28/C30 where the
-    /// *sync peers* phase is gated on `len(projects) > 1`.
+    /// the `/change:plan` flow. Useful where the *sync peers* phase is
+    /// gated on `len(projects) > 1`.
     #[must_use]
     pub const fn is_single_repo(&self) -> bool {
         self.projects.len() <= 1
@@ -177,9 +174,12 @@ impl Registry {
         let unknown_list =
             unknown.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", ");
         let noun = if unknown.len() == 1 { "selector" } else { "selectors" };
-        Err(Error::Config(format!(
-            "registry.yaml: unknown project {noun} {unknown_list}; expected one of: {known}"
-        )))
+        Err(Error::Diag {
+            code: "registry-project-selector-unknown",
+            detail: format!(
+                "registry.yaml: unknown project {noun} {unknown_list}; expected one of: {known}"
+            ),
+        })
     }
 }
 

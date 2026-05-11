@@ -1,8 +1,7 @@
 //! `Capability`, `Pipeline`, `PipelineEntry`, `Phase`, `ResolvedCapability`,
 //! `CapabilitySource` — the in-memory model of `capability.yaml` plus
 //! the local / cache resolution algorithm. Remote (HTTP) resolution is
-//! explicitly the agent's job per RFC-1; this crate only walks the
-//! filesystem.
+//! explicitly the agent's job; this crate only walks the filesystem.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -111,19 +110,8 @@ impl fmt::Display for Phase {
     }
 }
 
-/// Filename of a post-RFC-13 capability manifest.
+/// Filename of a capability manifest.
 pub const CAPABILITY_FILENAME: &str = "capability.yaml";
-
-/// Result of [`Capability::probe_dir`]. Names whether the directory
-/// carries a `capability.yaml` manifest — without doing any I/O
-/// beyond a single `is_file` probe.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ManifestProbe {
-    /// `<dir>/capability.yaml` exists.
-    Found(PathBuf),
-    /// `<dir>/capability.yaml` is not present.
-    Missing,
-}
 
 impl Capability {
     /// Resolve `schema_value` against `project_dir`.
@@ -141,24 +129,20 @@ impl Capability {
     /// Returns an error if the operation fails.
     pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedCapability, Error> {
         let (root_dir, source) = Self::locate(schema_value, project_dir)?;
-        let manifest_path = match Self::probe_dir(&root_dir) {
-            ManifestProbe::Found(path) => path,
-            ManifestProbe::Missing => {
-                return Err(Error::SchemaResolution(format!(
-                    "no capability manifest at {} (expected `{}`)",
-                    root_dir.display(),
-                    CAPABILITY_FILENAME,
-                )));
-            }
-        };
-        let raw = std::fs::read_to_string(&manifest_path).map_err(|err| {
-            Error::SchemaResolution(format!(
+        let manifest_path =
+            Self::probe_dir(&root_dir).ok_or_else(|| Error::CapabilityManifestMissing {
+                dir: root_dir.clone(),
+            })?;
+        let raw = std::fs::read_to_string(&manifest_path).map_err(|err| Error::Diag {
+            code: "capability-manifest-read-failed",
+            detail: format!(
                 "failed to read capability manifest {}: {err}",
                 manifest_path.display()
-            ))
+            ),
         })?;
-        let manifest: Self = serde_saphyr::from_str(&raw).map_err(|err| {
-            Error::SchemaResolution(format!("failed to parse {}: {err}", manifest_path.display()))
+        let manifest: Self = serde_saphyr::from_str(&raw).map_err(|err| Error::Diag {
+            code: "capability-manifest-malformed",
+            detail: format!("failed to parse {}: {err}", manifest_path.display()),
         })?;
 
         Ok(ResolvedCapability {
@@ -174,7 +158,7 @@ impl Capability {
     ///
     /// # Errors
     ///
-    /// Returns the same `SchemaResolution` errors `resolve` would.
+    /// Returns the same resolution diagnostics `resolve` would.
     pub fn locate(
         schema_value: &str, project_dir: &Path,
     ) -> Result<(PathBuf, CapabilitySource), Error> {
@@ -182,13 +166,11 @@ impl Capability {
     }
 
     /// Probe `dir` for a `capability.yaml` manifest without reading it.
+    /// Returns `Some(path)` when present, `None` otherwise.
     #[must_use]
-    pub fn probe_dir(dir: &Path) -> ManifestProbe {
+    pub fn probe_dir(dir: &Path) -> Option<PathBuf> {
         let cap = dir.join(CAPABILITY_FILENAME);
-        if cap.is_file() {
-            return ManifestProbe::Found(cap);
-        }
-        ManifestProbe::Missing
+        cap.is_file().then_some(cap)
     }
 
     /// Validate this in-memory capability against the embedded
@@ -200,8 +182,8 @@ impl Capability {
             Ok(value) => value,
             Err(err) => {
                 return vec![ValidationResult::Fail {
-                    rule_id: "capability.serializable",
-                    rule: "capability is serializable to JSON",
+                    rule_id: "capability.serializable".into(),
+                    rule: "capability is serializable to JSON".into(),
                     detail: err.to_string(),
                 }];
             }
@@ -304,25 +286,30 @@ fn locate_capability_root(
             .rsplit('/')
             .find(|seg| !seg.is_empty())
             .map(|seg| seg.split('@').next().unwrap_or(seg))
-            .ok_or_else(|| {
-                Error::SchemaResolution(format!(
-                    "cannot derive a capability name from URL `{schema_value}`"
-                ))
+            .ok_or_else(|| Error::Diag {
+                code: "capability-url-name-unresolved",
+                detail: format!("cannot derive a capability name from URL `{schema_value}`"),
             })?;
         let candidate = cache_dir.join(name);
         if candidate.is_dir() {
             return Ok((candidate.clone(), CapabilitySource::Cached(candidate)));
         }
-        return Err(Error::SchemaResolution(format!(
-            "capability `{schema_value}` not present under {}; the agent must fetch it before the CLI can resolve",
-            cache_dir.display()
-        )));
+        return Err(Error::Diag {
+            code: "capability-cache-missing",
+            detail: format!(
+                "capability `{schema_value}` not present under {}; the agent must fetch it before the CLI can resolve",
+                cache_dir.display()
+            ),
+        });
     }
 
     if schema_value.contains('/') {
-        return Err(Error::SchemaResolution(format!(
-            "capability value `{schema_value}` looks like a path but is not a URL; use a bare name or a full URL"
-        )));
+        return Err(Error::Diag {
+            code: "capability-value-malformed",
+            detail: format!(
+                "capability value `{schema_value}` looks like a path but is not a URL; use a bare name or a full URL"
+            ),
+        });
     }
 
     let cached = cache_dir.join(schema_value);
@@ -335,14 +322,17 @@ fn locate_capability_root(
         return Ok((local.clone(), CapabilitySource::Local(local)));
     }
 
-    Err(Error::SchemaResolution(format!(
-        "capability `{schema_value}` not found under {} or {}",
-        cached.display(),
-        local.display()
-    )))
+    Err(Error::Diag {
+        code: "capability-not-found",
+        detail: format!(
+            "capability `{schema_value}` not found under {} or {}",
+            cached.display(),
+            local.display()
+        ),
+    })
 }
 
-pub fn validate_against_schema(
+pub(crate) fn validate_against_schema(
     schema_source: &str, pass_rule_id: &'static str, pass_rule: &'static str,
     instance: &serde_json::Value,
 ) -> Vec<ValidationResult> {
@@ -350,8 +340,8 @@ pub fn validate_against_schema(
         Ok(value) => value,
         Err(err) => {
             return vec![ValidationResult::Fail {
-                rule_id: "schema.meta-loadable",
-                rule: "embedded JSON Schema parses as JSON",
+                rule_id: "schema.meta-loadable".into(),
+                rule: "embedded JSON Schema parses as JSON".into(),
                 detail: err.to_string(),
             }];
         }
@@ -360,8 +350,8 @@ pub fn validate_against_schema(
         Ok(v) => v,
         Err(err) => {
             return vec![ValidationResult::Fail {
-                rule_id: "schema.meta-compilable",
-                rule: "embedded JSON Schema compiles",
+                rule_id: "schema.meta-compilable".into(),
+                rule: "embedded JSON Schema compiles".into(),
                 detail: err.to_string(),
             }];
         }
@@ -372,13 +362,13 @@ pub fn validate_against_schema(
 
     if errors.is_empty() {
         vec![ValidationResult::Pass {
-            rule_id: pass_rule_id,
-            rule: pass_rule,
+            rule_id: pass_rule_id.into(),
+            rule: pass_rule.into(),
         }]
     } else {
         vec![ValidationResult::Fail {
-            rule_id: pass_rule_id,
-            rule: pass_rule,
+            rule_id: pass_rule_id.into(),
+            rule: pass_rule.into(),
             detail: errors.join("; "),
         }]
     }

@@ -2,8 +2,8 @@
 //! append-only audit log that phase skills (`define`, `build`, `merge`)
 //! write while they run.
 //!
-//! See RFC-2 §"Question Recording" and §"Failure and Resumption" for
-//! the canonical shape and writer contract.
+//! Canonical shape and writer contract: append-only, second-precision
+//! UTC timestamps, no in-place mutation.
 //!
 //! ## Contracts
 //!
@@ -37,7 +37,7 @@
 //!   multi-writer safety must add their own coordination.
 //!
 //! - **Malformed file rejection**: [`Journal::load`] surfaces a
-//!   `Error::Yaml` (via `From<serde_saphyr::Error>`) on malformed
+//!   `Error::Yaml` (via `From<YamlError>`) on malformed
 //!   content; it does **not** silently truncate or recover. The only
 //!   "graceful" branch is "file absent → empty journal".
 
@@ -64,7 +64,7 @@ pub struct Journal {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct JournalEntry {
-    /// RFC3339 UTC timestamp.
+    /// Second-precision UTC timestamp (`%Y-%m-%dT%H:%M:%SZ`).
     pub timestamp: Rfc3339Stamp,
     /// Phase that wrote the entry (`define | build | merge`).
     pub step: Phase,
@@ -118,7 +118,7 @@ impl Journal {
     /// Returns an empty [`Journal`] (not `Err`) when the file is
     /// absent — journals are lazily created on first [`Journal::append`].
     /// A malformed file surfaces `Error::Yaml` (via
-    /// `From<serde_saphyr::Error>`) with the underlying parser's
+    /// `From<YamlError>`) with the underlying parser's
     /// location hint; load never silently recovers from corruption.
     ///
     /// # Errors
@@ -138,7 +138,7 @@ impl Journal {
     ///
     /// Read-modify-write: loads the existing file (or an empty
     /// `Journal` when absent), pushes `entry`, and routes the
-    /// serialised journal through the crate's `atomic_yaml_write`
+    /// serialised journal through the crate's `yaml_write`
     /// helper. That emits a trailing newline and bottoms out at
     /// `fs::rename` (atomic on a single filesystem), so a mid-write
     /// crash leaves the prior file intact.
@@ -154,7 +154,7 @@ impl Journal {
         journal.entries.push(entry);
 
         let path = Self::path(slice_dir);
-        crate::atomic::atomic_yaml_write(&path, &journal)
+        crate::atomic::yaml_write(&path, &journal)
     }
 }
 
@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn load_missing_file_returns_empty_journal() {
+    fn load_missing_file_returns_empty() {
         let dir = tempdir().expect("tempdir");
         let journal = Journal::load(dir.path()).expect("load ok");
         assert_eq!(journal, Journal { entries: vec![] });

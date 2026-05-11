@@ -1,13 +1,20 @@
 use std::fmt;
 use std::ops::Deref;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// An RFC 3339 timestamp string.
+/// A second-precision UTC timestamp string in `%Y-%m-%dT%H:%M:%SZ` form.
 ///
-/// Stored transparently as a YAML/JSON string; callers are expected to construct via
-/// [`format_rfc3339`](crate::actions::format_rfc3339) or another well-formed
-/// source — this type does not validate.
+/// Stored transparently as a YAML/JSON string; construct via
+/// `Rfc3339Stamp::from(now)` (where `now: DateTime<Utc>`) or another
+/// well-formed source — this type does not validate.
+///
+/// The format is pinned to second precision, no offset suffix, no
+/// `+00:00` form, so on-disk timestamps match the regex
+/// `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`. `chrono::DateTime::to_rfc3339`
+/// is deliberately not used because it varies by input (it may include
+/// microseconds), which would break golden fixtures pinning the shape.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Rfc3339Stamp(String);
@@ -17,6 +24,12 @@ impl Rfc3339Stamp {
     #[must_use]
     pub const fn new(s: String) -> Self {
         Self(s)
+    }
+}
+
+impl From<DateTime<Utc>> for Rfc3339Stamp {
+    fn from(now: DateTime<Utc>) -> Self {
+        Self(now.format("%Y-%m-%dT%H:%M:%SZ").to_string())
     }
 }
 

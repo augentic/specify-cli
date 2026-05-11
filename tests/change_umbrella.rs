@@ -13,25 +13,20 @@
 //! regenerate them with
 //! `REGENERATE_GOLDENS=1 cargo test --test change_umbrella`.
 
+mod common;
+
 #[cfg(test)]
 mod cli {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use assert_cmd::Command;
     use serde_json::Value;
     use tempfile::{TempDir, tempdir};
 
-    fn repo_root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    }
+    use crate::common::{assert_golden_at, parse_stderr, parse_stdout, repo_root, specify};
 
     fn plan_fixtures() -> PathBuf {
         repo_root().join("tests/fixtures/plan")
-    }
-
-    fn specify() -> Command {
-        Command::cargo_bin("specify").expect("cargo_bin(specify)")
     }
 
     /// A `.specify/` project rooted in a throwaway tempdir.
@@ -75,108 +70,15 @@ mod cli {
         }
     }
 
-    // -- substitution / golden comparison (mirrors tests/e2e.rs) -------
-
-    const TEMPDIR_PLACEHOLDER: &str = "<TEMPDIR>";
-
-    struct Sub {
-        from: String,
-        to: &'static str,
-    }
-
-    /// Apply the longest candidate first. On macOS the canonical
-    /// tempdir path (`/private/var/folders/...`) is a superstring of
-    /// the raw path (`/var/folders/...`); if we substitute the raw
-    /// path first, we strip *inside* the canonical one and leave the
-    /// stray `/private` prefix in the golden. Sorting by length
-    /// descending avoids that.
-    fn tempdir_subs(root: &Path) -> Vec<Sub> {
-        let mut subs: Vec<Sub> = Vec::new();
-        if let Some(raw) = root.to_str() {
-            subs.push(Sub {
-                from: raw.to_string(),
-                to: TEMPDIR_PLACEHOLDER,
-            });
-        }
-        if let Ok(canonical) = fs::canonicalize(root)
-            && let Some(canonical_str) = canonical.to_str()
-            && Some(canonical_str) != root.to_str()
-        {
-            subs.push(Sub {
-                from: canonical_str.to_string(),
-                to: TEMPDIR_PLACEHOLDER,
-            });
-        }
-        subs.sort_by_key(|b| std::cmp::Reverse(b.from.len()));
-        subs
-    }
-
-    fn strip_substitutions(value: &mut Value, subs: &[Sub]) {
-        match value {
-            Value::String(s) => {
-                for sub in subs {
-                    if s.contains(&sub.from) {
-                        *s = s.replace(&sub.from, sub.to);
-                    }
-                }
-            }
-            Value::Array(items) => {
-                for item in items {
-                    strip_substitutions(item, subs);
-                }
-            }
-            Value::Object(map) => {
-                for (_k, v) in map.iter_mut() {
-                    strip_substitutions(v, subs);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn parse_stdout(stdout: &[u8], root: &Path) -> Value {
-        let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-        let mut value: Value = serde_json::from_str(text)
-            .unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"));
-        strip_substitutions(&mut value, &tempdir_subs(root));
-        value
-    }
-
-    /// Compare `actual` against a checked-in golden, or rewrite it when
-    /// `REGENERATE_GOLDENS=1` is set. Mirrors `tests/e2e.rs`.
-    #[allow(clippy::needless_pass_by_value)]
     fn assert_golden(name: &str, actual: Value) {
-        let golden_path = plan_fixtures().join(name);
-        let rendered = serde_json::to_string_pretty(&actual).expect("pretty json");
-
-        if std::env::var_os("REGENERATE_GOLDENS").is_some() {
-            fs::create_dir_all(plan_fixtures()).expect("mkdir plan fixtures");
-            fs::write(&golden_path, format!("{rendered}\n")).expect("write golden");
-            return;
-        }
-
-        let expected_raw = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
-            panic!(
-                "golden {} missing ({err}); regenerate via REGENERATE_GOLDENS=1 cargo test --test change_umbrella",
-                golden_path.display()
-            )
-        });
-        let expected: Value = serde_json::from_str(&expected_raw)
-            .unwrap_or_else(|err| panic!("golden {} is not JSON: {err}", golden_path.display()));
-
-        assert_eq!(
-            actual,
-            expected,
-            "stdout diverged from golden {}\n--- actual ---\n{rendered}\n--- expected ---\n{expected_raw}",
-            golden_path.display()
-        );
+        assert_golden_at(&plan_fixtures(), name, actual);
     }
 
     // -- test seeds --------------------------------------------------------
 
     const CLEAN_PLAN: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: pending
@@ -188,7 +90,7 @@ changes:
 
     const DUPLICATE_NAME_PLAN: &str = "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: pending
@@ -199,7 +101,7 @@ changes:
 
     const A_DONE_B_PENDING: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: done
@@ -210,7 +112,7 @@ changes:
 
     const A_IN_PROGRESS: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: in-progress
@@ -218,7 +120,7 @@ changes:
 
     const ALL_DONE: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: done
@@ -231,7 +133,7 @@ changes:
     /// not every entry is terminal, so `next` reports `stuck`.
     const STUCK_PLAN: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: failed
@@ -244,7 +146,7 @@ changes:
 
     const CYCLE_PLAN: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: pending
@@ -261,7 +163,7 @@ changes:
 
     const FAILED_WITH_REASON: &str = "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: failed
@@ -279,7 +181,7 @@ sources:
   payments: git@github.com:org/payments-service.git
   frontend: git@github.com:org/web-app.git
 
-changes:
+slices:
   - name: user-registration
     project: platform
     sources: [monolith]
@@ -346,7 +248,7 @@ changes:
     // -- validate ----------------------------------------------------------
 
     #[test]
-    fn change_plan_validate_clean_plan_text() {
+    fn plan_validate_clean_text() {
         let project = Project::init();
         project.seed_plan(CLEAN_PLAN);
 
@@ -366,7 +268,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_validate_clean_plan_json() {
+    fn plan_validate_clean_json() {
         let project = Project::init();
         project.seed_plan(CLEAN_PLAN);
 
@@ -378,14 +280,14 @@ changes:
         assert_eq!(assert.get_output().status.code(), Some(0));
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["passed"], true);
         assert_eq!(actual["results"], Value::Array(vec![]));
         assert_golden("validate-clean.json", actual);
     }
 
     #[test]
-    fn plan_validate_tolerates_in_progress_with_no_change_dir() {
+    fn plan_validate_tolerates_in_progress() {
         // Transient window: `specify change transition <name> in-progress`
         // can run a moment before `.specify/slices/<name>/` exists.
         // `specify plan validate` must surface a *warning* (not an
@@ -405,7 +307,7 @@ changes:
         );
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(
             actual["passed"], true,
             "in-progress-without-slice-dir is a warning, so passed must be true: {actual}"
@@ -423,7 +325,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_validate_with_errors_json() {
+    fn plan_validate_with_errors_json() {
         let project = Project::init();
         project.seed_plan(DUPLICATE_NAME_PLAN);
 
@@ -439,7 +341,7 @@ changes:
         );
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["passed"], false);
         let results = actual["results"].as_array().expect("results array");
         assert!(
@@ -452,7 +354,7 @@ changes:
     // -- next --------------------------------------------------------------
 
     #[test]
-    fn change_plan_next_picks_first_pending_text() {
+    fn plan_next_picks_first_pending_text() {
         let project = Project::init();
         project.seed_plan(A_DONE_B_PENDING);
 
@@ -466,7 +368,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_next_picks_first_pending_json() {
+    fn plan_next_picks_first_pending_json() {
         let project = Project::init();
         project.seed_plan(A_DONE_B_PENDING);
 
@@ -476,7 +378,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["next"], "b");
         assert_eq!(actual["reason"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -490,7 +392,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_next_reports_in_progress() {
+    fn plan_next_reports_in_progress() {
         let project = Project::init();
         project.seed_plan(A_IN_PROGRESS);
 
@@ -508,7 +410,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["reason"], "in-progress");
         assert_eq!(actual["active"], "a");
@@ -516,7 +418,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_next_all_done_text() {
+    fn plan_next_all_done_text() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
 
@@ -534,7 +436,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["reason"], "all-done");
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -542,7 +444,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_next_stuck_when_deps_unmet() {
+    fn plan_next_stuck_when_deps_unmet() {
         let project = Project::init();
         project.seed_plan(STUCK_PLAN);
 
@@ -552,7 +454,7 @@ changes:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["reason"], "stuck");
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -562,7 +464,7 @@ changes:
     // -- status ------------------------------------------------------------
 
     #[test]
-    fn change_plan_status_renders_counts_and_topo_order_json() {
+    fn plan_status_renders_counts_and_topo() {
         let project = Project::init();
         project.seed_plan(PLATFORM_V2_PLAN);
 
@@ -573,7 +475,7 @@ changes:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         let counts = actual["counts"].as_object().expect("counts object");
         for key in ["done", "in-progress", "pending", "blocked", "failed", "skipped", "total"] {
             assert!(counts.contains_key(key), "counts missing key '{key}': {counts:?}");
@@ -607,7 +509,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_status_on_cycle_falls_back_to_list_order() {
+    fn plan_status_cycle_falls_back_to_list() {
         let project = Project::init();
         project.seed_plan(CYCLE_PLAN);
 
@@ -618,7 +520,7 @@ changes:
             .success();
 
         let actual = parse_stdout(&output.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["order"], "list", "cycle must trigger list-order fallback");
 
         let names: Vec<&str> = actual["entries"]
@@ -637,7 +539,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_status_surfaces_status_reason_on_failed_entry() {
+    fn plan_status_surfaces_reason_on_failed() {
         let project = Project::init();
         project.seed_plan(FAILED_WITH_REASON);
 
@@ -654,7 +556,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_status_missing_plan_file_errors() {
+    fn plan_status_missing_file_errors() {
         let project = Project::init();
         // Deliberately do NOT seed plan.yaml.
 
@@ -664,7 +566,8 @@ changes:
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
-        let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        // R4 routes every error envelope through Stream::Stderr.
+        let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
         assert_eq!(value["error"], "artifact-not-found");
         assert!(
             value["message"].as_str().unwrap_or_default().contains("plan.yaml not found at"),
@@ -677,12 +580,12 @@ changes:
 
     const EMPTY_PLAN: &str = "\
 name: demo
-changes: []
+slices: []
 ";
 
     const SINGLE_PENDING: &str = "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: pending
@@ -690,7 +593,7 @@ changes:
 
     const SINGLE_IN_PROGRESS: &str = "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: in-progress
@@ -698,7 +601,7 @@ changes:
 
     const SINGLE_DONE: &str = "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: done
@@ -706,7 +609,7 @@ changes:
 
     const WITH_DESCRIPTION: &str = "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: pending
@@ -722,12 +625,21 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["--format", "json", "change", "plan", "add", "foo", "--schema", "contracts@v1"])
+            .args([
+                "--format",
+                "json",
+                "change",
+                "plan",
+                "add",
+                "foo",
+                "--capability",
+                "contracts@v1",
+            ])
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["action"], "create");
         assert_eq!(actual["entry"]["name"], "foo");
         assert_eq!(actual["entry"]["status"], "pending");
@@ -748,13 +660,13 @@ changes:
 
         specify()
             .current_dir(project.root())
-            .args(["change", "plan", "add", "foo", "--schema", "contracts@v1"])
+            .args(["change", "plan", "add", "foo", "--capability", "contracts@v1"])
             .assert()
             .success();
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["change", "plan", "add", "foo", "--schema", "contracts@v1"])
+            .args(["change", "plan", "add", "foo", "--capability", "contracts@v1"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -772,7 +684,7 @@ changes:
 
         let assert = specify()
             .current_dir(project.root())
-            .args(["change", "plan", "add", "NotKebab", "--schema", "contracts@v1"])
+            .args(["change", "plan", "add", "NotKebab", "--capability", "contracts@v1"])
             .assert()
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
@@ -784,12 +696,12 @@ changes:
     // -- plan amend -------------------------------------------------------
 
     #[test]
-    fn change_plan_amend_replaces_depends_on() {
+    fn plan_amend_replaces_depends_on() {
         let project = Project::init();
         project.seed_plan(
             "\
 name: demo
-changes:
+slices:
   - name: a
     project: default
     status: done
@@ -834,7 +746,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_amend_clear_description() {
+    fn plan_amend_clears_description() {
         let project = Project::init();
         project.seed_plan(WITH_DESCRIPTION);
 
@@ -852,7 +764,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_amend_leave_field_alone() {
+    fn plan_amend_leaves_field_alone() {
         let project = Project::init();
         project.seed_plan(WITH_DESCRIPTION);
 
@@ -871,7 +783,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_amend_on_missing_entry_fails() {
+    fn plan_amend_on_missing_entry_fails() {
         let project = Project::init();
         project.seed_plan(SINGLE_PENDING);
 
@@ -883,7 +795,7 @@ changes:
         assert_eq!(assert.get_output().status.code(), Some(1));
         let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
         assert!(
-            stderr.contains("no change named"),
+            stderr.contains("no slice named"),
             "stderr should mention missing change, got: {stderr:?}"
         );
     }
@@ -891,7 +803,7 @@ changes:
     // -- plan transition --------------------------------------------------
 
     #[test]
-    fn change_plan_transition_happy_path_text() {
+    fn plan_transition_happy_path_text() {
         let project = Project::init();
         project.seed_plan(SINGLE_PENDING);
 
@@ -909,7 +821,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_transition_legal_edge_json() {
+    fn plan_transition_legal_edge_json() {
         let project = Project::init();
         project.seed_plan(SINGLE_IN_PROGRESS);
 
@@ -920,7 +832,7 @@ changes:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["entry"]["name"], "foo");
         assert_eq!(actual["entry"]["status"], "done");
         assert_eq!(actual["entry"]["status-reason"], Value::Null);
@@ -929,7 +841,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_transition_rejects_illegal_edge() {
+    fn plan_transition_rejects_illegal_edge() {
         let project = Project::init();
         project.seed_plan(SINGLE_DONE);
 
@@ -947,7 +859,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_transition_happy_path_json_pending_to_in_progress() {
+    fn plan_transition_pending_to_in_progress_json() {
         let project = Project::init();
         project.seed_plan(SINGLE_PENDING);
 
@@ -964,7 +876,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_transition_reason_on_failed() {
+    fn plan_transition_reason_on_failed() {
         let project = Project::init();
         project.seed_plan(SINGLE_IN_PROGRESS);
 
@@ -994,7 +906,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_transition_rejects_reason_on_in_progress_target() {
+    fn plan_transition_rejects_reason_on_in_progress() {
         let project = Project::init();
         project.seed_plan(SINGLE_PENDING);
 
@@ -1009,12 +921,12 @@ changes:
     }
 
     #[test]
-    fn change_plan_transition_clears_reason_on_pending_reentry() {
+    fn plan_transition_clears_reason_on_reentry() {
         let project = Project::init();
         project.seed_plan(
             "\
 name: demo
-changes:
+slices:
   - name: foo
     project: default
     status: failed
@@ -1039,12 +951,12 @@ changes:
     // -- human-driven replay (RFC-2 §"The Loop (Human-Driven)") -----------
 
     #[test]
-    fn change_plan_human_replay_matches_fixture() {
+    fn plan_human_replay_matches_fixture() {
         let project = Project::init();
         project.seed_plan(
             "\
 name: demo
-changes:
+slices:
   - name: user-registration
     project: default
     status: done
@@ -1057,7 +969,7 @@ changes:
                 "change", "plan",
                 "add",
                 "registration-duplicate-email-crash",
-                "--schema",
+                "--capability",
                 "contracts@v1",
                 "--description",
                 "Duplicate email submission returns 500 instead of 409. Modifies user-registration.",
@@ -1132,7 +1044,7 @@ changes:
     }
 
     #[test]
-    fn plan_create_creates_empty_plan_json() {
+    fn plan_create_empty_json() {
         let project = init_without_plan();
 
         let assert = specify()
@@ -1142,7 +1054,7 @@ changes:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["plan"]["name"], "my-change");
         let path_str = actual["plan"]["path"].as_str().expect("plan.path string");
         assert!(
@@ -1189,7 +1101,7 @@ changes:
     }
 
     #[test]
-    fn plan_create_refuses_when_plan_exists() {
+    fn plan_create_refuses_when_present() {
         let project = Project::init();
         project.seed_plan(EMPTY_PLAN);
 
@@ -1265,7 +1177,7 @@ changes:
     }
 
     #[test]
-    fn plan_create_validates_the_result() {
+    fn plan_create_validates_result() {
         let project = init_without_plan();
 
         specify()
@@ -1323,7 +1235,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_archive_happy_path_text() {
+    fn plan_archive_happy_path_text() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
 
@@ -1344,7 +1256,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_archive_happy_path_json() {
+    fn plan_archive_happy_path_json() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
 
@@ -1355,7 +1267,7 @@ changes:
             .success();
         let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["plan"]["name"], "demo");
         assert!(
             actual["archived"].as_str().unwrap_or_default().contains("demo-"),
@@ -1368,7 +1280,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_archive_refuses_without_force_on_pending_entries() {
+    fn plan_archive_refuses_without_force() {
         let project = Project::init();
         project.seed_plan(A_DONE_B_PENDING);
 
@@ -1394,7 +1306,7 @@ changes:
     }
 
     #[test]
-    fn change_plan_archive_refuses_json_lists_entries() {
+    fn plan_archive_refuses_json_lists_entries() {
         let project = Project::init();
         project.seed_plan(A_DONE_B_PENDING);
 
@@ -1405,18 +1317,19 @@ changes:
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
 
-        let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["schema-version"], 3);
+        // R4 routes the typed failure envelope through Stream::Stderr.
+        let actual = parse_stderr(&assert.get_output().stderr, project.root());
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["error"], "plan-has-outstanding-work");
-        let entries = actual["entries"].as_array().expect("entries array");
-        let names: Vec<&str> = entries.iter().map(|v| v.as_str().unwrap()).collect();
-        assert_eq!(names, ["b"]);
+        assert_eq!(actual["exit-code"], 1);
+        let message = actual["message"].as_str().expect("message string");
+        assert!(message.contains('b'), "message should mention the pending entry 'b': {message}");
 
         assert_golden("archive-outstanding-work.json", actual);
     }
 
     #[test]
-    fn change_plan_archive_with_force_on_pending_succeeds() {
+    fn plan_archive_with_force_succeeds() {
         let project = Project::init();
         project.seed_plan(A_DONE_B_PENDING);
 
@@ -1440,12 +1353,12 @@ changes:
     }
 
     #[test]
-    fn change_plan_archive_filename_is_kebab_plan_name_plus_yyyymmdd() {
+    fn plan_archive_filename_is_kebab_plus_date() {
         let project = Project::init();
         project.seed_plan(
             "\
 name: my-change
-changes: []
+slices: []
 ",
         );
 
@@ -1469,7 +1382,7 @@ changes: []
     }
 
     #[test]
-    fn change_plan_archive_refuses_when_destination_exists() {
+    fn plan_archive_refuses_when_dest_exists() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
 
@@ -1499,7 +1412,7 @@ changes: []
     }
 
     #[test]
-    fn change_plan_archive_missing_plan_file_errors() {
+    fn plan_archive_missing_file_errors() {
         let project = Project::init();
         // Deliberately do NOT seed plan.yaml.
 
@@ -1530,7 +1443,7 @@ changes: []
     }
 
     #[test]
-    fn change_plan_archive_co_moves_working_dir_json() {
+    fn plan_archive_co_moves_working_dir() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
         let working_dir = seed_working_dir(
@@ -1546,7 +1459,7 @@ changes: []
             .success();
         let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["schema-version"], 3);
+        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["plan"]["name"], "demo");
         assert!(
             actual["archived"].as_str().unwrap_or_default().contains("demo-"),
@@ -1575,7 +1488,7 @@ changes: []
     }
 
     #[test]
-    fn change_plan_archive_no_working_dir_json() {
+    fn plan_archive_no_working_dir_json() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
 
@@ -1595,7 +1508,7 @@ changes: []
     }
 
     #[test]
-    fn change_plan_archive_co_move_destination_collision_halts_before_moving_plan() {
+    fn plan_archive_co_move_collision_halts() {
         let project = Project::init();
         project.seed_plan(ALL_DONE);
         let working_dir = seed_working_dir(&project, "demo", &[("notes.md", b"# notes\n")]);
@@ -1639,7 +1552,7 @@ changes: []
     }
 
     #[test]
-    fn change_plan_lock_acquire_then_release_cycles_cleanly() {
+    fn plan_lock_acquire_release_cycles() {
         let project = Project::init();
 
         // Use a stable agent-session PID so release can authenticate. We
@@ -1675,7 +1588,7 @@ changes: []
     }
 
     #[test]
-    fn change_plan_lock_acquire_refuses_when_another_live_pid_stamped() {
+    fn plan_lock_acquire_refuses_on_live_pid() {
         let project = Project::init();
 
         // Prime with our own PID — the CLI's liveness probe will find it
@@ -1704,8 +1617,9 @@ changes: []
             .failure();
         assert_eq!(assert.get_output().status.code(), Some(1));
 
+        // R4 routes every error envelope through Stream::Stderr.
         let value: Value =
-            serde_json::from_slice(&assert.get_output().stdout).expect("json stdout");
+            serde_json::from_slice(&assert.get_output().stderr).expect("json stderr");
         assert_eq!(value["error"], "driver-busy");
         assert_eq!(value["exit-code"], 1, "DriverBusy must surface the generic-failure exit code");
         let msg = value["message"].as_str().unwrap_or_default();
@@ -1721,7 +1635,7 @@ changes: []
     }
 
     #[test]
-    fn change_plan_lock_status_when_held() {
+    fn plan_lock_status_when_held() {
         let project = Project::init();
         let our_pid = std::process::id().to_string();
 
@@ -1755,7 +1669,7 @@ changes: []
     }
 
     #[test]
-    fn change_plan_lock_status_when_absent() {
+    fn plan_lock_status_when_absent() {
         let project = Project::init();
         // Deliberately do NOT call acquire — no stamp on disk.
 
@@ -1792,7 +1706,7 @@ changes: []
              projects:\n\
              \x20\x20- name: traffic\n\
              \x20\x20\x20\x20url: .\n\
-             \x20\x20\x20\x20schema: omnia@v1\n",
+             \x20\x20\x20\x20capability: omnia@v1\n",
         )
         .expect("write registry.yaml");
 
@@ -1802,7 +1716,7 @@ changes: []
         assert_eq!(loaded.projects.len(), 1);
         assert_eq!(loaded.projects[0].name, "traffic");
         assert_eq!(loaded.projects[0].url, ".");
-        assert_eq!(loaded.projects[0].schema, "omnia@v1");
+        assert_eq!(loaded.projects[0].capability, "omnia@v1");
         assert!(loaded.is_single_repo());
     }
 
@@ -1819,7 +1733,7 @@ version: 1
 projects:
   - name: traffic
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
 ";
 
     const REGISTRY_THREE: &str = "\
@@ -1827,15 +1741,15 @@ version: 1
 projects:
   - name: monolith
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Core monolith service
   - name: orders
     url: ../orders
-    schema: omnia@v1
+    capability: omnia@v1
     description: Order management service
   - name: payments
     url: git@github.com:org/payments.git
-    schema: omnia@v1
+    capability: omnia@v1
     description: Payment processing service
 ";
 
@@ -1879,7 +1793,7 @@ projects:
         assert_eq!(projects.len(), 1);
         assert_eq!(projects[0]["name"], "traffic");
         assert_eq!(projects[0]["url"], ".");
-        assert_eq!(projects[0]["schema"], "omnia@v1");
+        assert_eq!(projects[0]["capability"], "omnia@v1");
     }
 
     #[test]
@@ -1890,7 +1804,7 @@ projects:
         let assert =
             specify().current_dir(project.root()).args(["registry", "show"]).assert().success();
         let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
-        for fragment in ["version: 1", "name: traffic", "url: .", "schema: omnia@v1"] {
+        for fragment in ["version: 1", "name: traffic", "url: .", "capability: omnia@v1"] {
             assert!(
                 stdout.contains(fragment),
                 "text show output should mention `{fragment}`, got:\n{stdout}"
@@ -1925,7 +1839,7 @@ projects:
         assert_eq!(assert.get_output().status.code(), Some(0));
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
         assert_eq!(actual["registry"], Value::Null);
-        assert_eq!(actual["ok"], true);
+        assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
 
         let text =
             specify().current_dir(project.root()).args(["registry", "validate"]).assert().success();
@@ -1947,13 +1861,13 @@ projects:
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["ok"], true);
+        assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
         let registry = actual["registry"].as_object().expect("registry object");
         assert_eq!(registry["version"], 1);
     }
 
     #[test]
-    fn registry_validate_multi_project_well_formed() {
+    fn registry_validate_multi_project() {
         let project = Project::init();
         write_registry(&project, REGISTRY_THREE);
 
@@ -1963,7 +1877,7 @@ projects:
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["ok"], true);
+        assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
         let projects = actual["registry"]["projects"].as_array().expect("projects array");
         assert_eq!(projects.len(), 3);
     }
@@ -1978,17 +1892,17 @@ projects:
             .args(["--format", "json", "registry", "validate"])
             .assert()
             .failure();
-        assert_eq!(assert.get_output().status.code(), Some(2));
-        let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["ok"], false);
-        assert_eq!(actual["kind"], "config");
-        let msg = actual["error"].as_str().expect("error string");
-        assert!(msg.contains("version"), "error should mention version, got: {msg}");
-        assert!(msg.contains("registry.yaml"), "error should mention registry.yaml, got: {msg}");
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        // R4 routes every error envelope through Stream::Stderr.
+        let actual = parse_stderr(&assert.get_output().stderr, project.root());
+        assert_eq!(actual["error"], "registry-version-unsupported");
+        let msg = actual["message"].as_str().expect("message string");
+        assert!(msg.contains("version"), "message should mention version, got: {msg}");
+        assert!(msg.contains("registry.yaml"), "message should mention registry.yaml, got: {msg}");
     }
 
     #[test]
-    fn registry_validate_malformed_duplicate_name() {
+    fn registry_validate_duplicate_name() {
         let project = Project::init();
         write_registry(
             &project,
@@ -1997,10 +1911,10 @@ version: 1
 projects:
   - name: dup
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
   - name: dup
     url: ../other
-    schema: omnia@v1
+    capability: omnia@v1
 ",
         );
 
@@ -2009,15 +1923,16 @@ projects:
             .args(["--format", "json", "registry", "validate"])
             .assert()
             .failure();
-        assert_eq!(assert.get_output().status.code(), Some(2));
-        let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["ok"], false);
-        let msg = actual["error"].as_str().expect("error string");
-        assert!(msg.contains("duplicate"), "error should mention duplicate, got: {msg}");
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        // R4 routes every error envelope through Stream::Stderr.
+        let actual = parse_stderr(&assert.get_output().stderr, project.root());
+        assert_eq!(actual["error"], "registry-project-name-duplicate");
+        let msg = actual["message"].as_str().expect("message string");
+        assert!(msg.contains("duplicate"), "message should mention duplicate, got: {msg}");
     }
 
     #[test]
-    fn registry_validate_malformed_non_kebab() {
+    fn registry_validate_non_kebab() {
         let project = Project::init();
         write_registry(
             &project,
@@ -2026,29 +1941,29 @@ version: 1
 projects:
   - name: NotKebab
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
 ",
         );
 
         let assert =
             specify().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
-        assert_eq!(assert.get_output().status.code(), Some(2));
+        assert_eq!(assert.get_output().status.code(), Some(1));
     }
 
     #[test]
-    fn registry_validate_unknown_top_level_key() {
+    fn registry_validate_unknown_key() {
         let project = Project::init();
         write_registry(&project, "version: 1\nversions: 2\nprojects: []\n");
 
         let assert =
             specify().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
-        assert_eq!(assert.get_output().status.code(), Some(2));
+        assert_eq!(assert.get_output().status.code(), Some(1));
     }
 
     /// Plan "Done when" criterion: on a scaffolded project with no
     /// registry, `specify registry validate` exits 0.
     #[test]
-    fn registry_validate_on_bare_repo_green() {
+    fn registry_validate_on_bare_repo() {
         let project = Project::init();
         assert!(
             !project.root().join("registry.yaml").exists(),
@@ -2089,7 +2004,7 @@ inputs: []
     }
 
     #[test]
-    fn change_create_scaffolds_canonical_file() {
+    fn create_scaffolds_canonical_file() {
         let project = Project::init();
         assert!(!brief_path(&project).exists(), "bare project must not have change.md");
 
@@ -2104,7 +2019,7 @@ inputs: []
     }
 
     #[test]
-    fn change_create_json_response() {
+    fn create_json_response() {
         let project = Project::init();
 
         let assert = specify()
@@ -2113,8 +2028,8 @@ inputs: []
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["action"], "init");
-        assert_eq!(actual["ok"], true);
+        assert!(actual["action"].is_null(), "BriefCreateBody no longer carries an `action` field");
+        assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
         assert_eq!(actual["name"], "my-change");
         assert!(
             actual["path"].as_str().expect("path string").ends_with("/change.md"),
@@ -2124,7 +2039,7 @@ inputs: []
     }
 
     #[test]
-    fn change_create_refuses_when_file_exists() {
+    fn create_refuses_when_file_exists() {
         let project = Project::init();
         write_brief(&project, "---\nname: pre-existing\n---\n\nhands off\n");
 
@@ -2133,10 +2048,16 @@ inputs: []
             .args(["--format", "json", "change", "create", "pre-existing"])
             .assert()
             .failure();
-        let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["action"], "init");
-        assert_eq!(actual["ok"], false);
+        // The canonical ErrorBody envelope (the same shape every other
+        // failure variant produces) carries the kebab discriminant in
+        // `error` and the formatted message in `message`.
+        let actual = parse_stderr(&assert.get_output().stderr, project.root());
         assert_eq!(actual["error"], "already-exists");
+        let msg = actual["message"].as_str().expect("message");
+        assert!(
+            msg.starts_with("already-exists: change brief already exists at "),
+            "message must start with the kebab discriminant + path; got: {msg}"
+        );
 
         // And the file must be untouched.
         let on_disk = fs::read_to_string(brief_path(&project)).expect("read");
@@ -2144,7 +2065,7 @@ inputs: []
     }
 
     #[test]
-    fn change_create_rejects_non_kebab_name() {
+    fn create_rejects_non_kebab_name() {
         let project = Project::init();
 
         let assert = specify()
@@ -2152,8 +2073,9 @@ inputs: []
             .args(["--format", "json", "change", "create", "NotKebab"])
             .assert()
             .failure();
-        let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["error"], "config");
+        // R4 routes every error envelope through Stream::Stderr.
+        let actual = parse_stderr(&assert.get_output().stderr, project.root());
+        assert_eq!(actual["error"], "change-brief-name-not-kebab");
         let msg = actual["message"].as_str().expect("message");
         assert!(msg.contains("kebab-case"), "msg should mention kebab-case: {msg}");
         assert!(msg.contains("NotKebab"), "msg should mention the bad name: {msg}");
@@ -2161,7 +2083,7 @@ inputs: []
     }
 
     #[test]
-    fn change_show_absent() {
+    fn show_absent() {
         let project = Project::init();
 
         let assert = specify()
@@ -2184,7 +2106,7 @@ inputs: []
     }
 
     #[test]
-    fn change_show_valid_text_and_json() {
+    fn show_valid_text_and_json() {
         let project = Project::init();
         write_brief(
             &project,
@@ -2207,16 +2129,15 @@ inputs: []
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        let brief = actual["brief"].as_object().expect("brief object");
-        assert_eq!(brief["frontmatter"]["name"], "traffic-modernisation");
-        let inputs = brief["frontmatter"]["inputs"].as_array().expect("inputs array");
+        assert_eq!(actual["frontmatter"]["name"], "traffic-modernisation");
+        let inputs = actual["frontmatter"]["inputs"].as_array().expect("inputs array");
         assert_eq!(inputs.len(), 1);
         assert_eq!(inputs[0]["path"], "./inputs/legacy/");
         assert_eq!(inputs[0]["kind"], "legacy-code");
         assert!(
-            brief["body"].as_str().expect("body").contains("# Traffic modernisation"),
+            actual["body"].as_str().expect("body").contains("# Traffic modernisation"),
             "body should contain the heading, got: {:?}",
-            brief["body"]
+            actual["body"]
         );
 
         // Text
@@ -2234,7 +2155,7 @@ inputs: []
     }
 
     #[test]
-    fn change_show_malformed_returns_error() {
+    fn show_malformed_returns_error() {
         let project = Project::init();
         write_brief(&project, "---\nname: BadName\n---\n\nbody\n");
 
@@ -2285,11 +2206,11 @@ inputs: []
     /// complementing the dedicated `specify registry validate`
     /// verb.
     #[test]
-    fn change_plan_validate_surfaces_registry_shape_errors() {
+    fn plan_validate_surfaces_registry_errors() {
         let project = Project::init();
         // Seed a minimal, structurally-valid plan so `change plan validate`
         // doesn't exit on the plan load itself.
-        project.seed_plan("name: demo\nchanges: []\n");
+        project.seed_plan("name: demo\nslices: []\n");
         // Then stomp the registry with an illegal version.
         fs::write(project.root().join("registry.yaml"), "version: 2\nprojects: []\n")
             .expect("write bad registry");
@@ -2369,11 +2290,11 @@ version: 1
 projects:
   - name: alpha
     url: .
-    schema: omnia@v1
+    capability: omnia@v1
     description: Root project
   - name: beta
     url: ../peer-proj
-    schema: omnia@v1
+    capability: omnia@v1
     description: Peer project
 ";
         fs::write(root.join("registry.yaml"), reg).expect("registry");

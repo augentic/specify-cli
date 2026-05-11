@@ -378,9 +378,9 @@ dependencies = [
 
 [[package]]
 name = "clap_complete"
-version = "4.6.2"
+version = "4.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ff7a1dccbdd8b078c2bdebff47e404615151534d5043da397ec50286816f9cb"
+checksum = "e3e962dae2b1e5007fe9e3db363ddc43a8bf25546d279f7a8a4401204690e80c"
 dependencies = [
  "clap",
 ]
@@ -402,6 +402,16 @@ name = "clap_lex"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
+
+[[package]]
+name = "clap_mangen"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d82842b45bf9f6a3be090dd860095ac30728042c08e0d6261ca7259b5d850f07"
+dependencies = [
+ "clap",
+ "roff",
+]
 
 [[package]]
 name = "cobs"
@@ -1815,6 +1825,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "roff"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "323c417e1d9665a65b263ec744ba09030cfb277e9daa0b018a4ab62e57bc8189"
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1902,6 +1918,15 @@ name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
+
+[[package]]
+name = "same-file"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
+dependencies = [
+ "winapi-util",
+]
 
 [[package]]
 name = "saphyr-parser-bw"
@@ -2045,12 +2070,11 @@ dependencies = [
 
 [[package]]
 name = "specify"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "assert_cmd",
  "chrono",
  "clap",
- "clap_complete",
  "glob",
  "jsonschema",
  "regex",
@@ -2061,7 +2085,9 @@ dependencies = [
  "sha2",
  "specify-capability",
  "specify-change",
+ "specify-config",
  "specify-error",
+ "specify-init",
  "specify-merge",
  "specify-registry",
  "specify-slice",
@@ -2074,7 +2100,7 @@ dependencies = [
 
 [[package]]
 name = "specify-capability"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "glob",
@@ -2088,7 +2114,7 @@ dependencies = [
 
 [[package]]
 name = "specify-change"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "clap",
@@ -2098,6 +2124,7 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
+ "specify-config",
  "specify-error",
  "specify-registry",
  "specify-slice",
@@ -2105,27 +2132,45 @@ dependencies = [
 ]
 
 [[package]]
-name = "specify-contract-validate"
-version = "0.2.0"
+name = "specify-config"
+version = "0.3.0"
 dependencies = [
- "assert_cmd",
- "clap",
- "serde_json",
- "specify-validate",
+ "semver",
+ "serde",
+ "serde-saphyr",
+ "specify-capability",
+ "specify-error",
+ "specify-registry",
+ "specify-slice",
+ "specify-tool",
  "tempfile",
 ]
 
 [[package]]
 name = "specify-error"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
+ "serde",
  "serde-saphyr",
  "thiserror",
 ]
 
 [[package]]
+name = "specify-init"
+version = "0.3.0"
+dependencies = [
+ "chrono",
+ "serde-saphyr",
+ "specify-capability",
+ "specify-config",
+ "specify-error",
+ "specify-registry",
+ "tempfile",
+]
+
+[[package]]
 name = "specify-merge"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "regex",
@@ -2140,7 +2185,7 @@ dependencies = [
 
 [[package]]
 name = "specify-registry"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde-saphyr",
@@ -2151,7 +2196,7 @@ dependencies = [
 
 [[package]]
 name = "specify-slice"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "clap",
@@ -2169,15 +2214,11 @@ dependencies = [
 
 [[package]]
 name = "specify-spec"
-version = "0.2.0"
-dependencies = [
- "regex",
- "specify-error",
-]
+version = "0.3.0"
 
 [[package]]
 name = "specify-task"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "regex",
  "specify-error",
@@ -2185,7 +2226,7 @@ dependencies = [
 
 [[package]]
 name = "specify-tool"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "jsonschema",
@@ -2204,7 +2245,7 @@ dependencies = [
 
 [[package]]
 name = "specify-validate"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "glob",
  "regex",
@@ -2565,33 +2606,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "vectis-scaffold"
-version = "0.2.0"
-dependencies = [
- "clap",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "toml",
-]
-
-[[package]]
-name = "vectis-validate"
-version = "0.2.0"
-dependencies = [
- "assert_cmd",
- "clap",
- "jsonschema",
- "serde",
- "serde-saphyr",
- "serde_json",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
 name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2610,6 +2624,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09ac3b126d3914f9849036f826e054cbabdc8519970b8998ddaf3b5bd3c65f11"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "walkdir"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b"
+dependencies = [
+ "same-file",
+ "winapi-util",
 ]
 
 [[package]]
@@ -3348,6 +3372,21 @@ name = "writeable"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
+
+[[package]]
+name = "xtask"
+version = "0.3.0"
+dependencies = [
+ "clap",
+ "clap_complete",
+ "clap_mangen",
+ "regex",
+ "serde",
+ "specify",
+ "syn",
+ "toml",
+ "walkdir",
+]
 
 [[package]]
 name = "yoke"

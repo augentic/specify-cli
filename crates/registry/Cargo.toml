@@ -9,10 +9,6 @@ categories = ["development-tools"]
 keywords = ["specify", "registry", "topology"]
 readme = "../../README.md"
 
-[lib]
-name = "specify_registry"
-path = "src/lib.rs"
-
 [dependencies]
 specify-error.workspace = true
 serde.workspace = true

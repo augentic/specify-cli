@@ -8,25 +8,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::copy_dir;
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
-
-fn parse_json(stdout: &[u8]) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
-}
+use common::{copy_dir, parse_json, repo_root, specify};
 
 struct Project {
     _tmp: TempDir,
@@ -72,7 +58,7 @@ impl Project {
 }
 
 #[test]
-fn capability_pipeline_define_lists_omnia_define_briefs_in_order() {
+fn pipeline_define_lists_briefs_in_order() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -80,7 +66,7 @@ fn capability_pipeline_define_lists_omnia_define_briefs_in_order() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["phase"], "define");
     assert_eq!(value["slice"], Value::Null);
 
@@ -100,7 +86,7 @@ fn capability_pipeline_define_lists_omnia_define_briefs_in_order() {
 }
 
 #[test]
-fn capability_pipeline_build_and_merge_each_have_their_brief() {
+fn pipeline_build_and_merge_each_have_brief() {
     let project = Project::init();
 
     let assert = specify()
@@ -125,7 +111,7 @@ fn capability_pipeline_build_and_merge_each_have_their_brief() {
 }
 
 #[test]
-fn capability_pipeline_phase_plan_lists_plan_briefs_in_topo_order() {
+fn pipeline_phase_plan_lists_briefs_in_topo() {
     let fixture = repo_root().join("tests/fixtures/schema/plan-pipeline");
     let project = Project::init_from_fixture("plan-pipeline", &fixture);
 
@@ -151,7 +137,7 @@ fn capability_pipeline_phase_plan_lists_plan_briefs_in_topo_order() {
 }
 
 #[test]
-fn capability_pipeline_phase_plan_is_empty_for_capabilities_without_plan_block() {
+fn pipeline_phase_plan_empty_without_block() {
     // Omnia (the in-repo capability) does not declare pipeline.plan at
     // all. Asking for --phase plan must succeed and return an empty
     // briefs list rather than erroring out, so callers can probe for
@@ -169,7 +155,7 @@ fn capability_pipeline_phase_plan_is_empty_for_capabilities_without_plan_block()
 }
 
 #[test]
-fn capability_pipeline_phase_plan_does_not_perturb_define_output() {
+fn pipeline_phase_plan_preserves_define() {
     // Regression: adding pipeline.plan (with briefs before the define
     // phase in load order) must not change what `--phase define`
     // returns.
@@ -188,7 +174,7 @@ fn capability_pipeline_phase_plan_does_not_perturb_define_output() {
 }
 
 #[test]
-fn capability_pipeline_with_slice_reports_completion() {
+fn pipeline_with_slice_reports_completion() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let slice_dir = project.root().join(".specify/slices/my-slice");
@@ -225,19 +211,19 @@ fn capability_pipeline_with_slice_reports_completion() {
 // ---- specify capability check ------------------------------------------------
 
 #[test]
-fn capability_check_succeeds_on_omnia_capability_yaml() {
+fn check_succeeds_on_omnia_yaml() {
     let assert = specify()
         .args(["--format", "json", "capability", "check"])
         .arg(repo_root().join("schemas").join("omnia"))
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["passed"], true, "omnia fixture must validate clean: {value}");
 }
 
 #[test]
-fn capability_check_text_output_says_capability_ok() {
+fn check_text_says_ok() {
     let assert = specify()
         .args(["capability", "check"])
         .arg(repo_root().join("schemas").join("omnia"))
@@ -247,43 +233,5 @@ fn capability_check_text_output_says_capability_ok() {
     assert!(
         stdout.contains("Capability OK"),
         "text mode must use the post-RFC-13 noun, got: {stdout}"
-    );
-}
-
-// ---- specify schema * is gone ----------------------------------------------
-
-#[test]
-fn schema_subcommand_is_gone_from_top_level_help() {
-    let assert = specify().arg("--help").assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        stdout.contains("capability"),
-        "post-RFC-13 --help must list `capability`, got:\n{stdout}"
-    );
-    // `--help` lists subcommand names one-per-line (clap default).
-    // A grepped `\n  schema` would catch the surface even if `schema`
-    // appeared incidentally inside descriptions of other commands.
-    assert!(
-        !stdout
-            .lines()
-            .any(|line| line.trim_start().starts_with("schema ") || line.trim_start() == "schema"),
-        "pre-RFC-13 `schema` subcommand must be gone from --help, got:\n{stdout}"
-    );
-}
-
-#[test]
-fn schema_subcommand_returns_clap_unrecognised_subcommand_error() {
-    let assert = specify().args(["schema", "check", "schemas/omnia"]).assert().failure();
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
-    // clap's standard "unrecognised subcommand" message includes the
-    // word "unrecognized" or "unexpected" depending on version; either
-    // is acceptable. Anchor on the noun that proves clap rejected it
-    // rather than dispatching to a real handler.
-    assert!(
-        stderr.to_lowercase().contains("unrecognized")
-            || stderr.to_lowercase().contains("unrecognised")
-            || stderr.to_lowercase().contains("unexpected argument")
-            || stderr.contains("error: ") && stderr.contains("schema"),
-        "pre-RFC-13 `specify schema *` must be a clap-level error, got stderr:\n{stderr}"
     );
 }

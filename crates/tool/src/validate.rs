@@ -64,7 +64,7 @@ impl ValidationResult {
 }
 
 impl Tool {
-    /// Validate the tool declaration against RFC-15's chunk-1 structural rules.
+    /// Validate the tool declaration against the structural rules (`name`, `version`, `source`, `sha256`, permission shape).
     #[must_use]
     pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationResult> {
         vec![

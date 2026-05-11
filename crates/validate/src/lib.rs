@@ -1,11 +1,11 @@
-//! Hardcoded validation rule registry and runner (Pass/Fail/Deferred per
-//! RFC-1a).
+//! Hardcoded validation rule registry and runner (Pass/Fail/Deferred).
 //!
-//! The public surface follows RFC-1 §`validate.rs`:
+//! Public surface:
 //!
 //! - [`ValidationResult`] is re-exported from `specify-capability`;
-//!   that crate is the canonical home (see `DECISIONS.md` §"Change G —
-//!   `ValidationResult` canonical home" for why it doesn't live here).
+//!   that crate is the canonical home (see the workspace `DECISIONS.md`
+//!   §"Change G — `ValidationResult` canonical home" for why it doesn't
+//!   live here).
 //! - [`ValidationReport`] is the structured output produced by
 //!   [`validate_slice`].
 //! - [`Rule`] / [`CrossRule`] declare their [`Classification`]
@@ -32,9 +32,11 @@ mod serialize;
 
 pub use compatibility::{
     CompatibilityClassification, CompatibilityFinding, CompatibilityReport, CompatibilitySummary,
-    classify_project_compatibility,
+    classify_project as classify_project_compatibility,
 };
-pub use contracts::{ContractFinding, serialize_contract_findings, validate_baseline_contracts};
+pub use contracts::{
+    ContractFinding, serialize_contract_findings, validate_baseline as validate_baseline_contracts,
+};
 pub use registry::{cross_rules, rules_for};
 pub use run::validate_slice;
 pub use serialize::serialize_report;
@@ -58,7 +60,7 @@ pub struct ValidationReport {
 }
 
 /// How the CLI decides a rule's outcome — declared at the rule's
-/// definition site per RFC-1a.
+/// definition site.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Classification {
     /// CLI decides Pass/Fail deterministically.
@@ -80,6 +82,7 @@ pub enum RuleOutcome {
 }
 
 /// A named rule attached to a specific brief id.
+#[derive(Debug)]
 pub struct Rule {
     /// Stable dot-namespaced identifier (e.g. `proposal.why-has-content`).
     pub id: &'static str,
@@ -93,6 +96,7 @@ pub struct Rule {
 }
 
 /// Inputs a brief-scoped structural checker needs.
+#[derive(Debug)]
 pub struct BriefContext<'a> {
     /// The brief id being validated.
     pub id: &'a str,
@@ -111,6 +115,7 @@ pub struct BriefContext<'a> {
 }
 
 /// A rule that spans multiple briefs.
+#[derive(Debug)]
 pub struct CrossRule {
     /// Stable dot-namespaced identifier (e.g. `cross.proposal-crates-have-specs`).
     pub id: &'static str,
@@ -123,6 +128,7 @@ pub struct CrossRule {
 }
 
 /// Inputs a cross-brief checker needs.
+#[derive(Debug)]
 pub struct CrossContext<'a> {
     /// Absolute path to the slice directory.
     pub slice_dir: &'a Path,

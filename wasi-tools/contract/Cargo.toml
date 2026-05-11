@@ -1,0 +1,29 @@
+[package]
+name = "specify-contract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Standalone validator for the contracts capability — SemVer + info.x-specify-id + cross-project uniqueness checks"
+readme = "../../README.md"
+categories = ["development-tools", "command-line-utilities"]
+keywords = ["specify", "contracts", "validate", "openapi", "asyncapi"]
+
+# Host binary used by the contracts capability gate. The published surface is
+# the WASI component run through `specify tool run contract -- ...`; this
+# native binary stays available for parity tests and direct local debugging.
+[[bin]]
+name = "specify-contract"
+path = "src/main.rs"
+
+[dependencies]
+specify-validate.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+tempfile.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

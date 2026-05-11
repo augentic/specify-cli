@@ -1,8 +1,3 @@
-#![allow(
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to command handlers."
-)]
-
 //! Top-level `specify status` — project dashboard.
 //!
 //! Aggregates the registry summary, plan progress counts, and the
@@ -10,19 +5,19 @@
 //! `super::slice::SliceAction::Status`; this module is dashboard-only.
 
 use std::collections::BTreeMap;
+use std::io::Write;
 
 use serde::Serialize;
-use serde_json::Value;
-use specify::{Error, ProjectConfig};
 use specify_change::{Plan, Status};
+use specify_config::LayoutExt;
+use specify_error::Result;
 use specify_registry::Registry;
 
-use super::slice::{collect_status, list_slice_names, status_entry_to_json};
-use crate::cli::OutputFormat;
-use crate::context::CommandContext;
-use crate::output::{CliResult, emit_response};
+use super::slice::{StatusEntry, collect_status, list_slice_names};
+use crate::context::Ctx;
+use crate::output::Render;
 
-pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let slices_dir = ctx.slices_dir();
 
@@ -36,32 +31,34 @@ pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
         entries.push(collect_status(&dir, &name, &pipeline, &ctx.project_dir)?);
     }
 
-    match ctx.format {
-        OutputFormat::Json => {
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct DashboardBody {
-                registry: Value,
-                plan: Value,
-                slices: Vec<Value>,
-            }
-            let registry_json = registry
-                .map_or(Value::Null, |r| serde_json::to_value(r).expect("Registry serialises"));
-            let plan_json = plan_summary
-                .as_ref()
-                .map_or(Value::Null, |p| serde_json::to_value(p).expect("PlanSummary serialises"));
-            let slices_json: Vec<Value> = entries.iter().map(status_entry_to_json).collect();
-            emit_response(DashboardBody {
-                registry: registry_json,
-                plan: plan_json,
-                slices: slices_json,
-            })?;
-        }
-        OutputFormat::Text => {
-            print_dashboard_text(registry.as_ref(), plan_summary.as_ref(), &entries);
+    let body = DashboardBody::new(registry, plan_summary, entries);
+    ctx.out().write(&body)?;
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct DashboardBody {
+    registry: Option<Registry>,
+    plan: Option<PlanSummary>,
+    slices: Vec<StatusEntry>,
+}
+
+impl DashboardBody {
+    const fn new(
+        registry: Option<Registry>, plan: Option<PlanSummary>, slices: Vec<StatusEntry>,
+    ) -> Self {
+        Self {
+            registry,
+            plan,
+            slices,
         }
     }
-    Ok(CliResult::Success)
+}
+
+impl Render for DashboardBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        render_dashboard(w, self.registry.as_ref(), self.plan.as_ref(), &self.slices)
+    }
 }
 
 #[derive(Serialize)]
@@ -83,8 +80,8 @@ struct PlanCounts {
     total: usize,
 }
 
-fn load_plan_summary(ctx: &CommandContext) -> Option<PlanSummary> {
-    let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
+fn load_plan_summary(ctx: &Ctx) -> Option<PlanSummary> {
+    let plan_path = ctx.project_dir.layout().plan_path();
     if !plan_path.exists() {
         return None;
     }
@@ -110,32 +107,34 @@ fn load_plan_summary(ctx: &CommandContext) -> Option<PlanSummary> {
     })
 }
 
-fn print_dashboard_text(
-    registry: Option<&Registry>, plan: Option<&PlanSummary>, entries: &[super::slice::StatusEntry],
-) {
-    println!("## Registry");
+fn render_dashboard(
+    w: &mut dyn Write, registry: Option<&Registry>, plan: Option<&PlanSummary>,
+    entries: &[StatusEntry],
+) -> std::io::Result<()> {
+    writeln!(w, "## Registry")?;
     match registry {
-        None => println!("  (no registry declared)"),
+        None => writeln!(w, "  (no registry declared)")?,
         Some(r) => {
-            println!("  version: {}", r.version);
+            writeln!(w, "  version: {}", r.version)?;
             if r.projects.is_empty() {
-                println!("  projects: (none)");
+                writeln!(w, "  projects: (none)")?;
             } else {
-                println!("  projects ({}):", r.projects.len());
+                writeln!(w, "  projects ({}):", r.projects.len())?;
                 for p in &r.projects {
-                    println!("    - {} ({})", p.name, p.schema);
+                    writeln!(w, "    - {} ({})", p.name, p.capability)?;
                 }
             }
         }
     }
 
-    println!();
-    println!("## Plan");
+    writeln!(w)?;
+    writeln!(w, "## Plan")?;
     match plan {
-        None => println!("  (no plan)"),
+        None => writeln!(w, "  (no plan)")?,
         Some(p) => {
-            println!("  name: {}", p.name);
-            println!(
+            writeln!(w, "  name: {}", p.name)?;
+            writeln!(
+                w,
                 "  progress: done {}, in-progress {}, pending {}, blocked {}, failed {}, skipped {} (total {})",
                 p.counts.done,
                 p.counts.in_progress,
@@ -144,37 +143,40 @@ fn print_dashboard_text(
                 p.counts.failed,
                 p.counts.skipped,
                 p.counts.total,
-            );
+            )?;
         }
     }
 
-    println!();
-    println!("## Active slices");
+    writeln!(w)?;
+    writeln!(w, "## Active slices")?;
     if entries.is_empty() {
-        println!("  (none)");
-        return;
+        writeln!(w, "  (none)")?;
+        return Ok(());
     }
     let name_w = entries.iter().map(|e| e.name.len()).max().unwrap_or(6).max(6);
-    let status_w = entries.iter().map(|e| e.status.len()).max().unwrap_or(6).max(6);
-    println!(
+    let status_w = entries.iter().map(|e| e.status.to_string().len()).max().unwrap_or(6).max(6);
+    writeln!(
+        w,
         "  {:<name_w$}  {:<status_w$}  tasks",
         "slice",
         "status",
         name_w = name_w,
         status_w = status_w
-    );
+    )?;
     for e in entries {
         let tasks = match e.tasks {
             Some((complete, total)) => format!("{complete}/{total}"),
             None => "-".to_string(),
         };
-        println!(
+        writeln!(
+            w,
             "  {:<name_w$}  {:<status_w$}  {}",
             e.name,
             e.status,
             tasks,
             name_w = name_w,
             status_w = status_w
-        );
+        )?;
     }
+    Ok(())
 }

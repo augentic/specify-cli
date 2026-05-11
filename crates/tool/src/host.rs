@@ -64,6 +64,7 @@ impl RunContext {
 }
 
 /// Wasmtime-backed synchronous WASI Preview 2 runner.
+#[expect(missing_debug_implementations, reason = "wraps non-Debug wasmtime::Engine")]
 pub struct WasiRunner {
     engine: Engine,
 }

@@ -1,41 +1,55 @@
 #![allow(
     clippy::multiple_crate_versions,
-    reason = "The RFC-15 tool runner pulls in Wasmtime/WASI transitive versions the workspace cannot unify yet."
+    reason = "The WASI tool runner pulls in Wasmtime/WASI transitive versions the workspace cannot unify yet."
 )]
 
-//! Top-level `specify` library crate. Phase-1 subcommands, init
-//! orchestration, and the curated public API live here.
+//! `specify` library crate.
 //!
-//! See also: the `specify` binary (`src/main.rs`) and domain crates under
-//! `crates/` for the underlying logic.
+//! Hosts the command modules so workspace tooling (`xtask gen-man`,
+//! future completions-from-xtask) can introspect the clap command tree
+//! without spawning the binary. The `[[bin]]` target in
+//! `src/main.rs` is a thin shim around [`run`].
+//!
+//! Exit-code contract for the dispatched [`run`] (defined by the
+//! internal `Exit` enum in `output`):
+//!
+//! - `0` `Success`: Success.
+//! - `1` `GenericFailure`: Generic failure (I/O, parse, tool
+//!   resolver/runtime, unknown).
+//! - `2` `ValidationFailed` or `ArgumentError`: validation failed or
+//!   a post-parse argument-shape check failed.
+//! - `3` `VersionTooOld`: The CLI binary is older than the
+//!   `specify_version` floor in `.specify/project.yaml`.
+//!
+//! Error → exit code mapping:
+//! - [`specify_error::Error::CliTooOld`] → `3`.
+//! - [`specify_error::Error::Validation`],
+//!   [`specify_error::Error::ToolDenied`], and
+//!   [`specify_error::Error::ToolNotDeclared`] → `2`.
+//! - [`specify_error::Error::Argument`] → `2`.
+//! - Any other [`specify_error::Error`] variant → `1`.
 
-pub use config::{ProjectConfig, is_workspace_clone_path};
-pub use init::{InitOptions, InitResult, VersionMode, init};
-pub use specify_capability::{
-    Brief, BriefFrontmatter, CAPABILITY_FILENAME, CHANGE_BRIEF_FILENAME, CODEX_DIR_NAME, CacheMeta,
-    Capability, CapabilitySource, ChangeBrief, ChangeFrontmatter, ChangeInput, CodexApplicability,
-    CodexCatalogSource, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexProvenance,
-    CodexReference, CodexResolver, CodexReviewMode, CodexRule, CodexRuleFrontmatter, CodexSeverity,
-    DEFAULT_CODEX_CAPABILITY, InputKind, ManifestProbe, Phase, Pipeline, PipelineEntry,
-    PipelineView, ResolvedCapability, ResolvedCodex, ResolvedCodexRule,
-};
-pub use specify_error::{Error, ValidationStatus, ValidationSummary, is_kebab};
-pub use specify_merge::{
-    ArtifactClass, BaselineConflict, MergeOperation, MergePreviewEntry, MergeResult, MergeStrategy,
-    OpaqueAction, OpaquePreviewEntry, PreviewResult, conflict_check, merge, merge_slice,
-    preview_slice, validate_baseline,
-};
-pub use specify_slice::{
-    CreateIfExists, CreateOutcome, EntryKind, Journal, JournalEntry, LifecycleStatus,
-    METADATA_VERSION, Outcome, Overlap, PhaseOutcome, Rfc3339Stamp, SLICES_DIR_NAME, SliceMetadata,
-    SpecKind, TouchedSpec, actions as slice_actions, format_rfc3339,
-};
-pub use specify_spec::{
-    DeltaSpec, ParsedSpec, Rename, Requirement, Scenario, has_delta_headers, parse_baseline,
-    parse_delta,
-};
-pub use specify_task::{SkillDirective, Task, TaskProgress, mark_complete, parse_tasks};
-pub use specify_validate::{ValidationReport, ValidationResult, serialize_report, validate_slice};
+mod cli;
+mod commands;
+mod context;
+pub(crate) mod output;
 
-mod config;
-mod init;
+use std::process::ExitCode;
+
+use clap::{CommandFactory, Parser};
+
+/// Parse argv, dispatch the subcommand, and return the process exit
+/// code. The `specify` binary calls into this.
+#[must_use]
+pub fn run() -> ExitCode {
+    let cli = cli::Cli::parse();
+    commands::run(cli).into()
+}
+
+/// Build the top-level [`clap::Command`] tree for the `specify`
+/// binary without parsing argv. Used by workspace tooling that
+/// inspects the command surface — currently `xtask gen-man`.
+#[must_use]
+pub fn command() -> clap::Command {
+    cli::Cli::command()
+}

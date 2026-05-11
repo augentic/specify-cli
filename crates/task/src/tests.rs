@@ -101,10 +101,10 @@ fn mark_complete_already_complete_returns_input_byte_identical() {
 fn mark_complete_missing_task_returns_config_error() {
     let err = mark_complete(HAPPY_PATH, "9.9").expect_err("9.9 does not exist");
     match err {
-        Error::Config(msg) => {
+        Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("task 9.9 not found"), "unexpected message: {msg}");
         }
-        other => panic!("expected Error::Config, got {other:?}"),
+        other => panic!("expected Error::Diag, got {other:?}"),
     }
 }
 

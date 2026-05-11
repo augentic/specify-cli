@@ -4,13 +4,9 @@
 //! Owns parsing, helpers, and shape validators for `registry.yaml` (the
 //! platform-level catalogue at the repo root) plus the local
 //! `.specify/workspace/` materialisation surface (`sync`, `status`,
-//! `push`) plus read-only forge PR probes for finalization. Until RFC-13
-//! chunk 2.2 the workspace code lived in
-//! the binary's lib (`src/workspace.rs`, `src/workspace_merge.rs`); this
-//! crate now owns it end to end.
+//! `push`) plus read-only forge PR probes for finalization.
 //!
-//! Dependency direction (post-RFC-13 §"Platform components are not
-//! capabilities"):
+//! Dependency direction (platform components are not capabilities):
 //!
 //! ```text
 //! specify-validate → specify-slice → specify-registry → specify-capability

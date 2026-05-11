@@ -7,8 +7,7 @@
 //! - Resolving a `capability` value from `.specify/project.yaml` to
 //!   either a workspace directory or the agent-populated cache
 //!   (see [`Capability::resolve`]). Remote (HTTP) resolution is
-//!   explicitly the agent's job per RFC-1 — the CLI only walks the
-//!   filesystem.
+//!   explicitly the agent's job — the CLI only walks the filesystem.
 //! - Parsing YAML frontmatter on brief markdown files
 //!   (see [`Brief`], [`BriefFrontmatter`]).
 //! - The fully-resolved `capability + briefs` view used by almost every
@@ -18,10 +17,9 @@
 //! - The on-disk `change.md` operator-authored brief at the repo
 //!   root (see [`ChangeBrief`]).
 //!
-//! Registry parsing and shape validation moved out into
-//! `specify-registry` in RFC-13 chunk 2.1; per the RFC's
-//! "platform components are not capabilities" invariant this crate
-//! must not depend on `specify-registry`.
+//! Registry parsing and shape validation live in `specify-registry`;
+//! per the "platform components are not capabilities" invariant this
+//! crate must not depend on `specify-registry`.
 
 mod brief;
 mod cache;
@@ -31,19 +29,22 @@ mod codex;
 mod codex_resolver;
 mod pipeline;
 
+use std::borrow::Cow;
+
+// --- Brief frontmatter ---
 pub use brief::{Brief, BriefFrontmatter};
+// --- Agent-populated cache ---
 pub use cache::CacheMeta;
+// --- Capability core ---
 pub use capability::{
-    CAPABILITY_FILENAME, Capability, CapabilitySource, ManifestProbe, Phase, Pipeline,
-    PipelineEntry, ResolvedCapability,
+    CAPABILITY_FILENAME, Capability, CapabilitySource, Phase, Pipeline, PipelineEntry,
+    ResolvedCapability,
 };
 pub use change_brief::{
     ChangeBrief, ChangeFrontmatter, ChangeInput, FILENAME as CHANGE_BRIEF_FILENAME, InputKind,
 };
-pub use codex::{
-    CodexApplicability, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexReference,
-    CodexReviewMode, CodexRule, CodexRuleFrontmatter, CodexSeverity,
-};
+// --- Codex (rules catalog) ---
+pub use codex::{CodexRule, CodexRuleFrontmatter, CodexSeverity};
 pub use codex_resolver::{
     CODEX_DIR_NAME, CodexCatalogSource, CodexProvenance, CodexResolver, DEFAULT_CODEX_CAPABILITY,
     ResolvedCodex, ResolvedCodexRule,
@@ -64,25 +65,25 @@ pub enum ValidationResult {
     /// Rule passed.
     Pass {
         /// Machine-readable rule identifier.
-        rule_id: &'static str,
+        rule_id: Cow<'static, str>,
         /// Human-readable rule description.
-        rule: &'static str,
+        rule: Cow<'static, str>,
     },
     /// Rule failed.
     Fail {
         /// Machine-readable rule identifier.
-        rule_id: &'static str,
+        rule_id: Cow<'static, str>,
         /// Human-readable rule description.
-        rule: &'static str,
+        rule: Cow<'static, str>,
         /// Detail message explaining the failure.
         detail: String,
     },
     /// Rule evaluation was deferred.
     Deferred {
         /// Machine-readable rule identifier.
-        rule_id: &'static str,
+        rule_id: Cow<'static, str>,
         /// Human-readable rule description.
-        rule: &'static str,
+        rule: Cow<'static, str>,
         /// Why the rule was deferred.
         reason: &'static str,
     },

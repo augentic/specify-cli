@@ -3,31 +3,19 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use assert_cmd::Command;
-use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tempfile::{TempDir, tempdir};
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
+mod common;
+use common::{parse_json, repo_root, specify};
 
 fn contract_wasm() -> PathBuf {
-    repo_root().join("crates/contract-validate/dist/contract-0.2.0.wasm")
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
+    repo_root().join("wasi-tools/contract/dist/contract-0.2.0.wasm")
 }
 
 fn sha256_hex(path: &Path) -> String {
     let bytes = fs::read(path).expect("read contract wasm");
     format!("{:x}", Sha256::digest(bytes))
-}
-
-fn parse_json(stdout: &[u8]) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
 }
 
 struct ContractToolFixture {
@@ -88,7 +76,7 @@ impl ContractToolFixture {
 }
 
 #[test]
-fn contract_tool_lists_from_capability_sidecar() {
+fn lists_from_capability_sidecar() {
     let fixture = ContractToolFixture::new();
 
     let assert = specify()
@@ -107,7 +95,7 @@ fn contract_tool_lists_from_capability_sidecar() {
 }
 
 #[test]
-fn contract_tool_preserves_validator_json_for_clean_baseline() {
+fn preserves_validator_json_for_clean() {
     let fixture = ContractToolFixture::new();
     fixture.write_contract(
         "http/user-api.yaml",
@@ -126,7 +114,7 @@ fn contract_tool_preserves_validator_json_for_clean_baseline() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 2);
+    assert_eq!(value["envelope-version"], 2);
     assert_eq!(value["contracts-dir"], fixture.contracts_dir().display().to_string());
     assert_eq!(value["ok"], true);
     assert_eq!(value["findings"], serde_json::json!([]));
@@ -134,7 +122,7 @@ fn contract_tool_preserves_validator_json_for_clean_baseline() {
 }
 
 #[test]
-fn contract_tool_preserves_validator_findings_exit_code() {
+fn preserves_validator_findings_exit_code() {
     let fixture = ContractToolFixture::new();
     fixture.write_contract(
         "http/user-api.yaml",

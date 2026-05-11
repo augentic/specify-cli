@@ -13,13 +13,11 @@ readme = "README.md"
 name = "specify"
 path = "src/main.rs"
 
-[lib]
-name = "specify"
-path = "src/lib.rs"
-
 [dependencies]
 specify-error.workspace = true
 specify-capability.workspace = true
+specify-config.workspace = true
+specify-init.workspace = true
 specify-registry.workspace = true
 specify-spec.workspace = true
 specify-merge.workspace = true
@@ -29,7 +27,6 @@ specify-change.workspace = true
 specify-validate.workspace = true
 specify-tool.workspace = true
 clap.workspace = true
-clap_complete.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
@@ -52,6 +49,8 @@ workspace = true
 members = [
     "crates/error",
     "crates/capability",
+    "crates/config",
+    "crates/init",
     "crates/registry",
     "crates/spec",
     "crates/merge",
@@ -59,11 +58,19 @@ members = [
     "crates/validate",
     "crates/slice",
     "crates/change",
-    "crates/vectis-validate",
-    "crates/vectis-scaffold",
     "crates/tool",
-    "crates/contract-validate",
+    "xtask",
 ]
+# `wasi-tools/` is a sibling workspace (`specify-contract` and `specify-vectis`
+# ship as standalone `wasm32-wasip2` components and stay out of the host CLI's
+# Render/emit/`specify-error` discipline). Listing the directory under
+# `exclude` keeps cargo from recursing into it from this workspace; cargo
+# still stops at its own `[workspace]` declaration without this, but the
+# explicit entry documents the boundary.
+exclude = ["wasi-tools"]
+
+# `xtask` is a workspace-internal task runner (`cargo run -p xtask -- ...`)
+# rather than a library or published binary.
 
 [workspace.package]
 authors = ["Augentic"]
@@ -72,21 +79,35 @@ homepage = "https://augentic.io"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/augentic/specify-cli"
 rust-version = "1.93"
-version = "0.2.0"
+version = "0.3.0"
 
 [workspace.lints.rust]
 # https://dirname.github.io/rust-std-doc/rustc/lints/listing/allowed-by-default.html
 missing_docs = "warn"
+missing_debug_implementations = "warn"
+redundant_lifetimes = "warn"
+single_use_lifetimes = "warn"
 trivial_numeric_casts = "warn"
+unreachable_pub = "warn"
 unsafe_op_in_unsafe_fn = "warn"
 unused_extern_crates = "warn"
 
 [workspace.lints.clippy]
 # https://doc.rust-lang.org/stable/clippy/index.html
-all = "warn"      # correctness, suspicious, style, complexity, perf
-cargo = "warn"
-nursery = "warn"
-pedantic = "warn"
+# Negative priorities let individual lint overrides below the group take
+# effect (the lint-table "lints with higher priority are applied later"
+# rule — see https://doc.rust-lang.org/cargo/reference/manifest.html#the-lints-section).
+all = { level = "warn", priority = -1 }      # correctness, suspicious, style, complexity, perf
+cargo = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+
+# `clippy::redundant_pub_crate` (nursery) tells you to drop `pub(crate)` on
+# items inside a private module. `unreachable_pub` (rustc) tells you the
+# opposite — promote `pub` to `pub(crate)` whenever the item is not
+# externally reachable. We keep `unreachable_pub` (it catches accidentally
+# leaky exports across the workspace) and silence the nursery rule.
+redundant_pub_crate = "allow"
 
 # Cherry-picked lints are from the `restriction` lint group in order to drive up
 # consistency, quality, and brevity
@@ -96,6 +117,7 @@ pedantic = "warn"
 as_pointer_underscore = "warn"
 assertions_on_result_states = "warn"
 clone_on_ref_ptr = "warn"
+dbg_macro = "warn"
 deref_by_slicing = "warn"
 disallowed_script_idents = "warn"
 empty_drop = "warn"
@@ -107,6 +129,7 @@ map_err_ignore = "warn"
 redundant_type_annotations = "warn"
 renamed_function_params = "warn"
 semicolon_outside_block = "warn"
+todo = "warn"
 undocumented_unsafe_blocks = "warn"
 unnecessary_safety_comment = "warn"
 unnecessary_safety_doc = "warn"
@@ -116,6 +139,8 @@ unused_result_ok = "warn"
 [workspace.dependencies]
 specify-error = { path = "crates/error" }
 specify-capability = { path = "crates/capability" }
+specify-config = { path = "crates/config" }
+specify-init = { path = "crates/init" }
 specify-registry = { path = "crates/registry" }
 specify-spec = { path = "crates/spec" }
 specify-merge = { path = "crates/merge" }
@@ -124,7 +149,7 @@ specify-slice = { path = "crates/slice" }
 specify-change = { path = "crates/change" }
 specify-validate = { path = "crates/validate" }
 specify-tool = { path = "crates/tool" }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
@@ -136,6 +161,7 @@ chrono = { version = "0.4", features = ["serde"] }
 jsonschema = { version = "0.46", default-features = false }
 semver = "1"
 tempfile = "3"
+toml = "1"
 sha2 = "0.10"
 ureq = { version = "3", features = ["json"] }
 wasmtime = { version = "44.0.1", default-features = false, features = ["component-model", "runtime", "cranelift"] }

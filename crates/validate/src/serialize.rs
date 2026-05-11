@@ -1,7 +1,7 @@
 //! JSON serialization for [`ValidationReport`].
 //!
-//! Emits the report payload only; the surrounding `schema-version`
-//! envelope is added by the CLI's `emit_response`.
+//! Emits the report payload only; the surrounding `envelope-version`
+//! envelope is added by the CLI's `emit` helper in `src/output.rs`.
 
 use serde_json::{Value, json};
 use specify_capability::ValidationResult;
@@ -68,8 +68,8 @@ mod tests {
         brief_results.insert(
             "proposal".to_string(),
             vec![ValidationResult::Pass {
-                rule_id: "proposal.why-has-content",
-                rule: "Has a Why section with at least one sentence",
+                rule_id: "proposal.why-has-content".into(),
+                rule: "Has a Why section with at least one sentence".into(),
             }],
         );
         let report = ValidationReport {
@@ -87,8 +87,8 @@ mod tests {
         let report = ValidationReport {
             brief_results: BTreeMap::new(),
             cross_checks: vec![ValidationResult::Deferred {
-                rule_id: "specs.uses-normative-language",
-                rule: "Uses SHALL/MUST language for normative requirements",
+                rule_id: "specs.uses-normative-language".into(),
+                rule: "Uses SHALL/MUST language for normative requirements".into(),
                 reason: "Semantic check — requires LLM judgment",
             }],
             passed: true,
@@ -103,8 +103,8 @@ mod tests {
         let report = ValidationReport {
             brief_results: BTreeMap::new(),
             cross_checks: vec![ValidationResult::Fail {
-                rule_id: "cross.design-references-valid",
-                rule: "Every requirement id referenced in design.md exists in specs",
+                rule_id: "cross.design-references-valid".into(),
+                rule: "Every requirement id referenced in design.md exists in specs".into(),
                 detail: "REQ-999 not found".to_string(),
             }],
             passed: false,

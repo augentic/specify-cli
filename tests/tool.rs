@@ -7,26 +7,15 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use assert_cmd::Command;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tempfile::{TempDir, tempdir};
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
+mod common;
+use common::{parse_json, repo_root, specify};
 
 fn fixtures_root() -> PathBuf {
     repo_root().join("tests").join("fixtures")
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
-
-fn parse_json(stdout: &[u8]) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
 }
 
 fn copy_dir(src: &Path, dst: &Path) {
@@ -169,7 +158,7 @@ fn run_json_failure(project: &Path, cache: &Path, args: &[&str], code: i32) -> V
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(code));
-    parse_json(&assert.get_output().stdout)
+    parse_json(&assert.get_output().stderr)
 }
 
 fn assert_validation_rule(value: &Value, rule_id: &str) {
@@ -182,7 +171,7 @@ fn assert_validation_rule(value: &Value, rule_id: &str) {
 }
 
 #[test]
-fn tool_help_lists_chunk_five_verbs() {
+fn help_lists_chunk_five_verbs() {
     let assert = specify().args(["tool", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     for verb in ["run", "list", "fetch", "show", "gc"] {
@@ -191,7 +180,7 @@ fn tool_help_lists_chunk_five_verbs() {
 }
 
 #[test]
-fn tool_list_outside_project_preserves_not_initialized_error() {
+fn list_outside_project_preserves_error() {
     let tmp = tempdir().expect("tempdir");
     let assert = specify()
         .current_dir(tmp.path())
@@ -199,13 +188,13 @@ fn tool_list_outside_project_preserves_not_initialized_error() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["error"], "not-initialized");
 }
 
 #[test]
-fn tool_list_discovers_project_root_from_nested_subdirectory() {
+fn list_discovers_root_from_nested() {
     let fixtures = ToolFixtures::new();
     let nested = fixtures.project().join("nested/deeper");
     fs::create_dir_all(&nested).expect("create nested project dir");
@@ -218,7 +207,7 @@ fn tool_list_discovers_project_root_from_nested_subdirectory() {
 }
 
 #[test]
-fn project_scope_fixture_lists_three_hub_project_tools() {
+fn project_scope_lists_three_tools() {
     let fixtures = ToolFixtures::new();
     let value = json_tool_list(&fixtures.project(), &cache_dir("project-list"));
     let tools = value["tools"].as_array().expect("tools array");
@@ -230,7 +219,7 @@ fn project_scope_fixture_lists_three_hub_project_tools() {
 }
 
 #[test]
-fn capability_scope_fixture_lists_sidecar_tool_and_keeps_capability_closed() {
+fn capability_scope_lists_sidecar_tool() {
     let fixtures = ToolFixtures::new();
     let cap_yaml = fs::read_to_string(fixtures.capability().join("capability.yaml"))
         .expect("read capability.yaml");
@@ -301,7 +290,7 @@ fn project_manifest_validation_reports_rule_ids() {
 }
 
 #[test]
-fn capability_manifest_validation_reports_sidecar_rule_ids() {
+fn capability_manifest_reports_sidecar_rules() {
     let fixtures = ToolFixtures::new();
     let cache = cache_dir("capability-validation");
     let cases = [
@@ -329,7 +318,7 @@ fn capability_manifest_validation_reports_sidecar_rule_ids() {
 }
 
 #[test]
-fn cache_miss_hit_change_and_override_are_observable() {
+fn cache_miss_hit_and_override_observable() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.project();
     let cache = cache_dir("cache-flow");
@@ -389,7 +378,7 @@ fn cache_miss_hit_change_and_override_are_observable() {
 }
 
 #[test]
-fn digest_mismatch_fails_before_installing_cache_entry() {
+fn digest_mismatch_fails_before_install() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.project();
     let cache = cache_dir("digest-mismatch");
@@ -431,7 +420,7 @@ fn local_path_source_runs_without_file_uri() {
 }
 
 #[test]
-fn https_network_failure_is_typed_and_exits_one() {
+fn https_network_failure_is_typed() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.project();
     let cache = cache_dir("network-failure");
@@ -447,7 +436,7 @@ fn https_network_failure_is_typed_and_exits_one() {
 }
 
 #[test]
-fn invalid_wasm_runtime_failure_is_typed_and_exits_one() {
+fn invalid_wasm_runtime_failure_is_typed() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.project();
     let cache = cache_dir("runtime-failure");
@@ -461,7 +450,7 @@ fn invalid_wasm_runtime_failure_is_typed_and_exits_one() {
 }
 
 #[test]
-fn allowed_filesystem_access_reads_and_writes_declared_dirs() {
+fn allowed_fs_reads_and_writes_declared() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.project();
     let cache = cache_dir("allowed-fs");
@@ -489,7 +478,7 @@ fn allowed_filesystem_access_reads_and_writes_declared_dirs() {
 }
 
 #[test]
-fn denied_filesystem_and_lifecycle_access_fail_before_guest_work() {
+fn denied_fs_and_lifecycle_fail_before_guest() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.project();
     let cache = cache_dir("denied-fs");
@@ -518,7 +507,7 @@ fn denied_filesystem_and_lifecycle_access_fail_before_guest_work() {
 }
 
 #[test]
-fn capability_tool_non_zero_exit_propagates_and_caches_by_capability_scope() {
+fn capability_non_zero_exit_caches_by_scope() {
     let fixtures = ToolFixtures::new();
     let cache = cache_dir("exit-seven");
     let assert = specify()
@@ -532,7 +521,7 @@ fn capability_tool_non_zero_exit_propagates_and_caches_by_capability_scope() {
 }
 
 #[test]
-fn tool_name_collision_warns_and_project_scope_wins() {
+fn name_collision_project_scope_wins() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.cap_project();
     let cache = cache_dir("collision");

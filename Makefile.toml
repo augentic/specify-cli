@@ -18,7 +18,13 @@ skip_rust_env_info = true
 dependencies = ["audit", "fmt", "lint", "outdated", "deps"]
 
 [tasks.ci]
-dependencies = ["lint", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
+dependencies = ["lint", "standards", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
+
+[tasks.standards]
+script = '''
+cargo run --quiet -p xtask -- standards-check
+cargo run --quiet -p xtask -- standards-check --check-tightenable
+'''
 
 # -------------------------------------
 # Individual Actions
@@ -76,64 +82,11 @@ env = { RUSTFLAGS = "-Dwarnings" }
 command = "cargo"
 args = ["test", "--doc", "--all-features", "--workspace"]
 
-[tasks.tools-test-fixtures]
-script = '''
-set -euo pipefail
-CARGO_TARGET_DIR=target/tools-test-fixtures cargo build --manifest-path tests/fixtures/tools-test-project/src-rust/Cargo.toml --target wasm32-wasip2 --release --bins
-mkdir -p tests/fixtures/tools-test-project/wasm tests/fixtures/tools-test-cap/wasm
-cp target/tools-test-fixtures/wasm32-wasip2/release/echo.wasm tests/fixtures/tools-test-project/wasm/echo.wasm
-cp target/tools-test-fixtures/wasm32-wasip2/release/read-only.wasm tests/fixtures/tools-test-project/wasm/read-only.wasm
-cp target/tools-test-fixtures/wasm32-wasip2/release/read-write.wasm tests/fixtures/tools-test-project/wasm/read-write.wasm
-cp target/tools-test-fixtures/wasm32-wasip2/release/read-denied.wasm tests/fixtures/tools-test-project/wasm/read-denied.wasm
-wasm-tools parse tests/fixtures/tools-test-cap/src-wat/exit-seven.component.wat -o tests/fixtures/tools-test-cap/wasm/exit-seven.wasm
-'''
-
-[tasks.contract-validator-wasm]
-script = '''
-set -euo pipefail
-cargo build -p specify-contract-validate --target wasm32-wasip2 --release
-mkdir -p crates/contract-validate/dist
-cp target/wasm32-wasip2/release/specify-contract-validate.wasm crates/contract-validate/dist/contract-0.2.0.wasm
-shasum -a 256 crates/contract-validate/dist/contract-0.2.0.wasm
-'''
-
-[tasks.vectis-validate-wasm]
-script = '''
-set -euo pipefail
-cargo build -p vectis-validate --target wasm32-wasip2 --release
-'''
-
-[tasks.vectis-scaffold-wasm]
-script = '''
-set -euo pipefail
-cargo build -p vectis-scaffold --target wasm32-wasip2 --release
-'''
-
-[tasks.vectis-wasi-artifacts]
-script = '''
-set -euo pipefail
-
-DIST_DIR="${VECTIS_WASI_DIST_DIR:-target/vectis-wasi-tools/release}"
-
-cargo build -p vectis-validate -p vectis-scaffold --target wasm32-wasip2 --release --locked
-mkdir -p "${DIST_DIR}"
-cp target/wasm32-wasip2/release/vectis-validate.wasm "${DIST_DIR}/vectis-validate.wasm"
-cp target/wasm32-wasip2/release/vectis-scaffold.wasm "${DIST_DIR}/vectis-scaffold.wasm"
-
-(
-  cd "${DIST_DIR}"
-  shasum -a 256 vectis-validate.wasm > vectis-validate.wasm.sha256
-  shasum -a 256 vectis-scaffold.wasm > vectis-scaffold.wasm.sha256
-  shasum -a 256 vectis-validate.wasm vectis-scaffold.wasm > SHA256SUMS
-)
-
-echo "Vectis WASI artifacts written to ${DIST_DIR}"
-'''
-
 # Docs
 [tasks.doc]
 command = "cargo"
 args = ["doc", "--no-deps", "--workspace", "--all-features", "--locked"]
+env = { RUSTDOCFLAGS = "-Dwarnings" }
 
 # Miri
 [tasks.miri]
@@ -157,34 +110,86 @@ install_crate = "cargo-vet"
 command = "cargo"
 args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 
-# Publish all crates to crates.io in dependency order (dry-run by default).
-# Remove --dry-run to actually publish.
-[tasks.publish-crates-io]
+
+# -------------------------------------
+# Move or deprecate
+# -------------------------------------
+
+# Mechanical enforcement of AGENTS.md#coding-standards. 
+# Predicates live in `xtask/src/standards.rs` with per-file baselines in 
+# `scripts/standards-allowlist.toml`.
+#  Use:
+# ```bash
+# cargo make xtask standards-check
+# cargo make xtask standards-check --check-tightenable
+# cargo make xtask standards-check --tighten
+# ```
+[tasks.xtask]
+command = "cargo"
+args = ["run", "--quiet", "-p", "xtask", "--", "${@}"]
+
+# Render roff man pages for the `specify` binary and every leaf
+# subcommand into `target/man/` (gitignored). Release tooling picks
+# the artifacts up from there.
+[tasks.gen-man]
+command = "cargo"
+args = ["run", "--quiet", "-p", "xtask", "--", "gen-man"]
+
+# Render shell-completion scripts for the `specify` binary into
+# `target/completions/<shell>/specify.<ext>` (gitignored). Release
+# tooling picks the artifacts up from there.
+[tasks.gen-completions]
+command = "cargo"
+args = ["run", "--quiet", "-p", "xtask", "--", "gen-completions"]
+
+[tasks.wasm-fixtures]
 script = '''
-set -e
+set -euo pipefail
+CARGO_TARGET_DIR=target/tools-test-fixtures cargo build --manifest-path tests/fixtures/tools-test-project/src-rust/Cargo.toml --target wasm32-wasip2 --release --bins
+mkdir -p tests/fixtures/tools-test-project/wasm tests/fixtures/tools-test-cap/wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/echo.wasm tests/fixtures/tools-test-project/wasm/echo.wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/read-only.wasm tests/fixtures/tools-test-project/wasm/read-only.wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/read-write.wasm tests/fixtures/tools-test-project/wasm/read-write.wasm
+cp target/tools-test-fixtures/wasm32-wasip2/release/read-denied.wasm tests/fixtures/tools-test-project/wasm/read-denied.wasm
+wasm-tools parse tests/fixtures/tools-test-cap/src-wat/exit-seven.component.wat -o tests/fixtures/tools-test-cap/wasm/exit-seven.wasm
+'''
 
-DRY_RUN="--dry-run"
-if [ "${PUBLISH_FOR_REAL}" = "true" ]; then
-  DRY_RUN=""
-fi
+[tasks.contract-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo build -p specify-contract --target wasm32-wasip2 --release
+mkdir -p contract/dist
+cp target/wasm32-wasip2/release/specify-contract.wasm contract/dist/contract-0.2.0.wasm
+shasum -a 256 contract/dist/contract-0.2.0.wasm
+'''
 
-echo "=== Tier 1: No internal dependencies ==="
-cargo publish -p specify-error $DRY_RUN
+[tasks.vectis-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo build -p specify-vectis --target wasm32-wasip2 --release
+'''
 
-echo "=== Tier 2: Capability ==="
-cargo publish -p specify-capability $DRY_RUN
+[tasks.vectis-wasi-artifacts]
+script = '''
+set -euo pipefail
 
-echo "=== Tier 3: Mid-level crates ==="
-cargo publish -p specify-spec $DRY_RUN
-cargo publish -p specify-task $DRY_RUN
-cargo publish -p specify-slice $DRY_RUN
+DIST_DIR="${VECTIS_WASI_DIST_DIR:-target/vectis-wasi-tools/release}"
+mkdir -p "${DIST_DIR}"
+DIST_DIR_ABS="$(cd "${DIST_DIR}" && pwd)"
 
-echo "=== Tier 4: Higher-level crates ==="
-cargo publish -p specify-merge $DRY_RUN
-cargo publish -p specify-validate $DRY_RUN
+(
+  cd wasi-tools
+  cargo build -p specify-vectis --target wasm32-wasip2 --release --locked
+  cp target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR_ABS}/vectis.wasm"
+)
 
-echo "=== Tier 5: Root CLI ==="
-cargo publish -p specify $DRY_RUN
+(
+  cd "${DIST_DIR_ABS}"
+  shasum -a 256 vectis.wasm > vectis.wasm.sha256
+  shasum -a 256 vectis.wasm > SHA256SUMS
+)
 
-echo "=== Done ==="
+echo "Vectis WASI artifact written to ${DIST_DIR_ABS}"
 '''

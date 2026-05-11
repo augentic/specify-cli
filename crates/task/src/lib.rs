@@ -2,13 +2,12 @@
 //!
 //! The on-disk format is documented in
 //! `plugins/spec/references/specify.md` §"Tasks Document" and §"Skill
-//! Directive Tags". See `DECISIONS.md` ("Change E — Task skill directive
-//! format") for why the skill-directive parser looks for an HTML comment
-//! (`<!-- skill: plugin:skill -->`) rather than the bracket form mentioned
-//! in RFC-1's plan.
+//! Directive Tags". See the workspace `DECISIONS.md` ("Change E — Task
+//! skill directive format") for why the skill-directive parser looks
+//! for an HTML comment (`<!-- skill: plugin:skill -->`).
 //!
-//! Phase 1 ships only `parse_tasks` and `mark_complete`; selection helpers
-//! (`next_pending`, etc.) are deferred per RFC-1 plan line 134.
+//! Public surface: `parse_tasks` and `mark_complete`. Selection
+//! helpers (`next_pending`, etc.) are deliberately not exposed.
 
 use std::sync::OnceLock;
 
@@ -163,7 +162,8 @@ fn extract_skill_directive(rest: &str) -> (String, Option<SkillDirective>) {
 /// Mark the first task line with `number == task_number` complete.
 ///
 /// Idempotent: if the task is already `[x]`/`[X]`, returns the input
-/// verbatim. Returns [`Error::Config`] if no task with that number exists.
+/// verbatim. Returns `Error::Diag { code: "task-not-found", .. }`
+/// if no task with that number exists.
 ///
 /// When multiple task lines share the same number (user mistake) this
 /// targets the first unmarked occurrence; if the first occurrence is already
@@ -203,7 +203,10 @@ pub fn mark_complete(content: &str, task_number: &str) -> Result<String, Error> 
     }
 
     let Some((line_start, line_len, already_complete)) = first_match else {
-        return Err(Error::Config(format!("task {task_number} not found")));
+        return Err(Error::Diag {
+            code: "task-not-found",
+            detail: format!("task {task_number} not found"),
+        });
     };
 
     if already_complete {

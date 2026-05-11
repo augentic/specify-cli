@@ -6,8 +6,8 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use specify::{Error, ValidationStatus, ValidationSummary};
-use specify_slice::atomic::atomic_yaml_write;
+use specify_error::{Error, ValidationStatus, ValidationSummary};
+use specify_slice::atomic::yaml_write;
 
 use super::fingerprint::ContextFingerprint;
 
@@ -49,6 +49,8 @@ struct LockVersion {
 }
 
 impl ContextLock {
+    // YAML sidecar persisted to disk — not a wire DTO. Kept as a named
+    // constructor; R6's `From`-for-Body/Row migration does not apply.
     pub(super) fn from_fingerprint(fingerprint: &ContextFingerprint) -> Self {
         Self {
             version: CURRENT_LOCK_VERSION,
@@ -121,7 +123,10 @@ pub(super) fn load(path: &Path) -> Result<Option<ContextLock>, Error> {
 }
 
 pub(super) fn save(path: &Path, lock: &ContextLock) -> Result<(), Error> {
-    atomic_yaml_write(path, lock)
+    // ContextLock isn't a Plan/Registry/ProjectConfig sibling; its load
+    // path returns a typed Validation envelope rather than `Option<Self>`,
+    // so it doesn't fit the AtomicYaml shape.
+    yaml_write(path, lock)
 }
 
 pub(super) fn diff_inputs(expected: &[LockInput], actual: &[LockInput]) -> InputDiff {
@@ -161,7 +166,6 @@ fn inputs_by_path(inputs: &[LockInput]) -> BTreeMap<String, String> {
 
 fn validation_error(rule_id: &'static str, detail: String) -> Error {
     Error::Validation {
-        count: 1,
         results: vec![ValidationSummary {
             status: ValidationStatus::Fail,
             rule_id: rule_id.to_string(),

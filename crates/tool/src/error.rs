@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use specify_error::YamlError;
+
 /// Errors produced by declared-tool manifest loading, validation, and cache
 /// helpers.
 #[derive(Debug, thiserror::Error)]
@@ -23,7 +25,7 @@ pub enum ToolError {
         path: PathBuf,
         /// Underlying YAML error.
         #[source]
-        source: Box<serde_saphyr::Error>,
+        source: Box<YamlError>,
     },
     /// A deterministic cache root could not be selected from the environment.
     #[error("tool cache root error: {0}")]
@@ -46,7 +48,7 @@ pub enum ToolError {
         path: PathBuf,
         /// YAML parse or deserialize error.
         #[source]
-        source: Box<serde_saphyr::Error>,
+        source: Box<YamlError>,
     },
     /// `meta.yaml` parsed, but did not satisfy the sidecar schema.
     #[error("invalid tool sidecar schema at {}: {detail}", path.display())]
@@ -204,14 +206,13 @@ impl ToolError {
 
     /// Build a manifest-parse error with path context.
     #[must_use]
-    pub fn manifest_parse(path: PathBuf, source: serde_saphyr::Error) -> Self {
+    pub fn manifest_parse(path: PathBuf, source: YamlError) -> Self {
         Self::ManifestParse {
             path,
             source: Box::new(source),
         }
     }
 
-    #[allow(dead_code, reason = "Chunk 2 introduces cache errors before every call site lands.")]
     pub(crate) fn cache_io(
         action: &'static str, path: impl Into<PathBuf>, source: std::io::Error,
     ) -> Self {
@@ -272,11 +273,17 @@ impl From<ToolError> for specify_error::Error {
     fn from(value: ToolError) -> Self {
         match value {
             ToolError::ToolNotDeclared { name } => Self::ToolNotDeclared { name },
-            ToolError::Runtime(detail) => Self::ToolRuntime(detail),
+            ToolError::Runtime(detail) => Self::Diag {
+                code: "tool-runtime",
+                detail,
+            },
             err @ (ToolError::InvalidPermission { .. } | ToolError::PermissionDenied { .. }) => {
                 Self::ToolDenied(err.to_string())
             }
-            other => Self::ToolResolver(other.to_string()),
+            other => Self::Diag {
+                code: "tool-resolver",
+                detail: other.to_string(),
+            },
         }
     }
 }

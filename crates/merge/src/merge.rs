@@ -4,7 +4,8 @@
 use std::collections::{HashMap, HashSet};
 
 use specify_error::Error;
-use specify_spec::{REQ_HEADING, Requirement, has_delta_headers, parse_baseline, parse_delta};
+use specify_spec::format::REQ_HEADING;
+use specify_spec::{Requirement, has_delta_headers, parse_baseline, parse_delta};
 
 /// Result of a successful [`merge`] call.
 ///
@@ -82,12 +83,16 @@ pub enum MergeOperation {
 /// `baseline = Some(non-empty)` applies `RENAMED → REMOVED → MODIFIED →
 /// ADDED` in that order. Any delta entry whose id cannot be resolved (or,
 /// for ADDED, whose id collides with a surviving baseline id) becomes an
-/// `Err(Error::Merge(_))` with all failure messages joined by `"\n"`.
+/// `Err(Error::Diag { code: "merge-spec-conflicts", .. })` with all
+/// failure messages joined by `"\n"`.
 ///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "Single-shot merge driver: heading walk + delta classification + conflict aggregation in one pass."
+)]
 pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> {
     let baseline_text = baseline.unwrap_or("");
     let is_new = baseline_text.trim().is_empty();
@@ -218,7 +223,10 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
     }
 
     if !errors.is_empty() {
-        return Err(Error::Merge(errors.join("\n")));
+        return Err(Error::Diag {
+            code: "merge-spec-conflicts",
+            detail: errors.join("\n"),
+        });
     }
 
     // Assemble result: preamble (if non-empty) + surviving blocks' stripped bodies.
@@ -297,13 +305,14 @@ mod tests {
         let delta = "# delta\n\n## MODIFIED Requirements\n\n### Requirement: Ghost\n\nID: REQ-999\n\n#### Scenario: none\n\n- nothing\n";
         let err = merge(Some(baseline), delta).expect_err("expected merge failure");
         match err {
-            Error::Merge(msg) => {
+            Error::Diag { code, detail } => {
+                assert_eq!(code, "merge-spec-conflicts");
                 assert!(
-                    msg.contains("MODIFIED: ID REQ-999 not found in baseline"),
-                    "unexpected merge error: {msg}"
+                    detail.contains("MODIFIED: ID REQ-999 not found in baseline"),
+                    "unexpected merge error: {detail}"
                 );
             }
-            other => panic!("expected Error::Merge, got {other:?}"),
+            other => panic!("expected merge-spec-conflicts diag, got {other:?}"),
         }
     }
 
@@ -313,13 +322,14 @@ mod tests {
         let delta = "## ADDED Requirements\n\n### Requirement: Another A\n\nID: REQ-001\n\n#### Scenario: ok\n\n- ok\n";
         let err = merge(Some(baseline), delta).expect_err("expected merge failure");
         match err {
-            Error::Merge(msg) => {
+            Error::Diag { code, detail } => {
+                assert_eq!(code, "merge-spec-conflicts");
                 assert!(
-                    msg.contains("ADDED: ID REQ-001 already exists in baseline"),
-                    "unexpected error: {msg}"
+                    detail.contains("ADDED: ID REQ-001 already exists in baseline"),
+                    "unexpected error: {detail}"
                 );
             }
-            other => panic!("expected Error::Merge, got {other:?}"),
+            other => panic!("expected merge-spec-conflicts diag, got {other:?}"),
         }
     }
 

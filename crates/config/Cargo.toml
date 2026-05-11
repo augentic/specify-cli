@@ -1,0 +1,26 @@
+[package]
+name = "specify-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ProjectConfig and `.specify/` path helpers shared by the Specify CLI workspace"
+categories = ["development-tools"]
+keywords = ["specify", "config"]
+readme = "../../README.md"
+
+[lints]
+workspace = true
+
+[dependencies]
+specify-capability.workspace = true
+specify-error.workspace = true
+specify-registry.workspace = true
+specify-slice.workspace = true
+specify-tool.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde-saphyr.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

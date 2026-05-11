@@ -1,70 +1,60 @@
-#![allow(
-    clippy::items_after_statements,
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to these command handlers."
-)]
+use std::io::Write;
 
+use chrono::Utc;
 use serde::Serialize;
-use serde_json::Value;
-use specify::{ChangeBrief, Error, ProjectConfig};
+use specify_capability::ChangeBrief;
 use specify_change::{Finding, Plan, Severity, Status};
+use specify_config::{LayoutExt, with_existing_state};
+use specify_error::{Error, Result};
 use specify_registry::Registry;
 
-use super::{
-    PlanRef, absolute_string, emit_structural_error, load_for_write, plan_ref,
-    print_validation_line, require_file, validation_to_json,
-};
-use crate::cli::OutputFormat;
-use crate::context::CommandContext;
-use crate::output::{CliResult, emit_response};
+use super::{PlanRef, display, plan_ref, require_file};
+use crate::cli::SourceArg;
+use crate::context::Ctx;
+use crate::output::{Render, Validation};
 
-pub fn create(
-    ctx: &CommandContext, name: String, sources: Vec<(String, String)>,
-) -> Result<CliResult, Error> {
-    let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
+pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
+    let plan_path = ctx.project_dir.layout().plan_path();
     if plan_path.exists() {
-        return Err(Error::Config(format!(
-            "plan already exists at {}; run `specify change plan archive` first",
-            plan_path.display()
-        )));
+        return Err(Error::Diag {
+            code: "plan-already-exists",
+            detail: format!(
+                "plan already exists at {}; run `specify change plan archive` first",
+                plan_path.display()
+            ),
+        });
     }
 
     let mut source_map: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
-    for (k, v) in sources {
-        if source_map.contains_key(&k) {
-            return Err(Error::Config(format!("duplicate key `{k}` in --source arguments")));
+    for SourceArg { key, value } in sources {
+        if source_map.contains_key(&key) {
+            return Err(Error::Diag {
+                code: "plan-source-duplicate-key",
+                detail: format!("duplicate key `{key}` in --source arguments"),
+            });
         }
-        source_map.insert(k, v);
+        source_map.insert(key, value);
     }
 
     let plan = Plan::init(&name, source_map)?;
+    // `with_state` is for load → mutate → save; `create` writes a fresh plan
+    // and the pre-existence check above is the documented contract.
     plan.save(&plan_path)?;
 
-    #[derive(Serialize)]
-    #[serde(rename_all = "kebab-case")]
-    struct CreateBody {
-        plan: PlanRef,
-    }
-
-    match ctx.format {
-        OutputFormat::Json => emit_response(CreateBody {
-            plan: PlanRef {
-                name,
-                path: absolute_string(&plan_path),
-            },
-        })?,
-        OutputFormat::Text => {
-            println!("Initialised plan '{name}' at {}.", plan_path.display());
-        }
-    }
-    Ok(CliResult::Success)
+    ctx.out().write(&CreateBody {
+        plan: PlanRef {
+            name,
+            path: plan_path,
+        },
+    })?;
+    Ok(())
 }
 
-pub fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
+    let slices_dir = ctx.project_dir.layout().slices_dir();
 
     let (registry, registry_err) = match Registry::load(&ctx.project_dir) {
         Ok(reg) => (reg, None),
@@ -79,25 +69,24 @@ pub fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
             entry: None,
         });
     }
-
     if let Some(ref reg) = registry {
-        let workspace_base = ProjectConfig::specify_dir(&ctx.project_dir).join("workspace");
+        let workspace_base = ctx.project_dir.layout().specify_dir().join("workspace");
         for rp in &reg.projects {
             let slot_project_yaml =
                 workspace_base.join(&rp.name).join(".specify").join("project.yaml");
             if slot_project_yaml.exists()
                 && let Ok(content) = std::fs::read_to_string(&slot_project_yaml)
                 && let Ok(config) = serde_saphyr::from_str::<serde_json::Value>(&content)
-                && let Some(schema_val) = config.get("schema").and_then(|v| v.as_str())
-                && schema_val != rp.schema
+                && let Some(slot_capability) = config.get("capability").and_then(|v| v.as_str())
+                && slot_capability != rp.capability
             {
                 results.push(Finding {
                     level: Severity::Warning,
-                    code: "schema-mismatch-workspace",
+                    code: "capability-mismatch-workspace",
                     message: format!(
-                        "workspace clone '{}' has schema '{}' but registry declares '{}'; \
+                        "workspace clone '{}' has capability '{}' but registry declares '{}'; \
                          the clone's project.yaml is authoritative at execution time",
-                        rp.name, schema_val, rp.schema
+                        rp.name, slot_capability, rp.capability
                     ),
                     entry: None,
                 });
@@ -106,234 +95,270 @@ pub fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
     }
 
     let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
-
-    match ctx.format {
-        OutputFormat::Json => {
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct PlanValidateResponse {
-                plan: PlanRef,
-                results: Vec<Value>,
-                passed: bool,
-            }
-            let items: Vec<Value> = results.iter().map(validation_to_json).collect();
-            emit_response(PlanValidateResponse {
-                plan: PlanRef {
-                    name: plan.name,
-                    path: plan_path.display().to_string(),
-                },
-                results: items,
-                passed: !has_errors,
-            })?;
-        }
-        OutputFormat::Text => {
-            for r in &results {
-                print_validation_line(r);
-            }
-            if results.is_empty() {
-                println!("Plan OK");
-            }
-        }
+    let rows: Vec<FindingRow<'_>> = results.iter().map(FindingRow::from).collect();
+    ctx.out().write(&PlanValidateBody {
+        plan: PlanRef {
+            name: plan.name,
+            path: plan_path,
+        },
+        validation: Validation { results: rows },
+        passed: !has_errors,
+    })?;
+    if has_errors {
+        Err(Error::Diag {
+            code: "plan-structural-errors",
+            detail: "plan has structural errors; run 'specify change plan validate' for detail"
+                .to_string(),
+        })
+    } else {
+        Ok(())
     }
-
-    Ok(if has_errors { CliResult::ValidationFailed } else { CliResult::Success })
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct NextBody {
-    next: Option<String>,
-    reason: Option<String>,
-    active: Option<String>,
-    project: Option<String>,
-    schema: Option<String>,
-    description: Option<String>,
-    sources: Option<Vec<String>>,
-}
-
-pub fn next(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub(super) fn next(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
+    let slices_dir = ctx.project_dir.layout().slices_dir();
 
     let results = plan.validate(Some(&slices_dir), None);
     if results.iter().any(|r| matches!(r.level, Severity::Error)) {
-        return emit_structural_error(ctx.format);
+        return Err(Error::Diag {
+            code: "plan-structural-errors",
+            detail: "plan has structural errors; run 'specify change plan validate' for detail"
+                .to_string(),
+        });
     }
 
-    if let Some(active) = plan.entries.iter().find(|c| c.status == Status::InProgress) {
-        match ctx.format {
-            OutputFormat::Json => emit_response(NextBody {
-                next: None,
-                reason: Some("in-progress".to_string()),
-                active: Some(active.name.clone()),
-                project: None,
-                schema: None,
-                description: None,
-                sources: None,
-            })?,
-            OutputFormat::Text => println!("Active change in progress: {}", active.name),
+    let body = if let Some(active) = plan.entries.iter().find(|c| c.status == Status::InProgress) {
+        NextBody {
+            reason: Some("in-progress".into()),
+            active: Some(active.name.clone()),
+            ..NextBody::default()
         }
-        return Ok(CliResult::Success);
-    }
-
-    if let Some(entry) = plan.next_eligible() {
-        match ctx.format {
-            OutputFormat::Json => emit_response(NextBody {
-                next: Some(entry.name.clone()),
-                reason: None,
-                active: None,
-                project: entry.project.clone(),
-                schema: entry.schema.clone(),
-                description: entry.description.clone(),
-                sources: Some(entry.sources.clone()),
-            })?,
-            OutputFormat::Text => println!("{}", entry.name),
+    } else if let Some(entry) = plan.next_eligible() {
+        NextBody {
+            next: Some(entry.name.clone()),
+            project: entry.project.clone(),
+            capability: entry.capability.clone(),
+            description: entry.description.clone(),
+            sources: Some(entry.sources.clone()),
+            ..NextBody::default()
         }
     } else {
         let all_terminal =
             plan.entries.iter().all(|c| matches!(c.status, Status::Done | Status::Skipped));
-        let (reason, text_msg) = if all_terminal {
-            ("all-done", "All changes done.")
-        } else {
-            (
-                "stuck",
-                "No eligible changes \u{2014} remaining entries are blocked, failed, or waiting on unmet dependencies.",
-            )
-        };
-        match ctx.format {
-            OutputFormat::Json => emit_response(NextBody {
-                next: None,
-                reason: Some(reason.to_string()),
-                active: None,
-                project: None,
-                schema: None,
-                description: None,
-                sources: None,
-            })?,
-            OutputFormat::Text => println!("{text_msg}"),
+        let reason = if all_terminal { "all-done" } else { "stuck" };
+        NextBody {
+            reason: Some(reason.into()),
+            ..NextBody::default()
         }
-    }
-    Ok(CliResult::Success)
+    };
+    ctx.out().write(&body)?;
+    Ok(())
 }
 
-pub fn transition(
-    ctx: &CommandContext, name: String, target: Status, reason: Option<String>,
-) -> Result<CliResult, Error> {
-    let (plan_path, mut plan) = load_for_write(ctx)?;
+pub(super) fn transition(
+    ctx: &Ctx, name: String, target: Status, reason: Option<String>,
+) -> Result<()> {
+    let plan_path = ctx.layout().plan_path();
+    let body = with_existing_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
+        let old_status = plan
+            .entries
+            .iter()
+            .find(|c| c.name == name)
+            .ok_or_else(|| Error::Diag {
+                code: "plan-entry-not-found",
+                detail: format!("no slice named '{name}' in plan"),
+            })?
+            .status;
 
-    let old_status = plan
-        .entries
-        .iter()
-        .find(|c| c.name == name)
-        .ok_or_else(|| Error::Config(format!("no change named '{name}' in plan")))?
-        .status;
+        plan.transition(&name, target, reason.as_deref())?;
 
-    plan.transition(&name, target, reason.as_deref())?;
-    plan.save(&plan_path)?;
-
-    let entry = plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
-
-    #[derive(Serialize)]
-    #[serde(rename_all = "kebab-case")]
-    struct TransitionBody {
-        plan: PlanRef,
-        entry: TransitionRow,
-    }
-    #[derive(Serialize)]
-    #[serde(rename_all = "kebab-case")]
-    struct TransitionRow {
-        name: String,
-        status: String,
-        status_reason: Option<String>,
-    }
-    match ctx.format {
-        OutputFormat::Json => emit_response(TransitionBody {
-            plan: plan_ref(&plan, &plan_path),
+        let entry =
+            plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
+        Ok(TransitionBody {
+            plan: plan_ref(plan, &plan_path),
             entry: TransitionRow {
                 name: entry.name.clone(),
-                status: entry.status.to_string(),
+                status: entry.status,
                 status_reason: entry.status_reason.clone(),
             },
-        })?,
-        OutputFormat::Text => {
-            println!("Transitioned '{name}': {} \u{2192} {}.", old_status, entry.status);
-        }
-    }
-    Ok(CliResult::Success)
+            previous_status: old_status,
+        })
+    })?;
+    ctx.out().write(&body)?;
+    Ok(())
 }
 
-pub fn archive(ctx: &CommandContext, force: bool) -> Result<CliResult, Error> {
-    let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
+pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
+    let layout = ctx.project_dir.layout();
+    let plan_path = layout.plan_path();
     if !plan_path.exists() {
         return Err(Error::ArtifactNotFound {
             kind: "plan.yaml",
             path: plan_path,
         });
     }
-    let archive_dir = ProjectConfig::archive_dir(&ctx.project_dir).join("plans");
+    let archive_dir = layout.archive_dir().join("plans");
     let brief_path = ChangeBrief::path(&ctx.project_dir);
-
     let plan_name = Plan::load(&plan_path)?.name;
 
-    match Plan::archive(&plan_path, &brief_path, &archive_dir, force) {
-        Ok((archived, archived_plans_dir)) => {
-            match ctx.format {
-                OutputFormat::Json => {
-                    #[derive(Serialize)]
-                    #[serde(rename_all = "kebab-case")]
-                    struct ArchiveBody {
-                        archived: String,
-                        archived_plans_dir: Option<String>,
-                        plan: ArchiveId,
-                    }
-                    #[derive(Serialize)]
-                    #[serde(rename_all = "kebab-case")]
-                    struct ArchiveId {
-                        name: String,
-                    }
-                    emit_response(ArchiveBody {
-                        archived: absolute_string(&archived),
-                        archived_plans_dir: archived_plans_dir.as_deref().map(absolute_string),
-                        plan: ArchiveId { name: plan_name },
-                    })?;
-                }
-                OutputFormat::Text => match archived_plans_dir {
-                    Some(dir) => println!(
-                        "Archived plan to {}. Working directory moved to {}.",
-                        archived.display(),
-                        dir.display()
-                    ),
-                    None => println!("Archived plan to {}.", archived.display()),
-                },
-            }
-            Ok(CliResult::Success)
-        }
-        Err(Error::PlanIncomplete { entries }) => {
-            match ctx.format {
-                OutputFormat::Json => {
-                    #[derive(Serialize)]
-                    #[serde(rename_all = "kebab-case")]
-                    struct OutstandingWork {
-                        error: &'static str,
-                        entries: Vec<String>,
-                        exit_code: u8,
-                    }
-                    emit_response(OutstandingWork {
-                        error: "plan-has-outstanding-work",
-                        entries,
-                        exit_code: CliResult::GenericFailure.code(),
-                    })?;
-                }
-                OutputFormat::Text => {
-                    eprintln!(
-                        "Refusing to archive \u{2014} outstanding non-terminal entries: {}. Re-run with --force to archive anyway.",
-                        entries.join(", ")
-                    );
-                }
-            }
-            Ok(CliResult::GenericFailure)
-        }
-        Err(err) => Err(err),
+    let (archived, archived_plans_dir) =
+        Plan::archive(&plan_path, &brief_path, &archive_dir, force, Utc::now())?;
+    ctx.out().write(&ArchiveBody {
+        archived: display(&archived),
+        archived_plans_dir: archived_plans_dir.as_deref().map(display),
+        plan: ArchivedPlan { name: plan_name },
+    })?;
+    Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct CreateBody {
+    plan: PlanRef,
+}
+
+impl Render for CreateBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(w, "Initialised plan '{}' at {}.", self.plan.name, display(&self.plan.path))
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct PlanValidateBody<'a> {
+    plan: PlanRef,
+    #[serde(flatten)]
+    validation: Validation<FindingRow<'a>>,
+    passed: bool,
+}
+
+impl Render for PlanValidateBody<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        if self.validation.results.is_empty() {
+            return writeln!(w, "Plan OK");
+        }
+        self.validation.render_text(w)
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct FindingRow<'a> {
+    level: FindingLevel,
+    code: &'static str,
+    entry: &'a Option<String>,
+    message: &'a str,
+}
+
+#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum FindingLevel {
+    Error,
+    Warning,
+}
+
+impl<'a> From<&'a Finding> for FindingRow<'a> {
+    fn from(finding: &'a Finding) -> Self {
+        let level = match finding.level {
+            Severity::Error => FindingLevel::Error,
+            Severity::Warning => FindingLevel::Warning,
+        };
+        Self {
+            level,
+            code: finding.code,
+            entry: &finding.entry,
+            message: &finding.message,
+        }
+    }
+}
+
+impl Render for FindingRow<'_> {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        let label = if self.level == FindingLevel::Error { "ERROR  " } else { "WARNING" };
+        let entry_col = self.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
+        writeln!(w, "{label} {:<32} {:<24} {}", self.code, entry_col, self.message)
+    }
+}
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "kebab-case")]
+struct NextBody {
+    next: Option<String>,
+    reason: Option<String>,
+    active: Option<String>,
+    project: Option<String>,
+    capability: Option<String>,
+    description: Option<String>,
+    sources: Option<Vec<String>>,
+}
+
+impl Render for NextBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        if let Some(active) = &self.active {
+            writeln!(w, "Active change in progress: {active}")
+        } else if let Some(name) = &self.next {
+            writeln!(w, "{name}")
+        } else if self.reason.as_deref() == Some("all-done") {
+            writeln!(w, "All changes done.")
+        } else {
+            writeln!(
+                w,
+                "No eligible changes \u{2014} remaining entries are blocked, failed, or waiting on unmet dependencies."
+            )
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct TransitionBody {
+    plan: PlanRef,
+    entry: TransitionRow,
+    #[serde(skip)]
+    previous_status: Status,
+}
+
+impl Render for TransitionBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(
+            w,
+            "Transitioned '{}': {} \u{2192} {}.",
+            self.entry.name, self.previous_status, self.entry.status
+        )
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct TransitionRow {
+    name: String,
+    status: Status,
+    status_reason: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ArchiveBody {
+    archived: String,
+    archived_plans_dir: Option<String>,
+    plan: ArchivedPlan,
+}
+
+impl Render for ArchiveBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        match &self.archived_plans_dir {
+            Some(dir) => {
+                writeln!(w, "Archived plan to {}. Working directory moved to {dir}.", self.archived)
+            }
+            None => writeln!(w, "Archived plan to {}.", self.archived),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ArchivedPlan {
+    name: String,
 }

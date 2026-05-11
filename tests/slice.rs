@@ -12,25 +12,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use assert_cmd::Command;
-use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::copy_dir;
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
-
-fn parse_json(stdout: &[u8]) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
-}
+use common::{copy_dir, parse_json, repo_root, specify};
 
 struct Project {
     _tmp: TempDir,
@@ -78,7 +63,7 @@ impl Project {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_create_produces_directory_and_metadata() {
+fn create_writes_dir_and_metadata() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -87,12 +72,12 @@ fn slice_create_produces_directory_and_metadata() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "my-slice");
     assert_eq!(value["status"], "defining");
-    let schema = value["schema"].as_str().expect("schema string");
-    assert!(schema.starts_with("file://"));
-    assert!(schema.ends_with("/schemas/omnia"));
+    let capability = value["capability"].as_str().expect("capability string");
+    assert!(capability.starts_with("file://"));
+    assert!(capability.ends_with("/schemas/omnia"));
     assert_eq!(value["created"], true);
     assert_eq!(value["restarted"], false);
 
@@ -101,12 +86,12 @@ fn slice_create_produces_directory_and_metadata() {
     assert!(slice_dir.join("specs").is_dir(), "specs/ must exist");
     let meta = fs::read_to_string(slice_dir.join(".metadata.yaml")).expect("read metadata");
     assert!(meta.contains("status: defining"));
-    assert!(meta.contains("schema: file://"));
+    assert!(meta.contains("capability: file://"));
     assert!(meta.contains("created-at:"));
 }
 
 #[test]
-fn slice_create_rejects_uppercase_name() {
+fn create_rejects_uppercase_name() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -114,7 +99,7 @@ fn slice_create_rejects_uppercase_name() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     assert_eq!(value["error"], "invalid-name");
     assert!(
         value["message"].as_str().unwrap().contains("kebab-case")
@@ -123,7 +108,7 @@ fn slice_create_rejects_uppercase_name() {
 }
 
 #[test]
-fn slice_create_fails_when_dir_exists_by_default() {
+fn create_errors_on_collision() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let assert = specify()
@@ -132,13 +117,13 @@ fn slice_create_fails_when_dir_exists_by_default() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["error"], "config");
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "slice-already-exists");
     assert!(value["message"].as_str().unwrap().contains("already exists"));
 }
 
 #[test]
-fn slice_create_continue_reuses_existing_directory() {
+fn create_continue_reuses_existing_dir() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let assert = specify()
@@ -156,7 +141,7 @@ fn slice_create_continue_reuses_existing_directory() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_transition_walks_the_happy_path() {
+fn transition_walks_happy_path() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
@@ -179,7 +164,7 @@ fn slice_transition_walks_the_happy_path() {
 }
 
 #[test]
-fn slice_transition_rejects_illegal_edge() {
+fn transition_rejects_illegal_edge() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     // Defining -> Building is not a legal edge.
@@ -188,7 +173,7 @@ fn slice_transition_rejects_illegal_edge() {
         .args(["--format", "json", "slice", "transition", "my-slice", "building"])
         .assert()
         .failure();
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     assert_eq!(value["error"], "lifecycle");
 }
 
@@ -197,7 +182,7 @@ fn slice_transition_rejects_illegal_edge() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_touched_specs_scan_classifies_new_vs_modified() {
+fn touched_specs_classifies_new_vs_modified() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let slice_dir = project.slices_dir().join("my-slice");
@@ -235,7 +220,7 @@ fn slice_touched_specs_scan_classifies_new_vs_modified() {
 }
 
 #[test]
-fn slice_touched_specs_set_accepts_explicit_list() {
+fn touched_specs_accepts_explicit_list() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
@@ -264,7 +249,7 @@ fn slice_touched_specs_set_accepts_explicit_list() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_overlap_reports_shared_capabilities() {
+fn overlap_reports_shared_capabilities() {
     let project = Project::init();
     // Two active slices both claim `login`.
     specify().current_dir(project.root()).args(["slice", "create", "first"]).assert().success();
@@ -295,7 +280,7 @@ fn slice_overlap_reports_shared_capabilities() {
 }
 
 #[test]
-fn slice_overlap_empty_for_disjoint_slices() {
+fn overlap_empty_for_disjoint_slices() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
     specify().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
@@ -324,7 +309,7 @@ fn slice_overlap_empty_for_disjoint_slices() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_archive_moves_dir_into_dated_archive() {
+fn archive_moves_dir_into_dated_path() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
@@ -348,7 +333,7 @@ fn slice_archive_moves_dir_into_dated_archive() {
 }
 
 #[test]
-fn slice_drop_transitions_and_archives_with_reason() {
+fn drop_transitions_and_archives() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
@@ -383,7 +368,7 @@ fn slice_drop_transitions_and_archives_with_reason() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_list_shows_every_active_slice() {
+fn list_shows_every_active_slice() {
     let project = Project::init().with_schemas();
     specify().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
     specify().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
@@ -404,7 +389,7 @@ fn slice_list_shows_every_active_slice() {
 }
 
 #[test]
-fn slice_status_by_name_returns_single_entry() {
+fn status_by_name_returns_single_entry() {
     let project = Project::init().with_schemas();
     specify()
         .current_dir(project.root())
@@ -446,7 +431,7 @@ fn looks_like_rfc3339(s: &str) -> bool {
 }
 
 #[test]
-fn slice_phase_outcome_stamps_success_on_define_json() {
+fn phase_outcome_stamps_success_on_define() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -468,7 +453,7 @@ fn slice_phase_outcome_stamps_success_on_define_json() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["outcome"], "success");
@@ -489,7 +474,7 @@ fn slice_phase_outcome_stamps_success_on_define_json() {
 }
 
 #[test]
-fn slice_phase_outcome_stamps_failure_with_context() {
+fn phase_outcome_stamps_failure_with_context() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -519,7 +504,7 @@ fn slice_phase_outcome_stamps_failure_with_context() {
 }
 
 #[test]
-fn slice_phase_outcome_stamps_deferred_on_build() {
+fn phase_outcome_stamps_deferred_on_build() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -545,7 +530,7 @@ fn slice_phase_outcome_stamps_deferred_on_build() {
 }
 
 #[test]
-fn slice_phase_outcome_text_output() {
+fn phase_outcome_text_output() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -559,7 +544,7 @@ fn slice_phase_outcome_text_output() {
 }
 
 #[test]
-fn slice_phase_outcome_on_nonexistent_slice_errors() {
+fn phase_outcome_errors_on_missing_slice() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -578,13 +563,13 @@ fn slice_phase_outcome_on_nonexistent_slice_errors() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     let msg = value["message"].as_str().unwrap_or("");
     assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
 }
 
 #[test]
-fn slice_phase_outcome_writes_trailing_newline() {
+fn phase_outcome_writes_trailing_newline() {
     // Atomicity is an OS-level guarantee (NamedTempFile + rename) so it
     // is not directly unit-testable. Instead assert the saved file
     // shape: trailing newline, mirroring the Plan::save atomic-save
@@ -609,7 +594,7 @@ fn slice_phase_outcome_writes_trailing_newline() {
 }
 
 #[test]
-fn slice_phase_outcome_overwrites_previous_outcome() {
+fn phase_outcome_overwrites_previous() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -655,7 +640,7 @@ fn slice_phase_outcome_overwrites_previous_outcome() {
 }
 
 #[test]
-fn slice_phase_outcome_preserves_existing_metadata_fields() {
+fn phase_outcome_preserves_metadata_fields() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -664,8 +649,8 @@ fn slice_phase_outcome_preserves_existing_metadata_fields() {
         meta_before["created-at"].as_str().expect("created-at populated after create").to_string();
     let status_before =
         meta_before["status"].as_str().expect("status populated after create").to_string();
-    let schema_before =
-        meta_before["schema"].as_str().expect("schema populated after create").to_string();
+    let capability_before =
+        meta_before["capability"].as_str().expect("capability populated after create").to_string();
 
     specify()
         .current_dir(project.root())
@@ -676,19 +661,19 @@ fn slice_phase_outcome_preserves_existing_metadata_fields() {
     let meta_after = read_metadata_yaml(&project, "foo");
     assert_eq!(meta_after["created-at"].as_str(), Some(created_at_before.as_str()));
     assert_eq!(meta_after["status"].as_str(), Some(status_before.as_str()));
-    assert_eq!(meta_after["schema"].as_str(), Some(schema_before.as_str()));
+    assert_eq!(meta_after["capability"].as_str(), Some(capability_before.as_str()));
     assert!(meta_after["outcome"].is_object(), "outcome should now be present");
 }
 
 #[test]
-fn pre_existing_metadata_yaml_without_outcome_still_parses() {
-    use specify::SliceMetadata;
+fn metadata_without_outcome_still_parses() {
+    use specify_slice::SliceMetadata;
     // Hand-craft a `.metadata.yaml` that predates the `outcome` field
     // and assert that SliceMetadata::load accepts it and leaves
     // `outcome` as None.
     let tmp = tempdir().expect("tempdir");
     let slice_dir = tmp.path();
-    let yaml = r#"schema: omnia
+    let yaml = r#"capability: omnia
 status: defining
 created-at: "2024-08-01T10:00:00Z"
 "#;
@@ -705,7 +690,7 @@ created-at: "2024-08-01T10:00:00Z"
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_outcome_returns_stamped_outcome_as_json() {
+fn outcome_returns_stamped_as_json() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
@@ -732,7 +717,7 @@ fn slice_outcome_returns_stamped_outcome_as_json() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "foo");
     let outcome = &value["outcome"];
     assert_eq!(outcome["phase"].as_str(), Some("build"));
@@ -744,7 +729,7 @@ fn slice_outcome_returns_stamped_outcome_as_json() {
 }
 
 #[test]
-fn slice_outcome_emits_null_when_unstamped() {
+fn outcome_emits_null_when_unstamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -765,7 +750,7 @@ fn slice_outcome_emits_null_when_unstamped() {
 }
 
 #[test]
-fn slice_outcome_null_context_when_stamped_without_context() {
+fn outcome_null_context_when_unstamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
@@ -790,7 +775,7 @@ fn slice_outcome_null_context_when_stamped_without_context() {
 }
 
 #[test]
-fn slice_outcome_text_output_stamped() {
+fn outcome_text_output_stamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
@@ -809,7 +794,7 @@ fn slice_outcome_text_output_stamped() {
 }
 
 #[test]
-fn slice_outcome_text_output_unstamped() {
+fn outcome_text_output_unstamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -823,7 +808,7 @@ fn slice_outcome_text_output_unstamped() {
 }
 
 #[test]
-fn slice_outcome_on_nonexistent_slice_errors() {
+fn outcome_errors_on_missing_slice() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -831,13 +816,13 @@ fn slice_outcome_on_nonexistent_slice_errors() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     let msg = value["message"].as_str().unwrap_or("");
     assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
 }
 
 #[test]
-fn slice_outcome_falls_back_to_archive() {
+fn outcome_falls_back_to_archive() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "bar"]).assert().success();
     specify()
@@ -877,7 +862,7 @@ fn slice_outcome_falls_back_to_archive() {
 }
 
 #[test]
-fn slice_outcome_archive_fallback_picks_most_recent() {
+fn outcome_archive_picks_most_recent() {
     let project = Project::init();
 
     // Create and stamp two archived versions with different created-at timestamps.
@@ -893,7 +878,7 @@ fn slice_outcome_archive_fallback_picks_most_recent() {
             "2026-04-24T00:00:00Z"
         };
         let yaml = format!(
-            "schema: omnia\nstatus: merged\ncreated-at: \"{created_at}\"\noutcome:\n  phase: merge\n  outcome: success\n  at: \"{created_at}\"\n  summary: \"{summary}\"\n"
+            "capability: omnia\nstatus: merged\ncreated-at: \"{created_at}\"\noutcome:\n  phase: merge\n  outcome: success\n  at: \"{created_at}\"\n  summary: \"{summary}\"\n"
         );
         fs::write(dir.join(".metadata.yaml"), yaml).unwrap();
     }
@@ -920,7 +905,7 @@ fn slice_outcome_archive_fallback_picks_most_recent() {
 /// payload to `.metadata.yaml` under `outcome.outcome.registry-amendment-required.*`
 /// (kebab-case external-tag form). Round-trips through the writer.
 #[test]
-fn slice_outcome_registry_amendment_required_writes_payload() {
+fn outcome_registry_amendment_writes_payload() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -937,7 +922,7 @@ fn slice_outcome_registry_amendment_required_writes_payload() {
             "alpha-gateway",
             "--proposed-url",
             "git@github.com:augentic/alpha-gateway.git",
-            "--proposed-schema",
+            "--proposed-capability",
             "omnia@v1",
             "--proposed-description",
             "Gateway for alpha capability.",
@@ -963,7 +948,8 @@ fn slice_outcome_registry_amendment_required_writes_payload() {
         "proposed-url should round-trip the verbatim URL, got:\n{raw}"
     );
     assert!(
-        raw.contains("proposed-schema: \"omnia@v1\"") || raw.contains("proposed-schema: omnia@v1"),
+        raw.contains("proposed-capability: \"omnia@v1\"")
+            || raw.contains("proposed-capability: omnia@v1"),
         "proposed-schema should round-trip, got:\n{raw}"
     );
     assert!(raw.contains("rationale:"), "rationale should be emitted, got:\n{raw}");
@@ -982,7 +968,7 @@ fn slice_outcome_registry_amendment_required_writes_payload() {
         proposal["proposed-url"].as_str(),
         Some("git@github.com:augentic/alpha-gateway.git"),
     );
-    assert_eq!(proposal["proposed-schema"].as_str(), Some("omnia@v1"));
+    assert_eq!(proposal["proposed-capability"].as_str(), Some("omnia@v1"));
     assert_eq!(proposal["proposed-description"].as_str(), Some("Gateway for alpha capability."),);
     assert_eq!(
         proposal["rationale"].as_str(),
@@ -995,17 +981,15 @@ fn slice_outcome_registry_amendment_required_writes_payload() {
     );
 }
 
-/// Missing required flags surface a clear `Error::Config` (exit code 1).
+/// Missing required flags surface a clear `Error::Diag` (exit code 1).
 #[test]
-fn slice_outcome_registry_amendment_required_missing_flags_errors() {
+fn outcome_registry_amendment_missing_flags() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
     let assert = specify()
         .current_dir(project.root())
         .args([
-            "--format",
-            "json",
             "slice",
             "outcome",
             "set",
@@ -1019,12 +1003,11 @@ fn slice_outcome_registry_amendment_required_missing_flags_errors() {
         ])
         .assert()
         .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
-    let msg = value["message"].as_str().unwrap_or("");
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
-        msg.contains("--proposed-schema") || msg.contains("--rationale"),
-        "expected diagnostic naming the missing required flag, got: {msg}",
+        stderr.contains("--proposed-capability") || stderr.contains("--rationale"),
+        "expected clap diagnostic naming the missing required flag, got: {stderr}",
     );
 }
 
@@ -1032,15 +1015,13 @@ fn slice_outcome_registry_amendment_required_missing_flags_errors() {
 /// `registry-amendment-required` is rejected — those flags are
 /// outcome-scoped, and silently dropping them would mask author intent.
 #[test]
-fn slice_outcome_proposal_flags_rejected_for_other_kinds() {
+fn outcome_proposal_flags_rejected_otherwise() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
     let assert = specify()
         .current_dir(project.root())
         .args([
-            "--format",
-            "json",
             "slice",
             "outcome",
             "set",
@@ -1054,12 +1035,11 @@ fn slice_outcome_proposal_flags_rejected_for_other_kinds() {
         ])
         .assert()
         .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
-    let msg = value["message"].as_str().unwrap_or("");
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
     assert!(
-        msg.contains("--proposed-name"),
-        "expected diagnostic naming the offending flag, got: {msg}",
+        stderr.contains("--proposed-name"),
+        "expected clap diagnostic naming the offending flag, got: {stderr}",
     );
 }
 
@@ -1068,7 +1048,7 @@ fn slice_outcome_proposal_flags_rejected_for_other_kinds() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_journal_append_appends_to_file() {
+fn journal_append_writes_to_file() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1092,7 +1072,7 @@ fn slice_journal_append_appends_to_file() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["kind"], "question");
@@ -1122,7 +1102,7 @@ fn slice_journal_append_appends_to_file() {
 }
 
 #[test]
-fn slice_journal_append_stamps_rfc3339_timestamp() {
+fn journal_append_stamps_rfc3339() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1161,7 +1141,7 @@ fn slice_journal_append_stamps_rfc3339_timestamp() {
 }
 
 #[test]
-fn slice_journal_append_preserves_existing_entries() {
+fn journal_append_preserves_entries() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1188,7 +1168,7 @@ fn slice_journal_append_preserves_existing_entries() {
 }
 
 #[test]
-fn slice_journal_append_text_output() {
+fn journal_append_text_output() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1202,7 +1182,7 @@ fn slice_journal_append_text_output() {
 }
 
 #[test]
-fn slice_journal_append_on_nonexistent_slice_errors() {
+fn journal_append_errors_on_missing() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -1221,7 +1201,7 @@ fn slice_journal_append_on_nonexistent_slice_errors() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     let msg = value["message"].as_str().unwrap_or("");
     assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
 }
@@ -1231,7 +1211,7 @@ fn slice_journal_append_on_nonexistent_slice_errors() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn slice_journal_show_empty_then_populated() {
+fn journal_show_empty_then_populated() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -1242,7 +1222,7 @@ fn slice_journal_show_empty_then_populated() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "foo");
     assert!(
         value["entries"].as_array().unwrap().is_empty(),
@@ -1304,7 +1284,7 @@ fn slice_journal_show_empty_then_populated() {
 }
 
 #[test]
-fn slice_journal_show_on_nonexistent_slice_errors() {
+fn journal_show_errors_on_missing() {
     let project = Project::init();
     let assert = specify()
         .current_dir(project.root())
@@ -1312,22 +1292,22 @@ fn slice_journal_show_on_nonexistent_slice_errors() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stdout);
+    let value = parse_json(&assert.get_output().stderr);
     let msg = value["message"].as_str().unwrap_or("");
     assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
 }
 
 #[test]
-fn phase_outcome_round_trips_through_serde() {
-    use specify::{Outcome, Phase, PhaseOutcome, Rfc3339Stamp};
-    for outcome in [Outcome::Success, Outcome::Failure, Outcome::Deferred] {
+fn phase_outcome_round_trips_serde() {
+    use specify_slice::{Outcome, OutcomeKind, Phase, Rfc3339Stamp};
+    for outcome in [OutcomeKind::Success, OutcomeKind::Failure, OutcomeKind::Deferred] {
         for phase in [Phase::Define, Phase::Build, Phase::Merge] {
-            let context = if matches!(outcome, Outcome::Success) {
+            let context = if matches!(outcome, OutcomeKind::Success) {
                 None
             } else {
                 Some("verbatim detail".to_string())
             };
-            let value = PhaseOutcome {
+            let value = Outcome {
                 phase,
                 outcome: outcome.clone(),
                 at: Rfc3339Stamp::new("2024-08-01T10:00:00+00:00".to_string()),
@@ -1335,80 +1315,21 @@ fn phase_outcome_round_trips_through_serde() {
                 context,
             };
             let yaml = serde_saphyr::to_string(&value).expect("serialize");
-            let parsed: PhaseOutcome = serde_saphyr::from_str(&yaml).expect("parse");
+            let parsed: Outcome = serde_saphyr::from_str(&yaml).expect("parse");
             assert_eq!(parsed, value, "round-trip failed for yaml:\n{yaml}");
         }
     }
 }
 
-// ---- specify {initiative, plan} * are gone (RFC-13 Phase 3.5 cut-over) ----
-//
-// Phase 3.2 deleted the pre-RFC `change` per-loop-unit verb (renamed to
-// `slice`). Phase 3.5 then re-uses the `change` noun as the operator-
-// facing umbrella that nests the plan sub-resource: `Commands::Change`
-// folds in what used to be `Commands::Initiative` and adds a nested
-// `change plan *` family that replaces top-level `Commands::Plan`. The
-// regression tests below pin the post-3.5 surface — `change` is back as
-// a top-level subcommand, while `initiative` and `plan` are gone from
-// the binary's `--help` and trip clap's unrecognised-subcommand path.
+// ---- specify change is the umbrella for the operator surface ----
 
 #[test]
 fn change_umbrella_is_listed_in_top_level_help() {
     let assert = specify().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(stdout.contains("slice"), "post-RFC-13 --help must list `slice`, got:\n{stdout}");
-    // `--help` lists subcommand names one-per-line (clap default).
-    // After Phase 3.5, the umbrella `change` subcommand is back.
     assert!(
         stdout.lines().any(|line| line.trim_start().starts_with("change ")),
         "post-3.5 --help must list `change` as the umbrella subcommand, got:\n{stdout}"
-    );
-}
-
-#[test]
-fn initiative_subcommand_is_gone_from_top_level_help() {
-    let assert = specify().arg("--help").assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        !stdout.lines().any(|line| {
-            line.trim_start().starts_with("initiative ") || line.trim_start() == "initiative"
-        }),
-        "post-3.5 --help must not list `initiative` (folded into `change`), got:\n{stdout}"
-    );
-}
-
-#[test]
-fn plan_subcommand_is_gone_from_top_level_help() {
-    let assert = specify().arg("--help").assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        !stdout
-            .lines()
-            .any(|line| line.trim_start().starts_with("plan ") || line.trim_start() == "plan"),
-        "post-3.5 --help must not list top-level `plan` (folded into `change plan`), got:\n{stdout}"
-    );
-}
-
-#[test]
-fn initiative_subcommand_returns_clap_unrecognised_subcommand_error() {
-    let assert = specify().args(["initiative", "create", "demo"]).assert().failure();
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
-    assert!(
-        stderr.to_lowercase().contains("unrecognized")
-            || stderr.to_lowercase().contains("unrecognised")
-            || stderr.to_lowercase().contains("unexpected argument"),
-        "post-3.5 `specify initiative *` must be a clap-level error, got stderr:\n{stderr}"
-    );
-}
-
-#[test]
-fn plan_subcommand_returns_clap_unrecognised_subcommand_error() {
-    let assert = specify().args(["plan", "add", "foo"]).assert().failure();
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
-    assert!(
-        stderr.to_lowercase().contains("unrecognized")
-            || stderr.to_lowercase().contains("unrecognised")
-            || stderr.to_lowercase().contains("unexpected argument"),
-        "post-3.5 top-level `specify plan *` must be a clap-level error, got stderr:\n{stderr}"
     );
 }

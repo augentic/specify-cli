@@ -1,0 +1,47 @@
+[workspace]
+resolver = "3"
+members = ["contract", "vectis"]
+
+# Sibling workspace housing the WASI carve-outs that ship as standalone
+# `wasm32-wasip2` components (`specify-contract`, `specify-vectis`). Keeping
+# them outside the main workspace preserves their dependency-minimal posture
+# and shields them from the host CLI's `wasmtime` / `tokio` / `ureq` tree.
+# See the carve-out paragraph in `../AGENTS.md` for the discipline.
+
+[workspace.package]
+authors = ["Augentic"]
+edition = "2024"
+homepage = "https://augentic.io"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/augentic/specify-cli"
+rust-version = "1.93"
+version = "0.3.0"
+publish = false
+
+[workspace.dependencies]
+specify-validate = { path = "../crates/validate" }
+clap = { version = "4", features = ["derive", "env"] }
+jsonschema = { version = "0.46", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde-saphyr = "0.0.25"
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+toml = "1"
+assert_cmd = "2"
+tempfile = "3"
+
+[workspace.lints.rust]
+# Leaner lint posture than the host workspace. The vectis scaffold tests
+# legitimately call `std::env::set_var` (now unsafe in 2024), so we cannot
+# forbid `unsafe_code` outright; production paths in these crates never
+# reach for `unsafe` blocks regardless.
+unused_extern_crates = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = true
+opt-level = 2
+strip = true

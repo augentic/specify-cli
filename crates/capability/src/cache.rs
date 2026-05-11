@@ -33,7 +33,8 @@ impl CacheMeta {
     /// Load `.cache-meta.yaml`:
     /// - `Ok(None)` if the file is missing (cache empty).
     /// - `Ok(Some(meta))` on a successful parse.
-    /// - `Err(Error::Config(_))` if the file exists but cannot be parsed.
+    /// - `Err(Error::Diag { code: "cache-meta-malformed" | "cache-meta-read-failed", .. })`
+    ///   if the file exists but cannot be parsed.
     ///
     /// # Errors
     ///
@@ -44,11 +45,15 @@ impl CacheMeta {
             Ok(contents) => contents,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(err) => {
-                return Err(Error::Config(format!("failed to read {}: {err}", path.display())));
+                return Err(Error::Diag {
+                    code: "cache-meta-read-failed",
+                    detail: format!("failed to read {}: {err}", path.display()),
+                });
             }
         };
-        let meta: Self = serde_saphyr::from_str(&contents).map_err(|err| {
-            Error::Config(format!("invalid cache-meta at {}: {err}", path.display()))
+        let meta: Self = serde_saphyr::from_str(&contents).map_err(|err| Error::Diag {
+            code: "cache-meta-malformed",
+            detail: format!("invalid cache-meta at {}: {err}", path.display()),
         })?;
         Ok(Some(meta))
     }
@@ -61,8 +66,8 @@ impl CacheMeta {
             Ok(v) => v,
             Err(err) => {
                 return vec![ValidationResult::Fail {
-                    rule_id: "cache-meta.serializable",
-                    rule: "cache-meta is serializable to JSON",
+                    rule_id: "cache-meta.serializable".into(),
+                    rule: "cache-meta is serializable to JSON".into(),
                     detail: err.to_string(),
                 }];
             }
@@ -77,7 +82,7 @@ impl CacheMeta {
 
     /// True when the cache on disk was populated from `schema_value`.
     ///
-    /// Encoding (per RFC-1 §cache-meta):
+    /// Encoding:
     /// - Bare names (no `://`) → `schema_url == format!("local:{name}")`.
     /// - URL-shaped values → `schema_url == schema_value` (exact match,
     ///   including `@ref` if present).

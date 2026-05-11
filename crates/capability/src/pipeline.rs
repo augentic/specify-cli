@@ -48,12 +48,15 @@ impl PipelineView {
             let brief = Brief::load(&brief_path)?;
 
             if brief.frontmatter.id != entry.id {
-                return Err(Error::SchemaResolution(format!(
-                    "brief at {} declares id `{}` but pipeline entry references id `{}`",
-                    brief_path.display(),
-                    brief.frontmatter.id,
-                    entry.id
-                )));
+                return Err(Error::Diag {
+                    code: "pipeline-brief-id-mismatch",
+                    detail: format!(
+                        "brief at {} declares id `{}` but pipeline entry references id `{}`",
+                        brief_path.display(),
+                        brief.frontmatter.id,
+                        entry.id
+                    ),
+                });
             }
 
             briefs.push((phase, brief));
@@ -65,19 +68,25 @@ impl PipelineView {
         for (_phase, brief) in &briefs {
             for needed in &brief.frontmatter.needs {
                 if !seen.contains(needed.as_str()) {
-                    return Err(Error::SchemaResolution(format!(
-                        "brief `{}` needs `{}` but that brief is not earlier in pipeline order",
-                        brief.frontmatter.id, needed
-                    )));
+                    return Err(Error::Diag {
+                        code: "pipeline-needs-out-of-order",
+                        detail: format!(
+                            "brief `{}` needs `{}` but that brief is not earlier in pipeline order",
+                            brief.frontmatter.id, needed
+                        ),
+                    });
                 }
             }
             if let Some(tracked) = &brief.frontmatter.tracks
                 && !known_ids.contains(tracked.as_str())
             {
-                return Err(Error::SchemaResolution(format!(
-                    "brief `{}` tracks `{}` but no such brief exists in this schema",
-                    brief.frontmatter.id, tracked
-                )));
+                return Err(Error::Diag {
+                    code: "pipeline-tracks-unknown",
+                    detail: format!(
+                        "brief `{}` tracks `{}` but no such brief exists in this schema",
+                        brief.frontmatter.id, tracked
+                    ),
+                });
             }
             seen.insert(brief.frontmatter.id.as_str());
         }
@@ -173,9 +182,10 @@ impl PipelineView {
         }
 
         if order.len() != briefs.len() {
-            return Err(Error::SchemaResolution(format!(
-                "cycle detected in {phase:?} `needs` graph"
-            )));
+            return Err(Error::Diag {
+                code: "pipeline-needs-cycle",
+                detail: format!("cycle detected in {phase:?} `needs` graph"),
+            });
         }
         Ok(order)
     }
@@ -205,7 +215,7 @@ impl PipelineView {
 
 /// Resolve `generates` (a literal filename or glob pattern) against
 /// `change_dir`, returning `true` when it matches at least one file.
-pub fn artifact_present(change_dir: &Path, generates: &str) -> bool {
+pub(crate) fn artifact_present(change_dir: &Path, generates: &str) -> bool {
     let joined = change_dir.join(generates);
     if generates.contains('*') {
         let Some(pattern) = joined.to_str() else {

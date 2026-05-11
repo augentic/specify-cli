@@ -1,16 +1,16 @@
 # `plan-validate-output/schema.json`
 
-Canonical JSON Schema (2020-12) for the response body emitted by `specify plan validate --format json` under the v2 JSON contract.
+Canonical JSON Schema (2020-12) for the response body emitted by `specify change plan validate --format json`.
 
 ## Producer
 
-`specify plan validate --format json` emits an object shaped like:
+`specify change plan validate --format json` emits an object shaped like:
 
 ```json
 {
-  "schema-version": 2,
+  "envelope-version": 6,
   "plan": {
-    "name": "<kebab-initiative-name>",
+    "name": "<kebab-change-name>",
     "path": "<absolute-or-relative-path-to-plan.yaml>"
   },
   "results": [
@@ -29,18 +29,18 @@ Canonical JSON Schema (2020-12) for the response body emitted by `specify plan v
 
 ## Consumer wiring
 
-Skills that shell out to `specify plan validate --format json` should parse the response against this schema before branching on `results`. The recommended pattern in a Node- or Python-driven runner is to pin the schema via the checked-in file path rather than fetching it at runtime so validation stays hermetic.
+Skills that shell out to `specify change plan validate --format json` should parse the response against this schema before branching on `results`. The recommended pattern in a Node- or Python-driven runner is to pin the schema via the checked-in file path rather than fetching it at runtime so validation stays hermetic.
 
 The same `schema.json` is the source of truth for Rust-side CLI tests (`tests/plan.rs` under `specify-cli`); treat that file as the canonical consumer when patching the schema.
 
-## RFC-3b validation codes
+## Validation codes
 
-`specify plan validate` emits four additional codes when `registry.yaml` is present:
+`specify change plan validate` emits additional codes when `registry.yaml` is present:
 
-- `project-not-in-registry` (error): a change's `project` value does not match any `projects[].name` in the registry.
-- `project-missing-multi-repo` (error): when the registry has multiple projects, a change is missing the required `project` field.
+- `project-not-in-registry` (error): a slice's `project` value does not match any `projects[].name` in the registry.
+- `project-missing-multi-repo` (error): when the registry has multiple projects, a slice is missing the required `project` field.
 - `description-missing-multi-repo` (error): when the registry has multiple projects, a project entry is missing the required `description` field.
-- `schema-mismatch-workspace` (warning): a workspace clone's `.specify/project.yaml` declares a different `schema` than the corresponding registry entry.
+- `capability-mismatch-workspace` (warning): a workspace clone's `.specify/project.yaml` declares a different `capability` than the corresponding registry entry.
 
 ## See also
 

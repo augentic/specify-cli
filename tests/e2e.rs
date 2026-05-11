@@ -20,15 +20,11 @@ use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::copy_dir;
+use common::{GIT_ENV, assert_golden_at, copy_dir, parse_stdout, repo_root, run_git, specify};
 
 // ---------------------------------------------------------------------------
 // Paths + setup helpers
 // ---------------------------------------------------------------------------
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
 
 fn e2e_fixtures() -> PathBuf {
     repo_root().join("tests/fixtures/e2e")
@@ -38,38 +34,10 @@ fn goldens_dir() -> PathBuf {
     e2e_fixtures().join("goldens")
 }
 
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
-
-const GIT_TEST_ENV: [(&str, &str); 4] = [
-    ("GIT_AUTHOR_NAME", "Specify Test"),
-    ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
-    ("GIT_COMMITTER_NAME", "Specify Test"),
-    ("GIT_COMMITTER_EMAIL", "specify-test@example.com"),
-];
-
 fn specify_with_git_identity() -> Command {
     let mut cmd = specify();
-    cmd.envs(GIT_TEST_ENV);
+    cmd.envs(GIT_ENV);
     cmd
-}
-
-fn run_git(root: &Path, args: &[&str]) -> String {
-    let output = std::process::Command::new("git")
-        .current_dir(root)
-        .args(args)
-        .envs(GIT_TEST_ENV)
-        .output()
-        .unwrap_or_else(|err| panic!("git {} failed to start: {err}", args.join(" ")));
-    assert!(
-        output.status.success(),
-        "git {} failed\nstdout:\n{}\nstderr:\n{}",
-        args.join(" "),
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8(output.stdout).expect("git stdout utf8")
 }
 
 /// A throwaway `.specify/` project anchored in a temp directory.
@@ -125,108 +93,8 @@ impl Project {
 // Substitution / golden comparison
 // ---------------------------------------------------------------------------
 
-const TEMPDIR_PLACEHOLDER: &str = "<TEMPDIR>";
-
-/// Substitution rule: literal `from` → placeholder `to`.
-struct Sub {
-    from: String,
-    to: &'static str,
-}
-
-impl Sub {
-    fn new(from: impl Into<String>, to: &'static str) -> Self {
-        Self {
-            from: from.into(),
-            to,
-        }
-    }
-}
-
-/// Every way the user's tempdir might appear in stdout. macOS canonicalises
-/// `/var/folders/...` to `/private/var/folders/...` whenever a subcommand
-/// touches the filesystem, so we have to strip both spellings.
-///
-/// Apply the longest candidate first. On macOS the canonical tempdir
-/// path (`/private/var/folders/...`) is a superstring of the raw path
-/// (`/var/folders/...`); if we substitute the raw path first, we strip
-/// inside the canonical one and leave a stray `/private` prefix in the
-/// golden. Sorting by length descending avoids that.
-fn tempdir_subs(root: &Path) -> Vec<Sub> {
-    let mut subs: Vec<Sub> = Vec::new();
-    if let Some(raw) = root.to_str() {
-        subs.push(Sub::new(raw.to_string(), TEMPDIR_PLACEHOLDER));
-    }
-    if let Ok(canonical) = fs::canonicalize(root)
-        && let Some(canonical_str) = canonical.to_str()
-        && Some(canonical_str) != root.to_str()
-    {
-        subs.push(Sub::new(canonical_str.to_string(), TEMPDIR_PLACEHOLDER));
-    }
-    subs.sort_by_key(|s| std::cmp::Reverse(s.from.len()));
-    subs
-}
-
-/// Recursively walk `value` and apply every substitution to every string.
-fn strip_substitutions(value: &mut Value, subs: &[Sub]) {
-    match value {
-        Value::String(s) => {
-            for sub in subs {
-                if s.contains(&sub.from) {
-                    *s = s.replace(&sub.from, sub.to);
-                }
-            }
-        }
-        Value::Array(items) => {
-            for item in items {
-                strip_substitutions(item, subs);
-            }
-        }
-        Value::Object(map) => {
-            for (_k, v) in map.iter_mut() {
-                strip_substitutions(v, subs);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Compare `actual` against the checked-in golden or, when the
-/// `REGENERATE_GOLDENS` env var is set, rewrite the golden on disk.
-#[allow(clippy::needless_pass_by_value)]
 fn assert_golden(name: &str, actual: Value) {
-    let golden_path = goldens_dir().join(name);
-    let rendered = serde_json::to_string_pretty(&actual).expect("pretty json");
-
-    if std::env::var_os("REGENERATE_GOLDENS").is_some() {
-        fs::create_dir_all(goldens_dir()).expect("mkdir goldens");
-        fs::write(&golden_path, format!("{rendered}\n")).expect("write golden");
-        return;
-    }
-
-    let expected_raw = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
-        panic!(
-            "golden {} missing ({err}); regenerate via REGENERATE_GOLDENS=1 cargo test --test e2e",
-            golden_path.display()
-        )
-    });
-    let expected: Value = serde_json::from_str(&expected_raw)
-        .unwrap_or_else(|err| panic!("golden {} is not JSON: {err}", golden_path.display()));
-
-    assert_eq!(
-        actual,
-        expected,
-        "stdout diverged from golden {}\n--- actual ---\n{rendered}\n--- expected ---\n{expected_raw}",
-        golden_path.display()
-    );
-}
-
-/// Parse `stdout` as JSON and apply the standard tempdir strip.
-fn parse_stdout(stdout: &[u8], root: &Path) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    let mut value: Value =
-        serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"));
-    strip_substitutions(&mut value, &tempdir_subs(root));
-    value
+    assert_golden_at(&goldens_dir(), name, actual);
 }
 
 /// Replace any RFC3339 `YYYY-MM-DDTHH:MM:SS(Z|±HH:MM)` timestamp in JSON
@@ -274,7 +142,7 @@ fn validate_good_slice_passes() {
     assert_eq!(assert.get_output().status.code(), Some(0));
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 3);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["passed"], true);
     assert_golden("validate-good.json", actual);
 }
@@ -296,7 +164,7 @@ fn validate_bad_slice_fails_with_exit_two() {
     assert_eq!(assert.get_output().status.code(), Some(2), "validate on bad fixture must exit 2");
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 3);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["passed"], false);
     assert_golden("validate-bad.json", actual);
 }
@@ -306,7 +174,7 @@ fn validate_bad_slice_fails_with_exit_two() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn merge_two_spec_slice_produces_baselines_and_archive() {
+fn merge_two_spec_slice_produces_baselines() {
     let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
 
@@ -340,12 +208,12 @@ fn merge_two_spec_slice_produces_baselines_and_archive() {
     );
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 3);
+    assert_eq!(actual["envelope-version"], 6);
     assert_golden("merge-two-spec.json", actual);
 }
 
 #[test]
-fn workspace_merge_auto_commit_excludes_generated_residue() {
+fn workspace_merge_excludes_generated() {
     let tmp = tempdir().expect("tempdir");
     let project_root = tmp.path().join(".specify/workspace/orders");
     fs::create_dir_all(&project_root).expect("mkdir workspace project");
@@ -435,7 +303,7 @@ fn task_progress_reports_counts_and_items() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 3);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["total"], 5);
     assert_eq!(actual["complete"], 2);
     assert_eq!(actual["pending"], 3);
@@ -447,7 +315,7 @@ fn task_progress_reports_counts_and_items() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn task_mark_marks_then_is_idempotent() {
+fn task_mark_is_idempotent() {
     let project = Project::init().with_schemas();
     project.stage_slice("good-slice");
     let tasks_path = project.root().join(".specify/slices/my-slice/tasks.md");
@@ -462,7 +330,7 @@ fn task_mark_marks_then_is_idempotent() {
         .assert()
         .success();
     let first_value = parse_stdout(&first.get_output().stdout, project.root());
-    assert_eq!(first_value["schema-version"], 3);
+    assert_eq!(first_value["envelope-version"], 6);
     assert_eq!(first_value["marked"], "1.1");
     assert_eq!(first_value["idempotent"], false);
 
@@ -493,7 +361,7 @@ fn task_mark_marks_then_is_idempotent() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn capability_resolve_local_returns_local_source() {
+fn capability_resolve_local_returns_local() {
     let project = Project::init().with_schemas();
     fs::remove_dir_all(project.root().join(".specify/.cache/omnia"))
         .expect("remove cached capability");
@@ -507,7 +375,7 @@ fn capability_resolve_local_returns_local_source() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 3);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["capability-value"], "omnia");
     assert_eq!(actual["source"], "local");
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
@@ -522,7 +390,7 @@ fn capability_resolve_local_returns_local_source() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn capability_resolve_cached_returns_cached_source() {
+fn capability_resolve_returns_cached() {
     // `init` + cache-only layout (no `schemas/omnia` under the tempdir).
     let project = Project::init().with_cached_schema();
 
@@ -535,7 +403,7 @@ fn capability_resolve_cached_returns_cached_source() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["schema-version"], 3);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["source"], "cached");
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
@@ -554,7 +422,7 @@ fn capability_resolve_cached_returns_cached_source() {
 /// `slice outcome show --format json`, and assert the full JSON
 /// shape. Also covers the unstamped case where `outcome` must be `null`.
 #[test]
-fn phase_outcome_round_trip_via_slice_outcome_verb() {
+fn phase_outcome_round_trip_via_slice() {
     let project = Project::init();
 
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
@@ -584,7 +452,7 @@ fn phase_outcome_round_trip_via_slice_outcome_verb() {
 
     let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-    assert_eq!(actual["schema-version"], 3);
+    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["name"], "foo");
     let outcome = &actual["outcome"];
     assert_eq!(outcome["phase"], "build");
@@ -614,7 +482,7 @@ fn phase_outcome_round_trip_via_slice_outcome_verb() {
     assert_eq!(assert.get_output().status.code(), Some(0));
 
     let value = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "bar");
     assert!(
         value["outcome"].is_null(),

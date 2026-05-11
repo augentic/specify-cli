@@ -119,6 +119,7 @@
       "status-reason": null
     }
   ],
+  "envelope-version": 6,
   "failed": [
     {
       "name": "checkout-api",
@@ -134,6 +135,5 @@
   "plan": {
     "name": "platform-v2",
     "path": "<TEMPDIR>/plan.yaml"
-  },
-  "schema-version": 3
+  }
 }

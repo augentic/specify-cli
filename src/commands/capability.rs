@@ -1,28 +1,36 @@
-#![allow(
-    clippy::items_after_statements,
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to these command handlers."
-)]
-
 //! `specify capability {resolve, check, pipeline}`.
 
+pub(crate) mod cli;
+
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use specify::{
-    CAPABILITY_FILENAME, Capability, CapabilitySource, Error, ManifestProbe, Phase,
-    ValidationResult,
-};
+use specify_capability::{Capability, CapabilitySource, Phase};
+use specify_error::{Error, Result};
+use specify_validate::ValidationResult;
 
-use crate::cli::OutputFormat;
-use crate::context::CommandContext;
-use crate::output::{CliResult, emit_response};
+use crate::cli::Format;
+use crate::context::Ctx;
+use crate::output::{Out, Render};
 
-pub fn resolve(
-    format: OutputFormat, capability_value: String, project_dir: PathBuf,
-) -> Result<CliResult, Error> {
-    let (root_dir, source) = Capability::locate(&capability_value, &project_dir)?;
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ResolveBody {
+    capability_value: String,
+    resolved_path: String,
+    source: &'static str,
+}
+
+impl Render for ResolveBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(w, "{}", self.resolved_path)
+    }
+}
+
+pub(crate) fn resolve(format: Format, capability_value: String, project_dir: &Path) -> Result<()> {
+    let (root_dir, source) = Capability::locate(&capability_value, project_dir)?;
     enforce_capability_filename(&root_dir)?;
     let (source_label, path) = match &source {
         CapabilitySource::Local(p) => ("local", p.clone()),
@@ -30,22 +38,12 @@ pub fn resolve(
         _ => ("unknown", PathBuf::new()),
     };
 
-    #[derive(Serialize)]
-    #[serde(rename_all = "kebab-case")]
-    struct ResolveBody {
-        capability_value: String,
-        resolved_path: String,
-        source: &'static str,
-    }
-    match format {
-        OutputFormat::Json => emit_response(ResolveBody {
-            capability_value,
-            resolved_path: path.display().to_string(),
-            source: source_label,
-        })?,
-        OutputFormat::Text => println!("{}", path.display()),
-    }
-    Ok(CliResult::Success)
+    Out::for_format(format).write(&ResolveBody {
+        capability_value,
+        resolved_path: path.display().to_string(),
+        source: source_label,
+    })?;
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -65,123 +63,113 @@ struct BriefRow {
 struct PipelineBody {
     phase: String,
     slice: Option<String>,
-    briefs: Vec<Value>,
+    briefs: Vec<BriefRow>,
 }
 
-pub fn pipeline(
-    ctx: &CommandContext, phase: Phase, slice: Option<PathBuf>,
-) -> Result<CliResult, Error> {
-    let pipeline = ctx.load_pipeline()?;
-
-    let order = pipeline.topo_order(phase)?;
-    let completion = slice.as_deref().map(|slice_dir| pipeline.completion_for(phase, slice_dir));
-
-    match ctx.format {
-        OutputFormat::Json => {
-            let briefs: Vec<Value> = order
-                .iter()
-                .map(|b| {
-                    let present = completion.as_ref().and_then(|c| c.get(&b.frontmatter.id));
-                    serde_json::to_value(BriefRow {
-                        id: b.frontmatter.id.clone(),
-                        description: b.frontmatter.description.clone(),
-                        path: b.path.display().to_string(),
-                        needs: b.frontmatter.needs.clone(),
-                        generates: b.frontmatter.generates.clone(),
-                        tracks: b.frontmatter.tracks.clone(),
-                        present: present.copied().map_or(Value::Null, Value::from),
-                    })
-                    .expect("BriefRow serialises")
-                })
-                .collect();
-            emit_response(PipelineBody {
-                phase: phase.to_string(),
-                slice: slice.as_ref().map(|p| p.display().to_string()),
-                briefs,
-            })?;
-        }
-        OutputFormat::Text => {
-            println!("phase: {phase}");
-            for b in &order {
-                let present_label = completion
-                    .as_ref()
-                    .and_then(|c| c.get(&b.frontmatter.id))
-                    .copied()
-                    .map_or("", |p| if p { " [x]" } else { " [ ]" });
-                println!("  {}{present_label}", b.frontmatter.id);
-                if let Some(g) = &b.frontmatter.generates {
-                    println!("    generates: {g}");
-                }
-                if !b.frontmatter.needs.is_empty() {
-                    println!("    needs: {}", b.frontmatter.needs.join(", "));
-                }
-                if let Some(t) = &b.frontmatter.tracks {
-                    println!("    tracks: {t}");
-                }
+impl Render for PipelineBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(w, "phase: {}", self.phase)?;
+        for b in &self.briefs {
+            let present_label = match &b.present {
+                Value::Bool(true) => " [x]",
+                Value::Bool(false) => " [ ]",
+                _ => "",
+            };
+            writeln!(w, "  {}{present_label}", b.id)?;
+            if let Some(g) = &b.generates {
+                writeln!(w, "    generates: {g}")?;
+            }
+            if !b.needs.is_empty() {
+                writeln!(w, "    needs: {}", b.needs.join(", "))?;
+            }
+            if let Some(t) = &b.tracks {
+                writeln!(w, "    tracks: {t}")?;
             }
         }
+        Ok(())
     }
-    Ok(CliResult::Success)
 }
 
-pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult, Error> {
-    let manifest_path = match Capability::probe_dir(&capability_dir) {
-        ManifestProbe::Found(path) => path,
-        ManifestProbe::Missing => {
-            return Err(Error::SchemaResolution(format!(
-                "no `{CAPABILITY_FILENAME}` at {}",
-                capability_dir.display()
-            )));
+pub(crate) fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<&Path>) -> Result<()> {
+    let pipeline = ctx.load_pipeline()?;
+    let order = pipeline.topo_order(phase)?;
+    let completion = slice.map(|slice_dir| pipeline.completion_for(phase, slice_dir));
+
+    let briefs = order
+        .iter()
+        .map(|b| {
+            let present = completion.as_ref().and_then(|c| c.get(&b.frontmatter.id));
+            BriefRow {
+                id: b.frontmatter.id.clone(),
+                description: b.frontmatter.description.clone(),
+                path: b.path.display().to_string(),
+                needs: b.frontmatter.needs.clone(),
+                generates: b.frontmatter.generates.clone(),
+                tracks: b.frontmatter.tracks.clone(),
+                present: present.copied().map_or(Value::Null, Value::from),
+            }
+        })
+        .collect();
+
+    ctx.out().write(&PipelineBody {
+        phase: phase.to_string(),
+        slice: slice.map(|p| p.display().to_string()),
+        briefs,
+    })?;
+    Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct CheckBody {
+    passed: bool,
+    results: Vec<CheckRow>,
+}
+
+impl Render for CheckBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        if self.passed {
+            writeln!(w, "Capability OK")
+        } else {
+            let fail_count =
+                self.results.iter().filter(|r| matches!(r, CheckRow::Fail { .. })).count();
+            writeln!(w, "Capability invalid: {fail_count} errors")?;
+            for r in &self.results {
+                if let CheckRow::Fail { rule_id, detail, .. } = r {
+                    writeln!(w, "  [fail] {rule_id}: {detail}")?;
+                }
+            }
+            Ok(())
         }
-    };
-    let capability = load_capability(&manifest_path)?;
+    }
+}
+
+pub(crate) fn check(format: Format, capability_dir: PathBuf) -> Result<()> {
+    let manifest_path =
+        Capability::probe_dir(&capability_dir).ok_or_else(|| Error::CapabilityManifestMissing {
+            dir: capability_dir.clone(),
+        })?;
+    let capability = load_manifest(&manifest_path)?;
     let results = capability.validate_structure();
     let passed = !results.iter().any(|r| matches!(r, ValidationResult::Fail { .. }));
 
-    match format {
-        OutputFormat::Json => {
-            #[derive(Serialize)]
-            #[serde(rename_all = "kebab-case")]
-            struct CheckBody {
-                passed: bool,
-                results: Vec<Value>,
-            }
-            let results_json: Vec<Value> = results.iter().map(validation_result_to_json).collect();
-            emit_response(CheckBody {
-                passed,
-                results: results_json,
-            })?;
-        }
-        OutputFormat::Text => {
-            if passed {
-                println!("Capability OK");
-            } else {
-                let fail_count =
-                    results.iter().filter(|r| matches!(r, ValidationResult::Fail { .. })).count();
-                println!("Capability invalid: {fail_count} errors");
-                for r in &results {
-                    if let ValidationResult::Fail { rule_id, detail, .. } = r {
-                        println!("  [fail] {rule_id}: {detail}");
-                    }
-                }
-            }
-        }
-    }
-    Ok(if passed { CliResult::Success } else { CliResult::ValidationFailed })
+    let body = CheckBody {
+        passed,
+        results: results.iter().map(CheckRow::from).collect(),
+    };
+    Out::for_format(format).write(&body)?;
+    if passed { Ok(()) } else { Err(Error::CapabilityCheckFailed { dir: capability_dir }) }
 }
 
-/// Surface a `SchemaResolution` error when `dir` does not carry a
-/// `capability.yaml`.
-fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
-    match Capability::probe_dir(dir) {
-        ManifestProbe::Found(_) => Ok(()),
-        ManifestProbe::Missing => {
-            Err(Error::SchemaResolution(format!("no `{CAPABILITY_FILENAME}` at {}", dir.display())))
-        }
-    }
+/// Surface a `capability-manifest-missing` diagnostic when `dir` does
+/// not carry a `capability.yaml`.
+fn enforce_capability_filename(dir: &Path) -> Result<()> {
+    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::CapabilityManifestMissing {
+        dir: dir.to_path_buf(),
+    })
 }
 
-fn load_capability(manifest_path: &Path) -> Result<Capability, Error> {
+fn load_manifest(manifest_path: &Path) -> Result<Capability> {
     let text = std::fs::read_to_string(manifest_path)?;
     let capability: Capability = serde_saphyr::from_str(&text)?;
     Ok(capability)
@@ -190,40 +178,43 @@ fn load_capability(manifest_path: &Path) -> Result<Capability, Error> {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "status")]
-enum CheckRow<'a> {
+enum CheckRow {
     #[serde(rename = "pass")]
-    Pass { rule_id: &'a str, rule: &'a str },
+    Pass { rule_id: String, rule: String },
     #[serde(rename = "fail")]
-    Fail { rule_id: &'a str, rule: &'a str, detail: &'a str },
+    Fail { rule_id: String, rule: String, detail: String },
     #[serde(rename = "deferred")]
-    Deferred { rule_id: &'a str, rule: &'a str, reason: &'a str },
+    Deferred { rule_id: String, rule: String, reason: String },
+    #[serde(rename = "unknown")]
+    Unknown,
 }
 
-fn validation_result_to_json(r: &ValidationResult) -> Value {
-    let typed = match r {
-        ValidationResult::Pass { rule_id, rule } => CheckRow::Pass { rule_id, rule },
-        ValidationResult::Fail {
-            rule_id,
-            rule,
-            detail,
-        } => CheckRow::Fail {
-            rule_id,
-            rule,
-            detail,
-        },
-        ValidationResult::Deferred {
-            rule_id,
-            rule,
-            reason,
-        } => CheckRow::Deferred {
-            rule_id,
-            rule,
-            reason,
-        },
-        _ => {
-            return serde_json::to_value(serde_json::json!({"status": "unknown"}))
-                .expect("fallback JSON serialises");
+impl From<&ValidationResult> for CheckRow {
+    fn from(r: &ValidationResult) -> Self {
+        match r {
+            ValidationResult::Pass { rule_id, rule } => Self::Pass {
+                rule_id: rule_id.to_string(),
+                rule: rule.to_string(),
+            },
+            ValidationResult::Fail {
+                rule_id,
+                rule,
+                detail,
+            } => Self::Fail {
+                rule_id: rule_id.to_string(),
+                rule: rule.to_string(),
+                detail: detail.clone(),
+            },
+            ValidationResult::Deferred {
+                rule_id,
+                rule,
+                reason,
+            } => Self::Deferred {
+                rule_id: rule_id.to_string(),
+                rule: rule.to_string(),
+                reason: reason.to_string(),
+            },
+            _ => Self::Unknown,
         }
-    };
-    serde_json::to_value(typed).expect("CheckRow serialises")
+    }
 }

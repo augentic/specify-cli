@@ -1,10 +1,10 @@
 {
   "active": "a",
+  "capability": null,
   "description": null,
+  "envelope-version": 6,
   "next": null,
   "project": null,
   "reason": "in-progress",
-  "schema": null,
-  "schema-version": 3,
   "sources": null
 }

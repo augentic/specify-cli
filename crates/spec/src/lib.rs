@@ -9,34 +9,31 @@
 //! is surfaced as structural data rather than rejected here, because
 //! coherence checking is `specify-merge`'s job.
 
-// specify-error is listed as a dependency in Cargo.toml for workspace
-// consistency, but nothing in this crate is currently fallible. Referenced
-// here to satisfy `unused_crate_dependencies` should it ever be enabled.
-// Same story for regex — declared in Cargo.toml per the change scope;
-// validation that needs it lives in specify-merge / specify-validate.
-use regex as _;
-use specify_error as _;
+/// Hard-coded spec format constants (matches
+/// `plugins/spec/references/spec-format.md`).
+pub mod format {
+    /// Markdown heading prefix for requirement blocks.
+    pub const REQ_HEADING: &str = "### Requirement:";
+    /// Line prefix that introduces a requirement's ID.
+    pub const REQ_ID_PREFIX: &str = "ID:";
+    /// Regex pattern for valid requirement IDs (`REQ-NNN`).
+    pub const REQ_ID_PATTERN: &str = r"^REQ-[0-9]{3}$";
+    /// Markdown heading prefix for scenario blocks.
+    pub const SCENARIO_HEADING: &str = "#### Scenario:";
+    /// Section heading for added requirements in a delta spec.
+    pub const DELTA_ADDED: &str = "## ADDED Requirements";
+    /// Section heading for modified requirements in a delta spec.
+    pub const DELTA_MODIFIED: &str = "## MODIFIED Requirements";
+    /// Section heading for removed requirements in a delta spec.
+    pub const DELTA_REMOVED: &str = "## REMOVED Requirements";
+    /// Section heading for renamed requirements in a delta spec.
+    pub const DELTA_RENAMED: &str = "## RENAMED Requirements";
+}
 
-// ---------------------------------------------------------------------------
-// Hard-coded spec format (matches plugins/spec/references/spec-format.md).
-// ---------------------------------------------------------------------------
-
-/// Markdown heading prefix for requirement blocks.
-pub const REQ_HEADING: &str = "### Requirement:";
-/// Line prefix that introduces a requirement's ID.
-pub const REQ_ID_PREFIX: &str = "ID:";
-/// Regex pattern for valid requirement IDs (`REQ-NNN`).
-pub const REQ_ID_PATTERN: &str = r"^REQ-[0-9]{3}$";
-/// Markdown heading prefix for scenario blocks.
-pub const SCENARIO_HEADING: &str = "#### Scenario:";
-/// Section heading for added requirements in a delta spec.
-pub const DELTA_ADDED: &str = "## ADDED Requirements";
-/// Section heading for modified requirements in a delta spec.
-pub const DELTA_MODIFIED: &str = "## MODIFIED Requirements";
-/// Section heading for removed requirements in a delta spec.
-pub const DELTA_REMOVED: &str = "## REMOVED Requirements";
-/// Section heading for renamed requirements in a delta spec.
-pub const DELTA_RENAMED: &str = "## RENAMED Requirements";
+use format::{
+    DELTA_ADDED, DELTA_MODIFIED, DELTA_REMOVED, DELTA_RENAMED, REQ_HEADING, REQ_ID_PREFIX,
+    SCENARIO_HEADING,
+};
 
 // ---------------------------------------------------------------------------
 // Public data types

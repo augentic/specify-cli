@@ -5,47 +5,12 @@
 //! effects are observed exactly as a user would experience them.
 
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
-use assert_cmd::Command;
 use tempfile::tempdir;
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn omnia_schema_dir() -> PathBuf {
-    repo_root().join("schemas").join("omnia")
-}
-
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
-
-const GIT_TEST_ENV: [(&str, &str); 4] = [
-    ("GIT_AUTHOR_NAME", "Specify Test"),
-    ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
-    ("GIT_COMMITTER_NAME", "Specify Test"),
-    ("GIT_COMMITTER_EMAIL", "specify-test@example.com"),
-];
-
-fn run_git(root: &Path, args: &[&str]) -> String {
-    let output = ProcessCommand::new("git")
-        .current_dir(root)
-        .args(args)
-        .envs(GIT_TEST_ENV)
-        .output()
-        .unwrap_or_else(|err| panic!("git {} failed to start: {err}", args.join(" ")));
-    assert!(
-        output.status.success(),
-        "git {} failed\nstdout:\n{}\nstderr:\n{}",
-        args.join(" "),
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8(output.stdout).expect("git stdout utf8")
-}
+mod common;
+use common::{init_hub, omnia_schema_dir, run_git, specify};
 
 #[test]
 fn help_exits_zero_and_prints_usage() {
@@ -123,7 +88,7 @@ fn init_json_format_has_stable_shape() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["schema-version"], 3);
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["capability-name"], "omnia");
     assert!(value["config-path"].is_string());
     let config_path = value["config-path"].as_str().unwrap();
@@ -137,17 +102,6 @@ fn init_json_format_has_stable_shape() {
     );
     assert!(value["specify-version"].is_string());
     assert!(value["scaffolded-rule-keys"].is_array());
-}
-
-#[test]
-fn init_rejects_removed_schema_dir_syntax() {
-    let tmp = tempdir().unwrap();
-    specify()
-        .current_dir(tmp.path())
-        .args(["init", "omnia", "--schema-dir"])
-        .arg(repo_root())
-        .assert()
-        .failure();
 }
 
 #[test]
@@ -193,14 +147,10 @@ fn init_writes_capability_field_for_url_arg() {
         "non-hub init must not write `hub: true`, got:\n{project_yaml}"
     );
 
-    // RFC-13 chunk 2.9 — non-hub init writes only `project.yaml` and
-    // the `.specify/` skeleton at the project root. Platform-component
-    // artefacts at the repo root are operator-managed: `specify
-    // registry add` mints `registry.yaml`, `specify change create`
-    // mints `change.md` (post-Phase-3.7; the legacy filename was
-    // `initiative.md`), and `specify change plan create` mints
-    // `plan.yaml`. Init must not pre-touch any of them.
-    for absent in ["registry.yaml", "initiative.md", "plan.yaml", "change.md"] {
+    // Non-hub init writes only `project.yaml` and the `.specify/`
+    // skeleton at the project root. Platform-component artefacts at the
+    // repo root are operator-managed.
+    for absent in ["registry.yaml", "plan.yaml", "change.md"] {
         assert!(
             !tmp.path().join(absent).exists(),
             "non-hub init must not pre-touch `{absent}` at the repo root"
@@ -209,7 +159,7 @@ fn init_writes_capability_field_for_url_arg() {
 }
 
 #[test]
-fn init_with_no_args_errors_with_init_requires_capability_or_hub() {
+fn init_with_no_args_errors() {
     // Acceptance (c): `specify init` (no positional, no `--hub`) must
     // exit non-zero with the `init-requires-capability-or-hub`
     // diagnostic.
@@ -231,19 +181,22 @@ fn init_with_no_args_errors_with_init_requires_capability_or_hub() {
 }
 
 #[test]
-fn init_json_with_no_args_errors_with_stable_code() {
+fn init_json_no_args_errors_stable() {
     let tmp = tempdir().unwrap();
     let assert =
         specify().current_dir(tmp.path()).args(["--format", "json", "init"]).assert().failure();
 
+    // R4 routes every error envelope through Stream::Stderr.
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("stdout is JSON");
-    assert_eq!(value["schema-version"], 3);
+        serde_json::from_slice(&assert.get_output().stderr).expect("stderr is JSON");
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["error"], "init-requires-capability-or-hub");
     assert_eq!(value["exit-code"], 1);
     let message = value["message"].as_str().expect("message string");
-    assert!(message.contains("specify init <capability>"), "message: {message}");
-    assert!(message.contains("specify init --hub"), "message: {message}");
+    assert!(
+        message.starts_with("init-requires-capability-or-hub:"),
+        "message must lead with the kebab discriminant, got: {message}"
+    );
     assert!(
         !tmp.path().join(".specify").exists(),
         "no .specify must be scaffolded on validation failure"
@@ -251,7 +204,7 @@ fn init_json_with_no_args_errors_with_stable_code() {
 }
 
 #[test]
-fn init_with_capability_and_hub_errors_with_init_requires_capability_or_hub() {
+fn init_with_capability_and_hub_errors() {
     // Acceptance (d): `specify init <url> --hub` must exit non-zero
     // with the same diagnostic.
     let tmp = tempdir().unwrap();
@@ -274,23 +227,7 @@ fn init_with_capability_and_hub_errors_with_init_requires_capability_or_hub() {
 }
 
 #[test]
-fn init_help_no_longer_advertises_schema_uri_flag() {
-    // RFC-13 §1.3: `--schema-uri` is gone from the post-Phase-1 surface.
-    let assert = specify().args(["init", "--help"]).assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    assert!(
-        !stdout.contains("--schema-uri"),
-        "post-RFC-13 init --help must not advertise `--schema-uri`, got:\n{stdout}"
-    );
-    assert!(
-        stdout.contains("CAPABILITY") || stdout.contains("capability"),
-        "init --help must mention the capability positional, got:\n{stdout}"
-    );
-    assert!(stdout.contains("--hub"), "init --help must still document --hub, got:\n{stdout}");
-}
-
-#[test]
-fn version_too_old_exits_three_with_json_envelope() {
+fn version_too_old_exits_three_json() {
     let tmp = tempdir().unwrap();
     // Fresh init to produce a real project.
     specify()
@@ -318,9 +255,10 @@ fn version_too_old_exits_three_with_json_envelope() {
     let code = assert.get_output().status.code().expect("process exited with a code");
     assert_eq!(code, 3, "expected exit code 3 (version too old)");
 
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
-    assert_eq!(value["schema-version"], 3);
+    // R4 routes every error envelope through Stream::Stderr.
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
+    let value: serde_json::Value = serde_json::from_str(&stderr).expect("stderr is JSON");
+    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["error"], "specify-version-too-old");
     assert_eq!(value["exit-code"], 3);
 }
@@ -351,15 +289,13 @@ fn init_hub_writes_canonical_on_disk_shape() {
         value["scaffolded-rule-keys"]
     );
 
-    // RFC-13 chunk 2.9 — hub init scaffolds `project.yaml` (under
-    // `.specify/`) plus `registry.yaml` at the repo root, and
-    // nothing else. `registry.yaml` survives because bootstrapping a
-    // hub *is* bootstrapping its registry; `change.md` and
-    // `plan.yaml` stay operator-managed (minted via `specify change
-    // create` / `specify change plan create` post-Phase-3.5).
+    // Hub init scaffolds `project.yaml` (under `.specify/`) plus
+    // `registry.yaml` at the repo root, and nothing else. `registry.yaml`
+    // survives because bootstrapping a hub is bootstrapping its registry;
+    // `change.md` and `plan.yaml` stay operator-managed.
     assert!(tmp.path().join(".specify/project.yaml").is_file());
     assert!(tmp.path().join("registry.yaml").is_file());
-    for absent in ["initiative.md", "plan.yaml", "change.md"] {
+    for absent in ["plan.yaml", "change.md"] {
         assert!(
             !tmp.path().join(absent).exists(),
             "hub init must not pre-touch `{absent}` at the repo root"
@@ -370,17 +306,17 @@ fn init_hub_writes_canonical_on_disk_shape() {
     assert!(!tmp.path().join(".specify/specs").exists());
     assert!(!tmp.path().join(".specify/.cache").exists());
 
-    // project.yaml shape — RFC-13 §Migration: `hub: true` only, no
-    // `capability:` field, and the legacy `schema:` sentinel is gone.
+    // project.yaml shape: `hub: true` only, no `capability:` field, and
+    // no stale `schema:` sentinel.
     let project_yaml =
         fs::read_to_string(tmp.path().join(".specify/project.yaml")).expect("read project.yaml");
     assert!(
         !project_yaml.lines().any(|l| l.trim_start().starts_with("schema:")),
-        "post-RFC-13 hub project.yaml must omit the legacy `schema:` field:\n{project_yaml}"
+        "hub project.yaml must omit the stale `schema:` field:\n{project_yaml}"
     );
     assert!(
         !project_yaml.lines().any(|l| l.trim_start().starts_with("capability:")),
-        "post-RFC-13 hub project.yaml must omit the `capability:` field:\n{project_yaml}"
+        "hub project.yaml must omit the `capability:` field:\n{project_yaml}"
     );
     assert!(
         project_yaml.contains("hub: true"),
@@ -402,15 +338,12 @@ fn init_hub_writes_canonical_on_disk_shape() {
         "registry.yaml `projects` must be an empty list, got: {registry}"
     );
 
-    // `change.md` is no longer scaffolded by hub init (RFC-13
-    // chunk 2.9; pre-Phase-3.7 the brief filename was `initiative.md`).
-    // The absence assertion above (in the on-disk shape block) is the
-    // post-2.9 contract; a `change.md` body appears only after the
-    // operator runs `specify change create <name>`.
+    // `change.md` is not scaffolded by hub init; it appears only after
+    // the operator runs `specify change create <name>`.
 }
 
 #[test]
-fn init_hub_refuses_when_specify_dir_already_exists() {
+fn init_hub_refuses_when_present() {
     let tmp = tempdir().unwrap();
     // Pre-create `.specify/` with arbitrary content.
     fs::create_dir_all(tmp.path().join(".specify")).unwrap();
@@ -434,7 +367,7 @@ fn init_hub_refuses_when_specify_dir_already_exists() {
 }
 
 #[test]
-fn init_hub_then_registry_validate_succeeds_on_empty_projects() {
+fn init_hub_validate_succeeds_on_empty() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
@@ -450,11 +383,11 @@ fn init_hub_then_registry_validate_succeeds_on_empty_projects() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["ok"], true);
+    assert!(value["error"].is_null(), "success envelope must omit error: {value}");
 }
 
 #[test]
-fn init_hub_then_registry_validate_rejects_dot_url_with_hub_diagnostic() {
+fn init_hub_validate_rejects_dot_url() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
@@ -472,7 +405,7 @@ fn init_hub_then_registry_validate_rejects_dot_url_with_hub_diagnostic() {
          projects:\n\
          \x20\x20- name: platform\n\
          \x20\x20\x20\x20url: .\n\
-         \x20\x20\x20\x20schema: hub\n",
+         \x20\x20\x20\x20capability: hub\n",
     )
     .unwrap();
 
@@ -481,16 +414,15 @@ fn init_hub_then_registry_validate_rejects_dot_url_with_hub_diagnostic() {
         .args(["--format", "json", "registry", "validate"])
         .assert()
         .failure();
-    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_eq!(assert.get_output().status.code(), Some(1));
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["ok"], false);
-    let msg = value["error"].as_str().expect("error string");
-    assert!(
-        msg.contains("hub-cannot-be-project"),
-        "error must carry the stable diagnostic code, got: {msg}"
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    assert_eq!(
+        value["error"], "hub-cannot-be-project",
+        "error must carry the stable diagnostic code, got: {value}"
     );
-    assert!(msg.contains("registry.yaml"), "error must scope the file: {msg}");
+    let msg = value["message"].as_str().expect("message string");
+    assert!(msg.contains("registry.yaml"), "message must scope the file: {msg}");
 }
 
 /// Tiny YAML→JSON helper — we only need it for the hub on-disk shape
@@ -510,17 +442,8 @@ fn serde_yaml_to_json(yaml: &str) -> Result<serde_json::Value, String> {
 /// Scaffold a hub project; convenience for the registry-mutation tests
 /// below. Hub mode gives us an empty `registry.yaml` to mutate without
 /// having to seed an entry first.
-fn init_hub(tmp: &tempfile::TempDir, name: &str) {
-    specify()
-        .current_dir(tmp.path())
-        .args(["init"])
-        .args(["--name", name, "--hub"])
-        .assert()
-        .success();
-}
-
 #[test]
-fn registry_add_creates_entry_and_round_trips_through_show() {
+fn registry_add_round_trips_through_show() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -536,7 +459,7 @@ fn registry_add_creates_entry_and_round_trips_through_show() {
             "alpha",
             "--url",
             "git@github.com:augentic/alpha.git",
-            "--schema",
+            "--capability",
             "omnia@v1",
             "--description",
             "Alpha service",
@@ -545,11 +468,11 @@ fn registry_add_creates_entry_and_round_trips_through_show() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["schema-version"], 3);
-    assert_eq!(value["ok"], true);
+    assert_eq!(value["envelope-version"], 6);
+    assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["added"]["name"], "alpha");
     assert_eq!(value["added"]["url"], "git@github.com:augentic/alpha.git");
-    assert_eq!(value["added"]["schema"], "omnia@v1");
+    assert_eq!(value["added"]["capability"], "omnia@v1");
     assert_eq!(value["added"]["description"], "Alpha service");
     assert_eq!(value["registry"]["projects"].as_array().unwrap().len(), 1);
 
@@ -574,12 +497,22 @@ fn registry_add_rejects_dot_url_in_hub_mode() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "registry", "add", "self", "--url", ".", "--schema", "omnia@v1"])
+        .args([
+            "--format",
+            "json",
+            "registry",
+            "add",
+            "self",
+            "--url",
+            ".",
+            "--capability",
+            "omnia@v1",
+        ])
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    assert_eq!(value["error"], "hub-cannot-be-project");
     let msg = value["message"].as_str().expect("message");
     assert!(
         msg.contains("hub-cannot-be-project"),
@@ -588,7 +521,7 @@ fn registry_add_rejects_dot_url_in_hub_mode() {
 }
 
 #[test]
-fn registry_add_rejects_kebab_violations_at_clap_level() {
+fn registry_add_rejects_non_kebab() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -602,14 +535,14 @@ fn registry_add_rejects_kebab_violations_at_clap_level() {
             "BadName",
             "--url",
             "git@github.com:org/bad.git",
-            "--schema",
+            "--capability",
             "omnia@v1",
         ])
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    assert_eq!(value["error"], "registry-add-name-not-kebab");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("kebab-case"), "diagnostic must mention kebab-case, got: {msg}");
     assert!(msg.contains("BadName"), "diagnostic must echo the bad name, got: {msg}");
@@ -635,7 +568,7 @@ fn registry_remove_succeeds_and_round_trips() {
                 name,
                 "--url",
                 url,
-                "--schema",
+                "--capability",
                 "omnia@v1",
                 "--description",
                 &format!("{name} service"),
@@ -651,7 +584,7 @@ fn registry_remove_succeeds_and_round_trips() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["ok"], true);
+    assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["removed"], "beta");
     assert!(
         value["warnings"].as_array().expect("warnings array").is_empty(),
@@ -663,7 +596,7 @@ fn registry_remove_succeeds_and_round_trips() {
 }
 
 #[test]
-fn registry_remove_warns_when_plan_references_project() {
+fn registry_remove_warns_on_plan_ref() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -680,7 +613,7 @@ fn registry_remove_warns_when_plan_references_project() {
                 name,
                 "--url",
                 url,
-                "--schema",
+                "--capability",
                 "omnia@v1",
                 "--description",
                 &format!("{name} service"),
@@ -708,7 +641,7 @@ fn registry_remove_warns_when_plan_references_project() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["ok"], true);
+    assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["removed"], "alpha");
     let warnings = value["warnings"].as_array().expect("warnings array");
     assert_eq!(warnings.len(), 1, "expected a single warning, got: {value}");
@@ -728,15 +661,15 @@ fn registry_remove_unknown_project_errors() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    assert_eq!(value["error"], "registry-remove-not-found");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("not found"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
 }
 
 #[test]
-fn registry_remove_refuses_when_registry_absent() {
+fn registry_remove_refuses_when_absent() {
     let tmp = tempdir().unwrap();
     // Plain init (no hub) — single-repo project has no registry.yaml
     // by default.
@@ -755,14 +688,14 @@ fn registry_remove_refuses_when_registry_absent() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    assert_eq!(value["error"], "registry-remove-no-registry");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("no registry declared"), "msg: {msg}");
 }
 
 #[test]
-fn workspace_help_lists_active_subcommands_only() {
+fn workspace_help_lists_active_subcommands() {
     let assert = specify().args(["workspace", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for verb in ["sync", "status", "push"] {
@@ -771,10 +704,6 @@ fn workspace_help_lists_active_subcommands_only() {
             "expected `workspace --help` to mention `{verb}`, got:\n{stdout}",
         );
     }
-    assert!(
-        !stdout.contains("merge"),
-        "`workspace merge` must not appear in active workspace help, got:\n{stdout}",
-    );
 }
 
 #[test]
@@ -787,7 +716,7 @@ fn rfc14_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
     let gitignore_before = fs::read_to_string(tmp.path().join(".gitignore")).ok();
@@ -798,10 +727,10 @@ fn rfc14_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    assert_eq!(value["error"], "registry-project-selector-unknown");
     let msg = value["message"].as_str().expect("message");
-    assert!(msg.contains("unknown project selector"), "msg: {msg}");
+    assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
         !tmp.path().join(".specify/workspace").exists(),
@@ -824,7 +753,7 @@ fn rfc14_c01_workspace_status_unknown_selector_fails_before_side_effects() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
 
@@ -834,10 +763,10 @@ fn rfc14_c01_workspace_status_unknown_selector_fails_before_side_effects() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    assert_eq!(value["error"], "registry-project-selector-unknown");
     let msg = value["message"].as_str().expect("message");
-    assert!(msg.contains("unknown project selector"), "msg: {msg}");
+    assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
         !tmp.path().join(".specify/workspace").exists(),
@@ -858,15 +787,15 @@ fn rfc14_c01_workspace_sync_and_status_select_projects_in_registry_order() {
          projects:\n\
          \x20\x20- name: billing\n\
          \x20\x20\x20\x20url: ./billing\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: billing service\n\
          \x20\x20- name: orders\n\
          \x20\x20\x20\x20url: ./orders\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: orders service\n\
          \x20\x20- name: inventory\n\
          \x20\x20\x20\x20url: ./inventory\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: inventory service\n",
     )
     .unwrap();
@@ -913,18 +842,18 @@ fn rfc14_c03_workspace_status_json_reports_enriched_slot_fields() {
         "name: billing\ncapability: omnia@v1\n",
     )
     .unwrap();
-    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
     fs::write(
         tmp.path().join("registry.yaml"),
         "version: 1\n\
          projects:\n\
          \x20\x20- name: billing\n\
          \x20\x20\x20\x20url: ./billing\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: billing service\n\
          \x20\x20- name: remote\n\
          \x20\x20\x20\x20url: git@github.com:org/remote.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: remote service\n",
     )
     .unwrap();
@@ -978,14 +907,14 @@ fn rfc14_c03_workspace_status_text_flags_mismatch_dirty_and_project_config() {
     run_git(&slot_path, &["commit", "-m", "initial"]);
     run_git(&slot_path, &["checkout", "-b", "feature/work"]);
     fs::write(slot_path.join("dirty.txt"), "dirty\n").unwrap();
-    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
     fs::write(
         tmp.path().join("registry.yaml"),
         "version: 1\n\
          projects:\n\
          \x20\x20- name: remote\n\
          \x20\x20\x20\x20url: git@github.com:org/remote.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20description: remote service\n",
     )
     .unwrap();
@@ -1013,14 +942,14 @@ fn rfc14_c03_workspace_status_text_flags_mismatch_dirty_and_project_config() {
 fn rfc14_c01_workspace_push_unknown_selector_fails_before_side_effects() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
-    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
     fs::write(
         tmp.path().join("registry.yaml"),
         "version: 1\n\
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
 
@@ -1030,10 +959,10 @@ fn rfc14_c01_workspace_push_unknown_selector_fails_before_side_effects() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["error"], "config");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    assert_eq!(value["error"], "registry-project-selector-unknown");
     let msg = value["message"].as_str().expect("message");
-    assert!(msg.contains("unknown project selector"), "msg: {msg}");
+    assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
         !tmp.path().join(".specify/workspace").exists(),
@@ -1063,7 +992,7 @@ fn rfc14_c04_workspace_prepare_branch_hidden_helper_returns_structured_json() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: ./alpha\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
 
@@ -1123,7 +1052,7 @@ fn rfc14_c04_workspace_prepare_branch_surfaces_origin_head_diagnostic_key() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: ./alpha\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
 
@@ -1141,26 +1070,17 @@ fn rfc14_c04_workspace_prepare_branch_surfaces_origin_head_diagnostic_key() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
 
     assert_eq!(value["error"], "branch-preparation-failed");
-    assert_eq!(value["diagnostic"]["key"], "origin-head-unresolved");
-    assert_eq!(value["diagnostic"]["project"], "alpha");
-    assert_eq!(value["diagnostic"]["branch"], "specify/demo-change");
-    assert_eq!(run_git(&alpha, &["branch", "--show-current"]).trim(), "main");
-}
-
-#[test]
-fn workspace_merge_is_not_a_cli_subcommand() {
-    let tmp = tempdir().unwrap();
-    let assert =
-        specify().current_dir(tmp.path()).args(["workspace", "merge", "alpha"]).assert().failure();
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
-    assert!(stderr.contains("unrecognized subcommand"), "stderr: {stderr}");
+    assert_eq!(value["exit-code"], 1);
+    let message = value["message"].as_str().expect("message string");
+    assert!(message.contains("alpha"), "message names the project: {message}");
     assert!(
-        !tmp.path().join(".specify/workspace").exists(),
-        "unknown workspace merge command must not materialise workspace paths"
+        message.contains("origin-head-unresolved"),
+        "message surfaces the diagnostic key: {message}"
     );
+    assert_eq!(run_git(&alpha, &["branch", "--show-current"]).trim(), "main");
 }
 
 // ---- specify plan doctor (RFC-9 §4B) ----
@@ -1183,7 +1103,7 @@ fn init_omnia_project(tmp: &tempfile::TempDir) {
 }
 
 #[test]
-fn plan_doctor_reports_all_four_diagnostic_classes() {
+fn plan_doctor_reports_all_four_classes() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1197,25 +1117,25 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
          sources:\n\
          \x20\x20monolith: /tmp/legacy\n\
          \x20\x20orphaned: /tmp/elsewhere\n\
-         changes:\n\
+         slices:\n\
          \x20\x20- name: cyclic-a\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyclic-b]\n\
          \x20\x20- name: cyclic-b\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyclic-a]\n\
          \x20\x20- name: failed-root\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: failed\n\
          \x20\x20\x20\x20status-reason: regression in upstream service\n\
          \x20\x20- name: unreachable-leaf\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [failed-root]\n\
          \x20\x20- name: orphaned-source-user\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20sources: [monolith]\n",
     )
@@ -1230,7 +1150,7 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20schema: omnia@v1\n",
+         \x20\x20\x20\x20capability: omnia@v1\n",
     )
     .unwrap();
     let slot = tmp.path().join(".specify/workspace/alpha");
@@ -1257,10 +1177,10 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["schema-version"], 3);
-    assert_eq!(value["ok"], false, "errors must mark ok=false: {value}");
+    assert_eq!(value["envelope-version"], 6);
 
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
+    assert!(!diagnostics.is_empty(), "doctor with broken plan must surface diagnostics: {value}");
     let codes: Vec<&str> = diagnostics.iter().filter_map(|d| d["code"].as_str()).collect();
 
     for expected in
@@ -1279,7 +1199,7 @@ fn plan_doctor_reports_all_four_diagnostic_classes() {
 }
 
 #[test]
-fn plan_doctor_diagnostic_payloads_round_trip_typed() {
+fn plan_doctor_payloads_round_trip_typed() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1291,13 +1211,13 @@ fn plan_doctor_diagnostic_payloads_round_trip_typed() {
         "name: demo\n\
          sources:\n\
          \x20\x20orphan-key: /tmp/somewhere\n\
-         changes:\n\
+         slices:\n\
          \x20\x20- name: cyc-a\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyc-b]\n\
          \x20\x20- name: cyc-b\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyc-a]\n",
     )
@@ -1348,25 +1268,25 @@ fn plan_validate_unchanged_by_doctor_fixture() {
          sources:\n\
          \x20\x20monolith: /tmp/legacy\n\
          \x20\x20orphaned: /tmp/elsewhere\n\
-         changes:\n\
+         slices:\n\
          \x20\x20- name: cyclic-a\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyclic-b]\n\
          \x20\x20- name: cyclic-b\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [cyclic-a]\n\
          \x20\x20- name: failed-root\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: failed\n\
          \x20\x20\x20\x20status-reason: regression in upstream service\n\
          \x20\x20- name: unreachable-leaf\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20depends-on: [failed-root]\n\
          \x20\x20- name: orphaned-source-user\n\
-         \x20\x20\x20\x20schema: omnia@v1\n\
+         \x20\x20\x20\x20capability: omnia@v1\n\
          \x20\x20\x20\x20status: pending\n\
          \x20\x20\x20\x20sources: [monolith]\n",
     )
@@ -1403,7 +1323,7 @@ fn plan_validate_unchanged_by_doctor_fixture() {
 }
 
 #[test]
-fn plan_doctor_healthy_plan_exits_zero() {
+fn plan_doctor_healthy_exits_zero() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1420,16 +1340,15 @@ fn plan_doctor_healthy_plan_exits_zero() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["ok"], true, "empty plan must be ok");
     assert_eq!(
         value["diagnostics"].as_array().unwrap().len(),
         0,
-        "empty plan must emit zero diagnostics"
+        "empty plan must emit zero diagnostics: {value}"
     );
 }
 
 #[test]
-fn plan_doctor_help_documents_superset_relationship() {
+fn plan_doctor_help_documents_superset() {
     let assert = specify().args(["change", "plan", "doctor", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for code in
@@ -1452,7 +1371,7 @@ fn plan_doctor_help_documents_superset_relationship() {
 // projects need probing.
 
 #[test]
-fn change_help_lists_finalize_subcommand() {
+fn change_help_lists_finalize() {
     let assert = specify().args(["change", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for verb in ["create", "show", "finalize"] {
@@ -1464,7 +1383,7 @@ fn change_help_lists_finalize_subcommand() {
 }
 
 #[test]
-fn change_finalize_help_documents_clean_and_dry_run() {
+fn change_finalize_help_documents_flags() {
     let assert = specify().args(["change", "finalize", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for flag in ["--clean", "--dry-run"] {
@@ -1489,7 +1408,7 @@ fn change_finalize_refuses_when_plan_absent() {
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "plan-not-found");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("plan.yaml"), "msg should reference plan.yaml: {msg}");
@@ -1503,7 +1422,7 @@ fn change_finalize_refuses_when_plan_absent() {
 }
 
 #[test]
-fn change_finalize_refuses_on_non_terminal_entries() {
+fn change_finalize_refuses_on_non_terminal() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     // Seed a plan with one done and one pending entry — pending is
@@ -1511,12 +1430,12 @@ fn change_finalize_refuses_on_non_terminal_entries() {
     fs::write(
         tmp.path().join("plan.yaml"),
         "name: foo\n\
-         changes:\n\
+         slices:\n\
          \x20\x20- name: a\n\
-         \x20\x20\x20\x20schema: contracts@v1\n\
+         \x20\x20\x20\x20capability: contracts@v1\n\
          \x20\x20\x20\x20status: done\n\
          \x20\x20- name: b\n\
-         \x20\x20\x20\x20schema: contracts@v1\n\
+         \x20\x20\x20\x20capability: contracts@v1\n\
          \x20\x20\x20\x20status: pending\n",
     )
     .unwrap();
@@ -1528,24 +1447,24 @@ fn change_finalize_refuses_on_non_terminal_entries() {
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "non-terminal-entries-present");
-    assert_eq!(value["initiative"], "foo");
-    let entries = value["entries"].as_array().expect("entries array");
-    let names: Vec<&str> = entries.iter().filter_map(|e| e.as_str()).collect();
-    assert_eq!(names, ["b"], "entries must list the offending non-terminal name");
+    assert_eq!(value["exit-code"], 1);
+    let msg = value["message"].as_str().expect("message string");
+    assert!(msg.contains("foo"), "message names the change: {msg}");
+    assert!(msg.contains('b'), "message lists the offending entry name 'b': {msg}");
 
     // Atomicity: plan.yaml must remain on disk on refusal.
     assert!(tmp.path().join("plan.yaml").exists(), "plan.yaml must be untouched");
 }
 
 #[test]
-fn change_finalize_dry_run_archives_nothing_with_empty_registry() {
+fn change_finalize_dry_run_archives_nothing() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     // Seed an all-terminal plan and rely on the hub-init's empty
     // registry — no per-project probes will run.
-    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -1554,7 +1473,7 @@ fn change_finalize_dry_run_archives_nothing_with_empty_registry() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["initiative"], "foo");
+    assert_eq!(value["change"], "foo");
     assert_eq!(value["finalized"], true);
     assert_eq!(value["dry-run"], true, "dry-run flag must echo into JSON");
     assert!(value.get("archived").is_none(), "dry-run must not stamp archived path");
@@ -1566,10 +1485,10 @@ fn change_finalize_dry_run_archives_nothing_with_empty_registry() {
 }
 
 #[test]
-fn change_finalize_archives_when_all_terminal_and_no_registry() {
+fn change_finalize_archives_when_terminal() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
-    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
 
     let assert = specify()
         .current_dir(tmp.path())
@@ -1578,7 +1497,7 @@ fn change_finalize_archives_when_all_terminal_and_no_registry() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["initiative"], "foo");
+    assert_eq!(value["change"], "foo");
     assert_eq!(value["finalized"], true);
     let archived = value["archived"].as_str().expect("archived path");
     assert!(archived.contains("foo-"), "archived path must contain plan name: {archived}");
@@ -1609,7 +1528,7 @@ fn change_finalize_idempotent_after_archive() {
     // canonical "change is already finalized" signal.
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
-    fs::write(tmp.path().join("plan.yaml"), "name: foo\nchanges: []\n").unwrap();
+    fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
 
     // First run: archives the plan.
     specify().current_dir(tmp.path()).args(["change", "finalize"]).assert().success();
@@ -1622,6 +1541,6 @@ fn change_finalize_idempotent_after_archive() {
         .assert()
         .failure();
     let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "plan-not-found");
 }

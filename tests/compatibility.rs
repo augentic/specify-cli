@@ -3,18 +3,10 @@
 use std::fs;
 use std::path::Path;
 
-use assert_cmd::Command;
-use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
-fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
-}
-
-fn parse_json(stdout: &[u8]) -> Value {
-    let text = std::str::from_utf8(stdout).expect("utf8 stdout");
-    serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
-}
+mod common;
+use common::{parse_json, specify};
 
 struct Fixture {
     _tmp: TempDir,
@@ -31,7 +23,7 @@ impl Fixture {
         );
         write_file(
             &project.join("registry.yaml"),
-            "version: 1\nprojects:\n  - name: backend\n    url: ../backend\n    schema: omnia@v1\n    description: Backend API producer.\n    contracts:\n      produces:\n        - http/user-api.yaml\n  - name: mobile\n    url: ../mobile\n    schema: vectis@v1\n    description: Mobile API consumer.\n    contracts:\n      consumes:\n        - http/user-api.yaml\n",
+            "version: 1\nprojects:\n  - name: backend\n    url: ../backend\n    capability: omnia@v1\n    description: Backend API producer.\n    contracts:\n      produces:\n        - http/user-api.yaml\n  - name: mobile\n    url: ../mobile\n    capability: vectis@v1\n    description: Mobile API consumer.\n    contracts:\n      consumes:\n        - http/user-api.yaml\n",
         );
         Self { _tmp: tmp, project }
     }
@@ -49,7 +41,7 @@ impl Fixture {
 }
 
 #[test]
-fn report_classifies_required_field_as_breaking() {
+fn classifies_required_field_as_breaking() {
     let fixture = Fixture::new();
     fixture.write_consumer_contract(&openapi_contract(true, ""));
     fixture.write_producer_contract(&openapi_contract(true, "                - phone\n"));

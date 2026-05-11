@@ -1,54 +1,54 @@
-#![allow(
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to command handlers."
-)]
-
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
+use chrono::Utc;
 use serde::Serialize;
-use specify::{
-    Error, InitOptions, InitResult, ProjectConfig, VersionMode, init, is_workspace_clone_path,
-};
+use specify_config::{ProjectConfig, is_workspace_clone};
+use specify_error::{Error, Result};
+use specify_init::{InitOptions, InitResult, VersionMode, init};
 
-use crate::cli::OutputFormat;
+use crate::cli::Format;
 use crate::commands::context;
-use crate::context::CommandContext;
-use crate::output::{CliResult, absolute_string, emit_response};
+use crate::context::Ctx;
+use crate::output::{Out, Render, display};
 
 /// Dispatcher for `specify init`.
 ///
-/// Enforces the RFC-13 Phase 1.3 mutual-exclusion invariant between the
-/// `<capability>` positional and `--hub`:
+/// Enforces mutual exclusion between the `<capability>` positional and
+/// `--hub`:
 ///
 /// - regular project init requires `<capability>`;
 /// - hub init requires `--hub` and refuses a `<capability>` positional;
 /// - missing both, or both at once, errors with
 ///   `init-requires-capability-or-hub`.
-pub fn run(
-    format: OutputFormat, capability: Option<String>, name: Option<String>, domain: Option<String>,
-    hub: bool,
-) -> Result<CliResult, Error> {
+pub(super) fn run(
+    format: Format, capability: Option<String>, name: Option<&str>, domain: Option<&str>, hub: bool,
+) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
     let capability = match (hub, capability) {
         (false, Some(cap)) => Some(cap),
         (true, None) => None,
-        // Both unset, or both set: the diagnostic is the same per
-        // RFC-13 §1.3 — the operator must pick one.
-        (false, None) | (true, Some(_)) => return Err(Error::InitNeedsCapability),
+        // Both unset, or both set: the diagnostic is the same — the
+        // operator must pick one.
+        (false, None) | (true, Some(_)) => {
+            return Err(Error::Diag {
+                code: "init-requires-capability-or-hub",
+                detail: "pass <capability> or --hub".to_string(),
+            });
+        }
     };
 
     let opts = InitOptions {
         project_dir: &project_dir,
         capability: capability.as_deref(),
-        name: name.as_deref(),
-        domain: domain.as_deref(),
+        name,
+        domain,
         version_mode: VersionMode::WriteCurrent,
         hub,
     };
 
-    let result = init(opts)?;
+    let result = init(opts, Utc::now())?;
     let current_dir = std::env::current_dir().map_err(Error::Io)?;
     let context_generation = generate_initial_context(format, &current_dir)?;
     emit_init_result(format, &result, hub, context_generation)
@@ -64,13 +64,45 @@ struct InitBody {
     directories_created: Vec<String>,
     scaffolded_rule_keys: Vec<String>,
     specify_version: String,
-    /// `true` when this init scaffolded a registry-only platform hub
-    /// (RFC-9 §1D). Always present so consumers can distinguish hub
-    /// from regular initialisations without parsing the capability
-    /// name.
+    /// `true` when this init scaffolded a registry-only platform hub.
+    /// Always present so consumers can distinguish hub from regular
+    /// initialisations without parsing the capability name.
     hub: bool,
     #[serde(flatten)]
     context: InitContextBody,
+}
+
+impl Render for InitBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        if self.hub {
+            writeln!(w, "Initialized .specify/ as a registry-only platform hub")?;
+        } else {
+            writeln!(w, "Initialized .specify/")?;
+        }
+        writeln!(w, "  capability: {}", self.capability_name)?;
+        writeln!(w, "  config: {}", self.config_path)?;
+        writeln!(w, "  cache present: {}", self.cache_present)?;
+        if !self.directories_created.is_empty() {
+            writeln!(w, "  directories created: {}", self.directories_created.join(", "))?;
+        }
+        writeln!(w, "  specify_version: {}", self.specify_version)?;
+        if self.context.skipped && self.context.skip_reason == Some("existing-agents-md") {
+            writeln!(w, "AGENTS.md already present; skipping context generate")?;
+        }
+        writeln!(w)?;
+        if self.hub {
+            writeln!(
+                w,
+                "Next: run `specify registry add <id> <url>` to declare the projects this hub coordinates."
+            )?;
+        } else {
+            writeln!(
+                w,
+                "Next: run `specify change create <name>` to start a change, then `specify change plan create <name>` to plan it."
+            )?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Serialize)]
@@ -83,8 +115,8 @@ struct InitContextBody {
     skip_reason: Option<&'static str>,
 }
 
-impl InitContextBody {
-    const fn from_generation(context_generation: InitContextGeneration) -> Self {
+impl From<InitContextGeneration> for InitContextBody {
+    fn from(context_generation: InitContextGeneration) -> Self {
         Self {
             generated: context_generation.generated(),
             skipped: context_generation.skipped(),
@@ -94,118 +126,64 @@ impl InitContextBody {
 }
 
 fn emit_init_result(
-    format: OutputFormat, result: &InitResult, hub: bool, context_generation: InitContextGeneration,
-) -> Result<CliResult, Error> {
-    match format {
-        OutputFormat::Json => {
-            emit_response(InitBody {
-                config_path: absolute_string(&result.config_path),
-                capability_name: result.capability_name.clone(),
-                cache_present: result.cache_present,
-                directories_created: result
-                    .directories_created
-                    .iter()
-                    .map(|p| absolute_string(p))
-                    .collect(),
-                scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
-                specify_version: result.specify_version.clone(),
-                hub,
-                context: InitContextBody::from_generation(context_generation),
-            })?;
-        }
-        OutputFormat::Text => {
-            if hub {
-                println!("Initialized .specify/ as a registry-only platform hub");
-            } else {
-                println!("Initialized .specify/");
-            }
-            println!("  capability: {}", result.capability_name);
-            println!("  config: {}", absolute_string(&result.config_path));
-            println!("  cache present: {}", result.cache_present);
-            if !result.directories_created.is_empty() {
-                println!(
-                    "  directories created: {}",
-                    result
-                        .directories_created
-                        .iter()
-                        .map(|p| absolute_string(p))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-            println!("  specify_version: {}", result.specify_version);
-            if let Some(note) = context_generation.text_note() {
-                println!("{note}");
-            }
-            // RFC-13 chunk 2.9 — init no longer pre-touches
-            // platform-component artefacts; the hint points operators
-            // at the verb that owns the next step.
-            println!();
-            if hub {
-                println!(
-                    "Next: run `specify registry add <id> <url>` to declare the projects \
-                     this hub coordinates."
-                );
-            } else {
-                println!(
-                    "Next: run `specify change create <name>` to start a change, \
-                     then `specify change plan create <name>` to plan it."
-                );
-            }
-        }
-    }
-    Ok(CliResult::Success)
+    format: Format, result: &InitResult, hub: bool, context_generation: InitContextGeneration,
+) -> Result<()> {
+    let body = InitBody {
+        config_path: display(&result.config_path),
+        capability_name: result.capability_name.clone(),
+        cache_present: result.cache_present,
+        directories_created: result.directories_created.iter().map(|p| display(p)).collect(),
+        scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
+        specify_version: result.specify_version.clone(),
+        hub,
+        context: InitContextBody::from(context_generation),
+    };
+    Out::for_format(format).write(&body)?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InitContextGeneration {
     Generated,
-    SkippedExistingAgents,
-    SkippedWorkspaceClone,
+    Skipped { reason: &'static str },
 }
 
 impl InitContextGeneration {
-    const fn generated(self) -> bool {
+    const fn generated(&self) -> bool {
         matches!(self, Self::Generated)
     }
 
-    const fn skipped(self) -> bool {
-        matches!(self, Self::SkippedExistingAgents | Self::SkippedWorkspaceClone)
-    }
-
-    const fn skip_reason(self) -> Option<&'static str> {
+    const fn skip_reason(&self) -> Option<&'static str> {
         match self {
             Self::Generated => None,
-            Self::SkippedExistingAgents => Some("existing-agents-md"),
-            Self::SkippedWorkspaceClone => Some("workspace-clone"),
+            Self::Skipped { reason } => Some(*reason),
         }
     }
 
-    const fn text_note(self) -> Option<&'static str> {
-        match self {
-            Self::Generated | Self::SkippedWorkspaceClone => None,
-            Self::SkippedExistingAgents => {
-                Some("AGENTS.md already present; skipping context generate")
-            }
-        }
+    const fn skipped(&self) -> bool {
+        self.skip_reason().is_some()
     }
 }
 
-fn generate_initial_context(
-    format: OutputFormat, project_dir: &Path,
-) -> Result<InitContextGeneration, Error> {
-    if is_workspace_clone_path(project_dir) {
-        return Ok(InitContextGeneration::SkippedWorkspaceClone);
+fn generate_initial_context(format: Format, project_dir: &Path) -> Result<InitContextGeneration> {
+    if is_workspace_clone(project_dir) {
+        return Ok(InitContextGeneration::Skipped {
+            reason: "workspace-clone",
+        });
     }
     match project_dir.join("AGENTS.md").try_exists() {
-        Ok(true) => return Ok(InitContextGeneration::SkippedExistingAgents),
+        Ok(true) => {
+            return Ok(InitContextGeneration::Skipped {
+                reason: "existing-agents-md",
+            });
+        }
         Ok(false) => {}
         Err(err) if err.kind() == ErrorKind::NotFound => {}
         Err(err) => return Err(Error::Io(err)),
     }
 
     let config = ProjectConfig::load(project_dir)?;
-    let ctx = CommandContext {
+    let ctx = Ctx {
         format,
         project_dir: project_dir.to_path_buf(),
         config,

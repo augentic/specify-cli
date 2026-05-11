@@ -1,48 +1,62 @@
-//! `specify change plan doctor` — RFC-9 §4B.
+//! `specify change plan doctor`.
 //!
 //! Thin handler over [`specify_change::plan_doctor`]: load the
 //! plan + registry, run the doctor pipeline (which is a strict
 //! superset of `Plan::validate`), then render the diagnostic stream as
 //! text or JSON.
 
+use std::io::Write;
+
 use serde::Serialize;
-use serde_json::Value;
-use specify::{Error, ProjectConfig};
 use specify_change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
+use specify_config::LayoutExt;
+use specify_error::{Error, Result};
 use specify_registry::Registry;
 
 use super::{PlanRef, plan_ref, require_file};
-use crate::cli::OutputFormat;
-use crate::context::CommandContext;
-use crate::output::{CliResult, emit_response};
+use crate::context::Ctx;
+use crate::output::Render;
 
 /// Wire shape of the JSON `diagnostics:` row. Mirrors
 /// [`PlanDoctorDiagnostic`] but with `severity` rendered as the
 /// kebab-case label string (`error` / `warning`).
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct DiagnosticRow<'a> {
-    severity: &'a str,
-    code: &'a str,
-    message: &'a str,
+struct DiagnosticRow {
+    severity: &'static str,
+    code: String,
+    message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    entry: Option<&'a str>,
+    entry: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<Value>,
+    data: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct DoctorBody {
     plan: PlanRef,
-    diagnostics: Vec<Value>,
-    ok: bool,
+    diagnostics: Vec<DiagnosticRow>,
 }
 
-pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
+impl Render for DoctorBody {
+    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
+        if self.diagnostics.is_empty() {
+            return writeln!(w, "Plan OK");
+        }
+        for d in &self.diagnostics {
+            let prefix = if d.severity == "error" { "ERROR  " } else { "WARNING" };
+            let entry_col = d.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
+            writeln!(w, "{prefix} {:<24} {entry_col:<24} {}", d.code, d.message)?;
+        }
+        Ok(())
+    }
+}
+
+pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
+    let slices_dir = ctx.project_dir.layout().slices_dir();
 
     // We tolerate a malformed registry by surfacing it as a synthetic
     // diagnostic (matching the `plan validate` posture) so doctor
@@ -65,52 +79,34 @@ pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
     }
 
     let has_errors = diagnostics.iter().any(|d| matches!(d.severity, PlanDoctorSeverity::Error));
+    let rows: Vec<DiagnosticRow> = diagnostics.iter().map(diagnostic_row).collect();
 
-    match ctx.format {
-        OutputFormat::Json => {
-            let rows: Vec<Value> = diagnostics.iter().map(diagnostic_to_json).collect();
-            emit_response(DoctorBody {
-                plan: plan_ref(&plan, &plan_path),
-                diagnostics: rows,
-                ok: !has_errors,
-            })?;
-        }
-        OutputFormat::Text => render_text(&diagnostics),
+    ctx.out().write(&DoctorBody {
+        plan: plan_ref(&plan, &plan_path),
+        diagnostics: rows,
+    })?;
+
+    if has_errors {
+        Err(Error::Diag {
+            code: "plan-structural-errors",
+            detail: "plan has structural errors; run 'specify change plan validate' for detail"
+                .to_string(),
+        })
+    } else {
+        Ok(())
     }
-
-    Ok(if has_errors { CliResult::ValidationFailed } else { CliResult::Success })
 }
 
-fn diagnostic_to_json(d: &PlanDoctorDiagnostic) -> Value {
-    // Two-step serialise so we can flatten the structured `data`
-    // payload into the same JSON object every diagnostic exposes,
-    // independent of which `code` produced it. `serde_json::to_value`
-    // never fails for well-typed structs.
+fn diagnostic_row(d: &PlanDoctorDiagnostic) -> DiagnosticRow {
     let data = d
         .data
         .as_ref()
         .map(|p| serde_json::to_value(p).expect("DiagnosticPayload serialises as JSON"));
-    serde_json::to_value(DiagnosticRow {
+    DiagnosticRow {
         severity: d.severity.label(),
-        code: &d.code,
-        message: &d.message,
-        entry: d.entry.as_deref(),
+        code: d.code.clone(),
+        message: d.message.clone(),
+        entry: d.entry.clone(),
         data,
-    })
-    .expect("DiagnosticRow serialises as JSON")
-}
-
-fn render_text(diagnostics: &[PlanDoctorDiagnostic]) {
-    if diagnostics.is_empty() {
-        println!("Plan OK");
-        return;
-    }
-    for d in diagnostics {
-        let prefix = match d.severity {
-            PlanDoctorSeverity::Error => "ERROR  ",
-            PlanDoctorSeverity::Warning => "WARNING",
-        };
-        let entry_col = d.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
-        println!("{prefix} {:<24} {:<24} {}", d.code, entry_col, d.message);
     }
 }
