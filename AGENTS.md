@@ -21,7 +21,7 @@ WASI tools live in the sibling workspace at `wasi-tools/` (`wasi-tools/contract`
 
 | Topic | Document |
 |---|---|
-| Style, lints, comments, naming, brevity, DTOs, errors, YAML/atomic-writes rule | [`docs/standards/coding-standards.md`](./docs/standards/coding-standards.md) |
+| Style, lints, comments, naming, brevity, DTOs, errors, YAML/atomic-writes rule, module layout (`<module>.rs` + `<module>/`, no `mod.rs` outside `tests/`) | [`docs/standards/coding-standards.md`](./docs/standards/coding-standards.md) |
 | `Ctx`, `Out`/`Render`/`emit`, exit-code table, dispatcher contract | [`docs/standards/handler-shape.md`](./docs/standards/handler-shape.md) |
 | Workspace layout, WASI carve-outs, `Layout<'a>`, time injection, `ureq` hardening, atomic-write rationale, supply chain | [`docs/standards/architecture.md`](./docs/standards/architecture.md) |
 | `cargo nextest`, integration-first policy, golden files, `REGENERATE_GOLDENS` | [`docs/standards/testing.md`](./docs/standards/testing.md) |

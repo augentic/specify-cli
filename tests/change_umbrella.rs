@@ -23,7 +23,9 @@ mod cli {
     use serde_json::Value;
     use tempfile::tempdir;
 
-    use crate::common::{Project, assert_golden_at, parse_stderr, parse_stdout, repo_root, specify};
+    use crate::common::{
+        Project, assert_golden_at, parse_stderr, parse_stdout, repo_root, specify,
+    };
 
     fn plan_fixtures() -> PathBuf {
         repo_root().join("tests/fixtures/plan")

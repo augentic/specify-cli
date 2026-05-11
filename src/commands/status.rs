@@ -10,8 +10,8 @@ use std::io::Write;
 use serde::Serialize;
 use specify_domain::change::{Plan, Status};
 use specify_domain::config::LayoutExt;
-use specify_error::Result;
 use specify_domain::registry::Registry;
+use specify_error::Result;
 
 use super::slice::{StatusEntry, collect_status, list_slice_names};
 use crate::context::Ctx;

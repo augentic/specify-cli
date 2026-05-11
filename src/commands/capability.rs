@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 use specify_domain::capability::{Capability, CapabilitySource, Phase};
-use specify_error::{Error, Result};
 use specify_domain::validate::ValidationResult;
+use specify_error::{Error, Result};
 
 use crate::cli::Format;
 use crate::context::Ctx;
@@ -38,11 +38,14 @@ pub(crate) fn resolve(format: Format, capability_value: String, project_dir: &Pa
         _ => ("unknown", PathBuf::new()),
     };
 
-    output::write(format, &ResolveBody {
-        capability_value,
-        resolved_path: path.display().to_string(),
-        source: source_label,
-    })?;
+    output::write(
+        format,
+        &ResolveBody {
+            capability_value,
+            resolved_path: path.display().to_string(),
+            source: source_label,
+        },
+    )?;
     Ok(())
 }
 
@@ -163,10 +166,7 @@ pub(crate) fn check(format: Format, capability_dir: &Path) -> Result<()> {
     } else {
         Err(Error::Diag {
             code: "capability-check-failed",
-            detail: format!(
-                "capability at {} failed validation",
-                capability_dir.display()
-            ),
+            detail: format!("capability at {} failed validation", capability_dir.display()),
         })
     }
 }

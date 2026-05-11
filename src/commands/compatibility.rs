@@ -2,11 +2,11 @@ pub(crate) mod cli;
 
 use std::io::Write;
 
-use specify_error::{Error, Result};
 use specify_domain::validate::{
     CompatibilityClassification, CompatibilityFinding, CompatibilityReport,
     classify_project_compatibility,
 };
+use specify_error::{Error, Result};
 
 use crate::cli::CompatibilityAction;
 use crate::context::Ctx;

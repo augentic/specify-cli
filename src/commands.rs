@@ -25,9 +25,9 @@ pub(crate) fn run(cli: Cli) -> Exit {
             name,
             domain,
             hub,
-        } => {
-            dispatch(format, || init::run(format, capability.as_deref(), name.as_deref(), domain.as_deref(), hub))
-        }
+        } => dispatch(format, || {
+            init::run(format, capability.as_deref(), name.as_deref(), domain.as_deref(), hub)
+        }),
         Commands::Status => scoped(format, status::run),
         Commands::Context { action } => scoped(format, |ctx| context::run(ctx, &action)),
         Commands::Capability { action } => match action {

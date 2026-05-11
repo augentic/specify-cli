@@ -23,7 +23,10 @@
 
 mod brief;
 mod cache;
-#[allow(clippy::module_inception, reason = "preserves the per-concern split inherited from the pre-collapse `specify-capability` crate; rename would cascade across many imports")]
+#[allow(
+    clippy::module_inception,
+    reason = "preserves the per-concern split inherited from the pre-collapse `specify-capability` crate; rename would cascade across many imports"
+)]
 mod capability;
 mod change_brief;
 mod codex;

@@ -201,9 +201,17 @@ Writes that must not be observed mid-update use the shared atomic helpers in `sp
 
 ## Module layout
 
-Use the modern Rust module layout: prefer `src/<parent>/<module>.rs` as the module entry point, with child modules under `src/<parent>/<module>/`. Do not add new `mod.rs` files inside module directories unless an external constraint requires it.
+Use the modern Rust module layout: `<parent>/<module>.rs` is the module entry point and child modules live under `<parent>/<module>/`. **Do not add `mod.rs` files** — `<module>/mod.rs` is the legacy 2018-edition pattern and is forbidden in workspace crates. The single allowed exception is `tests/<helper>/mod.rs`, which is the documented Rust idiom for sharing code between integration test binaries (`tests/<helper>.rs` would be picked up as its own test target). When you split a file, create `<module>.rs` + `<module>/<concern>.rs`; never reach for `<module>/mod.rs`.
 
-**Module length cap** — keep new modules ≤ 400 lines (enforced by the `module-line-count` predicate; see [predicates.md](./predicates.md)). When a file outgrows that, split by concern (one verb per file, model vs IO vs transitions, etc.) before adding more code. Prefer `src/<parent>/<module>.rs` + `src/<parent>/<module>/<concern>.rs` over a single fat file with `// ---` separators.
+```text
+crates/foo/src/
+├── widget.rs            ← module entry (was widget/mod.rs)
+└── widget/
+    ├── parse.rs
+    └── render.rs
+```
+
+**Module length cap** — keep new modules ≤ 400 lines (enforced by the `module-line-count` predicate; see [predicates.md](./predicates.md)). When a file outgrows that, split by concern (one verb per file, model vs IO vs transitions, etc.) before adding more code. Prefer `<parent>/<module>.rs` + `<parent>/<module>/<concern>.rs` over a single fat file with `// ---` separators.
 
 ## No-op forwarders
 

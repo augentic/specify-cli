@@ -7,8 +7,8 @@
 use std::path::Path;
 
 use specify_domain::config::LayoutExt;
-use specify_error::Result;
 use specify_domain::merge::{ArtifactClass, MergeStrategy};
+use specify_error::Result;
 
 use crate::cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
 use crate::context::Ctx;

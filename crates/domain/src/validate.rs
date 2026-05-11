@@ -19,8 +19,9 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::capability::PipelineView;
 use specify_error as _; // dependency declared; re-exported via `Error` return type
+
+use crate::capability::PipelineView;
 use crate::spec::ParsedSpec;
 use crate::task::TaskProgress;
 
@@ -41,6 +42,7 @@ pub use contracts::{
 pub use registry::{cross_rules, rules_for};
 pub use run::validate_slice;
 pub use serialize::serialize_report;
+
 pub use crate::capability::ValidationResult;
 
 /// Structured result of running every applicable rule over a slice dir.
@@ -187,5 +189,4 @@ mod tests {
             assert!(rule.id.starts_with("cross."));
         }
     }
-
 }

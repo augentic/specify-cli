@@ -11,9 +11,9 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::capability::Phase;
 use specify_error::Error;
 
+use crate::capability::Phase;
 use crate::slice::OutcomeKind;
 
 /// Basename of the slice working directory under `.specify/`.

@@ -1,8 +1,8 @@
 //! `specify registry validate` handler.
 
 use specify_domain::config::ProjectConfig;
-use specify_error::Result;
 use specify_domain::registry::Registry;
+use specify_error::Result;
 
 use super::dto::ValidateBody;
 use crate::context::Ctx;

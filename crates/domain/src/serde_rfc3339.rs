@@ -37,9 +37,7 @@ pub mod option {
     /// # Errors
     ///
     /// Propagates any error produced by the underlying [`Serializer`].
-    pub fn serialize<S: Serializer>(
-        opt: &Option<DateTime<Utc>>, s: S,
-    ) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(opt: &Option<DateTime<Utc>>, s: S) -> Result<S::Ok, S::Error> {
         match opt {
             Some(dt) => super::serialize(dt, s),
             None => s.serialize_none(),
@@ -53,9 +51,7 @@ pub mod option {
     ///
     /// Returns the deserializer's error type when a present value is
     /// not a well-formed rfc3339 timestamp.
-    pub fn deserialize<'de, D: Deserializer<'de>>(
-        d: D,
-    ) -> Result<Option<DateTime<Utc>>, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<DateTime<Utc>>, D::Error> {
         let opt: Option<String> = Option::deserialize(d)?;
         opt.map(|s| s.parse().map_err(serde::de::Error::custom)).transpose()
     }

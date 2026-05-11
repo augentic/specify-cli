@@ -2,8 +2,10 @@
 
 use std::io::Write;
 
+use specify_domain::validate::{
+    ValidationReport, ValidationResult, serialize_report, validate_slice,
+};
 use specify_error::{Error, Result};
-use specify_domain::validate::{ValidationReport, ValidationResult, serialize_report, validate_slice};
 
 use crate::context::Ctx;
 use crate::output::Render;

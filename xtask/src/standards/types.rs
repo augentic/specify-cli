@@ -27,6 +27,7 @@ pub(super) struct Counts {
     pub(super) display_serde_mirror: u32,
     pub(super) crate_root_prose: u32,
     pub(super) unit_test_serde_roundtrip: u32,
+    pub(super) mod_rs_forbidden: u32,
 }
 
 impl Counts {
@@ -48,6 +49,7 @@ impl Counts {
             ("display-serde-mirror", self.display_serde_mirror),
             ("crate-root-prose", self.crate_root_prose),
             ("unit-test-serde-roundtrip", self.unit_test_serde_roundtrip),
+            ("mod-rs-forbidden", self.mod_rs_forbidden),
         ]
         .into_iter()
     }
@@ -70,6 +72,7 @@ impl Counts {
             display_serde_mirror: self.display_serde_mirror,
             crate_root_prose: self.crate_root_prose,
             unit_test_serde_roundtrip: self.unit_test_serde_roundtrip,
+            mod_rs_forbidden: self.mod_rs_forbidden,
         }
     }
 }
@@ -109,6 +112,8 @@ pub(super) struct FileBaseline {
     pub(super) crate_root_prose: u32,
     #[serde(default)]
     pub(super) unit_test_serde_roundtrip: u32,
+    #[serde(default)]
+    pub(super) mod_rs_forbidden: u32,
 }
 
 impl FileBaseline {
@@ -130,6 +135,7 @@ impl FileBaseline {
             "display-serde-mirror" => self.display_serde_mirror,
             "crate-root-prose" => self.crate_root_prose,
             "unit-test-serde-roundtrip" => self.unit_test_serde_roundtrip,
+            "mod-rs-forbidden" => self.mod_rs_forbidden,
             _ => 0,
         }
     }

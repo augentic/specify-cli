@@ -24,10 +24,10 @@ use std::path::PathBuf;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use specify_error::Error;
-use crate::registry::Registry;
-use crate::slice::atomic::yaml_write;
 
 use crate::config::{Layout, ProjectConfig};
+use crate::registry::Registry;
+use crate::slice::atomic::yaml_write;
 
 /// A piece of `.specify/`-anchored YAML state.
 ///

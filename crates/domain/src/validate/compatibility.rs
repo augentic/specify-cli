@@ -10,8 +10,8 @@ use std::path::Path;
 
 use serde::Serialize;
 use specify_error::Error;
-use crate::registry::{Registry, RegistryProject};
 
+use crate::registry::{Registry, RegistryProject};
 use crate::validate::contracts::validate_baseline;
 
 mod asyncapi_diff;

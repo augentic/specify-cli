@@ -7,10 +7,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use crate::capability::{CacheMeta, PipelineView};
-use crate::config::{LayoutExt, ProjectConfig};
 use specify_error::Error;
 
+use crate::capability::{CacheMeta, PipelineView};
+use crate::config::{LayoutExt, ProjectConfig};
 use crate::init::cache::cache_capability;
 use crate::init::{InitOptions, InitResult, resolve_version, resolved_name, upsert_gitignore};
 
@@ -91,10 +91,10 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use chrono::{DateTime, Utc};
-    use crate::capability::CacheMeta;
-    use crate::config::{LayoutExt, ProjectConfig};
     use tempfile::tempdir;
 
+    use crate::capability::CacheMeta;
+    use crate::config::{LayoutExt, ProjectConfig};
     use crate::init::{InitOptions, VersionMode, init};
 
     fn fixed_now() -> DateTime<Utc> {

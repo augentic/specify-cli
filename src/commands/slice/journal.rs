@@ -7,8 +7,8 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
 use specify_domain::capability::Phase;
-use specify_error::{Error, Result};
 use specify_domain::slice::{EntryKind, Journal, JournalEntry, SliceMetadata};
+use specify_error::{Error, Result};
 
 use crate::context::Ctx;
 use crate::output::Render;

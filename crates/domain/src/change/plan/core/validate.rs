@@ -9,9 +9,9 @@ use std::path::Path;
 
 use petgraph::algo::{tarjan_scc, toposort};
 use petgraph::graph::DiGraph;
-use crate::registry::Registry;
 
 use super::model::{Entry, Finding, Plan, Severity, Status};
+use crate::registry::Registry;
 
 impl Plan {
     /// Run all structural and semantic checks over the plan.

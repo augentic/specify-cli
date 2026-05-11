@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use specify_error::Error;
-use crate::slice::actions::move_atomic;
 
 use super::model::{Plan, Status};
+use crate::slice::actions::move_atomic;
 
 impl Plan {
     /// Move `plan.yaml` — and, when present, the Layer-3 authoring

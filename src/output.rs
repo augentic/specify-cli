@@ -89,9 +89,9 @@ impl From<&Error> for Exit {
     fn from(err: &Error) -> Self {
         match err {
             Error::CliTooOld { .. } => Self::VersionTooOld,
-            Error::Validation { .. }
-            | Error::ToolDenied(_)
-            | Error::ToolNotDeclared { .. } => Self::ValidationFailed,
+            Error::Validation { .. } | Error::ToolDenied(_) | Error::ToolNotDeclared { .. } => {
+                Self::ValidationFailed
+            }
             // Diag-routed siblings of the typed validation cluster.
             // Their typed variants collapsed to `Diag` but their exit
             // slot stays exit 2 — the kebab `code` is the wire contract

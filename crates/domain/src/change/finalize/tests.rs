@@ -3,12 +3,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::registry::forge::{PrState, PrView};
-use crate::registry::{Registry, RegistryProject};
 use tempfile::TempDir;
 
 use super::*;
 use crate::change::plan::core::{Entry, Plan, Status};
+use crate::registry::forge::{PrState, PrView};
+use crate::registry::{Registry, RegistryProject};
 
 // ---- pure helpers -----------------------------------------------------
 

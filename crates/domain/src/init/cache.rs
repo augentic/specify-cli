@@ -6,10 +6,10 @@ use std::fs;
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use crate::capability::{CacheMeta, DEFAULT_CODEX_CAPABILITY};
-use crate::config::LayoutExt;
 use specify_error::Error;
 
+use crate::capability::{CacheMeta, DEFAULT_CODEX_CAPABILITY};
+use crate::config::LayoutExt;
 use crate::init::capability_uri::{CapabilityUri, ensure_capability_dir};
 
 #[derive(Debug)]

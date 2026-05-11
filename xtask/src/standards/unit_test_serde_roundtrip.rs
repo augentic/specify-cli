@@ -34,7 +34,10 @@ struct TestVisitor {
 impl<'ast> Visit<'ast> for TestVisitor {
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
         if has_test_attr(&node.attrs) {
-            let mut probe = SerdeCallProbe { has_to: false, has_from: false };
+            let mut probe = SerdeCallProbe {
+                has_to: false,
+                has_from: false,
+            };
             probe.visit_block(&node.block);
             if probe.has_to && probe.has_from {
                 self.hits = self.hits.saturating_add(1);

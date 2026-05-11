@@ -8,9 +8,9 @@ use chrono::Utc;
 use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
 use specify_domain::change::finalize;
-use specify_error::{Error, Result, is_kebab};
 use specify_domain::registry::Registry;
 use specify_domain::slice::atomic::bytes_write;
+use specify_error::{Error, Result, is_kebab};
 
 use crate::cli::ChangeAction;
 use crate::context::Ctx;

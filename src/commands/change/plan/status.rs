@@ -5,8 +5,8 @@ use std::path::Path;
 use serde::Serialize;
 use specify_domain::change::{Entry, Plan, Severity, Status};
 use specify_domain::config::LayoutExt;
-use specify_error::{Error, Result};
 use specify_domain::slice::{LifecycleStatus, SliceMetadata};
+use specify_error::{Error, Result};
 
 use super::{PlanRef, require_file};
 use crate::context::Ctx;

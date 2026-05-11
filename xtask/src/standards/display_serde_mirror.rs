@@ -117,9 +117,7 @@ fn is_match_on_self(expr: &syn::Expr) -> bool {
     match expr {
         syn::Expr::Path(p) => p.path.is_ident("self"),
         syn::Expr::Reference(r) => is_match_on_self(&r.expr),
-        syn::Expr::Unary(u) => {
-            matches!(u.op, syn::UnOp::Deref(_)) && is_match_on_self(&u.expr)
-        }
+        syn::Expr::Unary(u) => matches!(u.op, syn::UnOp::Deref(_)) && is_match_on_self(&u.expr),
         _ => false,
     }
 }
@@ -128,9 +126,7 @@ fn all_arms_unit_to_str_literal(arms: &[syn::Arm]) -> bool {
     if arms.is_empty() {
         return false;
     }
-    arms.iter().all(|arm| {
-        is_unit_self_variant(&arm.pat) && expr_yields_only_literal(&arm.body)
-    })
+    arms.iter().all(|arm| is_unit_self_variant(&arm.pat) && expr_yields_only_literal(&arm.body))
 }
 
 fn is_unit_self_variant(pat: &syn::Pat) -> bool {
@@ -152,7 +148,10 @@ fn expr_yields_only_literal(expr: &syn::Expr) -> bool {
                 && mc.args.len() == 1
                 && matches!(
                     &mc.args[0],
-                    syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. })
+                    syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(_),
+                        ..
+                    })
                 )
         }
         syn::Expr::Macro(m) => is_write_literal_macro(&m.mac),
@@ -182,7 +181,11 @@ fn is_write_literal_macro(mac: &syn::Macro) -> bool {
     if args.len() != 2 {
         return false;
     }
-    let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) = &args[1] else {
+    let syn::Expr::Lit(syn::ExprLit {
+        lit: syn::Lit::Str(s),
+        ..
+    }) = &args[1]
+    else {
         return false;
     };
     !s.value().contains('{')

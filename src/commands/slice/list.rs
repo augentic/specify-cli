@@ -10,9 +10,9 @@ use std::path::Path;
 
 use serde::Serialize;
 use specify_domain::capability::{Phase, PipelineView};
-use specify_error::Result;
 use specify_domain::slice::{LifecycleStatus, SliceMetadata};
 use specify_domain::task::parse_tasks;
+use specify_error::Result;
 
 use crate::context::Ctx;
 use crate::output::Render;

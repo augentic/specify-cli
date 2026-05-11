@@ -10,12 +10,11 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use regex::Regex;
-use specify_error::Error;
 use specify_domain::merge::{ArtifactClass, MergeStrategy, OpaqueAction, slice};
 use specify_domain::slice::{
-    LifecycleStatus, METADATA_VERSION, Outcome, OutcomeKind, Phase, SLICES_DIR_NAME,
-    SliceMetadata,
+    LifecycleStatus, METADATA_VERSION, Outcome, OutcomeKind, Phase, SLICES_DIR_NAME, SliceMetadata,
 };
+use specify_error::Error;
 
 fn parse_stamp(raw: &str) -> DateTime<Utc> {
     raw.parse().expect("valid RFC3339 timestamp in test fixture")

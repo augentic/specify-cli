@@ -24,12 +24,12 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use specify_error::Error;
-use crate::slice::{
-    LifecycleStatus, Outcome, OutcomeKind, Phase, SliceMetadata, SpecKind, actions,
-};
 
 use crate::merge::artifact_class::{ArtifactClass, MergeStrategy};
 use crate::merge::merge::MergeResult;
+use crate::slice::{
+    LifecycleStatus, Outcome, OutcomeKind, Phase, SliceMetadata, SpecKind, actions,
+};
 
 mod parse;
 mod read;

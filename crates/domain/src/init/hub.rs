@@ -7,12 +7,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
+use specify_error::{Error, is_kebab};
+
 use crate::capability::CacheMeta;
 use crate::config::{LayoutExt, ProjectConfig};
-use specify_error::{Error, is_kebab};
-use crate::registry::Registry;
-
 use crate::init::{InitOptions, InitResult, resolve_version, resolved_name, upsert_gitignore};
+use crate::registry::Registry;
 
 /// Sentinel value reported in [`InitResult::capability_name`] for hub
 /// init. Hub `project.yaml` itself does **not** carry this string —
@@ -133,12 +133,12 @@ mod tests {
     use std::path::Path;
 
     use chrono::{DateTime, Utc};
-    use crate::config::ProjectConfig;
-    use crate::registry::Registry;
     use tempfile::tempdir;
 
     use super::HUB_INIT_NAME;
+    use crate::config::ProjectConfig;
     use crate::init::{InitOptions, VersionMode, init};
+    use crate::registry::Registry;
 
     fn fixed_now() -> DateTime<Utc> {
         "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")

@@ -167,15 +167,10 @@ fn init_with_no_args_errors() {
     // into the clap surface (`required_unless_present = "hub"`).
     let tmp = tempdir().unwrap();
     let assert = specify().current_dir(tmp.path()).args(["init"]).assert().failure();
-    assert_eq!(
-        assert.get_output().status.code(),
-        Some(2),
-        "clap parse errors map to exit code 2"
-    );
+    assert_eq!(assert.get_output().status.code(), Some(2), "clap parse errors map to exit code 2");
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
     assert!(
-        stderr.contains("required arguments were not provided")
-            && stderr.contains("CAPABILITY"),
+        stderr.contains("required arguments were not provided") && stderr.contains("CAPABILITY"),
         "diagnostic must surface clap's required-arg parse error, got stderr:\n{stderr}"
     );
     assert!(
@@ -198,11 +193,7 @@ fn init_with_capability_and_hub_errors() {
         .arg("--hub")
         .assert()
         .failure();
-    assert_eq!(
-        assert.get_output().status.code(),
-        Some(2),
-        "clap parse errors map to exit code 2"
-    );
+    assert_eq!(assert.get_output().status.code(), Some(2), "clap parse errors map to exit code 2");
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
     assert!(
         stderr.contains("cannot be used with") && stderr.contains("--hub"),

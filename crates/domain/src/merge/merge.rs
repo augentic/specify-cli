@@ -4,6 +4,7 @@
 use std::collections::{HashMap, HashSet};
 
 use specify_error::Error;
+
 use crate::spec::format::REQ_HEADING;
 use crate::spec::{Requirement, has_delta_headers, parse_baseline, parse_delta};
 

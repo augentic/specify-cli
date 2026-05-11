@@ -159,9 +159,7 @@ fn acquire_source_bytes(
     }
 }
 
-fn buffered_into_acquired(
-    bytes: &[u8], dest_hint: &Path,
-) -> Result<AcquiredBytes, ToolError> {
+fn buffered_into_acquired(bytes: &[u8], dest_hint: &Path) -> Result<AcquiredBytes, ToolError> {
     let parent = dest_hint.parent().ok_or_else(|| {
         ToolError::CacheRoot(format!(
             "tool staging destination has no parent: {}",
@@ -231,7 +229,7 @@ mod tests {
     use crate::manifest::{PackageRequest, ToolSource};
     use crate::package::{FetchedPackage, PackageClient, PackageMetadata};
     use crate::test_support::{
-        capability_scope, cached_bytes, fixed_now, project_scope, scratch_dir, tool,
+        cached_bytes, capability_scope, fixed_now, project_scope, scratch_dir, tool,
         with_cache_env, write_source,
     };
 

@@ -4,11 +4,11 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::config::{AtomicYaml, Layout};
 use specify_error::Error;
-use crate::slice::atomic::yaml_write;
 
 use super::model::Plan;
+use crate::config::{AtomicYaml, Layout};
+use crate::slice::atomic::yaml_write;
 
 impl AtomicYaml for Plan {
     fn path(layout: Layout<'_>) -> PathBuf {

@@ -4,9 +4,9 @@
 use std::collections::BTreeMap;
 
 use specify_error::Error;
-use crate::slice::actions::validate_name;
 
 use super::model::{Entry, Plan, Severity, Status};
+use crate::slice::actions::validate_name;
 
 impl Plan {
     /// Create an empty plan with the given name and optional named sources.

@@ -12,9 +12,9 @@ use std::path::Path;
 
 use specify_domain::capability::{Capability, PipelineView};
 use specify_domain::config::{LayoutExt, ProjectConfig};
-use specify_error::{Error, Result};
 use specify_domain::registry::Registry;
 use specify_domain::slice::SliceMetadata;
+use specify_error::{Error, Result};
 
 use super::{detect, fingerprint, render};
 use crate::context::Ctx;

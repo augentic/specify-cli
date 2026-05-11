@@ -10,8 +10,8 @@ use std::io::Write;
 use serde::Serialize;
 use specify_domain::change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
 use specify_domain::config::LayoutExt;
-use specify_error::{Error, Result};
 use specify_domain::registry::Registry;
+use specify_error::{Error, Result};
 
 use super::{PlanRef, plan_ref, require_file};
 use crate::context::Ctx;

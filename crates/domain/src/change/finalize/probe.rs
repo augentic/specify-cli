@@ -7,10 +7,9 @@
 use std::path::Path;
 use std::process::Command;
 
+use super::{Landing, ProjectResult};
 use crate::registry::RegistryProject;
 use crate::registry::forge::{GhClient, PrState, PrView, RealGhClient, branches_match};
-
-use super::{Landing, ProjectResult};
 
 /// Abstraction over the external probes finalize depends on.
 ///

@@ -4,9 +4,9 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_domain::config::LayoutExt;
-use specify_error::{Error, Result};
 use specify_domain::merge::MergeStrategy;
 use specify_domain::slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
+use specify_error::{Error, Result};
 
 use super::artifact_classes;
 use crate::context::Ctx;

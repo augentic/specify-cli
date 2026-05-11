@@ -3,12 +3,11 @@
 
 use std::path::Path;
 
-use crate::registry::workspace::{SlotProblem, SlotProblemReason, slot_problem};
-use crate::registry::{Registry, RegistryProject};
-
 use super::{
     CloneSignature, Diagnostic, DiagnosticPayload, DiagnosticSeverity, STALE_CLONE, StaleReason,
 };
+use crate::registry::workspace::{SlotProblem, SlotProblemReason, slot_problem};
+use crate::registry::{Registry, RegistryProject};
 
 /// Stale-slot diagnostics for every project whose materialisation drifted.
 ///

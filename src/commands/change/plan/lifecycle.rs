@@ -5,8 +5,8 @@ use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
 use specify_domain::change::{Finding, Plan, Severity, Status};
 use specify_domain::config::{LayoutExt, with_existing_state};
-use specify_error::{Error, Result};
 use specify_domain::registry::Registry;
+use specify_error::{Error, Result};
 
 use super::{PlanRef, display, plan_ref, require_file};
 use crate::cli::SourceArg;

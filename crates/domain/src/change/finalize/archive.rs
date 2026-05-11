@@ -8,11 +8,11 @@
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use crate::config::LayoutExt;
-use crate::registry::Registry;
 
 use super::{Landing, Outcome, ProjectResult};
 use crate::change::plan::core::Plan;
+use crate::config::LayoutExt;
+use crate::registry::Registry;
 
 /// Try to archive `plan.yaml`, the change brief, and the plans working
 /// dir into `.specify/archive/plans/`. On success, populates

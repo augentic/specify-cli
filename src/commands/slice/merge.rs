@@ -9,10 +9,10 @@ use std::path::Path;
 use chrono::Utc;
 use serde::Serialize;
 use specify_domain::config::{LayoutExt, is_workspace_clone};
-use specify_error::Result;
 use specify_domain::merge::{
     BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check, slice,
 };
+use specify_error::Result;
 
 use super::artifact_classes;
 use crate::context::Ctx;

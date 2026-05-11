@@ -6,10 +6,10 @@ use std::io::Write;
 use std::path::Path;
 
 use specify_error::Error;
-use crate::slice::atomic::bytes_write;
 
 use super::pid::is_pid_alive;
 use super::{Acquired, Guard, Stamp};
+use crate::slice::atomic::bytes_write;
 
 impl Guard {
     /// Acquire the lock using the real OS-level PID-liveness probe.

@@ -12,15 +12,15 @@
 #[macro_use]
 mod macros;
 
-pub mod spec;
-pub mod task;
 pub mod capability;
-pub mod registry;
-pub mod slice;
-pub mod config;
-pub mod merge;
-pub mod validate;
 pub mod change;
+pub mod config;
 pub mod init;
+pub mod merge;
+pub mod registry;
 pub mod serde_helpers;
 pub mod serde_rfc3339;
+pub mod slice;
+pub mod spec;
+pub mod task;
+pub mod validate;

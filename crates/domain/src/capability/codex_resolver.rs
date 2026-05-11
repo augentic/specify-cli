@@ -173,7 +173,9 @@ impl fmt::Display for CodexProvenance {
     }
 }
 
-fn resolve_default(project_dir: &Path) -> Result<crate::capability::capability::ResolvedCapability, Error> {
+fn resolve_default(
+    project_dir: &Path,
+) -> Result<crate::capability::capability::ResolvedCapability, Error> {
     match Capability::resolve(DEFAULT_CODEX_CAPABILITY, project_dir) {
         Ok(capability) => Ok(capability),
         Err(err @ Error::Diag { .. }) => {

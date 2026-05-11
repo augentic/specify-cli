@@ -3,7 +3,9 @@ pub(crate) mod cli;
 use std::io::Write;
 
 use serde::Serialize;
-use specify_domain::capability::{CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule};
+use specify_domain::capability::{
+    CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule,
+};
 use specify_error::{Error, Result};
 
 use crate::cli::CodexAction;

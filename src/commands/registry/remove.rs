@@ -4,8 +4,8 @@ use std::path::Path;
 
 use specify_domain::change::Plan;
 use specify_domain::config::{LayoutExt, with_existing_state};
-use specify_error::{Error, Result};
 use specify_domain::registry::Registry;
+use specify_error::{Error, Result};
 
 use super::dto::RemoveBody;
 use crate::context::Ctx;

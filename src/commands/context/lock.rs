@@ -6,8 +6,8 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use specify_error::{Error, ValidationStatus, ValidationSummary};
 use specify_domain::slice::atomic::yaml_write;
+use specify_error::{Error, ValidationStatus, ValidationSummary};
 
 use super::fingerprint::ContextFingerprint;
 

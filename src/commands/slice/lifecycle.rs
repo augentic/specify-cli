@@ -4,10 +4,8 @@ use std::io::Write;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use specify_domain::slice::{CreateIfExists, Created, LifecycleStatus, actions as slice_actions};
 use specify_error::{Error, Result};
-use specify_domain::slice::{
-    CreateIfExists, Created, LifecycleStatus, actions as slice_actions,
-};
 
 use crate::context::Ctx;
 use crate::output::Render;

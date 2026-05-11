@@ -8,8 +8,8 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_domain::config::is_workspace_clone;
-use specify_error::Result;
 use specify_domain::slice::atomic::bytes_write;
+use specify_error::Result;
 
 use super::{
     context_lock_path, diag, error_from_fence, fences, lock, read_optional, render_document,

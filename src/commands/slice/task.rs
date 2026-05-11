@@ -8,10 +8,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use specify_domain::capability::{Brief, PipelineView};
-use specify_error::{Error, Result};
 use specify_domain::slice::SliceMetadata;
 use specify_domain::slice::atomic::bytes_write;
 use specify_domain::task::{Task, mark_complete, parse_tasks};
+use specify_error::{Error, Result};
 
 use crate::context::Ctx;
 use crate::output::Render;

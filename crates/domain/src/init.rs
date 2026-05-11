@@ -1,4 +1,3 @@
-
 //! `init` — the orchestration called by `specify init`.
 //!
 //! Scaffolds `.specify/{slices,specs,archive,.cache}/`, resolves the
@@ -29,8 +28,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
-use crate::config::{LayoutExt, ProjectConfig};
 use specify_error::Error;
+
+use crate::config::{LayoutExt, ProjectConfig};
 
 /// Inputs to [`init`]. Borrow-shaped so callers (the CLI and tests) can
 /// build the struct without cloning path buffers.

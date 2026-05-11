@@ -8,13 +8,13 @@ use std::path::PathBuf;
 use serde::{Serialize, Serializer};
 use specify_domain::change::Plan;
 use specify_domain::config::LayoutExt;
-use specify_error::{Error, Result};
 use specify_domain::registry::Registry;
 use specify_domain::registry::branch::{Prepared, Request as BranchRequest, prepare};
 use specify_domain::registry::workspace::{
     ConfiguredTargetKind, PushOutcome, SlotKind, SlotStatus, push_projects,
     status_projects as workspace_status_projects, sync_projects as workspace_sync_projects,
 };
+use specify_error::{Error, Result};
 
 use crate::context::Ctx;
 use crate::output::Render;

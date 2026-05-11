@@ -8,6 +8,7 @@
 use std::path::Path;
 
 use regex::Regex;
+
 use crate::spec::ParsedSpec;
 use crate::task::TaskProgress;
 

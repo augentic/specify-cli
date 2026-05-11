@@ -1,4 +1,3 @@
-
 //! `ProjectConfig` — the in-memory model of `.specify/project.yaml`,
 //! and `Layout<'a>` — the typed home for every `.specify/` and
 //! repo-root path helper the CLI reaches for.

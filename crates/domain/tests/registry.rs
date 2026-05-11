@@ -9,8 +9,8 @@
 
 use std::path::{Path, PathBuf};
 
-use specify_error::Error;
 use specify_domain::registry::{ContractRoles, Registry, RegistryProject};
+use specify_error::Error;
 use tempfile::TempDir;
 
 /// Scaffold `registry.yaml` (at the repo root) with `contents` and

@@ -4,6 +4,7 @@
 use std::collections::HashSet;
 
 use regex::Regex;
+
 use crate::capability::ValidationResult;
 use crate::spec::format::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING};
 use crate::spec::parse_baseline;

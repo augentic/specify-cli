@@ -1,7 +1,7 @@
 //! `specify registry show` handler.
 
-use specify_error::Result;
 use specify_domain::registry::Registry;
+use specify_error::Result;
 
 use super::dto::ShowBody;
 use crate::context::Ctx;

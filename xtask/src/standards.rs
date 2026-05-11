@@ -74,6 +74,11 @@
 //!   smell — round-trip tests usually belong in `tests/` driven through
 //!   a CLI command; allowlist when a custom Visitor or similar
 //!   genuinely warrants the in-crate test.
+//! - `mod-rs-forbidden` — any source file named `mod.rs` under `src/`
+//!   or `crates/`. The 2018-edition `<module>/mod.rs` layout is retired
+//!   in favour of `<module>.rs` + `<module>/<concern>.rs`. The walker
+//!   already excludes `tests/`, where `tests/<helper>/mod.rs` is the
+//!   sanctioned cargo idiom for shared integration-test helpers.
 
 mod allowlist;
 mod ast_predicates;
@@ -192,6 +197,7 @@ fn count_one(path: &Path, source: &str) -> Counts {
         display_serde_mirror: display_serde_mirror::count(source),
         crate_root_prose: crate_root_prose::count(path, source),
         unit_test_serde_roundtrip: unit_test_serde_roundtrip::count(source),
+        mod_rs_forbidden: u32::from(path.file_name().is_some_and(|n| n == "mod.rs")),
     }
 }
 

@@ -19,7 +19,9 @@ pub(super) fn is_git_worktree(project_path: &Path) -> bool {
     git_output_ok(project_path, &["rev-parse", "--is-inside-work-tree"]).as_deref() == Some("true")
 }
 
-pub(in crate::registry::workspace) fn current_branch(project_path: &Path) -> Result<Option<String>, Error> {
+pub(in crate::registry::workspace) fn current_branch(
+    project_path: &Path,
+) -> Result<Option<String>, Error> {
     let output = Command::new("git")
         .arg("-C")
         .arg(project_path)

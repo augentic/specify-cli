@@ -2,11 +2,11 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
 
-use crate::registry::{Registry, RegistryProject};
 use tempfile::tempdir;
 
 use super::*;
 use crate::change::plan::core::{Entry, Plan, Status};
+use crate::registry::{Registry, RegistryProject};
 
 fn change(name: &str, status: Status) -> Entry {
     Entry {

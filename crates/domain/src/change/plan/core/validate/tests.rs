@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, HashSet};
 
-use crate::registry::{Registry, RegistryProject};
 use tempfile::tempdir;
 
 use super::super::model::{Entry, Plan, Severity, Status};
 use super::super::test_support::{RFC_EXAMPLE_YAML, change, plan_with_changes};
+use crate::registry::{Registry, RegistryProject};
 
 #[test]
 fn clean_plan_validates() {

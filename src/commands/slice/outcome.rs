@@ -8,8 +8,8 @@ use serde::Serialize;
 use serde_json::Value;
 use specify_domain::capability::Phase;
 use specify_domain::config::LayoutExt;
-use specify_error::{Error, Result};
 use specify_domain::slice::{OutcomeKind, SliceMetadata, actions as slice_actions};
+use specify_error::{Error, Result};
 
 use crate::cli::{OutcomeKindAction, RegistryAmendmentProposal};
 use crate::context::Ctx;
@@ -88,8 +88,8 @@ fn lower_kind(kind: OutcomeKindAction) -> (OutcomeKind, String, Option<String>) 
                     rationale,
                 },
         } => {
-            let summary = summary
-                .unwrap_or_else(|| format!("registry-amendment-required: {proposed_name}"));
+            let summary =
+                summary.unwrap_or_else(|| format!("registry-amendment-required: {proposed_name}"));
             let outcome = OutcomeKind::RegistryAmendmentRequired {
                 proposed_name,
                 proposed_url,

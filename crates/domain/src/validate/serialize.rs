@@ -4,8 +4,8 @@
 //! envelope is added by the CLI's `emit` helper in `src/output.rs`.
 
 use serde_json::{Value, json};
-use crate::capability::ValidationResult;
 
+use crate::capability::ValidationResult;
 use crate::validate::ValidationReport;
 
 /// Serialise a [`ValidationReport`] as the canonical kebab-case payload.

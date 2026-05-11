@@ -36,9 +36,9 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use crate::registry::Registry;
 
 use super::core::{Finding, Plan, Severity};
+use crate::registry::Registry;
 
 mod cycle;
 mod orphan_source;

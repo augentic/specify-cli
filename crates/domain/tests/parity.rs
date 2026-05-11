@@ -3,8 +3,8 @@
 //! (now retired). The Rust port must match them exactly.
 
 use specify_domain::capability::ValidationResult;
-use specify_error::Error;
 use specify_domain::merge::{merge, validate_baseline};
+use specify_error::Error;
 
 macro_rules! fixture {
     ($case:literal, $file:literal) => {

@@ -14,7 +14,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use specify_domain::registry::branch::{LocalAction, RemoteAction, Request as BranchRequest, prepare};
+use specify_domain::registry::branch::{
+    LocalAction, RemoteAction, Request as BranchRequest, prepare,
+};
 use specify_domain::registry::forge::{branches_match, is_specify_branch};
 use specify_domain::registry::workspace::{
     PushOutcome, SlotKind, SlotProblemReason, SlotStatus, github_slug, push_all, push_projects,
