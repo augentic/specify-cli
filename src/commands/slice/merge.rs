@@ -15,12 +15,12 @@ use specify_merge::{
 };
 
 use super::artifact_classes;
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
 const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/archive"];
 
-pub(super) fn run(ctx: &CommandContext, name: String) -> Result<()> {
+pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
@@ -49,7 +49,7 @@ pub(super) fn run(ctx: &CommandContext, name: String) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn preview(ctx: &CommandContext, name: String) -> Result<()> {
+pub(super) fn preview(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
     let result = slice::preview(&slice_dir, &classes)?;
@@ -83,7 +83,7 @@ pub(super) fn preview(ctx: &CommandContext, name: String) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn conflicts(ctx: &CommandContext, name: String) -> Result<()> {
+pub(super) fn conflicts(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
     let conflicts = conflict_check(&slice_dir, &classes)?;

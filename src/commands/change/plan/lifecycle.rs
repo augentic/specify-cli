@@ -8,10 +8,10 @@ use specify_error::{Error, Result};
 use specify_registry::Registry;
 
 use super::{PlanRef, load_for_write, path_string, plan_ref, require_file};
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, Validation, emit};
 
-pub fn create(ctx: &CommandContext, name: String, sources: Vec<(String, String)>) -> Result<()> {
+pub fn create(ctx: &Ctx, name: String, sources: Vec<(String, String)>) -> Result<()> {
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if plan_path.exists() {
         return Err(Error::Diag {
@@ -51,7 +51,7 @@ pub fn create(ctx: &CommandContext, name: String, sources: Vec<(String, String)>
     Ok(())
 }
 
-pub fn validate(ctx: &CommandContext) -> Result<CliResult> {
+pub fn validate(ctx: &Ctx) -> Result<CliResult> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
@@ -111,7 +111,7 @@ pub fn validate(ctx: &CommandContext) -> Result<CliResult> {
     Ok(if has_errors { CliResult::ValidationFailed } else { CliResult::Success })
 }
 
-pub fn next(ctx: &CommandContext) -> Result<()> {
+pub fn next(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
@@ -150,7 +150,7 @@ pub fn next(ctx: &CommandContext) -> Result<()> {
 }
 
 pub fn transition(
-    ctx: &CommandContext, name: String, target: Status, reason: Option<String>,
+    ctx: &Ctx, name: String, target: Status, reason: Option<String>,
 ) -> Result<()> {
     let (plan_path, mut plan) = load_for_write(ctx)?;
     let old_status = plan
@@ -183,7 +183,7 @@ pub fn transition(
     Ok(())
 }
 
-pub fn archive(ctx: &CommandContext, force: bool) -> Result<CliResult> {
+pub fn archive(ctx: &Ctx, force: bool) -> Result<CliResult> {
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if !plan_path.exists() {
         return Err(Error::ArtifactNotFound {

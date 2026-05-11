@@ -11,7 +11,7 @@ use specify_error::Result;
 use specify_merge::{ArtifactClass, MergeStrategy};
 
 use crate::cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::CliResult;
 
 pub mod cli;
@@ -47,7 +47,7 @@ pub(super) fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<Art
     ]
 }
 
-pub fn run(ctx: &CommandContext, action: SliceAction) -> Result<CliResult> {
+pub fn run(ctx: &Ctx, action: SliceAction) -> Result<CliResult> {
     // Most arms are pure-Success leaf handlers (return `Result<()>`)
     // — only `validate::run` conditionally surfaces a non-success
     // exit, so we lift the rest into `CliResult::Success` here.

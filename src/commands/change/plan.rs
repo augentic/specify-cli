@@ -20,11 +20,11 @@ use specify_error::{Error, Result};
 use specify_registry::Registry;
 
 use crate::cli::{LockAction, PlanAction};
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::CliResult;
 pub(super) use crate::output::path_string;
 
-pub fn run(ctx: &CommandContext, action: PlanAction) -> Result<CliResult> {
+pub fn run(ctx: &Ctx, action: PlanAction) -> Result<CliResult> {
     // Most arms emit unconditionally and return `Result<()>`; only
     // `validate`, `doctor`, and `archive` surface non-success exits
     // (`ValidationFailed` / `GenericFailure`). Lift the rest into
@@ -87,7 +87,7 @@ pub fn require_file(project_dir: &Path) -> Result<PathBuf> {
     Ok(path)
 }
 
-pub(super) fn load_for_write(ctx: &CommandContext) -> Result<(PathBuf, Plan)> {
+pub(super) fn load_for_write(ctx: &Ctx) -> Result<(PathBuf, Plan)> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     Ok((plan_path, plan))

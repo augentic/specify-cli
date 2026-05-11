@@ -12,10 +12,10 @@ use specify_error::{Error, Result};
 use specify_slice::atomic::atomic_bytes_write;
 
 use super::{context_lock_path, error_from_fence, fences, lock, read_optional, render_document};
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, emit};
 
-pub(super) fn run(ctx: &CommandContext, check: bool, force: bool) -> Result<CliResult> {
+pub(super) fn run(ctx: &Ctx, check: bool, force: bool) -> Result<CliResult> {
     if is_workspace_clone_path(&ctx.project_dir) {
         return Err(Error::Diag {
             code: "context-workspace-clone-refused",
@@ -33,7 +33,7 @@ pub(super) fn run(ctx: &CommandContext, check: bool, force: bool) -> Result<CliR
     Ok(if check && body.changed { CliResult::GenericFailure } else { CliResult::Success })
 }
 
-pub(in crate::commands) fn for_init(ctx: &CommandContext) -> Result<Outcome> {
+pub(in crate::commands) fn for_init(ctx: &Ctx) -> Result<Outcome> {
     let body = body(ctx, false, false)?;
     Ok(Outcome {
         changed: body.changed,
@@ -47,7 +47,7 @@ pub(in crate::commands) struct Outcome {
     pub(in crate::commands) disposition: &'static str,
 }
 
-fn body(ctx: &CommandContext, check: bool, force: bool) -> Result<GenerateBody> {
+fn body(ctx: &Ctx, check: bool, force: bool) -> Result<GenerateBody> {
     let (generated, context_fingerprint) = render_document(ctx)?;
     let expected_lock = lock::ContextLock::from_fingerprint(&context_fingerprint);
     let lock_path = context_lock_path(ctx);

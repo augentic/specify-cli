@@ -15,10 +15,10 @@ use specify_error::Result;
 use specify_registry::Registry;
 
 use super::slice::{StatusEntry, collect_status, list_slice_names, status_entry_to_json};
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
-pub fn run(ctx: &CommandContext) -> Result<()> {
+pub fn run(ctx: &Ctx) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let slices_dir = ctx.slices_dir();
 
@@ -100,7 +100,7 @@ struct PlanCounts {
     total: usize,
 }
 
-fn load_plan_summary(ctx: &CommandContext) -> Option<PlanSummary> {
+fn load_plan_summary(ctx: &Ctx) -> Option<PlanSummary> {
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if !plan_path.exists() {
         return None;

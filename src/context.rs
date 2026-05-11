@@ -8,16 +8,16 @@ use crate::cli::OutputFormat;
 
 /// Shared context for every subcommand that operates inside an
 /// initialised `.specify/` project. Created once at the top of each
-/// command handler via [`CommandContext::load`].
-pub struct CommandContext {
+/// command handler via [`Ctx::load`].
+pub struct Ctx {
     pub format: OutputFormat,
     pub project_dir: PathBuf,
     pub config: ProjectConfig,
 }
 
-impl CommandContext {
+impl Ctx {
     /// Resolve the current project root, load `.specify/project.yaml`,
-    /// and bundle everything into a `CommandContext`.
+    /// and bundle everything into a `Ctx`.
     ///
     /// Returns `Err(Error)` on failure so callers can propagate with `?`.
     /// The top-level dispatcher (`run_with_project`) converts `Error` to

@@ -8,7 +8,7 @@ use specify_init::{InitOptions, InitResult, VersionMode, init};
 
 use crate::cli::OutputFormat;
 use crate::commands::context;
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit, path_string};
 
 /// Dispatcher for `specify init`.
@@ -176,7 +176,7 @@ fn generate_initial_context(
     }
 
     let config = ProjectConfig::load(project_dir)?;
-    let ctx = CommandContext {
+    let ctx = Ctx {
         format,
         project_dir: project_dir.to_path_buf(),
         config,

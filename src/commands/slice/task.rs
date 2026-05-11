@@ -13,10 +13,10 @@ use specify_slice::SliceMetadata;
 use specify_slice::atomic::atomic_bytes_write;
 use specify_task::{Task, mark_complete, parse_tasks};
 
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
-pub(super) fn progress(ctx: &CommandContext, name: String) -> Result<()> {
+pub(super) fn progress(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let tasks_path = resolve_tasks_path(&ctx.project_dir, &slice_dir)?;
     let content = std::fs::read_to_string(&tasks_path)?;
@@ -88,7 +88,7 @@ struct DirectiveRow {
     skill: String,
 }
 
-pub(super) fn mark(ctx: &CommandContext, name: String, task_number: String) -> Result<()> {
+pub(super) fn mark(ctx: &Ctx, name: String, task_number: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let tasks_path = resolve_tasks_path(&ctx.project_dir, &slice_dir)?;
     let original = std::fs::read_to_string(&tasks_path)?;

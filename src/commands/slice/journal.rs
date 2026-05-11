@@ -12,11 +12,11 @@ use specify_slice::{
     EntryKind, Journal, JournalEntry, Rfc3339Stamp, SliceMetadata, format_rfc3339,
 };
 
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
 pub(super) fn append(
-    ctx: &CommandContext, name: String, phase: Phase, kind: EntryKind, summary: String,
+    ctx: &Ctx, name: String, phase: Phase, kind: EntryKind, summary: String,
     context: Option<String>,
 ) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
@@ -63,7 +63,7 @@ impl Render for AppendBody {
     }
 }
 
-pub(super) fn show(ctx: &CommandContext, name: String) -> Result<()> {
+pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
         return Err(Error::SliceNotFound { name });

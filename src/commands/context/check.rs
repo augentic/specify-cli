@@ -10,10 +10,10 @@ use serde::Serialize;
 use specify_error::Result;
 
 use super::{context_lock_path, fences, fingerprint, lock, read_optional, render_document};
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, emit};
 
-pub(super) fn run(ctx: &CommandContext) -> Result<CliResult> {
+pub(super) fn run(ctx: &Ctx) -> Result<CliResult> {
     let body = body(ctx)?;
     emit(Stream::Stdout, ctx.format, &body)?;
     Ok(if body.status == "up-to-date" { CliResult::Success } else { CliResult::GenericFailure })
@@ -60,7 +60,7 @@ impl Render for CheckBody {
     }
 }
 
-fn body(ctx: &CommandContext) -> Result<CheckBody> {
+fn body(ctx: &Ctx) -> Result<CheckBody> {
     let agents_path = ctx.project_dir.join("AGENTS.md");
     let agents = read_optional(&agents_path)?;
     let existing_lock = lock::load(&context_lock_path(ctx))?;

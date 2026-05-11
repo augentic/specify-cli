@@ -164,14 +164,14 @@ A function defined in `mod <name>` (or `commands/<name>.rs`) MUST NOT carry `<na
 
 ```rust
 // BAD — file is commands/registry.rs / mod registry
-fn show_registry(ctx: &CommandContext) -> ... { ... }
-fn validate_registry(ctx: &CommandContext) -> ... { ... }
-fn add_to_registry(ctx: &CommandContext) -> ... { ... }
+fn show_registry(ctx: &Ctx) -> ... { ... }
+fn validate_registry(ctx: &Ctx) -> ... { ... }
+fn add_to_registry(ctx: &Ctx) -> ... { ... }
 
 // GOOD — caller writes registry::show, registry::validate, registry::add
-fn show(ctx: &CommandContext) -> ... { ... }
-fn validate(ctx: &CommandContext) -> ... { ... }
-fn add(ctx: &CommandContext) -> ... { ... }
+fn show(ctx: &Ctx) -> ... { ... }
+fn validate(ctx: &Ctx) -> ... { ... }
+fn add(ctx: &Ctx) -> ... { ... }
 
 // BAD — overspecified DTO names
 struct ShowRegistryResponse { /* ... */ }

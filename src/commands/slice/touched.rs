@@ -9,11 +9,11 @@ use specify_merge::MergeStrategy;
 use specify_slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
 
 use super::artifact_classes;
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
 pub(super) fn touched_specs(
-    ctx: &CommandContext, name: String, scan: bool, set: Vec<String>,
+    ctx: &Ctx, name: String, scan: bool, set: Vec<String>,
 ) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
 
@@ -118,7 +118,7 @@ fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>> {
     Ok(out)
 }
 
-pub(super) fn overlap(ctx: &CommandContext, name: String) -> Result<()> {
+pub(super) fn overlap(ctx: &Ctx, name: String) -> Result<()> {
     let slices_dir = ctx.slices_dir();
     let overlaps = slice_actions::overlap(&slices_dir, &name)?;
     let rows: Vec<OverlapRow> = overlaps.iter().map(OverlapRow::from).collect();

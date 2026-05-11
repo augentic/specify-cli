@@ -17,7 +17,7 @@ use specify_tool::validate::ValidationResult as ToolValidationResult;
 use specify_tool::{Tool, ToolManifest, ToolPermissions, ToolScope};
 
 use crate::cli::OutputFormat;
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, emit};
 
 type CacheKey = (String, String, String);
@@ -183,7 +183,7 @@ impl Render for GcBody {
 }
 
 /// Run a declared WASI tool through the concrete WASI host.
-pub fn run(ctx: &CommandContext, name: String, args: Vec<String>) -> Result<CliResult> {
+pub fn run(ctx: &Ctx, name: String, args: Vec<String>) -> Result<CliResult> {
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
     let scoped = find(&inventory, &name)?;
@@ -199,7 +199,7 @@ pub fn run(ctx: &CommandContext, name: String, args: Vec<String>) -> Result<CliR
 }
 
 /// List the merged tool declarations for the current project.
-pub fn list(ctx: &CommandContext) -> Result<()> {
+pub fn list(ctx: &Ctx) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let rows = rows_for(&inventory.tools)?;
     let body = ListBody {
@@ -214,7 +214,7 @@ pub fn list(ctx: &CommandContext) -> Result<()> {
 }
 
 /// Fetch one declared tool, or all declared tools when no name is supplied.
-pub fn fetch(ctx: &CommandContext, name: Option<String>) -> Result<()> {
+pub fn fetch(ctx: &Ctx, name: Option<String>) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let selected = select(&inventory, name.as_deref())?;
     let mut rows = Vec::with_capacity(selected.len());
@@ -239,7 +239,7 @@ pub fn fetch(ctx: &CommandContext, name: Option<String>) -> Result<()> {
 }
 
 /// Show one declared tool's metadata and cache state.
-pub fn show(ctx: &CommandContext, name: String) -> Result<()> {
+pub fn show(ctx: &Ctx, name: String) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let scoped = find(&inventory, &name)?;
     let row = show_row_for(scoped)?;
@@ -255,7 +255,7 @@ pub fn show(ctx: &CommandContext, name: String) -> Result<()> {
 }
 
 /// Remove cache entries not referenced by the current project's merged tool list.
-pub fn gc(ctx: &CommandContext) -> Result<()> {
+pub fn gc(ctx: &Ctx) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let mut kept_by_scope = kept_by_scope(&inventory);
     let mut removed = Vec::new();
@@ -282,7 +282,7 @@ pub fn gc(ctx: &CommandContext) -> Result<()> {
     Ok(())
 }
 
-fn build_inventory(ctx: &CommandContext) -> Result<Inventory> {
+fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let project_scope = ToolScope::Project {
         project_name: ctx.config.name.clone(),
     };
@@ -314,7 +314,7 @@ fn build_inventory(ctx: &CommandContext) -> Result<Inventory> {
     })
 }
 
-fn resolve_project_capability(ctx: &CommandContext) -> Result<Option<ResolvedCapability>> {
+fn resolve_project_capability(ctx: &Ctx) -> Result<Option<ResolvedCapability>> {
     let Some(value) = ctx.config.capability.as_deref() else {
         return Ok(None);
     };

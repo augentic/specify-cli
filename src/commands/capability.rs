@@ -12,7 +12,7 @@ use specify_error::{Error, Result};
 use specify_validate::ValidationResult;
 
 use crate::cli::OutputFormat;
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, emit};
 
 #[derive(Serialize)]
@@ -94,7 +94,7 @@ impl Render for PipelineBody {
     }
 }
 
-pub fn pipeline(ctx: &CommandContext, phase: Phase, slice: Option<PathBuf>) -> Result<()> {
+pub fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<PathBuf>) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let order = pipeline.topo_order(phase)?;
     let completion = slice.as_deref().map(|slice_dir| pipeline.completion_for(phase, slice_dir));

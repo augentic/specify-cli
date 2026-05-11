@@ -13,10 +13,10 @@ use specify_registry::{Registry, RegistryProject};
 use specify_slice::atomic::atomic_yaml_write;
 
 use crate::cli::RegistryAction;
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit, path_string, serialize_path};
 
-pub fn run(ctx: &CommandContext, action: RegistryAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: RegistryAction) -> Result<()> {
     match action {
         RegistryAction::Show => show(ctx),
         RegistryAction::Validate => validate(ctx),
@@ -30,14 +30,14 @@ pub fn run(ctx: &CommandContext, action: RegistryAction) -> Result<()> {
     }
 }
 
-fn show(ctx: &CommandContext) -> Result<()> {
+fn show(ctx: &Ctx) -> Result<()> {
     let path = Registry::path(&ctx.project_dir);
     let registry = Registry::load(&ctx.project_dir)?;
     emit(Stream::Stdout, ctx.format, &ShowBody { registry, path })?;
     Ok(())
 }
 
-fn validate(ctx: &CommandContext) -> Result<()> {
+fn validate(ctx: &Ctx) -> Result<()> {
     let path = Registry::path(&ctx.project_dir);
     // Hub repos opt into the stricter shape via `project.yaml:hub:
     // true`. Tolerate a missing/unparseable project.yaml here —
@@ -62,7 +62,7 @@ fn validate(ctx: &CommandContext) -> Result<()> {
 }
 
 fn add(
-    ctx: &CommandContext, name: String, url: String, capability: String,
+    ctx: &Ctx, name: String, url: String, capability: String,
     description: Option<String>,
 ) -> Result<()> {
     let path = Registry::path(&ctx.project_dir);
@@ -139,7 +139,7 @@ fn add(
     Ok(())
 }
 
-fn remove(ctx: &CommandContext, name: String) -> Result<()> {
+fn remove(ctx: &Ctx, name: String) -> Result<()> {
     let path = Registry::path(&ctx.project_dir);
     let hub_mode = ctx.config.hub;
 
@@ -334,7 +334,7 @@ mod tests {
         result.unwrap_or_else(|err| panic!("{what} failed: {err}"));
     }
 
-    fn ctx_for(tmp: &TempDir, hub: bool) -> CommandContext {
+    fn ctx_for(tmp: &TempDir, hub: bool) -> Ctx {
         let specify_dir = tmp.path().join(".specify");
         fs::create_dir_all(&specify_dir).expect("create .specify");
         let cfg = ProjectConfig {
@@ -350,7 +350,7 @@ mod tests {
         let serialised = serde_saphyr::to_string(&cfg).expect("serialise project.yaml");
         fs::write(&cfg_path, serialised).expect("write project.yaml");
 
-        CommandContext {
+        Ctx {
             format: OutputFormat::Json,
             project_dir: tmp.path().to_path_buf(),
             config: cfg,
@@ -366,7 +366,7 @@ mod tests {
     }
 
     /// Helper for tests: invoke `add` with a fixed `omnia@v1` capability.
-    fn seed(ctx: &CommandContext, name: &str, url: &str, description: Option<&str>) -> Result<()> {
+    fn seed(ctx: &Ctx, name: &str, url: &str, description: Option<&str>) -> Result<()> {
         add(
             ctx,
             name.to_string(),
@@ -376,7 +376,7 @@ mod tests {
         )
     }
 
-    fn ok_seed(ctx: &CommandContext, name: &str, url: &str, description: Option<&str>) {
+    fn ok_seed(ctx: &Ctx, name: &str, url: &str, description: Option<&str>) {
         assert_ok(seed(ctx, name, url, description), &format!("seed {name}"));
     }
 

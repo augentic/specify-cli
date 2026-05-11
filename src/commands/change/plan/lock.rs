@@ -5,10 +5,10 @@ use specify_change::{PlanLockReleased, Stamp};
 use specify_error::Result;
 
 use crate::cli::OutputFormat;
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
-pub fn acquire(ctx: &CommandContext, pid: Option<u32>) -> Result<()> {
+pub fn acquire(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let acquired = Stamp::acquire(&ctx.project_dir, our_pid)?;
     emit(
@@ -24,7 +24,7 @@ pub fn acquire(ctx: &CommandContext, pid: Option<u32>) -> Result<()> {
     Ok(())
 }
 
-pub fn release(ctx: &CommandContext, pid: Option<u32>) -> Result<()> {
+pub fn release(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let outcome = Stamp::release(&ctx.project_dir, our_pid)?;
     let body = match &outcome {
@@ -63,7 +63,7 @@ pub fn release(ctx: &CommandContext, pid: Option<u32>) -> Result<()> {
     Ok(())
 }
 
-pub fn status(ctx: &CommandContext) -> Result<()> {
+pub fn status(ctx: &Ctx) -> Result<()> {
     let state = Stamp::status(&ctx.project_dir)?;
     emit(
         Stream::Stdout,

@@ -19,10 +19,10 @@ use specify_registry::workspace::{
     status_projects as workspace_status_projects, sync_projects as workspace_sync_projects,
 };
 
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, emit};
 
-pub fn sync(ctx: &CommandContext, projects: Vec<String>) -> Result<()> {
+pub fn sync(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
     let registry = match Registry::load(&ctx.project_dir)? {
         None if !projects.is_empty() => return Err(Error::RegistryMissing),
         other => other,
@@ -47,7 +47,7 @@ pub fn sync(ctx: &CommandContext, projects: Vec<String>) -> Result<()> {
     Ok(())
 }
 
-pub fn status(ctx: &CommandContext, projects: Vec<String>) -> Result<()> {
+pub fn status(ctx: &Ctx, projects: Vec<String>) -> Result<()> {
     let body = match Registry::load(&ctx.project_dir)? {
         None => {
             if !projects.is_empty() {
@@ -72,7 +72,7 @@ pub fn status(ctx: &CommandContext, projects: Vec<String>) -> Result<()> {
 }
 
 pub fn prepare_branch(
-    ctx: &CommandContext, project: String, change: String, sources: Vec<PathBuf>,
+    ctx: &Ctx, project: String, change: String, sources: Vec<PathBuf>,
     outputs: Vec<PathBuf>,
 ) -> Result<CliResult> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
@@ -120,7 +120,7 @@ pub fn prepare_branch(
     }
 }
 
-pub fn push(ctx: &CommandContext, projects: Vec<String>, dry_run: bool) -> Result<CliResult> {
+pub fn push(ctx: &Ctx, projects: Vec<String>, dry_run: bool) -> Result<CliResult> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
         return Err(Error::RegistryMissing);
     };

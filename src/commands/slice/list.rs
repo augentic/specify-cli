@@ -15,7 +15,7 @@ use specify_error::Result;
 use specify_slice::SliceMetadata;
 use specify_task::parse_tasks;
 
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
 pub(in crate::commands) struct StatusEntry {
@@ -113,7 +113,7 @@ pub(in crate::commands) fn list_slice_names(slices_dir: &Path) -> Result<Vec<Str
     Ok(names)
 }
 
-pub(super) fn run(ctx: &CommandContext) -> Result<()> {
+pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let slices_dir = ctx.slices_dir();
     let names = list_slice_names(&slices_dir)?;
@@ -129,7 +129,7 @@ pub(super) fn run(ctx: &CommandContext) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn status_one(ctx: &CommandContext, name: String) -> Result<()> {
+pub(super) fn status_one(ctx: &Ctx, name: String) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let slice_dir = ctx.slices_dir().join(&name);
     let entry = collect_status(&slice_dir, &name, &pipeline, &ctx.project_dir)?;

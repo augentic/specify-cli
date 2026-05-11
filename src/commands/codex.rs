@@ -10,11 +10,11 @@ use specify_capability::{
 use specify_error::{Error, Result};
 
 use crate::cli::CodexAction;
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, Validation, ValidationRow, emit, path_string};
 
 /// Dispatch `specify codex *`.
-pub fn run(ctx: &CommandContext, action: CodexAction) -> Result<CliResult> {
+pub fn run(ctx: &Ctx, action: CodexAction) -> Result<CliResult> {
     // `validate` is the only arm that surfaces a non-success exit
     // (`CliResult::ValidationFailed` when the codex is malformed);
     // the others return `Result<()>` and lift to `Success` here.
@@ -27,11 +27,11 @@ pub fn run(ctx: &CommandContext, action: CodexAction) -> Result<CliResult> {
     }
 }
 
-fn resolve(ctx: &CommandContext) -> Result<ResolvedCodex> {
+fn resolve(ctx: &Ctx) -> Result<ResolvedCodex> {
     ResolvedCodex::resolve(&ctx.project_dir, ctx.config.capability.as_deref(), ctx.config.hub)
 }
 
-fn list(ctx: &CommandContext) -> Result<()> {
+fn list(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from).collect();
     emit(
@@ -45,7 +45,7 @@ fn list(ctx: &CommandContext) -> Result<()> {
     Ok(())
 }
 
-fn show(ctx: &CommandContext, rule_id: &str) -> Result<()> {
+fn show(ctx: &Ctx, rule_id: &str) -> Result<()> {
     let codex = resolve(ctx)?;
     let normalized = rule_id.to_ascii_uppercase();
     let resolved = codex
@@ -67,7 +67,7 @@ fn show(ctx: &CommandContext, rule_id: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate(ctx: &CommandContext) -> Result<CliResult> {
+fn validate(ctx: &Ctx) -> Result<CliResult> {
     match resolve(ctx) {
         Ok(codex) => {
             emit(
@@ -99,7 +99,7 @@ fn validate(ctx: &CommandContext) -> Result<CliResult> {
     }
 }
 
-fn export(ctx: &CommandContext) -> Result<()> {
+fn export(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleExport::from).collect();
     emit(

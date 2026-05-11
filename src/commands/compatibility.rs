@@ -9,24 +9,24 @@ use specify_validate::{
 };
 
 use crate::cli::CompatibilityAction;
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, emit};
 
 /// Dispatch `specify compatibility *`.
-pub fn run(ctx: &CommandContext, action: CompatibilityAction) -> Result<CliResult> {
+pub fn run(ctx: &Ctx, action: CompatibilityAction) -> Result<CliResult> {
     match action {
         CompatibilityAction::Check => check(ctx),
         CompatibilityAction::Report { change } => report(ctx, change).map(|()| CliResult::Success),
     }
 }
 
-fn check(ctx: &CommandContext) -> Result<CliResult> {
+fn check(ctx: &Ctx) -> Result<CliResult> {
     let report = classify_project_compatibility(&ctx.project_dir, None)?;
     emit(Stream::Stdout, ctx.format, &report)?;
     Ok(if report.is_compatible() { CliResult::Success } else { CliResult::ValidationFailed })
 }
 
-fn report(ctx: &CommandContext, change: String) -> Result<()> {
+fn report(ctx: &Ctx, change: String) -> Result<()> {
     let report = classify_project_compatibility(&ctx.project_dir, Some(change))?;
     emit(Stream::Stdout, ctx.format, &report)?;
     Ok(())

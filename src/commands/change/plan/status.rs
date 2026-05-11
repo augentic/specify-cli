@@ -9,7 +9,7 @@ use specify_error::{Error, Result};
 use specify_slice::SliceMetadata;
 
 use super::{PlanRef, require_file};
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
 #[derive(Serialize)]
@@ -110,7 +110,7 @@ impl Render for StatusBody {
     }
 }
 
-pub fn run(ctx: &CommandContext) -> Result<()> {
+pub fn run(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);

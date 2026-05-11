@@ -12,11 +12,11 @@ use specify_error::{Error, Result};
 use specify_slice::{Outcome, Rfc3339Stamp, SliceMetadata, actions as slice_actions};
 
 use crate::cli::{OutcomeKindAction, RegistryAmendmentArgs};
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
 pub(super) fn set(
-    ctx: &CommandContext, name: String, phase: Phase, kind: OutcomeKindAction,
+    ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction,
 ) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
@@ -115,7 +115,7 @@ fn lower_kind(kind: OutcomeKindAction) -> (Outcome, String, Option<String>) {
 /// `slice merge run` stamps the outcome into `.metadata.yaml` and
 /// then archives the slice directory, so the active path no longer
 /// exists.
-pub(super) fn show(ctx: &CommandContext, name: String) -> Result<()> {
+pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let metadata = if slice_dir.is_dir() {
         SliceMetadata::load(&slice_dir)?

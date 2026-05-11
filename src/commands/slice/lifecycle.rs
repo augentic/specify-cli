@@ -9,11 +9,11 @@ use specify_slice::{
     CreateIfExists, CreateOutcome, LifecycleStatus, Rfc3339Stamp, actions as slice_actions,
 };
 
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
 pub(super) fn create(
-    ctx: &CommandContext, name: String, capability: Option<String>, if_exists: CreateIfExists,
+    ctx: &Ctx, name: String, capability: Option<String>, if_exists: CreateIfExists,
 ) -> Result<()> {
     let capability_value = capability.map_or_else(
         || {
@@ -77,7 +77,7 @@ impl Render for CreateBody {
 }
 
 pub(super) fn transition(
-    ctx: &CommandContext, name: String, target: LifecycleStatus,
+    ctx: &Ctx, name: String, target: LifecycleStatus,
 ) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let metadata = slice_actions::transition(&slice_dir, target, Utc::now())?;
@@ -115,7 +115,7 @@ impl Render for TransitionBody {
     }
 }
 
-pub(super) fn archive(ctx: &CommandContext, name: String) -> Result<()> {
+pub(super) fn archive(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let target = slice_actions::archive(&slice_dir, &archive_dir, Utc::now())?;
@@ -143,7 +143,7 @@ impl Render for ArchiveBody {
     }
 }
 
-pub(super) fn drop_slice(ctx: &CommandContext, name: String, reason: Option<String>) -> Result<()> {
+pub(super) fn drop_slice(ctx: &Ctx, name: String, reason: Option<String>) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let (metadata, archive_path) =

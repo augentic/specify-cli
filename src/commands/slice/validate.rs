@@ -5,10 +5,10 @@ use std::io::Write;
 use specify_error::Result;
 use specify_validate::{ValidationReport, ValidationResult, serialize_report, validate_slice};
 
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, emit};
 
-pub(super) fn run(ctx: &CommandContext, name: String) -> Result<CliResult> {
+pub(super) fn run(ctx: &Ctx, name: String) -> Result<CliResult> {
     let slice_dir = ctx.slices_dir().join(&name);
     let pipeline = ctx.load_pipeline()?;
     let report = validate_slice(&slice_dir, &pipeline)?;

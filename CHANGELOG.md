@@ -57,7 +57,7 @@ the next minor release.
 - New `cargo make standards-check` target wired into `cargo make ci`.
 - Expanded coding standards in [`AGENTS.md`](AGENTS.md).
 - Internal renames (no skill-visible behaviour change):
-  `CommandContext::require` → `::load`,
+  `Ctx::require` → `::load`,
   `commands::bare` → `commands::unscoped`,
   `JSON_SCHEMA_VERSION` → `JSON_ENVELOPE_VERSION`,
   `CliResult::Exit(u8)` → `CliResult::Code(u8)` (avoids clash with

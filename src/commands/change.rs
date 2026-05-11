@@ -12,11 +12,11 @@ use specify_registry::Registry;
 use specify_slice::atomic::atomic_bytes_write;
 
 use crate::cli::ChangeAction;
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, emit, path_string, serialize_path};
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
-pub fn run(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult> {
+pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<CliResult> {
     match action {
         ChangeAction::Create { name } => brief_create(ctx, name),
         ChangeAction::Show => brief_show(ctx).map(|()| CliResult::Success),
@@ -25,7 +25,7 @@ pub fn run(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult> {
     }
 }
 
-fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult> {
+fn brief_create(ctx: &Ctx, name: String) -> Result<CliResult> {
     if !is_kebab(&name) {
         return Err(Error::Diag {
             code: "change-brief-name-not-kebab",
@@ -66,7 +66,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult> {
     Ok(CliResult::Success)
 }
 
-fn brief_show(ctx: &CommandContext) -> Result<()> {
+fn brief_show(ctx: &Ctx) -> Result<()> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let brief = ChangeBrief::load(&ctx.project_dir)?.map(|b| BriefData {
         frontmatter: b.frontmatter,
@@ -87,7 +87,7 @@ fn brief_show(ctx: &CommandContext) -> Result<()> {
 // `specify change finalize`
 // ---------------------------------------------------------------------------
 
-fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResult> {
+fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<CliResult> {
     let plan = match finalize::load_plan(&ctx.project_dir)? {
         finalize::PlanLoad::Present(plan) => plan,
         finalize::PlanLoad::Missing => return Err(Error::PlanNotFound),

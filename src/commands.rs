@@ -21,7 +21,7 @@ pub mod workspace;
 use specify_error::Result;
 
 use crate::cli::{CapabilityAction, Cli, Commands, OutputFormat, ToolAction, WorkspaceAction};
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, report_error};
 
 /// Map a handler's success payload onto a [`CliResult`] exit code.
@@ -114,7 +114,7 @@ pub fn run(cli: Cli) -> CliResult {
 
 /// Run a command that requires an initialised `.specify/` project.
 ///
-/// Loads `CommandContext` (project config + pipeline), calls `f`, and
+/// Loads `Ctx` (project config + pipeline), calls `f`, and
 /// maps any `Error` to the appropriate format-aware exit code. This
 /// is the single error-handling boundary for project-aware commands —
 /// handlers can use `?` freely inside `f`. Handlers that return
@@ -123,10 +123,10 @@ pub fn run(cli: Cli) -> CliResult {
 /// non-success-exit case).
 fn with_project<F, R>(format: OutputFormat, f: F) -> CliResult
 where
-    F: FnOnce(&CommandContext) -> Result<R>,
+    F: FnOnce(&Ctx) -> Result<R>,
     R: IntoCliResult,
 {
-    let ctx = match CommandContext::load(format) {
+    let ctx = match Ctx::load(format) {
         Ok(ctx) => ctx,
         Err(err) => return report_error(format, &err),
     };

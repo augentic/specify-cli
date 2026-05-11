@@ -363,7 +363,7 @@ fn is_output_module(path: &Path) -> bool {
 // Path helpers live in `specify-config` (CL-01); command modules call them,
 // they do not redefine them. The regex requires the function's first
 // argument to start with an identifier (e.g. `project_dir: &Path`) rather
-// than `&self`, so thin facade methods like `CommandContext::archive_dir`
+// than `&self`, so thin facade methods like `Ctx::archive_dir`
 // that delegate to `ProjectConfig::archive_dir` are not flagged. The Rust
 // `regex` crate has no lookarounds, so the negative ("not a self method")
 // is encoded as a positive ("first arg is a normal identifier").

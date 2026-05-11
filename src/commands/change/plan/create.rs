@@ -6,11 +6,11 @@ use specify_change::{Entry, EntryPatch, Status};
 use specify_error::Result;
 
 use super::{PlanRef, change_entry_json, check_project, load_for_write, plan_ref};
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{Render, Stream, emit};
 
 pub fn add(
-    ctx: &CommandContext, name: String, depends_on: Vec<String>, sources: Vec<String>,
+    ctx: &Ctx, name: String, depends_on: Vec<String>, sources: Vec<String>,
     description: Option<String>, project: Option<String>, capability: Option<String>,
     context: Vec<String>,
 ) -> Result<()> {
@@ -50,7 +50,7 @@ pub fn add(
 }
 
 pub fn amend(
-    ctx: &CommandContext, name: String, depends_on: Option<Vec<String>>,
+    ctx: &Ctx, name: String, depends_on: Option<Vec<String>>,
     sources: Option<Vec<String>>, description: Option<String>, project: Option<String>,
     capability: Option<String>, context: Option<Vec<String>>,
 ) -> Result<()> {

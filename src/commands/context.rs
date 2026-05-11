@@ -28,17 +28,17 @@ use specify_registry::Registry;
 use specify_slice::SliceMetadata;
 
 use crate::cli::ContextAction;
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::CliResult;
 
-pub fn run(ctx: &CommandContext, action: ContextAction) -> Result<CliResult> {
+pub fn run(ctx: &Ctx, action: ContextAction) -> Result<CliResult> {
     match action {
         ContextAction::Generate { check, force } => generate::run(ctx, check, force),
         ContextAction::Check => check::run(ctx),
     }
 }
 
-fn render_document(ctx: &CommandContext) -> Result<(String, fingerprint::ContextFingerprint)> {
+fn render_document(ctx: &Ctx) -> Result<(String, fingerprint::ContextFingerprint)> {
     let assembly = assemble_render_input(ctx)?;
     let aggregate = fingerprint::aggregate(env!("CARGO_PKG_VERSION"), assembly.inputs.clone());
     let generated = render::render_document_with_fingerprint(&assembly.input, &aggregate);
@@ -74,7 +74,7 @@ fn error_from_fence(err: fences::FenceError) -> Error {
     }
 }
 
-fn context_lock_path(ctx: &CommandContext) -> std::path::PathBuf {
+fn context_lock_path(ctx: &Ctx) -> std::path::PathBuf {
     ProjectConfig::specify_dir(&ctx.project_dir).join("context.lock")
 }
 
@@ -83,7 +83,7 @@ struct RenderAssembly {
     inputs: Vec<fingerprint::InputFingerprint>,
 }
 
-fn assemble_render_input(ctx: &CommandContext) -> Result<RenderAssembly> {
+fn assemble_render_input(ctx: &Ctx) -> Result<RenderAssembly> {
     let mut collector = fingerprint::InputCollector::new(&ctx.project_dir);
     collector.add_file(&ProjectConfig::config_path(&ctx.project_dir))?;
 
@@ -342,7 +342,7 @@ mod tests {
             "name: demo\ncapability: mini\nrules:\n  proposal: rules/proposal.md\n",
         )
         .expect("write project config");
-        let ctx = CommandContext {
+        let ctx = Ctx {
             format: OutputFormat::Text,
             project_dir: tmp.path().to_path_buf(),
             config: sample_config(),
@@ -387,7 +387,7 @@ mod tests {
             .expect("create .specify");
         fs::write(ProjectConfig::config_path(tmp.path()), "name: platform\nhub: true\n")
             .expect("write project config");
-        let ctx = CommandContext {
+        let ctx = Ctx {
             format: OutputFormat::Text,
             project_dir: tmp.path().to_path_buf(),
             config: ProjectConfig {

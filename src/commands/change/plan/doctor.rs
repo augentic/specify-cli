@@ -14,7 +14,7 @@ use specify_error::Result;
 use specify_registry::Registry;
 
 use super::{PlanRef, plan_ref, require_file};
-use crate::context::CommandContext;
+use crate::context::Ctx;
 use crate::output::{CliResult, Render, Stream, emit};
 
 /// Wire shape of the JSON `diagnostics:` row. Mirrors
@@ -53,7 +53,7 @@ impl Render for DoctorBody {
     }
 }
 
-pub fn run(ctx: &CommandContext) -> Result<CliResult> {
+pub fn run(ctx: &Ctx) -> Result<CliResult> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
