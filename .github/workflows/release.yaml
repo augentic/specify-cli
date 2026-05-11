@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build:
@@ -102,9 +103,9 @@ jobs:
           retention-days: 7
 
   wasi-tools:
-    name: Build Vectis WASI tool
+    name: Publish WASI tool packages
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -119,49 +120,51 @@ jobs:
         with:
           key: release-wasi-tools
 
-      - name: Build Vectis WASI tool
-        shell: bash
-        working-directory: wasi-tools
-        run: cargo build --release --locked --target wasm32-wasip2 -p specify-vectis
-
-      - name: Package Vectis WASI tool
+      - name: Install package tools
         shell: bash
         run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
-          DIST_DIR="target/vectis-wasi-tools/release"
-          ARCHIVE="vectis-wasi-tools-${VERSION}.tar.gz"
+          cargo install wkg --locked
+          cargo install wasm-tools --locked
 
-          mkdir -p "${DIST_DIR}"
-          cp wasi-tools/target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR}/vectis.wasm"
+      - name: Configure wasm-pkg registry
+        shell: bash
+        run: |
+          cat > "${RUNNER_TEMP}/wkg.toml" <<'EOF'
+          default_registry = "augentic.io"
 
-          (
-            cd "${DIST_DIR}"
-            shasum -a 256 vectis.wasm > vectis.wasm.sha256
-            shasum -a 256 vectis.wasm > SHA256SUMS
+          [namespace_registries]
+          specify = "augentic.io"
+          EOF
+
+      - name: Log in to GHCR
+        shell: bash
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build, publish, and verify WASI packages
+        shell: bash
+        env:
+          WKG_CONFIG: ${{ runner.temp }}/wkg.toml
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          mkdir -p "${RUNNER_TEMP}/wasi-pulls"
+
+          declare -a TOOLS=(
+            "specify:contract@${VERSION}|specify-contract|target/wasm32-wasip2/release/specify-contract.wasm|contract.wasm"
+            "specify:vectis@${VERSION}|specify-vectis|target/wasm32-wasip2/release/vectis.wasm|vectis.wasm"
           )
 
-          cp "${DIST_DIR}/vectis.wasm" .
-          cp "${DIST_DIR}/vectis.wasm.sha256" .
-
-          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
-            -czf "${ARCHIVE}" \
-            -C "${DIST_DIR}" \
-            SHA256SUMS \
-            vectis.wasm \
-            vectis.wasm.sha256
-          shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: specify-wasi-tools
-          path: |
-            vectis.wasm
-            vectis.wasm.sha256
-            vectis-wasi-tools-*.tar.gz
-            vectis-wasi-tools-*.tar.gz.sha256
-          if-no-files-found: error
-          retention-days: 7
+          for entry in "${TOOLS[@]}"; do
+            IFS='|' read -r package crate wasm pulled_name <<<"${entry}"
+            cargo build --release --locked --target wasm32-wasip2 -p "${crate}"
+            test -s "${wasm}"
+            wasm-tools validate "${wasm}" --features component-model
+            wkg --config "${WKG_CONFIG}" publish "${package}" "${wasm}"
+            pulled="${RUNNER_TEMP}/wasi-pulls/${pulled_name}"
+            wkg --config "${WKG_CONFIG}" get "${package}" -o "${pulled}"
+            test -s "${pulled}"
+            wasm-tools validate "${pulled}" --features component-model
+          done
 
   release:
     name: Publish GitHub Release

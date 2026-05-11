@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::{SIDECAR_FILENAME, scope_segment, unique_sibling_path};
 use crate::error::ToolError;
 use crate::manifest::{ToolPermissions, ToolScope};
+use crate::package::PackageMetadata;
 
 const SIDECAR_SCHEMA_VERSION: u32 = 1;
 
@@ -22,6 +23,36 @@ pub struct PermissionsSnapshot {
     /// Read-write preopen templates from the live declaration.
     #[serde(default)]
     pub write: Vec<String>,
+}
+
+/// Package metadata captured at fetch time for operator inspection.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct PackageSnapshot {
+    /// Package name without the version suffix.
+    pub name: String,
+    /// Exact package version.
+    pub version: String,
+    /// Registry host used to resolve the package.
+    pub registry: String,
+}
+
+/// OCI metadata captured at fetch time for operator inspection.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct OciSnapshot {
+    /// Resolved OCI artifact reference when known.
+    pub reference: String,
+}
+
+impl From<&PackageMetadata> for PackageSnapshot {
+    fn from(value: &PackageMetadata) -> Self {
+        Self {
+            name: value.name.clone(),
+            version: value.version.clone(),
+            registry: value.registry.clone(),
+        }
+    }
 }
 
 impl From<&ToolPermissions> for PermissionsSnapshot {
@@ -54,6 +85,42 @@ pub struct Sidecar {
     /// Optional lower-case hex SHA-256 digest copied from the declaration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+    /// Optional package metadata for wasm-pkg sources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<PackageSnapshot>,
+    /// Optional OCI metadata for wasm-pkg sources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oci: Option<OciSnapshot>,
+}
+
+/// Inputs copied from the live declaration into a cache sidecar.
+#[derive(Debug, Clone)]
+pub struct SidecarInput {
+    tool_name: String,
+    tool_version: String,
+    source: String,
+    permissions_snapshot: PermissionsSnapshot,
+    sha256: Option<String>,
+    package_metadata: Option<PackageMetadata>,
+}
+
+impl SidecarInput {
+    /// Build sidecar inputs from a live declaration tuple.
+    #[must_use]
+    pub fn new(
+        tool_name: impl Into<String>, tool_version: impl Into<String>, source: impl Into<String>,
+        permissions_snapshot: PermissionsSnapshot, sha256: Option<String>,
+        package_metadata: Option<PackageMetadata>,
+    ) -> Self {
+        Self {
+            tool_name: tool_name.into(),
+            tool_version: tool_version.into(),
+            source: source.into(),
+            permissions_snapshot,
+            sha256,
+            package_metadata,
+        }
+    }
 }
 
 impl Sidecar {
@@ -69,19 +136,24 @@ impl Sidecar {
     /// the cache directory. Other fields are accepted verbatim and validated
     /// against the v1 schema by [`write_sidecar`] before persistence.
     pub fn new(
-        scope: &ToolScope, tool_name: impl Into<String>, tool_version: impl Into<String>,
-        source: impl Into<String>, permissions_snapshot: PermissionsSnapshot,
-        sha256: Option<String>, now: DateTime<Utc>,
+        scope: &ToolScope, input: SidecarInput, now: DateTime<Utc>,
     ) -> Result<Self, ToolError> {
+        let (package, oci) = input.package_metadata.map_or((None, None), |metadata| {
+            let package = Some(PackageSnapshot::from(&metadata));
+            let oci = metadata.oci_reference.map(|reference| OciSnapshot { reference });
+            (package, oci)
+        });
         Ok(Self {
             schema_version: SIDECAR_SCHEMA_VERSION,
             scope: scope_segment(scope)?,
-            tool_name: tool_name.into(),
-            tool_version: tool_version.into(),
-            source: source.into(),
+            tool_name: input.tool_name,
+            tool_version: input.tool_version,
+            source: input.source,
             fetched_at: now,
-            permissions_snapshot,
-            sha256,
+            permissions_snapshot: input.permissions_snapshot,
+            sha256: input.sha256,
+            package,
+            oci,
         })
     }
 }
@@ -167,6 +239,22 @@ fn validate_sidecar_schema(path: &Path, sidecar: &Sidecar) -> Result<(), ToolErr
         && !valid_sha256(sha256)
     {
         return sidecar_schema_error(path, "sha256 must be 64 lowercase hexadecimal characters");
+    }
+    if let Some(package) = &sidecar.package {
+        for (field, value) in [
+            ("package.name", package.name.as_str()),
+            ("package.version", package.version.as_str()),
+            ("package.registry", package.registry.as_str()),
+        ] {
+            if value.is_empty() {
+                return sidecar_schema_error(path, format!("{field} must not be empty"));
+            }
+        }
+    }
+    if let Some(oci) = &sidecar.oci
+        && oci.reference.is_empty()
+    {
+        return sidecar_schema_error(path, "oci.reference must not be empty");
     }
     Ok(())
 }

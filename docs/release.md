@@ -24,11 +24,12 @@ The `.github/workflows/release.yaml` workflow fires on the tag push and runs fou
 
    Each job produces a versioned archive (`specify-${TAG}-${TARGET}.tar.gz` on unix, `.zip` on Windows) plus a companion `.sha256` file, uploaded via `actions/upload-artifact@v4`.
 
-2. **`wasi-tools`.** Builds the first-party Vectis command component once for `wasm32-wasip2`:
+2. **`wasi-tools`.** Builds first-party WASI command components for `wasm32-wasip2`, publishes them as wasm-pkg packages with `wkg`, then pulls each package back for verification:
 
-   - `vectis.wasm`
+   - `specify:contract@${VERSION}`
+   - `specify:vectis@${VERSION}`
 
-   The release uploads the raw `.wasm` file for `tools.yaml` sources, its `.sha256` companion, and a `vectis-wasi-tools-${TAG}.tar.gz` archive containing the component plus its `.sha256` file and `SHA256SUMS`.
+   The job logs in to GHCR with the GitHub Actions token, uses the `specify -> augentic.io` wasm-pkg namespace mapping, and verifies both the built component and the pulled package with `wasm-tools validate`. Raw first-party `.wasm` files are not attached to GitHub Releases.
 
 3. **`release`.** Waits for every native matrix leg and the Vectis WASI tools, downloads all artifacts, and creates the GitHub Release with `softprops/action-gh-release@v2`. Release notes are generated from `.github/release.yaml`.
 
@@ -38,17 +39,18 @@ The `.github/workflows/release.yaml` workflow fires on the tag push and runs fou
 
    A `sleep 30` between each publish gives the crates.io index time to propagate before the next dependent crate tries to resolve it. The job reads `secrets.CARGO_REGISTRY_TOKEN`; because the job is gated at the job-level `if:`, the workflow file remains valid even in repos where the secret does not exist (GitHub only evaluates `secrets.*` inside steps that actually execute).
 
-## Vectis WASI tool artifacts
+## WASI Tool Packages
 
-Released Vectis tool declarations should point directly at the raw release asset:
+Released first-party tool declarations use exact wasm-pkg package requests:
 
 ```text
-https://github.com/augentic/specify-cli/releases/download/v${VERSION}/vectis.wasm
+specify:contract@${VERSION}
+specify:vectis@${VERSION}
 ```
 
-Use the companion `.sha256` asset from the same release as the `tools.yaml` pin. Do not invent digest values before the workflow has built the release component.
+The release workflow publishes those package requests through `wkg`; `specify tool fetch` resolves them through the embedded first-party namespace default and Augentic registry metadata. Maintainers may use `wkg` for manual inspection, but operators only need the `specify` binary.
 
-For local development before a public release, build the component and checksum file into a deterministic local directory:
+For local development before a public release, build the component into a deterministic local directory:
 
 ```bash
 cargo make vectis-wasi-artifacts
@@ -62,7 +64,7 @@ target/vectis-wasi-tools/release/vectis.wasm.sha256
 target/vectis-wasi-tools/release/SHA256SUMS
 ```
 
-To smoke-test the capability before release, add a project-scope tool declaration in `.specify/project.yaml` that keeps the capability's version and permissions but overrides `source` to `file:///absolute/path/to/specify-cli/target/vectis-wasi-tools/release/vectis.wasm`. Include the matching local `sha256` value if you want cache verification; otherwise omit `sha256` for rapid rebuilds and run `specify tool gc` when switching bytes without changing the declaration tuple.
+To smoke-test a capability before release, add a project-scope object declaration in `.specify/project.yaml` that keeps the capability's tool name and permissions but overrides `source` to a local `file://` or absolute path. Include a matching `sha256` value if you want cache verification; otherwise omit `sha256` for rapid rebuilds and run `specify tool gc` when switching bytes without changing the declaration tuple. For package-path smoke tests, publish a unique prerelease package such as `specify:vectis@${VERSION}-dev.${RUN_ID}` and point a local `tools.yaml` override at that package.
 
 ## Updating the Homebrew formula
 

@@ -28,7 +28,10 @@ mod tests;
 
 pub use fetch::stage_and_install;
 pub use gc::scan as scan_for_gc;
-pub use meta::{PermissionsSnapshot, Sidecar, read_sidecar, write_sidecar};
+pub use meta::{
+    OciSnapshot, PackageSnapshot, PermissionsSnapshot, Sidecar, SidecarInput, read_sidecar,
+    write_sidecar,
+};
 
 /// Filename used for cached component bytes.
 pub const MODULE_FILENAME: &str = "module.wasm";

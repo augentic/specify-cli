@@ -145,6 +145,14 @@ pub enum ToolError {
         /// Actual lowercase hex SHA-256 digest.
         actual: String,
     },
+    /// A wasm-pkg package source could not be resolved or streamed.
+    #[error("tool package `{source_value}` failed: {reason}")]
+    Package {
+        /// Package request string from the live declaration.
+        source_value: String,
+        /// Rejection reason.
+        reason: String,
+    },
     /// An HTTPS source returned a non-200 status.
     #[error("tool source `{url}` returned HTTP status {status}; expected 200")]
     NetworkStatus {
@@ -265,6 +273,15 @@ impl ToolError {
             action,
             path: path.into(),
             source,
+        }
+    }
+
+    pub(crate) fn package(
+        request: &crate::manifest::PackageRequest, reason: impl Into<String>,
+    ) -> Self {
+        Self::Package {
+            source_value: request.to_wire_string(),
+            reason: reason.into(),
         }
     }
 }

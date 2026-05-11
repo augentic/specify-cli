@@ -219,6 +219,23 @@ fn project_scope_lists_three_tools() {
 }
 
 #[test]
+fn scalar_package_declaration_lists_derived_fields() {
+    let fixtures = ToolFixtures::new();
+    let project = fixtures.project();
+    write_project_manifest(
+        &project,
+        "name: tools-test\nhub: true\ntools:\n  - \"specify:contract@0.3.0\"\n",
+    );
+
+    let value = json_tool_list(&project, &cache_dir("scalar-package-list"));
+    let tools = value["tools"].as_array().expect("tools array");
+    assert_eq!(tools.len(), 1, "{value}");
+    assert_eq!(tools[0]["name"], "contract");
+    assert_eq!(tools[0]["version"], "0.3.0");
+    assert_eq!(tools[0]["source"], "specify:contract@0.3.0");
+}
+
+#[test]
 fn capability_scope_lists_sidecar_tool() {
     let fixtures = ToolFixtures::new();
     let cap_yaml = fs::read_to_string(fixtures.capability().join("capability.yaml"))

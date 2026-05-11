@@ -25,6 +25,9 @@ chrono.workspace = true
 semver.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+wasm-pkg-client.workspace = true
+futures-util.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 jsonschema.workspace = true

@@ -14,9 +14,11 @@ pub mod local;
 
 use crate::cache::{
     self, CacheStatus, MODULE_FILENAME, PermissionsSnapshot, SIDECAR_FILENAME, Sidecar,
+    SidecarInput,
 };
 use crate::error::ToolError;
 use crate::manifest::{Tool, ToolScope, ToolSource};
+use crate::package::{FetchedPackage, PackageClient, PackageMetadata, WasmPkgClient};
 
 const MAX_TEMP_ATTEMPTS: u8 = 64;
 
@@ -50,6 +52,21 @@ pub struct ResolvedTool {
 pub fn resolve(
     scope: &ToolScope, tool: &Tool, now: chrono::DateTime<chrono::Utc>,
 ) -> Result<ResolvedTool, ToolError> {
+    resolve_with_package_client(scope, tool, now, &WasmPkgClient)
+}
+
+/// Resolve a declared tool using an injected package client.
+///
+/// Tests use this to cover package resolver behavior without depending on a
+/// live registry.
+///
+/// # Errors
+///
+/// Returns the same cache, source, digest, and resolver errors as [`resolve`].
+pub fn resolve_with_package_client(
+    scope: &ToolScope, tool: &Tool, now: chrono::DateTime<chrono::Utc>,
+    package_client: &impl PackageClient,
+) -> Result<ResolvedTool, ToolError> {
     let source = tool.source.to_wire_string().into_owned();
     let module = cache::module_path(scope, &tool.name, &tool.version)?;
     if cache::cache_status(scope, &tool.name, &tool.version, &source, tool.sha256.as_deref())?
@@ -61,7 +78,8 @@ pub fn resolve(
 
     let dest = cache::tool_dir(scope, &tool.name, &tool.version)?;
     let staged = unique_staging_dir(&dest)?;
-    let install_result = stage_and_install(scope, tool, &source, &staged, &dest, now);
+    let install_result =
+        stage_and_install(scope, tool, &source, &staged, &dest, now, package_client);
     // The atomic install moves `staged/` into `dest/`, so its absence on
     // success is expected. On failure we tear down the staging tree.
     let cleanup_result = if install_result.is_ok() && !staged.exists() {
@@ -80,19 +98,23 @@ pub fn resolve(
 
 fn stage_and_install(
     scope: &ToolScope, tool: &Tool, source: &str, staged: &Path, dest: &Path,
-    now: chrono::DateTime<chrono::Utc>,
+    now: chrono::DateTime<chrono::Utc>, package_client: &impl PackageClient,
 ) -> Result<(), ToolError> {
     let module_dest = staged.join(MODULE_FILENAME);
-    let acquired = acquire_source_bytes(&tool.source, &module_dest)?;
+    let acquired = acquire_source_bytes(&tool.source, &module_dest, package_client)?;
     digest::validate(source, &acquired, tool.sha256.as_deref())?;
+    let package_metadata = acquired.package_metadata();
     acquired.persist_to(&module_dest)?;
     let sidecar = Sidecar::new(
         scope,
-        &tool.name,
-        &tool.version,
-        source,
-        PermissionsSnapshot::from(&tool.permissions),
-        tool.sha256.clone(),
+        SidecarInput::new(
+            &tool.name,
+            &tool.version,
+            source,
+            PermissionsSnapshot::from(&tool.permissions),
+            tool.sha256.clone(),
+            package_metadata,
+        ),
         now,
     )?;
     cache::write_sidecar(&staged.join(SIDECAR_FILENAME), &sidecar)?;
@@ -107,13 +129,26 @@ fn resolved(scope: &ToolScope, tool: &Tool, bytes_path: PathBuf) -> ResolvedTool
     }
 }
 
-fn acquire_source_bytes(source: &ToolSource, dest_hint: &Path) -> Result<AcquiredBytes, ToolError> {
+fn acquire_source_bytes(
+    source: &ToolSource, dest_hint: &Path, package_client: &impl PackageClient,
+) -> Result<AcquiredBytes, ToolError> {
     match source {
         ToolSource::LocalPath(path) => {
             local::read_local_path(path, &path.to_string_lossy()).map(AcquiredBytes::Buffered)
         }
         ToolSource::FileUri(uri) => local::read_file_uri(uri).map(AcquiredBytes::Buffered),
         ToolSource::HttpsUri(url) => http::download_https(url, dest_hint),
+        ToolSource::Package(package) => package_client.fetch(package, dest_hint).map(
+            |FetchedPackage {
+                 temp,
+                 sha256,
+                 metadata,
+             }| AcquiredBytes::Package {
+                temp,
+                sha256,
+                metadata,
+            },
+        ),
     }
 }
 
@@ -125,13 +160,14 @@ fn acquire_source_bytes(source: &ToolSource, dest_hint: &Path) -> Result<Acquire
 pub(crate) enum AcquiredBytes {
     Buffered(Vec<u8>),
     Streamed { temp: NamedTempFile, sha256: String },
+    Package { temp: NamedTempFile, sha256: String, metadata: PackageMetadata },
 }
 
 impl AcquiredBytes {
     pub(crate) fn len(&self) -> Result<u64, ToolError> {
         match self {
             Self::Buffered(bytes) => Ok(bytes.len() as u64),
-            Self::Streamed { temp, .. } => temp
+            Self::Streamed { temp, .. } | Self::Package { temp, .. } => temp
                 .as_file()
                 .metadata()
                 .map(|m| m.len())
@@ -142,7 +178,14 @@ impl AcquiredBytes {
     pub(crate) fn sha256_hex(&self) -> String {
         match self {
             Self::Buffered(bytes) => digest::sha256_hex(bytes),
-            Self::Streamed { sha256, .. } => sha256.clone(),
+            Self::Streamed { sha256, .. } | Self::Package { sha256, .. } => sha256.clone(),
+        }
+    }
+
+    pub(crate) fn package_metadata(&self) -> Option<PackageMetadata> {
+        match self {
+            Self::Package { metadata, .. } => Some(metadata.clone()),
+            Self::Buffered(_) | Self::Streamed { .. } => None,
         }
     }
 
@@ -150,7 +193,7 @@ impl AcquiredBytes {
         match self {
             Self::Buffered(bytes) => fs::write(dest, bytes)
                 .map_err(|err| ToolError::cache_io("write staged module", dest, err)),
-            Self::Streamed { temp, .. } => {
+            Self::Streamed { temp, .. } | Self::Package { temp, .. } => {
                 temp.persist(dest).map(|_| ()).map_err(|err| ToolError::AtomicMoveFailed {
                     from: err.file.path().to_path_buf(),
                     to: dest.to_path_buf(),
@@ -253,12 +296,55 @@ pub(super) mod tests_common {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::fs;
+    use std::io::Write as _;
+    use std::path::Path;
 
     use super::tests_common::*;
     use super::*;
-    use crate::manifest::ToolSource;
+    use crate::manifest::{PackageRequest, ToolSource};
+    use crate::package::{FetchedPackage, PackageClient, PackageMetadata};
     use crate::test_support::{scratch_dir, with_cache_env};
+
+    struct MockPackageClient {
+        bytes: &'static [u8],
+        calls: Cell<u32>,
+    }
+
+    impl MockPackageClient {
+        fn new(bytes: &'static [u8]) -> Self {
+            Self {
+                bytes,
+                calls: Cell::new(0),
+            }
+        }
+    }
+
+    impl PackageClient for MockPackageClient {
+        fn fetch(
+            &self, request: &PackageRequest, dest_hint: &Path,
+        ) -> Result<FetchedPackage, ToolError> {
+            self.calls.set(self.calls.get() + 1);
+            let parent = dest_hint.parent().expect("dest hint has parent");
+            fs::create_dir_all(parent).expect("create mock package temp parent");
+            let mut temp = NamedTempFile::new_in(parent).expect("create mock package tempfile");
+            temp.write_all(self.bytes).expect("write mock package bytes");
+            Ok(FetchedPackage {
+                temp,
+                sha256: digest::sha256_hex(self.bytes),
+                metadata: PackageMetadata {
+                    name: request.name_ref(),
+                    version: request.version.clone(),
+                    registry: "augentic.io".to_string(),
+                    oci_reference: Some(format!(
+                        "ghcr.io/augentic/specify/{}:{}",
+                        request.name, request.version
+                    )),
+                },
+            })
+        }
+    }
 
     #[test]
     fn local_path_cache_miss_hit_and_source_change() {
@@ -306,6 +392,46 @@ mod tests {
             assert!(
                 capability_resolved.bytes_path.to_string_lossy().contains("capability--contracts")
             );
+        });
+    }
+
+    #[test]
+    fn package_source_uses_injected_client_and_records_metadata() {
+        let cache_dir = scratch_dir("resolver-package-cache");
+        let scope = project_scope();
+        let package = PackageRequest {
+            namespace: "specify".to_string(),
+            name: "contract".to_string(),
+            version: "1.0.0".to_string(),
+        };
+        let declared = tool(ToolSource::Package(package), None);
+        let client = MockPackageClient::new(b"package-bytes");
+
+        with_cache_env(Some(&cache_dir), None, None, || {
+            let resolved = resolve_with_package_client(&scope, &declared, fixed_now(), &client)
+                .expect("package resolves");
+            assert_eq!(fs::read(resolved.bytes_path).expect("cached bytes"), b"package-bytes");
+            assert_eq!(client.calls.get(), 1);
+
+            let sidecar = cache::read_sidecar(
+                &cache::sidecar_path(&scope, &declared.name, &declared.version)
+                    .expect("sidecar path"),
+            )
+            .expect("read sidecar")
+            .expect("sidecar exists");
+            assert_eq!(sidecar.source, "specify:contract@1.0.0");
+            assert_eq!(
+                sidecar.package.as_ref().map(|package| package.name.as_str()),
+                Some("specify:contract")
+            );
+            assert_eq!(
+                sidecar.oci.as_ref().map(|oci| oci.reference.as_str()),
+                Some("ghcr.io/augentic/specify/contract:1.0.0")
+            );
+
+            resolve_with_package_client(&scope, &declared, fixed_now(), &client)
+                .expect("package cache hit resolves");
+            assert_eq!(client.calls.get(), 1, "cache hit must not fetch package again");
         });
     }
 }

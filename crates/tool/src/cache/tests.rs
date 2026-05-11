@@ -22,14 +22,17 @@ fn capability_scope() -> ToolScope {
 fn fixed_sidecar(scope: &ToolScope, name: &str, version: &str, source: &str) -> Sidecar {
     Sidecar::new(
         scope,
-        name,
-        version,
-        source,
-        PermissionsSnapshot {
-            read: vec!["$PROJECT_DIR/contracts".to_string()],
-            write: Vec::new(),
-        },
-        Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string()),
+        SidecarInput::new(
+            name,
+            version,
+            source,
+            PermissionsSnapshot {
+                read: vec!["$PROJECT_DIR/contracts".to_string()],
+                write: Vec::new(),
+            },
+            Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string()),
+            None,
+        ),
         "2026-05-07T00:00:00Z".parse().expect("fixed test stamp"),
     )
     .expect("sidecar")

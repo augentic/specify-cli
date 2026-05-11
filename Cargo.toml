@@ -158,12 +158,15 @@ serde_json = "1"
 regex = "1"
 glob = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
+futures-util = "0.3"
 jsonschema = { version = "0.46", default-features = false }
 semver = "1"
 tempfile = "3"
+tokio = { version = "1", features = ["rt", "fs", "io-util"] }
 toml = "1"
 sha2 = "0.10"
 ureq = { version = "3", features = ["json"] }
+wasm-pkg-client = "0.15"
 wasmtime = { version = "44.0.1", default-features = false, features = ["component-model", "runtime", "cranelift"] }
 wasmtime-wasi = { version = "44.0.1", default-features = false, features = ["p2"] }
 assert_cmd = "2"

@@ -47,7 +47,7 @@
 //! tools:
 //!   - name: contract
 //!     version: 1.0.0
-//!     source: "https://github.com/augentic/specify-tools/releases/download/1.0.0/contract.wasm"
+//!     source: "file:///abs/path/to/contract-dev.wasm"
 //!     sha256: "<hex-encoded sha256 of the component bytes>"
 //!     permissions:
 //!       read:  ["$PROJECT_DIR/contracts"]
@@ -55,13 +55,7 @@
 //!
 //! # <resolved-capability-dir>/tools.yaml (capability scope)
 //! tools:
-//!   - name: contract
-//!     version: 1.0.0
-//!     source: "file:///abs/path/to/contract-1.0.0.wasm"
-//!     sha256: "<hex-encoded sha256 of the component bytes>"
-//!     permissions:
-//!       read:  ["$PROJECT_DIR/contracts"]
-//!       write: []
+//!   - "specify:contract@0.3.0"
 //! ```
 //!
 //! `capability.yaml` is never modified by any chunk and never gains a
@@ -131,6 +125,8 @@
 //!   read:  [...]
 //!   write: [...]
 //! sha256: <optional hex digest copied from manifest>
+//! package: <optional package metadata for wasm-pkg sources>
+//! oci: <optional OCI metadata for wasm-pkg sources>
 //! ```
 //!
 //! `permissions-snapshot` is informational only in v1. Cached bytes are
@@ -242,6 +238,7 @@ pub mod error;
 pub mod host;
 pub mod load;
 pub mod manifest;
+pub mod package;
 pub mod permissions;
 pub mod resolver;
 pub mod validate;
