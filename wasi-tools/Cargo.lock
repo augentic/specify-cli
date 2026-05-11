@@ -425,12 +425,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glob"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
-
-[[package]]
 name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1104,19 +1098,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
-name = "specify-capability"
-version = "0.3.0"
-dependencies = [
- "clap",
- "glob",
- "jsonschema",
- "serde",
- "serde-saphyr",
- "serde_json",
- "specify-error",
-]
-
-[[package]]
 name = "specify-contract"
 version = "0.3.0"
 dependencies = [
@@ -1128,51 +1109,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "specify-error"
-version = "0.3.0"
-dependencies = [
- "serde",
- "serde-saphyr",
- "thiserror",
-]
-
-[[package]]
-name = "specify-registry"
-version = "0.3.0"
-dependencies = [
- "serde",
- "serde-saphyr",
- "serde_json",
- "specify-error",
-]
-
-[[package]]
-name = "specify-spec"
-version = "0.3.0"
-
-[[package]]
-name = "specify-task"
-version = "0.3.0"
-dependencies = [
- "regex",
- "specify-error",
-]
-
-[[package]]
 name = "specify-validate"
 version = "0.3.0"
 dependencies = [
- "glob",
- "regex",
  "semver",
  "serde",
  "serde-saphyr",
  "serde_json",
- "specify-capability",
- "specify-error",
- "specify-registry",
- "specify-spec",
- "specify-task",
 ]
 
 [[package]]

@@ -4455,6 +4455,7 @@ dependencies = [
  "serde_json",
  "specify-error",
  "specify-tool",
+ "specify-validate",
  "tempfile",
 ]
 
@@ -4487,6 +4488,17 @@ dependencies = [
  "wasm-pkg-client",
  "wasmtime",
  "wasmtime-wasi",
+]
+
+[[package]]
+name = "specify-validate"
+version = "0.3.0"
+dependencies = [
+ "semver",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

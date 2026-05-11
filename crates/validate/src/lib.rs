@@ -1,6 +1,6 @@
-//! Baseline-contract validation. See `DECISIONS.md` §"Change B — Top-level
-//! contract format detection by root key" and §"Change C — Baseline-contract
-//! validation rules" for provenance.
+//! Baseline-contract validation primitives shared by the host CLI
+//! (`specify-domain`) and the standalone WASI carve-out
+//! (`wasi-tools/contract`).
 //!
 //! Walks the supplied `contracts/` directory (typically the project
 //! baseline at `<project>/contracts/`), projects each top-level
@@ -16,6 +16,16 @@
 //!
 //! Files that fail to parse as YAML are skipped silently — the
 //! contracts-brief verifier owns that diagnostic.
+//!
+//! ## Why this is its own crate
+//!
+//! Both `specify-domain` (the host CLI's compatibility classifier) and
+//! `wasi-tools/contract` (the standalone `wasm32-wasip2` validator)
+//! need this logic. `wasi-tools/contract` is a deliberate carve-out
+//! from the host CLI's dependency tree (no `wasmtime`, `tokio`,
+//! `ureq`), so it cannot depend on `specify-domain`. Keeping this
+//! crate dependency-minimal (`semver`, `serde`, `serde-saphyr`,
+//! `serde_json`) lets both consumers share one source of truth.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -25,7 +35,7 @@ mod parse;
 
 pub use envelope::serialize_contract_findings;
 
-/// One validation finding produced by [`crate::validate::validate_baseline_contracts`].
+/// One validation finding produced by [`validate_baseline`].
 ///
 /// `rule_id` is one of `contract.version-is-semver`,
 /// `contract.id-format`, or `contract.id-unique`. `path` is the
@@ -46,11 +56,6 @@ const RULE_ID_FORMAT: &str = "contract.id-format";
 const RULE_ID_UNIQUE: &str = "contract.id-unique";
 
 /// Run the baseline-contract validation checks across `contracts_dir`.
-///
-/// Re-exported from the crate root as
-/// [`crate::validate::validate_baseline_contracts`] — that is the canonical
-/// public name; this module-level alias avoids a stuttering function
-/// suffix at the definition site.
 ///
 /// Returns an empty vector when the directory does not exist, when it
 /// is empty, or when every walked file is well-formed. The order of
@@ -134,6 +139,11 @@ pub fn validate_baseline(contracts_dir: &Path) -> Vec<ContractFinding> {
 
     findings
 }
+
+/// Convenience alias matching the historic re-export name. The host
+/// CLI's `specify_domain::validate::validate_baseline_contracts` and
+/// `wasi-tools/contract` both use this spelling.
+pub use validate_baseline as validate_baseline_contracts;
 
 #[cfg(test)]
 mod tests {

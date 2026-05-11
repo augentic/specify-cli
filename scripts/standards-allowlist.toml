@@ -12,6 +12,9 @@
 # §Mechanical enforcement explains what each predicate enforces and how
 # to drive its baselines down.
 
+[file."crates/domain/src/capability.rs"]
+module-line-count = 97
+
 [file."crates/domain/src/capability/brief.rs"]
 ritual-doc-paragraphs = 2
 module-line-count = 114
@@ -33,14 +36,14 @@ ritual-doc-paragraphs = 1
 module-line-count = 225
 
 [file."crates/domain/src/capability/codex_resolver.rs"]
-module-line-count = 293
-
-[file."crates/domain/src/capability.rs"]
-module-line-count = 94
+module-line-count = 295
 
 [file."crates/domain/src/capability/pipeline.rs"]
 ritual-doc-paragraphs = 2
 module-line-count = 229
+
+[file."crates/domain/src/change.rs"]
+module-line-count = 28
 
 [file."crates/domain/src/change/finalize.rs"]
 module-line-count = 355
@@ -49,16 +52,16 @@ module-line-count = 355
 module-line-count = 83
 
 [file."crates/domain/src/change/finalize/probe.rs"]
-module-line-count = 184
+module-line-count = 183
 
 [file."crates/domain/src/change/finalize/summary.rs"]
 module-line-count = 80
 
-[file."crates/domain/src/change.rs"]
-module-line-count = 29
-
 [file."crates/domain/src/change/plan.rs"]
 module-line-count = 14
+
+[file."crates/domain/src/change/plan/core.rs"]
+module-line-count = 51
 
 [file."crates/domain/src/change/plan/core/amend.rs"]
 module-line-count = 367
@@ -72,9 +75,6 @@ module-line-count = 304
 [file."crates/domain/src/change/plan/core/io.rs"]
 direct-fs-write = 2
 module-line-count = 271
-
-[file."crates/domain/src/change/plan/core.rs"]
-module-line-count = 51
 
 [file."crates/domain/src/change/plan/core/model.rs"]
 module-line-count = 375
@@ -103,7 +103,7 @@ module-line-count = 92
 module-line-count = 41
 
 [file."crates/domain/src/change/plan/doctor/stale_clone.rs"]
-module-line-count = 66
+module-line-count = 65
 
 [file."crates/domain/src/change/plan/doctor/unreachable.rs"]
 module-line-count = 109
@@ -123,13 +123,16 @@ module-line-count = 52
 [file."crates/domain/src/change/plan/lock/status.rs"]
 module-line-count = 57
 
-[file."crates/domain/src/config/atomic.rs"]
-module-line-count = 312
-
 [file."crates/domain/src/config.rs"]
 ritual-doc-paragraphs = 1
 direct-fs-write = 1
-module-line-count = 503
+module-line-count = 502
+
+[file."crates/domain/src/config/atomic.rs"]
+module-line-count = 312
+
+[file."crates/domain/src/init.rs"]
+module-line-count = 221
 
 [file."crates/domain/src/init/cache.rs"]
 direct-fs-write = 1
@@ -145,9 +148,6 @@ module-line-count = 80
 direct-fs-write = 3
 module-line-count = 260
 
-[file."crates/domain/src/init.rs"]
-module-line-count = 221
-
 [file."crates/domain/src/init/regular.rs"]
 direct-fs-write = 5
 module-line-count = 316
@@ -158,6 +158,9 @@ module-line-count = 26
 [file."crates/domain/src/macros.rs"]
 module-line-count = 63
 
+[file."crates/domain/src/merge.rs"]
+module-line-count = 42
+
 [file."crates/domain/src/merge/artifact_class.rs"]
 module-line-count = 62
 
@@ -167,10 +170,7 @@ module-line-count = 266
 
 [file."crates/domain/src/merge/merge.rs"]
 ritual-doc-paragraphs = 1
-module-line-count = 360
-
-[file."crates/domain/src/merge.rs"]
-module-line-count = 39
+module-line-count = 361
 
 [file."crates/domain/src/merge/slice.rs"]
 module-line-count = 331
@@ -187,7 +187,10 @@ direct-fs-write = 1
 module-line-count = 140
 
 [file."crates/domain/src/merge/validate.rs"]
-module-line-count = 201
+module-line-count = 202
+
+[file."crates/domain/src/registry.rs"]
+module-line-count = 36
 
 [file."crates/domain/src/registry/branch.rs"]
 module-line-count = 224
@@ -210,9 +213,6 @@ ritual-doc-paragraphs = 1
 direct-fs-write = 1
 module-line-count = 52
 
-[file."crates/domain/src/registry.rs"]
-module-line-count = 33
-
 [file."crates/domain/src/registry/registry.rs"]
 ritual-doc-paragraphs = 1
 module-line-count = 198
@@ -221,6 +221,9 @@ module-line-count = 198
 ritual-doc-paragraphs = 1
 module-line-count = 288
 
+[file."crates/domain/src/registry/workspace.rs"]
+module-line-count = 83
+
 [file."crates/domain/src/registry/workspace/bootstrap.rs"]
 direct-fs-write = 1
 module-line-count = 110
@@ -228,17 +231,14 @@ module-line-count = 110
 [file."crates/domain/src/registry/workspace/git.rs"]
 module-line-count = 90
 
-[file."crates/domain/src/registry/workspace.rs"]
-module-line-count = 83
+[file."crates/domain/src/registry/workspace/push.rs"]
+module-line-count = 337
 
 [file."crates/domain/src/registry/workspace/push/forge.rs"]
 module-line-count = 173
 
-[file."crates/domain/src/registry/workspace/push.rs"]
-module-line-count = 337
-
 [file."crates/domain/src/registry/workspace/push/remote.rs"]
-module-line-count = 184
+module-line-count = 186
 
 [file."crates/domain/src/registry/workspace/slot_problem.rs"]
 module-line-count = 300
@@ -253,7 +253,10 @@ module-line-count = 340
 module-line-count = 10
 
 [file."crates/domain/src/serde_rfc3339.rs"]
-module-line-count = 62
+module-line-count = 58
+
+[file."crates/domain/src/slice.rs"]
+module-line-count = 28
 
 [file."crates/domain/src/slice/actions.rs"]
 module-line-count = 32
@@ -296,9 +299,6 @@ module-line-count = 140
 [file."crates/domain/src/slice/metadata.rs"]
 module-line-count = 275
 
-[file."crates/domain/src/slice.rs"]
-module-line-count = 27
-
 [file."crates/domain/src/slice/outcome.rs"]
 module-line-count = 84
 
@@ -309,12 +309,15 @@ module-line-count = 329
 ritual-doc-paragraphs = 1
 module-line-count = 232
 
-[file."crates/domain/src/validate/compatibility/asyncapi_diff.rs"]
-module-line-count = 59
+[file."crates/domain/src/validate.rs"]
+module-line-count = 191
 
 [file."crates/domain/src/validate/compatibility.rs"]
 direct-fs-write = 1
 module-line-count = 259
+
+[file."crates/domain/src/validate/compatibility/asyncapi_diff.rs"]
+module-line-count = 59
 
 [file."crates/domain/src/validate/compatibility/openapi_diff.rs"]
 module-line-count = 163
@@ -328,23 +331,12 @@ module-line-count = 306
 [file."crates/domain/src/validate/compatibility/util.rs"]
 module-line-count = 96
 
-[file."crates/domain/src/validate/contracts/envelope.rs"]
-direct-fs-write = 1
-module-line-count = 209
-
-[file."crates/domain/src/validate/contracts.rs"]
-direct-fs-write = 1
-module-line-count = 353
-
-[file."crates/domain/src/validate/contracts/parse.rs"]
-module-line-count = 106
-
-[file."crates/domain/src/validate.rs"]
-module-line-count = 191
-
 [file."crates/domain/src/validate/primitives.rs"]
 direct-fs-write = 3
-module-line-count = 390
+module-line-count = 391
+
+[file."crates/domain/src/validate/registry.rs"]
+module-line-count = 34
 
 [file."crates/domain/src/validate/registry/composition.rs"]
 module-line-count = 131
@@ -358,9 +350,6 @@ module-line-count = 146
 
 [file."crates/domain/src/validate/registry/design.rs"]
 module-line-count = 21
-
-[file."crates/domain/src/validate/registry.rs"]
-module-line-count = 34
 
 [file."crates/domain/src/validate/registry/proposal.rs"]
 module-line-count = 53
@@ -437,7 +426,7 @@ module-line-count = 266
 
 [file."crates/tool/src/resolver.rs"]
 direct-fs-write = 2
-module-line-count = 365
+module-line-count = 363
 
 [file."crates/tool/src/resolver/digest.rs"]
 module-line-count = 115
@@ -450,6 +439,17 @@ module-line-count = 104
 
 [file."crates/tool/src/validate.rs"]
 module-line-count = 578
+
+[file."crates/validate/src/envelope.rs"]
+direct-fs-write = 1
+module-line-count = 208
+
+[file."crates/validate/src/lib.rs"]
+direct-fs-write = 1
+module-line-count = 363
+
+[file."crates/validate/src/parse.rs"]
+module-line-count = 106
 
 [file."src/cli.rs"]
 module-line-count = 175
@@ -492,7 +492,7 @@ module-line-count = 143
 module-line-count = 225
 
 [file."src/commands/codex.rs"]
-module-line-count = 296
+module-line-count = 298
 
 [file."src/commands/codex/cli.rs"]
 module-line-count = 22
@@ -584,7 +584,7 @@ cli-help-shape = 6
 module-line-count = 127
 
 [file."src/commands/slice/lifecycle.rs"]
-module-line-count = 172
+module-line-count = 170
 
 [file."src/commands/slice/list.rs"]
 module-line-count = 209
@@ -603,7 +603,7 @@ module-line-count = 174
 module-line-count = 165
 
 [file."src/commands/slice/validate.rs"]
-module-line-count = 66
+module-line-count = 68
 
 [file."src/commands/status.rs"]
 module-line-count = 182

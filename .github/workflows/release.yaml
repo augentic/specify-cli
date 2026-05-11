@@ -228,6 +228,11 @@ jobs:
       - name: Wait for index
         run: sleep 30
 
+      - name: Publish specify-validate
+        run: cargo publish --package specify-validate --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for index
+        run: sleep 30
+
       - name: Publish specify-domain
         run: cargo publish --package specify-domain --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Wait for index

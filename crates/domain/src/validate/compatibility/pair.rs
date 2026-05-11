@@ -43,9 +43,8 @@ enum ContractFormat {
 }
 
 pub(super) fn diff_pair_contracts(
-    project_dir: &Path, rel: &str,
-    baseline_findings: &[crate::validate::contracts::ContractFinding], ctx: &PairContext<'_>,
-    findings: &mut Vec<CompatibilityFinding>,
+    project_dir: &Path, rel: &str, baseline_findings: &[crate::validate::ContractFinding],
+    ctx: &PairContext<'_>, findings: &mut Vec<CompatibilityFinding>,
 ) {
     let pair_baseline_findings: Vec<_> =
         baseline_findings.iter().filter(|finding| finding.path.ends_with(rel)).collect();

@@ -32,9 +32,9 @@ use super::ContractFinding;
 ///
 /// Findings paths are emitted relative to `baseline_dir.parent()`
 /// when that prefix is present on the absolute path produced by
-/// [`crate::validate::validate_baseline_contracts`]; otherwise the raw path is
-/// rendered. This mirrors the legacy behaviour where the CLI stripped
-/// the project root from finding paths so operators saw
+/// [`crate::validate_baseline`]; otherwise the raw path is rendered.
+/// This mirrors the legacy behaviour where the CLI stripped the
+/// project root from finding paths so operators saw
 /// `contracts/<file>` rather than absolute paths.
 ///
 /// `exit_code` is the value the caller intends to surface as the
@@ -104,7 +104,6 @@ mod tests {
     use serde_json::Value;
     use tempfile::TempDir;
 
-    use super::super::ContractFinding;
     use super::*;
 
     fn write_contract(tmp: &TempDir, rel: &str, body: &str) -> PathBuf {

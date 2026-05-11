@@ -141,7 +141,8 @@ without extra plumbing.
 
 ## Crate layout
 
-Four workspace crates: `specify-error` (leaf), `specify-domain` (every
+Five workspace crates: `specify-error` (leaf), `specify-validate`
+(carve-out-shared contract validation), `specify-domain` (every other
 domain module), `specify-tool` (WASI host, gated), and the `specify`
 binary.
 
@@ -151,6 +152,18 @@ redundant `Cargo.toml` files, indirect re-export hops, repeated
 `multiple_crate_versions` waivers). Module boundaries inside
 `specify-domain` preserve the original separation; `pub` cross-module
 surfaces match the prior cross-crate `pub use` exports.
+
+`specify-validate` is the one cleanup-era re-extraction. It owns the
+baseline-contract validation primitives (`ContractFinding`,
+`validate_baseline`, `serialize_contract_findings`) and is consumed by
+both `specify-domain` (for compatibility classification) and the
+`wasi-tools/contract` carve-out (for the standalone `wasm32-wasip2`
+binary). The carve-out invariant in `wasi-tools/Cargo.toml` forbids a
+dep on `specify-domain` (would drag `wasmtime` / `tokio` / `ureq`),
+and inlining the ~300 LOC of validation into the carve-out would lose
+the single source of truth. The crate is dependency-minimal (`semver`,
+`serde`, `serde-saphyr`, `serde_json`) so it does not regrow the
+duplicate-version surface that motivated Phase 1B.
 
 Rule: new functionality lands in an existing module by default. New
 workspace crates require a paragraph in this file justifying why an

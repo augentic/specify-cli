@@ -40,6 +40,7 @@ workspace = true
 [workspace]
 members = [
     "crates/error",
+    "crates/validate",
     "crates/domain",
     "crates/tool",
     "xtask",
@@ -121,6 +122,7 @@ unused_result_ok = "warn"
 
 [workspace.dependencies]
 specify-error = { path = "crates/error" }
+specify-validate = { path = "crates/validate" }
 specify-domain = { path = "crates/domain" }
 specify-tool = { path = "crates/tool" }
 clap = { version = "4", features = ["derive", "env"] }
