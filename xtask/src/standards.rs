@@ -62,6 +62,28 @@
 //! - `module-line-count` — non-test Rust source file length in lines.
 //!   Default cap is 500; explicit per-file baselines grandfather oversized
 //!   files until they are split.
+//! - `result-cliresult-default` — free function returning
+//!   `Result<CliResult>` outside `src/commands.rs`. The dispatcher
+//!   legitimately accepts both `Result<()>` and `Result<CliResult>`
+//!   shapes via `IntoCliResult`; new handlers should default to
+//!   `Result<()>` and let success collapse to `CliResult::Success`.
+//!   Genuine non-success-exit handlers (typed `*ErrBody` paths) are
+//!   grandfathered via per-file baselines.
+//! - `from-not-builder` — pre-R6 builder pattern: an inherent `impl T`
+//!   block whose only method is `fn from_<word>(<one arg>) -> Self`.
+//!   New code uses `impl From<&Source> for T` instead so the conversion
+//!   is discoverable at the trait surface and not a named constructor.
+//!   AST-based via `syn`.
+//! - `verbose-doc-paragraphs` — a `///` doc paragraph longer than 8
+//!   consecutive lines on a `pub fn|struct|enum|const|type`. Long
+//!   prose blocks belong in `rfcs/` or `DECISIONS.md`; the doc comment
+//!   on a public item should fit on a screen. `pub trait` is exempt
+//!   (the contract often warrants the long form).
+//! - `cli-help-shape` — clap-derive `///` doc lines longer than 80
+//!   characters in `src/cli.rs` and `src/commands/**/cli.rs`. Help
+//!   output is operator-facing and must wrap cleanly in a terminal.
+//!   `currently-audit` covers the "Currently equivalent to the
+//!   default …" anti-pattern; this predicate adds the line-length cap.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -168,6 +190,10 @@ struct Counts {
     direct_fs_write: u32,
     stale_cli_vocab: u32,
     module_line_count: u32,
+    result_cliresult_default: u32,
+    from_not_builder: u32,
+    verbose_doc_paragraphs: u32,
+    cli_help_shape: u32,
 }
 
 impl Counts {
@@ -186,6 +212,10 @@ impl Counts {
             ("direct-fs-write", self.direct_fs_write),
             ("stale-cli-vocab", self.stale_cli_vocab),
             ("module-line-count", self.module_line_count),
+            ("result-cliresult-default", self.result_cliresult_default),
+            ("from-not-builder", self.from_not_builder),
+            ("verbose-doc-paragraphs", self.verbose_doc_paragraphs),
+            ("cli-help-shape", self.cli_help_shape),
         ]
         .into_iter()
     }
@@ -205,16 +235,25 @@ impl Counts {
             direct_fs_write: self.direct_fs_write,
             stale_cli_vocab: self.stale_cli_vocab,
             module_line_count: self.module_line_count,
+            result_cliresult_default: self.result_cliresult_default,
+            from_not_builder: self.from_not_builder,
+            verbose_doc_paragraphs: self.verbose_doc_paragraphs,
+            cli_help_shape: self.cli_help_shape,
         }
     }
 }
 
 fn count_one(path: &Path, source: &str) -> Counts {
     let mut c = Counts::default();
-    if let Ok(file) = syn::parse_file(source) {
+    let parsed = syn::parse_file(source).ok();
+    if let Some(file) = parsed.as_ref() {
         let mut visitor = InlineDtoVisitor { hits: 0, depth: 0 };
-        visitor.visit_file(&file);
+        visitor.visit_file(file);
         c.inline_dtos = visitor.hits;
+
+        let mut from_visitor = FromBuilderVisitor { hits: 0 };
+        from_visitor.visit_file(file);
+        c.from_not_builder = from_visitor.hits;
     }
     let stripped = strip_comments(source);
     c.format_match_dispatch = count_regex(&FORMAT_MATCH_RE, &stripped);
@@ -229,6 +268,9 @@ fn count_one(path: &Path, source: &str) -> Counts {
     c.direct_fs_write = count_regex(&DIRECT_FS_WRITE_RE, &stripped);
     c.stale_cli_vocab = count_stale_cli_vocab(path, source);
     c.module_line_count = u32::try_from(source.lines().count()).unwrap_or(u32::MAX);
+    c.result_cliresult_default = count_result_cliresult(path, &stripped);
+    c.verbose_doc_paragraphs = count_verbose_doc_paragraphs(source);
+    c.cli_help_shape = count_cli_help_shape(path, source);
     c
 }
 
@@ -426,6 +468,194 @@ fn count_stale_cli_vocab(path: &Path, source: &str) -> u32 {
 }
 
 // ---------------------------------------------------------------------
+// result-cliresult-default: free `fn ... -> Result<CliResult>` outside
+// `src/commands.rs`. New handlers should default to `Result<()>` and let
+// `IntoCliResult` collapse the success path. The dispatcher legitimately
+// keeps `Result<CliResult>` to pass through both shapes; legacy handlers
+// that surface a non-success exit via a typed `*ErrBody` are
+// grandfathered via per-file baselines until they migrate.
+
+static RESULT_CLIRESULT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"\bfn\s+[a-z_][a-z0-9_]*\s*\([^)]*\)\s*->\s*Result<CliResult\b")
+        .expect("static regex")
+});
+
+fn count_result_cliresult(path: &Path, stripped: &str) -> u32 {
+    if is_dispatcher_root(path) { 0 } else { count_regex(&RESULT_CLIRESULT_RE, stripped) }
+}
+
+fn is_dispatcher_root(path: &Path) -> bool {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    normalized.ends_with("src/commands.rs")
+}
+
+// ---------------------------------------------------------------------
+// verbose-doc-paragraphs: a `///` doc paragraph longer than 8
+// consecutive non-blank lines on a `pub fn|struct|enum|const|type`.
+// `pub trait` is exempt — the contract often warrants a long form.
+//
+// The scanner walks each `pub` item line, skips backwards over
+// attribute lines (`#[…]`), then counts consecutive non-blank `///`
+// lines until it hits a blank `///` separator (which delimits a
+// paragraph) or any non-doc line. The pre-item paragraph length is
+// the metric; one violation per item.
+
+const VERBOSE_DOC_CAP: usize = 8;
+
+fn count_verbose_doc_paragraphs(source: &str) -> u32 {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut hits = 0u32;
+    for (idx, line) in lines.iter().enumerate() {
+        if !is_pub_non_trait_item(line) {
+            continue;
+        }
+        let paragraph_len = trailing_doc_paragraph_len(&lines, idx);
+        if paragraph_len > VERBOSE_DOC_CAP {
+            hits = hits.saturating_add(1);
+        }
+    }
+    hits
+}
+
+fn is_pub_non_trait_item(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("pub ").unwrap_or("");
+    matches!(
+        rest.split_whitespace().next(),
+        Some("fn" | "struct" | "enum" | "const" | "type")
+    )
+}
+
+/// Length of the doc paragraph immediately preceding `idx`. Walks
+/// upward, skipping attribute lines, then counts consecutive non-blank
+/// `///` lines. Stops at the first blank `///` (paragraph separator)
+/// or any non-doc line. Returns 0 when there is no doc paragraph.
+fn trailing_doc_paragraph_len(lines: &[&str], idx: usize) -> usize {
+    let mut cursor = idx;
+    while cursor > 0 {
+        cursor -= 1;
+        let trimmed = lines[cursor].trim_start();
+        if trimmed.starts_with("#[") || trimmed.starts_with("#![") {
+            continue;
+        }
+        if trimmed.is_empty() {
+            return 0;
+        }
+        break;
+    }
+    if cursor == 0 && !is_non_blank_doc(lines[cursor]) {
+        return 0;
+    }
+    let mut len = 0usize;
+    let mut walk = cursor + 1;
+    while walk > 0 {
+        walk -= 1;
+        let line = lines[walk];
+        if is_non_blank_doc(line) {
+            len += 1;
+        } else {
+            break;
+        }
+        if walk == 0 {
+            break;
+        }
+    }
+    len
+}
+
+fn is_non_blank_doc(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let Some(rest) = trimmed.strip_prefix("///") else {
+        return false;
+    };
+    !rest.trim().is_empty()
+}
+
+// ---------------------------------------------------------------------
+// cli-help-shape: clap-derive `///` doc lines longer than 80 characters
+// in `src/cli.rs` and `src/commands/**/cli.rs`. Help output is
+// operator-facing and wraps poorly past 80 columns. The "Currently"
+// anti-pattern is already covered by `currently-audit`; capital-letter
+// and verb-shape checks are punted (verb detection is expensive).
+
+const CLI_HELP_LINE_CAP: usize = 80;
+
+fn count_cli_help_shape(path: &Path, source: &str) -> u32 {
+    if !is_clap_cli_file(path) {
+        return 0;
+    }
+    let mut hits = 0u32;
+    for line in source.lines() {
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with("///") {
+            continue;
+        }
+        if line.chars().count() > CLI_HELP_LINE_CAP {
+            hits = hits.saturating_add(1);
+        }
+    }
+    hits
+}
+
+// ---------------------------------------------------------------------
+// AST: from-not-builder — inherent `impl T { fn from_<word>(<one arg>) -> Self }`.
+//
+// The pre-R6 builder pattern declared a named constructor whose only
+// job was to rebuild a wire DTO from a domain value. R6 migrated those
+// to `impl From<&Source> for T` so the conversion is discoverable at
+// the trait surface and tooling (`Into`, `?`) plumbs through. The
+// predicate counts inherent impl blocks containing exactly one item: a
+// `fn from_<word>` taking a single non-self argument and returning
+// `Self`. Trait impls (e.g. `impl From<&T> for Body`) are not flagged.
+
+struct FromBuilderVisitor {
+    hits: u32,
+}
+
+impl FromBuilderVisitor {
+    fn matches_impl(item: &syn::ItemImpl) -> bool {
+        if item.trait_.is_some() {
+            return false;
+        }
+        if item.items.len() != 1 {
+            return false;
+        }
+        let syn::ImplItem::Fn(method) = &item.items[0] else {
+            return false;
+        };
+        let name = method.sig.ident.to_string();
+        let Some(rest) = name.strip_prefix("from_") else {
+            return false;
+        };
+        if rest.is_empty() {
+            return false;
+        }
+        if method.sig.inputs.len() != 1 {
+            return false;
+        }
+        if matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
+            return false;
+        }
+        let syn::ReturnType::Type(_, ty) = &method.sig.output else {
+            return false;
+        };
+        let syn::Type::Path(type_path) = ty.as_ref() else {
+            return false;
+        };
+        type_path.path.is_ident("Self")
+    }
+}
+
+impl<'ast> Visit<'ast> for FromBuilderVisitor {
+    fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
+        if Self::matches_impl(node) {
+            self.hits = self.hits.saturating_add(1);
+        }
+        syn::visit::visit_item_impl(self, node);
+    }
+}
+
+// ---------------------------------------------------------------------
 // Name-suffix duplication: fn foo_<module> in mod <module>.
 
 fn count_name_suffix(path: &Path, source: &str) -> u32 {
@@ -569,6 +799,14 @@ struct FileBaseline {
     stale_cli_vocab: u32,
     #[serde(default)]
     module_line_count: u32,
+    #[serde(default)]
+    result_cliresult_default: u32,
+    #[serde(default)]
+    from_not_builder: u32,
+    #[serde(default)]
+    verbose_doc_paragraphs: u32,
+    #[serde(default)]
+    cli_help_shape: u32,
 }
 
 impl FileBaseline {
@@ -587,6 +825,10 @@ impl FileBaseline {
             "direct-fs-write" => self.direct_fs_write,
             "stale-cli-vocab" => self.stale_cli_vocab,
             "module-line-count" => self.module_line_count,
+            "result-cliresult-default" => self.result_cliresult_default,
+            "from-not-builder" => self.from_not_builder,
+            "verbose-doc-paragraphs" => self.verbose_doc_paragraphs,
+            "cli-help-shape" => self.cli_help_shape,
             _ => 0,
         }
     }
@@ -686,6 +928,10 @@ fn baseline_iter(b: &FileBaseline) -> impl Iterator<Item = (&'static str, u32)> 
         ("direct-fs-write", b.direct_fs_write),
         ("stale-cli-vocab", b.stale_cli_vocab),
         ("module-line-count", b.module_line_count),
+        ("result-cliresult-default", b.result_cliresult_default),
+        ("from-not-builder", b.from_not_builder),
+        ("verbose-doc-paragraphs", b.verbose_doc_paragraphs),
+        ("cli-help-shape", b.cli_help_shape),
     ]
     .into_iter()
 }

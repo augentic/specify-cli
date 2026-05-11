@@ -322,6 +322,10 @@ Use the modern Rust module layout: prefer `src/<parent>/<module>.rs` as the modu
 | `direct-fs-write` | Direct `fs::write` / `std::fs::write` in non-test Rust. Managed state must use the atomic helpers; any remaining scratch-only use needs an allowlist baseline and a comment. |
 | `stale-cli-vocab` | Legacy CLI vocabulary in non-test Rust (`initiative`, `initiative.md`, retired top-level `specify plan`, `specify merge`, `specify validate`). Use `change`, `slice`, and the current command surface unless the file is an explicit historical record. |
 | `module-line-count` | Non-test Rust source file length in lines. Default cap 500; per-file baselines grandfather oversized files until they are split. |
+| `result-cliresult-default` | Free `fn ... -> Result<CliResult>` outside `src/commands.rs`. New handlers should default to `Result<()>` and let `IntoCliResult` collapse the success path; only handlers that genuinely surface a non-success exit via a typed `*ErrBody` keep `Result<CliResult>`, and those are grandfathered via per-file baselines. |
+| `from-not-builder` | Pre-R6 builder pattern — an inherent `impl T` block whose only method is `fn from_<word>(<one arg>) -> Self`. New code uses `impl From<&Source> for T` so the conversion is discoverable at the trait surface. AST-based via `syn`. |
+| `verbose-doc-paragraphs` | A `///` doc paragraph longer than 8 consecutive non-blank lines on a `pub fn|struct|enum|const|type`. Long prose belongs in `rfcs/` or `DECISIONS.md`; the public-item doc should fit on a screen. `pub trait` is exempt — the contract often warrants the long form. |
+| `cli-help-shape` | Clap-derive `///` doc lines longer than 80 characters in `src/cli.rs` and `src/commands/**/cli.rs`. Help output is operator-facing and wraps poorly past 80 columns. The "Currently equivalent to the default …" anti-pattern is covered by `currently-audit`. |
 
 A live count strictly greater than its per-file baseline fails CI; missing predicates default to zero (new files start clean) except `module-line-count`, which defaults to 500.
 
