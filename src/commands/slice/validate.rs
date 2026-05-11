@@ -2,13 +2,13 @@
 
 use std::io::Write;
 
-use specify_error::Error;
+use specify_error::Result;
 use specify_validate::{ValidationReport, ValidationResult, serialize_report, validate_slice};
 
 use crate::context::CommandContext;
 use crate::output::{CliResult, Render, emit};
 
-pub(super) fn run(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub(super) fn run(ctx: &CommandContext, name: String) -> Result<CliResult> {
     let slice_dir = ctx.slices_dir().join(&name);
     let pipeline = ctx.load_pipeline()?;
     let report = validate_slice(&slice_dir, &pipeline)?;

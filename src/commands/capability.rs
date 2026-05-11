@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 use specify_capability::{Capability, CapabilitySource, Phase};
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_validate::ValidationResult;
 
 use crate::cli::OutputFormat;
@@ -29,9 +29,7 @@ impl Render for ResolveBody {
     }
 }
 
-pub fn resolve(
-    format: OutputFormat, capability_value: String, project_dir: PathBuf,
-) -> Result<CliResult, Error> {
+pub fn resolve(format: OutputFormat, capability_value: String, project_dir: PathBuf) -> Result<()> {
     let (root_dir, source) = Capability::locate(&capability_value, &project_dir)?;
     enforce_capability_filename(&root_dir)?;
     let (source_label, path) = match &source {
@@ -48,7 +46,7 @@ pub fn resolve(
             source: source_label,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -95,9 +93,7 @@ impl Render for PipelineBody {
     }
 }
 
-pub fn pipeline(
-    ctx: &CommandContext, phase: Phase, slice: Option<PathBuf>,
-) -> Result<CliResult, Error> {
+pub fn pipeline(ctx: &CommandContext, phase: Phase, slice: Option<PathBuf>) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let order = pipeline.topo_order(phase)?;
     let completion = slice.as_deref().map(|slice_dir| pipeline.completion_for(phase, slice_dir));
@@ -126,7 +122,7 @@ pub fn pipeline(
             briefs,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -154,7 +150,7 @@ impl Render for CheckBody {
     }
 }
 
-pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult, Error> {
+pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult> {
     let manifest_path =
         Capability::probe_dir(&capability_dir).ok_or_else(|| Error::CapabilityManifestMissing {
             dir: capability_dir.clone(),
@@ -173,13 +169,13 @@ pub fn check(format: OutputFormat, capability_dir: PathBuf) -> Result<CliResult,
 
 /// Surface a `capability-manifest-missing` diagnostic when `dir` does
 /// not carry a `capability.yaml`.
-fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
+fn enforce_capability_filename(dir: &Path) -> Result<()> {
     Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::CapabilityManifestMissing {
         dir: dir.to_path_buf(),
     })
 }
 
-fn load_manifest(manifest_path: &Path) -> Result<Capability, Error> {
+fn load_manifest(manifest_path: &Path) -> Result<Capability> {
     let text = std::fs::read_to_string(manifest_path)?;
     let capability: Capability = serde_saphyr::from_str(&text)?;
     Ok(capability)

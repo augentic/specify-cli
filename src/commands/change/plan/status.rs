@@ -5,12 +5,12 @@ use std::path::Path;
 use serde::Serialize;
 use specify_change::{Entry, Plan, Severity, Status};
 use specify_config::ProjectConfig;
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_slice::SliceMetadata;
 
 use super::{PlanRef, require_file};
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -110,7 +110,7 @@ impl Render for StatusBody {
     }
 }
 
-pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
@@ -182,7 +182,7 @@ pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
     };
 
     emit(ctx.format, &body)?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 fn name_reason(entry: &Entry) -> NameReason {

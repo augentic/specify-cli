@@ -4,17 +4,17 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_config::ProjectConfig;
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_merge::MergeStrategy;
 use specify_slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
 
 use super::artifact_classes;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
 pub(super) fn touched_specs(
     ctx: &CommandContext, name: String, scan: bool, set: Vec<String>,
-) -> Result<CliResult, Error> {
+) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
 
     let entries = if !set.is_empty() {
@@ -50,7 +50,7 @@ pub(super) fn touched_specs(
             touched_specs: touched,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -89,7 +89,7 @@ impl TouchedSpecRow {
     }
 }
 
-fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
+fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>> {
     let mut out: Vec<TouchedSpec> = Vec::with_capacity(raw.len());
     for entry in raw {
         let (name, kind) = entry.split_once(':').ok_or_else(|| Error::Diag {
@@ -117,13 +117,13 @@ fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>, Error> {
     Ok(out)
 }
 
-pub(super) fn overlap(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub(super) fn overlap(ctx: &CommandContext, name: String) -> Result<()> {
     let slices_dir = ctx.slices_dir();
     let overlaps = slice_actions::overlap(&slices_dir, &name)?;
     let rows: Vec<OverlapRow> = overlaps.iter().map(OverlapRow::from_overlap).collect();
 
     emit(ctx.format, &OverlapBody { name, overlaps: rows })?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]

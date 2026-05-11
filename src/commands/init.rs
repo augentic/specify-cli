@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use specify_config::{ProjectConfig, is_workspace_clone_path};
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_init::{InitOptions, InitResult, VersionMode, init};
 
 use crate::cli::OutputFormat;
 use crate::commands::context;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit, path_string};
+use crate::output::{Render, emit, path_string};
 
 /// Dispatcher for `specify init`.
 ///
@@ -23,7 +23,7 @@ use crate::output::{CliResult, Render, emit, path_string};
 pub fn run(
     format: OutputFormat, capability: Option<String>, name: Option<String>, domain: Option<String>,
     hub: bool,
-) -> Result<CliResult, Error> {
+) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
     let capability = match (hub, capability) {
@@ -122,7 +122,7 @@ impl InitContextBody {
 
 fn emit_init_result(
     format: OutputFormat, result: &InitResult, hub: bool, context_generation: InitContextGeneration,
-) -> Result<CliResult, Error> {
+) -> Result<()> {
     let body = InitBody {
         config_path: path_string(&result.config_path),
         capability_name: result.capability_name.clone(),
@@ -134,7 +134,7 @@ fn emit_init_result(
         context: InitContextBody::from_generation(context_generation),
     };
     emit(format, &body)?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,7 +164,7 @@ impl InitContextGeneration {
 
 fn generate_initial_context(
     format: OutputFormat, project_dir: &Path,
-) -> Result<InitContextGeneration, Error> {
+) -> Result<InitContextGeneration> {
     if is_workspace_clone_path(project_dir) {
         return Ok(InitContextGeneration::SkippedWorkspaceClone);
     }

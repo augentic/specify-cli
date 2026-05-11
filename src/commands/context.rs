@@ -23,7 +23,7 @@ mod render;
 pub(super) use generate::for_init as generate_for_init;
 use specify_capability::{Capability, PipelineView};
 use specify_config::ProjectConfig;
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_registry::Registry;
 use specify_slice::SliceMetadata;
 
@@ -31,16 +31,14 @@ use crate::cli::ContextAction;
 use crate::context::CommandContext;
 use crate::output::CliResult;
 
-pub fn run(ctx: &CommandContext, action: ContextAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: ContextAction) -> Result<CliResult> {
     match action {
         ContextAction::Generate { check, force } => generate::run(ctx, check, force),
         ContextAction::Check => check::run(ctx),
     }
 }
 
-fn render_document(
-    ctx: &CommandContext,
-) -> Result<(String, fingerprint::ContextFingerprint), Error> {
+fn render_document(ctx: &CommandContext) -> Result<(String, fingerprint::ContextFingerprint)> {
     let assembly = assemble_render_input(ctx)?;
     let aggregate = fingerprint::aggregate(env!("CARGO_PKG_VERSION"), assembly.inputs.clone());
     let generated = render::render_document_with_fingerprint(&assembly.input, &aggregate);
@@ -58,7 +56,7 @@ fn render_document(
     Ok((generated, context_fingerprint))
 }
 
-fn read_optional(path: &Path) -> Result<Option<Vec<u8>>, Error> {
+fn read_optional(path: &Path) -> Result<Option<Vec<u8>>> {
     match fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
@@ -85,7 +83,7 @@ struct RenderAssembly {
     inputs: Vec<fingerprint::InputFingerprint>,
 }
 
-fn assemble_render_input(ctx: &CommandContext) -> Result<RenderAssembly, Error> {
+fn assemble_render_input(ctx: &CommandContext) -> Result<RenderAssembly> {
     let mut collector = fingerprint::InputCollector::new(&ctx.project_dir);
     collector.add_file(&ProjectConfig::config_path(&ctx.project_dir))?;
 
@@ -133,7 +131,7 @@ fn assemble_render_input(ctx: &CommandContext) -> Result<RenderAssembly, Error> 
 
 fn collect_capability_inputs(
     collector: &mut fingerprint::InputCollector, pipeline: &PipelineView,
-) -> Result<(), Error> {
+) -> Result<()> {
     if let Some(path) = Capability::probe_dir(&pipeline.capability.root_dir) {
         collector.add_file(&path)?;
     }
@@ -223,7 +221,7 @@ fn dependency_peers(registry: Option<&Registry>) -> Vec<render::DependencyPeer> 
 
 fn materialized_workspace_peers(
     registry: Option<&Registry>, project_dir: &Path,
-) -> Result<Vec<render::WorkspacePeer>, Error> {
+) -> Result<Vec<render::WorkspacePeer>> {
     let Some(registry) = registry else {
         return Ok(Vec::new());
     };
@@ -250,7 +248,7 @@ fn materialized_workspace_peers(
 
 fn active_slice_names(
     slices_dir: &Path, collector: &mut fingerprint::InputCollector,
-) -> Result<Vec<String>, Error> {
+) -> Result<Vec<String>> {
     if !slices_dir.exists() {
         return Ok(Vec::new());
     }

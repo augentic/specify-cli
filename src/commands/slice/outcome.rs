@@ -8,16 +8,16 @@ use serde::Serialize;
 use serde_json::Value;
 use specify_capability::Phase;
 use specify_config::ProjectConfig;
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_slice::{Outcome, Rfc3339Stamp, SliceMetadata, actions as slice_actions};
 
 use crate::cli::{OutcomeKindAction, RegistryAmendmentArgs};
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
 pub(super) fn set(
     ctx: &CommandContext, name: String, phase: Phase, kind: OutcomeKindAction,
-) -> Result<CliResult, Error> {
+) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
         return Err(Error::SliceNotFound { name });
@@ -48,7 +48,7 @@ pub(super) fn set(
             at: stamped.at.to_string(),
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -114,7 +114,7 @@ fn lower_kind(kind: OutcomeKindAction) -> (Outcome, String, Option<String>) {
 /// `slice merge run` stamps the outcome into `.metadata.yaml` and
 /// then archives the slice directory, so the active path no longer
 /// exists.
-pub(super) fn show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub(super) fn show(ctx: &CommandContext, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let metadata = if slice_dir.is_dir() {
         SliceMetadata::load(&slice_dir)?
@@ -124,7 +124,7 @@ pub(super) fn show(ctx: &CommandContext, name: String) -> Result<CliResult, Erro
 
     let outcome = metadata.outcome.as_ref().map(OutcomeRow::from_stamped);
     emit(ctx.format, &OutcomeShowBody { name, outcome })?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -227,7 +227,7 @@ impl RegistryProposalRow {
 /// candidate's `.metadata.yaml`, and return the most recent by
 /// `created-at`. Used as a fallback when the active slice
 /// directory has been archived by `slice merge run`.
-fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<SliceMetadata, Error> {
+fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<SliceMetadata> {
     let archive_dir = ProjectConfig::archive_dir(project_dir);
     let suffix = format!("-{slice_name}");
     let mut candidates: Vec<(String, SliceMetadata)> = Vec::new();

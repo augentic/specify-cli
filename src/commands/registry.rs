@@ -8,15 +8,15 @@ use std::path::Path;
 use serde::Serialize;
 use specify_change::Plan;
 use specify_config::ProjectConfig;
-use specify_error::{Error, is_kebab};
+use specify_error::{Error, Result, is_kebab};
 use specify_registry::{Registry, RegistryProject};
 use specify_slice::atomic::atomic_yaml_write;
 
 use crate::cli::RegistryAction;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
-pub fn run(ctx: &CommandContext, action: RegistryAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: RegistryAction) -> Result<()> {
     match action {
         RegistryAction::Show => show(ctx),
         RegistryAction::Validate => validate(ctx),
@@ -30,7 +30,7 @@ pub fn run(ctx: &CommandContext, action: RegistryAction) -> Result<CliResult, Er
     }
 }
 
-fn show(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn show(ctx: &CommandContext) -> Result<()> {
     let path = Registry::path(&ctx.project_dir);
     let registry = Registry::load(&ctx.project_dir)?;
     emit(
@@ -40,10 +40,10 @@ fn show(ctx: &CommandContext) -> Result<CliResult, Error> {
             path: path.display().to_string(),
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn validate(ctx: &CommandContext) -> Result<()> {
     let path = Registry::path(&ctx.project_dir).display().to_string();
     // Hub repos opt into the stricter shape via `project.yaml:hub:
     // true`. Tolerate a missing/unparseable project.yaml here —
@@ -63,13 +63,13 @@ fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
             hub_mode,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 fn add(
     ctx: &CommandContext, name: String, url: String, capability: String,
     description: Option<String>,
-) -> Result<CliResult, Error> {
+) -> Result<()> {
     let path = Registry::path(&ctx.project_dir);
     let hub_mode = ctx.config.hub;
 
@@ -140,10 +140,10 @@ fn add(
             added,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-fn remove(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn remove(ctx: &CommandContext, name: String) -> Result<()> {
     let path = Registry::path(&ctx.project_dir);
     let hub_mode = ctx.config.hub;
 
@@ -183,13 +183,13 @@ fn remove(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
             warnings,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 /// Persist `registry` to `path`. Callers must run `validate_shape` /
 /// `validate_shape_hub` beforehand so the on-disk file is always
 /// shape-valid.
-fn save(registry: &Registry, path: &Path) -> Result<(), Error> {
+fn save(registry: &Registry, path: &Path) -> Result<()> {
     atomic_yaml_write(path, registry)
 }
 
@@ -324,13 +324,13 @@ mod tests {
     use super::*;
     use crate::cli::OutputFormat;
 
-    /// Assert the handler returned `CliResult::Success`. Wrapping the
-    /// `must_use` value here keeps each test site ergonomic without
-    /// silently discarding non-success exit codes.
+    /// Panic with a descriptive message when a handler returned an
+    /// error. Handlers in this module return `Result<()>` (the
+    /// success path is unconditional), so the only thing left to
+    /// assert at a test site is "no error".
     #[track_caller]
-    fn assert_ok(result: Result<CliResult, Error>, what: &str) {
-        let value = result.unwrap_or_else(|err| panic!("{what} failed: {err}"));
-        assert_eq!(value, CliResult::Success, "{what} should yield Success, got {value:?}");
+    fn assert_ok(result: Result<()>, what: &str) {
+        result.unwrap_or_else(|err| panic!("{what} failed: {err}"));
     }
 
     fn ctx_for(tmp: &TempDir, hub: bool) -> CommandContext {
@@ -365,9 +365,7 @@ mod tests {
     }
 
     /// Helper for tests: invoke `add` with a fixed `omnia@v1` capability.
-    fn seed(
-        ctx: &CommandContext, name: &str, url: &str, description: Option<&str>,
-    ) -> Result<CliResult, Error> {
+    fn seed(ctx: &CommandContext, name: &str, url: &str, description: Option<&str>) -> Result<()> {
         add(
             ctx,
             name.to_string(),

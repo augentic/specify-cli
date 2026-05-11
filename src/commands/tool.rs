@@ -9,7 +9,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use specify_capability::{Capability, ResolvedCapability};
-use specify_error::{Error, ValidationStatus, ValidationSummary};
+use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::cache::{self, CacheStatus};
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::load::{self, Warning};
@@ -183,7 +183,7 @@ impl Render for GcBody {
 }
 
 /// Run a declared WASI tool through the concrete WASI host.
-pub fn run(ctx: &CommandContext, name: String, args: Vec<String>) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, name: String, args: Vec<String>) -> Result<CliResult> {
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
     let scoped = find(&inventory, &name)?;
@@ -199,7 +199,7 @@ pub fn run(ctx: &CommandContext, name: String, args: Vec<String>) -> Result<CliR
 }
 
 /// List the merged tool declarations for the current project.
-pub fn list(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn list(ctx: &CommandContext) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let rows = rows_for(&inventory.tools)?;
     let body = ListBody {
@@ -210,11 +210,11 @@ pub fn list(ctx: &CommandContext) -> Result<CliResult, Error> {
     if matches!(ctx.format, OutputFormat::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 /// Fetch one declared tool, or all declared tools when no name is supplied.
-pub fn fetch(ctx: &CommandContext, name: Option<String>) -> Result<CliResult, Error> {
+pub fn fetch(ctx: &CommandContext, name: Option<String>) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let selected = select(&inventory, name.as_deref())?;
     let mut rows = Vec::with_capacity(selected.len());
@@ -235,11 +235,11 @@ pub fn fetch(ctx: &CommandContext, name: Option<String>) -> Result<CliResult, Er
     if matches!(ctx.format, OutputFormat::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 /// Show one declared tool's metadata and cache state.
-pub fn show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub fn show(ctx: &CommandContext, name: String) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let scoped = find(&inventory, &name)?;
     let row = show_row_for(scoped)?;
@@ -251,11 +251,11 @@ pub fn show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
     if matches!(ctx.format, OutputFormat::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 /// Remove cache entries not referenced by the current project's merged tool list.
-pub fn gc(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn gc(ctx: &CommandContext) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let mut kept_by_scope = kept_by_scope(&inventory);
     let mut removed = Vec::new();
@@ -279,10 +279,10 @@ pub fn gc(ctx: &CommandContext) -> Result<CliResult, Error> {
     if matches!(ctx.format, OutputFormat::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-fn build_inventory(ctx: &CommandContext) -> Result<Inventory, Error> {
+fn build_inventory(ctx: &CommandContext) -> Result<Inventory> {
     let project_scope = ToolScope::Project {
         project_name: ctx.config.name.clone(),
     };
@@ -314,7 +314,7 @@ fn build_inventory(ctx: &CommandContext) -> Result<Inventory, Error> {
     })
 }
 
-fn resolve_project_capability(ctx: &CommandContext) -> Result<Option<ResolvedCapability>, Error> {
+fn resolve_project_capability(ctx: &CommandContext) -> Result<Option<ResolvedCapability>> {
     let Some(value) = ctx.config.capability.as_deref() else {
         return Ok(None);
     };
@@ -323,13 +323,13 @@ fn resolve_project_capability(ctx: &CommandContext) -> Result<Option<ResolvedCap
     Capability::resolve(value, &ctx.project_dir).map(Some)
 }
 
-fn enforce_capability_filename(dir: &Path) -> Result<(), Error> {
+fn enforce_capability_filename(dir: &Path) -> Result<()> {
     Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::CapabilityManifestMissing {
         dir: dir.to_path_buf(),
     })
 }
 
-fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<(), Error> {
+fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {
     let manifest = ToolManifest {
         tools: tools.to_vec(),
     };
@@ -373,7 +373,7 @@ fn warning_row(warning: Warning) -> WarningRow {
     }
 }
 
-fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool, Error> {
+fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool> {
     inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| {
         Error::ToolNotDeclared {
             name: name.to_string(),
@@ -381,18 +381,18 @@ fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool, Erro
     })
 }
 
-fn select<'a>(inventory: &'a Inventory, name: Option<&str>) -> Result<Vec<&'a ScopedTool>, Error> {
+fn select<'a>(inventory: &'a Inventory, name: Option<&str>) -> Result<Vec<&'a ScopedTool>> {
     match name {
         Some(name) => Ok(vec![find(inventory, name)?]),
         None => Ok(inventory.tools.iter().collect()),
     }
 }
 
-fn rows_for(tools: &[ScopedTool]) -> Result<Vec<ToolRow>, Error> {
+fn rows_for(tools: &[ScopedTool]) -> Result<Vec<ToolRow>> {
     tools.iter().map(row_for).collect()
 }
 
-fn row_for(scoped: &ScopedTool) -> Result<ToolRow, Error> {
+fn row_for(scoped: &ScopedTool) -> Result<ToolRow> {
     let source = scoped.tool.source.to_wire_string().into_owned();
     let cache_status = cache_status_for(scoped)?;
     let cached_path = cache::module_path(&scoped.scope, &scoped.tool.name, &scoped.tool.version)?;
@@ -408,7 +408,7 @@ fn row_for(scoped: &ScopedTool) -> Result<ToolRow, Error> {
     })
 }
 
-fn show_row_for(scoped: &ScopedTool) -> Result<ToolShowRow, Error> {
+fn show_row_for(scoped: &ScopedTool) -> Result<ToolShowRow> {
     let row = row_for(scoped)?;
     let sidecar_path = cache::sidecar_path(&scoped.scope, &scoped.tool.name, &scoped.tool.version)?;
     let fetched_at =
@@ -421,7 +421,7 @@ fn show_row_for(scoped: &ScopedTool) -> Result<ToolShowRow, Error> {
     })
 }
 
-fn cache_status_for(scoped: &ScopedTool) -> Result<CacheStatus, Error> {
+fn cache_status_for(scoped: &ScopedTool) -> Result<CacheStatus> {
     Ok(cache::cache_status(
         &scoped.scope,
         &scoped.tool.name,

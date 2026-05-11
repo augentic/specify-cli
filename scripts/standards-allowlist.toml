@@ -131,7 +131,7 @@ format-match-dispatch = 1
 module-line-count = 142
 
 [file."crates/error/src/lib.rs"]
-module-line-count = 562
+module-line-count = 570
 
 [file."crates/init/src/cache.rs"]
 direct-fs-write = 1
@@ -450,10 +450,10 @@ module-line-count = 62
 module-line-count = 148
 
 [file."src/commands.rs"]
-module-line-count = 123
+module-line-count = 150
 
 [file."src/commands/capability.rs"]
-module-line-count = 230
+module-line-count = 226
 
 [file."src/commands/capability/cli.rs"]
 module-line-count = 38
@@ -465,7 +465,7 @@ module-line-count = 389
 module-line-count = 40
 
 [file."src/commands/change/plan.rs"]
-module-line-count = 127
+module-line-count = 135
 
 [file."src/commands/change/plan/cli.rs"]
 module-line-count = 133
@@ -477,7 +477,7 @@ module-line-count = 124
 module-line-count = 107
 
 [file."src/commands/change/plan/lifecycle.rs"]
-module-line-count = 388
+module-line-count = 386
 
 [file."src/commands/change/plan/lock.rs"]
 module-line-count = 149
@@ -486,7 +486,7 @@ module-line-count = 149
 module-line-count = 213
 
 [file."src/commands/codex.rs"]
-module-line-count = 382
+module-line-count = 386
 
 [file."src/commands/codex/cli.rs"]
 module-line-count = 22
@@ -499,7 +499,7 @@ module-line-count = 19
 
 [file."src/commands/context.rs"]
 direct-fs-write = 7
-module-line-count = 417
+module-line-count = 415
 
 [file."src/commands/context/check.rs"]
 module-line-count = 141
@@ -543,13 +543,13 @@ module-line-count = 191
 
 [file."src/commands/registry.rs"]
 direct-fs-write = 1
-module-line-count = 612
+module-line-count = 610
 
 [file."src/commands/registry/cli.rs"]
 module-line-count = 37
 
 [file."src/commands/slice.rs"]
-module-line-count = 91
+module-line-count = 101
 
 [file."src/commands/slice/cli.rs"]
 module-line-count = 263
@@ -558,7 +558,7 @@ module-line-count = 263
 module-line-count = 127
 
 [file."src/commands/slice/lifecycle.rs"]
-module-line-count = 180
+module-line-count = 178
 
 [file."src/commands/slice/list.rs"]
 module-line-count = 218
@@ -571,7 +571,7 @@ module-line-count = 474
 module-line-count = 261
 
 [file."src/commands/slice/task.rs"]
-module-line-count = 182
+module-line-count = 180
 
 [file."src/commands/slice/touched.rs"]
 module-line-count = 170
@@ -589,7 +589,7 @@ module-line-count = 472
 module-line-count = 32
 
 [file."src/commands/workspace.rs"]
-module-line-count = 402
+module-line-count = 400
 
 [file."src/commands/workspace/cli.rs"]
 module-line-count = 49

@@ -16,7 +16,7 @@ use serde::Serialize;
 use serde_json::Value;
 use specify_change::{Entry, Plan};
 use specify_config::ProjectConfig;
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_registry::Registry;
 
 use crate::cli::{LockAction, PlanAction};
@@ -24,13 +24,19 @@ use crate::context::CommandContext;
 use crate::output::CliResult;
 pub(super) use crate::output::path_string;
 
-pub fn run(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: PlanAction) -> Result<CliResult> {
+    // Most arms emit unconditionally and return `Result<()>`; only
+    // `validate`, `doctor`, and `archive` surface non-success exits
+    // (`ValidationFailed` / `GenericFailure`). Lift the rest into
+    // `CliResult::Success` here so each sub-handler can focus on its
+    // payload.
+    let ok = |()| CliResult::Success;
     match action {
-        PlanAction::Create { name, sources } => lifecycle::create(ctx, name, sources),
+        PlanAction::Create { name, sources } => lifecycle::create(ctx, name, sources).map(ok),
         PlanAction::Validate => lifecycle::validate(ctx),
         PlanAction::Doctor => doctor::run(ctx),
-        PlanAction::Next => lifecycle::next(ctx),
-        PlanAction::Status => status::run(ctx),
+        PlanAction::Next => lifecycle::next(ctx).map(ok),
+        PlanAction::Status => status::run(ctx).map(ok),
         PlanAction::Add {
             name,
             depends_on,
@@ -39,7 +45,8 @@ pub fn run(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, Error>
             project,
             capability,
             context,
-        } => create::add(ctx, name, depends_on, sources, description, project, capability, context),
+        } => create::add(ctx, name, depends_on, sources, description, project, capability, context)
+            .map(ok),
         PlanAction::Amend {
             name,
             depends_on,
@@ -50,15 +57,16 @@ pub fn run(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, Error>
             context,
         } => {
             create::amend(ctx, name, depends_on, sources, description, project, capability, context)
+                .map(ok)
         }
         PlanAction::Transition { name, target, reason } => {
-            lifecycle::transition(ctx, name, target, reason)
+            lifecycle::transition(ctx, name, target, reason).map(ok)
         }
         PlanAction::Archive { force } => lifecycle::archive(ctx, force),
         PlanAction::Lock { action } => match action {
-            LockAction::Acquire { pid } => lock::acquire(ctx, pid),
-            LockAction::Release { pid } => lock::release(ctx, pid),
-            LockAction::Status => lock::status(ctx),
+            LockAction::Acquire { pid } => lock::acquire(ctx, pid).map(ok),
+            LockAction::Release { pid } => lock::release(ctx, pid).map(ok),
+            LockAction::Status => lock::status(ctx).map(ok),
         },
     }
 }
@@ -68,7 +76,7 @@ pub fn run(ctx: &CommandContext, action: PlanAction) -> Result<CliResult, Error>
 /// Ensure the plan file exists before we try to load it. Error text is
 /// the stable "plan file not found: plan.yaml" string that skill
 /// authors match on.
-pub fn require_file(project_dir: &Path) -> Result<PathBuf, Error> {
+pub fn require_file(project_dir: &Path) -> Result<PathBuf> {
     let path = ProjectConfig::plan_path(project_dir);
     if !path.exists() {
         return Err(Error::ArtifactNotFound {
@@ -79,7 +87,7 @@ pub fn require_file(project_dir: &Path) -> Result<PathBuf, Error> {
     Ok(path)
 }
 
-pub(super) fn load_for_write(ctx: &CommandContext) -> Result<(PathBuf, Plan), Error> {
+pub(super) fn load_for_write(ctx: &CommandContext) -> Result<(PathBuf, Plan)> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     Ok((plan_path, plan))
@@ -105,7 +113,7 @@ pub(super) fn change_entry_json(entry: &Entry) -> Value {
 }
 
 /// Verify that `project_name` appears in `registry.yaml`.
-pub(super) fn check_project(project_dir: &Path, project_name: &str) -> Result<(), Error> {
+pub(super) fn check_project(project_dir: &Path, project_name: &str) -> Result<()> {
     match Registry::load(project_dir) {
         Ok(Some(registry)) => {
             if !registry.projects.iter().any(|p| p.name == project_name) {

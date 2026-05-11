@@ -7,18 +7,18 @@ use chrono::Utc;
 use serde::Serialize;
 use serde_json::Value;
 use specify_capability::Phase;
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_slice::{
     EntryKind, Journal, JournalEntry, Rfc3339Stamp, SliceMetadata, format_rfc3339,
 };
 
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
 pub(super) fn append(
     ctx: &CommandContext, name: String, phase: Phase, kind: EntryKind, summary: String,
     context: Option<String>,
-) -> Result<CliResult, Error> {
+) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
         return Err(Error::SliceNotFound { name });
@@ -44,7 +44,7 @@ pub(super) fn append(
             timestamp,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -62,7 +62,7 @@ impl Render for AppendBody {
     }
 }
 
-pub(super) fn show(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub(super) fn show(ctx: &CommandContext, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
         return Err(Error::SliceNotFound { name });
@@ -71,7 +71,7 @@ pub(super) fn show(ctx: &CommandContext, name: String) -> Result<CliResult, Erro
     let journal = Journal::load(&slice_dir)?;
     let entries: Vec<EntryRow> = journal.entries.iter().map(EntryRow::from_entry).collect();
     emit(ctx.format, &ShowBody { name, entries })?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]

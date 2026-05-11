@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use specify_config::ProjectConfig;
-use specify_error::Error;
+use specify_error::Result;
 use specify_merge::{ArtifactClass, MergeStrategy};
 
 use crate::cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
@@ -47,28 +47,36 @@ pub(super) fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<Art
     ]
 }
 
-pub fn run(ctx: &CommandContext, action: SliceAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: SliceAction) -> Result<CliResult> {
+    // Most arms are pure-Success leaf handlers (return `Result<()>`)
+    // — only `validate::run` conditionally surfaces a non-success
+    // exit, so we lift the rest into `CliResult::Success` here.
+    let ok = |()| CliResult::Success;
     match action {
         SliceAction::Create {
             name,
             capability,
             if_exists,
-        } => lifecycle::create(ctx, name, capability, if_exists.into()),
-        SliceAction::List => list::run(ctx),
-        SliceAction::Status { name } => list::status_one(ctx, name),
+        } => lifecycle::create(ctx, name, capability, if_exists.into()).map(ok),
+        SliceAction::List => list::run(ctx).map(ok),
+        SliceAction::Status { name } => list::status_one(ctx, name).map(ok),
         SliceAction::Validate { name } => validate::run(ctx, name),
         SliceAction::Merge { action } => match action {
-            SliceMergeAction::Run { name } => merge::run(ctx, name),
-            SliceMergeAction::Preview { name } => merge::preview(ctx, name),
-            SliceMergeAction::ConflictCheck { name } => merge::conflicts(ctx, name),
+            SliceMergeAction::Run { name } => merge::run(ctx, name).map(ok),
+            SliceMergeAction::Preview { name } => merge::preview(ctx, name).map(ok),
+            SliceMergeAction::ConflictCheck { name } => merge::conflicts(ctx, name).map(ok),
         },
         SliceAction::Task { action } => match action {
-            SliceTaskAction::Progress { name } => task::progress(ctx, name),
-            SliceTaskAction::Mark { name, task_number } => task::mark(ctx, name, task_number),
+            SliceTaskAction::Progress { name } => task::progress(ctx, name).map(ok),
+            SliceTaskAction::Mark { name, task_number } => {
+                task::mark(ctx, name, task_number).map(ok)
+            }
         },
         SliceAction::Outcome { action } => match action {
-            OutcomeAction::Set { name, phase, kind } => outcome::set(ctx, name, phase, kind),
-            OutcomeAction::Show { name } => outcome::show(ctx, name),
+            OutcomeAction::Set { name, phase, kind } => {
+                outcome::set(ctx, name, phase, kind).map(ok)
+            }
+            OutcomeAction::Show { name } => outcome::show(ctx, name).map(ok),
         },
         SliceAction::Journal { action } => match action {
             JournalAction::Append {
@@ -77,15 +85,17 @@ pub fn run(ctx: &CommandContext, action: SliceAction) -> Result<CliResult, Error
                 kind,
                 summary,
                 context,
-            } => journal::append(ctx, name, phase, kind, summary, context),
-            JournalAction::Show { name } => journal::show(ctx, name),
+            } => journal::append(ctx, name, phase, kind, summary, context).map(ok),
+            JournalAction::Show { name } => journal::show(ctx, name).map(ok),
         },
-        SliceAction::Transition { name, target } => lifecycle::transition(ctx, name, target),
-        SliceAction::TouchedSpecs { name, scan, set } => {
-            touched::touched_specs(ctx, name, scan, set)
+        SliceAction::Transition { name, target } => {
+            lifecycle::transition(ctx, name, target).map(ok)
         }
-        SliceAction::Overlap { name } => touched::overlap(ctx, name),
-        SliceAction::Archive { name } => lifecycle::archive(ctx, name),
-        SliceAction::Drop { name, reason } => lifecycle::drop_slice(ctx, name, reason),
+        SliceAction::TouchedSpecs { name, scan, set } => {
+            touched::touched_specs(ctx, name, scan, set).map(ok)
+        }
+        SliceAction::Overlap { name } => touched::overlap(ctx, name).map(ok),
+        SliceAction::Archive { name } => lifecycle::archive(ctx, name).map(ok),
+        SliceAction::Drop { name, reason } => lifecycle::drop_slice(ctx, name, reason).map(ok),
     }
 }

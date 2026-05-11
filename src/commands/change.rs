@@ -6,7 +6,7 @@ use std::io::Write;
 use serde::Serialize;
 use specify_capability::{ChangeBrief, ChangeFrontmatter, InputKind};
 use specify_change::finalize;
-use specify_error::{Error, is_kebab};
+use specify_error::{Error, Result, is_kebab};
 use specify_registry::Registry;
 use specify_slice::atomic::atomic_bytes_write;
 
@@ -15,16 +15,16 @@ use crate::context::CommandContext;
 use crate::output::{CliResult, Render, emit, emit_err, path_string};
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
-pub fn run(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: ChangeAction) -> Result<CliResult> {
     match action {
         ChangeAction::Create { name } => brief_create(ctx, name),
-        ChangeAction::Show => brief_show(ctx),
+        ChangeAction::Show => brief_show(ctx).map(|()| CliResult::Success),
         ChangeAction::Plan { action } => plan::run(ctx, action),
         ChangeAction::Finalize { clean, dry_run } => run_finalize(ctx, clean, dry_run),
     }
 }
 
-fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult> {
     if !is_kebab(&name) {
         return Err(Error::Diag {
             code: "change-brief-name-not-kebab",
@@ -63,7 +63,7 @@ fn brief_create(ctx: &CommandContext, name: String) -> Result<CliResult, Error> 
     Ok(CliResult::Success)
 }
 
-fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn brief_show(ctx: &CommandContext) -> Result<()> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let brief = ChangeBrief::load(&ctx.project_dir)?.map(|b| BriefData {
         frontmatter: b.frontmatter,
@@ -76,14 +76,14 @@ fn brief_show(ctx: &CommandContext) -> Result<CliResult, Error> {
             path: brief_path.display().to_string(),
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
 // `specify change finalize`
 // ---------------------------------------------------------------------------
 
-fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResult, Error> {
+fn run_finalize(ctx: &CommandContext, clean: bool, dry_run: bool) -> Result<CliResult> {
     let plan = match finalize::load_plan(&ctx.project_dir)? {
         finalize::PlanLoad::Present(plan) => plan,
         finalize::PlanLoad::Missing => return Err(Error::PlanNotFound),

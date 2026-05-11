@@ -8,15 +8,15 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use specify_capability::{Brief, PipelineView};
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_slice::SliceMetadata;
 use specify_slice::atomic::atomic_bytes_write;
 use specify_task::{Task, mark_complete, parse_tasks};
 
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
-pub(super) fn progress(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub(super) fn progress(ctx: &CommandContext, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let tasks_path = resolve_tasks_path(&ctx.project_dir, &slice_dir)?;
     let content = std::fs::read_to_string(&tasks_path)?;
@@ -32,7 +32,7 @@ pub(super) fn progress(ctx: &CommandContext, name: String) -> Result<CliResult, 
             tasks,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -87,9 +87,7 @@ struct DirectiveRow {
     skill: String,
 }
 
-pub(super) fn mark(
-    ctx: &CommandContext, name: String, task_number: String,
-) -> Result<CliResult, Error> {
+pub(super) fn mark(ctx: &CommandContext, name: String, task_number: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let tasks_path = resolve_tasks_path(&ctx.project_dir, &slice_dir)?;
     let original = std::fs::read_to_string(&tasks_path)?;
@@ -107,7 +105,7 @@ pub(super) fn mark(
             idempotent,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -134,14 +132,14 @@ impl Render for MarkBody {
 /// (the id of the tasks brief), then uses that brief's `generates`
 /// field as the relative path under `slice_dir`. This lets the CLI
 /// honour schemas that rename `tasks.md` or nest it elsewhere.
-fn resolve_tasks_path(project_dir: &Path, slice_dir: &Path) -> Result<PathBuf, Error> {
+fn resolve_tasks_path(project_dir: &Path, slice_dir: &Path) -> Result<PathBuf> {
     let metadata = SliceMetadata::load(slice_dir)?;
     resolve_tasks_path_for(slice_dir, &metadata.capability, Some(project_dir))
 }
 
 pub(super) fn resolve_tasks_path_for(
     slice_dir: &Path, capability_value: &str, project_hint: Option<&Path>,
-) -> Result<PathBuf, Error> {
+) -> Result<PathBuf> {
     let project_dir = match project_hint {
         Some(p) => p.to_path_buf(),
         None => slice_dir
@@ -174,7 +172,7 @@ pub(super) fn resolve_tasks_path_for(
     Ok(slice_dir.join(generates))
 }
 
-fn brief_generates(brief: &Brief) -> Result<&str, Error> {
+fn brief_generates(brief: &Brief) -> Result<&str> {
     brief.frontmatter.generates.as_deref().ok_or_else(|| Error::Diag {
         code: "slice-tasks-brief-generates-missing",
         detail: format!("brief `{}` has no `generates` field", brief.frontmatter.id),

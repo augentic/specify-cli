@@ -2,7 +2,7 @@ pub mod cli;
 
 use std::io::Write;
 
-use specify_error::Error;
+use specify_error::Result;
 use specify_validate::{
     CompatibilityClassification, CompatibilityFinding, CompatibilityReport,
     classify_project_compatibility,
@@ -13,23 +13,23 @@ use crate::context::CommandContext;
 use crate::output::{CliResult, Render, emit};
 
 /// Dispatch `specify compatibility *`.
-pub fn run(ctx: &CommandContext, action: CompatibilityAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: CompatibilityAction) -> Result<CliResult> {
     match action {
         CompatibilityAction::Check => check(ctx),
-        CompatibilityAction::Report { change } => report(ctx, change),
+        CompatibilityAction::Report { change } => report(ctx, change).map(|()| CliResult::Success),
     }
 }
 
-fn check(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn check(ctx: &CommandContext) -> Result<CliResult> {
     let report = classify_project_compatibility(&ctx.project_dir, None)?;
     emit(ctx.format, &report)?;
     Ok(if report.is_compatible() { CliResult::Success } else { CliResult::ValidationFailed })
 }
 
-fn report(ctx: &CommandContext, change: String) -> Result<CliResult, Error> {
+fn report(ctx: &CommandContext, change: String) -> Result<()> {
     let report = classify_project_compatibility(&ctx.project_dir, Some(change))?;
     emit(ctx.format, &report)?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 impl Render for CompatibilityReport {

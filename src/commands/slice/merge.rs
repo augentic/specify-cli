@@ -9,18 +9,18 @@ use std::path::Path;
 use chrono::Utc;
 use serde::Serialize;
 use specify_config::{ProjectConfig, is_workspace_clone_path};
-use specify_error::Error;
+use specify_error::Result;
 use specify_merge::{
     BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check, slice,
 };
 
 use super::artifact_classes;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
 const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/archive"];
 
-pub(super) fn run(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub(super) fn run(ctx: &CommandContext, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
@@ -45,10 +45,10 @@ pub(super) fn run(ctx: &CommandContext, name: String) -> Result<CliResult, Error
             archive_path: archive_path.display().to_string(),
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-pub(super) fn preview(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub(super) fn preview(ctx: &CommandContext, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
     let result = slice::preview(&slice_dir, &classes)?;
@@ -78,10 +78,10 @@ pub(super) fn preview(ctx: &CommandContext, name: String) -> Result<CliResult, E
             contracts,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-pub(super) fn conflicts(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub(super) fn conflicts(ctx: &CommandContext, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
     let conflicts = conflict_check(&slice_dir, &classes)?;
@@ -94,7 +94,7 @@ pub(super) fn conflicts(ctx: &CommandContext, name: String) -> Result<CliResult,
             conflicts: rows,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

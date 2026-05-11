@@ -18,11 +18,33 @@ mod status;
 pub mod tool;
 pub mod workspace;
 
-use specify_error::Error;
+use specify_error::Result;
 
 use crate::cli::{CapabilityAction, Cli, Commands, OutputFormat, ToolAction, WorkspaceAction};
 use crate::context::CommandContext;
 use crate::output::{CliResult, emit_error};
+
+/// Map a handler's success payload onto a [`CliResult`] exit code.
+///
+/// Lets the dispatcher accept both `Result<()>` (the common case —
+/// success is unconditional and maps to `CliResult::Success`) and
+/// `Result<CliResult>` (handlers that conditionally surface a
+/// non-success exit like `GenericFailure` / `ValidationFailed`).
+trait IntoCliResult {
+    fn into_cli_result(self) -> CliResult;
+}
+
+impl IntoCliResult for CliResult {
+    fn into_cli_result(self) -> CliResult {
+        self
+    }
+}
+
+impl IntoCliResult for () {
+    fn into_cli_result(self) -> CliResult {
+        CliResult::Success
+    }
+}
 
 pub fn run(cli: Cli) -> CliResult {
     let format = cli.format;
@@ -95,29 +117,34 @@ pub fn run(cli: Cli) -> CliResult {
 /// Loads `CommandContext` (project config + pipeline), calls `f`, and
 /// maps any `Error` to the appropriate format-aware exit code. This
 /// is the single error-handling boundary for project-aware commands —
-/// handlers can use `?` freely inside `f`.
-fn with_project<F>(format: OutputFormat, f: F) -> CliResult
+/// handlers can use `?` freely inside `f`. Handlers that return
+/// `Result<()>` collapse to `CliResult::Success` here; handlers that
+/// return `Result<CliResult>` flow through unchanged (the
+/// non-success-exit case).
+fn with_project<F, R>(format: OutputFormat, f: F) -> CliResult
 where
-    F: FnOnce(&CommandContext) -> Result<CliResult, Error>,
+    F: FnOnce(&CommandContext) -> Result<R>,
+    R: IntoCliResult,
 {
     let ctx = match CommandContext::load(format) {
         Ok(ctx) => ctx,
         Err(err) => return emit_error(format, &err),
     };
     match f(&ctx) {
-        Ok(result) => result,
+        Ok(value) => value.into_cli_result(),
         Err(err) => emit_error(format, &err),
     }
 }
 
 /// Run a command that does NOT need project context but may still fail
 /// with an `Error` (e.g. `capability resolve`, `capability check`).
-fn unscoped<F>(format: OutputFormat, f: F) -> CliResult
+fn unscoped<F, R>(format: OutputFormat, f: F) -> CliResult
 where
-    F: FnOnce() -> Result<CliResult, Error>,
+    F: FnOnce() -> Result<R>,
+    R: IntoCliResult,
 {
     match f() {
-        Ok(result) => result,
+        Ok(value) => value.into_cli_result(),
         Err(err) => emit_error(format, &err),
     }
 }

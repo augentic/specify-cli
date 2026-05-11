@@ -2,13 +2,13 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_change::{PlanLockReleased, Stamp};
-use specify_error::Error;
+use specify_error::Result;
 
 use crate::cli::OutputFormat;
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
-pub fn acquire(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
+pub fn acquire(ctx: &CommandContext, pid: Option<u32>) -> Result<()> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let acquired = Stamp::acquire(&ctx.project_dir, our_pid)?;
     emit(
@@ -20,10 +20,10 @@ pub fn acquire(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Erro
             reclaimed_stale_pid: acquired.reclaimed_stale_pid,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-pub fn release(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Error> {
+pub fn release(ctx: &CommandContext, pid: Option<u32>) -> Result<()> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let outcome = Stamp::release(&ctx.project_dir, our_pid)?;
     let body = match &outcome {
@@ -59,10 +59,10 @@ pub fn release(ctx: &CommandContext, pid: Option<u32>) -> Result<CliResult, Erro
             PlanLockReleased::Removed { .. } | PlanLockReleased::WasAbsent => {}
         }
     }
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-pub fn status(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn status(ctx: &CommandContext) -> Result<()> {
     let state = Stamp::status(&ctx.project_dir)?;
     emit(
         ctx.format,
@@ -72,7 +72,7 @@ pub fn status(ctx: &CommandContext) -> Result<CliResult, Error> {
             stale: state.stale,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]

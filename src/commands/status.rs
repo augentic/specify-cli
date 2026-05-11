@@ -11,14 +11,14 @@ use serde::Serialize;
 use serde_json::Value;
 use specify_change::{Plan, Status};
 use specify_config::ProjectConfig;
-use specify_error::Error;
+use specify_error::Result;
 use specify_registry::Registry;
 
 use super::slice::{StatusEntry, collect_status, list_slice_names, status_entry_to_json};
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
-pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let slices_dir = ctx.slices_dir();
 
@@ -34,7 +34,7 @@ pub fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
 
     let body = DashboardBody::new(registry, plan_summary, entries);
     emit(ctx.format, &body)?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 struct DashboardBody {

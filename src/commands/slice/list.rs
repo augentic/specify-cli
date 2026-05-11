@@ -11,12 +11,12 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value;
 use specify_capability::{Phase, PipelineView};
-use specify_error::Error;
+use specify_error::Result;
 use specify_slice::SliceMetadata;
 use specify_task::parse_tasks;
 
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
 pub(in crate::commands) struct StatusEntry {
     pub name: String,
@@ -57,7 +57,7 @@ pub(in crate::commands) fn status_entry_to_json(e: &StatusEntry) -> Value {
 
 pub(in crate::commands) fn collect_status(
     slice_dir: &Path, name: &str, pipeline: &PipelineView, project_dir: &Path,
-) -> Result<StatusEntry, Error> {
+) -> Result<StatusEntry> {
     let metadata = SliceMetadata::load(slice_dir)?;
     let status_str = metadata.status.to_string();
 
@@ -91,7 +91,7 @@ pub(in crate::commands) fn collect_status(
     })
 }
 
-pub(in crate::commands) fn list_slice_names(slices_dir: &Path) -> Result<Vec<String>, Error> {
+pub(in crate::commands) fn list_slice_names(slices_dir: &Path) -> Result<Vec<String>> {
     if !slices_dir.exists() {
         return Ok(Vec::new());
     }
@@ -113,7 +113,7 @@ pub(in crate::commands) fn list_slice_names(slices_dir: &Path) -> Result<Vec<Str
     Ok(names)
 }
 
-pub(super) fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub(super) fn run(ctx: &CommandContext) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let slices_dir = ctx.slices_dir();
     let names = list_slice_names(&slices_dir)?;
@@ -126,16 +126,16 @@ pub(super) fn run(ctx: &CommandContext) -> Result<CliResult, Error> {
     }
 
     emit(ctx.format, &StatusListBody::new(&entries))?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-pub(super) fn status_one(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub(super) fn status_one(ctx: &CommandContext, name: String) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let slice_dir = ctx.slices_dir().join(&name);
     let entry = collect_status(&slice_dir, &name, &pipeline, &ctx.project_dir)?;
 
     emit(ctx.format, &StatusListBody::new(std::slice::from_ref(&entry)))?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 struct StatusListBody<'a> {

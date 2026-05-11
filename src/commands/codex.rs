@@ -7,27 +7,31 @@ use specify_capability::{
     CodexApplicability, CodexDeprecation, CodexDeterministicHint, CodexHintKind, CodexProvenance,
     CodexReference, CodexReviewMode, CodexSeverity, ResolvedCodex, ResolvedCodexRule,
 };
-use specify_error::Error;
+use specify_error::{Error, Result};
 
 use crate::cli::CodexAction;
 use crate::context::CommandContext;
 use crate::output::{CliResult, Render, Validation, ValidationRow, emit, path_string};
 
 /// Dispatch `specify codex *`.
-pub fn run(ctx: &CommandContext, action: CodexAction) -> Result<CliResult, Error> {
+pub fn run(ctx: &CommandContext, action: CodexAction) -> Result<CliResult> {
+    // `validate` is the only arm that surfaces a non-success exit
+    // (`CliResult::ValidationFailed` when the codex is malformed);
+    // the others return `Result<()>` and lift to `Success` here.
+    let ok = |()| CliResult::Success;
     match action {
-        CodexAction::List => list(ctx),
-        CodexAction::Show { rule_id } => show(ctx, &rule_id),
+        CodexAction::List => list(ctx).map(ok),
+        CodexAction::Show { rule_id } => show(ctx, &rule_id).map(ok),
         CodexAction::Validate => validate(ctx),
-        CodexAction::Export => export(ctx),
+        CodexAction::Export => export(ctx).map(ok),
     }
 }
 
-fn resolve(ctx: &CommandContext) -> Result<ResolvedCodex, Error> {
+fn resolve(ctx: &CommandContext) -> Result<ResolvedCodex> {
     ResolvedCodex::resolve(&ctx.project_dir, ctx.config.capability.as_deref(), ctx.config.hub)
 }
 
-fn list(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn list(ctx: &CommandContext) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from_resolved).collect();
     emit(
@@ -37,10 +41,10 @@ fn list(ctx: &CommandContext) -> Result<CliResult, Error> {
             rules,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-fn show(ctx: &CommandContext, rule_id: &str) -> Result<CliResult, Error> {
+fn show(ctx: &CommandContext, rule_id: &str) -> Result<()> {
     let codex = resolve(ctx)?;
     let normalized = rule_id.to_ascii_uppercase();
     let resolved = codex
@@ -58,10 +62,10 @@ fn show(ctx: &CommandContext, rule_id: &str) -> Result<CliResult, Error> {
             rule: RuleExport::from_resolved(resolved),
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn validate(ctx: &CommandContext) -> Result<CliResult> {
     match resolve(ctx) {
         Ok(codex) => {
             emit(
@@ -91,7 +95,7 @@ fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
     }
 }
 
-fn export(ctx: &CommandContext) -> Result<CliResult, Error> {
+fn export(ctx: &CommandContext) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleExport::from_resolved).collect();
     emit(
@@ -101,7 +105,7 @@ fn export(ctx: &CommandContext) -> Result<CliResult, Error> {
             rules,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]

@@ -4,6 +4,14 @@
 //! The variants are structured (rather than string-only) so `main.rs` can
 //! pattern-match them to assign exit codes and pick an output format.
 
+/// Workspace-wide `Result` alias bound to [`Error`].
+///
+/// Lets call sites write `specify_error::Result<T>` (or `Result<T>`
+/// after `use specify_error::Result`) without restating the error
+/// parameter; supply an explicit `E` to override on the rare path that
+/// returns a non-[`Error`] failure.
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
 /// Kebab-case predicate shared across every workspace crate.
 ///
 /// Mirrors the JSON Schema regex `^[a-z0-9]+(-[a-z0-9]+)*$` carried by

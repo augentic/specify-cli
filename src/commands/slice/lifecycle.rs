@@ -4,17 +4,17 @@ use std::io::Write;
 
 use chrono::Utc;
 use serde::Serialize;
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_slice::{
     CreateIfExists, CreateOutcome, LifecycleStatus, Rfc3339Stamp, actions as slice_actions,
 };
 
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
 pub(super) fn create(
     ctx: &CommandContext, name: String, capability: Option<String>, if_exists: CreateIfExists,
-) -> Result<CliResult, Error> {
+) -> Result<()> {
     let capability_value = capability.map_or_else(
         || {
             ctx.config.capability.clone().ok_or_else(|| Error::Diag {
@@ -34,7 +34,7 @@ pub(super) fn create(
         slice_actions::create(&slices_dir, &name, &capability_value, if_exists, Utc::now())?;
 
     emit(ctx.format, &CreateBody::from_outcome(&outcome))?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -78,7 +78,7 @@ impl Render for CreateBody {
 
 pub(super) fn transition(
     ctx: &CommandContext, name: String, target: LifecycleStatus,
-) -> Result<CliResult, Error> {
+) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let metadata = slice_actions::transition(&slice_dir, target, Utc::now())?;
     emit(
@@ -93,7 +93,7 @@ pub(super) fn transition(
             dropped_at: metadata.dropped_at,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -114,7 +114,7 @@ impl Render for TransitionBody {
     }
 }
 
-pub(super) fn archive(ctx: &CommandContext, name: String) -> Result<CliResult, Error> {
+pub(super) fn archive(ctx: &CommandContext, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let target = slice_actions::archive(&slice_dir, &archive_dir, Utc::now())?;
@@ -125,7 +125,7 @@ pub(super) fn archive(ctx: &CommandContext, name: String) -> Result<CliResult, E
             archive_path: target.display().to_string(),
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -141,9 +141,7 @@ impl Render for ArchiveBody {
     }
 }
 
-pub(super) fn drop_slice(
-    ctx: &CommandContext, name: String, reason: Option<String>,
-) -> Result<CliResult, Error> {
+pub(super) fn drop_slice(ctx: &CommandContext, name: String, reason: Option<String>) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let (metadata, archive_path) =
@@ -157,7 +155,7 @@ pub(super) fn drop_slice(
             drop_reason: metadata.drop_reason,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]

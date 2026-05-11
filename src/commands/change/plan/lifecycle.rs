@@ -4,16 +4,14 @@ use serde::Serialize;
 use specify_capability::ChangeBrief;
 use specify_change::{Finding, Plan, Severity, Status};
 use specify_config::ProjectConfig;
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_registry::Registry;
 
 use super::{PlanRef, load_for_write, path_string, plan_ref, require_file};
 use crate::context::CommandContext;
 use crate::output::{CliResult, Render, Validation, emit, emit_err};
 
-pub fn create(
-    ctx: &CommandContext, name: String, sources: Vec<(String, String)>,
-) -> Result<CliResult, Error> {
+pub fn create(ctx: &CommandContext, name: String, sources: Vec<(String, String)>) -> Result<()> {
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if plan_path.exists() {
         return Err(Error::Diag {
@@ -49,10 +47,10 @@ pub fn create(
             },
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-pub fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn validate(ctx: &CommandContext) -> Result<CliResult> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
@@ -111,7 +109,7 @@ pub fn validate(ctx: &CommandContext) -> Result<CliResult, Error> {
     Ok(if has_errors { CliResult::ValidationFailed } else { CliResult::Success })
 }
 
-pub fn next(ctx: &CommandContext) -> Result<CliResult, Error> {
+pub fn next(ctx: &CommandContext) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ProjectConfig::slices_dir(&ctx.project_dir);
@@ -146,12 +144,12 @@ pub fn next(ctx: &CommandContext) -> Result<CliResult, Error> {
         }
     };
     emit(ctx.format, &body)?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 pub fn transition(
     ctx: &CommandContext, name: String, target: Status, reason: Option<String>,
-) -> Result<CliResult, Error> {
+) -> Result<()> {
     let (plan_path, mut plan) = load_for_write(ctx)?;
     let old_status = plan
         .entries
@@ -179,10 +177,10 @@ pub fn transition(
             previous_status: old_status.to_string(),
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-pub fn archive(ctx: &CommandContext, force: bool) -> Result<CliResult, Error> {
+pub fn archive(ctx: &CommandContext, force: bool) -> Result<CliResult> {
     let plan_path = ProjectConfig::plan_path(&ctx.project_dir);
     if !plan_path.exists() {
         return Err(Error::ArtifactNotFound {

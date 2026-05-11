@@ -3,17 +3,17 @@ use std::io::Write;
 use serde::Serialize;
 use serde_json::Value;
 use specify_change::{Entry, EntryPatch, Status};
-use specify_error::Error;
+use specify_error::Result;
 
 use super::{PlanRef, change_entry_json, check_project, load_for_write, plan_ref};
 use crate::context::CommandContext;
-use crate::output::{CliResult, Render, emit};
+use crate::output::{Render, emit};
 
 pub fn add(
     ctx: &CommandContext, name: String, depends_on: Vec<String>, sources: Vec<String>,
     description: Option<String>, project: Option<String>, capability: Option<String>,
     context: Vec<String>,
-) -> Result<CliResult, Error> {
+) -> Result<()> {
     let (plan_path, mut plan) = load_for_write(ctx)?;
 
     if let Some(ref proj) = project {
@@ -45,14 +45,14 @@ pub fn add(
             entry: change_entry_json(created),
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 pub fn amend(
     ctx: &CommandContext, name: String, depends_on: Option<Vec<String>>,
     sources: Option<Vec<String>>, description: Option<String>, project: Option<String>,
     capability: Option<String>, context: Option<Vec<String>>,
-) -> Result<CliResult, Error> {
+) -> Result<()> {
     let (plan_path, mut plan) = load_for_write(ctx)?;
 
     if let Some(ref proj) = project
@@ -90,7 +90,7 @@ pub fn amend(
             entry: change_entry_json(amended),
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 #[derive(Serialize)]

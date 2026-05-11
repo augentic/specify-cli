@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use serde::{Serialize, Serializer};
 use specify_change::Plan;
 use specify_config::ProjectConfig;
-use specify_error::Error;
+use specify_error::{Error, Result};
 use specify_registry::Registry;
 use specify_registry::branch::{
     Diagnostic as BranchDiagnostic, Prepared, Request as BranchRequest, prepare,
@@ -21,7 +21,7 @@ use specify_registry::workspace::{
 use crate::context::CommandContext;
 use crate::output::{CliResult, Render, emit};
 
-pub fn sync(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, Error> {
+pub fn sync(ctx: &CommandContext, projects: Vec<String>) -> Result<()> {
     let registry = match Registry::load(&ctx.project_dir)? {
         None if !projects.is_empty() => return Err(Error::RegistryMissing),
         other => other,
@@ -42,10 +42,10 @@ pub fn sync(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, Er
             message,
         },
     )?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
-pub fn status(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, Error> {
+pub fn status(ctx: &CommandContext, projects: Vec<String>) -> Result<()> {
     let body = match Registry::load(&ctx.project_dir)? {
         None => {
             if !projects.is_empty() {
@@ -66,13 +66,13 @@ pub fn status(ctx: &CommandContext, projects: Vec<String>) -> Result<CliResult, 
         }
     };
     emit(ctx.format, &body)?;
-    Ok(CliResult::Success)
+    Ok(())
 }
 
 pub fn prepare_branch(
     ctx: &CommandContext, project: String, change: String, sources: Vec<PathBuf>,
     outputs: Vec<PathBuf>,
-) -> Result<CliResult, Error> {
+) -> Result<CliResult> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
         return Err(Error::RegistryMissing);
     };
@@ -116,9 +116,7 @@ pub fn prepare_branch(
     }
 }
 
-pub fn push(
-    ctx: &CommandContext, projects: Vec<String>, dry_run: bool,
-) -> Result<CliResult, Error> {
+pub fn push(ctx: &CommandContext, projects: Vec<String>, dry_run: bool) -> Result<CliResult> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
         return Err(Error::RegistryMissing);
     };
