@@ -1,5 +1,17 @@
 //! Library surface for the `vectis` WASI command tool.
 //!
+//! ## Carve-out from workspace standards
+//!
+//! This crate is a deliberate carve-out from the workspace's
+//! `Render` / `emit` / `specify-error` discipline. It ships as a
+//! self-contained `wasm32-wasip2` component distributed independently
+//! of the `specify` binary, so it owns its own envelope (see
+//! [`JSON_SCHEMA_VERSION`]), its own error rendering, and its own
+//! exit-code shape. Future changes here MUST preserve that boundary
+//! — do not pull in `specify-error`, `Render`, or the host
+//! `output::emit` dispatcher; those couplings would re-attach the
+//! tool to the host CLI's release cadence.
+//!
 //! `vectis` exposes two subcommands:
 //!
 //! - `validate` — schema + cross-artifact validation for tokens, assets,

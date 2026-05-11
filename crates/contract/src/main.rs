@@ -1,6 +1,18 @@
 //! `specify-contract` — standalone validator binary for the contracts
 //! capability.
 //!
+//! ## Carve-out from workspace standards
+//!
+//! This crate is a deliberate carve-out from the workspace's
+//! `Render` / `emit` / `specify-error` discipline. It builds a
+//! self-contained `wasm32-wasip2` artifact distributed independently
+//! of the `specify` binary, so it owns its own JSON envelope, exit-code
+//! mapping, and error rendering rather than routing through the shared
+//! CLI plumbing. Future changes here MUST preserve that boundary —
+//! do not introduce a dependency on `specify-error`, `Render`, or the
+//! `output::emit` dispatcher; those couplings would re-attach this
+//! tool to the host CLI's release cadence.
+//!
 //! Wraps [`specify_validate::validate_baseline_contracts`] and
 //! [`specify_validate::serialize_contract_findings`] to surface the
 //! contract Validation checks (`SemVer` `info.version`,

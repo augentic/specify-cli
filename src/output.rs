@@ -84,9 +84,30 @@ impl From<&Error> for CliResult {
     }
 }
 
-/// JSON envelope version emitted on every structured response (the
-/// `schema-version` field of the wire shape, not a JSON-Schema spec).
-/// Bumping it is a breaking change for skill authors.
+/// JSON envelope version (the `schema-version` field on every wire
+/// body — not a JSON-Schema spec).
+///
+/// Bumping this is a breaking change for skill authors. History:
+///
+/// - v1 — unknown — pre-2026 trail; the codebase was already at v2
+///   when `JSON_SCHEMA_VERSION` was first introduced (RFC-2,
+///   commit `f39cb288`), so v1 (if it ever shipped) predates the
+///   public history.
+/// - v2 — initial envelope shape that landed with RFC-2 "Iterative
+///   Execution" (commit `f39cb288`).
+/// - v3 — Codex catalog (#29, commit `9e11e9d9`): added the codex
+///   payload shapes and renamed error kebab discriminants
+///   (`Error::SpecifyVersionTooOld` → `CliTooOld`,
+///   `ToolPermissionDenied` → `ToolDenied`).
+/// - v4 — `schema → capability` rename (commit `a7363b91`, see
+///   `CHANGELOG.md` 0.3.0): on-disk YAML keys, CLI flags, JSON
+///   keys, and the `Error::SchemaResolution` discriminant all moved
+///   from the `schema` noun to `capability`. The constant itself was
+///   renamed `JSON_SCHEMA_VERSION` → `JSON_ENVELOPE_VERSION` shortly
+///   afterwards (commit `a9b43981`) without a wire change.
+/// - v5 — `initiative → change` / `changes → slices` rename
+///   (commit `53d19d39`): JSON keys for the change-and-slices
+///   vocabulary lined up with the on-disk taxonomy.
 pub const JSON_ENVELOPE_VERSION: u64 = 5;
 
 /// Render `err` as a failure envelope and return the matching exit
