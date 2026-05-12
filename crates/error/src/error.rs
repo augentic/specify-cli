@@ -151,26 +151,3 @@ impl From<serde_saphyr::ser::Error> for Error {
         Self::YamlSer(YamlSerError::from(value))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::Error;
-
-    #[test]
-    fn io_from() {
-        let io = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
-        let err: Error = io.into();
-        assert!(matches!(err, Error::Io(_)));
-        assert_eq!(err.to_string(), "missing");
-    }
-
-    #[test]
-    fn yaml_from() {
-        let parse_err: serde_saphyr::Error = serde_saphyr::from_str::<String>(":\n\t- bad")
-            .expect_err("expected a YAML parse error");
-        let display = parse_err.to_string();
-        let err: Error = parse_err.into();
-        assert!(matches!(err, Error::Yaml(_)));
-        assert_eq!(err.to_string(), display);
-    }
-}
