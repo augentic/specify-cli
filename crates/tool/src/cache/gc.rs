@@ -24,11 +24,10 @@ use crate::manifest::ToolScope;
 ///
 /// Returns `ToolError::CacheRoot` when the cache root cannot be selected,
 /// `ToolError::InvalidCacheSegment` when a discovered directory name is not
-/// valid UTF-8 or violates the cache-segment invariants, `ToolError::CacheIo`
-/// when the scope or tool directory cannot be read, and
-/// `ToolError::SidecarParse` / `ToolError::SidecarSchema` when an existing
-/// `meta.yaml` is malformed (a missing sidecar marks the directory as
-/// unreferenced rather than erroring).
+/// valid UTF-8 or violates the cache-segment invariants, `ToolError::Io`
+/// when the scope or tool directory cannot be read, and the `ToolError::Sidecar`
+/// parse/schema variants when an existing `meta.yaml` is malformed (a
+/// missing sidecar marks the directory as unreferenced rather than erroring).
 pub fn scan<S: BuildHasher>(
     scope: &ToolScope, kept: &HashSet<(String, String, String), S>,
 ) -> Result<Vec<PathBuf>, ToolError> {

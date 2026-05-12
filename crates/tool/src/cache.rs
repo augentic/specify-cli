@@ -138,10 +138,10 @@ pub fn sidecar_path(scope: &ToolScope, name: &str, version: &str) -> Result<Path
 /// # Errors
 ///
 /// Forwards every error returned by [`module_path()`], [`sidecar_path`], and
-/// [`read_sidecar`] — the latter surfaces `ToolError::CacheIo`,
-/// `ToolError::SidecarParse`, and `ToolError::SidecarSchema` when an
-/// existing `meta.yaml` is unreadable or malformed (a missing sidecar is
-/// reported as [`CacheStatus::MissNotFound`] rather than as an error).
+/// [`read_sidecar`] — the latter surfaces `ToolError::Io` and the
+/// `ToolError::Sidecar` parse/schema variants when an existing `meta.yaml`
+/// is unreadable or malformed (a missing sidecar is reported as
+/// [`CacheStatus::MissNotFound`] rather than as an error).
 pub fn cache_status(
     scope: &ToolScope, tool_name: &str, tool_version: &str, source: &str, sha256: Option<&str>,
 ) -> Result<CacheStatus, ToolError> {

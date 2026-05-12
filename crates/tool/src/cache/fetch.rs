@@ -24,7 +24,7 @@ use crate::error::ToolError;
 ///
 /// # Errors
 ///
-/// Returns `ToolError::CacheIo` when `staged` is not a directory, an entry
+/// Returns `ToolError::Io` when `staged` is not a directory, an entry
 /// inside it is neither a file nor a directory, the parent of `dest` cannot
 /// be created, a unique sibling temporary path cannot be allocated, or any
 /// individual file copy fails. Returns `ToolError::CacheRoot` when `dest`

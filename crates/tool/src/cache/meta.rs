@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tempfile::Builder;
 
 use super::{SIDECAR_FILENAME, scope_segment};
-use crate::error::ToolError;
+use crate::error::{SidecarKind, ToolError};
 use crate::manifest::{ToolPermissions, ToolScope};
 use crate::package::PackageMetadata;
 
@@ -139,11 +139,12 @@ impl Sidecar {
 ///
 /// # Errors
 ///
-/// Returns `ToolError::CacheIo` when the file exists but cannot be read,
-/// `ToolError::SidecarParse` when the bytes are not valid YAML or do not
-/// deserialize into the v1 shape, and `ToolError::SidecarSchema` when the
-/// parsed document violates a schema invariant (`schema-version != 1`, an
-/// empty required field, or a malformed `sha256` digest).
+/// Returns `ToolError::Io` when the file exists but cannot be read,
+/// `ToolError::Sidecar { kind: SidecarKind::Parse, .. }` when the bytes are
+/// not valid YAML or do not deserialize into the v1 shape, and
+/// `ToolError::Sidecar { kind: SidecarKind::Schema, .. }` when the parsed
+/// document violates a schema invariant (`schema-version != 1`, an empty
+/// required field, or a malformed `sha256` digest).
 pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ToolError> {
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
@@ -151,9 +152,9 @@ pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ToolError> {
         Err(err) => return Err(ToolError::cache_io("read sidecar", path, err)),
     };
     let sidecar: Sidecar =
-        serde_saphyr::from_str(&contents).map_err(|err| ToolError::SidecarParse {
+        serde_saphyr::from_str(&contents).map_err(|err| ToolError::Sidecar {
             path: path.to_path_buf(),
-            source: Box::new(err.into()),
+            kind: SidecarKind::Parse(Box::new(err.into())),
         })?;
     validate_sidecar_schema(path, &sidecar)?;
     Ok(Some(sidecar))
@@ -163,12 +164,12 @@ pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ToolError> {
 ///
 /// # Errors
 ///
-/// Returns `ToolError::SidecarSchema` when `sidecar` does not satisfy the v1
-/// schema, `ToolError::CacheRoot` when `path` has no parent directory,
-/// `ToolError::CacheIo` when the parent directory cannot be created, a
-/// unique temp path cannot be allocated, or the temp file cannot be written,
-/// and `ToolError::AtomicMoveFailed` when the final rename into place fails
-/// (a crash here leaves the destination untouched).
+/// Returns `ToolError::Sidecar { kind: SidecarKind::Schema, .. }` when
+/// `sidecar` does not satisfy the v1 schema, `ToolError::CacheRoot` when
+/// `path` has no parent directory, `ToolError::Io` when the parent directory
+/// cannot be created, a unique temp path cannot be allocated, or the temp
+/// file cannot be written, and `ToolError::AtomicMoveFailed` when the final
+/// rename into place fails (a crash here leaves the destination untouched).
 pub fn write_sidecar(path: &Path, sidecar: &Sidecar) -> Result<(), ToolError> {
     validate_sidecar_schema(path, sidecar)?;
     let Some(parent) = path.parent() else {
@@ -179,9 +180,9 @@ pub fn write_sidecar(path: &Path, sidecar: &Sidecar) -> Result<(), ToolError> {
     };
     fs::create_dir_all(parent)
         .map_err(|err| ToolError::cache_io("create sidecar parent", parent, err))?;
-    let contents = serde_saphyr::to_string(sidecar).map_err(|err| ToolError::SidecarSchema {
+    let contents = serde_saphyr::to_string(sidecar).map_err(|err| ToolError::Sidecar {
         path: path.to_path_buf(),
-        detail: format!("failed to serialize sidecar: {err}"),
+        kind: SidecarKind::Schema(format!("failed to serialize sidecar: {err}")),
     })?;
     let prefix = format!(".{SIDECAR_FILENAME}.");
     let tmp = Builder::new()
@@ -237,9 +238,9 @@ fn validate_sidecar_schema(path: &Path, sidecar: &Sidecar) -> Result<(), ToolErr
 }
 
 fn sidecar_schema_error(path: &Path, detail: impl Into<String>) -> Result<(), ToolError> {
-    Err(ToolError::SidecarSchema {
+    Err(ToolError::Sidecar {
         path: path.to_path_buf(),
-        detail: detail.into(),
+        kind: SidecarKind::Schema(detail.into()),
     })
 }
 

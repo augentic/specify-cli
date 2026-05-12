@@ -126,7 +126,16 @@ mod tests {
 
         let err = load_capability_sidecar(tmp.path(), "contracts")
             .expect_err("array top-level shape must fail");
-        assert!(matches!(err, ToolError::ManifestParse { .. }), "{err}");
+        assert!(
+            matches!(
+                err,
+                ToolError::Manifest {
+                    kind: crate::error::ManifestKind::Parse(_),
+                    ..
+                }
+            ),
+            "{err}"
+        );
     }
 
     #[test]

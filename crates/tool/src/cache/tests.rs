@@ -103,7 +103,13 @@ fn sidecar_round_trips_and_schema_rejects_invalid_shape() {
         "schema-version: 2\nscope: project--demo\ntool-name: contract\ntool-version: 1.0.0\nsource: https://example.test/contract.wasm\nfetched-at: 2026-05-07T00:00:00Z\npermissions-snapshot:\n  read: []\n  write: []\n",
     )
     .expect("write invalid sidecar");
-    assert!(matches!(read_sidecar(&path), Err(ToolError::SidecarSchema { .. })));
+    assert!(matches!(
+        read_sidecar(&path),
+        Err(ToolError::Sidecar {
+            kind: crate::error::SidecarKind::Schema(_),
+            ..
+        })
+    ));
 
     let schema: serde_json::Value =
         serde_json::from_str(TOOL_SIDECAR_JSON_SCHEMA).expect("sidecar schema parses");

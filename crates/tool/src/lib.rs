@@ -2,9 +2,12 @@
     clippy::doc_markdown,
     reason = "The crate-level decision record mirrors RFC prose and manifest keys."
 )]
-#![allow(
-    clippy::multiple_crate_versions,
-    reason = "Wasmtime, WASI, and `wasm-pkg-client` carry unavoidable duplicate transitive crates in the workspace; surfaces in both `--features host` and `--no-default-features` builds."
+#![cfg_attr(
+    any(feature = "host", feature = "oci"),
+    allow(
+        clippy::multiple_crate_versions,
+        reason = "Wasmtime/WASI (`host`) and `wasm-pkg-client` (`oci`) each carry unavoidable duplicate transitive crates; the `--no-default-features` build (no `host`, no `oci`) is clean and drops the waiver."
+    )
 )]
 
 //! `specify-tool` owns Specify's declared WASI tool model, cache, resolver,
