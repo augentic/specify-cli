@@ -1,6 +1,6 @@
 # Coding standards
 
-Style rules every Rust change in this workspace honours. These rules are enforced by `cargo make standards` (run in CI) and by review; the mechanical predicates that back them are catalogued in [predicates.md](./predicates.md). CI failure messages cite this document by anchor. When a rule fights you, add the case to the rule with a before/after — don't carve out a local exception.
+Style rules every Rust change in this workspace honours. Enforced by clippy (`cargo make lint`) and review. When a rule fights you, add the case to the rule with a before/after — don't carve out a local exception.
 
 ## Lints
 
@@ -48,7 +48,7 @@ Comments answer "why does this look like this *today*?" — non-obvious intent, 
 //! owning verbs, not by `init`.
 ```
 
-Doc comments describe what this is today. Version-history tables, dated bumps, commit hashes, and migration notes belong in git log or [DECISIONS.md](../../DECISIONS.md) — not in `///` blocks. Doc paragraphs over 8 consecutive non-blank lines on a `pub` item are flagged by `verbose-doc-paragraphs` (see [predicates.md](./predicates.md)).
+Doc comments describe what this is today. Version-history tables, dated bumps, commit hashes, and migration notes belong in git log or [DECISIONS.md](../../DECISIONS.md) — not in `///` blocks. Keep `///` paragraphs on `pub` items under ~8 lines; longer prose belongs in `rfcs/` or `DECISIONS.md`.
 
 `cargo doc` is part of `cargo make ci`, so doc comments must compile. Reference paths inside backticks (`` `Self::config_path` ``) are fine; bare links (`[Foo]`) need a corresponding intra-doc target or rustdoc fails the build.
 
@@ -99,7 +99,7 @@ ctx.out().write(&SomeBody::from(&result))?;
 
 Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::capability::resolve`, `commands::capability::check` — receive a bare `Format` and reach for `Out::for_format(format).write(&Body)?;` instead.
 
-`Render::render_text(&self, w: &mut dyn Write)` carries the text-mode body; the JSON path goes through `serde::Serialize`. New code must not introduce `match … format`; the `format-match-dispatch` predicate fails new occurrences. See [`src/commands/codex.rs`](../../src/commands/codex.rs) for the canonical pattern.
+`Render::render_text(&self, w: &mut dyn Write)` carries the text-mode body; the JSON path goes through `serde::Serialize`. New code must not introduce `match … format`. See [`src/commands/codex.rs`](../../src/commands/codex.rs) for the canonical pattern.
 
 ## One emit path
 
@@ -107,7 +107,7 @@ Success bodies leave handlers via `ctx.out().write(&Body)?;` (or `Out::for_forma
 
 ## DTOs
 
-Response DTOs (`*Body`, `*Row`) are **top-level** structs under `mod`. Inline DTOs trip the `inline-dtos` AST predicate (DTOs declared inside *any* `Block` — function bodies, match arms, closures — count) and force per-file `#![allow(items_after_statements, …)]` waivers. The waiver is itself a refactor signal: a file that needs it is a file whose handler hasn't been migrated yet.
+Response DTOs (`*Body`, `*Row`) are **top-level** structs under `mod`. Declaring a DTO inside a function body, match arm, or closure forces a per-file `#![allow(items_after_statements, …)]` waiver and is the signal that a handler hasn't been migrated yet.
 
 **Construct DTOs through `From` impls, not named builders.** Use `impl From<&Domain> for Body` so the conversion is discoverable at the trait surface and call sites read `Body::from(&domain)`. Named constructors are reserved for multi-arg or fallible builders (e.g. `RegistryProposalRow::from_kind` returns `Option<Self>`); each survivor carries a one-line doc justification.
 
@@ -197,7 +197,7 @@ Every public `enum` or `struct` that may grow gets `#[non_exhaustive]`. The exce
 
 YAML (de)serialization goes through `serde-saphyr`, not `serde_yaml_ng` (retired) or `serde_yaml` (deprecated). `serde-saphyr` has no `Value` type; for dynamic YAML access deserialize into `serde_json::Value`. Deser and ser errors are wrapped behind `specify_error::YamlError` / `specify_error::YamlSerError` so the upstream crate name does not leak through every `specify-*` public surface; `specify_error::Error` carries both via `Yaml(#[from] YamlError)` and `YamlSer(#[from] YamlSerError)`, and `?` on a raw `serde_saphyr` result still propagates because `Error` also implements `From<serde_saphyr::Error>` and `From<serde_saphyr::ser::Error>` through the wrappers. Library crates use the wrapper types in their public signatures; never expose `serde_saphyr::*::Error` directly.
 
-Writes that must not be observed mid-update use the shared atomic helpers in `specify_slice::atomic` (`yaml_write` / `bytes_write`). `fs::write` is fine for single-shot scratch files but never for files that other live processes read (`plan.yaml`, `registry.yaml`, `change.md`, `tasks.md`, `.specify/plan.lock`, `.metadata.yaml`). The `direct-fs-write` predicate fails any new `fs::write` / `std::fs::write` in non-test Rust. See [architecture.md §"Atomic writes"](./architecture.md#atomic-writes) for the rationale and [DECISIONS.md §"Atomic writes"](../../DECISIONS.md#atomic-writes) for the long form.
+Writes that must not be observed mid-update use the shared atomic helpers in `specify_slice::atomic` (`yaml_write` / `bytes_write`). `fs::write` is fine for single-shot scratch files but never for files that other live processes read (`plan.yaml`, `registry.yaml`, `change.md`, `tasks.md`, `.specify/plan.lock`, `.metadata.yaml`). See [architecture.md §"Atomic writes"](./architecture.md#atomic-writes) for the rationale and [DECISIONS.md §"Atomic writes"](../../DECISIONS.md#atomic-writes) for the long form.
 
 ## Module layout
 
@@ -211,11 +211,11 @@ crates/foo/src/
     └── render.rs
 ```
 
-**Module length cap** — keep new modules ≤ 400 lines (enforced by the `module-line-count` predicate; see [predicates.md](./predicates.md)). When a file outgrows that, split by concern (one verb per file, model vs IO vs transitions, etc.) before adding more code. Prefer `<parent>/<module>.rs` + `<parent>/<module>/<concern>.rs` over a single fat file with `// ---` separators.
+**Module length cap** — keep new modules ≤ 400 lines; the workspace tripwire (`cargo make file-size`) fails any source file that grows past 600. When a file outgrows that, split by concern (one verb per file, model vs IO vs transitions, etc.) before adding more code. Prefer `<parent>/<module>.rs` + `<parent>/<module>/<concern>.rs` over a single fat file with `// ---` separators.
 
 ## No-op forwarders
 
-A clap-parsed flag that is destructured and silently dropped (`let _ = cli.<flag>;` or pattern matches that never reach a handler) is a YAGNI smell. Either the flag is wired up (the variant carries data and the handler reads it) or it is removed from clap. The `no-op-forwarders` predicate fails new occurrences.
+A clap-parsed flag that is destructured and silently dropped (`let _ = cli.<flag>;` or pattern matches that never reach a handler) is a YAGNI smell. Either the flag is wired up (the variant carries data and the handler reads it) or it is removed from clap.
 
 ## Wired-but-ignored flags
 
@@ -223,4 +223,4 @@ A flag whose doc-comment says "Currently equivalent to the default …" or whose
 
 ## Drift audit
 
-When you remove a symbol, run `rg <SymbolName> -- AGENTS.md DECISIONS.md docs/` and update every hit in the same PR. Stale symbol references in docs are worse than missing docs — they teach the reader something false. The `stale-cli-vocab` predicate catches retired CLI nouns; doc drift on internal symbols (error variants, type names, field keys) is caught only by this audit habit.
+When you remove a symbol, run `rg <SymbolName> -- AGENTS.md DECISIONS.md docs/` and update every hit in the same PR. Stale symbol references in docs are worse than missing docs — they teach the reader something false. Doc drift on internal symbols (error variants, type names, field keys) is caught only by this audit habit.

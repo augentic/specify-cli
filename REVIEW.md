@@ -25,7 +25,7 @@ Single-pass review of `specify` and `specify-cli` against subtraction, idiom, bo
 
 Structural items first; one-touch tidies fold into adjacent PRs.
 
-- [ ] F1. [Delete `xtask::standards` and the allowlist](#f1-delete-xtaskstandards-and-the-allowlist) — **≈ −2 050 LOC**
+- [x] F1. [Delete `xtask::standards` and the allowlist](#f1-delete-xtaskstandards-and-the-allowlist) — **≈ −2 050 LOC**
 - [ ] F2. [Delete `Guard` and every `*_with_liveness_check`](#f2-delete-guard-and-every-_with_liveness_check) — **≈ −430 LOC**
 - [ ] F3. [Collapse the `Render` / `*Body` triad in `src/output.rs`](#f3-collapse-the-render--body-triad-in-srcoutputrs) — **≈ −350 LOC**
 - [ ] F4. [Move `serde_rfc3339` to `specify-error`; delete the cache/meta duplicate](#f4-move-serde_rfc3339-to-specify-error-delete-the-cachemeta-duplicate) — **≈ −18 LOC**
@@ -376,3 +376,11 @@ Things this review **deliberately does not propose**, despite the gravitational 
 - No drop of `jsonschema` — it is a production dep (`crates/domain/src/capability/capability.rs:353`, `crates/tool/src/validate.rs:525`), not dev-only.
 
 If a session reaches for any of these, stop and reconsider whether the change is necessary.
+
+---
+
+## Post-mortem
+
+One line per applied finding. Format: `id. actual ΔLOC vs predicted | done-when | regressions`.
+
+- F1. **−2 009 LOC vs −2 050 predicted (98%)** | done-when flipped cleanly (`rg standards-check -- xtask src docs Makefile.toml AGENTS.md DECISIONS.md` empty; `xtask --help` shows only `gen-man` / `gen-completions`); `cargo make lint` green | no production regressions; the new `cargo make file-size` tripwire fired on first run against `crates/domain/src/registry/workspace/tests.rs` (776 LOC) — resolved by extending the find filter to also skip `tests.rs` (F1's "excluding tests/" intent), which F6 will delete outright. Doc-sweep was wider than F1 listed (`docs/standards/{architecture,style,handler-shape}.md` and `docs/contributing/maintenance.md` all referenced the deleted predicates and had to come along). Calibration prior for next session: predicted-LOC anchored on Rust deletions tends to ignore the doc tail; expect ~2-5% shortfall when stale references in sibling docs need pruning.

@@ -39,7 +39,6 @@ Part of the CLI wire contract. `Exit::from(&Error)` in [`src/output.rs`](./src/o
 | `Ctx`, `Out`/`Render`/`emit`, exit-code mapping, dispatcher contract | [`docs/standards/handler-shape.md`](./docs/standards/handler-shape.md) |
 | Workspace layout, WASI carve-outs, `Layout<'a>`, time injection, `ureq` hardening, atomic-write rationale, supply chain | [`docs/standards/architecture.md`](./docs/standards/architecture.md) |
 | `cargo nextest`, integration-first policy, golden files, `REGENERATE_GOLDENS` | [`docs/standards/testing.md`](./docs/standards/testing.md) |
-| Mechanically enforced predicates (`cargo make standards`) | [`docs/standards/predicates.md`](./docs/standards/predicates.md) |
 | Standing architectural decisions (error layering, exit codes, atomic writes, YAML library, wire compatibility, new workspace crates) | [`DECISIONS.md`](./DECISIONS.md) |
 
 External references:
@@ -54,9 +53,8 @@ External references:
 All driven by `cargo make` (see [`Makefile.toml`](./Makefile.toml)). Run the full local CI suite before committing; do not rely on narrower substitutes such as `cargo test` or `cargo clippy`.
 
 ```bash
-cargo make ci             # lint + standards + test + test-docs + doc + vet + outdated + deny + fmt
+cargo make ci             # lint + file-size + test + test-docs + doc + vet + outdated + deny + fmt
 cargo make test           # cargo nextest run --all --all-features --no-tests=pass under -Dwarnings
-cargo make standards      # cargo run -p xtask -- standards-check
 cargo make lint           # cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 cargo make fmt            # nightly cargo fmt --all
 cargo make audit          # cargo-audit; cargo make deny / outdated / deps / vet for the rest
