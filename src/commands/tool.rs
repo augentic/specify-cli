@@ -69,8 +69,9 @@ fn resolve_project_capability(ctx: &Ctx) -> Result<Option<ResolvedCapability>> {
 }
 
 fn enforce_capability_filename(dir: &Path) -> Result<()> {
-    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::CapabilityManifestMissing {
-        dir: dir.to_path_buf(),
+    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::Diag {
+        code: "capability-manifest-missing",
+        detail: format!("no `capability.yaml` at {}", dir.display()),
     })
 }
 
@@ -100,10 +101,9 @@ fn validation_failure(result: &ToolValidationResult) -> Option<ValidationSummary
 }
 
 fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool> {
-    inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| {
-        Error::ToolNotDeclared {
-            name: name.to_string(),
-        }
+    inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| Error::Diag {
+        code: "tool-not-declared",
+        detail: format!("tool not declared: {name}"),
     })
 }
 

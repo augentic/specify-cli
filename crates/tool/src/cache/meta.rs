@@ -247,4 +247,3 @@ fn sidecar_schema_error(path: &Path, detail: impl Into<String>) -> Result<(), To
 fn valid_sha256(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
-

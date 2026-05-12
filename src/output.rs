@@ -61,8 +61,10 @@ impl Exit {
             // exit 0: handler-reported success.
             Self::Success => 0,
             // exit 1: catch-all failure (kebab discriminants: `io`,
-            // `yaml`, `lifecycle`, plan/context/registry variants,
-            // …anything `From<&Error>` doesn't map to a typed slot).
+            // `yaml`, `lifecycle`, `non-terminal-entries-present`,
+            // `change-finalize-blocked`, plan/context/registry diag
+            // codes, …anything `From<&Error>` doesn't map to a typed
+            // slot).
             Self::GenericFailure => 1,
             // exit 2: argument-shape error (kebab discriminant: `argument`).
             // exit 2: validation failure (kebab discriminant: `validation`,
@@ -92,9 +94,7 @@ impl From<&Error> for Exit {
     fn from(err: &Error) -> Self {
         match err {
             Error::CliTooOld { .. } => Self::VersionTooOld,
-            Error::Validation { .. } | Error::ToolDenied(_) | Error::ToolNotDeclared { .. } => {
-                Self::ValidationFailed
-            }
+            Error::Validation { .. } => Self::ValidationFailed,
             // Diag-routed siblings of the typed validation cluster.
             // Their typed variants collapsed to `Diag` but their exit
             // slot stays exit 2 — the kebab `code` is the wire contract
@@ -106,6 +106,8 @@ impl From<&Error> for Exit {
                         | "compatibility-check-failed"
                         | "capability-check-failed"
                         | "slice-validation-failed"
+                        | "tool-permission-denied"
+                        | "tool-not-declared"
                 ) =>
             {
                 Self::ValidationFailed

@@ -103,10 +103,11 @@ fn archive_refuses_pending() {
     let err = archive_test(&plan_path, &archive_dir, false)
         .expect_err("must refuse pending entry without force");
     match err {
-        Error::PlanIncomplete { entries } => {
-            assert_eq!(entries, vec!["still-pending".to_string()]);
+        Error::Diag { code, detail } => {
+            assert_eq!(code, "plan-has-outstanding-work");
+            assert!(detail.contains("still-pending"), "detail must name the entry, got: {detail}");
         }
-        other => panic!("expected PlanIncomplete, got {other:?}"),
+        other => panic!("expected plan-has-outstanding-work diag, got {other:?}"),
     }
 
     assert!(plan_path.exists(), "original plan.yaml must still exist");
@@ -136,15 +137,15 @@ fn archive_refuses_nonterminal() {
     let err = archive_test(&plan_path, &archive_dir, false)
         .expect_err("must refuse non-terminal entries");
     match err {
-        Error::PlanIncomplete { entries } => {
-            assert_eq!(
-                entries,
-                vec!["b".to_string(), "c".to_string(), "d".to_string()],
-                "entries must include InProgress/Blocked/Failed in plan list order, \
-                 excluding Done and Skipped"
+        Error::Diag { code, detail } => {
+            assert_eq!(code, "plan-has-outstanding-work");
+            assert!(
+                detail.contains("\"b\"") && detail.contains("\"c\"") && detail.contains("\"d\""),
+                "detail must list InProgress/Blocked/Failed entries (excluding Done and \
+                 Skipped) in plan list order, got: {detail}"
             );
         }
-        other => panic!("expected PlanIncomplete, got {other:?}"),
+        other => panic!("expected plan-has-outstanding-work diag, got {other:?}"),
     }
     assert!(plan_path.exists(), "original plan.yaml must still exist");
 }

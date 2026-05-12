@@ -43,36 +43,11 @@ pub enum Error {
         detail: String,
     },
 
-    /// `.specify/context.lock` declares a version newer than this CLI supports.
-    #[error("context-lock-version-too-new: lock version {found} > supported {supported}")]
-    ContextLockTooNew {
-        /// Version declared by the lock file.
-        found: u64,
-        /// Highest lock-file version supported by this CLI.
-        supported: u64,
-    },
-
-    /// `.specify/context.lock` exists but is not a well-formed current lock.
-    #[error("context-lock-malformed: {detail}")]
-    ContextLockMalformed {
-        /// Human-readable malformed-lock detail.
-        detail: String,
-    },
-
     /// Validation failed with one or more findings.
     #[error("validation failed: {} errors", results.len())]
     Validation {
         /// Individual validation results.
         results: Vec<ValidationSummary>,
-    },
-
-    /// An illegal lifecycle transition was attempted.
-    #[error("lifecycle error: expected {expected}, found {found}")]
-    Lifecycle {
-        /// Description of the expected state or transition.
-        expected: String,
-        /// The actual state encountered.
-        found: String,
     },
 
     /// The installed CLI version is older than the project floor.
@@ -91,28 +66,6 @@ pub enum Error {
         from: String,
         /// Target status of the attempted transition.
         to: String,
-    },
-
-    /// `Plan::archive` refused to archive a plan that still contains
-    /// non-terminal entries, and the caller did not pass `force`.
-    /// `entries` lists the offending entry names.
-    #[error("plan has outstanding non-terminal work: {entries:?}")]
-    PlanIncomplete {
-        /// Names of plan entries not yet in a terminal state.
-        entries: Vec<String>,
-    },
-
-    /// `specify change finalize` refused because the plan still has
-    /// non-terminal entries. `change` is the plan name; `entries`
-    /// lists the offending entry names. The handler at
-    /// `commands::change` renders a non-standard envelope so the
-    /// entries appear alongside the discriminant.
-    #[error("non-terminal-entries-present: plan `{change}` has non-terminal entries: {entries:?}")]
-    PlanNonTerminalEntries {
-        /// Change name (= `plan.yaml:name`).
-        change: String,
-        /// Names of plan entries not in a terminal state.
-        entries: Vec<String>,
     },
 
     /// Another live `/change:execute` driver holds `.specify/plan.lock`.
@@ -137,16 +90,6 @@ pub enum Error {
     SliceNotFound {
         /// Kebab-case slice name.
         name: String,
-    },
-
-    /// A capability directory does not contain `capability.yaml`.
-    /// Canonical call site: `specify_capability::Capability::resolve`
-    /// (and the `capability` / `tool` dispatchers under `src/commands`,
-    /// which probe the resolved directory before delegating).
-    #[error("capability-manifest-missing: no `capability.yaml` at {}", dir.display())]
-    CapabilityManifestMissing {
-        /// Directory expected to contain `capability.yaml`.
-        dir: std::path::PathBuf,
     },
 
     /// A filesystem operation failed. The `op` field is a stable
@@ -182,34 +125,6 @@ pub enum Error {
         /// Repository-relative paths the diagnostic points at (may be
         /// empty when the diagnostic is whole-clone scoped).
         paths: Vec<String>,
-    },
-
-    /// A declared WASI tool requested filesystem authority outside its manifest policy.
-    #[error("tool permission denied: {0}")]
-    ToolDenied(String),
-
-    /// The requested tool name was not present in either declaration site.
-    #[error("tool not declared: {name}")]
-    ToolNotDeclared {
-        /// Missing tool name.
-        name: String,
-    },
-
-    /// A name failed kebab-case validation.
-    #[error("invalid name: {0}")]
-    InvalidName(String),
-
-    /// `specify change finalize` ran successfully but the per-project
-    /// probes reported at least one blocker. The structured summary
-    /// (unmerged PRs, dirty clones, etc.) lives in the stdout body;
-    /// this variant carries the change name and a human-readable
-    /// summary of the blockers.
-    #[error("change-finalize-blocked: change `{change}` blocked: {summary}")]
-    ChangeFinalizeBlocked {
-        /// Change name (= `plan.yaml:name`).
-        change: String,
-        /// Human-readable summary of the per-project blockers.
-        summary: String,
     },
 
     /// An I/O error propagated from the standard library.

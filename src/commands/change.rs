@@ -117,15 +117,15 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
             if finalized {
                 Ok(())
             } else {
-                Err(Error::ChangeFinalizeBlocked {
-                    change: plan_name,
-                    summary,
+                Err(Error::Diag {
+                    code: "change-finalize-blocked",
+                    detail: format!("change `{plan_name}` blocked: {summary}"),
                 })
             }
         }
-        Err(finalize::Refusal::NonTerminalEntries(entries)) => Err(Error::PlanNonTerminalEntries {
-            change: plan.name.clone(),
-            entries,
+        Err(finalize::Refusal::NonTerminalEntries(entries)) => Err(Error::Diag {
+            code: "non-terminal-entries-present",
+            detail: format!("plan `{}` has non-terminal entries: {entries:?}", plan.name),
         }),
     }
 }

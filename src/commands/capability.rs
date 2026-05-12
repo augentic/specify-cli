@@ -145,10 +145,10 @@ fn write_check_text(w: &mut dyn Write, body: &CheckBody) -> std::io::Result<()> 
 }
 
 pub(crate) fn check(format: Format, capability_dir: &Path) -> Result<()> {
-    let manifest_path =
-        Capability::probe_dir(capability_dir).ok_or_else(|| Error::CapabilityManifestMissing {
-            dir: capability_dir.to_path_buf(),
-        })?;
+    let manifest_path = Capability::probe_dir(capability_dir).ok_or_else(|| Error::Diag {
+        code: "capability-manifest-missing",
+        detail: format!("no `capability.yaml` at {}", capability_dir.display()),
+    })?;
     let capability = load_manifest(&manifest_path)?;
     let results = capability.validate_structure();
     let passed = !results.iter().any(|r| matches!(r, ValidationResult::Fail { .. }));
@@ -171,8 +171,9 @@ pub(crate) fn check(format: Format, capability_dir: &Path) -> Result<()> {
 /// Surface a `capability-manifest-missing` diagnostic when `dir` does
 /// not carry a `capability.yaml`.
 fn enforce_capability_filename(dir: &Path) -> Result<()> {
-    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::CapabilityManifestMissing {
-        dir: dir.to_path_buf(),
+    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::Diag {
+        code: "capability-manifest-missing",
+        detail: format!("no `capability.yaml` at {}", dir.display()),
     })
 }
 

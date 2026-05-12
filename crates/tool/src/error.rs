@@ -254,7 +254,10 @@ impl ToolError {
 impl From<ToolError> for specify_error::Error {
     fn from(value: ToolError) -> Self {
         match value {
-            ToolError::ToolNotDeclared { name } => Self::ToolNotDeclared { name },
+            ToolError::ToolNotDeclared { name } => Self::Diag {
+                code: "tool-not-declared",
+                detail: format!("tool not declared: {name}"),
+            },
             ToolError::Runtime(detail) => Self::Diag {
                 code: "tool-runtime",
                 detail,
@@ -274,7 +277,10 @@ impl From<ToolError> for specify_error::Error {
                     .to_string(),
             },
             err @ (ToolError::InvalidPermission { .. } | ToolError::PermissionDenied { .. }) => {
-                Self::ToolDenied(err.to_string())
+                Self::Diag {
+                    code: "tool-permission-denied",
+                    detail: err.to_string(),
+                }
             }
             other => Self::Diag {
                 code: "tool-resolver",

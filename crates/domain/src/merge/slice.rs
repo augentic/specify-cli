@@ -145,8 +145,8 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 ///
 /// # Errors
 ///
-/// - [`Error::Lifecycle`] when the slice's status is not
-///   [`LifecycleStatus::Complete`] on entry, or when the
+/// - [`Error::Diag`] with `code = "lifecycle"` when the slice's status
+///   is not [`LifecycleStatus::Complete`] on entry, or when the
 ///   `Complete → Merged` transition is rejected (e.g. terminal-state
 ///   re-entry).
 /// - Every error documented on [`preview`] (the in-memory plan
@@ -165,9 +165,9 @@ pub fn commit(
 ) -> Result<Vec<MergePreviewEntry>, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     if metadata.status != LifecycleStatus::Complete {
-        return Err(Error::Lifecycle {
-            expected: "Complete".to_string(),
-            found: format!("{:?}", metadata.status),
+        return Err(Error::Diag {
+            code: "lifecycle",
+            detail: format!("expected Complete, found {:?}", metadata.status),
         });
     }
 
