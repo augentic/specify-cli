@@ -14,7 +14,6 @@ use specify_error::Result;
 
 use super::artifact_classes;
 use crate::context::Ctx;
-use crate::output::Render;
 
 const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/archive"];
 
@@ -36,10 +35,13 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let archive_path = archive_dir.join(format!("{today}-{name}"));
 
     let entries: Vec<MergedEntry> = merged.iter().map(MergedEntry::from).collect();
-    ctx.write(&RunBody {
-        merged_specs: entries,
-        archive_path: archive_path.display().to_string(),
-    })?;
+    ctx.write(
+        &RunBody {
+            merged_specs: entries,
+            archive_path: archive_path.display().to_string(),
+        },
+        write_run_text,
+    )?;
     Ok(())
 }
 
@@ -65,11 +67,14 @@ pub(super) fn preview(ctx: &Ctx, name: &str) -> Result<()> {
         .map(ContractItem::from)
         .collect();
 
-    ctx.write(&PreviewBody {
-        slice_dir: slice_dir.display().to_string(),
-        specs,
-        contracts,
-    })?;
+    ctx.write(
+        &PreviewBody {
+            slice_dir: slice_dir.display().to_string(),
+            specs,
+            contracts,
+        },
+        write_preview_text,
+    )?;
     Ok(())
 }
 
@@ -79,10 +84,13 @@ pub(super) fn conflicts(ctx: &Ctx, name: &str) -> Result<()> {
     let conflicts = conflict_check(&slice_dir, &classes)?;
     let rows: Vec<ConflictRow> = conflicts.iter().map(ConflictRow::from).collect();
 
-    ctx.write(&ConflictCheckBody {
-        slice_dir: slice_dir.display().to_string(),
-        conflicts: rows,
-    })?;
+    ctx.write(
+        &ConflictCheckBody {
+            slice_dir: slice_dir.display().to_string(),
+            conflicts: rows,
+        },
+        write_conflict_check_text,
+    )?;
     Ok(())
 }
 
@@ -98,13 +106,11 @@ struct RunBody {
     archive_path: String,
 }
 
-impl Render for RunBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        for entry in &self.merged_specs {
-            writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
-        }
-        writeln!(w, "Archived to {}", self.archive_path)
+fn write_run_text(w: &mut dyn Write, body: &RunBody) -> std::io::Result<()> {
+    for entry in &body.merged_specs {
+        writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
     }
+    writeln!(w, "Archived to {}", body.archive_path)
 }
 
 #[derive(Serialize)]
@@ -131,31 +137,29 @@ struct PreviewBody {
     contracts: Vec<ContractItem>,
 }
 
-impl Render for PreviewBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.specs.is_empty() {
-            writeln!(w, "No delta specs to merge.")?;
-        } else {
-            for entry in &self.specs {
-                writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
-                for op in &entry.operations {
-                    writeln!(w, "  {}", operation_label(op))?;
-                }
+fn write_preview_text(w: &mut dyn Write, body: &PreviewBody) -> std::io::Result<()> {
+    if body.specs.is_empty() {
+        writeln!(w, "No delta specs to merge.")?;
+    } else {
+        for entry in &body.specs {
+            writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
+            for op in &entry.operations {
+                writeln!(w, "  {}", operation_label(op))?;
             }
         }
-        if !self.contracts.is_empty() {
-            writeln!(w, "\nContract changes:")?;
-            for c in &self.contracts {
-                let (sigil, label) = match c.action {
-                    ContractAction::Added => ("+", "added"),
-                    ContractAction::Replaced => ("~", "replaced"),
-                    ContractAction::Unknown => ("?", "unknown"),
-                };
-                writeln!(w, "  {sigil} contracts/{} ({label})", c.path)?;
-            }
-        }
-        Ok(())
     }
+    if !body.contracts.is_empty() {
+        writeln!(w, "\nContract changes:")?;
+        for c in &body.contracts {
+            let (sigil, label) = match c.action {
+                ContractAction::Added => ("+", "added"),
+                ContractAction::Replaced => ("~", "replaced"),
+                ContractAction::Unknown => ("?", "unknown"),
+            };
+            writeln!(w, "  {sigil} contracts/{} ({label})", c.path)?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -212,20 +216,18 @@ struct ConflictCheckBody {
     conflicts: Vec<ConflictRow>,
 }
 
-impl Render for ConflictCheckBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.conflicts.is_empty() {
-            return writeln!(w, "No baseline conflicts.");
-        }
-        for c in &self.conflicts {
-            writeln!(
-                w,
-                "{}: baseline modified {} (defined_at {})",
-                c.capability, c.baseline_modified_at, c.defined_at,
-            )?;
-        }
-        Ok(())
+fn write_conflict_check_text(w: &mut dyn Write, body: &ConflictCheckBody) -> std::io::Result<()> {
+    if body.conflicts.is_empty() {
+        return writeln!(w, "No baseline conflicts.");
     }
+    for c in &body.conflicts {
+        writeln!(
+            w,
+            "{}: baseline modified {} (defined_at {})",
+            c.capability, c.baseline_modified_at, c.defined_at,
+        )?;
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]

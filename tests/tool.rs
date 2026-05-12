@@ -189,7 +189,6 @@ fn list_outside_project_preserves_error() {
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let value = parse_json(&assert.get_output().stderr);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["error"], "not-initialized");
 }
 

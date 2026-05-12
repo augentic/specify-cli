@@ -4,7 +4,7 @@ use specify_domain::config::{InitPolicy, with_state};
 use specify_domain::registry::{Registry, RegistryProject};
 use specify_error::{Error, Result, is_kebab};
 
-use super::dto::AddBody;
+use super::dto::{AddBody, write_add_text};
 use crate::context::Ctx;
 
 pub(super) fn run(
@@ -78,6 +78,6 @@ pub(super) fn run(
             })
         })?;
 
-    ctx.write(&body)?;
+    ctx.write(&body, write_add_text)?;
     Ok(())
 }

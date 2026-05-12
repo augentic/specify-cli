@@ -4,7 +4,6 @@
     "status": "failed",
     "status-reason": "boom"
   },
-  "envelope-version": 6,
   "plan": {
     "name": "demo",
     "path": "<TEMPDIR>/plan.yaml"

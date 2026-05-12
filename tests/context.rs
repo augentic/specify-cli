@@ -334,7 +334,6 @@ fn generate_json_uses_envelope_and_kebab() {
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("stdout json");
 
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["status"], "written");
     assert_eq!(value["path"], "AGENTS.md");
     assert_eq!(value["check"], false);

@@ -4,7 +4,7 @@ use specify_domain::config::ProjectConfig;
 use specify_domain::registry::Registry;
 use specify_error::Result;
 
-use super::dto::ValidateBody;
+use super::dto::{ValidateBody, write_validate_text};
 use crate::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
@@ -19,10 +19,13 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     if hub_mode && let Some(reg) = registry.as_ref() {
         reg.validate_shape_hub()?;
     }
-    ctx.write(&ValidateBody {
-        registry,
-        path,
-        hub_mode,
-    })?;
+    ctx.write(
+        &ValidateBody {
+            registry,
+            path,
+            hub_mode,
+        },
+        write_validate_text,
+    )?;
     Ok(())
 }

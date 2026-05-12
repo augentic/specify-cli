@@ -13,7 +13,6 @@ use specify_error::{Error, Result};
 
 use crate::cli::{OutcomeKindAction, RegistryAmendmentProposal};
 use crate::context::Ctx;
-use crate::output::Render;
 
 pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
@@ -37,12 +36,15 @@ pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction
         .as_ref()
         .expect("stamp_outcome action must set metadata.outcome on success");
 
-    ctx.write(&PhaseStampBody {
-        slice: name,
-        phase: phase.to_string(),
-        outcome: outcome.discriminant().to_string(),
-        at: stamped.at,
-    })?;
+    ctx.write(
+        &PhaseStampBody {
+            slice: name,
+            phase: phase.to_string(),
+            outcome: outcome.discriminant().to_string(),
+            at: stamped.at,
+        },
+        write_phase_stamp_text,
+    )?;
     Ok(())
 }
 
@@ -56,14 +58,12 @@ struct PhaseStampBody {
     at: Timestamp,
 }
 
-impl Render for PhaseStampBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(
-            w,
-            "Stamped outcome '{}' for phase '{}' on slice '{}'.",
-            self.outcome, self.phase, self.slice,
-        )
-    }
+fn write_phase_stamp_text(w: &mut dyn Write, body: &PhaseStampBody) -> std::io::Result<()> {
+    writeln!(
+        w,
+        "Stamped outcome '{}' for phase '{}' on slice '{}'.",
+        body.outcome, body.phase, body.slice,
+    )
 }
 
 /// Lower a `slice outcome set` subcommand into the wire `OutcomeKind`,
@@ -124,7 +124,7 @@ pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
     };
 
     let outcome = metadata.outcome.as_ref().map(Row::from);
-    ctx.write(&ShowBody { name, outcome })?;
+    ctx.write(&ShowBody { name, outcome }, write_show_text)?;
     Ok(())
 }
 
@@ -135,23 +135,21 @@ struct ShowBody {
     outcome: Option<Row>,
 }
 
-impl Render for ShowBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        match &self.outcome {
-            None => writeln!(w, "{}: no outcome stamped", self.name),
-            Some(o) => {
-                writeln!(w, "{}: {}/{} — {}", self.name, o.phase, o.outcome, o.summary)?;
-                if let Some(p) = &o.proposal {
-                    writeln!(w, "  proposed-name: {}", p.proposed_name)?;
-                    writeln!(w, "  proposed-url: {}", p.proposed_url)?;
-                    writeln!(w, "  proposed-capability: {}", p.proposed_capability)?;
-                    if let Some(desc) = &p.proposed_description {
-                        writeln!(w, "  proposed-description: {desc}")?;
-                    }
-                    writeln!(w, "  rationale: {}", p.rationale)?;
+fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Result<()> {
+    match &body.outcome {
+        None => writeln!(w, "{}: no outcome stamped", body.name),
+        Some(o) => {
+            writeln!(w, "{}: {}/{} — {}", body.name, o.phase, o.outcome, o.summary)?;
+            if let Some(p) = &o.proposal {
+                writeln!(w, "  proposed-name: {}", p.proposed_name)?;
+                writeln!(w, "  proposed-url: {}", p.proposed_url)?;
+                writeln!(w, "  proposed-capability: {}", p.proposed_capability)?;
+                if let Some(desc) = &p.proposed_description {
+                    writeln!(w, "  proposed-description: {desc}")?;
                 }
-                Ok(())
+                writeln!(w, "  rationale: {}", p.rationale)?;
             }
+            Ok(())
         }
     }
 }

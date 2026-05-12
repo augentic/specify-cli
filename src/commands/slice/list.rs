@@ -13,7 +13,6 @@ use specify_domain::task::parse_tasks;
 use specify_error::Result;
 
 use crate::context::Ctx;
-use crate::output::Render;
 
 pub(in crate::commands) struct StatusEntry {
     pub name: String,
@@ -123,7 +122,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         entries.push(entry);
     }
 
-    ctx.write(&StatusBody::new(&entries))?;
+    ctx.write(&StatusBody::new(&entries), write_status_text)?;
     Ok(())
 }
 
@@ -132,7 +131,7 @@ pub(super) fn status_one(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
     let entry = collect_status(&slice_dir, name, &pipeline, &ctx.project_dir)?;
 
-    ctx.write(&StatusBody::new(std::slice::from_ref(&entry)))?;
+    ctx.write(&StatusBody::new(std::slice::from_ref(&entry)), write_status_text)?;
     Ok(())
 }
 
@@ -147,16 +146,14 @@ impl<'a> StatusBody<'a> {
     }
 }
 
-impl Render for StatusBody<'_> {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.slices.is_empty() {
-            return writeln!(w, "No slices.");
-        }
-        if self.slices.len() == 1 {
-            return render_single(w, &self.slices[0]);
-        }
-        render_table(w, self.slices)
+fn write_status_text(w: &mut dyn Write, body: &StatusBody<'_>) -> std::io::Result<()> {
+    if body.slices.is_empty() {
+        return writeln!(w, "No slices.");
     }
+    if body.slices.len() == 1 {
+        return render_single(w, &body.slices[0]);
+    }
+    render_table(w, body.slices)
 }
 
 fn render_single(w: &mut dyn Write, e: &StatusEntry) -> std::io::Result<()> {

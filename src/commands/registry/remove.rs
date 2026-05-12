@@ -7,7 +7,7 @@ use specify_domain::config::{InitPolicy, LayoutExt, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
-use super::dto::RemoveBody;
+use super::dto::{RemoveBody, write_remove_text};
 use crate::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
@@ -60,7 +60,7 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
         },
     )?;
 
-    ctx.write(&body)?;
+    ctx.write(&body, write_remove_text)?;
     Ok(())
 }
 

@@ -13,7 +13,6 @@ use super::{
     context_lock_path, diag, error_from_fence, fences, lock, read_optional, render_document,
 };
 use crate::context::Ctx;
-use crate::output::Render;
 
 const WOULD_UPDATE_MSG: &str =
     "context is out of date; run `specify context generate` to refresh it";
@@ -32,7 +31,7 @@ pub(super) fn run(ctx: &Ctx, check: bool, force: bool) -> Result<()> {
 
     let body = body(ctx, check, force)?;
     let would_update = check && body.changed;
-    ctx.write(&body)?;
+    ctx.write(&body, write_text)?;
     if would_update { Err(diag("context-would-update", WOULD_UPDATE_MSG)) } else { Ok(()) }
 }
 
@@ -112,15 +111,13 @@ struct Body {
     disposition: &'static str,
 }
 
-impl Render for Body {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        match self.status {
-            "would-update" => writeln!(w, "{WOULD_UPDATE_MSG}"),
-            "unchanged" => writeln!(w, "AGENTS.md is up to date"),
-            "written" if self.agents_changed => writeln!(w, "wrote AGENTS.md"),
-            "written" => writeln!(w, "wrote .specify/context.lock"),
-            _ => writeln!(w, "context generate finished"),
-        }
+fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
+    match body.status {
+        "would-update" => writeln!(w, "{WOULD_UPDATE_MSG}"),
+        "unchanged" => writeln!(w, "AGENTS.md is up to date"),
+        "written" if body.agents_changed => writeln!(w, "wrote AGENTS.md"),
+        "written" => writeln!(w, "wrote .specify/context.lock"),
+        _ => writeln!(w, "context generate finished"),
     }
 }
 

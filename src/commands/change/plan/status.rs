@@ -10,7 +10,6 @@ use specify_error::{Error, Result};
 
 use super::{Ref, require_file};
 use crate::context::Ctx;
-use crate::output::Render;
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -72,50 +71,48 @@ struct EntryRow {
     context: Vec<String>,
 }
 
-impl Render for StatusBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let c = &self.counts;
-        writeln!(w, "## Change: {}", self.plan.name)?;
+fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()> {
+    let c = &body.counts;
+    writeln!(w, "## Change: {}", body.plan.name)?;
+    writeln!(w)?;
+    writeln!(w)?;
+    writeln!(
+        w,
+        "Progress: done {}, in-progress {}, pending {}, blocked {}, failed {}, skipped {} (total {})",
+        c.done, c.in_progress, c.pending, c.blocked, c.failed, c.skipped, c.total,
+    )?;
+
+    if let Some(a) = &body.in_progress {
+        let lifecycle_label =
+            a.lifecycle.map_or_else(|| "<no slice dir yet>".to_string(), |l| l.to_string());
         writeln!(w)?;
-        writeln!(w)?;
-        writeln!(
-            w,
-            "Progress: done {}, in-progress {}, pending {}, blocked {}, failed {}, skipped {} (total {})",
-            c.done, c.in_progress, c.pending, c.blocked, c.failed, c.skipped, c.total,
-        )?;
-
-        if let Some(a) = &self.in_progress {
-            let lifecycle_label =
-                a.lifecycle.map_or_else(|| "<no slice dir yet>".to_string(), |l| l.to_string());
-            writeln!(w)?;
-            writeln!(w, "In progress: {} (lifecycle: {lifecycle_label})", a.name)?;
-        }
-
-        if !self.blocked.is_empty() {
-            writeln!(w)?;
-            writeln!(w, "Blocked:")?;
-            for row in &self.blocked {
-                let reason = row.reason.as_deref().unwrap_or("-");
-                writeln!(w, "  - {} (reason: {reason})", row.name)?;
-            }
-        }
-
-        if !self.failed.is_empty() {
-            writeln!(w)?;
-            writeln!(w, "Failed:")?;
-            for row in &self.failed {
-                let reason = row.reason.as_deref().unwrap_or("-");
-                writeln!(w, "  - {} (reason: {reason})", row.name)?;
-            }
-        }
-
-        writeln!(w)?;
-        match &self.next_eligible {
-            Some(name) => writeln!(w, "Next eligible: {name}")?,
-            None => writeln!(w, "Next eligible: \u{2014} (waiting on dependencies / all done)")?,
-        }
-        Ok(())
+        writeln!(w, "In progress: {} (lifecycle: {lifecycle_label})", a.name)?;
     }
+
+    if !body.blocked.is_empty() {
+        writeln!(w)?;
+        writeln!(w, "Blocked:")?;
+        for row in &body.blocked {
+            let reason = row.reason.as_deref().unwrap_or("-");
+            writeln!(w, "  - {} (reason: {reason})", row.name)?;
+        }
+    }
+
+    if !body.failed.is_empty() {
+        writeln!(w)?;
+        writeln!(w, "Failed:")?;
+        for row in &body.failed {
+            let reason = row.reason.as_deref().unwrap_or("-");
+            writeln!(w, "  - {} (reason: {reason})", row.name)?;
+        }
+    }
+
+    writeln!(w)?;
+    match &body.next_eligible {
+        Some(name) => writeln!(w, "Next eligible: {name}")?,
+        None => writeln!(w, "Next eligible: \u{2014} (waiting on dependencies / all done)")?,
+    }
+    Ok(())
 }
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
@@ -193,7 +190,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         next_eligible: plan.next_eligible().map(|e| e.name.clone()),
     };
 
-    ctx.write(&body)?;
+    ctx.write(&body, write_status_text)?;
     Ok(())
 }
 

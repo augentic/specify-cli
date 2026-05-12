@@ -71,7 +71,7 @@ scripts/build-vectis-local.sh    # build wasi-tools/vectis with sha256 sidecars 
 
 ## When working in this repo
 
-1. Read [`DECISIONS.md`](./DECISIONS.md) before changing error layering, exit codes, atomic writes, the YAML library, the `ENVELOPE_VERSION` wire shape, or adding a new workspace crate.
+1. Read [`DECISIONS.md`](./DECISIONS.md) before changing error layering, exit codes, atomic writes, the YAML library, the JSON envelope shape, or adding a new workspace crate.
 2. For any Rust change, consult [`docs/standards/`](./docs/standards/) — at minimum the doc that matches the area you are editing, plus [`style.md`](./docs/standards/style.md) for cross-cutting rules.
 3. Run `cargo make ci` before committing. If it cannot run, say exactly why and which checks were run instead.
 4. When you remove a symbol, `rg <SymbolName> -- AGENTS.md DECISIONS.md docs/` and update every hit in the same PR.

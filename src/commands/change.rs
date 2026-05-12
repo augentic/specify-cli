@@ -15,7 +15,7 @@ use specify_error::{Error, Result, is_kebab};
 
 use crate::cli::ChangeAction;
 use crate::context::Ctx;
-use crate::output::{Render, serialize_path};
+use crate::output::serialize_path;
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
 pub(crate) fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
@@ -48,20 +48,26 @@ fn brief_create(ctx: &Ctx, name: String) -> Result<()> {
 
     bytes_write(&brief_path, ChangeBrief::template(&name).as_bytes())?;
 
-    ctx.write(&BriefCreateBody {
-        name,
-        path: brief_path,
-    })?;
+    ctx.write(
+        &BriefCreateBody {
+            name,
+            path: brief_path,
+        },
+        write_brief_create_text,
+    )?;
     Ok(())
 }
 
 fn brief_show(ctx: &Ctx) -> Result<()> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let brief = ChangeBrief::load(&ctx.project_dir)?;
-    ctx.write(&BriefShowBody {
-        brief,
-        path: brief_path,
-    })?;
+    ctx.write(
+        &BriefShowBody {
+            brief,
+            path: brief_path,
+        },
+        write_brief_show_text,
+    )?;
     Ok(())
 }
 
@@ -107,7 +113,7 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
             let finalized = outcome.finalized;
             let summary = blocked_reason(&outcome.summary);
             let plan_name = outcome.name.clone();
-            ctx.emit_with(&outcome, render_finalize_outcome)?;
+            ctx.write(&outcome, render_finalize_outcome)?;
             if finalized {
                 Ok(())
             } else {
@@ -136,10 +142,8 @@ struct BriefCreateBody {
     path: PathBuf,
 }
 
-impl Render for BriefCreateBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Created change brief for {} at {}", self.name, self.path.display())
-    }
+fn write_brief_create_text(w: &mut dyn Write, body: &BriefCreateBody) -> std::io::Result<()> {
+    writeln!(w, "Created change brief for {} at {}", body.name, body.path.display())
 }
 
 #[derive(Serialize)]
@@ -151,13 +155,11 @@ struct BriefShowBody {
     path: PathBuf,
 }
 
-impl Render for BriefShowBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let path = self.path.display().to_string();
-        match &self.brief {
-            None => writeln!(w, "no change brief declared at {path}"),
-            Some(brief) => render_brief(w, brief, &path),
-        }
+fn write_brief_show_text(w: &mut dyn Write, body: &BriefShowBody) -> std::io::Result<()> {
+    let path = body.path.display().to_string();
+    match &body.brief {
+        None => writeln!(w, "no change brief declared at {path}"),
+        Some(brief) => render_brief(w, brief, &path),
     }
 }
 

@@ -8,8 +8,6 @@ use specify_tool::cache::{self, OciSnapshot, PackageSnapshot, Status as CacheSta
 use specify_tool::load::Warning;
 use specify_tool::{Tool, ToolPermissions, ToolScope};
 
-use crate::output::Render;
-
 pub(super) type CacheKey = (String, String, String);
 
 #[derive(Debug, Clone)]
@@ -91,27 +89,25 @@ pub(super) struct ListBody {
     pub(super) warnings: Vec<WarningRow>,
 }
 
-impl Render for ListBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.tools.is_empty() {
-            writeln!(w, "No declared tools.")?;
-            return Ok(());
-        }
-        writeln!(w, "name\tversion\tscope\tcache\tcached path")?;
-        for row in &self.tools {
-            writeln!(
-                w,
-                "{}\t{}\t{}:{}\t{}\t{}",
-                row.name,
-                row.version,
-                row.scope,
-                row.scope_detail,
-                cache_status_label(row.cache_status),
-                row.cached_path
-            )?;
-        }
-        Ok(())
+pub(super) fn write_list_text(w: &mut dyn Write, body: &ListBody) -> std::io::Result<()> {
+    if body.tools.is_empty() {
+        writeln!(w, "No declared tools.")?;
+        return Ok(());
     }
+    writeln!(w, "name\tversion\tscope\tcache\tcached path")?;
+    for row in &body.tools {
+        writeln!(
+            w,
+            "{}\t{}\t{}:{}\t{}\t{}",
+            row.name,
+            row.version,
+            row.scope,
+            row.scope_detail,
+            cache_status_label(row.cache_status),
+            row.cached_path
+        )?;
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -121,26 +117,20 @@ pub(super) struct FetchBody {
     pub(super) warnings: Vec<WarningRow>,
 }
 
-impl Render for FetchBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.tools.is_empty() {
-            writeln!(w, "No declared tools to fetch.")?;
-            return Ok(());
-        }
-        for row in &self.tools {
-            let action = if row.fetched { "fetched" } else { "cached" };
-            writeln!(
-                w,
-                "{action}: {} {} [{}:{}] {}",
-                row.row.name,
-                row.row.version,
-                row.row.scope,
-                row.row.scope_detail,
-                row.row.cached_path
-            )?;
-        }
-        Ok(())
+pub(super) fn write_fetch_text(w: &mut dyn Write, body: &FetchBody) -> std::io::Result<()> {
+    if body.tools.is_empty() {
+        writeln!(w, "No declared tools to fetch.")?;
+        return Ok(());
     }
+    for row in &body.tools {
+        let action = if row.fetched { "fetched" } else { "cached" };
+        writeln!(
+            w,
+            "{action}: {} {} [{}:{}] {}",
+            row.row.name, row.row.version, row.row.scope, row.row.scope_detail, row.row.cached_path
+        )?;
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -150,32 +140,30 @@ pub(super) struct ShowBody {
     pub(super) warnings: Vec<WarningRow>,
 }
 
-impl Render for ShowBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let row = &self.tool;
-        writeln!(w, "name: {}", row.row.name)?;
-        writeln!(w, "version: {}", row.row.version)?;
-        writeln!(w, "source: {}", row.row.source)?;
-        writeln!(w, "scope: {}:{}", row.row.scope, row.row.scope_detail)?;
-        writeln!(w, "cache: {}", cache_status_label(row.row.cache_status))?;
-        writeln!(w, "cached path: {}", row.row.cached_path)?;
-        if let Some(fetched_at) = &row.fetched_at {
-            writeln!(w, "fetched at: {fetched_at}")?;
-        }
-        if let Some(sha256) = &row.sha256 {
-            writeln!(w, "sha256: {sha256}")?;
-        }
-        if let Some(package) = &row.package {
-            writeln!(w, "package: {}@{} ({})", package.name, package.version, package.registry)?;
-        }
-        if let Some(oci) = &row.oci {
-            writeln!(w, "oci: {}", oci.reference)?;
-        }
-        writeln!(w, "permissions:")?;
-        writeln!(w, "  read: {}", format_permission_list(&row.permissions.read))?;
-        writeln!(w, "  write: {}", format_permission_list(&row.permissions.write))?;
-        Ok(())
+pub(super) fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Result<()> {
+    let row = &body.tool;
+    writeln!(w, "name: {}", row.row.name)?;
+    writeln!(w, "version: {}", row.row.version)?;
+    writeln!(w, "source: {}", row.row.source)?;
+    writeln!(w, "scope: {}:{}", row.row.scope, row.row.scope_detail)?;
+    writeln!(w, "cache: {}", cache_status_label(row.row.cache_status))?;
+    writeln!(w, "cached path: {}", row.row.cached_path)?;
+    if let Some(fetched_at) = &row.fetched_at {
+        writeln!(w, "fetched at: {fetched_at}")?;
     }
+    if let Some(sha256) = &row.sha256 {
+        writeln!(w, "sha256: {sha256}")?;
+    }
+    if let Some(package) = &row.package {
+        writeln!(w, "package: {}@{} ({})", package.name, package.version, package.registry)?;
+    }
+    if let Some(oci) = &row.oci {
+        writeln!(w, "oci: {}", oci.reference)?;
+    }
+    writeln!(w, "permissions:")?;
+    writeln!(w, "  read: {}", format_permission_list(&row.permissions.read))?;
+    writeln!(w, "  write: {}", format_permission_list(&row.permissions.write))?;
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -185,18 +173,16 @@ pub(super) struct GcBody {
     pub(super) warnings: Vec<WarningRow>,
 }
 
-impl Render for GcBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(
-            w,
-            "Removed {} tool cache entrie(s) from current-project scopes.",
-            self.removed.len()
-        )?;
-        for path in &self.removed {
-            writeln!(w, "  {path}")?;
-        }
-        Ok(())
+pub(super) fn write_gc_text(w: &mut dyn Write, body: &GcBody) -> std::io::Result<()> {
+    writeln!(
+        w,
+        "Removed {} tool cache entrie(s) from current-project scopes.",
+        body.removed.len()
+    )?;
+    for path in &body.removed {
+        writeln!(w, "  {path}")?;
     }
+    Ok(())
 }
 
 pub(super) fn rows_for(tools: &[ScopedTool]) -> Result<Vec<ToolRow>> {

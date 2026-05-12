@@ -2,7 +2,7 @@
 
 use specify_error::Result;
 
-use super::dto::{ListBody, rows_for};
+use super::dto::{ListBody, rows_for, write_list_text};
 use super::{build_inventory, emit_warnings_to_stderr};
 use crate::cli::Format;
 use crate::context::Ctx;
@@ -14,7 +14,7 @@ pub(crate) fn run(ctx: &Ctx) -> Result<()> {
         tools: rows,
         warnings: inventory.warnings,
     };
-    ctx.write(&body)?;
+    ctx.write(&body, write_list_text)?;
     if matches!(ctx.format, Format::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }

@@ -13,7 +13,6 @@ use specify_domain::task::{Task, mark_complete, parse_tasks};
 use specify_error::{Error, Result};
 
 use crate::context::Ctx;
-use crate::output::Render;
 
 pub(super) fn progress(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
@@ -22,12 +21,15 @@ pub(super) fn progress(ctx: &Ctx, name: &str) -> Result<()> {
     let progress = parse_tasks(&content);
 
     let tasks: Vec<TaskRow> = progress.tasks.iter().map(TaskRow::from).collect();
-    ctx.write(&ProgressBody {
-        total: progress.total,
-        complete: progress.complete,
-        pending: progress.total.saturating_sub(progress.complete),
-        tasks,
-    })?;
+    ctx.write(
+        &ProgressBody {
+            total: progress.total,
+            complete: progress.complete,
+            pending: progress.total.saturating_sub(progress.complete),
+            tasks,
+        },
+        write_progress_text,
+    )?;
     Ok(())
 }
 
@@ -40,15 +42,13 @@ struct ProgressBody {
     tasks: Vec<TaskRow>,
 }
 
-impl Render for ProgressBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "{}/{} tasks complete", self.complete, self.total)?;
-        for task in &self.tasks {
-            let mark = if task.complete { "x" } else { " " };
-            writeln!(w, "  [{}] {} {}", mark, task.number, task.description)?;
-        }
-        Ok(())
+fn write_progress_text(w: &mut dyn Write, body: &ProgressBody) -> std::io::Result<()> {
+    writeln!(w, "{}/{} tasks complete", body.complete, body.total)?;
+    for task in &body.tasks {
+        let mark = if task.complete { "x" } else { " " };
+        writeln!(w, "  [{}] {} {}", mark, task.number, task.description)?;
     }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -93,11 +93,14 @@ pub(super) fn mark(ctx: &Ctx, name: &str, task_number: String) -> Result<()> {
         bytes_write(&tasks_path, updated.as_bytes())?;
     }
 
-    ctx.write(&MarkBody {
-        marked: task_number,
-        new_content_path: tasks_path.display().to_string(),
-        idempotent,
-    })?;
+    ctx.write(
+        &MarkBody {
+            marked: task_number,
+            new_content_path: tasks_path.display().to_string(),
+            idempotent,
+        },
+        write_mark_text,
+    )?;
     Ok(())
 }
 
@@ -109,13 +112,11 @@ struct MarkBody {
     idempotent: bool,
 }
 
-impl Render for MarkBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.idempotent {
-            writeln!(w, "Task {} already complete.", self.marked)
-        } else {
-            writeln!(w, "Marked task {} complete.", self.marked)
-        }
+fn write_mark_text(w: &mut dyn Write, body: &MarkBody) -> std::io::Result<()> {
+    if body.idempotent {
+        writeln!(w, "Task {} already complete.", body.marked)
+    } else {
+        writeln!(w, "Marked task {} complete.", body.marked)
     }
 }
 

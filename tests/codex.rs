@@ -278,7 +278,6 @@ fn export_json_includes_rules_and_paths() {
         .success();
     let value = parse_json(&assert.get_output().stdout);
 
-    assert!(value.get("envelope-version").is_some(), "JSON envelope must include envelope-version");
     assert_eq!(value["rule-count"], 2);
     let rules = value["rules"].as_array().expect("rules array");
     assert_eq!(rules[0]["id"], "UNI-001");
@@ -303,7 +302,6 @@ fn export_json_resolves_cache_and_overlay() {
         .success();
     let value = parse_json(&assert.get_output().stdout);
 
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["rule-count"], 4);
     let rules = value["rules"].as_array().expect("rules array");
     let ids: Vec<_> = rules.iter().map(|rule| rule["id"].as_str().expect("id str")).collect();
@@ -392,7 +390,6 @@ fn validate_duplicate_ids_exits_two() {
         .code(2);
     let value = parse_json(&assert.get_output().stdout);
 
-    assert!(value.get("envelope-version").is_some(), "JSON envelope must include envelope-version");
     assert_eq!(value["error-count"], 1);
     assert_eq!(value["results"][0]["rule-id"], "codex.rule-id-unique");
     assert!(

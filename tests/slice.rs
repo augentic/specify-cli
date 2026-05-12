@@ -28,7 +28,6 @@ fn create_writes_dir_and_metadata() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "my-slice");
     assert_eq!(value["status"], "defining");
     let capability = value["capability"].as_str().expect("capability string");
@@ -409,7 +408,6 @@ fn phase_outcome_stamps_success_on_define() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["outcome"], "success");
@@ -673,7 +671,6 @@ fn outcome_returns_stamped_as_json() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "foo");
     let outcome = &value["outcome"];
     assert_eq!(outcome["phase"].as_str(), Some("build"));
@@ -1060,7 +1057,6 @@ fn journal_append_writes_to_file() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["kind"], "question");
@@ -1212,7 +1208,6 @@ fn journal_show_empty_then_populated() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "foo");
     assert!(
         value["entries"].as_array().unwrap().is_empty(),

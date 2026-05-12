@@ -4,7 +4,7 @@ use jiff::Timestamp;
 use specify_error::Result;
 use specify_tool::cache::Status as CacheStatus;
 
-use super::dto::{FetchBody, ToolFetchRow, cache_status_for, row_for};
+use super::dto::{FetchBody, ToolFetchRow, cache_status_for, row_for, write_fetch_text};
 use super::{build_inventory, emit_warnings_to_stderr, select};
 use crate::cli::Format;
 use crate::context::Ctx;
@@ -26,7 +26,7 @@ pub(crate) fn run(ctx: &Ctx, name: Option<&str>) -> Result<()> {
         tools: rows,
         warnings: inventory.warnings,
     };
-    ctx.write(&body)?;
+    ctx.write(&body, write_fetch_text)?;
     if matches!(ctx.format, Format::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }

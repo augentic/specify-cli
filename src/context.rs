@@ -7,7 +7,7 @@ use specify_domain::config::{Layout, LayoutExt, ProjectConfig};
 use specify_error::Error;
 
 use crate::cli::Format;
-use crate::output::{self, Render};
+use crate::output;
 
 /// Shared context for every subcommand that operates inside an
 /// initialised `.specify/` project. Created once at the top of each
@@ -71,31 +71,17 @@ impl Ctx {
     }
 
     /// Serialise `body` and write it to stdout in this `Ctx`'s
-    /// format. Handlers reach for `ctx.write(&Body::from(&result))?;`
-    /// so the `Stream::Stdout` constant stays inside `src/output.rs`.
+    /// format, using `render_text` for the text-format branch. The
+    /// text rendering is a free function colocated with the handler,
+    /// so the response shape stays in a single block of code.
     ///
     /// # Errors
     ///
     /// Propagates the underlying serialization or I/O error from
     /// [`output::write`].
-    pub(crate) fn write<R: Render>(&self, body: &R) -> Result<(), Error> {
-        output::write(self.format, body)
-    }
-
-    /// Serialise `data` and write it to stdout in this `Ctx`'s
-    /// format, using `render_text` for the text-format branch.
-    /// Use this when the text rendering is a one-off — the closure
-    /// lives next to the call site, so the response shape stays in a
-    /// single block of code rather than spreading across a `*Body`
-    /// type and an `impl Render for *Body` sibling.
-    ///
-    /// # Errors
-    ///
-    /// Propagates the underlying serialization or I/O error from
-    /// [`output::write_with`].
-    pub(crate) fn emit_with<T: Serialize>(
-        &self, data: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
+    pub(crate) fn write<T: Serialize>(
+        &self, body: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
     ) -> Result<(), Error> {
-        output::write_with(self.format, data, render_text)
+        output::write(self.format, body, render_text)
     }
 }

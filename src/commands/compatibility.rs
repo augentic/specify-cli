@@ -10,7 +10,6 @@ use specify_error::{Error, Result};
 
 use crate::cli::CompatibilityAction;
 use crate::context::Ctx;
-use crate::output::Render;
 
 /// Dispatch `specify compatibility *`.
 pub(crate) fn run(ctx: &Ctx, action: CompatibilityAction) -> Result<()> {
@@ -23,7 +22,7 @@ pub(crate) fn run(ctx: &Ctx, action: CompatibilityAction) -> Result<()> {
 fn check(ctx: &Ctx) -> Result<()> {
     let report = classify_project_compatibility(&ctx.project_dir, None)?;
     let compatible = report.is_compatible();
-    ctx.write(&report)?;
+    ctx.write(&report, write_report_text)?;
     if compatible {
         Ok(())
     } else {
@@ -36,33 +35,31 @@ fn check(ctx: &Ctx) -> Result<()> {
 
 fn report(ctx: &Ctx, change: String) -> Result<()> {
     let report = classify_project_compatibility(&ctx.project_dir, Some(change))?;
-    ctx.write(&report)?;
+    ctx.write(&report, write_report_text)?;
     Ok(())
 }
 
-impl Render for CompatibilityReport {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        match &self.change {
-            Some(change) => writeln!(w, "compatibility report for change `{change}`")?,
-            None => writeln!(w, "compatibility check")?,
-        }
-        writeln!(w, "checked pairs: {}", self.checked_pairs)?;
-        writeln!(
-            w,
-            "summary: {} additive, {} breaking, {} ambiguous, {} unverifiable",
-            self.summary.additive,
-            self.summary.breaking,
-            self.summary.ambiguous,
-            self.summary.unverifiable
-        )?;
-        if self.findings.is_empty() {
-            return writeln!(w, "no compatibility findings");
-        }
-        for finding in &self.findings {
-            render_finding(w, finding)?;
-        }
-        Ok(())
+fn write_report_text(w: &mut dyn Write, report: &CompatibilityReport) -> std::io::Result<()> {
+    match &report.change {
+        Some(change) => writeln!(w, "compatibility report for change `{change}`")?,
+        None => writeln!(w, "compatibility check")?,
     }
+    writeln!(w, "checked pairs: {}", report.checked_pairs)?;
+    writeln!(
+        w,
+        "summary: {} additive, {} breaking, {} ambiguous, {} unverifiable",
+        report.summary.additive,
+        report.summary.breaking,
+        report.summary.ambiguous,
+        report.summary.unverifiable
+    )?;
+    if report.findings.is_empty() {
+        return writeln!(w, "no compatibility findings");
+    }
+    for finding in &report.findings {
+        render_finding(w, finding)?;
+    }
+    Ok(())
 }
 
 fn render_finding(w: &mut dyn Write, finding: &CompatibilityFinding) -> std::io::Result<()> {

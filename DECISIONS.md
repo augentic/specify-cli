@@ -75,29 +75,19 @@ site without a typed variant can still surface guidance.
 
 ## Wire compatibility
 
-`ENVELOPE_VERSION` (defined in `src/output.rs`, currently `6`) tags
-every JSON envelope the CLI writes. Skills and downstream consumers
-read it to refuse output they cannot parse. Bump rules:
+The CLI's JSON output is a flat envelope: every successful body is the
+typed `*Body` rendered directly with `serde_json::to_writer_pretty`,
+and every failure body is `ErrorBody` (with an optional `results` list
+when the variant is `Error::Validation`). Skills grep on the
+`error` / `code` discriminants; tests assert on them. There is no
+top-level `envelope-version` integer — re-introduce one only if a
+breaking shape change ships and consumers need a version stamp to
+refuse output they cannot parse.
 
-- **Minor bump (additive):** adding a new top-level field to a
-  success-body envelope is a minor bump *only* when existing consumers
-  can ignore the field with no behaviour change. Adding an optional
-  field next to required fields qualifies; adding a required field that
-  consumers must read does not.
-- **Major bump (breaking):** renaming or removing any envelope field,
-  changing a field's type or domain (e.g. string → enum, scalar →
-  array), or changing the kebab-case `code` discriminant on an existing
-  `Error::*` variant is a major bump. Skills grep on those discriminants
-  and tests assert on them.
-- **Always major:** any change to the `error` envelope shape itself —
-  the structure of `ErrorBody` / `ValidationErrBody`, the keys inside,
-  or the relationship between `code`, `detail`, and `hint`.
-
-The `error` envelope is the most-grepped surface in the workflow and
-the most expensive to bump; treat it accordingly. Adding a new
-`Error::*` variant with a fresh kebab-case `code` is not a bump
-(consumers see a new discriminant in the same shape). Renaming an
-existing one is.
+The kebab-case `code` discriminant on `Error::*` variants is the
+public contract. Renaming or removing one is a breaking change.
+Adding a new `Error::*` variant with a fresh kebab-case `code` is
+additive (consumers see a new discriminant in the same shape).
 
 CLI **input** flags are a peer wire surface — skill drivers shell out
 through them. The same minor/major rules apply: adding a new optional

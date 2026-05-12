@@ -8,7 +8,6 @@ use specify_error::Result;
 
 use super::{Ref, change_entry_json, check_project, plan_ref};
 use crate::context::Ctx;
-use crate::output::Render;
 
 /// Convert a CLI-supplied optional string to a [`Patch<String>`]: an
 /// absent flag leaves the field unchanged, an empty value clears it,
@@ -57,7 +56,7 @@ pub(super) fn add(
         },
     )?;
 
-    ctx.write(&body)?;
+    ctx.write(&body, write_add_text)?;
     Ok(())
 }
 
@@ -96,7 +95,7 @@ pub(super) fn amend(
         },
     )?;
 
-    ctx.write(&body)?;
+    ctx.write(&body, write_amend_text)?;
     Ok(())
 }
 
@@ -108,11 +107,9 @@ struct AddBody {
     entry: Value,
 }
 
-impl Render for AddBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let name = self.entry.get("name").and_then(Value::as_str).unwrap_or("");
-        writeln!(w, "Created plan entry '{name}' with status 'pending'.")
-    }
+fn write_add_text(w: &mut dyn Write, body: &AddBody) -> std::io::Result<()> {
+    let name = body.entry.get("name").and_then(Value::as_str).unwrap_or("");
+    writeln!(w, "Created plan entry '{name}' with status 'pending'.")
 }
 
 #[derive(Serialize)]
@@ -130,9 +127,7 @@ enum PlanAction {
     Amend,
 }
 
-impl Render for AmendBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let name = self.entry.get("name").and_then(Value::as_str).unwrap_or("");
-        writeln!(w, "Amended plan entry '{name}'.")
-    }
+fn write_amend_text(w: &mut dyn Write, body: &AmendBody) -> std::io::Result<()> {
+    let name = body.entry.get("name").and_then(Value::as_str).unwrap_or("");
+    writeln!(w, "Amended plan entry '{name}'.")
 }

@@ -119,7 +119,6 @@
       "status-reason": null
     }
   ],
-  "envelope-version": 6,
   "failed": [
     {
       "name": "checkout-api",

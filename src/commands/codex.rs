@@ -10,7 +10,7 @@ use specify_error::{Error, Result};
 
 use crate::cli::CodexAction;
 use crate::context::Ctx;
-use crate::output::{Render, Validation, ValidationRow};
+use crate::output::ValidationRow;
 
 /// Dispatch `specify codex *`.
 pub(crate) fn run(ctx: &Ctx, action: CodexAction) -> Result<()> {
@@ -29,10 +29,13 @@ fn resolve(ctx: &Ctx) -> Result<ResolvedCodex> {
 fn list(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from).collect();
-    ctx.write(&ListBody {
-        rule_count: rules.len(),
-        rules,
-    })?;
+    ctx.write(
+        &ListBody {
+            rule_count: rules.len(),
+            rules,
+        },
+        write_list_text,
+    )?;
     Ok(())
 }
 
@@ -48,30 +51,37 @@ fn show(ctx: &Ctx, rule_id: &str) -> Result<()> {
             detail: format!("rule `{rule_id}` not found"),
         })?;
 
-    ctx.write(&ShowBody {
-        rule: RuleExport::from(resolved),
-    })?;
+    ctx.write(
+        &ShowBody {
+            rule: RuleExport::from(resolved),
+        },
+        write_show_text,
+    )?;
     Ok(())
 }
 
 fn validate(ctx: &Ctx) -> Result<()> {
     match resolve(ctx) {
         Ok(codex) => {
-            ctx.write(&ValidateBody {
-                rule_count: Some(codex.rules.len()),
-                error_count: 0,
-                validation: Validation { results: Vec::new() },
-            })?;
+            ctx.write(
+                &ValidateBody {
+                    rule_count: Some(codex.rules.len()),
+                    error_count: 0,
+                    results: Vec::new(),
+                },
+                write_validate_text,
+            )?;
             Ok(())
         }
         Err(Error::Validation { results }) => {
-            ctx.write(&ValidateBody {
-                rule_count: None,
-                error_count: results.len(),
-                validation: Validation {
+            ctx.write(
+                &ValidateBody {
+                    rule_count: None,
+                    error_count: results.len(),
                     results: results.iter().map(ValidationRow::from).collect(),
                 },
-            })?;
+                write_validate_text,
+            )?;
             Err(Error::Validation { results })
         }
         Err(err) => Err(err),
@@ -81,10 +91,13 @@ fn validate(ctx: &Ctx) -> Result<()> {
 fn export(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleExport::from).collect();
-    ctx.write(&ExportBody {
-        rule_count: rules.len(),
-        rules,
-    })?;
+    ctx.write(
+        &ExportBody {
+            rule_count: rules.len(),
+            rules,
+        },
+        write_export_text,
+    )?;
     Ok(())
 }
 
@@ -95,20 +108,11 @@ struct ListBody<'a> {
     rules: Vec<RuleSummary<'a>>,
 }
 
-impl Render for ListBody<'_> {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        for rule in &self.rules {
-            writeln!(
-                w,
-                "{}\t{}\t{}\t{}",
-                rule.id,
-                rule.severity,
-                provenance_text(rule),
-                rule.title
-            )?;
-        }
-        Ok(())
+fn write_list_text(w: &mut dyn Write, body: &ListBody<'_>) -> std::io::Result<()> {
+    for rule in &body.rules {
+        writeln!(w, "{}\t{}\t{}\t{}", rule.id, rule.severity, provenance_text(rule), rule.title)?;
     }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -117,18 +121,16 @@ struct ShowBody<'a> {
     rule: RuleExport<'a>,
 }
 
-impl Render for ShowBody<'_> {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let r = &self.rule;
-        writeln!(w, "id: {}", r.id)?;
-        writeln!(w, "title: {}", r.title)?;
-        writeln!(w, "severity: {}", r.severity)?;
-        writeln!(w, "trigger: {}", r.trigger)?;
-        writeln!(w, "source: {}", r.source_path)?;
-        writeln!(w, "provenance: {}", export_provenance_text(r))?;
-        writeln!(w)?;
-        write!(w, "{}", r.body)
-    }
+fn write_show_text(w: &mut dyn Write, body: &ShowBody<'_>) -> std::io::Result<()> {
+    let r = &body.rule;
+    writeln!(w, "id: {}", r.id)?;
+    writeln!(w, "title: {}", r.title)?;
+    writeln!(w, "severity: {}", r.severity)?;
+    writeln!(w, "trigger: {}", r.trigger)?;
+    writeln!(w, "source: {}", r.source_path)?;
+    writeln!(w, "provenance: {}", export_provenance_text(r))?;
+    writeln!(w)?;
+    write!(w, "{}", r.body)
 }
 
 #[derive(Serialize)]
@@ -138,13 +140,8 @@ struct ExportBody<'a> {
     rules: Vec<RuleExport<'a>>,
 }
 
-impl Render for ExportBody<'_> {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(
-            w,
-            "Codex export is a JSON contract; rerun with `specify codex export --format json`."
-        )
-    }
+fn write_export_text(w: &mut dyn Write, _body: &ExportBody<'_>) -> std::io::Result<()> {
+    writeln!(w, "Codex export is a JSON contract; rerun with `specify codex export --format json`.")
 }
 
 #[derive(Serialize)]
@@ -152,22 +149,19 @@ impl Render for ExportBody<'_> {
 struct ValidateBody<'a> {
     rule_count: Option<usize>,
     error_count: usize,
-    #[serde(flatten)]
-    validation: Validation<ValidationRow<'a>>,
+    results: Vec<ValidationRow<'a>>,
 }
 
-impl Render for ValidateBody<'_> {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.error_count == 0 {
-            return writeln!(w, "Codex OK: {} rule(s)", self.rule_count.unwrap_or(0));
-        }
-        writeln!(w, "Codex invalid: {} error(s)", self.error_count)?;
-        for r in &self.validation.results {
-            let detail = r.detail.unwrap_or(r.rule);
-            writeln!(w, "  [fail] {}: {detail}", r.rule_id)?;
-        }
-        Ok(())
+fn write_validate_text(w: &mut dyn Write, body: &ValidateBody<'_>) -> std::io::Result<()> {
+    if body.error_count == 0 {
+        return writeln!(w, "Codex OK: {} rule(s)", body.rule_count.unwrap_or(0));
     }
+    writeln!(w, "Codex invalid: {} error(s)", body.error_count)?;
+    for r in &body.results {
+        let detail = r.detail.unwrap_or(r.rule);
+        writeln!(w, "  [fail] {}: {detail}", r.rule_id)?;
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]

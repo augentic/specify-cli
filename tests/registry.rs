@@ -99,7 +99,6 @@ fn registry_add_round_trips_through_show() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["envelope-version"], 6);
     assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["added"]["name"], "alpha");
     assert_eq!(value["added"]["url"], "git@github.com:augentic/alpha.git");

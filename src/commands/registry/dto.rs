@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 use specify_domain::registry::{Registry, RegistryProject};
 
-use crate::output::{Render, serialize_path};
+use crate::output::serialize_path;
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -16,24 +16,22 @@ pub(super) struct ShowBody {
     pub(super) path: PathBuf,
 }
 
-impl Render for ShowBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let Some(reg) = self.registry.as_ref() else {
-            return writeln!(w, "no registry declared at registry.yaml");
-        };
-        writeln!(w, "registry.yaml: {}", self.path.display())?;
-        writeln!(w, "version: {}", reg.version)?;
-        if reg.projects.is_empty() {
-            return writeln!(w, "projects: (none)");
-        }
-        writeln!(w, "projects:")?;
-        for project in &reg.projects {
-            writeln!(w, "  - name: {}", project.name)?;
-            writeln!(w, "    url: {}", project.url)?;
-            writeln!(w, "    capability: {}", project.capability)?;
-        }
-        Ok(())
+pub(super) fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Result<()> {
+    let Some(reg) = body.registry.as_ref() else {
+        return writeln!(w, "no registry declared at registry.yaml");
+    };
+    writeln!(w, "registry.yaml: {}", body.path.display())?;
+    writeln!(w, "version: {}", reg.version)?;
+    if reg.projects.is_empty() {
+        return writeln!(w, "projects: (none)");
     }
+    writeln!(w, "projects:")?;
+    for project in &reg.projects {
+        writeln!(w, "  - name: {}", project.name)?;
+        writeln!(w, "    url: {}", project.url)?;
+        writeln!(w, "    capability: {}", project.capability)?;
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -46,17 +44,15 @@ pub(super) struct ValidateBody {
     pub(super) hub_mode: bool,
 }
 
-impl Render for ValidateBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let Some(reg) = self.registry.as_ref() else {
-            return writeln!(w, "no registry declared at registry.yaml");
-        };
-        let count = reg.projects.len();
-        if self.hub_mode {
-            writeln!(w, "registry.yaml is well-formed in hub mode ({count} project(s))")
-        } else {
-            writeln!(w, "registry.yaml is well-formed ({count} project(s))")
-        }
+pub(super) fn write_validate_text(w: &mut dyn Write, body: &ValidateBody) -> std::io::Result<()> {
+    let Some(reg) = body.registry.as_ref() else {
+        return writeln!(w, "no registry declared at registry.yaml");
+    };
+    let count = reg.projects.len();
+    if body.hub_mode {
+        writeln!(w, "registry.yaml is well-formed in hub mode ({count} project(s))")
+    } else {
+        writeln!(w, "registry.yaml is well-formed ({count} project(s))")
     }
 }
 
@@ -69,11 +65,9 @@ pub(super) struct AddBody {
     pub(super) added: RegistryProject,
 }
 
-impl Render for AddBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Added `{}` to {}", self.added.name, self.path.display())?;
-        writeln!(w, "registry now declares {} project(s)", self.registry.projects.len())
-    }
+pub(super) fn write_add_text(w: &mut dyn Write, body: &AddBody) -> std::io::Result<()> {
+    writeln!(w, "Added `{}` to {}", body.added.name, body.path.display())?;
+    writeln!(w, "registry now declares {} project(s)", body.registry.projects.len())
 }
 
 #[derive(Serialize)]
@@ -86,12 +80,10 @@ pub(super) struct RemoveBody {
     pub(super) warnings: Vec<String>,
 }
 
-impl Render for RemoveBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Removed `{}` from {}", self.removed, self.path.display())?;
-        for warning in &self.warnings {
-            writeln!(w, "warning: {warning}")?;
-        }
-        Ok(())
+pub(super) fn write_remove_text(w: &mut dyn Write, body: &RemoveBody) -> std::io::Result<()> {
+    writeln!(w, "Removed `{}` from {}", body.removed, body.path.display())?;
+    for warning in &body.warnings {
+        writeln!(w, "warning: {warning}")?;
     }
+    Ok(())
 }

@@ -12,7 +12,6 @@ use specify_error::{Error, Result};
 
 use super::{Ref, plan_ref, require_file};
 use crate::context::Ctx;
-use crate::output::Render;
 
 /// Wire shape of the JSON `diagnostics:` row. Mirrors
 /// [`PlanDoctorDiagnostic`] but with `severity` rendered as the
@@ -36,18 +35,16 @@ struct DoctorBody {
     diagnostics: Vec<DiagnosticRow>,
 }
 
-impl Render for DoctorBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.diagnostics.is_empty() {
-            return writeln!(w, "Plan OK");
-        }
-        for d in &self.diagnostics {
-            let prefix = if d.severity == "error" { "ERROR  " } else { "WARNING" };
-            let entry_col = d.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
-            writeln!(w, "{prefix} {:<24} {entry_col:<24} {}", d.code, d.message)?;
-        }
-        Ok(())
+fn write_doctor_text(w: &mut dyn Write, body: &DoctorBody) -> std::io::Result<()> {
+    if body.diagnostics.is_empty() {
+        return writeln!(w, "Plan OK");
     }
+    for d in &body.diagnostics {
+        let prefix = if d.severity == "error" { "ERROR  " } else { "WARNING" };
+        let entry_col = d.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
+        writeln!(w, "{prefix} {:<24} {entry_col:<24} {}", d.code, d.message)?;
+    }
+    Ok(())
 }
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
@@ -78,10 +75,13 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let has_errors = diagnostics.iter().any(|d| matches!(d.severity, PlanDoctorSeverity::Error));
     let rows: Vec<DiagnosticRow> = diagnostics.iter().map(diagnostic_row).collect();
 
-    ctx.write(&DoctorBody {
-        plan: plan_ref(&plan, &plan_path),
-        diagnostics: rows,
-    })?;
+    ctx.write(
+        &DoctorBody {
+            plan: plan_ref(&plan, &plan_path),
+            diagnostics: rows,
+        },
+        write_doctor_text,
+    )?;
 
     if has_errors {
         Err(Error::Diag {

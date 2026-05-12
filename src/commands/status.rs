@@ -12,7 +12,6 @@ use specify_error::Result;
 
 use super::slice::{StatusEntry, collect_status, list_slice_names};
 use crate::context::Ctx;
-use crate::output::Render;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
@@ -29,7 +28,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     }
 
     let body = DashboardBody::new(registry, plan_summary, entries);
-    ctx.write(&body)?;
+    ctx.write(&body, write_dashboard_text)?;
     Ok(())
 }
 
@@ -52,10 +51,8 @@ impl DashboardBody {
     }
 }
 
-impl Render for DashboardBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        render_dashboard(w, self.registry.as_ref(), self.plan.as_ref(), &self.slices)
-    }
+fn write_dashboard_text(w: &mut dyn Write, body: &DashboardBody) -> std::io::Result<()> {
+    render_dashboard(w, body.registry.as_ref(), body.plan.as_ref(), &body.slices)
 }
 
 #[derive(Serialize)]

@@ -6,17 +6,19 @@ use specify_error::Result;
 
 use crate::cli::Format;
 use crate::context::Ctx;
-use crate::output::Render;
 
 pub(super) fn acquire(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let acquired = Stamp::acquire(&ctx.project_dir, our_pid)?;
-    ctx.write(&AcquireBody {
-        held: true,
-        pid: acquired.pid,
-        already_held: acquired.already_held,
-        reclaimed_stale_pid: acquired.reclaimed_stale_pid,
-    })?;
+    ctx.write(
+        &AcquireBody {
+            held: true,
+            pid: acquired.pid,
+            already_held: acquired.already_held,
+            reclaimed_stale_pid: acquired.reclaimed_stale_pid,
+        },
+        write_acquire_text,
+    )?;
     Ok(())
 }
 
@@ -40,7 +42,7 @@ pub(super) fn release(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
             our_pid: Some(our_pid),
         },
     };
-    ctx.write(&body)?;
+    ctx.write(&body, write_release_text)?;
     if matches!(ctx.format, Format::Text)
         && let PlanLockReleased::HeldByOther { pid: other } = outcome
     {
@@ -51,11 +53,14 @@ pub(super) fn release(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
 
 pub(super) fn status(ctx: &Ctx) -> Result<()> {
     let state = Stamp::status(&ctx.project_dir)?;
-    ctx.write(&StatusBody {
-        held: state.held,
-        pid: state.pid,
-        stale: state.stale,
-    })?;
+    ctx.write(
+        &StatusBody {
+            held: state.held,
+            pid: state.pid,
+            stale: state.stale,
+        },
+        write_status_text,
+    )?;
     Ok(())
 }
 
@@ -68,18 +73,16 @@ struct AcquireBody {
     reclaimed_stale_pid: Option<u32>,
 }
 
-impl Render for AcquireBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.already_held {
-            writeln!(w, "Lock already held by pid {}; re-stamped.", self.pid)?;
-        } else {
-            writeln!(w, "Acquired plan lock for pid {}.", self.pid)?;
-        }
-        if let Some(stale) = self.reclaimed_stale_pid {
-            writeln!(w, "  (reclaimed stale stamp from pid {stale})")?;
-        }
-        Ok(())
+fn write_acquire_text(w: &mut dyn Write, body: &AcquireBody) -> std::io::Result<()> {
+    if body.already_held {
+        writeln!(w, "Lock already held by pid {}; re-stamped.", body.pid)?;
+    } else {
+        writeln!(w, "Acquired plan lock for pid {}.", body.pid)?;
     }
+    if let Some(stale) = body.reclaimed_stale_pid {
+        writeln!(w, "  (reclaimed stale stamp from pid {stale})")?;
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -91,19 +94,17 @@ struct ReleaseBody {
     our_pid: Option<u32>,
 }
 
-impl Render for ReleaseBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        match self.result {
-            "removed" => {
-                if let Some(pid) = self.pid {
-                    writeln!(w, "Released plan lock held by pid {pid}.")?;
-                }
+fn write_release_text(w: &mut dyn Write, body: &ReleaseBody) -> std::io::Result<()> {
+    match body.result {
+        "removed" => {
+            if let Some(pid) = body.pid {
+                writeln!(w, "Released plan lock held by pid {pid}.")?;
             }
-            "was-absent" => writeln!(w, "No plan lock to release.")?,
-            _ => {}
         }
-        Ok(())
+        "was-absent" => writeln!(w, "No plan lock to release.")?,
+        _ => {}
     }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -114,20 +115,18 @@ struct StatusBody {
     stale: Option<bool>,
 }
 
-impl Render for StatusBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        match self.pid {
-            Some(pid) => {
-                if self.stale.unwrap_or(false) {
-                    writeln!(w, "stale (pid {pid} no longer alive)")
-                } else {
-                    writeln!(w, "held by pid {pid}")
-                }
+fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()> {
+    match body.pid {
+        Some(pid) => {
+            if body.stale.unwrap_or(false) {
+                writeln!(w, "stale (pid {pid} no longer alive)")
+            } else {
+                writeln!(w, "held by pid {pid}")
             }
-            None => match self.stale {
-                Some(true) => writeln!(w, "stale (malformed lockfile contents)"),
-                _ => writeln!(w, "no lock"),
-            },
         }
+        None => match body.stale {
+            Some(true) => writeln!(w, "stale (malformed lockfile contents)"),
+            _ => writeln!(w, "no lock"),
+        },
     }
 }

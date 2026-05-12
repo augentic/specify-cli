@@ -243,7 +243,6 @@ slices:
         assert_eq!(assert.get_output().status.code(), Some(0));
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["passed"], true);
         assert_eq!(actual["results"], Value::Array(vec![]));
         assert_golden("validate-clean.json", actual);
@@ -270,7 +269,6 @@ slices:
         );
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(
             actual["passed"], true,
             "in-progress-without-slice-dir is a warning, so passed must be true: {actual}"
@@ -304,7 +302,6 @@ slices:
         );
 
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["passed"], false);
         let results = actual["results"].as_array().expect("results array");
         assert!(
@@ -341,7 +338,6 @@ slices:
             .assert()
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["next"], "b");
         assert_eq!(actual["reason"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -373,7 +369,6 @@ slices:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["reason"], "in-progress");
         assert_eq!(actual["active"], "a");
@@ -399,7 +394,6 @@ slices:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["reason"], "all-done");
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -417,7 +411,6 @@ slices:
             .assert()
             .success();
         let actual = parse_stdout(&json.get_output().stdout, project.root());
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["reason"], "stuck");
         assert_eq!(actual["next"], Value::Null);
         assert_eq!(actual["active"], Value::Null);
@@ -438,7 +431,6 @@ slices:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["envelope-version"], 6);
         let counts = actual["counts"].as_object().expect("counts object");
         for key in ["done", "in-progress", "pending", "blocked", "failed", "skipped", "total"] {
             assert!(counts.contains_key(key), "counts missing key '{key}': {counts:?}");
@@ -483,7 +475,6 @@ slices:
             .success();
 
         let actual = parse_stdout(&output.get_output().stdout, project.root());
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["order"], "list", "cycle must trigger list-order fallback");
 
         let names: Vec<&str> = actual["entries"]
@@ -602,7 +593,6 @@ slices:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["action"], "create");
         assert_eq!(actual["entry"]["name"], "foo");
         assert_eq!(actual["entry"]["status"], "pending");
@@ -795,7 +785,6 @@ slices:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["entry"]["name"], "foo");
         assert_eq!(actual["entry"]["status"], "done");
         assert_eq!(actual["entry"]["status-reason"], Value::Null);
@@ -1017,7 +1006,6 @@ slices:
             .success();
         let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["plan"]["name"], "my-change");
         let path_str = actual["plan"]["path"].as_str().expect("plan.path string");
         assert!(
@@ -1230,7 +1218,6 @@ slices:
             .success();
         let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["plan"]["name"], "demo");
         assert!(
             actual["archived"].as_str().unwrap_or_default().contains("demo-"),
@@ -1282,7 +1269,6 @@ slices:
 
         // R4 routes the typed failure envelope through Stream::Stderr.
         let actual = parse_stderr(&assert.get_output().stderr, project.root());
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["error"], "plan-has-outstanding-work");
         assert_eq!(actual["exit-code"], 1);
         let message = actual["message"].as_str().expect("message string");
@@ -1422,7 +1408,6 @@ slices: []
             .success();
         let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-        assert_eq!(actual["envelope-version"], 6);
         assert_eq!(actual["plan"]["name"], "demo");
         assert!(
             actual["archived"].as_str().unwrap_or_default().contains("demo-"),
@@ -2376,8 +2361,6 @@ projects:
         let output = assert.get_output();
         let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
         let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
-
-        assert_eq!(value["envelope-version"], 6);
 
         let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
         assert!(

@@ -60,7 +60,6 @@ fn version_too_old_exits_three_json() {
     // R4 routes every error envelope through Stream::Stderr.
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stderr).expect("stderr is JSON");
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["error"], "specify-version-too-old");
     assert_eq!(value["exit-code"], 3);
 }

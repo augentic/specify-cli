@@ -173,7 +173,7 @@ fn handle(ctx: &Ctx, outcome: &Outcome) -> Result<()> {
 
 ## Errors
 
-`specify-error::Error` variants are **structured**, not `Variant(String)` catch-alls. The kebab-case identifier in `#[error("…")]` (and in `Error::Diag.code`) is part of the public contract that skills and tests grep for; never rename without bumping `ENVELOPE_VERSION` (see [DECISIONS.md §"Wire compatibility"](../../DECISIONS.md#wire-compatibility)).
+`specify-error::Error` variants are **structured**, not `Variant(String)` catch-alls. The kebab-case identifier in `#[error("…")]` (and in `Error::Diag.code`) is part of the public contract that skills and tests grep for; treat any rename as a breaking change (see [DECISIONS.md §"Wire compatibility"](../../DECISIONS.md#wire-compatibility)).
 
 **Diag-first error policy.** New diagnostic sites use `Error::Diag { code: "<kebab>", detail: format!(…) }`. Promote to a typed `Error::*` variant **only** when:
 
