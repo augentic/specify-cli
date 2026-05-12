@@ -1086,6 +1086,14 @@ criteria = "safe-to-deploy"
 version = "1.2.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.strum]]
+version = "0.28.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.strum_macros]]
+version = "0.28.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.sync_wrapper]]
 version = "0.1.2"
 criteria = "safe-to-deploy"
