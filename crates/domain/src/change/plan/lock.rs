@@ -1,8 +1,6 @@
-//! Advisory PID lock at `.specify/plan.lock`. [`Guard`] holds an
-//! OS-level `flock(2)` for in-process drivers; [`Stamp`] is the
-//! stateless PID-stamp helper for the short-lived CLI verbs.
+//! Stateless PID stamp at `.specify/plan.lock` used by the short-lived
+//! CLI driver-lock verbs.
 
-use std::fs::File;
 use std::path::{Path, PathBuf};
 
 mod acquire;
@@ -12,48 +10,6 @@ mod status;
 
 #[cfg(test)]
 mod tests;
-
-/// RAII guard for the `.specify/plan.lock` advisory lock.
-///
-/// Holds an exclusive `flock` on the lockfile for the lifetime of the
-/// guard, and removes the lockfile on `Drop`. Construct via
-/// [`Guard::acquire`] (production) or
-/// [`Guard::acquire_with_liveness_check`] (tests).
-#[derive(Debug)]
-pub struct Guard {
-    /// Held open for the lifetime of the guard so the OS-level
-    /// `flock` is released when we drop. `Option` so `Drop` can
-    /// explicitly take the file before deleting the path.
-    pub(super) file: Option<File>,
-    pub(super) path: PathBuf,
-    pub(super) pid: u32,
-    pub(super) reclaimed_stale_pid: Option<u32>,
-}
-
-impl Guard {
-    /// PID written into the lockfile (always `std::process::id()`).
-    #[must_use]
-    pub const fn pid(&self) -> u32 {
-        self.pid
-    }
-
-    /// If the guard reclaimed a stale lock on acquire, the PID that
-    /// had been recorded. `None` for a cold acquire or when the
-    /// previous contents were malformed (no PID to report).
-    ///
-    /// `/change:execute` renders this in its preamble as
-    /// "reclaimed stale lock from PID X".
-    #[must_use]
-    pub const fn reclaimed_stale_pid(&self) -> Option<u32> {
-        self.reclaimed_stale_pid
-    }
-
-    /// Absolute path of the lockfile this guard manages.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-}
 
 /// Result of a successful [`Stamp::acquire`] call.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,10 +40,10 @@ pub enum Released {
     /// Stamp file was present but held a PID that isn't ours. We
     /// refuse to clobber it so a concurrent driver (or a stale stamp
     /// that the self-heal path should reclaim deliberately) stays
-    /// intact. `pid` is `None` when the file contents were malformed.
+    /// intact.
     HeldByOther {
-        /// PID of the other holder, if parseable.
-        pid: Option<u32>,
+        /// PID of the other holder.
+        pid: u32,
     },
 }
 
@@ -108,9 +64,8 @@ pub struct State {
 
 /// PID-stamp helper for the short-lived CLI driver-lock protocol.
 ///
-/// Unlike [`Guard`], this primitive does **not** hold an
-/// OS-level advisory lock. It manages `.specify/plan.lock` as a
-/// persistent PID marker that survives the process writing it:
+/// This primitive manages `.specify/plan.lock` as a persistent PID
+/// marker that survives the process writing it:
 ///
 /// - `specify change plan lock acquire --pid <P>` stamps `P` into the file
 ///   (failing with [`specify_error::Error::DriverBusy`] when another
@@ -123,10 +78,7 @@ pub struct State {
 ///
 /// The `/change:execute` skill calls these verbs around its agent-side
 /// loop; no Rust-level process stays alive for the full driver run,
-/// so the stamp is the only signalling channel available. Secondary
-/// protection against genuine same-process racing is provided by
-/// [`Guard`], which future long-lived drivers can wrap around
-/// a stamped run.
+/// so the stamp is the only signalling channel available.
 #[derive(Debug)]
 pub struct Stamp;
 

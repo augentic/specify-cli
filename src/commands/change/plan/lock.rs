@@ -36,25 +36,15 @@ pub(super) fn release(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
         },
         PlanLockReleased::HeldByOther { pid } => ReleaseBody {
             result: "held-by-other",
-            pid: *pid,
+            pid: Some(*pid),
             our_pid: Some(our_pid),
         },
     };
     ctx.write(&body)?;
-    if matches!(ctx.format, Format::Text) {
-        match outcome {
-            PlanLockReleased::HeldByOther { pid: Some(other) } => {
-                eprintln!(
-                    "warning: plan lock is held by pid {other}, not {our_pid}; not removing."
-                );
-            }
-            PlanLockReleased::HeldByOther { pid: None } => {
-                eprintln!(
-                    "warning: plan lock contents are malformed; refusing to clobber (run the L2.G self-heal path)."
-                );
-            }
-            PlanLockReleased::Removed { .. } | PlanLockReleased::WasAbsent => {}
-        }
+    if matches!(ctx.format, Format::Text)
+        && let PlanLockReleased::HeldByOther { pid: other } = outcome
+    {
+        eprintln!("warning: plan lock is held by pid {other}, not {our_pid}; not removing.");
     }
     Ok(())
 }

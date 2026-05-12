@@ -1,5 +1,5 @@
-//! PID-liveness probe used by both [`super::Guard`] and [`super::Stamp`].
-//! Unix uses `kill(pid, 0)` (treating `EPERM` as alive); non-Unix is a
+//! PID-liveness probe used by [`super::Stamp`]. Unix uses
+//! `kill(pid, 0)` (treating `EPERM` as alive); non-Unix is a
 //! conservative `true` so we never reclaim.
 
 #[cfg(unix)]

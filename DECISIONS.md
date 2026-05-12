@@ -28,15 +28,6 @@ run` WASI passthrough.
 | 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, or a tool request rejected as undeclared.           |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
-## File locks
-
-Advisory `flock(2)` on `.specify/plan.lock` (see `crates/domain/src/change/plan/lock/acquire.rs`)
-goes through the std-library inherent method `std::fs::File::try_lock`,
-stable since Rust 1.89 and matched by the workspace MSRV (1.93).
-Returns `Result<(), TryLockError>` with `TryLockError::WouldBlock` for
-the contended case. The previous `fs2` dependency was dropped — std
-ships the same syscall and `cargo deny` flags `fs2` as unmaintained.
-
 ## Atomic writes
 
 Use `yaml_write` (in `crates/slice/src/atomic.rs`) for any file a

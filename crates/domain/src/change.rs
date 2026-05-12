@@ -12,6 +12,4 @@ pub use plan::doctor::{
     DiagnosticPayload as PlanDoctorPayload, DiagnosticSeverity as PlanDoctorSeverity,
     ORPHAN_SOURCE, STALE_CLONE, StaleReason, UNREACHABLE, doctor as plan_doctor,
 };
-pub use plan::lock::{
-    Acquired, Guard, Released as PlanLockReleased, Stamp, State as PlanLockState,
-};
+pub use plan::lock::{Acquired, Released as PlanLockReleased, Stamp, State as PlanLockState};

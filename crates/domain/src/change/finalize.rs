@@ -248,7 +248,7 @@ pub enum PlanLoad {
 /// Returns [`Refusal`] for whole-run refusals. Per-project
 /// failures live in [`Outcome::projects`] and never bubble up.
 pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refusal> {
-    // Guard: terminal states.
+    // Refuse if any plan entry is still in a non-terminal state.
     let outstanding = summary::outstanding(inputs.plan);
     if !outstanding.is_empty() {
         return Err(Refusal::NonTerminalEntries(outstanding));
@@ -258,7 +258,7 @@ pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refu
     let expected_branch = format!("{SPECIFY_BRANCH_PREFIX}{change_name}");
     let workspace_base = inputs.project_dir.layout().specify_dir().join("workspace");
 
-    // Guard: per-project PR state + dirty clones.
+    // Probe per-project PR state + dirty clones.
     let mut projects: Vec<ProjectResult> = Vec::with_capacity(inputs.registry.projects.len());
     for rp in &inputs.registry.projects {
         let path = project_path(inputs.project_dir, &workspace_base, rp);
