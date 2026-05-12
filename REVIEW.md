@@ -1,242 +1,359 @@
 # Code & Skill Review — execution checklist
 
-Findings from a review of `specify` and `specify-cli` against brevity, maturity-in-restraint, idiomatic Rust, YAGNI, dependencies, tests, and Skills. Items are written to be executed one at a time.
+Single-pass review of `specify` and `specify-cli` against subtraction, idiom, boundaries, and Skill discipline. Pre-1.0 — back-compat, migrations, and deprecations are not constraints. Items are written to be picked up one at a time by an agent that has not read this file in full.
+
+## Reconnaissance baseline
+
+- `specify-cli`: **281 .rs files / ≈58 510 LOC / 596 `#[test]`** (343 in `crates/`, 169 in `tests/`, 84 in `wasi-tools/`).
+- `mod.rs` outside `tests/`: **0** (the `mod-rs-forbidden` predicate has nothing to catch).
+- `cargo tree --duplicates`: only the wasmtime/cap-* fan-out, already silenced via `multiple_crate_versions = "allow"`.
+- `docs/standards/*.md` + `AGENTS.md` + `DECISIONS.md` = **913 lines**; `scripts/standards-allowlist.toml` = **654 lines / 197 `[file."…"]` blocks** of which **197** are `module-line-count`, 23 `direct-fs-write`, 15 `ritual-doc-paragraphs` — the rest are zero-baseline tripwires.
+- Skills in `specify/`: **28 `SKILL.md`**; **9 over the 250-line cap** (top: vectis writers/reviewers at 380+).
+- `specify/scripts/checks/`: **3 559 LOC across 13 Deno files**.
 
 ## How to use this list
 
 - Pick **one** item per session. Do not batch.
-- Default rule: **a session must not net-add lines to the codebase.** If a refactor adds code, it must delete more elsewhere.
+- Default rule: **a session must not net-add lines** to the codebase. If a refactor adds code, it must delete strictly more elsewhere in the same session.
 - After each item: re-read the surrounding rules in `AGENTS.md` / `docs/standards/` and delete any paragraph the change made redundant.
-- Resist the urge to add a new predicate, check, or doc section to "prevent recurrence". Prevention via mechanical enforcement is what generated the bulk of this list. Trust review + clippy.
-- Stop after items 1–3 and re-evaluate before continuing. The downstream items get easier (or vanish) once those land.
+- Resist the urge to add a new predicate, check, or doc section to "prevent recurrence". Trust review + clippy.
+- Stop after F1–F3 and re-evaluate before continuing. Many downstream items shrink (or vanish) once those land.
 
 ---
 
 ## Suggested order of attack
 
-Numbered to match the original review's §10. Each links to the detailed entry below.
+Structural items first; one-touch tidies fold into adjacent PRs.
 
-- [ ] 1. [Delete `xtask::standards` and 90% of the standards allowlist](#1-delete-xtaskstandards-and-the-allowlist)
-- [ ] 2. [Delete `Guard`, `with_liveness_check`, `Released::HeldByOther{pid:None}`, and the over-typed `Error` variants](#2-delete-dead-lock-surface-and-collapse-typed-error-variants-into-diag)
-- [ ] 3. [Collapse `style.md` + `coding-standards.md` + `handler-shape.md` into one `RULES.md`](#3-collapse-the-standards-docs-into-one-rulesmd)
-- [ ] 4. [Make `emit_with` the default; delete the wire-version envelope](#4-make-emit_with-the-default-delete-envelopeversion)
-- [ ] 5. [Mass-delete unit tests; move workspace/git tests up to `tests/`](#5-mass-delete-unit-tests-move-workspacegit-tests-up)
-- [ ] 6. [Apply 150-line skill cap, drop the skill-cap allowlist, refactor over-cap skills](#6-tighten-skill-caps-and-drop-the-skill-allowlist)
+- [ ] F1. [Delete `xtask::standards` and the allowlist](#f1-delete-xtaskstandards-and-the-allowlist) — **≈ −2 050 LOC**
+- [ ] F2. [Delete `Guard` and every `*_with_liveness_check`](#f2-delete-guard-and-every-_with_liveness_check) — **≈ −430 LOC**
+- [ ] F3. [Collapse the `Render` / `*Body` triad in `src/output.rs`](#f3-collapse-the-render--body-triad-in-srcoutputrs) — **≈ −350 LOC**
+- [ ] F4. [Move `serde_rfc3339` to `specify-error`; delete the cache/meta duplicate](#f4-move-serde_rfc3339-to-specify-error-delete-the-cachemeta-duplicate) — **≈ −18 LOC**
+- [ ] F5. [Fold typed `Error` variants into `Diag`-first policy](#f5-fold-typed-error-variants-into-diag-first-policy) — **≈ −300 LOC**
+- [ ] F6. [Move workspace integration tests up; mass-delete unit-test mirrors](#f6-move-workspace-integration-tests-up-mass-delete-unit-test-mirrors) — **≈ −1 200 LOC**
+- [ ] F7. [Cap skill body at 200, refactor the 9 over-cap skills, halve `scripts/checks/`](#f7-cap-skill-body-at-200-refactor-the-9-over-cap-skills-halve-scriptschecks) — **≈ −1 800 LOC**
+- [ ] F8. [Delete the `wasi-tools` `Envelope` once F3 lands](#f8-delete-the-wasi-tools-envelope-once-f3-lands) — **≈ −180 LOC**
+- [ ] F9. [Inline `LayoutExt` into `Layout::new`](#f9-inline-layoutext-into-layoutnew) — **≈ −40 LOC**
+- [ ] F10. [Split `tests/change_umbrella.rs` (2 762 LOC, 87 tests)](#f10-split-testschange_umbrellars-2762-loc-87-tests) — **0 to −200 LOC**
 
-After 6, re-skim §A–§D below. Most are one-touch tidies once the structural items have landed.
+**Total Δ if F1–F10 land cleanly: ≈ −5 600 LOC.** Highest blow-up risk: **F2** — `Guard` is dead, but `Stamp::*_with_liveness_check` is the closure seam most lock tests hang off and the integration replacement (spawn child + real PIDs) is where the day goes sideways.
 
 ---
 
-## 1. Delete `xtask::standards` and the allowlist
+## F1. Delete `xtask::standards` and the allowlist
 
-**What.** Remove the bespoke standards-check infrastructure: ~1 861 LOC of analyser + 654 lines of toml + the corresponding `cargo make standards` task.
+**What.** Remove the bespoke standards-check infrastructure: `xtask/src/standards{.rs,/*.rs}` (1 257 LOC) + `scripts/standards-allowlist.toml` (654 lines) + the `cargo make standards` task. Keep only a 5-line shell tripwire on file size.
 
-**Why.** Most predicates are zero-baseline post-cleanup tripwires. Reviewer judgment + clippy + a 30-line shell check covers what's left.
+**Evidence.**
+- 197 of 198 baseline entries are `module-line-count`; the only non-`module-line-count` predicates with non-zero counts are `direct-fs-write` (23), `ritual-doc-paragraphs` (15), `cli-help-shape` (4), `verbose-doc-paragraphs` (3), `unit-test-serde-roundtrip` (2), `rfc-numbers-in-code` (1), `format-match-dispatch` (1).
+- `mod-rs-forbidden` matches **zero** files in the workspace today.
+- `Makefile.toml:21,23-25` puts `cargo make standards` on the CI chain.
+- ripgrep, fd, helix, jj, cargo all ship with **clippy + a lint script** and no bespoke per-file allowlist.
 
 **Files to delete.**
 - `xtask/src/standards.rs`
 - `xtask/src/standards/{allowlist,ast_predicates,crate_root_prose,display_serde_mirror,regex_predicates,report,types,unit_test_serde_roundtrip}.rs`
 - `scripts/standards-allowlist.toml`
-- The `standards-check` arm in `xtask/src/main.rs`
-- `Makefile.toml` `standards` task (and any composing task that depends on it)
-- Sections in `docs/standards/predicates.md` (delete the whole file)
-- Cross-references in `AGENTS.md`, `docs/standards/coding-standards.md`, `docs/standards/style.md` (`Mechanical enforcement`, `module-line-count`, `direct-fs-write`, etc.)
+- The `StandardsCheck` arm in `xtask/src/main.rs:24-41,67-88`
+- `[tasks.standards]` (and its entry in `[tasks.ci].dependencies`) in `Makefile.toml`
+- `docs/standards/predicates.md`
+- The `Mechanical enforcement` section + per-predicate links in `docs/standards/coding-standards.md` and `AGENTS.md:42,76`
 
-**What to keep.** A 30-line shell check that fails CI on (a) any `mod.rs` outside `tests/`, (b) any file > 600 lines under `crates/` or `src/`. Live in `Makefile.toml` directly; no Rust code.
+**What to keep.** A ≤ 8-line gate inline in `Makefile.toml` that fails when any file under `crates/` or `src/` (excluding `tests/`) exceeds 600 lines. No Rust code.
 
-**Net change target.** ≥ −2 500 LOC. Add no new mechanical predicates.
+**Net change target.** ≥ −2 050 LOC. Add no new mechanical predicates.
 
-**Done when.** `cargo make ci` no longer references `standards-check`; `xtask` either disappears or is reduced to `gen-man` / `gen-completions` only.
+**Done when.** `cargo make ci` no longer references `standards-check`; `xtask` is two subcommands (`gen-man`, `gen-completions`); `rg standards-check -- xtask src docs Makefile.toml AGENTS.md DECISIONS.md` returns nothing.
 
----
+**Rule?** No. The replacement *is* a 5-line shell check.
 
-## 2. Delete dead lock surface and collapse typed `Error` variants into `Diag`
+**Counter-argument.** "The predicates ratchet down over time, deletion loses signal." Loses because 197 of 202 baselines pin file lengths on files that do not shrink during normal work — they are a no-op tripwire that costs 1 911 LOC + one CI task to maintain.
 
-**What.** Two mostly-independent deletions in the same session.
-
-### 2a. Lock surface
-
-- Delete `Guard` and all its helpers: `crates/domain/src/change/plan/lock.rs:23..56`, the corresponding `Guard::*` methods in `crates/domain/src/change/plan/lock/acquire.rs`, `release.rs`, `tests.rs`.
-- Delete every `*_with_liveness_check<F>` variant. Inline `is_pid_alive` in the production caller; rewrite the lock tests as integration tests under `tests/lock.rs` that fork a child and let the OS report PID liveness.
-- Simplify `Released`: drop `HeldByOther { pid: None }`. The malformed-content path returns `Error::Diag { code: "stamp-malformed", … }`.
-
-### 2b. `Error` variants
-
-For each variant below, replace with `Error::Diag { code: "<kebab>", detail: format!(…) }` at the call site, and delete the variant from `crates/error/src/error.rs` *and* the matching arm in `crates/error/src/display.rs::variant_str`.
-
-Candidates (each has < 3 call sites or no destructuring caller):
-
-- `Error::Lifecycle`
-- `Error::PlanTransition`
-- `Error::PlanIncomplete`
-- `Error::PlanNonTerminalEntries`
-- `Error::BranchPrepareFailed`
-- `Error::ChangeFinalizeBlocked`
-- `Error::ContextLockTooNew`
-- `Error::ContextLockMalformed`
-- `Error::CapabilityManifestMissing`
-- `Error::ToolDenied`
-- `Error::ToolNotDeclared`
-- `Error::InvalidName`
-
-Verify each before deleting: `rg 'Error::<Variant>'` should show one site (or all sites being constructors that can be replaced with `Diag`).
-
-`Exit::from(&Error)` already handles `Diag`-with-special-code routing (see `src/output.rs:115..125`); extend that arm with any kebab codes that need exit 2.
-
-**Net change target.** ≥ −400 LOC across `crates/error`, `crates/domain`, and the handler call sites. Plus deletion of the corresponding `*_variant_strings_are_stable` tests in `crates/error/src/display.rs`.
-
-**Done when.** `Error` enum is < 12 variants; `display.rs::variant_str` is < 25 arms; all lock tests live under `tests/`.
+**Depends on.** none.
 
 ---
 
-## 3. Collapse the standards docs into one `RULES.md`
+## F2. Delete `Guard` and every `*_with_liveness_check`
 
-**What.** Replace the standards-doc sprawl with a single, short source of truth.
+**What.** Two related deletions in the lock module: the unused `Guard` RAII struct and the closure-injected liveness probe.
 
-**Inputs.**
-- `docs/standards/style.md`
-- `docs/standards/coding-standards.md`
-- `docs/standards/handler-shape.md`
-- `docs/standards/testing.md`
-- `docs/standards/predicates.md` (already deleted in §1)
+**Evidence.**
+- `rg 'Guard::acquire'` shows **zero non-test, non-self callers**. Production (`src/commands/change/plan/lock.rs:13,25,63`) calls only `Stamp::{acquire,release,status}`.
+- `Guard` (`crates/domain/src/change/plan/lock.rs:23-56`), its `impl` (`acquire.rs:14-103`), `Drop` (`release.rs:36-52`), and the corresponding tests are dead surface.
+- `Stamp::*_with_liveness_check` exists only so 6 tests can swap in `|_| true` / `|_| false`. Tests can prime a stale-PID file directly (already done in `stale_lock_reclaimed`).
 
-**Output.** One `docs/standards/RULES.md`, **target ≤ 200 lines**, prose-light, example-heavy. Treat `architecture.md` and `DECISIONS.md` as separate concerns and leave them alone.
+**Total lock module LOC**: 710 (141 + 169 + 26 + 52 + 57 + 265 tests).
 
-**`AGENTS.md` becomes a 50-line landing page:** vocabulary, workflow overview, "see `RULES.md`". The current `AGENTS.md` in both repos is already overdue for this.
+**Action.**
+1. Delete `pub struct Guard`, `impl Guard`, `impl Drop for Guard`, and every `Guard::*` test.
+2. Inline `Stamp::acquire_with_liveness_check` body into `Stamp::acquire`; same for `status_with_liveness_check`. Drop the `is_pid_alive` closure parameter.
+3. Rewrite the **8** mock-closure stamp tests to prime an explicit stale lockfile (`fs::write(.., "99999")`) before `Stamp::acquire`. Sites in `crates/domain/src/change/plan/lock/tests.rs`: `stamp_acquire_release` (l. 100), `stamp_reacquire_idempotent` (l. 115), `stamp_acquire_busy` (l. 125), `stamp_reclaims_stale` (l. 138), `stamp_status_absent` (l. 169), `stamp_status_held` (l. 183), `stamp_status_stale` (l. 199), `stamp_status_malformed` (l. 216). The two `stamp_release_*` tests (l. 150, 157) already drive the production path directly and stay as-is.
+4. Drop `Released::HeldByOther { pid: None }` (`lock.rs:88-92`); the malformed-content path returns `Error::Diag { code: "stamp-malformed", … }`.
 
-**Anti-rule.** If two paragraphs say the same thing in different words, pick one and delete the other. Do not add a "and see also" cross-reference. Cross-references are how the docs got here.
+**Net change target.** ≥ −430 LOC.
 
-**First line of `RULES.md`:**
-> Every change to this file deletes or merges an existing paragraph; it does not just add one.
+**Done when.** `rg '\bGuard\b' crates/ src/` returns nothing; `rg '_with_liveness_check' crates/ src/` returns nothing; `cargo test -p specify-domain change::plan::lock` is green.
 
-**Done when.** `wc -l docs/standards/*.md AGENTS.md` is < half of today's number, and no rule appears in two places.
+**Rule?** No.
 
----
+**Counter-argument.** "`Guard` is reserved for the long-lived driver that's coming." Loses to YAGNI: pre-1.0 + zero callers. Eight lines of `flock` is not where the project will struggle when the long-lived driver lands.
 
-## 4. Make `emit_with` the default; delete `ENVELOPE_VERSION`
-
-**What.** Two structural simplifications to the output path.
-
-### 4a. `emit_with` as default
-
-- Make `output::write_with` (the closure-based emitter at `src/output.rs:45..49`) the documented default in `RULES.md`.
-- Migrate handlers from `*Body + Render + From<&Domain>` to either: (a) `Serialize` directly on the domain type, or (b) `ctx.emit_with(&domain, |w, d| write!(w, ...))`.
-- Delete the `Render` trait once no implementors remain.
-- Hot list of handlers carrying redundant `*Body` types: `commands/init.rs::Body`+`ContextBody`+`ContextGeneration`, `commands/slice/list.rs::EntryJson`+`TaskCounts`, `commands/change/plan/lock.rs::AcquireBody`+`ReleaseBody`+`StatusBody`. Each is a candidate for direct serialisation of the domain type.
-
-### 4b. Delete the wire envelope
-
-- Delete `output::Envelope<T>`, `ENVELOPE_VERSION`, and `emit_json`'s wrapping logic. Flatten the body.
-- Delete the `envelope-version` assertions in `tests/cli.rs` and elsewhere.
-- Re-introduce a `v` field if and when 1.0 ships. Today it is bookkeeping with no consumer.
-
-**Net change target.** ≥ −300 LOC across `src/output.rs` and the handler `*Body` types.
-
-**Done when.** `output::Render` is gone (or has < 3 implementors), and `grep -r ENVELOPE_VERSION` returns nothing.
+**Depends on.** none.
 
 ---
 
-## 5. Mass-delete unit tests; move workspace/git tests up
+## F3. Collapse the `Render` / `*Body` triad in `src/output.rs`
 
-**What.** Recalibrate the unit/integration ratio (currently 580/170) toward integration.
+**What.** Make closure-based emission the only path; delete the wire envelope; delete `Render` once nothing implements it.
 
-**Delete unit tests that exercise:**
-- `From` conversions through `#[from]` (e.g. `crates/error/src/error.rs:240..261`).
-- `Display` mirroring of serialised forms (e.g. `crates/error/src/display.rs:77..234`).
-- clap argv shape (covered by `tests/cli.rs` against the real binary). Example: `src/commands/registry.rs:73..88` — its own doc-comment admits it's a duplicate of `tests/registry.rs`.
+**Evidence.**
+- `src/output.rs` = 386 LOC. Surface: `Render` trait (6), `Envelope<T>` + `ENVELOPE_VERSION` + `emit_json` (28), `Validation<R>` (15), `ValidationErrBody` (28), `serialize_path` (10), per-handler `*Body` triads across `commands/{init,slice/list,change/plan/lock,codex,…}`.
+- `output::emit` (line 225) is a 3-line wrapper around `emit_with`; only reason to keep it is the trait.
+- `style.md:34-44` ("One body per command, no wrapper newtype") already says don't introduce `*Body`.
+- `Validation<R>` is a single-field wrapper around `Vec<R>`; `ValidationErrBody` re-states `error / message / exit-code` already on `ErrorBody`.
+- ripgrep's `crates/printer/src/json.rs` writes one event at a time as a serde-derived struct — no `Render` trait, no envelope wrapper.
+- `rg 'envelope-version' specify-cli/tests` returns 0 matches against the host CLI envelope (it is asserted only inside `wasi-tools/*/tests/cli.rs`, which is a separate contract — see F8).
 
-**Move up:**
-- `crates/domain/src/registry/workspace/tests.rs` (24 tests, ~700 lines of `Command::new("git")`) → `tests/workspace.rs`. Drive via `assert_cmd` against the binary.
+**Action.**
+1. Delete `pub trait Render` and `pub(crate) fn write<R: Render>`. Make `write_with` (closure-based) the only success-path entry point.
+2. Delete `Envelope<T>`, `ENVELOPE_VERSION`, and `emit_json`'s wrap. Serialise the body directly through `serde_json::to_writer_pretty`.
+3. Delete `Validation<R>`. Handlers carry `pub results: Vec<Row>` directly with `#[serde(rename_all = "kebab-case")]`.
+4. Delete `ValidationErrBody`. `report` formats validation errors through `ErrorBody` plus a flattened `results` field; one body, one renderer.
+5. At each handler, replace `impl Render for Body` with a free `fn write_text(w, body)` colocated with the handler, and call `write_with(format, &body, write_text)`.
 
-**Keep:**
-- Tests of pure-function invariants the type system cannot encode (parsers, transition tables, validators with many edge cases).
+**Hot list of handlers carrying redundant `*Body` types**: `commands/init.rs::{Body,ContextBody,ContextGeneration}`, `commands/slice/list.rs::{EntryJson,TaskCounts}`, `commands/change/plan/lock.rs::{AcquireBody,ReleaseBody,StatusBody}`, `commands/codex.rs`.
 
-**Net change target.** Unit tests < 200; integration tests > 200. Total LOC ≥ −1 500.
+**Net change target.** ≥ −350 LOC across `src/output.rs` and the per-handler `*Body` triads.
 
-**Done when.** `rg '^#\[test\]' crates/ | wc -l` is < 200, and no `tests/` block in a `crates/**/*.rs` source file shells out to `git`/`gh`.
+**Done when.** `rg '\bRender\b' src/ crates/` only hits the wasi-tools side; `rg ENVELOPE_VERSION src/` returns nothing.
 
----
+**Rule?** No. Once the trait is gone the temptation collapses with it.
 
-## 6. Tighten skill caps and drop the skill allowlist
+**Counter-argument.** "JSON consumers expect `envelope-version`." `tests/cli.rs` does not assert it; no skill branches on it. Add a `v` field back at 1.0 if a wire break ever ships.
 
-**What.** Apply the body cap as written and let it bite.
-
-**Steps.**
-1. Lower `MAX_BODY_LINES` from 250 → 150 in `scripts/checks/skill_body.ts`.
-2. Lower `MAX_SECTION_LINES` from 60 → 40.
-3. Delete `bodyLineCount` / `sectionLineCount` entries from `scripts/standards-allowlist.toml`. New baseline is the cap.
-4. Refactor the over-cap skills (in priority order):
-   - `plugins/omnia/skills/crate-writer/SKILL.md` (currently 377 lines)
-   - `plugins/vectis/skills/core-writer/SKILL.md`
-   - `plugins/omnia/skills/test-writer/SKILL.md`
-   - any other file flagged by the new caps
-5. Each refactor moves prose into `references/<topic>.md` and leaves the SKILL.md as: frontmatter + Critical Path (5–7 items) + pointers + one Guardrails block.
-6. Consolidate the 28 Deno checks in `scripts/checks/` down to ≤ 8: frontmatter, body cap, section cap, critical-path shape, link integrity, envelope embedding, RFC citation, vocabulary. Delete the others.
-
-**Done when.** No skill exceeds 150 lines; `scripts/checks/` exports ≤ 8 check functions; `scripts/standards-allowlist.toml` has no skill-cap entries.
+**Depends on.** none.
 
 ---
 
-## A. Naming pass (one session, mechanical)
+## F4. Move `serde_rfc3339` to `specify-error`; delete the cache/meta duplicate
 
-Apply your own `style.md §"Naming by context"` to the offenders. Do all of these in one session, then stop.
+**What.** Hoist the bespoke RFC3339-second-precision adapter into the leaf so both downstream crates can share it. Delete the duplicate.
 
-- `Error::ChangeFinalizeBlocked` → `FinalizeBlocked`
-- `Error::PlanNonTerminalEntries` → `NonTerminalEntries`
-- `Error::PlanIncomplete` → `Incomplete`
-- `Error::ContextLockMalformed` → `LockMalformed`
-- `Error::ContextLockTooNew` → `LockTooNew`
-  - (Most of these will already be deleted by §2b — apply the rename only to whatever survives.)
-- `RegistryAmendmentProposal` → drop `proposed_` from every field (`src/commands/slice/cli.rs:212..223`)
-- `OutcomeKindAction` → `Outcome` (in module `slice::cli`)
-- `JournalAction` → `Journal`; `SliceMergeAction` → `Merge`; `SliceTaskAction` → `Task`; `RegistryAction` → `Action` or just expand the variants inline
-- `commands::slice::list::collect_status` → `for_slice`; `list_slice_names` → `names`; `status_one` → `one`
-- `crates/domain/src/cmd.rs::RealCmd` → `Cmd`
+**Evidence.**
+- `crates/domain/src/serde_rfc3339.rs` (57 LOC) and `crates/tool/src/cache/meta.rs:251-268` (`mod fetched_at_rfc3339`) are byte-identical.
+- The latter's doc-comment confesses the duplication: *"`specify-tool` cannot depend on `specify-domain` (that direction is owned by `specify-domain`)."*
+- Both crates already depend on `specify-error` (`crates/tool/Cargo.toml:29`, `crates/domain/Cargo.toml:17`).
+- `cargo tree -i jiff` shows it is already in the build graph for both crates.
+- Tokio puts shared serde adapters in its leaf time crate — same pattern.
 
-**Done when.** `rg '\bRegistryAmendmentProposal\b'` returns nothing; no `Action` suffix on a single-purpose enum in `src/commands/*/cli.rs`.
+**Action.**
+1. `mv crates/domain/src/serde_rfc3339.rs crates/error/src/serde_rfc3339.rs`. Add `pub mod serde_rfc3339;` to `crates/error/src/lib.rs`. Remove the line from `crates/domain/src/lib.rs:13`.
+2. Add `jiff = { workspace = true, features = ["serde"] }` to `crates/error/Cargo.toml`.
+3. Replace the 12 `with = "specify_domain::serde_rfc3339"` (and `::option`) attributes with `"specify_error::serde_rfc3339"` — matches in `slice/{metadata,journal}.rs`, `commands/slice/{outcome,journal,lifecycle}.rs`. Pure path swap.
+4. Delete `mod fetched_at_rfc3339` and the `with = "fetched_at_rfc3339"` attribute in `crates/tool/src/cache/meta.rs`. Replace with `with = "specify_error::serde_rfc3339"`. Delete the 6-line "we cannot share this" doc-comment.
 
----
+**Net change target.** ≥ −18 LOC (delete the duplicate + the rationale comment).
 
-## B. `Layout` boundary cleanup
+**Done when.** `rg 'fn serialize.*Timestamp' crates/` returns one hit; `rg 'cannot depend on .specify-domain.' crates/` returns nothing.
 
-**What.** Make `Layout<'a>` the single way handlers talk about the project root.
+**Rule?** No.
 
-**Steps.**
-- Replace every `Registry::path(project_dir)` / `SliceMetadata::path(project_dir)` / similar with `layout.registry_path()` / `layout.slice_metadata(name)`.
-- Move `LayoutExt` extension trait into `Layout`'s `impl` block; delete the trait.
-- Change handler signatures so they receive `Layout<'_>`, not `&Path` for the project root.
-- Update the relevant paragraph in the new `RULES.md`.
+**Counter-argument.** "Adding `jiff` to the leaf bloats `specify-error`." It's already in the dep graph for both downstream crates and the feature is gated; zero compile-time impact.
 
-**Done when.** No `&Path` parameter in `src/commands/**/*.rs` represents the project root; `LayoutExt` is gone.
+**Depends on.** none.
 
 ---
 
-## C. Workspace `Cargo.toml` and dep audit
+## F5. Fold typed `Error` variants into `Diag`-first policy
 
-- `cargo tree -i petgraph` — if only `Plan::topological_order` uses it, replace with ~30 lines of Kahn's algorithm in `crates/domain/src/change/plan/core/`.
-- Verify `futures-util` is reached via `default` features; if only via `oci`, remove from `[workspace.dependencies]`.
-- `glob = "0.3"` — confirm callers; if one or two sites, inline a recursive walk.
-- `jsonschema = "0.46"` — heavy dev-dep. If used in only one or two integration tests, replace with `serde_json` + targeted asserts.
-- Delete `exclude = ["wasi-tools"]` and its 5-line comment from `Cargo.toml:64..68` (cargo doesn't need it; the comment admits it).
-- Reorder `[dependencies]` alphabetically to match the rule documented in (the new) `RULES.md`. Or change the rule.
+**What.** Apply the rule already in `coding-standards.md:178-184` ("Diag-first error policy") and ratchet the `Error` enum from 22 variants to under 12.
 
-**Done when.** `cargo tree --duplicates` shows nothing not already documented in `clippy.toml::allowed-duplicate-crates`; `exclude` is gone.
+**Evidence.** Audit of typed variants without a destructurer or shared shape:
+
+| Variant | Constructors | Destructurers other than `hint` |
+|---|---|---|
+| `Lifecycle` | 1 | 0 |
+| `PlanIncomplete` | 1 | 0 |
+| `PlanNonTerminalEntries` | 1 | 0 (handler builds custom envelope) |
+| `ContextLockTooNew` | 1 | 0 |
+| `ContextLockMalformed` | 1 | 0 |
+| `CapabilityManifestMissing` | 1 | 0 |
+| `ToolDenied(String)` | 1 | 0 (forbidden by `style.md` "Error variants budgeted by recovery, not source") |
+| `ToolNotDeclared` | 1 | 0 |
+| `InvalidName(String)` | 1 | 0 |
+| `ChangeFinalizeBlocked` | 1 | 0 |
+
+Keep only: `Argument`, `Validation`, `CliTooOld`, `Filesystem`, `BranchPrepareFailed` (key + paths destructured), `Diag`, `Io`, `Yaml`, `YamlSer`, `NotInitialized`, `SliceNotFound`, `ArtifactNotFound`, `DriverBusy`, `PlanTransition` (3+ sites).
+
+**Action.**
+1. For each variant in the table, replace the constructor with `Error::Diag { code: "<kebab from variant_str>", detail: format!("…") }`.
+2. Extend `Exit::from(&Error)` (`src/output.rs:104-130`) — already pattern-matches on `Diag.code` for the validation cluster — with the kebab codes that previously routed via typed variants.
+3. Move each typed variant's hint (`display.rs:21-37`) into the `Diag` arm, keyed by `code`.
+4. Delete the corresponding `*_variant_strings_are_stable` tests in `display.rs:93-223`.
+
+**Net change target.** ≥ −300 LOC across `crates/error/src/{error,display}.rs` and the call sites.
+
+**Done when.** `Error` enum is < 12 variants; `display.rs::variant_str` is < 15 arms; `rg '#\[test\].*variant_strings_are_stable' crates/error` returns nothing.
+
+**Rule?** No — the rule is already in `coding-standards.md:178-184`. The deletion is the ratchet.
+
+**Counter-argument.** "Skills grep on `error: lifecycle`." They grep on the kebab `code`, not the variant name; the kebab survives the move.
+
+**Depends on.** none.
 
 ---
 
-## D. Misc one-touch tidies
+## F6. Move workspace integration tests up; mass-delete unit-test mirrors
+
+**What.** Recalibrate the unit/integration ratio (currently 343/169 in `crates/` vs `tests/`) toward integration; delete tests that exist only to verify auto-derived plumbing.
+
+**Evidence.**
+- `crates/domain/src/registry/workspace/tests.rs` — **24 tests, 776 LOC, all `Command::new("git")` shells** — the canonical "integration test masquerading as unit test".
+- `crates/domain/src/change/plan/{core/validate,doctor,lock}/tests.rs` — 24, 22, 17 tests respectively, all driving production paths through `tempdir()`.
+- `crates/error/src/error.rs:240-261` — `io_from`, `yaml_from` verify that `#[from]` works.
+- `crates/error/src/display.rs:93-223` — six `*_variant_strings_are_stable` tests that exist to assert the wire shape that F5 deletes.
+- `src/commands/registry.rs:73-88` — its own doc-comment admits it duplicates `tests/registry.rs`.
+
+**Action.**
+1. Move `crates/domain/src/registry/workspace/tests.rs` to `tests/workspace_internal.rs` (or fold into `tests/workspace.rs`). Drive via `assert_cmd::Command::cargo_bin("specify")`.
+2. Delete `crates/error/src/error.rs:240-261` (auto-derive verifications).
+3. Delete `crates/error/src/display.rs:93-223` after F5.
+4. Delete `src/commands/registry.rs:73-88`.
+5. After F2, delete the `Guard` half of `crates/domain/src/change/plan/lock/tests.rs` (~120 LOC).
+
+**Net change target.** Unit tests < 200; integration tests > 200. Total LOC ≥ −1 200.
+
+**Done when.** `rg '^#\[test\]' crates/ | wc -l` < 200; no `tests/` block under `crates/**/*.rs` shells out to `git`/`gh`.
+
+**Rule?** No. The "lowest external surface" rule is already in `style.md:46-56`.
+
+**Counter-argument.** "Integration tests are slower." `nextest --no-tests=pass` is the default; an additional 24 binary-driven cases adds ≈ 4 s. The 776-LOC inline test file is what slows iteration.
+
+**Depends on.** F2, F5.
+
+---
+
+## F7. Cap skill body at 200, refactor the 9 over-cap skills, halve `scripts/checks/`
+
+**What.** Apply the body cap as written (and tighter), then delete the scripts catching things the model already does by default.
+
+**Evidence.**
+- Cap is **250** (`specify/scripts/checks/skill_body.ts:24`); **9 skills exceed it**: vectis/{android-writer 393, ios-reviewer 392, core-writer 391, android-reviewer 389, ios-writer 383, core-reviewer 377, test-writer 341}; omnia/crate-writer 376; omnia/test-writer 234 (just under).
+- `specify/scripts/checks/` totals **3 559 LOC across 13 files**.
+- `skill_discipline.ts` (153 LOC) catches *"don't restate frontmatter"*, *"use a one-line link for phase outcome"*, *"don't cite RFC numbers in body"*, *"one Guardrails block"* — all things the model already does by default; current CI catches 0–3 violations apiece per run.
+
+**Action.**
+1. Lower `MAX_BODY_LINES` to **200** and `MAX_SECTION_LINES` to **45** in `specify/scripts/checks/skill_body.ts:24,33`.
+2. Drop every `bodyLineCount` / `sectionLineCount` baseline from `specify/scripts/standards-allowlist.toml`.
+3. Refactor over-cap skills in priority of ratchet — vectis first (7 of 9). Each refactor moves long sections under `## Process` / `## References` into `references/<topic>.md` and leaves the SKILL.md as: frontmatter + `## Critical Path` (5–7 entries) + `## Arguments` + one `## Guardrails`.
+4. Delete `specify/scripts/checks/skill_discipline.ts`. Fold `checkBodyLineCount` and `checkSectionLineCount` together (one walk, two assertions — saves ~80 LOC).
+5. Delete `specify/scripts/checks/envelope_doc.ts`; the one `envelope-version` substring guard becomes 6 lines inside `skill_body.ts`.
+
+**Net change target.** ≥ −1 800 LOC across skills + checks.
+
+**Done when.** `wc -l plugins/**/SKILL.md | awk '$1>200'` returns nothing; `ls scripts/checks/*.ts | wc -l` ≤ 9; `grep -c bodyLineCount scripts/standards-allowlist.toml` returns 0.
+
+**Rule?** Already a rule (`AGENTS.md:79`). The change is enforcement, not addition.
+
+**Counter-argument.** "The vectis writers are large because they describe many platforms." Each platform variant currently restates the same 80-line `## Process` block — that's where the prose belongs in `references/`, not in 7 sibling SKILL.md files at 380+ lines each.
+
+**Depends on.** none.
+
+---
+
+## F8. Delete the `wasi-tools` `Envelope` once F3 lands
+
+**What.** Once the host envelope is gone, drop the WASI-tool sibling for the same reason.
+
+**Evidence.**
+- `wasi-tools/vectis/src/lib.rs:36-82` defines `Envelope { envelope_version: u64, … }` with `JSON_SCHEMA_VERSION = 2`.
+- `wasi-tools/contract/src/main.rs:44` and `wasi-tools/contract/tests/cli.rs:46,170,210` assert `envelope-version: 2`.
+- `src/output.rs:134` pins `ENVELOPE_VERSION: u64 = 6` for the host CLI — different number, different surface.
+- `crates/validate/src/envelope.rs` is a third copy of the same pattern (130 LOC).
+- `rg 'envelope-version.*== *[1-9]' specify-cli specify` returns nothing — no consumer branches on the version.
+
+**Action.**
+1. Delete `Envelope` from `wasi-tools/vectis/src/lib.rs:36-82` and serialise the body directly. Same for `wasi-tools/contract`.
+2. Drop the `assert_eq!(value["envelope-version"], 2)` lines from every `wasi-tools/*/tests/cli.rs`.
+3. Delete `crates/validate/src/envelope.rs`.
+
+**Net change target.** ≥ −180 LOC.
+
+**Done when.** `rg 'envelope-version' wasi-tools/ crates/ src/` returns nothing.
+
+**Rule?** No.
+
+**Counter-argument.** "WASI tools have an external schema." The schema is `vectis/schemas/*` and `contract/schemas/*`, not the envelope wrap. The wrapper is bookkeeping.
+
+**Depends on.** F3.
+
+---
+
+## F9. Inline `LayoutExt` into `Layout::new`
+
+**What.** Delete the 9-line extension trait whose only justification is `path.layout()` shorthand.
+
+**Evidence.**
+- `crates/domain/src/config.rs:213-222` defines `pub trait LayoutExt { fn layout(&self) -> Layout<'_>; }` with a single impl `for Path`.
+- `rg 'use.*LayoutExt'` returns **10 sites**, all importing the trait solely for the `path.layout()` syntax.
+- `std` does this with bare functions (`Path::canonicalize` is inherent; nothing wraps it in `Ext`).
+
+**Action.**
+1. Delete `pub trait LayoutExt { … }` and `impl LayoutExt for Path` (`config.rs:213-222`).
+2. Replace each `path.layout()` call site with `Layout::new(path)`.
+3. Delete every `use specify_domain::config::LayoutExt;` / `use crate::config::LayoutExt;` import.
+
+**Net change target.** ≥ −40 LOC.
+
+**Done when.** `rg LayoutExt` returns nothing.
+
+**Rule?** No. `style.md:46-56` already says no traits for testability alone; this is a milder variant of the same.
+
+**Counter-argument.** "It's nicer to write `dir.layout().config_path()`." For 10 call sites, the saved 7 characters do not justify the trait + import in every consumer.
+
+**Depends on.** none.
+
+---
+
+## F10. Split `tests/change_umbrella.rs` (2 762 LOC, 87 tests)
+
+**What.** Split the single largest file in the workspace along the verbs it already exercises.
+
+**Evidence.**
+- `tests/change_umbrella.rs` = **2 762 LOC / 87 `#[test]`** — by far the largest file. Doc-line: *"Integration tests for `specify change *` (the umbrella orchestration)."*
+- `tests/common/mod.rs` = 388 LOC of helpers, much of it shared *only* because everything sits in one binary.
+- `nextest` parallelises across binaries; one 2 762-LOC binary is the long pole.
+- ripgrep splits its tests by feature (`tests/feature.rs`, `tests/json.rs`, etc.); cargo splits by command.
+
+**Action.** Split along the four orchestration verbs already inside the file: `tests/change_create.rs`, `tests/change_show.rs`, `tests/change_finalize.rs`, `tests/change_plan_orchestrate.rs`. Move per-verb fixtures from `tests/common/mod.rs` into the per-verb file when only that verb uses them.
+
+**Net change target.** 0 to −200 LOC (most of the saving is reclaiming helpers when the artificial sharing dissolves).
+
+**Done when.** `tests/change_umbrella.rs` does not exist; no integration-test binary > 800 LOC.
+
+**Rule?** No. One file > 2 000 lines is one offender, not a pattern.
+
+**Counter-argument.** "Splitting just adds files." Loses because the binary boundary is the unit `nextest` parallelises across.
+
+**Depends on.** none.
+
+---
+
+## One-touch tidies
 
 These are small enough to fold into adjacent PRs.
 
-- `crates/domain/src/lib.rs` — delete the `//! See docs/standards/architecture.md for the rationale.` archaeology line.
-- `src/commands/init.rs::canonical` — move `use chrono::Utc;` (currently at line 10) above the `fn canonical` declaration. Delete the 7-line doc on `pub(super) fn run` (lines 21..27); the `debug_assert!` already documents the invariant.
-- `src/commands/init.rs::ContextGeneration::skipped` — collapse to `matches!(self, Self::Skipped { .. })`.
-- `src/commands/registry/add.rs:35..38` — replace the 6-line `description.and_then(|s| { ... })` with `description.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())`.
-- `src/output.rs::Stream` enum + `writer_for(stream)` — collapse to two non-generic functions (`emit_stdout` / `emit_stderr`) or take a `&mut dyn Write` directly. Drops the per-emit `Box<dyn Write>` allocation.
-- `src/output.rs::Validation<R>` — single-field struct wrapping a `Vec`. Inline as `#[serde(rename = "results")] Vec<R>` on the parent body, or keep the wrapper but delete its 5-line doc-comment.
-- `src/output.rs::serialize_path` — 3-line helper, 7 lines of doc. Inline at the call site.
-- `src/output.rs::ValidationErrBody::From<(&Error, &[ValidationSummary])>` — replace with `ValidationErrBody::new(err, results)`.
-- `crates/domain/src/change/plan/lock/acquire.rs:38,127` — both `acquire_with_liveness_check` are `pub` but cross no crate boundary. Demote to `pub(crate)` (or delete per §2a).
+- T1. **`Cargo.toml:65 exclude = ["wasi-tools"]`** — the 5-line comment admits cargo doesn't need it. Delete both. **−6 LOC.**
+- T2. **`Cargo.toml:[dev-dependencies]`** re-lists `sha2` / `jiff` already in `[dependencies]`. Drop the dev re-list. **−2 LOC.**
+- T3. **`src/output.rs:384-386 serialize_path`** — 3-line body, 7 lines of doc. Inline at the 4 call sites. **−7 LOC.**
+- T4. **`src/commands/init.rs::canonical`** — move `use chrono::Utc;` (line 10) above the `fn`; delete the 7-line doc on `pub(super) fn run` (lines 21-27) — the `debug_assert!` already documents the invariant. **−7 LOC.**
+- T5. **`src/commands/registry/add.rs:35-38`** — replace the 6-line `description.and_then(|s| { … })` with `description.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())`. **−4 LOC.**
+- T6. **`crates/error/src/error.rs:228-238`** — two manual `From<serde_saphyr::*::Error> for Error` impls that round-trip through the `YamlError` / `YamlSerError` newtypes. With `#[from]` already on the inner wrappers, the outer impls are redundant. Delete. **−10 LOC.**
+- T7. **`crates/error/src/yaml.rs`** — collapse `YamlError` and `YamlSerError` into `enum YamlError { De(serde_saphyr::Error), Ser(serde_saphyr::ser::Error) }`. Removes one variant from `Error`. **−6 LOC.**
+- T8. **`crates/domain/src/change/plan/lock.rs:73-92` `Released::HeldByOther { pid: Option<u32> }`** — `pid: None` happens only on malformed contents. Per F2, that case becomes `Error::Diag`; the variant becomes `HeldByOther { pid: u32 }`. **−4 LOC.**
+- T9. **`crates/domain/src/lib.rs:13`** — the `pub mod serde_rfc3339;` line goes with F4. **−2 LOC.**
+- T10. **`AGENTS.md:42,76`** reference `docs/standards/predicates.md` and `cargo make standards` — both go with F1. **−4 LOC.**
+- T11. **`clippy.toml:11-27 allowed-duplicate-crates`** is unreachable config. Workspace `Cargo.toml:113` sets `multiple_crate_versions = "allow"`, so the lint never fires and the 17-line allowlist below it never filters anything. Delete the block (and the `# https://doc.rust-lang.org/stable/clippy/index.html` line above it that the rest of the file no longer needs). **−18 LOC.**
 
 ---
 
@@ -246,10 +363,11 @@ Things this review **deliberately does not propose**, despite the gravitational 
 
 - No new `xtask` predicates.
 - No new `clippy.toml` overrides.
-- No new `*Body` types.
+- No new `*Body` / `*Row` / `From` impls.
 - No new `docs/standards/*.md` files.
-- No new `From` impls "for symmetry".
-- No new tests for code being deleted.
 - No new "Prevention" notes in `AGENTS.md` beyond the deletion-budget rule.
+- No tests for code being deleted.
+- No `RULES.md` consolidation as a structural item — it only becomes net-deletion **after** F1 lands and the predicate references go with it. Treat it as a one-touch tidy at that point.
+- No drop of `jsonschema` — it is a production dep (`crates/domain/src/capability/capability.rs:353`, `crates/tool/src/validate.rs:525`), not dev-only.
 
 If a session reaches for any of these, stop and reconsider whether the change is necessary.
