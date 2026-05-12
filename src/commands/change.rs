@@ -4,17 +4,18 @@ pub(crate) mod plan;
 use std::io::Write;
 use std::path::PathBuf;
 
-use chrono::Utc;
+use jiff::Timestamp;
 use serde::Serialize;
-use specify_capability::ChangeBrief;
-use specify_change::finalize;
+use specify_domain::capability::ChangeBrief;
+use specify_domain::change::finalize;
+use specify_domain::cmd::RealCmd;
+use specify_domain::registry::Registry;
+use specify_domain::slice::atomic::bytes_write;
 use specify_error::{Error, Result, is_kebab};
-use specify_registry::Registry;
-use specify_slice::atomic::bytes_write;
 
 use crate::cli::ChangeAction;
 use crate::context::Ctx;
-use crate::output::{Render, display, serialize_path};
+use crate::output::{Render, serialize_path};
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
 pub(crate) fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
@@ -39,12 +40,15 @@ fn brief_create(ctx: &Ctx, name: String) -> Result<()> {
 
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     if brief_path.exists() {
-        return Err(Error::ChangeBriefExists { path: brief_path });
+        return Err(Error::Diag {
+            code: "already-exists",
+            detail: format!("change brief already exists at {}", brief_path.display()),
+        });
     }
 
     bytes_write(&brief_path, ChangeBrief::template(&name).as_bytes())?;
 
-    ctx.out().write(&BriefCreateBody {
+    ctx.write(&BriefCreateBody {
         name,
         path: brief_path,
     })?;
@@ -54,7 +58,7 @@ fn brief_create(ctx: &Ctx, name: String) -> Result<()> {
 fn brief_show(ctx: &Ctx) -> Result<()> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let brief = ChangeBrief::load(&ctx.project_dir)?;
-    ctx.out().write(&BriefShowBody {
+    ctx.write(&BriefShowBody {
         brief,
         path: brief_path,
     })?;
@@ -89,22 +93,21 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
         projects: Vec::new(),
     });
 
-    let probe = finalize::RealProbe;
     let inputs = finalize::Inputs {
         project_dir: &ctx.project_dir,
         plan: &plan,
         registry: &registry,
         clean,
         dry_run,
-        now: Utc::now(),
+        now: Timestamp::now(),
     };
 
-    match finalize::run(inputs, &probe) {
+    match finalize::run(inputs, &RealCmd) {
         Ok(outcome) => {
             let finalized = outcome.finalized;
             let summary = blocked_reason(&outcome.summary);
             let plan_name = outcome.name.clone();
-            ctx.out().write(&FinalizeBody { outcome: &outcome })?;
+            ctx.emit_with(&outcome, render_finalize_outcome)?;
             if finalized {
                 Ok(())
             } else {
@@ -135,7 +138,7 @@ struct BriefCreateBody {
 
 impl Render for BriefCreateBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Created change brief for {} at {}", self.name, display(&self.path))
+        writeln!(w, "Created change brief for {} at {}", self.name, self.path.display())
     }
 }
 
@@ -150,7 +153,7 @@ struct BriefShowBody {
 
 impl Render for BriefShowBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let path = display(&self.path);
+        let path = self.path.display().to_string();
         match &self.brief {
             None => writeln!(w, "no change brief declared at {path}"),
             Some(brief) => render_brief(w, brief, &path),
@@ -174,66 +177,57 @@ fn render_brief(w: &mut dyn Write, brief: &ChangeBrief, path: &str) -> std::io::
     write!(w, "{}", brief.body)
 }
 
-/// Wrapper around the upstream `finalize::Outcome` so the binary can
-/// own the text rendering without the `Render` orphan-rule fight.
-/// `#[serde(transparent)]` keeps the JSON envelope byte-identical.
-#[derive(Serialize)]
-#[serde(transparent)]
-struct FinalizeBody<'a> {
-    outcome: &'a finalize::Outcome,
-}
-
-impl Render for FinalizeBody<'_> {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let outcome = self.outcome;
-        if outcome.dry_run == Some(true) {
-            writeln!(
-                w,
-                "[dry-run] specify: change finalize \u{2014} {} ({})",
-                outcome.name, outcome.expected_branch
-            )?;
-        } else {
-            writeln!(
-                w,
-                "specify: change finalize \u{2014} {} ({})",
-                outcome.name, outcome.expected_branch
-            )?;
-        }
-        writeln!(w)?;
-
-        for r in &outcome.projects {
-            render_project_row(w, r)?;
-        }
-        if !outcome.projects.is_empty() {
-            writeln!(w)?;
-        }
-        render_summary_line(w, &outcome.summary)?;
-        writeln!(w)?;
-
-        if outcome.finalized {
-            if outcome.dry_run == Some(true) {
-                writeln!(w, "[dry-run] Change `{}` would be finalized.", outcome.name)?;
-            } else {
-                writeln!(w, "Change `{}` finalized.", outcome.name)?;
-                if let Some(archived) = &outcome.archived {
-                    writeln!(w, "  archived plan: {archived}")?;
-                }
-                if let Some(dir) = &outcome.archived_plans_dir {
-                    writeln!(w, "  archived dir:  {dir}")?;
-                }
-                if !outcome.cleaned.is_empty() {
-                    writeln!(w, "  cleaned clones: {}", outcome.cleaned.join(", "))?;
-                }
-            }
-        } else {
-            let reason = blocked_reason(&outcome.summary);
-            writeln!(w, "Change `{}` blocked: {reason}.", outcome.name)?;
-            if let Some(message) = &outcome.message {
-                writeln!(w, "{message}")?;
-            }
-        }
-        Ok(())
+/// Text-format rendering for [`finalize::Outcome`]. Used by
+/// [`Ctx::emit_with`] in [`run_finalize`] — the domain type ships its
+/// own `Serialize`, so the binary only needs to own the text shape.
+fn render_finalize_outcome(w: &mut dyn Write, outcome: &finalize::Outcome) -> std::io::Result<()> {
+    if outcome.dry_run == Some(true) {
+        writeln!(
+            w,
+            "[dry-run] specify: change finalize \u{2014} {} ({})",
+            outcome.name, outcome.expected_branch
+        )?;
+    } else {
+        writeln!(
+            w,
+            "specify: change finalize \u{2014} {} ({})",
+            outcome.name, outcome.expected_branch
+        )?;
     }
+    writeln!(w)?;
+
+    for r in &outcome.projects {
+        render_project_row(w, r)?;
+    }
+    if !outcome.projects.is_empty() {
+        writeln!(w)?;
+    }
+    render_summary_line(w, &outcome.summary)?;
+    writeln!(w)?;
+
+    if outcome.finalized {
+        if outcome.dry_run == Some(true) {
+            writeln!(w, "[dry-run] Change `{}` would be finalized.", outcome.name)?;
+        } else {
+            writeln!(w, "Change `{}` finalized.", outcome.name)?;
+            if let Some(archived) = &outcome.archived {
+                writeln!(w, "  archived plan: {archived}")?;
+            }
+            if let Some(dir) = &outcome.archived_plans_dir {
+                writeln!(w, "  archived dir:  {dir}")?;
+            }
+            if !outcome.cleaned.is_empty() {
+                writeln!(w, "  cleaned clones: {}", outcome.cleaned.join(", "))?;
+            }
+        }
+    } else {
+        let reason = blocked_reason(&outcome.summary);
+        writeln!(w, "Change `{}` blocked: {reason}.", outcome.name)?;
+        if let Some(message) = &outcome.message {
+            writeln!(w, "{message}")?;
+        }
+    }
+    Ok(())
 }
 
 fn render_project_row(w: &mut dyn Write, r: &finalize::ProjectResult) -> std::io::Result<()> {
@@ -277,13 +271,13 @@ fn blocked_reason(s: &finalize::Summary) -> String {
 
 // ---------------------------------------------------------------------------
 // Tests for the CLI handler — keep them lean; the heavy lifting lives in
-// `specify_change::finalize` (orchestrator) and `tests/cli.rs`
+// `specify_domain::change::finalize` (orchestrator) and `tests/cli.rs`
 // (end-to-end with the real binary).
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
-    use specify_change::finalize::Landing;
+    use specify_domain::change::finalize::Landing;
 
     use super::*;
 

@@ -1,19 +1,8 @@
 //! Global cache layout and metadata helpers for resolved WASI tools.
-//!
-//! No file locks are planned for v1. Two concurrent cold-cache resolutions may
-//! both stage bytes; the resolver's atomic install step will make the final
-//! cache state deterministic.
-//!
-//! The submodules under `cache/` carry the I/O concerns:
-//! [`fetch`] owns stage-and-install, [`gc`] owns the orphan scan, and
-//! [`meta`] owns the on-disk `meta.yaml` sidecar. The parent module owns the
-//! pure path/scope helpers and the [`CacheStatus`] decision API that ties
-//! them together.
+//! Owns pure path/scope helpers and the [`Status`] decision API;
+//! I/O concerns live in [`fetch`], [`gc`], and [`meta`].
 
-use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs, io};
 
 use crate::error::ToolError;
@@ -28,7 +17,9 @@ mod tests;
 
 pub use fetch::stage_and_install;
 pub use gc::scan as scan_for_gc;
-pub use meta::{PermissionsSnapshot, Sidecar, read_sidecar, write_sidecar};
+pub use meta::{
+    OciSnapshot, PackageSnapshot, PermissionsSnapshot, Sidecar, read_sidecar, write_sidecar,
+};
 
 /// Filename used for cached component bytes.
 pub const MODULE_FILENAME: &str = "module.wasm";
@@ -39,13 +30,10 @@ pub const SIDECAR_FILENAME: &str = "meta.yaml";
 /// Embedded JSON Schema for cache sidecars.
 pub const TOOL_SIDECAR_JSON_SCHEMA: &str = include_str!("../schemas/tool-sidecar.schema.json");
 
-const MAX_TEMP_ATTEMPTS: u8 = 64;
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
 /// Cache reuse state for a declared tool.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum CacheStatus {
+pub enum Status {
     /// Cached bytes and sidecar metadata match the live declaration tuple.
     Hit,
     /// The cache directory, module, or sidecar is absent.
@@ -65,7 +53,7 @@ pub enum CacheStatus {
 /// `XDG_CACHE_HOME` override is set but empty or relative, when `HOME` is
 /// set but empty or relative, or when none of the three precedence variables
 /// is set and so no fallback root can be selected.
-pub fn cache_root() -> Result<PathBuf, ToolError> {
+pub fn root() -> Result<PathBuf, ToolError> {
     if let Some(value) = env::var_os("SPECIFY_TOOLS_CACHE") {
         return env_path("SPECIFY_TOOLS_CACHE", value);
     }
@@ -116,7 +104,7 @@ pub fn scope_segment(scope: &ToolScope) -> Result<String, ToolError> {
 pub fn tool_dir(scope: &ToolScope, name: &str, version: &str) -> Result<PathBuf, ToolError> {
     validate_segment("tool name", name)?;
     validate_segment("tool version", version)?;
-    Ok(cache_root()?.join(scope_segment(scope)?).join(name).join(version))
+    Ok(root()?.join(scope_segment(scope)?).join(name).join(version))
 }
 
 /// Compute the cached module path for one tool version.
@@ -142,21 +130,21 @@ pub fn sidecar_path(scope: &ToolScope, name: &str, version: &str) -> Result<Path
 /// # Errors
 ///
 /// Forwards every error returned by [`module_path()`], [`sidecar_path`], and
-/// [`read_sidecar`] — the latter surfaces `ToolError::CacheIo`,
-/// `ToolError::SidecarParse`, and `ToolError::SidecarSchema` when an
-/// existing `meta.yaml` is unreadable or malformed (a missing sidecar is
-/// reported as [`CacheStatus::MissNotFound`] rather than as an error).
-pub fn cache_status(
+/// [`read_sidecar`] — the latter surfaces `ToolError::Io` and the
+/// `ToolError::Sidecar` parse/schema variants when an existing `meta.yaml`
+/// is unreadable or malformed (a missing sidecar is reported as
+/// [`Status::MissNotFound`] rather than as an error).
+pub fn status(
     scope: &ToolScope, tool_name: &str, tool_version: &str, source: &str, sha256: Option<&str>,
-) -> Result<CacheStatus, ToolError> {
+) -> Result<Status, ToolError> {
     let module = module_path(scope, tool_name, tool_version)?;
     if !module.is_file() {
-        return Ok(CacheStatus::MissNotFound);
+        return Ok(Status::MissNotFound);
     }
     let Some(sidecar) = read_sidecar(&sidecar_path(scope, tool_name, tool_version)?)? else {
-        return Ok(CacheStatus::MissNotFound);
+        return Ok(Status::MissNotFound);
     };
-    sidecar_cache_status(scope, tool_name, tool_version, source, sha256, &sidecar)
+    sidecar_status(scope, tool_name, tool_version, source, sha256, &sidecar)
 }
 
 /// Compare an already-loaded sidecar against a live declaration tuple.
@@ -165,10 +153,10 @@ pub fn cache_status(
 ///
 /// Returns `ToolError::InvalidCacheSegment` when the live scope cannot be
 /// converted into a valid cache segment.
-pub fn sidecar_cache_status(
+pub fn sidecar_status(
     scope: &ToolScope, tool_name: &str, tool_version: &str, source: &str, sha256: Option<&str>,
     sidecar: &Sidecar,
-) -> Result<CacheStatus, ToolError> {
+) -> Result<Status, ToolError> {
     let live_scope = scope_segment(scope)?;
     if sidecar.scope == live_scope
         && sidecar.tool_name == tool_name
@@ -176,9 +164,9 @@ pub fn sidecar_cache_status(
         && sidecar.source == source
         && sidecar.sha256.as_deref() == sha256
     {
-        Ok(CacheStatus::Hit)
+        Ok(Status::Hit)
     } else {
-        Ok(CacheStatus::MissChanged)
+        Ok(Status::MissChanged)
     }
 }
 
@@ -220,23 +208,6 @@ fn invalid_segment(field: &'static str, value: &str, reason: &'static str) -> To
         value: value.to_string(),
         reason,
     }
-}
-
-fn unique_sibling_path(parent: &Path, stem: impl AsRef<OsStr>) -> Result<PathBuf, ToolError> {
-    let stem = stem.as_ref().to_string_lossy();
-    let nanos =
-        SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_nanos());
-    for _ in 0..MAX_TEMP_ATTEMPTS {
-        let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let candidate = parent.join(format!(".{stem}.{}.{}.{}.tmp", std::process::id(), nanos, n));
-        if !candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-    Err(ToolError::CacheCollision {
-        parent: parent.to_path_buf(),
-        stem: stem.into_owned(),
-    })
 }
 
 fn sorted_dir_entries(path: &Path) -> Result<Vec<fs::DirEntry>, ToolError> {

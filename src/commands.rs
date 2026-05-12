@@ -10,6 +10,7 @@ mod status;
 pub(crate) mod tool;
 pub(crate) mod workspace;
 
+use clap::CommandFactory;
 use specify_error::Result;
 
 use crate::cli::{CapabilityAction, Cli, Commands, Format, ToolAction, WorkspaceAction};
@@ -24,18 +25,18 @@ pub(crate) fn run(cli: Cli) -> Exit {
             name,
             domain,
             hub,
-        } => {
-            bare(format, || init::run(format, capability, name.as_deref(), domain.as_deref(), hub))
-        }
+        } => dispatch(format, || {
+            init::run(format, capability.as_deref(), name.as_deref(), domain.as_deref(), hub)
+        }),
         Commands::Status => scoped(format, status::run),
         Commands::Context { action } => scoped(format, |ctx| context::run(ctx, &action)),
         Commands::Capability { action } => match action {
             CapabilityAction::Resolve {
                 capability_value,
                 project_dir,
-            } => bare(format, || capability::resolve(format, capability_value, &project_dir)),
+            } => dispatch(format, || capability::resolve(format, capability_value, &project_dir)),
             CapabilityAction::Check { capability_dir } => {
-                bare(format, || capability::check(format, capability_dir))
+                dispatch(format, || capability::check(format, &capability_dir))
             }
             CapabilityAction::Pipeline { phase, slice } => {
                 scoped(format, |ctx| capability::pipeline(ctx, phase, slice.as_deref()))
@@ -53,6 +54,11 @@ pub(crate) fn run(cli: Cli) -> Exit {
         Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
         Commands::Change { action } => scoped(format, |ctx| change::run(ctx, action)),
         Commands::Registry { action } => scoped(format, |ctx| registry::run(ctx, action)),
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            clap_complete::generate(shell, &mut cmd, "specify", &mut std::io::stdout());
+            Exit::Success
+        }
         Commands::Workspace { action } => match action {
             WorkspaceAction::Sync { projects } => {
                 scoped(format, |ctx| workspace::sync(ctx, &projects))
@@ -97,7 +103,8 @@ where
 
 /// Run a command that does NOT need project context but may still fail
 /// with an `Error` (e.g. `capability resolve`, `capability check`).
-fn bare<F>(format: Format, f: F) -> Exit
+/// The `Ctx`-bearing peer is [`scoped`].
+fn dispatch<F>(format: Format, f: F) -> Exit
 where
     F: FnOnce() -> Result<()>,
 {

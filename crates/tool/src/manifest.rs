@@ -3,12 +3,12 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
-use serde::de::{self, Visitor};
+use serde::de::{self, MapAccess, Visitor};
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// One declared WASI tool.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tool {
     /// Tool name used by `specify tool run <name>`.
     pub name: String,
@@ -17,10 +17,8 @@ pub struct Tool {
     /// Source of the WASI component bytes.
     pub source: ToolSource,
     /// Optional lower-case hex SHA-256 digest over the component bytes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
     /// Filesystem preopen requests.
-    #[serde(default)]
     pub permissions: ToolPermissions,
 }
 
@@ -33,6 +31,19 @@ pub enum ToolSource {
     FileUri(String),
     /// `https://` URI.
     HttpsUri(String),
+    /// Exact wasm-pkg package request.
+    Package(PackageRequest),
+}
+
+/// Exact wasm-pkg package request used by first-party tool declarations.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PackageRequest {
+    /// Package namespace before `:`.
+    pub namespace: String,
+    /// Package name after `:` and before `@`.
+    pub name: String,
+    /// Exact version after `@`.
+    pub version: String,
 }
 
 impl ToolSource {
@@ -49,9 +60,11 @@ impl ToolSource {
             Ok(Self::FileUri(value.to_string()))
         } else if Path::new(value).is_absolute() || looks_like_windows_absolute_path(value) {
             Ok(Self::LocalPath(PathBuf::from(value)))
+        } else if looks_like_package_request(value) {
+            Ok(Self::Package(PackageRequest::parse(value)))
         } else {
             Err(format!(
-                "unsupported tool source `{value}`; expected an absolute path, file:// URI, or https:// URI"
+                "unsupported tool source `{value}`; expected an absolute path, file:// URI, https:// URI, or wasm package request"
             ))
         }
     }
@@ -62,7 +75,177 @@ impl ToolSource {
         match self {
             Self::LocalPath(path) => path.to_string_lossy(),
             Self::FileUri(uri) | Self::HttpsUri(uri) => Cow::Borrowed(uri),
+            Self::Package(package) => Cow::Owned(package.to_wire_string()),
         }
+    }
+}
+
+impl PackageRequest {
+    /// Parse a package request string.
+    ///
+    /// Parsing is intentionally permissive so structural validation can emit
+    /// stable rule ids for unsupported namespaces and non-SemVer versions.
+    #[must_use]
+    pub fn parse(value: &str) -> Self {
+        let (package, version) = value.split_once('@').unwrap_or((value, ""));
+        let (namespace, name) = package.split_once(':').unwrap_or(("", package));
+        Self {
+            namespace: namespace.to_string(),
+            name: name.to_string(),
+            version: version.to_string(),
+        }
+    }
+
+    /// Return the package name without the version suffix.
+    #[must_use]
+    pub fn name_ref(&self) -> String {
+        format!("{}:{}", self.namespace, self.name)
+    }
+
+    /// Return the manifest string form.
+    #[must_use]
+    pub fn to_wire_string(&self) -> String {
+        format!("{}@{}", self.name_ref(), self.version)
+    }
+}
+
+impl Tool {
+    fn from_package(value: &str) -> Self {
+        let package = PackageRequest::parse(value);
+        let permissions = first_party_permissions(&package).unwrap_or_default();
+        Self {
+            name: package.name.clone(),
+            version: package.version.clone(),
+            source: ToolSource::Package(package),
+            sha256: None,
+            permissions,
+        }
+    }
+
+    fn is_scalar_package_entry(&self) -> bool {
+        let ToolSource::Package(package) = &self.source else {
+            return false;
+        };
+        self.name == package.name
+            && self.version == package.version
+            && self.sha256.is_none()
+            && first_party_permissions(package)
+                .is_some_and(|permissions| self.permissions == permissions)
+    }
+}
+
+impl Serialize for Tool {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if self.is_scalar_package_entry() {
+            return serializer.serialize_str(self.source.to_wire_string().as_ref());
+        }
+
+        let mut state = serializer.serialize_struct("Tool", 5)?;
+        state.serialize_field("name", &self.name)?;
+        state.serialize_field("version", &self.version)?;
+        state.serialize_field("source", &self.source)?;
+        if let Some(sha256) = &self.sha256 {
+            state.serialize_field("sha256", sha256)?;
+        }
+        if self.permissions != ToolPermissions::default() {
+            state.serialize_field("permissions", &self.permissions)?;
+        }
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Tool {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(ToolVisitor)
+    }
+}
+
+struct ToolVisitor;
+
+const TOOL_FIELDS: &[&str] = &["name", "version", "source", "sha256", "permissions"];
+
+impl<'de> Visitor<'de> for ToolVisitor {
+    type Value = Tool;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a package request string or a tool object")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(Tool::from_package(v))
+    }
+
+    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(Tool::from_package(&v))
+    }
+
+    fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut name: Option<String> = None;
+        let mut version: Option<String> = None;
+        let mut source: Option<ToolSource> = None;
+        let mut sha256: Option<Option<String>> = None;
+        let mut permissions: Option<ToolPermissions> = None;
+
+        while let Some(key) = map.next_key::<String>()? {
+            match key.as_str() {
+                "name" => {
+                    if name.is_some() {
+                        return Err(<M::Error as de::Error>::duplicate_field("name"));
+                    }
+                    name = Some(map.next_value()?);
+                }
+                "version" => {
+                    if version.is_some() {
+                        return Err(<M::Error as de::Error>::duplicate_field("version"));
+                    }
+                    version = Some(map.next_value()?);
+                }
+                "source" => {
+                    if source.is_some() {
+                        return Err(<M::Error as de::Error>::duplicate_field("source"));
+                    }
+                    source = Some(map.next_value()?);
+                }
+                "sha256" => {
+                    if sha256.is_some() {
+                        return Err(<M::Error as de::Error>::duplicate_field("sha256"));
+                    }
+                    sha256 = Some(map.next_value()?);
+                }
+                "permissions" => {
+                    if permissions.is_some() {
+                        return Err(<M::Error as de::Error>::duplicate_field("permissions"));
+                    }
+                    permissions = Some(map.next_value()?);
+                }
+                other => {
+                    return Err(<M::Error as de::Error>::unknown_field(other, TOOL_FIELDS));
+                }
+            }
+        }
+
+        Ok(Tool {
+            name: name.ok_or_else(|| <M::Error as de::Error>::missing_field("name"))?,
+            version: version.ok_or_else(|| <M::Error as de::Error>::missing_field("version"))?,
+            source: source.ok_or_else(|| <M::Error as de::Error>::missing_field("source"))?,
+            sha256: sha256.unwrap_or_default(),
+            permissions: permissions.unwrap_or_default(),
+        })
     }
 }
 
@@ -113,6 +296,25 @@ pub struct ToolPermissions {
     pub write: Vec<String>,
 }
 
+/// Return embedded permissions for first-party scalar package declarations.
+#[must_use]
+pub fn first_party_permissions(package: &PackageRequest) -> Option<ToolPermissions> {
+    if package.namespace != "specify" {
+        return None;
+    }
+    match package.name.as_str() {
+        "contract" => Some(ToolPermissions {
+            read: vec!["$PROJECT_DIR/contracts".to_string()],
+            write: Vec::new(),
+        }),
+        "vectis" => Some(ToolPermissions {
+            read: vec!["$PROJECT_DIR".to_string(), "$CAPABILITY_DIR".to_string()],
+            write: vec!["$PROJECT_DIR".to_string()],
+        }),
+        _ => None,
+    }
+}
+
 /// A `tools:` array as it appears in either declaration site.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -145,6 +347,10 @@ fn looks_like_windows_absolute_path(value: &str) -> bool {
         && bytes[0].is_ascii_alphabetic()
         && bytes[1] == b':'
         && matches!(bytes[2], b'\\' | b'/')
+}
+
+fn looks_like_package_request(value: &str) -> bool {
+    value.contains(':') || value.starts_with("specify:")
 }
 
 #[cfg(test)]
@@ -206,5 +412,44 @@ mod tests {
         )
         .expect_err("relative source must fail");
         assert!(err.to_string().contains("unsupported tool source"), "{err}");
+    }
+
+    #[test]
+    fn scalar_package_entry_derives_tool_fields_and_permissions() {
+        let manifest: ToolManifest =
+            serde_saphyr::from_str("tools:\n  - \"specify:contract@1.2.3\"\n")
+                .expect("parse package manifest");
+        assert_eq!(manifest.tools.len(), 1);
+        let tool = &manifest.tools[0];
+        assert_eq!(tool.name, "contract");
+        assert_eq!(tool.version, "1.2.3");
+        assert!(matches!(
+            &tool.source,
+            ToolSource::Package(package)
+                if package.namespace == "specify"
+                    && package.name == "contract"
+                    && package.version == "1.2.3"
+        ));
+        assert_eq!(
+            tool.permissions,
+            ToolPermissions {
+                read: vec!["$PROJECT_DIR/contracts".to_string()],
+                write: Vec::new(),
+            }
+        );
+
+        let yaml = serde_saphyr::to_string(&manifest).expect("serialize package manifest");
+        assert!(yaml.contains("specify:contract@1.2.3"), "{yaml}");
+    }
+
+    #[test]
+    fn unknown_package_entry_keeps_empty_permissions_for_validation() {
+        let manifest: ToolManifest =
+            serde_saphyr::from_str("tools:\n  - \"other:helper@latest\"\n")
+                .expect("parse package manifest");
+        let tool = &manifest.tools[0];
+        assert_eq!(tool.name, "helper");
+        assert_eq!(tool.version, "latest");
+        assert_eq!(tool.permissions, ToolPermissions::default());
     }
 }

@@ -6,32 +6,32 @@ use super::detect::Detection;
 
 /// Complete input needed to render repository context.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ContextRenderInput {
+pub(super) struct Input {
     pub(super) project_name: String,
     pub(super) is_hub: bool,
     pub(super) detection: Detection,
     pub(super) domain: Option<String>,
-    pub(super) capability: Option<CapabilitySummary>,
-    pub(super) rule_overrides: Vec<RuleOverride>,
-    pub(super) declared_tools: Vec<DeclaredTool>,
+    pub(super) capability: Option<Capability>,
+    pub(super) rule_overrides: Vec<Rule>,
+    pub(super) declared_tools: Vec<Tool>,
     pub(super) active_slices: Vec<String>,
-    pub(super) workspace_peers: Vec<WorkspacePeer>,
-    pub(super) dependencies: Vec<DependencyPeer>,
+    pub(super) workspace_peers: Vec<Peer>,
+    pub(super) dependencies: Vec<Dep>,
 }
 
 /// Capability details surfaced without embedding capability-specific prose in
 /// the binary.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct CapabilitySummary {
+pub(super) struct Capability {
     pub(super) name: String,
     pub(super) version: u32,
     pub(super) description: String,
-    pub(super) briefs: Vec<BriefSummary>,
+    pub(super) briefs: Vec<Brief>,
 }
 
 /// One resolved capability brief.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct BriefSummary {
+pub(super) struct Brief {
     pub(super) phase: String,
     pub(super) id: String,
     pub(super) description: String,
@@ -39,28 +39,28 @@ pub(super) struct BriefSummary {
 
 /// One `project.yaml.rules` override.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct RuleOverride {
+pub(super) struct Rule {
     pub(super) brief_id: String,
     pub(super) path: String,
 }
 
 /// One project-scoped WASI tool declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct DeclaredTool {
+pub(super) struct Tool {
     pub(super) name: String,
     pub(super) version: String,
 }
 
 /// One materialized registry workspace slot.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct WorkspacePeer {
+pub(super) struct Peer {
     pub(super) name: String,
     pub(super) path: String,
 }
 
 /// One registry peer dependency.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct DependencyPeer {
+pub(super) struct Dep {
     pub(super) name: String,
     pub(super) capability: String,
     pub(super) url: String,
@@ -70,15 +70,13 @@ pub(super) struct DependencyPeer {
 /// Render a complete fenced `AGENTS.md` document.
 #[cfg(test)]
 #[must_use]
-fn render_document(input: &ContextRenderInput) -> String {
+fn render_document(input: &Input) -> String {
     render_document_with_fingerprint(input, PLACEHOLDER_FINGERPRINT)
 }
 
 /// Render a complete fenced `AGENTS.md` document with a computed fingerprint.
 #[must_use]
-pub(super) fn render_document_with_fingerprint(
-    input: &ContextRenderInput, fingerprint: &str,
-) -> String {
+pub(super) fn render_document_with_fingerprint(input: &Input, fingerprint: &str) -> String {
     let mut out = String::new();
     out.push_str("# ");
     out.push_str(&one_line(&input.project_name));
@@ -98,7 +96,7 @@ pub(super) fn render_document_with_fingerprint(
 
 /// Render only the managed Markdown body between context fences.
 #[must_use]
-pub(super) fn render_body(input: &ContextRenderInput) -> String {
+pub(super) fn render_body(input: &Input) -> String {
     let mut sections = Vec::new();
     if !input.is_hub {
         sections.push(render_section("Runtime", input.detection.runtime_bullets()));
@@ -131,7 +129,7 @@ fn render_section(title: &str, mut bullets: Vec<String>) -> String {
     out
 }
 
-fn navigation_bullets(input: &ContextRenderInput) -> Vec<String> {
+fn navigation_bullets(input: &Input) -> Vec<String> {
     let mut bullets = vec![
         format!("active slices: {} in `.specify/slices/`.", input.active_slices.len()),
         "`.specify/archive/` contains merged or dropped slice history.".to_string(),
@@ -151,7 +149,7 @@ fn navigation_bullets(input: &ContextRenderInput) -> Vec<String> {
     bullets
 }
 
-fn conventions_bullets(input: &ContextRenderInput) -> Vec<String> {
+fn conventions_bullets(input: &Input) -> Vec<String> {
     let mut bullets = Vec::new();
     if let Some(domain) = input.domain.as_deref().map(one_line).filter(|value| !value.is_empty()) {
         bullets.push(format!("project domain: {domain}."));
@@ -185,7 +183,7 @@ fn conventions_bullets(input: &ContextRenderInput) -> Vec<String> {
     bullets
 }
 
-fn boundaries_bullets(input: &ContextRenderInput) -> Vec<String> {
+fn boundaries_bullets(input: &Input) -> Vec<String> {
     let mut bullets = vec![
         "`.metadata.yaml` files are framework-managed; update them through `specify slice` commands."
             .to_string(),
@@ -212,7 +210,7 @@ fn boundaries_bullets(input: &ContextRenderInput) -> Vec<String> {
     bullets
 }
 
-fn dependency_bullets(input: &ContextRenderInput) -> Vec<String> {
+fn dependency_bullets(input: &Input) -> Vec<String> {
     if input.dependencies.is_empty() {
         return vec!["single-repo project; no registered peers.".to_string()];
     }
@@ -246,34 +244,34 @@ fn one_line(value: &str) -> String {
 mod tests {
     use super::*;
 
-    fn regular_input() -> ContextRenderInput {
-        ContextRenderInput {
+    fn regular_input() -> Input {
+        Input {
             project_name: "demo".to_string(),
             is_hub: false,
             detection: Detection::default(),
             domain: Some("Rust services".to_string()),
-            capability: Some(CapabilitySummary {
+            capability: Some(Capability {
                 name: "omnia".to_string(),
                 version: 1,
                 description: "Omnia Rust WASM workflow".to_string(),
                 briefs: vec![
-                    BriefSummary {
+                    Brief {
                         phase: "define".to_string(),
                         id: "specs".to_string(),
                         description: "Write requirements".to_string(),
                     },
-                    BriefSummary {
+                    Brief {
                         phase: "define".to_string(),
                         id: "proposal".to_string(),
                         description: "Establish why".to_string(),
                     },
                 ],
             }),
-            rule_overrides: vec![RuleOverride {
+            rule_overrides: vec![Rule {
                 brief_id: "proposal".to_string(),
                 path: ".specify/rules/proposal.md".to_string(),
             }],
-            declared_tools: vec![DeclaredTool {
+            declared_tools: vec![Tool {
                 name: "contract".to_string(),
                 version: "1.0.0".to_string(),
             }],
@@ -324,13 +322,13 @@ mod tests {
     fn dependency_bullets_are_sorted_by_rendered_text() {
         let mut input = regular_input();
         input.dependencies = vec![
-            DependencyPeer {
+            Dep {
                 name: "zeta".to_string(),
                 capability: "omnia@v1".to_string(),
                 url: "../zeta".to_string(),
                 description: None,
             },
-            DependencyPeer {
+            Dep {
                 name: "alpha".to_string(),
                 capability: "omnia@v1".to_string(),
                 url: "../alpha".to_string(),
@@ -348,7 +346,7 @@ mod tests {
     #[test]
     fn dependency_bullets_include_descriptions_when_present() {
         let mut input = regular_input();
-        input.dependencies = vec![DependencyPeer {
+        input.dependencies = vec![Dep {
             name: "alpha".to_string(),
             capability: "omnia@v1".to_string(),
             url: "../alpha".to_string(),
@@ -366,7 +364,7 @@ mod tests {
     #[test]
     fn navigation_lists_materialized_workspace_peers() {
         let mut input = regular_input();
-        input.workspace_peers = vec![WorkspacePeer {
+        input.workspace_peers = vec![Peer {
             name: "billing".to_string(),
             path: ".specify/workspace/billing/".to_string(),
         }];

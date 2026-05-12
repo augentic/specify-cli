@@ -1,11 +1,6 @@
-//! Per-language detection passes assembled into a [`Detection`].
-//!
-//! Each `detect_*` method on [`Detector`] inspects a single root marker
-//! (`Cargo.toml`, `package.json`, `pyproject.toml`, `go.mod`,
-//! `deno.json[c]`, `Makefile`, `.github/workflows/*.yaml`) and pushes
-//! into the in-progress detection. The [`detect_root_markers`] entry
-//! orchestrates the passes and sorts the result so JSON output is
-//! byte-stable.
+//! Per-language detection passes assembled into a [`Detection`]. Each
+//! `detect_*` method on [`Detector`] inspects one root marker;
+//! [`detect_root_markers`] orchestrates the passes with byte-stable output.
 
 use std::ffi::OsStr;
 use std::fs;

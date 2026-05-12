@@ -14,14 +14,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use specify_change::{Entry, Plan};
-use specify_config::LayoutExt;
+use specify_domain::change::{Entry, Plan};
+use specify_domain::config::LayoutExt;
+use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
-use specify_registry::Registry;
 
 use crate::cli::{LockAction, PlanAction};
 use crate::context::Ctx;
-pub(super) use crate::output::display;
 
 pub(super) fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
     match action {
@@ -80,14 +79,14 @@ pub(super) fn require_file(project_dir: &Path) -> Result<PathBuf> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub(super) struct PlanRef {
+pub(super) struct Ref {
     pub name: String,
     #[serde(serialize_with = "crate::output::serialize_path")]
     pub path: PathBuf,
 }
 
-pub(super) fn plan_ref(plan: &Plan, plan_path: &Path) -> PlanRef {
-    PlanRef {
+pub(super) fn plan_ref(plan: &Plan, plan_path: &Path) -> Ref {
+    Ref {
         name: plan.name.clone(),
         path: plan_path.to_path_buf(),
     }

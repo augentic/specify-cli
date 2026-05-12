@@ -6,60 +6,15 @@
 //! skill rewrites drive directly) and the `capability check` happy path.
 
 use std::fs;
-use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::{copy_dir, parse_json, repo_root, specify};
-
-struct Project {
-    _tmp: TempDir,
-    root: PathBuf,
-}
-
-impl Project {
-    fn init() -> Self {
-        let tmp = tempdir().expect("tempdir");
-        let root = tmp.path().to_path_buf();
-        specify()
-            .current_dir(&root)
-            .args(["init"])
-            .arg(repo_root().join("schemas").join("omnia"))
-            .args(["--name", "test-proj"])
-            .assert()
-            .success();
-        copy_dir(&repo_root().join("schemas/omnia"), &root.join("schemas/omnia"));
-        Self { _tmp: tmp, root }
-    }
-
-    /// Initialise a project backed by a local fixture capability dir.
-    /// The fixture is mirrored into `<tmp>/schemas/<name>/` so that
-    /// subsequent `specify` invocations resolve it via the usual
-    /// `schemas/<name>/` probe.
-    fn init_from_fixture(name: &str, fixture_dir: &Path) -> Self {
-        let tmp = tempdir().expect("tempdir");
-        let root = tmp.path().to_path_buf();
-        copy_dir(fixture_dir, &root.join("schemas").join(name));
-        specify()
-            .current_dir(&root)
-            .args(["init"])
-            .arg(root.join("schemas").join(name))
-            .args(["--name", "test-proj"])
-            .assert()
-            .success();
-        Self { _tmp: tmp, root }
-    }
-
-    fn root(&self) -> &Path {
-        &self.root
-    }
-}
+use common::{Project, parse_json, repo_root, specify};
 
 #[test]
 fn pipeline_define_lists_briefs_in_order() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "capability", "pipeline", "define"])
@@ -87,7 +42,7 @@ fn pipeline_define_lists_briefs_in_order() {
 
 #[test]
 fn pipeline_build_and_merge_each_have_brief() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
 
     let assert = specify()
         .current_dir(project.root())
@@ -142,7 +97,7 @@ fn pipeline_phase_plan_empty_without_block() {
     // all. Asking for --phase plan must succeed and return an empty
     // briefs list rather than erroring out, so callers can probe for
     // plan support without conditional logic.
-    let project = Project::init();
+    let project = Project::init().with_schemas();
 
     let assert = specify()
         .current_dir(project.root())
@@ -175,7 +130,7 @@ fn pipeline_phase_plan_preserves_define() {
 
 #[test]
 fn pipeline_with_slice_reports_completion() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let slice_dir = project.root().join(".specify/slices/my-slice");
     fs::write(slice_dir.join("proposal.md"), "# Proposal\n").unwrap();

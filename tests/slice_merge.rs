@@ -7,47 +7,11 @@
 //! baselines that have drifted since `defined_at`.
 
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::Duration;
 
-use tempfile::{TempDir, tempdir};
-
 mod common;
-use common::{copy_dir, parse_json, repo_root, specify};
-
-struct Project {
-    _tmp: TempDir,
-    root: PathBuf,
-}
-
-impl Project {
-    fn init() -> Self {
-        let tmp = tempdir().expect("tempdir");
-        let root = tmp.path().to_path_buf();
-        specify()
-            .current_dir(&root)
-            .args(["init"])
-            .arg(repo_root().join("schemas").join("omnia"))
-            .args(["--name", "test-proj"])
-            .assert()
-            .success();
-        copy_dir(&repo_root().join("schemas/omnia"), &root.join("schemas/omnia"));
-
-        Self { _tmp: tmp, root }
-    }
-
-    fn root(&self) -> &Path {
-        &self.root
-    }
-
-    fn stage_slice(&self, fixture: &str) -> PathBuf {
-        let dst = self.root.join(".specify/slices/my-slice");
-        fs::create_dir_all(&dst).expect("mkdir slice");
-        copy_dir(&repo_root().join("tests/fixtures/e2e").join(fixture), &dst);
-        dst
-    }
-}
+use common::{Project, parse_json, specify};
 
 // ---------------------------------------------------------------------------
 // slice merge preview
@@ -55,7 +19,7 @@ impl Project {
 
 #[test]
 fn preview_reports_operations() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     let assert = specify()
@@ -106,7 +70,7 @@ fn preview_reports_operations() {
 
 #[test]
 fn preview_doesnt_require_complete_status() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
     // Downgrade status to `building` — `slice merge run` refuses this but
     // `slice merge preview` must accept it.
@@ -124,7 +88,7 @@ fn preview_doesnt_require_complete_status() {
 
 #[test]
 fn preview_emits_readable_text() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
 
     let assert = specify()
@@ -147,7 +111,7 @@ fn preview_emits_readable_text() {
 
 #[test]
 fn conflict_check_no_conflicts_when_unmodified() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
 
     let assert = specify()
@@ -162,7 +126,7 @@ fn conflict_check_no_conflicts_when_unmodified() {
 
 #[test]
 fn conflict_check_flags_modified_newer() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     // Seed a baseline file under .specify/specs/login/spec.md then rewrite
@@ -201,7 +165,7 @@ fn conflict_check_flags_modified_newer() {
 
 #[test]
 fn conflict_check_no_drift_when_older() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     // Set defined_at to the far future so nothing is "newer".
@@ -237,7 +201,7 @@ fn conflict_check_no_drift_when_older() {
 
 #[test]
 fn conflict_check_detects_drift_when_newer() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     // defined_at in the deep past — any real file mtime will be newer.
@@ -274,7 +238,7 @@ fn conflict_check_detects_drift_when_newer() {
 
 #[test]
 fn conflict_check_no_drift_for_new_files() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     let metadata_path = slice_dir.join(".metadata.yaml");
@@ -304,7 +268,7 @@ fn conflict_check_no_drift_for_new_files() {
 
 #[test]
 fn conflict_check_no_drift_without_contracts() {
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     let metadata_path = slice_dir.join(".metadata.yaml");
@@ -338,7 +302,7 @@ fn conflict_check_ignores_new_entries() {
     // if a file already exists at the baseline path, it is not a drift
     // conflict in the mtime-vs-defined_at sense, just a different kind
     // of integrity issue the caller should handle separately.
-    let project = Project::init();
+    let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
     let baseline = project.root().join(".specify/specs/login/spec.md");
     fs::create_dir_all(baseline.parent().unwrap()).unwrap();

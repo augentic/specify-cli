@@ -1,8 +1,5 @@
-//! Clap derive surface for `specify context *`.
-//!
-//! Lifted out of `src/cli.rs` so the per-verb action enum lives next to
-//! its dispatcher. `cli.rs` re-exports `ContextAction` so the parent
-//! `Cli` / `Commands` derives still resolve at expansion time.
+//! Clap derive surface for `specify context *`. The umbrella `cli.rs`
+//! re-exports `ContextAction`.
 
 use clap::Subcommand;
 

@@ -3,12 +3,14 @@ pub(crate) mod cli;
 use std::io::Write;
 
 use serde::Serialize;
-use specify_capability::{CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule};
+use specify_domain::capability::{
+    CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule,
+};
 use specify_error::{Error, Result};
 
 use crate::cli::CodexAction;
 use crate::context::Ctx;
-use crate::output::{Render, Validation, ValidationRow, display};
+use crate::output::{Render, Validation, ValidationRow};
 
 /// Dispatch `specify codex *`.
 pub(crate) fn run(ctx: &Ctx, action: CodexAction) -> Result<()> {
@@ -27,7 +29,7 @@ fn resolve(ctx: &Ctx) -> Result<ResolvedCodex> {
 fn list(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from).collect();
-    ctx.out().write(&ListBody {
+    ctx.write(&ListBody {
         rule_count: rules.len(),
         rules,
     })?;
@@ -46,7 +48,7 @@ fn show(ctx: &Ctx, rule_id: &str) -> Result<()> {
             detail: format!("rule `{rule_id}` not found"),
         })?;
 
-    ctx.out().write(&ShowBody {
+    ctx.write(&ShowBody {
         rule: RuleExport::from(resolved),
     })?;
     Ok(())
@@ -55,7 +57,7 @@ fn show(ctx: &Ctx, rule_id: &str) -> Result<()> {
 fn validate(ctx: &Ctx) -> Result<()> {
     match resolve(ctx) {
         Ok(codex) => {
-            ctx.out().write(&ValidateBody {
+            ctx.write(&ValidateBody {
                 rule_count: Some(codex.rules.len()),
                 error_count: 0,
                 validation: Validation { results: Vec::new() },
@@ -63,7 +65,7 @@ fn validate(ctx: &Ctx) -> Result<()> {
             Ok(())
         }
         Err(Error::Validation { results }) => {
-            ctx.out().write(&ValidateBody {
+            ctx.write(&ValidateBody {
                 rule_count: None,
                 error_count: results.len(),
                 validation: Validation {
@@ -79,7 +81,7 @@ fn validate(ctx: &Ctx) -> Result<()> {
 fn export(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
     let rules: Vec<_> = codex.rules.iter().map(RuleExport::from).collect();
-    ctx.out().write(&ExportBody {
+    ctx.write(&ExportBody {
         rule_count: rules.len(),
         rules,
     })?;
@@ -203,7 +205,7 @@ impl<'a> From<&'a ResolvedCodexRule> for RuleSummary<'a> {
             id: &resolved.rule.frontmatter.id,
             title: &resolved.rule.frontmatter.title,
             severity: severity_label(resolved.rule.frontmatter.severity),
-            source_path: display(&resolved.rule.path),
+            source_path: resolved.rule.path.display().to_string(),
             provenance_kind: provenance.kind,
             capability_name: provenance.capability_name,
             capability_version: provenance.capability_version,
@@ -223,7 +225,7 @@ impl<'a> From<&'a ResolvedCodexRule> for RuleExport<'a> {
             severity: severity_label(frontmatter.severity),
             trigger: &frontmatter.trigger,
             body: &rule.body,
-            source_path: display(&rule.path),
+            source_path: rule.path.display().to_string(),
             provenance_kind: provenance.kind,
             capability_name: provenance.capability_name,
             capability_version: provenance.capability_version,

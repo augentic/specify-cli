@@ -1,18 +1,16 @@
-//! Multi-slice list (`slice list`) and single-slice status (`slice status`).
-//!
-//! Also exposes [`StatusEntry`], [`collect_status`], [`list_slice_names`],
-//! and [`status_entry_to_json`] for the top-level `specify status` dashboard
-//! in `super::super::status`.
+//! Multi-slice list (`slice list`) and single-slice status
+//! (`slice status`). Exposes the helpers consumed by the top-level
+//! `specify status` dashboard.
 
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::Path;
 
 use serde::Serialize;
-use specify_capability::{Phase, PipelineView};
+use specify_domain::capability::{Phase, PipelineView};
+use specify_domain::slice::{LifecycleStatus, SliceMetadata};
+use specify_domain::task::parse_tasks;
 use specify_error::Result;
-use specify_slice::{LifecycleStatus, SliceMetadata};
-use specify_task::parse_tasks;
 
 use crate::context::Ctx;
 use crate::output::Render;
@@ -125,7 +123,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         entries.push(entry);
     }
 
-    ctx.out().write(&StatusListBody::new(&entries))?;
+    ctx.write(&StatusBody::new(&entries))?;
     Ok(())
 }
 
@@ -134,22 +132,22 @@ pub(super) fn status_one(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
     let entry = collect_status(&slice_dir, name, &pipeline, &ctx.project_dir)?;
 
-    ctx.out().write(&StatusListBody::new(std::slice::from_ref(&entry)))?;
+    ctx.write(&StatusBody::new(std::slice::from_ref(&entry)))?;
     Ok(())
 }
 
 #[derive(Serialize)]
-struct StatusListBody<'a> {
+struct StatusBody<'a> {
     slices: &'a [StatusEntry],
 }
 
-impl<'a> StatusListBody<'a> {
+impl<'a> StatusBody<'a> {
     const fn new(slices: &'a [StatusEntry]) -> Self {
         Self { slices }
     }
 }
 
-impl Render for StatusListBody<'_> {
+impl Render for StatusBody<'_> {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         if self.slices.is_empty() {
             return writeln!(w, "No slices.");

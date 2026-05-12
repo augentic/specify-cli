@@ -1,8 +1,6 @@
 //! Unified error types for the `specify` CLI and its domain crates.
-//!
-//! Every public function in a `specify-*` crate returns `Result<T, Error>`.
-//! The variants are structured (rather than string-only) so `main.rs` can
-//! pattern-match them to assign exit codes and pick an output format.
+//! Every public function returns `Result<T, Error>`; variants are
+//! structured so the binary can route them to exit codes and formats.
 
 pub mod display;
 pub mod error;
@@ -10,7 +8,7 @@ pub mod validation;
 pub mod yaml;
 
 pub use error::Error;
-pub use validation::{ValidationStatus, ValidationSummary};
+pub use validation::{Status as ValidationStatus, Summary as ValidationSummary};
 pub use yaml::{YamlError, YamlSerError};
 
 /// Workspace-wide `Result` alias bound to [`Error`].

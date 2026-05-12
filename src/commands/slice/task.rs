@@ -1,17 +1,16 @@
 //! `slice task progress | mark` — task list operations for a slice.
-//!
-//! Also exposes `resolve_tasks_path_for` so `super::list::collect_status`
-//! can read tasks counts for the dashboard.
+//! Also exposes `resolve_tasks_path_for` for the `specify status`
+//! dashboard's task-count read.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use specify_capability::{Brief, PipelineView};
+use specify_domain::capability::{Brief, PipelineView};
+use specify_domain::slice::SliceMetadata;
+use specify_domain::slice::atomic::bytes_write;
+use specify_domain::task::{Task, mark_complete, parse_tasks};
 use specify_error::{Error, Result};
-use specify_slice::SliceMetadata;
-use specify_slice::atomic::bytes_write;
-use specify_task::{Task, mark_complete, parse_tasks};
 
 use crate::context::Ctx;
 use crate::output::Render;
@@ -23,7 +22,7 @@ pub(super) fn progress(ctx: &Ctx, name: &str) -> Result<()> {
     let progress = parse_tasks(&content);
 
     let tasks: Vec<TaskRow> = progress.tasks.iter().map(TaskRow::from).collect();
-    ctx.out().write(&ProgressBody {
+    ctx.write(&ProgressBody {
         total: progress.total,
         complete: progress.complete,
         pending: progress.total.saturating_sub(progress.complete),
@@ -94,7 +93,7 @@ pub(super) fn mark(ctx: &Ctx, name: &str, task_number: String) -> Result<()> {
         bytes_write(&tasks_path, updated.as_bytes())?;
     }
 
-    ctx.out().write(&MarkBody {
+    ctx.write(&MarkBody {
         marked: task_number,
         new_content_path: tasks_path.display().to_string(),
         idempotent,

@@ -1,54 +1,50 @@
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
-use chrono::Utc;
+/// Display a path as the canonical absolute form when it exists; fall back
+/// to the lossy display when it does not (e.g. a path we just deleted).
+fn canonical(p: &Path) -> String {
+    std::fs::canonicalize(p).map_or_else(|_| p.display().to_string(), |c| c.display().to_string())
+}
+
+use jiff::Timestamp;
 use serde::Serialize;
-use specify_config::{ProjectConfig, is_workspace_clone};
+use specify_domain::config::{ProjectConfig, is_workspace_clone};
+use specify_domain::init::{InitOptions, InitResult, VersionMode, init};
 use specify_error::{Error, Result};
-use specify_init::{InitOptions, InitResult, VersionMode, init};
 
 use crate::cli::Format;
 use crate::commands::context;
 use crate::context::Ctx;
-use crate::output::{Out, Render, display};
+use crate::output::{self, Render};
 
 /// Dispatcher for `specify init`.
 ///
-/// Enforces mutual exclusion between the `<capability>` positional and
-/// `--hub`:
-///
-/// - regular project init requires `<capability>`;
-/// - hub init requires `--hub` and refuses a `<capability>` positional;
-/// - missing both, or both at once, errors with
-///   `init-requires-capability-or-hub`.
+/// The `<capability>` xor `--hub` invariant is enforced by clap (see
+/// `#[arg(conflicts_with = "hub", required_unless_present = "hub")]`
+/// on the `capability` positional in `crate::cli::Commands::Init`),
+/// so by the time this function runs the `(hub, capability)` pair is
+/// guaranteed to be one of `(false, Some(_))` or `(true, None)`.
 pub(super) fn run(
-    format: Format, capability: Option<String>, name: Option<&str>, domain: Option<&str>, hub: bool,
+    format: Format, capability: Option<&str>, name: Option<&str>, domain: Option<&str>, hub: bool,
 ) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
-    let capability = match (hub, capability) {
-        (false, Some(cap)) => Some(cap),
-        (true, None) => None,
-        // Both unset, or both set: the diagnostic is the same — the
-        // operator must pick one.
-        (false, None) | (true, Some(_)) => {
-            return Err(Error::Diag {
-                code: "init-requires-capability-or-hub",
-                detail: "pass <capability> or --hub".to_string(),
-            });
-        }
-    };
+    debug_assert!(
+        hub != capability.is_some(),
+        "clap enforces <capability> xor --hub; reached dispatcher with hub={hub}, capability={capability:?}",
+    );
 
     let opts = InitOptions {
         project_dir: &project_dir,
-        capability: capability.as_deref(),
+        capability,
         name,
         domain,
         version_mode: VersionMode::WriteCurrent,
         hub,
     };
 
-    let result = init(opts, Utc::now())?;
+    let result = init(opts, Timestamp::now())?;
     let current_dir = std::env::current_dir().map_err(Error::Io)?;
     let context_generation = generate_initial_context(format, &current_dir)?;
     emit_init_result(format, &result, hub, context_generation)
@@ -56,7 +52,7 @@ pub(super) fn run(
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct InitBody {
+struct Body {
     config_path: String,
     /// Resolved capability name (or `"hub"` for hub init).
     capability_name: String,
@@ -69,10 +65,10 @@ struct InitBody {
     /// initialisations without parsing the capability name.
     hub: bool,
     #[serde(flatten)]
-    context: InitContextBody,
+    context: ContextBody,
 }
 
-impl Render for InitBody {
+impl Render for Body {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         if self.hub {
             writeln!(w, "Initialized .specify/ as a registry-only platform hub")?;
@@ -106,7 +102,7 @@ impl Render for InitBody {
 }
 
 #[derive(Serialize)]
-struct InitContextBody {
+struct ContextBody {
     #[serde(rename = "context-generated")]
     generated: bool,
     #[serde(rename = "context-skipped")]
@@ -115,10 +111,10 @@ struct InitContextBody {
     skip_reason: Option<&'static str>,
 }
 
-impl From<InitContextGeneration> for InitContextBody {
-    fn from(context_generation: InitContextGeneration) -> Self {
+impl From<ContextGeneration> for ContextBody {
+    fn from(context_generation: ContextGeneration) -> Self {
         Self {
-            generated: context_generation.generated(),
+            generated: matches!(context_generation, ContextGeneration::Generated),
             skipped: context_generation.skipped(),
             skip_reason: context_generation.skip_reason(),
         }
@@ -126,33 +122,29 @@ impl From<InitContextGeneration> for InitContextBody {
 }
 
 fn emit_init_result(
-    format: Format, result: &InitResult, hub: bool, context_generation: InitContextGeneration,
+    format: Format, result: &InitResult, hub: bool, context_generation: ContextGeneration,
 ) -> Result<()> {
-    let body = InitBody {
-        config_path: display(&result.config_path),
+    let body = Body {
+        config_path: canonical(&result.config_path),
         capability_name: result.capability_name.clone(),
         cache_present: result.cache_present,
-        directories_created: result.directories_created.iter().map(|p| display(p)).collect(),
+        directories_created: result.directories_created.iter().map(|p| canonical(p)).collect(),
         scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
         specify_version: result.specify_version.clone(),
         hub,
-        context: InitContextBody::from(context_generation),
+        context: ContextBody::from(context_generation),
     };
-    Out::for_format(format).write(&body)?;
+    output::write(format, &body)?;
     Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InitContextGeneration {
+enum ContextGeneration {
     Generated,
     Skipped { reason: &'static str },
 }
 
-impl InitContextGeneration {
-    const fn generated(&self) -> bool {
-        matches!(self, Self::Generated)
-    }
-
+impl ContextGeneration {
     const fn skip_reason(&self) -> Option<&'static str> {
         match self {
             Self::Generated => None,
@@ -165,15 +157,15 @@ impl InitContextGeneration {
     }
 }
 
-fn generate_initial_context(format: Format, project_dir: &Path) -> Result<InitContextGeneration> {
+fn generate_initial_context(format: Format, project_dir: &Path) -> Result<ContextGeneration> {
     if is_workspace_clone(project_dir) {
-        return Ok(InitContextGeneration::Skipped {
+        return Ok(ContextGeneration::Skipped {
             reason: "workspace-clone",
         });
     }
     match project_dir.join("AGENTS.md").try_exists() {
         Ok(true) => {
-            return Ok(InitContextGeneration::Skipped {
+            return Ok(ContextGeneration::Skipped {
                 reason: "existing-agents-md",
             });
         }
@@ -194,5 +186,5 @@ fn generate_initial_context(format: Format, project_dir: &Path) -> Result<InitCo
         "init context generation is called only when AGENTS.md is absent"
     );
     debug_assert_eq!(outcome.disposition, "create");
-    Ok(InitContextGeneration::Generated)
+    Ok(ContextGeneration::Generated)
 }

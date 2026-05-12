@@ -1,8 +1,8 @@
 //! `specify registry add` handler.
 
-use specify_config::with_state;
+use specify_domain::config::{InitPolicy, with_state};
+use specify_domain::registry::{Registry, RegistryProject};
 use specify_error::{Error, Result, is_kebab};
-use specify_registry::{Registry, RegistryProject};
 
 use super::dto::AddBody;
 use crate::context::Ctx;
@@ -39,44 +39,45 @@ pub(super) fn run(
         contracts: None,
     };
 
-    let body = with_state::<Registry, _, _>(ctx.layout(), move |registry| {
-        if registry.projects.iter().any(|p| p.name == candidate.name) {
-            return Err(Error::Diag {
-                code: "registry-add-name-duplicate",
-                detail: format!(
-                    "registry add: project `{}` already exists in {}",
-                    candidate.name,
-                    path.display()
-                ),
-            });
-        }
+    let body =
+        with_state::<Registry, _, _>(ctx.layout(), InitPolicy::CreateMissing, move |registry| {
+            if registry.projects.iter().any(|p| p.name == candidate.name) {
+                return Err(Error::Diag {
+                    code: "registry-add-name-duplicate",
+                    detail: format!(
+                        "registry add: project `{}` already exists in {}",
+                        candidate.name,
+                        path.display()
+                    ),
+                });
+            }
 
-        registry.projects.push(candidate);
+            registry.projects.push(candidate);
 
-        // Surface validate_shape / validate_shape_hub errors verbatim —
-        // their diagnostic codes (`description-missing-multi-repo`,
-        // `hub-cannot-be-project`, etc.) are the documented contract.
-        // Returning Err here aborts `with_state` before the atomic
-        // write, so the on-disk registry is never left in a
-        // shape-invalid state.
-        if hub_mode {
-            registry.validate_shape_hub()?;
-        } else {
-            registry.validate_shape()?;
-        }
+            // Surface validate_shape / validate_shape_hub errors verbatim —
+            // their diagnostic codes (`description-missing-multi-repo`,
+            // `hub-cannot-be-project`, etc.) are the documented contract.
+            // Returning Err here aborts `with_state` before the atomic
+            // write, so the on-disk registry is never left in a
+            // shape-invalid state.
+            if hub_mode {
+                registry.validate_shape_hub()?;
+            } else {
+                registry.validate_shape()?;
+            }
 
-        let added = registry
-            .projects
-            .last()
-            .expect("we just pushed an entry; non-empty by construction")
-            .clone();
-        Ok(AddBody {
-            registry: registry.clone(),
-            path,
-            added,
-        })
-    })?;
+            let added = registry
+                .projects
+                .last()
+                .expect("we just pushed an entry; non-empty by construction")
+                .clone();
+            Ok(AddBody {
+                registry: registry.clone(),
+                path,
+                added,
+            })
+        })?;
 
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     Ok(())
 }

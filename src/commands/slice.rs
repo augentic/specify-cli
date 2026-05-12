@@ -1,14 +1,12 @@
-//! Dispatcher for `specify slice *`.
-//!
-//! Per-subcommand handlers live in submodules under `slice/`. This file
-//! owns the `match action` table and the omnia `artifact_classes`
-//! synthesiser shared by `slice merge` and `slice touched-specs`.
+//! Dispatcher for `specify slice *`. Owns the `match action` table and
+//! the omnia `artifact_classes` synthesiser shared by `slice merge` and
+//! `slice touched-specs`.
 
 use std::path::Path;
 
-use specify_config::LayoutExt;
+use specify_domain::config::LayoutExt;
+use specify_domain::merge::{ArtifactClass, MergeStrategy};
 use specify_error::Result;
-use specify_merge::{ArtifactClass, MergeStrategy};
 
 use crate::cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
 use crate::context::Ctx;
@@ -55,7 +53,7 @@ pub(crate) fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
         } => lifecycle::create(ctx, &name, capability, if_exists.into()),
         SliceAction::List => list::run(ctx),
         SliceAction::Status { name } => list::status_one(ctx, &name),
-        SliceAction::Validate { name } => validate::run(ctx, name),
+        SliceAction::Validate { name } => validate::run(ctx, &name),
         SliceAction::Merge { action } => match action {
             SliceMergeAction::Run { name } => merge::run(ctx, &name),
             SliceMergeAction::Preview { name } => merge::preview(ctx, &name),
@@ -80,9 +78,7 @@ pub(crate) fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             JournalAction::Show { name } => journal::show(ctx, name),
         },
         SliceAction::Transition { name, target } => lifecycle::transition(ctx, name, target),
-        SliceAction::TouchedSpecs { name, scan, set } => {
-            touched::touched_specs(ctx, name, scan, &set)
-        }
+        SliceAction::TouchedSpecs { name, scan, set } => touched::specs(ctx, name, scan, &set),
         SliceAction::Overlap { name } => touched::overlap(ctx, name),
         SliceAction::Archive { name } => lifecycle::archive(ctx, name),
         SliceAction::Drop { name, reason } => {

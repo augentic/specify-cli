@@ -1,14 +1,13 @@
-//! Orphan-cache scan for `specify tool gc`.
-//!
-//! Computes the set of `<cache-root>/<scope-segment>/<tool-name>/<version>/`
-//! directories that are no longer referenced by the live merged manifest.
+//! Orphan-cache scan for `specify tool gc` — computes the cache
+//! `<scope>/<tool>/<version>/` directories that are no longer
+//! referenced by the live merged manifest.
 
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::hash::BuildHasher;
 use std::path::PathBuf;
 
-use super::{SIDECAR_FILENAME, cache_root, read_sidecar, scope_segment, sorted_dir_entries};
+use super::{SIDECAR_FILENAME, read_sidecar, root, scope_segment, sorted_dir_entries};
 use crate::error::ToolError;
 use crate::manifest::ToolScope;
 
@@ -24,15 +23,14 @@ use crate::manifest::ToolScope;
 ///
 /// Returns `ToolError::CacheRoot` when the cache root cannot be selected,
 /// `ToolError::InvalidCacheSegment` when a discovered directory name is not
-/// valid UTF-8 or violates the cache-segment invariants, `ToolError::CacheIo`
-/// when the scope or tool directory cannot be read, and
-/// `ToolError::SidecarParse` / `ToolError::SidecarSchema` when an existing
-/// `meta.yaml` is malformed (a missing sidecar marks the directory as
-/// unreferenced rather than erroring).
+/// valid UTF-8 or violates the cache-segment invariants, `ToolError::Io`
+/// when the scope or tool directory cannot be read, and the `ToolError::Sidecar`
+/// parse/schema variants when an existing `meta.yaml` is malformed (a
+/// missing sidecar marks the directory as unreferenced rather than erroring).
 pub fn scan<S: BuildHasher>(
     scope: &ToolScope, kept: &HashSet<(String, String, String), S>,
 ) -> Result<Vec<PathBuf>, ToolError> {
-    let scope_dir = cache_root()?.join(scope_segment(scope)?);
+    let scope_dir = root()?.join(scope_segment(scope)?);
     if !scope_dir.exists() {
         return Ok(Vec::new());
     }

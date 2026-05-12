@@ -1,8 +1,8 @@
 //! `specify registry validate` handler.
 
-use specify_config::ProjectConfig;
+use specify_domain::config::ProjectConfig;
+use specify_domain::registry::Registry;
 use specify_error::Result;
-use specify_registry::Registry;
 
 use super::dto::ValidateBody;
 use crate::context::Ctx;
@@ -19,7 +19,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     if hub_mode && let Some(reg) = registry.as_ref() {
         reg.validate_shape_hub()?;
     }
-    ctx.out().write(&ValidateBody {
+    ctx.write(&ValidateBody {
         registry,
         path,
         hub_mode,

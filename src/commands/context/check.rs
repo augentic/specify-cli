@@ -1,8 +1,6 @@
-//! `specify context check` handler.
-//!
-//! Owns the read-side drift detection: input fingerprints and the fenced
-//! AGENTS.md body hash are compared against `.specify/context.lock`.
-//! Write-side policy lives in [`super::generate`].
+//! `specify context check` handler — read-side drift detection
+//! comparing input fingerprints and the fenced AGENTS.md body hash
+//! against `.specify/context.lock`.
 
 use std::io::Write;
 
@@ -16,7 +14,7 @@ use crate::output::Render;
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let body = body(ctx)?;
     let status = body.status;
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     match status {
         "up-to-date" => Ok(()),
         "context-not-generated" => Err(diag("context-not-generated", "AGENTS.md is missing")),
@@ -37,9 +35,9 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct CheckBody {
+struct Body {
     status: &'static str,
-    fingerprint: CheckFingerprint,
+    fingerprint: Fingerprint,
     inputs_changed: Vec<String>,
     inputs_added: Vec<String>,
     inputs_removed: Vec<String>,
@@ -48,12 +46,12 @@ struct CheckBody {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct CheckFingerprint {
+struct Fingerprint {
     expected: Option<String>,
     actual: Option<String>,
 }
 
-impl Render for CheckBody {
+impl Render for Body {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         match self.status {
             "up-to-date" => writeln!(w, "context up to date"),
@@ -76,7 +74,7 @@ impl Render for CheckBody {
     }
 }
 
-fn body(ctx: &Ctx) -> Result<CheckBody> {
+fn body(ctx: &Ctx) -> Result<Body> {
     let agents_path = ctx.project_dir.join("AGENTS.md");
     let agents = read_optional(&agents_path)?;
     let existing_lock = lock::load(&context_lock_path(ctx))?;
@@ -103,7 +101,7 @@ fn body(ctx: &Ctx) -> Result<CheckBody> {
         || fences_modified;
     let status = if has_drift { "drift" } else { "up-to-date" };
 
-    Ok(CheckBody {
+    Ok(Body {
         status,
         fingerprint: check_fingerprint(Some(&expected_lock), Some(&actual_lock)),
         inputs_changed: diff.changed,
@@ -113,8 +111,8 @@ fn body(ctx: &Ctx) -> Result<CheckBody> {
     })
 }
 
-const fn no_drift(status: &'static str, fingerprint: CheckFingerprint) -> CheckBody {
-    CheckBody {
+const fn no_drift(status: &'static str, fingerprint: Fingerprint) -> Body {
+    Body {
         status,
         fingerprint,
         inputs_changed: Vec::new(),
@@ -130,8 +128,8 @@ fn write_drift_list(w: &mut dyn Write, label: &str, paths: &[String]) -> std::io
 
 fn check_fingerprint(
     expected: Option<&lock::ContextLock>, actual: Option<&lock::ContextLock>,
-) -> CheckFingerprint {
-    CheckFingerprint {
+) -> Fingerprint {
+    Fingerprint {
         expected: expected.map(|lock| lock.fingerprint.clone()),
         actual: actual.map(|lock| lock.fingerprint.clone()),
     }

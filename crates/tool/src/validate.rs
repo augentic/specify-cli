@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::manifest::{Tool, ToolManifest, ToolScope, ToolSource};
+use crate::manifest::{Tool, ToolManifest, ToolScope, ToolSource, first_party_permissions};
 
 /// Canonical JSON Schema for the two `tools:` declaration sites.
 pub const TOOL_JSON_SCHEMA: &str = include_str!("../../../schemas/tool.schema.json");
@@ -11,6 +11,10 @@ pub const TOOL_JSON_SCHEMA: &str = include_str!("../../../schemas/tool.schema.js
 const RULE_NAME_FORMAT: &str = "tool.name-format";
 const RULE_VERSION_SEMVER: &str = "tool.version-is-semver";
 const RULE_SOURCE_SUPPORTED: &str = "tool.source-is-supported-uri";
+const RULE_PACKAGE_FORMAT: &str = "tool.package-request-format";
+const RULE_PACKAGE_NAMESPACE: &str = "tool.package-namespace-first-party";
+const RULE_PACKAGE_VERSION: &str = "tool.package-version-is-exact-semver";
+const RULE_PACKAGE_PERMISSIONS: &str = "tool.package-permissions-catalog";
 const RULE_SHA256_FORMAT: &str = "tool.sha256-format";
 const RULE_PERMISSION_PATH_FORM: &str = "tool.permission-path-form";
 const RULE_LIFECYCLE_WRITE_DENIED: &str = "tool.lifecycle-state-write-denied";
@@ -71,6 +75,10 @@ impl Tool {
             validate_name(&self.name),
             validate_version(&self.version),
             validate_source(&self.source),
+            validate_package_format(&self.source),
+            validate_package_namespace(&self.source),
+            validate_package_version(&self.source),
+            validate_package_permissions(self),
             validate_sha256(self.sha256.as_deref()),
             validate_permission_paths(&self.permissions.read, &self.permissions.write),
             validate_lifecycle_writes(&self.permissions.write),
@@ -83,7 +91,7 @@ impl ToolManifest {
     /// Validate a manifest and all of its contained tools.
     #[must_use]
     pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationResult> {
-        let mut results = Vec::with_capacity(1 + self.tools.len() * 7);
+        let mut results = Vec::with_capacity(1 + self.tools.len() * 11);
         results.push(validate_unique_names(&self.tools));
         for tool in &self.tools {
             results.extend(tool.validate_structure(scope));
@@ -130,7 +138,8 @@ fn validate_version(version: &str) -> ValidationResult {
 }
 
 fn validate_source(source: &ToolSource) -> ValidationResult {
-    const RULE: &str = "tool sources are absolute paths, file:// URIs, or https:// URIs";
+    const RULE: &str =
+        "tool sources are absolute paths, file:// URIs, https:// URIs, or wasm package requests";
     let valid = match source {
         ToolSource::LocalPath(path) => path.is_absolute() || path_looks_windows_absolute(path),
         ToolSource::FileUri(uri) => {
@@ -139,6 +148,7 @@ fn validate_source(source: &ToolSource) -> ValidationResult {
         ToolSource::HttpsUri(uri) => {
             uri.strip_prefix("https://").is_some_and(|rest| !rest.is_empty())
         }
+        ToolSource::Package(package) => !package.name_ref().is_empty(),
     };
     if valid {
         pass(RULE_SOURCE_SUPPORTED, RULE)
@@ -147,6 +157,84 @@ fn validate_source(source: &ToolSource) -> ValidationResult {
             RULE_SOURCE_SUPPORTED,
             RULE,
             format!("`{}` is not a supported source", source.to_wire_string()),
+        )
+    }
+}
+
+fn validate_package_format(source: &ToolSource) -> ValidationResult {
+    const RULE: &str = "package sources use namespace:name@version syntax";
+    let ToolSource::Package(package) = source else {
+        return pass(RULE_PACKAGE_FORMAT, RULE);
+    };
+    let valid = !package.namespace.is_empty()
+        && !package.name.is_empty()
+        && !package.version.is_empty()
+        && package.to_wire_string().contains('@')
+        && package.name_ref().contains(':');
+    if valid {
+        pass(RULE_PACKAGE_FORMAT, RULE)
+    } else {
+        fail(
+            RULE_PACKAGE_FORMAT,
+            RULE,
+            format!("`{}` is not a package request", package.to_wire_string()),
+        )
+    }
+}
+
+fn validate_package_namespace(source: &ToolSource) -> ValidationResult {
+    const RULE: &str = "package sources use the first-party specify namespace";
+    let ToolSource::Package(package) = source else {
+        return pass(RULE_PACKAGE_NAMESPACE, RULE);
+    };
+    if package.namespace == "specify" {
+        pass(RULE_PACKAGE_NAMESPACE, RULE)
+    } else {
+        fail(
+            RULE_PACKAGE_NAMESPACE,
+            RULE,
+            format!("`{}` is not in the specify namespace", package.name_ref()),
+        )
+    }
+}
+
+fn validate_package_version(source: &ToolSource) -> ValidationResult {
+    const RULE: &str = "package sources include an exact SemVer version without a leading v";
+    let ToolSource::Package(package) = source else {
+        return pass(RULE_PACKAGE_VERSION, RULE);
+    };
+    if package.version.starts_with('v') {
+        return fail(RULE_PACKAGE_VERSION, RULE, format!("`{}` uses a leading v", package.version));
+    }
+    match semver::Version::parse(&package.version) {
+        Ok(_) => pass(RULE_PACKAGE_VERSION, RULE),
+        Err(err) => fail(
+            RULE_PACKAGE_VERSION,
+            RULE,
+            format!("`{}` is not an exact SemVer version: {err}", package.version),
+        ),
+    }
+}
+
+fn validate_package_permissions(tool: &Tool) -> ValidationResult {
+    const RULE: &str = "first-party package tools have embedded permission defaults";
+    let ToolSource::Package(package) = &tool.source else {
+        return pass(RULE_PACKAGE_PERMISSIONS, RULE);
+    };
+    let Some(expected) = first_party_permissions(package) else {
+        return fail(
+            RULE_PACKAGE_PERMISSIONS,
+            RULE,
+            format!("`{}` has no embedded permission defaults", package.name_ref()),
+        );
+    };
+    if tool.permissions == expected {
+        pass(RULE_PACKAGE_PERMISSIONS, RULE)
+    } else {
+        fail(
+            RULE_PACKAGE_PERMISSIONS,
+            RULE,
+            format!("`{}` permissions do not match embedded defaults", package.name_ref()),
         )
     }
 }
@@ -307,7 +395,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::manifest::{ToolPermissions, ToolSource};
+    use crate::manifest::{PackageRequest, ToolPermissions, ToolSource};
 
     fn project_scope() -> ToolScope {
         ToolScope::Project {
@@ -368,6 +456,36 @@ mod tests {
     }
 
     #[test]
+    fn package_tool_validation_reports_package_rule_ids() {
+        let tool = Tool {
+            name: "contract".to_string(),
+            version: "v1".to_string(),
+            source: ToolSource::Package(PackageRequest {
+                namespace: "other".to_string(),
+                name: "contract".to_string(),
+                version: "v1".to_string(),
+            }),
+            sha256: None,
+            permissions: ToolPermissions::default(),
+        };
+
+        let ids = fail_rule_ids(&tool.validate_structure(&project_scope()));
+        assert!(ids.contains(&RULE_VERSION_SEMVER));
+        assert!(ids.contains(&RULE_PACKAGE_NAMESPACE));
+        assert!(ids.contains(&RULE_PACKAGE_VERSION));
+        assert!(ids.contains(&RULE_PACKAGE_PERMISSIONS));
+    }
+
+    #[test]
+    fn scalar_contract_package_passes_with_embedded_permissions() {
+        let manifest: ToolManifest =
+            serde_saphyr::from_str("tools:\n  - \"specify:contract@1.2.3\"\n")
+                .expect("parse scalar package");
+        let results = manifest.validate_structure(&project_scope());
+        assert!(results.iter().all(|result| matches!(result, ValidationResult::Pass { .. })));
+    }
+
+    #[test]
     fn write_permission_to_project_root_is_valid_when_tool_needs_root_outputs() {
         let mut tool = valid_tool("contract");
         tool.permissions.write = vec!["$PROJECT_DIR".to_string()];
@@ -410,6 +528,9 @@ mod tests {
             json!({ "tools": [{ "name": "bad", "version": "one", "source": "/tmp/a.wasm" }] }),
             json!({ "tools": [{ "name": "bad", "version": "1.0.0", "source": "relative.wasm" }] }),
             json!({ "tools": [{ "name": "bad", "version": "1.0.0", "source": "oci://x" }] }),
+            json!({ "tools": ["other:bad@1.0.0"] }),
+            json!({ "tools": ["specify:bad@v1.0.0"] }),
+            json!({ "tools": ["specify:bad@latest"] }),
             json!({ "tools": [{ "name": "bad", "version": "1.0.0", "source": "/tmp/a.wasm", "sha256": "ABC" }] }),
             json!({ "tools": [{ "name": "bad", "version": "1.0.0", "source": "/tmp/a.wasm", "permissions": { "read": ["$PROJECT_DIR/../x"] } }] }),
             json!({ "tools": [{ "name": "bad", "version": "1.0.0", "source": "/tmp/a.wasm", "permissions": { "write": ["$PROJECT_DIR/.specify/project.yaml"] } }] }),
@@ -440,5 +561,18 @@ mod tests {
         });
 
         assert!(validator.is_valid(&case), "schema should allow project-root writes: {case}");
+    }
+
+    #[test]
+    fn tool_schema_accepts_scalar_and_object_package_requests() {
+        let schema: serde_json::Value =
+            serde_json::from_str(TOOL_JSON_SCHEMA).expect("schema parses");
+        let validator = jsonschema::validator_for(&schema).expect("schema compiles");
+        for case in [
+            json!({ "tools": ["specify:contract@1.2.3"] }),
+            json!({ "tools": [{ "name": "contract", "version": "1.2.3", "source": "specify:contract@1.2.3" }] }),
+        ] {
+            assert!(validator.is_valid(&case), "schema should accept package case: {case}");
+        }
     }
 }

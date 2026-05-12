@@ -1,30 +1,26 @@
-//! Render-input assembly for `specify context *`.
-//!
-//! Walks the project (capability, registry, slices, root markers) and
-//! emits a [`render::ContextRenderInput`] plus the per-input
-//! fingerprint set both handlers feed into [`super::fingerprint`] and
-//! [`super::render`]. The actual Markdown emission lives in
-//! [`super::render`]; this module is purely about input collection.
+//! Render-input assembly for `specify context *`. Walks the project
+//! (capability, registry, slices, root markers) and emits a
+//! [`render::Input`] plus the per-input fingerprint set.
 
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use specify_capability::{Capability, PipelineView};
-use specify_config::{LayoutExt, ProjectConfig};
+use specify_domain::capability::{Capability, PipelineView};
+use specify_domain::config::{LayoutExt, ProjectConfig};
+use specify_domain::registry::Registry;
+use specify_domain::slice::SliceMetadata;
 use specify_error::{Error, Result};
-use specify_registry::Registry;
-use specify_slice::SliceMetadata;
 
 use super::{detect, fingerprint, render};
 use crate::context::Ctx;
 
 pub(super) struct RenderAssembly {
-    pub(super) input: render::ContextRenderInput,
+    pub(super) input: render::Input,
     pub(super) inputs: Vec<fingerprint::InputFingerprint>,
 }
 
-pub(super) fn assemble_render_input(ctx: &Ctx) -> Result<RenderAssembly> {
+pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
     let layout = ctx.project_dir.layout();
     let mut collector = fingerprint::InputCollector::new(&ctx.project_dir);
     collector.add_file(&layout.config_path())?;
@@ -52,7 +48,7 @@ pub(super) fn assemble_render_input(ctx: &Ctx) -> Result<RenderAssembly> {
     // fingerprinted unless a future renderer contract actually reads it.
     let active_slices = active_slice_names(&layout.slices_dir(), &mut collector)?;
 
-    let input = render::ContextRenderInput {
+    let input = render::Input {
         project_name: ctx.config.name.clone(),
         is_hub: ctx.config.hub,
         detection,
@@ -82,11 +78,11 @@ fn collect_capability_inputs(
     Ok(())
 }
 
-fn capability_summary(pipeline: &PipelineView) -> render::CapabilitySummary {
-    let mut briefs: Vec<render::BriefSummary> = pipeline
+fn capability_summary(pipeline: &PipelineView) -> render::Capability {
+    let mut briefs: Vec<render::Brief> = pipeline
         .briefs
         .iter()
-        .map(|(phase, brief)| render::BriefSummary {
+        .map(|(phase, brief)| render::Brief {
             phase: phase.to_string(),
             id: brief.frontmatter.id.clone(),
             description: brief.frontmatter.description.clone(),
@@ -100,7 +96,7 @@ fn capability_summary(pipeline: &PipelineView) -> render::CapabilitySummary {
         ))
     });
 
-    render::CapabilitySummary {
+    render::Capability {
         name: pipeline.capability.manifest.name.clone(),
         version: pipeline.capability.manifest.version,
         description: pipeline.capability.manifest.description.clone(),
@@ -108,12 +104,12 @@ fn capability_summary(pipeline: &PipelineView) -> render::CapabilitySummary {
     }
 }
 
-fn rule_overrides(config: &ProjectConfig) -> Vec<render::RuleOverride> {
-    let mut overrides: Vec<render::RuleOverride> = config
+fn rule_overrides(config: &ProjectConfig) -> Vec<render::Rule> {
+    let mut overrides: Vec<render::Rule> = config
         .rules
         .iter()
         .filter(|(_brief_id, path)| !path.is_empty())
-        .map(|(brief_id, path)| render::RuleOverride {
+        .map(|(brief_id, path)| render::Rule {
             brief_id: brief_id.clone(),
             path: format!(".specify/{path}"),
         })
@@ -123,11 +119,11 @@ fn rule_overrides(config: &ProjectConfig) -> Vec<render::RuleOverride> {
     overrides
 }
 
-fn declared_tools(config: &ProjectConfig) -> Vec<render::DeclaredTool> {
-    let mut tools: Vec<render::DeclaredTool> = config
+fn declared_tools(config: &ProjectConfig) -> Vec<render::Tool> {
+    let mut tools: Vec<render::Tool> = config
         .tools
         .iter()
-        .map(|tool| render::DeclaredTool {
+        .map(|tool| render::Tool {
             name: tool.name.clone(),
             version: tool.version.clone(),
         })
@@ -136,7 +132,7 @@ fn declared_tools(config: &ProjectConfig) -> Vec<render::DeclaredTool> {
     tools
 }
 
-fn dependency_peers(registry: Option<&Registry>) -> Vec<render::DependencyPeer> {
+fn dependency_peers(registry: Option<&Registry>) -> Vec<render::Dep> {
     let Some(registry) = registry else {
         return Vec::new();
     };
@@ -144,10 +140,10 @@ fn dependency_peers(registry: Option<&Registry>) -> Vec<render::DependencyPeer> 
         return Vec::new();
     }
 
-    let mut peers: Vec<render::DependencyPeer> = registry
+    let mut peers: Vec<render::Dep> = registry
         .projects
         .iter()
-        .map(|project| render::DependencyPeer {
+        .map(|project| render::Dep {
             name: project.name.clone(),
             capability: project.capability.clone(),
             url: project.url.clone(),
@@ -162,7 +158,7 @@ fn dependency_peers(registry: Option<&Registry>) -> Vec<render::DependencyPeer> 
 
 fn materialized_workspace_peers(
     registry: Option<&Registry>, project_dir: &Path,
-) -> Result<Vec<render::WorkspacePeer>> {
+) -> Result<Vec<render::Peer>> {
     let Some(registry) = registry else {
         return Ok(Vec::new());
     };
@@ -175,7 +171,7 @@ fn materialized_workspace_peers(
     for project in &registry.projects {
         let path = workspace_dir.join(&project.name);
         match fs::symlink_metadata(path) {
-            Ok(_) => peers.push(render::WorkspacePeer {
+            Ok(_) => peers.push(render::Peer {
                 name: project.name.clone(),
                 path: format!(".specify/workspace/{}/", project.name),
             }),

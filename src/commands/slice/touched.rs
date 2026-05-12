@@ -3,16 +3,16 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_config::LayoutExt;
+use specify_domain::config::LayoutExt;
+use specify_domain::merge::MergeStrategy;
+use specify_domain::slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
 use specify_error::{Error, Result};
-use specify_merge::MergeStrategy;
-use specify_slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
 
 use super::artifact_classes;
 use crate::context::Ctx;
 use crate::output::Render;
 
-pub(super) fn touched_specs(ctx: &Ctx, name: String, scan: bool, set: &[String]) -> Result<()> {
+pub(super) fn specs(ctx: &Ctx, name: String, scan: bool, set: &[String]) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
 
     let entries = if !set.is_empty() {
@@ -40,8 +40,8 @@ pub(super) fn touched_specs(ctx: &Ctx, name: String, scan: bool, set: &[String])
         metadata.touched_specs
     };
 
-    let touched: Vec<TouchedSpecRow> = entries.iter().map(TouchedSpecRow::from).collect();
-    ctx.out().write(&TouchedSpecsBody {
+    let touched: Vec<SpecRow> = entries.iter().map(SpecRow::from).collect();
+    ctx.write(&SpecsBody {
         name,
         touched_specs: touched,
     })?;
@@ -50,12 +50,12 @@ pub(super) fn touched_specs(ctx: &Ctx, name: String, scan: bool, set: &[String])
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct TouchedSpecsBody {
+struct SpecsBody {
     name: String,
-    touched_specs: Vec<TouchedSpecRow>,
+    touched_specs: Vec<SpecRow>,
 }
 
-impl Render for TouchedSpecsBody {
+impl Render for SpecsBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         if self.touched_specs.is_empty() {
             return writeln!(w, "{}: no touched specs", self.name);
@@ -70,12 +70,12 @@ impl Render for TouchedSpecsBody {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct TouchedSpecRow {
+struct SpecRow {
     name: String,
     r#type: String,
 }
 
-impl From<&TouchedSpec> for TouchedSpecRow {
+impl From<&TouchedSpec> for SpecRow {
     fn from(t: &TouchedSpec) -> Self {
         Self {
             name: t.name.clone(),
@@ -117,7 +117,7 @@ pub(super) fn overlap(ctx: &Ctx, name: String) -> Result<()> {
     let overlaps = slice_actions::overlap(&slices_dir, &name)?;
     let rows: Vec<OverlapRow> = overlaps.iter().map(OverlapRow::from).collect();
 
-    ctx.out().write(&OverlapBody { name, overlaps: rows })?;
+    ctx.write(&OverlapBody { name, overlaps: rows })?;
     Ok(())
 }
 
@@ -153,8 +153,8 @@ struct OverlapRow {
     other_spec_type: String,
 }
 
-impl From<&specify_slice::Overlap> for OverlapRow {
-    fn from(o: &specify_slice::Overlap) -> Self {
+impl From<&specify_domain::slice::Overlap> for OverlapRow {
+    fn from(o: &specify_domain::slice::Overlap) -> Self {
         Self {
             capability: o.capability.clone(),
             other_slice: o.other.clone(),

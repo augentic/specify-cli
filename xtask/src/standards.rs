@@ -1,72 +1,15 @@
-//! Standards-check engine.
-//!
-//! Each predicate counts a violation per Rust source file. Per-file
-//! baselines live in `scripts/standards-allowlist.toml`. A file's live
-//! count must not exceed its baseline; the baseline defaults to 0 when
-//! omitted (i.e. new files start clean).
-//!
-//! Three run modes:
-//!
-//! - [`Mode::Check`] — default; fail when any live count exceeds its baseline.
-//! - [`Mode::Tighten`] — rewrite the allowlist so each baseline equals today's
-//!   actual count. Use after a migration shrinks a file's count to lock it in.
-//! - [`Mode::CheckTightenable`] — fail when any baseline could be tightened.
-//!   CI runs this so unrelated PRs cannot mask incidental progress.
-//!
-//! Predicates (each implemented in [`ast_predicates`] or [`regex_predicates`]):
-//!
-//! - `inline-dtos` — `#[derive(Serialize)]` declared inside any
-//!   `Block` (function bodies, match arms, etc.). AST-based; reliably
-//!   sees DTOs defined in match arms that the prior bash regex missed.
-//! - `format-match-dispatch` — `match … format { Json => … }`. Should
-//!   route through `Render::render_text` + `emit` instead.
-//! - `rfc-numbers-in-code` — `RFC[- ]?\d+` outside `tests/`,
-//!   `DECISIONS.md`, and `rfcs/`.
-//! - `ritual-doc-paragraphs` — the boilerplate `Returns an error if
-//!   the operation fails.` doc paragraph.
-//! - `no-op-forwarders` — `let _ = cli.<flag>;` style ignores of
-//!   parsed-but-unused flags.
-//! - `error-envelope-inlined` — `output::ErrorBody { … }` /
-//!   `output::ValidationErrBody { … }` constructed outside
-//!   `src/output.rs`. Hand-rolled error envelopes bypass the
-//!   `report` path; nobody outside `output.rs` should be
-//!   building the envelope DTO directly.
-//! - `path-helper-inlined` — `fn specify_dir|plan_path|
-//!   change_brief_path|archive_dir` declared outside `crates/config/`.
-//!   Path helpers live in `specify-config`; command modules call them,
-//!   they do not redefine them. Thin facade methods that take `&self`
-//!   are excluded by the regex shape (the predicate targets free
-//!   functions, not delegating accessors).
-//! - `direct-fs-write` — direct `fs::write` / `std::fs::write` in
-//!   non-test Rust. Managed state should go through the atomic helpers
-//!   unless a file has an explicit baseline.
-//! - `stale-cli-vocab` — legacy CLI vocabulary in non-test Rust:
-//!   `initiative`, `initiative.md`, retired top-level `specify plan`,
-//!   `specify merge`, or `specify validate` strings.
-//! - `module-line-count` — non-test Rust source file length in lines.
-//!   Default cap is 400; explicit per-file baselines grandfather oversized
-//!   files until they are split.
-//! - `result-cliresult-default` — free function returning
-//!   `Result<Exit>` outside `src/commands.rs`. The dispatcher
-//!   legitimately accepts both `Result<()>` and `Result<Exit>`
-//!   shapes; new handlers should default to `Result<()>` and let
-//!   success collapse to `Exit::Success`. Genuine non-success-exit
-//!   handlers (typed `*ErrBody` paths) are grandfathered via
-//!   per-file baselines.
-//! - `verbose-doc-paragraphs` — a `///` doc paragraph longer than 8
-//!   consecutive lines on a `pub fn|struct|enum|const|type`. Long
-//!   prose blocks belong in `rfcs/` or `DECISIONS.md`; the doc comment
-//!   on a public item should fit on a screen. `pub trait` is exempt
-//!   (the contract often warrants the long form).
-//! - `cli-help-shape` — clap-derive `///` doc lines longer than 80
-//!   characters in `src/cli.rs` and `src/commands/**/cli.rs`. Help
-//!   output is operator-facing and must wrap cleanly in a terminal.
+//! Standards-check engine. Each predicate counts violations per Rust
+//! source file against the per-file baselines in
+//! `scripts/standards-allowlist.toml`; live counts must not exceed them.
 
 mod allowlist;
 mod ast_predicates;
+mod crate_root_prose;
+mod display_serde_mirror;
 mod regex_predicates;
 mod report;
 mod types;
+mod unit_test_serde_roundtrip;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -173,6 +116,10 @@ fn count_one(path: &Path, source: &str) -> Counts {
         result_cliresult_default: regex_predicates::result_cliresult_default(path, &stripped),
         verbose_doc_paragraphs: regex_predicates::verbose_doc_paragraphs(source),
         cli_help_shape: regex_predicates::cli_help_shape(path, source),
+        display_serde_mirror: display_serde_mirror::count(source),
+        crate_root_prose: crate_root_prose::count(path, source),
+        unit_test_serde_roundtrip: unit_test_serde_roundtrip::count(source),
+        mod_rs_forbidden: u32::from(path.file_name().is_some_and(|n| n == "mod.rs")),
     }
 }
 

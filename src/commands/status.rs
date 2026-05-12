@@ -1,17 +1,14 @@
-//! Top-level `specify status` — project dashboard.
-//!
-//! Aggregates the registry summary, plan progress counts, and the
-//! active-slice list. Single-slice status lives in
-//! `super::slice::SliceAction::Status`; this module is dashboard-only.
+//! Top-level `specify status` — project dashboard. Aggregates the
+//! registry summary, plan progress counts, and the active-slice list.
 
 use std::collections::BTreeMap;
 use std::io::Write;
 
 use serde::Serialize;
-use specify_change::{Plan, Status};
-use specify_config::LayoutExt;
+use specify_domain::change::{Plan, Status};
+use specify_domain::config::LayoutExt;
+use specify_domain::registry::Registry;
 use specify_error::Result;
-use specify_registry::Registry;
 
 use super::slice::{StatusEntry, collect_status, list_slice_names};
 use crate::context::Ctx;
@@ -32,7 +29,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     }
 
     let body = DashboardBody::new(registry, plan_summary, entries);
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     Ok(())
 }
 

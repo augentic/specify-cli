@@ -33,10 +33,11 @@ pub(super) fn read_local_path(path: &Path, source: &str) -> Result<Vec<u8>, Tool
 #[cfg(test)]
 mod tests {
     use super::super::resolve;
-    use super::super::tests_common::*;
     use crate::error::ToolError;
     use crate::manifest::ToolSource;
-    use crate::test_support::{scratch_dir, with_cache_env};
+    use crate::test_support::{
+        fixed_now, named_tool, project_scope, scratch_dir, tool, with_cache_env, write_source,
+    };
 
     #[test]
     fn file_uri_reuses_local_path_resolution() {

@@ -17,7 +17,7 @@ use std::process::Command as ProcessCommand;
 use assert_cmd::Command;
 use serde_json::Value;
 use specify_error::Result;
-use tempfile::TempDir;
+use tempfile::{TempDir, tempdir};
 
 /// Panic with a descriptive message when a handler returned an error.
 ///
@@ -236,6 +236,119 @@ fn parse_json_stream(label: &str, bytes: &[u8], root: &Path) -> Value {
         .unwrap_or_else(|err| panic!("{label} not JSON ({err}):\n{text}"));
     strip_substitutions(&mut value, &tempdir_subs(root));
     value
+}
+
+/// A throwaway `.specify/` project rooted in a tempdir, scaffolded by
+/// running `specify init` with the in-repo Omnia capability fixture.
+///
+/// Hoisted from the per-test-file `struct Project` harnesses
+/// (`tests/slice.rs`, `tests/slice_merge.rs`, `tests/e2e.rs`,
+/// `tests/capability.rs`, `tests/change_umbrella.rs`) so the same
+/// `Project::init()` / `.with_schemas()` / `.stage_slice()` shape works
+/// across every integration suite. Each test binary uses a different
+/// subset, hence the `#[allow(dead_code)]` on every public item.
+pub struct Project {
+    _tmp: TempDir,
+    root: PathBuf,
+}
+
+impl Project {
+    /// Build a fresh tempdir and run `specify init <repo>/schemas/omnia`
+    /// with a default `--name`. The resulting project sits at the
+    /// tempdir root.
+    #[allow(dead_code)]
+    pub fn init() -> Self {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path().to_path_buf();
+        specify()
+            .current_dir(&root)
+            .args(["init"])
+            .arg(repo_root().join("schemas").join("omnia"))
+            .args(["--name", "test-proj"])
+            .assert()
+            .success();
+        Self { _tmp: tmp, root }
+    }
+
+    /// Initialise a project backed by a local fixture capability dir.
+    /// The fixture is mirrored into `<tmp>/schemas/<name>/` so that
+    /// subsequent `specify` invocations resolve it via the usual
+    /// `schemas/<name>/` probe.
+    #[allow(dead_code)]
+    pub fn init_from_fixture(name: &str, fixture_dir: &Path) -> Self {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path().to_path_buf();
+        copy_dir(fixture_dir, &root.join("schemas").join(name));
+        specify()
+            .current_dir(&root)
+            .args(["init"])
+            .arg(root.join("schemas").join(name))
+            .args(["--name", "test-proj"])
+            .assert()
+            .success();
+        Self { _tmp: tmp, root }
+    }
+
+    /// Mirror the in-repo `schemas/omnia` tree into the project so any
+    /// subcommand that loads a `PipelineView` can resolve the schema
+    /// from the project's own `schemas/` dir.
+    #[allow(dead_code)]
+    #[must_use]
+    pub fn with_schemas(self) -> Self {
+        copy_dir(&repo_root().join("schemas/omnia"), &self.root.join("schemas/omnia"));
+        self
+    }
+
+    /// Populate the schema cache instead of the local `schemas/` tree so
+    /// `Capability::resolve` picks the `CapabilitySource::Cached` branch.
+    #[allow(dead_code)]
+    #[must_use]
+    pub fn with_cached_schema(self) -> Self {
+        copy_dir(&repo_root().join("schemas/omnia"), &self.root.join(".specify/.cache/omnia"));
+        self
+    }
+
+    /// Copy a fixture subtree under `tests/fixtures/e2e/<fixture>` into
+    /// `.specify/slices/my-slice/` and return the slice directory path.
+    #[allow(dead_code)]
+    pub fn stage_slice(&self, fixture: &str) -> PathBuf {
+        let dst = self.root.join(".specify/slices/my-slice");
+        fs::create_dir_all(&dst).expect("mkdir slice");
+        copy_dir(&repo_root().join("tests/fixtures/e2e").join(fixture), &dst);
+        dst
+    }
+
+    /// Path to the project root (the tempdir).
+    #[allow(dead_code)]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Path to `.specify/slices/` under the project root.
+    #[allow(dead_code)]
+    pub fn slices_dir(&self) -> PathBuf {
+        self.root.join(".specify/slices")
+    }
+
+    /// Path to `.specify/specs/` under the project root.
+    #[allow(dead_code)]
+    pub fn specs_dir(&self) -> PathBuf {
+        self.root.join(".specify/specs")
+    }
+
+    /// Path to the umbrella `plan.yaml` at the repo root.
+    #[allow(dead_code)]
+    pub fn plan_path(&self) -> PathBuf {
+        self.root.join("plan.yaml")
+    }
+
+    /// Seed `plan.yaml` (at the project root) with arbitrary YAML. Used
+    /// by the change-umbrella tests to drive the file directly without
+    /// going through the `plan create` verb.
+    #[allow(dead_code)]
+    pub fn seed_plan(&self, yaml: &str) {
+        fs::write(self.plan_path(), yaml).expect("write plan.yaml");
+    }
 }
 
 /// Compare `actual` against the golden at `dir/name`, or rewrite that

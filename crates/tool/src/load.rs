@@ -40,7 +40,7 @@ pub fn project_tools(project_name: impl Into<String>, tools: Vec<Tool>) -> Vec<(
 /// # Errors
 ///
 /// Returns an error when the sidecar exists but cannot be read or parsed.
-pub fn load_capability_sidecar(
+pub fn capability_sidecar(
     capability_dir: &Path, capability_slug: &str,
 ) -> Result<Vec<(ToolScope, Tool)>, ToolError> {
     let sidecar_path = capability_dir.join("tools.yaml");
@@ -110,8 +110,7 @@ mod tests {
     #[test]
     fn load_capability_sidecar_returns_empty_when_absent() {
         let tmp = tempdir().expect("tempdir");
-        let loaded =
-            load_capability_sidecar(tmp.path(), "contracts").expect("absent sidecar is valid");
+        let loaded = capability_sidecar(tmp.path(), "contracts").expect("absent sidecar is valid");
         assert!(loaded.is_empty());
     }
 
@@ -124,9 +123,18 @@ mod tests {
         )
         .expect("write sidecar");
 
-        let err = load_capability_sidecar(tmp.path(), "contracts")
+        let err = capability_sidecar(tmp.path(), "contracts")
             .expect_err("array top-level shape must fail");
-        assert!(matches!(err, ToolError::ManifestParse { .. }), "{err}");
+        assert!(
+            matches!(
+                err,
+                ToolError::Manifest {
+                    kind: crate::error::ManifestKind::Parse(_),
+                    ..
+                }
+            ),
+            "{err}"
+        );
     }
 
     #[test]
@@ -138,7 +146,7 @@ mod tests {
         )
         .expect("write sidecar");
 
-        let loaded = load_capability_sidecar(tmp.path(), "contracts").expect("load sidecar");
+        let loaded = capability_sidecar(tmp.path(), "contracts").expect("load sidecar");
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].1.name, "contract");
         assert!(matches!(

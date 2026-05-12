@@ -1,12 +1,6 @@
-//! `specify context {generate, check}` dispatcher.
-//!
-//! Heavy lifting lives in submodules: [`generate`] / [`check`] own the
-//! per-verb policy, [`assemble`] walks the project to build the render
-//! input and fingerprint set, and [`render`] / [`fences`] /
-//! [`fingerprint`] / [`lock`] / [`detect`] own the renderer contract.
-//! The parent keeps a small set of helpers — `render_document` plus the
-//! IO/error-mapping shims — that both [`generate`] and [`check`] reach
-//! for through `use super::*`.
+//! `specify context {generate, check}` dispatcher. Heavy lifting lives
+//! in submodules; this module owns the small set of helpers
+//! (`render_document` plus IO/error-mapping shims) shared by both verbs.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -23,7 +17,7 @@ mod lock;
 mod render;
 
 pub(super) use generate::for_init as generate_for_init;
-use specify_config::LayoutExt;
+use specify_domain::config::LayoutExt;
 use specify_error::{Error, Result};
 
 use crate::cli::ContextAction;
@@ -37,7 +31,7 @@ pub(crate) fn run(ctx: &Ctx, action: &ContextAction) -> Result<()> {
 }
 
 fn render_document(ctx: &Ctx) -> Result<(String, fingerprint::ContextFingerprint)> {
-    let assembly = assemble::assemble_render_input(ctx)?;
+    let assembly = assemble::render_input(ctx)?;
     let aggregate = fingerprint::aggregate(env!("CARGO_PKG_VERSION"), assembly.inputs.clone());
     let generated = render::render_document_with_fingerprint(&assembly.input, &aggregate);
     let fenced = fences::parse_document(generated.as_bytes())
@@ -90,8 +84,8 @@ fn context_lock_path(ctx: &Ctx) -> PathBuf {
 mod tests {
     use std::collections::BTreeMap;
 
-    use specify_config::ProjectConfig;
-    use specify_registry::Registry;
+    use specify_domain::config::ProjectConfig;
+    use specify_domain::registry::Registry;
     use tempfile::tempdir;
 
     use super::*;
@@ -155,7 +149,7 @@ mod tests {
             config: sample_config(),
         };
 
-        let assembly = assemble::assemble_render_input(&ctx).expect("assemble render input");
+        let assembly = assemble::render_input(&ctx).expect("assemble render input");
         let input = &assembly.input;
 
         assert_eq!(input.active_slices, vec!["alpha".to_string(), "zeta".to_string()]);
@@ -169,7 +163,7 @@ mod tests {
         );
         assert_eq!(
             input.rule_overrides,
-            vec![render::RuleOverride {
+            vec![render::Rule {
                 brief_id: "proposal".to_string(),
                 path: ".specify/rules/proposal.md".to_string(),
             }]
@@ -207,7 +201,7 @@ mod tests {
             },
         };
 
-        let assembly = assemble::assemble_render_input(&ctx).expect("hub assembly");
+        let assembly = assemble::render_input(&ctx).expect("hub assembly");
         let input = &assembly.input;
 
         assert!(input.is_hub);

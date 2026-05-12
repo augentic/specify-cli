@@ -1,14 +1,14 @@
 use std::io::Write;
 
-use chrono::Utc;
+use jiff::Timestamp;
 use serde::Serialize;
-use specify_capability::ChangeBrief;
-use specify_change::{Finding, Plan, Severity, Status};
-use specify_config::{LayoutExt, with_existing_state};
+use specify_domain::capability::ChangeBrief;
+use specify_domain::change::{Finding, Plan, Severity, Status};
+use specify_domain::config::{InitPolicy, LayoutExt, with_state};
+use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
-use specify_registry::Registry;
 
-use super::{PlanRef, display, plan_ref, require_file};
+use super::{Ref, plan_ref, require_file};
 use crate::cli::SourceArg;
 use crate::context::Ctx;
 use crate::output::{Render, Validation};
@@ -42,8 +42,8 @@ pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result
     // and the pre-existence check above is the documented contract.
     plan.save(&plan_path)?;
 
-    ctx.out().write(&CreateBody {
-        plan: PlanRef {
+    ctx.write(&CreateBody {
+        plan: Ref {
             name,
             path: plan_path,
         },
@@ -96,8 +96,8 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 
     let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
     let rows: Vec<FindingRow<'_>> = results.iter().map(FindingRow::from).collect();
-    ctx.out().write(&PlanValidateBody {
-        plan: PlanRef {
+    ctx.write(&PlanValidateBody {
+        plan: Ref {
             name: plan.name,
             path: plan_path,
         },
@@ -153,7 +153,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
             ..NextBody::default()
         }
     };
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     Ok(())
 }
 
@@ -161,32 +161,36 @@ pub(super) fn transition(
     ctx: &Ctx, name: String, target: Status, reason: Option<String>,
 ) -> Result<()> {
     let plan_path = ctx.layout().plan_path();
-    let body = with_existing_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
-        let old_status = plan
-            .entries
-            .iter()
-            .find(|c| c.name == name)
-            .ok_or_else(|| Error::Diag {
-                code: "plan-entry-not-found",
-                detail: format!("no slice named '{name}' in plan"),
-            })?
-            .status;
+    let body = with_state::<Plan, _, _>(
+        ctx.layout(),
+        InitPolicy::RequireExisting("plan.yaml"),
+        move |plan| {
+            let old_status = plan
+                .entries
+                .iter()
+                .find(|c| c.name == name)
+                .ok_or_else(|| Error::Diag {
+                    code: "plan-entry-not-found",
+                    detail: format!("no slice named '{name}' in plan"),
+                })?
+                .status;
 
-        plan.transition(&name, target, reason.as_deref())?;
+            plan.transition(&name, target, reason.as_deref())?;
 
-        let entry =
-            plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
-        Ok(TransitionBody {
-            plan: plan_ref(plan, &plan_path),
-            entry: TransitionRow {
-                name: entry.name.clone(),
-                status: entry.status,
-                status_reason: entry.status_reason.clone(),
-            },
-            previous_status: old_status,
-        })
-    })?;
-    ctx.out().write(&body)?;
+            let entry =
+                plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
+            Ok(TransitionBody {
+                plan: plan_ref(plan, &plan_path),
+                entry: TransitionRow {
+                    name: entry.name.clone(),
+                    status: entry.status,
+                    status_reason: entry.status_reason.clone(),
+                },
+                previous_status: old_status,
+            })
+        },
+    )?;
+    ctx.write(&body)?;
     Ok(())
 }
 
@@ -204,10 +208,10 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
     let plan_name = Plan::load(&plan_path)?.name;
 
     let (archived, archived_plans_dir) =
-        Plan::archive(&plan_path, &brief_path, &archive_dir, force, Utc::now())?;
-    ctx.out().write(&ArchiveBody {
-        archived: display(&archived),
-        archived_plans_dir: archived_plans_dir.as_deref().map(display),
+        Plan::archive(&plan_path, &brief_path, &archive_dir, force, Timestamp::now())?;
+    ctx.write(&ArchiveBody {
+        archived: archived.display().to_string(),
+        archived_plans_dir: archived_plans_dir.as_deref().map(|p| p.display().to_string()),
         plan: ArchivedPlan { name: plan_name },
     })?;
     Ok(())
@@ -216,19 +220,19 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct CreateBody {
-    plan: PlanRef,
+    plan: Ref,
 }
 
 impl Render for CreateBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Initialised plan '{}' at {}.", self.plan.name, display(&self.plan.path))
+        writeln!(w, "Initialised plan '{}' at {}.", self.plan.name, self.plan.path.display())
     }
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct PlanValidateBody<'a> {
-    plan: PlanRef,
+    plan: Ref,
     #[serde(flatten)]
     validation: Validation<FindingRow<'a>>,
     passed: bool,
@@ -314,7 +318,7 @@ impl Render for NextBody {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct TransitionBody {
-    plan: PlanRef,
+    plan: Ref,
     entry: TransitionRow,
     #[serde(skip)]
     previous_status: Status,

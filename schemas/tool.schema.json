@@ -8,10 +8,19 @@
     "tools": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "$ref": "#/$defs/tool" }
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/packageRequest" },
+          { "$ref": "#/$defs/tool" }
+        ]
+      }
     }
   },
   "$defs": {
+    "packageRequest": {
+      "type": "string",
+      "pattern": "^specify:[a-z][a-z0-9-]*@\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?(\\+[A-Za-z0-9.-]+)?$"
+    },
     "tool": {
       "type": "object",
       "additionalProperties": false,
@@ -29,7 +38,7 @@
         "source": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(https://.+|file://.+|/.*|[A-Za-z]:[\\\\/].*)$"
+          "pattern": "^(https://.+|file://.+|/.*|[A-Za-z]:[\\\\/].*|specify:[a-z][a-z0-9-]*@\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?(\\+[A-Za-z0-9.-]+)?)$"
         },
         "sha256": {
           "type": "string",

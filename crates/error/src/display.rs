@@ -1,8 +1,6 @@
-//! Hint and discriminant tables for [`crate::Error`].
-//!
-//! `variant_str` is the wire contract surfaced as the JSON `error`
-//! field; `hint` is the long-form recovery line the TTY renderer pulls
-//! alongside it.
+//! Hint and discriminant tables for [`crate::Error`]. `variant_str` is
+//! the wire-contract `error` field; `hint` is the long-form recovery
+//! line the TTY renderer pulls alongside it.
 
 use std::borrow::Cow;
 
@@ -58,14 +56,11 @@ impl Error {
             Self::PlanTransition { .. } => Cow::Borrowed("plan-transition"),
             Self::PlanIncomplete { .. } => Cow::Borrowed("plan-has-outstanding-work"),
             Self::PlanNonTerminalEntries { .. } => Cow::Borrowed("non-terminal-entries-present"),
-            Self::ChangeBriefExists { .. } => Cow::Borrowed("already-exists"),
             Self::DriverBusy { .. } => Cow::Borrowed("driver-busy"),
             Self::ArtifactNotFound { .. } => Cow::Borrowed("artifact-not-found"),
             Self::SliceNotFound { .. } => Cow::Borrowed("slice-not-found"),
             Self::CapabilityManifestMissing { .. } => Cow::Borrowed("capability-manifest-missing"),
             Self::Filesystem { op, .. } => Cow::Owned(format!("filesystem-{op}")),
-            Self::CapabilityCheckFailed { .. } => Cow::Borrowed("capability-check-failed"),
-            Self::SliceValidationFailed { .. } => Cow::Borrowed("slice-validation-failed"),
             Self::BranchPrepareFailed { .. } => Cow::Borrowed("branch-preparation-failed"),
             Self::ToolDenied(_) => Cow::Borrowed("tool-permission-denied"),
             Self::ToolNotDeclared { .. } => Cow::Borrowed("tool-not-declared"),
@@ -177,8 +172,9 @@ mod tests {
                 "non-terminal-entries-present",
             ),
             (
-                Error::ChangeBriefExists {
-                    path: std::path::PathBuf::from("/tmp/change.md"),
+                Error::Diag {
+                    code: "already-exists",
+                    detail: "change brief already exists at /tmp/change.md".to_string(),
                 },
                 "already-exists",
             ),

@@ -4,27 +4,20 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Hardcoded rule registry and RFC-1a validator for Specify"
-readme = "../../README.md"
+rust-version.workspace = true
+description = "Baseline-contract validation primitives shared by the host CLI (`specify-domain`) and the standalone `wasi-tools/contract` carve-out"
 categories = ["development-tools"]
-keywords = ["specify", "validate", "rules"]
+keywords = ["specify", "validate", "openapi", "asyncapi", "contracts"]
+readme = "../../README.md"
 
 [lints]
 workspace = true
 
 [dependencies]
-specify-error.workspace = true
-specify-capability.workspace = true
-specify-registry.workspace = true
-specify-spec.workspace = true
-specify-task.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-regex.workspace = true
-serde-saphyr.workspace = true
-semver.workspace = true
-glob.workspace = true
+semver = { workspace = true }
+serde = { workspace = true }
+serde-saphyr = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
-specify-slice.workspace = true
-tempfile.workspace = true
+tempfile = { workspace = true }

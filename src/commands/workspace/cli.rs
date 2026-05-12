@@ -1,7 +1,5 @@
-//! Clap derive surface for `specify workspace *`.
-//!
-//! Lifted out of `src/cli.rs`; `cli.rs` re-exports `WorkspaceAction` so
-//! the parent derives still resolve at expansion time.
+//! Clap derive surface for `specify workspace *`. The umbrella
+//! `cli.rs` re-exports `WorkspaceAction`.
 
 use std::path::PathBuf;
 

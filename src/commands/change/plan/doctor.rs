@@ -1,19 +1,16 @@
-//! `specify change plan doctor`.
-//!
-//! Thin handler over [`specify_change::plan_doctor`]: load the
-//! plan + registry, run the doctor pipeline (which is a strict
-//! superset of `Plan::validate`), then render the diagnostic stream as
-//! text or JSON.
+//! `specify change plan doctor` — thin handler over
+//! [`specify_domain::change::plan_doctor`] that loads plan + registry,
+//! runs the doctor pipeline, and renders the diagnostic stream.
 
 use std::io::Write;
 
 use serde::Serialize;
-use specify_change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
-use specify_config::LayoutExt;
+use specify_domain::change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
+use specify_domain::config::LayoutExt;
+use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
-use specify_registry::Registry;
 
-use super::{PlanRef, plan_ref, require_file};
+use super::{Ref, plan_ref, require_file};
 use crate::context::Ctx;
 use crate::output::Render;
 
@@ -35,7 +32,7 @@ struct DiagnosticRow {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct DoctorBody {
-    plan: PlanRef,
+    plan: Ref,
     diagnostics: Vec<DiagnosticRow>,
 }
 
@@ -81,7 +78,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let has_errors = diagnostics.iter().any(|d| matches!(d.severity, PlanDoctorSeverity::Error));
     let rows: Vec<DiagnosticRow> = diagnostics.iter().map(diagnostic_row).collect();
 
-    ctx.out().write(&DoctorBody {
+    ctx.write(&DoctorBody {
         plan: plan_ref(&plan, &plan_path),
         diagnostics: rows,
     })?;

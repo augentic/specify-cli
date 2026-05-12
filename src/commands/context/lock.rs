@@ -6,8 +6,8 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use specify_domain::slice::atomic::yaml_write;
 use specify_error::{Error, ValidationStatus, ValidationSummary};
-use specify_slice::atomic::yaml_write;
 
 use super::fingerprint::ContextFingerprint;
 
@@ -19,20 +19,20 @@ pub(super) struct ContextLock {
     pub(super) version: u64,
     pub(super) fingerprint: String,
     pub(super) cli_version: String,
-    pub(super) inputs: Vec<LockInput>,
-    pub(super) fences: LockFences,
+    pub(super) inputs: Vec<Input>,
+    pub(super) fences: Fences,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct LockInput {
+pub(super) struct Input {
     pub(super) path: String,
     pub(super) sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct LockFences {
+pub(super) struct Fences {
     pub(super) body_sha256: String,
 }
 
@@ -44,7 +44,7 @@ pub(super) struct InputDiff {
 }
 
 #[derive(Debug, Deserialize)]
-struct LockVersion {
+struct Version {
     version: u64,
 }
 
@@ -59,12 +59,12 @@ impl ContextLock {
             inputs: fingerprint
                 .inputs
                 .iter()
-                .map(|input| LockInput {
+                .map(|input| Input {
                     path: input.path.clone(),
                     sha256: input.sha256.clone(),
                 })
                 .collect(),
-            fences: LockFences {
+            fences: Fences {
                 body_sha256: fingerprint.body_sha256.clone(),
             },
         }
@@ -78,7 +78,7 @@ pub(super) fn load(path: &Path) -> Result<Option<ContextLock>, Error> {
         Err(err) => return Err(Error::Io(err)),
     };
 
-    let version: LockVersion = serde_saphyr::from_str(&contents).map_err(|err| {
+    let version: Version = serde_saphyr::from_str(&contents).map_err(|err| {
         validation_error(
             "context-lock-malformed",
             Error::ContextLockMalformed {
@@ -129,7 +129,7 @@ pub(super) fn save(path: &Path, lock: &ContextLock) -> Result<(), Error> {
     yaml_write(path, lock)
 }
 
-pub(super) fn diff_inputs(expected: &[LockInput], actual: &[LockInput]) -> InputDiff {
+pub(super) fn diff_inputs(expected: &[Input], actual: &[Input]) -> InputDiff {
     let expected_by_path = inputs_by_path(expected);
     let actual_by_path = inputs_by_path(actual);
 
@@ -160,7 +160,7 @@ pub(super) fn diff_inputs(expected: &[LockInput], actual: &[LockInput]) -> Input
     }
 }
 
-fn inputs_by_path(inputs: &[LockInput]) -> BTreeMap<String, String> {
+fn inputs_by_path(inputs: &[Input]) -> BTreeMap<String, String> {
     inputs.iter().map(|input| (input.path.clone(), input.sha256.clone())).collect()
 }
 
@@ -179,8 +179,8 @@ fn validation_error(rule_id: &'static str, detail: String) -> Error {
 mod tests {
     use super::*;
 
-    fn input(path: &str, sha256: &str) -> LockInput {
-        LockInput {
+    fn input(path: &str, sha256: &str) -> Input {
+        Input {
             path: path.to_string(),
             sha256: sha256.to_string(),
         }
@@ -209,7 +209,7 @@ mod tests {
                 ".specify/project.yaml",
                 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             )],
-            fences: LockFences {
+            fences: Fences {
                 body_sha256:
                     "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
                         .to_string(),

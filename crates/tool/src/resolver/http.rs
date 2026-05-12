@@ -1,8 +1,6 @@
-//! HTTPS source resolution.
-//!
-//! Per-call timeouts, a 64 MiB body cap, and stream-to-tempfile persistence.
-//! New code that adds an HTTP path must adopt the same shape (see AGENTS.md
-//! §"ureq fetch hardening").
+//! HTTPS source resolution with per-call timeouts, a 64 MiB body cap,
+//! and stream-to-tempfile persistence. See AGENTS.md
+//! §"ureq fetch hardening" for the contract every HTTP path must follow.
 
 use std::io::{Read, Write};
 use std::path::Path;
@@ -14,7 +12,7 @@ use tempfile::NamedTempFile;
 use ureq::ResponseExt;
 
 use super::AcquiredBytes;
-use crate::error::ToolError;
+use crate::error::{NetworkKind, ToolError};
 
 /// Whole-call cap; covers DNS + connect + headers + body.
 const REQUEST_TIMEOUT: Duration = Duration::from_mins(2);
@@ -54,9 +52,9 @@ pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredByte
 
     let status = response.status().as_u16();
     if status != 200 {
-        return Err(ToolError::NetworkStatus {
+        return Err(ToolError::Network {
             url: url.to_string(),
-            status,
+            kind: NetworkKind::Status(status),
         });
     }
 
@@ -65,10 +63,12 @@ pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredByte
     if let Some(length) = response.body().content_length()
         && length > MAX_RESPONSE_BYTES
     {
-        return Err(ToolError::NetworkTooLarge {
+        return Err(ToolError::Network {
             url: url.to_string(),
-            limit: MAX_RESPONSE_BYTES,
-            actual: Some(length),
+            kind: NetworkKind::TooLarge {
+                limit: MAX_RESPONSE_BYTES,
+                actual: Some(length),
+            },
         });
     }
 
@@ -85,7 +85,11 @@ pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredByte
 
     let mut reader = response.body_mut().with_config().limit(MAX_RESPONSE_BYTES + 1).reader();
     let sha256 = stream_to_tempfile(url, &mut reader, &temp)?;
-    Ok(AcquiredBytes::Streamed { temp, sha256 })
+    Ok(AcquiredBytes {
+        temp,
+        sha256,
+        package_metadata: None,
+    })
 }
 
 fn stream_to_tempfile<R: Read>(
@@ -106,16 +110,18 @@ fn stream_to_tempfile<R: Read>(
                 }
                 return Err(ToolError::Network {
                     url: url.to_string(),
-                    detail: err.to_string(),
+                    kind: NetworkKind::Other(err.to_string()),
                 });
             }
         };
         total = total.saturating_add(n as u64);
         if total > MAX_RESPONSE_BYTES {
-            return Err(ToolError::NetworkTooLarge {
+            return Err(ToolError::Network {
                 url: url.to_string(),
-                limit: MAX_RESPONSE_BYTES,
-                actual: Some(total),
+                kind: NetworkKind::TooLarge {
+                    limit: MAX_RESPONSE_BYTES,
+                    actual: Some(total),
+                },
             });
         }
         hasher.update(&buf[..n]);
@@ -149,51 +155,36 @@ fn https_agent() -> ureq::Agent {
 }
 
 fn map_network_error(url: &str, err: ureq::Error) -> ToolError {
-    match err {
-        ureq::Error::StatusCode(status) => ToolError::NetworkStatus {
-            url: url.to_string(),
-            status,
-        },
-        ureq::Error::Timeout(timeout) => ToolError::NetworkTimeout {
-            url: url.to_string(),
-            detail: timeout.to_string(),
-        },
-        ureq::Error::BadUri(detail) => ToolError::NetworkMalformed {
-            url: url.to_string(),
-            detail,
-        },
-        ureq::Error::Http(err) => ToolError::NetworkMalformed {
-            url: url.to_string(),
-            detail: err.to_string(),
-        },
-        ureq::Error::BodyExceedsLimit(limit) => ToolError::NetworkTooLarge {
-            url: url.to_string(),
+    let kind = match err {
+        ureq::Error::StatusCode(status) => NetworkKind::Status(status),
+        ureq::Error::Timeout(timeout) => NetworkKind::Timeout(timeout.to_string()),
+        ureq::Error::BadUri(detail) => NetworkKind::Malformed(detail),
+        ureq::Error::Http(err) => NetworkKind::Malformed(err.to_string()),
+        ureq::Error::BodyExceedsLimit(limit) => NetworkKind::TooLarge {
             limit: MAX_RESPONSE_BYTES,
             actual: Some(limit),
         },
-        ureq::Error::RequireHttpsOnly(detail) => ToolError::invalid_source(url, detail),
-        err => ToolError::Network {
-            url: url.to_string(),
-            detail: err.to_string(),
-        },
+        ureq::Error::RequireHttpsOnly(detail) => return ToolError::invalid_source(url, detail),
+        err => NetworkKind::Other(err.to_string()),
+    };
+    ToolError::Network {
+        url: url.to_string(),
+        kind,
     }
 }
 
 fn map_streamed_body_error(url: &str, err: &ureq::Error) -> ToolError {
-    match err {
-        ureq::Error::Timeout(timeout) => ToolError::NetworkTimeout {
-            url: url.to_string(),
-            detail: timeout.to_string(),
-        },
-        ureq::Error::BodyExceedsLimit(limit) => ToolError::NetworkTooLarge {
-            url: url.to_string(),
+    let kind = match err {
+        ureq::Error::Timeout(timeout) => NetworkKind::Timeout(timeout.to_string()),
+        ureq::Error::BodyExceedsLimit(limit) => NetworkKind::TooLarge {
             limit: MAX_RESPONSE_BYTES,
             actual: Some(*limit),
         },
-        err => ToolError::Network {
-            url: url.to_string(),
-            detail: err.to_string(),
-        },
+        err => NetworkKind::Other(err.to_string()),
+    };
+    ToolError::Network {
+        url: url.to_string(),
+        kind,
     }
 }
 
@@ -202,11 +193,10 @@ mod tests {
     use std::net::TcpListener;
 
     use super::super::resolve;
-    use super::super::tests_common::*;
     use super::*;
     use crate::error::ToolError;
     use crate::manifest::ToolSource;
-    use crate::test_support::{scratch_dir, with_cache_env};
+    use crate::test_support::{fixed_now, project_scope, scratch_dir, tool, with_cache_env};
 
     #[test]
     fn http_sources_are_rejected_before_network_access() {
@@ -224,7 +214,16 @@ mod tests {
     fn malformed_https_url_returns_typed_error() {
         let dest = scratch_dir("resolver-malformed-https").join("module.wasm");
         let err = download_https("https://", &dest).expect_err("malformed URL must fail");
-        assert!(matches!(err, ToolError::NetworkMalformed { .. }), "{err}");
+        assert!(
+            matches!(
+                err,
+                ToolError::Network {
+                    kind: NetworkKind::Malformed(_),
+                    ..
+                }
+            ),
+            "{err}"
+        );
     }
 
     #[test]
@@ -239,9 +238,12 @@ mod tests {
         assert!(
             matches!(
                 err,
-                ToolError::Network { .. }
-                    | ToolError::NetworkTimeout { .. }
-                    | ToolError::NetworkMalformed { .. }
+                ToolError::Network {
+                    kind: NetworkKind::Other(_)
+                        | NetworkKind::Timeout(_)
+                        | NetworkKind::Malformed(_),
+                    ..
+                }
             ),
             "{err}"
         );
@@ -253,12 +255,30 @@ mod tests {
             "https://example.test/tool.wasm",
             ureq::Error::Timeout(ureq::Timeout::Global),
         );
-        assert!(matches!(timeout, ToolError::NetworkTimeout { .. }), "{timeout}");
+        assert!(
+            matches!(
+                timeout,
+                ToolError::Network {
+                    kind: NetworkKind::Timeout(_),
+                    ..
+                }
+            ),
+            "{timeout}"
+        );
 
         let too_large = map_streamed_body_error(
             "https://example.test/tool.wasm",
             &ureq::Error::BodyExceedsLimit(1),
         );
-        assert!(matches!(too_large, ToolError::NetworkTooLarge { .. }), "{too_large}");
+        assert!(
+            matches!(
+                too_large,
+                ToolError::Network {
+                    kind: NetworkKind::TooLarge { .. },
+                    ..
+                }
+            ),
+            "{too_large}"
+        );
     }
 }

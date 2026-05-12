@@ -1,33 +1,6 @@
-#![allow(
-    clippy::multiple_crate_versions,
-    reason = "The WASI tool runner pulls in Wasmtime/WASI transitive versions the workspace cannot unify yet."
-)]
-
-//! `specify` library crate.
-//!
-//! Hosts the command modules so workspace tooling (`xtask gen-man`,
-//! future completions-from-xtask) can introspect the clap command tree
-//! without spawning the binary. The `[[bin]]` target in
-//! `src/main.rs` is a thin shim around [`run`].
-//!
-//! Exit-code contract for the dispatched [`run`] (defined by the
-//! internal `Exit` enum in `output`):
-//!
-//! - `0` `Success`: Success.
-//! - `1` `GenericFailure`: Generic failure (I/O, parse, tool
-//!   resolver/runtime, unknown).
-//! - `2` `ValidationFailed` or `ArgumentError`: validation failed or
-//!   a post-parse argument-shape check failed.
-//! - `3` `VersionTooOld`: The CLI binary is older than the
-//!   `specify_version` floor in `.specify/project.yaml`.
-//!
-//! Error → exit code mapping:
-//! - [`specify_error::Error::CliTooOld`] → `3`.
-//! - [`specify_error::Error::Validation`],
-//!   [`specify_error::Error::ToolDenied`], and
-//!   [`specify_error::Error::ToolNotDeclared`] → `2`.
-//! - [`specify_error::Error::Argument`] → `2`.
-//! - Any other [`specify_error::Error`] variant → `1`.
+//! `specify` library crate. Hosts the command modules so workspace
+//! tooling can introspect the clap command tree without spawning the
+//! binary. See `DECISIONS.md` for the exit-code contract.
 
 mod cli;
 mod commands;

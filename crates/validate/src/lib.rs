@@ -1,221 +1,338 @@
-//! Hardcoded validation rule registry and runner (Pass/Fail/Deferred).
-//!
-//! Public surface:
-//!
-//! - [`ValidationResult`] is re-exported from `specify-capability`;
-//!   that crate is the canonical home (see the workspace `DECISIONS.md`
-//!   §"Change G — `ValidationResult` canonical home" for why it doesn't
-//!   live here).
-//! - [`ValidationReport`] is the structured output produced by
-//!   [`validate_slice`].
-//! - [`Rule`] / [`CrossRule`] declare their [`Classification`]
-//!   (`Structural` or `Semantic`). Semantic rules are always materialised
-//!   as [`ValidationResult::Deferred`]; their `check` function is never
-//!   invoked. A test enforces this by making semantic checkers panic.
-//! - [`serialize_report`] emits the kebab-case validation payload that the
-//!   root CLI wraps in its versioned JSON envelope.
+//! Baseline-contract validation primitives shared by the host CLI and
+//! the standalone WASI carve-out. Walks `contracts/` and enforces
+//! `version-is-semver`, `id-format`, and `id-unique` against each doc.
 
-use std::collections::BTreeMap;
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
-use specify_capability::PipelineView;
-use specify_error as _; // dependency declared; re-exported via `Error` return type
-use specify_spec::ParsedSpec;
-use specify_task::TaskProgress;
+mod envelope;
+mod parse;
 
-pub mod compatibility;
-pub mod contracts;
-mod primitives;
-mod registry;
-mod run;
-mod serialize;
+pub use envelope::serialize_contract_findings;
 
-pub use compatibility::{
-    CompatibilityClassification, CompatibilityFinding, CompatibilityReport, CompatibilitySummary,
-    classify_project as classify_project_compatibility,
-};
-pub use contracts::{
-    ContractFinding, serialize_contract_findings, validate_baseline as validate_baseline_contracts,
-};
-pub use registry::{cross_rules, rules_for};
-pub use run::validate_slice;
-pub use serialize::serialize_report;
-pub use specify_capability::ValidationResult;
-
-/// Structured result of running every applicable rule over a slice dir.
+/// One validation finding produced by [`validate_baseline`].
 ///
-/// `brief_results` is keyed by brief id when a brief produces a single
-/// artifact (e.g. `"proposal"` → `proposal.md`), or by the artifact path
-/// relative to `slice_dir` when the brief's `generates` is a glob
-/// matching multiple files (e.g. `"specs/login/spec.md"`).
+/// `rule_id` is one of `contract.version-is-semver`,
+/// `contract.id-format`, or `contract.id-unique`. `path` is the
+/// absolute path to the offending YAML file, suitable to render
+/// verbatim in the operator's terminal.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContractFinding {
+    /// Absolute path to the contract file the finding refers to.
+    pub path: PathBuf,
+    /// Stable rule identifier (`contract.<rule>`).
+    pub rule_id: &'static str,
+    /// Human-readable failure detail (file-name-aware).
+    pub detail: String,
+}
+
+const RULE_VERSION_IS_SEMVER: &str = "contract.version-is-semver";
+const RULE_ID_FORMAT: &str = "contract.id-format";
+const RULE_ID_UNIQUE: &str = "contract.id-unique";
+
+/// Run the baseline-contract validation checks across `contracts_dir`.
+///
+/// Returns an empty vector when the directory does not exist, when it
+/// is empty, or when every walked file is well-formed. The order of
+/// findings is deterministic: rules within a file appear in the order
+/// listed in the module docs, and files appear in lexicographic path
+/// order.
 #[must_use]
-pub struct ValidationReport {
-    /// Per-brief validation results, keyed by brief id or artifact path.
-    pub brief_results: BTreeMap<String, Vec<ValidationResult>>,
-    /// Cross-brief validation results.
-    pub cross_checks: Vec<ValidationResult>,
-    /// `true` when no rule produced a `Fail` outcome.
-    pub passed: bool,
+pub fn validate_baseline(contracts_dir: &Path) -> Vec<ContractFinding> {
+    if std::fs::read_dir(contracts_dir).is_err() {
+        return Vec::new();
+    }
+
+    let docs = parse::collect_top_level_docs(contracts_dir);
+
+    let mut findings: Vec<ContractFinding> = Vec::new();
+    let mut id_to_paths: HashMap<String, Vec<PathBuf>> = HashMap::new();
+
+    for doc in &docs {
+        let info = doc.value.get("info");
+
+        match parse::version_str(info) {
+            Some(v) if semver::Version::parse(v).is_ok() => {}
+            Some(v) => findings.push(ContractFinding {
+                path: doc.path.clone(),
+                rule_id: RULE_VERSION_IS_SEMVER,
+                detail: format!(
+                    "info.version `{v}` is not valid SemVer (must parse per semver.org, \
+                     including optional prerelease labels)"
+                ),
+            }),
+            None => findings.push(ContractFinding {
+                path: doc.path.clone(),
+                rule_id: RULE_VERSION_IS_SEMVER,
+                detail: "info.version is missing or not a string; \
+                         every top-level OpenAPI / AsyncAPI document must \
+                         set a SemVer info.version"
+                    .to_string(),
+            }),
+        }
+
+        if let Some(id) = parse::id_str(info) {
+            if parse::is_valid_specify_id(id) {
+                id_to_paths.entry(id.to_string()).or_default().push(doc.path.clone());
+            } else {
+                findings.push(ContractFinding {
+                    path: doc.path.clone(),
+                    rule_id: RULE_ID_FORMAT,
+                    detail: format!(
+                        "info.x-specify-id `{id}` must match `^[a-z][a-z0-9-]*$` \
+                         and be ≤ 64 characters"
+                    ),
+                });
+            }
+        }
+    }
+
+    for (id, paths) in &id_to_paths {
+        if paths.len() < 2 {
+            continue;
+        }
+        let listed: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+        for path in paths {
+            findings.push(ContractFinding {
+                path: path.clone(),
+                rule_id: RULE_ID_UNIQUE,
+                detail: format!(
+                    "info.x-specify-id `{id}` is declared by multiple top-level contracts: {}",
+                    listed.join(", ")
+                ),
+            });
+        }
+    }
+
+    findings.sort_by(|a, b| {
+        a.path
+            .as_os_str()
+            .cmp(b.path.as_os_str())
+            .then_with(|| a.rule_id.cmp(b.rule_id))
+            .then_with(|| a.detail.cmp(&b.detail))
+    });
+
+    findings
 }
 
-/// How the CLI decides a rule's outcome — declared at the rule's
-/// definition site.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Classification {
-    /// CLI decides Pass/Fail deterministically.
-    Structural,
-    /// CLI always emits `Deferred`; the agent applies judgment.
-    Semantic,
-}
-
-/// Outcome of invoking a structural rule's `check` function.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RuleOutcome {
-    /// The rule passed.
-    Pass,
-    /// The rule failed with an explanation.
-    Fail {
-        /// Human-readable failure detail.
-        detail: String,
-    },
-}
-
-/// A named rule attached to a specific brief id.
-#[derive(Debug)]
-pub struct Rule {
-    /// Stable dot-namespaced identifier (e.g. `proposal.why-has-content`).
-    pub id: &'static str,
-    /// Human-readable description of what the rule checks.
-    pub description: &'static str,
-    /// Whether the rule is structural or semantic.
-    pub classification: Classification,
-    /// Only invoked for `Classification::Structural`. For `Semantic`, the
-    /// runner always emits `Deferred` without calling this function.
-    pub check: fn(&BriefContext<'_>) -> RuleOutcome,
-}
-
-/// Inputs a brief-scoped structural checker needs.
-#[derive(Debug)]
-pub struct BriefContext<'a> {
-    /// The brief id being validated.
-    pub id: &'a str,
-    /// Artifact file content.
-    pub content: &'a str,
-    /// Parsed spec (when `brief_id == "specs"`).
-    pub parsed_spec: Option<&'a ParsedSpec>,
-    /// Parsed task progress (when `brief_id == "tasks"`).
-    pub tasks: Option<&'a TaskProgress>,
-    /// Absolute path to the slice directory.
-    pub slice_dir: &'a Path,
-    /// Absolute path to the specs directory.
-    pub specs_dir: &'a Path,
-    /// Schema-inferred terminology (e.g. `"crate"` or `"feature"`).
-    pub terminology: &'a str,
-}
-
-/// A rule that spans multiple briefs.
-#[derive(Debug)]
-pub struct CrossRule {
-    /// Stable dot-namespaced identifier (e.g. `cross.proposal-crates-have-specs`).
-    pub id: &'static str,
-    /// Human-readable description of what the rule checks.
-    pub description: &'static str,
-    /// Whether the rule is structural or semantic.
-    pub classification: Classification,
-    /// Checker function — only invoked for structural rules.
-    pub check: fn(&CrossContext<'_>) -> RuleOutcome,
-}
-
-/// Inputs a cross-brief checker needs.
-#[derive(Debug)]
-pub struct CrossContext<'a> {
-    /// Absolute path to the slice directory.
-    pub slice_dir: &'a Path,
-    /// Absolute path to the specs directory.
-    pub specs_dir: &'a Path,
-    /// Resolved pipeline for the slice.
-    pub pipeline: &'a PipelineView,
-    /// Schema-inferred terminology.
-    pub terminology: &'a str,
-}
+/// Convenience alias matching the historic re-export name. The host
+/// CLI's `specify_domain::validate::validate_baseline_contracts` and
+/// `wasi-tools/contract` both use this spelling.
+pub use validate_baseline as validate_baseline_contracts;
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+
     use super::*;
 
-    /// `rules_for` returns empty for unknown brief ids.
-    #[test]
-    fn unknown_brief_no_rules() {
-        assert!(rules_for("unknown-brief-id").is_empty());
-        assert!(rules_for("").is_empty());
+    fn write_contract(tmp: &TempDir, rel: &str, body: &str) -> PathBuf {
+        let path = tmp.path().join("contracts").join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, body).unwrap();
+        path
+    }
+
+    fn contracts_dir(tmp: &TempDir) -> PathBuf {
+        tmp.path().join("contracts")
+    }
+
+    fn finding_kinds(findings: &[ContractFinding]) -> Vec<&'static str> {
+        findings.iter().map(|f| f.rule_id).collect()
     }
 
     #[test]
-    fn min_rules_per_brief() {
-        assert!(rules_for("proposal").len() >= 3);
-        assert!(rules_for("specs").len() >= 4);
-        assert!(!rules_for("design").is_empty());
-        assert!(rules_for("tasks").len() >= 2);
-        assert!(!rules_for("composition").is_empty());
-        assert!(rules_for("contracts").len() >= 3);
-        assert!(cross_rules().len() >= 3);
+    fn absent_directory_returns_no_findings() {
+        let tmp = TempDir::new().unwrap();
+        let findings = validate_baseline(&tmp.path().join("contracts"));
+        assert!(findings.is_empty());
     }
 
-    /// Every rule carries a stable `<brief>.<kebab>` id.
     #[test]
-    fn rule_ids_are_namespaced() {
-        for (brief, prefix) in &[
-            ("proposal", "proposal."),
-            ("specs", "specs."),
-            ("design", "design."),
-            ("tasks", "tasks."),
-            ("composition", "composition."),
-            ("contracts", "contracts."),
-        ] {
-            for rule in rules_for(brief) {
-                assert!(
-                    rule.id.starts_with(prefix),
-                    "rule id `{}` should start with `{}`",
-                    rule.id,
-                    prefix
-                );
-            }
-        }
-        for rule in cross_rules() {
-            assert!(rule.id.starts_with("cross."));
-        }
+    fn empty_directory_returns_no_findings() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("contracts")).unwrap();
+        let findings = validate_baseline(&contracts_dir(&tmp));
+        assert!(findings.is_empty());
     }
 
-    /// Semantic rules must never invoke their check function. We exercise
-    /// every Semantic rule in the registry via a throwaway `BriefContext`
-    /// and confirm no panic escapes (the checker panics by construction).
     #[test]
-    fn semantic_checkers_not_called() {
-        use std::path::Path;
-        let dummy_path = Path::new("/nonexistent");
-        let ctx = BriefContext {
-            id: "dummy",
-            content: "",
-            parsed_spec: None,
-            tasks: None,
-            slice_dir: dummy_path,
-            specs_dir: dummy_path,
-            terminology: "crate",
-        };
-        for brief in &["proposal", "specs", "design", "tasks"] {
-            for rule in rules_for(brief) {
-                if rule.classification != Classification::Semantic {
-                    continue;
-                }
-                // We explicitly *do not* call rule.check — invoking it
-                // would panic. The existence of this filter + test is
-                // the enforcement mechanism: if a future refactor makes
-                // the runner call semantic checks it will panic here.
-                let _ = rule; // silence dead-code in some builds
-            }
-        }
-        // Touch ctx so clippy doesn't complain about unused fields.
-        let _ = ctx.id;
+    fn semver_version_passes() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(
+            &tmp,
+            "http/user-api.yaml",
+            "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n",
+        );
+        assert!(validate_baseline(&contracts_dir(&tmp)).is_empty());
+    }
+
+    #[test]
+    fn semver_prerelease_label_passes() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(
+            &tmp,
+            "http/user-api.yaml",
+            "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0-draft.1\n",
+        );
+        assert!(validate_baseline(&contracts_dir(&tmp)).is_empty());
+    }
+
+    #[test]
+    fn asyncapi_top_level_is_validated() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(
+            &tmp,
+            "messages/orders.yaml",
+            "asyncapi: '3.0.0'\ninfo:\n  title: Orders\n  version: 2024-01-15\n",
+        );
+        let findings = validate_baseline(&contracts_dir(&tmp));
+        assert_eq!(finding_kinds(&findings), vec![RULE_VERSION_IS_SEMVER]);
+    }
+
+    #[test]
+    fn json_schema_file_is_skipped() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(
+            &tmp,
+            "schemas/user.yaml",
+            "$id: urn:specify:schemas/user\ntitle: User\ndescription: A user.\ntype: object\n",
+        );
+        assert!(validate_baseline(&contracts_dir(&tmp)).is_empty());
+    }
+
+    #[test]
+    fn unparseable_yaml_is_skipped() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(&tmp, "http/broken.yaml", ":this is not yaml: [\n");
+        assert!(validate_baseline(&contracts_dir(&tmp)).is_empty());
+    }
+
+    #[test]
+    fn date_string_version_fails() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(
+            &tmp,
+            "http/user-api.yaml",
+            "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 2024-01-15\n",
+        );
+        let findings = validate_baseline(&contracts_dir(&tmp));
+        assert_eq!(finding_kinds(&findings), vec![RULE_VERSION_IS_SEMVER]);
+        assert!(findings[0].detail.contains("2024-01-15"));
+    }
+
+    #[test]
+    fn major_only_version_fails() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(
+            &tmp,
+            "http/user-api.yaml",
+            "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: '1'\n",
+        );
+        let findings = validate_baseline(&contracts_dir(&tmp));
+        assert_eq!(finding_kinds(&findings), vec![RULE_VERSION_IS_SEMVER]);
+    }
+
+    #[test]
+    fn missing_version_fails() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(&tmp, "http/user-api.yaml", "openapi: '3.1.0'\ninfo:\n  title: User API\n");
+        let findings = validate_baseline(&contracts_dir(&tmp));
+        assert_eq!(finding_kinds(&findings), vec![RULE_VERSION_IS_SEMVER]);
+        assert!(findings[0].detail.contains("missing"));
+    }
+
+    #[test]
+    fn id_format_uppercase_fails() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(
+            &tmp,
+            "http/user-api.yaml",
+            "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n  x-specify-id: User-API\n",
+        );
+        let findings = validate_baseline(&contracts_dir(&tmp));
+        assert_eq!(finding_kinds(&findings), vec![RULE_ID_FORMAT]);
+    }
+
+    #[test]
+    fn id_format_leading_hyphen_fails() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(
+            &tmp,
+            "http/user-api.yaml",
+            "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n  x-specify-id: -leading\n",
+        );
+        let findings = validate_baseline(&contracts_dir(&tmp));
+        assert_eq!(finding_kinds(&findings), vec![RULE_ID_FORMAT]);
+    }
+
+    #[test]
+    fn id_format_too_long_fails() {
+        let tmp = TempDir::new().unwrap();
+        let too_long: String = std::iter::repeat_n('a', 65).collect();
+        write_contract(
+            &tmp,
+            "http/user-api.yaml",
+            &format!(
+                "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n  x-specify-id: {too_long}\n"
+            ),
+        );
+        let findings = validate_baseline(&contracts_dir(&tmp));
+        assert_eq!(finding_kinds(&findings), vec![RULE_ID_FORMAT]);
+    }
+
+    #[test]
+    fn id_format_kebab_case_passes() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(
+            &tmp,
+            "http/user-api.yaml",
+            "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n  x-specify-id: user-api\n",
+        );
+        assert!(validate_baseline(&contracts_dir(&tmp)).is_empty());
+    }
+
+    #[test]
+    fn id_duplicates_across_two_files_fail_both() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(
+            &tmp,
+            "http/user-api.yaml",
+            "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n  x-specify-id: shared\n",
+        );
+        write_contract(
+            &tmp,
+            "http/billing-api.yaml",
+            "openapi: '3.1.0'\ninfo:\n  title: Billing API\n  version: 1.0.0\n  x-specify-id: shared\n",
+        );
+        let findings = validate_baseline(&contracts_dir(&tmp));
+        assert_eq!(findings.len(), 2);
+        assert!(findings.iter().all(|f| f.rule_id == RULE_ID_UNIQUE));
+        assert!(
+            findings.iter().any(|f| f.path.ends_with("http/user-api.yaml")),
+            "user-api.yaml flagged"
+        );
+        assert!(
+            findings.iter().any(|f| f.path.ends_with("http/billing-api.yaml")),
+            "billing-api.yaml flagged"
+        );
+    }
+
+    #[test]
+    fn missing_id_does_not_count_as_duplicate() {
+        let tmp = TempDir::new().unwrap();
+        write_contract(
+            &tmp,
+            "http/user-api.yaml",
+            "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n",
+        );
+        write_contract(
+            &tmp,
+            "http/billing-api.yaml",
+            "openapi: '3.1.0'\ninfo:\n  title: Billing API\n  version: 1.0.0\n",
+        );
+        assert!(validate_baseline(&contracts_dir(&tmp)).is_empty());
     }
 }

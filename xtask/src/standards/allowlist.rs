@@ -1,9 +1,6 @@
-//! Per-file allowlist: TOML load, tightenable-diff, and `--tighten` writer.
-//!
-//! The allowlist lives at `scripts/standards-allowlist.toml`. Each
-//! `[file."<rel>"]` table caps the per-predicate violation count for
-//! that file. Missing predicates default to zero except
-//! `module-line-count`, which defaults to [`DEFAULT_LINE_CAP`].
+//! Per-file allowlist: TOML load, tightenable-diff, and `--tighten`
+//! writer. The allowlist lives at `scripts/standards-allowlist.toml`;
+//! each `[file."<rel>"]` table caps per-predicate violation counts.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -102,6 +99,9 @@ fn baseline_iter(b: &FileBaseline) -> impl Iterator<Item = (&'static str, u32)> 
         ("result-cliresult-default", b.result_cliresult_default),
         ("verbose-doc-paragraphs", b.verbose_doc_paragraphs),
         ("cli-help-shape", b.cli_help_shape),
+        ("display-serde-mirror", b.display_serde_mirror),
+        ("crate-root-prose", b.crate_root_prose),
+        ("unit-test-serde-roundtrip", b.unit_test_serde_roundtrip),
     ]
     .into_iter()
 }

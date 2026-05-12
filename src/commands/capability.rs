@@ -7,13 +7,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use specify_capability::{Capability, CapabilitySource, Phase};
+use specify_domain::capability::{Capability, CapabilitySource, Phase};
+use specify_domain::validate::ValidationResult;
 use specify_error::{Error, Result};
-use specify_validate::ValidationResult;
 
 use crate::cli::Format;
 use crate::context::Ctx;
-use crate::output::{Out, Render};
+use crate::output::{self, Render};
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -38,11 +38,14 @@ pub(crate) fn resolve(format: Format, capability_value: String, project_dir: &Pa
         _ => ("unknown", PathBuf::new()),
     };
 
-    Out::for_format(format).write(&ResolveBody {
-        capability_value,
-        resolved_path: path.display().to_string(),
-        source: source_label,
-    })?;
+    output::write(
+        format,
+        &ResolveBody {
+            capability_value,
+            resolved_path: path.display().to_string(),
+            source: source_label,
+        },
+    )?;
     Ok(())
 }
 
@@ -111,7 +114,7 @@ pub(crate) fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<&Path>) -> Result<
         })
         .collect();
 
-    ctx.out().write(&PipelineBody {
+    ctx.write(&PipelineBody {
         phase: phase.to_string(),
         slice: slice.map(|p| p.display().to_string()),
         briefs,
@@ -144,10 +147,10 @@ impl Render for CheckBody {
     }
 }
 
-pub(crate) fn check(format: Format, capability_dir: PathBuf) -> Result<()> {
+pub(crate) fn check(format: Format, capability_dir: &Path) -> Result<()> {
     let manifest_path =
-        Capability::probe_dir(&capability_dir).ok_or_else(|| Error::CapabilityManifestMissing {
-            dir: capability_dir.clone(),
+        Capability::probe_dir(capability_dir).ok_or_else(|| Error::CapabilityManifestMissing {
+            dir: capability_dir.to_path_buf(),
         })?;
     let capability = load_manifest(&manifest_path)?;
     let results = capability.validate_structure();
@@ -157,8 +160,15 @@ pub(crate) fn check(format: Format, capability_dir: PathBuf) -> Result<()> {
         passed,
         results: results.iter().map(CheckRow::from).collect(),
     };
-    Out::for_format(format).write(&body)?;
-    if passed { Ok(()) } else { Err(Error::CapabilityCheckFailed { dir: capability_dir }) }
+    output::write(format, &body)?;
+    if passed {
+        Ok(())
+    } else {
+        Err(Error::Diag {
+            code: "capability-check-failed",
+            detail: format!("capability at {} failed validation", capability_dir.display()),
+        })
+    }
 }
 
 /// Surface a `capability-manifest-missing` diagnostic when `dir` does

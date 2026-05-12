@@ -30,6 +30,7 @@ fn fixed_sidecar(scope: &ToolScope, name: &str, version: &str, source: &str) -> 
             write: Vec::new(),
         },
         Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string()),
+        None,
         "2026-05-07T00:00:00Z".parse().expect("fixed test stamp"),
     )
     .expect("sidecar")
@@ -50,7 +51,7 @@ fn cache_root_honours_override_precedence() {
     let xdg_dir = scratch_dir("xdg");
     let home_dir = scratch_dir("home");
     with_cache_env(Some(&override_dir), Some(&xdg_dir), Some(&home_dir), || {
-        assert_eq!(cache_root().expect("cache root"), override_dir);
+        assert_eq!(root().expect("cache root"), override_dir);
     });
 }
 
@@ -59,7 +60,7 @@ fn cache_root_uses_xdg_before_home_fallback() {
     let xdg_dir = scratch_dir("xdg-only");
     let home_dir = scratch_dir("home-only");
     with_cache_env(None, Some(&xdg_dir), Some(&home_dir), || {
-        assert_eq!(cache_root().expect("cache root"), xdg_dir.join("specify").join("tools"));
+        assert_eq!(root().expect("cache root"), xdg_dir.join("specify").join("tools"));
     });
 }
 
@@ -68,7 +69,7 @@ fn cache_root_uses_home_when_no_explicit_env() {
     let home_dir = scratch_dir("home-fallback");
     with_cache_env(None, None, Some(&home_dir), || {
         assert_eq!(
-            cache_root().expect("cache root"),
+            root().expect("cache root"),
             home_dir.join(".cache").join("specify").join("tools")
         );
     });
@@ -102,7 +103,13 @@ fn sidecar_round_trips_and_schema_rejects_invalid_shape() {
         "schema-version: 2\nscope: project--demo\ntool-name: contract\ntool-version: 1.0.0\nsource: https://example.test/contract.wasm\nfetched-at: 2026-05-07T00:00:00Z\npermissions-snapshot:\n  read: []\n  write: []\n",
     )
     .expect("write invalid sidecar");
-    assert!(matches!(read_sidecar(&path), Err(ToolError::SidecarSchema { .. })));
+    assert!(matches!(
+        read_sidecar(&path),
+        Err(ToolError::Sidecar {
+            kind: crate::error::SidecarKind::Schema(_),
+            ..
+        })
+    ));
 
     let schema: serde_json::Value =
         serde_json::from_str(TOOL_SIDECAR_JSON_SCHEMA).expect("sidecar schema parses");
@@ -114,7 +121,7 @@ fn cache_status_distinguishes_hit_not_found_and_changed_digest() {
     let cache_dir = scratch_dir("status-cache");
     with_cache_env(Some(&cache_dir), None, None, || {
         assert_eq!(
-            cache_status(
+            status(
                 &project_scope(),
                 "contract",
                 "1.0.0",
@@ -122,7 +129,7 @@ fn cache_status_distinguishes_hit_not_found_and_changed_digest() {
                 Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
             )
             .expect("cold status"),
-            CacheStatus::MissNotFound
+            Status::MissNotFound
         );
         write_cached_version(
             &project_scope(),
@@ -131,7 +138,7 @@ fn cache_status_distinguishes_hit_not_found_and_changed_digest() {
             "https://example.test/contract.wasm",
         );
         assert_eq!(
-            cache_status(
+            status(
                 &project_scope(),
                 "contract",
                 "1.0.0",
@@ -139,10 +146,10 @@ fn cache_status_distinguishes_hit_not_found_and_changed_digest() {
                 Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
             )
             .expect("hit status"),
-            CacheStatus::Hit
+            Status::Hit
         );
         assert_eq!(
-            cache_status(
+            status(
                 &project_scope(),
                 "contract",
                 "1.0.0",
@@ -150,7 +157,7 @@ fn cache_status_distinguishes_hit_not_found_and_changed_digest() {
                 Some("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
             )
             .expect("changed status"),
-            CacheStatus::MissChanged
+            Status::MissChanged
         );
     });
 }

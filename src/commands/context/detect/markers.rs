@@ -1,10 +1,6 @@
-//! Marker-file parsers used by the per-language detection passes.
-//!
-//! Lightweight grammars for the formats the [`super::runtimes`] detector
-//! reaches for: TOML (Cargo, rust-toolchain, pyproject, ruff, clippy),
-//! JSON-with-comments (`deno.json` / `deno.jsonc`), Makefile target
-//! lines, and `go.mod` version directives. Lifted out of the detector so
-//! per-language policy stays focused on what marker presence means.
+//! Marker-file parsers — lightweight grammars for TOML, JSON-with-comments,
+//! Makefile target lines, and `go.mod` version directives — consumed by
+//! the per-language detection passes in [`super::runtimes`].
 
 use std::path::Path;
 

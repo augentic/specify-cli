@@ -1,8 +1,8 @@
 //! `specify tool fetch` handler.
 
-use chrono::Utc;
+use jiff::Timestamp;
 use specify_error::Result;
-use specify_tool::cache::CacheStatus;
+use specify_tool::cache::Status as CacheStatus;
 
 use super::dto::{FetchBody, ToolFetchRow, cache_status_for, row_for};
 use super::{build_inventory, emit_warnings_to_stderr, select};
@@ -15,7 +15,7 @@ pub(crate) fn run(ctx: &Ctx, name: Option<&str>) -> Result<()> {
     let mut rows = Vec::with_capacity(selected.len());
     for scoped in selected {
         let before = cache_status_for(scoped)?;
-        specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, Utc::now())?;
+        specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, Timestamp::now())?;
         rows.push(ToolFetchRow {
             row: row_for(scoped)?,
             fetched: before != CacheStatus::Hit,
@@ -26,7 +26,7 @@ pub(crate) fn run(ctx: &Ctx, name: Option<&str>) -> Result<()> {
         tools: rows,
         warnings: inventory.warnings,
     };
-    ctx.out().write(&body)?;
+    ctx.write(&body)?;
     if matches!(ctx.format, Format::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }

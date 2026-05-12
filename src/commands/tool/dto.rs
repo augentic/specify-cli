@@ -1,11 +1,10 @@
 //! Response DTOs and row builders for `specify tool *` handlers.
 
-use std::fmt;
 use std::io::Write;
 
 use serde::Serialize;
 use specify_error::Result;
-use specify_tool::cache::{self, CacheStatus};
+use specify_tool::cache::{self, OciSnapshot, PackageSnapshot, Status as CacheStatus};
 use specify_tool::load::Warning;
 use specify_tool::{Tool, ToolPermissions, ToolScope};
 
@@ -46,20 +45,23 @@ pub(super) struct ToolRow {
     pub(super) cached_path: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    serde::Deserialize,
+    strum::Display,
+    strum::IntoStaticStr,
+)]
 #[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 pub(super) enum ToolScopeKind {
     Project,
     Capability,
-}
-
-impl fmt::Display for ToolScopeKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Project => "project",
-            Self::Capability => "capability",
-        })
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,6 +80,8 @@ pub(super) struct ToolShowRow {
     pub(super) permissions: ToolPermissions,
     pub(super) sha256: Option<String>,
     pub(super) fetched_at: Option<String>,
+    pub(super) package: Option<PackageSnapshot>,
+    pub(super) oci: Option<OciSnapshot>,
 }
 
 #[derive(Serialize)]
@@ -161,6 +165,12 @@ impl Render for ShowBody {
         if let Some(sha256) = &row.sha256 {
             writeln!(w, "sha256: {sha256}")?;
         }
+        if let Some(package) = &row.package {
+            writeln!(w, "package: {}@{} ({})", package.name, package.version, package.registry)?;
+        }
+        if let Some(oci) = &row.oci {
+            writeln!(w, "oci: {}", oci.reference)?;
+        }
         writeln!(w, "permissions:")?;
         writeln!(w, "  read: {}", format_permission_list(&row.permissions.read))?;
         writeln!(w, "  write: {}", format_permission_list(&row.permissions.write))?;
@@ -212,18 +222,24 @@ pub(super) fn row_for(scoped: &ScopedTool) -> Result<ToolRow> {
 pub(super) fn show_row_for(scoped: &ScopedTool) -> Result<ToolShowRow> {
     let row = row_for(scoped)?;
     let sidecar_path = cache::sidecar_path(&scoped.scope, &scoped.tool.name, &scoped.tool.version)?;
-    let fetched_at =
-        cache::read_sidecar(&sidecar_path)?.map(|sidecar| sidecar.fetched_at.to_rfc3339());
+    let sidecar = cache::read_sidecar(&sidecar_path)?;
+    let fetched_at = sidecar
+        .as_ref()
+        .map(|sidecar| sidecar.fetched_at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string());
+    let package = sidecar.as_ref().and_then(|sidecar| sidecar.package.clone());
+    let oci = sidecar.as_ref().and_then(|sidecar| sidecar.oci.clone());
     Ok(ToolShowRow {
         row,
         permissions: scoped.tool.permissions.clone(),
         sha256: scoped.tool.sha256.clone(),
         fetched_at,
+        package,
+        oci,
     })
 }
 
 pub(super) fn cache_status_for(scoped: &ScopedTool) -> Result<CacheStatus> {
-    Ok(cache::cache_status(
+    Ok(cache::status(
         &scoped.scope,
         &scoped.tool.name,
         &scoped.tool.version,

@@ -1,9 +1,6 @@
 //! Regex-based predicates and the comment-stripping helper they share.
-//!
-//! Each `pub(super)` function in this module computes one predicate's
-//! live count for a single Rust source file. The dispatcher in
-//! `standards.rs` strips comments once per file and passes both the raw
-//! `source` and the `stripped` view in.
+//! Each `pub(super)` function computes one predicate's live count for a
+//! single Rust source file.
 
 use std::path::Path;
 use std::sync::LazyLock;

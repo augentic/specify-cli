@@ -18,56 +18,19 @@ mod common;
 #[cfg(test)]
 mod cli {
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
+    use std::process::Command as ProcessCommand;
 
     use serde_json::Value;
     use tempfile::{TempDir, tempdir};
 
-    use crate::common::{assert_golden_at, parse_stderr, parse_stdout, repo_root, specify};
+    use crate::common::{
+        Project, assert_golden_at, init_hub, omnia_schema_dir, parse_stderr, parse_stdout,
+        repo_root, specify,
+    };
 
     fn plan_fixtures() -> PathBuf {
         repo_root().join("tests/fixtures/plan")
-    }
-
-    /// A `.specify/` project rooted in a throwaway tempdir.
-    ///
-    /// Mirrors the harness in `tests/slice.rs`: run `specify init` with
-    /// the in-repo Omnia capability fixture, then let the test body seed whatever
-    /// `plan.yaml` / `slices/` content it needs.
-    struct Project {
-        _tmp: TempDir,
-        root: PathBuf,
-    }
-
-    impl Project {
-        fn init() -> Self {
-            let tmp = tempdir().expect("tempdir");
-            let root = tmp.path().to_path_buf();
-            specify()
-                .current_dir(&root)
-                .args(["init"])
-                .arg(repo_root().join("schemas").join("omnia"))
-                .args(["--name", "test-proj"])
-                .assert()
-                .success();
-            Self { _tmp: tmp, root }
-        }
-
-        fn root(&self) -> &Path {
-            &self.root
-        }
-
-        fn plan_path(&self) -> PathBuf {
-            self.root.join("plan.yaml")
-        }
-
-        /// Seed `plan.yaml` (at the repo root) with arbitrary YAML.
-        /// The tests drive the file directly (not the library's
-        /// `Plan::save`) for convenience and isolation from the
-        /// `create` verb.
-        fn seed_plan(&self, yaml: &str) {
-            fs::write(self.plan_path(), yaml).expect("write plan.yaml");
-        }
     }
 
     fn assert_golden(name: &str, actual: Value) {
@@ -1202,7 +1165,7 @@ slices:
     // -- plan archive (L1.K) ----------------------------------------------
 
     fn today_yyyymmdd() -> String {
-        chrono::Utc::now().format("%Y%m%d").to_string()
+        jiff::Timestamp::now().strftime("%Y%m%d").to_string()
     }
 
     /// Replace any `-YYYYMMDD` date stamp in JSON strings with a stable
@@ -1696,7 +1659,7 @@ slices: []
 
     #[test]
     fn registry_load_from_tempdir() {
-        use specify_registry::Registry;
+        use specify_domain::registry::Registry;
 
         let project = Project::init();
         let registry_path = project.root().join("registry.yaml");
@@ -2314,5 +2277,486 @@ projects:
         assert_eq!(slots.len(), 2);
         let kinds: Vec<&str> = slots.iter().map(|s| s["kind"].as_str().expect("kind")).collect();
         assert!(kinds.contains(&"symlink"), "expected symlink slots, got {kinds:?}");
+    }
+
+    // ---- specify change plan doctor (RFC-9 §4B) ----
+    //
+    // `plan doctor` is a strict superset of `plan validate`. The
+    // integration tests below pin the wire-shape skill authors will rely
+    // on: doctor MUST surface every diagnostic class on a synthetic
+    // fixture that exercises all four; validate on the same fixture MUST
+    // produce only the validate-level subset (proving doctor's additions
+    // are purely additive).
+
+    fn init_omnia_project(tmp: &TempDir) {
+        specify()
+            .current_dir(tmp.path())
+            .args(["init"])
+            .arg(omnia_schema_dir())
+            .args(["--name", "demo"])
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn plan_doctor_reports_all_four_classes() {
+        let tmp = tempdir().unwrap();
+        init_omnia_project(&tmp);
+
+        // Authoring a plan that intentionally exercises all four doctor
+        // checks at once. We hand-write `plan.yaml` because the CLI's own
+        // `plan create` path enforces validation at write time and would
+        // refuse the cycle / unknown-source cases below.
+        fs::write(
+            tmp.path().join("plan.yaml"),
+            "name: demo\n\
+             sources:\n\
+             \x20\x20monolith: /tmp/legacy\n\
+             \x20\x20orphaned: /tmp/elsewhere\n\
+             slices:\n\
+             \x20\x20- name: cyclic-a\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20depends-on: [cyclic-b]\n\
+             \x20\x20- name: cyclic-b\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20depends-on: [cyclic-a]\n\
+             \x20\x20- name: failed-root\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: failed\n\
+             \x20\x20\x20\x20status-reason: regression in upstream service\n\
+             \x20\x20- name: unreachable-leaf\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20depends-on: [failed-root]\n\
+             \x20\x20- name: orphaned-source-user\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20sources: [monolith]\n",
+        )
+        .unwrap();
+
+        // Hand-write a registry at the repo root, so we can exercise
+        // stale-clone with a deterministic fixture: a clone slot whose
+        // origin remote disagrees with the registry.
+        fs::write(
+            tmp.path().join("registry.yaml"),
+            "version: 1\n\
+             projects:\n\
+             \x20\x20- name: alpha\n\
+             \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
+             \x20\x20\x20\x20capability: omnia@v1\n",
+        )
+        .unwrap();
+        let slot = tmp.path().join(".specify/workspace/alpha");
+        fs::create_dir_all(&slot).unwrap();
+        let init = ProcessCommand::new("git").arg("-C").arg(&slot).arg("init").output().unwrap();
+        assert!(
+            init.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&init.stderr)
+        );
+        let remote = ProcessCommand::new("git")
+            .arg("-C")
+            .arg(&slot)
+            .args(["remote", "add", "origin", "git@github.com:old/alpha.git"])
+            .output()
+            .unwrap();
+        assert!(
+            remote.status.success(),
+            "git remote add failed: {}",
+            String::from_utf8_lossy(&remote.stderr)
+        );
+
+        let assert = specify()
+            .current_dir(tmp.path())
+            .args(["--format", "json", "change", "plan", "doctor"])
+            .assert();
+        let output = assert.get_output();
+        let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
+        let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
+
+        assert_eq!(value["envelope-version"], 6);
+
+        let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
+        assert!(
+            !diagnostics.is_empty(),
+            "doctor with broken plan must surface diagnostics: {value}"
+        );
+        let codes: Vec<&str> = diagnostics.iter().filter_map(|d| d["code"].as_str()).collect();
+
+        for expected in [
+            "cycle-in-depends-on",
+            "orphan-source-key",
+            "stale-workspace-clone",
+            "unreachable-entry",
+        ] {
+            assert!(
+                codes.contains(&expected),
+                "doctor must emit `{expected}` for the synthetic fixture; saw: {codes:?}"
+            );
+        }
+
+        // Exit code must be ValidationFailed (2) because cycle and
+        // unreachable-entry are error-severity.
+        let code = output.status.code().expect("exit code");
+        assert_eq!(code, 2, "error-severity diagnostics must yield exit 2, got {code}");
+    }
+
+    #[test]
+    fn plan_doctor_payloads_round_trip_typed() {
+        let tmp = tempdir().unwrap();
+        init_omnia_project(&tmp);
+
+        // Minimal plan that exercises just the cycle and orphan-source
+        // checks — enough to confirm the typed payload deserialises
+        // cleanly.
+        fs::write(
+            tmp.path().join("plan.yaml"),
+            "name: demo\n\
+             sources:\n\
+             \x20\x20orphan-key: /tmp/somewhere\n\
+             slices:\n\
+             \x20\x20- name: cyc-a\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20depends-on: [cyc-b]\n\
+             \x20\x20- name: cyc-b\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20depends-on: [cyc-a]\n",
+        )
+        .unwrap();
+
+        let assert = specify()
+            .current_dir(tmp.path())
+            .args(["--format", "json", "change", "plan", "doctor"])
+            .assert();
+        let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+        let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
+        let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
+
+        let cycle = diagnostics
+            .iter()
+            .find(|d| d["code"] == "cycle-in-depends-on")
+            .expect("expected cycle-in-depends-on diagnostic");
+        let cycle_path = cycle["data"]["cycle"].as_array().expect("cycle path is array");
+        let names: Vec<String> =
+            cycle_path.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+        assert_eq!(
+            names,
+            vec!["cyc-a".to_string(), "cyc-b".to_string(), "cyc-a".to_string()],
+            "cycle path must close on the first node"
+        );
+        assert_eq!(cycle["data"]["kind"], "cycle");
+
+        let orphan = diagnostics
+            .iter()
+            .find(|d| d["code"] == "orphan-source-key")
+            .expect("expected orphan-source-key diagnostic");
+        assert_eq!(orphan["data"]["kind"], "orphan-source");
+        assert_eq!(orphan["data"]["key"], "orphan-key");
+        assert_eq!(orphan["severity"], "warning");
+    }
+
+    #[test]
+    fn plan_validate_unchanged_by_doctor_fixture() {
+        // Same fixture as `plan_doctor_reports_all_four_diagnostic_classes`
+        // but routed through `plan validate` — only the validate-level
+        // subset must surface; the four doctor codes must be absent.
+        let tmp = tempdir().unwrap();
+        init_omnia_project(&tmp);
+
+        fs::write(
+            tmp.path().join("plan.yaml"),
+            "name: demo\n\
+             sources:\n\
+             \x20\x20monolith: /tmp/legacy\n\
+             \x20\x20orphaned: /tmp/elsewhere\n\
+             slices:\n\
+             \x20\x20- name: cyclic-a\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20depends-on: [cyclic-b]\n\
+             \x20\x20- name: cyclic-b\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20depends-on: [cyclic-a]\n\
+             \x20\x20- name: failed-root\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: failed\n\
+             \x20\x20\x20\x20status-reason: regression in upstream service\n\
+             \x20\x20- name: unreachable-leaf\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20depends-on: [failed-root]\n\
+             \x20\x20- name: orphaned-source-user\n\
+             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20sources: [monolith]\n",
+        )
+        .unwrap();
+
+        let assert = specify()
+            .current_dir(tmp.path())
+            .args(["--format", "json", "change", "plan", "validate"])
+            .assert();
+        let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+        let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
+
+        let codes: Vec<&str> = value["results"]
+            .as_array()
+            .expect("results array")
+            .iter()
+            .filter_map(|r| r["code"].as_str())
+            .collect();
+
+        // validate's existing cycle code must still fire.
+        assert!(
+            codes.contains(&"dependency-cycle"),
+            "validate must continue to emit dependency-cycle, got: {codes:?}"
+        );
+        // None of doctor's four new codes should leak into validate.
+        for doctor_code in [
+            "cycle-in-depends-on",
+            "orphan-source-key",
+            "stale-workspace-clone",
+            "unreachable-entry",
+        ] {
+            assert!(
+                !codes.contains(&doctor_code),
+                "validate must NOT emit doctor-only code `{doctor_code}`; got: {codes:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn plan_doctor_healthy_exits_zero() {
+        let tmp = tempdir().unwrap();
+        init_omnia_project(&tmp);
+
+        specify()
+            .current_dir(tmp.path())
+            .args(["--format", "json", "change", "plan", "create", "demo"])
+            .assert()
+            .success();
+
+        let assert = specify()
+            .current_dir(tmp.path())
+            .args(["--format", "json", "change", "plan", "doctor"])
+            .assert()
+            .success();
+        let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        assert_eq!(
+            value["diagnostics"].as_array().unwrap().len(),
+            0,
+            "empty plan must emit zero diagnostics: {value}"
+        );
+    }
+
+    #[test]
+    fn plan_doctor_help_documents_superset() {
+        let assert = specify().args(["change", "plan", "doctor", "--help"]).assert().success();
+        let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+        for code in [
+            "cycle-in-depends-on",
+            "orphan-source-key",
+            "stale-workspace-clone",
+            "unreachable-entry",
+        ] {
+            assert!(
+                stdout.contains(code),
+                "plan doctor --help must document the `{code}` diagnostic; got:\n{stdout}"
+            );
+        }
+    }
+
+    // ---- specify change finalize (RFC-9 §4C) ----
+    //
+    // Wire-level integration tests for the precondition diagnostics. The
+    // happy-path classifier flow is covered by the in-process `MockProbe`
+    // against the orchestrator (see `cargo test -p specify-change`).
+    // The CLI tests below pin: (a) the failure-mode wire shape skill
+    // authors will rely on, and (b) the on-disk archive landing when no
+    // projects need probing.
+
+    #[test]
+    fn change_help_lists_finalize() {
+        let assert = specify().args(["change", "--help"]).assert().success();
+        let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+        for verb in ["create", "show", "finalize"] {
+            assert!(
+                stdout.contains(verb),
+                "expected `change --help` to mention `{verb}`, got:\n{stdout}",
+            );
+        }
+    }
+
+    #[test]
+    fn change_finalize_help_documents_flags() {
+        let assert = specify().args(["change", "finalize", "--help"]).assert().success();
+        let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+        for flag in ["--clean", "--dry-run"] {
+            assert!(stdout.contains(flag), "expected --help to document `{flag}`, got:\n{stdout}");
+        }
+        assert!(
+            stdout.contains("operator-merged") || stdout.contains("gh pr merge"),
+            "finalize help must explain PRs are operator-merged before finalize, got:\n{stdout}",
+        );
+    }
+
+    #[test]
+    fn change_finalize_refuses_when_plan_absent() {
+        let tmp = tempdir().unwrap();
+        init_hub(&tmp, "platform-hub");
+        assert!(
+            !tmp.path().join("plan.yaml").exists(),
+            "test precondition: plan.yaml must be absent"
+        );
+
+        let assert = specify()
+            .current_dir(tmp.path())
+            .args(["--format", "json", "change", "finalize"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
+        assert_eq!(value["error"], "plan-not-found");
+        let msg = value["message"].as_str().expect("message");
+        assert!(msg.contains("plan.yaml"), "msg should reference plan.yaml: {msg}");
+        // Diagnostic should hint at the recovery sequence — post-Phase-3.5
+        // the umbrella surface is `specify change plan create` (and
+        // `specify change create` for the brief).
+        assert!(
+            msg.contains("plan create") || msg.contains("change create"),
+            "msg should hint at the change/plan create verbs, got: {msg}",
+        );
+    }
+
+    #[test]
+    fn change_finalize_refuses_on_non_terminal() {
+        let tmp = tempdir().unwrap();
+        init_hub(&tmp, "platform-hub");
+        // Seed a plan with one done and one pending entry — pending is
+        // not terminal for finalize.
+        fs::write(
+            tmp.path().join("plan.yaml"),
+            "name: foo\n\
+             slices:\n\
+             \x20\x20- name: a\n\
+             \x20\x20\x20\x20capability: contracts@v1\n\
+             \x20\x20\x20\x20status: done\n\
+             \x20\x20- name: b\n\
+             \x20\x20\x20\x20capability: contracts@v1\n\
+             \x20\x20\x20\x20status: pending\n",
+        )
+        .unwrap();
+
+        let assert = specify()
+            .current_dir(tmp.path())
+            .args(["--format", "json", "change", "finalize"])
+            .assert()
+            .failure();
+        assert_eq!(assert.get_output().status.code(), Some(1));
+        let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
+        assert_eq!(value["error"], "non-terminal-entries-present");
+        assert_eq!(value["exit-code"], 1);
+        let msg = value["message"].as_str().expect("message string");
+        assert!(msg.contains("foo"), "message names the change: {msg}");
+        assert!(msg.contains('b'), "message lists the offending entry name 'b': {msg}");
+
+        // Atomicity: plan.yaml must remain on disk on refusal.
+        assert!(tmp.path().join("plan.yaml").exists(), "plan.yaml must be untouched");
+    }
+
+    #[test]
+    fn change_finalize_dry_run_archives_nothing() {
+        let tmp = tempdir().unwrap();
+        init_hub(&tmp, "platform-hub");
+        // Seed an all-terminal plan and rely on the hub-init's empty
+        // registry — no per-project probes will run.
+        fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
+
+        let assert = specify()
+            .current_dir(tmp.path())
+            .args(["--format", "json", "change", "finalize", "--dry-run"])
+            .assert()
+            .success();
+        let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        assert_eq!(value["change"], "foo");
+        assert_eq!(value["finalized"], true);
+        assert_eq!(value["dry-run"], true, "dry-run flag must echo into JSON");
+        assert!(value.get("archived").is_none(), "dry-run must not stamp archived path");
+        let projects = value["projects"].as_array().expect("projects array");
+        assert!(projects.is_empty(), "empty registry → empty projects, got: {projects:?}");
+
+        // On-disk: plan.yaml must remain.
+        assert!(tmp.path().join("plan.yaml").exists(), "dry-run must not move plan.yaml");
+    }
+
+    #[test]
+    fn change_finalize_archives_when_terminal() {
+        let tmp = tempdir().unwrap();
+        init_hub(&tmp, "platform-hub");
+        fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
+
+        let assert = specify()
+            .current_dir(tmp.path())
+            .args(["--format", "json", "change", "finalize"])
+            .assert()
+            .success();
+        let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
+        assert_eq!(value["change"], "foo");
+        assert_eq!(value["finalized"], true);
+        let archived = value["archived"].as_str().expect("archived path");
+        assert!(archived.contains("foo-"), "archived path must contain plan name: {archived}");
+        let summary = value["summary"].as_object().expect("summary object");
+        for key in [
+            "merged",
+            "unmerged",
+            "closed",
+            "no-branch",
+            "branch-pattern-mismatch",
+            "dirty",
+            "failed",
+        ] {
+            assert!(summary.contains_key(key), "summary missing `{key}`: {summary:?}");
+        }
+
+        // Plan.yaml must have moved into the archive.
+        assert!(!tmp.path().join("plan.yaml").exists(), "plan.yaml must be archived");
+        let archive_dir = tmp.path().join(".specify/archive/plans");
+        let entries: Vec<String> = fs::read_dir(&archive_dir)
+            .expect("read archive dir")
+            .filter_map(|e| e.ok().and_then(|e| e.file_name().into_string().ok()))
+            .collect();
+        assert!(
+            entries.iter().any(|n| n.starts_with("foo-")),
+            "archive dir should contain a foo-<YYYYMMDD>.yaml: {entries:?}",
+        );
+    }
+
+    #[test]
+    fn change_finalize_idempotent_after_archive() {
+        // Idempotency proof: the second `finalize` invocation after the
+        // archive landed produces a clear `plan-not-found` refusal — the
+        // canonical "change is already finalized" signal.
+        let tmp = tempdir().unwrap();
+        init_hub(&tmp, "platform-hub");
+        fs::write(tmp.path().join("plan.yaml"), "name: foo\nslices: []\n").unwrap();
+
+        // First run: archives the plan.
+        specify().current_dir(tmp.path()).args(["change", "finalize"]).assert().success();
+        assert!(!tmp.path().join("plan.yaml").exists());
+
+        // Second run: plan is gone, refused with plan-not-found.
+        let assert = specify()
+            .current_dir(tmp.path())
+            .args(["--format", "json", "change", "finalize"])
+            .assert()
+            .failure();
+        let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
+        assert_eq!(value["error"], "plan-not-found");
     }
 }

@@ -1,0 +1,39 @@
+[package]
+name = "specify-domain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Specify domain crate: slice, change, spec, task, capability, registry, config, merge, validate, init (re-exports `specify-validate` for the baseline-contract surface)"
+categories = ["development-tools"]
+keywords = ["specify", "domain", "workflow"]
+readme = "../../README.md"
+
+[lints]
+workspace = true
+
+[dependencies]
+specify-error = { workspace = true }
+specify-tool = { workspace = true }
+specify-validate = { workspace = true }
+jiff = { workspace = true }
+clap = { workspace = true }
+glob = { workspace = true }
+jsonschema = { workspace = true }
+petgraph = { workspace = true }
+regex = { workspace = true }
+semver = { workspace = true }
+serde = { workspace = true }
+serde-saphyr = { workspace = true }
+serde_json = { workspace = true }
+strum = { workspace = true }
+tempfile = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+serde_json = { workspace = true }
+regex = { workspace = true }

@@ -1,8 +1,6 @@
 //! Strict parser for the `<!-- specify:context begin -->` /
-//! `<!-- specify:context end -->` document shape. Owns the byte offsets
-//! that let the [`super::render`] write planner splice generated content
-//! into an operator-authored `AGENTS.md` without disturbing surrounding
-//! bytes.
+//! `<!-- specify:context end -->` document shape — emits the byte
+//! offsets used by the [`super::render`] write planner.
 
 use std::collections::BTreeMap;
 

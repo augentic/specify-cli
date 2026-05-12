@@ -1,18 +1,16 @@
-//! `slice merge run | preview | conflict-check`.
-//!
-//! Owns the merge-side JSON DTOs, summarisers, and the workspace-clone
-//! auto-commit shim that runs after a merge inside a workspace clone.
+//! `slice merge run | preview | conflict-check`. Owns the merge-side
+//! JSON DTOs, summarisers, and the workspace-clone auto-commit shim.
 
 use std::io::Write;
 use std::path::Path;
 
-use chrono::Utc;
+use jiff::Timestamp;
 use serde::Serialize;
-use specify_config::{LayoutExt, is_workspace_clone};
-use specify_error::Result;
-use specify_merge::{
+use specify_domain::config::{LayoutExt, is_workspace_clone};
+use specify_domain::merge::{
     BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check, slice,
 };
+use specify_error::Result;
 
 use super::artifact_classes;
 use crate::context::Ctx;
@@ -25,7 +23,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let archive_dir = ctx.archive_dir();
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
 
-    let merged = slice::commit(&slice_dir, &classes, &archive_dir, Utc::now())?;
+    let merged = slice::commit(&slice_dir, &classes, &archive_dir, Timestamp::now())?;
 
     // The merge-owned workspace commit is limited to the baseline spec
     // tree and archived slice. Opaque/generated outputs remain as residue
@@ -34,11 +32,11 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
         auto_commit(&ctx.project_dir, name);
     }
 
-    let today = Utc::now().format("%Y-%m-%d").to_string();
+    let today = Timestamp::now().strftime("%Y-%m-%d").to_string();
     let archive_path = archive_dir.join(format!("{today}-{name}"));
 
     let entries: Vec<MergedEntry> = merged.iter().map(MergedEntry::from).collect();
-    ctx.out().write(&MergeRunBody {
+    ctx.write(&RunBody {
         merged_specs: entries,
         archive_path: archive_path.display().to_string(),
     })?;
@@ -67,7 +65,7 @@ pub(super) fn preview(ctx: &Ctx, name: &str) -> Result<()> {
         .map(ContractItem::from)
         .collect();
 
-    ctx.out().write(&PreviewBody {
+    ctx.write(&PreviewBody {
         slice_dir: slice_dir.display().to_string(),
         specs,
         contracts,
@@ -81,7 +79,7 @@ pub(super) fn conflicts(ctx: &Ctx, name: &str) -> Result<()> {
     let conflicts = conflict_check(&slice_dir, &classes)?;
     let rows: Vec<ConflictRow> = conflicts.iter().map(ConflictRow::from).collect();
 
-    ctx.out().write(&ConflictCheckBody {
+    ctx.write(&ConflictCheckBody {
         slice_dir: slice_dir.display().to_string(),
         conflicts: rows,
     })?;
@@ -94,13 +92,13 @@ pub(super) fn conflicts(ctx: &Ctx, name: &str) -> Result<()> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct MergeRunBody {
+struct RunBody {
     merged_specs: Vec<MergedEntry>,
     #[serde(skip)]
     archive_path: String,
 }
 
-impl Render for MergeRunBody {
+impl Render for RunBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         for entry in &self.merged_specs {
             writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
@@ -243,7 +241,7 @@ impl From<&BaselineConflict> for ConflictRow {
         Self {
             capability: c.capability.clone(),
             defined_at: c.defined_at.clone(),
-            baseline_modified_at: c.baseline_modified_at.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            baseline_modified_at: c.baseline_modified_at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
         }
     }
 }
@@ -263,9 +261,9 @@ enum MergeOp {
     Unknown,
 }
 
-impl From<&specify_merge::MergeOperation> for MergeOp {
-    fn from(op: &specify_merge::MergeOperation) -> Self {
-        use specify_merge::MergeOperation;
+impl From<&specify_domain::merge::MergeOperation> for MergeOp {
+    fn from(op: &specify_domain::merge::MergeOperation) -> Self {
+        use specify_domain::merge::MergeOperation;
         match op {
             MergeOperation::Added { id, name } => Self::Added {
                 id: id.clone(),

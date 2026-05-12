@@ -1,12 +1,9 @@
 //! Clap derive surface for `specify change plan *` and the nested
-//! `plan lock *` verbs.
-//!
-//! Lifted out of `src/cli.rs`; `cli.rs` re-exports both action enums so
-//! the umbrella `Cli` / `Commands` / `ChangeAction` derives resolve at
-//! expansion time.
+//! `plan lock *` verbs. The umbrella `cli.rs` re-exports both action
+//! enums.
 
 use clap::{ArgAction, Subcommand};
-use specify_change::Status;
+use specify_domain::change::Status;
 
 use crate::cli::SourceArg;
 

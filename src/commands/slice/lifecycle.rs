@@ -2,12 +2,10 @@
 
 use std::io::Write;
 
-use chrono::Utc;
+use jiff::Timestamp;
 use serde::Serialize;
+use specify_domain::slice::{CreateIfExists, Created, LifecycleStatus, actions as slice_actions};
 use specify_error::{Error, Result};
-use specify_slice::{
-    CreateIfExists, Created, LifecycleStatus, Rfc3339Stamp, actions as slice_actions,
-};
 
 use crate::context::Ctx;
 use crate::output::Render;
@@ -31,9 +29,9 @@ pub(super) fn create(
     std::fs::create_dir_all(&slices_dir)?;
 
     let outcome =
-        slice_actions::create(&slices_dir, name, &capability_value, if_exists, Utc::now())?;
+        slice_actions::create(&slices_dir, name, &capability_value, if_exists, Timestamp::now())?;
 
-    ctx.out().write(&CreateBody::from(&outcome))?;
+    ctx.write(&CreateBody::from(&outcome))?;
     Ok(())
 }
 
@@ -78,14 +76,14 @@ impl Render for CreateBody {
 
 pub(super) fn transition(ctx: &Ctx, name: String, target: LifecycleStatus) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
-    let metadata = slice_actions::transition(&slice_dir, target, Utc::now())?;
-    ctx.out().write(&TransitionBody {
+    let metadata = slice_actions::transition(&slice_dir, target, Timestamp::now())?;
+    ctx.write(&TransitionBody {
         name,
         status: metadata.status,
-        defined_at: metadata.defined_at.clone(),
-        build_started_at: metadata.build_started_at.clone(),
-        completed_at: metadata.completed_at.clone(),
-        merged_at: metadata.merged_at.clone(),
+        defined_at: metadata.defined_at,
+        build_started_at: metadata.build_started_at,
+        completed_at: metadata.completed_at,
+        merged_at: metadata.merged_at,
         dropped_at: metadata.dropped_at,
     })?;
     Ok(())
@@ -96,11 +94,16 @@ pub(super) fn transition(ctx: &Ctx, name: String, target: LifecycleStatus) -> Re
 struct TransitionBody {
     name: String,
     status: LifecycleStatus,
-    defined_at: Option<Rfc3339Stamp>,
-    build_started_at: Option<Rfc3339Stamp>,
-    completed_at: Option<Rfc3339Stamp>,
-    merged_at: Option<Rfc3339Stamp>,
-    dropped_at: Option<Rfc3339Stamp>,
+    #[serde(with = "specify_domain::serde_rfc3339::option")]
+    defined_at: Option<Timestamp>,
+    #[serde(with = "specify_domain::serde_rfc3339::option")]
+    build_started_at: Option<Timestamp>,
+    #[serde(with = "specify_domain::serde_rfc3339::option")]
+    completed_at: Option<Timestamp>,
+    #[serde(with = "specify_domain::serde_rfc3339::option")]
+    merged_at: Option<Timestamp>,
+    #[serde(with = "specify_domain::serde_rfc3339::option")]
+    dropped_at: Option<Timestamp>,
 }
 
 impl Render for TransitionBody {
@@ -112,8 +115,8 @@ impl Render for TransitionBody {
 pub(super) fn archive(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
-    let target = slice_actions::archive(&slice_dir, &archive_dir, Utc::now())?;
-    ctx.out().write(&ArchiveBody {
+    let target = slice_actions::archive(&slice_dir, &archive_dir, Timestamp::now())?;
+    ctx.write(&ArchiveBody {
         name,
         archive_path: target.display().to_string(),
     })?;
@@ -137,8 +140,8 @@ pub(super) fn discard_slice(ctx: &Ctx, name: String, reason: Option<&str>) -> Re
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let (metadata, archive_path) =
-        slice_actions::discard(&slice_dir, &archive_dir, reason, Utc::now())?;
-    ctx.out().write(&DropBody {
+        slice_actions::discard(&slice_dir, &archive_dir, reason, Timestamp::now())?;
+    ctx.write(&DropBody {
         name,
         status: metadata.status,
         archive_path: archive_path.display().to_string(),

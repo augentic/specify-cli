@@ -3,24 +3,17 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use tempfile::NamedTempFile;
+use tempfile::{Builder, NamedTempFile};
 
 pub mod digest;
 pub mod http;
 pub mod local;
 
-use crate::cache::{
-    self, CacheStatus, MODULE_FILENAME, PermissionsSnapshot, SIDECAR_FILENAME, Sidecar,
-};
+use crate::cache::{self, MODULE_FILENAME, PermissionsSnapshot, SIDECAR_FILENAME, Sidecar};
 use crate::error::ToolError;
 use crate::manifest::{Tool, ToolScope, ToolSource};
-
-const MAX_TEMP_ATTEMPTS: u8 = 64;
-
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+use crate::package::{FetchedPackage, PackageClient, PackageMetadata, WasmPkgClient};
 
 /// Cached component bytes plus the live declaration data needed to run them.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,27 +34,57 @@ pub struct ResolvedTool {
 /// together, then atomically install the complete version directory.
 ///
 /// `now` records the sidecar `fetched_at`; the dispatcher passes
-/// `Utc::now`, tests pin a deterministic stamp.
+/// `Timestamp::now`, tests pin a deterministic stamp.
 ///
 /// # Errors
 ///
 /// Returns cache errors, source read errors, digest mismatches, or typed network
 /// resolver errors.
 pub fn resolve(
-    scope: &ToolScope, tool: &Tool, now: chrono::DateTime<chrono::Utc>,
+    scope: &ToolScope, tool: &Tool, now: jiff::Timestamp,
+) -> Result<ResolvedTool, ToolError> {
+    resolve_with(scope, tool, now, &WasmPkgClient)
+}
+
+/// Resolve a declared tool using an injected package client.
+///
+/// Tests use this to cover package resolver behavior without depending on a
+/// live registry.
+///
+/// # Errors
+///
+/// Returns the same cache, source, digest, and resolver errors as [`resolve`].
+pub fn resolve_with(
+    scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, package_client: &impl PackageClient,
 ) -> Result<ResolvedTool, ToolError> {
     let source = tool.source.to_wire_string().into_owned();
     let module = cache::module_path(scope, &tool.name, &tool.version)?;
-    if cache::cache_status(scope, &tool.name, &tool.version, &source, tool.sha256.as_deref())?
-        == CacheStatus::Hit
+    if cache::status(scope, &tool.name, &tool.version, &source, tool.sha256.as_deref())?
+        == cache::Status::Hit
         && digest::cached_matches(&module, tool.sha256.as_deref())?
     {
         return Ok(resolved(scope, tool, module));
     }
 
     let dest = cache::tool_dir(scope, &tool.name, &tool.version)?;
-    let staged = unique_staging_dir(&dest)?;
-    let install_result = stage_and_install(scope, tool, &source, &staged, &dest, now);
+    let Some(parent) = dest.parent() else {
+        return Err(ToolError::CacheRoot(format!(
+            "tool cache destination has no parent: {}",
+            dest.display()
+        )));
+    };
+    fs::create_dir_all(parent)
+        .map_err(|err| ToolError::cache_io("create resolver staging parent", parent, err))?;
+    let stem = dest.file_name().unwrap_or_else(|| OsStr::new("tool")).to_string_lossy();
+    let prefix = format!(".resolver-{stem}.");
+    let staged = Builder::new()
+        .prefix(&prefix)
+        .suffix(".tmp")
+        .tempdir_in(parent)
+        .map_err(|err| ToolError::cache_io("create resolver staging directory", parent, err))?
+        .keep();
+    let install_result =
+        stage_and_install(scope, tool, &source, &staged, &dest, now, package_client);
     // The atomic install moves `staged/` into `dest/`, so its absence on
     // success is expected. On failure we tear down the staging tree.
     let cleanup_result = if install_result.is_ok() && !staged.exists() {
@@ -79,12 +102,13 @@ pub fn resolve(
 }
 
 fn stage_and_install(
-    scope: &ToolScope, tool: &Tool, source: &str, staged: &Path, dest: &Path,
-    now: chrono::DateTime<chrono::Utc>,
+    scope: &ToolScope, tool: &Tool, source: &str, staged: &Path, dest: &Path, now: jiff::Timestamp,
+    package_client: &impl PackageClient,
 ) -> Result<(), ToolError> {
     let module_dest = staged.join(MODULE_FILENAME);
-    let acquired = acquire_source_bytes(&tool.source, &module_dest)?;
+    let acquired = acquire_source_bytes(&tool.source, &module_dest, package_client)?;
     digest::validate(source, &acquired, tool.sha256.as_deref())?;
+    let package_metadata = acquired.package_metadata();
     acquired.persist_to(&module_dest)?;
     let sidecar = Sidecar::new(
         scope,
@@ -93,6 +117,7 @@ fn stage_and_install(
         source,
         PermissionsSnapshot::from(&tool.permissions),
         tool.sha256.clone(),
+        package_metadata,
         now,
     )?;
     cache::write_sidecar(&staged.join(SIDECAR_FILENAME), &sidecar)?;
@@ -107,158 +132,142 @@ fn resolved(scope: &ToolScope, tool: &Tool, bytes_path: PathBuf) -> ResolvedTool
     }
 }
 
-fn acquire_source_bytes(source: &ToolSource, dest_hint: &Path) -> Result<AcquiredBytes, ToolError> {
+fn acquire_source_bytes(
+    source: &ToolSource, dest_hint: &Path, package_client: &impl PackageClient,
+) -> Result<AcquiredBytes, ToolError> {
     match source {
-        ToolSource::LocalPath(path) => {
-            local::read_local_path(path, &path.to_string_lossy()).map(AcquiredBytes::Buffered)
-        }
-        ToolSource::FileUri(uri) => local::read_file_uri(uri).map(AcquiredBytes::Buffered),
+        ToolSource::LocalPath(path) => buffered_into_acquired(
+            &local::read_local_path(path, &path.to_string_lossy())?,
+            dest_hint,
+        ),
+        ToolSource::FileUri(uri) => buffered_into_acquired(&local::read_file_uri(uri)?, dest_hint),
         ToolSource::HttpsUri(url) => http::download_https(url, dest_hint),
+        ToolSource::Package(package) => package_client.fetch(package, dest_hint).map(
+            |FetchedPackage {
+                 temp,
+                 sha256,
+                 metadata,
+             }| AcquiredBytes {
+                temp,
+                sha256,
+                package_metadata: Some(metadata),
+            },
+        ),
     }
 }
 
+fn buffered_into_acquired(bytes: &[u8], dest_hint: &Path) -> Result<AcquiredBytes, ToolError> {
+    let parent = dest_hint.parent().ok_or_else(|| {
+        ToolError::CacheRoot(format!(
+            "tool staging destination has no parent: {}",
+            dest_hint.display()
+        ))
+    })?;
+    fs::create_dir_all(parent)
+        .map_err(|err| ToolError::cache_io("create local staging parent", parent, err))?;
+    let temp = NamedTempFile::new_in(parent)
+        .map_err(|err| ToolError::cache_io("create local staging tempfile", parent, err))?;
+    let sha256 = digest::sha256_hex(bytes);
+    fs::write(temp.path(), bytes)
+        .map_err(|err| ToolError::cache_io("write local staging tempfile", temp.path(), err))?;
+    Ok(AcquiredBytes {
+        temp,
+        sha256,
+        package_metadata: None,
+    })
+}
+
 /// Bytes acquired from a tool source, ready for digest validation and
-/// installation into the cache. HTTPS streams to a sibling `NamedTempFile`
-/// (so the bytes never live in a `Vec`); local sources read into memory
-/// because their bodies are bounded by the on-disk source file.
+/// installation into the cache. Every source streams to a sibling
+/// `NamedTempFile` so the install step is a uniform `persist` regardless of
+/// whether the bytes came from a local file, an HTTPS download, or a
+/// package registry.
 #[derive(Debug)]
-pub(crate) enum AcquiredBytes {
-    Buffered(Vec<u8>),
-    Streamed { temp: NamedTempFile, sha256: String },
+pub(crate) struct AcquiredBytes {
+    pub(crate) temp: NamedTempFile,
+    pub(crate) sha256: String,
+    pub(crate) package_metadata: Option<PackageMetadata>,
 }
 
 impl AcquiredBytes {
     pub(crate) fn len(&self) -> Result<u64, ToolError> {
-        match self {
-            Self::Buffered(bytes) => Ok(bytes.len() as u64),
-            Self::Streamed { temp, .. } => temp
-                .as_file()
-                .metadata()
-                .map(|m| m.len())
-                .map_err(|err| ToolError::cache_io("stat staged tool body", temp.path(), err)),
-        }
+        self.temp
+            .as_file()
+            .metadata()
+            .map(|m| m.len())
+            .map_err(|err| ToolError::cache_io("stat staged tool body", self.temp.path(), err))
     }
 
     pub(crate) fn sha256_hex(&self) -> String {
-        match self {
-            Self::Buffered(bytes) => digest::sha256_hex(bytes),
-            Self::Streamed { sha256, .. } => sha256.clone(),
-        }
+        self.sha256.clone()
+    }
+
+    pub(crate) fn package_metadata(&self) -> Option<PackageMetadata> {
+        self.package_metadata.clone()
     }
 
     pub(crate) fn persist_to(self, dest: &Path) -> Result<(), ToolError> {
-        match self {
-            Self::Buffered(bytes) => fs::write(dest, bytes)
-                .map_err(|err| ToolError::cache_io("write staged module", dest, err)),
-            Self::Streamed { temp, .. } => {
-                temp.persist(dest).map(|_| ()).map_err(|err| ToolError::AtomicMoveFailed {
-                    from: err.file.path().to_path_buf(),
-                    to: dest.to_path_buf(),
-                    source: err.error,
-                })
-            }
-        }
-    }
-}
-
-fn unique_staging_dir(dest: &Path) -> Result<PathBuf, ToolError> {
-    let Some(parent) = dest.parent() else {
-        return Err(ToolError::CacheRoot(format!(
-            "tool cache destination has no parent: {}",
-            dest.display()
-        )));
-    };
-    fs::create_dir_all(parent)
-        .map_err(|err| ToolError::cache_io("create resolver staging parent", parent, err))?;
-
-    let stem = dest.file_name().unwrap_or_else(|| OsStr::new("tool")).to_string_lossy();
-    let nanos =
-        SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_nanos());
-    for _ in 0..MAX_TEMP_ATTEMPTS {
-        let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let candidate =
-            parent.join(format!(".resolver-{stem}.{}.{}.{}.tmp", std::process::id(), nanos, n));
-        match fs::create_dir(&candidate) {
-            Ok(()) => return Ok(candidate),
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(err) => {
-                return Err(ToolError::cache_io(
-                    "create resolver staging directory",
-                    candidate,
-                    err,
-                ));
-            }
-        }
-    }
-    Err(ToolError::CacheCollision {
-        parent: parent.to_path_buf(),
-        stem: stem.into_owned(),
-    })
-}
-
-#[cfg(test)]
-pub(super) mod tests_common {
-    use std::path::{Path, PathBuf};
-
-    use chrono::{DateTime, Utc};
-
-    use crate::cache;
-    use crate::manifest::{Tool, ToolPermissions, ToolScope, ToolSource};
-
-    pub(crate) fn fixed_now() -> DateTime<Utc> {
-        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
-    }
-
-    pub(crate) fn project_scope() -> ToolScope {
-        ToolScope::Project {
-            project_name: "demo".to_string(),
-        }
-    }
-
-    pub(crate) fn capability_scope(root: &Path) -> ToolScope {
-        ToolScope::Capability {
-            capability_slug: "contracts".to_string(),
-            capability_dir: root.to_path_buf(),
-        }
-    }
-
-    pub(crate) fn tool(source: ToolSource, sha256: Option<String>) -> Tool {
-        Tool {
-            name: "contract".to_string(),
-            version: "1.0.0".to_string(),
-            source,
-            sha256,
-            permissions: ToolPermissions::default(),
-        }
-    }
-
-    pub(crate) fn named_tool(name: &str, source: ToolSource, sha256: Option<String>) -> Tool {
-        Tool {
-            name: name.to_string(),
-            ..tool(source, sha256)
-        }
-    }
-
-    pub(crate) fn write_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
-        let path = root.join(name);
-        std::fs::write(&path, bytes).expect("write source");
-        path
-    }
-
-    pub(crate) fn cached_bytes(scope: &ToolScope, tool: &Tool) -> Vec<u8> {
-        std::fs::read(cache::module_path(scope, &tool.name, &tool.version).expect("module path"))
-            .expect("read cached module")
+        self.temp.persist(dest).map(|_| ()).map_err(|err| ToolError::AtomicMoveFailed {
+            from: err.file.path().to_path_buf(),
+            to: dest.to_path_buf(),
+            source: err.error,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::fs;
+    use std::io::Write as _;
+    use std::path::Path;
 
-    use super::tests_common::*;
     use super::*;
-    use crate::manifest::ToolSource;
-    use crate::test_support::{scratch_dir, with_cache_env};
+    use crate::manifest::{PackageRequest, ToolSource};
+    use crate::package::{FetchedPackage, PackageClient, PackageMetadata};
+    use crate::test_support::{
+        cached_bytes, capability_scope, fixed_now, project_scope, scratch_dir, tool,
+        with_cache_env, write_source,
+    };
+
+    struct MockPackageClient {
+        bytes: &'static [u8],
+        calls: Cell<u32>,
+    }
+
+    impl MockPackageClient {
+        fn new(bytes: &'static [u8]) -> Self {
+            Self {
+                bytes,
+                calls: Cell::new(0),
+            }
+        }
+    }
+
+    impl PackageClient for MockPackageClient {
+        fn fetch(
+            &self, request: &PackageRequest, dest_hint: &Path,
+        ) -> Result<FetchedPackage, ToolError> {
+            self.calls.set(self.calls.get() + 1);
+            let parent = dest_hint.parent().expect("dest hint has parent");
+            fs::create_dir_all(parent).expect("create mock package temp parent");
+            let mut temp = NamedTempFile::new_in(parent).expect("create mock package tempfile");
+            temp.write_all(self.bytes).expect("write mock package bytes");
+            Ok(FetchedPackage {
+                temp,
+                sha256: digest::sha256_hex(self.bytes),
+                metadata: PackageMetadata {
+                    name: request.name_ref(),
+                    version: request.version.clone(),
+                    registry: "augentic.io".to_string(),
+                    oci_reference: Some(format!(
+                        "ghcr.io/augentic/specify/{}:{}",
+                        request.name, request.version
+                    )),
+                },
+            })
+        }
+    }
 
     #[test]
     fn local_path_cache_miss_hit_and_source_change() {
@@ -306,6 +315,46 @@ mod tests {
             assert!(
                 capability_resolved.bytes_path.to_string_lossy().contains("capability--contracts")
             );
+        });
+    }
+
+    #[test]
+    fn package_source_uses_injected_client_and_records_metadata() {
+        let cache_dir = scratch_dir("resolver-package-cache");
+        let scope = project_scope();
+        let package = PackageRequest {
+            namespace: "specify".to_string(),
+            name: "contract".to_string(),
+            version: "1.0.0".to_string(),
+        };
+        let declared = tool(ToolSource::Package(package), None);
+        let client = MockPackageClient::new(b"package-bytes");
+
+        with_cache_env(Some(&cache_dir), None, None, || {
+            let resolved =
+                resolve_with(&scope, &declared, fixed_now(), &client).expect("package resolves");
+            assert_eq!(fs::read(resolved.bytes_path).expect("cached bytes"), b"package-bytes");
+            assert_eq!(client.calls.get(), 1);
+
+            let sidecar = cache::read_sidecar(
+                &cache::sidecar_path(&scope, &declared.name, &declared.version)
+                    .expect("sidecar path"),
+            )
+            .expect("read sidecar")
+            .expect("sidecar exists");
+            assert_eq!(sidecar.source, "specify:contract@1.0.0");
+            assert_eq!(
+                sidecar.package.as_ref().map(|package| package.name.as_str()),
+                Some("specify:contract")
+            );
+            assert_eq!(
+                sidecar.oci.as_ref().map(|oci| oci.reference.as_str()),
+                Some("ghcr.io/augentic/specify/contract:1.0.0")
+            );
+
+            resolve_with(&scope, &declared, fixed_now(), &client)
+                .expect("package cache hit resolves");
+            assert_eq!(client.calls.get(), 1, "cache hit must not fetch package again");
         });
     }
 }
