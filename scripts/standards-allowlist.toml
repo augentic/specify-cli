@@ -394,7 +394,7 @@ module-line-count = 72
 
 [file."crates/tool/src/cache/meta.rs"]
 direct-fs-write = 1
-module-line-count = 249
+module-line-count = 268
 
 [file."crates/tool/src/error.rs"]
 module-line-count = 285
@@ -615,7 +615,7 @@ module-line-count = 134
 module-line-count = 30
 
 [file."src/commands/tool/dto.rs"]
-module-line-count = 280
+module-line-count = 282
 
 [file."src/commands/tool/fetch.rs"]
 module-line-count = 34

@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use specify_error::Error;
 
 use crate::capability::{CacheMeta, PipelineView};
@@ -18,7 +18,7 @@ use crate::init::{InitOptions, InitResult, resolve_version, resolved_name, upser
     clippy::needless_pass_by_value,
     reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
 )]
-pub(crate) fn run(opts: InitOptions<'_>, now: DateTime<Utc>) -> Result<InitResult, Error> {
+pub(crate) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
     let capability = opts.capability.ok_or_else(|| Error::Diag {
         code: "init-requires-capability-or-hub",
         detail: "pass <capability> or --hub".to_string(),
@@ -90,14 +90,14 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use chrono::{DateTime, Utc};
+    use jiff::Timestamp;
     use tempfile::tempdir;
 
     use crate::capability::CacheMeta;
     use crate::config::{LayoutExt, ProjectConfig};
     use crate::init::{InitOptions, VersionMode, init};
 
-    fn fixed_now() -> DateTime<Utc> {
+    fn fixed_now() -> Timestamp {
         "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
     }
 

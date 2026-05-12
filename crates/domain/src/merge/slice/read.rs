@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use specify_error::Error;
 
 use super::parse::system_time_to_utc;
@@ -322,7 +322,7 @@ fn collect_opaque_entries(
 /// ones.
 pub(super) fn check_opaque_drift(
     base: &Path, current: &Path, baseline_dir: &Path, class_name: &str, defined_raw: &str,
-    defined_at: DateTime<Utc>, conflicts: &mut Vec<BaselineConflict>,
+    defined_at: Timestamp, conflicts: &mut Vec<BaselineConflict>,
 ) -> Result<(), Error> {
     if !current.is_dir() {
         return Ok(());

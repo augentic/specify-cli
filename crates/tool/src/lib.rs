@@ -39,14 +39,14 @@ pub(crate) mod test_support {
     use std::time::{SystemTime, UNIX_EPOCH};
     use std::{env, fs};
 
-    use chrono::{DateTime, Utc};
+    use jiff::Timestamp;
 
     use crate::cache;
     use crate::manifest::{Tool, ToolPermissions, ToolScope, ToolSource};
 
     static SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-    pub(crate) fn fixed_now() -> DateTime<Utc> {
+    pub(crate) fn fixed_now() -> Timestamp {
         "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
     }
 

@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use specify_error::{Error, is_kebab};
 
 use crate::slice::{LifecycleStatus, SliceMetadata};
@@ -80,7 +80,7 @@ pub fn validate_name(name: &str) -> Result<(), Error> {
     reason = "`slices_dir` and `slice_dir` name distinct concepts (parent dir vs. this slice's dir)."
 )]
 pub fn create(
-    slices_dir: &Path, name: &str, capability: &str, if_exists: CreateIfExists, now: DateTime<Utc>,
+    slices_dir: &Path, name: &str, capability: &str, if_exists: CreateIfExists, now: Timestamp,
 ) -> Result<Created, Error> {
     validate_name(name)?;
     let slice_dir = slices_dir.join(name);

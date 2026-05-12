@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
@@ -202,7 +202,7 @@ pub struct Inputs<'a> {
     pub dry_run: bool,
     /// Wall-clock instant supplied by the dispatcher; the archive sweep
     /// stamps the `<plan>-<YYYYMMDD>` segment from this value.
-    pub now: DateTime<Utc>,
+    pub now: Timestamp,
 }
 
 /// Top-level error sentinel for finalize.

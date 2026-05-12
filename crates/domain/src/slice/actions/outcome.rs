@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use specify_error::Error;
 
 use crate::slice::{Outcome, OutcomeKind, Phase, SliceMetadata};
@@ -22,7 +22,7 @@ use crate::slice::{Outcome, OutcomeKind, Phase, SliceMetadata};
 /// lives in `journal.yaml` (L2.B), not here.
 ///
 /// `now` is plumbed in so tests can pin `at` deterministically; the CLI
-/// passes `Utc::now()`.
+/// passes `Timestamp::now()`.
 ///
 /// Returns the updated [`SliceMetadata`].
 ///
@@ -31,7 +31,7 @@ use crate::slice::{Outcome, OutcomeKind, Phase, SliceMetadata};
 /// Propagates load / save failures from `SliceMetadata`.
 pub fn stamp_outcome(
     slice_dir: &Path, phase: Phase, outcome: OutcomeKind, summary: &str, context: Option<&str>,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> Result<SliceMetadata, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     metadata.outcome = Some(Outcome {

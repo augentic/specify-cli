@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use specify_error::Error;
 
 use super::model::{Plan, Status};
@@ -48,7 +48,7 @@ impl Plan {
     /// closed plan.
     ///
     /// `now` supplies the `YYYYMMDD` segment in the destination name;
-    /// dispatchers pass `Utc::now` and tests pin a fixed value.
+    /// dispatchers pass `Timestamp::now` and tests pin a fixed value.
     ///
     /// # Errors
     ///
@@ -56,7 +56,7 @@ impl Plan {
     /// underlying calls fail, or when entries are non-terminal without
     /// `force`.
     pub fn archive(
-        path: &Path, change_brief_path: &Path, archive_dir: &Path, force: bool, now: DateTime<Utc>,
+        path: &Path, change_brief_path: &Path, archive_dir: &Path, force: bool, now: Timestamp,
     ) -> Result<(PathBuf, Option<PathBuf>), Error> {
         let plan = Self::load(path)?;
 
@@ -72,7 +72,7 @@ impl Plan {
             }
         }
 
-        let today = now.format("%Y%m%d").to_string();
+        let today = now.strftime("%Y%m%d").to_string();
         let dest_plan = archive_dir.join(format!("{}-{}.yaml", plan.name, today));
 
         let project_root = path.parent();

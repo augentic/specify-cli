@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::{fs, io};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use tempfile::Builder;
 
@@ -80,7 +80,8 @@ pub struct Sidecar {
     /// Literal source string from the declaration.
     pub source: String,
     /// UTC timestamp from when the bytes were fetched or copied.
-    pub fetched_at: DateTime<Utc>,
+    #[serde(with = "fetched_at_rfc3339")]
+    pub fetched_at: Timestamp,
     /// Fetch-time permissions snapshot. Informational only.
     pub permissions_snapshot: PermissionsSnapshot,
     /// Optional lower-case hex SHA-256 digest copied from the declaration.
@@ -110,7 +111,7 @@ impl Sidecar {
     pub fn new(
         scope: &ToolScope, tool_name: impl Into<String>, tool_version: impl Into<String>,
         source: impl Into<String>, permissions_snapshot: PermissionsSnapshot,
-        sha256: Option<String>, package_metadata: Option<PackageMetadata>, now: DateTime<Utc>,
+        sha256: Option<String>, package_metadata: Option<PackageMetadata>, now: Timestamp,
     ) -> Result<Self, ToolError> {
         let (package, oci) = package_metadata.map_or((None, None), |metadata| {
             let package = Some(PackageSnapshot::from(&metadata));
@@ -245,4 +246,23 @@ fn sidecar_schema_error(path: &Path, detail: impl Into<String>) -> Result<(), To
 
 fn valid_sha256(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Local serde adapter for [`Sidecar::fetched_at`] that pins
+/// `%Y-%m-%dT%H:%M:%SZ` (second precision, literal `Z`) so historical
+/// `meta.yaml` fixtures stay byte-identical across the chrono → jiff
+/// migration. Mirrors `specify_domain::serde_rfc3339`, inlined here
+/// because `specify-tool` cannot depend on `specify-domain` (that
+/// direction is owned by `specify-domain`).
+mod fetched_at_rfc3339 {
+    use jiff::Timestamp;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(ts: &Timestamp, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(&ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Timestamp, D::Error> {
+        String::deserialize(d)?.parse().map_err(serde::de::Error::custom)
+    }
 }

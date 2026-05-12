@@ -2,7 +2,7 @@
 
 use std::io::Write;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::slice::{CreateIfExists, Created, LifecycleStatus, actions as slice_actions};
 use specify_error::{Error, Result};
@@ -29,7 +29,7 @@ pub(super) fn create(
     std::fs::create_dir_all(&slices_dir)?;
 
     let outcome =
-        slice_actions::create(&slices_dir, name, &capability_value, if_exists, Utc::now())?;
+        slice_actions::create(&slices_dir, name, &capability_value, if_exists, Timestamp::now())?;
 
     ctx.write(&CreateBody::from(&outcome))?;
     Ok(())
@@ -76,7 +76,7 @@ impl Render for CreateBody {
 
 pub(super) fn transition(ctx: &Ctx, name: String, target: LifecycleStatus) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
-    let metadata = slice_actions::transition(&slice_dir, target, Utc::now())?;
+    let metadata = slice_actions::transition(&slice_dir, target, Timestamp::now())?;
     ctx.write(&TransitionBody {
         name,
         status: metadata.status,
@@ -95,15 +95,15 @@ struct TransitionBody {
     name: String,
     status: LifecycleStatus,
     #[serde(with = "specify_domain::serde_rfc3339::option")]
-    defined_at: Option<DateTime<Utc>>,
+    defined_at: Option<Timestamp>,
     #[serde(with = "specify_domain::serde_rfc3339::option")]
-    build_started_at: Option<DateTime<Utc>>,
+    build_started_at: Option<Timestamp>,
     #[serde(with = "specify_domain::serde_rfc3339::option")]
-    completed_at: Option<DateTime<Utc>>,
+    completed_at: Option<Timestamp>,
     #[serde(with = "specify_domain::serde_rfc3339::option")]
-    merged_at: Option<DateTime<Utc>>,
+    merged_at: Option<Timestamp>,
     #[serde(with = "specify_domain::serde_rfc3339::option")]
-    dropped_at: Option<DateTime<Utc>>,
+    dropped_at: Option<Timestamp>,
 }
 
 impl Render for TransitionBody {
@@ -115,7 +115,7 @@ impl Render for TransitionBody {
 pub(super) fn archive(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
-    let target = slice_actions::archive(&slice_dir, &archive_dir, Utc::now())?;
+    let target = slice_actions::archive(&slice_dir, &archive_dir, Timestamp::now())?;
     ctx.write(&ArchiveBody {
         name,
         archive_path: target.display().to_string(),
@@ -140,7 +140,7 @@ pub(super) fn discard_slice(ctx: &Ctx, name: String, reason: Option<&str>) -> Re
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let (metadata, archive_path) =
-        slice_actions::discard(&slice_dir, &archive_dir, reason, Utc::now())?;
+        slice_actions::discard(&slice_dir, &archive_dir, reason, Timestamp::now())?;
     ctx.write(&DropBody {
         name,
         status: metadata.status,

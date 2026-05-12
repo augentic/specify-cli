@@ -10,7 +10,7 @@ mod common;
 use common::{parse_json, repo_root, specify};
 
 fn contract_wasm() -> PathBuf {
-    repo_root().join("wasi-tools/contract/dist/contract-0.2.0.wasm")
+    repo_root().join("wasi-tools/target/wasm32-wasip2/release/specify-contract.wasm")
 }
 
 fn sha256_hex(path: &Path) -> String {

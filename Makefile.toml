@@ -110,81 +110,27 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 
 
 # -------------------------------------
-# Move or deprecate
+# Auxiliary tasks
 # -------------------------------------
 
-# Mechanical enforcement of AGENTS.md#coding-standards. Predicates live in
-# `xtask/src/standards.rs`; baselines are 0 per file per predicate (no allowlist).
-# Use:
+# Generic xtask passthrough. Use for any subcommand exposed by
+# `xtask` (`standards-check`, `gen-man`, `gen-completions`, …):
 # ```bash
 # cargo make xtask standards-check
+# cargo make xtask gen-man
+# cargo make xtask gen-completions
 # ```
 [tasks.xtask]
 command = "cargo"
 args = ["run", "--quiet", "-p", "xtask", "--", "${@}"]
 
-# Render roff man pages for the `specify` binary and every leaf
-# subcommand into `target/man/` (gitignored). Release tooling picks
-# the artifacts up from there.
-[tasks.gen-man]
-command = "cargo"
-args = ["run", "--quiet", "-p", "xtask", "--", "gen-man"]
-
-# Render shell-completion scripts for the `specify` binary into
-# `target/completions/<shell>/specify.<ext>` (gitignored). Release
-# tooling picks the artifacts up from there.
-[tasks.gen-completions]
-command = "cargo"
-args = ["run", "--quiet", "-p", "xtask", "--", "gen-completions"]
-
-[tasks.wasm-fixtures]
-script = '''
-set -euo pipefail
-CARGO_TARGET_DIR=target/tools-test-fixtures cargo build --manifest-path tests/fixtures/tools-test-project/src-rust/Cargo.toml --target wasm32-wasip2 --release --bins
-mkdir -p tests/fixtures/tools-test-project/wasm tests/fixtures/tools-test-cap/wasm
-cp target/tools-test-fixtures/wasm32-wasip2/release/echo.wasm tests/fixtures/tools-test-project/wasm/echo.wasm
-cp target/tools-test-fixtures/wasm32-wasip2/release/read-only.wasm tests/fixtures/tools-test-project/wasm/read-only.wasm
-cp target/tools-test-fixtures/wasm32-wasip2/release/read-write.wasm tests/fixtures/tools-test-project/wasm/read-write.wasm
-cp target/tools-test-fixtures/wasm32-wasip2/release/read-denied.wasm tests/fixtures/tools-test-project/wasm/read-denied.wasm
-wasm-tools parse tests/fixtures/tools-test-cap/src-wat/exit-seven.component.wat -o tests/fixtures/tools-test-cap/wasm/exit-seven.wasm
-'''
-
+# Build the first-party `contract` WASI tool into the sibling
+# workspace's target dir. `tests/contract_tool.rs` reads the
+# artifact directly from `wasi-tools/target/wasm32-wasip2/release/`,
+# so this task is a precondition for that integration test.
 [tasks.contract-wasm]
 script = '''
 set -euo pipefail
 cd wasi-tools
 cargo build -p specify-contract --target wasm32-wasip2 --release
-mkdir -p contract/dist
-cp target/wasm32-wasip2/release/specify-contract.wasm contract/dist/contract-0.2.0.wasm
-shasum -a 256 contract/dist/contract-0.2.0.wasm
-'''
-
-[tasks.vectis-wasm]
-script = '''
-set -euo pipefail
-cd wasi-tools
-cargo build -p specify-vectis --target wasm32-wasip2 --release
-'''
-
-[tasks.vectis-wasi-artifacts]
-script = '''
-set -euo pipefail
-
-DIST_DIR="${VECTIS_WASI_DIST_DIR:-target/vectis-wasi-tools/release}"
-mkdir -p "${DIST_DIR}"
-DIST_DIR_ABS="$(cd "${DIST_DIR}" && pwd)"
-
-(
-  cd wasi-tools
-  cargo build -p specify-vectis --target wasm32-wasip2 --release --locked
-  cp target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR_ABS}/vectis.wasm"
-)
-
-(
-  cd "${DIST_DIR_ABS}"
-  shasum -a 256 vectis.wasm > vectis.wasm.sha256
-  shasum -a 256 vectis.wasm > SHA256SUMS
-)
-
-echo "Vectis WASI artifact written to ${DIST_DIR_ABS}"
 '''

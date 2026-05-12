@@ -1,6 +1,8 @@
 //! `display-serde-mirror`: hand-rolled `Display` impls that mirror the
 //! serde wire shape via `match self { Self::Variant => "literal" }`.
-//! The `kebab_enum!` macro is the supported replacement.
+//! Fix by extracting a `const fn discriminant(&self) -> &'static str`
+//! (or `as_str`) accessor and delegating: `f.write_str(self.discriminant())`.
+//! See `crates/domain/src/slice/outcome.rs` for the canonical shape.
 
 use std::collections::BTreeSet;
 

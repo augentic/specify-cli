@@ -223,7 +223,9 @@ pub(super) fn show_row_for(scoped: &ScopedTool) -> Result<ToolShowRow> {
     let row = row_for(scoped)?;
     let sidecar_path = cache::sidecar_path(&scoped.scope, &scoped.tool.name, &scoped.tool.version)?;
     let sidecar = cache::read_sidecar(&sidecar_path)?;
-    let fetched_at = sidecar.as_ref().map(|sidecar| sidecar.fetched_at.to_rfc3339());
+    let fetched_at = sidecar
+        .as_ref()
+        .map(|sidecar| sidecar.fetched_at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string());
     let package = sidecar.as_ref().and_then(|sidecar| sidecar.package.clone());
     let oci = sidecar.as_ref().and_then(|sidecar| sidecar.oci.clone());
     Ok(ToolShowRow {

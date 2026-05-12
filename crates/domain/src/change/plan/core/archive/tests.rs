@@ -43,11 +43,11 @@ fn archive_test(
 ) -> Result<(PathBuf, Option<PathBuf>), Error> {
     let brief =
         plan_path.parent().map_or_else(|| PathBuf::from("change.md"), |p| p.join("change.md"));
-    Plan::archive(plan_path, &brief, archive_dir, force, chrono::Utc::now())
+    Plan::archive(plan_path, &brief, archive_dir, force, jiff::Timestamp::now())
 }
 
 fn today_yyyymmdd() -> String {
-    chrono::Utc::now().format("%Y%m%d").to_string()
+    jiff::Timestamp::now().strftime("%Y%m%d").to_string()
 }
 
 #[test]

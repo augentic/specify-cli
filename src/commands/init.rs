@@ -7,7 +7,7 @@ fn canonical(p: &Path) -> String {
     std::fs::canonicalize(p).map_or_else(|_| p.display().to_string(), |c| c.display().to_string())
 }
 
-use chrono::Utc;
+use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::config::{ProjectConfig, is_workspace_clone};
 use specify_domain::init::{InitOptions, InitResult, VersionMode, init};
@@ -44,7 +44,7 @@ pub(super) fn run(
         hub,
     };
 
-    let result = init(opts, Utc::now())?;
+    let result = init(opts, Timestamp::now())?;
     let current_dir = std::env::current_dir().map_err(Error::Io)?;
     let context_generation = generate_initial_context(format, &current_dir)?;
     emit_init_result(format, &result, hub, context_generation)

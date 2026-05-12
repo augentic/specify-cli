@@ -3,7 +3,7 @@
 
 use std::io::Write;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::Serialize;
 use serde_json::Value;
 use specify_domain::capability::Phase;
@@ -22,7 +22,7 @@ pub(super) fn append(
         return Err(Error::SliceNotFound { name });
     }
 
-    let timestamp = Utc::now();
+    let timestamp = Timestamp::now();
     let entry = JournalEntry {
         timestamp,
         step: phase,
@@ -49,7 +49,7 @@ struct AppendBody {
     phase: String,
     kind: String,
     #[serde(with = "specify_domain::serde_rfc3339")]
-    timestamp: DateTime<Utc>,
+    timestamp: Timestamp,
 }
 
 impl Render for AppendBody {
@@ -88,7 +88,7 @@ impl Render for ShowBody {
             writeln!(
                 w,
                 "  [{}] {}/{} — {}",
-                entry.timestamp.format("%Y-%m-%dT%H:%M:%SZ"),
+                entry.timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 entry.phase,
                 entry.kind,
                 entry.summary,
@@ -107,7 +107,7 @@ impl Render for ShowBody {
 #[serde(rename_all = "kebab-case")]
 struct EntryRow {
     #[serde(with = "specify_domain::serde_rfc3339")]
-    timestamp: DateTime<Utc>,
+    timestamp: Timestamp,
     phase: String,
     kind: String,
     summary: String,

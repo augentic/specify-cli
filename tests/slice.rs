@@ -1115,15 +1115,17 @@ fn journal_append_stamps_rfc3339() {
     let stamp = value["timestamp"].as_str().expect("timestamp string");
     assert!(looks_like_rfc3339(stamp), "CLI-reported timestamp should be RFC3339, got {stamp}");
 
-    // `chrono::DateTime::parse_from_rfc3339` is the authoritative check.
-    chrono::DateTime::parse_from_rfc3339(stamp)
+    // `jiff::Timestamp::from_str` is the authoritative check.
+    stamp
+        .parse::<jiff::Timestamp>()
         .unwrap_or_else(|e| panic!("CLI timestamp {stamp} is not valid RFC3339: {e}"));
 
     let journal_path = project.slices_dir().join("foo").join("journal.yaml");
     let text = fs::read_to_string(&journal_path).expect("read journal");
     let yaml: serde_json::Value = serde_saphyr::from_str(&text).expect("parse journal");
     let on_disk = yaml["entries"][0]["timestamp"].as_str().expect("timestamp on disk");
-    chrono::DateTime::parse_from_rfc3339(on_disk)
+    on_disk
+        .parse::<jiff::Timestamp>()
         .unwrap_or_else(|e| panic!("on-disk timestamp {on_disk} is not valid RFC3339: {e}"));
     assert_eq!(on_disk, stamp, "on-disk timestamp must match the JSON payload");
 }

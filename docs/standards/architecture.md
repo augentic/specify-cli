@@ -32,7 +32,7 @@ The root `specify` crate has both `src/lib.rs` (the dispatcher) and `src/main.rs
 
 ## WASI carve-outs
 
-WASI tools live in `wasi-tools/`, a sibling workspace excluded from the main lint posture. Members are `wasi-tools/contract` (`specify-contract`) and `wasi-tools/vectis` (`specify-vectis`). Build them through the `cargo make contract-wasm` / `vectis-wasm` recipes — those `cd wasi-tools` first so the sibling workspace's lockfile and target dir are used.
+WASI tools live in `wasi-tools/`, a sibling workspace excluded from the main lint posture. Members are `wasi-tools/contract` (`specify-contract`) and `wasi-tools/vectis` (`specify-vectis`). Build them by running `cargo build` inside `wasi-tools/` so the sibling workspace's lockfile and target dir are used — `cargo make contract-wasm` is a thin wrapper that does this for `specify-contract` and is required before running `tests/contract_tool.rs`; `scripts/build-vectis-local.sh` does the same for `specify-vectis` and adds sha256 sidecars for pre-release smoke tests.
 
 `wasi-tools/contract` and `wasi-tools/vectis` are deliberate carve-outs from the workspace's Render/emit/`specify-error` discipline. They ship as standalone WASI components and live in their own sibling workspace at `wasi-tools/Cargo.toml`, which inherits a leaner lint posture and a minimal `[workspace.dependencies]` set. Do not pull `specify-error` (or any other host workspace crate that drags in `wasmtime`, `tokio`, `ureq`, …) into either; the carve-out comments in `wasi-tools/contract/src/main.rs` and `wasi-tools/vectis/src/lib.rs` are authoritative.
 
@@ -40,7 +40,7 @@ When editing these crates:
 
 - They cannot use anything that isn't WASI-compatible. No threads, no networking primitives outside the declared WASI imports, no clock unless the manifest declares it.
 - They stay outside the host workspace's Render/emit/`specify-error` discipline. Do not pull host workspace crates into either; `specify-validate` is the only path-dep bridge and it lives in `wasi-tools/Cargo.toml`'s `[workspace.dependencies]`.
-- Rebuild artifacts via the `cargo make` recipes (each one `cd`s into `wasi-tools/` so the sibling workspace's lockfile is used). Do not check the `.wasm` outputs into git unless promoting a new release version (the release workflow handles distribution).
+- Rebuild artifacts from inside `wasi-tools/` so the sibling workspace's lockfile is used (`cargo make contract-wasm` and `scripts/build-vectis-local.sh` both do this). Do not check the `.wasm` outputs into git — the release workflow handles distribution.
 - Keep their crate dependency surface minimal — they ship as standalone components and bloat the WASM size if you pull in heavy crates.
 
 The `specify-tool` runner (`wasmtime` + `wasmtime-wasi`) loads them through `specify tool run <name>` per declared-tool permissions in `project.yaml.tools[]`.
@@ -51,7 +51,7 @@ The `specify-tool` runner (`wasmtime` + `wasmtime-wasi`) loads them through `spe
 
 ## Time injection
 
-Functions that record a timestamp into a serialised artifact accept `now: chrono::DateTime<Utc>` from the dispatcher boundary. Library crates do not call `Utc::now()`; the call site lives in `src/commands/*.rs` so tests can pin time deterministically. The current carve-out — `slice_actions::*` and friends still consume an injected `now` argument — is the canonical shape to follow.
+Functions that record a timestamp into a serialised artifact accept `now: jiff::Timestamp` from the dispatcher boundary. Library crates do not call `Timestamp::now()`; the call site lives in `src/commands/*.rs` so tests can pin time deterministically. The current carve-out — `slice_actions::*` and friends still consume an injected `now` argument — is the canonical shape to follow.
 
 ## ureq fetch hardening
 

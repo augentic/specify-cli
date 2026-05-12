@@ -53,7 +53,7 @@ The release workflow publishes those package requests through `wkg`; `specify to
 For local development before a public release, build the component into a deterministic local directory:
 
 ```bash
-cargo make vectis-wasi-artifacts
+scripts/build-vectis-local.sh
 ```
 
 This writes:

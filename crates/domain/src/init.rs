@@ -11,7 +11,7 @@ mod regular;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use specify_error::Error;
 
 use crate::config::{LayoutExt, ProjectConfig};
@@ -83,7 +83,7 @@ pub struct InitResult {
 /// runner for the platform-hub on-disk shape.
 ///
 /// `now` records the `cache_meta.yaml::fetched_at` stamp; the dispatcher
-/// passes `Utc::now` and tests pin a deterministic value.
+/// passes `Timestamp::now` and tests pin a deterministic value.
 ///
 /// # Errors
 ///
@@ -93,7 +93,7 @@ pub struct InitResult {
 /// but `init` re-validates as a defence in depth. Bubbles up
 /// filesystem, capability resolution, and serialisation errors from
 /// the underlying calls.
-pub fn init(opts: InitOptions<'_>, now: DateTime<Utc>) -> Result<InitResult, Error> {
+pub fn init(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
     if opts.hub {
         return hub::run(opts);
     }
@@ -142,7 +142,7 @@ mod tests {
 
     use super::*;
 
-    fn fixed_now() -> DateTime<Utc> {
+    fn fixed_now() -> Timestamp {
         "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
     }
 

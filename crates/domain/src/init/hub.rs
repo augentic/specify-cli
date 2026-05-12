@@ -131,7 +131,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use chrono::{DateTime, Utc};
+    use jiff::Timestamp;
     use tempfile::tempdir;
 
     use super::HUB_INIT_NAME;
@@ -139,7 +139,7 @@ mod tests {
     use crate::init::{InitOptions, VersionMode, init};
     use crate::registry::Registry;
 
-    fn fixed_now() -> DateTime<Utc> {
+    fn fixed_now() -> Timestamp {
         "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
     }
 

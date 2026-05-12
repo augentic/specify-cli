@@ -4,7 +4,7 @@ pub(crate) mod plan;
 use std::io::Write;
 use std::path::PathBuf;
 
-use chrono::Utc;
+use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
 use specify_domain::change::finalize;
@@ -99,7 +99,7 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
         registry: &registry,
         clean,
         dry_run,
-        now: Utc::now(),
+        now: Timestamp::now(),
     };
 
     match finalize::run(inputs, &RealCmd) {

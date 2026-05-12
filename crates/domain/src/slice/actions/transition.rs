@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use specify_error::Error;
 
 use crate::slice::{LifecycleStatus, SliceMetadata};
@@ -24,7 +24,7 @@ use crate::slice::{LifecycleStatus, SliceMetadata};
 /// `Error::Lifecycle` for an illegal edge; otherwise propagates load /
 /// save failures from `SliceMetadata`.
 pub fn transition(
-    slice_dir: &Path, target: LifecycleStatus, now: DateTime<Utc>,
+    slice_dir: &Path, target: LifecycleStatus, now: Timestamp,
 ) -> Result<SliceMetadata, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     metadata.status = metadata.status.transition(target)?;

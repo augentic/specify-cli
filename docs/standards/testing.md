@@ -32,4 +32,4 @@ If a function needs unit tests, it belongs in a workspace crate, not the binary 
 ## Test-side gotchas
 
 - Never hand-edit `.metadata.yaml` from a test or fixture. Drive transitions through `specify slice transition`, `specify slice outcome set`, `specify change plan transition`. The tests in `tests/slice.rs` are the canonical patterns.
-- WASI fixture components used by `tests/tool.rs` are rebuilt via `cargo make wasm-fixtures`.
+- WASI fixture components used by `tests/tool.rs` are rebuilt via `scripts/regen-wasm-fixtures.sh`. The outputs are checked in; only re-run when a fixture source changes.

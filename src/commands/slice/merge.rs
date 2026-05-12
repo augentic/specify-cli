@@ -4,7 +4,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use chrono::Utc;
+use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::config::{LayoutExt, is_workspace_clone};
 use specify_domain::merge::{
@@ -23,7 +23,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let archive_dir = ctx.archive_dir();
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
 
-    let merged = slice::commit(&slice_dir, &classes, &archive_dir, Utc::now())?;
+    let merged = slice::commit(&slice_dir, &classes, &archive_dir, Timestamp::now())?;
 
     // The merge-owned workspace commit is limited to the baseline spec
     // tree and archived slice. Opaque/generated outputs remain as residue
@@ -32,7 +32,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
         auto_commit(&ctx.project_dir, name);
     }
 
-    let today = Utc::now().format("%Y-%m-%d").to_string();
+    let today = Timestamp::now().strftime("%Y-%m-%d").to_string();
     let archive_path = archive_dir.join(format!("{today}-{name}"));
 
     let entries: Vec<MergedEntry> = merged.iter().map(MergedEntry::from).collect();
@@ -241,7 +241,7 @@ impl From<&BaselineConflict> for ConflictRow {
         Self {
             capability: c.capability.clone(),
             defined_at: c.defined_at.clone(),
-            baseline_modified_at: c.baseline_modified_at.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            baseline_modified_at: c.baseline_modified_at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
         }
     }
 }

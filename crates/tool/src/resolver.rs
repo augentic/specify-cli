@@ -34,14 +34,14 @@ pub struct ResolvedTool {
 /// together, then atomically install the complete version directory.
 ///
 /// `now` records the sidecar `fetched_at`; the dispatcher passes
-/// `Utc::now`, tests pin a deterministic stamp.
+/// `Timestamp::now`, tests pin a deterministic stamp.
 ///
 /// # Errors
 ///
 /// Returns cache errors, source read errors, digest mismatches, or typed network
 /// resolver errors.
 pub fn resolve(
-    scope: &ToolScope, tool: &Tool, now: chrono::DateTime<chrono::Utc>,
+    scope: &ToolScope, tool: &Tool, now: jiff::Timestamp,
 ) -> Result<ResolvedTool, ToolError> {
     resolve_with(scope, tool, now, &WasmPkgClient)
 }
@@ -55,8 +55,7 @@ pub fn resolve(
 ///
 /// Returns the same cache, source, digest, and resolver errors as [`resolve`].
 pub fn resolve_with(
-    scope: &ToolScope, tool: &Tool, now: chrono::DateTime<chrono::Utc>,
-    package_client: &impl PackageClient,
+    scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, package_client: &impl PackageClient,
 ) -> Result<ResolvedTool, ToolError> {
     let source = tool.source.to_wire_string().into_owned();
     let module = cache::module_path(scope, &tool.name, &tool.version)?;
@@ -103,8 +102,8 @@ pub fn resolve_with(
 }
 
 fn stage_and_install(
-    scope: &ToolScope, tool: &Tool, source: &str, staged: &Path, dest: &Path,
-    now: chrono::DateTime<chrono::Utc>, package_client: &impl PackageClient,
+    scope: &ToolScope, tool: &Tool, source: &str, staged: &Path, dest: &Path, now: jiff::Timestamp,
+    package_client: &impl PackageClient,
 ) -> Result<(), ToolError> {
     let module_dest = staged.join(MODULE_FILENAME);
     let acquired = acquire_source_bytes(&tool.source, &module_dest, package_client)?;

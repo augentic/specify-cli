@@ -8,7 +8,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use regex::Regex;
 use specify_domain::merge::{ArtifactClass, MergeStrategy, OpaqueAction, slice};
 use specify_domain::slice::{
@@ -16,7 +16,7 @@ use specify_domain::slice::{
 };
 use specify_error::Error;
 
-fn parse_stamp(raw: &str) -> DateTime<Utc> {
+fn parse_stamp(raw: &str) -> Timestamp {
     raw.parse().expect("valid RFC3339 timestamp in test fixture")
 }
 use tempfile::TempDir;
@@ -118,7 +118,7 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     let archive_dir = project.archive_dir();
     let classes = omnia_classes(&slice_dir, &project.root);
 
-    let merged = slice::commit(&slice_dir, &classes, &archive_dir, chrono::Utc::now())
+    let merged = slice::commit(&slice_dir, &classes, &archive_dir, Timestamp::now())
         .expect("slice::commit should succeed");
 
     // Results sorted by (class_name, name).
@@ -179,7 +179,7 @@ fn wrong_precondition_aborts_cleanly() {
     meta.save(&slice_dir).unwrap();
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let err = slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now())
+    let err = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
         .expect_err("should refuse on Building status");
     match err {
         Error::Lifecycle { expected, found } => {
@@ -217,7 +217,7 @@ fn coherence_failure_rolls_back_all_writes() {
     .unwrap();
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let err = slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now())
+    let err = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
         .expect_err("expected coherence failure");
     match err {
         Error::Diag { detail: msg, .. } => {
@@ -250,7 +250,7 @@ fn coherence_failure_rolls_back_all_writes() {
 fn archive_subdirectory_is_date_prefixed() {
     let project = build_project();
     let classes = omnia_classes(&project.slice_dir(), &project.root);
-    slice::commit(&project.slice_dir(), &classes, &project.archive_dir(), chrono::Utc::now())
+    slice::commit(&project.slice_dir(), &classes, &project.archive_dir(), Timestamp::now())
         .expect("merge ok");
 
     let re = Regex::new(r"^\d{4}-\d{2}-\d{2}-feature-x$").unwrap();
@@ -281,7 +281,7 @@ fn merge_copies_contract_files_to_baseline() {
     fs::write(slice_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write api");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now())
+    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
         .expect("merge ok");
 
     let baseline_contracts = project.contracts_dir();
@@ -318,7 +318,7 @@ fn merge_replaces_existing_baseline_contract_files() {
         .expect("write new slice");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now())
+    slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
         .expect("merge ok");
 
     let content = fs::read_to_string(baseline_contracts.join("schemas/test.yaml")).unwrap();
@@ -339,7 +339,7 @@ fn merge_leaves_untouched_baseline_contract_files() {
     fs::write(slice_dir.join("contracts/schemas/new.yaml"), "new content\n").expect("write new");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now())
+    slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
         .expect("merge ok");
 
     assert!(
@@ -362,7 +362,7 @@ fn merge_without_contracts_dir_works_as_before() {
     assert!(!slice_dir.join("contracts").exists(), "precondition: no contracts dir");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir(), chrono::Utc::now())
+    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
         .expect("merge ok");
     assert!(!merged.is_empty(), "should still merge specs");
 

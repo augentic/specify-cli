@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use specify_error::Error;
 
 use super::io::move_atomic;
@@ -19,14 +19,12 @@ use super::io::move_atomic;
 /// `Error::Diag` with `slice-dir-no-basename` if `slice_dir` lacks a
 /// basename; otherwise propagates I/O failures from `create_dir_all`
 /// or the rename.
-pub fn archive(
-    slice_dir: &Path, archive_dir: &Path, today: DateTime<Utc>,
-) -> Result<PathBuf, Error> {
+pub fn archive(slice_dir: &Path, archive_dir: &Path, today: Timestamp) -> Result<PathBuf, Error> {
     let slice_name = slice_dir.file_name().and_then(|s| s.to_str()).ok_or_else(|| Error::Diag {
         code: "slice-dir-no-basename",
         detail: format!("slice dir {} has no basename", slice_dir.display()),
     })?;
-    let date = today.format("%Y-%m-%d").to_string();
+    let date = today.strftime("%Y-%m-%d").to_string();
     let target = archive_dir.join(format!("{date}-{slice_name}"));
     std::fs::create_dir_all(archive_dir)?;
     move_atomic(slice_dir, &target)?;

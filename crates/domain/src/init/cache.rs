@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::Path;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use specify_error::Error;
 
 use crate::capability::{CacheMeta, DEFAULT_CODEX_CAPABILITY};
@@ -18,7 +18,7 @@ pub(crate) struct CachedCapability {
 }
 
 pub(crate) fn cache_capability(
-    capability: &str, project_dir: &Path, now: DateTime<Utc>,
+    capability: &str, project_dir: &Path, now: Timestamp,
 ) -> Result<CachedCapability, Error> {
     if capability.trim().is_empty() || capability != capability.trim() {
         return Err(Error::Diag {
@@ -81,11 +81,11 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), Error> {
 }
 
 fn write_cache_meta(
-    project_dir: &Path, capability_value: &str, now: DateTime<Utc>,
+    project_dir: &Path, capability_value: &str, now: Timestamp,
 ) -> Result<(), Error> {
     let meta = CacheMeta {
         schema_url: capability_value.to_string(),
-        fetched_at: now.to_rfc3339(),
+        fetched_at: now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
     };
     let meta_path = CacheMeta::path(project_dir);
     let serialised = serde_saphyr::to_string(&meta)?;

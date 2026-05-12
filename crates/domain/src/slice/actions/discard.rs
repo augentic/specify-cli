@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use specify_error::Error;
 
 use super::archive::archive;
@@ -21,7 +21,7 @@ use crate::slice::{LifecycleStatus, SliceMetadata};
 /// `Error::Lifecycle` if the slice is already terminal; otherwise
 /// propagates whatever `transition` and `archive` surface.
 pub fn discard(
-    slice_dir: &Path, archive_dir: &Path, reason: Option<&str>, now: DateTime<Utc>,
+    slice_dir: &Path, archive_dir: &Path, reason: Option<&str>, now: Timestamp,
 ) -> Result<(SliceMetadata, PathBuf), Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     metadata.status = metadata.status.transition(LifecycleStatus::Dropped)?;

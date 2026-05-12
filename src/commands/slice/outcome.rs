@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::Serialize;
 use serde_json::Value;
 use specify_domain::capability::Phase;
@@ -29,7 +29,7 @@ pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction
         outcome.clone(),
         &summary,
         context.as_deref(),
-        Utc::now(),
+        Timestamp::now(),
     )?;
 
     let stamped = metadata
@@ -53,7 +53,7 @@ struct PhaseStampBody {
     phase: String,
     outcome: String,
     #[serde(with = "specify_domain::serde_rfc3339")]
-    at: DateTime<Utc>,
+    at: Timestamp,
 }
 
 impl Render for PhaseStampBody {
@@ -170,7 +170,7 @@ struct Row {
     phase: String,
     outcome: String,
     #[serde(with = "specify_domain::serde_rfc3339")]
-    at: DateTime<Utc>,
+    at: Timestamp,
     summary: String,
     context: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -235,7 +235,7 @@ impl RegistryProposalRow {
 fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<SliceMetadata> {
     let archive_dir = project_dir.layout().archive_dir();
     let suffix = format!("-{slice_name}");
-    let mut candidates: Vec<(Option<DateTime<Utc>>, SliceMetadata)> = Vec::new();
+    let mut candidates: Vec<(Option<Timestamp>, SliceMetadata)> = Vec::new();
 
     if archive_dir.is_dir() {
         let entries = std::fs::read_dir(&archive_dir)?;

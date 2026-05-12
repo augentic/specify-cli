@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 
 use super::{Landing, Outcome, ProjectResult};
 use crate::change::plan::core::Plan;
@@ -17,7 +17,7 @@ use crate::registry::Registry;
 /// `true`. On failure, stamps an explanatory `detail` onto the first
 /// project row (or a synthetic `<archive>` row when the registry is
 /// empty), records a summary message, and returns `false`.
-pub(super) fn sweep(project_dir: &Path, outcome: &mut Outcome, now: DateTime<Utc>) -> bool {
+pub(super) fn sweep(project_dir: &Path, outcome: &mut Outcome, now: Timestamp) -> bool {
     let layout = project_dir.layout();
     let plan_file = layout.plan_path();
     let brief_file = layout.change_brief_path();

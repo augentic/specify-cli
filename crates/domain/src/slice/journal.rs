@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
@@ -26,7 +26,7 @@ pub struct Journal {
 pub struct JournalEntry {
     /// Second-precision UTC timestamp (`%Y-%m-%dT%H:%M:%SZ`).
     #[serde(with = "crate::serde_rfc3339")]
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: Timestamp,
     /// Phase that wrote the entry (`define | build | merge`).
     pub step: Phase,
     /// Entry classification. Named `r#type` because `type` is a
@@ -127,7 +127,7 @@ mod tests {
 
     use super::*;
 
-    fn parse_stamp(raw: &str) -> DateTime<Utc> {
+    fn parse_stamp(raw: &str) -> Timestamp {
         raw.parse().expect("valid rfc3339 timestamp in test fixture")
     }
 

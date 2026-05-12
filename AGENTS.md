@@ -60,10 +60,15 @@ cargo make standards      # cargo run -p xtask -- standards-check
 cargo make lint           # cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 cargo make fmt            # nightly cargo fmt --all
 cargo make audit          # cargo-audit; cargo make deny / outdated / deps / vet for the rest
-cargo make gen-man        # roff man pages into target/man/ via xtask gen-man
-cargo make wasm-fixtures  # rebuild WASI fixture components used by tests/tool.rs
-cargo make contract-wasm  # build wasi-tools/contract for distribution
-cargo make vectis-wasm    # build wasi-tools/vectis for distribution
+cargo make xtask gen-man  # roff man pages into target/man/ (also: gen-completions)
+cargo make contract-wasm  # build wasi-tools/contract — required before tests/contract_tool.rs
+```
+
+Less frequent recipes:
+
+```bash
+scripts/regen-wasm-fixtures.sh   # regenerate the checked-in WASI fixtures under tests/fixtures/tools-test-*/wasm/
+scripts/build-vectis-local.sh    # build wasi-tools/vectis with sha256 sidecars for local smoke tests
 ```
 
 ## When working in this repo

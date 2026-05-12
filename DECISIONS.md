@@ -240,6 +240,17 @@ crate project-scope and capability-scope tool declarations.
   `(scope, name, version, source)` tuple is not referenced by the live
   merged manifest of the current project. It does not scan other
   projects on the host.
+- **Time crate.** UTC-only domain; `jiff::Timestamp` replaces
+  `chrono::DateTime<Utc>` across every host crate. All persisted
+  stamps still route through `specify_domain::serde_rfc3339`
+  (`Sidecar.fetched_at` mirrors the same shape via a private adapter
+  inlined in `crates/tool/src/cache/meta.rs` because `specify-tool`
+  cannot depend on `specify-domain`) so the on-disk wire shape stays
+  `%Y-%m-%dT%H:%M:%SZ` byte-for-byte. `system_time_to_utc` consolidates
+  the previous three `Error::Diag` codes (`merge-mtime-pre-epoch`,
+  `merge-mtime-overflow`, `merge-mtime-out-of-range`) into a single
+  `merge-mtime-out-of-range` whose `detail` carries the underlying
+  `jiff` error.
 
 ## Follow-up: wasm-pkg-client HTTP duplication
 

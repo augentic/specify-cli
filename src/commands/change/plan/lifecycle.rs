@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use chrono::Utc;
+use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
 use specify_domain::change::{Finding, Plan, Severity, Status};
@@ -208,7 +208,7 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
     let plan_name = Plan::load(&plan_path)?.name;
 
     let (archived, archived_plans_dir) =
-        Plan::archive(&plan_path, &brief_path, &archive_dir, force, Utc::now())?;
+        Plan::archive(&plan_path, &brief_path, &archive_dir, force, Timestamp::now())?;
     ctx.write(&ArchiveBody {
         archived: archived.display().to_string(),
         archived_plans_dir: archived_plans_dir.as_deref().map(|p| p.display().to_string()),

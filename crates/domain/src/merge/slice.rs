@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use specify_error::Error;
 
 use crate::merge::artifact_class::{ArtifactClass, MergeStrategy};
@@ -89,7 +89,7 @@ pub struct BaselineConflict {
     /// Slice's `defined_at` stamp, copied verbatim from `.metadata.yaml`.
     pub defined_at: String,
     /// Baseline file modification time.
-    pub baseline_modified_at: DateTime<Utc>,
+    pub baseline_modified_at: Timestamp,
 }
 
 /// Dry-run of the multi-class merge.
@@ -141,7 +141,7 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// when the active slice directory no longer exists).
 ///
 /// `now` records the `merged_at`, `completed_at`, and outcome stamp;
-/// dispatchers pass `Utc::now` and tests pin a deterministic value.
+/// dispatchers pass `Timestamp::now` and tests pin a deterministic value.
 ///
 /// # Errors
 ///
@@ -161,7 +161,7 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// - Whatever atomic-write [`Error`] [`SliceMetadata::save`] surfaces
 ///   (`Error::Io`, `Error::YamlSer`).
 pub fn commit(
-    slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path, now: DateTime<Utc>,
+    slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path, now: Timestamp,
 ) -> Result<Vec<MergePreviewEntry>, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     if metadata.status != LifecycleStatus::Complete {
@@ -224,9 +224,8 @@ pub fn commit(
 /// - [`Error::Diag { code: "merge-defined-at-malformed" }`] when the
 ///   slice's `defined_at` stamp is present but does not parse as
 ///   rfc3339.
-/// - [`Error::Diag { code: "merge-mtime-pre-epoch" | "merge-mtime-overflow"
-///   | "merge-mtime-out-of-range" }`] when a baseline mtime cannot be
-///   converted to a UTC `chrono::DateTime`.
+/// - [`Error::Diag { code: "merge-mtime-out-of-range" }`] when a baseline
+///   mtime cannot be converted to a UTC `jiff::Timestamp`.
 /// - [`Error::Io`] when a baseline file's metadata cannot be read for
 ///   any reason other than `NotFound` (a missing baseline for a
 ///   `type: modified` entry is treated as a declaration mismatch and
@@ -241,7 +240,7 @@ pub fn conflict_check(
     let Some(defined_at) = metadata.defined_at else {
         return Ok(Vec::new());
     };
-    let defined_raw = defined_at.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let defined_raw = defined_at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     let mut conflicts: Vec<BaselineConflict> = Vec::new();
 

@@ -1165,7 +1165,7 @@ slices:
     // -- plan archive (L1.K) ----------------------------------------------
 
     fn today_yyyymmdd() -> String {
-        chrono::Utc::now().format("%Y%m%d").to_string()
+        jiff::Timestamp::now().strftime("%Y%m%d").to_string()
     }
 
     /// Replace any `-YYYYMMDD` date stamp in JSON strings with a stable

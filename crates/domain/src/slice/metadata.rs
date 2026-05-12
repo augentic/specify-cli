@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
@@ -44,42 +44,42 @@ pub struct SliceMetadata {
         default,
         with = "crate::serde_rfc3339::option"
     )]
-    pub created_at: Option<DateTime<Utc>>,
+    pub created_at: Option<Timestamp>,
     /// When the slice entered `Defined`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
         with = "crate::serde_rfc3339::option"
     )]
-    pub defined_at: Option<DateTime<Utc>>,
+    pub defined_at: Option<Timestamp>,
     /// When the build phase started.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
         with = "crate::serde_rfc3339::option"
     )]
-    pub build_started_at: Option<DateTime<Utc>>,
+    pub build_started_at: Option<Timestamp>,
     /// When the slice reached `Complete`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
         with = "crate::serde_rfc3339::option"
     )]
-    pub completed_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<Timestamp>,
     /// When the slice was merged.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
         with = "crate::serde_rfc3339::option"
     )]
-    pub merged_at: Option<DateTime<Utc>>,
+    pub merged_at: Option<Timestamp>,
     /// When the slice was dropped.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
         with = "crate::serde_rfc3339::option"
     )]
-    pub dropped_at: Option<DateTime<Utc>>,
+    pub dropped_at: Option<Timestamp>,
     /// Human-readable reason for dropping the slice.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub drop_reason: Option<String>,
@@ -112,7 +112,7 @@ pub struct Outcome {
     pub kind: OutcomeKind,
     /// When the outcome was recorded.
     #[serde(with = "crate::serde_rfc3339")]
-    pub at: DateTime<Utc>,
+    pub at: Timestamp,
     /// Short human-readable summary.
     pub summary: String,
     /// Optional additional context (e.g. stderr output).
@@ -203,7 +203,7 @@ mod tests {
     use super::*;
     use crate::slice::{LifecycleStatus, OutcomeKind};
 
-    fn parse_stamp(raw: &str) -> DateTime<Utc> {
+    fn parse_stamp(raw: &str) -> Timestamp {
         raw.parse().expect("valid rfc3339 timestamp in test fixture")
     }
 
