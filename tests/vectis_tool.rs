@@ -149,7 +149,6 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
         .assert()
         .success();
     let scaffold_value = parse_json(&scaffold.get_output().stdout);
-    assert_eq!(scaffold_value["envelope-version"], 2);
     assert_eq!(scaffold_value["target"], "core");
     assert_eq!(scaffold_value["app-name"], "Counter");
     assert!(fixture.project.join("shared/src/app.rs").is_file());
@@ -164,7 +163,6 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
         .failure();
     assert_eq!(overwrite.get_output().status.code(), Some(1));
     let overwrite_value = parse_json(&overwrite.get_output().stdout);
-    assert_eq!(overwrite_value["envelope-version"], 2);
     assert_eq!(overwrite_value["error"], "invalid-project");
     assert!(
         overwrite_value["message"]
@@ -235,7 +233,6 @@ fn runs_through_fetch_cache_perms_and_exits() {
         .assert()
         .success();
     let clean_value = parse_json(&clean.get_output().stdout);
-    assert_eq!(clean_value["envelope-version"], 2);
     assert_eq!(clean_value["mode"], "tokens");
     assert_eq!(clean_value["errors"].as_array().map(Vec::len), Some(0), "{clean_value}");
 
@@ -253,7 +250,6 @@ fn runs_through_fetch_cache_perms_and_exits() {
         .failure();
     assert_eq!(findings.get_output().status.code(), Some(1));
     let findings_value = parse_json(&findings.get_output().stdout);
-    assert_eq!(findings_value["envelope-version"], 2);
     assert_eq!(findings_value["mode"], "tokens");
     assert_eq!(findings_value["errors"].as_array().map(Vec::len), Some(1), "{findings_value}");
 

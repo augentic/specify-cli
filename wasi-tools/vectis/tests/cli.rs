@@ -24,7 +24,6 @@ fn assets_clean_run_exits_zero_with_v2_envelope() {
     let assert = vectis_validate().args(["assets"]).arg(&assets_path).assert().success();
     let value = parse_json(&assert.get_output().stdout);
 
-    assert_eq!(value["envelope-version"], 2);
     assert_eq!(value["mode"], "assets");
     assert_eq!(value["path"], assets_path.display().to_string());
     assert_eq!(value["errors"].as_array().map(Vec::len), Some(0));
@@ -42,7 +41,6 @@ fn findings_exit_one_with_success_envelope() {
     let value = parse_json(&output.stdout);
 
     assert_eq!(output.status.code(), Some(1));
-    assert_eq!(value["envelope-version"], 2);
     assert_eq!(value["mode"], "tokens");
     assert_eq!(value["errors"].as_array().map(Vec::len), Some(1));
     assert!(
@@ -61,7 +59,6 @@ fn missing_input_exits_two_with_error_envelope() {
     let value = parse_json(&output.stdout);
 
     assert_eq!(output.status.code(), Some(2));
-    assert_eq!(value["envelope-version"], 2);
     assert_eq!(value["error"], "invalid-project");
     assert_eq!(value["exit-code"], 2);
 }
@@ -82,7 +79,6 @@ fn omitted_path_uses_project_dir_default_root() {
     let assert = vectis_validate().env("PROJECT_DIR", tmp.path()).arg("layout").assert().success();
     let value = parse_json(&assert.get_output().stdout);
 
-    assert_eq!(value["envelope-version"], 2);
     assert_eq!(value["mode"], "layout");
     let resolved = value["path"].as_str().expect("path is a string");
     assert!(
@@ -104,7 +100,6 @@ fn all_mode_recurses_findings_exit_code() {
     let value = parse_json(&output.stdout);
 
     assert_eq!(output.status.code(), Some(1));
-    assert_eq!(value["envelope-version"], 2);
     assert_eq!(value["mode"], "all");
     assert!(
         value["results"].as_array().expect("results array").iter().any(|entry| {

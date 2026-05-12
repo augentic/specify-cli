@@ -6,8 +6,8 @@
 //! directories or writing bytes. Per-target planning, the on-disk
 //! write step, and `app_name` validation live in the private `runtime`
 //! submodule; this
-//! parent module owns the clap derive surface, the public DTOs, the
-//! v2 envelope wrapper, and the dispatch path.
+//! parent module owns the clap derive surface, the public DTOs, and
+//! the dispatch path.
 
 mod error;
 mod runtime;
@@ -24,7 +24,7 @@ pub use runtime::{plan_android, plan_core, plan_ios, validate_app_name, write_pl
 pub use templates::Capability;
 pub use versions::Versions;
 
-use crate::envelope_json;
+use crate::render_json as render_value;
 
 /// Scaffold targets exposed under `vectis scaffold`.
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
@@ -231,18 +231,18 @@ pub fn parse_caps(raw: Option<&str>) -> Result<Vec<Capability>, ScaffoldError> {
     Ok(out)
 }
 
-/// Render a `(success | error)` result as the v2 JSON envelope.
+/// Render a `(success | error)` result as pretty-printed JSON.
 #[must_use]
-pub fn render_envelope_json(outcome: Result<serde_json::Value, ScaffoldError>) -> (String, u8) {
+pub fn render_json(outcome: Result<serde_json::Value, ScaffoldError>) -> (String, u8) {
     match outcome {
-        Ok(value) => (envelope_json(value), 0),
+        Ok(value) => (render_value(&value), 0),
         Err(err) => {
             let exit_code = err.exit_code();
             let serde_json::Value::Object(mut payload) = err.to_json() else {
                 unreachable!("ScaffoldError::to_json always returns an object")
             };
             payload.entry("exit-code".to_string()).or_insert(serde_json::Value::from(exit_code));
-            (envelope_json(serde_json::Value::Object(payload)), exit_code)
+            (render_value(&serde_json::Value::Object(payload)), exit_code)
         }
     }
 }

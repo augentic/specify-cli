@@ -5,10 +5,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-mod envelope;
 mod parse;
-
-pub use envelope::serialize_contract_findings;
 
 /// One validation finding produced by [`validate_baseline`].
 ///

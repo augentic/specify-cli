@@ -114,7 +114,6 @@ fn preserves_validator_json_for_clean() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 2);
     assert_eq!(value["contracts-dir"], fixture.contracts_dir().display().to_string());
     assert_eq!(value["ok"], true);
     assert_eq!(value["findings"], serde_json::json!([]));

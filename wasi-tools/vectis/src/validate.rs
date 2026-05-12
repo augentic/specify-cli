@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use clap::{Args as ClapArgs, ValueEnum};
 use serde_json::Value;
 
-use crate::envelope_json;
+use crate::render_json as render_value;
 
 /// Process exit code for clean validation.
 pub const EXIT_CLEAN: u8 = 0;
@@ -142,14 +142,14 @@ pub mod __test_internals {
     };
 }
 
-/// Render a validation outcome as the v2 JSON envelope, without a trailing
+/// Render a validation outcome as pretty-printed JSON, without a trailing
 /// newline, and return the process exit code that should accompany it.
 #[must_use]
-pub fn render_envelope_json(outcome: Result<CommandOutcome, VectisError>) -> (String, u8) {
+pub fn render_json(outcome: Result<CommandOutcome, VectisError>) -> (String, u8) {
     match outcome {
         Ok(CommandOutcome::Success(value)) => {
             let code = validate_exit_code(&value);
-            (envelope_json(value), code)
+            (render_value(&value), code)
         }
         Err(err) => {
             let exit_code = err.exit_code();
@@ -157,7 +157,7 @@ pub fn render_envelope_json(outcome: Result<CommandOutcome, VectisError>) -> (St
                 unreachable!("VectisError::to_json always returns an object")
             };
             payload.entry("exit-code".to_string()).or_insert(Value::from(exit_code));
-            (envelope_json(Value::Object(payload)), exit_code)
+            (render_value(&Value::Object(payload)), exit_code)
         }
     }
 }
@@ -187,8 +187,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn render_success_envelope_preserves_envelope_version_and_payload() {
-        let (json, code) = render_envelope_json(Ok(CommandOutcome::Success(json!({
+    fn render_success_payload_carries_mode_and_exits_clean() {
+        let (json, code) = render_json(Ok(CommandOutcome::Success(json!({
             "mode": "tokens",
             "path": "tokens.yaml",
             "errors": [],
@@ -196,8 +196,7 @@ mod tests {
         }))));
 
         assert_eq!(code, EXIT_CLEAN);
-        let value: Value = serde_json::from_str(&json).expect("json envelope");
-        assert_eq!(value["envelope-version"], crate::JSON_SCHEMA_VERSION);
+        let value: Value = serde_json::from_str(&json).expect("json body");
         assert_eq!(value["mode"], "tokens");
     }
 
@@ -219,14 +218,13 @@ mod tests {
     }
 
     #[test]
-    fn runtime_errors_exit_two_with_v2_envelope() {
-        let (json, code) = render_envelope_json(Err(VectisError::InvalidProject {
+    fn runtime_errors_exit_two_with_typed_error_payload() {
+        let (json, code) = render_json(Err(VectisError::InvalidProject {
             message: "tokens.yaml not readable".into(),
         }));
 
         assert_eq!(code, EXIT_FAILURE);
-        let value: Value = serde_json::from_str(&json).expect("json envelope");
-        assert_eq!(value["envelope-version"], crate::JSON_SCHEMA_VERSION);
+        let value: Value = serde_json::from_str(&json).expect("json body");
         assert_eq!(value["error"], "invalid-project");
         assert_eq!(value["exit-code"], EXIT_FAILURE);
     }

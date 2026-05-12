@@ -1,6 +1,6 @@
 //! JSON serialization for [`ValidationReport`] — emits the report
-//! payload; the surrounding `envelope-version` envelope is added by
-//! the CLI's `emit` helper in `src/output.rs`.
+//! payload directly; the host CLI writes it to stdout through
+//! `Ctx::write` in `src/output.rs`.
 
 use serde_json::{Value, json};
 

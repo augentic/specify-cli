@@ -136,10 +136,10 @@ surfaces match the prior cross-crate `pub use` exports.
 
 `specify-validate` is the one cleanup-era re-extraction. It owns the
 baseline-contract validation primitives (`ContractFinding`,
-`validate_baseline`, `serialize_contract_findings`) and is consumed by
-both `specify-domain` (for compatibility classification) and the
-`wasi-tools/contract` carve-out (for the standalone `wasm32-wasip2`
-binary). The carve-out invariant in `wasi-tools/Cargo.toml` forbids a
+`validate_baseline`) and is consumed by both `specify-domain` (for
+compatibility classification) and the `wasi-tools/contract` carve-out
+(for the standalone `wasm32-wasip2` binary, which renders findings
+through a small inline serializer). The carve-out invariant in `wasi-tools/Cargo.toml` forbids a
 dep on `specify-domain` (would drag `wasmtime` / `tokio` / `ureq`),
 and inlining the ~300 LOC of validation into the carve-out would lose
 the single source of truth. The crate is dependency-minimal (`semver`,
