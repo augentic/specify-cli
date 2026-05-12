@@ -7,7 +7,6 @@ use std::path::PathBuf;
 
 use serde::{Serialize, Serializer};
 use specify_domain::change::Plan;
-use specify_domain::config::LayoutExt;
 use specify_domain::registry::Registry;
 use specify_domain::registry::branch::{Prepared, Request as BranchRequest, prepare};
 use specify_domain::registry::workspace::{
@@ -110,7 +109,7 @@ pub(crate) fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> 
     };
     let selected = registry.select(projects)?;
 
-    let plan_path = ctx.project_dir.layout().plan_path();
+    let plan_path = ctx.layout().plan_path();
     if !plan_path.exists() {
         return Err(Error::Diag {
             code: "workspace-push-no-plan",

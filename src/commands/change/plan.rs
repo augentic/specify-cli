@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 use specify_domain::change::{Entry, Plan};
-use specify_domain::config::LayoutExt;
+use specify_domain::config::Layout;
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
@@ -67,7 +67,7 @@ pub(super) fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
 /// the stable "plan file not found: plan.yaml" string that skill
 /// authors match on.
 pub(super) fn require_file(project_dir: &Path) -> Result<PathBuf> {
-    let path = project_dir.layout().plan_path();
+    let path = Layout::new(project_dir).plan_path();
     if !path.exists() {
         return Err(Error::ArtifactNotFound {
             kind: "plan.yaml",

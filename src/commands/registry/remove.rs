@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use specify_domain::change::Plan;
-use specify_domain::config::{InitPolicy, LayoutExt, with_state};
+use specify_domain::config::{InitPolicy, Layout, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
@@ -71,7 +71,7 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
 /// write has already landed, so the operator needs to learn about
 /// both halves).
 pub(super) fn plan_refs(project_dir: &Path, removed: &str) -> Vec<String> {
-    let plan_path = project_dir.layout().plan_path();
+    let plan_path = Layout::new(project_dir).plan_path();
     if !plan_path.exists() {
         return Vec::new();
     }

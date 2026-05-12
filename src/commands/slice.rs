@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use specify_domain::config::LayoutExt;
+use specify_domain::config::Layout;
 use specify_domain::merge::{ArtifactClass, MergeStrategy};
 use specify_error::Result;
 
@@ -32,7 +32,7 @@ pub(super) fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<Art
         ArtifactClass {
             name: "specs".to_string(),
             staged_dir: slice_dir.join("specs"),
-            baseline_dir: project_root.layout().specify_dir().join("specs"),
+            baseline_dir: Layout::new(project_root).specify_dir().join("specs"),
             strategy: MergeStrategy::ThreeWayMerge,
         },
         ArtifactClass {

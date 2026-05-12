@@ -73,7 +73,7 @@ impl ProjectConfig {
     ///
     /// Returns an error if the operation fails.
     pub fn load(project_dir: &Path) -> Result<Self, Error> {
-        let path = project_dir.layout().config_path();
+        let path = Layout::new(project_dir).config_path();
         let text = match std::fs::read_to_string(&path) {
             Ok(text) => text,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -107,7 +107,7 @@ impl ProjectConfig {
     /// "not found" case, which is expressed as `Ok(None)` per ancestor).
     pub fn find_root(start_dir: &Path) -> Result<Option<PathBuf>, Error> {
         for candidate in start_dir.ancestors() {
-            let config_path = candidate.layout().config_path();
+            let config_path = Layout::new(candidate).config_path();
             match config_path.try_exists() {
                 Ok(true) => return Ok(Some(candidate.to_path_buf())),
                 Ok(false) => {}
@@ -125,15 +125,14 @@ impl ProjectConfig {
         if value.is_empty() {
             return None;
         }
-        Some(project_dir.layout().specify_dir().join(value))
+        Some(Layout::new(project_dir).specify_dir().join(value))
     }
 }
 
 /// Typed view over a project root that exposes every `.specify/` and
 /// repo-root path helper as an inherent method.
 ///
-/// Construct with [`Layout::new`] or through the [`LayoutExt`] trait
-/// (`project_dir.layout()`). The newtype concentrates the
+/// Construct with [`Layout::new`]. The newtype concentrates the
 /// `.specify/` boundary in one place: callers never join
 /// `.specify/...` literally; they ask the layout for the directory
 /// they want.
@@ -208,19 +207,6 @@ impl<'a> Layout<'a> {
     }
 }
 
-/// Extension trait so any `&Path` (and, by deref, `&PathBuf`) can be
-/// promoted into a [`Layout`] with `project_dir.layout()`.
-pub trait LayoutExt {
-    /// Wrap `self` as a [`Layout`].
-    fn layout(&self) -> Layout<'_>;
-}
-
-impl LayoutExt for Path {
-    fn layout(&self) -> Layout<'_> {
-        Layout::new(self)
-    }
-}
-
 /// Detect whether `project_dir` lives below `.specify/workspace/<peer>/`.
 ///
 /// This is a path-ancestry predicate only. Context generation uses the
@@ -266,7 +252,7 @@ mod tests {
     #[test]
     fn specify_subpaths() {
         let base = Path::new("/a/b");
-        let layout = base.layout();
+        let layout = Layout::new(base);
         assert_eq!(layout.project_dir(), base);
         assert_eq!(layout.specify_dir(), PathBuf::from("/a/b/.specify"));
         assert_eq!(layout.config_path(), PathBuf::from("/a/b/.specify/project.yaml"));
@@ -276,9 +262,6 @@ mod tests {
         assert_eq!(layout.change_brief_path(), PathBuf::from("/a/b/change.md"));
         assert_eq!(layout.cache_dir(), PathBuf::from("/a/b/.specify/.cache"));
         assert_eq!(layout.archive_dir(), PathBuf::from("/a/b/.specify/archive"));
-
-        let same = Layout::new(base);
-        assert_eq!(same.plan_path(), layout.plan_path());
     }
 
     fn sample_cfg(rules: BTreeMap<String, String>) -> ProjectConfig {

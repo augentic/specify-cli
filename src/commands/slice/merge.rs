@@ -6,7 +6,7 @@ use std::path::Path;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::config::{LayoutExt, is_workspace_clone};
+use specify_domain::config::{Layout, is_workspace_clone};
 use specify_domain::merge::{
     BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check, slice,
 };
@@ -369,7 +369,7 @@ fn is_clone_eligible(project_dir: &Path) -> bool {
         return false;
     }
     let has_project_yaml = project_dir.join(".specify").join("project.yaml").exists();
-    let has_plan_yaml = project_dir.layout().plan_path().exists();
+    let has_plan_yaml = Layout::new(project_dir).plan_path().exists();
     has_project_yaml && !has_plan_yaml
 }
 

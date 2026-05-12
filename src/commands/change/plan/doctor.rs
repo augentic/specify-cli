@@ -6,7 +6,6 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_domain::change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
-use specify_domain::config::LayoutExt;
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
@@ -50,7 +49,7 @@ fn write_doctor_text(w: &mut dyn Write, body: &DoctorBody) -> std::io::Result<()
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ctx.project_dir.layout().slices_dir();
+    let slices_dir = ctx.slices_dir();
 
     // We tolerate a malformed registry by surfacing it as a synthetic
     // diagnostic (matching the `plan validate` posture) so doctor

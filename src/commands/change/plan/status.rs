@@ -4,7 +4,6 @@ use std::path::Path;
 
 use serde::Serialize;
 use specify_domain::change::{Entry, Plan, Severity, Status};
-use specify_domain::config::LayoutExt;
 use specify_domain::slice::{LifecycleStatus, SliceMetadata};
 use specify_error::{Error, Result};
 
@@ -118,7 +117,7 @@ fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ctx.project_dir.layout().slices_dir();
+    let slices_dir = ctx.slices_dir();
 
     let results = plan.validate(Some(&slices_dir), None);
     let has_other_structural_errors =

@@ -178,12 +178,12 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::config::LayoutExt;
+    use crate::config::Layout;
 
     #[test]
     fn with_state_creates_default_when_absent() {
         let tmp = tempdir().expect("tempdir");
-        let layout = tmp.path().layout();
+        let layout = Layout::new(tmp.path());
         let body = with_state::<Registry, _, _>(layout, InitPolicy::CreateMissing, |reg| {
             assert_eq!(reg.version, 1);
             assert!(reg.projects.is_empty());
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn with_state_propagates_closure_error_and_skips_write() {
         let tmp = tempdir().expect("tempdir");
-        let layout = tmp.path().layout();
+        let layout = Layout::new(tmp.path());
         let err = with_state::<Registry, (), _>(layout, InitPolicy::CreateMissing, |_| {
             Err(Error::Diag {
                 code: "test-abort",
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn with_state_require_existing_errors_on_absence() {
         let tmp = tempdir().expect("tempdir");
-        let layout = tmp.path().layout();
+        let layout = Layout::new(tmp.path());
         let err = with_state::<Registry, (), _>(
             layout,
             InitPolicy::RequireExisting("registry.yaml"),
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn with_state_require_existing_round_trips_mutation() {
         let tmp = tempdir().expect("tempdir");
-        let layout = tmp.path().layout();
+        let layout = Layout::new(tmp.path());
         let initial = Registry {
             version: 1,
             projects: Vec::new(),
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn project_config_load_maps_not_initialized_to_none() {
         let tmp = tempdir().expect("tempdir");
-        let layout = tmp.path().layout();
+        let layout = Layout::new(tmp.path());
         let loaded = <ProjectConfig as AtomicYaml>::load(layout).expect("load ok");
         assert!(loaded.is_none(), "absent project.yaml must surface as None");
     }
@@ -279,7 +279,7 @@ mod tests {
     #[test]
     fn project_config_load_round_trips_when_present() {
         let tmp = tempdir().expect("tempdir");
-        let layout = tmp.path().layout();
+        let layout = Layout::new(tmp.path());
         let cfg = ProjectConfig {
             name: "demo".into(),
             domain: None,

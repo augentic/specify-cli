@@ -7,7 +7,7 @@ use jiff::Timestamp;
 use serde::Serialize;
 use serde_json::Value;
 use specify_domain::capability::Phase;
-use specify_domain::config::LayoutExt;
+use specify_domain::config::Layout;
 use specify_domain::slice::{OutcomeKind, SliceMetadata, actions as slice_actions};
 use specify_error::{Error, Result};
 
@@ -231,7 +231,7 @@ impl RegistryProposalRow {
 /// `created-at`. Used as a fallback when the active slice
 /// directory has been archived by `slice merge run`.
 fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<SliceMetadata> {
-    let archive_dir = project_dir.layout().archive_dir();
+    let archive_dir = Layout::new(project_dir).archive_dir();
     let suffix = format!("-{slice_name}");
     let mut candidates: Vec<(Option<Timestamp>, SliceMetadata)> = Vec::new();
 

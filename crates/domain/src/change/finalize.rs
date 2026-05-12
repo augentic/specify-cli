@@ -12,7 +12,7 @@ use specify_error::Error;
 
 use crate::change::plan::core::Plan;
 use crate::cmd::CmdRunner;
-use crate::config::LayoutExt;
+use crate::config::Layout;
 use crate::registry::Registry;
 use crate::registry::forge::{SPECIFY_BRANCH_PREFIX, project_path};
 
@@ -256,7 +256,7 @@ pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refu
 
     let change_name = inputs.plan.name.clone();
     let expected_branch = format!("{SPECIFY_BRANCH_PREFIX}{change_name}");
-    let workspace_base = inputs.project_dir.layout().specify_dir().join("workspace");
+    let workspace_base = Layout::new(inputs.project_dir).specify_dir().join("workspace");
 
     // Probe per-project PR state + dirty clones.
     let mut projects: Vec<ProjectResult> = Vec::with_capacity(inputs.registry.projects.len());
@@ -313,7 +313,7 @@ pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refu
 /// Bubbles up `Plan::load` errors verbatim — a malformed plan is a
 /// real failure, not a "plan absent" sentinel.
 pub fn load_plan(project_dir: &Path) -> Result<PlanLoad, Error> {
-    let plan_file = project_dir.layout().plan_path();
+    let plan_file = Layout::new(project_dir).plan_path();
     if !plan_file.exists() {
         return Ok(PlanLoad::Missing);
     }

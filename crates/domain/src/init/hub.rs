@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use specify_error::{Error, is_kebab};
 
 use crate::capability::CacheMeta;
-use crate::config::{LayoutExt, ProjectConfig};
+use crate::config::{Layout, ProjectConfig};
 use crate::init::{InitOptions, InitResult, resolve_version, resolved_name, upsert_gitignore};
 use crate::registry::Registry;
 
@@ -57,7 +57,7 @@ pub(crate) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         });
     }
 
-    let layout = opts.project_dir.layout();
+    let layout = Layout::new(opts.project_dir);
     let specify_dir = layout.specify_dir();
     if specify_dir.exists() {
         return Err(Error::Diag {

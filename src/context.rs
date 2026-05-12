@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use specify_domain::capability::PipelineView;
-use specify_domain::config::{Layout, LayoutExt, ProjectConfig};
+use specify_domain::config::{Layout, ProjectConfig};
 use specify_error::Error;
 
 use crate::cli::Format;
@@ -59,15 +59,15 @@ impl Ctx {
     /// [`specify_domain::config::with_state`] in handlers that mutate
     /// `plan.yaml` / `registry.yaml`.
     pub(crate) fn layout(&self) -> Layout<'_> {
-        self.project_dir.layout()
+        Layout::new(&self.project_dir)
     }
 
     pub(crate) fn slices_dir(&self) -> PathBuf {
-        self.project_dir.layout().slices_dir()
+        self.layout().slices_dir()
     }
 
     pub(crate) fn archive_dir(&self) -> PathBuf {
-        self.project_dir.layout().archive_dir()
+        self.layout().archive_dir()
     }
 
     /// Serialise `body` and write it to stdout in this `Ctx`'s

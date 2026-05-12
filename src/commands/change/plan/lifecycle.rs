@@ -4,7 +4,7 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
 use specify_domain::change::{Finding, Plan, Severity, Status};
-use specify_domain::config::{InitPolicy, LayoutExt, with_state};
+use specify_domain::config::{InitPolicy, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
@@ -13,7 +13,7 @@ use crate::cli::SourceArg;
 use crate::context::Ctx;
 
 pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
-    let plan_path = ctx.project_dir.layout().plan_path();
+    let plan_path = ctx.layout().plan_path();
     if plan_path.exists() {
         return Err(Error::Diag {
             code: "plan-already-exists",
@@ -56,7 +56,7 @@ pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result
 pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ctx.project_dir.layout().slices_dir();
+    let slices_dir = ctx.layout().slices_dir();
 
     let (registry, registry_err) = match Registry::load(&ctx.project_dir) {
         Ok(reg) => (reg, None),
@@ -72,7 +72,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         });
     }
     if let Some(ref reg) = registry {
-        let workspace_base = ctx.project_dir.layout().specify_dir().join("workspace");
+        let workspace_base = ctx.layout().specify_dir().join("workspace");
         for rp in &reg.projects {
             let slot_project_yaml =
                 workspace_base.join(&rp.name).join(".specify").join("project.yaml");
@@ -123,7 +123,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ctx.project_dir.layout().slices_dir();
+    let slices_dir = ctx.layout().slices_dir();
 
     let results = plan.validate(Some(&slices_dir), None);
     if results.iter().any(|r| matches!(r.level, Severity::Error)) {
@@ -200,7 +200,7 @@ pub(super) fn transition(
 }
 
 pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
-    let layout = ctx.project_dir.layout();
+    let layout = ctx.layout();
     let plan_path = layout.plan_path();
     if !plan_path.exists() {
         return Err(Error::ArtifactNotFound {

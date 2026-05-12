@@ -6,7 +6,6 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_domain::change::{Plan, Status};
-use specify_domain::config::LayoutExt;
 use specify_domain::registry::Registry;
 use specify_error::Result;
 
@@ -75,7 +74,7 @@ struct PlanCounts {
 }
 
 fn load_plan_summary(ctx: &Ctx) -> Option<PlanSummary> {
-    let plan_path = ctx.project_dir.layout().plan_path();
+    let plan_path = ctx.layout().plan_path();
     if !plan_path.exists() {
         return None;
     }
