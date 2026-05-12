@@ -30,13 +30,13 @@ Structural items first; one-touch tidies fold into adjacent PRs.
 - [ ] F3. [Collapse the `Render` / `*Body` triad in `src/output.rs`](#f3-collapse-the-render--body-triad-in-srcoutputrs) — **≈ −350 LOC**
 - [ ] F4. [Move `serde_rfc3339` to `specify-error`; delete the cache/meta duplicate](#f4-move-serde_rfc3339-to-specify-error-delete-the-cachemeta-duplicate) — **≈ −18 LOC**
 - [ ] F5. [Fold typed `Error` variants into `Diag`-first policy](#f5-fold-typed-error-variants-into-diag-first-policy) — **≈ −300 LOC**
-- [ ] F6. [Move workspace integration tests up; mass-delete unit-test mirrors](#f6-move-workspace-integration-tests-up-mass-delete-unit-test-mirrors) — **≈ −1 200 LOC**
+- [ ] F6. [Move workspace integration tests up; mass-delete unit-test mirrors](#f6-move-workspace-integration-tests-up-mass-delete-unit-test-mirrors) — **≈ −1 355 LOC**
 - [ ] F7. [Cap skill body at 200, refactor the 9 over-cap skills, halve `scripts/checks/`](#f7-cap-skill-body-at-200-refactor-the-9-over-cap-skills-halve-scriptschecks) — **≈ −1 800 LOC**
 - [ ] F8. [Delete the `wasi-tools` `Envelope` once F3 lands](#f8-delete-the-wasi-tools-envelope-once-f3-lands) — **≈ −180 LOC**
 - [ ] F9. [Inline `LayoutExt` into `Layout::new`](#f9-inline-layoutext-into-layoutnew) — **≈ −40 LOC**
 - [ ] F10. [Split `tests/change_umbrella.rs` (2 762 LOC, 87 tests)](#f10-split-testschange_umbrellars-2762-loc-87-tests) — **0 to −200 LOC**
 
-**Total Δ if F1–F10 land cleanly: ≈ −5 600 LOC.** Highest blow-up risk: **F2** — `Guard` is dead, but `Stamp::*_with_liveness_check` is the closure seam most lock tests hang off and the integration replacement (spawn child + real PIDs) is where the day goes sideways.
+**Total Δ if F1–F10 land cleanly: ≈ −5 800 LOC.** Highest blow-up risk: **F2** — `Guard` is dead, but `Stamp::*_with_liveness_check` is the closure seam most lock tests hang off and the integration replacement (spawn child + real PIDs) is where the day goes sideways.
 
 ---
 
@@ -213,6 +213,7 @@ Keep only: `Argument`, `Validation`, `CliTooOld`, `Filesystem`, `BranchPrepareFa
 - `crates/error/src/error.rs:240-261` — `io_from`, `yaml_from` verify that `#[from]` works.
 - `crates/error/src/display.rs:93-223` — six `*_variant_strings_are_stable` tests that exist to assert the wire shape that F5 deletes.
 - `src/commands/registry.rs:73-88` — its own doc-comment admits it duplicates `tests/registry.rs`.
+- `crates/capability/src/tests.rs` — six pre-1.0 historical-rejection tests guarding *removed* fields: `omnia_capability_yaml_has_no_dropped_fields` (l. 101-126), `pipeline_plan_parses_when_present` + `pipeline_without_plan_parses_unchanged` (l. 170-240), `json_schema_rejects_capability_{domain,extends}_field` + `json_schema_rejects_pipeline_plan_block` (l. 308-386). The `Capability` struct's serde shape rejects these fields at parse time and `validate_structure_valid_for_omnia` (l. 82) catches any reintroduction in the bundled fixture.
 
 **Action.**
 1. Move `crates/domain/src/registry/workspace/tests.rs` to `tests/workspace_internal.rs` (or fold into `tests/workspace.rs`). Drive via `assert_cmd::Command::cargo_bin("specify")`.
@@ -220,8 +221,9 @@ Keep only: `Argument`, `Validation`, `CliTooOld`, `Filesystem`, `BranchPrepareFa
 3. Delete `crates/error/src/display.rs:93-223` after F5.
 4. Delete `src/commands/registry.rs:73-88`.
 5. After F2, delete the `Guard` half of `crates/domain/src/change/plan/lock/tests.rs` (~120 LOC).
+6. Delete the six historical-rejection tests in `crates/capability/src/tests.rs` listed above (~155 LOC). Pre-1.0 + serde + bundled-fixture validation already pin the shape.
 
-**Net change target.** Unit tests < 200; integration tests > 200. Total LOC ≥ −1 200.
+**Net change target.** Unit tests < 200; integration tests > 200. Total LOC ≥ −1 355.
 
 **Done when.** `rg '^#\[test\]' crates/ | wc -l` < 200; no `tests/` block under `crates/**/*.rs` shells out to `git`/`gh`.
 
@@ -354,6 +356,9 @@ These are small enough to fold into adjacent PRs.
 - T9. **`crates/domain/src/lib.rs:13`** — the `pub mod serde_rfc3339;` line goes with F4. **−2 LOC.**
 - T10. **`AGENTS.md:42,76`** reference `docs/standards/predicates.md` and `cargo make standards` — both go with F1. **−4 LOC.**
 - T11. **`clippy.toml:11-27 allowed-duplicate-crates`** is unreachable config. Workspace `Cargo.toml:113` sets `multiple_crate_versions = "allow"`, so the lint never fires and the 17-line allowlist below it never filters anything. Delete the block (and the `# https://doc.rust-lang.org/stable/clippy/index.html` line above it that the rest of the file no longer needs). **−18 LOC.**
+- T12. **`src/output.rs:84-105 Exit::code`** — every match arm carries a `// exit N: ...` comment paraphrasing the variant doc immediately above. Drop the inline comments; the variants already document themselves and `From<&Error> for Exit` is the wire contract. **−12 LOC.**
+- T13. **`crates/spec/src/lib.rs:13-36 pub mod format`** — the seven `pub const` strings sit in a nested `pub mod format` and are re-imported via `use format::{...}` two lines later. Promote the constants to crate root (keep them `pub`); update the one external consumer (`crates/merge/src/merge.rs:7 use specify_spec::format::REQ_HEADING;`) to drop the `format::` segment. Pure path swap. **−10 LOC.**
+- T14. **`src/commands/workspace.rs:277-301 MatchState`** — three-variant enum + `From<Option<bool>>` + `Display` impl exists for one `writeln!` site. Replace with `branch_matches_change.map_or("-", |v| if v { "match" } else { "mismatch" })` inline at the format call. Subsumed by F3 if `Render` goes; standalone otherwise. **−22 LOC.**
 
 ---
 
