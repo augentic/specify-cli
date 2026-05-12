@@ -25,7 +25,7 @@ pub struct Journal {
 #[serde(rename_all = "kebab-case")]
 pub struct JournalEntry {
     /// Second-precision UTC timestamp (`%Y-%m-%dT%H:%M:%SZ`).
-    #[serde(with = "crate::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339")]
     pub timestamp: Timestamp,
     /// Phase that wrote the entry (`define | build | merge`).
     pub step: Phase,

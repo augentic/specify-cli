@@ -16,3 +16,4 @@ workspace = true
 thiserror.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
+jiff.workspace = true

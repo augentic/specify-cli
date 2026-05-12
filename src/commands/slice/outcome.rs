@@ -54,7 +54,7 @@ struct PhaseStampBody {
     slice: String,
     phase: String,
     outcome: String,
-    #[serde(with = "specify_domain::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339")]
     at: Timestamp,
 }
 
@@ -167,7 +167,7 @@ fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Result<()> {
 struct Row {
     phase: String,
     outcome: String,
-    #[serde(with = "specify_domain::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339")]
     at: Timestamp,
     summary: String,
     context: Value,

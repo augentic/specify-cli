@@ -223,11 +223,9 @@ crate project-scope and capability-scope tool declarations.
   projects on the host.
 - **Time crate.** UTC-only domain; `jiff::Timestamp` replaces
   `chrono::DateTime<Utc>` across every host crate. All persisted
-  stamps still route through `specify_domain::serde_rfc3339`
-  (`Sidecar.fetched_at` mirrors the same shape via a private adapter
-  inlined in `crates/tool/src/cache/meta.rs` because `specify-tool`
-  cannot depend on `specify-domain`) so the on-disk wire shape stays
-  `%Y-%m-%dT%H:%M:%SZ` byte-for-byte. `system_time_to_utc` consolidates
+  stamps route through `specify_error::serde_rfc3339` so the on-disk
+  wire shape stays `%Y-%m-%dT%H:%M:%SZ` byte-for-byte across both the
+  domain DTOs and `Sidecar.fetched_at`. `system_time_to_utc` consolidates
   the previous three `Error::Diag` codes (`merge-mtime-pre-epoch`,
   `merge-mtime-overflow`, `merge-mtime-out-of-range`) into a single
   `merge-mtime-out-of-range` whose `detail` carries the underlying

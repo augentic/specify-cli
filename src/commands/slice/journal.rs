@@ -54,7 +54,7 @@ struct AppendBody {
     slice: String,
     phase: String,
     kind: String,
-    #[serde(with = "specify_domain::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339")]
     timestamp: Timestamp,
 }
 
@@ -104,7 +104,7 @@ struct ShowBody {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct EntryRow {
-    #[serde(with = "specify_domain::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339")]
     timestamp: Timestamp,
     phase: String,
     kind: String,

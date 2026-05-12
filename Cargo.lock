@@ -4495,6 +4495,7 @@ dependencies = [
 name = "specify-error"
 version = "0.3.0"
 dependencies = [
+ "jiff",
  "serde",
  "serde-saphyr",
  "thiserror 2.0.18",
