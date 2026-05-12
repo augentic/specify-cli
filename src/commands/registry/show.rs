@@ -7,7 +7,7 @@ use super::dto::{ShowBody, write_show_text};
 use crate::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
-    let path = Registry::path(&ctx.project_dir);
+    let path = Registry::path(&ctx.project_dir).display().to_string();
     let registry = Registry::load(&ctx.project_dir)?;
     ctx.write(&ShowBody { registry, path }, write_show_text)?;
     Ok(())

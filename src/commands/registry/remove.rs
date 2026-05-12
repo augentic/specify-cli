@@ -11,17 +11,18 @@ use super::dto::{RemoveBody, write_remove_text};
 use crate::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
-    let path = Registry::path(&ctx.project_dir);
+    let path_buf = Registry::path(&ctx.project_dir);
+    let path = path_buf.display().to_string();
     let hub_mode = ctx.config.hub;
 
     // Pre-flight: surface the legacy `registry-remove-no-registry`
     // diagnostic when the file is absent. `with_state` would
     // emit the generic `Error::ArtifactNotFound`; the registry-specific
     // diag is part of the wire contract.
-    if !path.exists() {
+    if !path_buf.exists() {
         return Err(Error::Diag {
             code: "registry-remove-no-registry",
-            detail: format!("registry remove: no registry declared at {}", path.display()),
+            detail: format!("registry remove: no registry declared at {path}"),
         });
     }
 
@@ -33,10 +34,7 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
                 registry.projects.iter().position(|p| p.name == name).ok_or_else(|| {
                     Error::Diag {
                         code: "registry-remove-not-found",
-                        detail: format!(
-                            "registry remove: project `{name}` not found in {}",
-                            path.display()
-                        ),
+                        detail: format!("registry remove: project `{name}` not found in {path}"),
                     }
                 })?;
             registry.projects.remove(position);

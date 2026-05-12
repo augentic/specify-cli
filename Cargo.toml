@@ -42,8 +42,6 @@ assert_cmd.workspace = true
 tempfile.workspace = true
 regex.workspace = true
 jsonschema.workspace = true
-sha2.workspace = true
-jiff.workspace = true
 
 [lints]
 workspace = true
@@ -56,13 +54,6 @@ members = [
     "crates/tool",
     "xtask",
 ]
-# `wasi-tools/` is a sibling workspace (`specify-contract` and `specify-vectis`
-# ship as standalone `wasm32-wasip2` components and stay out of the host CLI's
-# Render/emit/`specify-error` discipline). Listing the directory under
-# `exclude` keeps cargo from recursing into it from this workspace; cargo
-# still stops at its own `[workspace]` declaration without this, but the
-# explicit entry documents the boundary.
-exclude = ["wasi-tools"]
 
 # `xtask` is a workspace-internal task runner (`cargo run -p xtask -- ...`)
 # rather than a library or published binary.

@@ -45,7 +45,7 @@ pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result
         &CreateBody {
             plan: Ref {
                 name,
-                path: plan_path,
+                path: plan_path.display().to_string(),
             },
         },
         write_create_text,
@@ -102,7 +102,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         &PlanValidateBody {
             plan: Ref {
                 name: plan.name,
-                path: plan_path,
+                path: plan_path.display().to_string(),
             },
             results: rows,
             passed: !has_errors,
@@ -232,7 +232,7 @@ struct CreateBody {
 }
 
 fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
-    writeln!(w, "Initialised plan '{}' at {}.", body.plan.name, body.plan.path.display())
+    writeln!(w, "Initialised plan '{}' at {}.", body.plan.name, body.plan.path)
 }
 
 #[derive(Serialize)]

@@ -182,7 +182,7 @@ impl SliceMetadata {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::YamlSer`] when serde-saphyr fails to encode
+    /// Returns [`Error::Yaml`] when serde-saphyr fails to encode
     /// `self` — typically a serializer bug rather than a data issue,
     /// since every field of [`SliceMetadata`] is YAML-safe by
     /// construction. Returns [`Error::Io`] when the temp-file create /

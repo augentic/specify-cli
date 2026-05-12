@@ -1,8 +1,7 @@
 use std::io::Write;
-use std::path::Path;
 use std::process::ExitCode;
 
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 use specify_error::{Error, ValidationStatus, ValidationSummary};
 
 use crate::cli::Format;
@@ -58,27 +57,10 @@ pub enum Exit {
 impl Exit {
     pub const fn code(self) -> u8 {
         match self {
-            // exit 0: handler-reported success.
             Self::Success => 0,
-            // exit 1: catch-all failure (kebab discriminants: `io`,
-            // `yaml`, `lifecycle`, `non-terminal-entries-present`,
-            // `change-finalize-blocked`, plan/context/registry diag
-            // codes, …anything `From<&Error>` doesn't map to a typed
-            // slot).
             Self::GenericFailure => 1,
-            // exit 2: argument-shape error (kebab discriminant: `argument`).
-            // exit 2: validation failure (kebab discriminant: `validation`,
-            //         plus `tool-permission-denied`, `tool-not-declared`,
-            //         `plan-structural-errors`).
-            // Skills disambiguate the two by reading the kebab-case
-            // `error` field of the JSON envelope; the numeric collapse
-            // matches clap's own parser-error convention.
             Self::ArgumentError | Self::ValidationFailed => 2,
-            // exit 3: CLI too old for the project's pinned floor
-            // (kebab discriminant: `specify-version-too-old`).
             Self::VersionTooOld => 3,
-            // exit N: opaque WASI-tool exit code, forwarded verbatim
-            // by `commands::tool::run` (see `Code` doc-comment).
             Self::Code(code) => code,
         }
     }
@@ -245,13 +227,4 @@ impl<'a> From<&'a ValidationSummary> for ValidationRow<'a> {
             detail: summary.detail.as_deref(),
         }
     }
-}
-
-/// `#[serde(serialize_with)]` adapter for `*Body { path: PathBuf }`
-/// fields. Always emits `Path::to_string_lossy` so the wire shape is a
-/// pure function of the input path — no filesystem dependency, no
-/// canonicalisation that varies with whether the file exists at
-/// serialise time. Test fixtures and goldens stay reproducible.
-pub(crate) fn serialize_path<S: Serializer>(p: &Path, s: S) -> Result<S::Ok, S::Error> {
-    s.serialize_str(&p.to_string_lossy())
 }

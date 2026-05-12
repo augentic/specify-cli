@@ -58,7 +58,6 @@ impl Error {
             Self::BranchPrepareFailed { .. } => Cow::Borrowed("branch-preparation-failed"),
             Self::Io(_) => Cow::Borrowed("io"),
             Self::Yaml(_) => Cow::Borrowed("yaml"),
-            Self::YamlSer(_) => Cow::Borrowed("yaml-ser"),
         }
     }
 }

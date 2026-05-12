@@ -1,26 +1,22 @@
 //! Response DTOs for `specify registry *` handlers.
 
 use std::io::Write;
-use std::path::PathBuf;
 
 use serde::Serialize;
 use specify_domain::registry::{Registry, RegistryProject};
-
-use crate::output::serialize_path;
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(super) struct ShowBody {
     pub(super) registry: Option<Registry>,
-    #[serde(serialize_with = "serialize_path")]
-    pub(super) path: PathBuf,
+    pub(super) path: String,
 }
 
 pub(super) fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Result<()> {
     let Some(reg) = body.registry.as_ref() else {
         return writeln!(w, "no registry declared at registry.yaml");
     };
-    writeln!(w, "registry.yaml: {}", body.path.display())?;
+    writeln!(w, "registry.yaml: {}", body.path)?;
     writeln!(w, "version: {}", reg.version)?;
     if reg.projects.is_empty() {
         return writeln!(w, "projects: (none)");
@@ -38,8 +34,7 @@ pub(super) fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Re
 #[serde(rename_all = "kebab-case")]
 pub(super) struct ValidateBody {
     pub(super) registry: Option<Registry>,
-    #[serde(serialize_with = "serialize_path")]
-    pub(super) path: PathBuf,
+    pub(super) path: String,
     #[serde(skip)]
     pub(super) hub_mode: bool,
 }
@@ -60,13 +55,12 @@ pub(super) fn write_validate_text(w: &mut dyn Write, body: &ValidateBody) -> std
 #[serde(rename_all = "kebab-case")]
 pub(super) struct AddBody {
     pub(super) registry: Registry,
-    #[serde(serialize_with = "serialize_path")]
-    pub(super) path: PathBuf,
+    pub(super) path: String,
     pub(super) added: RegistryProject,
 }
 
 pub(super) fn write_add_text(w: &mut dyn Write, body: &AddBody) -> std::io::Result<()> {
-    writeln!(w, "Added `{}` to {}", body.added.name, body.path.display())?;
+    writeln!(w, "Added `{}` to {}", body.added.name, body.path)?;
     writeln!(w, "registry now declares {} project(s)", body.registry.projects.len())
 }
 
@@ -74,14 +68,13 @@ pub(super) fn write_add_text(w: &mut dyn Write, body: &AddBody) -> std::io::Resu
 #[serde(rename_all = "kebab-case")]
 pub(super) struct RemoveBody {
     pub(super) registry: Registry,
-    #[serde(serialize_with = "serialize_path")]
-    pub(super) path: PathBuf,
+    pub(super) path: String,
     pub(super) removed: String,
     pub(super) warnings: Vec<String>,
 }
 
 pub(super) fn write_remove_text(w: &mut dyn Write, body: &RemoveBody) -> std::io::Result<()> {
-    writeln!(w, "Removed `{}` from {}", body.removed, body.path.display())?;
+    writeln!(w, "Removed `{}` from {}", body.removed, body.path)?;
     for warning in &body.warnings {
         writeln!(w, "warning: {warning}")?;
     }

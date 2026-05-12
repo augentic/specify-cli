@@ -81,14 +81,13 @@ pub(super) fn require_file(project_dir: &Path) -> Result<PathBuf> {
 #[serde(rename_all = "kebab-case")]
 pub(super) struct Ref {
     pub name: String,
-    #[serde(serialize_with = "crate::output::serialize_path")]
-    pub path: PathBuf,
+    pub path: String,
 }
 
 pub(super) fn plan_ref(plan: &Plan, plan_path: &Path) -> Ref {
     Ref {
         name: plan.name.clone(),
-        path: plan_path.to_path_buf(),
+        path: plan_path.display().to_string(),
     }
 }
 

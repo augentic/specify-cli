@@ -6,8 +6,7 @@ use std::collections::HashSet;
 use regex::Regex;
 
 use crate::capability::ValidationResult;
-use crate::spec::format::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING};
-use crate::spec::parse_baseline;
+use crate::spec::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING, parse_baseline};
 
 const RULE_NO_DUPLICATE_IDS: &str = "merge.no-duplicate-ids";
 const RULE_NO_DUPLICATE_IDS_DESC: &str = "baseline has no duplicate requirement IDs";

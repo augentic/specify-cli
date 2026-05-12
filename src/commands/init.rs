@@ -1,12 +1,6 @@
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
-/// Display a path as the canonical absolute form when it exists; fall back
-/// to the lossy display when it does not (e.g. a path we just deleted).
-fn canonical(p: &Path) -> String {
-    std::fs::canonicalize(p).map_or_else(|_| p.display().to_string(), |c| c.display().to_string())
-}
-
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::config::{ProjectConfig, is_workspace_clone};
@@ -18,13 +12,12 @@ use crate::commands::context;
 use crate::context::Ctx;
 use crate::output;
 
-/// Dispatcher for `specify init`.
-///
-/// The `<capability>` xor `--hub` invariant is enforced by clap (see
-/// `#[arg(conflicts_with = "hub", required_unless_present = "hub")]`
-/// on the `capability` positional in `crate::cli::Commands::Init`),
-/// so by the time this function runs the `(hub, capability)` pair is
-/// guaranteed to be one of `(false, Some(_))` or `(true, None)`.
+/// Display a path as the canonical absolute form when it exists; fall back
+/// to the lossy display when it does not (e.g. a path we just deleted).
+fn canonical(p: &Path) -> String {
+    std::fs::canonicalize(p).map_or_else(|_| p.display().to_string(), |c| c.display().to_string())
+}
+
 pub(super) fn run(
     format: Format, capability: Option<&str>, name: Option<&str>, domain: Option<&str>, hub: bool,
 ) -> Result<()> {

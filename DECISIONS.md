@@ -46,8 +46,8 @@ actively maintained, in contrast to `serde_yaml` (deprecated) and
 `serde_yaml_ng` (community fork carrying the same debt). Saphyr omits a
 `Value` DOM, so code that needs untyped YAML access deserializes into
 `serde_json::Value`. Its separate deser/ser error types are wrapped
-behind `specify_error::YamlError` / `YamlSerError` so the upstream crate
-name does not leak through every public surface.
+behind a single `specify_error::YamlError` enum (`De` / `Ser` variants)
+so the upstream crate name does not leak through every public surface.
 
 ## Diag-first error policy
 

@@ -280,11 +280,11 @@ mod tests {
         let ok = crate::spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n",
         );
-        assert!(ids_match_pattern(&ok, crate::spec::format::REQ_ID_PATTERN));
+        assert!(ids_match_pattern(&ok, crate::spec::REQ_ID_PATTERN));
         let bad = crate::spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-1\n\n#### Scenario: Happy\n",
         );
-        assert!(!ids_match_pattern(&bad, crate::spec::format::REQ_ID_PATTERN));
+        assert!(!ids_match_pattern(&bad, crate::spec::REQ_ID_PATTERN));
     }
 
     #[test]

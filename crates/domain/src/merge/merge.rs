@@ -5,8 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use specify_error::Error;
 
-use crate::spec::format::REQ_HEADING;
-use crate::spec::{Requirement, has_delta_headers, parse_baseline, parse_delta};
+use crate::spec::{REQ_HEADING, Requirement, has_delta_headers, parse_baseline, parse_delta};
 
 /// Result of a successful [`merge`] call.
 ///

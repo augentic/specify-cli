@@ -2,7 +2,6 @@ pub(crate) mod cli;
 pub(crate) mod plan;
 
 use std::io::Write;
-use std::path::PathBuf;
 
 use jiff::Timestamp;
 use serde::Serialize;
@@ -15,7 +14,6 @@ use specify_error::{Error, Result, is_kebab};
 
 use crate::cli::ChangeAction;
 use crate::context::Ctx;
-use crate::output::serialize_path;
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
 pub(crate) fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
@@ -51,7 +49,7 @@ fn brief_create(ctx: &Ctx, name: String) -> Result<()> {
     ctx.write(
         &BriefCreateBody {
             name,
-            path: brief_path,
+            path: brief_path.display().to_string(),
         },
         write_brief_create_text,
     )?;
@@ -64,7 +62,7 @@ fn brief_show(ctx: &Ctx) -> Result<()> {
     ctx.write(
         &BriefShowBody {
             brief,
-            path: brief_path,
+            path: brief_path.display().to_string(),
         },
         write_brief_show_text,
     )?;
@@ -138,12 +136,11 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
 #[serde(rename_all = "kebab-case")]
 struct BriefCreateBody {
     name: String,
-    #[serde(serialize_with = "serialize_path")]
-    path: PathBuf,
+    path: String,
 }
 
 fn write_brief_create_text(w: &mut dyn Write, body: &BriefCreateBody) -> std::io::Result<()> {
-    writeln!(w, "Created change brief for {} at {}", body.name, body.path.display())
+    writeln!(w, "Created change brief for {} at {}", body.name, body.path)
 }
 
 #[derive(Serialize)]
@@ -151,15 +148,13 @@ fn write_brief_create_text(w: &mut dyn Write, body: &BriefCreateBody) -> std::io
 struct BriefShowBody {
     #[serde(flatten)]
     brief: Option<ChangeBrief>,
-    #[serde(serialize_with = "serialize_path")]
-    path: PathBuf,
+    path: String,
 }
 
 fn write_brief_show_text(w: &mut dyn Write, body: &BriefShowBody) -> std::io::Result<()> {
-    let path = body.path.display().to_string();
     match &body.brief {
-        None => writeln!(w, "no change brief declared at {path}"),
-        Some(brief) => render_brief(w, brief, &path),
+        None => writeln!(w, "no change brief declared at {}", body.path),
+        Some(brief) => render_brief(w, brief, &body.path),
     }
 }
 

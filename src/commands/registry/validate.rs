@@ -8,7 +8,7 @@ use super::dto::{ValidateBody, write_validate_text};
 use crate::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
-    let path = Registry::path(&ctx.project_dir);
+    let path = Registry::path(&ctx.project_dir).display().to_string();
     // Hub repos opt into the stricter shape via `project.yaml:hub:
     // true`. Tolerate a missing/unparseable project.yaml here —
     // `specify registry validate` is allowed to run before `specify

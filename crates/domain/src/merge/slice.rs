@@ -159,7 +159,7 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// - [`Error::Diag { code: "merge-archive-failed" }`] when the archive
 ///   move fails after metadata has already been flipped.
 /// - Whatever atomic-write [`Error`] [`SliceMetadata::save`] surfaces
-///   (`Error::Io`, `Error::YamlSer`).
+///   (`Error::Io`, `Error::Yaml`).
 pub fn commit(
     slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path, now: Timestamp,
 ) -> Result<Vec<MergePreviewEntry>, Error> {

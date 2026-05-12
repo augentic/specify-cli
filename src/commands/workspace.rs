@@ -254,7 +254,7 @@ impl SlotRow {
             self.actual_symlink_target.as_deref().unwrap_or("-"),
             self.actual_origin.as_deref().unwrap_or("-"),
             self.current_branch.as_deref().unwrap_or("-"),
-            match_state(self.branch_matches_change),
+            self.branch_matches_change.map_or("-", |v| if v { "match" } else { "mismatch" }),
             self.head_sha.as_deref().unwrap_or("-"),
             self.dirty.map_or("-", |v| if v { "yes" } else { "no" }),
             if self.project_config_present { "present" } else { "missing" },
@@ -264,18 +264,6 @@ impl SlotRow {
                 self.active_slices.join(",")
             },
         )
-    }
-}
-
-/// Tri-state for `branch_matches_change` in the human-readable
-/// status row: present-and-true is `match`, present-and-false is
-/// `mismatch`, absent is `-`. JSON keeps the raw `Option<bool>` —
-/// this only governs text rendering.
-const fn match_state(b: Option<bool>) -> &'static str {
-    match b {
-        Some(true) => "match",
-        Some(false) => "mismatch",
-        None => "-",
     }
 }
 

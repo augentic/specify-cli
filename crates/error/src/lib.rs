@@ -10,7 +10,7 @@ pub mod yaml;
 
 pub use error::Error;
 pub use validation::{Status as ValidationStatus, Summary as ValidationSummary};
-pub use yaml::{YamlError, YamlSerError};
+pub use yaml::YamlError;
 
 /// Workspace-wide `Result` alias bound to [`Error`].
 ///

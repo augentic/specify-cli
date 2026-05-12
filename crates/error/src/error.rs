@@ -1,9 +1,9 @@
 //! `Error` enum and saphyr-error conversions. Hint and discriminant
-//! tables live in [`crate::display`]; the YAML wrappers behind
-//! `Yaml` / `YamlSer` live in [`crate::yaml`].
+//! tables live in [`crate::display`]; the YAML wrapper behind `Yaml`
+//! lives in [`crate::yaml`].
 
 use crate::validation::Summary as ValidationSummary;
-use crate::yaml::{YamlError, YamlSerError};
+use crate::yaml::YamlError;
 
 /// Structured error type for all `specify-*` crates.
 ///
@@ -131,13 +131,9 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
-    /// A YAML deserialization error.
+    /// A YAML serialization or deserialization error.
     #[error(transparent)]
     Yaml(#[from] YamlError),
-
-    /// A YAML serialization error.
-    #[error(transparent)]
-    YamlSer(#[from] YamlSerError),
 }
 
 impl From<serde_saphyr::Error> for Error {
@@ -148,6 +144,6 @@ impl From<serde_saphyr::Error> for Error {
 
 impl From<serde_saphyr::ser::Error> for Error {
     fn from(value: serde_saphyr::ser::Error) -> Self {
-        Self::YamlSer(YamlSerError::from(value))
+        Self::Yaml(YamlError::from(value))
     }
 }

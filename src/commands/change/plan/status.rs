@@ -170,7 +170,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let body = StatusBody {
         plan: Ref {
             name: plan.name.clone(),
-            path: plan_path,
+            path: plan_path.display().to_string(),
         },
         counts: Counts {
             done: counts[&Status::Done],

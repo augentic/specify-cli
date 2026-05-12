@@ -26,16 +26,13 @@ pub(super) fn run(
         });
     }
 
-    let path = Registry::path(&ctx.project_dir);
+    let path = Registry::path(&ctx.project_dir).display().to_string();
     let hub_mode = ctx.config.hub;
     let candidate = RegistryProject {
         name,
         url,
         capability,
-        description: description.and_then(|s| {
-            let trimmed = s.trim();
-            if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
-        }),
+        description: description.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         contracts: None,
     };
 
@@ -45,9 +42,8 @@ pub(super) fn run(
                 return Err(Error::Diag {
                     code: "registry-add-name-duplicate",
                     detail: format!(
-                        "registry add: project `{}` already exists in {}",
+                        "registry add: project `{}` already exists in {path}",
                         candidate.name,
-                        path.display()
                     ),
                 });
             }
