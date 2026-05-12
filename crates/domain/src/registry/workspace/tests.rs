@@ -1,15 +1,16 @@
 use std::cell::RefCell;
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-
-use specify_error::Error;
+use std::process::{Command, ExitStatus, Output};
+use std::rc::Rc;
 
 use super::bootstrap::bootstrap as greenfield_bootstrap;
 use super::git::git_output_ok;
 use super::push::remote::{current_branch, origin_head_branch};
-use super::push::{PushOutcome, PushResult, WorkspacePushForge, github_slug, push_single_project};
+use super::push::{PushOutcome, PushResult, github_slug, push_single_project};
 use super::sync::{distribute_contracts, materialise_git_remote};
-use crate::registry::registry::RegistryProject;
+use crate::cmd::CmdRunner;
+use crate::registry::catalog::RegistryProject;
 
 const TEST_CHANGE: &str = "demo-change";
 const TEST_BRANCH: &str = "specify/demo-change";
@@ -135,8 +136,8 @@ fn commit_on_change_branch(worktree: &Path, file: &str, body: &str) {
     run_test_git(worktree, &["commit", "--no-gpg-sign", "-m", "change work"]);
 }
 
-fn push_alpha(
-    project_dir: &Path, project: &RegistryProject, dry_run: bool, forge: &dyn WorkspacePushForge,
+fn push_alpha<R: CmdRunner>(
+    project_dir: &Path, project: &RegistryProject, dry_run: bool, runner: &R,
 ) -> PushResult {
     let workspace_base = project_dir.join(".specify/workspace");
     push_single_project(
@@ -146,61 +147,141 @@ fn push_alpha(
         TEST_BRANCH,
         TEST_CHANGE,
         dry_run,
-        forge,
+        runner,
     )
 }
 
-struct RecordingForge {
-    repo_exists_result: bool,
-    create_remote: Option<PathBuf>,
-    repo_exists_calls: RefCell<Vec<String>>,
-    create_repo_calls: RefCell<Vec<String>>,
-    pr_calls: RefCell<Vec<(String, String, String)>>,
+// --- MockCmd: a CmdRunner that intercepts the `gh` shell-outs --------
+//
+// Real `git` invocations still hit the filesystem (these tests rely on
+// real repositories under tempdirs). Only `gh repo view`, `gh repo
+// create`, `gh pr list`, `gh pr edit`, and `gh pr create` are mocked.
+
+fn exit_success() -> ExitStatus {
+    use std::os::unix::process::ExitStatusExt;
+    ExitStatus::from_raw(0)
 }
 
-impl RecordingForge {
+fn exit_failure() -> ExitStatus {
+    use std::os::unix::process::ExitStatusExt;
+    ExitStatus::from_raw(1 << 8)
+}
+
+fn ok_stdout(stdout: &str) -> io::Result<Output> {
+    Ok(Output {
+        status: exit_success(),
+        stdout: stdout.as_bytes().to_vec(),
+        stderr: Vec::new(),
+    })
+}
+
+fn fail_stderr(stderr: &str) -> io::Result<Output> {
+    Ok(Output {
+        status: exit_failure(),
+        stdout: Vec::new(),
+        stderr: stderr.as_bytes().to_vec(),
+    })
+}
+
+#[derive(Clone, Default)]
+struct ForgeRecord {
+    repo_exists_calls: Rc<RefCell<Vec<String>>>,
+    create_repo_calls: Rc<RefCell<Vec<String>>>,
+    pr_calls: Rc<RefCell<Vec<(String, String, String)>>>,
+}
+
+/// `gh`-only mock. Real `git` is allowed to run.
+struct GhMock {
+    record: ForgeRecord,
+    inner: RefCell<GhMockInner>,
+}
+
+struct GhMockInner {
+    repo_exists_result: bool,
+    on_create_repo: Option<Box<dyn FnMut(&Path)>>,
+}
+
+impl GhMock {
     fn new(repo_exists_result: bool) -> Self {
         Self {
-            repo_exists_result,
-            create_remote: None,
-            repo_exists_calls: RefCell::new(Vec::new()),
-            create_repo_calls: RefCell::new(Vec::new()),
-            pr_calls: RefCell::new(Vec::new()),
+            record: ForgeRecord::default(),
+            inner: RefCell::new(GhMockInner {
+                repo_exists_result,
+                on_create_repo: None,
+            }),
         }
     }
 
-    fn creating(remote: PathBuf) -> Self {
-        Self {
-            create_remote: Some(remote),
-            ..Self::new(false)
+    fn with_create<F>(self, callback: F) -> Self
+    where
+        F: FnMut(&Path) + 'static,
+    {
+        self.inner.borrow_mut().on_create_repo = Some(Box::new(callback));
+        self
+    }
+
+    fn record(&self) -> ForgeRecord {
+        self.record.clone()
+    }
+}
+
+impl CmdRunner for GhMock {
+    fn run(&self, cmd: &mut Command) -> io::Result<Output> {
+        let program = cmd.get_program().to_string_lossy().into_owned();
+        let args: Vec<String> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let cwd = cmd.get_current_dir().map(PathBuf::from);
+
+        // Pass real git through.
+        if program != "gh" {
+            return cmd.output();
+        }
+
+        match args.as_slice() {
+            // gh repo view <slug> --json name
+            [first, second, slug, ..] if first == "repo" && second == "view" => {
+                self.record.repo_exists_calls.borrow_mut().push(slug.clone());
+                if self.inner.borrow().repo_exists_result {
+                    ok_stdout("{\"name\":\"alpha\"}\n")
+                } else {
+                    fail_stderr(&format!(
+                        "GraphQL: Could not resolve to a Repository with the name '{slug}'."
+                    ))
+                }
+            }
+            // gh repo create <slug> --private --source .
+            [first, second, slug, ..] if first == "repo" && second == "create" => {
+                self.record.create_repo_calls.borrow_mut().push(slug.clone());
+                if let Some(cb) = self.inner.borrow_mut().on_create_repo.as_mut() {
+                    let project_path = cwd.expect("gh repo create must set current_dir");
+                    cb(&project_path);
+                }
+                ok_stdout("")
+            }
+            // gh pr list --head <branch> ...
+            [first, second, ..] if first == "pr" && second == "list" => {
+                // No existing PR in these tests.
+                ok_stdout("[]\n")
+            }
+            // gh pr edit <number> --base <branch>
+            [first, second, ..] if first == "pr" && second == "edit" => ok_stdout(""),
+            // gh pr create --base <base> --head <branch> --title ... --body ...
+            args if args.first().map(String::as_str) == Some("pr")
+                && args.get(1).map(String::as_str) == Some("create") =>
+            {
+                let base = pick_flag(args, "--base").unwrap_or_default();
+                let head = pick_flag(args, "--head").unwrap_or_default();
+                self.record.pr_calls.borrow_mut().push((head, base, TEST_CHANGE.to_string()));
+                // Stdout is the PR URL — `forge::ensure_pull_request`
+                // parses the trailing number after `rsplit('/')`.
+                ok_stdout("https://github.com/org/alpha/pull/42\n")
+            }
+            other => panic!("unexpected gh invocation: {other:?}"),
         }
     }
 }
 
-impl WorkspacePushForge for RecordingForge {
-    fn repo_exists(&self, slug: &str, _project_path: &Path) -> Result<bool, Error> {
-        self.repo_exists_calls.borrow_mut().push(slug.to_string());
-        Ok(self.repo_exists_result)
-    }
-
-    fn create_repo(&self, slug: &str, _project_path: &Path) -> Result<(), Error> {
-        self.create_repo_calls.borrow_mut().push(slug.to_string());
-        if let Some(remote) = &self.create_remote {
-            seed_bare_remote(remote);
-        }
-        Ok(())
-    }
-
-    fn ensure_pull_request(
-        &self, _project_path: &Path, branch_name: &str, base_branch: &str, change_name: &str,
-    ) -> Result<u64, Error> {
-        self.pr_calls.borrow_mut().push((
-            branch_name.to_string(),
-            base_branch.to_string(),
-            change_name.to_string(),
-        ));
-        Ok(42)
-    }
+fn pick_flag(args: &[String], flag: &str) -> Option<String> {
+    args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned()
 }
 
 #[test]
@@ -215,16 +296,17 @@ fn rfc14_c07_workspace_push_publishes_existing_change_branch_only() {
     commit_on_change_branch(&slot, "change.txt", "work\n");
     let local_head = git_output(&slot, &["rev-parse", "HEAD"]);
     let commits_before = git_output(&slot, &["rev-list", "--count", "HEAD"]);
-    let forge = RecordingForge::new(true);
+    let runner = GhMock::new(true);
+    let record = runner.record();
 
-    let result = push_alpha(&project_dir, &test_project(remote_url), false, &forge);
+    let result = push_alpha(&project_dir, &test_project(remote_url), false, &runner);
 
     assert_eq!(result.status, PushOutcome::Pushed);
     assert_eq!(result.branch.as_deref(), Some(TEST_BRANCH));
     assert_eq!(current_branch(&slot).unwrap().as_deref(), Some(TEST_BRANCH));
     assert_eq!(git_output(&slot, &["rev-list", "--count", "HEAD"]), commits_before);
     assert_eq!(git_output(&remote, &["rev-parse", TEST_BRANCH]), local_head);
-    assert!(forge.pr_calls.borrow().is_empty());
+    assert!(record.pr_calls.borrow().is_empty());
 }
 
 #[test]
@@ -238,13 +320,14 @@ fn rfc14_c07_workspace_push_reports_up_to_date_without_pushing() {
     let slot = clone_alpha_slot(&project_dir, &remote_url);
     commit_on_change_branch(&slot, "change.txt", "work\n");
     run_test_git(&slot, &["push", "origin", TEST_BRANCH]);
-    let forge = RecordingForge::new(true);
+    let runner = GhMock::new(true);
+    let record = runner.record();
 
-    let result = push_alpha(&project_dir, &test_project(remote_url), false, &forge);
+    let result = push_alpha(&project_dir, &test_project(remote_url), false, &runner);
 
     assert_eq!(result.status, PushOutcome::UpToDate);
     assert_eq!(result.branch.as_deref(), Some(TEST_BRANCH));
-    assert!(forge.pr_calls.borrow().is_empty());
+    assert!(record.pr_calls.borrow().is_empty());
 }
 
 #[test]
@@ -258,14 +341,15 @@ fn rfc14_c07_workspace_push_dirty_checkout_failed() {
     let slot = clone_alpha_slot(&project_dir, &remote_url);
     commit_on_change_branch(&slot, "change.txt", "work\n");
     std::fs::write(slot.join("dirty.txt"), "dirty\n").unwrap();
-    let forge = RecordingForge::new(true);
+    let runner = GhMock::new(true);
+    let record = runner.record();
 
-    let result = push_alpha(&project_dir, &test_project(remote_url), false, &forge);
+    let result = push_alpha(&project_dir, &test_project(remote_url), false, &runner);
 
     assert_eq!(result.status, PushOutcome::Failed);
     assert!(result.error.as_deref().is_some_and(|error| error.contains("dirty")));
-    assert!(forge.repo_exists_calls.borrow().is_empty());
-    assert!(forge.pr_calls.borrow().is_empty());
+    assert!(record.repo_exists_calls.borrow().is_empty());
+    assert!(record.pr_calls.borrow().is_empty());
 }
 
 #[test]
@@ -278,14 +362,15 @@ fn rfc14_c07_workspace_push_wrong_branch_is_no_branch() {
     let remote_url = format!("file://{}", remote.display());
     let slot = clone_alpha_slot(&project_dir, &remote_url);
     run_test_git(&slot, &["checkout", "-b", "feature/not-the-change"]);
-    let forge = RecordingForge::new(true);
+    let runner = GhMock::new(true);
+    let record = runner.record();
 
-    let result = push_alpha(&project_dir, &test_project(remote_url), false, &forge);
+    let result = push_alpha(&project_dir, &test_project(remote_url), false, &runner);
 
     assert_eq!(result.status, PushOutcome::NoBranch);
     assert_eq!(current_branch(&slot).unwrap().as_deref(), Some("feature/not-the-change"));
-    assert!(forge.repo_exists_calls.borrow().is_empty());
-    assert!(forge.pr_calls.borrow().is_empty());
+    assert!(record.repo_exists_calls.borrow().is_empty());
+    assert!(record.pr_calls.borrow().is_empty());
 }
 
 #[test]
@@ -301,12 +386,13 @@ fn rfc14_c07_workspace_push_default_branch_is_no_branch() {
     run_test_git(&slot, &["push", "origin", TEST_BRANCH]);
     run_test_git(&remote, &["symbolic-ref", "HEAD", &format!("refs/heads/{TEST_BRANCH}")]);
     run_test_git(&slot, &["remote", "set-head", "origin", "--auto"]);
-    let forge = RecordingForge::new(true);
+    let runner = GhMock::new(true);
+    let record = runner.record();
 
-    let result = push_alpha(&project_dir, &test_project(remote_url), false, &forge);
+    let result = push_alpha(&project_dir, &test_project(remote_url), false, &runner);
 
     assert_eq!(result.status, PushOutcome::NoBranch);
-    assert!(forge.pr_calls.borrow().is_empty());
+    assert!(record.pr_calls.borrow().is_empty());
 }
 
 #[test]
@@ -320,9 +406,9 @@ fn rfc14_c07_workspace_push_detached_head_is_no_branch() {
     let slot = clone_alpha_slot(&project_dir, &remote_url);
     let head = git_output(&slot, &["rev-parse", "HEAD"]);
     run_test_git(&slot, &["checkout", "--detach", &head]);
-    let forge = RecordingForge::new(true);
+    let runner = GhMock::new(true);
 
-    let result = push_alpha(&project_dir, &test_project(remote_url), false, &forge);
+    let result = push_alpha(&project_dir, &test_project(remote_url), false, &runner);
 
     assert_eq!(result.status, PushOutcome::NoBranch);
     assert!(current_branch(&slot).unwrap().is_none());
@@ -340,12 +426,13 @@ fn rfc14_c07_workspace_push_refuses_remote_default_branch_as_no_branch() {
     commit_on_change_branch(&slot, "change.txt", "work\n");
     run_test_git(&slot, &["push", "origin", TEST_BRANCH]);
     run_test_git_dir(&remote, &["symbolic-ref", "HEAD", &format!("refs/heads/{TEST_BRANCH}")]);
-    let forge = RecordingForge::new(true);
+    let runner = GhMock::new(true);
+    let record = runner.record();
 
-    let result = push_alpha(&project_dir, &test_project(remote_url), false, &forge);
+    let result = push_alpha(&project_dir, &test_project(remote_url), false, &runner);
 
     assert_eq!(result.status, PushOutcome::NoBranch);
-    assert!(forge.pr_calls.borrow().is_empty());
+    assert!(record.pr_calls.borrow().is_empty());
 }
 
 #[test]
@@ -355,14 +442,15 @@ fn rfc14_c07_workspace_push_local_only_without_origin() {
     let alpha = project_dir.join("alpha");
     init_repo_with_commit(&alpha, "seed\n");
     run_test_git(&alpha, &["checkout", "-b", TEST_BRANCH]);
-    let forge = RecordingForge::new(true);
+    let runner = GhMock::new(true);
+    let record = runner.record();
 
-    let result = push_alpha(project_dir, &test_project("./alpha"), false, &forge);
+    let result = push_alpha(project_dir, &test_project("./alpha"), false, &runner);
 
     assert_eq!(result.status, PushOutcome::LocalOnly);
     assert!(result.branch.is_none());
-    assert!(forge.repo_exists_calls.borrow().is_empty());
-    assert!(forge.pr_calls.borrow().is_empty());
+    assert!(record.repo_exists_calls.borrow().is_empty());
+    assert!(record.pr_calls.borrow().is_empty());
 }
 
 #[test]
@@ -381,15 +469,19 @@ fn rfc14_c07_workspace_push_greenfield_creates_remote_then_pr_to_origin_head() {
     let rewrite = format!("file://{}", remote.display());
     run_test_git(&slot, &["remote", "add", "origin", github_url]);
     run_test_git(&slot, &["config", &format!("url.{rewrite}.insteadOf"), github_url]);
-    let forge = RecordingForge::creating(remote.clone());
+    let remote_for_cb = remote.clone();
+    let runner = GhMock::new(false).with_create(move |_| {
+        seed_bare_remote(&remote_for_cb);
+    });
+    let record = runner.record();
 
-    let result = push_alpha(&project_dir, &test_project(github_url), false, &forge);
+    let result = push_alpha(&project_dir, &test_project(github_url), false, &runner);
 
     assert_eq!(result.status, PushOutcome::Created);
     assert_eq!(result.pr_number, Some(42));
-    assert_eq!(forge.create_repo_calls.borrow().as_slice(), ["org/alpha"]);
+    assert_eq!(record.create_repo_calls.borrow().as_slice(), ["org/alpha"]);
     assert_eq!(
-        forge.pr_calls.borrow().as_slice(),
+        record.pr_calls.borrow().as_slice(),
         [(TEST_BRANCH.to_string(), "main".to_string(), TEST_CHANGE.to_string())]
     );
     assert_eq!(
@@ -412,14 +504,15 @@ fn rfc14_c07_workspace_push_dry_run_classifies_without_mutating_remote_or_pr() {
     let rewrite = format!("file://{}", remote.display());
     run_test_git(&slot, &["remote", "set-url", "origin", github_url]);
     run_test_git(&slot, &["config", &format!("url.{rewrite}.insteadOf"), github_url]);
-    let forge = RecordingForge::new(true);
+    let runner = GhMock::new(true);
+    let record = runner.record();
 
-    let result = push_alpha(&project_dir, &test_project(github_url), true, &forge);
+    let result = push_alpha(&project_dir, &test_project(github_url), true, &runner);
 
     assert_eq!(result.status, PushOutcome::Pushed);
     assert!(git_output_ok(&remote, &["rev-parse", TEST_BRANCH]).is_none());
-    assert!(forge.create_repo_calls.borrow().is_empty());
-    assert!(forge.pr_calls.borrow().is_empty());
+    assert!(record.create_repo_calls.borrow().is_empty());
+    assert!(record.pr_calls.borrow().is_empty());
 }
 
 #[test]
@@ -571,58 +664,6 @@ fn rfc14_c02_greenfield_bootstrap_stays_local_and_commits_scaffold() {
     assert_eq!(git_output_allow_empty(&dest, &["status", "--porcelain"]), "");
 }
 
-struct FakePushForge {
-    repo_exists: bool,
-    remote_to_create: Option<PathBuf>,
-    branch_absent_after_create: Option<String>,
-    pr_calls: std::cell::RefCell<Vec<(String, String)>>,
-}
-
-impl FakePushForge {
-    fn new(repo_exists: bool) -> Self {
-        Self {
-            repo_exists,
-            remote_to_create: None,
-            branch_absent_after_create: None,
-            pr_calls: std::cell::RefCell::new(Vec::new()),
-        }
-    }
-
-    fn creating(mut self, remote: PathBuf, absent_branch: &str) -> Self {
-        self.remote_to_create = Some(remote);
-        self.branch_absent_after_create = Some(absent_branch.to_string());
-        self
-    }
-}
-
-impl WorkspacePushForge for FakePushForge {
-    fn repo_exists(&self, _slug: &str, _project_path: &Path) -> Result<bool, Error> {
-        Ok(self.repo_exists)
-    }
-
-    fn create_repo(&self, _slug: &str, project_path: &Path) -> Result<(), Error> {
-        let Some(remote) = &self.remote_to_create else {
-            return Ok(());
-        };
-        run_test_git(
-            remote.parent().unwrap(),
-            &["clone", "--bare", project_path.to_str().unwrap(), remote.to_str().unwrap()],
-        );
-        if let Some(branch) = &self.branch_absent_after_create {
-            run_test_git_dir(remote, &["update-ref", "-d", &format!("refs/heads/{branch}")]);
-        }
-        run_test_git_dir(remote, &["symbolic-ref", "HEAD", "refs/heads/main"]);
-        Ok(())
-    }
-
-    fn ensure_pull_request(
-        &self, _project_path: &Path, branch_name: &str, base_branch: &str, _initiative_name: &str,
-    ) -> Result<u64, Error> {
-        self.pr_calls.borrow_mut().push((branch_name.to_string(), base_branch.to_string()));
-        Ok(42)
-    }
-}
-
 #[test]
 fn rfc14_c07_greenfield_push_creates_repo_then_pr_against_origin_head() {
     let tmp = tempfile::tempdir().unwrap();
@@ -651,7 +692,20 @@ fn rfc14_c07_greenfield_push_creates_repo_then_pr_against_origin_head() {
         description: Some("alpha service".to_string()),
         contracts: None,
     };
-    let forge = FakePushForge::new(false).creating(remote.clone(), "specify/demo-change");
+    let remote_for_cb = remote.clone();
+    let absent_branch = "specify/demo-change".to_string();
+    let runner = GhMock::new(false).with_create(move |project_path| {
+        run_test_git(
+            remote_for_cb.parent().unwrap(),
+            &["clone", "--bare", project_path.to_str().unwrap(), remote_for_cb.to_str().unwrap()],
+        );
+        run_test_git_dir(
+            &remote_for_cb,
+            &["update-ref", "-d", &format!("refs/heads/{absent_branch}")],
+        );
+        run_test_git_dir(&remote_for_cb, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+    });
+    let record = runner.record();
 
     let result = push_single_project(
         &project_dir,
@@ -660,7 +714,7 @@ fn rfc14_c07_greenfield_push_creates_repo_then_pr_against_origin_head() {
         "specify/demo-change",
         "demo-change",
         false,
-        &forge,
+        &runner,
     );
 
     assert_eq!(result.status, PushOutcome::Created, "result: {result:?}");
@@ -672,8 +726,8 @@ fn rfc14_c07_greenfield_push_creates_repo_then_pr_against_origin_head() {
     assert_eq!(git_dir_output(&remote, &["rev-parse", "refs/heads/main"]), main_head);
     assert_eq!(origin_head_branch(&slot).as_deref(), Some("main"));
     assert_eq!(
-        forge.pr_calls.borrow().as_slice(),
-        &[("specify/demo-change".to_string(), "main".to_string())]
+        record.pr_calls.borrow().as_slice(),
+        &[("specify/demo-change".to_string(), "main".to_string(), TEST_CHANGE.to_string())]
     );
 }
 
@@ -703,7 +757,8 @@ fn rfc14_c07_greenfield_dry_run_does_not_create_repo_or_pr() {
         description: Some("alpha service".to_string()),
         contracts: None,
     };
-    let forge = FakePushForge::new(false).creating(remote.clone(), "specify/demo-change");
+    let runner = GhMock::new(false);
+    let record = runner.record();
 
     let result = push_single_project(
         &project_dir,
@@ -712,10 +767,10 @@ fn rfc14_c07_greenfield_dry_run_does_not_create_repo_or_pr() {
         "specify/demo-change",
         "demo-change",
         true,
-        &forge,
+        &runner,
     );
 
     assert_eq!(result.status, PushOutcome::Created);
     assert!(!remote.exists(), "dry-run must not create the remote repository");
-    assert!(forge.pr_calls.borrow().is_empty(), "dry-run must not create or update PRs");
+    assert!(record.pr_calls.borrow().is_empty(), "dry-run must not create or update PRs");
 }

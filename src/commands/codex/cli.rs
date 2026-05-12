@@ -1,7 +1,5 @@
-//! Clap derive surface for `specify codex *`.
-//!
-//! Lifted out of `src/cli.rs`; `cli.rs` re-exports `CodexAction` so the
-//! parent derives still resolve at expansion time.
+//! Clap derive surface for `specify codex *`. The umbrella `cli.rs`
+//! re-exports `CodexAction`.
 
 use clap::Subcommand;
 

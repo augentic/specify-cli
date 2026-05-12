@@ -8,14 +8,14 @@ use specify_domain::config::LayoutExt;
 use specify_domain::slice::{LifecycleStatus, SliceMetadata};
 use specify_error::{Error, Result};
 
-use super::{PlanRef, require_file};
+use super::{Ref, require_file};
 use crate::context::Ctx;
 use crate::output::Render;
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct StatusBody {
-    plan: PlanRef,
+    plan: Ref,
     counts: Counts,
     order: OrderLabel,
     entries: Vec<EntryRow>,
@@ -172,7 +172,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     });
 
     let body = StatusBody {
-        plan: PlanRef {
+        plan: Ref {
             name: plan.name.clone(),
             path: plan_path,
         },

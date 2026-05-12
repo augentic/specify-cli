@@ -1,23 +1,6 @@
-//! Ergonomic load → mutate → atomic-write loop for `.specify/`-anchored
-//! YAML state.
-//!
-//! Handlers throughout `src/commands/**` follow the same shape:
-//!
-//! ```text
-//! load YAML → validate → mutate → atomic-write → emit Body
-//! ```
-//!
-//! The [`AtomicYaml`] trait pairs each piece of state with its
-//! canonical on-disk location ([`Layout`]); the [`with_state`] /
-//! [`with_existing_state`] helpers wrap the load + atomic-write halves
-//! so each handler keeps only the mutation closure and the response
-//! shaping. Atomic writes go through [`crate::slice::atomic::yaml_write`]
-//! — the only legitimate writer for these files.
-//!
-//! Scope: this helper is intended for binary handlers
-//! (`src/commands/**`). Library code that mutates state should keep
-//! using the inherent `load` / `save` / `path` helpers on the state
-//! type directly.
+//! Ergonomic load → mutate → atomic-write loop for `.specify/` YAML
+//! state. [`AtomicYaml`] pairs state with its [`Layout`] location;
+//! [`with_state`] wraps the load and atomic-write halves.
 
 use std::path::PathBuf;
 
@@ -32,15 +15,16 @@ use crate::slice::atomic::yaml_write;
 /// A piece of `.specify/`-anchored YAML state.
 ///
 /// Implementors pair a canonical on-disk location with atomic-write
-/// semantics by exposing a `load` / `path` pair so [`with_state`] (and
-/// [`with_existing_state`]) can wrap the load → mutate → write loop.
+/// semantics by exposing a `load` / `path` pair so [`with_state`] can
+/// wrap the load → mutate → write loop.
 pub trait AtomicYaml: Sized + Serialize + DeserializeOwned {
     /// Path under [`Layout`] where this state lives.
     fn path(layout: Layout<'_>) -> PathBuf;
 
-    /// Default value used when the file does not yet exist. Return
-    /// `None` to make absence an error in [`with_state`] (callers that
-    /// require an existing file should prefer [`with_existing_state`]).
+    /// Default value used when the file does not yet exist and the
+    /// caller passes [`InitPolicy::CreateMissing`]. Return `None` to
+    /// signal that the state has no synthesizable default; callers
+    /// that allow creation must override.
     #[must_use]
     fn default_for_load() -> Option<Self> {
         None
@@ -66,11 +50,28 @@ pub trait AtomicYaml: Sized + Serialize + DeserializeOwned {
     }
 }
 
+/// How [`with_state`] reacts when the underlying file is absent.
+#[derive(Debug, Clone, Copy)]
+pub enum InitPolicy {
+    /// Synthesise the state from [`AtomicYaml::default_for_load`] when
+    /// the file is missing. Used by handlers whose contract is
+    /// "create or update" (e.g. `registry add`).
+    CreateMissing,
+    /// Surface absence as [`Error::ArtifactNotFound`] with the given
+    /// `kind`. Used by handlers whose contract is "operate on an
+    /// existing file" (plan amend / transition, registry remove
+    /// pre-flight, …).
+    RequireExisting(&'static str),
+}
+
 /// Load → mutate → atomic-write loop.
 ///
-/// Loads `S` (or synthesises it from [`AtomicYaml::default_for_load`]
-/// if absent), runs `f` against the in-memory state, atomically writes
-/// the mutated value back, then returns the body the closure produced.
+/// Loads `S` from disk, applying `policy` when the file is absent:
+/// [`InitPolicy::CreateMissing`] synthesises a default via
+/// [`AtomicYaml::default_for_load`]; [`InitPolicy::RequireExisting`]
+/// returns [`Error::ArtifactNotFound`]. Runs `f` against the in-memory
+/// state, atomically writes the mutated value back, then returns the
+/// body the closure produced.
 ///
 /// `with_state` does **not** itself emit; the caller writes
 /// `ctx.out().write(&body)?;`. This keeps response shaping local to
@@ -78,56 +79,32 @@ pub trait AtomicYaml: Sized + Serialize + DeserializeOwned {
 ///
 /// # Panics
 ///
-/// Panics if [`AtomicYaml::load`] returns `Ok(None)` and
-/// [`AtomicYaml::default_for_load`] is also `None`. Handlers that
-/// require an existing file should call [`with_existing_state`]
-/// instead, which surfaces the absence as a typed error rather than a
-/// panic.
+/// Panics if `policy` is [`InitPolicy::CreateMissing`], the file is
+/// absent, and [`AtomicYaml::default_for_load`] is also `None`.
+/// Implementors must provide a default when they advertise creation.
 ///
 /// # Errors
 ///
-/// Propagates errors from `load`, the closure, and the atomic write.
-pub fn with_state<S, B, F>(layout: Layout<'_>, f: F) -> Result<B, Error>
+/// - Returns [`Error::ArtifactNotFound`] when `policy` is
+///   [`InitPolicy::RequireExisting`] and the file is absent.
+/// - Otherwise propagates errors from `load`, the closure, and the
+///   atomic write.
+pub fn with_state<S, B, F>(layout: Layout<'_>, policy: InitPolicy, f: F) -> Result<B, Error>
 where
     S: AtomicYaml,
     F: FnOnce(&mut S) -> Result<B, Error>,
 {
     let path = S::path(layout);
-    let mut state = S::load(layout)?.unwrap_or_else(|| {
-        S::default_for_load().expect(
-            "AtomicYaml::load returned None but default_for_load() is None; \
-             callers that require an existing file must use with_existing_state",
-        )
-    });
-    let body = f(&mut state)?;
-    yaml_write(&path, &state)?;
-    Ok(body)
-}
-
-/// Like [`with_state`], but treats absence as an error.
-///
-/// Returns `Error::ArtifactNotFound { kind: missing_kind, path }` when
-/// the underlying file is absent. Use this for handlers whose contract
-/// is "operate on an existing file" (plan amend / transition,
-/// registry remove pre-flight, …).
-///
-/// # Errors
-///
-/// Returns `Error::ArtifactNotFound` when [`AtomicYaml::load`] yields
-/// `Ok(None)`; otherwise propagates errors from `load`, the closure,
-/// and the atomic write.
-pub fn with_existing_state<S, B, F>(
-    layout: Layout<'_>, missing_kind: &'static str, f: F,
-) -> Result<B, Error>
-where
-    S: AtomicYaml,
-    F: FnOnce(&mut S) -> Result<B, Error>,
-{
-    let path = S::path(layout);
-    let mut state = S::load(layout)?.ok_or_else(|| Error::ArtifactNotFound {
-        kind: missing_kind,
-        path: path.clone(),
-    })?;
+    let mut state = match (S::load(layout)?, policy) {
+        (Some(state), _) => state,
+        (None, InitPolicy::CreateMissing) => S::default_for_load().expect(
+            "AtomicYaml::load returned None and InitPolicy::CreateMissing was requested but \
+             default_for_load() is None; the impl must provide a default when it allows creation",
+        ),
+        (None, InitPolicy::RequireExisting(kind)) => {
+            return Err(Error::ArtifactNotFound { kind, path });
+        }
+    };
     let body = f(&mut state)?;
     yaml_write(&path, &state)?;
     Ok(body)
@@ -178,7 +155,8 @@ impl AtomicYaml for ProjectConfig {
     /// ([`Error::NotInitialized`]) to `Ok(None)` so the trait's
     /// "absent → None" contract holds; callers that need the typed
     /// error should call [`ProjectConfig::load`] directly or use
-    /// [`with_existing_state`] with a custom `missing_kind`.
+    /// [`with_state`] with [`InitPolicy::RequireExisting`] and a custom
+    /// `missing_kind`.
     #[expect(
         clippy::use_self,
         reason = "explicit type prefix disambiguates the inherent `ProjectConfig::load` from this trait method of the same name"
@@ -206,7 +184,7 @@ mod tests {
     fn with_state_creates_default_when_absent() {
         let tmp = tempdir().expect("tempdir");
         let layout = tmp.path().layout();
-        let body = with_state::<Registry, _, _>(layout, |reg| {
+        let body = with_state::<Registry, _, _>(layout, InitPolicy::CreateMissing, |reg| {
             assert_eq!(reg.version, 1);
             assert!(reg.projects.is_empty());
             Ok(reg.version)
@@ -220,7 +198,7 @@ mod tests {
     fn with_state_propagates_closure_error_and_skips_write() {
         let tmp = tempdir().expect("tempdir");
         let layout = tmp.path().layout();
-        let err = with_state::<Registry, (), _>(layout, |_| {
+        let err = with_state::<Registry, (), _>(layout, InitPolicy::CreateMissing, |_| {
             Err(Error::Diag {
                 code: "test-abort",
                 detail: "abort".into(),
@@ -241,11 +219,15 @@ mod tests {
     }
 
     #[test]
-    fn with_existing_state_errors_on_absence() {
+    fn with_state_require_existing_errors_on_absence() {
         let tmp = tempdir().expect("tempdir");
         let layout = tmp.path().layout();
-        let err = with_existing_state::<Registry, (), _>(layout, "registry.yaml", |_| Ok(()))
-            .expect_err("absent file must error");
+        let err = with_state::<Registry, (), _>(
+            layout,
+            InitPolicy::RequireExisting("registry.yaml"),
+            |_| Ok(()),
+        )
+        .expect_err("absent file must error");
         match err {
             Error::ArtifactNotFound { kind, path } => {
                 assert_eq!(kind, "registry.yaml");
@@ -256,7 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn with_existing_state_round_trips_mutation() {
+    fn with_state_require_existing_round_trips_mutation() {
         let tmp = tempdir().expect("tempdir");
         let layout = tmp.path().layout();
         let initial = Registry {
@@ -265,16 +247,20 @@ mod tests {
         };
         yaml_write(&layout.registry_path(), &initial).expect("seed registry.yaml");
 
-        with_existing_state::<Registry, (), _>(layout, "registry.yaml", |reg| {
-            reg.projects.push(crate::registry::RegistryProject {
-                name: "alpha".into(),
-                url: ".".into(),
-                capability: "omnia@v1".into(),
-                description: None,
-                contracts: None,
-            });
-            Ok(())
-        })
+        with_state::<Registry, (), _>(
+            layout,
+            InitPolicy::RequireExisting("registry.yaml"),
+            |reg| {
+                reg.projects.push(crate::registry::RegistryProject {
+                    name: "alpha".into(),
+                    url: ".".into(),
+                    capability: "omnia@v1".into(),
+                    description: None,
+                    contracts: None,
+                });
+                Ok(())
+            },
+        )
         .expect("mutate ok");
 
         let reloaded = Registry::load(tmp.path()).expect("load").expect("present");

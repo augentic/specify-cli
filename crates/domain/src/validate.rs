@@ -1,20 +1,8 @@
-//! Hardcoded validation rule registry and runner (Pass/Fail/Deferred).
+//! Validation rule registry and runner.
 //!
-//! Public surface:
-//!
-//! - [`ValidationResult`] is re-exported from `specify-capability`;
-//!   that crate is the canonical home (see the workspace `DECISIONS.md`
-//!   §"Change G — `ValidationResult` canonical home" for why it doesn't
-//!   live here).
-//! - [`ValidationReport`] is the structured output produced by
-//!   [`validate_slice`].
-//! - [`Rule`] / [`CrossRule`] declare their [`Classification`]
-//!   (`Structural` or `Semantic`). Semantic rules carry `check: None` and
-//!   are always materialised as [`ValidationResult::Deferred`]; the
-//!   runner uses an `if let Some(check)` dispatch so the `None` arm
-//!   becomes Deferred by construction.
-//! - [`serialize_report`] emits the kebab-case validation payload that the
-//!   root CLI wraps in its versioned JSON envelope.
+//! `Rule` / `CrossRule` declare their `Classification`; [`validate_slice`]
+//! returns a `ValidationReport` with `Pass` / `Fail` / `Deferred` results,
+//! serialised by [`serialize_report`].
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -23,7 +11,7 @@ use specify_error as _; // dependency declared; re-exported via `Error` return t
 
 use crate::capability::PipelineView;
 use crate::spec::ParsedSpec;
-use crate::task::TaskProgress;
+use crate::task::Progress;
 
 pub mod compatibility;
 mod primitives;
@@ -107,7 +95,7 @@ pub struct BriefContext<'a> {
     /// Parsed spec (when `brief_id == "specs"`).
     pub parsed_spec: Option<&'a ParsedSpec>,
     /// Parsed task progress (when `brief_id == "tasks"`).
-    pub tasks: Option<&'a TaskProgress>,
+    pub tasks: Option<&'a Progress>,
     /// Absolute path to the slice directory.
     pub slice_dir: &'a Path,
     /// Absolute path to the specs directory.

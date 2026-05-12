@@ -1,10 +1,6 @@
-//! Top-level clap derive surface for the `specify` binary.
-//!
-//! This module owns only the umbrella types: [`Cli`], [`Commands`],
-//! [`Format`], and the [`SourceArg`] `--source key=value` parser.
-//! Per-verb action enums live next to their dispatchers in
-//! `src/commands/<verb>/cli.rs` and are re-exported below so the clap
-//! derive on [`Commands`] resolves them at expansion time.
+//! Top-level clap derive surface for the `specify` binary. Owns the
+//! umbrella types ([`Cli`], [`Commands`], [`Format`], [`SourceArg`])
+//! and re-exports the per-verb action enums.
 
 use std::str::FromStr;
 

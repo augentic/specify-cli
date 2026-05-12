@@ -3,10 +3,10 @@ use std::io::Write;
 use serde::Serialize;
 use serde_json::Value;
 use specify_domain::change::{Entry, EntryPatch, Patch, Plan, Status};
-use specify_domain::config::with_existing_state;
+use specify_domain::config::{InitPolicy, with_state};
 use specify_error::Result;
 
-use super::{PlanRef, change_entry_json, check_project, plan_ref};
+use super::{Ref, change_entry_json, check_project, plan_ref};
 use crate::context::Ctx;
 use crate::output::Render;
 
@@ -42,16 +42,20 @@ pub(super) fn add(
         status_reason: None,
     };
     let plan_path = ctx.layout().plan_path();
-    let body = with_existing_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
-        plan.create(entry)?;
-        let created =
-            plan.entries.last().expect("Plan::create appended an entry that is now missing");
-        Ok(AddBody {
-            plan: plan_ref(plan, &plan_path),
-            action: PlanAction::Create,
-            entry: change_entry_json(created),
-        })
-    })?;
+    let body = with_state::<Plan, _, _>(
+        ctx.layout(),
+        InitPolicy::RequireExisting("plan.yaml"),
+        move |plan| {
+            plan.create(entry)?;
+            let created =
+                plan.entries.last().expect("Plan::create appended an entry that is now missing");
+            Ok(AddBody {
+                plan: plan_ref(plan, &plan_path),
+                action: PlanAction::Create,
+                entry: change_entry_json(created),
+            })
+        },
+    )?;
 
     ctx.write(&body)?;
     Ok(())
@@ -77,15 +81,20 @@ pub(super) fn amend(
         context,
     };
     let plan_path = ctx.layout().plan_path();
-    let body = with_existing_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
-        plan.amend(&name, patch)?;
-        let amended = plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
-        Ok(AmendBody {
-            plan: plan_ref(plan, &plan_path),
-            action: PlanAction::Amend,
-            entry: change_entry_json(amended),
-        })
-    })?;
+    let body = with_state::<Plan, _, _>(
+        ctx.layout(),
+        InitPolicy::RequireExisting("plan.yaml"),
+        move |plan| {
+            plan.amend(&name, patch)?;
+            let amended =
+                plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
+            Ok(AmendBody {
+                plan: plan_ref(plan, &plan_path),
+                action: PlanAction::Amend,
+                entry: change_entry_json(amended),
+            })
+        },
+    )?;
 
     ctx.write(&body)?;
     Ok(())
@@ -94,7 +103,7 @@ pub(super) fn amend(
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct AddBody {
-    plan: PlanRef,
+    plan: Ref,
     action: PlanAction,
     entry: Value,
 }
@@ -109,7 +118,7 @@ impl Render for AddBody {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct AmendBody {
-    plan: PlanRef,
+    plan: Ref,
     action: PlanAction,
     entry: Value,
 }

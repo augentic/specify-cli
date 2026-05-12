@@ -6,29 +6,29 @@ use std::path::Path;
 
 use specify_error::Error;
 
-use super::{Guard, PlanLockReleased, Stamp};
+use super::{Guard, Released, Stamp};
 
 impl Stamp {
-    /// Release the stamp if we own it. See [`PlanLockReleased`] for
+    /// Release the stamp if we own it. See [`Released`] for
     /// the four outcomes.
     ///
     /// # Errors
     ///
     /// [`Error::Io`] if the stamp file exists but cannot be read, or
     /// if removing it (when we own the PID) fails.
-    pub fn release(project_dir: &Path, our_pid: u32) -> Result<PlanLockReleased, Error> {
+    pub fn release(project_dir: &Path, our_pid: u32) -> Result<Released, Error> {
         let path = Self::lockfile_path(project_dir);
         if !path.exists() {
-            return Ok(PlanLockReleased::WasAbsent);
+            return Ok(Released::WasAbsent);
         }
         let contents = fs::read_to_string(&path)?;
         match contents.trim().parse::<u32>() {
             Ok(pid) if pid == our_pid => {
                 fs::remove_file(&path)?;
-                Ok(PlanLockReleased::Removed { pid })
+                Ok(Released::Removed { pid })
             }
-            Ok(pid) => Ok(PlanLockReleased::HeldByOther { pid: Some(pid) }),
-            Err(_) => Ok(PlanLockReleased::HeldByOther { pid: None }),
+            Ok(pid) => Ok(Released::HeldByOther { pid: Some(pid) }),
+            Err(_) => Ok(Released::HeldByOther { pid: None }),
         }
     }
 }

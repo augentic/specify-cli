@@ -1,10 +1,6 @@
-//! Cross-project contract compatibility classification.
-//!
-//! The classifier compares producer contracts in the current project
-//! baseline with consumer views materialised under `.specify/workspace/`.
-//! It is deliberately read-only and deterministic: callers provide a
-//! project root, the module reads `registry.yaml`, `contracts/`, and
-//! workspace clones, then returns a classified report.
+//! Cross-project contract compatibility classification. Read-only and
+//! deterministic: given a project root, reads `registry.yaml`,
+//! `contracts/`, and workspace clones, then returns a classified report.
 
 use std::path::Path;
 
@@ -32,20 +28,31 @@ const KIND_STATUS_CODE_REMOVED: &str = "status-code-removed";
 const KIND_REMOVED_CHANNEL: &str = "removed-channel";
 const KIND_REMOVED_OPERATION: &str = "removed-operation";
 
-crate::kebab_enum! {
-    /// Compatibility buckets for a producer-to-consumer contract delta.
-    #[derive(Debug)]
-    pub enum CompatibilityClassification {
-        /// The delta is backwards-compatible for the consumer.
-        Additive => "additive",
-        /// The delta is a recognized backwards-incompatible wire change.
-        Breaking => "breaking",
-        /// The delta changed behaviorally, but the classifier cannot prove
-        /// whether it is safe.
-        Ambiguous => "ambiguous",
-        /// The classifier could not compare the producer and consumer views.
-        Unverifiable => "unverifiable",
-    }
+/// Compatibility buckets for a producer-to-consumer contract delta.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    strum::IntoStaticStr,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum CompatibilityClassification {
+    /// The delta is backwards-compatible for the consumer.
+    Additive,
+    /// The delta is a recognized backwards-incompatible wire change.
+    Breaking,
+    /// The delta changed behaviorally, but the classifier cannot prove
+    /// whether it is safe.
+    Ambiguous,
+    /// The classifier could not compare the producer and consumer views.
+    Unverifiable,
 }
 
 /// One compatibility finding for a producer / consumer contract pair.
@@ -136,7 +143,10 @@ impl CompatibilityReport {
                 .then_with(|| a.consumer_project.cmp(&b.consumer_project))
                 .then_with(|| a.producer_contract.cmp(&b.producer_contract))
                 .then_with(|| a.locator.cmp(&b.locator))
-                .then_with(|| a.classification.as_str().cmp(b.classification.as_str()))
+                .then_with(|| {
+                    <&'static str>::from(&a.classification)
+                        .cmp(<&'static str>::from(&b.classification))
+                })
         });
         let summary = CompatibilitySummary::from_findings(&findings);
         let ok = summary.breaking == 0 && summary.ambiguous == 0 && summary.unverifiable == 0;

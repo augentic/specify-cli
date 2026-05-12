@@ -1,14 +1,13 @@
-//! Orphan-cache scan for `specify tool gc`.
-//!
-//! Computes the set of `<cache-root>/<scope-segment>/<tool-name>/<version>/`
-//! directories that are no longer referenced by the live merged manifest.
+//! Orphan-cache scan for `specify tool gc` — computes the cache
+//! `<scope>/<tool>/<version>/` directories that are no longer
+//! referenced by the live merged manifest.
 
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::hash::BuildHasher;
 use std::path::PathBuf;
 
-use super::{SIDECAR_FILENAME, cache_root, read_sidecar, scope_segment, sorted_dir_entries};
+use super::{SIDECAR_FILENAME, read_sidecar, root, scope_segment, sorted_dir_entries};
 use crate::error::ToolError;
 use crate::manifest::ToolScope;
 
@@ -31,7 +30,7 @@ use crate::manifest::ToolScope;
 pub fn scan<S: BuildHasher>(
     scope: &ToolScope, kept: &HashSet<(String, String, String), S>,
 ) -> Result<Vec<PathBuf>, ToolError> {
-    let scope_dir = cache_root()?.join(scope_segment(scope)?);
+    let scope_dir = root()?.join(scope_segment(scope)?);
     if !scope_dir.exists() {
         return Ok(Vec::new());
     }

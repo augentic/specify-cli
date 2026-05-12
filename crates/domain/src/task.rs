@@ -1,13 +1,6 @@
-//! Task parsing and `mark_complete` for `tasks.md` files.
-//!
-//! The on-disk format is documented in
-//! `plugins/spec/references/specify.md` §"Tasks Document" and §"Skill
-//! Directive Tags". See the workspace `DECISIONS.md` ("Change E — Task
-//! skill directive format") for why the skill-directive parser looks
-//! for an HTML comment (`<!-- skill: plugin:skill -->`).
-//!
-//! Public surface: `parse_tasks` and `mark_complete`. Selection
-//! helpers (`next_pending`, etc.) are deliberately not exposed.
+//! `tasks.md` parser. Public surface is `parse_tasks` and
+//! `mark_complete`; selection helpers stay private. Format is
+//! documented in `plugins/spec/references/specify.md` §"Tasks Document".
 
 use std::sync::OnceLock;
 
@@ -41,7 +34,7 @@ pub struct SkillDirective {
 
 /// Aggregate task statistics plus the full task list in document order.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TaskProgress {
+pub struct Progress {
     /// Total number of tasks parsed.
     pub total: usize,
     /// Number of tasks marked complete.
@@ -81,13 +74,13 @@ fn skill_directive_re() -> &'static Regex {
 // parse_tasks
 // ---------------------------------------------------------------------------
 
-/// Parse `tasks.md` content into [`TaskProgress`].
+/// Parse `tasks.md` content into [`Progress`].
 ///
 /// Lenient: unparseable lines are ignored, as are `### …` and deeper
 /// headings. Tasks appearing before the first `## ` heading receive
 /// `group == ""`.
 #[must_use]
-pub fn parse_tasks(content: &str) -> TaskProgress {
+pub fn parse_tasks(content: &str) -> Progress {
     let mut current_group = String::new();
     let mut tasks: Vec<Task> = Vec::new();
     let mut complete_count = 0usize;
@@ -125,7 +118,7 @@ pub fn parse_tasks(content: &str) -> TaskProgress {
         });
     }
 
-    TaskProgress {
+    Progress {
         total: tasks.len(),
         complete: complete_count,
         tasks,

@@ -17,7 +17,8 @@ impl AtomicYaml for Plan {
 
     /// `plan.yaml` is created by `specify change plan create`, never
     /// synthesised implicitly. Mutation handlers (`add`, `amend`,
-    /// `transition`) should drive `with_existing_state` to surface
+    /// `transition`) should drive `with_state` with
+    /// [`crate::config::InitPolicy::RequireExisting`] to surface
     /// absence as a typed [`Error::ArtifactNotFound`].
     fn default_for_load() -> Option<Self> {
         None

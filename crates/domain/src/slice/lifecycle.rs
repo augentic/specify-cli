@@ -1,31 +1,38 @@
-//! Lifecycle state machine for slice progression.
-//!
-//! Legal edges: `Defining → Defined → Building → Complete → Merged`,
-//! plus `Defining → Defined` reflux and `Defined → Defining` rewind,
-//! with `Dropped` reachable from any non-terminal state. Terminal
-//! states (`Merged`, `Dropped`) admit no outgoing edges;
+//! Lifecycle state machine for slice progression
+//! (`Defining → Defined → Building → Complete → Merged`).
 //! [`LifecycleStatus::transition`] is the only sanctioned mutator.
 
 use specify_error::Error;
 
-crate::kebab_enum! {
-    /// Lifecycle states a slice passes through.
-    #[derive(Debug, clap::ValueEnum)]
-    #[non_exhaustive]
-    pub enum LifecycleStatus {
-        /// Slice is being defined (artifacts authored).
-        Defining => "defining",
-        /// Definition complete, awaiting build.
-        Defined => "defined",
-        /// Build phase in progress.
-        Building => "building",
-        /// Build complete, awaiting merge.
-        Complete => "complete",
-        /// Specs merged into baseline and slice archived.
-        Merged => "merged",
-        /// Slice discarded without merging.
-        Dropped => "dropped",
-    }
+/// Lifecycle states a slice passes through.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    clap::ValueEnum,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+#[non_exhaustive]
+pub enum LifecycleStatus {
+    /// Slice is being defined (artifacts authored).
+    Defining,
+    /// Definition complete, awaiting build.
+    Defined,
+    /// Build phase in progress.
+    Building,
+    /// Build complete, awaiting merge.
+    Complete,
+    /// Specs merged into baseline and slice archived.
+    Merged,
+    /// Slice discarded without merging.
+    Dropped,
 }
 
 impl LifecycleStatus {

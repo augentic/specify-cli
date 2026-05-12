@@ -1,6 +1,12 @@
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
+/// Display a path as the canonical absolute form when it exists; fall back
+/// to the lossy display when it does not (e.g. a path we just deleted).
+fn canonical(p: &Path) -> String {
+    std::fs::canonicalize(p).map_or_else(|_| p.display().to_string(), |c| c.display().to_string())
+}
+
 use chrono::Utc;
 use serde::Serialize;
 use specify_domain::config::{ProjectConfig, is_workspace_clone};
@@ -10,7 +16,7 @@ use specify_error::{Error, Result};
 use crate::cli::Format;
 use crate::commands::context;
 use crate::context::Ctx;
-use crate::output::{self, Render, display};
+use crate::output::{self, Render};
 
 /// Dispatcher for `specify init`.
 ///
@@ -46,7 +52,7 @@ pub(super) fn run(
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct InitBody {
+struct Body {
     config_path: String,
     /// Resolved capability name (or `"hub"` for hub init).
     capability_name: String,
@@ -59,10 +65,10 @@ struct InitBody {
     /// initialisations without parsing the capability name.
     hub: bool,
     #[serde(flatten)]
-    context: InitContextBody,
+    context: ContextBody,
 }
 
-impl Render for InitBody {
+impl Render for Body {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         if self.hub {
             writeln!(w, "Initialized .specify/ as a registry-only platform hub")?;
@@ -96,7 +102,7 @@ impl Render for InitBody {
 }
 
 #[derive(Serialize)]
-struct InitContextBody {
+struct ContextBody {
     #[serde(rename = "context-generated")]
     generated: bool,
     #[serde(rename = "context-skipped")]
@@ -105,10 +111,10 @@ struct InitContextBody {
     skip_reason: Option<&'static str>,
 }
 
-impl From<InitContextGeneration> for InitContextBody {
-    fn from(context_generation: InitContextGeneration) -> Self {
+impl From<ContextGeneration> for ContextBody {
+    fn from(context_generation: ContextGeneration) -> Self {
         Self {
-            generated: matches!(context_generation, InitContextGeneration::Generated),
+            generated: matches!(context_generation, ContextGeneration::Generated),
             skipped: context_generation.skipped(),
             skip_reason: context_generation.skip_reason(),
         }
@@ -116,29 +122,29 @@ impl From<InitContextGeneration> for InitContextBody {
 }
 
 fn emit_init_result(
-    format: Format, result: &InitResult, hub: bool, context_generation: InitContextGeneration,
+    format: Format, result: &InitResult, hub: bool, context_generation: ContextGeneration,
 ) -> Result<()> {
-    let body = InitBody {
-        config_path: display(&result.config_path),
+    let body = Body {
+        config_path: canonical(&result.config_path),
         capability_name: result.capability_name.clone(),
         cache_present: result.cache_present,
-        directories_created: result.directories_created.iter().map(|p| display(p)).collect(),
+        directories_created: result.directories_created.iter().map(|p| canonical(p)).collect(),
         scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
         specify_version: result.specify_version.clone(),
         hub,
-        context: InitContextBody::from(context_generation),
+        context: ContextBody::from(context_generation),
     };
     output::write(format, &body)?;
     Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InitContextGeneration {
+enum ContextGeneration {
     Generated,
     Skipped { reason: &'static str },
 }
 
-impl InitContextGeneration {
+impl ContextGeneration {
     const fn skip_reason(&self) -> Option<&'static str> {
         match self {
             Self::Generated => None,
@@ -151,15 +157,15 @@ impl InitContextGeneration {
     }
 }
 
-fn generate_initial_context(format: Format, project_dir: &Path) -> Result<InitContextGeneration> {
+fn generate_initial_context(format: Format, project_dir: &Path) -> Result<ContextGeneration> {
     if is_workspace_clone(project_dir) {
-        return Ok(InitContextGeneration::Skipped {
+        return Ok(ContextGeneration::Skipped {
             reason: "workspace-clone",
         });
     }
     match project_dir.join("AGENTS.md").try_exists() {
         Ok(true) => {
-            return Ok(InitContextGeneration::Skipped {
+            return Ok(ContextGeneration::Skipped {
                 reason: "existing-agents-md",
             });
         }
@@ -180,5 +186,5 @@ fn generate_initial_context(format: Format, project_dir: &Path) -> Result<InitCo
         "init context generation is called only when AGENTS.md is absent"
     );
     debug_assert_eq!(outcome.disposition, "create");
-    Ok(InitContextGeneration::Generated)
+    Ok(ContextGeneration::Generated)
 }

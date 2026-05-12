@@ -11,8 +11,8 @@ use specify_domain::config::LayoutExt;
 use specify_domain::registry::Registry;
 use specify_domain::registry::branch::{Prepared, Request as BranchRequest, prepare};
 use specify_domain::registry::workspace::{
-    ConfiguredTargetKind, PushOutcome, SlotKind, SlotStatus, push_projects,
-    status_projects as workspace_status_projects, sync_projects as workspace_sync_projects,
+    ConfiguredTargetKind, PushOutcome, SlotKind, SlotStatus, push_projects, status_projects,
+    sync_projects,
 };
 use specify_error::{Error, Result};
 
@@ -26,7 +26,7 @@ pub(crate) fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
     };
     let synced = if let Some(reg) = registry.as_ref() {
         let selected = reg.select(projects)?;
-        workspace_sync_projects(&ctx.project_dir, &selected)?;
+        sync_projects(&ctx.project_dir, &selected)?;
         true
     } else {
         false
@@ -53,10 +53,8 @@ pub(crate) fn status(ctx: &Ctx, projects: &[String]) -> Result<()> {
         }
         Some(registry) => {
             let selected = registry.select(projects)?;
-            let slots = workspace_status_projects(&ctx.project_dir, &selected)
-                .iter()
-                .map(SlotRow::from)
-                .collect();
+            let slots =
+                status_projects(&ctx.project_dir, &selected).iter().map(SlotRow::from).collect();
             StatusBody::Present { slots }
         }
     };

@@ -123,19 +123,19 @@ pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
         resolve_archived_metadata(&ctx.project_dir, &name)?
     };
 
-    let outcome = metadata.outcome.as_ref().map(OutcomeRow::from);
-    ctx.write(&OutcomeShowBody { name, outcome })?;
+    let outcome = metadata.outcome.as_ref().map(Row::from);
+    ctx.write(&ShowBody { name, outcome })?;
     Ok(())
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct OutcomeShowBody {
+struct ShowBody {
     name: String,
-    outcome: Option<OutcomeRow>,
+    outcome: Option<Row>,
 }
 
-impl Render for OutcomeShowBody {
+impl Render for ShowBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         match &self.outcome {
             None => writeln!(w, "{}: no outcome stamped", self.name),
@@ -166,7 +166,7 @@ impl Render for OutcomeShowBody {
 /// keep working unchanged.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct OutcomeRow {
+struct Row {
     phase: String,
     outcome: String,
     #[serde(with = "specify_domain::serde_rfc3339")]
@@ -177,7 +177,7 @@ struct OutcomeRow {
     proposal: Option<RegistryProposalRow>,
 }
 
-impl From<&specify_domain::slice::Outcome> for OutcomeRow {
+impl From<&specify_domain::slice::Outcome> for Row {
     fn from(o: &specify_domain::slice::Outcome) -> Self {
         Self {
             phase: o.phase.to_string(),

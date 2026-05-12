@@ -107,7 +107,7 @@ fn stamp_acquire_release() {
     assert_eq!(read_lock_pid(dir.path()).trim(), "4242");
 
     let released = Stamp::release(dir.path(), 4242).expect("release ok");
-    assert_eq!(released, PlanLockReleased::Removed { pid: 4242 });
+    assert_eq!(released, Released::Removed { pid: 4242 });
     assert!(!dir.path().join(".specify").join("plan.lock").exists());
 }
 
@@ -150,7 +150,7 @@ fn stamp_reclaims_stale() {
 fn stamp_release_absent() {
     let dir = tempdir().expect("tempdir");
     let released = Stamp::release(dir.path(), 4242).expect("release ok");
-    assert_eq!(released, PlanLockReleased::WasAbsent);
+    assert_eq!(released, Released::WasAbsent);
 }
 
 #[test]
@@ -160,7 +160,7 @@ fn stamp_release_refuses_other() {
     fs::write(dir.path().join(".specify").join("plan.lock"), "7777").expect("prime");
 
     let released = Stamp::release(dir.path(), 4242).expect("release ok");
-    assert_eq!(released, PlanLockReleased::HeldByOther { pid: Some(7777) });
+    assert_eq!(released, Released::HeldByOther { pid: Some(7777) });
     // File still there — we refused to clobber.
     assert_eq!(read_lock_pid(dir.path()).trim(), "7777");
 }
@@ -171,7 +171,7 @@ fn stamp_status_absent() {
     let state = Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
     assert_eq!(
         state,
-        PlanLockState {
+        State {
             held: false,
             pid: None,
             stale: None
@@ -187,7 +187,7 @@ fn stamp_status_held() {
     let state = Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
     assert_eq!(
         state,
-        PlanLockState {
+        State {
             held: true,
             pid: Some(4242),
             stale: Some(false)
@@ -204,7 +204,7 @@ fn stamp_status_stale() {
     let state = Stamp::status_with_liveness_check(dir.path(), |_| false).expect("status ok");
     assert_eq!(
         state,
-        PlanLockState {
+        State {
             held: false,
             pid: Some(99999),
             stale: Some(true)
@@ -221,7 +221,7 @@ fn stamp_status_malformed() {
     let state = Stamp::status_with_liveness_check(dir.path(), |_| true).expect("status ok");
     assert_eq!(
         state,
-        PlanLockState {
+        State {
             held: false,
             pid: None,
             stale: Some(true)

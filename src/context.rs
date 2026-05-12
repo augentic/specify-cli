@@ -1,5 +1,7 @@
+use std::io::Write;
 use std::path::PathBuf;
 
+use serde::Serialize;
 use specify_domain::capability::PipelineView;
 use specify_domain::config::{Layout, LayoutExt, ProjectConfig};
 use specify_error::Error;
@@ -54,8 +56,7 @@ impl Ctx {
     }
 
     /// Typed view over `.specify/`-anchored paths. Hand this to
-    /// [`specify_domain::config::with_state`] /
-    /// [`specify_domain::config::with_existing_state`] in handlers that mutate
+    /// [`specify_domain::config::with_state`] in handlers that mutate
     /// `plan.yaml` / `registry.yaml`.
     pub(crate) fn layout(&self) -> Layout<'_> {
         self.project_dir.layout()
@@ -79,5 +80,22 @@ impl Ctx {
     /// [`output::write`].
     pub(crate) fn write<R: Render>(&self, body: &R) -> Result<(), Error> {
         output::write(self.format, body)
+    }
+
+    /// Serialise `data` and write it to stdout in this `Ctx`'s
+    /// format, using `render_text` for the text-format branch.
+    /// Use this when the text rendering is a one-off — the closure
+    /// lives next to the call site, so the response shape stays in a
+    /// single block of code rather than spreading across a `*Body`
+    /// type and an `impl Render for *Body` sibling.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the underlying serialization or I/O error from
+    /// [`output::write_with`].
+    pub(crate) fn emit_with<T: Serialize>(
+        &self, data: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
+    ) -> Result<(), Error> {
+        output::write_with(self.format, data, render_text)
     }
 }

@@ -4,7 +4,7 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_error::Result;
-use specify_tool::cache::{self, CacheStatus, OciSnapshot, PackageSnapshot};
+use specify_tool::cache::{self, OciSnapshot, PackageSnapshot, Status as CacheStatus};
 use specify_tool::load::Warning;
 use specify_tool::{Tool, ToolPermissions, ToolScope};
 
@@ -45,12 +45,23 @@ pub(super) struct ToolRow {
     pub(super) cached_path: String,
 }
 
-specify_domain::kebab_enum! {
-    #[derive(Debug)]
-    pub(super) enum ToolScopeKind {
-        Project => "project",
-        Capability => "capability",
-    }
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    serde::Deserialize,
+    strum::Display,
+    strum::IntoStaticStr,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub(super) enum ToolScopeKind {
+    Project,
+    Capability,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -226,7 +237,7 @@ pub(super) fn show_row_for(scoped: &ScopedTool) -> Result<ToolShowRow> {
 }
 
 pub(super) fn cache_status_for(scoped: &ScopedTool) -> Result<CacheStatus> {
-    Ok(cache::cache_status(
+    Ok(cache::status(
         &scoped.scope,
         &scoped.tool.name,
         &scoped.tool.version,

@@ -1,8 +1,6 @@
-//! HTTPS source resolution.
-//!
-//! Per-call timeouts, a 64 MiB body cap, and stream-to-tempfile persistence.
-//! New code that adds an HTTP path must adopt the same shape (see AGENTS.md
-//! §"ureq fetch hardening").
+//! HTTPS source resolution with per-call timeouts, a 64 MiB body cap,
+//! and stream-to-tempfile persistence. See AGENTS.md
+//! §"ureq fetch hardening" for the contract every HTTP path must follow.
 
 use std::io::{Read, Write};
 use std::path::Path;

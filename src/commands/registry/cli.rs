@@ -1,7 +1,5 @@
-//! Clap derive surface for `specify registry *`.
-//!
-//! Lifted out of `src/cli.rs`; `cli.rs` re-exports `RegistryAction` so
-//! the parent derives still resolve at expansion time.
+//! Clap derive surface for `specify registry *`. The umbrella
+//! `cli.rs` re-exports `RegistryAction`.
 
 use clap::Subcommand;
 

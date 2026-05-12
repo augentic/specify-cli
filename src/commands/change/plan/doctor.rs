@@ -1,9 +1,6 @@
-//! `specify change plan doctor`.
-//!
-//! Thin handler over [`specify_domain::change::plan_doctor`]: load the
-//! plan + registry, run the doctor pipeline (which is a strict
-//! superset of `Plan::validate`), then render the diagnostic stream as
-//! text or JSON.
+//! `specify change plan doctor` — thin handler over
+//! [`specify_domain::change::plan_doctor`] that loads plan + registry,
+//! runs the doctor pipeline, and renders the diagnostic stream.
 
 use std::io::Write;
 
@@ -13,7 +10,7 @@ use specify_domain::config::LayoutExt;
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
-use super::{PlanRef, plan_ref, require_file};
+use super::{Ref, plan_ref, require_file};
 use crate::context::Ctx;
 use crate::output::Render;
 
@@ -35,7 +32,7 @@ struct DiagnosticRow {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct DoctorBody {
-    plan: PlanRef,
+    plan: Ref,
     diagnostics: Vec<DiagnosticRow>,
 }
 

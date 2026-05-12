@@ -1,22 +1,6 @@
-//! `init` — the orchestration called by `specify init`.
-//!
-//! Scaffolds `.specify/{slices,specs,archive,.cache}/`, resolves the
-//! requested capability into `.specify/.cache/`, writes
-//! `.specify/project.yaml` with a `rules:` key scaffolded from the
-//! capability's `pipeline.define` briefs, and upserts the
-//! `.specify/.cache/` and `.specify/workspace/` lines into the project
-//! `.gitignore`. Idempotent: a second call with the same options
-//! refreshes the cache and rewrites `project.yaml` byte-for-byte.
-//!
-//! `init` writes only the per-project skeleton. Repo-root artefacts
-//! (`registry.yaml`, `change.md`, `plan.yaml`) are minted by their
-//! own verbs (`specify registry add`, `specify change create`,
-//! `specify change plan create`) and never pre-touched here.
-//!
-//! Hub mode ([`InitOptions::hub`] = `true`) is the one exception: it
-//! scaffolds an empty `registry.yaml` alongside a sentinel
-//! `project.yaml { hub: true }` (with `capability:` omitted) and
-//! refuses to run when `.specify/` already exists.
+//! Orchestration for `specify init`. Scaffolds `.specify/`, resolves
+//! the requested capability, writes `project.yaml`, and upserts
+//! `.gitignore` lines. Hub mode additionally mints `registry.yaml`.
 
 mod cache;
 mod capability_uri;

@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use specify_domain::change::Plan;
-use specify_domain::config::{LayoutExt, with_existing_state};
+use specify_domain::config::{InitPolicy, LayoutExt, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
@@ -15,7 +15,7 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
     let hub_mode = ctx.config.hub;
 
     // Pre-flight: surface the legacy `registry-remove-no-registry`
-    // diagnostic when the file is absent. `with_existing_state` would
+    // diagnostic when the file is absent. `with_state` would
     // emit the generic `Error::ArtifactNotFound`; the registry-specific
     // diag is part of the wire contract.
     if !path.exists() {
@@ -25,8 +25,10 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
         });
     }
 
-    let body =
-        with_existing_state::<Registry, _, _>(ctx.layout(), "registry.yaml", move |registry| {
+    let body = with_state::<Registry, _, _>(
+        ctx.layout(),
+        InitPolicy::RequireExisting("registry.yaml"),
+        move |registry| {
             let position =
                 registry.projects.iter().position(|p| p.name == name).ok_or_else(|| {
                     Error::Diag {
@@ -55,7 +57,8 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
                 removed: name,
                 warnings,
             })
-        })?;
+        },
+    )?;
 
     ctx.write(&body)?;
     Ok(())

@@ -264,7 +264,7 @@ fn empty_input_yields_empty_progress() {
     let progress = parse_tasks("");
     assert_eq!(
         progress,
-        TaskProgress {
+        Progress {
             total: 0,
             complete: 0,
             tasks: vec![]

@@ -1,10 +1,6 @@
 //! Read side of the slice-merge engine: staged-tree discovery for the
 //! 3-way merge plan, opaque-replace pre-image enumeration, and
 //! baseline-mtime drift checks.
-//!
-//! Nothing in this module touches the filesystem outside `slice_dir`,
-//! `class.staged_dir`, or `class.baseline_dir` (read-only). Writers
-//! live in [`super::write`].
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -1,7 +1,5 @@
-//! YAML newtype wrappers that hide `serde_saphyr` from public surfaces.
-//!
-//! Pairs with [`crate::Error`]'s `Yaml` / `YamlSer` variants so the
-//! upstream crate name does not leak through every `specify-*` API.
+//! YAML newtype wrappers that hide `serde_saphyr` from public
+//! surfaces, paired with [`crate::Error`]'s `Yaml` / `YamlSer` variants.
 
 /// Newtype wrapper around [`serde_saphyr::Error`].
 ///

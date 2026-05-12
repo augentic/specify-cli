@@ -1,14 +1,26 @@
-use std::cell::RefCell;
+//! Integration tests for `specify_domain::change::finalize`.
+//!
+//! Substitutes the real `gh` / `git` shell-outs with a `MockCmd`
+//! [`CmdRunner`](specify_domain::cmd::CmdRunner) so the run loop's
+//! classification, refusal, and atomic archive behaviours can be
+//! exercised end-to-end without a forge.
+
+mod common;
+
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use specify_domain::change::finalize::{
+    Inputs, Landing, Outcome, ProjectResult, Refusal, classify_pr, combine, is_terminal,
+    outstanding, run, summarise,
+};
+use specify_domain::change::{Entry, Plan, Status};
+use specify_domain::registry::forge::{PrState, PrView};
+use specify_domain::registry::{Registry, RegistryProject};
 use tempfile::TempDir;
 
-use super::*;
-use crate::change::plan::core::{Entry, Plan, Status};
-use crate::registry::forge::{PrState, PrView};
-use crate::registry::{Registry, RegistryProject};
+use crate::common::{MockCmd, RecordedCall, fail_stderr, ok_stdout};
 
 // ---- pure helpers -----------------------------------------------------
 
@@ -126,23 +138,21 @@ fn pr_view(branch: &str, state: PrState, merged: bool) -> PrView {
     }
 }
 
-// ---- mock probe -------------------------------------------------------
+// ---- finalize-flavoured MockCmd builder -----------------------------
+//
+// Per-branch responses for `gh pr list/view` plus per-path dirty flags
+// for `git status --porcelain`. Defaults (no `with_view`/`with_dirty`)
+// are "no PR" / "clean".
 
-/// Programmable probe — replays canned `gh pr view` results keyed
-/// by branch and dirty flags keyed by canonical project path.
-struct MockProbe {
+#[derive(Default)]
+struct FinalizeMock {
     view: HashMap<String, Result<Option<PrView>, String>>,
     dirty: HashMap<PathBuf, bool>,
-    calls: RefCell<Vec<String>>,
 }
 
-impl MockProbe {
+impl FinalizeMock {
     fn new() -> Self {
-        Self {
-            view: HashMap::new(),
-            dirty: HashMap::new(),
-            calls: RefCell::new(Vec::new()),
-        }
+        Self::default()
     }
 
     fn with_view(mut self, branch: &str, view: Result<Option<PrView>, String>) -> Self {
@@ -154,19 +164,62 @@ impl MockProbe {
         self.dirty.insert(path, dirty);
         self
     }
+
+    fn into_runner(self) -> MockCmd {
+        let view = self.view;
+        let dirty = self.dirty;
+        // Map PR number → owned PrView so `gh pr view <number>` can look
+        // up the canned payload.
+        let mut by_number: HashMap<u64, PrView> = HashMap::new();
+        for v in view.values() {
+            if let Ok(Some(pr)) = v {
+                by_number.insert(pr.number, pr.clone());
+            }
+        }
+        MockCmd::new(move |call: &RecordedCall| match call.program.as_str() {
+            "gh" => dispatch_gh(call, &view, &by_number),
+            "git" => dispatch_git(call, &dirty),
+            other => panic!("unexpected runner invocation: program={other}, args={:?}", call.args),
+        })
+    }
 }
 
-impl Probe for MockProbe {
-    fn pr_view_for_branch(
-        &self, _project_path: &Path, branch: &str,
-    ) -> Result<Option<PrView>, String> {
-        self.calls.borrow_mut().push(format!("view:{branch}"));
-        self.view.get(branch).cloned().unwrap_or(Ok(None))
+fn dispatch_gh(
+    call: &RecordedCall, view: &HashMap<String, Result<Option<PrView>, String>>,
+    by_number: &HashMap<u64, PrView>,
+) -> std::io::Result<std::process::Output> {
+    match call.args.as_slice() {
+        [first, second, third, branch, ..]
+            if first == "pr" && second == "list" && third == "--head" =>
+        {
+            match view.get(branch).cloned().unwrap_or(Ok(None)) {
+                Ok(None) => ok_stdout("[]\n"),
+                Ok(Some(pr)) => ok_stdout(&format!("[{{\"number\":{}}}]\n", pr.number)),
+                Err(msg) => fail_stderr(&msg),
+            }
+        }
+        [first, second, number_str, ..] if first == "pr" && second == "view" => {
+            let number: u64 = number_str.parse().expect("pr view <n>");
+            let pr = by_number.get(&number).expect("canned pr view");
+            let json = serde_json::to_string(pr).expect("serialize PrView");
+            ok_stdout(&format!("{json}\n"))
+        }
+        other => panic!("unexpected gh invocation: {other:?}"),
     }
+}
 
-    fn is_dirty(&self, project_path: &Path) -> bool {
-        self.calls.borrow_mut().push(format!("dirty:{}", project_path.display()));
-        self.dirty.get(project_path).copied().unwrap_or(false)
+fn dispatch_git(
+    call: &RecordedCall, dirty: &HashMap<PathBuf, bool>,
+) -> std::io::Result<std::process::Output> {
+    // `is_dirty` builds `git -C <path> status --porcelain`.
+    match call.args.as_slice() {
+        [dash_c, path, status, porcelain]
+            if dash_c == "-C" && status == "status" && porcelain == "--porcelain" =>
+        {
+            let is_dirty = dirty.get(Path::new(path)).copied().unwrap_or(false);
+            if is_dirty { ok_stdout(" M file.txt\n") } else { ok_stdout("") }
+        }
+        other => panic!("unexpected git invocation: {other:?}"),
     }
 }
 
@@ -210,7 +263,7 @@ fn refuses_when_plan_has_outstanding() {
     let plan =
         plan_with_entries("foo", vec![entry("a", Status::Done), entry("b", Status::Pending)]);
     let registry = registry_with(&["alpha"]);
-    let probe = MockProbe::new();
+    let runner = FinalizeMock::new().into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -219,10 +272,10 @@ fn refuses_when_plan_has_outstanding() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let err = run(inputs, &probe).expect_err("non-terminal must refuse");
+    let err = run(inputs, &runner).expect_err("non-terminal must refuse");
     assert!(matches!(err, Refusal::NonTerminalEntries(ref names) if names == &["b"]));
     // Probe must not have been called — guard runs before any IO.
-    assert!(probe.calls.borrow().is_empty(), "no probes on non-terminal refusal");
+    assert!(runner.calls.borrow().is_empty(), "no probes on non-terminal refusal");
 }
 
 // ---- guard: per-project PR states ------------------------------------
@@ -242,7 +295,7 @@ fn finalizes_with_no_clones_and_no_registry_passes() {
         version: 1,
         projects: vec![],
     };
-    let probe = MockProbe::new();
+    let runner = FinalizeMock::new().into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -251,7 +304,7 @@ fn finalizes_with_no_clones_and_no_registry_passes() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(outcome.finalized);
     assert!(outcome.projects.is_empty());
     assert!(outcome.archived.is_some(), "archive must have run");
@@ -267,16 +320,18 @@ fn refuses_when_one_project_pr_is_unmerged() {
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
-    let probe = MockProbe::new().with_view(
-        "specify/foo",
-        Ok(Some(PrView {
-            state: PrState::Open,
-            merged: false,
-            head_ref_name: "specify/foo".to_string(),
-            number: 7,
-            url: "https://github.com/org/alpha/pull/7".to_string(),
-        })),
-    );
+    let runner = FinalizeMock::new()
+        .with_view(
+            "specify/foo",
+            Ok(Some(PrView {
+                state: PrState::Open,
+                merged: false,
+                head_ref_name: "specify/foo".to_string(),
+                number: 7,
+                url: "https://github.com/org/alpha/pull/7".to_string(),
+            })),
+        )
+        .into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -285,7 +340,7 @@ fn refuses_when_one_project_pr_is_unmerged() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Unmerged);
     assert_eq!(outcome.projects[0].pr_number, Some(7));
@@ -324,16 +379,18 @@ fn passes_when_pr_is_merged() {
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
-    let probe = MockProbe::new().with_view(
-        "specify/foo",
-        Ok(Some(PrView {
-            state: PrState::Merged,
-            merged: true,
-            head_ref_name: "specify/foo".to_string(),
-            number: 42,
-            url: "u".to_string(),
-        })),
-    );
+    let runner = FinalizeMock::new()
+        .with_view(
+            "specify/foo",
+            Ok(Some(PrView {
+                state: PrState::Merged,
+                merged: true,
+                head_ref_name: "specify/foo".to_string(),
+                number: 42,
+                url: "u".to_string(),
+            })),
+        )
+        .into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -342,7 +399,7 @@ fn passes_when_pr_is_merged() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Merged);
     assert_eq!(outcome.summary.merged, 1);
@@ -357,7 +414,7 @@ fn passes_when_no_branch_for_project() {
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
     // No `with_view` — defaults to Ok(None) i.e. no PR.
-    let probe = MockProbe::new();
+    let runner = FinalizeMock::new().into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -366,7 +423,7 @@ fn passes_when_no_branch_for_project() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::NoBranch);
     assert_eq!(outcome.summary.no_branch, 1);
@@ -379,16 +436,18 @@ fn refuses_on_branch_pattern_mismatch() {
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
-    let probe = MockProbe::new().with_view(
-        "specify/foo",
-        Ok(Some(PrView {
-            state: PrState::Open,
-            merged: false,
-            head_ref_name: "feature/foo".to_string(),
-            number: 1,
-            url: "u".to_string(),
-        })),
-    );
+    let runner = FinalizeMock::new()
+        .with_view(
+            "specify/foo",
+            Ok(Some(PrView {
+                state: PrState::Open,
+                merged: false,
+                head_ref_name: "feature/foo".to_string(),
+                number: 1,
+                url: "u".to_string(),
+            })),
+        )
+        .into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -397,7 +456,7 @@ fn refuses_on_branch_pattern_mismatch() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::BranchPatternMismatch);
     // Diagnostic must surface the literal expected branch.
@@ -420,7 +479,9 @@ fn refuses_on_gh_shell_error() {
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
-    let probe = MockProbe::new().with_view("specify/foo", Err("simulated gh failure".to_string()));
+    let runner = FinalizeMock::new()
+        .with_view("specify/foo", Err("simulated gh failure".to_string()))
+        .into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -429,7 +490,7 @@ fn refuses_on_gh_shell_error() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Failed);
     assert!(outcome.projects[0].detail.as_deref().is_some_and(|d| d.contains("simulated")));
@@ -447,7 +508,7 @@ fn refuses_dirty_workspace_without_clean() {
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
-    let probe = MockProbe::new()
+    let runner = FinalizeMock::new()
         .with_view(
             "specify/foo",
             Ok(Some(PrView {
@@ -458,7 +519,8 @@ fn refuses_dirty_workspace_without_clean() {
                 url: "u".to_string(),
             })),
         )
-        .with_dirty(alpha_path, true);
+        .with_dirty(alpha_path, true)
+        .into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -467,7 +529,7 @@ fn refuses_dirty_workspace_without_clean() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Dirty);
     assert_eq!(outcome.projects[0].dirty, Some(true));
@@ -497,7 +559,7 @@ fn refuses_dirty_workspace_with_clean() {
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha", "beta"]);
-    let probe = MockProbe::new()
+    let runner = FinalizeMock::new()
         .with_view(
             "specify/foo",
             Ok(Some(PrView {
@@ -509,7 +571,8 @@ fn refuses_dirty_workspace_with_clean() {
             })),
         )
         .with_dirty(alpha_path.clone(), true)
-        .with_dirty(beta_path.clone(), false);
+        .with_dirty(beta_path.clone(), false)
+        .into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -518,7 +581,7 @@ fn refuses_dirty_workspace_with_clean() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Dirty);
     assert_eq!(
@@ -553,16 +616,18 @@ fn dry_run_does_not_archive_or_clean() {
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
-    let probe = MockProbe::new().with_view(
-        "specify/foo",
-        Ok(Some(PrView {
-            state: PrState::Merged,
-            merged: true,
-            head_ref_name: "specify/foo".to_string(),
-            number: 7,
-            url: "u".to_string(),
-        })),
-    );
+    let runner = FinalizeMock::new()
+        .with_view(
+            "specify/foo",
+            Ok(Some(PrView {
+                state: PrState::Merged,
+                merged: true,
+                head_ref_name: "specify/foo".to_string(),
+                number: 7,
+                url: "u".to_string(),
+            })),
+        )
+        .into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -571,7 +636,7 @@ fn dry_run_does_not_archive_or_clean() {
         dry_run: true,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(outcome.finalized, "dry-run with all-passing must report finalized=true");
     assert_eq!(outcome.dry_run, Some(true));
     assert!(outcome.archived.is_none(), "dry-run must not archive");
@@ -588,16 +653,18 @@ fn dry_run_with_unmerged_pr_reports_not_finalized() {
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
-    let probe = MockProbe::new().with_view(
-        "specify/foo",
-        Ok(Some(PrView {
-            state: PrState::Open,
-            merged: false,
-            head_ref_name: "specify/foo".to_string(),
-            number: 7,
-            url: "u".to_string(),
-        })),
-    );
+    let runner = FinalizeMock::new()
+        .with_view(
+            "specify/foo",
+            Ok(Some(PrView {
+                state: PrState::Open,
+                merged: false,
+                head_ref_name: "specify/foo".to_string(),
+                number: 7,
+                url: "u".to_string(),
+            })),
+        )
+        .into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -606,7 +673,7 @@ fn dry_run_with_unmerged_pr_reports_not_finalized() {
         dry_run: true,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Unmerged);
     assert_eq!(outcome.dry_run, Some(true));
@@ -628,16 +695,18 @@ fn clean_removes_clones_after_archive() {
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
-    let probe = MockProbe::new().with_view(
-        "specify/foo",
-        Ok(Some(PrView {
-            state: PrState::Merged,
-            merged: true,
-            head_ref_name: "specify/foo".to_string(),
-            number: 7,
-            url: "u".to_string(),
-        })),
-    );
+    let runner = FinalizeMock::new()
+        .with_view(
+            "specify/foo",
+            Ok(Some(PrView {
+                state: PrState::Merged,
+                merged: true,
+                head_ref_name: "specify/foo".to_string(),
+                number: 7,
+                url: "u".to_string(),
+            })),
+        )
+        .into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -646,7 +715,7 @@ fn clean_removes_clones_after_archive() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(outcome.finalized);
     assert_eq!(outcome.cleaned, vec!["alpha"], "alpha must be cleaned");
     assert!(!alpha_path.exists(), "workspace clone must be gone");
@@ -673,16 +742,18 @@ fn clean_waits_until_archive_succeeds() {
 
     let plan = plan_named("foo");
     let registry = registry_with(&["alpha"]);
-    let probe = MockProbe::new().with_view(
-        "specify/foo",
-        Ok(Some(PrView {
-            state: PrState::Merged,
-            merged: true,
-            head_ref_name: "specify/foo".to_string(),
-            number: 7,
-            url: "u".to_string(),
-        })),
-    );
+    let runner = FinalizeMock::new()
+        .with_view(
+            "specify/foo",
+            Ok(Some(PrView {
+                state: PrState::Merged,
+                merged: true,
+                head_ref_name: "specify/foo".to_string(),
+                number: 7,
+                url: "u".to_string(),
+            })),
+        )
+        .into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -691,7 +762,7 @@ fn clean_waits_until_archive_succeeds() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(!outcome.finalized, "archive collision must refuse finalize");
     assert!(outcome.cleaned.is_empty(), "failed archive must not clean clones");
     assert!(alpha_path.exists(), "clone must remain when archive fails");
@@ -726,7 +797,7 @@ fn clean_skips_symlink_projects() {
             contracts: None,
         }],
     };
-    let probe = MockProbe::new();
+    let runner = FinalizeMock::new().into_runner();
     let inputs = Inputs {
         project_dir: tmp.path(),
         plan: &plan,
@@ -735,7 +806,7 @@ fn clean_skips_symlink_projects() {
         dry_run: false,
         now: chrono::Utc::now(),
     };
-    let outcome = run(inputs, &probe).expect("ok");
+    let outcome = run(inputs, &runner).expect("ok");
     assert!(outcome.finalized);
     assert!(outcome.cleaned.is_empty(), "symlink projects must not be cleaned");
 }
@@ -756,16 +827,18 @@ fn idempotent_after_manual_merge() {
     let registry = registry_with(&["alpha"]);
 
     // First run: PR open, finalize refuses.
-    let probe1 = MockProbe::new().with_view(
-        "specify/foo",
-        Ok(Some(PrView {
-            state: PrState::Open,
-            merged: false,
-            head_ref_name: "specify/foo".to_string(),
-            number: 7,
-            url: "u".to_string(),
-        })),
-    );
+    let runner1 = FinalizeMock::new()
+        .with_view(
+            "specify/foo",
+            Ok(Some(PrView {
+                state: PrState::Open,
+                merged: false,
+                head_ref_name: "specify/foo".to_string(),
+                number: 7,
+                url: "u".to_string(),
+            })),
+        )
+        .into_runner();
     let outcome1 = run(
         Inputs {
             project_dir: tmp.path(),
@@ -775,7 +848,7 @@ fn idempotent_after_manual_merge() {
             dry_run: false,
             now: chrono::Utc::now(),
         },
-        &probe1,
+        &runner1,
     )
     .expect("ok");
     assert!(!outcome1.finalized, "first run must refuse on unmerged PR");
@@ -784,16 +857,18 @@ fn idempotent_after_manual_merge() {
 
     // Operator merges the PR manually. Re-run finalize against a
     // probe that now reports MERGED — archive must land.
-    let probe2 = MockProbe::new().with_view(
-        "specify/foo",
-        Ok(Some(PrView {
-            state: PrState::Merged,
-            merged: true,
-            head_ref_name: "specify/foo".to_string(),
-            number: 7,
-            url: "u".to_string(),
-        })),
-    );
+    let runner2 = FinalizeMock::new()
+        .with_view(
+            "specify/foo",
+            Ok(Some(PrView {
+                state: PrState::Merged,
+                merged: true,
+                head_ref_name: "specify/foo".to_string(),
+                number: 7,
+                url: "u".to_string(),
+            })),
+        )
+        .into_runner();
     let outcome2 = run(
         Inputs {
             project_dir: tmp.path(),
@@ -803,7 +878,7 @@ fn idempotent_after_manual_merge() {
             dry_run: false,
             now: chrono::Utc::now(),
         },
-        &probe2,
+        &runner2,
     )
     .expect("ok");
     assert!(outcome2.finalized, "second run after manual merge must finalize");
@@ -858,6 +933,13 @@ fn summary_counts_per_status() {
     assert_eq!(s.no_branch, 1);
     assert_eq!(s.unmerged, 1);
     assert_eq!(s.dirty, 1);
+}
+
+// silence unused-import warnings for Outcome — referenced in doctest-only
+// examples below.
+#[allow(dead_code)]
+const fn _outcome_type_alias() -> Option<Outcome> {
+    None
 }
 
 // ---- helpers --------------------------------------------------------

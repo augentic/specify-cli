@@ -1,10 +1,6 @@
 //! Time conversions shared by [`super::commit`] and
-//! [`super::conflict_check`].
-//!
-//! `.metadata.yaml.defined_at` is already typed as
-//! `chrono::DateTime<Utc>`; the only conversion this module performs
-//! is lifting `std::fs::Metadata::modified()` into the same type for
-//! direct comparison.
+//! [`super::conflict_check`] — lifts `std::fs::Metadata::modified()`
+//! into `chrono::DateTime<Utc>` for direct comparison.
 
 use std::time::SystemTime;
 

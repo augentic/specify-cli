@@ -1,10 +1,6 @@
-//! `specify tool *` dispatcher.
-//!
-//! Per-subcommand handlers live in `tool/{run, list, fetch, show, gc}.rs`;
-//! shared response DTOs and row builders live in `tool/dto.rs`. Shared
-//! inventory assembly (declared-tool merge, capability resolution,
-//! manifest validation) is colocated here because every handler in the
-//! tree consumes it.
+//! `specify tool *` dispatcher. Hosts the shared inventory-assembly
+//! helpers (declared-tool merge, capability resolution, manifest
+//! validation) consumed by every per-subcommand handler.
 
 pub(crate) mod cli;
 mod dto;
@@ -47,7 +43,7 @@ fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
         };
         scopes.push(capability_scope.clone());
         let sidecar_tools =
-            load::load_capability_sidecar(&capability.root_dir, &capability.manifest.name)?;
+            load::capability_sidecar(&capability.root_dir, &capability.manifest.name)?;
         let tools: Vec<Tool> = sidecar_tools.iter().map(|(_, tool)| tool.clone()).collect();
         validate_manifest_tools(&tools, &capability_scope)?;
         sidecar_tools

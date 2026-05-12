@@ -1,17 +1,8 @@
 //! Workspace task runner.
 //!
-//! Subcommands:
-//!
-//! - `standards-check` — AST + regex enforcer for the mechanical rules
-//!   in [AGENTS.md#coding-standards]. CI runs this via
-//!   `cargo run -p xtask -- standards-check`.
-//! - `gen-man` — render `clap_mangen` roff man pages for the `specify`
-//!   binary and every leaf subcommand into a target directory
-//!   (`target/man/` by default). Output is gitignored; release
-//!   tooling picks it up from there.
-//! - `gen-completions` — render `clap_complete` shell completion
-//!   scripts for every `clap_complete::Shell` value under
-//!   `target/completions/` by default.
+//! Hosts `standards-check` (mechanical coding-standards enforcer),
+//! `gen-man` (`clap_mangen` roff pages), and `gen-completions`
+//! (`clap_complete` shell scripts).
 
 use std::path::PathBuf;
 use std::process::ExitCode;

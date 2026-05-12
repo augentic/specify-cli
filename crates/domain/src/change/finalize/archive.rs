@@ -1,9 +1,6 @@
 //! Atomic plan/brief/plans-dir sweep + workspace-clone cleanup.
-//!
-//! `Plan::archive` preflights both destinations (`<name>-<date>.yaml`
-//! and `<name>-<date>/`) before any move, so a collision returns an
-//! error before any file is touched. `clean_clones` only runs after
-//! the archive has succeeded, so a failed archive leaves clones intact.
+//! `Plan::archive` preflights destinations before any move;
+//! `clean_clones` only runs after the archive has succeeded.
 
 use std::path::Path;
 

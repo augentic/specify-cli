@@ -1,8 +1,6 @@
-//! `.gitignore` upkeep for `.specify/`-internal directories.
-//!
-//! The registry crate owns `.specify/workspace/` materialisation and so
-//! enforces the convention here. `init` and `specify workspace sync`
-//! both call [`ensure_specify_gitignore_entries`] directly.
+//! `.gitignore` upkeep for `.specify/`-internal directories. `init`
+//! and `specify workspace sync` both call
+//! [`ensure_specify_gitignore_entries`] to keep the entries current.
 
 use std::fs;
 use std::path::Path;

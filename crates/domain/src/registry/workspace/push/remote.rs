@@ -6,7 +6,8 @@ use std::process::Command;
 
 use specify_error::Error;
 
-use super::forge::WorkspacePushForge;
+use super::forge::{ensure_pull_request, repo_exists};
+use crate::cmd::CmdRunner;
 use crate::registry::workspace::git::git_output_ok;
 
 pub(super) enum RemoteBranchState {
@@ -38,8 +39,8 @@ pub(in crate::registry::workspace) fn current_branch(
     Ok((!branch.is_empty()).then_some(branch))
 }
 
-pub(super) fn inspect_remote_branch(
-    project_path: &Path, branch_name: &str, slug: Option<&str>, forge: &dyn WorkspacePushForge,
+pub(super) fn inspect_remote_branch<R: CmdRunner>(
+    runner: &R, project_path: &Path, branch_name: &str, slug: Option<&str>,
 ) -> Result<RemoteBranchState, Error> {
     match remote_branch_head(project_path, branch_name) {
         Ok(Some(sha)) => Ok(RemoteBranchState::Present(sha)),
@@ -48,7 +49,7 @@ pub(super) fn inspect_remote_branch(
             let Some(slug) = slug else {
                 return Err(err);
             };
-            if forge.repo_exists(slug, project_path)? {
+            if repo_exists(runner, slug)? {
                 Err(err)
             } else {
                 Ok(RemoteBranchState::RepositoryMissing)
@@ -57,9 +58,8 @@ pub(super) fn inspect_remote_branch(
     }
 }
 
-pub(super) fn ensure_pr_if_supported(
-    project_path: &Path, slug: Option<&str>, branch_name: &str, change_name: &str,
-    forge: &dyn WorkspacePushForge,
+pub(super) fn ensure_pr_if_supported<R: CmdRunner>(
+    runner: &R, project_path: &Path, slug: Option<&str>, branch_name: &str, change_name: &str,
 ) -> Result<Option<u64>, Error> {
     if slug.is_none() {
         return Ok(None);
@@ -74,7 +74,7 @@ pub(super) fn ensure_pr_if_supported(
             ),
         });
     }
-    forge.ensure_pull_request(project_path, branch_name, &base_branch, change_name).map(Some)
+    ensure_pull_request(runner, project_path, branch_name, &base_branch, change_name).map(Some)
 }
 
 pub(super) fn ensure_pr_base_resolves_if_supported(

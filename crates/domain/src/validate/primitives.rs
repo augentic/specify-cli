@@ -1,16 +1,13 @@
 //! Structural primitives — the small, unit-testable checks that named
-//! rules compose.
-//!
-//! Each helper here is `pub(crate)` and side-effect free; the only I/O is
-//! filesystem reads inside [`proposal_deliverables_have_specs`] and
-//! [`design_references_exist`], both of which only consult `specs_dir`.
+//! rules compose. Each helper is `pub(crate)` and side-effect free
+//! apart from `specs_dir` reads in two helpers.
 
 use std::path::Path;
 
 use regex::Regex;
 
 use crate::spec::ParsedSpec;
-use crate::task::TaskProgress;
+use crate::task::Progress;
 
 /// Return `true` when `heading` appears AND at least one non-empty,
 /// non-whitespace line follows it before the next `##`-or-higher heading.
@@ -92,7 +89,7 @@ pub(crate) fn ids_match_pattern(spec: &ParsedSpec, pattern: &str) -> bool {
 ///
 /// Also returns `false` if the parsed total disagrees with the recognised
 /// count (defensive — shouldn't happen by construction).
-pub(crate) fn all_tasks_use_checkbox(tasks: &TaskProgress, content: &str) -> bool {
+pub(crate) fn all_tasks_use_checkbox(tasks: &Progress, content: &str) -> bool {
     if tasks.total != tasks.tasks.len() {
         return false;
     }
@@ -107,7 +104,7 @@ pub(crate) fn all_tasks_use_checkbox(tasks: &TaskProgress, content: &str) -> boo
     true
 }
 
-pub(crate) fn tasks_grouped_under_headings(tasks: &TaskProgress) -> bool {
+pub(crate) fn tasks_grouped_under_headings(tasks: &Progress) -> bool {
     tasks.tasks.iter().all(|t| !t.group.is_empty())
 }
 

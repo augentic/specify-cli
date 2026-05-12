@@ -1,7 +1,6 @@
 //! Orchestrator for one slot's branch preparation: derive the target
-//! branch, validate the worktree, fetch + classify dirtiness, then
-//! create-or-reuse the local branch and fast-forward against the remote
-//! change branch where possible.
+//! branch, validate the worktree, then create-or-reuse the local
+//! branch and fast-forward against the remote where possible.
 
 use std::path::Path;
 
@@ -13,7 +12,7 @@ use super::{
     Diagnostic, LocalAction, Prepared, RemoteAction, Request, git_output, git_output_optional,
     git_success, run_git,
 };
-use crate::registry::registry::RegistryProject;
+use crate::registry::catalog::RegistryProject;
 
 /// Prepare a resolved registry project's worktree on `specify/<change-name>`.
 ///

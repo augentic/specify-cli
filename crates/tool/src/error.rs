@@ -8,6 +8,7 @@ use specify_error::YamlError;
 /// helpers.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
+#[allow(missing_docs, reason = "field names are self-evident; variant docs carry the contract")]
 pub enum ToolError {
     /// `tools.yaml` could not be read or parsed.
     #[error("tool manifest at {}: {kind}", path.display())]
@@ -117,8 +118,10 @@ pub enum ToolError {
 /// Sub-kind for [`ToolError::Manifest`].
 #[derive(Debug, thiserror::Error)]
 pub enum ManifestKind {
+    /// Reading `tools.yaml` failed.
     #[error("read failed: {0}")]
     Read(#[source] std::io::Error),
+    /// Parsing `tools.yaml` failed.
     #[error("parse failed: {0}")]
     Parse(#[source] Box<YamlError>),
 }
@@ -126,27 +129,35 @@ pub enum ManifestKind {
 /// Sub-kind for [`ToolError::Sidecar`].
 #[derive(Debug, thiserror::Error)]
 pub enum SidecarKind {
+    /// `meta.yaml` existed but could not be parsed as YAML.
     #[error("invalid YAML: {0}")]
     Parse(#[source] Box<YamlError>),
+    /// `meta.yaml` parsed, but did not satisfy the sidecar schema.
     #[error("invalid schema: {0}")]
     Schema(String),
 }
 
 /// Sub-kind for [`ToolError::Network`].
 #[derive(Debug, thiserror::Error)]
+#[allow(missing_docs, reason = "field names are self-evident; variant docs carry the contract")]
 pub enum NetworkKind {
+    /// An HTTPS source returned a non-200 status.
     #[error("returned HTTP status {0}; expected 200")]
     Status(u16),
+    /// An HTTPS source timed out.
     #[error("timed out: {0}")]
     Timeout(String),
+    /// An HTTPS source URL or response was malformed.
     #[error("is malformed: {0}")]
     Malformed(String),
+    /// An HTTPS source response exceeded the resolver body cap.
     #[error("exceeded {limit} bytes")]
     TooLarge {
         limit: u64,
         /// Reported or observed body size when available.
         actual: Option<u64>,
     },
+    /// A non-status, non-timeout transport failure.
     #[error("network error: {0}")]
     Other(String),
 }
@@ -154,7 +165,7 @@ pub enum NetworkKind {
 impl ToolError {
     /// Build a manifest-read error with path context.
     #[must_use]
-    pub fn manifest_read(path: PathBuf, source: std::io::Error) -> Self {
+    pub const fn manifest_read(path: PathBuf, source: std::io::Error) -> Self {
         Self::Manifest {
             path,
             kind: ManifestKind::Read(source),
@@ -182,7 +193,7 @@ impl ToolError {
         }
     }
 
-    /// Build a local-source I/O error. Mirrors [`Self::cache_io`] for the
+    /// Build a local-source I/O error. Mirrors `cache_io` for the
     /// resolver's local-source path; both produce the merged [`Self::Io`]
     /// variant.
     #[must_use]
@@ -229,6 +240,7 @@ impl ToolError {
         }
     }
 
+    #[cfg(feature = "oci")]
     pub(crate) fn package(
         request: &crate::manifest::PackageRequest, reason: impl Into<String>,
     ) -> Self {

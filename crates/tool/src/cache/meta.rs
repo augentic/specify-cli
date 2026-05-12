@@ -135,7 +135,7 @@ impl Sidecar {
 /// Read `meta.yaml` from `path`.
 ///
 /// Missing sidecars are returned as `Ok(None)` so callers can distinguish a
-/// cold cache from a corrupt one and treat the former as a [`super::CacheStatus::MissNotFound`].
+/// cold cache from a corrupt one and treat the former as a [`super::Status::MissNotFound`].
 ///
 /// # Errors
 ///
@@ -151,11 +151,10 @@ pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ToolError> {
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(ToolError::cache_io("read sidecar", path, err)),
     };
-    let sidecar: Sidecar =
-        serde_saphyr::from_str(&contents).map_err(|err| ToolError::Sidecar {
-            path: path.to_path_buf(),
-            kind: SidecarKind::Parse(Box::new(err.into())),
-        })?;
+    let sidecar: Sidecar = serde_saphyr::from_str(&contents).map_err(|err| ToolError::Sidecar {
+        path: path.to_path_buf(),
+        kind: SidecarKind::Parse(Box::new(err.into())),
+    })?;
     validate_sidecar_schema(path, &sidecar)?;
     Ok(Some(sidecar))
 }

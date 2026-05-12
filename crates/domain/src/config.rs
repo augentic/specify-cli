@@ -1,33 +1,13 @@
-//! `ProjectConfig` — the in-memory model of `.specify/project.yaml`,
-//! and `Layout<'a>` — the typed home for every `.specify/` and
-//! repo-root path helper the CLI reaches for.
-//!
-//! Call sites write `project_dir.layout().plan_path()` (or
-//! `Layout::new(project_dir).plan_path()`); the path helpers no longer
-//! live as associated functions on `ProjectConfig`. The `Layout`
-//! newtype concentrates the `.specify/` boundary in one typed receiver
-//! so the rest of the workspace never hard-codes `.specify/...` literals.
-//!
-//! Layout boundary: `.specify/` holds framework-managed state that the
-//! CLI owns (configuration, working slices, archive, cache, workspace
-//! clones, plan-authoring scratch, the advisory plan lock).
-//! Operator-facing platform artifacts that are PR-reviewed and durable
-//! live at the repo root.
-//!
-//! `ProjectConfig` stays capability-agnostic. Domain-specific baseline
-//! locations are owned by the active capability and synthesised at the
-//! call site (currently `src/commands/slice.rs::artifact_classes`).
-//!
-//! `ProjectConfig::load` is the single choke point for the
-//! `specify_version` floor check: any subcommand that parses
-//! `project.yaml` picks up the check automatically.
+//! `ProjectConfig` — in-memory model of `.specify/project.yaml` — and
+//! `Layout<'a>`, the typed home for every `.specify/` and repo-root
+//! path helper the CLI reaches for.
 
 mod atomic;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-pub use atomic::{AtomicYaml, with_existing_state, with_state};
+pub use atomic::{AtomicYaml, InitPolicy, with_state};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 

@@ -1,24 +1,6 @@
 //! Transactional multi-class merge + archive (`commit`), plus the
-//! no-write `preview` variant and the `conflict_check` baseline
-//! drift detector.
-//!
-//! Everything is computed in memory first. We only touch the filesystem
-//! after every delta has merged cleanly *and* every merged baseline has
-//! passed [`crate::merge::validate_baseline`]. On success `commit`:
-//!
-//!   1. Writes each merged baseline under the
-//!      [`MergeStrategy::ThreeWayMerge`] class's `baseline_dir`, and
-//!      copies every staged file under each
-//!      [`MergeStrategy::OpaqueReplace`] class's `staged_dir` into its
-//!      `baseline_dir`.
-//!   2. Flips `.metadata.yaml.status` from `Complete` to `Merged` and
-//!      stamps `Outcome { phase: Merge, outcome: Success }`.
-//!   3. Moves the slice directory under `archive_dir` as
-//!      `YYYY-MM-DD-<slice-name>/` via `crate::slice::actions::archive`.
-//!
-//! Any failure before step 1 returns `Err` with the filesystem
-//! untouched. The engine never branches on a class name; per-class
-//! promotion behaviour comes from [`MergeStrategy`].
+//! no-write `preview` variant and the `conflict_check` baseline drift
+//! detector. The filesystem is only touched after every delta validates.
 
 use std::path::{Path, PathBuf};
 

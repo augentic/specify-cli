@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 use specify_domain::registry::{Registry, RegistryProject};
 
-use crate::output::{Render, display, serialize_path};
+use crate::output::{Render, serialize_path};
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -21,7 +21,7 @@ impl Render for ShowBody {
         let Some(reg) = self.registry.as_ref() else {
             return writeln!(w, "no registry declared at registry.yaml");
         };
-        writeln!(w, "registry.yaml: {}", display(&self.path))?;
+        writeln!(w, "registry.yaml: {}", self.path.display())?;
         writeln!(w, "version: {}", reg.version)?;
         if reg.projects.is_empty() {
             return writeln!(w, "projects: (none)");
@@ -71,7 +71,7 @@ pub(super) struct AddBody {
 
 impl Render for AddBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Added `{}` to {}", self.added.name, display(&self.path))?;
+        writeln!(w, "Added `{}` to {}", self.added.name, self.path.display())?;
         writeln!(w, "registry now declares {} project(s)", self.registry.projects.len())
     }
 }
@@ -88,7 +88,7 @@ pub(super) struct RemoveBody {
 
 impl Render for RemoveBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Removed `{}` from {}", self.removed, display(&self.path))?;
+        writeln!(w, "Removed `{}` from {}", self.removed, self.path.display())?;
         for warning in &self.warnings {
             writeln!(w, "warning: {warning}")?;
         }

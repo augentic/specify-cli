@@ -1,7 +1,6 @@
 //! `slice task progress | mark` — task list operations for a slice.
-//!
-//! Also exposes `resolve_tasks_path_for` so `super::list::collect_status`
-//! can read tasks counts for the dashboard.
+//! Also exposes `resolve_tasks_path_for` for the `specify status`
+//! dashboard's task-count read.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

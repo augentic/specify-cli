@@ -4,11 +4,11 @@ use chrono::Utc;
 use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
 use specify_domain::change::{Finding, Plan, Severity, Status};
-use specify_domain::config::{LayoutExt, with_existing_state};
+use specify_domain::config::{InitPolicy, LayoutExt, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
-use super::{PlanRef, display, plan_ref, require_file};
+use super::{Ref, plan_ref, require_file};
 use crate::cli::SourceArg;
 use crate::context::Ctx;
 use crate::output::{Render, Validation};
@@ -43,7 +43,7 @@ pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result
     plan.save(&plan_path)?;
 
     ctx.write(&CreateBody {
-        plan: PlanRef {
+        plan: Ref {
             name,
             path: plan_path,
         },
@@ -97,7 +97,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
     let rows: Vec<FindingRow<'_>> = results.iter().map(FindingRow::from).collect();
     ctx.write(&PlanValidateBody {
-        plan: PlanRef {
+        plan: Ref {
             name: plan.name,
             path: plan_path,
         },
@@ -161,31 +161,35 @@ pub(super) fn transition(
     ctx: &Ctx, name: String, target: Status, reason: Option<String>,
 ) -> Result<()> {
     let plan_path = ctx.layout().plan_path();
-    let body = with_existing_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
-        let old_status = plan
-            .entries
-            .iter()
-            .find(|c| c.name == name)
-            .ok_or_else(|| Error::Diag {
-                code: "plan-entry-not-found",
-                detail: format!("no slice named '{name}' in plan"),
-            })?
-            .status;
+    let body = with_state::<Plan, _, _>(
+        ctx.layout(),
+        InitPolicy::RequireExisting("plan.yaml"),
+        move |plan| {
+            let old_status = plan
+                .entries
+                .iter()
+                .find(|c| c.name == name)
+                .ok_or_else(|| Error::Diag {
+                    code: "plan-entry-not-found",
+                    detail: format!("no slice named '{name}' in plan"),
+                })?
+                .status;
 
-        plan.transition(&name, target, reason.as_deref())?;
+            plan.transition(&name, target, reason.as_deref())?;
 
-        let entry =
-            plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
-        Ok(TransitionBody {
-            plan: plan_ref(plan, &plan_path),
-            entry: TransitionRow {
-                name: entry.name.clone(),
-                status: entry.status,
-                status_reason: entry.status_reason.clone(),
-            },
-            previous_status: old_status,
-        })
-    })?;
+            let entry =
+                plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
+            Ok(TransitionBody {
+                plan: plan_ref(plan, &plan_path),
+                entry: TransitionRow {
+                    name: entry.name.clone(),
+                    status: entry.status,
+                    status_reason: entry.status_reason.clone(),
+                },
+                previous_status: old_status,
+            })
+        },
+    )?;
     ctx.write(&body)?;
     Ok(())
 }
@@ -206,8 +210,8 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
     let (archived, archived_plans_dir) =
         Plan::archive(&plan_path, &brief_path, &archive_dir, force, Utc::now())?;
     ctx.write(&ArchiveBody {
-        archived: display(&archived),
-        archived_plans_dir: archived_plans_dir.as_deref().map(display),
+        archived: archived.display().to_string(),
+        archived_plans_dir: archived_plans_dir.as_deref().map(|p| p.display().to_string()),
         plan: ArchivedPlan { name: plan_name },
     })?;
     Ok(())
@@ -216,19 +220,19 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct CreateBody {
-    plan: PlanRef,
+    plan: Ref,
 }
 
 impl Render for CreateBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Initialised plan '{}' at {}.", self.plan.name, display(&self.plan.path))
+        writeln!(w, "Initialised plan '{}' at {}.", self.plan.name, self.plan.path.display())
     }
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct PlanValidateBody<'a> {
-    plan: PlanRef,
+    plan: Ref,
     #[serde(flatten)]
     validation: Validation<FindingRow<'a>>,
     passed: bool,
@@ -314,7 +318,7 @@ impl Render for NextBody {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct TransitionBody {
-    plan: PlanRef,
+    plan: Ref,
     entry: TransitionRow,
     #[serde(skip)]
     previous_status: Status,

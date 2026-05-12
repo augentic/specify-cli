@@ -8,11 +8,11 @@ use specify_error::Error;
 
 use super::bootstrap::{self, greenfield_init};
 use super::git::{self, git_output_ok};
-use super::slot_problem::slot_problem_at;
+use super::slot_problem::inspect_at;
 use super::{contracts_base, registry_symlink_target, workspace_base, workspace_slot_path};
 use crate::registry::Registry;
+use crate::registry::catalog::RegistryProject;
 use crate::registry::gitignore::ensure_specify_gitignore_entries;
-use crate::registry::registry::RegistryProject;
 
 /// Materialise `.specify/workspace/<name>/` for every registry entry.
 ///
@@ -51,7 +51,7 @@ pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Resul
     let mut errors: Vec<String> = Vec::new();
     for project in projects {
         let result = workspace_slot_path(&base, &project.name).and_then(|dest| {
-            if let Some(problem) = slot_problem_at(project_dir, project, &dest) {
+            if let Some(problem) = inspect_at(project_dir, project, &dest) {
                 return Err(Error::Diag {
                     code: "workspace-slot-mismatch",
                     detail: problem.message().to_string(),

@@ -1,9 +1,6 @@
-//! Stub WASI runner used when the crate is built without the `host` feature.
-//!
-//! Mirrors the public surface of [`crate::host`] (the Wasmtime-backed runner)
-//! so consumers compile unchanged, but every guest-execution path returns the
-//! `tool-host-not-built` diagnostic. Constructors and context builders stay
-//! infallible; only [`WasiRunner::run`] reports the missing host.
+//! Stub WASI runner used when the crate is built without the `host`
+//! feature. Mirrors the public surface of [`crate::host`]; every
+//! guest-execution path returns the `tool-host-not-built` diagnostic.
 
 use std::path::PathBuf;
 

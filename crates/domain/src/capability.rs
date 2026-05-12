@@ -1,25 +1,6 @@
-//! Capability resolution + brief frontmatter parsing.
-//!
-//! This crate is the canonical home for:
-//!
-//! - Parsing capability manifests (`capability.yaml`) — see
-//!   [`Capability`].
-//! - Resolving a `capability` value from `.specify/project.yaml` to
-//!   either a workspace directory or the agent-populated cache
-//!   (see [`Capability::resolve`]). Remote (HTTP) resolution is
-//!   explicitly the agent's job — the CLI only walks the filesystem.
-//! - Parsing YAML frontmatter on brief markdown files
-//!   (see [`Brief`], [`BriefFrontmatter`]).
-//! - The fully-resolved `capability + briefs` view used by almost every
-//!   subcommand (see [`PipelineView`]).
-//! - The on-disk `.cache-meta.yaml` format written by the agent
-//!   (see [`CacheMeta`]).
-//! - The on-disk `change.md` operator-authored brief at the repo
-//!   root (see [`ChangeBrief`]).
-//!
-//! Registry parsing and shape validation live in `specify-registry`;
-//! per the "platform components are not capabilities" invariant this
-//! crate must not depend on `specify-registry`.
+//! Capability resolution and brief frontmatter parsing — the canonical
+//! home for `Capability`, `Brief`, `ChangeBrief`, `CacheMeta`, the
+//! codex catalogue, and the resolved `PipelineView`.
 
 mod brief;
 mod cache;
@@ -42,7 +23,7 @@ pub use cache::CacheMeta;
 // --- Capability core ---
 pub use capability::{
     CAPABILITY_FILENAME, Capability, CapabilitySource, Phase, Pipeline, PipelineEntry,
-    ResolvedCapability,
+    ResolvedCapability, validate_against_schema,
 };
 pub use change_brief::{
     ChangeBrief, ChangeFrontmatter, ChangeInput, FILENAME as CHANGE_BRIEF_FILENAME, InputKind,
@@ -92,6 +73,3 @@ pub enum ValidationResult {
         reason: &'static str,
     },
 }
-
-#[cfg(test)]
-mod tests;

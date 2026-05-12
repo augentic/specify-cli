@@ -1,9 +1,6 @@
-//! AST-based predicates.
-//!
-//! Currently a single predicate (`inline-dtos`) implemented via a
-//! [`syn::visit::Visit`] walker. AST parsing lets us catch DTOs declared
-//! inside `match` arms and other nested `Block`s that the prior regex
-//! missed.
+//! AST-based predicates. Currently a single predicate (`inline-dtos`)
+//! implemented via a [`syn::visit::Visit`] walker that catches DTOs
+//! declared inside `match` arms and other nested `Block`s.
 
 use syn::visit::Visit;
 

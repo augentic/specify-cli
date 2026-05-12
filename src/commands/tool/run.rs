@@ -1,10 +1,6 @@
-//! `specify tool run` handler.
-//!
-//! The only handler in this tree that returns the guest's WASI exit
-//! byte verbatim (everything else folds success into `Ok(())`). The
-//! dispatcher in `src/commands.rs` promotes a non-zero return into
-//! [`crate::output::Exit::Code`] so `specify tool run` is a
-//! transparent shim over the underlying WASI binary.
+//! `specify tool run` handler — transparent shim over the underlying
+//! WASI binary that returns the guest's exit byte verbatim via
+//! [`crate::output::Exit::Code`].
 
 use chrono::Utc;
 use specify_error::Result;

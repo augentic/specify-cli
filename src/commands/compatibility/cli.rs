@@ -1,7 +1,5 @@
-//! Clap derive surface for `specify compatibility *`.
-//!
-//! Lifted out of `src/cli.rs`; `cli.rs` re-exports `CompatibilityAction`
-//! so the parent derives still resolve at expansion time.
+//! Clap derive surface for `specify compatibility *`. The umbrella
+//! `cli.rs` re-exports `CompatibilityAction`.
 
 use clap::Subcommand;
 

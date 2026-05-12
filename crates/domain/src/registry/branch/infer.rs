@@ -1,7 +1,6 @@
-//! Pure derivation helpers used by [`super::prepare`]: the target branch
-//! name from a change name, the workspace slot path, the remote default
-//! head, and the allow-list of paths whose tracked dirtiness is safe for
-//! a slice resume.
+//! Pure derivation helpers for [`super::prepare`] — target branch
+//! name, slot path, remote default head, and the safe-dirty allow-list
+//! used for slice resume.
 
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
@@ -9,7 +8,7 @@ use std::process::Command;
 use specify_error::is_kebab;
 
 use super::{Diagnostic, git_output, git_output_optional};
-use crate::registry::registry::RegistryProject;
+use crate::registry::catalog::RegistryProject;
 
 const ORIGIN_HEAD_UNRESOLVED: &str = "origin-head-unresolved";
 

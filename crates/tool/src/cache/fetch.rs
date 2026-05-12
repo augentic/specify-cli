@@ -1,7 +1,5 @@
-//! Stage-and-install of a freshly downloaded tool into the global cache.
-//!
-//! The "fetch" name covers the install step the resolver hands a staged
-//! directory to; the actual byte download (`https:` or `file:`) lives in
+//! Stage-and-install of a freshly downloaded tool into the global
+//! cache. The byte download (`https:` or `file:`) itself lives in
 //! `crate::resolver`.
 
 use std::ffi::OsStr;

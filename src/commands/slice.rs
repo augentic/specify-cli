@@ -1,8 +1,6 @@
-//! Dispatcher for `specify slice *`.
-//!
-//! Per-subcommand handlers live in submodules under `slice/`. This file
-//! owns the `match action` table and the omnia `artifact_classes`
-//! synthesiser shared by `slice merge` and `slice touched-specs`.
+//! Dispatcher for `specify slice *`. Owns the `match action` table and
+//! the omnia `artifact_classes` synthesiser shared by `slice merge` and
+//! `slice touched-specs`.
 
 use std::path::Path;
 
@@ -80,9 +78,7 @@ pub(crate) fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             JournalAction::Show { name } => journal::show(ctx, name),
         },
         SliceAction::Transition { name, target } => lifecycle::transition(ctx, name, target),
-        SliceAction::TouchedSpecs { name, scan, set } => {
-            touched::touched_specs(ctx, name, scan, &set)
-        }
+        SliceAction::TouchedSpecs { name, scan, set } => touched::specs(ctx, name, scan, &set),
         SliceAction::Overlap { name } => touched::overlap(ctx, name),
         SliceAction::Archive { name } => lifecycle::archive(ctx, name),
         SliceAction::Drop { name, reason } => {

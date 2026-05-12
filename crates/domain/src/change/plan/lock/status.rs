@@ -6,7 +6,7 @@ use std::path::Path;
 use specify_error::Error;
 
 use super::pid::is_pid_alive;
-use super::{PlanLockState, Stamp};
+use super::{Stamp, State};
 
 impl Stamp {
     /// Snapshot the current stamp.
@@ -14,7 +14,7 @@ impl Stamp {
     /// # Errors
     ///
     /// [`Error::Io`] if the stamp file exists but cannot be read.
-    pub fn status(project_dir: &Path) -> Result<PlanLockState, Error> {
+    pub fn status(project_dir: &Path) -> Result<State, Error> {
         Self::status_with_liveness_check(project_dir, is_pid_alive)
     }
 
@@ -25,13 +25,13 @@ impl Stamp {
     /// Same as [`Self::status`].
     pub fn status_with_liveness_check<F>(
         project_dir: &Path, is_pid_alive: F,
-    ) -> Result<PlanLockState, Error>
+    ) -> Result<State, Error>
     where
         F: Fn(u32) -> bool,
     {
         let path = Self::lockfile_path(project_dir);
         if !path.exists() {
-            return Ok(PlanLockState {
+            return Ok(State {
                 held: false,
                 pid: None,
                 stale: None,
@@ -39,14 +39,14 @@ impl Stamp {
         }
         let contents = fs::read_to_string(&path)?;
         contents.trim().parse::<u32>().map_or(
-            Ok(PlanLockState {
+            Ok(State {
                 held: false,
                 pid: None,
                 stale: Some(true),
             }),
             |pid| {
                 let alive = is_pid_alive(pid);
-                Ok(PlanLockState {
+                Ok(State {
                     held: alive,
                     pid: Some(pid),
                     stale: Some(!alive),

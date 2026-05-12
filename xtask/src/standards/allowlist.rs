@@ -1,9 +1,6 @@
-//! Per-file allowlist: TOML load, tightenable-diff, and `--tighten` writer.
-//!
-//! The allowlist lives at `scripts/standards-allowlist.toml`. Each
-//! `[file."<rel>"]` table caps the per-predicate violation count for
-//! that file. Missing predicates default to zero except
-//! `module-line-count`, which defaults to [`DEFAULT_LINE_CAP`].
+//! Per-file allowlist: TOML load, tightenable-diff, and `--tighten`
+//! writer. The allowlist lives at `scripts/standards-allowlist.toml`;
+//! each `[file."<rel>"]` table caps per-predicate violation counts.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;

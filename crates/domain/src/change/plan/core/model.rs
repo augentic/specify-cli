@@ -1,37 +1,46 @@
-//! On-disk representation of `plan.yaml` and the in-memory data model.
-//!
-//! Type definitions only. Behaviour lives in sibling submodules:
-//! [`io`](super::io), [`transitions`](super::transitions),
-//! [`amend`](super::amend), [`create`](super::create),
-//! [`validate`](super::validate), [`next`](super::next),
-//! [`archive`](super::archive).
+//! Type definitions for `plan.yaml` (`Plan`, `Entry`, `EntryPatch`,
+//! `Status`, `Severity`, `Finding`). Behaviour lives in the sibling
+//! submodules.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-crate::kebab_enum! {
-    /// Lifecycle state of a single entry in [`Plan::entries`].
-    ///
-    /// The enum is `Copy + Eq + Hash` so it can appear in `HashSet`s,
-    /// `match` guards, and hash-keyed lookups without clones. Transition
-    /// table methods live alongside [`Plan::transition`].
-    #[derive(Debug, PartialOrd, Ord, clap::ValueEnum)]
-    #[non_exhaustive]
-    pub enum Status {
-        /// Not yet started.
-        Pending => "pending",
-        /// Currently being executed.
-        InProgress => "in-progress",
-        /// Completed successfully.
-        Done => "done",
-        /// Blocked on an external dependency or question.
-        Blocked => "blocked",
-        /// Execution failed.
-        Failed => "failed",
-        /// Intentionally skipped.
-        Skipped => "skipped",
-    }
+/// Lifecycle state of a single entry in [`Plan::entries`].
+///
+/// The enum is `Copy + Eq + Hash` so it can appear in `HashSet`s,
+/// `match` guards, and hash-keyed lookups without clones. Transition
+/// table methods live alongside [`Plan::transition`].
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    clap::ValueEnum,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+#[non_exhaustive]
+pub enum Status {
+    /// Not yet started.
+    Pending,
+    /// Currently being executed.
+    InProgress,
+    /// Completed successfully.
+    Done,
+    /// Blocked on an external dependency or question.
+    Blocked,
+    /// Execution failed.
+    Failed,
+    /// Intentionally skipped.
+    Skipped,
 }
 
 /// In-memory model of `plan.yaml` (at the repo root).

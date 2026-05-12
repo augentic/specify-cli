@@ -1,7 +1,5 @@
-//! Cross-device-safe move helper shared by archive / discard verbs.
-//!
-//! `move_atomic` is also used by `crate::change::plan` for plan-archive
-//! moves, so it stays `pub` and is re-exported from [`super`].
+//! Cross-device-safe `move_atomic` helper shared by archive / discard
+//! verbs and `crate::change::plan` plan-archive moves.
 
 use std::io;
 use std::path::Path;

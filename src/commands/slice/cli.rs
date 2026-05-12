@@ -1,7 +1,5 @@
 //! Clap derive surface for `specify slice *` and its nested verbs.
-//!
-//! Lifted out of `src/cli.rs`; `cli.rs` re-exports the action enums so
-//! the umbrella `Cli` / `Commands` derives resolve at expansion time.
+//! The umbrella `cli.rs` re-exports the action enums.
 
 use clap::{Subcommand, ValueEnum};
 use serde::Deserialize;

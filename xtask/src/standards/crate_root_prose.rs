@@ -1,11 +1,6 @@
-//! `crate-root-prose`: oversize `//!` preamble at the top of a crate
-//! root.
-//!
-//! `lib.rs` and `main.rs` are crate roots; long architectural prose
-//! belongs in `docs/standards/` or an in-repo RFC, not at the top of a
-//! source file. The cap is 30 consecutive doc-comment lines (skipping
-//! blank separators and `#![...]` inner attributes that may be
-//! interleaved). One violation per file when the count exceeds the cap.
+//! `crate-root-prose`: a `lib.rs` or `main.rs` whose leading `//!`
+//! preamble exceeds [`CAP`] non-blank lines (skipping blanks and inner
+//! `#![...]` attributes). One violation per offending file.
 
 use std::path::Path;
 

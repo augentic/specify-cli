@@ -1,8 +1,6 @@
-//! `specify context generate` handler.
-//!
-//! Owns the write-side policy: the fenced AGENTS.md plan, the
-//! `.specify/context.lock` write, and the JSON `GenerateBody` envelope.
-//! Read-side fingerprint comparison lives in [`super::check`].
+//! `specify context generate` handler — write-side policy for the
+//! fenced AGENTS.md plan, the `.specify/context.lock` write, and the
+//! JSON `Body` envelope.
 
 use std::io::Write;
 
@@ -51,7 +49,7 @@ pub(in crate::commands) struct Outcome {
     pub(in crate::commands) disposition: &'static str,
 }
 
-fn body(ctx: &Ctx, check: bool, force: bool) -> Result<GenerateBody> {
+fn body(ctx: &Ctx, check: bool, force: bool) -> Result<Body> {
     let (generated, context_fingerprint) = render_document(ctx)?;
     let expected_lock = lock::ContextLock::from_fingerprint(&context_fingerprint);
     let lock_path = context_lock_path(ctx);
@@ -85,7 +83,7 @@ fn body(ctx: &Ctx, check: bool, force: bool) -> Result<GenerateBody> {
         fences::WriteDisposition::ReplaceFencedBlock => "replace-fenced-block",
         fences::WriteDisposition::Unchanged => "unchanged",
     };
-    Ok(GenerateBody {
+    Ok(Body {
         status,
         path: "AGENTS.md",
         check,
@@ -103,7 +101,7 @@ fn body(ctx: &Ctx, check: bool, force: bool) -> Result<GenerateBody> {
     clippy::struct_excessive_bools,
     reason = "CLI JSON response mirrors independent check flags and write outcomes."
 )]
-struct GenerateBody {
+struct Body {
     status: &'static str,
     path: &'static str,
     check: bool,
@@ -114,7 +112,7 @@ struct GenerateBody {
     disposition: &'static str,
 }
 
-impl Render for GenerateBody {
+impl Render for Body {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         match self.status {
             "would-update" => writeln!(w, "{WOULD_UPDATE_MSG}"),

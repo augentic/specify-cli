@@ -1,7 +1,5 @@
-//! `specify registry *` dispatcher.
-//!
-//! Per-subcommand handlers live in `registry/{show, validate, add, remove}.rs`;
-//! the shared response DTOs live in `registry/dto.rs`.
+//! `specify registry *` dispatcher. Per-subcommand handlers live in
+//! sibling modules; shared response DTOs live in `registry/dto.rs`.
 
 mod add;
 pub(crate) mod cli;

@@ -1,7 +1,6 @@
-//! `Capability`, `Pipeline`, `PipelineEntry`, `Phase`, `ResolvedCapability`,
-//! `CapabilitySource` — the in-memory model of `capability.yaml` plus
-//! the local / cache resolution algorithm. Remote (HTTP) resolution is
-//! explicitly the agent's job; this crate only walks the filesystem.
+//! In-memory model of `capability.yaml` (`Capability`, `Pipeline`,
+//! `PipelineEntry`, `Phase`, `ResolvedCapability`, `CapabilitySource`)
+//! plus local / cache resolution. Remote resolution is the agent's job.
 
 use std::path::{Path, PathBuf};
 
@@ -73,30 +72,41 @@ pub enum CapabilitySource {
     Cached(PathBuf),
 }
 
-crate::kebab_enum! {
-    /// The phases of a capability's pipeline.
-    ///
-    /// Serializes as the lowercase identifiers `plan | define | build | merge`
-    /// on the wire — this is the same wire format consumed by
-    /// `SliceMetadata.outcome.phase` and by `pipeline.*` keys in the
-    /// manifest, keeping a single source of truth for phase naming.
-    ///
-    /// `Plan` is the Layer 3 authoring phase (`/change:plan`) that runs
-    /// ahead of the define→build→merge execution loop. It is intentionally
-    /// omitted from `Capability::entries()` (see that iterator's docs) —
-    /// call `Capability::plan_entries()` to enumerate plan-phase briefs.
-    #[derive(Debug, clap::ValueEnum)]
-    #[non_exhaustive]
-    pub enum Phase {
-        /// Layer 3 authoring phase (`/change:plan`).
-        Plan => "plan",
-        /// Define phase — artifact generation.
-        Define => "define",
-        /// Build phase — implementation.
-        Build => "build",
-        /// Merge phase — finalisation and landing.
-        Merge => "merge",
-    }
+/// The phases of a capability's pipeline.
+///
+/// Serializes as the lowercase identifiers `plan | define | build | merge`
+/// on the wire — this is the same wire format consumed by
+/// `SliceMetadata.outcome.phase` and by `pipeline.*` keys in the
+/// manifest, keeping a single source of truth for phase naming.
+///
+/// `Plan` is the Layer 3 authoring phase (`/change:plan`) that runs
+/// ahead of the define→build→merge execution loop. It is intentionally
+/// omitted from `Capability::entries()` (see that iterator's docs) —
+/// call `Capability::plan_entries()` to enumerate plan-phase briefs.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    clap::ValueEnum,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+#[non_exhaustive]
+pub enum Phase {
+    /// Layer 3 authoring phase (`/change:plan`).
+    Plan,
+    /// Define phase — artifact generation.
+    Define,
+    /// Build phase — implementation.
+    Build,
+    /// Merge phase — finalisation and landing.
+    Merge,
 }
 
 /// Filename of a capability manifest.
@@ -321,7 +331,12 @@ fn locate_capability_root(
     })
 }
 
-pub(crate) fn validate_against_schema(
+/// Validate `instance` against the embedded JSON Schema `schema_source`.
+///
+/// Emits one `ValidationResult` per error plus a single `Pass` (tagged with
+/// `pass_rule_id` / `pass_rule`) when the schema accepts the value.
+#[must_use]
+pub fn validate_against_schema(
     schema_source: &str, pass_rule_id: &'static str, pass_rule: &'static str,
     instance: &serde_json::Value,
 ) -> Vec<ValidationResult> {
@@ -360,18 +375,5 @@ pub(crate) fn validate_against_schema(
             rule: pass_rule.into(),
             detail: errors.join("; "),
         }]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn phase_display_matches_serde_wire_format() {
-        assert_eq!(Phase::Plan.to_string(), "plan");
-        assert_eq!(Phase::Define.to_string(), "define");
-        assert_eq!(Phase::Build.to_string(), "build");
-        assert_eq!(Phase::Merge.to_string(), "merge");
     }
 }

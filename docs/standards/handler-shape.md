@@ -23,7 +23,7 @@ pub(crate) fn handle(ctx: &Ctx, args: &SomeArgs) -> Result<()> {
 pub(crate) fn handle(ctx: &Ctx) -> Result<Exit, Error> { /* ... */ }
 ```
 
-A free `fn ... -> Result<Exit>` declared outside `src/commands.rs` trips the `result-cliresult-default` predicate (see [predicates.md](./predicates.md)); the surviving carve-outs are listed in [`scripts/standards-allowlist.toml`](../../scripts/standards-allowlist.toml) and shrink as handlers are migrated.
+A free `fn ... -> Result<Exit>` declared outside `src/commands.rs` trips the zero-baseline `result-cliresult-default` predicate (see [predicates.md](./predicates.md)) — fix the site at the same time as you introduce it.
 
 ## Out, Render, and emit
 

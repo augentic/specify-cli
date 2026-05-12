@@ -1,11 +1,6 @@
 //! Hardcoded rule registry — the table of representative rules keyed
-//! by brief id, plus the cross-brief rules. See `DECISIONS.md` §"Change
-//! A — Hardcoded rule registry, classification at definition site" for
-//! provenance.
-//!
-//! Semantic rules declare `check: None`; the runner's `if let Some`
-//! dispatch in [`crate::validate::run`] materialises them as `Deferred`
-//! by construction.
+//! by brief id, plus the cross-brief rules. Semantic rules declare
+//! `check: None` and are materialised as `Deferred` by construction.
 
 use crate::validate::Rule;
 

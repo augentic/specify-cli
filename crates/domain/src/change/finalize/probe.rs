@@ -1,73 +1,32 @@
 //! GitHub PR + workspace cleanliness probes for `change finalize`.
-//!
-//! The orchestration in [`super::run`] is generic over [`Probe`] so unit
-//! tests can substitute canned responses. The CLI binary plugs in
-//! [`RealProbe`], which shells out to `gh pr view` and `git status`.
+//! Generic over [`CmdRunner`] so unit tests can substitute canned
+//! responses; the CLI binary plugs in `RealCmd`.
 
 use std::path::Path;
 use std::process::Command;
 
 use super::{Landing, ProjectResult};
+use crate::cmd::CmdRunner;
 use crate::registry::RegistryProject;
-use crate::registry::forge::{GhClient, PrState, PrView, RealGhClient, branches_match};
+use crate::registry::forge::{PrState, PrView, branches_match, pr_view_for_branch};
 
-/// Abstraction over the external probes finalize depends on.
+/// Returns `true` when `git status --porcelain` for `project_path` produces
+/// any output.
 ///
-/// Two methods, one per guard's external side-effect: `pr_view_for_branch`
-/// for the GitHub PR-state guard (delegates to `gh pr view`) and
-/// `is_dirty` for the workspace-cleanliness guard (delegates to
-/// `git status --porcelain`).
-///
-/// The CLI binary plugs in [`RealProbe`]; tests substitute a
-/// mock that records calls and replays canned outputs. Both methods
-/// operate **inside** `project_path` (i.e. the workspace clone, or
-/// the source path for symlink-mode projects).
-pub trait Probe {
-    /// Look up the open/closed/merged PR for `branch`. Returns
-    /// `Ok(None)` when no PR exists on that branch.
-    ///
-    /// # Errors
-    ///
-    /// Returns the underlying `gh pr view` stderr (or a parse-error
-    /// message) verbatim when the shell-out fails or its JSON cannot
-    /// be decoded. The string surfaces in the per-project `detail`.
-    fn pr_view_for_branch(
-        &self, project_path: &Path, branch: &str,
-    ) -> Result<Option<PrView>, String>;
-
-    /// Returns `true` when `git status --porcelain` for the workspace
-    /// clone produces any output. Returns `false` when the path is not
-    /// a git tree (e.g. a missing clone or a non-git directory) — the
-    /// finalize guard treats "not a clone" as "nothing to refuse on";
-    /// the PR-state guard owns the missing-clone case via `failed`.
-    fn is_dirty(&self, project_path: &Path) -> bool;
-}
-
-/// Default [`Probe`] backed by `gh` + `git`.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct RealProbe;
-
-impl Probe for RealProbe {
-    fn pr_view_for_branch(
-        &self, project_path: &Path, branch: &str,
-    ) -> Result<Option<PrView>, String> {
-        RealGhClient.pr_view_for_branch(project_path, branch)
+/// Returns `false` when the path is not a git tree (e.g. a missing clone or
+/// a non-git directory) — the finalize guard treats "not a clone" as
+/// "nothing to refuse on"; the PR-state guard owns the missing-clone case
+/// via `failed`.
+pub fn is_dirty<R: CmdRunner>(runner: &R, project_path: &Path) -> bool {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(project_path).args(["status", "--porcelain"]);
+    let Ok(output) = runner.run(&mut cmd) else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
     }
-
-    fn is_dirty(&self, project_path: &Path) -> bool {
-        let Ok(output) = Command::new("git")
-            .arg("-C")
-            .arg(project_path)
-            .args(["status", "--porcelain"])
-            .output()
-        else {
-            return false;
-        };
-        if !output.status.success() {
-            return false;
-        }
-        !output.stdout.is_empty()
-    }
+    !output.stdout.is_empty()
 }
 
 /// Classify a single project's PR state without performing any
@@ -118,11 +77,11 @@ pub const fn combine(pr_status: Landing, dirty: bool) -> Landing {
 
 /// Probe a single project — combine PR state and dirty observation
 /// into one [`ProjectResult`] row.
-pub(super) fn probe_one<P: Probe>(
-    probe: &P, project_path: &Path, rp: &RegistryProject, expected_branch: &str, clean: bool,
+pub(super) fn probe_one<R: CmdRunner>(
+    runner: &R, project_path: &Path, rp: &RegistryProject, expected_branch: &str, clean: bool,
 ) -> ProjectResult {
     let name = &rp.name;
-    let pr_view = probe.pr_view_for_branch(project_path, expected_branch);
+    let pr_view = pr_view_for_branch(runner, project_path, expected_branch);
 
     let (pr_status, pr_number, url, head_ref_name, pr_detail) = match pr_view {
         Ok(None) => (Landing::NoBranch, None, None, None, None::<String>),
@@ -150,7 +109,7 @@ pub(super) fn probe_one<P: Probe>(
 
     // Only check porcelain when the path actually exists — `gh` will
     // already have failed (and produced `Failed`) for a missing clone.
-    let dirty = project_path.exists() && probe.is_dirty(project_path);
+    let dirty = project_path.exists() && is_dirty(runner, project_path);
 
     let final_status = combine(pr_status, dirty);
 

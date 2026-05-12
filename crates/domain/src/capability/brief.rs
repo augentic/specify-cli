@@ -1,9 +1,6 @@
-//! Brief frontmatter + body parsing.
-//!
-//! Briefs are markdown files with a `---`-delimited YAML frontmatter
-//! block at the top. The frontmatter shape is enforced here;
-//! cross-brief invariants (ids matching the pipeline, `needs`/`tracks`
-//! dependencies) live in `pipeline.rs`.
+//! Brief frontmatter + body parsing for `---`-delimited markdown.
+//! Cross-brief invariants (ids matching the pipeline, `needs` /
+//! `tracks` dependencies) live in `pipeline.rs`.
 
 use std::path::{Path, PathBuf};
 

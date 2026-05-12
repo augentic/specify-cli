@@ -1,9 +1,6 @@
-//! Status transition rules and `Plan::transition` lifecycle writer.
-//!
-//! `Plan::transition` is the single writer of [`Entry::status`] —
-//! [`super::amend::Plan::amend`] and [`super::create::Plan::create`]
-//! cannot mutate it. See `rfc-2-execution.md` §"Transition Rules" for
-//! the canonical edge table.
+//! Status transition rules and `Plan::transition` — the single writer
+//! of [`Entry::status`]. The canonical edge table lives in
+//! `rfcs/rfc-2-execution.md` §"Transition Rules".
 
 use specify_error::Error;
 
@@ -315,15 +312,5 @@ mod tests {
             }
             other => panic!("expected Error::Diag, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn status_display_matches_serde() {
-        assert_eq!(Status::Pending.to_string(), "pending");
-        assert_eq!(Status::InProgress.to_string(), "in-progress");
-        assert_eq!(Status::Done.to_string(), "done");
-        assert_eq!(Status::Blocked.to_string(), "blocked");
-        assert_eq!(Status::Failed.to_string(), "failed");
-        assert_eq!(Status::Skipped.to_string(), "skipped");
     }
 }

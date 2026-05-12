@@ -1,14 +1,6 @@
-//! Change brief parser — operator-authored brief.
-//!
-//! `change.md` (at the repo root) is a markdown document with a
-//! `---`-delimited YAML frontmatter block at the top. The frontmatter
-//! shape is enforced here (`#[serde(deny_unknown_fields)]` +
-//! [`ChangeBrief::parse_str`] invariants); the body is captured
-//! verbatim and **not** parsed in v1. A future RFC may land structured
-//! body parsing, but today's consumers treat the body as prose.
-//!
-//! No JSON schema file ships for v1 per the RFC — the shape is enforced
-//! directly in code.
+//! Parser for `change.md` — the operator-authored brief at the repo
+//! root. Enforces the YAML frontmatter shape via
+//! [`ChangeBrief::parse_str`]; the markdown body is captured verbatim.
 
 use std::path::{Path, PathBuf};
 
@@ -57,18 +49,20 @@ pub struct ChangeInput {
     pub kind: InputKind,
 }
 
-crate::kebab_enum! {
-    /// Closed enum over the kinds of seed input a brief can declare.
-    ///
-    /// Unknown values are a hard parse error (serde-driven) so typos
-    /// like `kind: documenttation` fail fast.
-    #[derive(Debug)]
-    pub enum InputKind {
-        /// Existing source tree that will be migrated/extracted.
-        LegacyCode => "legacy-code",
-        /// Human-authored references (runbooks, PDFs, design docs).
-        Documentation => "documentation",
-    }
+/// Closed enum over the kinds of seed input a brief can declare.
+///
+/// Unknown values are a hard parse error (serde-driven) so typos
+/// like `kind: documenttation` fail fast.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum InputKind {
+    /// Existing source tree that will be migrated/extracted.
+    LegacyCode,
+    /// Human-authored references (runbooks, PDFs, design docs).
+    Documentation,
 }
 
 impl ChangeBrief {

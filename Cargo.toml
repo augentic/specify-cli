@@ -13,6 +13,15 @@ readme = "README.md"
 name = "specify"
 path = "src/main.rs"
 
+[features]
+default = []
+# Opt into wasm-pkg / OCI package resolution. Adds `wasm-pkg-client`,
+# `tokio`, `reqwest`, `oci-client`, and the rest of the wasm-pkg
+# transitive stack to the dep graph. The default build keeps the CLI
+# OCI-free; declared `package:` tool sources still parse but resolution
+# returns `tool-package-source-disabled` at run time.
+oci = ["specify-tool/oci"]
+
 [dependencies]
 specify-error.workspace = true
 specify-domain.workspace = true
@@ -24,6 +33,7 @@ serde-saphyr.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 semver.workspace = true
+strum.workspace = true
 chrono.workspace = true
 glob.workspace = true
 
@@ -93,6 +103,14 @@ pedantic = { level = "warn", priority = -1 }
 # leaky exports across the workspace) and silence the nursery rule.
 redundant_pub_crate = "allow"
 
+# The WASI tool runner (`specify-tool` with `host`/`oci` features) pulls in
+# Wasmtime/WASI transitive versions the workspace cannot unify yet, and
+# `ProjectConfig` in `specify-domain` re-exports `specify_tool::Tool`, so the
+# duplicate-crate-version warning surfaces at every crate that pulls in
+# either. Hoisted once here rather than per-file; see DECISIONS.md for the
+# rationale.
+multiple_crate_versions = "allow"
+
 # Cherry-picked lints are from the `restriction` lint group in order to drive up
 # consistency, quality, and brevity
 # See https://microsoft.github.io/rust-guidelines/guidelines/universal/index.html
@@ -141,6 +159,7 @@ tempfile = "3"
 tokio = { version = "1", features = ["rt", "fs", "io-util"] }
 toml = "1"
 sha2 = "0.10"
+strum = { version = "0.28", features = ["derive"] }
 ureq = { version = "3", features = ["json"] }
 wasm-pkg-client = "0.15"
 wasmtime = { version = "44.0.1", default-features = false, features = ["component-model", "runtime", "cranelift"] }

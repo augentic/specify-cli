@@ -1,8 +1,5 @@
-//! Top-level `specify status` — project dashboard.
-//!
-//! Aggregates the registry summary, plan progress counts, and the
-//! active-slice list. Single-slice status lives in
-//! `super::slice::SliceAction::Status`; this module is dashboard-only.
+//! Top-level `specify status` — project dashboard. Aggregates the
+//! registry summary, plan progress counts, and the active-slice list.
 
 use std::collections::BTreeMap;
 use std::io::Write;

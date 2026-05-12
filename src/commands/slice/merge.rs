@@ -1,7 +1,5 @@
-//! `slice merge run | preview | conflict-check`.
-//!
-//! Owns the merge-side JSON DTOs, summarisers, and the workspace-clone
-//! auto-commit shim that runs after a merge inside a workspace clone.
+//! `slice merge run | preview | conflict-check`. Owns the merge-side
+//! JSON DTOs, summarisers, and the workspace-clone auto-commit shim.
 
 use std::io::Write;
 use std::path::Path;
@@ -38,7 +36,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let archive_path = archive_dir.join(format!("{today}-{name}"));
 
     let entries: Vec<MergedEntry> = merged.iter().map(MergedEntry::from).collect();
-    ctx.write(&MergeRunBody {
+    ctx.write(&RunBody {
         merged_specs: entries,
         archive_path: archive_path.display().to_string(),
     })?;
@@ -94,13 +92,13 @@ pub(super) fn conflicts(ctx: &Ctx, name: &str) -> Result<()> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct MergeRunBody {
+struct RunBody {
     merged_specs: Vec<MergedEntry>,
     #[serde(skip)]
     archive_path: String,
 }
 
-impl Render for MergeRunBody {
+impl Render for RunBody {
     fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
         for entry in &self.merged_specs {
             writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;

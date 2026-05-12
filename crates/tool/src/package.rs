@@ -1,12 +1,6 @@
-//! wasm-pkg package resolution for declared tools.
-//!
-//! The package-source surface (request types, fetched-payload types, and the
-//! `PackageClient` trait) compiles unconditionally so manifest parsing and
-//! resolver dispatch stay feature-agnostic. The `wasm-pkg-client` /
-//! `tokio` / `oci-client` backing for [`WasmPkgClient`] is gated behind the
-//! `oci` Cargo feature; without it, [`WasmPkgClient::fetch`] returns
-//! [`ToolError::PackageDisabled`] so operators get the
-//! `tool-package-source-disabled` diagnostic rather than a parse failure.
+//! wasm-pkg package resolution for declared tools. `PackageClient`
+//! compiles unconditionally; the `wasm-pkg-client` backing for
+//! [`WasmPkgClient`] is gated behind the `oci` Cargo feature.
 
 use std::path::Path;
 
@@ -92,12 +86,10 @@ mod oci_backend {
         fn fetch(
             &self, request: &PackageRequest, dest_hint: &Path,
         ) -> Result<FetchedPackage, ToolError> {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|err| {
-                    ToolError::package(request, format!("create tokio runtime: {err}"))
-                })?;
+            let runtime =
+                tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(
+                    |err| ToolError::package(request, format!("create tokio runtime: {err}")),
+                )?;
             runtime.block_on(fetch(request, dest_hint))
         }
     }
@@ -135,10 +127,9 @@ mod oci_backend {
         let mut stream = client.stream_content(&package, &release).await.map_err(|err| {
             ToolError::package(request, format!("open package content stream: {err}"))
         })?;
-        let mut file =
-            tokio::fs::File::from_std(temp.reopen().map_err(|err| {
-                ToolError::cache_io("open package download tempfile", temp.path(), err)
-            })?);
+        let mut file = tokio::fs::File::from_std(temp.reopen().map_err(|err| {
+            ToolError::cache_io("open package download tempfile", temp.path(), err)
+        })?);
         let mut hasher = sha2::Sha256::new();
         let mut total = 0u64;
         while let Some(chunk) = stream

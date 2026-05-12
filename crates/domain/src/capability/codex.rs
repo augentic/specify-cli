@@ -1,9 +1,6 @@
-//! Codex rule frontmatter + body parsing.
-//!
-//! Codex rules are markdown files with a leading YAML frontmatter block
-//! followed by a markdown body. This module validates one rule file at a
-//! time; project-aware resolution, provenance, and duplicate-id checks
-//! are layered above the single-file parser.
+//! Codex rule frontmatter + body parsing — validates one markdown rule
+//! file at a time. Project-aware resolution and duplicate-id checks
+//! layer on top in [`crate::capability::codex_resolver`].
 
 use std::path::{Path, PathBuf};
 
@@ -56,19 +53,21 @@ pub struct CodexRuleFrontmatter {
     pub trigger: String,
 }
 
-crate::kebab_enum! {
-    /// Canonical codex finding severity.
-    #[derive(Debug)]
-    pub enum CodexSeverity {
-        /// Must-fix issue that can cause serious correctness, security, or data loss.
-        Critical => "critical",
-        /// Important issue that should normally block landing.
-        Important => "important",
-        /// Improvement suggestion that should be considered during review.
-        Suggestion => "suggestion",
-        /// Optional guidance that may be useful but is not expected to block.
-        Optional => "optional",
-    }
+/// Canonical codex finding severity.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum CodexSeverity {
+    /// Must-fix issue that can cause serious correctness, security, or data loss.
+    Critical,
+    /// Important issue that should normally block landing.
+    Important,
+    /// Improvement suggestion that should be considered during review.
+    Suggestion,
+    /// Optional guidance that may be useful but is not expected to block.
+    Optional,
 }
 
 impl CodexRule {

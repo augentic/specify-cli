@@ -1,10 +1,6 @@
 //! Shallow root-marker detection for generated context guidance.
-//!
-//! Public surface: [`Detection`] (the per-language summary the renderer
-//! folds into AGENTS.md) plus [`detect_root_markers`], the orchestrator
-//! re-exported from [`runtimes`]. Per-language passes live in
-//! [`runtimes`]; the file-format parsers they reach for live in
-//! [`markers`].
+//! Public surface: [`Detection`] (the per-language summary folded into
+//! AGENTS.md) plus the [`detect_root_markers`] orchestrator.
 
 mod markers;
 mod runtimes;

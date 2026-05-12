@@ -1,9 +1,6 @@
 //! Shared count and baseline types for the standards engine.
-//!
-//! [`Counts`] is the per-file live tally produced by the predicate
-//! engine; [`FileBaseline`] is the persisted TOML row in
-//! `scripts/standards-allowlist.toml`. They mirror each other field by
-//! field — keep the two in sync when adding a predicate.
+//! [`Counts`] is the per-file live tally; [`FileBaseline`] is the
+//! persisted TOML row in `scripts/standards-allowlist.toml`.
 
 use serde::Deserialize;
 

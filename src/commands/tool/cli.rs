@@ -1,7 +1,5 @@
-//! Clap derive surface for `specify tool *`.
-//!
-//! Lifted out of `src/cli.rs`; `cli.rs` re-exports `ToolAction` so the
-//! parent derives still resolve at expansion time.
+//! Clap derive surface for `specify tool *`. The umbrella `cli.rs`
+//! re-exports `ToolAction`.
 
 use clap::Subcommand;
 

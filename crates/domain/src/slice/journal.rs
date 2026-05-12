@@ -1,45 +1,6 @@
 //! On-disk representation of `<slice_dir>/journal.yaml` — the
-//! append-only audit log that phase skills (`define`, `build`, `merge`)
-//! write while they run.
-//!
-//! Canonical shape and writer contract: append-only, second-precision
-//! UTC timestamps, no in-place mutation.
-//!
-//! ## Contracts
-//!
-//! - **Append-only**: the module surface exposes `load` and `append`
-//!   and nothing else. There is no `pop`, `truncate`, or delete API —
-//!   `journal.yaml` grows monotonically for the life of the slice.
-//!   Callers who genuinely need to prune history edit the file by
-//!   hand.
-//!
-//! - **Pure audit log**: `/change:execute` (Layer 2) does **not** consume
-//!   journal entries as a signalling channel. Phase success / failure
-//!   / deferred classification travels through
-//!   `.metadata.yaml.outcome` (stamped via
-//!   [`crate::slice::actions::stamp_outcome`] in L2.A). The journal is for
-//!   humans — stderr traces, ambiguous-requirement text, recovery
-//!   notes — not for the driver's state machine.
-//!
-//! - **Atomic writes**: each [`Journal::append`] is a read-modify-write
-//!   that serialises the whole journal to a temp file in the same
-//!   directory and then `persist`s it via `fs::rename`. Mirrors
-//!   [`crate::slice::SliceMetadata::save`] and `Plan::save` (in
-//!   `specify-change`) exactly
-//!   so a mid-write crash leaves the prior file intact.
-//!
-//! - **Single-writer**: `append` is atomic per call but there is no
-//!   inter-process lock. Concurrent appends from multiple processes
-//!   will race at the read-modify-write boundary and lose entries.
-//!   In practice, only one phase runs at a time inside a single
-//!   `/change:execute` invocation, and a second `/change:execute` is
-//!   prevented by `.specify/plan.lock` (L2.C). Callers who want
-//!   multi-writer safety must add their own coordination.
-//!
-//! - **Malformed file rejection**: [`Journal::load`] surfaces a
-//!   `Error::Yaml` (via `From<YamlError>`) on malformed
-//!   content; it does **not** silently truncate or recover. The only
-//!   "graceful" branch is "file absent → empty journal".
+//! append-only audit log written by phase skills. `Journal::append` is
+//! a single-writer atomic read-modify-write; `load` rejects malformed YAML.
 
 use std::path::{Path, PathBuf};
 
@@ -83,18 +44,29 @@ pub struct JournalEntry {
     pub context: Option<String>,
 }
 
-crate::kebab_enum! {
-    /// Classification of a [`JournalEntry`].
-    #[derive(Debug, clap::ValueEnum)]
-    #[non_exhaustive]
-    pub enum EntryKind {
-        /// Phase paused to ask a clarifying question.
-        Question => "question",
-        /// Phase observed a failure (compile error, test failure, etc.).
-        Failure => "failure",
-        /// Phase recovered from a previous failure or deferred state.
-        Recovery => "recovery",
-    }
+/// Classification of a [`JournalEntry`].
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    clap::ValueEnum,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+#[non_exhaustive]
+pub enum EntryKind {
+    /// Phase paused to ask a clarifying question.
+    Question,
+    /// Phase observed a failure (compile error, test failure, etc.).
+    Failure,
+    /// Phase recovered from a previous failure or deferred state.
+    Recovery,
 }
 
 impl Journal {

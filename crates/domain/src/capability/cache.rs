@@ -1,8 +1,6 @@
-//! Cache metadata: the on-disk `.specify/.cache/.cache-meta.yaml` file.
-//!
-//! The agent owns writes to this file; the CLI only reads it while
-//! deciding whether the cache on disk matches the `schema` value in
-//! `.specify/project.yaml`.
+//! Cache metadata — the on-disk `.specify/.cache/.cache-meta.yaml`
+//! file. The agent owns writes; the CLI only reads it to decide
+//! whether the cache matches `.specify/project.yaml:schema`.
 
 use std::path::{Path, PathBuf};
 

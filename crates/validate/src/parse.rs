@@ -1,8 +1,6 @@
-//! YAML walker and predicates for top-level contract documents.
-//!
-//! Filenames and directory layout are deliberately not signals — only the
-//! root key (`openapi:` or `asyncapi:`) qualifies a file as a top-level
-//! contract.
+//! YAML walker and predicates for top-level contract documents. Only
+//! the root key (`openapi:` or `asyncapi:`) qualifies a file as a
+//! top-level contract; filenames and directory layout are not signals.
 
 use std::path::{Path, PathBuf};
 

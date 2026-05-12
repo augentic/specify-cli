@@ -1,13 +1,6 @@
-//! `unit-test-serde-roundtrip`: a `#[test]` function that exercises a
-//! serde round-trip (`to_string` + `from_str`) on the same crate's
-//! types.
-//!
-//! Round-trip tests usually belong in `tests/` integration tests where
-//! the round-trip is driven end-to-end through a CLI command. Recurring
-//! the pattern as a unit test in the same crate as the type is a soft
-//! smell — the test asserts a property of `serde_*` rather than of the
-//! domain. One hit per offending test function; allowlist when the
-//! round-trip genuinely lives next to a custom Visitor or similar.
+//! `unit-test-serde-roundtrip`: a `#[test]` whose body pairs a
+//! `serde_*::to_string` with a `serde_*::from_str` on the same crate's
+//! types. One hit per offending test function.
 
 use syn::visit::Visit;
 

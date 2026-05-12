@@ -1,11 +1,8 @@
 //! On-disk `<slice_dir>/.metadata.yaml` representation.
 //!
-//! [`SliceMetadata`] is the document itself; [`Outcome`] is the
-//! latest phase return surface read by `/change:execute`; the
-//! [`TouchedSpec`] entries list the specs a slice mutates. The save
-//! path goes through [`crate::slice::atomic::yaml_write`] — readers
-//! see either the full previous content or the full new content,
-//! never a partial write.
+//! [`SliceMetadata`] is the document, [`Outcome`] is the latest phase return
+//! surface read by `/change:execute`, and [`TouchedSpec`] lists the specs
+//! the slice mutates.
 
 use std::path::{Path, PathBuf};
 
@@ -134,17 +131,19 @@ pub struct TouchedSpec {
     pub kind: SpecKind,
 }
 
-crate::kebab_enum! {
-    /// Whether a touched spec is new or a modification of an existing
-    /// baseline.
-    #[derive(Debug)]
-    #[non_exhaustive]
-    pub enum SpecKind {
-        /// A brand-new spec not yet in the baseline.
-        New => "new",
-        /// A modification of an existing baseline spec.
-        Modified => "modified",
-    }
+/// Whether a touched spec is new or a modification of an existing
+/// baseline.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+#[non_exhaustive]
+pub enum SpecKind {
+    /// A brand-new spec not yet in the baseline.
+    New,
+    /// A modification of an existing baseline spec.
+    Modified,
 }
 
 impl SliceMetadata {

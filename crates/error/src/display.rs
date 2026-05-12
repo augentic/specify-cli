@@ -1,8 +1,6 @@
-//! Hint and discriminant tables for [`crate::Error`].
-//!
-//! `variant_str` is the wire contract surfaced as the JSON `error`
-//! field; `hint` is the long-form recovery line the TTY renderer pulls
-//! alongside it.
+//! Hint and discriminant tables for [`crate::Error`]. `variant_str` is
+//! the wire-contract `error` field; `hint` is the long-form recovery
+//! line the TTY renderer pulls alongside it.
 
 use std::borrow::Cow;
 

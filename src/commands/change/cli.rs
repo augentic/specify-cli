@@ -1,9 +1,6 @@
 //! Clap derive surface for `specify change *` (the umbrella verb).
-//!
-//! Lifted out of `src/cli.rs`; `cli.rs` re-exports `ChangeAction` so
-//! the parent derives still resolve at expansion time. The nested
-//! `plan *` and `plan lock *` enums live next to their dispatchers in
-//! [`crate::commands::change::plan::cli`].
+//! The nested `plan *` and `plan lock *` enums live next to their
+//! dispatchers in [`crate::commands::change::plan::cli`].
 
 use clap::Subcommand;
 

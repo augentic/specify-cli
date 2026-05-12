@@ -1,4 +1,4 @@
-//! Unit tests for `specify-capability`.
+//! Integration tests for `specify_domain::capability`.
 //!
 //! The "workspace" fixture we test against is the `specify` repo itself:
 //! `schemas/omnia/` and `schemas/omnia/briefs/*.md` are real, hand-edited
@@ -9,21 +9,17 @@
 
 use std::path::{Path, PathBuf};
 
+use specify_domain::capability::{
+    Brief, CacheMeta, Capability, CapabilitySource, ChangeBrief, CodexProvenance, CodexRule,
+    CodexSeverity, DEFAULT_CODEX_CAPABILITY, InputKind, Phase, Pipeline, PipelineEntry,
+    PipelineView, ResolvedCodex, ValidationResult, validate_against_schema,
+};
 use specify_error::Error;
 use tempfile::TempDir;
 
-use crate::capability::ValidationResult;
-use crate::capability::brief::Brief;
-use crate::capability::cache::CacheMeta;
-use crate::capability::capability::{Capability, CapabilitySource, Phase};
-use crate::capability::change_brief::{ChangeBrief, InputKind};
-use crate::capability::codex::{CodexRule, CodexSeverity};
-use crate::capability::codex_resolver::{CodexProvenance, DEFAULT_CODEX_CAPABILITY, ResolvedCodex};
-use crate::capability::pipeline::PipelineView;
-
 /// Absolute path to the repo root (the Cargo workspace root).
 fn repo_root() -> PathBuf {
-    // CARGO_MANIFEST_DIR = <repo>/crates/schema
+    // CARGO_MANIFEST_DIR = <repo>/crates/domain
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest
         .parent()
@@ -131,14 +127,14 @@ fn validate_structure_fails_when_define_phase_is_empty() {
         name: "broken".into(),
         version: 1,
         description: "empty define phase".into(),
-        pipeline: crate::capability::capability::Pipeline {
+        pipeline: Pipeline {
             plan: vec![],
             define: vec![],
-            build: vec![crate::capability::capability::PipelineEntry {
+            build: vec![PipelineEntry {
                 id: "build".into(),
                 brief: "briefs/build.md".into(),
             }],
-            merge: vec![crate::capability::capability::PipelineEntry {
+            merge: vec![PipelineEntry {
                 id: "merge".into(),
                 brief: "briefs/merge.md".into(),
             }],
@@ -284,10 +280,10 @@ pipeline:
 /// JSON Schema body shipped with the crate. Read directly from disk so
 /// the rejection tests below stay coupled to the on-disk file used by
 /// `Capability::validate_structure`.
-const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../../schemas/capability.schema.json");
+const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../schemas/capability.schema.json");
 
 fn validate_raw(instance: &serde_json::Value) -> Vec<ValidationResult> {
-    crate::capability::capability::validate_against_schema(
+    validate_against_schema(
         CAPABILITY_JSON_SCHEMA,
         "capability.valid",
         "capability manifest conforms to schemas/capability.schema.json",
@@ -352,20 +348,20 @@ fn json_schema_rejects_pipeline_plan_block() {
         name: "broken".into(),
         version: 1,
         description: "plan still present".into(),
-        pipeline: crate::capability::capability::Pipeline {
-            plan: vec![crate::capability::capability::PipelineEntry {
+        pipeline: Pipeline {
+            plan: vec![PipelineEntry {
                 id: "discovery".into(),
                 brief: "briefs/plan/discovery.md".into(),
             }],
-            define: vec![crate::capability::capability::PipelineEntry {
+            define: vec![PipelineEntry {
                 id: "proposal".into(),
                 brief: "briefs/proposal.md".into(),
             }],
-            build: vec![crate::capability::capability::PipelineEntry {
+            build: vec![PipelineEntry {
                 id: "build".into(),
                 brief: "briefs/build.md".into(),
             }],
-            merge: vec![crate::capability::capability::PipelineEntry {
+            merge: vec![PipelineEntry {
                 id: "merge".into(),
                 brief: "briefs/merge.md".into(),
             }],

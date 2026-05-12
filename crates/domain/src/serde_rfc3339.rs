@@ -1,6 +1,5 @@
-//! Serde adapter for `chrono::DateTime<Utc>` rendered as rfc3339 in UTC
-//! with second precision and a literal `Z` suffix — the wire shape Specify
-//! has used since the `Rfc3339Stamp` newtype was retired.
+//! Serde adapter for `chrono::DateTime<Utc>` rendered as RFC 3339 in
+//! UTC with second precision and a literal `Z` suffix.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serializer};

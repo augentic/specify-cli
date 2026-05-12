@@ -1,7 +1,6 @@
-//! Hub variant of `init`. Scaffolds a registry-only platform hub:
-//! `registry.yaml` at the repo root plus `project.yaml { hub: true }`
-//! under `.specify/`. Refuses to run when `.specify/` already exists
-//! so it never clobbers a regular single-repo project.
+//! Hub variant of `init` — scaffolds a registry-only platform hub
+//! (`registry.yaml` plus `project.yaml { hub: true }`). Refuses to run
+//! when `.specify/` already exists.
 
 use std::collections::BTreeMap;
 use std::fs;

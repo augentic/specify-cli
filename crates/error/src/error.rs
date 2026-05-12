@@ -1,9 +1,8 @@
-//! `Error` enum and saphyr-error conversions.
-//!
-//! Hint and discriminant tables live in [`crate::display`]; the YAML
-//! wrappers behind `Yaml` / `YamlSer` live in [`crate::yaml`].
+//! `Error` enum and saphyr-error conversions. Hint and discriminant
+//! tables live in [`crate::display`]; the YAML wrappers behind
+//! `Yaml` / `YamlSer` live in [`crate::yaml`].
 
-use crate::validation::ValidationSummary;
+use crate::validation::Summary as ValidationSummary;
 use crate::yaml::{YamlError, YamlSerError};
 
 /// Structured error type for all `specify-*` crates.

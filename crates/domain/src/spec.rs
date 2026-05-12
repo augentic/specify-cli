@@ -1,13 +1,6 @@
-//! Spec format parsing — requirement blocks, scenarios, and delta sections.
-//!
-//! This crate is a structural port of the parser half of the archived
-//! Python reference implementation. The merge and validation halves
-//! live in `specify-merge` (Change D).
-//!
-//! All three public functions are pure and infallible. They are deliberately
-//! lenient — malformed input (missing ID lines, orphan blocks, duplicate IDs)
-//! is surfaced as structural data rather than rejected here, because
-//! coherence checking is `specify-merge`'s job.
+//! Spec-format parsing for requirement blocks, scenarios, and delta
+//! sections. Public functions are pure, infallible, and deliberately
+//! lenient — coherence checks belong to the merge engine.
 
 /// Hard-coded spec format constants (matches
 /// `plugins/spec/references/spec-format.md`).

@@ -1,7 +1,5 @@
-//! Clap derive surface for `specify capability *`.
-//!
-//! Lifted out of `src/cli.rs`; `cli.rs` re-exports `CapabilityAction`
-//! so the parent derives still resolve at expansion time.
+//! Clap derive surface for `specify capability *`. The umbrella
+//! `cli.rs` re-exports `CapabilityAction`.
 
 use std::path::PathBuf;
 

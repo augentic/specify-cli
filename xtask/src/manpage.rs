@@ -1,7 +1,6 @@
 //! `xtask gen-man` — render `clap_mangen` roff man pages for the
-//! `specify` binary and every (non-`help`) subcommand into a target
-//! directory. The output is gitignored (`target/man/` by default);
-//! release tooling can pick it up from there.
+//! `specify` binary and every (non-`help`) subcommand. Output is
+//! gitignored at `target/man/` by default.
 
 use std::path::Path;
 use std::{fs, io};

@@ -1,20 +1,12 @@
-//! Registry-shape validators.
-//!
-//! Enforces invariants that `serde` cannot express on its own:
-//! `version == 1`, kebab-case project names, non-empty required strings,
-//! unique project names, well-formed URLs, the multi-project description
-//! requirement, and the contract-roles consistency rules. Hub-mode
-//! validation layers an additional `hub-cannot-be-project` check on top
-//! of the base shape rules.
-//!
-//! The methods are exposed on [`Registry`] itself so callers — including
-//! `Registry::load` — keep the same fluent shape they had pre-extraction.
+//! Registry-shape validators — invariants that `serde` cannot express
+//! (kebab names, unique projects, URL shape, contract-roles
+//! consistency). Methods are exposed as `impl Registry` for fluent use.
 
 use std::collections::{HashMap, HashSet};
 
 use specify_error::{Error, is_kebab};
 
-use crate::registry::registry::Registry;
+use crate::registry::catalog::Registry;
 
 impl Registry {
     /// Enforce invariants that serde cannot express on its own:

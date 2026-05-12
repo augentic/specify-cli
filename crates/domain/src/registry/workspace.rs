@@ -1,10 +1,6 @@
-//! Multi-project workspace materialisation under `.specify/workspace/`.
-//!
-//! All registry-derived state lives in this crate. The plan name argument
-//! is flattened to `&str` to avoid a cycle with
-//! `specify-slice` (which already depends on `specify-registry`); the
-//! binary callers pass `&plan.name` and the same surface continues to
-//! be exposed as `crate::registry::workspace::*` re-exports from `src/lib.rs`.
+//! Multi-project workspace materialisation under `.specify/workspace/`
+//! — bootstrap, sync, status, and push helpers for the slots derived
+//! from `registry.yaml`.
 
 mod bootstrap;
 mod git;
@@ -14,12 +10,20 @@ mod status;
 mod sync;
 
 #[cfg(test)]
+#[allow(
+    clippy::unnecessary_wraps,
+    clippy::struct_field_names,
+    clippy::type_complexity,
+    reason = "test helpers favour readability over clippy heuristics"
+)]
 mod tests;
 
 use std::path::{Component, Path, PathBuf};
 
 pub use push::{PushOutcome, PushResult, github_slug, push_all, push_projects};
-pub use slot_problem::{SlotProblem, SlotProblemReason, slot_problem};
+pub use slot_problem::{
+    Problem as SlotProblem, Reason as SlotProblemReason, inspect as slot_problem,
+};
 use specify_error::Error;
 pub use status::{ConfiguredTargetKind, SlotKind, SlotStatus, status, status_projects};
 pub use sync::{sync_all, sync_projects};

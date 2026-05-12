@@ -174,6 +174,73 @@ code had gone there). A new crate that does not strengthen the
 dependency direction is overhead; refactor within an existing module
 instead.
 
+## Tool architecture
+
+`specify-tool` owns the declared WASI tool model, cache, resolver, and
+Wasmtime-backed execution host. It is deliberately independent of
+`specify-capability`: the binary resolves capabilities, then hands this
+crate project-scope and capability-scope tool declarations.
+
+- **Declaration sites.** Tools are declared at *project scope* (a
+  top-level `tools:` array in `.specify/project.yaml`) and / or
+  *capability scope* (a `tools.yaml` sidecar next to `capability.yaml`
+  inside the resolved capability directory). Both shapes share
+  `schemas/tool.schema.json`. `specify tool` merges by `name`, with
+  project scope winning on collision and a typed `tool-name-collision`
+  warning emitted once per session. `capability.yaml` itself is never
+  modified and never gains a `tools:` field.
+- **Cache layout.** The cache root resolves
+  `$SPECIFY_TOOLS_CACHE` → `$XDG_CACHE_HOME/specify/tools/` →
+  `$HOME/.cache/specify/tools/`. Within it, paths are
+  `<scope-segment>/<tool-name>/<version>/{module.wasm,meta.yaml}` where
+  `<scope-segment>` is `project--<project-name>` or
+  `capability--<capability-slug>`. The `--` separator avoids collisions
+  with hyphenated tool names. `<version>` is the literal manifest
+  string; SemVer is parsed only at structural validation time.
+- **Sidecar metadata.** `meta.yaml` records
+  `(scope, tool-name, tool-version, source, sha256)` plus an
+  informational `permissions-snapshot`. A sidecar is a cache hit when
+  that tuple matches the live merged manifest; any mismatch forces a
+  refetch into the same `<version>/` directory via atomic move. When
+  `sha256` is present, fetched bytes are verified before installation.
+  Permissions changes alone never invalidate the cache (permissions are
+  evaluated per `run`).
+- **Permission substitution.** Substitutions apply only inside
+  `permissions.{read,write}` entries (not `source`, not module argv).
+  `$PROJECT_DIR` is always available; `$CAPABILITY_DIR` is available
+  only to capability-scope tools — project-scope use is rejected as
+  `tool.capability-dir-out-of-scope`. After substitution paths must be
+  absolute, free of `..`, and canonicalise inside `PROJECT_DIR`
+  (or `CAPABILITY_DIR` for capability-scope). `write:` entries that
+  target Specify lifecycle state (`.specify/project.yaml`, slice /
+  archive `.metadata.yaml`, `.specify/plan.lock`, etc.) are rejected.
+- **Argument forwarding and environment.** `specify tool run <name>
+  [-- <args>...]` forwards everything after `--` verbatim with
+  `<name>` as `argv[0]`. The module receives exactly two environment
+  variables — `PROJECT_DIR` always, `CAPABILITY_DIR` only for
+  capability-scope tools — plus stdio. No host environment is
+  inherited. Working directory is the canonicalised project root.
+- **Exit-code mapping.** Module exit `0` → `0`; module exit `N`
+  (1..=255) → `N`; runtime trap → `2` with a typed `runtime` envelope;
+  resolver error → `2` with a typed `resolver` envelope; missing
+  project context → `1` (`not-initialized`); unknown tool name → `2`
+  (`tool-not-declared`).
+- **Wasmtime configuration.** Pin `wasmtime` and `wasmtime-wasi` to a
+  matching stable pair, use the synchronous WASI Preview 2 path
+  (`wasmtime_wasi::add_to_linker_sync`) and
+  `wasmtime::component::Component`, and disable filesystem access by
+  default — preopens are added per-tool from manifest permissions only.
+  Execution stays behind the concrete `WasiRunner` boundary.
+- **Cache concurrency.** No file locks in v1; concurrent cold-cache
+  resolutions may both stage, and the resolver's atomic rename makes
+  the steady state deterministic. A per-tool flock is deferred until
+  it is needed.
+- **`specify tool gc` scope.** Deletes any
+  `<cache-root>/<scope-segment>/<tool-name>/<version>/` whose
+  `(scope, name, version, source)` tuple is not referenced by the live
+  merged manifest of the current project. It does not scan other
+  projects on the host.
+
 ## Follow-up: wasm-pkg-client HTTP duplication
 
 `wasm-pkg-client` (0.15) is wired in as a non-optional dep of

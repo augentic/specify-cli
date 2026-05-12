@@ -1,13 +1,6 @@
-//! Registry parser — platform-level catalogue of peer projects.
-//!
-//! `registry.yaml` (at the repo root) enumerates the repos that
-//! comprise the platform and the capability each of them uses. The file
-//! is optional: an absent or single-entry registry is equivalent to
-//! single-repo mode. Multi-entry registries activate the `/change:plan`
-//! *sync peers* phase; this module only handles shape parsing.
-//!
-//! No JSON schema file ships for v1 — the shape is enforced directly
-//! by [`Registry::validate_shape`] (in [`crate::registry::validate`]).
+//! Parser and types for `registry.yaml` — the platform-level catalogue
+//! of peer projects and their capabilities. Shape is enforced by
+//! [`Registry::validate_shape`] (in [`crate::registry::validate`]).
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

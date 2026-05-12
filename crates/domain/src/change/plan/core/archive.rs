@@ -1,8 +1,6 @@
 //! Archival move of `plan.yaml` (plus optional working directory and
-//! operator brief) into the archive tree.
-//!
-//! See `rfc-2-execution.md` §"`specify change plan archive`" for the
-//! preflight + execute flow exercised by the tests submodule.
+//! operator brief) into the archive tree. See `rfcs/rfc-2-execution.md`
+//! §"`specify change plan archive`" for the preflight + execute flow.
 
 use std::path::{Path, PathBuf};
 

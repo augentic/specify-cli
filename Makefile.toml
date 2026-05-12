@@ -21,10 +21,8 @@ dependencies = ["audit", "fmt", "lint", "outdated", "deps"]
 dependencies = ["lint", "standards", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
 
 [tasks.standards]
-script = '''
-cargo run --quiet -p xtask -- standards-check
-cargo run --quiet -p xtask -- standards-check --check-tightenable
-'''
+command = "cargo"
+args = ["run", "--quiet", "-p", "xtask", "--", "standards-check"]
 
 # -------------------------------------
 # Individual Actions
@@ -115,14 +113,11 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 # Move or deprecate
 # -------------------------------------
 
-# Mechanical enforcement of AGENTS.md#coding-standards. 
-# Predicates live in `xtask/src/standards.rs` with per-file baselines in 
-# `scripts/standards-allowlist.toml`.
-#  Use:
+# Mechanical enforcement of AGENTS.md#coding-standards. Predicates live in
+# `xtask/src/standards.rs`; baselines are 0 per file per predicate (no allowlist).
+# Use:
 # ```bash
 # cargo make xtask standards-check
-# cargo make xtask standards-check --check-tightenable
-# cargo make xtask standards-check --tighten
 # ```
 [tasks.xtask]
 command = "cargo"

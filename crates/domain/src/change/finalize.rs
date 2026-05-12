@@ -1,49 +1,6 @@
-//! `specify change finalize` — change landing closure.
-//!
-//! Closure verb for the platform-first loop. `workspace push` ships the
-//! commits; the operator lands PRs through the forge UI or `gh pr merge`;
-//! `change finalize` confirms the **whole** change is landed (every per-project PR
-//! merged on remote, every workspace clone clean) and atomically sweeps
-//! `plan.yaml`, `change.md`, and `.specify/plans/<name>/` into
-//! `.specify/archive/plans/<YYYYMMDD>-<name>/`. With `--clean`, prunes
-//! `.specify/workspace/<peer>/` clones after the archive completes.
-//!
-//! ## Defence in depth
-//!
-//! Three guards layer up before the archive runs. **Any guard failure
-//! is fatal** — finalize is all-or-nothing. The on-disk state is
-//! identical before and after a refused finalize.
-//!
-//! 1. **Plan-presence + terminal-state guard.** `.specify/plan.yaml`
-//!    must exist and every entry must be in a terminal state for
-//!    finalize purposes — `done`, `failed`, or `skipped` (the in-Plan
-//!    equivalent of the brief's `dropped`). Anything pending,
-//!    in-progress, or blocked refuses with `non-terminal-entries-present`.
-//! 2. **Per-project PR-state guard.** For each registry project, query
-//!    `gh pr view --json state,merged,headRefName,number,url` against
-//!    the project's workspace clone. Statuses: `merged`, `unmerged`,
-//!    `closed`, `no-branch`, `branch-pattern-mismatch`, `failed`. Only
-//!    `merged` and `no-branch` pass.
-//! 3. **Workspace-cleanliness guard.** For each workspace clone,
-//!    `git status --porcelain` must be empty. Dirty clones surface as
-//!    status `dirty` and refuse — protecting the operator from losing
-//!    uncommitted work to an inadvertent `--clean`.
-//!
-//! ## Composition
-//!
-//! `change finalize` is independent of the forge landing action. It is
-//! a read-only closure check for PRs: the operator must merge PRs first
-//! through the forge UI or `gh pr merge`; finalize only observes that
-//! state, archives local coordinator state, and optionally cleans clones.
-//!
-//! ## Atomicity
-//!
-//! `Plan::archive` preflights both destinations (`<name>-<date>.yaml`
-//! and `<name>-<date>/`) before any move, so a collision returns an
-//! error before any file is touched. `--clean` runs **after** every PR
-//! and dirty-clone guard passes and after the archive succeeds, so a
-//! failed archive leaves clones intact. `--dry-run` never invokes archive
-//! or clean and never invokes a forge merge command.
+//! `specify change finalize` — verifies every per-project PR is merged
+//! and every workspace clone is clean, then atomically archives
+//! `plan.yaml`, `change.md`, and `.specify/plans/<name>/`.
 
 #![allow(clippy::needless_pass_by_value)]
 
@@ -54,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
 use crate::change::plan::core::Plan;
+use crate::cmd::CmdRunner;
 use crate::config::LayoutExt;
 use crate::registry::Registry;
 use crate::registry::forge::{SPECIFY_BRANCH_PREFIX, project_path};
@@ -62,47 +20,55 @@ mod archive;
 mod probe;
 mod summary;
 
-#[cfg(test)]
-mod tests;
-
-pub use probe::{Probe, RealProbe, classify_pr, combine};
+pub use probe::{classify_pr, combine, is_dirty};
 pub use summary::{is_terminal, outstanding, summarise};
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
-crate::kebab_enum! {
-    /// Per-project classification for `specify change finalize`.
-    ///
-    /// Display strings are kebab-case and match the JSON `status` value.
-    /// Skill authors and operators rely on this vocabulary; treat it as a
-    /// stable wire contract.
-    #[derive(Debug)]
-    pub enum Landing {
-        /// PR is `MERGED` on remote — passing.
-        Merged => "merged",
-        /// PR exists, branch matches, but has not been operator-merged
-        /// (state `OPEN`). Refuses finalize.
-        Unmerged => "unmerged",
-        /// PR was `CLOSED` without merging. Refuses finalize.
-        Closed => "closed",
-        /// No PR on `specify/<change-name>` for this project — passing
-        /// (e.g. the project was assigned no work in this change, or
-        /// the operator merged via the forge UI / `gh pr merge` and deleted
-        /// the branch).
-        NoBranch => "no-branch",
-        /// A PR exists but its `headRefName` is not the expected branch.
-        /// Defence in depth — branch-pattern guard applies here too.
-        BranchPatternMismatch => "branch-pattern-mismatch",
-        /// `git status --porcelain` for the workspace clone is non-empty.
-        /// Refuses finalize even without `--clean`, to protect uncommitted
-        /// work from a subsequent `--clean` run.
-        Dirty => "dirty",
-        /// Generic shell-out failure (gh missing, unparseable JSON, network
-        /// error, …). Refuses finalize.
-        Failed => "failed",
-    }
+/// Per-project classification for `specify change finalize`.
+///
+/// Display strings are kebab-case and match the JSON `status` value.
+/// Skill authors and operators rely on this vocabulary; treat it as a
+/// stable wire contract.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    strum::IntoStaticStr,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum Landing {
+    /// PR is `MERGED` on remote — passing.
+    Merged,
+    /// PR exists, branch matches, but has not been operator-merged
+    /// (state `OPEN`). Refuses finalize.
+    Unmerged,
+    /// PR was `CLOSED` without merging. Refuses finalize.
+    Closed,
+    /// No PR on `specify/<change-name>` for this project — passing
+    /// (e.g. the project was assigned no work in this change, or
+    /// the operator merged via the forge UI / `gh pr merge` and deleted
+    /// the branch).
+    NoBranch,
+    /// A PR exists but its `headRefName` is not the expected branch.
+    /// Defence in depth — branch-pattern guard applies here too.
+    BranchPatternMismatch,
+    /// `git status --porcelain` for the workspace clone is non-empty.
+    /// Refuses finalize even without `--clean`, to protect uncommitted
+    /// work from a subsequent `--clean` run.
+    Dirty,
+    /// Generic shell-out failure (gh missing, unparseable JSON, network
+    /// error, …). Refuses finalize.
+    Failed,
 }
 
 impl Landing {
@@ -149,7 +115,7 @@ pub struct ProjectResult {
     reason = "serde's `serialize_with` signature requires `&T`."
 )]
 fn serialize_status<S: serde::Serializer>(status: &Landing, s: S) -> Result<S::Ok, S::Error> {
-    s.serialize_str(status.as_str())
+    s.serialize_str(status.into())
 }
 
 /// Per-status counters for the summary row.
@@ -281,7 +247,7 @@ pub enum PlanLoad {
 ///
 /// Returns [`Refusal`] for whole-run refusals. Per-project
 /// failures live in [`Outcome::projects`] and never bubble up.
-pub fn run<P: Probe>(inputs: Inputs<'_>, probe: &P) -> Result<Outcome, Refusal> {
+pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refusal> {
     // Guard: terminal states.
     let outstanding = summary::outstanding(inputs.plan);
     if !outstanding.is_empty() {
@@ -296,7 +262,7 @@ pub fn run<P: Probe>(inputs: Inputs<'_>, probe: &P) -> Result<Outcome, Refusal> 
     let mut projects: Vec<ProjectResult> = Vec::with_capacity(inputs.registry.projects.len());
     for rp in &inputs.registry.projects {
         let path = project_path(inputs.project_dir, &workspace_base, rp);
-        projects.push(probe::probe_one(probe, &path, rp, &expected_branch, inputs.clean));
+        projects.push(probe::probe_one(runner, &path, rp, &expected_branch, inputs.clean));
     }
 
     let aggregated = summary::summarise(&projects);

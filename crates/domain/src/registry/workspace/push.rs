@@ -8,35 +8,36 @@ use std::path::Path;
 
 use specify_error::Error;
 
-use self::forge::RealWorkspacePushForge;
-pub(in crate::registry::workspace) use self::forge::WorkspacePushForge;
 use self::remote::{
     RemoteBranchState, current_branch, ensure_pr_base_resolves_if_supported,
     ensure_pr_if_supported, inspect_remote_branch, is_git_worktree, remote_default_branch_is,
 };
 use super::git::{self, git_output_ok, git_status_porcelain, git_stdout_trimmed};
 use super::workspace_base;
+use crate::cmd::{CmdRunner, RealCmd};
 use crate::registry::Registry;
+use crate::registry::catalog::RegistryProject;
 use crate::registry::forge::project_path;
-use crate::registry::registry::RegistryProject;
 
-crate::kebab_enum! {
-    /// Classification of a single project push outcome.
-    #[derive(Debug)]
-    pub enum PushOutcome {
-        /// Branch pushed to remote.
-        Pushed => "pushed",
-        /// Remote repo was created, then pushed.
-        Created => "created",
-        /// Push failed (see `PushResult.error`).
-        Failed => "failed",
-        /// No changes to push.
-        UpToDate => "up-to-date",
-        /// Local-only project (no remote configured).
-        LocalOnly => "local-only",
-        /// Checkout is not currently on the expected `specify/<change>` branch.
-        NoBranch => "no-branch",
-    }
+/// Classification of a single project push outcome.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum PushOutcome {
+    /// Branch pushed to remote.
+    Pushed,
+    /// Remote repo was created, then pushed.
+    Created,
+    /// Push failed (see `PushResult.error`).
+    Failed,
+    /// No changes to push.
+    UpToDate,
+    /// Local-only project (no remote configured).
+    LocalOnly,
+    /// Checkout is not currently on the expected `specify/<change>` branch.
+    NoBranch,
 }
 
 /// Result of a per-project push operation.
@@ -104,7 +105,7 @@ pub fn push_projects(
 ) -> Result<Vec<PushResult>, Error> {
     let branch_name = format!("specify/{change_name}");
     let workspace_base = workspace_base(project_dir);
-    let real_forge = RealWorkspacePushForge;
+    let runner = RealCmd;
 
     let mut results = Vec::new();
 
@@ -116,7 +117,7 @@ pub fn push_projects(
             &branch_name,
             change_name,
             dry_run,
-            &real_forge,
+            &runner,
         );
         results.push(result);
     }
@@ -156,9 +157,9 @@ fn push_result(
     clippy::too_many_lines,
     reason = "Per-project push driver inlines the dirty/clone/branch/push pipeline so each step's failure mode stays local."
 )]
-pub(in crate::registry::workspace) fn push_single_project(
+pub(in crate::registry::workspace) fn push_single_project<R: CmdRunner>(
     project_dir: &Path, workspace_base: &Path, rp: &RegistryProject, branch_name: &str,
-    change_name: &str, dry_run: bool, forge: &dyn WorkspacePushForge,
+    change_name: &str, dry_run: bool, runner: &R,
 ) -> PushResult {
     let project_path = project_path(project_dir, workspace_base, rp);
 
@@ -228,7 +229,7 @@ pub(in crate::registry::workspace) fn push_single_project(
 
     let slug = github_slug(&forge_url);
     let remote_branch =
-        match inspect_remote_branch(&project_path, branch_name, slug.as_deref(), forge) {
+        match inspect_remote_branch(runner, &project_path, branch_name, slug.as_deref()) {
             Ok(state) => state,
             Err(err) => {
                 return push_result(
@@ -261,11 +262,11 @@ pub(in crate::registry::workspace) fn push_single_project(
             return push_result(rp, PushOutcome::UpToDate, Some(branch_name), None, None);
         }
         return ensure_pr_if_supported(
+            runner,
             &project_path,
             slug.as_deref(),
             branch_name,
             change_name,
-            forge,
         )
         .map_or_else(
             |err| {
@@ -282,7 +283,7 @@ pub(in crate::registry::workspace) fn push_single_project(
             return push_result(rp, PushOutcome::Created, Some(branch_name), None, None);
         }
         if let Some(ref slug) = slug {
-            if let Err(err) = forge.create_repo(slug, &project_path) {
+            if let Err(err) = forge::create_repo(runner, slug, &project_path) {
                 return push_result(
                     rp,
                     PushOutcome::Failed,
@@ -313,11 +314,11 @@ pub(in crate::registry::workspace) fn push_single_project(
     }
 
     let pr_number = match ensure_pr_if_supported(
+        runner,
         &project_path,
         slug.as_deref(),
         branch_name,
         change_name,
-        forge,
     ) {
         Ok(pr) => pr,
         Err(err) => {

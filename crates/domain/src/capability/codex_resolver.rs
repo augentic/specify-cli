@@ -1,9 +1,6 @@
-//! Project-aware codex rule resolution.
-//!
-//! This module composes parsed [`CodexRule`] files from the deterministic
-//! sources that define a project's active codex. It owns source ordering,
-//! provenance, and resolved-set validation; individual file parsing stays
-//! in [`crate::capability::codex`].
+//! Project-aware codex rule resolution. Composes parsed [`CodexRule`]
+//! files from the project's active sources, owning source ordering,
+//! provenance, and resolved-set validation.
 
 use std::collections::BTreeMap;
 use std::ffi::OsStr;

@@ -1,8 +1,6 @@
-//! [`Plan::validate`] and the per-check helpers it composes.
-//!
-//! Findings are accumulated — no check short-circuits another. Order
-//! is structural checks first followed by consistency checks against
-//! `slices_dir` and the registry.
+//! [`Plan::validate`] and the per-check helpers it composes. Findings
+//! accumulate (no check short-circuits another); order is structural
+//! checks first, then consistency checks against the registry.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;

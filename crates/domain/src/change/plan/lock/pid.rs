@@ -1,9 +1,6 @@
 //! PID-liveness probe used by both [`super::Guard`] and [`super::Stamp`].
-//!
-//! On Unix the probe uses `kill(pid, 0)` and treats `EPERM` as "alive"
-//! (the target exists but belongs to another user). On non-Unix
-//! platforms (Windows) the probe is a conservative `true` — we never
-//! reclaim, which favours safety over recovery.
+//! Unix uses `kill(pid, 0)` (treating `EPERM` as alive); non-Unix is a
+//! conservative `true` so we never reclaim.
 
 #[cfg(unix)]
 pub(super) fn is_pid_alive(pid: u32) -> bool {

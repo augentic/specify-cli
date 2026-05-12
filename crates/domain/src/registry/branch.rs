@@ -1,18 +1,13 @@
-//! Deterministic workspace branch preparation.
-//!
-//! [`prepare()`] resolves the workspace slot for one registry project,
-//! checks out (or creates) `specify/<change-name>`, and reports the
-//! action taken. Per-concern helpers live in private submodules: `infer`
-//! (branch / slot / base-ref derivation), `validate` (worktree +
-//! dirty-state guards), and `prepare` (the orchestrator + remote
-//! fast-forward).
+//! Deterministic workspace branch preparation. [`prepare()`] resolves
+//! the workspace slot for one registry project, checks out or creates
+//! `specify/<change-name>`, and reports the action taken.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::Serialize;
 
-use crate::registry::registry::RegistryProject;
+use crate::registry::catalog::RegistryProject;
 
 mod infer;
 mod prepare;
@@ -54,30 +49,34 @@ pub struct Prepared {
     pub dirty: Dirty,
 }
 
-crate::kebab_enum! {
-    /// Local branch action taken during preparation.
-    #[derive(Debug)]
-    pub enum LocalAction {
-        /// A new local branch was created from `origin/HEAD`.
-        Created => "created",
-        /// An existing local branch was checked out or already current.
-        Reused => "reused",
-    }
+/// Local branch action taken during preparation.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum LocalAction {
+    /// A new local branch was created from `origin/HEAD`.
+    Created,
+    /// An existing local branch was checked out or already current.
+    Reused,
 }
 
-crate::kebab_enum! {
-    /// Remote change-branch action taken during preparation.
-    #[derive(Debug)]
-    pub enum RemoteAction {
-        /// No `origin/specify/<change-name>` exists.
-        Absent => "absent",
-        /// The local branch already matched the remote branch.
-        UpToDate => "up-to-date",
-        /// The local branch fast-forwarded to the remote branch.
-        FastForwarded => "fast-forwarded",
-        /// The local branch is ahead of the remote branch.
-        LocalAhead => "local-ahead",
-    }
+/// Remote change-branch action taken during preparation.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum RemoteAction {
+    /// No `origin/specify/<change-name>` exists.
+    Absent,
+    /// The local branch already matched the remote branch.
+    UpToDate,
+    /// The local branch fast-forwarded to the remote branch.
+    FastForwarded,
+    /// The local branch is ahead of the remote branch.
+    LocalAhead,
 }
 
 /// Dirty-state classification used by branch preparation.

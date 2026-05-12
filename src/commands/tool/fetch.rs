@@ -2,7 +2,7 @@
 
 use chrono::Utc;
 use specify_error::Result;
-use specify_tool::cache::CacheStatus;
+use specify_tool::cache::Status as CacheStatus;
 
 use super::dto::{FetchBody, ToolFetchRow, cache_status_for, row_for};
 use super::{build_inventory, emit_warnings_to_stderr, select};

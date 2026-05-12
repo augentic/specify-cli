@@ -7,7 +7,7 @@ use std::process::Command;
 
 use super::infer::{AllowedPath, allowed_paths};
 use super::{Diagnostic, Dirty, git_output};
-use crate::registry::registry::RegistryProject;
+use crate::registry::catalog::RegistryProject;
 
 pub(super) fn require_git_worktree(
     slot_path: &Path, project: &RegistryProject, branch: &str,

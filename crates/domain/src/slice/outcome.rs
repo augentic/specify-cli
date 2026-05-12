@@ -1,9 +1,6 @@
-//! Phase-outcome discriminant.
-//!
-//! The wire-format wrapper [`crate::slice::Outcome`] — which pairs an
-//! [`OutcomeKind`] with phase + timestamp metadata for the
-//! `.metadata.yaml` envelope — lives in [`crate::slice::metadata`] alongside
-//! [`crate::slice::metadata::SliceMetadata`].
+//! Phase-outcome discriminant. The wire-format wrapper that pairs an
+//! [`Kind`] with phase + timestamp metadata lives in
+//! [`crate::slice::metadata`] as `Outcome`.
 
 use std::fmt;
 
@@ -15,7 +12,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case", rename_all_fields = "kebab-case")]
 #[non_exhaustive]
-pub enum OutcomeKind {
+pub enum Kind {
     /// Phase completed successfully.
     Success,
     /// Phase failed.
@@ -42,7 +39,7 @@ pub enum OutcomeKind {
     },
 }
 
-impl fmt::Display for OutcomeKind {
+impl fmt::Display for Kind {
     /// Renders the kebab-case discriminant; payload fields are emitted
     /// via serde when callers need the structured shape.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -50,7 +47,7 @@ impl fmt::Display for OutcomeKind {
     }
 }
 
-impl OutcomeKind {
+impl Kind {
     /// Kebab-case discriminant matching the on-disk serde tag.
     #[must_use]
     pub const fn discriminant(&self) -> &'static str {
@@ -69,10 +66,10 @@ mod tests {
 
     #[test]
     fn outcome_display_matches_serde() {
-        assert_eq!(OutcomeKind::Success.to_string(), "success");
-        assert_eq!(OutcomeKind::Failure.to_string(), "failure");
-        assert_eq!(OutcomeKind::Deferred.to_string(), "deferred");
-        let proposal = OutcomeKind::RegistryAmendmentRequired {
+        assert_eq!(Kind::Success.to_string(), "success");
+        assert_eq!(Kind::Failure.to_string(), "failure");
+        assert_eq!(Kind::Deferred.to_string(), "deferred");
+        let proposal = Kind::RegistryAmendmentRequired {
             proposed_name: "alpha-gateway".to_string(),
             proposed_url: "git@github.com:augentic/alpha-gateway.git".to_string(),
             proposed_capability: "omnia@v1".to_string(),

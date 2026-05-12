@@ -1,16 +1,14 @@
-//! Read-only forge helpers shared by workspace push/finalize flows.
-//!
-//! Specify does not perform pull-request merging. This module keeps the
-//! small PR inspection surface still needed by `change finalize`:
-//! discover the PR for a `specify/<change>` branch, view its state, and
-//! validate that the head branch is exactly the branch Specify created.
+//! Read-only forge helpers shared by workspace push/finalize. Discover
+//! the PR for a `specify/<change>` branch, view its state, and verify
+//! the head branch is exactly the branch Specify created.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
-use crate::registry::registry::RegistryProject;
+use crate::cmd::CmdRunner;
+use crate::registry::catalog::RegistryProject;
 
 /// Required prefix on a PR's `headRefName`.
 pub const SPECIFY_BRANCH_PREFIX: &str = "specify/";
@@ -43,72 +41,56 @@ pub enum PrState {
     Merged,
 }
 
-/// Abstraction over the read-only `gh` CLI subset we depend on.
-pub trait GhClient {
-    /// Look up the open/closed/merged PR for `branch`.
-    ///
-    /// Returns `Ok(None)` when no PR exists on that branch.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the operation fails.
-    fn pr_view_for_branch(
-        &self, project_path: &Path, branch: &str,
-    ) -> Result<Option<PrView>, String>;
-}
-
-/// Default [`GhClient`] backed by `Command::new("gh")`.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct RealGhClient;
-
-impl GhClient for RealGhClient {
-    fn pr_view_for_branch(
-        &self, project_path: &Path, branch: &str,
-    ) -> Result<Option<PrView>, String> {
-        // Discover by branch first, then view by number for the full
-        // state payload. This is read-only and performs no forge mutation.
-        let list = Command::new("gh")
-            .args([
-                "pr", "list", "--head", branch, "--state", "all", "--json", "number", "--limit",
-                "1",
-            ])
-            .current_dir(project_path)
-            .output()
-            .map_err(|err| format!("failed to spawn `gh pr list`: {err}"))?;
-        if !list.status.success() {
-            let stderr = String::from_utf8_lossy(&list.stderr);
-            return Err(format!("gh pr list failed: {stderr}"));
-        }
-        let stdout = String::from_utf8_lossy(&list.stdout);
-        let parsed: Vec<serde_json::Value> = serde_json::from_str(&stdout)
-            .map_err(|err| format!("gh pr list returned invalid JSON: {err}"))?;
-        let Some(pr) = parsed.first() else {
-            return Ok(None);
-        };
-        let Some(number) = pr.get("number").and_then(serde_json::Value::as_u64) else {
-            return Err(format!("gh pr list returned no `number` field: {stdout}"));
-        };
-
-        let view = Command::new("gh")
-            .args([
-                "pr",
-                "view",
-                &number.to_string(),
-                "--json",
-                "state,merged,headRefName,number,url",
-            ])
-            .current_dir(project_path)
-            .output()
-            .map_err(|err| format!("failed to spawn `gh pr view`: {err}"))?;
-        if !view.status.success() {
-            let stderr = String::from_utf8_lossy(&view.stderr);
-            return Err(format!("gh pr view failed: {stderr}"));
-        }
-        let view_stdout = String::from_utf8_lossy(&view.stdout);
-        let pr_view: PrView = serde_json::from_str(&view_stdout)
-            .map_err(|err| format!("gh pr view returned invalid JSON: {err}"))?;
-        Ok(Some(pr_view))
+/// Look up the open/closed/merged PR for `branch` against `project_path`.
+///
+/// Discovers the PR number with `gh pr list --head <branch>` first, then
+/// fetches the full state payload with `gh pr view <n>`. Both invocations
+/// run inside `project_path` (the workspace clone, or the original source
+/// path for symlink-mode projects).
+///
+/// # Errors
+///
+/// Returns the underlying `gh` stderr (or a parse-error message) verbatim
+/// when the shell-out fails or when its JSON cannot be decoded.
+pub fn pr_view_for_branch<R: CmdRunner>(
+    runner: &R, project_path: &Path, branch: &str,
+) -> Result<Option<PrView>, String> {
+    let mut list_cmd = Command::new("gh");
+    list_cmd
+        .args([
+            "pr", "list", "--head", branch, "--state", "all", "--json", "number", "--limit", "1",
+        ])
+        .current_dir(project_path);
+    let list =
+        runner.run(&mut list_cmd).map_err(|err| format!("failed to spawn `gh pr list`: {err}"))?;
+    if !list.status.success() {
+        let stderr = String::from_utf8_lossy(&list.stderr);
+        return Err(format!("gh pr list failed: {stderr}"));
     }
+    let stdout = String::from_utf8_lossy(&list.stdout);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&stdout)
+        .map_err(|err| format!("gh pr list returned invalid JSON: {err}"))?;
+    let Some(pr) = parsed.first() else {
+        return Ok(None);
+    };
+    let Some(number) = pr.get("number").and_then(serde_json::Value::as_u64) else {
+        return Err(format!("gh pr list returned no `number` field: {stdout}"));
+    };
+
+    let mut view_cmd = Command::new("gh");
+    view_cmd
+        .args(["pr", "view", &number.to_string(), "--json", "state,merged,headRefName,number,url"])
+        .current_dir(project_path);
+    let view =
+        runner.run(&mut view_cmd).map_err(|err| format!("failed to spawn `gh pr view`: {err}"))?;
+    if !view.status.success() {
+        let stderr = String::from_utf8_lossy(&view.stderr);
+        return Err(format!("gh pr view failed: {stderr}"));
+    }
+    let view_stdout = String::from_utf8_lossy(&view.stdout);
+    let pr_view: PrView = serde_json::from_str(&view_stdout)
+        .map_err(|err| format!("gh pr view returned invalid JSON: {err}"))?;
+    Ok(Some(pr_view))
 }
 
 /// Validate the literal `specify/<segment>` shape.

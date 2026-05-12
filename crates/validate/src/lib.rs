@@ -1,31 +1,6 @@
-//! Baseline-contract validation primitives shared by the host CLI
-//! (`specify-domain`) and the standalone WASI carve-out
-//! (`wasi-tools/contract`).
-//!
-//! Walks the supplied `contracts/` directory (typically the project
-//! baseline at `<project>/contracts/`), projects each top-level
-//! `OpenAPI` 3.1 / `AsyncAPI` 3.0 document, and enforces three rules:
-//!
-//! 1. `contract.version-is-semver` — `info.version` must parse as
-//!    `SemVer` (prerelease labels included; the `semver` crate decides).
-//! 2. `contract.id-format` — when `info.x-specify-id` is present,
-//!    matches `^[a-z][a-z0-9-]*$` and is ≤ 64 characters.
-//! 3. `contract.id-unique` — every `info.x-specify-id` value is
-//!    unique across the walked set; on duplicates, both offending
-//!    paths are reported.
-//!
-//! Files that fail to parse as YAML are skipped silently — the
-//! contracts-brief verifier owns that diagnostic.
-//!
-//! ## Why this is its own crate
-//!
-//! Both `specify-domain` (the host CLI's compatibility classifier) and
-//! `wasi-tools/contract` (the standalone `wasm32-wasip2` validator)
-//! need this logic. `wasi-tools/contract` is a deliberate carve-out
-//! from the host CLI's dependency tree (no `wasmtime`, `tokio`,
-//! `ureq`), so it cannot depend on `specify-domain`. Keeping this
-//! crate dependency-minimal (`semver`, `serde`, `serde-saphyr`,
-//! `serde_json`) lets both consumers share one source of truth.
+//! Baseline-contract validation primitives shared by the host CLI and
+//! the standalone WASI carve-out. Walks `contracts/` and enforces
+//! `version-is-semver`, `id-format`, and `id-unique` against each doc.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

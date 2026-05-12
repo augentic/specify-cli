@@ -1,7 +1,6 @@
 //! `xtask gen-completions` — render shell completion scripts for the
-//! `specify` binary into a target directory. The output is gitignored
-//! (`target/completions/` by default); release tooling can pick it up
-//! from there.
+//! `specify` binary. Output is gitignored at `target/completions/`
+//! by default.
 
 use std::fs;
 use std::path::Path;

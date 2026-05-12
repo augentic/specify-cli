@@ -1,9 +1,6 @@
-//! Crash-safe writers shared by every `.specify/*.yaml` writer.
-//!
-//! Pattern: write to a temp file in the same parent, `sync_all`, then
-//! `persist` (atomic rename on a single filesystem). Readers see either
-//! the full previous content or the full new content, never a partial
-//! write. Both helpers create the parent directory on demand.
+//! Crash-safe writers shared by every `.specify/*.yaml` writer: write
+//! to a temp file in the same parent, `sync_all`, then `persist`
+//! (atomic rename) so readers never observe a partial write.
 
 use std::path::Path;
 

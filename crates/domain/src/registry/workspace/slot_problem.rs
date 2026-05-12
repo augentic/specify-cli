@@ -6,13 +6,13 @@ use std::path::{Path, PathBuf};
 use super::git::git_output_ok;
 use super::status::SlotKind;
 use super::{registry_symlink_target, workspace_base, workspace_slot_path};
-use crate::registry::registry::RegistryProject;
+use crate::registry::catalog::RegistryProject;
 
 /// A registry/workspace mismatch that would cause `workspace sync` to refuse a slot.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SlotProblem {
+pub struct Problem {
     /// Machine-readable reason for the mismatch.
-    pub reason: SlotProblemReason,
+    pub reason: Reason,
     /// Materialisation kind expected from the registry URL.
     pub expected_kind: SlotKind,
     /// Materialisation kind currently observed on disk, when inspectable.
@@ -28,7 +28,7 @@ pub struct SlotProblem {
     pub(super) message: String,
 }
 
-impl SlotProblem {
+impl Problem {
     /// Human-readable diagnostic matching the refusal text from `workspace sync`.
     #[must_use]
     pub fn message(&self) -> &str {
@@ -36,9 +36,9 @@ impl SlotProblem {
     }
 }
 
-/// Stable reason code for [`SlotProblem`].
+/// Stable reason code for [`Problem`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SlotProblemReason {
+pub enum Reason {
     /// Project name cannot map to exactly `.specify/workspace/<project>/`.
     SlotPathEscapesWorkspace,
     /// The registry's local/relative URL no longer resolves.
@@ -69,12 +69,12 @@ pub enum SlotProblemReason {
 /// registry. The function is read-only; callers such as doctor/status can use it
 /// to report the same wrong-remote and wrong-symlink facts that sync refuses.
 #[must_use]
-pub fn slot_problem(project_dir: &Path, project: &RegistryProject) -> Option<SlotProblem> {
+pub fn inspect(project_dir: &Path, project: &RegistryProject) -> Option<Problem> {
     let base = workspace_base(project_dir);
     match workspace_slot_path(&base, &project.name) {
-        Ok(dest) => slot_problem_at(project_dir, project, &dest),
-        Err(err) => Some(SlotProblem {
-            reason: SlotProblemReason::SlotPathEscapesWorkspace,
+        Ok(dest) => inspect_at(project_dir, project, &dest),
+        Err(err) => Some(Problem {
+            reason: Reason::SlotPathEscapesWorkspace,
             expected_kind: expected_slot_kind(project),
             observed_kind: None,
             expected_url: project.url.clone(),
@@ -86,9 +86,9 @@ pub fn slot_problem(project_dir: &Path, project: &RegistryProject) -> Option<Slo
     }
 }
 
-pub(super) fn slot_problem_at(
+pub(super) fn inspect_at(
     project_dir: &Path, project: &RegistryProject, dest: &Path,
-) -> Option<SlotProblem> {
+) -> Option<Problem> {
     if project.is_local() {
         inspect_local_slot(project_dir, project, dest)
     } else {
@@ -102,13 +102,13 @@ pub(super) fn expected_slot_kind(project: &RegistryProject) -> SlotKind {
 
 fn inspect_local_slot(
     project_dir: &Path, project: &RegistryProject, dest: &Path,
-) -> Option<SlotProblem> {
+) -> Option<Problem> {
     let meta = match std::fs::symlink_metadata(dest) {
         Ok(meta) => meta,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return None,
         Err(err) => {
-            return Some(SlotProblem {
-                reason: SlotProblemReason::SlotMetadataUnreadable,
+            return Some(Problem {
+                reason: Reason::SlotMetadataUnreadable,
                 expected_kind: SlotKind::Symlink,
                 observed_kind: None,
                 expected_url: project.url.clone(),
@@ -123,8 +123,8 @@ fn inspect_local_slot(
     let target = match registry_symlink_target(project_dir, &project.url) {
         Ok(target) => target,
         Err(err) => {
-            return Some(SlotProblem {
-                reason: SlotProblemReason::LocalTargetUnresolved,
+            return Some(Problem {
+                reason: Reason::LocalTargetUnresolved,
                 expected_kind: SlotKind::Symlink,
                 observed_kind: Some(observed_slot_kind(&meta, dest)),
                 expected_url: project.url.clone(),
@@ -137,8 +137,8 @@ fn inspect_local_slot(
     };
 
     if !meta.file_type().is_symlink() {
-        return Some(SlotProblem {
-            reason: SlotProblemReason::LocalSlotIsNotSymlink,
+        return Some(Problem {
+            reason: Reason::LocalSlotIsNotSymlink,
             expected_kind: SlotKind::Symlink,
             observed_kind: Some(observed_slot_kind(&meta, dest)),
             expected_url: project.url.clone(),
@@ -154,8 +154,8 @@ fn inspect_local_slot(
 
     match std::fs::canonicalize(dest) {
         Ok(resolved) if resolved == target => None,
-        Ok(resolved) => Some(SlotProblem {
-            reason: SlotProblemReason::LocalSymlinkTargetMismatch,
+        Ok(resolved) => Some(Problem {
+            reason: Reason::LocalSymlinkTargetMismatch,
             expected_kind: SlotKind::Symlink,
             observed_kind: Some(SlotKind::Symlink),
             expected_url: project.url.clone(),
@@ -170,8 +170,8 @@ fn inspect_local_slot(
                 project.url
             ),
         }),
-        Err(err) => Some(SlotProblem {
-            reason: SlotProblemReason::LocalSymlinkBroken,
+        Err(err) => Some(Problem {
+            reason: Reason::LocalSymlinkBroken,
             expected_kind: SlotKind::Symlink,
             observed_kind: Some(SlotKind::Symlink),
             expected_url: project.url.clone(),
@@ -188,13 +188,13 @@ fn inspect_local_slot(
     }
 }
 
-fn inspect_remote_slot(project: &RegistryProject, dest: &Path) -> Option<SlotProblem> {
+fn inspect_remote_slot(project: &RegistryProject, dest: &Path) -> Option<Problem> {
     let meta = match std::fs::symlink_metadata(dest) {
         Ok(meta) => meta,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return None,
         Err(err) => {
-            return Some(SlotProblem {
-                reason: SlotProblemReason::SlotMetadataUnreadable,
+            return Some(Problem {
+                reason: Reason::SlotMetadataUnreadable,
                 expected_kind: SlotKind::GitClone,
                 observed_kind: None,
                 expected_url: project.url.clone(),
@@ -207,8 +207,8 @@ fn inspect_remote_slot(project: &RegistryProject, dest: &Path) -> Option<SlotPro
     };
 
     if meta.file_type().is_symlink() {
-        return Some(SlotProblem {
-            reason: SlotProblemReason::RemoteSlotIsSymlink,
+        return Some(Problem {
+            reason: Reason::RemoteSlotIsSymlink,
             expected_kind: SlotKind::GitClone,
             observed_kind: Some(SlotKind::Symlink),
             expected_url: project.url.clone(),
@@ -224,8 +224,8 @@ fn inspect_remote_slot(project: &RegistryProject, dest: &Path) -> Option<SlotPro
     }
 
     if !meta.is_dir() {
-        return Some(SlotProblem {
-            reason: SlotProblemReason::RemoteSlotIsNotDirectory,
+        return Some(Problem {
+            reason: Reason::RemoteSlotIsNotDirectory,
             expected_kind: SlotKind::GitClone,
             observed_kind: Some(SlotKind::Other),
             expected_url: project.url.clone(),
@@ -240,8 +240,8 @@ fn inspect_remote_slot(project: &RegistryProject, dest: &Path) -> Option<SlotPro
     }
 
     if !dest.join(".git").exists() {
-        return Some(SlotProblem {
-            reason: SlotProblemReason::RemoteSlotIsNotGitClone,
+        return Some(Problem {
+            reason: Reason::RemoteSlotIsNotGitClone,
             expected_kind: SlotKind::GitClone,
             observed_kind: Some(SlotKind::Other),
             expected_url: project.url.clone(),
@@ -257,8 +257,8 @@ fn inspect_remote_slot(project: &RegistryProject, dest: &Path) -> Option<SlotPro
 
     match git_output_ok(dest, &["remote", "get-url", "origin"]) {
         Some(actual) if actual == project.url => None,
-        Some(actual) => Some(SlotProblem {
-            reason: SlotProblemReason::RemoteOriginMismatch,
+        Some(actual) => Some(Problem {
+            reason: Reason::RemoteOriginMismatch,
             expected_kind: SlotKind::GitClone,
             observed_kind: Some(SlotKind::GitClone),
             expected_url: project.url.clone(),
@@ -272,8 +272,8 @@ fn inspect_remote_slot(project: &RegistryProject, dest: &Path) -> Option<SlotPro
                 project.url
             ),
         }),
-        None => Some(SlotProblem {
-            reason: SlotProblemReason::RemoteOriginMissing,
+        None => Some(Problem {
+            reason: Reason::RemoteOriginMissing,
             expected_kind: SlotKind::GitClone,
             observed_kind: Some(SlotKind::GitClone),
             expected_url: project.url.clone(),

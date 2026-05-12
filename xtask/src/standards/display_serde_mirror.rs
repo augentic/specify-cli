@@ -1,10 +1,6 @@
 //! `display-serde-mirror`: hand-rolled `Display` impls that mirror the
 //! serde wire shape via `match self { Self::Variant => "literal" }`.
-//!
-//! This is the pattern the `kebab_enum!` macro replaces — a manual
-//! `Display` impl on a `#[derive(Serialize)]` enum whose body is just
-//! a string-literal lookup is a regression: drop the impl and use the
-//! macro instead.
+//! The `kebab_enum!` macro is the supported replacement.
 
 use std::collections::BTreeSet;
 

@@ -10,9 +10,7 @@ pub mod digest;
 pub mod http;
 pub mod local;
 
-use crate::cache::{
-    self, CacheStatus, MODULE_FILENAME, PermissionsSnapshot, SIDECAR_FILENAME, Sidecar,
-};
+use crate::cache::{self, MODULE_FILENAME, PermissionsSnapshot, SIDECAR_FILENAME, Sidecar};
 use crate::error::ToolError;
 use crate::manifest::{Tool, ToolScope, ToolSource};
 use crate::package::{FetchedPackage, PackageClient, PackageMetadata, WasmPkgClient};
@@ -45,7 +43,7 @@ pub struct ResolvedTool {
 pub fn resolve(
     scope: &ToolScope, tool: &Tool, now: chrono::DateTime<chrono::Utc>,
 ) -> Result<ResolvedTool, ToolError> {
-    resolve_with_package_client(scope, tool, now, &WasmPkgClient)
+    resolve_with(scope, tool, now, &WasmPkgClient)
 }
 
 /// Resolve a declared tool using an injected package client.
@@ -56,14 +54,14 @@ pub fn resolve(
 /// # Errors
 ///
 /// Returns the same cache, source, digest, and resolver errors as [`resolve`].
-pub fn resolve_with_package_client(
+pub fn resolve_with(
     scope: &ToolScope, tool: &Tool, now: chrono::DateTime<chrono::Utc>,
     package_client: &impl PackageClient,
 ) -> Result<ResolvedTool, ToolError> {
     let source = tool.source.to_wire_string().into_owned();
     let module = cache::module_path(scope, &tool.name, &tool.version)?;
-    if cache::cache_status(scope, &tool.name, &tool.version, &source, tool.sha256.as_deref())?
-        == CacheStatus::Hit
+    if cache::status(scope, &tool.name, &tool.version, &source, tool.sha256.as_deref())?
+        == cache::Status::Hit
         && digest::cached_matches(&module, tool.sha256.as_deref())?
     {
         return Ok(resolved(scope, tool, module));
@@ -334,8 +332,8 @@ mod tests {
         let client = MockPackageClient::new(b"package-bytes");
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let resolved = resolve_with_package_client(&scope, &declared, fixed_now(), &client)
-                .expect("package resolves");
+            let resolved =
+                resolve_with(&scope, &declared, fixed_now(), &client).expect("package resolves");
             assert_eq!(fs::read(resolved.bytes_path).expect("cached bytes"), b"package-bytes");
             assert_eq!(client.calls.get(), 1);
 
@@ -355,7 +353,7 @@ mod tests {
                 Some("ghcr.io/augentic/specify/contract:1.0.0")
             );
 
-            resolve_with_package_client(&scope, &declared, fixed_now(), &client)
+            resolve_with(&scope, &declared, fixed_now(), &client)
                 .expect("package cache hit resolves");
             assert_eq!(client.calls.get(), 1, "cache hit must not fetch package again");
         });

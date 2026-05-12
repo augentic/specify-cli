@@ -1,37 +1,6 @@
-//! `specify change plan doctor` — superset of `specify change plan validate` plus four
-//! health diagnostics:
-//!
-//!   - `cycle-in-depends-on`   (error, payload: cycle path)
-//!   - `orphan-source-key`     (warning, payload: unreferenced source key)
-//!   - `stale-workspace-clone` (warning, payload: project / reason / signatures)
-//!   - `unreachable-entry`     (error, payload: blocking predecessors)
-//!
-//! Doctor is purely additive: it runs every check `Plan::validate` runs,
-//! preserves the existing diagnostic codes (`dependency-cycle`,
-//! `unknown-depends-on`, `unknown-source`, `multiple-in-progress`,
-//! `project-*`, `capability-mismatch-workspace`, …) bit-for-bit, and then
-//! layers the four codes above on top with structured payloads. The
-//! `Plan::validate` and `Plan::next_eligible` runtime semantics are not
-//! changed by anything in this module.
-//!
-//! ## Stale workspace slot contract
-//!
-//! `workspace sync` is the authority for whether an existing slot
-//! matches `registry.yaml`: remote-backed slots must be git work trees
-//! whose `origin` equals the registry URL, and local/relative slots must
-//! be symlinks whose canonical target equals the registry target.
-//! Doctor reads the same slot-problem inspector from `specify-registry`.
-//! A missing `.specify-sync.yaml` stamp is not a warning; only an actual
-//! mismatch that sync would refuse is reported.
-//!
-//! ## Schema-mismatch overlap
-//!
-//! `Plan::validate` already emits `capability-mismatch-workspace` when a
-//! clone's `.specify/project.yaml:capability` disagrees with the registry's
-//! declared capability. Doctor's `stale-workspace-clone` is a *URL* check;
-//! the capability check stays on `validate`. Operators see both signals
-//! when the clone is out of sync on both axes, and the codes are
-//! orthogonal so dashboards can route each to the right runbook.
+//! `specify change plan doctor` — superset of `plan validate` that
+//! layers four extra health diagnostics (`cycle-in-depends-on`,
+//! `orphan-source-key`, `stale-workspace-clone`, `unreachable-entry`).
 
 use std::path::Path;
 
@@ -98,24 +67,34 @@ pub struct Diagnostic {
     pub data: Option<DiagnosticPayload>,
 }
 
-crate::kebab_enum! {
-    /// JSON-shape mirror of [`Severity`] with kebab-case casing for wire
-    /// output.
-    #[derive(Debug)]
-    pub enum DiagnosticSeverity {
-        /// Blocking problem.
-        Error => "error",
-        /// Non-blocking advisory.
-        Warning => "warning",
-    }
+/// JSON-shape mirror of [`Severity`] with kebab-case casing for wire
+/// output.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    strum::IntoStaticStr,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum DiagnosticSeverity {
+    /// Blocking problem.
+    Error,
+    /// Non-blocking advisory.
+    Warning,
 }
 
 impl DiagnosticSeverity {
-    /// Fixed wire string. Alias for [`Self::as_str`] preserved for
-    /// back-compat.
+    /// Fixed wire string.
     #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.as_str()
+    pub fn label(self) -> &'static str {
+        self.into()
     }
 }
 
@@ -171,18 +150,20 @@ pub enum DiagnosticPayload {
     },
 }
 
-crate::kebab_enum! {
-    /// Why a workspace clone is classified stale by [`STALE_CLONE`].
-    #[derive(Debug)]
-    pub enum StaleReason {
-        /// A remote-backed clone's `origin` differs from the registry URL.
-        SignatureChanged => "signature-changed",
-        /// Slot materialisation does not match the registry URL class or target.
-        SlotMismatch => "slot-mismatch",
-        /// Retained for old JSON consumers. Doctor no longer emits this
-        /// reason because sync does not write `.specify-sync.yaml`.
-        MissingSyncStamp => "missing-sync-stamp",
-    }
+/// Why a workspace clone is classified stale by [`STALE_CLONE`].
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum StaleReason {
+    /// A remote-backed clone's `origin` differs from the registry URL.
+    SignatureChanged,
+    /// Slot materialisation does not match the registry URL class or target.
+    SlotMismatch,
+    /// Retained for old JSON consumers. Doctor no longer emits this
+    /// reason because sync does not write `.specify-sync.yaml`.
+    MissingSyncStamp,
 }
 
 /// Snapshot of the registry or slot signature for staleness comparison.

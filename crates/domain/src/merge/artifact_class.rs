@@ -1,16 +1,6 @@
-//! Generic artefact-class slice consumed by [`crate::merge::preview_change`],
-//! [`crate::merge::merge_change`], and [`crate::merge::conflict_check`].
-//!
-//! Concern-specific behaviour is kept out of core: the merge engine
-//! hard-codes neither per-domain directory names nor per-name
-//! strategies. The caller — currently the omnia-default synthesiser in
-//! `src/commands/change.rs` — supplies an ordered slice of
-//! [`ArtifactClass`] values describing every mutable artefact class
-//! that participates in a slice's merge. The engine dispatches on
+//! Generic artefact-class slice consumed by the merge engine. Callers
+//! supply an ordered `&[ArtifactClass]`; the engine dispatches on
 //! [`MergeStrategy`] and never matches on [`ArtifactClass::name`].
-//!
-//! The omnia-default slice is built at the call site and passed in;
-//! moving it into the capability manifest is a planned follow-up.
 
 use std::path::PathBuf;
 

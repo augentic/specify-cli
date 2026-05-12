@@ -1,35 +1,6 @@
-//! Advisory PID lock at `.specify/plan.lock` for the Layer 2 executor.
-//!
-//! Two primitives live here:
-//!
-//! - [`Guard`] — RAII guard that holds an OS-level `flock(2)`
-//!   exclusive lock on `.specify/plan.lock` for its entire lifetime,
-//!   removing the lockfile on drop. Sized for in-process, long-lived
-//!   drivers (a future native `specify change plan run --loop`).
-//! - [`Stamp`] — stateless PID-stamp helper used by the short-
-//!   lived `specify change plan lock {acquire, release, status}` CLI verbs
-//!   that drive the `/change:execute` agent-side loop. Each CLI
-//!   invocation exits within milliseconds, so holding an `flock` is
-//!   not an option; the stamp file persists on disk between calls and
-//!   the holder's liveness is inferred by probing the stamped PID.
-//!
-//! Both are advisory only; semantics are unreliable on network
-//! filesystems (NFS/SMB). Specify workspaces live on a local FS.
-//!
-//! # Portability caveats
-//!
-//! - On Unix the PID-liveness probe uses `kill(pid, 0)` from `libc`
-//!   and treats `EPERM` as "alive" (the target exists but belongs to
-//!   another user).
-//! - On non-Unix platforms (Windows) the liveness probe is a
-//!   conservative `true` — we never reclaim, which favours safety
-//!   over recovery. Flock behaviour there is delegated to
-//!   `std::fs::File::try_lock` (stable since Rust 1.89).
-//! - `flock(2)` on macOS/Linux locks the underlying open file
-//!   description, so two independent `open()` calls from the same
-//!   process do serialize — the in-process tests exercise this via
-//!   the PID-liveness override rather than relying on cross-thread
-//!   flock semantics.
+//! Advisory PID lock at `.specify/plan.lock`. [`Guard`] holds an
+//! OS-level `flock(2)` for in-process drivers; [`Stamp`] is the
+//! stateless PID-stamp helper for the short-lived CLI verbs.
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -102,7 +73,7 @@ pub struct Acquired {
 /// Outcome of a [`Stamp::release`] call. The CLI surfaces this
 /// verbatim via `specify change plan lock release --format json`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PlanLockReleased {
+pub enum Released {
     /// Stamp file was present and held our PID — now removed.
     Removed {
         /// PID that was in the stamp file.
@@ -123,7 +94,7 @@ pub enum PlanLockReleased {
 /// Snapshot of the on-disk `.specify/plan.lock` stamp, as reported by
 /// `specify change plan lock status`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PlanLockState {
+pub struct State {
     /// `true` when the stamp file exists and the stamped PID is
     /// considered alive by the host liveness probe.
     pub held: bool,

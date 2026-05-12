@@ -32,6 +32,22 @@ pub(crate) fn write<R: Render>(format: Format, body: &R) -> Result<(), Error> {
     emit(Stream::Stdout, format, body)
 }
 
+/// Serialise `data` and write it to stdout in `format`, using
+/// `render_text` for the text-format branch instead of requiring a
+/// [`Render`] impl on the type. Lets one-off handlers ship their text
+/// rendering as an inline closure beside the call site rather than as
+/// a sibling `impl Render for *Body` block.
+///
+/// # Errors
+///
+/// Propagates the underlying serialization or I/O error from
+/// [`emit_with`].
+pub(crate) fn write_with<T: Serialize>(
+    format: Format, data: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
+) -> Result<(), Error> {
+    emit_with(Stream::Stdout, format, data, render_text)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
 pub enum Exit {
@@ -207,11 +223,22 @@ pub(crate) trait Render: Serialize {
 /// verbs); failure envelopes go through [`report`], which builds the
 /// typed body and routes it back through this function.
 fn emit<R: Render>(stream: Stream, format: Format, payload: &R) -> Result<(), Error> {
+    emit_with(stream, format, payload, |w, p| p.render_text(w))
+}
+
+/// Closure-based peer to [`emit`]: JSON wraps `payload` in the
+/// envelope (identical to [`emit`]) and Text delegates to
+/// `render_text`. Single emission core so the two surfaces share a
+/// stream/sink/error pipeline.
+fn emit_with<T: Serialize>(
+    stream: Stream, format: Format, payload: &T,
+    render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
+) -> Result<(), Error> {
     match format {
         Format::Json => emit_json(stream, payload),
         Format::Text => {
             let mut writer = writer_for(stream);
-            payload.render_text(&mut writer).map_err(Error::Io)
+            render_text(&mut writer, payload).map_err(Error::Io)
         }
     }
 }
@@ -347,15 +374,6 @@ impl Render for ValidationErrBody<'_> {
         }
         Ok(())
     }
-}
-
-/// Render `path` as a UTF-8 string, preferring the `canonicalize`
-/// result when the entry exists and falling back to `to_string_lossy`
-/// otherwise.
-pub(crate) fn display(path: &Path) -> String {
-    std::fs::canonicalize(path)
-        .ok()
-        .map_or_else(|| path.to_string_lossy().into_owned(), |p| p.to_string_lossy().into_owned())
 }
 
 /// `#[serde(serialize_with)]` adapter for `*Body { path: PathBuf }`
