@@ -243,7 +243,7 @@ fn parse_json_stream(label: &str, bytes: &[u8], root: &Path) -> Value {
 ///
 /// Hoisted from the per-test-file `struct Project` harnesses
 /// (`tests/slice.rs`, `tests/slice_merge.rs`, `tests/e2e.rs`,
-/// `tests/capability.rs`, `tests/change_umbrella.rs`) so the same
+/// `tests/capability.rs`, `tests/change_plan_orchestrate.rs`) so the same
 /// `Project::init()` / `.with_schemas()` / `.stage_slice()` shape works
 /// across every integration suite. Each test binary uses a different
 /// subset, hence the `#[allow(dead_code)]` on every public item.

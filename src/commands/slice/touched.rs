@@ -26,10 +26,7 @@ pub(super) fn specs(ctx: &Ctx, name: String, scan: bool, set: &[String]) -> Resu
         let baseline_dir = classes
             .iter()
             .find(|c| matches!(c.strategy, MergeStrategy::ThreeWayMerge))
-            .map_or_else(
-                || ctx.layout().specify_dir().join("specs"),
-                |c| c.baseline_dir.clone(),
-            );
+            .map_or_else(|| ctx.layout().specify_dir().join("specs"), |c| c.baseline_dir.clone());
         let scanned = slice_actions::scan_touched(&slice_dir, &baseline_dir)?;
         let metadata = slice_actions::write_touched(&slice_dir, scanned)?;
         metadata.touched_specs
