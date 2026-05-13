@@ -8,7 +8,8 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::config::{Layout, is_workspace_clone};
 use specify_domain::merge::{
-    BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check, slice,
+    BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry,
+    conflict_check, slice,
 };
 use specify_error::Result;
 
@@ -117,14 +118,14 @@ fn write_run_text(w: &mut dyn Write, body: &RunBody) -> std::io::Result<()> {
 #[serde(rename_all = "kebab-case")]
 struct MergedEntry {
     name: String,
-    operations: Vec<MergeOp>,
+    operations: Vec<MergeOperation>,
 }
 
 impl From<&MergePreviewEntry> for MergedEntry {
     fn from(entry: &MergePreviewEntry) -> Self {
         Self {
             name: entry.name.clone(),
-            operations: entry.result.operations.iter().map(MergeOp::from).collect(),
+            operations: entry.result.operations.clone(),
         }
     }
 }
@@ -167,7 +168,7 @@ fn write_preview_text(w: &mut dyn Write, body: &PreviewBody) -> std::io::Result<
 struct SpecPreviewEntry {
     name: String,
     baseline_path: String,
-    operations: Vec<MergeOp>,
+    operations: Vec<MergeOperation>,
 }
 
 impl From<&MergePreviewEntry> for SpecPreviewEntry {
@@ -175,7 +176,7 @@ impl From<&MergePreviewEntry> for SpecPreviewEntry {
         Self {
             name: entry.name.clone(),
             baseline_path: entry.baseline_path.display().to_string(),
-            operations: entry.result.operations.iter().map(MergeOp::from).collect(),
+            operations: entry.result.operations.clone(),
         }
     }
 }
@@ -249,73 +250,29 @@ impl From<&BaselineConflict> for ConflictRow {
 }
 
 // ---------------------------------------------------------------------------
-// MergeOp — typed wire representation of a `MergeOperation`.
+// MergeOperation rendering.
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-enum MergeOp {
-    Added { id: String, name: String },
-    Modified { id: String, name: String },
-    Removed { id: String, name: String },
-    Renamed { id: String, old_name: String, new_name: String },
-    CreatedBaseline { requirement_count: usize },
-    Unknown,
-}
-
-impl From<&specify_domain::merge::MergeOperation> for MergeOp {
-    fn from(op: &specify_domain::merge::MergeOperation) -> Self {
-        use specify_domain::merge::MergeOperation;
-        match op {
-            MergeOperation::Added { id, name } => Self::Added {
-                id: id.clone(),
-                name: name.clone(),
-            },
-            MergeOperation::Modified { id, name } => Self::Modified {
-                id: id.clone(),
-                name: name.clone(),
-            },
-            MergeOperation::Removed { id, name } => Self::Removed {
-                id: id.clone(),
-                name: name.clone(),
-            },
-            MergeOperation::Renamed {
-                id,
-                old_name,
-                new_name,
-            } => Self::Renamed {
-                id: id.clone(),
-                old_name: old_name.clone(),
-                new_name: new_name.clone(),
-            },
-            MergeOperation::CreatedBaseline { requirement_count } => Self::CreatedBaseline {
-                requirement_count: *requirement_count,
-            },
-            // `MergeOperation` is `#[non_exhaustive]`; future variants
-            // surface as `{"kind": "unknown"}` until mapped.
-            _ => Self::Unknown,
-        }
-    }
-}
-
-fn operation_label(op: &MergeOp) -> String {
+fn operation_label(op: &MergeOperation) -> String {
     match op {
-        MergeOp::Added { id, name } => format!("ADDING: {id} — {name}"),
-        MergeOp::Modified { id, name } => format!("MODIFYING: {id} — {name}"),
-        MergeOp::Removed { id, name } => format!("REMOVING: {id} — {name}"),
-        MergeOp::Renamed {
+        MergeOperation::Added { id, name } => format!("ADDING: {id} — {name}"),
+        MergeOperation::Modified { id, name } => format!("MODIFYING: {id} — {name}"),
+        MergeOperation::Removed { id, name } => format!("REMOVING: {id} — {name}"),
+        MergeOperation::Renamed {
             id,
             old_name,
             new_name,
         } => format!("RENAMING: {id} — {old_name} -> {new_name}"),
-        MergeOp::CreatedBaseline { requirement_count } => {
+        MergeOperation::CreatedBaseline { requirement_count } => {
             format!("CREATING baseline with {requirement_count} requirement(s)")
         }
-        MergeOp::Unknown => "UNKNOWN operation".to_string(),
+        // `MergeOperation` is `#[non_exhaustive]`; surface unmapped
+        // future variants as a generic label.
+        _ => "UNKNOWN operation".to_string(),
     }
 }
 
-fn summarise_ops(ops: &[MergeOp]) -> String {
+fn summarise_ops(ops: &[MergeOperation]) -> String {
     let mut added = 0;
     let mut modified = 0;
     let mut removed = 0;
@@ -323,14 +280,14 @@ fn summarise_ops(ops: &[MergeOp]) -> String {
     let mut created_baseline = None;
     for op in ops {
         match op {
-            MergeOp::Added { .. } => added += 1,
-            MergeOp::Modified { .. } => modified += 1,
-            MergeOp::Removed { .. } => removed += 1,
-            MergeOp::Renamed { .. } => renamed += 1,
-            MergeOp::CreatedBaseline { requirement_count } => {
+            MergeOperation::Added { .. } => added += 1,
+            MergeOperation::Modified { .. } => modified += 1,
+            MergeOperation::Removed { .. } => removed += 1,
+            MergeOperation::Renamed { .. } => renamed += 1,
+            MergeOperation::CreatedBaseline { requirement_count } => {
                 created_baseline = Some(*requirement_count);
             }
-            MergeOp::Unknown => {}
+            _ => {}
         }
     }
     if let Some(count) = created_baseline {
