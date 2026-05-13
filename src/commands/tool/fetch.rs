@@ -9,7 +9,7 @@ use super::{build_inventory, emit_warnings_to_stderr, select};
 use crate::cli::Format;
 use crate::context::Ctx;
 
-pub(crate) fn run(ctx: &Ctx, name: Option<&str>) -> Result<()> {
+pub fn run(ctx: &Ctx, name: Option<&str>) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let selected = select(&inventory, name)?;
     let mut rows = Vec::with_capacity(selected.len());

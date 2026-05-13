@@ -3,7 +3,7 @@
     reason = "Plan dispatcher passes through clap-shaped argument tuples."
 )]
 
-pub(crate) mod cli;
+pub mod cli;
 mod create;
 mod doctor;
 mod lifecycle;

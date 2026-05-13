@@ -1,4 +1,4 @@
-pub(crate) mod cli;
+pub mod cli;
 
 use std::io::Write;
 
@@ -11,7 +11,7 @@ use crate::cli::CompatibilityAction;
 use crate::context::Ctx;
 
 /// Dispatch `specify compatibility *`.
-pub(crate) fn run(ctx: &Ctx, action: CompatibilityAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: CompatibilityAction) -> Result<()> {
     match action {
         CompatibilityAction::Check => check(ctx),
         CompatibilityAction::Report { change } => report(ctx, change),

@@ -1,4 +1,4 @@
-pub(crate) mod cli;
+pub mod cli;
 
 use std::io::Write;
 
@@ -12,7 +12,7 @@ use crate::cli::CodexAction;
 use crate::context::Ctx;
 
 /// Dispatch `specify codex *`.
-pub(crate) fn run(ctx: &Ctx, action: CodexAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: CodexAction) -> Result<()> {
     match action {
         CodexAction::List => list(ctx),
         CodexAction::Show { rule_id } => show(ctx, &rule_id),

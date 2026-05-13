@@ -2,7 +2,7 @@
 //! helpers (declared-tool merge, capability resolution, manifest
 //! validation) consumed by every per-subcommand handler.
 
-pub(crate) mod cli;
+pub mod cli;
 mod dto;
 mod fetch;
 mod gc;

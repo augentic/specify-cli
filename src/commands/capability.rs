@@ -1,6 +1,6 @@
 //! `specify capability {resolve, check, pipeline}`.
 
-pub(crate) mod cli;
+pub mod cli;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -27,7 +27,7 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
     writeln!(w, "{}", body.resolved_path)
 }
 
-pub(crate) fn resolve(format: Format, capability_value: String, project_dir: &Path) -> Result<()> {
+pub fn resolve(format: Format, capability_value: String, project_dir: &Path) -> Result<()> {
     let (root_dir, source) = Capability::locate(&capability_value, project_dir)?;
     enforce_capability_filename(&root_dir)?;
     let (source_label, path) = match &source {
@@ -90,7 +90,7 @@ fn write_pipeline_text(w: &mut dyn Write, body: &PipelineBody) -> std::io::Resul
     Ok(())
 }
 
-pub(crate) fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<&Path>) -> Result<()> {
+pub fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<&Path>) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let order = pipeline.topo_order(phase)?;
     let completion = slice.map(|slice_dir| pipeline.completion_for(phase, slice_dir));
@@ -145,7 +145,7 @@ fn write_check_text(w: &mut dyn Write, body: &CheckBody<'_>) -> std::io::Result<
     }
 }
 
-pub(crate) fn check(format: Format, capability_dir: &Path) -> Result<()> {
+pub fn check(format: Format, capability_dir: &Path) -> Result<()> {
     let manifest_path = Capability::probe_dir(capability_dir).ok_or_else(|| Error::Diag {
         code: "capability-manifest-missing",
         detail: format!("no `capability.yaml` at {}", capability_dir.display()),

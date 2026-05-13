@@ -1,14 +1,14 @@
-pub(crate) mod capability;
-pub(crate) mod change;
-pub(crate) mod codex;
-pub(crate) mod compatibility;
-pub(crate) mod context;
+pub mod capability;
+pub mod change;
+pub mod codex;
+pub mod compatibility;
+pub mod context;
 mod init;
-pub(crate) mod registry;
-pub(crate) mod slice;
+pub mod registry;
+pub mod slice;
 mod status;
-pub(crate) mod tool;
-pub(crate) mod workspace;
+pub mod tool;
+pub mod workspace;
 
 use clap::CommandFactory;
 use specify_error::Result;
@@ -17,7 +17,7 @@ use crate::cli::{CapabilityAction, Cli, Commands, Format, ToolAction, WorkspaceA
 use crate::context::Ctx;
 use crate::output::{Exit, report};
 
-pub(crate) fn run(cli: Cli) -> Exit {
+pub fn run(cli: Cli) -> Exit {
     let format = cli.format;
     match cli.command {
         Commands::Init {

@@ -1,5 +1,5 @@
-pub(crate) mod cli;
-pub(crate) mod plan;
+pub mod cli;
+pub mod plan;
 
 use std::io::Write;
 
@@ -16,7 +16,7 @@ use crate::cli::ChangeAction;
 use crate::context::Ctx;
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
-pub(crate) fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
     match action {
         ChangeAction::Create { name } => brief_create(ctx, name),
         ChangeAction::Show => brief_show(ctx),

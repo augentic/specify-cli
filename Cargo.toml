@@ -81,7 +81,6 @@ missing_docs = "warn"
 redundant_lifetimes = "warn"
 single_use_lifetimes = "warn"
 trivial_numeric_casts = "warn"
-unreachable_pub = "warn"
 unsafe_code = "warn"
 unsafe_op_in_unsafe_fn = "warn"
 unused_extern_crates = "warn"
@@ -98,13 +97,6 @@ all = { level = "warn", priority = -1 }      # correctness, suspicious, style, c
 cargo = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
-
-# `clippy::redundant_pub_crate` (nursery) tells you to drop `pub(crate)` on
-# items inside a private module. `unreachable_pub` (rustc) tells you the
-# opposite — promote `pub` to `pub(crate)` whenever the item is not
-# externally reachable. We keep `unreachable_pub` (it catches accidentally
-# leaky exports across the workspace) and silence the nursery rule.
-redundant_pub_crate = "allow"
 
 # The WASI tool runner (`specify-tool` with `host`/`oci` features) pulls in
 # Wasmtime/WASI transitive versions the workspace cannot unify yet, and

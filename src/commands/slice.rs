@@ -11,7 +11,7 @@ use specify_error::Result;
 use crate::cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
 use crate::context::Ctx;
 
-pub(crate) mod cli;
+pub mod cli;
 mod journal;
 mod lifecycle;
 mod list;
@@ -44,7 +44,7 @@ pub(super) fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<Art
     ]
 }
 
-pub(crate) fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
     match action {
         SliceAction::Create {
             name,

@@ -8,10 +8,6 @@
     reason = "shared test helpers; not every integration binary uses every helper"
 )]
 #![expect(
-    unreachable_pub,
-    reason = "test helper module; each test binary is its own crate so `pub(crate)` is wrong here"
-)]
-#![expect(
     clippy::unnecessary_wraps,
     reason = "mock dispatch closures share a Result<Output> signature for parity with the real CmdRunner trait"
 )]

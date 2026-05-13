@@ -10,7 +10,7 @@ use specify_tool::host::{RunContext, WasiRunner};
 use super::{build_inventory, emit_warnings_to_stderr, find};
 use crate::context::Ctx;
 
-pub(crate) fn run(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<u8> {
+pub fn run(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<u8> {
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
     let scoped = find(&inventory, name)?;

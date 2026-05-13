@@ -7,7 +7,7 @@ use super::{build_inventory, emit_warnings_to_stderr, find};
 use crate::cli::Format;
 use crate::context::Ctx;
 
-pub(crate) fn run(ctx: &Ctx, name: &str) -> Result<()> {
+pub fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let scoped = find(&inventory, name)?;
     let row = show_row_for(scoped)?;

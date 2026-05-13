@@ -6,10 +6,6 @@
 //! the unused-helper warnings off without per-item attributes.
 
 #![expect(
-    unreachable_pub,
-    reason = "test helpers shared across integration test binaries; each `tests/*.rs` is its own crate so `pub(crate)` is wrong here"
-)]
-#![expect(
     dead_code,
     reason = "test helpers shared across integration test binaries; not every binary uses every helper"
 )]

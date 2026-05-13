@@ -1,6 +1,6 @@
 //! `specify workspace *` handlers — `sync`, `status`, `prepare-branch`, `push`.
 
-pub(crate) mod cli;
+pub mod cli;
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ use specify_error::{Error, Result};
 
 use crate::context::Ctx;
 
-pub(crate) fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
+pub fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
     let registry = match Registry::load(&ctx.project_dir)? {
         None if !projects.is_empty() => return Err(registry_missing()),
         other => other,
@@ -40,7 +40,7 @@ pub(crate) fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn status(ctx: &Ctx, projects: &[String]) -> Result<()> {
+pub fn status(ctx: &Ctx, projects: &[String]) -> Result<()> {
     let body = match Registry::load(&ctx.project_dir)? {
         None => {
             if !projects.is_empty() {
@@ -61,7 +61,7 @@ pub(crate) fn status(ctx: &Ctx, projects: &[String]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn prepare_branch(
+pub fn prepare_branch(
     ctx: &Ctx, project: &str, change: String, sources: Vec<PathBuf>, outputs: Vec<PathBuf>,
 ) -> Result<()> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
@@ -101,7 +101,7 @@ pub(crate) fn prepare_branch(
     }
 }
 
-pub(crate) fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
+pub fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
         return Err(registry_missing());
     };

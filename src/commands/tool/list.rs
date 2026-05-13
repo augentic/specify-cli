@@ -7,7 +7,7 @@ use super::{build_inventory, emit_warnings_to_stderr};
 use crate::cli::Format;
 use crate::context::Ctx;
 
-pub(crate) fn run(ctx: &Ctx) -> Result<()> {
+pub fn run(ctx: &Ctx) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let rows = rows_for(&inventory.tools)?;
     let body = ListBody {

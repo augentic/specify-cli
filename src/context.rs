@@ -12,7 +12,7 @@ use crate::output;
 /// Shared context for every subcommand that operates inside an
 /// initialised `.specify/` project. Created once at the top of each
 /// command handler via [`Ctx::load`].
-pub(crate) struct Ctx {
+pub struct Ctx {
     pub(crate) format: Format,
     pub(crate) project_dir: PathBuf,
     pub(crate) config: ProjectConfig,

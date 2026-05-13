@@ -10,7 +10,7 @@ use super::{build_inventory, emit_warnings_to_stderr, kept_by_scope};
 use crate::cli::Format;
 use crate::context::Ctx;
 
-pub(crate) fn run(ctx: &Ctx) -> Result<()> {
+pub fn run(ctx: &Ctx) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let mut kept_by_scope = kept_by_scope(&inventory);
     let mut removed = Vec::new();

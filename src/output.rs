@@ -16,7 +16,7 @@ use crate::cli::Format;
 ///
 /// Propagates the underlying serialization or I/O error from
 /// [`emit`].
-pub(crate) fn write<T: Serialize>(
+pub fn write<T: Serialize>(
     format: Format, data: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
 ) -> Result<(), Error> {
     emit(Box::new(std::io::stdout().lock()), format, data, render_text)
@@ -96,7 +96,7 @@ impl From<&Error> for Exit {
 /// [`crate::commands`] hands the error here. The body shape is
 /// always [`ErrorBody`]; for `Error::Validation`, the body's
 /// `results` field carries the per-row failures.
-pub(crate) fn report(format: Format, err: &Error) -> Exit {
+pub fn report(format: Format, err: &Error) -> Exit {
     let code = Exit::from(err);
     let body = ErrorBody::from(err);
     let result = emit(Box::new(std::io::stderr().lock()), format, &body, write_error_text);
@@ -139,7 +139,7 @@ fn emit<T: Serialize>(
 /// shape on the wire.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) struct ErrorBody<'a> {
+pub struct ErrorBody<'a> {
     pub(crate) error: String,
     pub(crate) message: String,
     pub(crate) exit_code: u8,

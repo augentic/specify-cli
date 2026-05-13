@@ -2,7 +2,7 @@
 //! sibling modules; shared response DTOs live in `registry/dto.rs`.
 
 mod add;
-pub(crate) mod cli;
+pub mod cli;
 mod dto;
 mod remove;
 mod show;
@@ -13,7 +13,7 @@ use specify_error::Result;
 use crate::cli::RegistryAction;
 use crate::context::Ctx;
 
-pub(crate) fn run(ctx: &Ctx, action: RegistryAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: RegistryAction) -> Result<()> {
     match action {
         RegistryAction::Show => show::run(ctx),
         RegistryAction::Validate => validate::run(ctx),

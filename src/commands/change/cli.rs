@@ -8,7 +8,7 @@ use crate::commands::change::plan::cli::PlanAction;
 
 /// Umbrella `change` verbs — owns `change.md` and `plan.yaml`.
 #[derive(Subcommand)]
-pub(crate) enum ChangeAction {
+pub enum ChangeAction {
     /// Scaffold `change.md` at the repo root. Refuses to overwrite.
     Create {
         /// Kebab-case change name (baked into the frontmatter).

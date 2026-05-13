@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 mod assemble;
 mod check;
-pub(crate) mod cli;
+pub mod cli;
 mod detect;
 mod fences;
 mod fingerprint;
@@ -24,7 +24,7 @@ use specify_error::{Error, Result};
 use crate::cli::ContextAction;
 use crate::context::Ctx;
 
-pub(crate) fn run(ctx: &Ctx, action: &ContextAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: &ContextAction) -> Result<()> {
     match action {
         ContextAction::Generate { check, force } => generate::run(ctx, *check, *force),
         ContextAction::Check => check::run(ctx),

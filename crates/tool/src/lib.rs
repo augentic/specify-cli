@@ -36,24 +36,24 @@ pub(crate) mod test_support {
 
     static SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-    pub(crate) fn fixed_now() -> Timestamp {
+    pub fn fixed_now() -> Timestamp {
         "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
     }
 
-    pub(crate) fn project_scope() -> ToolScope {
+    pub fn project_scope() -> ToolScope {
         ToolScope::Project {
             project_name: "demo".to_string(),
         }
     }
 
-    pub(crate) fn capability_scope(root: &Path) -> ToolScope {
+    pub fn capability_scope(root: &Path) -> ToolScope {
         ToolScope::Capability {
             capability_slug: "contracts".to_string(),
             capability_dir: root.to_path_buf(),
         }
     }
 
-    pub(crate) fn tool(source: ToolSource, sha256: Option<String>) -> Tool {
+    pub fn tool(source: ToolSource, sha256: Option<String>) -> Tool {
         Tool {
             name: "contract".to_string(),
             version: "1.0.0".to_string(),
@@ -63,26 +63,26 @@ pub(crate) mod test_support {
         }
     }
 
-    pub(crate) fn named_tool(name: &str, source: ToolSource, sha256: Option<String>) -> Tool {
+    pub fn named_tool(name: &str, source: ToolSource, sha256: Option<String>) -> Tool {
         Tool {
             name: name.to_string(),
             ..tool(source, sha256)
         }
     }
 
-    pub(crate) fn write_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
+    pub fn write_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
         let path = root.join(name);
         fs::write(&path, bytes).expect("write source");
         path
     }
 
-    pub(crate) fn cached_bytes(scope: &ToolScope, tool: &Tool) -> Vec<u8> {
+    pub fn cached_bytes(scope: &ToolScope, tool: &Tool) -> Vec<u8> {
         fs::read(cache::module_path(scope, &tool.name, &tool.version).expect("module path"))
             .expect("read cached module")
     }
 
     /// Lock guarding process-wide environment mutations in tests.
-    pub(crate) fn env_lock() -> MutexGuard<'static, ()> {
+    pub fn env_lock() -> MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
             .lock()
@@ -90,7 +90,7 @@ pub(crate) mod test_support {
     }
 
     /// Create a unique temporary directory for tests.
-    pub(crate) fn scratch_dir(label: &str) -> PathBuf {
+    pub fn scratch_dir(label: &str) -> PathBuf {
         let n = SCRATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
         let nanos =
             SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_nanos());
@@ -101,7 +101,7 @@ pub(crate) mod test_support {
     }
 
     /// Run a closure with cache-related environment variables set.
-    pub(crate) fn with_cache_env<T>(
+    pub fn with_cache_env<T>(
         specify_cache: Option<&Path>, xdg_cache: Option<&Path>, home: Option<&Path>,
         f: impl FnOnce() -> T,
     ) -> T {
