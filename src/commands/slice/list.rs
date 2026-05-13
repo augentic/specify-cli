@@ -49,7 +49,10 @@ pub(in crate::commands) fn collect_status(
             if path.is_file() {
                 let content = std::fs::read_to_string(&path)?;
                 let progress = parse_tasks(&content);
-                Some(TaskCounts { total: progress.total, complete: progress.complete })
+                Some(TaskCounts {
+                    total: progress.total,
+                    complete: progress.complete,
+                })
             } else {
                 None
             }
@@ -164,10 +167,8 @@ fn render_table(w: &mut dyn Write, entries: &[StatusEntry]) -> std::io::Result<(
         status_w = status_w,
     )?;
     for e in entries {
-        let tasks = e.tasks.map_or_else(
-            || "-".to_string(),
-            |tc| format!("{}/{}", tc.complete, tc.total),
-        );
+        let tasks =
+            e.tasks.map_or_else(|| "-".to_string(), |tc| format!("{}/{}", tc.complete, tc.total));
         writeln!(
             w,
             "{:<name_w$}  {:<status_w$}  {}",

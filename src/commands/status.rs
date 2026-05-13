@@ -157,10 +157,8 @@ fn render_dashboard(
         status_w = status_w
     )?;
     for e in entries {
-        let tasks = e.tasks.map_or_else(
-            || "-".to_string(),
-            |tc| format!("{}/{}", tc.complete, tc.total),
-        );
+        let tasks =
+            e.tasks.map_or_else(|| "-".to_string(), |tc| format!("{}/{}", tc.complete, tc.total));
         writeln!(
             w,
             "  {:<name_w$}  {:<status_w$}  {}",

@@ -26,16 +26,133 @@ const RULE_NAME_UNIQUE: &str = "tool.name-unique";
 impl Tool {
     /// Validate the tool declaration against the structural rules (`name`, `version`, `source`, `sha256`, permission shape).
     #[must_use]
+    #[allow(clippy::too_many_lines, reason = "rules inlined into vec! site per R9")]
     pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationSummary> {
+        let package = match &self.source {
+            ToolSource::Package(p) => Some(p),
+            _ => None,
+        };
+
+        let name_valid = !self.name.is_empty()
+            && self.name.len() <= 64
+            && self.name.as_bytes()[0].is_ascii_lowercase()
+            && self.name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+
+        let (version_valid, version_detail) = match semver::Version::parse(&self.version) {
+            Ok(_) => (true, String::new()),
+            Err(err) => {
+                (false, format!("`{}` is not an exact SemVer version: {err}", self.version))
+            }
+        };
+
+        let source_valid = match &self.source {
+            ToolSource::LocalPath(path) => path.is_absolute() || path_looks_windows_absolute(path),
+            ToolSource::FileUri(uri) => {
+                uri.strip_prefix("file://").is_some_and(|rest| !rest.is_empty())
+            }
+            ToolSource::HttpsUri(uri) => {
+                uri.strip_prefix("https://").is_some_and(|rest| !rest.is_empty())
+            }
+            ToolSource::Package(p) => !p.name_ref().is_empty(),
+        };
+
+        let package_format_valid = package.is_none_or(|p| {
+            !p.namespace.is_empty()
+                && !p.name.is_empty()
+                && !p.version.is_empty()
+                && p.to_wire_string().contains('@')
+                && p.name_ref().contains(':')
+        });
+
+        let (package_namespace_valid, package_namespace_detail) = package.map_or_else(
+            || (true, String::new()),
+            |p| {
+                if p.namespace == "specify" {
+                    (true, String::new())
+                } else {
+                    (false, format!("`{}` is not in the specify namespace", p.name_ref()))
+                }
+            },
+        );
+
+        let (package_version_valid, package_version_detail) = package.map_or_else(
+            || (true, String::new()),
+            |p| {
+                if p.version.starts_with('v') {
+                    (false, format!("`{}` uses a leading v", p.version))
+                } else if let Err(err) = semver::Version::parse(&p.version) {
+                    (false, format!("`{}` is not an exact SemVer version: {err}", p.version))
+                } else {
+                    (true, String::new())
+                }
+            },
+        );
+
+        let (package_permissions_valid, package_permissions_detail) = package.map_or_else(
+            || (true, String::new()),
+            |p| match first_party_permissions(p) {
+                None => (false, format!("`{}` has no embedded permission defaults", p.name_ref())),
+                Some(expected) if self.permissions == expected => (true, String::new()),
+                Some(_) => (
+                    false,
+                    format!("`{}` permissions do not match embedded defaults", p.name_ref()),
+                ),
+            },
+        );
+
+        let sha256_valid = self.sha256.as_deref().is_none_or(|v| {
+            v.len() == 64 && v.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        });
+
         vec![
-            validate_name(&self.name),
-            validate_version(&self.version),
-            validate_source(&self.source),
-            validate_package_format(&self.source),
-            validate_package_namespace(&self.source),
-            validate_package_version(&self.source),
-            validate_package_permissions(self),
-            validate_sha256(self.sha256.as_deref()),
+            check(
+                RULE_NAME_FORMAT,
+                "tool names are lowercase kebab-case and at most 64 characters",
+                name_valid,
+                || format!("`{}` is not a valid tool name", self.name),
+            ),
+            check(
+                RULE_VERSION_SEMVER,
+                "tool versions are exact SemVer versions",
+                version_valid,
+                || version_detail,
+            ),
+            check(
+                RULE_SOURCE_SUPPORTED,
+                "tool sources are absolute paths, file:// URIs, https:// URIs, or wasm package requests",
+                source_valid,
+                || format!("`{}` is not a supported source", self.source.to_wire_string()),
+            ),
+            check(
+                RULE_PACKAGE_FORMAT,
+                "package sources use namespace:name@version syntax",
+                package_format_valid,
+                || format!("`{}` is not a package request", self.source.to_wire_string()),
+            ),
+            check(
+                RULE_PACKAGE_NAMESPACE,
+                "package sources use the first-party specify namespace",
+                package_namespace_valid,
+                || package_namespace_detail,
+            ),
+            check(
+                RULE_PACKAGE_VERSION,
+                "package sources include an exact SemVer version without a leading v",
+                package_version_valid,
+                || package_version_detail,
+            ),
+            check(
+                RULE_PACKAGE_PERMISSIONS,
+                "first-party package tools have embedded permission defaults",
+                package_permissions_valid,
+                || package_permissions_detail,
+            ),
+            check(
+                RULE_SHA256_FORMAT,
+                "optional sha256 pins are 64 lowercase hexadecimal characters",
+                sha256_valid,
+                || "`sha256` must be exactly 64 lowercase hex characters".to_string(),
+            ),
             validate_permission_paths(&self.permissions.read, &self.permissions.write),
             validate_lifecycle_writes(&self.permissions.write),
             validate_capability_dir_scope(scope, &self.permissions.read, &self.permissions.write),
@@ -48,7 +165,21 @@ impl ToolManifest {
     #[must_use]
     pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationSummary> {
         let mut results = Vec::with_capacity(1 + self.tools.len() * 11);
-        results.push(validate_unique_names(&self.tools));
+
+        let mut seen: HashSet<&str> = HashSet::new();
+        let mut duplicates: Vec<&str> = Vec::new();
+        for tool in &self.tools {
+            if !seen.insert(tool.name.as_str()) && !duplicates.contains(&tool.name.as_str()) {
+                duplicates.push(tool.name.as_str());
+            }
+        }
+        results.push(check(
+            RULE_NAME_UNIQUE,
+            "tool names are unique within a single declaration site",
+            duplicates.is_empty(),
+            || format!("duplicate tool name(s): {}", duplicates.join(", ")),
+        ));
+
         for tool in &self.tools {
             results.extend(tool.validate_structure(scope));
         }
@@ -74,144 +205,10 @@ fn fail(rule_id: &'static str, rule: &'static str, detail: impl Into<String>) ->
     }
 }
 
-fn validate_name(name: &str) -> ValidationSummary {
-    const RULE: &str = "tool names are lowercase kebab-case and at most 64 characters";
-    let valid = !name.is_empty()
-        && name.len() <= 64
-        && name.as_bytes()[0].is_ascii_lowercase()
-        && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-    if valid {
-        pass(RULE_NAME_FORMAT, RULE)
-    } else {
-        fail(RULE_NAME_FORMAT, RULE, format!("`{name}` is not a valid tool name"))
-    }
-}
-
-fn validate_version(version: &str) -> ValidationSummary {
-    const RULE: &str = "tool versions are exact SemVer versions";
-    match semver::Version::parse(version) {
-        Ok(_) => pass(RULE_VERSION_SEMVER, RULE),
-        Err(err) => fail(
-            RULE_VERSION_SEMVER,
-            RULE,
-            format!("`{version}` is not an exact SemVer version: {err}"),
-        ),
-    }
-}
-
-fn validate_source(source: &ToolSource) -> ValidationSummary {
-    const RULE: &str =
-        "tool sources are absolute paths, file:// URIs, https:// URIs, or wasm package requests";
-    let valid = match source {
-        ToolSource::LocalPath(path) => path.is_absolute() || path_looks_windows_absolute(path),
-        ToolSource::FileUri(uri) => {
-            uri.strip_prefix("file://").is_some_and(|rest| !rest.is_empty())
-        }
-        ToolSource::HttpsUri(uri) => {
-            uri.strip_prefix("https://").is_some_and(|rest| !rest.is_empty())
-        }
-        ToolSource::Package(package) => !package.name_ref().is_empty(),
-    };
-    if valid {
-        pass(RULE_SOURCE_SUPPORTED, RULE)
-    } else {
-        fail(
-            RULE_SOURCE_SUPPORTED,
-            RULE,
-            format!("`{}` is not a supported source", source.to_wire_string()),
-        )
-    }
-}
-
-fn validate_package_format(source: &ToolSource) -> ValidationSummary {
-    const RULE: &str = "package sources use namespace:name@version syntax";
-    let ToolSource::Package(package) = source else {
-        return pass(RULE_PACKAGE_FORMAT, RULE);
-    };
-    let valid = !package.namespace.is_empty()
-        && !package.name.is_empty()
-        && !package.version.is_empty()
-        && package.to_wire_string().contains('@')
-        && package.name_ref().contains(':');
-    if valid {
-        pass(RULE_PACKAGE_FORMAT, RULE)
-    } else {
-        fail(
-            RULE_PACKAGE_FORMAT,
-            RULE,
-            format!("`{}` is not a package request", package.to_wire_string()),
-        )
-    }
-}
-
-fn validate_package_namespace(source: &ToolSource) -> ValidationSummary {
-    const RULE: &str = "package sources use the first-party specify namespace";
-    let ToolSource::Package(package) = source else {
-        return pass(RULE_PACKAGE_NAMESPACE, RULE);
-    };
-    if package.namespace == "specify" {
-        pass(RULE_PACKAGE_NAMESPACE, RULE)
-    } else {
-        fail(
-            RULE_PACKAGE_NAMESPACE,
-            RULE,
-            format!("`{}` is not in the specify namespace", package.name_ref()),
-        )
-    }
-}
-
-fn validate_package_version(source: &ToolSource) -> ValidationSummary {
-    const RULE: &str = "package sources include an exact SemVer version without a leading v";
-    let ToolSource::Package(package) = source else {
-        return pass(RULE_PACKAGE_VERSION, RULE);
-    };
-    if package.version.starts_with('v') {
-        return fail(RULE_PACKAGE_VERSION, RULE, format!("`{}` uses a leading v", package.version));
-    }
-    match semver::Version::parse(&package.version) {
-        Ok(_) => pass(RULE_PACKAGE_VERSION, RULE),
-        Err(err) => fail(
-            RULE_PACKAGE_VERSION,
-            RULE,
-            format!("`{}` is not an exact SemVer version: {err}", package.version),
-        ),
-    }
-}
-
-fn validate_package_permissions(tool: &Tool) -> ValidationSummary {
-    const RULE: &str = "first-party package tools have embedded permission defaults";
-    let ToolSource::Package(package) = &tool.source else {
-        return pass(RULE_PACKAGE_PERMISSIONS, RULE);
-    };
-    let Some(expected) = first_party_permissions(package) else {
-        return fail(
-            RULE_PACKAGE_PERMISSIONS,
-            RULE,
-            format!("`{}` has no embedded permission defaults", package.name_ref()),
-        );
-    };
-    if tool.permissions == expected {
-        pass(RULE_PACKAGE_PERMISSIONS, RULE)
-    } else {
-        fail(
-            RULE_PACKAGE_PERMISSIONS,
-            RULE,
-            format!("`{}` permissions do not match embedded defaults", package.name_ref()),
-        )
-    }
-}
-
-fn validate_sha256(sha256: Option<&str>) -> ValidationSummary {
-    const RULE: &str = "optional sha256 pins are 64 lowercase hexadecimal characters";
-    let Some(value) = sha256 else {
-        return pass(RULE_SHA256_FORMAT, RULE);
-    };
-    if value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
-        pass(RULE_SHA256_FORMAT, RULE)
-    } else {
-        fail(RULE_SHA256_FORMAT, RULE, "`sha256` must be exactly 64 lowercase hex characters")
-    }
+fn check(
+    rule_id: &'static str, rule: &'static str, valid: bool, detail: impl FnOnce() -> String,
+) -> ValidationSummary {
+    if valid { pass(rule_id, rule) } else { fail(rule_id, rule, detail()) }
 }
 
 fn validate_permission_paths(read: &[String], write: &[String]) -> ValidationSummary {
@@ -264,23 +261,6 @@ fn validate_capability_dir_scope(
         pass(RULE_CAPABILITY_DIR_SCOPE, RULE)
     } else {
         fail(RULE_CAPABILITY_DIR_SCOPE, RULE, failures.join("; "))
-    }
-}
-
-fn validate_unique_names(tools: &[Tool]) -> ValidationSummary {
-    const RULE: &str = "tool names are unique within a single declaration site";
-    let mut seen: HashSet<&str> = HashSet::new();
-    let mut duplicates: Vec<&str> = Vec::new();
-    for tool in tools {
-        if !seen.insert(tool.name.as_str()) && !duplicates.contains(&tool.name.as_str()) {
-            duplicates.push(tool.name.as_str());
-        }
-    }
-
-    if duplicates.is_empty() {
-        pass(RULE_NAME_UNIQUE, RULE)
-    } else {
-        fail(RULE_NAME_UNIQUE, RULE, format!("duplicate tool name(s): {}", duplicates.join(", ")))
     }
 }
 

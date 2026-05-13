@@ -154,7 +154,10 @@ pub(crate) fn check(format: Format, capability_dir: &Path) -> Result<()> {
     let results = capability.validate_structure();
     let passed = !results.iter().any(|r| matches!(r, ValidationResult::Fail { .. }));
 
-    let body = CheckBody { passed, results: &results };
+    let body = CheckBody {
+        passed,
+        results: &results,
+    };
     output::write(format, &body, write_check_text)?;
     if passed {
         Ok(())
@@ -180,4 +183,3 @@ fn load_manifest(manifest_path: &Path) -> Result<Capability> {
     let capability: Capability = serde_saphyr::from_str(&text)?;
     Ok(capability)
 }
-

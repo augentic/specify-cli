@@ -199,8 +199,7 @@ fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()
 }
 
 fn render_slot_line(w: &mut dyn Write, slot: &SlotStatus) -> std::io::Result<()> {
-    let symlink_target =
-        slot.actual_symlink_target.as_ref().map(|p| p.display().to_string());
+    let symlink_target = slot.actual_symlink_target.as_ref().map(|p| p.display().to_string());
     writeln!(
         w,
         "{}: kind={} path={} configured-{}={} target={} origin={} branch={} change-branch={} head={} dirty={} project.yaml={} active-slices={}",
@@ -216,11 +215,7 @@ fn render_slot_line(w: &mut dyn Write, slot: &SlotStatus) -> std::io::Result<()>
         slot.head_sha.as_deref().unwrap_or("-"),
         slot.dirty.map_or("-", |v| if v { "yes" } else { "no" }),
         if slot.project_config_present { "present" } else { "missing" },
-        if slot.active_slices.is_empty() {
-            "-".to_string()
-        } else {
-            slot.active_slices.join(",")
-        },
+        if slot.active_slices.is_empty() { "-".to_string() } else { slot.active_slices.join(",") },
     )
 }
 

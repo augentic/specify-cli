@@ -24,10 +24,7 @@ pub enum ToolError {
     /// JSON envelope after [`From<ToolError> for specify_error::Error`];
     /// `detail` is the human-readable message.
     #[error("{detail}")]
-    Diag {
-        code: &'static str,
-        detail: String,
-    },
+    Diag { code: &'static str, detail: String },
     /// `meta.yaml` could not be parsed or violated the sidecar schema.
     #[error("tool sidecar at {}: {kind}", path.display())]
     Sidecar {

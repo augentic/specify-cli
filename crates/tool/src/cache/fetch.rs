@@ -54,8 +54,9 @@ pub fn stage_and_install(staged: &Path, dest: &Path) -> Result<(), ToolError> {
 
     let backup = if dest.exists() {
         let backup = unique_sibling_backup(parent)?;
-        fs::rename(dest, &backup)
-            .map_err(|err| ToolError::atomic_move_failed(dest.to_path_buf(), backup.clone(), err))?;
+        fs::rename(dest, &backup).map_err(|err| {
+            ToolError::atomic_move_failed(dest.to_path_buf(), backup.clone(), err)
+        })?;
         Some(backup)
     } else {
         None
