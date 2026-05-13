@@ -3,6 +3,8 @@
 use std::collections::HashSet;
 use std::path::Path;
 
+use specify_error::{ValidationStatus, ValidationSummary};
+
 use crate::manifest::{Tool, ToolManifest, ToolScope, ToolSource, first_party_permissions};
 
 /// Canonical JSON Schema for the two `tools:` declaration sites.
@@ -21,53 +23,10 @@ const RULE_LIFECYCLE_WRITE_DENIED: &str = "tool.lifecycle-state-write-denied";
 const RULE_CAPABILITY_DIR_SCOPE: &str = "tool.capability-dir-out-of-scope";
 const RULE_NAME_UNIQUE: &str = "tool.name-unique";
 
-/// Outcome of a structural validation rule.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ValidationResult {
-    /// Rule passed.
-    Pass {
-        /// Machine-readable rule identifier.
-        rule_id: &'static str,
-        /// Human-readable rule description.
-        rule: &'static str,
-    },
-    /// Rule failed.
-    Fail {
-        /// Machine-readable rule identifier.
-        rule_id: &'static str,
-        /// Human-readable rule description.
-        rule: &'static str,
-        /// Detail message explaining the failure.
-        detail: String,
-    },
-    /// Rule evaluation was deferred.
-    Deferred {
-        /// Machine-readable rule identifier.
-        rule_id: &'static str,
-        /// Human-readable rule description.
-        rule: &'static str,
-        /// Why the rule was deferred.
-        reason: &'static str,
-    },
-}
-
-impl ValidationResult {
-    /// Stable rule identifier for this result.
-    #[must_use]
-    pub const fn rule_id(&self) -> &'static str {
-        match self {
-            Self::Pass { rule_id, .. }
-            | Self::Fail { rule_id, .. }
-            | Self::Deferred { rule_id, .. } => rule_id,
-        }
-    }
-}
-
 impl Tool {
     /// Validate the tool declaration against the structural rules (`name`, `version`, `source`, `sha256`, permission shape).
     #[must_use]
-    pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationResult> {
+    pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationSummary> {
         vec![
             validate_name(&self.name),
             validate_version(&self.version),
@@ -87,7 +46,7 @@ impl Tool {
 impl ToolManifest {
     /// Validate a manifest and all of its contained tools.
     #[must_use]
-    pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationResult> {
+    pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationSummary> {
         let mut results = Vec::with_capacity(1 + self.tools.len() * 11);
         results.push(validate_unique_names(&self.tools));
         for tool in &self.tools {
@@ -97,19 +56,25 @@ impl ToolManifest {
     }
 }
 
-const fn pass(rule_id: &'static str, rule: &'static str) -> ValidationResult {
-    ValidationResult::Pass { rule_id, rule }
-}
-
-fn fail(rule_id: &'static str, rule: &'static str, detail: impl Into<String>) -> ValidationResult {
-    ValidationResult::Fail {
-        rule_id,
-        rule,
-        detail: detail.into(),
+fn pass(rule_id: &'static str, rule: &'static str) -> ValidationSummary {
+    ValidationSummary {
+        status: ValidationStatus::Pass,
+        rule_id: rule_id.to_string(),
+        rule: rule.to_string(),
+        detail: None,
     }
 }
 
-fn validate_name(name: &str) -> ValidationResult {
+fn fail(rule_id: &'static str, rule: &'static str, detail: impl Into<String>) -> ValidationSummary {
+    ValidationSummary {
+        status: ValidationStatus::Fail,
+        rule_id: rule_id.to_string(),
+        rule: rule.to_string(),
+        detail: Some(detail.into()),
+    }
+}
+
+fn validate_name(name: &str) -> ValidationSummary {
     const RULE: &str = "tool names are lowercase kebab-case and at most 64 characters";
     let valid = !name.is_empty()
         && name.len() <= 64
@@ -122,7 +87,7 @@ fn validate_name(name: &str) -> ValidationResult {
     }
 }
 
-fn validate_version(version: &str) -> ValidationResult {
+fn validate_version(version: &str) -> ValidationSummary {
     const RULE: &str = "tool versions are exact SemVer versions";
     match semver::Version::parse(version) {
         Ok(_) => pass(RULE_VERSION_SEMVER, RULE),
@@ -134,7 +99,7 @@ fn validate_version(version: &str) -> ValidationResult {
     }
 }
 
-fn validate_source(source: &ToolSource) -> ValidationResult {
+fn validate_source(source: &ToolSource) -> ValidationSummary {
     const RULE: &str =
         "tool sources are absolute paths, file:// URIs, https:// URIs, or wasm package requests";
     let valid = match source {
@@ -158,7 +123,7 @@ fn validate_source(source: &ToolSource) -> ValidationResult {
     }
 }
 
-fn validate_package_format(source: &ToolSource) -> ValidationResult {
+fn validate_package_format(source: &ToolSource) -> ValidationSummary {
     const RULE: &str = "package sources use namespace:name@version syntax";
     let ToolSource::Package(package) = source else {
         return pass(RULE_PACKAGE_FORMAT, RULE);
@@ -179,7 +144,7 @@ fn validate_package_format(source: &ToolSource) -> ValidationResult {
     }
 }
 
-fn validate_package_namespace(source: &ToolSource) -> ValidationResult {
+fn validate_package_namespace(source: &ToolSource) -> ValidationSummary {
     const RULE: &str = "package sources use the first-party specify namespace";
     let ToolSource::Package(package) = source else {
         return pass(RULE_PACKAGE_NAMESPACE, RULE);
@@ -195,7 +160,7 @@ fn validate_package_namespace(source: &ToolSource) -> ValidationResult {
     }
 }
 
-fn validate_package_version(source: &ToolSource) -> ValidationResult {
+fn validate_package_version(source: &ToolSource) -> ValidationSummary {
     const RULE: &str = "package sources include an exact SemVer version without a leading v";
     let ToolSource::Package(package) = source else {
         return pass(RULE_PACKAGE_VERSION, RULE);
@@ -213,7 +178,7 @@ fn validate_package_version(source: &ToolSource) -> ValidationResult {
     }
 }
 
-fn validate_package_permissions(tool: &Tool) -> ValidationResult {
+fn validate_package_permissions(tool: &Tool) -> ValidationSummary {
     const RULE: &str = "first-party package tools have embedded permission defaults";
     let ToolSource::Package(package) = &tool.source else {
         return pass(RULE_PACKAGE_PERMISSIONS, RULE);
@@ -236,7 +201,7 @@ fn validate_package_permissions(tool: &Tool) -> ValidationResult {
     }
 }
 
-fn validate_sha256(sha256: Option<&str>) -> ValidationResult {
+fn validate_sha256(sha256: Option<&str>) -> ValidationSummary {
     const RULE: &str = "optional sha256 pins are 64 lowercase hexadecimal characters";
     let Some(value) = sha256 else {
         return pass(RULE_SHA256_FORMAT, RULE);
@@ -249,7 +214,7 @@ fn validate_sha256(sha256: Option<&str>) -> ValidationResult {
     }
 }
 
-fn validate_permission_paths(read: &[String], write: &[String]) -> ValidationResult {
+fn validate_permission_paths(read: &[String], write: &[String]) -> ValidationSummary {
     const RULE: &str = "permission paths are absolute or start with $PROJECT_DIR/$CAPABILITY_DIR, with no glob or parent segments";
     let failures: Vec<String> = read
         .iter()
@@ -267,7 +232,7 @@ fn validate_permission_paths(read: &[String], write: &[String]) -> ValidationRes
     }
 }
 
-fn validate_lifecycle_writes(write: &[String]) -> ValidationResult {
+fn validate_lifecycle_writes(write: &[String]) -> ValidationSummary {
     const RULE: &str = "tool write permissions do not target Specify lifecycle state";
     let failures: Vec<String> = write
         .iter()
@@ -283,7 +248,7 @@ fn validate_lifecycle_writes(write: &[String]) -> ValidationResult {
 
 fn validate_capability_dir_scope(
     scope: &ToolScope, read: &[String], write: &[String],
-) -> ValidationResult {
+) -> ValidationSummary {
     const RULE: &str = "$CAPABILITY_DIR is only available to capability-scope tools";
     if matches!(scope, ToolScope::Capability { .. }) {
         return pass(RULE_CAPABILITY_DIR_SCOPE, RULE);
@@ -302,7 +267,7 @@ fn validate_capability_dir_scope(
     }
 }
 
-fn validate_unique_names(tools: &[Tool]) -> ValidationResult {
+fn validate_unique_names(tools: &[Tool]) -> ValidationSummary {
     const RULE: &str = "tool names are unique within a single declaration site";
     let mut seen: HashSet<&str> = HashSet::new();
     let mut duplicates: Vec<&str> = Vec::new();
@@ -415,13 +380,11 @@ mod tests {
         }
     }
 
-    fn fail_rule_ids(results: &[ValidationResult]) -> Vec<&'static str> {
+    fn fail_rule_ids(results: &[ValidationSummary]) -> Vec<&str> {
         results
             .iter()
-            .filter_map(|result| match result {
-                ValidationResult::Fail { rule_id, .. } => Some(*rule_id),
-                _ => None,
-            })
+            .filter(|s| s.status == ValidationStatus::Fail)
+            .map(|s| s.rule_id.as_str())
             .collect()
     }
 
@@ -466,7 +429,8 @@ mod tests {
             permissions: ToolPermissions::default(),
         };
 
-        let ids = fail_rule_ids(&tool.validate_structure(&project_scope()));
+        let results = tool.validate_structure(&project_scope());
+        let ids = fail_rule_ids(&results);
         assert!(ids.contains(&RULE_VERSION_SEMVER));
         assert!(ids.contains(&RULE_PACKAGE_NAMESPACE));
         assert!(ids.contains(&RULE_PACKAGE_VERSION));
@@ -479,7 +443,7 @@ mod tests {
             serde_saphyr::from_str("tools:\n  - \"specify:contract@1.2.3\"\n")
                 .expect("parse scalar package");
         let results = manifest.validate_structure(&project_scope());
-        assert!(results.iter().all(|result| matches!(result, ValidationResult::Pass { .. })));
+        assert!(results.iter().all(|s| s.status == ValidationStatus::Pass));
     }
 
     #[test]
@@ -488,7 +452,7 @@ mod tests {
         tool.permissions.write = vec!["$PROJECT_DIR".to_string()];
 
         let results = tool.validate_structure(&project_scope());
-        assert!(results.iter().all(|result| matches!(result, ValidationResult::Pass { .. })));
+        assert!(results.iter().all(|s| s.status == ValidationStatus::Pass));
     }
 
     #[test]
@@ -512,7 +476,7 @@ mod tests {
     #[test]
     fn valid_tool_passes_structure_validation() {
         let results = valid_tool("contract").validate_structure(&project_scope());
-        assert!(results.iter().all(|result| matches!(result, ValidationResult::Pass { .. })));
+        assert!(results.iter().all(|s| s.status == ValidationStatus::Pass));
     }
 
     #[test]

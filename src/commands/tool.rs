@@ -21,7 +21,6 @@ pub(super) use show::run as show;
 use specify_domain::capability::{Capability, ResolvedCapability};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
-use specify_tool::validate::ValidationResult as ToolValidationResult;
 use specify_tool::{Tool, ToolManifest, ToolScope};
 
 use self::dto::{CacheKey, Inventory, ScopedTool, WarningRow, warning_row};
@@ -79,25 +78,12 @@ fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {
     let manifest = ToolManifest {
         tools: tools.to_vec(),
     };
-    let summaries: Vec<ValidationSummary> =
-        manifest.validate_structure(scope).iter().filter_map(validation_failure).collect();
+    let summaries: Vec<ValidationSummary> = manifest
+        .validate_structure(scope)
+        .into_iter()
+        .filter(|summary| summary.status == ValidationStatus::Fail)
+        .collect();
     if summaries.is_empty() { Ok(()) } else { Err(Error::Validation { results: summaries }) }
-}
-
-fn validation_failure(result: &ToolValidationResult) -> Option<ValidationSummary> {
-    match result {
-        ToolValidationResult::Fail {
-            rule_id,
-            rule,
-            detail,
-        } => Some(ValidationSummary {
-            status: ValidationStatus::Fail,
-            rule_id: (*rule_id).to_string(),
-            rule: (*rule).to_string(),
-            detail: Some(detail.clone()),
-        }),
-        _ => None,
-    }
 }
 
 fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool> {
