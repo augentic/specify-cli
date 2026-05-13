@@ -2,7 +2,7 @@ use std::io::Write;
 use std::process::ExitCode;
 
 use serde::Serialize;
-use specify_error::{Error, ValidationStatus, ValidationSummary};
+use specify_error::{Error, ValidationSummary};
 
 use crate::cli::Format;
 
@@ -168,7 +168,7 @@ pub(crate) struct ErrorBody<'a> {
     pub(crate) message: String,
     pub(crate) exit_code: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) results: Option<Vec<ValidationRow<'a>>>,
+    pub(crate) results: Option<&'a [ValidationSummary]>,
     #[serde(skip)]
     hint_source: &'a Error,
 }
@@ -177,7 +177,7 @@ impl<'a> From<&'a Error> for ErrorBody<'a> {
     fn from(err: &'a Error) -> Self {
         let results = match err {
             Error::Validation { results } => {
-                Some(results.iter().map(ValidationRow::from).collect())
+                Some(results.as_slice())
             }
             _ => None,
         };
@@ -199,28 +199,3 @@ fn write_error_text(w: &mut dyn Write, body: &ErrorBody<'_>) -> std::io::Result<
     Ok(())
 }
 
-/// JSON row in a validation envelope. Mirrors `ValidationSummary`
-/// field-for-field so domain validators surface uniformly via
-/// `ValidationRow::from(&summary)`. Callers that need a different row
-/// shape (e.g. plan validate's `level/code/entry/message`) define
-/// their own row type and embed it as `results: Vec<…>` directly on
-/// their `*Body`.
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) struct ValidationRow<'a> {
-    pub(crate) status: ValidationStatus,
-    pub(crate) rule_id: &'a str,
-    pub(crate) rule: &'a str,
-    pub(crate) detail: Option<&'a str>,
-}
-
-impl<'a> From<&'a ValidationSummary> for ValidationRow<'a> {
-    fn from(summary: &'a ValidationSummary) -> Self {
-        Self {
-            status: summary.status,
-            rule_id: &summary.rule_id,
-            rule: &summary.rule,
-            detail: summary.detail.as_deref(),
-        }
-    }
-}

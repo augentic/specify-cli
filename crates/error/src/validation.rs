@@ -14,7 +14,8 @@ pub enum Status {
 }
 
 /// Compact summary of a validation result, embedded in `Error::Validation`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct Summary {
     /// Outcome of this validation check.
     pub status: Status,

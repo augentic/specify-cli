@@ -6,11 +6,10 @@ use serde::Serialize;
 use specify_domain::capability::{
     CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule,
 };
-use specify_error::{Error, Result};
+use specify_error::{Error, Result, ValidationSummary};
 
 use crate::cli::CodexAction;
 use crate::context::Ctx;
-use crate::output::ValidationRow;
 
 /// Dispatch `specify codex *`.
 pub(crate) fn run(ctx: &Ctx, action: CodexAction) -> Result<()> {
@@ -67,7 +66,7 @@ fn validate(ctx: &Ctx) -> Result<()> {
                 &ValidateBody {
                     rule_count: Some(codex.rules.len()),
                     error_count: 0,
-                    results: Vec::new(),
+                    results: &[],
                 },
                 write_validate_text,
             )?;
@@ -78,7 +77,7 @@ fn validate(ctx: &Ctx) -> Result<()> {
                 &ValidateBody {
                     rule_count: None,
                     error_count: results.len(),
-                    results: results.iter().map(ValidationRow::from).collect(),
+                    results: &results,
                 },
                 write_validate_text,
             )?;
@@ -149,7 +148,7 @@ fn write_export_text(w: &mut dyn Write, _body: &ExportBody<'_>) -> std::io::Resu
 struct ValidateBody<'a> {
     rule_count: Option<usize>,
     error_count: usize,
-    results: Vec<ValidationRow<'a>>,
+    results: &'a [ValidationSummary],
 }
 
 fn write_validate_text(w: &mut dyn Write, body: &ValidateBody<'_>) -> std::io::Result<()> {
@@ -157,8 +156,8 @@ fn write_validate_text(w: &mut dyn Write, body: &ValidateBody<'_>) -> std::io::R
         return writeln!(w, "Codex OK: {} rule(s)", body.rule_count.unwrap_or(0));
     }
     writeln!(w, "Codex invalid: {} error(s)", body.error_count)?;
-    for r in &body.results {
-        let detail = r.detail.unwrap_or(r.rule);
+    for r in body.results {
+        let detail = r.detail.as_deref().unwrap_or(&r.rule);
         writeln!(w, "  [fail] {}: {detail}", r.rule_id)?;
     }
     Ok(())
