@@ -1,325 +1,388 @@
-# Code & Skill Review — single pass, deletion-biased
+# Code & Skill Review — specify + specify-cli
 
-**Scope.** Both repos: `specify-cli` (Rust) and `specify` (plugins + docs). Pre-1.0; no back-compat.
+## Summary
 
-**Summary.** Top three by LOC removed: (F1) `docs/contributing/skill-authoring.md` (224 LOC) and `docs/contributing/skill-anatomy.md` (194 LOC) duplicate the canonical 78-LOC `docs/standards/skill-authoring.md` for **~−370 LOC**; (F2) the stale 13-crate dependency tree (real shape: 4 lib crates) still ships in `docs/standards/architecture.md` + `docs/release.md` + two test/schema READMEs for **~−95 LOC**; (F3) `## What this skill does NOT do` tables across five `plugins/{spec,change}/skills/*/SKILL.md` files re-paraphrase the 23-LOC `plugins/references/guardrails.md` for **~−60 LOC**, joint-third with (F4) `crates/tool/src/validate.rs::ValidationResult` mirroring `specify_error::{ValidationStatus, ValidationSummary}` for **~−60 LOC**. Total ΔLOC if all ten structural findings land: **~−800 LOC** across the two repos, plus a sharper documentation map. The finding most likely to break in remediation is **F5** — deriving `Serialize` on `MergeOperation` is a wire change pinned by `tests/fixtures/e2e/goldens/`; the `#[serde(tag = "kind", rename_all = "kebab-case")]` shape must reproduce the current JSON byte-for-byte.
+**Top three by LOC removed:** S1 collapse `composition::MergeOp` into `MergeOperation` (−55), S2 `FenceError` → `thiserror` (−25), S3 collapse `DiagnosticSeverity` into `Severity` (−22). **Total ΔLOC if all land:** ~−160. **Primary non-LOC axes:** −4 types, −4 match branches, 2× hand-rolled → idiomatic. **Most likely to break in remediation:** S1 — composition test assertions reference the deleted `MergeOp` variants and must be mechanically rewritten to `MergeOperation`.
 
-## Recon (verified)
+## Reconnaissance
 
-### `specify-cli`
-
-| metric | value | source |
-|---|---|---|
-| `.rs` files (excl. `target/`) | 244 | `Glob '**/*.rs'` |
-| `.rs` LOC | 45,235 (tests 7,600 / src 37,635) | `wc -l` aggregate |
-| `mod.rs` files | 3 — all under `tests/`, idiomatic 2018-edition test-helper exception | `Glob '**/mod.rs'` |
-| `#[test]` count | ≈1,100 across 91 files | `Grep '^\s*#\[test\]'` |
-| `crates.io` workspace members | 4 lib crates (`error`, `validate`, `domain`, `tool`) + binary + `xtask`; sibling `wasi-tools/` ws has 2 | `Cargo.toml` `members = […]` |
-| largest non-test `src` files | `crates/tool/src/validate.rs` 578, `src/commands/slice/merge.rs` 473, `crates/domain/src/config.rs` 465, `crates/tool/src/manifest.rs` 455 | per-file `wc -l` |
-| largest test files | `tests/change_plan_orchestrate.rs` 1904, `tests/slice.rs` 1315, `crates/domain/tests/capability.rs` 1179 | per-file `wc -l` |
-| `docs/standards/*.md` LOC | 505 across 5 files | `wc -l` |
-| `AGENTS.md` / `DECISIONS.md` | 78 / 284 | `wc -l` |
-| `cargo tree --duplicates` | 18 duplicate version pairs (Wasmtime + wasm-pkg surface; covered by `multiple_crate_versions = "allow"` at workspace root) | `DECISIONS.md` §"Follow-up" |
-| distinct `Diag` codes | ≈200 across ≈55 files | `Grep 'code:\s*"[a-z]'` |
-
-### `specify` (plugins + docs)
-
-| metric | value | source |
-|---|---|---|
-| plugin SKILL.md files | 28; biggest `extract` 197, `code-reviewer` 185, `analyze` 168, `define` 159 — all at or under the published 200-line cap | `wc -l` |
-| duplicate plugin reference content | 0 hash-collisions (per-skill `references/` are dir-symlinks: `plugins/spec/skills/{init,define,build,merge,drop}/references → ../../references`) | `find … -type l` |
-| `docs/` LOC | 7,138 across `tutorials/how-to/reference/explanation/orientation/contributing/standards/appendices` | per-dir `wc -l` |
-| `docs/standards/*.md` LOC | 214 across 3 files (`cli-contract` 108, `skill-authoring` 78, `predicates` 28) | `wc -l docs/standards/*.md` |
-| `docs/contributing/*.md` LOC | 1,191 across 9 files (`skill-authoring` 224, `checks` 224, `capability-anatomy` 200, `skill-anatomy` 194, `skills-test-coverage` 159, `cli-architecture` 158, `plugin-development` 131, `index` 58, `acceptance` 33) | `wc -l docs/contributing/*.md` |
-| `AGENTS.md` LOC | 115 | `wc -l AGENTS.md` |
-| `plugins/references/*.md` LOC | 1,235 (`cli-output-shapes` 756, `specify` 257, `agent-teams` 199, `guardrails` 23) | `wc -l plugins/references/*.md` |
-| `## What this skill does NOT do` sections | 5 sites (`spec/skills/{define,build,extract}/SKILL.md`, `change/skills/execute/SKILL.md`, `spec/references/init-runbook.md` + symlinked copy via `spec/skills/init/references/init-runbook.md`) | `Grep '## What this skill does NOT do' plugins/` |
-| body-cap drift | `docs/standards/skill-authoring.md:31` claims **250**; `scripts/checks/skill_body.ts:24` enforces **200**; `AGENTS.md:79`, `docs/standards/predicates.md:18`, `docs/contributing/skill-authoring.md:107,213`, `docs/explanation/decision-log.md` all say **200** | direct read |
-| `checkSkillNumericCaps` `FILES` list | 6 entries; `docs/standards/skill-authoring.md` is **not** among them | `scripts/checks/prose.ts:208-215` |
+```
+tokei (specify-cli): 273 Rust files, 49,285 lines, 43,169 code
+tokei (specify):     541 Markdown files, 59,280 lines (prompt-engineering repo)
+cargo tree --duplicates: all dupes are transitive (wasmtime/cranelift/bitflags); no workspace-level action
+rg -c '^#[test]': 627 tests across crates/ src/ tests/
+rg --files -g '**/mod.rs': 3 files (all in tests/ support dirs — coding-standards rule holds)
+wc -l docs/standards/*.md AGENTS.md (cli): 573 total
+files > 500 lines: 2 (validate.rs 539, doctor/tests.rs 549) — both < 50% test
+```
 
 ---
 
-## F1 — Delete `docs/contributing/skill-{anatomy,authoring}.md`; merge into `docs/standards/skill-authoring.md`
+## Structural Findings
 
-- **Repo.** `specify`.
-- **Evidence.** Three files describe the same thing:
-  - `docs/standards/skill-authoring.md` (78 LOC) — the **normative** version (`AGENTS.md:71` cites it as "the checklist").
-  - `docs/contributing/skill-authoring.md` (224 LOC) — re-derives every cap (`:107` "≤ 200 lines", `:213` "≤200 / ≤45"), the description grammar (`:165-180`), the forbidden-frontmatter list, the body-discipline rules.
-  - `docs/contributing/skill-anatomy.md` (194 LOC) — re-derives directory shape (`:5-20`), frontmatter field order (`:34-43`), every field definition (`:47+`).
-  - `Grep '200|cap|line' docs/contributing/skill-authoring.md` returns 7 hits restating `skill_body.ts:24`.
-  - The standards file already names itself "the rules `make checks` enforces" (`:3`); the contributing files duplicate that prose under the guise of "long-form rationale" but only ~50 LOC are rationale — the other ~370 are re-derivation.
-  - `checkSkillNumericCaps` (`scripts/checks/prose.ts:208-215`) already maintains a 6-entry sync list across two of these docs; collapsing 3 docs to 1 actively reduces the sync-check surface.
-- **LOC.** 78 + 224 + 194 = 496 → ~120 LOC after merge (irreducible rationale: progressive-disclosure paragraph, "why 200 specifically", forbidden-frontmatter list). Net: **−370 LOC**.
-- **Action.**
-  1. Move the irreducible rationale (`docs/contributing/skill-authoring.md:107-111` "Why a ceiling at all" / "Why 200 specifically"; the forbidden-frontmatter list; any worked-example of good/bad descriptions) into a `## Rationale` H2 appended to `docs/standards/skill-authoring.md`.
-  2. Delete `docs/contributing/skill-authoring.md` and `docs/contributing/skill-anatomy.md`.
-  3. Update `AGENTS.md:71` and `docs/contributing/index.md` to point only at `docs/standards/skill-authoring.md`. `Grep 'skill-anatomy.md|contributing/skill-authoring.md' docs/ plugins/` and update every caller.
-  4. Drop the two paths from `checkSkillNumericCaps`'s `FILES` list (`scripts/checks/prose.ts:211-212`).
-- **Done when.** `ls docs/contributing/skill-{anatomy,authoring}.md` returns "no such file"; `make checks` passes; `rg 'skill-anatomy.md|contributing/skill-authoring.md' docs/ plugins/ AGENTS.md` returns 0 hits outside `rfcs/archive/`.
-- **Quality delta.** **−370 LOC, −2 docs, −2 cap-sync FILES entries, fewer cross-doc edges.**
-- **Rule?** No — one-shot consolidation.
-- **Counter-argument.** "Diátaxis says `standards/` and `contributing/` are different audiences." Loses: the 78-LOC standards file already addresses new authors ("Extend the allow-list when a new verb is genuinely imperative" — `:11`). Helix and jj keep one CONTRIBUTING.md; cargo's `src/doc/contrib/` is many pages but each is a distinct topic.
-- **Depends on.** None.
+### S1. Collapse `composition::MergeOp` into `MergeOperation`
 
----
+**Evidence:**
 
-## F2 — Collapse the stale 13-crate dependency tree (specify-cli)
+`crates/domain/src/merge/composition.rs` defines a 4-variant `MergeOp` enum (lines 17–39, 23 lines) and a `MergeResult` struct (lines 8–14, 7 lines). `crates/domain/src/merge/merge.rs` defines a 5-variant `MergeOperation` enum (lines 34–66). Three of the four `MergeOp` variants (`Added`, `Modified`, `Removed`) mirror `MergeOperation` identically except for field names (`slug` vs `id` + `name`). The fourth (`CreatedBaseline { screen_count }`) mirrors `MergeOperation::CreatedBaseline { requirement_count }`.
 
-- **Repo.** `specify-cli`.
-- **Evidence.** Workspace = 4 lib crates (`crates/{error,validate,domain,tool}`) + binary + `xtask` (`Cargo.toml:50-56`); `DECISIONS.md:123-156` confirms the Phase-1B collapse. The pre-collapse tree still ships in:
-  - `docs/standards/architecture.md:9-23` — 15-line ASCII tree naming `specify-{capability,spec,task,slice,merge,config,validate,change,init}` (every line wrong).
-  - `docs/standards/architecture.md:50` — "the `Layout<'a>` newtype in `specify-config` (`crates/config/src/lib.rs`)" — path no longer exists (`Layout` is at `crates/domain/src/config.rs`).
-  - `docs/release.md:36-40` — publish order names retired crates; `.github/workflows/release.yaml` actually publishes `error → validate → domain → specify`.
-  - `schemas/plan/README.md:14` — "performed by `Plan::validate` in `specify-change`".
-  - `tests/fixtures/parity/README.md:3,9,14,18` — references `specify-spec` / `specify-merge` / `specify-validate` as Rust crates.
-  - `crates/tool/src/validate.rs:27` — doc-comment "`specify-tool` does not depend on `specify-capability`" (the crate is gone).
-  - `crates/domain/src/init/git.rs:15` — tempdir label `specify-capability-checkout` leaks the dead crate name.
-  - Current LOC at these sites: ~55 LOC of prose + the 15-line tree → ~30 LOC after rewrite. Net: **−95 LOC**.
-- **Action.**
-  1. Replace `architecture.md:9-23` with the 6-line tree at `DECISIONS.md:123-148` (or link to it); fix the `specify-config` path at `architecture.md:50`.
-  2. Rewrite `docs/release.md:36-40` to mirror the publish order in `.github/workflows/release.yaml` (`error → validate → domain → specify`).
-  3. In `schemas/plan/README.md:14` drop the crate name — just say "the CLI".
-  4. In `tests/fixtures/parity/README.md` swap the three crate names for module paths (`specify_domain::merge`, `specify_validate::validate_baseline_contracts`).
-  5. Delete `crates/tool/src/validate.rs:26-27` doc-comment about `specify_capability`; rename the tempdir prefix at `init/git.rs:15` to `specify-checkout`.
-- **Done when.** `rg -n 'specify-(capability|spec|task|change|merge|init|registry|slice|config)\b' AGENTS.md docs/ schemas/ tests/fixtures/parity/README.md crates/tool/src/validate.rs crates/domain/src/init/git.rs` returns 0 hits. (The match in `crates/domain/src/merge.rs:9` is an explicit `module_inception` waiver comment and is allowed to keep its archaeology — it's annotated.)
-- **Quality delta.** **−95 LOC; reality-aligned crate map.**
-- **Rule?** No. The drift exists once; a clippy lint cannot police prose.
-- **Counter-argument.** "Old names help readers tracing pre-collapse PRs." Loses: `DECISIONS.md §Crate layout` preserves the history note in one place.
-- **Depends on.** None.
+`crates/domain/src/merge/slice/read.rs` lines 184–211 spend 28 lines on a `.iter().map(|op| match op { … })` that converts `MergeOp` → `MergeOperation` by cloning `slug` into both `id` and `name`. The two `MergeResult` structs are structurally identical (`output: String, operations: Vec<…>`).
 
----
+**Action:**
 
-## F3 — Delete the five `## What this skill does NOT do` tables; survivors merge into `## Guardrails`
+1. Delete `composition::MergeResult` struct and `composition::MergeOp` enum from `composition.rs` (−30 lines).
+2. Add `use crate::merge::merge::{MergeOperation, MergeResult};` to `composition.rs` (+1 line).
+3. In `composition.rs`, replace each `MergeOp::Added { slug: slug.clone() }` with `MergeOperation::Added { id: slug.clone(), name: slug.clone() }` (3 sites, +3 lines). Replace `MergeOp::CreatedBaseline { screen_count }` with `MergeOperation::CreatedBaseline { requirement_count: screen_count }`.
+4. Update 5 test assertions in `composition.rs` from `MergeOp::X { slug }` to `MergeOperation::X { id, name }` (+5 lines).
+5. In `read.rs`, replace the 32-line `Ok(comp_result) => { let spec_merge_result = MergeResult { … }; merged.push(…); }` block (lines 181–220) with a direct push of `comp_result` (8 lines, −24 lines).
 
-- **Repo.** `specify`.
-- **Evidence.** Five sites carry tables that paraphrase `plugins/references/guardrails.md` (23 LOC, canonical):
-  - `plugins/spec/skills/define/SKILL.md:134-145` — 7 rows. Rows 3 (metadata writes), 4 (plan status), 5 (plan entries) restate `guardrails.md §Single-writer`.
-  - `plugins/spec/skills/build/SKILL.md:88-99` — 7 rows. Rows 3 (metadata), 4 (plan status), 5 (baseline merge) restate `guardrails.md`.
-  - `plugins/spec/skills/extract/SKILL.md:153-164` — 8 rows. Rows 2 (slice-dir scope), 4 (baseline merge), 5 (transition status) restate `guardrails.md`.
-  - `plugins/change/skills/execute/SKILL.md:117-128` — 9 rows. Rows 1, 2, 3, 4 (`plan.yaml` entries, status, metadata, journal) **all** restate `guardrails.md §Single-writer`.
-  - `plugins/spec/references/init-runbook.md:175-185` (+ symlinked copy via `init/references/init-runbook.md`) — 7 rows.
-  - `AGENTS.md:81` and `docs/standards/skill-authoring.md:53` both say "SKILL.md files **link** to them; they do **not** restate them inline" — these tables violate the rule the project authored for itself. `checkOneGuardrailsBlockPerSkill` (`scripts/checks/skill_body.ts`) inspects `## Guardrails` blocks; the parallel `## What this skill does NOT do` H2 dodges it.
-- **LOC.** ~13 rows redundant × 2 LOC ≈ 26 LOC of pure restatement. Per-file table frame (header + dashes + blank, 3 LOC) × 5 files = 15 LOC. Skill-specific surviving rows collapse into the existing `## Guardrails` H2. `extract` (197 LOC) ratchets to ~183, leaving room for the next addition. Net: **−55 to −70 LOC**.
-- **Action.**
-  1. In each of the five files, delete rows whose Surface is `.metadata.yaml` / `plan.yaml` (status or entries) / `journal.yaml` / archive moves / "Write outside slice-dir" / "Transition slice status" / "Merge into baseline" — all in `plugins/references/guardrails.md §Single-writer` or `§Baseline immutability`.
-  2. Rewrite surviving skill-specific rows as bullets under the existing `## Guardrails` H2. If the table empties (likely for `execute` — rows 6-9 are "Yes — see [foo.md]" wire pointers, not don'ts), delete the H2 entirely.
-  3. Replace each deleted H2 with one sentence ending in `> See [plugins/references/guardrails.md](../../../references/guardrails.md) for the shared single-writer rules.`
-- **Done when.** `rg -c '^## What this skill does NOT do' plugins/` returns ≤ 1 (ideally 0). `make checks` still passes; `checkOneGuardrailsBlockPerSkill` does not regress because surviving rows append into the existing `## Guardrails` block.
-- **Quality delta.** **−60 LOC, −5 H2 boundaries, −13 cross-file restatements of the single-writer rule.**
-- **Rule?** No — `checkOneGuardrailsBlockPerSkill` is already the rule; this finding aligns reality with it.
-- **Counter-argument.** "The `Surface | Status` table conveys 'forbidden surface' visually better than a bullet list." Loses: the surfaces are the same surfaces in every skill, the rule lives in `guardrails.md`, and the visual emphasis is around prose the agent re-reads on every invocation — the exact attention-cost the 200-line body cap exists to defend.
-- **Depends on.** None.
+Before (`read.rs` lines 181–220):
+```rust
+Ok(comp_result) => {
+    let spec_merge_result = MergeResult {
+        output: comp_result.output,
+        operations: comp_result
+            .operations.iter()
+            .map(|op| match op { /* 4 arms, 22 lines */ })
+            .collect(),
+    };
+    merged.push(MergePreviewEntry { /* … */ result: spec_merge_result });
+}
+```
+
+After:
+```rust
+Ok(comp_result) => {
+    merged.push(MergePreviewEntry {
+        class_name: class.name.clone(),
+        name: "composition".to_string(),
+        baseline_path,
+        result: comp_result,
+    });
+}
+```
+
+**Quality delta:** −55 LOC, −2 types, −4 branches, −1 module edge.
+
+**Net LOC:** composition.rs 266 → 245; read.rs 378 → 354. Combined 644 → 599 (−45 production, −10 test).
+
+**Done when:** `rg 'MergeOp' crates/domain/src/merge/composition.rs` returns 0 hits.
+
+**Rule?** No.
+
+**Counter-argument:** "Different domain names (`slug`/`screen_count` vs `id`/`name`/`requirement_count`) maintain a semantic boundary." Loses because the mapping function already collapses that boundary — the boundary is illusory, and the 28-line match is the cost of pretending otherwise.
+
+**Depends on:** none.
 
 ---
 
-## F4 — Collapse `specify_tool::validate::ValidationResult` into `specify_error::ValidationSummary`
+### S2. FenceError: hand-rolled Display → thiserror
 
-- **Repo.** `specify-cli`.
-- **Evidence.** `crates/tool/src/validate.rs:30-68` defines a `ValidationResult { Pass, Fail, Deferred }` enum that mirrors `specify_error::{ValidationStatus, ValidationSummary}` (`crates/error/src/validation.rs:6-37`); the doc-comment at `:26-27` says it "mirrors `specify_capability::ValidationResult`" — a crate that no longer exists. `Deferred` is **never constructed** (`Grep 'ValidationResult::Deferred|Deferred {' crates/tool` matches only the variant declaration and the `rule_id()` arm). The only external consumer is `src/commands/tool.rs::validation_failure`, which always discards `Pass` and translates `Fail → ValidationSummary`. Three test sites (`crates/tool/src/validate.rs:485, 494, 518`) just assert "all results are `Pass`" — they only need a boolean.
-- **LOC.** Lines 24-68 (45) + the `pass`/`fail` constructors at 103-113 (11) + `validation_failure` collapses from 14 to 5 + the test assertion-helper goes from 9 to 2. Current ≈ 80; proposed ≈ 20. Net: **−60 LOC**.
-- **Action.**
-  1. Change `Tool::validate_structure` and `ToolManifest::validate_structure` to return `Vec<specify_error::ValidationSummary>`.
-  2. Inline `pass(rule_id, rule)` as `ValidationSummary { status: ValidationStatus::Pass, rule_id: rule_id.into(), rule: rule.into(), detail: None }`; `fail` similarly with `Some(detail)`.
-  3. Rewrite `src/commands/tool.rs::validation_failure` as `summary.status == ValidationStatus::Fail`.
-  4. Update the three "all `Pass`" tests to `assert!(results.iter().all(|s| s.status == ValidationStatus::Pass))`.
-  5. Delete `crates/tool/src/validate.rs:26-27` (subset of F2 here).
-- **Done when.** `rg -n 'enum ValidationResult' crates/tool/` returns nothing; `rg -n 'Deferred' crates/tool/` returns nothing.
-- **Quality delta.** **−60 LOC, −1 type, −1 branch (`Deferred`), −1 module edge.**
-- **Rule?** No.
-- **Counter-argument.** "The `Deferred` variant is wire-contract surface across the workspace." Loses: `specify_tool::validate` never reaches the wire — only its `Fail` summaries do via `Error::Validation`, and `ValidationStatus::Deferred` already exists upstream for the day a tool rule needs it.
-- **Depends on.** None.
+**Evidence:**
 
----
+`src/commands/context/fences/parse.rs` defines `FenceError` (line 57) with a 33-line `impl std::fmt::Display for FenceError` (lines 79–112) and a 1-line `impl std::error::Error for FenceError {}` (line 115). Every Display arm is a fixed format string with at most one interpolated field — the exact shape `#[error("…")]` handles.
 
-## F5 — Derive `Serialize` on `MergeOperation`; delete the `MergeOp` mirror
+The root crate already depends on `thiserror` transitively via `specify-error`. Every other error enum in the workspace uses `thiserror::Error`.
 
-- **Repo.** `specify-cli`.
-- **Evidence.** `src/commands/slice/merge.rs:252-316` defines `enum MergeOp { Added, Modified, Removed, Renamed, CreatedBaseline, Unknown }` plus a 33-line `impl From<&specify_domain::merge::MergeOperation> for MergeOp`. The mirror exists solely so `MergeOp` can carry `#[derive(Serialize)] #[serde(tag = "kind", rename_all = "kebab-case")]`. `MergeOperation` (defined `crates/domain/src/merge/merge.rs:31-68`) is the only domain enum that hand-rolls a wire mirror — every other operation enum either derives `Serialize` directly (e.g. `OpaqueAction` in `crates/domain/src/merge/slice/`) or sidesteps it via free-function rendering. The wire variant `Unknown` is dead: every domain variant maps explicitly; the `_ => Self::Unknown` arm exists for the `#[non_exhaustive]` future-proof which a `serde(other)` annotation handles for free. Style guidance is on side: `docs/standards/style.md:34-44` — "One body per command, no wrapper newtype". Cargo's wire types follow the same idiom — `derive(Serialize)` on the domain enum, not on a CLI mirror.
-- **LOC.** 65 → 10 (six-line `#[derive(Serialize)]` + `#[serde(tag = "kind", rename_all = "kebab-case")]` block at the domain site, plus four-line replacements for `operations: Vec<MergeOp>` → `Vec<MergeOperation>`). Net: **−55 LOC**.
-- **Action.**
-  1. On `crates/domain/src/merge/merge.rs:30-68`, add `#[derive(Serialize)]` and `#[serde(tag = "kind", rename_all = "kebab-case")]` (`serde.workspace = true` already declared on `crates/domain/Cargo.toml`).
-  2. Delete `src/commands/slice/merge.rs:251-316` (`enum MergeOp`, `From<&MergeOperation>`, `operation_label`, the `Unknown` variant). Replace `Vec<MergeOp>` on the three `*Body` structs with `Vec<MergeOperation>`. Rewrite `summarise_ops` over `MergeOperation` directly.
-  3. Regenerate `tests/fixtures/e2e/goldens/` under `REGENERATE_GOLDENS=1`; verify `git diff` is empty (on-disk shape is the constraint — `kind` discriminant + kebab names already match).
-- **Done when.** `rg -n 'enum MergeOp\b' src/` returns nothing. `REGENERATE_GOLDENS=1 cargo nextest run --test slice_merge` produces an empty `git diff` against the goldens.
-- **Quality delta.** **−55 LOC, −1 type, −1 branch (`Unknown`), −1 module edge, −1 From-impl.**
-- **Rule?** No. The pattern only exists once in `src/commands/`; if a second `*Op` mirror appears later, then a rule.
-- **Counter-argument.** "Wire DTOs should be a hard boundary between domain and CLI." Loses: the domain → wire shape is already locked-in (`kind`-tagged, kebab-case); the mirror does not add a degree of freedom the test goldens are not already pinning, and `#[non_exhaustive]` survives serde via a `#[serde(other)]` catch-all on the consumer side.
-- **Depends on.** None.
+**Action:**
 
----
+1. Add `#[derive(thiserror::Error)]` to `FenceError` (replaces `impl std::error::Error`).
+2. Add `#[error("…")]` attribute to each of the 9 variants, copying the string from the corresponding Display arm.
+3. Delete `impl std::fmt::Display for FenceError` (lines 79–112, 34 lines) and `impl std::error::Error for FenceError {}` (line 115, 1 line).
 
-## F6 — Drop the resolved "wasm-pkg-client follow-up" from DECISIONS.md
+Before:
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::commands::context) enum FenceError {
+    ExistingUnfencedAgentsMd,
+    // …
+}
+impl std::fmt::Display for FenceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ExistingUnfencedAgentsMd => f.write_str("context-existing-unfenced…"),
+            // 8 more arms
+        }
+    }
+}
+impl std::error::Error for FenceError {}
+```
 
-- **Repo.** `specify-cli`.
-- **Evidence.** `DECISIONS.md:234-284` is a 51-line "Follow-up" reasoning through three options for gating `wasm-pkg-client`. `crates/tool/Cargo.toml:26` already ships option (1): `oci = ["dep:wasm-pkg-client", "dep:tokio", "dep:futures-util"]`, and the binary's `Cargo.toml:17` sets `default = []` (OCI off by default). The text describes wasm-pkg-client as "wired in as a non-optional dep" — false today.
-- **LOC.** Net: **−51 LOC** in DECISIONS.md.
-- **Action.**
-  1. Delete `DECISIONS.md:234-284` ("## Follow-up: wasm-pkg-client HTTP duplication").
-  2. Keep the existing one-liner in `crates/tool/Cargo.toml:22-26` (already says what the feature does); no further prose required.
-- **Done when.** `wc -l DECISIONS.md` returns ≤ 234 and `rg 'Follow-up' DECISIONS.md` finds nothing.
-- **Quality delta.** **−51 LOC; deletes a finished TODO.**
-- **Rule?** No.
-- **Counter-argument.** "Future readers want to see why option (1) won." Loses: the implementation is the answer. `git log -p crates/tool/Cargo.toml` carries the history.
-- **Depends on.** None.
+After:
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(in crate::commands::context) enum FenceError {
+    #[error("context-existing-unfenced-agents-md: AGENTS.md exists without Specify context fences; rerun with --force to rewrite it")]
+    ExistingUnfencedAgentsMd,
+    // 8 more variants with #[error("…")]
+}
+```
 
----
+**Quality delta:** −25 LOC, hand-rolled → idiomatic (ripgrep, helix, and every other thiserror consumer use this pattern).
 
-## F7 — Unify `ScaffoldError` and `VectisError` in `wasi-tools/vectis`
+**Net LOC:** parse.rs 341 → 316.
 
-- **Repo.** `specify-cli`.
-- **Evidence.** Two near-identical error enums live in the same crate:
-  - `wasi-tools/vectis/src/validate.rs:80-94` — `VectisError { InvalidProject{message}, Internal{message} }` + `to_json` + `variant_str` + `exit_code` returning `EXIT_FAILURE` (2).
-  - `wasi-tools/vectis/src/scaffold/error.rs:10-61` — `ScaffoldError { Io(#[from] io::Error), InvalidProject{message}, Internal{message} }` + identical `to_json` + `variant_str` + `exit_code` returning `1`.
-  Apart from `ScaffoldError::Io` and the constant return of `exit_code`, the two are character-for-character duplicates. Both wire-payload shapes are byte-identical (`{"error": "...", "message": "..."}`); only the integer exit code differs. The `EXIT_CLEAN`/`EXIT_FINDINGS`/`EXIT_FAILURE` constants at `validate.rs:16-22` are also redundant — `0`/`1`/`2` literals appear once each in the binary, and integration tests don't reference them (`rg EXIT_FINDINGS wasi-tools/vectis/tests/` is empty).
-- **LOC.** 32 (scaffold) + 53 (validate) + 7 (EXIT_* constants) → ≈ 50 unified into one enum. Net: **−40 LOC**.
-- **Action.**
-  1. In `wasi-tools/vectis/src/lib.rs`, define one `pub enum VectisError { Io(#[from] io::Error), InvalidProject{message: String}, Internal{message: String} }` plus the merged `to_json` and `variant_str`. Replace `exit_code` with a single `pub const EXIT_FAILURE: u8 = 2;` and let `scaffold::render_json` return `0` for success / `2` for failure.
-  2. Delete `wasi-tools/vectis/src/scaffold/error.rs` entirely; re-export from `scaffold::error` if any test consumer needs the name.
-  3. Drop the per-validate `EXIT_CLEAN`/`EXIT_FINDINGS`/`EXIT_FAILURE` constants; inline `0`/`1`/`2` at the two call sites in `validate.rs` and update the three internal tests to literals.
-- **Done when.** `rg 'pub enum (Scaffold|Vectis)Error' wasi-tools/vectis/` returns one hit. `rg 'EXIT_(CLEAN|FINDINGS)' wasi-tools/vectis/` returns nothing.
-- **Quality delta.** **−40 LOC, −1 type, −1 module edge, −3 dead constants.**
-- **Rule?** No. Single duplication, no third site looming.
-- **Counter-argument.** "The two subcommands ship different historical exit-code shapes; merging them is a wire change." Loses: scaffold-failure exit `1` vs validate-failure exit `2` is a distinction without a documented contract; collapsing both to `2` matches the host CLI's typed-error slot. Pre-1.0.
-- **Depends on.** None.
+**Done when:** `rg 'impl std::fmt::Display for FenceError' src/` returns 0 hits.
+
+**Rule?** No — this is the only hand-rolled Display+Error pair in the workspace (confirmed by grep).
+
+**Counter-argument:** "`PartialEq` on a `thiserror::Error` type is unusual." Loses because `thiserror::Error` is compatible with `PartialEq` and tests already depend on it; the derive just generates the same code.
+
+**Depends on:** none.
 
 ---
 
-## F8 — Collapse `codex.rs::{RuleSummary, RuleExport, provenance_text, export_provenance_text}` into one view
+### S3. Collapse DiagnosticSeverity into Severity
 
-- **Repo.** `specify-cli`.
-- **Evidence.** `src/commands/codex.rs:167-192` defines two structs that differ only in `trigger`/`body`: `RuleSummary` is `RuleExport` minus two fields. Each has a separate `From<&ResolvedCodexRule>` impl (`:195-228`), and the file then declares two near-identical helpers — `provenance_text` (`:261-272`) and `export_provenance_text` (`:273-283`) — that do the same `match rule.provenance_kind` over the same Option fields. Net duplicate surface: two structs + two `From` impls + two provenance helpers + one `ProvenanceFields` plumbing struct (`:231-259`) that only exists to feed the duplicate `From` impls.
-- **LOC.** ≈85 → ≈45 if collapsed to one `RuleView` carrying `Option<&'a str>` for `trigger`/`body` plus one `From` impl plus one `provenance_text`. Net: **−40 LOC**.
-- **Action.**
-  1. Replace `RuleSummary` and `RuleExport` with a single `#[derive(Serialize)] struct RuleView<'a> { …, #[serde(skip_serializing_if = "Option::is_none")] trigger: Option<&'a str>, #[serde(skip_serializing_if = "Option::is_none")] body: Option<&'a str> }`.
-  2. `list` constructs `RuleView { trigger: None, body: None, .. }`; `show` and `export` populate both.
-  3. Delete `export_provenance_text`; `provenance_text(&RuleView)` covers both call sites.
-  4. Drop the `ProvenanceFields` helper — the single `From` impl reads `resolved.provenance` directly.
-- **Done when.** `rg 'struct Rule(Summary|Export)\b' src/commands/codex.rs` returns nothing. `rg 'export_provenance_text' src/commands/codex.rs` returns nothing.
-- **Quality delta.** **−40 LOC, −1 type, −1 plumbing struct, −1 helper function.**
-- **Rule?** No.
-- **Counter-argument.** "`list` and `export` JSON outputs are wire-stable shapes — adding `trigger`/`body` as nullable fields is a wire change." Loses: `skip_serializing_if = Option::is_none` keeps the `list` output byte-identical; `show` and `export` already populate both fields.
-- **Depends on.** None.
+**Evidence:**
 
----
+`crates/domain/src/change/plan/core/model.rs` defines `Severity { Error, Warning }` (lines 180–187, no derives beyond Debug/Clone/PartialEq/Eq). `crates/domain/src/change/plan/doctor.rs` defines `DiagnosticSeverity { Error, Warning }` (lines 76–91) with Serialize, Deserialize, strum::Display, strum::IntoStaticStr, plus a 6-line `label()` method (lines 93–98) and an 8-line `From<&Severity>` impl (lines 101–108) that mechanically maps each variant to itself.
 
-## F9 — Collapse `AGENTS.md` §"Markdown style"–§"Mechanical enforcement" (lines 64-105) into pointers
+`DiagnosticSeverity` exists solely to carry serde/strum derives that `Severity` lacks. `crates/domain` already depends on serde and strum.
 
-- **Repo.** `specify`.
-- **Evidence.** `AGENTS.md:64-105` (42 LOC) reproduces:
-  - The description grammar (`:75`) — already canonical at `docs/standards/skill-authoring.md:7-15` (which `AGENTS.md:71` itself links).
-  - The argument-hint grammar (`:77`) — already at `docs/standards/skill-authoring.md:17-27`.
-  - Body caps 200/45/512 (`:79`) — sync-checked across 6 sites by `checkSkillNumericCaps` (`scripts/checks/prose.ts:205-232`).
-  - Skill-body discipline (`:81-85`) — already at `docs/standards/skill-authoring.md:42-49`.
-  - The §"Mechanical enforcement" predicate table (`:87-105`) — re-derives the predicate table at `docs/standards/predicates.md:15-25`. Eight rows × ~1 LOC each ≈ 10 LOC.
-  - `AGENTS.md` already routes via "see [docs/contributing/skill-authoring.md] / [docs/standards/skill-authoring.md] / [.cursor/rules/project.mdc]" at `:71`. Once you're a click away, restating the rules in line is the duplication.
-- **LOC.** 42 → ~6 LOC of pointers. Net: **−36 LOC**.
-- **Action.**
-  1. Replace `AGENTS.md:64-105` with a §"Skill authoring" stanza: "Skill authoring rules (description grammar, argument-hint grammar, 200/45/512 caps, body discipline, predicate table) live in [docs/standards/skill-authoring.md](docs/standards/skill-authoring.md) (after F1 consolidation) and [docs/standards/predicates.md](docs/standards/predicates.md). Enforced by `make checks`."
-  2. Drop the predicate table here (canonical at `docs/standards/predicates.md`).
-  3. Keep §"Cursor Cloud specific instructions", §"Vocabulary", §"Workflow overview", §"Skill / CLI responsibility split", §"Contract skills", §"Plan-driven loop", §"Commands", §"Gotchas", §"Related coding standards" — those carry unique content.
-- **Done when.** `wc -l AGENTS.md` returns ≤ 80. `rg 'checkBodyAndSectionLineCounts|checkArgumentHintGrammar|IMPERATIVE_VERBS' AGENTS.md` returns 0 hits. `make checks` passes.
-- **Quality delta.** **−36 LOC, −1 predicate-table copy, fewer cap-sync FILES sources (no new entry needed).**
-- **Rule?** No — single root file.
-- **Counter-argument.** "AGENTS.md is what Cursor reads first; inlining the rules ensures the agent sees them on every session." Loses: `AGENTS.md:71` already points at the canonical files and Cursor follows links; if it didn't, the existing routing in `:71` would already be broken.
-- **Depends on.** F1 (do that first so `AGENTS.md` points to a single survivor).
+**Action:**
+
+1. On `Severity` in model.rs, add `Copy, Serialize, Deserialize, strum::Display, strum::IntoStaticStr` derives plus `#[serde(rename_all = "kebab-case")]` and `#[strum(serialize_all = "kebab-case")]` attributes.
+2. Delete `DiagnosticSeverity` enum, its `label()` impl, and the `From<&Severity>` impl from `doctor.rs` (−22 lines).
+3. Replace all `DiagnosticSeverity` references (13 sites in `doctor.rs`, `cycle.rs`, `orphan_source.rs`, `stale_clone.rs`, `unreachable.rs`, `tests.rs`, and the re-export in `change.rs`) with `Severity`.
+
+Before (`doctor.rs` lines 86–108):
+```rust
+pub enum DiagnosticSeverity { Error, Warning }
+impl DiagnosticSeverity { pub fn label(self) -> &'static str { self.into() } }
+impl From<&Severity> for DiagnosticSeverity { /* 2 arms */ }
+```
+
+After: deleted; `Severity` used directly.
+
+**Quality delta:** −22 LOC, −1 type, −2 branches (the From match arms).
+
+**Net LOC:** doctor.rs 248 → 226; model.rs 384 → 387 (+3 derive/attr lines).
+
+**Done when:** `rg 'DiagnosticSeverity' crates/` returns 0 hits.
+
+**Rule?** No.
+
+**Counter-argument:** "Separate wire type insulates model.rs from serde churn." Loses because model.rs already derives Serialize+Deserialize on `Status` (line 22) via the same dependency — `Severity` is the unexplained holdout.
+
+**Depends on:** none.
 
 ---
 
-## F10 — Drop `docs/standards/predicates.md` once F1 + F9 land
+### S4. Delete ValidationRow, derive Serialize on Summary
 
-- **Repo.** `specify`.
-- **Evidence.** `docs/standards/predicates.md` (28 LOC) is a 9-row table mapping predicate name → script path → allowlist behaviour. Three of the rows are identical wording to the function comments in `scripts/checks/{skill_body,skill_frontmatter,prose}.ts`. After F9, `AGENTS.md` no longer carries the same table; after F1, the canonical `docs/standards/skill-authoring.md` body names every predicate it cares about (`:15, 27, 34, 53`). With F1 + F9, this becomes the third copy of a single-source table.
-- **LOC.** 28 → 0. Net: **−28 LOC**.
-- **Action.**
-  1. Delete `docs/standards/predicates.md`.
-  2. In `docs/standards/skill-authoring.md`, replace "See [predicates.md](predicates.md)" (`:15`) with "See [scripts/checks/](../../scripts/checks/) for the implementation."
-  3. Remove the cross-link in `docs/contributing/checks.md` and elsewhere (`rg 'predicates.md' docs/`).
-- **Done when.** `ls docs/standards/predicates.md` returns "no such file". `rg 'predicates.md' docs/ AGENTS.md` returns 0 hits.
-- **Quality delta.** **−28 LOC, −1 doc, −1 cross-doc edge, +0 third copy.**
-- **Rule?** No.
-- **Counter-argument.** "Operators read prose tables, not TypeScript." Loses: the predicate table tells operators which check failed and where the code lives — that's a CI-output concern; `make checks` already prints the predicate name on failure.
-- **Depends on.** F1, F9.
+**Evidence:**
 
----
+`src/output.rs` defines `ValidationRow<'a>` (lines 208–215, 8 lines) and a `From<&'a ValidationSummary>` impl (lines 217–225, 9 lines). `ValidationRow` has identical field names and shapes to `ValidationSummary` (rule_id, rule, status, detail); the only difference is borrowed `&str` vs owned `String`. The type exists for Serialize — but `ValidationSummary` in `crates/error/src/validation.rs` already has `serde` available (Cargo.toml lists `serde.workspace = true`) and its sibling `Status` already derives `serde::Serialize`.
 
-## One-touch tidies (≤ 30 LOC each or single-axis, ranked)
+`ValidationRow` is used in `output.rs` (ErrorBody) and `src/commands/codex.rs` (ValidateBody).
 
-1. **Collapse `From<ToolError> for specify_error::Error` to a code-only match** (`-25 LOC`, `specify-cli`). `crates/tool/src/error.rs:254-291` (37 LOC) builds five named `Diag` variants that re-stringify the same content already in `#[error("…")]`. Replace with one `let code = match &err { ToolError::ToolNotDeclared { .. } => "tool-not-declared", … }; Self::Diag { code, detail: err.to_string() }` (12 LOC). Done when `rg -nA3 'impl From<ToolError>' crates/tool/src/error.rs | wc -l` < 18.
+**Action:**
 
-2. **Inline the dispatch sub-bullets in `plugins/contract/README.md:36-57`** (`-25 LOC`, `specify`). `:36-46` ("Each skill's `SKILL.md` dispatches to format-specific `author.md`, `importer.md`, and `verifier.md`" + "### Mixed-format ordering") restates content the format SKILL.md files own and the contracts capability build brief already enforces. `:48-57` ("### Cross-project compatibility classification (RM-04)") is a retired-heuristic explainer; the live CLI link is one sentence away at `docs/reference/cli/compatibility.md`. Collapse the dispatch + ordering paragraph to one sentence; delete the RM-04 H3 entirely.
+1. In `crates/error/src/validation.rs`, add `serde::Serialize` to the `Summary` derive and add `#[serde(rename_all = "kebab-case")]`.
+2. Delete `ValidationRow` struct, its `From` impl, and its doc block from `output.rs` (−18 lines).
+3. In `output.rs`, change `ErrorBody.results` from `Option<Vec<ValidationRow<'a>>>` to `Option<&'a [ValidationSummary]>`. Simplify the `From<&'a Error>` impl's results branch from `results.iter().map(ValidationRow::from).collect()` to `Some(results.as_slice())` (−2 lines).
+4. In `codex.rs`, change `ValidateBody.results` from `Vec<ValidationRow<'a>>` to `Vec<&'a ValidationSummary>`. Simplify the construction (−1 line). Remove `use crate::output::ValidationRow;` import.
 
-3. **Delete the fictional `Out` / `Render` / `serialize_path` API from the standards docs** (`-18 LOC`, `specify-cli`). `docs/standards/coding-standards.md:87,97,100,106,116,154,169` and `docs/standards/handler-shape.md:17,30,32,60` describe `ctx.out().write(&Body)?`, `Out::for_format(format).write(&Body)`, the `Render::render_text` trait, and a `serialize_path` helper as the canonical handler API. **None exist.** The actual API is `ctx.write(&body, render_text_closure)` (`src/context.rs:82-86`) and free `output::write(format, &body, closure)` (`src/output.rs:31-35`). Rewrite the §Format dispatch / §One emit path / handler-shape stanzas to describe the real API; drop the `serialize_path` field-allowlist row. Done when `rg -n 'ctx\.out\(\)|Out::for_format|trait Render|serialize_path' docs/ src/ crates/` returns nothing.
+**Quality delta:** −19 LOC, −1 type, −2 call-site ceremony (no more `.map(ValidationRow::from).collect()`).
 
-4. **Delete `ToolError::cache_io` / `source_io` named constructors** (`-15 LOC`, `specify-cli`). `crates/tool/src/error.rs:184-208`; both build the same `Self::Io` variant with three internal call sites total. Replace with `Self::Io { action, path: path.into(), source }` at the call site. `style.md:113` already says "Named constructors are reserved for multi-arg or fallible builders".
+**Net LOC:** output.rs 227 → 209; codex.rs ~−2; validation.rs +1.
 
-5. **Drop the `CommandOutcome::Success(Value)` single-variant enum in `wasi-tools/vectis`** (`-15 LOC`, `specify-cli`). `wasi-tools/vectis/src/validate.rs:65-70` declares `pub enum CommandOutcome { Success(Value) }` — a single-variant enum, explicitly called out by `coding-standards.md:79` as "dead overhead". Every per-mode handler (`tokens`, `assets`, `layout`, `composition`, `all` in `wasi-tools/vectis/src/validate/engine/*.rs`) wraps `Ok(CommandOutcome::Success(json!({…})))`; the re-entry path at `engine.rs:74` immediately destructures. Change signatures to `Result<Value, VectisError>`; inline destructure; delete the enum and the test-only `extract_envelope`. Done when `rg 'CommandOutcome' wasi-tools/` returns nothing.
+**Done when:** `rg 'ValidationRow' src/` returns 0 hits.
 
-6. **Drop the Python-history paragraph in `tests/fixtures/parity/README.md:18`** (`-12 LOC`, `specify-cli`). The fixtures are now a Rust-only regression baseline; the `re.MULTILINE` parity-quirk explanation belongs as a one-line code comment at `validate_baseline_contracts`, not next to data files. The README itself says "the Python script has since been retired."
+**Rule?** No.
 
-7. **Replace hand-rolled `Display for Status` with `strum::Display`** (`-9 LOC`, `specify-cli`). `crates/error/src/validation.rs:15-23` hand-rolls `Display` for `Status { Pass, Fail, Deferred }` mirroring `#[serde(rename_all = "kebab-case")]`. `style.md:60-69` cites this exact pattern as the canonical anti-example, and `strum 0.28` is already a workspace dep. Add `strum.workspace = true` to `crates/error/Cargo.toml` (one-line); `derive(strum::Display)` + `#[strum(serialize_all = "kebab-case")]`; delete lines 15-23.
+**Counter-argument:** "Borrowing &str avoids cloning in the JSON path." Loses because (a) this is the error path, serialized at most once per invocation, (b) `serde::Serialize` on `String` is zero-copy for the serializer (it borrows), and (c) the `collect()` allocation is strictly more expensive than a slice reference.
 
-8. **Remove `Exit::Code` doc-comment paraphrase at three sites** (`-9 LOC`, `specify-cli`). `src/output.rs:47-53`, `src/commands.rs:117-121`, and `AGENTS.md:31` all restate "`Exit::Code(u8)` is reserved for `specify tool run` WASI passthrough." `DECISIONS.md:21-22` is canonical; collapse the others to one-line references.
-
-9. **Drop the redundant `multiple_crate_versions` waiver in `crates/tool/src/lib.rs:5-11`** (`-7 LOC`, `specify-cli`). Workspace `Cargo.toml:104` already sets `multiple_crate_versions = "allow"`; the cfg-gated crate-level `#![cfg_attr(any(feature = "host", feature = "oci"), allow(...))]` is dead. Done when `rg 'cfg_attr.*multiple_crate_versions' crates/tool/` returns nothing and `cargo make lint` still passes.
-
-10. **Repair body/section caps drift in `docs/standards/skill-authoring.md`** (`0 LOC, −2 fictional predicates`, `specify`). `:31-34` claims "≤ **250 lines** (`checkBodyLineCount`)" and "≤ **60 lines** (`checkSectionLineCount`)". Reality (`scripts/checks/skill_body.ts:24,28`): **200 / 45**, one predicate `checkBodyAndSectionLineCounts`. Worse, `checkSkillNumericCaps`'s `FILES` list (`scripts/checks/prose.ts:208-215`) does **not** include `docs/standards/skill-authoring.md`, so the cap-sync predicate is blind to the only file that has drifted. Replace `250` → `200`, `60` → `45`, drop the two non-existent predicate names, and add `["docs/standards/skill-authoring.md", true, true],` to `prose.ts:215`. Done when `rg '\b(250|60)\b' docs/standards/skill-authoring.md` returns 0 hits and `make checks` passes. (Tidy because LOC is flat, but corrects a wire-relevant policy doc and closes a sync-check blind spot.)
-
-The rest (DTO `String`-vs-`PathBuf` policy in coding-standards.md, the `mod.rs` rule already aligns with reality, doctor.rs `code: "registry-shape".to_string()` cluster, `extract` SKILL.md §"Reference Documentation"+§"Examples" rehash, `extract` `## Guardrails > ### NEVER`/`### ALWAYS` lists) cost more than 200 LOC of churn for under-200 LOC of delete; dropped per the master rule.
+**Depends on:** none.
 
 ---
 
-## Findings dropped during pass
+### S5. OutcomeKind: hand-rolled Display + discriminant → strum
 
-- "Add a `<200 LOC each` clippy rule for new `*Body` types" — adds machinery; violates "do NOT propose".
-- "Convert all 200+ `Diag` codes to typed `Error` variants" — adds enormous LOC; the `Diag`-first policy in `DECISIONS.md:52-67` is correct and active.
-- "Replace `serde-saphyr` with `serde_yaml_ng`" — `DECISIONS.md §YAML library` is decisive; mass substitution is not deletion.
-- "Reduce 1904-line `tests/change_plan_orchestrate.rs`" — `docs/standards/testing.md:13-15` is explicit that the per-file integration target is the chosen shape; no net deletion without losing coverage.
-- "Inline `crates/error/src/lib.rs::is_kebab` at the call sites" — investigated and dropped. `is_kebab` is called from **7** production sites; inlining grows the workspace, not shrinks it.
-- "Deduplicate `plugins/omnia/references/` against `plugins/omnia/skills/*/references/`" — investigated and dropped. The per-skill "copies" are symlinks (`lrwxr-xr-x ... -> ../../../references/agent-teams.md`); a sha1 walk excluding symlinks finds only 2 trivial fixture-MD dupes worth 84 LOC.
-- "Symlink-dedupe `plugins/spec/skills/*/references/` against `plugins/spec/references/`" — already done; the per-skill `references/` are directory symlinks (`find … -type l` confirms 5 dir-symlinks under `plugins/spec/skills/`).
-- "Reduce `plugins/references/cli-output-shapes.md` (756 LOC)" — `AGENTS.md:83` says it is regenerated by `make doc-envelopes` from CLI test fixtures. Editing it by hand violates the source-of-truth rule.
-- "Collapse `docs/tutorials/cross-repo-{change,execute}.md` + `landing-a-change.md`" — operator-facing walkthroughs with different lockstep entry points. Investigated; net deletion < 30 LOC without breaking links from `docs/SUMMARY.md`.
-- "Add a Deno predicate to forbid `## What this skill does NOT do` tables" — adds machinery; the 200-line body cap already creates the right pressure once F3 lands, and `checkOneGuardrailsBlockPerSkill` already covers the spirit. Master rule forbids new predicates without a 3× recurrence after the pass.
+**Evidence:**
+
+`crates/domain/src/slice/outcome.rs` defines `Kind` (line 15) with `Serialize, Deserialize` and `#[serde(rename_all = "kebab-case")]`. It has a hand-rolled `impl fmt::Display for Kind` (lines 42–48, 7 lines) that delegates to `self.discriminant()`, and a `discriminant()` method (lines 50–61, 12 lines including doc) returning hardcoded kebab-case strings. The sibling `Phase` enum (same crate, `capability.rs` line 95) already uses `strum::Display` with `#[strum(serialize_all = "kebab-case")]` for the same purpose.
+
+`discriminant()` is called at 2 external sites (`src/commands/slice/outcome.rs` lines 43, 182) as `x.discriminant().to_string()` — after adding strum, these become `x.to_string()`.
+
+**Action:**
+
+1. Add `strum::Display` to `Kind`'s derive list; add `#[strum(serialize_all = "kebab-case")]`.
+2. Delete `impl fmt::Display for Kind` (lines 42–48) and the `discriminant()` method (lines 50–61).
+3. Remove `use std::fmt;` import if no longer needed.
+4. At the 2 call sites, replace `x.discriminant().to_string()` with `x.to_string()`.
+
+Before (`outcome.rs` lines 42–61):
+```rust
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.discriminant())
+    }
+}
+impl Kind {
+    pub const fn discriminant(&self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::Failure => "failure",
+            Self::Deferred => "deferred",
+            Self::RegistryAmendmentRequired { .. } => "registry-amendment-required",
+        }
+    }
+}
+```
+
+After: deleted (strum derive handles it).
+
+**Quality delta:** −14 LOC, hand-rolled → idiomatic (same pattern as `Phase` in this crate).
+
+**Net LOC:** outcome.rs 82 → 68.
+
+**Done when:** `rg 'fn discriminant' crates/domain/src/slice/outcome.rs` returns 0 hits.
+
+**Rule?** No.
+
+**Counter-argument:** "`discriminant()` is `const fn`, strum is not." Loses because no call site uses it in a const context, and the 2 external sites immediately call `.to_string()` which is non-const anyway.
+
+**Depends on:** none.
 
 ---
 
-## Landing order (recommended)
+## One-Touch Tidies
 
-`specify-cli` and `specify` findings are independent and can land in parallel. Within each repo:
+### T1. Inline single-use ToolError constructors
 
-- **`specify`**: F1 → F9 → F10 → F3 → tidy #10 (cap drift). F1 enables F9; F9 enables F10. F3 and the cap-drift tidy are independent of the consolidation chain.
-- **`specify-cli`**: F6 (DECISIONS-only, zero code-risk) → F2 → F4 → F8 → F5 → F7 → tidies #1, #3, #4, #5, #6, #7, #8, #9 in descending LOC.
+**Evidence:**
 
-Net at the end of the pass: **~−800 LOC across the two repos**, **−6 duplicate-or-fictional types**, **−5 H2 boundaries**, **−4 dead docs (+ ~370 LOC of policy doc compressed)**, **−1 sync-check blind spot**.
+`crates/tool/src/error.rs` defines `manifest_read` (lines 167–173) and `manifest_parse` (lines 176–182). Each is called exactly once, in `crates/tool/src/load.rs` lines 50 and 54. No second call site exists (`rg 'manifest_read\|manifest_parse' crates/tool/src/` returns only the definition and one call each).
+
+**Action:** Inline the struct construction at the call site in `load.rs`; delete both methods from `error.rs`.
+
+Before (`load.rs:50`):
+```rust
+Err(err) => return Err(ToolError::manifest_read(sidecar_path, err)),
+```
+After:
+```rust
+Err(err) => return Err(ToolError::Manifest { path: sidecar_path, kind: ManifestKind::Read(err) }),
+```
+Same pattern for `manifest_parse` at line 54.
+
+**Quality delta:** −12 LOC.
+
+**Net LOC:** error.rs 260 → 248.
+
+**Done when:** `rg 'fn manifest_read|fn manifest_parse' crates/tool/src/error.rs` returns 0 hits.
+
+**Rule?** No.
+
+**Counter-argument:** "Named constructors improve readability at the call site." Unfalsifiable — single-use helpers with no abstraction benefit are just indirection.
+
+**Depends on:** none.
+
+---
+
+### T2. project.mdc H2 section cap contradiction
+
+**Evidence:**
+
+`specify/.cursor/rules/project.mdc` line 278 says "per-H2 section must stay under 45 lines" and line 279 immediately says "Each H2 section caps at 60 non-blank, non-comment lines." The normative source `docs/standards/skill-authoring.md` line 32 says "**Per-H2 section** ≤ **45 lines**" and line 36 says "The 200 / 45 / 512 numbers are kept synchronized."
+
+**Action:** In `project.mdc`, delete line 279 (the "60" bullet).
+
+**Quality delta:** −1 LOC, fixes an actively misleading instruction.
+
+**Net LOC:** project.mdc 310 → 309.
+
+**Done when:** `rg '60 non-blank' .cursor/rules/project.mdc` returns 0 hits (run from specify repo root).
+
+**Rule?** No.
+
+**Counter-argument:** "60 is the enforced cap in `checkSectionLineCount`." If true, either the check or the standard is wrong — either way, the two bullets must not say different numbers.
+
+**Depends on:** none.
+
+---
+
+### T3. Skill prose: redundant generic instructions
+
+**Evidence:**
+
+Several SKILL.md files restate behaviors models follow by default:
+
+- `plugins/client/skills/sow-writer/SKILL.md` ~line 154: "**Be thorough**; better to explicitly exclude…"
+- `plugins/omnia/skills/test-writer/SKILL.md` ~line 48: "NEVER skip …" (generic vigilance framing around a substantive assertion rule)
+- `plugins/vectis/skills/template-updater/SKILL.md` ~line 52: "Confirm missing SDKs **before editing**… must not … paper over …"
+
+**Action:** Trim "Be thorough" and "NEVER skip" / "must not paper over" qualifiers to their substantive content. These are 1–2 line edits per skill, ~5 lines total across 3 skills.
+
+**Quality delta:** −5 LOC (estimated), tightens skill body budget.
+
+**Done when:** `rg -i 'be thorough' plugins/` returns 0 hits.
+
+**Rule?** No — the count is 3, and the language is per-skill, not a systemic pattern.
+
+**Counter-argument:** "Emphasis phrasing reinforces domain-specific constraints." Partially true for `test-writer` (the assertion rule is real); trim only the generic qualifier, keep the domain constraint.
+
+**Depends on:** none.
+
+---
+
+### T4. `#[allow(dead_code)]` on test helper in finalize.rs
+
+**Evidence:**
+
+`crates/domain/tests/finalize.rs` line 940–941:
+```rust
+// silence unused-import warnings for Outcome — referenced in doctest-only
+#[allow(dead_code)]
+```
+
+This suppresses a warning on a symbol only referenced in doctests. If the doctest is gone or the import is unused, delete the import and the allow. If the doctest remains, the allow is correct and this tidy is a no-op.
+
+**Action:** Verify `Outcome` usage in the file; if no live reference exists, delete the import and the `#[allow(dead_code)]` attribute.
+
+**Quality delta:** −2 LOC (conditional).
+
+**Done when:** `rg 'allow(dead_code)' crates/domain/tests/finalize.rs` returns 0 hits.
+
+**Rule?** No.
+
+**Counter-argument:** "The doctest still references it." If so, the allow is correct and this tidy should be dropped.
+
+**Depends on:** none.
+
+---
+
+### T5. Skill cross-references: paths → slash commands
+
+**Evidence:**
+
+5 SKILL.md files under `plugins/spec/skills/` reference sibling skills by filesystem path rather than slash command:
+
+- `analyze/SKILL.md` lines 19, 44, 153, 164: `../extract/SKILL.md`, `../../../change/skills/plan/SKILL.md`
+- `define/SKILL.md` lines 109, 128: `../analyze/SKILL.md`, `../../../change/skills/execute/SKILL.md`
+- `extract/SKILL.md` line 19: `../analyze/SKILL.md`
+- `drop/SKILL.md` line 17: `../../../change/skills/execute/SKILL.md`
+
+The discovery model loads skills by slash command (`/spec:analyze`), not by filesystem path. Path-based links are fragile to moves and skip the discovery layer.
+
+**Action:** Replace each `[text](../relative/SKILL.md)` with the slash-command form `\`/spec:analyze\`` (or `/change:execute`, etc.). ~10 edits across 4 files, 0 net LOC change per edit.
+
+**Quality delta:** 0 LOC change, −5 fragile path references (reduces maintenance risk).
+
+**Done when:** `rg 'SKILL\.md' plugins/spec/skills/*/SKILL.md` returns only self-references (the stop-reading directive).
+
+**Rule?** No — 5 hits is close to the 3× threshold but the fix is per-file, not scriptable.
+
+**Counter-argument:** "Path links are clickable in the IDE." True, but the skill body is consumed by agents, not IDE users — agents resolve `/spec:analyze`, not `../analyze/SKILL.md`.
+
+**Depends on:** none.
 
 ---
 
 ## Post-mortem
 
-One line per applied finding. Format: `id. actual ΔLOC vs predicted | done-when | regressions`.
-
-- F1. **−380 LOC vs −370 predicted (103%)** | all three done-when assertions flipped cleanly (`ls docs/contributing/skill-{anatomy,authoring}.md` → no such file; `make checks` green; `rg 'skill-anatomy.md|contributing/skill-authoring.md' docs/ plugins/ AGENTS.md` returns 0 hits) | no regressions; appended `## Rationale` H2 (49 lines insert) tripped `checkNoRfcCitationsInDocs` and the layer-number predicate on first run (3× `RFC-N` mentions + one demo `Layer 4` line carried over verbatim from `contributing/skill-authoring.md`) — stripped the RFC literals and rewrote the bad-description demo to use an `§3B writer-protocol` placeholder; second run green. Caller-edit churn: 9 files touched, 51 insertions / 431 deletions; `prose.ts` `FILES` list reduced 6 → 4 entries (sync-check surface −33%). Also collaterally fixed the 250→200 / 60→45 body-cap drift in `docs/standards/skill-authoring.md:31-34` because keeping the old numbers next to the new "Why 200 specifically" rationale paragraph would have left the canonical surface self-contradicting (tidy #10's number-fix half, leaving the fictional-predicate-name half for that tidy). Prior-session prior (delete-heavy F1 hit 98%) was a good fit; the small overshoot came from the 50-line rationale budget compressing to 41 useful lines after RFC-strip + duplicated forbidden-keys content collapsed into the existing standards body's "Forbidden frontmatter" section.
-- F2. **−10 LOC vs −95 predicted (11%)** | done-when assertion flipped cleanly (`rg -n 'specify-(capability|spec|task|change|merge|init|registry|slice|config)\b' AGENTS.md docs/ schemas/ tests/fixtures/parity/README.md crates/tool/src/validate.rs crates/domain/src/init/git.rs` returns 0 hits) | no regressions: `cargo check --workspace --all-features` clean, `cargo clippy -Dwarnings` clean, `cargo nextest -p specify-tool` 48/48, `cargo nextest -p specify-domain` 466/466, doc tests green. Touched 9 files (19 insertions / 29 deletions). The big LOC undershoot came from the review counting wholesale prose-block deletions when ~80% of the actual rot was single-token swaps (`specify-config` → `specify-domain`, `specify-merge::validate_baseline` → `specify_domain::merge::validate_baseline`) that net to ±0 LOC per site. Only the architecture.md crate-tree block (13 → 5 lines) and `validate.rs:26-27` doc-comment (−2 lines) delivered net deletions; the rest was correction, not deletion. The review's action list also under-scoped its own done-when grep: `AGENTS.md:9-16` carried the identical stale 6-line crate graph, `docs/standards/handler-shape.md:7` still pointed at `specify-config`, and the BAD example at `docs/standards/style.md:77` literally named `specify-init` — all three would have failed the done-when assertion. Fixed in the same pass (rewrote AGENTS.md's crate graph to match architecture.md's new 5-line tree; swapped the two handler-shape/style references). Prior post-mortem (F1) under-counted exactly the same way — predictions that mix "delete the prose" with "fix the names" tend to bias toward deletion-magnitude when in-place edits dominate; calibration note for future findings tagged "stale crate names" / "stale type names": cap predicted ΔLOC at the literal line-count of the structural blocks being removed, not the count of *sites touched*.
-- F3. **−38 LOC vs −60 predicted (63%)** | done-when assertion flipped cleanly and beat the target (`rg -c '^## What this skill does NOT do' plugins/` returns 0 hits — target was ≤ 1, ideally 0; `make checks` green) | no regressions; `define`/`build`/`extract` keep their existing `## Guardrails` blocks (no second H2 introduced, so the implicit "one Guardrails block per skill" invariant holds), `extract`'s already-grandfathered `sectionLineCount = 1` baseline did not need raising, and the `init/SKILL.md` callers that referenced "the 'what this skill does NOT do' matrix" were updated in the same pass. Touched 6 files (31 insertions / 68 deletions). The 37% undershoot follows the F2 calibration note exactly: the review priced the win as "−13 redundant single-writer restatements + −5 table frames" but the **skill-specific** survivor rows did not evaporate — they had to be re-prosed as bullets under `## Guardrails` (6 in `init-runbook`, 5 in `extract`, 3 each in `define`/`build`), and each host file gained a one-sentence "see shared guardrails" pointer to keep the link discoverability the table used to provide. Only `execute` delivered a clean H2 deletion (its 4 "Yes — see foo.md" wire-pointer rows were already covered by the existing `## Guardrails` body) and that single file accounts for −13 of the −37 net LOC. Calibration note for future findings tagged "delete a parallel H2, fold survivors into existing H2": predicted ΔLOC should subtract the survivor-row count × ~1.5 LOC (table-row → prose-bullet expansion) before claiming the deletion magnitude. Side-finding: the review's `checkOneGuardrailsBlockPerSkill` "already exists" claim is wrong — `rg checkOneGuardrailsBlockPerSkill scripts/` returns nothing; the predicate is not implemented. The done-when assertion still flipped because `make checks` passes regardless and the structural change holds, but a reviewer asserting a predicate-as-safety-net should grep for it before relying on it.
-- F4. **−50 LOC vs −60 predicted (83%)** | both done-when assertions flipped cleanly (`rg -n 'enum ValidationResult' crates/tool/` returns nothing; `rg -n 'Deferred' crates/tool/` returns nothing) | no regressions: `cargo check --workspace --all-features` clean, `cargo clippy --workspace --all-features --all-targets -- -D warnings` clean, full-workspace `cargo nextest run` 825/825 (incl. `specify-tool` 48/48). Touched 2 files (42 insertions / 92 deletions); `crates/tool/src/validate.rs` shed the 42-line enum + `impl rule_id`, the helpers `pass`/`fail` expanded from 11 → 17 LOC because `ValidationSummary` carries owned `String` fields where the old `&'static str` enum did not (each helper gains 3 lines for the struct literal); `src/commands/tool.rs` deleted the 14-line `validation_failure` adapter wholesale and the import line, and inlined the `Fail` filter into `validate_manifest_tools` (5 lines). One follow-up landmine that did not appear in the review's action list: `fn fail_rule_ids` previously returned `Vec<&'static str>` because the rule_ids were static-borrowed inside the enum variants; with the move to `ValidationSummary { rule_id: String }` it became `Vec<&str>` borrowing from the input slice, which broke a single test site (`package_tool_validation_reports_package_rule_ids:432`) that fed it a temporary `Vec<ValidationSummary>`. Fixed in-pass with a one-line `let results = …; let ids = fail_rule_ids(&results);` extraction (+1 LOC included in the −50 delta). Prediction model held up well (83% — best ratio after F1's 103%); the F2/F3 calibration note ("don't conflate sites-touched with structural deletion") was applied during sizing here — predicted −50 internally before reading the review's −60 — and the actual delta matched the internal estimate exactly. Calibration note for future findings tagged "collapse internal type into upstream owned type": when the upstream type carries `String` where the inner type carries `&'static str`, helper-function expansion (`.to_string()` + struct-literal frame) costs 3-4 LOC per helper; subtract that from the predicted deletion before quoting it.
-- F5. **−41 LOC vs −55 predicted (75%)** | both done-when assertions flipped cleanly (`rg -n 'enum MergeOp\b' src/` returns nothing; goldens regen produced an empty `git diff` against `tests/fixtures/e2e/goldens/`) | no regressions: `cargo check --workspace --all-features` clean, `cargo clippy --workspace --all-features --all-targets -- -D warnings` clean, full-workspace `cargo nextest run` 825/825 (incl. `slice_merge` 10/10 and `e2e` 9/9 with `merge_two_spec_slice_produces_baselines` re-asserting the canonical wire shape). Touched 2 files (26 insertions / 67 deletions): `crates/domain/src/merge/merge.rs` gained `use serde::Serialize` + `#[derive(Serialize)]` + `#[serde(tag = "kind", rename_all = "kebab-case")]` (+3/-1); `src/commands/slice/merge.rs` shed the 14-line `enum MergeOp`, the 33-line `From<&MergeOperation> for MergeOp`, and the 4-line section header (+23/-66). Two minor surprises that ate into the −55 → −41 gap (25% undershoot): (a) `#[serde(other)]` does **not** "handle the `#[non_exhaustive]` future-proof for free" as the review action claimed — `serde(other)` is deserialization-only; for serialization-only `MergeOperation` consumers, the local match arms in `operation_label`/`summarise_ops` still need a wildcard to compile against `#[non_exhaustive]`, kept as `_ => "UNKNOWN operation".to_string()` and `_ => {}` (4 LOC retained that the prediction credited as deleted via the `Unknown` branch); (b) the prediction implicitly modelled `operation_label` and `summarise_ops` as collapsing to nothing once `MergeOp::Variant` became `MergeOperation::Variant`, but the match arms migrated rather than vanished — five-arm rename × ~2 LOC per arm × 2 helpers = ~20 LOC retained-as-rename, ±0 LOC each. Done-when nuance worth noting for future sizing: the review's action wired the goldens regen to `--test slice_merge`, but the only fixture under `tests/fixtures/e2e/goldens/` that the merge change can move is `merge-two-spec.json`, which is owned by `tests/e2e.rs::merge_two_spec_slice_produces_baselines`; running `REGENERATE_GOLDENS=1 cargo nextest run --test slice_merge` would have returned an empty diff for the wrong reason (it doesn't touch any golden), so I tightened by also running `--test e2e` and confirming `git diff --stat tests/fixtures/e2e/goldens/` was empty after both. Prior calibration (F4 note: "subtract helper-function expansion before quoting deletion magnitude") did not bite here because the field-clone shape was symmetric (`String` on both sides — no `.to_string()` cost), but a *different* mechanism in the same family bit instead: structural-block deletions whose match-arm bodies are *moved* rather than removed cost ~0 net per arm. Calibration note for future findings tagged "collapse a wire mirror enum into the upstream domain enum via `derive(Serialize)`": cap predicted ΔLOC at the literal line-count of the enum + From-impl + module-comment frame; do **not** credit the wire-mirror's match-arm callers as deletions (they migrate by name, not by removal) and do **not** assume `serde(other)` removes the `#[non_exhaustive]` wildcard from local serialization-side matches.
-- F6. **−52 LOC vs −51 predicted (102%)** | both done-when assertions flipped cleanly (`wc -l DECISIONS.md` returns 232, well under the 234 ceiling; `rg 'Follow-up' DECISIONS.md` returns 0 hits) | no regressions: pure prose deletion of a resolved TODO, no code touched, no test surface, no callers outside `REVIEW.md` itself (`rg 'DECISIONS\.md.*(Follow|wasm-pkg|2[3-8][0-9])' --type=md` confirms only the F6 evidence/done-when lines reference the deleted section, and those are the review tracking this work). Touched 1 file (1 insertion-equivalent / 53 deletions in `git diff --stat` terms; the +1 is bookkeeping noise from the trailing-newline boundary). The +1 LOC overshoot vs the review's literal `:234-284` range came from also removing line 233 (the blank separator between the deleted H2 and the prior `## Tool architecture` section); leaving it would have produced a stray double-blank tail, so the structural deletion is 52 LOC, not 51. The F2 "structural blocks vs sites touched" calibration note held perfectly here because the finding **is** purely structural (one H2, no in-place edits, no callers); the F4/F5 helper-expansion mechanism doesn't apply to prose deletions. One stale recon row in `REVIEW.md:21` (`| AGENTS.md / DECISIONS.md | 78 / 284 |` — DECISIONS.md is now 232) is left intentionally as a snapshot artifact; rewriting recon rows in flight would defeat the point of the post-mortem (calibration against the snapshot the review priced against). Calibration note for future findings tagged "delete a self-contained markdown H2 section": predicted ΔLOC should add 1 for the separator-blank-above the H2 if the deletion is at end-of-file or between two H2s; this is the cleanest prediction case in the family and the closest hit (102%) of the run so far.
-- F7. **−30 LOC vs −40 predicted (75%)** | both done-when assertions flipped cleanly (`rg 'pub enum (Scaffold|Vectis)Error' wasi-tools/vectis/` returns one hit — the unified `wasi-tools/vectis/src/error.rs:27` `VectisError`; `rg 'EXIT_(CLEAN|FINDINGS)' wasi-tools/vectis/` returns 0 hits) | no regressions: `cargo check --workspace --all-targets` clean, `cargo clippy --all-targets -- -D warnings` clean on `specify-vectis`, `cargo nextest run` 78/78 inside `wasi-tools/vectis/` (incl. all integration tests under `tests/engine_{tokens,assets,layout,composition,paths}.rs` and `tests/cli.rs::{invalid_invocation_exits_two, missing_input_exits_two_with_error_envelope}` which assert the typed-error JSON shape and the `2` exit code). Touched 5 files net (new `src/error.rs` 80 LOC; 21 insertions / 131 deletions across the existing four — `lib.rs` +3, `scaffold.rs` +7/−4 for the `ScaffoldError = VectisError` alias + 4-line doc-comment, `scaffold/versions.rs` ±1 path swap, `validate.rs` +10/−67 stripping the inline `pub mod error { ... }` block and the three `EXIT_*` constants). The 25% undershoot vs −40 came from two sources the review's "≈ 50 LOC unified" budget did not size: (a) the new `error.rs` is 80 LOC, not 50 — eight lines of file-level doc-comment explaining *why* the two enums collapsed (necessary because the wire-payload-equivalence claim is the load-bearing argument for the change), plus eight lines of `EXIT_FAILURE` doc-comment justifying the scaffold-failure exit-code change from `1` to `2`; (b) the scaffold-side `pub use crate::VectisError as ScaffoldError;` carries a 4-line doc-comment explaining why the alias exists, because `ScaffoldError` survives as a name in scaffold tests (`src/scaffold/tests.rs:117,134,149,190` pattern-match `ScaffoldError::InvalidProject { message }`) and a future reader hitting the alias deserves the breadcrumb. One follow-up landmine that did not appear in the review's action list: inlining `EXIT_CLEAN`/`EXIT_FINDINGS` as the literal expression `if has_errors(value) { 1 } else { 0 }` trips `clippy::bool_to_int_with_if` (rust-1.95.0; the rule did **not** fire against the original `EXIT_FINDINGS` / `EXIT_CLEAN` named-constant shape because clippy only flags the integer-literal-pair form). Fixed in-pass with `u8::from(has_errors(value))` (1 LOC, ±0 net). Done-when nuance: the review's done-when text quoted `rg 'pub enum (Scaffold|Vectis)Error' wasi-tools/vectis/ returns one hit` — that grep matched the dead `pub enum VectisError {` declaration that survived inside `validate.rs`'s nested `pub mod error { ... }` block until I deleted it; if I had only deleted `scaffold/error.rs` and kept the `validate.rs` mirror, the assertion would have flipped one hit but on the wrong line. Pinned both deletions to the structural change rather than the grep. The F2/F3 "sites touched ≠ structural deletion" calibration note applies inversely here: predicted ΔLOC under-weighted the *new* file's frame-cost. Calibration note for future findings tagged "unify two duplicate enums into one new file": cap the predicted ΔLOC at `current_LOC(file_a) + current_LOC(file_b) − (file_a_unique_lines + file_b_unique_lines + 1.5 × file_frame_overhead)`, where `file_frame_overhead` ≈ 20 LOC (file-level doc-comment + crate-export line + per-method `#[must_use]` + helper-doc on the new constants). For F7 that recomputes to ~−25 LOC predicted, much closer to the actual −30. The review's prediction over-credited the deletion magnitude by treating the new file as a no-op frame.
-- F8. **−52 LOC vs −40 predicted (130%)** | both done-when assertions flipped cleanly (`rg 'struct Rule(Summary|Export)\b' src/commands/codex.rs` returns 0 hits; `rg 'export_provenance_text' src/commands/codex.rs` returns 0 hits) | no regressions: `cargo check --workspace --all-features` clean, `cargo clippy --workspace --all-features --all-targets -- -D warnings` clean, full-workspace `cargo nextest run` 825/825 (incl. `specify::codex` 14/14 covering `list_text_shows_summary_fields`, `show_text_prints_summary_and_body`, `export_json_includes_rules_and_paths`, `export_json_resolves_cache_and_overlay`, and `validate_duplicate_ids_exits_two` — the four sites that constrain the wire shape end-to-end). Manual JSON probe of `specify --format json codex list` against a single-rule capability fixture confirmed the output is byte-identical to the prior `RuleSummary` shape (no `trigger`/`body` keys present): `{"rule-count":1,"rules":[{"id":...,"title":...,"severity":...,"source-path":...,"provenance-kind":...,"capability-name":...,"capability-version":...,"catalog-name":null}]}`, validating the review's `skip_serializing_if = "Option::is_none"` strategy — the `Option<&'a str>` wrapper elides cleanly when the `None` constructor (`RuleView::summary`) is used. Touched 1 file (38 insertions / 90 deletions): replaced the dual `RuleSummary` (12 LOC) + `RuleExport` (14 LOC) declarations + the dual `From<&ResolvedCodexRule>` impls (15 LOC + 19 LOC) + the `ProvenanceFields` plumbing struct (6 LOC) + its `const fn provenance_fields` (22 LOC) + the dual `provenance_text` / `export_provenance_text` helpers (11 LOC + 11 LOC) with a single `RuleView<'a>` struct (12 LOC) + an inherent impl carrying `summary`/`full`/`build` (32 LOC where `build` inlines the provenance match as a 7-line tuple destructure) + a single `provenance_text(&RuleView)` helper (10 LOC). Three call sites updated: `list` → `RuleView::summary`, `show` → `RuleView::full`, `export` → `RuleView::full`; `write_show_text` switched `r.trigger` → `r.trigger.unwrap_or_default()` and `r.body` → `r.body.unwrap_or_default()` (both safe because `show` always populates via the `full` constructor — `unwrap_or_default()` chosen over `expect()` because the field semantics map cleanly to "absent in summary view, present in full view" and an empty string is the natural rendering of the absent case in human-readable text output). The 30% **overshoot** vs the predicted −40 inverts the F4/F5/F7 family of helper-expansion calibration notes: the review priced the deletion conservatively because it assumed `summary` and `full` would each cost roughly what the dual `From` impls cost (~14 LOC × 2 = 28 LOC retained), but `bool::then_some` collapses the conditional field-population in 1 LOC per field (`with_body.then_some(frontmatter.trigger.as_str())`), and the `ProvenanceFields` plumbing struct's elimination saves ~17 LOC beyond the naive struct-frame count (the const `fn` constructor was 22 LOC for what becomes a 7-line tuple match inline). The review's prediction also did not credit the second `provenance_text` call — `write_show_text` previously called `export_provenance_text(r)`; both call sites now share `provenance_text(&RuleView)`, deleting an entire 11-LOC helper. Calibration note for future findings tagged "collapse a plumbing-helper-struct + dual-`From`-impl + dual-getter-helper pattern into one view + one constructor + one getter": predicted ΔLOC should add ~15-20 LOC of bonus deletion beyond the naive `2 × struct_frame + 2 × from_impl + 2 × getter` count, because (a) `bool::then_some` (or equivalent guard expression) flattens conditional field population to 1 LOC/field, and (b) eliminating the plumbing struct converts a `(decl + constructor)` pair into a single inline tuple destructure that is materially shorter than the constructor it replaces. Sister calibration to F4 ("subtract helper-function expansion before quoting deletion magnitude"): when collapsing *toward* a thin wrapper rather than *away from* one, helper expansion is **negative** — predicted ΔLOC tends to undercount by ~30%.
-- F9. **−38 LOC vs −36 predicted (106%)** | all three done-when assertions flipped cleanly (`wc -l AGENTS.md` returns 76 — well under the 80 ceiling; `rg 'checkBodyAndSectionLineCounts|checkArgumentHintGrammar|IMPERATIVE_VERBS' AGENTS.md` returns 0 hits; `make checks` green in 3.1 s) | no regressions: pure markdown consolidation, no code touched. Touched 3 files (3 insertions / 41 deletions): `AGENTS.md` shed the §"Markdown style" stanza (4 LOC), the §"Skill authoring" stanza (17 LOC including blank-line frames), the §"Mechanical enforcement" prose (5 LOC), and the 12-row predicate table (12 LOC) — replaced with one §"Skill authoring" stanza (3 LOC: H3 + blank + single paragraph) routing to `docs/standards/skill-authoring.md`, `.cursor/rules/project.mdc`, `docs/standards/predicates.md`, and `scripts/standards-allowlist.toml`. The F1 dependency was visibly satisfied — `AGENTS.md:71` already linked to `docs/standards/skill-authoring.md` and named the post-F1 `## Rationale` H2 explicitly, so the new pointer landed cleanly with no further consolidation needed. One follow-up landmine that did not appear in the review's action list: two reference files anchored into the deleted §"Skill body discipline" subhead — `plugins/references/cli-output-shapes.md:3` and `plugins/references/guardrails.md:3` both linked `AGENTS.md#skill-body-discipline`, which would have started 404-ing the moment the H3 disappeared. Redirected both to `docs/standards/skill-authoring.md#skill-body-discipline` (the H2 the F1 consolidation moved this prose to, with the same slug — `make checks` includes a link integrity pass which would have flagged the broken anchors had I missed them); 1 LOC each, net ±0 LOC per file. The review's done-when grep was scoped to predicate-name leakage inside AGENTS.md itself and would not have caught this. The 6% overshoot vs predicted −36 came from collapsing **three** H3 boundaries (`Markdown style` + `Skill authoring` + `Mechanical enforcement`) into one rather than the predicted two — `docs/standards/skill-authoring.md` already owns the Markdown style rules at `:69-72`, so the AGENTS.md stanza was redundant in the same way the rest was; folding it into the pointer paragraph saved another ~4 LOC over the ~6-LOC replacement budget. F6's "delete a self-contained markdown H2 section" calibration (predicted +1 for the separator-blank-above, 102% hit) ported almost perfectly — this is the same prose-only structural-deletion family. Calibration note for future findings tagged "collapse multiple sibling H3s under one parent into one pointer paragraph": predicted ΔLOC should add ~3-4 LOC of bonus deletion per *additional* H3 collapsed beyond the first, because (a) each extra H3 brings a header + blank-frame pair (~2 LOC) and (b) the pointer paragraph's enumeration cost scales as ~1 LOC per pointed-at topic rather than ~1 LOC per H3 collapsed (the predicted `~6 LOC stanza` already absorbs the additional topic names without growing). Sister calibration to F6 ("predicted ΔLOC should add 1 for the separator-blank-above the H2 if the deletion is at end-of-file or between two H2s"): for *interior* H3 deletions (this case, with §"Gotchas" remaining downstream), the trailing-blank stays attached to the surviving section, so no separator-blank adjustment was needed. Operating bookkeeping: anchor-link callers into a deleted section should be grepped as part of any structural-deletion done-when — adding `rg '<file>#<deleted-section-slug>' --type=md` to the assertion set would have surfaced the two callers automatically.
-- F10. **−29 LOC vs −28 predicted (104%)** | both done-when assertions flipped cleanly (`ls docs/standards/predicates.md` → no such file; `rg 'predicates.md' docs/ AGENTS.md` returns 0 hits; `make checks` green in 1.2 s) | no regressions: pure markdown deletion, no code touched. Touched 4 files (3 insertions / 32 deletions): `docs/standards/predicates.md` deleted entirely (−28); `docs/standards/skill-authoring.md:15` rewrote `See [predicates.md](predicates.md) for the full table.` → `See [scripts/checks/](../../scripts/checks/) for the implementation.` (1/1, ±0 net); `AGENTS.md:66` collapsed the two-sentence "The full predicate table lives in [docs/standards/predicates.md] … per-predicate per-file baselines in [scripts/standards-allowlist.toml]." into "Predicate implementations live in [scripts/checks/]. Enforced by `make checks`; per-predicate per-file baselines in [scripts/standards-allowlist.toml]." (1/1, ±0 net); `docs/standards/cli-contract.md` lost the "(see [predicates.md](predicates.md))" parenthetical at `:78` (1/1, ±0 net) and the entire `- [docs/standards/predicates.md] — mechanical checks…` cross-reference bullet at `:105` (0/1, −1 net). The F1 + F9 dependencies landed before this finding (commits `a839946` "Review item F1" and `c3eafb1` "Review item F9"), so the deletion landed on already-consolidated callers rather than the original three-table-restating world the review priced against. Cleanest hit of the run after F6 (102%) and F9 (106%) — same `delete-a-self-contained-markdown-deliverable` family, same +1 LOC overshoot mechanism (one bullet-list caller carried 1 LOC of separator/punctuation that an in-place sentence rewrite cannot match). The review's done-when grep was tight: `rg 'predicates.md' docs/ AGENTS.md` correctly catches all three caller sites including the parenthetical at `cli-contract.md:78` that the review's action list did not name explicitly (action item 3 said "Remove the cross-link in `docs/contributing/checks.md` and elsewhere" — `docs/contributing/checks.md` does not in fact contain `predicates.md`, but `cli-contract.md` carried both an embedded parenthetical and a `## Cross-references` bullet; the grep delegation rescued the under-scoped action list). The F1 post-mortem already noted `prose.ts` `FILES` list reduced from 6 → 4 entries; `docs/standards/predicates.md` was already absent from that list at F10's start so no allowlist edit was needed. Calibration note for future findings tagged "delete a self-contained markdown deliverable plus all its callers": this is the smallest predictable family — the LOC delta is `file_size + sum_over_callers(caller_delta)`, where `caller_delta` ≈ −1 for bulleted-list cross-references and ≈ 0 for inline-sentence references. F10 had 1 bullet caller + 3 sentence-or-parenthetical callers → predicted file_size + (−1) = −29, observed −29. The review's −28 dropped the bulleted-caller adjustment. The F1 dependency was visibly satisfied — `AGENTS.md:71` already linked to `docs/standards/skill-authoring.md` and named the post-F1 `## Rationale` H2 explicitly, so the new pointer landed cleanly with no further consolidation needed. One follow-up landmine that did not appear in the review's action list: two reference files anchored into the deleted §"Skill body discipline" subhead — `plugins/references/cli-output-shapes.md:3` and `plugins/references/guardrails.md:3` both linked `AGENTS.md#skill-body-discipline`, which would have started 404-ing the moment the H3 disappeared. Redirected both to `docs/standards/skill-authoring.md#skill-body-discipline` (the H2 the F1 consolidation moved this prose to, with the same slug — `make checks` includes a link integrity pass which would have flagged the broken anchors had I missed them); 1 LOC each, net ±0 LOC per file. The review's done-when grep was scoped to predicate-name leakage inside AGENTS.md itself and would not have caught this. The 6% overshoot vs predicted −36 came from collapsing **three** H3 boundaries (`Markdown style` + `Skill authoring` + `Mechanical enforcement`) into one rather than the predicted two — `docs/standards/skill-authoring.md` already owns the Markdown style rules at `:69-72`, so the AGENTS.md stanza was redundant in the same way the rest was; folding it into the pointer paragraph saved another ~4 LOC over the ~6-LOC replacement budget. F6's "delete a self-contained markdown H2 section" calibration (predicted +1 for the separator-blank-above, 102% hit) ported almost perfectly — this is the same prose-only structural-deletion family. Calibration note for future findings tagged "collapse multiple sibling H3s under one parent into one pointer paragraph": predicted ΔLOC should add ~3-4 LOC of bonus deletion per *additional* H3 collapsed beyond the first, because (a) each extra H3 brings a header + blank-frame pair (~2 LOC) and (b) the pointer paragraph's enumeration cost scales as ~1 LOC per pointed-at topic rather than ~1 LOC per H3 collapsed (the predicted `~6 LOC stanza` already absorbs the additional topic names without growing). Sister calibration to F6 ("predicted ΔLOC should add 1 for the separator-blank-above the H2 if the deletion is at end-of-file or between two H2s"): for *interior* H3 deletions (this case, with §"Gotchas" remaining downstream), the trailing-blank stays attached to the surviving section, so no separator-blank adjustment was needed. Operating bookkeeping: anchor-link callers into a deleted section should be grepped as part of any structural-deletion done-when — adding `rg '<file>#<deleted-section-slug>' --type=md` to the assertion set would have surfaced the two callers automatically.
-
-### One-touch tidies pass
-
-Total: **−102 LOC actual vs −135 LOC predicted (76%)**, run as one batch in a single context window after F1–F10. All 825 specify-cli workspace tests + 78 vectis tests pass; `make checks` green on `specify`. Per-tidy entries below; calibration notes propagate the F2/F4/F5/F7 "sites-touched ≠ structural deletion" + "helper expansion costs LOC" priors, with one new pattern (T5) and one inverted prior (T8/T6 in-place sentence rewrites cost ~0 LOC).
-
-- T1. **−21 LOC vs −25 predicted (84%)** | done-when flipped cleanly (`grep -nA3 'impl From<ToolError>' crates/tool/src/error.rs | wc -l` returns 4, well under the 18-line ceiling) | no regressions: `cargo check -p specify-tool --all-features` clean, `cargo clippy --workspace --all-features --all-targets -- -D warnings` clean, full-workspace `cargo nextest run` 825/825. Touched 1 file (16 insertions / 48 deletions; the −48 includes T4's source_io deletion landing in the same file). The 16% undershoot followed the F4 calibration directly: the four `Diag { code: …, detail: format!(…) }` arms each had a multi-line `detail` string-literal block (3-5 LOC apiece) that the review credited as deleted via the single-`to_string()` collapse, but the literals themselves stay live as the `#[error("…")]` attributes on the matching `ToolError::*` variants — the deletion is genuine at the From-impl site (37 → 16) but the bytes survive at the variant declarations, so the perceived LOC delta over-counts the line-level deletion when measured by the review's "lines visible inside the From block" yardstick. Calibration note for future findings tagged "collapse a `From` impl with per-arm `format!` strings into a code-only match plus a single `.to_string()`": predicted ΔLOC should subtract ~1 LOC per arm whose original `detail` was already a one-liner (the new branch-arm-with-string-literal collapses to a code-only branch saving exactly 1 LOC, not 4-5).
-- T2. **−21 LOC vs −25 predicted (84%)** | no done-when specified (review action says "Collapse the dispatch + ordering paragraph to one sentence; delete the RM-04 H3 entirely"; structural change verified by `grep -c '^### Mixed-format ordering\|^### Cross-project compatibility' plugins/contract/README.md` returning 0) | no regressions: pure markdown, `make checks` green. Touched 1 file (1 insertion / 22 deletions). Cleanest in-pass hit on the family — the dispatch sub-bullets (4 LOC) + Mixed-format ordering H3 (8 LOC) + RM-04 H3 (10 LOC) all collapsed cleanly into a single 17-word sentence at the dispatch paragraph; no caller needed updating because both H3s were document-internal anchors with no inbound `#anchor` references (verified `grep -rn 'README.md#mixed-format\|README.md#cross-project' plugins/ docs/` returns 0). Per the F6 calibration note ("predicted ΔLOC should add 1 for the separator-blank-above the H2 if the deletion is at end-of-file or between two H2s"), the H3 sandwich here had two `### / blank / next-### / blank` boundaries collapsing into a single blank line, which is one more LOC of deletion than the review's literal `:36-46` + `:48-57` ranges credited (22 LOC actual vs 21 LOC range-sum). The 16% LOC undershoot came from the surviving sentence carrying the json-schema → openapi → asyncapi ordering inline (the review priced "one sentence" at ~2 LOC; the actual sentence is 1 LOC but the surrounding structural cleanup left the dispatch paragraph slightly longer than the predicted post-state). The retained "see [`references/cross-project-compatibility.md`]" + `bash` fenced block had to be dropped wholesale since the RM-04 H3 was their only anchor; the fence (4 LOC) and code-block frame (2 LOC) deletion is included in the −22.
-- T3. **−3 LOC vs −18 predicted (17%)** | done-when flipped cleanly (`grep -rn 'ctx\.out()\|Out::for_format\|trait Render\|serialize_path' docs/ src/ crates/ | grep -v REVIEW.md | wc -l` returns 0) | no regressions: doc-only changes (no Rust touched), `cargo check --workspace --all-features` already green from prior tidies, `make checks`-equivalent for the CLI repo (clippy + nextest 825/825) green. Touched 3 files (19 insertions / 22 deletions): `docs/standards/coding-standards.md` rewrote the §"Format dispatch" + §"One emit path" + §"DTOs" stanzas (+10/-13 = −3); `docs/standards/handler-shape.md` rewrote §"Out, Render, and emit" → §"ctx.write, output::write, and emit" + four call-site references (+7/-7 = ±0); `crates/domain/src/config/atomic.rs:77` swapped the `ctx.out().write(&body)?;` example to `ctx.write(&body, write_text)?;` (+2/-2 = ±0). The 83% undershoot is the **canonical T2/F2 family** ("stale type names where in-place edits dominate"): the review priced this as "−18 LOC" because the fictional-API surface looked like dead prose-block weight, but ~85% of the rot was single-token swaps inside otherwise-load-bearing paragraphs (`ctx.out().write(&Body)?` → `ctx.write(&body, write_text)?` keeps the paragraph and replaces 30 chars in place; `Render::render_text(&self, w: …)` → "the `write_text` closure has signature `FnOnce(…)`" rewrites the surrounding sentence at ±0 LOC; `serialize_path` field-allowlist row contracted from 1 row to 1 row with just the helper-name dropped from the cell). Only the §"DTOs" GOOD example block (~3 LOC of `impl Render for HandleBody { fn render_text(...) }` → 2 LOC of `fn write_text(...)` free function) and the closing `serialize_path` row's `serde(serialize_with = …)` annotation deleted clean lines. Calibration note for the family: doc-API drift fixes routinely undershoot the review's predicted LOC by 60-80% for exactly the F2 reason — the rot is *always* in-place rename, not block deletion. Future tidies in this family should price at `count(structural_block_deletions) × ~3 LOC + count(in-place_renames) × 0 LOC`; here the structural deletion was 1 (the `impl Render` block in the GOOD example) for ~3 LOC, matching the actual −3.
-- T4. **−11 LOC vs −15 predicted (73%)** | done-when implicit (review action says "delete `cache_io` / `source_io`"; verified via `grep -rn 'ToolError::source_io' crates/` returning 0) | no regressions: `cargo check -p specify-tool --all-features` clean, full-workspace nextest 825/825. **Scope-reduced from review action**: the review's "delete `cache_io` / `source_io`" predicate would have inlined ~37 call sites of `cache_io` (review claimed "three internal call sites total" — off by 12×; actual `grep -c 'ToolError::cache_io(' crates/tool/src/` returns 35 across 7 files), and per the F4 calibration note ("when the upstream variant carries owned `String`/`PathBuf` where the inner helper takes `&'static str`/`impl Into<…>`, helper-function expansion costs 3-4 LOC per call site"), expanding 35 sites by even 0.5 LOC apiece for rustfmt 100-char wraps would have eaten the 25-LOC `cache_io` constructor deletion at break-even or worse. `cache_io` is a 3-arg builder, which `style.md:113` *does* allow ("Named constructors are reserved for multi-arg or fallible builders"); only `source_io` was a redundant rename of `cache_io` with a different label, true single-axis duplication. Deleted `source_io` (12 LOC including doc-comment) + 2 call-site renames in `crates/tool/src/resolver/local.rs` (`source_io("inspect local source", …)` → `cache_io("inspect local source", …)`); merged the surviving `cache_io` doc-comment to read "Build a cache or local-source I/O error" and dropped the now-orphaned "Mirrors `cache_io`" sentence. The 27% undershoot vs −15 mostly reflects the scope-reduction; if I had executed the review verbatim, the actual delta would have been near +10 to +20 LOC, not −15. Calibration note for future findings tagged "delete a named constructor and inline at the call site": cap predicted ΔLOC at `helper_LOC − callers × line_wrap_probability(call_site_chars + 25_chars_for_struct_literal_frame)`, where `line_wrap_probability` ≈ 0 if existing call site < 65 chars and ≈ 1 if existing call site > 75 chars; the review's predicted −15 silently assumed `line_wrap_probability = 0` for all 35 sites, which is provably wrong by glancing at `cache/fetch.rs:36-49`. Cross-cutting note: `style.md:113`'s "multi-arg or fallible" carve-out is **deliberately permissive**; reviewers proposing helper-deletion tidies under that rule should grep for arg-count first.
-- T5. **−28 LOC vs −15 predicted (187%)** | both done-when assertions flipped cleanly (`grep -rn 'CommandOutcome' wasi-tools/` returns 0; `cargo nextest run` 78/78 inside `wasi-tools/vectis/` covering all `tests/engine_{tokens,assets,layout,composition,paths}.rs` integration suites) | no regressions: `cargo check --all-targets` clean, `cargo clippy --all-targets -- -D warnings` clean, all 78 vectis tests pass (incl. `tests/engine_paths.rs::all_envelope_runs_every_mode_in_canonical_order` which constrains the `validate all` envelope shape end-to-end). Touched 14 files (97 insertions / 100 deletions = −3 *measured by the diff frame* but the actual structural deletion is larger because most edits were 1:1 rewraps that net to ±0 LOC each; the −28 figure breaks down as: `wasi-tools/vectis/src/validate.rs` `pub enum CommandOutcome` + `Re-export` block deleted (−8), `validate/engine.rs` simplified `run_inner` (−3), `tests/engine_support/mod.rs` `extract_envelope` helper deleted (−8), test-binary `extract_envelope(...)` call-site unwrappings net (−6 across 5 files), `wasi-tools/vectis/DECISIONS.md` reference removed (−1), 5 per-mode validators each shifted `Ok(CommandOutcome::Success(json!({...})))` → `Ok(json!({...}))` for ±0 net per file — 4 fewer parens per file but a multi-line literal is closed the same way). The **130% overshoot** vs predicted −15 came from a source the review did not size: the `extract_envelope(...)` helper at `tests/engine_support/mod.rs:19` was called at 17 sites across 5 test-binary files; deleting the helper let every test site collapse from `let envelope = extract_envelope(run(&args).expect("..."));` to `let envelope = run(&args).expect("...");` for −1 LOC per site for the helper-call wrapping plus a free −8 for the helper itself. The review priced this as "delete the enum and the test-only `extract_envelope`" without modelling the per-site savings; this is the **inverse of the F8 mechanism** ("collapsing toward a thin wrapper undershoots prediction"), here "deleting a thin wrapper *also* overshoots prediction" because the wrapper-call frame (`extract_envelope( ... )` = 21 chars) costs every site ~1 LOC at rustfmt's 100-char line limit. The execution itself hit one regex landmine worth recording: my first attempt used `re.sub(r'extract_envelope\(\s*(.+?)\s*\)', r'\1', t, flags=re.DOTALL)` which is greedy-stop on the first `)` and corrupted `extract_envelope(run(&args).expect("..."))` → `run(&args` (lost everything after the inner `)`); rewrote with explicit balanced-paren tracking (Python state machine that walks `depth += 1` on `(` and `depth -= 1` on `)`), which handled all 17 sites cleanly. Calibration note for future findings tagged "delete a single-variant wrapper enum that fans out to N test-helper sites": predicted ΔLOC should add `N × ~1 LOC` for per-site call-frame elimination beyond the wrapper's own LOC; this is the F8 "collapsing toward a thin wrapper" mechanism in reverse — **deletions of thin wrappers carry hidden per-site savings** that the review almost never sizes.
-- T6. **−2 LOC vs −12 predicted (17%)** | no done-when specified (review action says "drop the Python-history paragraph"; verified the ## H2 section header + the bulleted entry are gone via `grep -c 'Known parity quirks\|case-10-design-refs:' tests/fixtures/parity/README.md` returning 0) | no regressions: README-only change, no test surface to break (the `case-10-design-refs` fixture and its `expected-validation.txt` are untouched; the canonical parity-quirk explanation lives at `crates/domain/src/merge/validate.rs:113-117` in code-comment form, verified present). Touched 1 file (1 insertion / 3 deletions). The 83% undershoot is the **T3/F2 family in its purest form**: the review priced "drop the Python-history paragraph" as −12 LOC because the original H2 + bullet ran 4 lines, and the replacement summary needed ~2 lines, for a naïve 4 → 0 = −4 LOC delta — but the predicted −12 implicitly assumed the H2 header (1 LOC) + the 200-character bullet's hard-wrapped width (~5 visual lines but 1 LOC in the file because `## Markdown style` at the top of `docs/standards/skill-authoring.md` says "Do not hard-wrap prose in Markdown files solely for column width") + the trailing blank (1 LOC) all cleared, with the replacement sentence taking only 1 LOC. Reality: the bullet was 1 actual LOC (one long unwrapped line) per the `make checks` no-hard-wrap rule, the H2 header was 1 LOC, the leading blank between paragraphs was 1 LOC, total deletion 3 LOC; replacement sentence was 1 LOC; net −2. The review's −12 mis-estimated by ~6× the line-counting because it priced visually-wrapped width instead of file-LOC. Calibration note for future findings tagged "drop a markdown bullet plus its enclosing H2 header": predicted ΔLOC ≈ `2 + 1.5 × bullet_count` for files that follow the `no-hard-wrap` rule; the review's predictor seems to be calibrated for hard-wrapped prose where each visual line is a file line. Cross-repo applicability: `docs/standards/skill-authoring.md:71-72` (specify) and `docs/standards/coding-standards.md` (specify-cli) both ban hard-wrap, so this calibration should hold for any future tidy in either repo.
-- T7. **−8 LOC vs −9 predicted (89%)** | no done-when specified (review action says "Replace hand-rolled `Display for Status` with `strum::Display`"; verified hand-rolled `impl std::fmt::Display for Status` is gone via `grep -c 'impl std::fmt::Display for Status' crates/error/src/validation.rs` returning 0; new `strum::Display` derive present at `:4` with `#[strum(serialize_all = "kebab-case")]`) | no regressions: `cargo test -p specify-error` 3/3 (incl. `validation::tests::validation_payload_round_trips` which exercises the `Status` Display path via `Error::Validation`'s `format!` formatting), full-workspace nextest 825/825. Touched 2 files (3 insertions / 11 deletions): `crates/error/Cargo.toml` gained `strum.workspace = true` (+1); `crates/error/src/validation.rs` shed the 9-line `impl std::fmt::Display for Status` block with its 6-line match arms + the surrounding `fn fmt` frame (+2/-11 for the derive line + the strum-attribute line replacing the impl), net −9 in the source file. Cargo.lock gained 1 line for the new `strum` resolution; the +1 there is included in the −8 total (and is bookkeeping noise — `cargo` re-resolves the lock with or without me). The 11% undershoot vs −9 came from the `#[strum(serialize_all = "kebab-case")]` attribute requiring its own line above the enum (+1 LOC) on top of the `derive(strum::Display)` token added to the existing derive list (±0 LOC since the derive list already spans one line); the predicted −9 implicitly assumed `#[derive(... strum::Display)]` would absorb the kebab-case mapping inline, but `strum`'s kebab-case mode is an attribute, not a derive option. The 89% hit is the second-cleanest of the run after T9's 100%, and the predicted figure was tight enough that the +1 attribute-line cost is the entire delta. Calibration note for future findings tagged "replace a hand-rolled trait impl with a derive macro that requires a per-attribute mapping": predicted ΔLOC should add 1 LOC for any `#[<derive_name>(serialize_all = ...)]` / `#[strum(...)]` / `#[serde(...)]` tuning attribute the new derive needs above the type. Cross-repo applicability: `docs/standards/style.md:60-69` (specify-cli) cites this exact `Display for Status` shape as the canonical anti-example; the post-tidy `validation.rs` now matches the style.md GOOD pattern verbatim, so reviewers can grep `strum::Display` to find compliant call sites for future similar tidies.
-- T8. **−4 LOC vs −9 predicted (44%)** | no done-when specified (review action says "collapse the others to one-line references"; verified all three sites point at `DECISIONS.md §"Exit codes"` rather than re-stating the WASI passthrough rationale via `grep -c 'WASI passthrough\|WASI guest exit\|forwarded verbatim' AGENTS.md src/output.rs src/commands.rs` returning 0 across the three patched paragraphs, with the surviving prose containing only the canonical `DECISIONS.md` link) | no regressions: doc-only + comment-only edits in already-tested paths, full-workspace nextest 825/825. Touched 3 files (8 insertions / 12 deletions): `AGENTS.md:30` collapsed the standalone `Exit::Code(u8) is reserved for...` paragraph (1 LOC dense prose) into the trailing parenthetical of the existing `See DECISIONS.md` line (±0 net since the existing sentence absorbed the `Exit::Code` mention without growing); `src/output.rs:48-53` collapsed the 6-line doc-comment block on `Exit::Code(u8)` to 2 lines (the `## Errors` / `commands::tool::run, which forwards the guest's exit code...` paragraph reduced to "WASI tool exit-code passthrough; see [DECISIONS.md §"Exit codes"](../../DECISIONS.md#exit-codes)." for −4); `src/commands.rs:117-121` collapsed the 5-line doc-comment on `run_tool` to 5 lines (rewrote in place to point at DECISIONS.md, ±0 net — the `Result<()> channel` / `success branch carries` second half is unique to the function, kept; only the `is the only handler that mints a Exit::Code exit — the WASI guest's exit byte is forwarded verbatim` first sentence redirected, ±0 net). The 56% undershoot vs −9 is the **T3/T6 family** ("in-place sentence rewrites cost ~0 net LOC") plus a small genuine deletion in `src/output.rs`. The review priced the three sites at ~3 LOC each because they each carry ~3 LOC of WASI-passthrough prose; reality is one site (`src/output.rs`) has prose-block weight (4 LOC of redundant rationale that is genuinely deleted), two sites carry 1 LOC of in-place mention each (no prose to delete, just a reference target swap). Combined post-mortem with T3/T6: the "in-place rewrite ≈ 0 LOC" mechanism is now confirmed across 4 tidies (T3, T6, T8, plus F2 which named the pattern); future tidies tagged "collapse N references to canonical source" should price at `actual_prose_LOC − count(in_place_rewrites) × 0 LOC` and reject the naïve `count(sites) × per_site_estimate` heuristic.
-- T9. **−7 LOC vs −7 predicted (100%)** | both done-when assertions flipped cleanly (`grep -rn 'cfg_attr.*multiple_crate_versions' crates/tool/` returns 0; `cargo clippy -p specify-tool --all-features --all-targets -- -D warnings` clean) | no regressions: `cargo check -p specify-tool --all-features` clean (workspace `Cargo.toml:104` carries the canonical `multiple_crate_versions = "allow"` lint config so the cfg-gated waiver is provably dead). Touched 1 file (`crates/tool/src/lib.rs`, 0 insertions / 7 deletions); the 7-line `#![cfg_attr(any(feature = "host", feature = "oci"), allow(clippy::multiple_crate_versions, reason = "..."))]` block deleted wholesale, leaving only the surviving `#![allow(clippy::doc_markdown, ...)]` at the crate top. **Cleanest hit of the run** — the review priced this as a single-axis structural deletion against an existing canonical waiver, and that's exactly what landed: zero callers, zero side effects, single-file change. The F6 calibration note ("predicted ΔLOC should add 1 for the separator-blank-above the H2 if the deletion is at end-of-file or between two H2s") didn't apply because the deleted attribute block was directly preceded by the surviving `#![allow]` and directly followed by the `//!` module doc-comment, both of which need their own boundaries; net 0 separator drift. Operating note for future single-file-attribute-block deletions: when the deletion is bounded by other attribute blocks (rather than blank lines or H2s), the LOC delta is exactly the line count of the deleted block.
-- T10. **+3 LOC vs 0 predicted** | both done-when assertions flipped cleanly (`grep -nE '\b(250|60)\b' docs/standards/skill-authoring.md` returns 0 hits after the in-pass fix to the trailing `60-line ceiling` reference at `:42` that was missed in the initial pass; `make checks` green) | no regressions: doc + checks-script change, all `make checks` predicates pass including the newly-extended `checkSkillNumericCaps` `FILES` list. Touched 2 files (5 insertions / 2 deletions): `docs/standards/skill-authoring.md:31-34` dropped the fictional predicate names `(checkBodyLineCount)` and `(checkSectionLineCount)` (−2 from inline removal) and added one new sentence below the bullets explaining the actual single-walk predicate `checkBodyAndSectionLineCounts` (+2); also fixed a stale "60-line ceiling" reference at `:42` (the F1 post-mortem only fixed the top-level `200`/`45` numbers and missed the downstream prose mention) (+1/-1, ±0 net); `scripts/checks/prose.ts:212` added one row to the `FILES` array — `["docs/standards/skill-authoring.md", true, true]` (+1) — so the cap-sync predicate now polices the canonical policy doc. The +3 LOC overshoot vs predicted 0 came from two sources the review did not size: (a) the replacement sentence "Both caps are enforced in a single walk by `checkBodyAndSectionLineCounts` (see [scripts/checks/skill_body.ts](...))." is +1 LOC standalone (the old `(checkBodyLineCount)` + `(checkSectionLineCount)` parentheticals were inline at ±0 file-LOC each per the no-hard-wrap rule, so deleting them and adding a new one-LOC sentence is net +1 not 0); (b) the missed `60` at `:42` required an in-pass pinpoint fix that added 0 LOC but cost a verification round-trip (caught by the post-execution done-when grep, fixed in 1 edit, re-verified `make checks` green). Calibration note for future "fictional predicate name" tidies: the prediction model should price at +1 LOC for any "explanatory sentence replacing an inline parenthetical" because the parenthetical lives on the host bullet's line and the explanation typically wants its own paragraph below. Side-finding: this tidy revealed the F1 post-mortem's claim that it "fixed the 250→200 / 60→45 body-cap drift" was *partial* — it fixed only the headline numbers in `docs/standards/skill-authoring.md:31-34`, leaving the prose mention at `:42` and the fictional predicate names dangling; the F1 author should have grepped `\b(60|250|checkBodyLineCount|checkSectionLineCount)\b` against the entire file before claiming the drift was closed. The review's T10 done-when (`rg '\b(250|60)\b' docs/standards/skill-authoring.md` returns 0) caught the residual `:42` reference exactly as designed, validating the predicate as a defense-in-depth check beyond the F1 post-mortem's incomplete sweep. Cross-tidy bookkeeping: the `prose.ts` FILES list is now 5 entries (was 4 after F1's collateral removal of the two contributing/-side files); the F1 post-mortem's "−33% sync-check surface" claim becomes "−17% net" once T10's reverse-add is counted. Sync-check coverage now spans every file that authoritatively states the 200/512 caps.
+| Item | Predicted ΔLOC | Actual ΔLOC | "Done when" clean? | Regressions |
+|---|---|---|---|---|
+| S1 | −55 | −62 | Yes — `rg '\bMergeOp\b' crates/domain/src/merge/composition.rs` returns 0 hits | None — 43 composition/merge tests pass, clippy clean |
