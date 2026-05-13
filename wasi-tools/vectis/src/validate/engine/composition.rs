@@ -12,8 +12,8 @@ use super::assets::collect_asset_references;
 use super::paths::{discover_artifact, resolve_default_path};
 use super::run_inner;
 use super::shared::{composition_validator, escape_pointer_token, parse_yaml_file};
+use crate::validate::ValidateMode;
 use crate::validate::error::VectisError;
-use crate::validate::{CommandOutcome, ValidateMode};
 
 /// Validate `composition.yaml` as the lifecycle artifact.
 ///
@@ -49,7 +49,7 @@ use crate::validate::{CommandOutcome, ValidateMode};
 /// Returns [`VectisError::InvalidProject`] when the resolved file is
 /// unreadable, and [`VectisError::Internal`] if the embedded schema
 /// fails to compile.
-pub(super) fn validate(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
+pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
     let target = path.map_or_else(
         || resolve_default_path(ValidateMode::Composition),
         std::path::Path::to_path_buf,
@@ -147,7 +147,7 @@ pub(super) fn validate(path: Option<&Path>) -> Result<CommandOutcome, VectisErro
         map.insert("results".to_string(), Value::Array(results));
     }
 
-    Ok(CommandOutcome::Success(envelope))
+    Ok(envelope)
 }
 
 /// Walk a composition document and append an error for every token

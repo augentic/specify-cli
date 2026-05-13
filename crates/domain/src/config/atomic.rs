@@ -74,8 +74,8 @@ pub enum InitPolicy {
 /// body the closure produced.
 ///
 /// `with_state` does **not** itself emit; the caller writes
-/// `ctx.out().write(&body)?;`. This keeps response shaping local to
-/// each handler and the helper focused on the IO loop.
+/// `ctx.write(&body, write_text)?;`. This keeps response shaping local
+/// to each handler and the helper focused on the IO loop.
 ///
 /// # Panics
 ///

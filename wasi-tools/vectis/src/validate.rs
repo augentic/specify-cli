@@ -52,14 +52,6 @@ impl ValidateMode {
     }
 }
 
-/// Outcome returned by the validation engine.
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum CommandOutcome {
-    /// Handler completed normally with a JSON payload.
-    Success(Value),
-}
-
 /// Re-export the crate-wide error type at its historical path.
 ///
 /// External tests and the engine modules import
@@ -90,9 +82,9 @@ pub mod __test_internals {
 /// Render a validation outcome as pretty-printed JSON, without a trailing
 /// newline, and return the process exit code that should accompany it.
 #[must_use]
-pub fn render_json(outcome: Result<CommandOutcome, VectisError>) -> (String, u8) {
+pub fn render_json(outcome: Result<Value, VectisError>) -> (String, u8) {
     match outcome {
-        Ok(CommandOutcome::Success(value)) => {
+        Ok(value) => {
             let code = validate_exit_code(&value);
             (render_value(&value), code)
         }
@@ -133,12 +125,12 @@ mod tests {
 
     #[test]
     fn render_success_payload_carries_mode_and_exits_clean() {
-        let (json, code) = render_json(Ok(CommandOutcome::Success(json!({
+        let (json, code) = render_json(Ok(json!({
             "mode": "tokens",
             "path": "tokens.yaml",
             "errors": [],
             "warnings": [],
-        }))));
+        })));
 
         assert_eq!(code, 0);
         let value: Value = serde_json::from_str(&json).expect("json body");

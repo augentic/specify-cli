@@ -181,23 +181,11 @@ impl ToolError {
         }
     }
 
-    /// Build a cache I/O error. Retained as a named helper so call sites stay
-    /// readable; constructs the merged [`Self::Io`] variant.
-    pub(crate) fn cache_io(
-        action: &'static str, path: impl Into<PathBuf>, source: std::io::Error,
-    ) -> Self {
-        Self::Io {
-            action,
-            path: path.into(),
-            source,
-        }
-    }
-
-    /// Build a local-source I/O error. Mirrors `cache_io` for the
-    /// resolver's local-source path; both produce the merged [`Self::Io`]
+    /// Build a cache or local-source I/O error. The single named helper
+    /// keeps call sites readable across cache writes, resolver staging,
+    /// and local-source reads; all produce the merged [`Self::Io`]
     /// variant.
-    #[must_use]
-    pub fn source_io(
+    pub(crate) fn cache_io(
         action: &'static str, path: impl Into<PathBuf>, source: std::io::Error,
     ) -> Self {
         Self::Io {
@@ -253,39 +241,19 @@ impl ToolError {
 
 impl From<ToolError> for specify_error::Error {
     fn from(value: ToolError) -> Self {
-        match value {
-            ToolError::ToolNotDeclared { name } => Self::Diag {
-                code: "tool-not-declared",
-                detail: format!("tool not declared: {name}"),
-            },
-            ToolError::Runtime(detail) => Self::Diag {
-                code: "tool-runtime",
-                detail,
-            },
-            ToolError::HostNotBuilt => Self::Diag {
-                code: "tool-host-not-built",
-                detail: "this build of the `specify` CLI was compiled without the `host` \
-                         feature; rebuild with `--features host` (or use the default install) \
-                         to run WASI tools"
-                    .to_string(),
-            },
-            ToolError::PackageDisabled => Self::Diag {
-                code: "tool-package-source-disabled",
-                detail: "this build of the `specify` CLI was compiled without the `oci` \
-                         feature; rebuild with `--features oci` to resolve `package:` tool \
-                         sources"
-                    .to_string(),
-            },
-            err @ (ToolError::InvalidPermission { .. } | ToolError::PermissionDenied { .. }) => {
-                Self::Diag {
-                    code: "tool-permission-denied",
-                    detail: err.to_string(),
-                }
+        let code = match &value {
+            ToolError::ToolNotDeclared { .. } => "tool-not-declared",
+            ToolError::Runtime(_) => "tool-runtime",
+            ToolError::HostNotBuilt => "tool-host-not-built",
+            ToolError::PackageDisabled => "tool-package-source-disabled",
+            ToolError::InvalidPermission { .. } | ToolError::PermissionDenied { .. } => {
+                "tool-permission-denied"
             }
-            other => Self::Diag {
-                code: "tool-resolver",
-                detail: other.to_string(),
-            },
+            _ => "tool-resolver",
+        };
+        Self::Diag {
+            code,
+            detail: value.to_string(),
         }
     }
 }

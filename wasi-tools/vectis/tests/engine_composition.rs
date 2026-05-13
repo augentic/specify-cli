@@ -6,7 +6,7 @@ mod engine_support;
 
 use std::path::{Path, PathBuf};
 
-use engine_support::{errors_array, extract_envelope, warnings_array};
+use engine_support::{errors_array, warnings_array};
 use serde_json::Value;
 use specify_vectis::validate::error::VectisError;
 use specify_vectis::validate::{ValidateArgs as Args, ValidateMode, run};
@@ -42,7 +42,7 @@ fn run_composition(comp_path: &Path) -> Value {
         mode: ValidateMode::Composition,
         path: Some(comp_path.to_path_buf()),
     };
-    extract_envelope(run(&args).expect("run succeeds"))
+    run(&args).expect("run succeeds")
 }
 
 /// Acceptance baseline: a minimal valid composition with no sibling

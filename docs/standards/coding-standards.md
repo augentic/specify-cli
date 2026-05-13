@@ -84,7 +84,7 @@ The codebase optimises for short reading over short writing. Concretely:
 
 ## Format dispatch
 
-Handlers do **not** open-code `match ctx.format { Json, Text }`. There is one entry point — `ctx.out().write(&SomeBody::from(&result))` for success bodies, and `report(ctx.format, &err)` (which dispatches `ErrorBody` / `ValidationErrBody` to `Stream::Stderr`) for failures. `Stream::Stdout` / `Stream::Stderr` and the underlying `emit` function are private to `src/output.rs`; handlers never spell them. `emit_err` / `emit_response` / `emit_error` / `emit_json_error` have all been collapsed into this single surface. See [handler-shape.md](./handler-shape.md) for how `Ctx`, `Out`, and `Render` compose.
+Handlers do **not** open-code `match ctx.format { Json, Text }`. There is one entry point — `ctx.write(&body, write_text)?` for success bodies, and `report(ctx.format, &err)` (which dispatches `ErrorBody` to `Stream::Stderr`) for failures. `Stream::Stdout` / `Stream::Stderr` and the underlying `emit` function are private to `src/output.rs`; handlers never spell them. `emit_err` / `emit_response` / `emit_error` / `emit_json_error` have all been collapsed into this single surface. See [handler-shape.md](./handler-shape.md) for how `Ctx` and the free `output::write` compose.
 
 ```rust
 // BAD
@@ -94,16 +94,16 @@ match ctx.format {
 }
 
 // GOOD
-ctx.out().write(&SomeBody::from(&result))?;
+ctx.write(&SomeBody::from(&result), write_text)?;
 ```
 
-Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::capability::resolve`, `commands::capability::check` — receive a bare `Format` and reach for `Out::for_format(format).write(&Body)?;` instead.
+Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::capability::resolve`, `commands::capability::check` — receive a bare `Format` and call the free `output::write(format, &body, write_text)?;` instead.
 
-`Render::render_text(&self, w: &mut dyn Write)` carries the text-mode body; the JSON path goes through `serde::Serialize`. New code must not introduce `match … format`. See [`src/commands/codex.rs`](../../src/commands/codex.rs) for the canonical pattern.
+The `write_text` closure receives `(&mut dyn Write, &Body)` and renders the text-mode body; the JSON path goes through `serde::Serialize` automatically. New code must not introduce `match … format`. See [`src/commands/codex.rs`](../../src/commands/codex.rs) for the canonical pattern.
 
 ## One emit path
 
-Success bodies leave handlers via `ctx.out().write(&Body)?;` (or `Out::for_format(format).write(&Body)?;` for the rare `Ctx`-less verb). Failure envelopes leave handlers as `Err(Error::*)`; the dispatcher in `src/commands.rs` routes them through `output::report(format, &err)`. No handler emits its own `Stream::Stderr` envelope. If you need a bespoke failure shape, add an `Error` variant with a kebab-case discriminant; do not hand-roll a `*ErrBody` DTO. `Stream` and `emit` are private to `src/output.rs` and stay that way.
+Success bodies leave handlers via `ctx.write(&body, write_text)?;` (or the free `output::write(format, &body, write_text)?;` for the rare `Ctx`-less verb). Failure envelopes leave handlers as `Err(Error::*)`; the dispatcher in `src/commands.rs` routes them through `output::report(format, &err)`. No handler emits its own `Stream::Stderr` envelope. If you need a bespoke failure shape, add an `Error` variant with a kebab-case discriminant; do not hand-roll a `*ErrBody` DTO. `Stream` and `emit` are private to `src/output.rs` and stay that way.
 
 ## DTOs
 
@@ -113,13 +113,13 @@ Response DTOs (`*Body`, `*Row`) are **top-level** structs under `mod`. Declaring
 
 **Typed fields, not stringly-typed ones.** `pub status` / `pub kind` (and any other field whose domain has a finite enum) carry the underlying domain enum with `#[derive(Serialize)]` + `#[serde(rename_all = "kebab-case")]`. Drop `.to_string()` at construction sites; the wire shape is unchanged.
 
-**`PathBuf` for path fields, with `serialize_path`.** `*Body` fields that hold a filesystem path are `path: PathBuf`, serialised through `#[serde(serialize_with = "crate::output::serialize_path")]` (the helper falls back when `canonicalize` fails). Do not store `String` paths in DTOs.
+**`PathBuf` for path fields.** `*Body` fields that hold a filesystem path are `path: PathBuf`. Do not store `String` paths in DTOs; serde's default `PathBuf` serialization carries the bytes losslessly.
 
 **Field-type allowlist.** DTO fields use the strictest type the wire shape supports:
 
 | Domain | Type | Notes |
 |---|---|---|
-| Filesystem path | `PathBuf` + `serialize_path` | never `String` |
+| Filesystem path | `PathBuf` | never `String`; serde's default carries the path losslessly |
 | Status / kind / phase with finite domain | the underlying enum + `#[serde(rename_all = "kebab-case")]` | drop `.to_string()` at construction |
 | Stable kebab discriminant | `&'static str` | lives in the binary |
 | Timestamp written into JSON | `jiff::Timestamp` with `#[serde(with = "specify_error::serde_rfc3339")]` | serde owns the format |
@@ -151,14 +151,11 @@ impl Body {
 struct HandleBody {
     name: String,
     status: OutcomeStatus,
-    #[serde(serialize_with = "crate::output::serialize_path")]
     path: PathBuf,
 }
 
-impl Render for HandleBody {
-    fn render_text(&self, w: &mut dyn std::io::Write) -> std::io::Result<()> {
-        writeln!(w, "{}", self.name)
-    }
+fn write_text(w: &mut dyn std::io::Write, body: &HandleBody) -> std::io::Result<()> {
+    writeln!(w, "{}", body.name)
 }
 
 impl From<&Outcome> for HandleBody {
@@ -166,7 +163,7 @@ impl From<&Outcome> for HandleBody {
 }
 
 fn handle(ctx: &Ctx, outcome: &Outcome) -> Result<()> {
-    ctx.out().write(&HandleBody::from(outcome))?;
+    ctx.write(&HandleBody::from(outcome), write_text)?;
     Ok(())
 }
 ```

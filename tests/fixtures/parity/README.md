@@ -13,6 +13,4 @@ Each case directory contains a subset of:
 
 These are checked in so Rust unit tests can compare byte-for-byte without invoking any external tool. A change to one of the cases must land alongside the corresponding source edit in `specify_domain::merge` / `specify_validate` and a hand-crafted update to the `expected-*` file in the same commit.
 
-## Known parity quirks preserved from the historical Python reference
-
-- **case-10-design-refs:** The original `validate_baseline` compiled its requirement-ID pattern as `^REQ-[0-9]{3}$` **without** `re.MULTILINE`, so `ref_pattern.finditer(design_text)` never matched anything inside a multi-line design string. `expected-validation.txt` is therefore empty even though `design.md` contains `REQ-999` / `REQ-042` that are absent from `baseline.md`. The Rust port in `specify_domain::merge::validate_baseline` reproduces this (flagged as a parity quirk in a code comment). A *correct* orphan-reference check lives in `specify_validate` (rule `cross.design-references-valid`) — that one uses a proper multiline/un-anchored regex.
+The `case-10-design-refs` empty `expected-validation.txt` is a deliberate Python-era quirk (see the parity-quirk comment in `crates/domain/src/merge/validate.rs`); a correct orphan-reference check lives in `specify_validate` (rule `cross.design-references-valid`).

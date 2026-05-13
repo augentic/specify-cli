@@ -20,14 +20,14 @@ pub(super) fn read_local_path(path: &Path, source: &str) -> Result<Vec<u8>, Tool
         return Err(ToolError::invalid_source(source, "local source path must be absolute"));
     }
     let metadata = fs::metadata(path)
-        .map_err(|err| ToolError::source_io("inspect local source", path, err))?;
+        .map_err(|err| ToolError::cache_io("inspect local source", path, err))?;
     if !metadata.is_file() {
         return Err(ToolError::invalid_source(
             source,
             "local source path must resolve to a regular file",
         ));
     }
-    fs::read(path).map_err(|err| ToolError::source_io("read local source", path, err))
+    fs::read(path).map_err(|err| ToolError::cache_io("read local source", path, err))
 }
 
 #[cfg(test)]

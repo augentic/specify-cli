@@ -2,13 +2,6 @@
     clippy::doc_markdown,
     reason = "The crate-level decision record mirrors RFC prose and manifest keys."
 )]
-#![cfg_attr(
-    any(feature = "host", feature = "oci"),
-    allow(
-        clippy::multiple_crate_versions,
-        reason = "Wasmtime/WASI (`host`) and `wasm-pkg-client` (`oci`) each carry unavoidable duplicate transitive crates; the `--no-default-features` build (no `host`, no `oci`) is clean and drops the waiver."
-    )
-)]
 
 //! Specify's declared WASI tool model, cache, resolver, and
 //! Wasmtime-backed execution host. See `DECISIONS.md`

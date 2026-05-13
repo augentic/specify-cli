@@ -9,8 +9,8 @@ use serde_json::{Value, json};
 use super::composition::check_structural_identity;
 use super::paths::resolve_default_path;
 use super::shared::{composition_validator, escape_pointer_token};
+use crate::validate::ValidateMode;
 use crate::validate::error::VectisError;
-use crate::validate::{CommandOutcome, ValidateMode};
 
 /// Validate `layout.yaml` as the unwired subset of the patched
 /// composition schema.
@@ -43,7 +43,7 @@ use crate::validate::{CommandOutcome, ValidateMode};
 /// Returns [`VectisError::InvalidProject`] when the resolved file is
 /// unreadable, and [`VectisError::Internal`] if the embedded schema
 /// fails to compile.
-pub(super) fn validate(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
+pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
     let target = path
         .map_or_else(|| resolve_default_path(ValidateMode::Layout), std::path::Path::to_path_buf);
 
@@ -91,12 +91,12 @@ pub(super) fn validate(path: Option<&Path>) -> Result<CommandOutcome, VectisErro
         }
     }
 
-    Ok(CommandOutcome::Success(json!({
+    Ok(json!({
         "mode": ValidateMode::Layout.as_str(),
         "path": target.display().to_string(),
         "errors": errors,
         "warnings": warnings,
-    })))
+    }))
 }
 
 /// Walk a YAML sub-tree (typically the `screens` value) and append an

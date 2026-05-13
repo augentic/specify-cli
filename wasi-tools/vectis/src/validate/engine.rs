@@ -36,7 +36,7 @@ use serde_json::Value;
 pub use shared::{assets_validator, composition_validator, tokens_validator};
 
 use crate::validate::error::VectisError;
-use crate::validate::{CommandOutcome, ValidateArgs, ValidateMode};
+use crate::validate::{ValidateArgs, ValidateMode};
 
 /// Dispatch a `vectis validate` invocation to the per-mode handler.
 ///
@@ -51,7 +51,7 @@ use crate::validate::{CommandOutcome, ValidateArgs, ValidateMode};
 /// schema validation failures are *not* errors at this layer; they are
 /// folded into the `errors` array of the per-mode envelope so the
 /// operator sees the full report alongside any other findings.
-pub fn run(args: &ValidateArgs) -> Result<CommandOutcome, VectisError> {
+pub fn run(args: &ValidateArgs) -> Result<Value, VectisError> {
     match args.mode {
         ValidateMode::Tokens => tokens::validate(args.path.as_deref()),
         ValidateMode::Assets => assets::validate(args.path.as_deref()),
@@ -62,15 +62,12 @@ pub fn run(args: &ValidateArgs) -> Result<CommandOutcome, VectisError> {
 }
 
 /// Re-enter [`run`] for the auto-invoke path. Runs the named sub-mode
-/// against the supplied path and returns its envelope (the `Value`
-/// inside [`CommandOutcome::Success`]). Used by composition mode to
-/// fold sibling tokens / assets envelopes, and by `validate all` to
-/// dispatch each sub-mode in turn.
+/// against the supplied path and returns its envelope. Used by
+/// composition mode to fold sibling tokens / assets envelopes, and by
+/// `validate all` to dispatch each sub-mode in turn.
 pub(super) fn run_inner(mode: ValidateMode, path: &Path) -> Result<Value, VectisError> {
-    let inner_args = ValidateArgs {
+    run(&ValidateArgs {
         mode,
         path: Some(path.to_path_buf()),
-    };
-    let CommandOutcome::Success(value) = run(&inner_args)?;
-    Ok(value)
+    })
 }

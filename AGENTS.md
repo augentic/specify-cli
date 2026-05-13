@@ -27,7 +27,7 @@ Part of the CLI wire contract. `Exit::from(&Error)` in [`src/output.rs`](./src/o
 | 2 | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or an undeclared/over-permissioned tool request. |
 | 3 | `EXIT_VERSION_TOO_OLD` | `Error::CliTooOld` — `project.yaml.specify_version` is newer than the binary. |
 
-`Exit::Code(u8)` is reserved for `specify tool run` WASI passthrough; it is not for ad-hoc subcommand use. See [DECISIONS.md §"Exit codes"](./DECISIONS.md#exit-codes) for the long-form rationale.
+See [DECISIONS.md §"Exit codes"](./DECISIONS.md#exit-codes) for the long-form rationale (including `Exit::Code(u8)`'s WASI passthrough role).
 
 ## Documentation map
 

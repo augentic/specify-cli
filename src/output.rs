@@ -45,12 +45,8 @@ pub enum Exit {
     /// arguments; we mirror that for argument errors discovered after
     /// parsing (kebab-case checks, mutually exclusive payloads, etc.).
     ArgumentError,
-    /// WASI tool exit-code passthrough. The only legitimate caller is
-    /// `commands::tool::run`, which forwards the guest's exit code so
-    /// `specify tool run` is a transparent shim over the underlying
-    /// WASI binary. Other handlers MUST route through the typed
-    /// variants above so the four-slot exit-code contract
-    /// (0/1/2/3) stays auditable.
+    /// WASI tool exit-code passthrough; see
+    /// [DECISIONS.md §"Exit codes"](../../DECISIONS.md#exit-codes).
     Code(u8),
 }
 

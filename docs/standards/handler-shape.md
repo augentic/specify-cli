@@ -1,6 +1,6 @@
 # Handler shape
 
-The contract every CLI command handler obeys: how `Ctx` is constructed, how output flows through `Out`/`Render`/`emit`, which exit code a terminal `Error` maps to, and what the dispatcher between `clap` and the workspace crates is allowed to do.
+The contract every CLI command handler obeys: how `Ctx` is constructed, how output flows through `ctx.write` / `output::write` / `emit`, which exit code a terminal `Error` maps to, and what the dispatcher between `clap` and the workspace crates is allowed to do.
 
 ## Ctx construction
 
@@ -14,7 +14,7 @@ Command handlers default to `Result<()>` (success-path conversion happens at the
 // GOOD — default shape
 pub(crate) fn handle(ctx: &Ctx, args: &SomeArgs) -> Result<()> {
     let body = some_crate::do_work(ctx.layout(), args)?;
-    ctx.out().write(&SomeBody::from(&body))?;
+    ctx.write(&SomeBody::from(&body), write_text)?;
     Ok(())
 }
 
@@ -25,11 +25,11 @@ pub(crate) fn handle(ctx: &Ctx) -> Result<Exit, Error> { /* ... */ }
 
 A free `fn ... -> Result<Exit>` belongs in `src/commands.rs`. Elsewhere, default to `Result<()>` and let the dispatcher collapse the success path.
 
-## Out, Render, and emit
+## ctx.write, output::write, and emit
 
-Success bodies leave handlers via `ctx.out().write(&Body)?;`. `Out` chooses the JSON vs text path based on `Format`; the handler never sees the branch. `Render::render_text(&self, w: &mut dyn Write)` carries the text-mode body; the JSON path goes through `serde::Serialize`.
+Success bodies leave handlers via `ctx.write(&body, write_text)?;`. `Ctx::write` chooses the JSON vs text path based on `Format`; the handler never sees the branch. The `write_text` closure has signature `FnOnce(&mut dyn Write, &T) -> std::io::Result<()>` and is colocated with each handler so the response shape stays in a single block of code; the JSON path goes through `serde::Serialize` automatically.
 
-`Stream::Stdout` / `Stream::Stderr` and the underlying `emit` function are private to `src/output.rs`. Handlers never spell them. Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::capability::resolve`, `commands::capability::check` — receive a bare `Format` and reach for `Out::for_format(format).write(&Body)?;` instead.
+`Stream::Stdout` / `Stream::Stderr` and the underlying `emit` function are private to `src/output.rs`. Handlers never spell them. Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::capability::resolve`, `commands::capability::check` — receive a bare `Format` and call the free `output::write(format, &body, write_text)?;` instead.
 
 For the full DTO and dispatch rules see [coding-standards.md §"Format dispatch"](./coding-standards.md#format-dispatch), [§"One emit path"](./coding-standards.md#one-emit-path), and [§"DTOs"](./coding-standards.md#dtos). The canonical pattern is [`src/commands/codex.rs`](../../src/commands/codex.rs).
 
@@ -44,7 +44,7 @@ The four-slot CLI exit-code table is fixed:
 | 2 | `EXIT_VALIDATION_FAILED` | `Error::Validation`, undeclared/over-permissioned tool, `Error::Argument` |
 | 3 | `EXIT_VERSION_TOO_OLD` | `Error::CliTooOld` (`specify-version-too-old` in JSON) |
 
-`Exit::from(&Error)` in [`src/output.rs`](../../src/output.rs) is the single source of truth. Every dispatcher in `src/commands/*` routes its terminal error through `report`, which calls `Exit::from`. Do not invent new exit codes. `Exit::Code(u8)` is a WASI passthrough used by `specify tool run` to forward a WASI guest exit verbatim; it is not for ad-hoc subcommand use. The long-form decision lives in [DECISIONS.md §"Exit codes"](../../DECISIONS.md#exit-codes).
+`Exit::from(&Error)` in [`src/output.rs`](../../src/output.rs) is the single source of truth. Every dispatcher in `src/commands/*` routes its terminal error through `report`, which calls `Exit::from`. Do not invent new exit codes. The long-form decision (including `Exit::Code(u8)`'s WASI passthrough role) lives in [DECISIONS.md §"Exit codes"](../../DECISIONS.md#exit-codes).
 
 ## Dispatcher contract
 
@@ -57,7 +57,7 @@ Dispatchers live in `src/commands/<verb>.rs` and call back into the workspace cr
 1. Clap parses argv → `Commands` enum.
 2. `src/commands.rs` matches the variant and calls the dispatcher in `src/commands/<verb>.rs`.
 3. The dispatcher loads `ProjectConfig` (which enforces the `specify_version` floor for free) and any other state it needs.
-4. The dispatcher delegates the deterministic work to a workspace crate (`specify_slice`, `specify_change`, etc.) and converts the result to a `*Body` for `ctx.out().write(...)`.
+4. The dispatcher delegates the deterministic work to a workspace crate (`specify_slice`, `specify_change`, etc.) and converts the result to a `*Body` for `ctx.write(&body, write_text)`.
 
 Failure envelopes leave handlers as `Err(Error::*)`; the dispatcher in `src/commands.rs` routes them through `output::report(format, &err)`. No handler emits its own `Stream::Stderr` envelope.
 

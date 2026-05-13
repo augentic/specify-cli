@@ -22,12 +22,12 @@ pub use runtime::{plan_android, plan_core, plan_ios, validate_app_name, write_pl
 pub use templates::Capability;
 pub use versions::Versions;
 
-use crate::render_json as render_value;
 /// Compatibility alias for the unified crate-wide error type.
 ///
 /// Scaffold-side callers (and their tests) historically referred to
 /// `ScaffoldError`; the type itself now lives at the crate root.
 pub use crate::VectisError as ScaffoldError;
+use crate::render_json as render_value;
 
 /// Scaffold targets exposed under `vectis scaffold`.
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]

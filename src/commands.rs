@@ -114,11 +114,11 @@ where
     }
 }
 
-/// `tool run` is the only handler that mints a [`Exit::Code`]
-/// exit — the WASI guest's exit byte is forwarded verbatim so
-/// `specify tool run` is a transparent shim. Handled outside the
-/// `Result<()>` channel because the success branch carries the
-/// guest's exit code rather than collapsing to `Success`.
+/// `tool run` is the only handler that mints a [`Exit::Code`] exit;
+/// see [DECISIONS.md §"Exit codes"](../DECISIONS.md#exit-codes) for
+/// the rationale. Handled outside the `Result<()>` channel so the
+/// success branch can carry the guest's exit code rather than
+/// collapsing to `Success`.
 fn run_tool(format: Format, name: &str, args: Vec<String>) -> Exit {
     let ctx = match Ctx::load(format) {
         Ok(ctx) => ctx,

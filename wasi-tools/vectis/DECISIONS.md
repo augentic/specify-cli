@@ -203,9 +203,8 @@ composition mode reuses)._
 > only when a real sub-report carries errors.
 
 _Codified in: `crates/vectis/src/validate.rs` (the public
-`Args`, `ValidateMode`, `CommandOutcome`, `render_json`, and
-`validate_exit_code` surface) and `src/main.rs` (the binary entry
-point)._
+`Args`, `ValidateMode`, `render_json`, and `validate_exit_code`
+surface) and `src/main.rs` (the binary entry point)._
 
 ### Scaffold version-pin resolution
 

@@ -4498,6 +4498,7 @@ dependencies = [
  "jiff",
  "serde",
  "serde-saphyr",
+ "strum 0.28.0",
  "thiserror 2.0.18",
 ]
 

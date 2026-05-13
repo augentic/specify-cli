@@ -13,15 +13,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use serde_json::Value;
-use specify_vectis::validate::CommandOutcome;
 use tempfile::{NamedTempFile, TempDir};
-
-pub fn extract_envelope(outcome: CommandOutcome) -> Value {
-    match outcome {
-        CommandOutcome::Success(value) => value,
-        _ => panic!("unexpected non-success outcome"),
-    }
-}
 
 pub fn errors_array(envelope: &Value) -> &[Value] {
     envelope.get("errors").and_then(Value::as_array).expect("errors array").as_slice()

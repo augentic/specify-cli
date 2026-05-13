@@ -5,7 +5,7 @@ mod engine_support;
 
 use std::path::PathBuf;
 
-use engine_support::{errors_array, extract_envelope, warnings_array, write_named};
+use engine_support::{errors_array, warnings_array, write_named};
 use serde_json::Value;
 use specify_vectis::validate::__test_internals::{assets_validator, tokens_validator};
 use specify_vectis::validate::error::VectisError;
@@ -116,7 +116,7 @@ fn appendix_d_validates_cleanly() {
         mode: ValidateMode::Tokens,
         path: Some(file.path().to_path_buf()),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     assert_eq!(envelope["mode"], "tokens");
     assert!(errors_array(&envelope).is_empty(), "Appendix D unexpectedly errored: {envelope}");
     assert!(warnings_array(&envelope).is_empty(), "no warnings expected: {envelope}");
@@ -129,7 +129,7 @@ fn minimal_version_only_document_is_valid() {
         mode: ValidateMode::Tokens,
         path: Some(file.path().to_path_buf()),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     assert!(errors_array(&envelope).is_empty(), "{envelope}");
 }
 
@@ -141,7 +141,7 @@ fn broken_hex_reports_a_pathful_error() {
         mode: ValidateMode::Tokens,
         path: Some(file.path().to_path_buf()),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     let errors = errors_array(&envelope);
     assert!(!errors.is_empty(), "expected at least one error for invalid hex: {envelope}");
     let any_path_hits_primary_light = errors.iter().any(|e| {
@@ -161,7 +161,7 @@ fn unknown_provenance_kind_is_rejected() {
         mode: ValidateMode::Tokens,
         path: Some(file.path().to_path_buf()),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     // tokens.schema.json's provenance enum is the six values
     // (`manual, figma-variables, style-dictionary, tokens-studio,
     // dtcg, legacy`); `screenshots` is the composition-schema value
@@ -180,7 +180,7 @@ fn invalid_yaml_surfaces_as_a_single_error_entry() {
         mode: ValidateMode::Tokens,
         path: Some(file.path().to_path_buf()),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     let errors = errors_array(&envelope);
     assert_eq!(errors.len(), 1, "expected one YAML-parse error: {envelope}");
     assert!(
