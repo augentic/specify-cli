@@ -20,13 +20,12 @@ pub(super) fn progress(ctx: &Ctx, name: &str) -> Result<()> {
     let content = std::fs::read_to_string(&tasks_path)?;
     let progress = parse_tasks(&content);
 
-    let tasks: Vec<TaskRow> = progress.tasks.iter().map(TaskRow::from).collect();
     ctx.write(
         &ProgressBody {
             total: progress.total,
             complete: progress.complete,
             pending: progress.total.saturating_sub(progress.complete),
-            tasks,
+            tasks: progress.tasks,
         },
         write_progress_text,
     )?;
@@ -39,7 +38,7 @@ struct ProgressBody {
     total: usize,
     complete: usize,
     pending: usize,
-    tasks: Vec<TaskRow>,
+    tasks: Vec<Task>,
 }
 
 fn write_progress_text(w: &mut dyn Write, body: &ProgressBody) -> std::io::Result<()> {
@@ -49,38 +48,6 @@ fn write_progress_text(w: &mut dyn Write, body: &ProgressBody) -> std::io::Resul
         writeln!(w, "  [{}] {} {}", mark, task.number, task.description)?;
     }
     Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct TaskRow {
-    group: String,
-    number: String,
-    description: String,
-    complete: bool,
-    skill_directive: Option<DirectiveRow>,
-}
-
-impl From<&Task> for TaskRow {
-    fn from(t: &Task) -> Self {
-        Self {
-            group: t.group.clone(),
-            number: t.number.clone(),
-            description: t.description.clone(),
-            complete: t.complete,
-            skill_directive: t.skill_directive.as_ref().map(|d| DirectiveRow {
-                plugin: d.plugin.clone(),
-                skill: d.skill.clone(),
-            }),
-        }
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct DirectiveRow {
-    plugin: String,
-    skill: String,
 }
 
 pub(super) fn mark(ctx: &Ctx, name: &str, task_number: String) -> Result<()> {

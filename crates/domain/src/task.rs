@@ -8,7 +8,8 @@ use regex::Regex;
 use specify_error::Error;
 
 /// A single task entry parsed from `tasks.md`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct Task {
     /// The `##` heading text without the leading `## `, e.g. `"1. Setup"`.
     /// Empty string if the task appears before any `## ` heading.
@@ -24,7 +25,8 @@ pub struct Task {
 }
 
 /// A `<!-- skill: plugin:skill -->` directive attached to a task line.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct SkillDirective {
     /// Plugin name (e.g. `"omnia"`).
     pub plugin: String,
