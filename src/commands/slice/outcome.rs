@@ -40,7 +40,7 @@ pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction
         &PhaseStampBody {
             slice: name,
             phase: phase.to_string(),
-            outcome: outcome.discriminant().to_string(),
+            outcome: outcome.to_string(),
             at: stamped.at,
         },
         write_phase_stamp_text,
@@ -179,7 +179,7 @@ impl From<&specify_domain::slice::Outcome> for Row {
     fn from(o: &specify_domain::slice::Outcome) -> Self {
         Self {
             phase: o.phase.to_string(),
-            outcome: o.kind.discriminant().to_string(),
+            outcome: o.kind.to_string(),
             at: o.at,
             summary: o.summary.clone(),
             context: o.context.clone().map_or(Value::Null, Value::from),
