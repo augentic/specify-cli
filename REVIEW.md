@@ -387,3 +387,4 @@ The discovery model loads skills by slash command (`/spec:analyze`), not by file
 |---|---|---|---|---|
 | S1 | −55 | −62 | Yes — `rg '\bMergeOp\b' crates/domain/src/merge/composition.rs` returns 0 hits | None — 43 composition/merge tests pass, clippy clean |
 | S2 | −25 | −24 | Yes — `rg 'impl std::fmt::Display for FenceError' src/` returns 0 hits | None — full `cargo make ci` passes; added `thiserror.workspace = true` to root crate Cargo.toml (+1 line not predicted) |
+| S3 | −22 | −23 | Yes — `rg 'DiagnosticSeverity' crates/` returns 0 hits | None — full `cargo make ci` passes (627 tests, clippy, docs, fmt, vet, deny). Extra −1 from `PlanDoctorSeverity` re-export removal reformatting `change.rs` import block. Added `label()` method to `Severity` to preserve wire-layer call site in `src/commands/change/plan/doctor.rs`. |

@@ -3,9 +3,7 @@
 
 use std::path::Path;
 
-use super::{
-    CloneSignature, Diagnostic, DiagnosticPayload, DiagnosticSeverity, STALE_CLONE, StaleReason,
-};
+use super::{CloneSignature, Diagnostic, DiagnosticPayload, STALE_CLONE, Severity, StaleReason};
 use crate::registry::workspace::{SlotProblem, SlotProblemReason, slot_problem};
 use crate::registry::{Registry, RegistryProject};
 
@@ -47,7 +45,7 @@ fn diag(project: &RegistryProject, problem: &SlotProblem) -> Diagnostic {
         StaleReason::SlotMismatch
     };
     Diagnostic {
-        severity: DiagnosticSeverity::Warning,
+        severity: Severity::Warning,
         code: STALE_CLONE.to_string(),
         message: format!(
             "workspace slot '{}' is out of sync with `registry.yaml`: {}",

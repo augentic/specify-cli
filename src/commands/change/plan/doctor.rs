@@ -5,7 +5,7 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_domain::change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
+use specify_domain::change::{Plan, PlanDoctorDiagnostic, Severity, plan_doctor};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
@@ -63,7 +63,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         plan_doctor(&plan, Some(&slices_dir), registry.as_ref(), Some(&ctx.project_dir));
     if let Some(err) = registry_err {
         diagnostics.push(PlanDoctorDiagnostic {
-            severity: PlanDoctorSeverity::Error,
+            severity: Severity::Error,
             code: "registry-shape".to_string(),
             message: err.to_string(),
             entry: None,
@@ -71,7 +71,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         });
     }
 
-    let has_errors = diagnostics.iter().any(|d| matches!(d.severity, PlanDoctorSeverity::Error));
+    let has_errors = diagnostics.iter().any(|d| matches!(d.severity, Severity::Error));
     let rows: Vec<DiagnosticRow> = diagnostics.iter().map(diagnostic_row).collect();
 
     ctx.write(

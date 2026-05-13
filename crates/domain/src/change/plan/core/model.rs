@@ -177,13 +177,34 @@ pub struct EntryPatch {
 
 /// Severity of a validation finding produced by
 /// [`Plan::validate`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    strum::IntoStaticStr,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 pub enum Severity {
     /// Blocking problem — the plan is not usable as-is.
     Error,
     /// Non-blocking advisory — the plan is usable but something looks
     /// off (e.g. a source key is defined but unreferenced).
     Warning,
+}
+
+impl Severity {
+    /// Fixed wire string (`"error"` or `"warning"`).
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        self.into()
+    }
 }
 
 /// A single finding reported by [`Plan::validate`].

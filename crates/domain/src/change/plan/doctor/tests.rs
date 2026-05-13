@@ -151,7 +151,7 @@ fn doctor_orphan_source_one() {
         DiagnosticPayload::OrphanSource { key } => assert_eq!(key, "orphan"),
         other => panic!("wrong payload: {other:?}"),
     }
-    assert_eq!(hits[0].severity, DiagnosticSeverity::Warning);
+    assert_eq!(hits[0].severity, Severity::Warning);
 }
 
 #[test]
@@ -533,7 +533,7 @@ fn doctor_includes_validate_findings_unchanged() {
 #[test]
 fn diagnostic_serialises_kebab_case() {
     let diag = Diagnostic {
-        severity: DiagnosticSeverity::Warning,
+        severity: Severity::Warning,
         code: ORPHAN_SOURCE.to_string(),
         message: "test".into(),
         entry: None,

@@ -9,7 +9,7 @@ pub use finalize::summarise;
 pub use plan::core::{Entry, EntryPatch, Finding, Patch, Plan, Severity, Status};
 pub use plan::doctor::{
     BlockingPredecessor, CYCLE, CloneSignature, Diagnostic as PlanDoctorDiagnostic,
-    DiagnosticPayload as PlanDoctorPayload, DiagnosticSeverity as PlanDoctorSeverity,
-    ORPHAN_SOURCE, STALE_CLONE, StaleReason, UNREACHABLE, doctor as plan_doctor,
+    DiagnosticPayload as PlanDoctorPayload, ORPHAN_SOURCE, STALE_CLONE, StaleReason, UNREACHABLE,
+    doctor as plan_doctor,
 };
 pub use plan::lock::{Acquired, Released as PlanLockReleased, Stamp, State as PlanLockState};
