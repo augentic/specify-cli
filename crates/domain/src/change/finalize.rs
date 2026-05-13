@@ -165,11 +165,9 @@ pub struct Outcome {
     /// archive was refused.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub cleaned: Vec<String>,
-    /// Echo of the `--dry-run` flag. `Some(true)` only when the run
-    /// was a dry-run; serialised omitted otherwise so real-run output
-    /// stays minimal.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dry_run: Option<bool>,
+    /// Echo of the `--dry-run` flag; omitted from JSON when `false`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub dry_run: bool,
 }
 
 /// Inputs that don't fit the per-project loop.
@@ -263,7 +261,7 @@ pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refu
         archived: None,
         archived_plans_dir: None,
         cleaned: Vec::new(),
-        dry_run: inputs.dry_run.then_some(true),
+        dry_run: inputs.dry_run,
     };
 
     if any_refusing {

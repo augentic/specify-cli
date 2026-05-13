@@ -173,3 +173,9 @@ enum StatusBody {
 - **`change/plan/lifecycle.rs:61-64` `(registry, registry_err)` tuple** — the bespoke shape captures both Ok-Some and Err-Some so the validate flow can layer registry-shape findings into `results`. Restructuring to a flat `match` doesn't shave lines and risks reordering the `registry-shape` finding's emit position.
 - **Skill body cap drift** — top three skills are `omnia/skills/code-reviewer/SKILL.md` (185), `spec/skills/analyze/SKILL.md` (168), `spec/skills/extract/SKILL.md` (163). All under the 200-line cap; the prior pass already dropped this for the same reason and the situation hasn't changed.
 - **`Error::Diag { code: ..., detail: format!(...) }` repetition (~100 sites)** — collapsing into an `Error::diag(code, detail) -> Error` constructor would be a 100-call-site refactor with ~0 net LOC delta (each site already fits in 4-5 lines and the helper form saves only characters, not lines). The "extract function" rule requires deletion of duplicate code, not duplicate text patterns.
+
+---
+
+## Post-mortem
+
+- **S1**: predicted ≈−11 LOC, actual −6 LOC net (18 ins / 24 del across the four files); doc-comment trim was only −2 (vs implied −3) and the two `change.rs` reads were 1-line-for-1-line swaps. "Done when" rg pattern flipped clean (0 matches) and `cargo make ci` was green; no regression — the only on-the-wire pin (`tests/change_finalize.rs` asserting `value["dry-run"] == true`) still passes because `skip_serializing_if = "std::ops::Not::not"` produces the identical JSON shape.

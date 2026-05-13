@@ -639,7 +639,7 @@ fn dry_run_does_not_archive_or_clean() {
     };
     let outcome = run(inputs, &runner).expect("ok");
     assert!(outcome.finalized, "dry-run with all-passing must report finalized=true");
-    assert_eq!(outcome.dry_run, Some(true));
+    assert!(outcome.dry_run);
     assert!(outcome.archived.is_none(), "dry-run must not archive");
     assert!(outcome.cleaned.is_empty(), "dry-run must not clean");
     // On-disk state must be unchanged.
@@ -677,7 +677,7 @@ fn dry_run_with_unmerged_pr_reports_not_finalized() {
     let outcome = run(inputs, &runner).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Unmerged);
-    assert_eq!(outcome.dry_run, Some(true));
+    assert!(outcome.dry_run);
 }
 
 // ---- --clean ---------------------------------------------------------

@@ -135,9 +135,8 @@ pub fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
     ctx.write(
         &PushBody {
             plan_name: plan.name,
-            dry_run_flag: dry_run,
             projects: items,
-            dry_run: dry_run.then_some(true),
+            dry_run,
         },
         write_push_text,
     )?;
@@ -252,27 +251,24 @@ fn write_prepare_branch_text(
 struct PushBody {
     #[serde(skip)]
     plan_name: String,
-    #[serde(skip)]
-    dry_run_flag: bool,
     projects: Vec<PushItem>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    dry_run: Option<bool>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    dry_run: bool,
 }
 
 fn write_push_text(w: &mut dyn Write, body: &PushBody) -> std::io::Result<()> {
-    let prefix = if body.dry_run_flag { "[dry-run] " } else { "" };
+    let prefix = if body.dry_run { "[dry-run] " } else { "" };
     writeln!(w, "{prefix}specify: workspace push — {}", body.plan_name)?;
     writeln!(w)?;
     let mut counts = [0_usize; 6];
     for r in &body.projects {
         let raw = r.status.to_string();
-        let label = if body.dry_run_flag
-            && matches!(r.status, PushOutcome::Pushed | PushOutcome::Created)
-        {
-            format!("would-{raw}")
-        } else {
-            raw
-        };
+        let label =
+            if body.dry_run && matches!(r.status, PushOutcome::Pushed | PushOutcome::Created) {
+                format!("would-{raw}")
+            } else {
+                raw
+            };
         let pr = r.pr.map_or_else(String::new, |n| format!("PR #{n}"));
         writeln!(w, "  {:<20} {:<14} {} {}", r.name, label, r.branch.as_deref().unwrap_or(""), pr)?;
         counts[match r.status {
