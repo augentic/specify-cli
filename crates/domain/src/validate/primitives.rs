@@ -3,11 +3,36 @@
 //! apart from `specs_dir` reads in two helpers.
 
 use std::path::Path;
+use std::sync::OnceLock;
 
 use regex::Regex;
 
 use crate::spec::ParsedSpec;
 use crate::task::Progress;
+
+// ---------------------------------------------------------------------------
+// Compiled regexes (constructed once, on first use). Mirrors the pattern in
+// `crate::task` so the domain crate is uniformly OnceLock-backed for literal
+// patterns. The dynamic `ids_match_pattern` accessor stays inline because its
+// pattern is caller-supplied.
+// ---------------------------------------------------------------------------
+
+fn bullet_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^\s*-\s+\S").expect("bullet regex is valid"))
+}
+
+fn checkbox_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"^\s*-\s+\[( |x|X)\]\s+\d+(?:\.\d+)*\s+").expect("checkbox regex is valid")
+    })
+}
+
+fn req_id_ref_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"REQ-[0-9]{3}").expect("req id regex is valid"))
+}
 
 /// Return `true` when `heading` appears AND at least one non-empty,
 /// non-whitespace line follows it before the next `##`-or-higher heading.
@@ -93,11 +118,8 @@ pub(crate) fn all_tasks_use_checkbox(tasks: &Progress, content: &str) -> bool {
     if tasks.total != tasks.tasks.len() {
         return false;
     }
-    let bullet_re = Regex::new(r"^\s*-\s+\S").expect("bullet regex is valid");
-    let checkbox_re =
-        Regex::new(r"^\s*-\s+\[( |x|X)\]\s+\d+(?:\.\d+)*\s+").expect("checkbox regex is valid");
     for line in content.lines() {
-        if bullet_re.is_match(line) && !checkbox_re.is_match(line) {
+        if bullet_re().is_match(line) && !checkbox_re().is_match(line) {
             return false;
         }
     }
@@ -206,8 +228,8 @@ pub(crate) fn extract_ref(line: &str) -> Option<&str> {
 /// in at least one `specs/*/spec.md` under `specs_dir`. Returns `true` if
 /// no references are found.
 pub(crate) fn design_references_exist(design: &str, specs_dir: &Path) -> bool {
-    let re = Regex::new(r"REQ-[0-9]{3}").expect("req id regex is valid");
-    let mut refs: Vec<String> = re.find_iter(design).map(|m| m.as_str().to_string()).collect();
+    let mut refs: Vec<String> =
+        req_id_ref_re().find_iter(design).map(|m| m.as_str().to_string()).collect();
     refs.sort();
     refs.dedup();
     if refs.is_empty() {
