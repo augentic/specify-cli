@@ -281,8 +281,7 @@ fn archive_moves_dir_into_dated_path() {
     // Original is gone; archive dir has one dated subdirectory.
     assert!(!project.slices_dir().join("my-slice").exists());
     let archive = project.root().join(".specify/archive");
-    let entries: Vec<_> =
-        fs::read_dir(&archive).unwrap().filter_map(Result::ok).collect();
+    let entries: Vec<_> = fs::read_dir(&archive).unwrap().filter_map(Result::ok).collect();
     assert_eq!(entries.len(), 1);
     assert!(entries[0].file_name().to_string_lossy().ends_with("-my-slice"));
 }

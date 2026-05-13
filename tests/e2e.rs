@@ -144,10 +144,8 @@ fn merge_two_spec_slice_produces_baselines() {
 
     // Slice dir moved under archive/<YYYY-MM-DD>-my-slice/.
     let archive_root = project.root().join(".specify/archive");
-    let archived: Vec<_> = fs::read_dir(&archive_root)
-        .expect("read archive dir")
-        .filter_map(Result::ok)
-        .collect();
+    let archived: Vec<_> =
+        fs::read_dir(&archive_root).expect("read archive dir").filter_map(Result::ok).collect();
     assert_eq!(archived.len(), 1, "expected one archived slice");
     let archived_name = archived[0].file_name().to_string_lossy().into_owned();
     assert!(

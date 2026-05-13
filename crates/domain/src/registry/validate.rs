@@ -116,8 +116,7 @@ impl Registry {
         // same path in both `produces` and `consumes`.
         for project in &self.projects {
             if let Some(roles) = &project.contracts {
-                let produced: HashSet<&str> =
-                    roles.produces.iter().map(String::as_str).collect();
+                let produced: HashSet<&str> = roles.produces.iter().map(String::as_str).collect();
                 for path in &roles.consumes {
                     if produced.contains(path.as_str()) {
                         return Err(Error::Diag {
