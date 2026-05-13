@@ -54,7 +54,7 @@ pub struct ProjectConfig {
     /// together with `hub: true` is the discriminator.
     /// Defaults to `false`; serialised only when `true` so non-hub
     /// `project.yaml` files round-trip byte-stable.
-    #[serde(default, skip_serializing_if = "crate::serde_helpers::is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hub: bool,
 }
 
