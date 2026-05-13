@@ -78,8 +78,8 @@ impl WasiRunner {
     ///
     /// # Errors
     ///
-    /// Always returns [`ToolError::HostNotBuilt`].
-    pub const fn run(&self, _resolved: &ResolvedTool, _ctx: &RunContext) -> Result<i32, ToolError> {
-        Err(ToolError::HostNotBuilt)
+    /// Always returns the `tool-host-not-built` diagnostic.
+    pub fn run(&self, _resolved: &ResolvedTool, _ctx: &RunContext) -> Result<i32, ToolError> {
+        Err(ToolError::host_not_built())
     }
 }

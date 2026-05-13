@@ -73,7 +73,7 @@ pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredByte
     }
 
     let temp_parent = dest_hint.parent().ok_or_else(|| {
-        ToolError::CacheRoot(format!(
+        ToolError::cache_root(format!(
             "tool download destination has no parent: {}",
             dest_hint.display()
         ))

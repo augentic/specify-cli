@@ -49,10 +49,11 @@ pub enum Status {
 ///
 /// # Errors
 ///
-/// Returns `ToolError::CacheRoot` when an explicit `SPECIFY_TOOLS_CACHE` or
-/// `XDG_CACHE_HOME` override is set but empty or relative, when `HOME` is
-/// set but empty or relative, or when none of the three precedence variables
-/// is set and so no fallback root can be selected.
+/// Returns the `tool-cache-root` diagnostic when an explicit
+/// `SPECIFY_TOOLS_CACHE` or `XDG_CACHE_HOME` override is set but empty or
+/// relative, when `HOME` is set but empty or relative, or when none of
+/// the three precedence variables is set and so no fallback root can be
+/// selected.
 pub fn root() -> Result<PathBuf, ToolError> {
     if let Some(value) = env::var_os("SPECIFY_TOOLS_CACHE") {
         return env_path("SPECIFY_TOOLS_CACHE", value);
@@ -67,9 +68,8 @@ pub fn root() -> Result<PathBuf, ToolError> {
         return Ok(home.join(".cache").join("specify").join("tools"));
     }
 
-    Err(ToolError::CacheRoot(
-        "could not determine a cache directory from SPECIFY_TOOLS_CACHE, XDG_CACHE_HOME, or HOME"
-            .to_string(),
+    Err(ToolError::cache_root(
+        "could not determine a cache directory from SPECIFY_TOOLS_CACHE, XDG_CACHE_HOME, or HOME",
     ))
 }
 
@@ -97,10 +97,10 @@ pub fn scope_segment(scope: &ToolScope) -> Result<String, ToolError> {
 ///
 /// # Errors
 ///
-/// Returns `ToolError::CacheRoot` when no cache root can be selected from
-/// the environment, and `ToolError::InvalidCacheSegment` when `name`,
-/// `version`, or the scope's project/capability slug fails segment
-/// validation.
+/// Returns the `tool-cache-root` diagnostic when no cache root can be
+/// selected from the environment, and `ToolError::InvalidCacheSegment`
+/// when `name`, `version`, or the scope's project/capability slug fails
+/// segment validation.
 pub fn tool_dir(scope: &ToolScope, name: &str, version: &str) -> Result<PathBuf, ToolError> {
     validate_segment("tool name", name)?;
     validate_segment("tool version", version)?;
@@ -130,10 +130,10 @@ pub fn sidecar_path(scope: &ToolScope, name: &str, version: &str) -> Result<Path
 /// # Errors
 ///
 /// Forwards every error returned by [`module_path()`], [`sidecar_path`], and
-/// [`read_sidecar`] — the latter surfaces `ToolError::Io` and the
-/// `ToolError::Sidecar` parse/schema variants when an existing `meta.yaml`
-/// is unreadable or malformed (a missing sidecar is reported as
-/// [`Status::MissNotFound`] rather than as an error).
+/// [`read_sidecar`] — the latter surfaces the `tool-io` diagnostic and
+/// the `ToolError::Sidecar` parse/schema variants when an existing
+/// `meta.yaml` is unreadable or malformed (a missing sidecar is reported
+/// as [`Status::MissNotFound`] rather than as an error).
 pub fn status(
     scope: &ToolScope, tool_name: &str, tool_version: &str, source: &str, sha256: Option<&str>,
 ) -> Result<Status, ToolError> {
@@ -172,11 +172,11 @@ pub fn sidecar_status(
 
 fn env_path(name: &'static str, value: std::ffi::OsString) -> Result<PathBuf, ToolError> {
     if value.is_empty() {
-        return Err(ToolError::CacheRoot(format!("{name} is set but empty")));
+        return Err(ToolError::cache_root(format!("{name} is set but empty")));
     }
     let path = PathBuf::from(value);
     if !path.is_absolute() {
-        return Err(ToolError::CacheRoot(format!(
+        return Err(ToolError::cache_root(format!(
             "{name} must be an absolute path: {}",
             path.display()
         )));

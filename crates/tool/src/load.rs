@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::error::{ManifestKind, ToolError};
+use crate::error::ToolError;
 use crate::manifest::{Tool, ToolManifest, ToolScope};
 
 /// Warning emitted while combining declaration sites.
@@ -41,19 +41,11 @@ pub fn capability_sidecar(
     let text = match std::fs::read_to_string(&sidecar_path) {
         Ok(text) => text,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => {
-            return Err(ToolError::Manifest {
-                path: sidecar_path,
-                kind: ManifestKind::Read(err),
-            });
-        }
+        Err(err) => return Err(ToolError::manifest_read(sidecar_path, err)),
     };
 
-    let manifest: ToolManifest =
-        serde_saphyr::from_str(&text).map_err(|err| ToolError::Manifest {
-            path: sidecar_path.clone(),
-            kind: ManifestKind::Parse(Box::new(err.into())),
-        })?;
+    let manifest: ToolManifest = serde_saphyr::from_str(&text)
+        .map_err(|err| ToolError::manifest_parse(sidecar_path.clone(), Box::new(err.into())))?;
     let scope = ToolScope::Capability {
         capability_slug: capability_slug.to_string(),
         capability_dir: capability_dir.to_path_buf(),
@@ -127,8 +119,8 @@ mod tests {
         assert!(
             matches!(
                 err,
-                ToolError::Manifest {
-                    kind: crate::error::ManifestKind::Parse(_),
+                ToolError::Diag {
+                    code: "tool-manifest-parse",
                     ..
                 }
             ),

@@ -140,9 +140,9 @@ impl Sidecar {
 ///
 /// # Errors
 ///
-/// Returns `ToolError::Io` when the file exists but cannot be read,
-/// `ToolError::Sidecar { kind: SidecarKind::Parse, .. }` when the bytes are
-/// not valid YAML or do not deserialize into the v1 shape, and
+/// Returns the `tool-io` diagnostic when the file exists but cannot be
+/// read, `ToolError::Sidecar { kind: SidecarKind::Parse, .. }` when the
+/// bytes are not valid YAML or do not deserialize into the v1 shape, and
 /// `ToolError::Sidecar { kind: SidecarKind::Schema, .. }` when the parsed
 /// document violates a schema invariant (`schema-version != 1`, an empty
 /// required field, or a malformed `sha256` digest).
@@ -165,15 +165,16 @@ pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ToolError> {
 /// # Errors
 ///
 /// Returns `ToolError::Sidecar { kind: SidecarKind::Schema, .. }` when
-/// `sidecar` does not satisfy the v1 schema, `ToolError::CacheRoot` when
-/// `path` has no parent directory, `ToolError::Io` when the parent directory
-/// cannot be created, a unique temp path cannot be allocated, or the temp
-/// file cannot be written, and `ToolError::AtomicMoveFailed` when the final
-/// rename into place fails (a crash here leaves the destination untouched).
+/// `sidecar` does not satisfy the v1 schema, the `tool-cache-root`
+/// diagnostic when `path` has no parent directory, the `tool-io`
+/// diagnostic when the parent directory cannot be created, a unique temp
+/// path cannot be allocated, or the temp file cannot be written, and the
+/// `tool-atomic-move-failed` diagnostic when the final rename into place
+/// fails (a crash here leaves the destination untouched).
 pub fn write_sidecar(path: &Path, sidecar: &Sidecar) -> Result<(), ToolError> {
     validate_sidecar_schema(path, sidecar)?;
     let Some(parent) = path.parent() else {
-        return Err(ToolError::CacheRoot(format!(
+        return Err(ToolError::cache_root(format!(
             "sidecar path has no parent: {}",
             path.display()
         )));
@@ -192,10 +193,8 @@ pub fn write_sidecar(path: &Path, sidecar: &Sidecar) -> Result<(), ToolError> {
         .map_err(|err| ToolError::cache_io("create sidecar temp", parent, err))?;
     fs::write(tmp.path(), contents)
         .map_err(|err| ToolError::cache_io("write sidecar temp", tmp.path(), err))?;
-    tmp.persist(path).map(|_| ()).map_err(|err| ToolError::AtomicMoveFailed {
-        from: err.file.path().to_path_buf(),
-        to: path.to_path_buf(),
-        source: err.error,
+    tmp.persist(path).map(|_| ()).map_err(|err| {
+        ToolError::atomic_move_failed(err.file.path().to_path_buf(), path.to_path_buf(), err.error)
     })
 }
 

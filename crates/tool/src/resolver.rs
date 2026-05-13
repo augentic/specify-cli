@@ -68,7 +68,7 @@ pub fn resolve_with(
 
     let dest = cache::tool_dir(scope, &tool.name, &tool.version)?;
     let Some(parent) = dest.parent() else {
-        return Err(ToolError::CacheRoot(format!(
+        return Err(ToolError::cache_root(format!(
             "tool cache destination has no parent: {}",
             dest.display()
         )));
@@ -158,7 +158,7 @@ fn acquire_source_bytes(
 
 fn buffered_into_acquired(bytes: &[u8], dest_hint: &Path) -> Result<AcquiredBytes, ToolError> {
     let parent = dest_hint.parent().ok_or_else(|| {
-        ToolError::CacheRoot(format!(
+        ToolError::cache_root(format!(
             "tool staging destination has no parent: {}",
             dest_hint.display()
         ))
@@ -207,10 +207,12 @@ impl AcquiredBytes {
     }
 
     pub(crate) fn persist_to(self, dest: &Path) -> Result<(), ToolError> {
-        self.temp.persist(dest).map(|_| ()).map_err(|err| ToolError::AtomicMoveFailed {
-            from: err.file.path().to_path_buf(),
-            to: dest.to_path_buf(),
-            source: err.error,
+        self.temp.persist(dest).map(|_| ()).map_err(|err| {
+            ToolError::atomic_move_failed(
+                err.file.path().to_path_buf(),
+                dest.to_path_buf(),
+                err.error,
+            )
         })
     }
 }

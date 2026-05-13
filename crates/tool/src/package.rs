@@ -40,7 +40,8 @@ pub trait PackageClient {
     /// # Errors
     ///
     /// Returns package resolution, registry, stream, or cache staging errors.
-    /// Without the `oci` Cargo feature, returns [`ToolError::PackageDisabled`].
+    /// Without the `oci` Cargo feature, returns the
+    /// `tool-package-source-disabled` diagnostic.
     fn fetch(
         &self, request: &PackageRequest, dest_hint: &Path,
     ) -> Result<FetchedPackage, ToolError>;
@@ -51,7 +52,7 @@ pub trait PackageClient {
 /// With the `oci` Cargo feature, this is backed by `wasm-pkg-client` and a
 /// per-call current-thread Tokio runtime. Without the feature, the type still
 /// exists so [`crate::resolver`] dispatch compiles, but [`Self::fetch`]
-/// returns [`ToolError::PackageDisabled`].
+/// returns the `tool-package-source-disabled` diagnostic.
 #[derive(Debug, Default)]
 pub struct WasmPkgClient;
 
@@ -60,7 +61,7 @@ impl PackageClient for WasmPkgClient {
     fn fetch(
         &self, _request: &PackageRequest, _dest_hint: &Path,
     ) -> Result<FetchedPackage, ToolError> {
-        Err(ToolError::PackageDisabled)
+        Err(ToolError::package_disabled())
     }
 }
 
@@ -98,7 +99,7 @@ mod oci_backend {
         request: &PackageRequest, dest_hint: &Path,
     ) -> Result<FetchedPackage, ToolError> {
         let temp_parent = dest_hint.parent().ok_or_else(|| {
-            ToolError::CacheRoot(format!(
+            ToolError::cache_root(format!(
                 "tool package destination has no parent: {}",
                 dest_hint.display()
             ))
@@ -173,26 +174,27 @@ mod oci_backend {
     }
 
     async fn config_for(package: &PackageRef) -> Result<Config, ToolError> {
-        let mut config = Config::global_defaults().await.map_err(|err| ToolError::Package {
-            source_value: package.to_string(),
-            reason: format!("load wasm-pkg config: {err}"),
+        let mut config = Config::global_defaults().await.map_err(|err| {
+            ToolError::package_label(package.to_string(), format!("load wasm-pkg config: {err}"))
         })?;
         if let Some(path) = std::env::var_os("WKG_CONFIG") {
-            let override_config =
-                Config::from_file(&path).await.map_err(|err| ToolError::Package {
-                    source_value: package.to_string(),
-                    reason: format!("load WKG_CONFIG {}: {err}", Path::new(&path).display()),
-                })?;
+            let override_config = Config::from_file(&path).await.map_err(|err| {
+                ToolError::package_label(
+                    package.to_string(),
+                    format!("load WKG_CONFIG {}: {err}", Path::new(&path).display()),
+                )
+            })?;
             config.merge(override_config);
         }
         if package.namespace().to_string() == "specify"
             && config.namespace_registry(package.namespace()).is_none()
         {
-            let registry: Registry =
-                FIRST_PARTY_REGISTRY.parse().map_err(|err| ToolError::Package {
-                    source_value: package.to_string(),
-                    reason: format!("parse first-party registry default: {err}"),
-                })?;
+            let registry: Registry = FIRST_PARTY_REGISTRY.parse().map_err(|err| {
+                ToolError::package_label(
+                    package.to_string(),
+                    format!("parse first-party registry default: {err}"),
+                )
+            })?;
             config.set_namespace_registry(
                 package.namespace().clone(),
                 RegistryMapping::Registry(registry),
