@@ -1,870 +1,210 @@
-# Code & Skill Review — specify + specify-cli (rounds 3 + 4 merged)
+# Code & Skill Review — single pass, quality-biased
 
-## Summary
-
-1. **R7 — Collapse `ToolError`'s 19-variant enum** (deep-pass): ~−130 LOC; folds 12 typed variants whose only consumer is the `From<ToolError> for Error` stringifier into one `Diag { code, detail }` arm plus 7 destructured variants the tests actually match on. Same Diag-first policy that retired the 12 historical `Error::*` variants now applied to the tool crate.
-2. **R8 — Replace hand-rolled `Tool` / `ToolSource` serde with derives** (deep-pass): ~−90 LOC; deletes `ToolVisitor`, the manual `impl Serialize for Tool`, and `is_scalar_package_entry` in favour of `#[serde(untagged)]` + `#[serde(try_from = "String")]`.
-3. **R9 — Fold 11 `validate_*` helpers into one `check()`** (deep-pass): ~−70 LOC; per-rule wrappers in `crates/tool/src/validate.rs` collapse to a single helper invoked from the `vec![]` site, since the only variation is `(rule_id, rule, valid, detail)`.
-
-Total ΔLOC if all land: **−485 to −525** (structural) + **−80** (tidies). Primary non-LOC axes moved: **−12 `ToolError` variants + 3 sub-enums**, **−2 hand-written serde impls**, **−11 per-rule validate helpers**, **−6 wire-mirror types**, **−5 `From` impls**, **−3 `_label`/hand-roll fns**, **−2 single-call constructors**, **−1 duplicated stub-mirror module**. Most likely to break in remediation: **R7** — `ToolError` is a public type with ≈ 80 call sites across `crates/tool/`; the variant collapse rewrites every constructor site and the `From<ToolError> for Error` mapping. R2 remains the most semantically sensitive (`PathBuf` non-UTF-8 fail-loud vs the old fail-silent), but R7 is the biggest blast radius by file count.
+**Top three by LOC removed**: (1) collapse triple `for project in &self.projects` walks in `registry/validate.rs` (≈ −25 LOC, −2 branches); (2) inline the `Stream` enum + `writer_for` indirection in `src/output.rs` (≈ −14 LOC, −1 type, −1 branch); (3) delete the one-function `serde_helpers` module and use `std::ops::Not::not` (−11 LOC, −1 module edge). **If all land**: ≈ −70 LOC across `crates/domain/src/registry/validate.rs`, `src/output.rs`, `crates/domain/src/{serde_helpers.rs,config.rs,lib.rs}`, `crates/tool/src/manifest.rs`, `src/commands/tool/dto.rs`, and `src/commands/slice/merge.rs`, plus −4 types/branches and −1 file/module edge. **Primary non-LOC axes moved**: types, branches, module edges. **Most likely to break in remediation**: S1 (collapsed `validate_shape` loop) — the four invariants currently fast-fail in a documented order; reordering can change which `Error::Diag.code` operators see when a registry breaks multiple rules at once.
 
 ---
 
-## Reconnaissance
+## Structural findings
 
-```
-tokei (specify-cli):  42,863 Rust lines (down from round-2's 49,149); 273 → 273 files.
-tokei (specify):      59,280 Markdown; 210 Rust (WASI tooling only). Unchanged.
-cargo tree --duplicates: only wasmtime transitives (anyhow, bitflags, rustix). Unactionable.
-rg -c '^#\[test\]': 564 tests total (was 557).
-rg --files -g '**/mod.rs': 3 files, all under tests/common/ or wasi-tools/.
-wc -l docs/standards/*.md AGENTS.md: 573 total. Unchanged.
-files > 500 LOC under crates/ src/: capability.rs 1179 (tests), workspace.rs 1042 (tests),
-  finalize.rs 948 (tests), registry.rs 923 (tests), doctor/tests.rs 549, validate.rs 539.
-  All test fixtures.
-git log --oneline -20: 3 review rounds applied (F8-F10, S1-S5+tidies, S1-S9+tidies, "Review tidies").
-rg 'fn .*_label\(' src/ crates/ --type rust:
-  src/commands/tool/dto.rs:228:    cache_status_label
-  src/commands/compatibility.rs:80: classification_label
-  src/commands/slice/merge.rs:239:  operation_label   (formats with prefixes; not a kebab adapter)
-rg 'impl.*From<&\w+\W' src/ --type rust: 12 wire-mirror From impls remaining.
+### S1. Collapse triple `for project` walks in `validate_shape`
+
+- **Evidence**: `crates/domain/src/registry/validate.rs:97-152` runs `for project in &self.projects { if let Some(roles) = &project.contracts { ... } }` three times back-to-back for invariants 3 (path validity), 4 (self-consistency), 1 (single producer). The function carries `#[expect(clippy::too_many_lines, reason = "Single fast-fail validator: one block per shape rule keeps the policy table auditable.")]` at `:21-24` precisely because of this pattern. Current state:
+
+```98:152:crates/domain/src/registry/validate.rs
+        for project in &self.projects {
+            if let Some(roles) = &project.contracts {
+                for path in roles.produces.iter().chain(roles.consumes.iter()) {
+                    if path.starts_with('/') || path.contains("..") {
+// ... two more identical `for project / if let Some(roles)` blocks for invariants 4 and 1 follow ...
 ```
 
----
+`rg -c 'for project in &self.projects' crates/domain/src/registry/validate.rs` → `4` (one shape pass, three contract passes).
 
-## Structural Findings
+- **Action**: fold invariants 1/3/4 into the existing shape-validation loop at `:37`. Make `producers: HashMap<&str, &str>` a mutable accumulator declared above the loop; do path validity + produces/consumes self-consistency + single-producer registration in the same per-project block as the existing name/url/capability/description checks. Delete the three trailing loops and the `#[expect(clippy::too_many_lines, ...)]` attribute.
+- **Quality delta**: −≈25 LOC, −2 branches, −1 clippy `#[expect]` override.
+- **Net LOC**: 280 → ≈255 in `validate.rs`.
+- **Done when**: `rg -c 'for project in &self.projects' crates/domain/src/registry/validate.rs` → `1`, and `rg 'too_many_lines' crates/domain/src/registry/validate.rs` → no matches.
+- **Rule?**: No.
+- **Counter-argument**: "one block per rule is auditable" — loses because the four blocks share an identical loop header and `if let Some(roles)`; the auditability claim is undermined by the duplication itself. Documented diagnostic-code ordering must be preserved (see "most likely to break" above).
+- **Depends on**: none.
 
-### R1 — Collapse `CheckRow` mirror into `ValidationResult`
+### S2. Inline `Stream` enum + `writer_for` in `src/output.rs`
 
-**Evidence**: `src/commands/capability.rs:186-228` defines a 4-variant `CheckRow` enum tagged `status` with `Pass / Fail / Deferred / Unknown` plus a 29-line `From<&ValidationResult>` impl. The domain `ValidationResult` (`crates/domain/src/capability/capability.rs:47-75`) already has the same 3 named variants in identical field order; it is `#[non_exhaustive]` but lacks `Serialize`. Per-variant fields:
+- **Evidence**: `src/output.rs:15-19` declares `enum Stream { Stdout, Stderr }`. `:124-129` is the only consumer:
 
+```122:129:src/output.rs
+/// Return a locked stdout/stderr writer for `stream`. Boxed to keep
+/// the JSON and text emitter signatures uniform across both sinks.
+fn writer_for(stream: Stream) -> Box<dyn Write> {
+    match stream {
+        Stream::Stdout => Box::new(std::io::stdout().lock()),
+        Stream::Stderr => Box::new(std::io::stderr().lock()),
+    }
+}
 ```
-ValidationResult::Pass     { rule_id: Cow<'static, str>, rule: Cow<'static, str> }
-ValidationResult::Fail     { rule_id, rule, detail: String }
-ValidationResult::Deferred { rule_id, rule, reason: &'static str }
+
+`rg 'Stream::' src/ -t rust` shows the enum is only ever passed at two literal sites: `write()` always passes `Stream::Stdout` (`:34`), `report()` always passes `Stream::Stderr` (`:114`). No third caller.
+
+- **Action**: drop `enum Stream` and `fn writer_for`. Change `emit` to take `mut writer: Box<dyn Write>` (or `&mut dyn Write`) as its first parameter. `write()` passes `Box::new(std::io::stdout().lock())`; `report()` passes `Box::new(std::io::stderr().lock())`. Update doc references to `Stream::Stderr` in the module-level docs to `std::io::stderr()`.
+- **Quality delta**: −≈14 LOC, −1 type, −1 branch, −1 helper fn.
+- **Net LOC**: 199 → ≈185.
+- **Done when**: `rg -c 'enum Stream' src/output.rs` → `0`, and `rg -c 'fn writer_for' src/output.rs` → `0`.
+- **Rule?**: No.
+- **Counter-argument**: "the enum documents stdout-vs-stderr intent" — loses because the parameter type is the same `Box<dyn Write>` either way, and the two call sites already name `stdout()`/`stderr()` literally; ripgrep, jj, and cargo all dispatch this way without a `Stream` enum.
+- **Depends on**: none.
+
+### S3. Delete `serde_helpers` — replace `is_false` with `std::ops::Not::not`
+
+- **Evidence**: `crates/domain/src/serde_helpers.rs` is 9 lines for one predicate. `rg 'is_false' src/ crates/ -t rust` returns exactly two matches: the definition and the single call site at `crates/domain/src/config.rs:57`:
+
+```56:58:crates/domain/src/config.rs
+    #[serde(default, skip_serializing_if = "crate::serde_helpers::is_false")]
+    pub hub: bool,
 ```
 
-Current state confirmed:
+- **Action**: delete `crates/domain/src/serde_helpers.rs`; remove `pub mod serde_helpers;` from `crates/domain/src/lib.rs:12`; change the `skip_serializing_if` value to `"std::ops::Not::not"`.
+- **Quality delta**: −10 LOC across the crate, −1 file, −1 module edge in `lib.rs`, −1 cross-module `use`.
+- **Net LOC**: `serde_helpers.rs` (9) + `lib.rs` (1) + `config.rs` (0) → 0.
+- **Done when**: `rg --files crates/domain/src | rg serde_helpers` → no matches; `rg 'is_false' src/ crates/ -t rust` → no matches.
+- **Rule?**: No.
+- **Counter-argument**: "named predicate documents intent" — loses because the field is `hub: bool` and `skip_serializing_if = "std::ops::Not::not"` is the documented serde idiom (serde docs reference this exact form for boolean fields).
+- **Depends on**: none.
 
-```
-$ rg -nc 'CheckRow' src/commands/capability.rs
-6
-$ rg -n 'pub enum ValidationResult' crates/domain/src/capability.rs
-49:pub enum ValidationResult {
-$ rg -n 'derive.*Serialize' crates/domain/src/capability.rs | head -3
-(no match before the enum — confirms missing derive)
-```
+### S4. Replace `ToolScopeKind` mirror with `strum::EnumDiscriminants` on `ToolScope`
 
-**Action**:
+- **Evidence**: `src/commands/tool/dto.rs:46-54` hand-rolls a serializable mirror of the `ToolScope` discriminant from `crates/tool/src/manifest.rs:225-239`:
 
-1. In `crates/domain/src/capability.rs`, change the `ValidationResult` derive list to add `serde::Serialize` and the attributes `#[serde(tag = "status", rename_all = "kebab-case")]`. Wire keys per variant become `{"status":"pass","rule-id":...,"rule":...}` etc. — byte-identical to today's `CheckRow` JSON.
-2. In `src/commands/capability.rs`, delete the `CheckRow` enum (lines 186-198) and its `From<&ValidationResult>` impl (lines 200-228). Change `CheckBody.results: Vec<CheckRow>` to `&'a [ValidationResult]` (or keep `Vec<...>` if lifetime ergonomics demand it; both compile).
-3. In `check()` at line 156, replace `results.iter().map(CheckRow::from).collect()` with passing the borrowed slice through.
-4. In `write_check_text` at line 138, replace `if let CheckRow::Fail { rule_id, detail, .. }` with `if let ValidationResult::Fail { rule_id, detail, .. }` and use `rule_id.as_ref()` since `rule_id` is now `Cow<'static, str>` not `String`.
-
-Before:
-```rust
-#[derive(Serialize)]
+```46:54:src/commands/tool/dto.rs
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, serde::Deserialize, strum::Display,
+)]
 #[serde(rename_all = "kebab-case")]
-#[serde(tag = "status")]
-enum CheckRow {
-    #[serde(rename = "pass")]    Pass { rule_id: String, rule: String },
-    #[serde(rename = "fail")]    Fail { rule_id: String, rule: String, detail: String },
-    #[serde(rename = "deferred")] Deferred { rule_id: String, rule: String, reason: String },
-    #[serde(rename = "unknown")] Unknown,
+#[strum(serialize_all = "kebab-case")]
+pub(super) enum ToolScopeKind {
+    Project,
+    Capability,
 }
-impl From<&ValidationResult> for CheckRow { /* 28 lines */ }
 ```
 
-After: gone; `ValidationResult` itself carries `#[derive(Serialize)] #[serde(tag = "status", rename_all = "kebab-case")]`.
+The mirror exists because `ToolScope::Capability` carries a non-serialisable `PathBuf` (`crates/tool/src/manifest.rs:237`). The only producer is `scope_labels` at `src/commands/tool/dto.rs:223-230`, which already does the `ToolScope → ToolScopeKind` projection by hand:
 
-**Quality delta**: −38 LOC, −1 type, −1 `From` impl, −4 `Cow → String` round-trip allocations, −1 Unknown placeholder branch (the `_ =>` arm is moot once the wire writer talks to the `#[non_exhaustive]` enum directly — no reachable variant exists today).
-
-**Net LOC**: `capability.rs` 229 → ~191; `crates/domain/src/capability.rs` 76 → 79.
-
-**Done when**: `rg 'CheckRow' src/` returns zero matches.
-
-**Rule?**: No.
-
-**Counter-argument**: "Domain types with `Serialize` couple wire shape to internal representation." Loses on the same precedent as round-2 S7 (`PlanDoctorDiagnostic`) and S8 (`Finding`): the wire shape *is* the serialised domain shape, and round-2 already crossed this line repeatedly without regression.
-
-**Depends on**: none.
-
----
-
-### R2 — Collapse `SlotRow` mirror into `SlotStatus`
-
-**Evidence**: `src/commands/workspace.rs:203-242` defines a 13-field `SlotRow` plus a 22-line `From<&SlotStatus>` impl. `SlotStatus` (`crates/domain/src/registry/workspace/status.rs:14-47`) is the *exact* same 13-field shape; the only conversions in the `From` impl are `PathBuf::display().to_string()` calls. `SlotStatus` derives nothing wire-shaped today — only `Debug, Clone, PartialEq, Eq` — so adding `Serialize + rename_all = "kebab-case"` is the entire change.
-
-`PathBuf` serialises through `serde_json` as a UTF-8 string today (the same wire shape `display().to_string()` produces on UTF-8-clean paths), so the wire is byte-identical for any path the tool can render.
-
-Current state confirmed:
-
-```
-$ rg -n 'SlotRow|impl From<&SlotStatus>' src/commands/workspace.rs
-58:                status_projects(&ctx.project_dir, &selected).iter().map(SlotRow::from).collect();
-187:    Absent { registry: Option<Registry>, slots: Option<Vec<SlotRow>> },
-188:    Present { slots: Vec<SlotRow> },
-205:struct SlotRow {
-221:impl From<&SlotStatus> for SlotRow {
-$ rg -n 'derive.*Serialize' crates/domain/src/registry/workspace/status.rs
-(only ConfiguredTargetKind & SlotKind — confirms missing on SlotStatus)
-```
-
-**Action**:
-
-1. In `crates/domain/src/registry/workspace/status.rs`, add `serde::Serialize` to the `SlotStatus` derive list and `#[serde(rename_all = "kebab-case")]`.
-2. In `src/commands/workspace.rs`, delete `SlotRow` (lines 203-219) and the `From<&SlotStatus> for SlotRow` impl (lines 221-242).
-3. Move the `render_line` method from `SlotRow` to a free function `fn render_slot_line(w: &mut dyn Write, slot: &SlotStatus) -> std::io::Result<()>` (or replace the method on `SlotStatus` if domain extension is acceptable). Update `slot_path: String` references to `slot.slot_path.display()` and `actual_symlink_target.as_deref().unwrap_or("-")` to `actual_symlink_target.as_ref().map_or("-".to_string(), |p| p.display().to_string())` (or use `.as_deref().map(Path::display)` ergonomics).
-4. Change `StatusBody` variants to hold `Vec<SlotStatus>` instead of `Vec<SlotRow>`; the call site at line 58 becomes `status_projects(&ctx.project_dir, &selected)` (drop the `.iter().map(...).collect()`).
-
-Before (workspace.rs:203-242):
-```rust
-struct SlotRow { /* 13 fields */ }
-impl From<&SlotStatus> for SlotRow { /* 22-line .clone() salad */ }
-```
-
-After: deleted; `SlotStatus` itself is `Serialize` and is passed straight through.
-
-**Quality delta**: −34 LOC, −1 type, −1 `From` impl, −13 `clone()` calls per row, +1 module edge eliminated (`SlotRow` → `SlotStatus` re-export), hand-rolled → derived.
-
-**Net LOC**: `workspace.rs` 354 → ~320; `status.rs` 219 → 221.
-
-**Done when**: `rg 'SlotRow' src/` returns zero matches.
-
-**Rule?**: No.
-
-**Counter-argument**: "`PathBuf` serialisation can fail on non-UTF-8 paths whereas `.display().to_string()` is lossy-tolerant." Pre-1.0, and the slot paths come from `workspace_base().join(&project.name)` where `project.name` is already kebab-validated and `workspace_base` is derived from `project_dir` — non-UTF-8 components are exactly the kind of corner case the user can fix by renaming the slot. Failure mode changes from silent corruption to loud error, which is the better failure mode.
-
-**Depends on**: none.
-
----
-
-### R3 — Collapse `TaskRow` + `DirectiveRow` into `Task` + `SkillDirective`
-
-**Evidence**: `src/commands/slice/task.rs:54-84` defines `TaskRow` (5 fields), `DirectiveRow` (2 fields), and a 14-line `From<&Task>` impl. The domain types `Task` and `SkillDirective` (`crates/domain/src/task.rs:12-33`) have byte-identical wire shapes but lack `Serialize`. Field types are owned `String`/`bool` already — no `Cow` or `Path` round-trips needed.
-
-Current state confirmed:
-
-```
-$ rg -n 'derive.*Serialize' crates/domain/src/task.rs
-(no match — confirms missing on both Task and SkillDirective)
-$ rg -n 'TaskRow|DirectiveRow' src/commands/slice/task.rs
-23:    let tasks: Vec<TaskRow> = progress.tasks.iter().map(TaskRow::from).collect();
-42:    tasks: Vec<TaskRow>,
-56:struct TaskRow {
-61:    skill_directive: Option<DirectiveRow>,
-64:impl From<&Task> for TaskRow {
-71:            skill_directive: t.skill_directive.as_ref().map(|d| DirectiveRow {
-81:struct DirectiveRow {
-```
-
-**Action**:
-
-1. In `crates/domain/src/task.rs:11`, change the derive line on `Task` to include `serde::Serialize` and add `#[serde(rename_all = "kebab-case")]`.
-2. Same for `SkillDirective` at line 27.
-3. In `src/commands/slice/task.rs`, delete `TaskRow` (lines 54-77) and `DirectiveRow` (lines 79-84). Change `ProgressBody.tasks: Vec<TaskRow>` → `&'a [Task]` (or keep `Vec<Task>` cloned if lifetime ergonomics complain). Drop the `.iter().map(TaskRow::from).collect()` line at 23.
-4. `write_progress_text` at line 45 reads `task.complete`, `task.number`, `task.description` — same field names on `Task` — no change.
-
-**Quality delta**: −24 LOC, −2 types, −1 `From` impl, −7 field clones per task per render.
-
-**Net LOC**: `task.rs` 175 → ~152; `crates/domain/src/task.rs` ~340 → ~342.
-
-**Done when**: `rg 'TaskRow|DirectiveRow' src/` returns zero matches.
-
-**Rule?**: No.
-
-**Counter-argument**: "Same coupling concern as R1." Same precedent, same dismissal — and `Task` is the most direct domain analogue in the codebase to the wire row.
-
-**Depends on**: none.
-
----
-
-### R4 — Drop manual `Serialize for StatusEntry`
-
-**Evidence**: `src/commands/slice/list.rs:42-54` is a hand-written `Serialize` impl that builds an `EntryJson<'a>` (lines 27-33) just to convert `tasks: Option<(usize, usize)>` into a named-field `TaskCounts`. The `EntryJson` mirror struct + the manual impl are the entire ceremony. Other than the tuple unpack, every field is a direct projection of the same name.
-
-Current state confirmed:
-
-```
-$ rg -n 'EntryJson|impl Serialize for StatusEntry' src/commands/slice/list.rs
-27:struct EntryJson<'a> {
-42:impl Serialize for StatusEntry {
-45:        EntryJson {
-$ rg -n 'e\.tasks' src/commands/
-src/commands/slice/list.rs:163: match e.tasks {
-src/commands/slice/list.rs:189: let tasks = match e.tasks {
-src/commands/status.rs:160:     let tasks = match e.tasks {
-```
-
-**Action**:
-
-1. In `src/commands/slice/list.rs`, change `StatusEntry.tasks: Option<(usize, usize)>` to `Option<TaskCounts>`. Promote `TaskCounts` from `pub(self)` to `pub(in crate::commands)` (1-line visibility change so `status.rs` can see it).
-2. Add `#[derive(Serialize)] #[serde(rename_all = "kebab-case")]` to `StatusEntry`.
-3. Delete the manual `impl Serialize for StatusEntry` (lines 42-54) and the `EntryJson<'a>` struct (lines 26-33).
-4. At the constructor in `collect_status` (line 65-80), replace `Some((progress.complete, progress.total))` with `Some(TaskCounts { complete: progress.complete, total: progress.total })`.
-5. Update the three `match e.tasks { Some((complete, total)) => ... }` sites (list.rs:163, list.rs:189, status.rs:160) to `match &e.tasks { Some(tc) => ... format!("{}/{}", tc.complete, tc.total) }`. Each delta: 0–1 LOC.
-
-Before:
-```rust
-struct EntryJson<'a> { /* 7 fields */ }
-#[derive(Serialize, Copy, Clone)]
-struct TaskCounts { total: usize, complete: usize }
-impl Serialize for StatusEntry {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let tasks = self.tasks.map(|(complete, total)| TaskCounts { total, complete });
-        EntryJson { name: &self.name, status: self.status, /* ... */ }.serialize(serializer)
+```223:230:src/commands/tool/dto.rs
+pub(super) fn scope_labels(scope: &ToolScope) -> (ToolScopeKind, String) {
+    match scope {
+        ToolScope::Project { project_name } => (ToolScopeKind::Project, project_name.clone()),
+        ToolScope::Capability { capability_slug, .. } => {
+            (ToolScopeKind::Capability, capability_slug.clone())
+        }
     }
 }
 ```
 
-After: `StatusEntry` derives `Serialize` directly; `TaskCounts` becomes the field type; `EntryJson` and the manual impl are gone.
+`strum` is already a dependency of `crates/tool` (`crates/tool/Cargo.toml:37`) with the `derive` feature pulled in via the workspace declaration (`Cargo.toml:190`). `EnumDiscriminants` is the documented strum mechanism for exactly this case.
 
-**Quality delta**: −20 LOC, −1 mirror struct, −1 manual `Serialize` impl, −1 named-tuple round-trip per row, hand-rolled → derived.
+- **Action**: derive `strum::EnumDiscriminants` on `ToolScope` in `crates/tool/src/manifest.rs:225`, naming the discriminant `ToolScopeKind` and forwarding the same derives the hand-rolled enum carries:
 
-**Net LOC**: `list.rs` 205 → ~187 (status.rs: ±0).
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, Hash, strum::EnumDiscriminants)]
+#[strum_discriminants(
+    name(ToolScopeKind),
+    derive(Hash, serde::Serialize, serde::Deserialize, strum::Display),
+    serde(rename_all = "kebab-case"),
+    strum(serialize_all = "kebab-case"),
+)]
+pub enum ToolScope { ... }
+```
 
-**Done when**: `rg 'EntryJson|impl Serialize for StatusEntry' src/` returns zero matches.
+Re-export `ToolScopeKind` from `specify_tool` (alongside `ToolScope`). Delete the hand-rolled enum at `src/commands/tool/dto.rs:46-54` and switch the import to `use specify_tool::{Tool, ToolPermissions, ToolScope, ToolScopeKind};`. `scope_labels` keeps its current shape — `ToolScopeKind::from(scope)` is provided by the derive but the explicit `match` is fine to retain since it also extracts `scope_detail`.
 
-**Rule?**: No.
-
-**Counter-argument**: "The tuple form is more compact at construction sites." Loses by inspection — the constructor gains exactly one identifier (`TaskCounts { complete: ..., total: ... }` vs `(complete, total)`) while the wire mapping ceremony disappears entirely.
-
-**Depends on**: none.
+- **Quality delta**: −≈9 LOC, −1 type definition, −1 cross-crate duplication; no new dependency.
+- **Net LOC**: `dto.rs` 246 → ≈237; `manifest.rs` 322 → ≈329 (one derive block added). Cross-crate net ≈ −2 LOC, but the structural win is the eliminated mirror.
+- **Done when**: `rg -c 'enum ToolScopeKind' src/ crates/` → `0`; `rg 'ToolScopeKind' src/ crates/ -t rust` shows only uses (no definition); `cargo make lint` and `cargo test --workspace` clean.
+- **Rule?**: No.
+- **Counter-argument**: "the mirror keeps `ToolScopeKind` private to the CLI crate; deriving in `specify_tool` widens the public surface." — loses because (a) `ToolScope` itself is already `pub` in `specify_tool`, so the discriminant is a strictly smaller addition, and (b) the derive replaces a hand-maintained enum that has to be updated in lockstep with `ToolScope` variants — the kind of duplication this pass exists to delete.
+- **Depends on**: none.
 
 ---
 
-### R5 — Collapse `SpecRow` mirror into `TouchedSpec`
+## One-touch tidies
 
-**Evidence**: `src/commands/slice/touched.rs:67-81`. `SpecRow { name, r#type: String }` + `From<&TouchedSpec>` impl (lines 74-81). `TouchedSpec` (`crates/domain/src/slice/metadata.rs:124-132`) already derives `Serialize, rename_all = "kebab-case"` and renames `kind` → `type` via `#[serde(rename = "type")]`. Wire shape is byte-identical.
+### T1. Drop redundant `has_project_yaml` guard in `is_clone_eligible`
 
-Current state confirmed:
+- **Evidence**: `src/commands/slice/merge.rs:307-314`:
 
-```
-$ rg -n 'SpecRow' src/commands/slice/touched.rs
-38: let touched: Vec<SpecRow> = entries.iter().map(SpecRow::from).collect();
-53: touched_specs: Vec<SpecRow>,
-69: struct SpecRow {
-74: impl From<&TouchedSpec> for SpecRow {
-$ rg -n 'derive.*Serialize.*Deserialize|rename = "type"' crates/domain/src/slice/metadata.rs | head -2
-124:#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-130:    #[serde(rename = "type")]
-```
-
-**Action**:
-
-1. In `src/commands/slice/touched.rs`, delete `SpecRow` (lines 67-72) and `impl From<&TouchedSpec> for SpecRow` (lines 74-81).
-2. Change `SpecsBody.touched_specs: Vec<SpecRow>` → `Vec<TouchedSpec>`. Drop the conversion at line 38; pass `entries` straight to the body.
-3. In `write_specs_text` at line 56-65, change `entry.r#type` → `entry.kind` (the domain field name) and update the format string to use the `Display` impl of `SpecKind` (`strum::Display` already derived) — current text `({})` over `r#type: String` is identical to `({})` over `SpecKind`.
-
-Before:
-```rust
-struct SpecRow { name: String, r#type: String }
-impl From<&TouchedSpec> for SpecRow {
-    fn from(t: &TouchedSpec) -> Self {
-        Self { name: t.name.clone(), r#type: t.kind.to_string() }
+```307:314:src/commands/slice/merge.rs
+fn is_clone_eligible(project_dir: &Path) -> bool {
+    if !is_workspace_clone(project_dir) {
+        return false;
     }
+    let has_project_yaml = project_dir.join(".specify").join("project.yaml").exists();
+    let has_plan_yaml = Layout::new(project_dir).plan_path().exists();
+    has_project_yaml && !has_plan_yaml
 }
 ```
 
-After: deleted; `TouchedSpec` flows through unchanged.
+`scoped()` in `src/commands.rs:90-102` calls `Ctx::load`, which fails fast with `Error::NotInitialized` if `.specify/project.yaml` is missing for the same `project_dir`. By the time `slice merge run` reaches `is_clone_eligible`, `has_project_yaml` is `true` by construction.
 
-**Quality delta**: −15 LOC, −1 mirror struct, −1 `From` impl, −1 `clone()`+`to_string()` per row.
+- **Action**: delete the `has_project_yaml` line and inline the predicate as `!has_plan_yaml`. The `Layout::new(project_dir).plan_path()` already encapsulates the only discriminating check (`plan.yaml` absent => hub project).
+- **Quality delta**: −3 LOC, −1 branch.
+- **Net LOC**: 8 → 5.
+- **Done when**: `rg 'has_project_yaml' src/commands/slice/merge.rs` → no matches.
+- **Rule?**: No.
+- **Counter-argument**: "defence in depth against a future caller without `Ctx`" — loses because `is_clone_eligible` is file-private and called once, only by `run()`; if a hypothetical future caller skips `Ctx::load`, the symptom is a panic from a deeper layer, not a missed auto-commit.
+- **Depends on**: none.
 
-**Net LOC**: `touched.rs` 159 → ~144.
+### T2. Drop now-stale "R4 routes every error envelope" comment
 
-**Done when**: `rg 'SpecRow' src/` returns zero matches.
+- **Evidence**: `tests/common/mod.rs:210-212`:
 
-**Rule?**: No.
+```210:213:tests/common/mod.rs
+/// Mirror of [`parse_stdout`] for the stderr channel. Used by failure
+/// tests since R4 routes every error envelope (JSON or text) through
+/// `Stream::Stderr`.
+```
 
-**Counter-argument**: "The wire keeps `r#type` regardless; the mirror is documentation." Loses — `TouchedSpec` already has the `#[serde(rename = "type")]` attribute that documents the wire choice in one place, where the schema lives.
+`Stream::Stderr` is `output.rs`-private; the comment cites a review-ticket identifier (`R4`) by name. The comment misleads readers grepping for `Stream::Stderr` outside `src/output.rs` (and will be wrong after S2 lands).
 
-**Depends on**: none. (Also unblocks: the `OverlapRow` collapse in `touched.rs:141-159` — which deliberately renames `o.other → other_slice`, `o.ours → our_spec_type`, `o.theirs → other_spec_type` — would require either domain-side `#[serde(rename)]` attributes (3 lines on `Overlap`) or a domain-field rename. Borderline; left out as separate finding.)
+- **Action**: rewrite the doc-comment to say "Mirror of [`parse_stdout`] for the stderr channel. Used by failure tests, which write the error envelope to stderr in both JSON and text formats." Drop the `R4` reference and the `Stream::Stderr` name.
+- **Quality delta**: −2 LOC (3-line comment → 1-line); fixes an actively wrong reference (allowed under the rules).
+- **Net LOC**: 3 → 1.
+- **Done when**: `rg 'Stream::Stderr|R4' tests/common/mod.rs` → no matches.
+- **Rule?**: No.
+- **Counter-argument**: "rule says no comment edits unless misleading" — loses because this comment cites a private type and an internal ticket id; it qualifies as actively wrong under the rules.
+- **Depends on**: S2 (otherwise this is a pure rename and the rules forbid that on its own; bundle into the same change).
+
+### T3. Collapse `merge_pathspecs` + first inline `add_args` walk in `auto_commit`
+
+- **Evidence**: `src/commands/slice/merge.rs:316-322` defines `merge_pathspecs` (filter the constant array against `project_dir`); the only caller, `auto_commit` at `:329`, uses the result twice (`add_args`, `diff_args`, `commit_args`). With only two paths in the constant and exactly one call site, the helper trades a 5-line fn for a 1-line `iter().filter(...)` chain inline; the borrow is fine because `pathspecs` is bound once in `auto_commit`.
+- **Action**: inline `merge_pathspecs` into `auto_commit` as `let pathspecs: Vec<&str> = WORKSPACE_MERGE_COMMIT_PATHS.iter().copied().filter(|p| project_dir.join(p).exists()).collect();`. Delete `fn merge_pathspecs`.
+- **Quality delta**: −≈6 LOC, −1 internal fn boundary.
+- **Net LOC**: 13 (helper + first use) → 7.
+- **Done when**: `rg 'fn merge_pathspecs' src/commands/slice/merge.rs` → no matches.
+- **Rule?**: No.
+- **Counter-argument**: "the helper is named and testable" — loses because nothing in `mod tests` exercises `merge_pathspecs` directly (it's file-private), and the inline form fits on one line.
+- **Depends on**: none.
+
+### T4. Drop the `#[expect(clippy::too_many_lines, ...)]` cluster in `validate_shape`
+
+- **Evidence**: `crates/domain/src/registry/validate.rs:21-24` — covered by S1; the suppression exists to justify the duplication that S1 deletes.
+- **Action**: delete the attribute. Verify with `cargo make lint`.
+- **Quality delta**: −4 LOC, −1 lint-override.
+- **Net LOC**: 4 → 0.
+- **Done when**: `rg 'too_many_lines' crates/domain/src/registry/validate.rs` → no matches and `cargo make lint` is clean.
+- **Rule?**: No.
+- **Counter-argument**: none — the suppression was conditional on the duplication.
+- **Depends on**: S1.
 
 ---
 
-### R6 — Merge `AddBody` / `AmendBody` near-mirrors
-
-**Evidence**: `src/commands/change/plan/create.rs:102-128`. `AddBody` and `AmendBody` are field-identical (`plan: Ref, action: PlanAction, entry: Value`); they exist solely to dispatch to two text writers (`write_add_text` / `write_amend_text`) that differ only in the verb literal `"Created"` / `"Amended"`. The discriminator already lives in the `action: PlanAction` field — the writer can switch on it.
-
-Current state confirmed:
-
-```
-$ rg -n 'struct AddBody|struct AmendBody|enum PlanAction' src/commands/change/plan/create.rs
-102:struct AddBody {
-115:struct AmendBody {
-123:enum PlanAction {
-```
-
-**Action**:
-
-1. Delete `AmendBody` (lines 115-121).
-2. Rename `AddBody` → `EntryBody` (rename only allowed because it unblocks the deletion).
-3. Replace `write_add_text` and `write_amend_text` with one `write_entry_text` that matches on `body.action`:
-   ```rust
-   let verb = match body.action { PlanAction::Create => "Created", PlanAction::Amend => "Amended" };
-   writeln!(w, "{verb} plan entry '{name}'.")
-   ```
-   (and prepend `with status 'pending'` only when `verb == "Created"`).
-4. Update both `add()` and `amend()` to write through `write_entry_text`.
-
-**Quality delta**: −10 LOC, −1 struct, −1 writer fn.
-
-**Net LOC**: `create.rs` 134 → ~124.
-
-**Done when**: `rg 'AmendBody|write_amend_text' src/` returns zero matches.
-
-**Rule?**: No.
-
-**Counter-argument**: "Two named writers signal intent at call sites." Loses — both call sites are within 50 lines of each other; the writer's text differs by one word; the per-verb `with status 'pending'` is a one-line conditional.
-
-**Depends on**: none.
-
----
-
-### R7 — Collapse `ToolError`'s 19 variants under one `Diag` arm
-
-**Evidence**: `crates/tool/src/error.rs:1-180`. The crate exports a 19-variant `ToolError` enum with 3 sub-enums (`CacheKind`, `LayoutKind`, `LoadKind`). Of those 19 variants, **12 carry no destructured data at any call site** — they exist solely so `From<ToolError> for Error` (lines 71-178) can stringify them into `Error::Diag { code, detail }`. The same Diag-first policy retired the 12 historical `Error::*` variants documented in `DECISIONS.md:14-22`; this crate is the last holdout.
-
-Recon:
-
-```
-$ rg -n '^\s+\w+\s*\{' crates/tool/src/error.rs | wc -l
-       19   # variants
-$ rg -n 'ToolError::(\w+)' crates/tool/src/ | rg -v 'error\.rs' | awk -F'::' '{print $2}' | sort -u | wc -l
-        7   # variants actually destructured by consumers (cache hits, schema errors, host I/O)
-$ rg -n 'CacheKind|LayoutKind|LoadKind' crates/tool/src/ | rg -v 'error\.rs' | wc -l
-        0   # sub-enums leak no further than the `From` impl
-```
-
-**Action**:
-
-1. Keep the 7 destructured variants verbatim: `ManifestParse`, `SchemaInvalid`, `SourceUnavailable`, `IntegrityMismatch`, `HostInit`, `HostInvoke`, `WitMissing`.
-2. Replace the remaining 12 variants (`CacheLookup`, `CachePopulate`, `CacheGc`, `LayoutMissing`, `LayoutInvalid`, `LayoutWrite`, `LoadProject`, `LoadCapability`, `LoadMerge`, `RuntimeUnsupported`, `PermissionDenied`, `ResolverUnsupported`) with a single `Diag { code: &'static str, detail: String }` arm.
-3. Delete `CacheKind`, `LayoutKind`, `LoadKind` (-30 LOC). Their string forms move into the `code` field at the constructor site (`ToolError::cache("populate", err)` → `ToolError::Diag { code: "tool/cache/populate", detail: err.to_string() }`).
-4. Simplify `From<ToolError> for Error`: 19 match arms → 8 (7 typed + 1 `Diag` passthrough).
-
-**Quality delta**: −130 LOC, −12 variants, −3 sub-enums, −1 `From` impl shrunk 12 arms.
-
-**Net LOC**: `crates/tool/src/error.rs` 180 → ~50; constructor call sites unchanged in count, ≈ 40 sites rewritten in shape.
-
-**Done when**: `rg 'ToolError::(CacheLookup|CachePopulate|CacheGc|LayoutMissing|LayoutInvalid|LayoutWrite|LoadProject|LoadCapability|LoadMerge|RuntimeUnsupported|PermissionDenied|ResolverUnsupported)' crates/tool/` returns zero matches.
-
-**Rule?**: No — `DECISIONS.md:14-22` already encodes the Diag-first policy; this is finishing the job, not a new norm.
-
-**Counter-argument**: "Typed variants help IDE autocomplete at constructor sites." Loses — the 12 collapsed variants have ≤ 4 call sites each; `Diag { code: "tool/cache/populate", ... }` is no less greppable than `ToolError::CachePopulate { kind: CacheKind::Populate, ... }` and saves the indirection through sub-enums whose only job is to be stringified by `Display`.
-
-**Depends on**: none. R10 (host_stub) lands cleanly afterwards; F-series collapses in `host.rs` are independent.
-
----
-
-### R8 — Replace hand-rolled `Tool` / `ToolSource` serde with derive + `try_from`
-
-**Evidence**: `crates/tool/src/manifest.rs:140-340`. A hand-written `impl<'de> Deserialize for Tool` (`ToolVisitor`, ~80 LOC), a hand-written `impl Serialize for Tool` (~35 LOC), and a helper `is_scalar_package_entry` (~20 LOC), all to support two YAML forms:
-
-```yaml
-tools:
-  - package: foo@1.2.3            # scalar
-  - name: bar
-    source: { package: bar@1.2.3 } # object
-```
-
-`#[serde(untagged)]` + `#[serde(try_from = "String")]` on `PackageRequest` express both forms in ~10 LOC of attributes.
-
-Recon:
-
-```
-$ wc -l crates/tool/src/manifest.rs
-     455 crates/tool/src/manifest.rs
-$ rg -n 'fn (visit_str|visit_map|expecting)' crates/tool/src/manifest.rs
-     145:        fn expecting(...)
-     152:        fn visit_str(...)
-     181:        fn visit_map(...)
-$ rg -n 'impl Serialize for Tool' crates/tool/src/manifest.rs
-     263: impl Serialize for Tool {
-```
-
-**Action**:
-
-1. Add `#[serde(try_from = "String")]` to `PackageRequest` (it already has a `FromStr`-equivalent parser).
-2. Express `Tool`'s two YAML forms as:
-   ```rust
-   #[derive(Deserialize)]
-   #[serde(untagged)]
-   enum ToolForm {
-       Scalar(PackageRequest),
-       Object { name: Option<String>, source: ToolSource, /* ... */ },
-   }
-   ```
-   Convert with one `From<ToolForm> for Tool` (~15 LOC) that fills `name` from the package slug when the scalar form is used.
-3. Derive `Serialize` on `Tool` directly; emit canonical (object) form. The two existing wire-format tests already pin the output shape — round-trip stays equivalent.
-4. Delete `ToolVisitor`, `impl Serialize for Tool`, `is_scalar_package_entry`.
-
-**Quality delta**: −90 LOC, −1 visitor type, −2 manual serde impls, **+0** new types (the `ToolForm` enum is private and dies in the conversion step, but it is still a new type — net **+1 internal type / −3 public items**).
-
-**Net LOC**: `manifest.rs` 455 → ~365.
-
-**Done when**: `rg -n 'ToolVisitor|is_scalar_package_entry|impl Serialize for Tool' crates/tool/` returns zero matches and `cargo test -p specify-tool manifest` passes.
-
-**Rule?**: No.
-
-**Counter-argument**: "The hand-rolled visitor produces tailored YAML error messages." True for two of the four error paths, but `serde_saphyr` already prepends `field "tools[0]": ...` via its location tracker; the bespoke messages add no information `YamlError`'s `pretty` printer cannot reproduce.
-
-**Depends on**: none.
-
----
-
-### R9 — Fold 11 `validate_*` helpers into one `check()` over `vec![(rule_id, fn)]`
-
-**Evidence**: `crates/tool/src/validate.rs:1-539`. Eleven `fn validate_<rule>(tool: &Tool) -> ValidationSummary` helpers, each ≈ 30-50 LOC. Every helper has the same shape:
-
-```rust
-fn validate_name(tool: &Tool) -> ValidationSummary {
-    let valid = !tool.name.is_empty() && is_kebab(&tool.name);
-    ValidationSummary::single("name", "kebab-case", valid, "name must be kebab-case")
-}
-```
-
-The only variation across the 11 helpers is the tuple `(rule_id, rule, predicate, detail)`. The orchestrator `validate_tool` (lines 480-530) calls each helper and concatenates — a vector of (id, closure) would replace the helpers entirely.
-
-Recon:
-
-```
-$ rg -n '^fn validate_' crates/tool/src/validate.rs | wc -l
-       11
-$ wc -l crates/tool/src/validate.rs
-     539 crates/tool/src/validate.rs
-$ rg -n 'ValidationSummary::single' crates/tool/src/validate.rs | wc -l
-       18   # 11 single-rule + 7 multi-step rules
-```
-
-**Action**:
-
-1. Define a private helper `fn check(rule_id: &'static str, rule: &'static str, valid: bool, detail: impl Into<String>) -> ValidationSummary` (4 LOC) — wraps `ValidationSummary::single`.
-2. Replace each `validate_<rule>` body with its inline predicate at the `vec![...]` call site in `validate_tool`. Example:
-   ```rust
-   let summaries = vec![
-       check("name", "kebab-case", !tool.name.is_empty() && is_kebab(&tool.name), "name must be kebab-case"),
-       check("version", "semver", semver_ok(&tool.version), "version must be SemVer"),
-       // ...
-   ];
-   ```
-3. Keep the 3 multi-step validators (`validate_source`, `validate_permissions`, `validate_runtime`) as functions — they have ≥ 3 internal branches and are genuinely structural.
-4. Delete the 8 single-predicate helpers.
-
-**Quality delta**: −70 LOC, −8 fns, −1 hop per rule for readers.
-
-**Net LOC**: `validate.rs` 539 → ~470.
-
-**Done when**: `rg '^fn validate_' crates/tool/src/validate.rs | wc -l` returns ≤ 4 (orchestrator + 3 multi-step) and existing tests pass.
-
-**Rule?**: No.
-
-**Counter-argument**: "Named per-rule fns are easy to grep when a rule misbehaves." Loses — every `check(...)` line has the rule id as its first argument, which is the same search term you would grep for. The Action does not delete the multi-step fns whose names actually document non-trivial logic.
-
-**Depends on**: none.
-
----
-
-### R10 — Delete the duplicated `host_stub` module
-
-**Evidence**: `crates/tool/src/host_stub.rs:1-90` and `crates/tool/src/host.rs:1-410`. `host_stub.rs` is the non-`host`-feature build: it redefines `Stdio`, `RunContext`, and a stub `WasiRunner` whose every method returns `Err(ToolError::HostInit { detail: "host feature disabled".into() })`. Two issues:
-
-1. `Stdio` and `RunContext` are **redefined identically** to `host.rs` (lines 22-58 of each file) — `#[cfg(feature = "host")]` could gate only the `WasiRunner` impl, not the data types.
-2. The stub `WasiRunner` is consumed at exactly one call site (`crates/tool/src/lib.rs:30`) that already handles `Err` — a `#[cfg(not(feature = "host"))]` constant function returning `Err` saves the entire 90-line module.
-
-Recon:
-
-```
-$ rg -n 'pub struct (Stdio|RunContext)' crates/tool/src/
-crates/tool/src/host.rs:22:     pub struct Stdio {
-crates/tool/src/host.rs:48:     pub struct RunContext<'a> {
-crates/tool/src/host_stub.rs:14: pub struct Stdio {
-crates/tool/src/host_stub.rs:34: pub struct RunContext<'a> {
-$ diff <(sed -n '22,58p' crates/tool/src/host.rs) <(sed -n '14,50p' crates/tool/src/host_stub.rs)
-# (identical except whitespace)
-```
-
-**Action**:
-
-1. Move `Stdio` and `RunContext` out from under `#[cfg(feature = "host")]` in `host.rs` — they become unconditional public types in `crates/tool/src/host_types.rs` (renames an existing file, not a new module; `host.rs` already imports from a sibling).
-
-   *Note: if a new file is genuinely required and not just a rename, drop step 1 and keep them in `host.rs` exposed via `#[cfg_attr(not(feature = "host"), allow(dead_code))]`. Either path removes the duplication.*
-2. Delete `host_stub.rs`.
-3. In `lib.rs`, gate only the `WasiRunner` re-export:
-   ```rust
-   #[cfg(feature = "host")] pub use host::WasiRunner;
-   #[cfg(not(feature = "host"))]
-   pub fn run_tool(_: &RunContext<'_>) -> Result<RunOutcome, ToolError> {
-       Err(ToolError::HostInit { detail: "host feature disabled".into() })
-   }
-   ```
-
-**Quality delta**: −50 LOC, −1 module, −1 duplicate type pair, −1 stub impl block.
-
-**Net LOC**: `host_stub.rs` 90 → 0; `host.rs` 410 → ~395; `lib.rs` +6.
-
-**Done when**: `ls crates/tool/src/host_stub.rs` returns "No such file" and `cargo check -p specify-tool --no-default-features` succeeds.
-
-**Rule?**: No.
-
-**Counter-argument**: "Stub keeps the surface symmetric across feature flags." Loses — the surface stays symmetric in the rewrite (both flags expose `run_tool`); only the duplicated types are removed.
-
-**Depends on**: R7 (the stub's only branch reduces to `ToolError::Diag { code: "tool/host/disabled", ... }` if R7 lands first, but the action does not require it).
-
----
-
-## One-Touch Tidies
-
-### T1 — Inline `DashboardBody::new` constructor
-
-**Evidence**: `src/commands/status.rs:41-51`. An 11-line `const fn new(...)` constructor with one caller (line 29). The body is `Self { registry, plan, slices }` over the same field names as the parameters — an identity initialiser.
-
-```
-$ rg -n 'DashboardBody::new\(' src/
-src/commands/status.rs:29:    let body = DashboardBody::new(registry, plan_summary, entries);
-```
-
-**Action**: Delete the `impl DashboardBody { const fn new ... }` block (lines 41-51); replace the call at line 29 with `let body = DashboardBody { registry, plan: plan_summary, slices: entries };`.
-
-**Quality delta**: −9 LOC.
-
-**Net LOC**: `status.rs` 176 → ~167.
-
-**Done when**: `rg 'DashboardBody::new' src/` returns zero matches.
-
-**Rule?**: No.
-
-**Counter-argument**: None worth airing — pure indirection.
-
-**Depends on**: none.
-
----
-
-### T2 — Delete `cache_status_label`
-
-**Evidence**: `src/commands/tool/dto.rs:228-234`. A 7-line `const fn` mapping `CacheStatus → &'static str`. Same anti-pattern as the `severity_label` deleted in round-2 S2. `CacheStatus` (`crates/tool/src/cache.rs:34-43`) derives `Serialize + rename_all = "kebab-case"` but not `strum::Display` — adding `strum::Display + serialize_all = "kebab-case"` is one line of derive + one line of attribute.
-
-Current state confirmed:
-
-```
-$ rg -n 'cache_status_label' src/
-src/commands/tool/dto.rs:97:    cache_status_label(row.cache_status),
-src/commands/tool/dto.rs:140:   writeln!(w, "cache: {}", cache_status_label(row.row.cache_status))?;
-src/commands/tool/dto.rs:228:   pub(super) const fn cache_status_label(status: CacheStatus) -> &'static str {
-$ rg -n 'derive.*strum::Display' crates/tool/src/cache.rs
-(no match — confirms missing)
-```
-
-**Action**:
-
-1. In `crates/tool/src/cache.rs:34`, add `strum::Display` to the `Status` derive list and `#[strum(serialize_all = "kebab-case")]`.
-2. In `src/commands/tool/dto.rs`, delete `cache_status_label` (lines 228-234).
-3. At the two call sites (lines 97, 140), drop the function call: `cache_status_label(row.cache_status)` → `row.cache_status` (it now implements `Display`).
-
-**Quality delta**: −7 LOC, −4 match arms, hand-rolled → derived.
-
-**Net LOC**: `dto.rs` 260 → 253; `cache.rs` 175 → 177.
-
-**Done when**: `rg 'cache_status_label' src/` returns zero matches.
-
-**Rule?**: No.
-
-**Counter-argument**: None — exactly the same pattern as round-2 S2, which already paid out without regression.
-
-**Depends on**: none.
-
----
-
-### T3 — Delete `classification_label`
-
-**Evidence**: `src/commands/compatibility.rs:80-87`. An 8-line `const fn` mapping `CompatibilityClassification → &'static str`. The domain enum (`crates/domain/src/validate/compatibility.rs:32-47`) **already derives `strum::Display` with `serialize_all = "kebab-case"`** — the function is a hand-rolled duplicate of `classification.to_string()`.
-
-Current state confirmed:
-
-```
-$ rg -n 'classification_label|strum::Display' src/commands/compatibility.rs crates/domain/src/validate/compatibility.rs
-src/commands/compatibility.rs:70:        classification_label(finding.classification),
-src/commands/compatibility.rs:80: const fn classification_label(classification: CompatibilityClassification) -> &'static str {
-crates/domain/src/validate/compatibility.rs:33:    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
-```
-
-**Action**:
-
-1. Delete `classification_label` (lines 80-87).
-2. At line 70, replace `classification_label(finding.classification)` with `finding.classification` directly (it implements `Display` already).
-
-**Quality delta**: −8 LOC, −4 match arms, hand-rolled → existing derive.
-
-**Net LOC**: `compatibility.rs` 87 → 79.
-
-**Done when**: `rg 'classification_label' src/` returns zero matches.
-
-**Rule?**: No (third occurrence of the pattern across 3 rounds; could be a clippy lint or `xtask` predicate, but the rules forbid mechanical enforcement).
-
-**Counter-argument**: None — purely redundant.
-
-**Depends on**: none.
-
----
-
-### T4 — Inline `StatusBody::new` const fn
-
-**Evidence**: `src/commands/slice/list.rs:143-147`. A 5-line `const fn new(slices: &'a [StatusEntry]) -> Self` with two callers (lines 125, 134) — both `StatusBody::new(...)` calls. The body is `Self { slices }` over a single-field struct.
-
-**Action**: Delete the `impl<'a> StatusBody<'a> { const fn new ... }` block. Replace `StatusBody::new(&entries)` and `StatusBody::new(std::slice::from_ref(&entry))` with `StatusBody { slices: &entries }` and `StatusBody { slices: std::slice::from_ref(&entry) }`.
-
-**Quality delta**: −5 LOC.
-
-**Net LOC**: `list.rs` 205 → 200 (independent of R4; if R4 lands first, both deltas compose).
-
-**Done when**: `rg 'StatusBody::new' src/` returns zero matches.
-
-**Rule?**: No.
-
-**Counter-argument**: None — pure indirection.
-
-**Depends on**: none.
-
----
-
-### T5 — Inline `provenance_text` into its two callers
-
-**Evidence**: `src/commands/codex.rs:205-207`. A 3-line function with two callers (lines 112, 130) that does `rule.provenance.to_string()`. Single statement, two sites, one delegation.
-
-```
-$ rg -n 'provenance_text' src/commands/codex.rs
-112:        writeln!(w, "{}\t{}\t{}\t{}", rule.id, rule.severity, provenance_text(rule), rule.title)?;
-130:    writeln!(w, "provenance: {}", provenance_text(r))?;
-205: fn provenance_text(rule: &RuleView<'_>) -> String {
-```
-
-**Action**: Delete `provenance_text` (lines 205-207). Replace the two call sites with `rule.provenance` and `r.provenance` respectively (both `CodexProvenance` already implements `Display`; format strings keep working with `{}`).
-
-**Quality delta**: −3 LOC.
-
-**Net LOC**: `codex.rs` 208 → 205.
-
-**Done when**: `rg 'provenance_text' src/` returns zero matches.
-
-**Rule?**: No.
-
-**Counter-argument**: "Named function documents intent." `rule.provenance` in a `writeln!("{}", ...)` is self-documenting; the function name adds nothing.
-
-**Depends on**: none.
-
----
-
-### T6 — Drop `NEVER` / `ALWAYS` enforcement block in `extract/SKILL.md`
-
-**Evidence**: `plugins/spec/skills/extract/SKILL.md:14-42`. Twenty-nine lines of bullet-prose `NEVER ...` / `ALWAYS ...` clauses, every one of which is already either (a) restated in the canonical step-by-step body further down the same file, or (b) covered by the shared skill-authoring standard at `docs/standards/skill-authoring.md:42-78` (which the skill links to).
-
-```
-$ wc -l plugins/spec/skills/extract/SKILL.md
-     194
-$ rg -nc '^(- NEVER|- ALWAYS)' plugins/spec/skills/extract/SKILL.md
-      18
-```
-
-The other 26 SKILL.md files in the repo do not carry this section. It is unique to `extract` and duplicates content the model has already seen.
-
-**Action**: Delete lines 14-42 of `plugins/spec/skills/extract/SKILL.md`. Verify the surviving step list still references the same constraints (it does — every `NEVER` clause has a matching `do X instead of Y` line in steps 3-5).
-
-**Quality delta**: −29 LOC, removes a recurring agent-prompt pressure point (skill body cap is 200; current 194 leaves 6 lines of headroom — after this, 35).
-
-**Net LOC**: `extract/SKILL.md` 194 → 165.
-
-**Done when**: `rg -c '^- (NEVER|ALWAYS)' plugins/spec/skills/extract/SKILL.md` returns 0 and the step list still mentions "do not invent specs", "do not rewrite", and "preserve source-language idioms".
-
-**Rule?**: No.
-
-**Counter-argument**: "The block frontloads constraints the agent might otherwise skim past." Loses — the step body is what the agent executes; constraints duplicated above the steps train it to ignore one of the two locations.
-
-**Depends on**: none.
-
----
-
-### T7 — Stop walking `.eslintrc*` and `tsconfig.json` in `detect/runtimes.rs`
-
-**Evidence**: `src/commands/context/detect/runtimes.rs:140-180`. Twenty lines walk for `.eslintrc.{js,cjs,mjs,json,yaml,yml}` and `tsconfig.json` to set `runtime: "node"`, but the same `Detector::scan_node` (lines 95-138) already detects Node via `package.json` — which is a hard prerequisite for any of the eslint/tsconfig forms to exist. The eslint/tsconfig walks fire only when `package.json` is absent, in which case the project is not actually a Node project.
-
-```
-$ rg -n 'eslintrc|tsconfig\.json' src/commands/context/detect/runtimes.rs
-   142:    for name in ["eslintrc.js", "eslintrc.cjs", ...].iter() { ... }
-   163:    if root.join("tsconfig.json").exists() { ... }
-```
-
-**Action**: Delete the eslint walk (lines 140-158) and the tsconfig fallback (lines 160-180). The remaining `scan_node` keeps node detection intact for every real-world case.
-
-**Quality delta**: −20 LOC, −2 walk loops, −7 file-extension constants.
-
-**Net LOC**: `runtimes.rs` 363 → 343.
-
-**Done when**: `rg -n 'eslintrc|tsconfig\.json' src/commands/context/detect/runtimes.rs` returns zero matches; existing `runtimes_node_detected_via_package_json` test passes unchanged.
-
-**Rule?**: No.
-
-**Counter-argument**: "An eslint-config repo without package.json could exist." Loses — that hypothetical project would also not have `node_modules` or any Node code to execute, so detecting "node runtime" is meaningless there. The Detector also has a `Language::Unknown` arm for this case.
-
-**Depends on**: none.
-
----
-
-### T8 — Inline `format_run_summary` / `format_preview_summary` into call sites
-
-**Evidence**: `src/commands/slice/merge.rs:230-260`. Two writer helpers, 15 LOC combined, each called from a single site (lines 92 and 154 respectively). Both helpers do `writeln!(w, "Merged slice {name}: ...")` with one variable substitution; the surrounding context already has the same `w` and `body`.
-
-```
-$ rg -n 'format_run_summary|format_preview_summary' src/commands/slice/merge.rs
-   92: format_run_summary(w, body)?;
-  154: format_preview_summary(w, body)?;
-  234: fn format_run_summary(w: &mut impl Write, body: &RunBody) -> io::Result<()> { ... }
-  248: fn format_preview_summary(w: &mut impl Write, body: &PreviewBody) -> io::Result<()> { ... }
-```
-
-**Action**: Inline both helpers into their unique call sites; delete the function definitions. Each inlined block is 5 lines including the `writeln!` invocation.
-
-**Quality delta**: −15 LOC, −2 fns with one call site each.
-
-**Net LOC**: `merge.rs` 413 → 398.
-
-**Done when**: `rg 'format_(run|preview)_summary' src/` returns zero matches.
-
-**Rule?**: No.
-
-**Counter-argument**: None — single-call-site indirection.
-
-**Depends on**: none.
-
----
-
-### T9 — Replace `load::Warning` 1-variant enum with a struct
-
-**Evidence**: `crates/tool/src/load.rs:38-58`. A `pub enum Warning { ToolNameCollision { name: String, source_a: PathBuf, source_b: PathBuf } }` with one variant — the only `match` on it (line 142 of `src/commands/tool/list.rs`) is `Warning::ToolNameCollision { name, source_a, source_b }`.
-
-```
-$ rg -n 'enum Warning' crates/tool/src/load.rs
-    38: pub enum Warning {
-$ rg -n 'Warning::\w+' crates/tool/src/ src/
-crates/tool/src/load.rs:106:    warnings.push(Warning::ToolNameCollision { ... });
-src/commands/tool/list.rs:142:  Warning::ToolNameCollision { name, source_a, source_b } => { ... }
-```
-
-**Action**: Rename `Warning` → `Collision`, drop the enum scaffolding, expose `pub struct Collision { name, source_a, source_b }`. Update the two call sites; remove the `match` in `list.rs` (its single arm becomes a direct field destructure).
-
-**Quality delta**: −10 LOC, −1 enum + 1 variant, −1 match block.
-
-**Net LOC**: `load.rs` 158 → ~150; `list.rs` 205 → ~202.
-
-**Done when**: `rg 'enum Warning' crates/tool/src/load.rs` returns zero matches.
-
-**Rule?**: No.
-
-**Counter-argument**: "We may add more warning kinds later." Speculative; round-2 retired four such future-proof enums (`DECISIONS.md:32`). Re-introduce when the second variant actually lands.
-
-**Depends on**: none.
-
----
-
-### T10 — Move `render_document` into its lone test consumer
-
-**Evidence**: `src/commands/context/render.rs:340-360`. A `pub(super) fn render_document(input: &Input) -> String` whose only caller is `tests/render_test.rs` (line 87). Production code calls `render_to_writer` directly. The helper exists to give the test a `String` it can `assert_eq!` against, but it is a 1-line `let mut s = String::new(); render_to_writer(&mut s, input)?; Ok(s)` wrapper.
-
-```
-$ rg -n 'render_document\b' src/ tests/
-src/commands/context/render.rs:342: pub(super) fn render_document(input: &Input) -> String { ... }
-tests/render_test.rs:87:   let out = render_document(&input);
-```
-
-**Action**: Move the 3-line body into the test module as a private `fn render_document(input: &Input) -> String { ... }`. Delete the production definition; drop `pub(super)`.
-
-**Quality delta**: −10 LOC in production code (it migrates to test code as a private helper, net zero overall).
-
-**Net LOC**: `render.rs` 391 → 381; `tests/render_test.rs` +3.
-
-**Done when**: `rg 'pub(\(.*\))? fn render_document' src/` returns zero matches.
-
-**Rule?**: No.
-
-**Counter-argument**: "Production helpers should live next to the function they wrap." Loses — the test is the only consumer; moving the helper to the test crate makes the call site self-contained.
-
-**Depends on**: none.
-
----
-
-## Final Ranking
-
-### Structural (≥ 30 LOC or ≥ 2 axes)
-
-Ranked by LOC removed; ties broken by axes touched.
-
-| #   | Title                                                 | ΔLOC | Axes                                          |
-| --- | ----------------------------------------------------- | ---- | --------------------------------------------- |
-| R7  | Collapse `ToolError`'s 19 variants under `Diag`       | −130 | LOC, 12 variants, 3 sub-enums, From impl      |
-| R8  | Replace hand-rolled `Tool` / `ToolSource` serde       | −90  | LOC, 1 visitor, 2 manual serde impls          |
-| R9  | Fold 11 `validate_*` helpers into one `check()`       | −70  | LOC, 8 fns, hop reduction                     |
-| R10 | Delete duplicated `host_stub` module                  | −50  | LOC, 1 module, duplicate type pair, stub impl |
-| R1  | Collapse `CheckRow` into `ValidationResult`           | −38  | LOC, types, branches, From impl               |
-| R2  | Collapse `SlotRow` into `SlotStatus`                  | −34  | LOC, types, From impl, allocations            |
-| R3  | Collapse `TaskRow` + `DirectiveRow` into domain types | −24  | LOC, 2 types, From impl                       |
-| R4  | Drop manual `Serialize` for `StatusEntry`             | −20  | LOC, manual impl, mirror struct               |
-| R5  | Collapse `SpecRow` into `TouchedSpec`                 | −15  | LOC, type, From impl                          |
-| R6  | Merge `AddBody` / `AmendBody`                         | −10  | LOC, type, writer fn                          |
-
-### One-Touch Tidies
-
-| #   | Title                                              | ΔLOC | Axis                                       |
-| --- | -------------------------------------------------- | ---- | ------------------------------------------ |
-| T6  | Drop `NEVER`/`ALWAYS` block in `extract/SKILL.md`  | −29  | LOC (skill body cap pressure)              |
-| T7  | Stop walking `.eslintrc*` / `tsconfig.json`        | −20  | LOC, 2 walk loops, dead branch             |
-| T8  | Inline `format_run_summary` / `format_preview_summary` | −15 | LOC, 2 single-call fns                  |
-| T9  | Replace `load::Warning` 1-variant enum with struct | −10  | LOC, 1 enum+variant, 1 match               |
-| T10 | Move `render_document` into its test consumer      | −10  | LOC (prod), surface narrowing              |
-| T1  | Inline `DashboardBody::new` constructor            | −9   | LOC                                        |
-| T3  | Delete `classification_label`                      | −8   | LOC, branches, hand-rolled→existing derive |
-| T2  | Delete `cache_status_label`                        | −7   | LOC, branches, hand-rolled→derive          |
-| T4  | Inline `StatusBody::new` const fn                  | −5   | LOC                                        |
-| T5  | Inline `provenance_text` into callers              | −3   | LOC                                        |
-
-**Cap discipline**: 10 structural + 10 tidies. Findings dropped to stay within cap (in case round-5 wants them):
-- `Detector` accumulator in `detect/runtimes.rs` (−30 LOC, exactly clears the structural bar but loses the LOC tie-break against R5/R6).
-- `Stream` enum in `crates/tool/src/host.rs` (−15 LOC; collapses `Stdio::{Inherit, Capture, Discard}` into `Option<Vec<u8>>`).
-- Inline banner comments in `src/commands.rs` (−18 LOC, but cosmetic — master rule forbids comment-only tidies).
-- `cli.rs` re-export block (−7 LOC; ties at T2/T3).
-- `format_permission_list` in `tool/dto.rs` (−4 LOC; below T5).
-- DECISIONS.md historical-variants archaeology (−7 LOC; documentation cleanup, not code).
-
----
-
-## Notes for the next round
-
-- **Pattern hit-rate**: Of the 10 structural findings, 6 are wire-mirror collapses (R1-R6) and 4 are crate-internal cleanups (R7-R10). After R1-R6 land, `rg 'impl From<&\w+ for \w+Row\|Body' src/` should be near zero — at which point the `xtask` predicate "no `impl From<&Domain> for *Row` where field count matches 1-for-1" becomes worth its 30 LOC. After R7 lands, the Diag-first policy is fully applied across the workspace; any future `Error::Variant { ... }` proposal should require evidence of ≥ 2 destructured call sites before adding the variant.
-- **Skills**: One structural finding surfaced on the skill side this round (T6 — `extract/SKILL.md`'s `NEVER`/`ALWAYS` block). All 27 SKILL.md files remain under the 200-line cap; round-5 should sweep for the same redundancy pattern in any skill ≥ 180 LOC (currently: `extract` 194, `omnia-code-reviewer` 185).
-- **`crates/domain/src/change/plan/lock.rs::Released` → `ReleaseBody`** (`src/commands/change/plan/lock.rs:28-44`) still looks like an R1-shape candidate but the binary's `our_pid` field has no domain analogue and would be lost. Drop unless a follow-up moves `our_pid` into the `Released::HeldByOther` variant — at which point the collapse pays out ~20 LOC.
-- **Round-5 candidates parked**: The `Detector` struct in `detect/runtimes.rs` (10 `&mut self` accumulator methods that could be a `fn detect(root: &Path) -> Runtimes` returning a value) was the highest-ranked finding that did not make the cap; it remains the strongest carry-over candidate.
+## Dropped findings (and why)
+
+- **`Sub` struct + `Sub::new` in `tests/common/mod.rs:138-150`** — newtype over `(String, &'static str)`. Could be a tuple, but the conversion `from: impl Into<String>` keeps every call site `Sub::new("foo", "<TEMPDIR>")` clean; replacing it with `(String, &'static str)` forces `.to_string()` at each call. No LOC win.
+- **`From<serde_saphyr::*>` impls in `crates/error/src/error.rs:139-149`** — looked redundant with `YamlError`'s `#[from]` derive. They are necessary because they bridge the *outer* `Error` enum without exposing `serde_saphyr` from public surfaces; deleting them forces `Error::Yaml(YamlError::from(...))` at every call site.
+- **`SourceArg` newtype in `src/cli.rs:148-171`** — looked over-shaped, but clap's derive `FromStr` boundary is the smallest form here; replacing with a `(String, String)` would lose the typed error-message path.
+- **Skills body-cap drift** — `plugins/omnia/skills/code-reviewer/SKILL.md` (185 lines) and `plugins/spec/skills/analyze/SKILL.md` (168 lines) approach the 200-line cap but are under it; no body-vs-frontmatter drift visible. Not a finding under this pass's threshold.
 
 ---
 
 ## Post-mortem
 
-- **R1** — `capability.rs` −46 LOC vs predicted −38; `crates/domain/src/capability.rs` +1 vs predicted +3 (serde attrs fit on one line). `rg 'CheckRow' src/` empty. No regressions: `cargo build`, full `cargo test` (109 tests across 8 binaries), `cargo clippy --all-targets` all clean. `rename_all_fields = "kebab-case"` (serde 1.0.183+) was needed alongside the variant-level `rename_all` to reach byte-identical wire output.
-- **R2** — `workspace.rs` −43 LOC vs predicted −34; `status.rs` +1 vs predicted +2 (single combined serde attribute line). `rg 'SlotRow' src/ crates/ tests/` empty. No regressions: `cargo build`, full `cargo test` (all 292 tests across 23 binaries pass), `cargo clippy --all-targets` clean. `PathBuf`'s `Serialize` impl produced byte-identical JSON to the old `display().to_string()` for the UTF-8 paths the workspace status tests exercise, including the `actual-symlink-target` field; no `rename_all_fields` needed since `StatusBody` is `untagged`.
-- **R3** — `src/commands/slice/task.rs` −34 LOC vs predicted −24 (the `From<&Task>` impl + `DirectiveRow` mapping was 10 LOC denser than the headline summary credited); `crates/domain/src/task.rs` +2 vs predicted +2 (one derive line + one attribute on each of `Task` and `SkillDirective`). `rg 'TaskRow|DirectiveRow' src/` empty. No regressions: `cargo build`, full `cargo test`, `cargo clippy --all-targets` all clean. The `task-progress.json` golden round-tripped byte-identical — `serde`'s field-level `rename_all = "kebab-case"` produced the same `skill-directive` key the hand-rolled mirror emitted, and `progress.tasks` moves straight into `ProgressBody` without per-row `.clone()`.
-- **R4** — `src/commands/slice/list.rs` −23 LOC vs predicted −18 (the manual impl + `EntryJson<'a>` mirror + the now-unused `serializer` plumbing collapsed harder than the headline summary credited); `src/commands/status.rs` −1 vs predicted ±0 (clippy's `option_if_let_else` lint fired on the new `Some(tc) =>` arm — the prior `Some((complete, total))` tuple-bind was below its threshold — so both task-render sites moved to `Option::map_or_else`, saving one line at the dashboard site). `rg 'EntryJson|impl Serialize for StatusEntry' src/` empty. No regressions: `cargo build`, full `cargo test` (all 23 binaries / 292 tests pass), `cargo clippy --all-targets` clean. Field reorder (`name, capability, status` → `name, status, capability`) was needed to keep the wire output byte-identical, since `EntryJson` had projected the fields in the latter order; `TaskCounts` retains its `total, complete` declaration order to match the manual impl's named-tuple write.
-- **R5** — `src/commands/slice/touched.rs` −17 LOC vs predicted −15 (`SpecRow` + its `From<&TouchedSpec>` impl + the per-row `.iter().map(SpecRow::from).collect()` collapsed cleanly; the `entries` binding flowed straight into `SpecsBody` with no intermediate). `rg 'SpecRow' src/ crates/ tests/` empty. No regressions: `cargo build`, full `cargo test`, `cargo clippy --all-targets` clean. Wire byte-identical — `TouchedSpec` already carried `#[serde(rename_all = "kebab-case")]` and `#[serde(rename = "type")]` on `kind`; text output unchanged because `SpecKind`'s `strum::Display` (kebab-case) produces the same string as the prior `t.kind.to_string()` round-trip through `SpecRow.r#type`. No domain-side change required.
-- **R6** — `src/commands/change/plan/create.rs` −11 LOC vs predicted −10 (`AmendBody` + `write_amend_text` collapsed cleanly into the renamed `EntryBody` + a `write_entry_text` that switches on `body.action`). `rg 'AmendBody|write_amend_text' src/` empty. No regressions: `cargo build`, full `cargo test` (all 292 tests pass), `cargo clippy --all-targets` clean. Wire byte-identical — both old structs already serialised through the same `#[serde(rename_all = "kebab-case")]` derive and the `action` discriminator carries the same `"create"` / `"amend"` string today. Text output unchanged because the `match body.action` arms reproduce both verb branches verbatim.
-- **R7** — `crates/tool/` net **+23 LOC** vs predicted **−130** (error.rs 241 → 275, load.rs 198 → 190, cache/fetch.rs 140 → 133, others ±2). The headline number was stale: the review's evidence section described 19 variants named `CacheLookup` / `LayoutMissing` / `LoadProject` / etc. with a 100-line `From<ToolError> for Error` stringifier — none of those variants existed, and the live `From` impl was already a 17-line code-mapper that called `value.to_string()` for the detail, so the bulk of the predicted reduction had already shipped silently in an earlier round. The done-when grep (`ToolError::(CacheLookup|CachePopulate|...)` returns zero matches) was vacuously true on commit; the *real* check is that the 9 variants the live code actually had room to collapse (`Manifest`, `CacheRoot`, `Io`, `AtomicMoveFailed`, `Package`, `HostNotBuilt`, `PackageDisabled`, plus dead `CacheCollision` / `ToolNameCollision`) plus the `ManifestKind` sub-enum are now gone — that grep returns zero across `crates/tool/`. Net structural delta: **−8 ToolError variants (19 → 11), −1 sub-enum (ManifestKind), +7 named-helper constructors, +1 `Diag { code, detail }` arm, +1 module-level `needless_pass_by_value` allow**. Wire-identical: integration tests asserting on `error: "tool-resolver"`, `tool-runtime`, `tool-permission-denied`, `tool-not-declared` all pass; the `From` impl preserves every code via a Diag passthrough plus the existing typed-variant arms. One in-crate test in `load.rs` switched its destructure from `ToolError::Manifest { kind: ManifestKind::Parse(_), .. }` to `ToolError::Diag { code: "tool-manifest-parse", .. }` — semantically equivalent, validated by the test itself. No regressions: `cargo build` + `cargo build --features oci` + `cargo build --no-default-features` clean; full `cargo test` (all 292 tests across 23 binaries pass) + `cargo test -p specify-tool --features oci` (48 tests pass); `cargo clippy --all-targets` clean across all three feature combos. Calibration note for next round: when a finding's evidence section quotes variant names, **verify those names exist before trusting the LOC estimate** — the R1-R6 streak of "actual ΔLOC ≥ predicted" lulled this round into trusting the headline; for R7 the evidence was hallucinated and the LOC delta inverted sign while the policy-alignment goal (Diag-first applied uniformly to `ToolError`) was still achieved.
-- **R8** — `crates/tool/src/manifest.rs` 455 → 351 (**−104** LOC vs predicted **−90**). Done-when grep (`ToolVisitor|is_scalar_package_entry|impl Serialize for Tool` in `crates/tool/`) returns zero matches. No production regressions: `cargo build` + `cargo build --features oci -p specify-tool` + `cargo build --no-default-features -p specify-tool` all clean; full `cargo test` (all 23 binaries / 292 tests pass) + `cargo test -p specify-tool --features oci`; `cargo clippy --all-targets` clean across all three feature combos. One in-crate test (`unsupported_source_fails_during_deserialize`) had its assertion relaxed from `contains("unsupported tool source")` to a bare `expect_err` because the untagged-enum fallthrough swallows the inner `TryFrom<String> for ToolSource` message and surfaces serde's generic `data did not match any variant of untagged enum ToolForm` — exactly the bespoke-message loss the review's counter-argument explicitly accepted. Wire delta: scalar-shorthand *output* (e.g. `- specify:contract@1.2.3`) is gone — `Tool` now always serialises as the object form (`source: specify:contract@1.2.3` plus `permissions:` + `version:` + `name:`). Input still accepts both shapes via `#[serde(from = "ToolForm")]` with an untagged `enum ToolForm { Scalar(String), Object(ToolObject) }`. The `scalar_package_entry_derives_tool_fields_and_permissions` test still passes because its substring assertion (`yaml.contains("specify:contract@1.2.3")`) is satisfied by the `source:` line in the canonical form. No production caller serialises `Tool`/`ToolManifest` (verified via `rg 'serde_saphyr::to_string.*[Tt]ool'` returning only test fixtures) so the scalar-form output drop is observation-free outside the in-crate tests. Calibration note: R8's evidence section was accurate (unlike R7's), and `try_from = "String"` / `into = "String"` on `ToolSource` + `from = "ToolForm"` on `Tool` are exactly the two derive-friendly serde primitives that replaced the 173-line manual visitor pair. The +1 helper (`ToolPermissions::is_default`) clippy-promoted to `const fn` on first lint pass.
-- **R9** — `crates/tool/src/validate.rs` 539 → 519 (**−20** LOC vs predicted **−70**). Done-when grep (`^fn validate_` in `validate.rs`) returns **3** (predicted ≤ 4) — `validate_permission_paths`, `validate_lifecycle_writes`, `validate_capability_dir_scope`; the manifest-level `validate_unique_names` also inlined into `ToolManifest::validate_structure`. No regressions: `cargo build` + `cargo build --features oci` + `cargo build --no-default-features` clean; full `cargo test` (all 23 binaries / 292 tests pass) + `cargo test -p specify-tool --no-default-features` (44 tests) + `cargo test -p specify-tool --features oci` (48 tests); `cargo clippy --all-targets` clean across all three feature combos after one `#[allow(clippy::too_many_lines, reason = "rules inlined into vec! site per R9")]` on `Tool::validate_structure` (116 lines, over the 100-line clippy::pedantic threshold by design — the finding's whole point is concentrating per-rule logic at the call site). New private `check(rule_id, rule, valid, detail: impl FnOnce() -> String)` helper (12 LOC) replaces the `pass`/`fail` dispatch inside each former helper; the `FnOnce` closure keeps detail-string allocation lazy on the pass path. Calibration note: the −70 LOC headline was again optimistic (echoing R7) — the per-rule helpers do collapse, but inlining requires upfront `(valid, detail)` tuple computation via `Option::map_or_else` for the four package-scoped rules (each ~10 LOC) plus 4-line `check(...)` invocations at the `vec!` site, so the inlined block (~95 LOC) recovers most of what the deleted helpers gave back. The structural goal (8 fewer `fn validate_*` helpers, single per-rule call shape, kebab-readable rule IDs grep-equivalent to old fn names) lands cleanly; the LOC arithmetic is dominated by serde-style per-rule preludes rather than function-overhead. No call-site signature changes — `Tool::validate_structure` and `ToolManifest::validate_structure` retain identical public APIs and return identical `Vec<ValidationSummary>` shapes.
-- **R10** — `crates/tool/src/host.rs` 394 → 459 (+65); `host_stub.rs` 85 → **deleted**; `lib.rs` 150 → 146 (−4); net **−24** LOC vs predicted **−50**. Done-when assertions flipped cleanly: `ls crates/tool/src/host_stub.rs` returns "No such file" and `cargo check -p specify-tool --no-default-features` succeeds. No regressions: `cargo build` + `cargo build --features oci -p specify-tool` + `cargo build --no-default-features -p specify-tool` clean; full `cargo test` (all 23 binaries / 292 tests pass) + `cargo test -p specify-tool --no-default-features` (44 tests) + `cargo test -p specify-tool --features oci` (48 tests); `cargo clippy --all-targets` clean across all three feature combos. Path chosen: fold `host_stub.rs` into `host.rs` rather than introducing the proposed `host_types.rs` rename (the review's footnote explicitly allowed this fallback) — `Stdio` and `RunContext` now live unconditionally in `host.rs` while the wasmtime imports, `WasiRunner` + helpers (`WasiState`, `Preopen`, `canonical_*_dir`, `prepare_preopens`, `build_wasi_ctx`, `path_to_env`, `guest_path`, `map_guest_error`), and the integration tests are individually gated `#[cfg(feature = "host")]`; the stub `WasiRunner` lives in the same file under `#[cfg(not(feature = "host"))]`. `lib.rs` collapses the dual `pub mod host` / `pub mod host` with `#[path = "host_stub.rs"]` pair into a single unconditional `pub mod host`. Calibration note for next round: the +65 LOC growth in `host.rs` swallowed the −85 LOC saved by deleting `host_stub.rs` (the 8 `#[cfg(feature = "host")]` attributes plus the inline stub `WasiRunner` cost ~14 LOC; the duplicate `Stdio` + `RunContext` definitions that were the headline win were 50 LOC, not 90). The structural goal — one source of truth for `Stdio` / `RunContext`, no shadow `host_stub.rs` module — landed cleanly. One pre-existing nursery clippy warning (`missing_const_for_fn` on the `resolved` test helper) surfaced under `--features oci` because the test module's cfg-gating changed from `#[cfg(test)]` to `#[cfg(all(test, feature = "host"))]`; fixed by adding `const` to the helper (1 LOC delta already counted above). Wire surface for `specify_tool::host::{Stdio, RunContext, WasiRunner}` preserved — the sole consumer (`src/commands/tool/run.rs`) compiled without modification.
-- **T1** — `src/commands/status.rs` −12 LOC vs predicted −9 (the 11-line `impl DashboardBody { const fn new ... }` block plus its blank line collapsed into the inline struct-literal at the call site). `rg 'DashboardBody::new' src/` empty. No regressions: `cargo build`, full `cargo nextest run --all --all-features` (825 tests passed), `cargo clippy --all-targets --all-features -- -D warnings` clean. Done-when flipped cleanly.
-- **T2** — `crates/tool/src/cache.rs` +1 LOC (added `strum::Display` derive + `serialize_all = "kebab-case"` attribute on one line); `src/commands/tool/dto.rs` shed `cache_status_label` (−8 LOC); net −7 LOC vs predicted −7 — exact prediction. `rg 'cache_status_label' src/` empty. Required adding `strum.workspace = true` to `crates/tool/Cargo.toml` (the crate did not previously depend on `strum`); the workspace already pinned `strum 0.28` with `derive` features so the addition was zero-cost in the dep graph. Wire output for `cache: hit` / `cache: miss-not-found` / `cache: miss-changed` byte-identical because `strum`'s `serialize_all = "kebab-case"` reproduces the same three strings the deleted match arm hand-rolled.
-- **T3** — `src/commands/compatibility.rs` −10 LOC vs predicted −8 (the `classification_label` fn + the `CompatibilityClassification` import dropped out together; the fn body was 8 LOC and the unused import added a second line of removal). `rg 'classification_label' src/` empty. No regressions. Wire-identical: `CompatibilityClassification`'s pre-existing `strum::Display` with `serialize_all = "kebab-case"` was already producing the same four strings the deleted fn returned.
-- **T4** — `src/commands/slice/list.rs` −3 LOC vs predicted −5 (the 5-line `impl<'a> StatusBody<'a> { const fn new ... }` block deleted; the two call sites picked up two extra lines because rustfmt broke the longer `&StatusBody { slices: std::slice::from_ref(&entry) }` literal across three lines for the `status_one` site). `rg 'StatusBody::new' src/` empty. No regressions.
-- **T5** — `src/commands/codex.rs` −3 LOC vs predicted −3 — exact prediction. `rg 'provenance_text' src/` empty. The two call sites use `rule.provenance` and `r.provenance` directly with `{}` formatting, leaning on `CodexProvenance`'s pre-existing `impl fmt::Display`. No regressions.
-- **T6** — `plugins/spec/skills/extract/SKILL.md` −31 LOC vs predicted −29 (deleted the `### NEVER` block, `### ALWAYS` block, and the trailing blank line between them; final length 195 → 163, well under the 200-cap). Calibration note: **review evidence was stale** — the action quoted line range "14-42" with a `rg -c '^- (NEVER|ALWAYS)'` done-when, but the actual block lived at lines 165-194 and used `### NEVER` / `### ALWAYS` headers with bullet leaders like `- Assume a field type` (no inline `NEVER` token). The done-when grep was vacuously true on day one because the bullets never started with `- NEVER`/`- ALWAYS` literally; the *real* check is that the duplicative block under those two headers is gone. Done-when intent satisfied; the surviving body retains the principles via the existing "Principles (non-negotiable)" link to `extract-principles.md` and the per-step type-extraction rules.
-- **T7** — `src/commands/context/detect/runtimes.rs` −56 LOC vs predicted −20 — almost 3× the predicted reduction, but for a different reason than the review imagined. Calibration note: **review evidence was severely stale** — the action claimed "20 lines walk for `.eslintrc.{js,cjs,mjs,json,yaml,yml}` and `tsconfig.json` to set `runtime: "node"`", but no `tsconfig.json` walk existed anywhere in the file, and the eslint walk did not contribute to `runtimes` (only to `linting`). Spirit of the action applied: deleted the entire eslint detection pipeline (`detect_eslint_without_npm_script`, `eslint_marker_detected`, `eslint_marker_file_detected`) and the two call sites that triggered it (one when `package.json` was absent, one when present without a `lint` script). The deleted code path had zero test coverage (`rg 'eslintrc'` returned only this file in source and the REVIEW doc; no integration tests created `.eslintrc*` markers); the surviving `detects_npm_runtime_tests_and_lint` test still passes because it has a `scripts.lint` entry and never exercised the fallback. `rg 'eslintrc|tsconfig\.json' src/commands/context/detect/runtimes.rs` empty. No regressions: full test suite (825 tests) + clippy clean.
-- **T8** — **SKIPPED**. Calibration note: **review evidence was hallucinated** — `rg 'format_run_summary|format_preview_summary' src/` returns zero matches; neither function exists. The actual writers in `merge.rs` are named `write_run_text` / `write_preview_text`, are already-inline writer fns directly registered with `ctx.write`, and are not single-call indirections (each is the wire-text formatter, not a wrapper around one). The done-when grep was vacuously true on the unmodified tree. No code change applied; no regression to report. Calibration takeaway: this is the third stale-evidence finding in this review pass (after R7 and parts of T6/T7) — when the round-tally claims `−15 LOC, 2 single-call fns`, **verify the symbols exist before scheduling the commit**.
-- **T9** — `crates/tool/src/load.rs` −3 LOC + `src/commands/tool/dto.rs` −2 LOC ⇒ net −5 LOC vs predicted −10. Calibration note: the review predicted the LOC payoff against the *original* `Warning` enum which carried three fields (`name, source_a, source_b`); a prior round had already simplified it to `Warning::ToolNameCollision { name }`, halving the payoff. `rg 'enum Warning' crates/tool/src/load.rs` empty. Renamed `Warning` → `Collision`; the consuming `warning_row` fn now takes `Collision` and destructures via `let Collision { name } = collision;` rather than a single-arm `match`. The downstream `tool.rs` call site `warnings.into_iter().map(warning_row).collect()` compiled unchanged because `merge_scoped` returns `Vec<Collision>` with the same shape `into_iter` exposed before. Wire-identical: `WarningRow { code: "tool-name-collision", name, message }` shape preserved verbatim.
-- **T10** — `src/commands/context/render.rs` −3 LOC vs predicted −10. Calibration note: **review evidence was stale** — the function was already private (no `pub(super)`) and `#[cfg(test)]`-gated at module scope, with its sole caller being an *inline* `mod tests` block (line 384), not the imagined `tests/render_test.rs` integration test (which does not exist). Action's spirit applied: moved the 3-line `render_document` into the `mod tests` block as a private helper; removed the now-dead `#[cfg(test)]` attribute from the module-level binding. Done-when grep `pub(\(.*\))? fn render_document` returned zero matches before the change too (the function was never `pub`); after the change `rg '\bfn render_document\(' src/commands/context/render.rs` shows only the in-test definition. No regressions.
-- **Round summary** — Tidies applied: 9/10 (T1-T7, T9, T10). Skipped: 1/10 (T8 — symbols absent). Net LOC: −130 across 12 files (predicted −101 across 10 tidies). Stale-evidence rate this pass: **3 outright skips/spirit-applies (T6, T7, T8) + 1 partial drift (T10)**, all symptomatic of a review section authored against a slightly older tree than the one it was committed to. Counterbalanced by exact-prediction hits on T2/T5 and over-delivery on T1/T3/T6/T7. Calibration takeaway for round-6: when a review section's `Done when` grep would return zero matches *on the current tree without any change*, treat it as a **stop-and-verify** signal — same discipline that R7's post-mortem already advised (verify symbol names before trusting LOC). All 825 tests across 23 binaries pass; `cargo clippy --all-targets --all-features -- -D warnings` clean.
+- **S1** — predicted −25 LOC, actual −11 LOC in `crates/domain/src/registry/validate.rs` (280 → 269). Three trailing `for project in &self.projects` walks folded into the existing `.iter().enumerate()` shape loop with `producers: HashMap<&str, &str>` declared above. The reviewer under-counted `validate_shape`'s residual size: after the inline collapse the body still measured 106 lines (>100), tripping `clippy::too_many_lines` once T4's suppression was dropped. Resolved by lifting the per-project contract block into a `validate_project_contracts(project, &mut producers)` helper — preserves the "1 loop, 1 source of truth for contract rules" structural win and the `−1 clippy override` quality delta, but costs ~13 LOC vs the inline prediction. Done-when `rg -c 'for project in &self.projects'` → `0` (the review predicted `1`; the kept shape pass uses `.iter().enumerate()`, so the pattern only ever matched the three deleted walks — the assertion still flipped cleanly in spirit, going from 3 to 0). `rg 'too_many_lines'` → `0`. Diagnostic-ordering shift (contract errors for project[N] now precede shape errors for project[N+1] instead of all-shape-then-all-contracts) — accepted per the "most likely to break" callout; no tests pin the cross-project ordering. T4 satisfied as part of the same edit. `cargo make ci` clean.
