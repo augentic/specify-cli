@@ -124,19 +124,20 @@ pub(crate) fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<&Path>) -> Result<
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct CheckBody {
+struct CheckBody<'a> {
     passed: bool,
-    results: Vec<CheckRow>,
+    results: &'a [ValidationResult],
 }
 
-fn write_check_text(w: &mut dyn Write, body: &CheckBody) -> std::io::Result<()> {
+fn write_check_text(w: &mut dyn Write, body: &CheckBody<'_>) -> std::io::Result<()> {
     if body.passed {
         writeln!(w, "Capability OK")
     } else {
-        let fail_count = body.results.iter().filter(|r| matches!(r, CheckRow::Fail { .. })).count();
+        let fail_count =
+            body.results.iter().filter(|r| matches!(r, ValidationResult::Fail { .. })).count();
         writeln!(w, "Capability invalid: {fail_count} errors")?;
-        for r in &body.results {
-            if let CheckRow::Fail { rule_id, detail, .. } = r {
+        for r in body.results {
+            if let ValidationResult::Fail { rule_id, detail, .. } = r {
                 writeln!(w, "  [fail] {rule_id}: {detail}")?;
             }
         }
@@ -153,10 +154,7 @@ pub(crate) fn check(format: Format, capability_dir: &Path) -> Result<()> {
     let results = capability.validate_structure();
     let passed = !results.iter().any(|r| matches!(r, ValidationResult::Fail { .. }));
 
-    let body = CheckBody {
-        passed,
-        results: results.iter().map(CheckRow::from).collect(),
-    };
+    let body = CheckBody { passed, results: &results };
     output::write(format, &body, write_check_text)?;
     if passed {
         Ok(())
@@ -183,46 +181,3 @@ fn load_manifest(manifest_path: &Path) -> Result<Capability> {
     Ok(capability)
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-#[serde(tag = "status")]
-enum CheckRow {
-    #[serde(rename = "pass")]
-    Pass { rule_id: String, rule: String },
-    #[serde(rename = "fail")]
-    Fail { rule_id: String, rule: String, detail: String },
-    #[serde(rename = "deferred")]
-    Deferred { rule_id: String, rule: String, reason: String },
-    #[serde(rename = "unknown")]
-    Unknown,
-}
-
-impl From<&ValidationResult> for CheckRow {
-    fn from(r: &ValidationResult) -> Self {
-        match r {
-            ValidationResult::Pass { rule_id, rule } => Self::Pass {
-                rule_id: rule_id.to_string(),
-                rule: rule.to_string(),
-            },
-            ValidationResult::Fail {
-                rule_id,
-                rule,
-                detail,
-            } => Self::Fail {
-                rule_id: rule_id.to_string(),
-                rule: rule.to_string(),
-                detail: detail.clone(),
-            },
-            ValidationResult::Deferred {
-                rule_id,
-                rule,
-                reason,
-            } => Self::Deferred {
-                rule_id: rule_id.to_string(),
-                rule: rule.to_string(),
-                reason: reason.to_string(),
-            },
-            _ => Self::Unknown,
-        }
-    }
-}
