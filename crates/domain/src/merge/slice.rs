@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
+use serde::Serialize;
 use specify_error::Error;
 
 use crate::merge::artifact_class::{ArtifactClass, MergeStrategy};
@@ -57,7 +58,8 @@ pub struct OpaquePreviewEntry {
 
 /// Whether an opaque-replace file is new or replaces an existing
 /// baseline file.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
 pub enum OpaqueAction {
     /// New file — no corresponding baseline file exists.

@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::config::{Layout, is_workspace_clone};
 use specify_domain::merge::{
-    BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry,
+    BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction,
     conflict_check, slice,
 };
 use specify_error::Result;
@@ -65,7 +65,15 @@ pub(super) fn preview(ctx: &Ctx, name: &str) -> Result<()> {
         .opaque
         .iter()
         .filter(|e| e.class_name == "contracts")
-        .map(ContractItem::from)
+        .filter_map(|entry| {
+            match entry.action {
+                OpaqueAction::Added | OpaqueAction::Replaced => Some(ContractItem {
+                    path: entry.relative_path.clone(),
+                    action: entry.action.clone(),
+                }),
+                _ => None,
+            }
+        })
         .collect();
 
     ctx.write(
@@ -153,9 +161,9 @@ fn write_preview_text(w: &mut dyn Write, body: &PreviewBody) -> std::io::Result<
         writeln!(w, "\nContract changes:")?;
         for c in &body.contracts {
             let (sigil, label) = match c.action {
-                ContractAction::Added => ("+", "added"),
-                ContractAction::Replaced => ("~", "replaced"),
-                ContractAction::Unknown => ("?", "unknown"),
+                OpaqueAction::Added => ("+", "added"),
+                OpaqueAction::Replaced => ("~", "replaced"),
+                _ => ("?", "unknown"),
             };
             writeln!(w, "  {sigil} contracts/{} ({label})", c.path)?;
         }
@@ -185,29 +193,7 @@ impl From<&MergePreviewEntry> for SpecPreviewEntry {
 #[serde(rename_all = "kebab-case")]
 struct ContractItem {
     path: String,
-    action: ContractAction,
-}
-
-#[derive(Serialize, Clone, Copy)]
-#[serde(rename_all = "kebab-case")]
-enum ContractAction {
-    Added,
-    Replaced,
-    Unknown,
-}
-
-impl From<&OpaquePreviewEntry> for ContractItem {
-    fn from(entry: &OpaquePreviewEntry) -> Self {
-        let action = match entry.action {
-            OpaqueAction::Added => ContractAction::Added,
-            OpaqueAction::Replaced => ContractAction::Replaced,
-            _ => ContractAction::Unknown,
-        };
-        Self {
-            path: entry.relative_path.clone(),
-            action,
-        }
-    }
+    action: OpaqueAction,
 }
 
 #[derive(Serialize)]
