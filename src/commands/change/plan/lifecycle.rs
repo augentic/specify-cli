@@ -97,14 +97,13 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     }
 
     let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
-    let rows: Vec<FindingRow<'_>> = results.iter().map(FindingRow::from).collect();
     ctx.write(
         &PlanValidateBody {
             plan: Ref {
                 name: plan.name,
                 path: plan_path.display().to_string(),
             },
-            results: rows,
+            results: &results,
             passed: !has_errors,
         },
         write_plan_validate_text,
@@ -239,7 +238,7 @@ fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()
 #[serde(rename_all = "kebab-case")]
 struct PlanValidateBody<'a> {
     plan: Ref,
-    results: Vec<FindingRow<'a>>,
+    results: &'a [Finding],
     passed: bool,
 }
 
@@ -247,47 +246,16 @@ fn write_plan_validate_text(w: &mut dyn Write, body: &PlanValidateBody<'_>) -> s
     if body.results.is_empty() {
         return writeln!(w, "Plan OK");
     }
-    for row in &body.results {
-        write_finding_row_text(w, row)?;
+    for finding in body.results {
+        write_finding_text(w, finding)?;
     }
     Ok(())
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct FindingRow<'a> {
-    level: FindingLevel,
-    code: &'static str,
-    entry: &'a Option<String>,
-    message: &'a str,
-}
-
-#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-enum FindingLevel {
-    Error,
-    Warning,
-}
-
-impl<'a> From<&'a Finding> for FindingRow<'a> {
-    fn from(finding: &'a Finding) -> Self {
-        let level = match finding.level {
-            Severity::Error => FindingLevel::Error,
-            Severity::Warning => FindingLevel::Warning,
-        };
-        Self {
-            level,
-            code: finding.code,
-            entry: &finding.entry,
-            message: &finding.message,
-        }
-    }
-}
-
-fn write_finding_row_text(w: &mut dyn Write, row: &FindingRow<'_>) -> std::io::Result<()> {
-    let label = if row.level == FindingLevel::Error { "ERROR  " } else { "WARNING" };
-    let entry_col = row.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
-    writeln!(w, "{label} {:<32} {:<24} {}", row.code, entry_col, row.message)
+fn write_finding_text(w: &mut dyn Write, finding: &Finding) -> std::io::Result<()> {
+    let label = if matches!(finding.level, Severity::Error) { "ERROR  " } else { "WARNING" };
+    let entry_col = finding.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
+    writeln!(w, "{label} {:<32} {:<24} {}", finding.code, entry_col, finding.message)
 }
 
 #[derive(Serialize, Default)]

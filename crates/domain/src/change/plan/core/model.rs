@@ -208,7 +208,8 @@ impl Severity {
 }
 
 /// A single finding reported by [`Plan::validate`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct Finding {
     /// Severity bucket.
     pub level: Severity,
