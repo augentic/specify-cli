@@ -222,7 +222,11 @@ pub struct ToolManifest {
 }
 
 /// Identifies which declaration site a tool came from.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, strum::EnumDiscriminants)]
+#[strum_discriminants(name(ToolScopeKind))]
+#[strum_discriminants(derive(Hash, serde::Serialize, serde::Deserialize, strum::Display))]
+#[strum_discriminants(serde(rename_all = "kebab-case"))]
+#[strum_discriminants(strum(serialize_all = "kebab-case"))]
 pub enum ToolScope {
     /// Tool declared in `.specify/project.yaml`.
     Project {

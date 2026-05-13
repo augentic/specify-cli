@@ -6,7 +6,7 @@ use serde::Serialize;
 use specify_error::Result;
 use specify_tool::cache::{self, OciSnapshot, PackageSnapshot, Status as CacheStatus};
 use specify_tool::load::Collision;
-use specify_tool::{Tool, ToolPermissions, ToolScope};
+use specify_tool::{Tool, ToolPermissions, ToolScope, ToolScopeKind};
 
 pub(super) type CacheKey = (String, String, String);
 
@@ -41,16 +41,6 @@ pub(super) struct ToolRow {
     pub(super) scope_detail: String,
     pub(super) cache_status: CacheStatus,
     pub(super) cached_path: String,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, serde::Deserialize, strum::Display,
-)]
-#[serde(rename_all = "kebab-case")]
-#[strum(serialize_all = "kebab-case")]
-pub(super) enum ToolScopeKind {
-    Project,
-    Capability,
 }
 
 #[derive(Debug, Clone, Serialize)]

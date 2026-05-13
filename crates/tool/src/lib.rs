@@ -18,7 +18,7 @@ pub mod resolver;
 pub mod validate;
 
 pub use error::ToolError;
-pub use manifest::{Tool, ToolManifest, ToolPermissions, ToolScope, ToolSource};
+pub use manifest::{Tool, ToolManifest, ToolPermissions, ToolScope, ToolScopeKind, ToolSource};
 
 #[cfg(test)]
 #[expect(unsafe_code, reason = "test helpers mutate process-wide env vars under env_lock")]
