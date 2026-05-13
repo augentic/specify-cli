@@ -168,7 +168,7 @@ fn write_validate_text(w: &mut dyn Write, body: &ValidateBody<'_>) -> std::io::R
 struct RuleView<'a> {
     id: &'a str,
     title: &'a str,
-    severity: &'static str,
+    severity: CodexSeverity,
     #[serde(skip_serializing_if = "Option::is_none")]
     trigger: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -203,7 +203,7 @@ impl<'a> RuleView<'a> {
         Self {
             id: &frontmatter.id,
             title: &frontmatter.title,
-            severity: severity_label(frontmatter.severity),
+            severity: frontmatter.severity,
             trigger: with_body.then_some(frontmatter.trigger.as_str()),
             body: with_body.then_some(rule.body.as_str()),
             source_path: rule.path.display().to_string(),
@@ -224,14 +224,5 @@ fn provenance_text(rule: &RuleView<'_>) -> String {
         ),
         "catalog" => format!("catalog {}", rule.catalog_name.unwrap_or("")),
         _ => "repo".into(),
-    }
-}
-
-const fn severity_label(severity: CodexSeverity) -> &'static str {
-    match severity {
-        CodexSeverity::Critical => "critical",
-        CodexSeverity::Important => "important",
-        CodexSeverity::Suggestion => "suggestion",
-        CodexSeverity::Optional => "optional",
     }
 }
