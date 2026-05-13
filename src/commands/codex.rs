@@ -198,9 +198,7 @@ impl<'a> RuleView<'a> {
                 CodexProvenance::Capability { name, version } => {
                     ("capability", Some(name.as_str()), Some(*version), None)
                 }
-                CodexProvenance::Catalog { name } => {
-                    ("catalog", None, None, Some(name.as_str()))
-                }
+                CodexProvenance::Catalog { name } => ("catalog", None, None, Some(name.as_str())),
                 CodexProvenance::Repo => ("repo", None, None, None),
             };
         Self {

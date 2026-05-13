@@ -19,8 +19,8 @@ pub(super) fn read_local_path(path: &Path, source: &str) -> Result<Vec<u8>, Tool
     if !path.is_absolute() {
         return Err(ToolError::invalid_source(source, "local source path must be absolute"));
     }
-    let metadata = fs::metadata(path)
-        .map_err(|err| ToolError::cache_io("inspect local source", path, err))?;
+    let metadata =
+        fs::metadata(path).map_err(|err| ToolError::cache_io("inspect local source", path, err))?;
     if !metadata.is_file() {
         return Err(ToolError::invalid_source(
             source,

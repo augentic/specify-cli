@@ -54,65 +54,40 @@ impl<'a> FencedDocument<'a> {
 }
 
 /// Reason a fenced document could not be parsed or planned.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(in crate::commands::context) enum FenceError {
     /// The existing `AGENTS.md` has no context fences and `--force` was not set.
+    #[error(
+        "context-existing-unfenced-agents-md: AGENTS.md exists without Specify context fences; rerun with --force to rewrite it"
+    )]
     ExistingUnfencedAgentsMd,
     /// The generated document supplied by the renderer had no valid context fences.
+    #[error(
+        "context-generated-document-missing-fences: generated AGENTS.md content must contain a Specify context fence"
+    )]
     GeneratedDocumentMissingFences,
     /// More than one opening fence was present, making replacement ambiguous.
+    #[error("context-malformed-fences: multiple opening fences found")]
     MultipleOpeningFences,
     /// More than one closing fence was present, making replacement ambiguous.
+    #[error("context-malformed-fences: multiple closing fences found")]
     MultipleClosingFences,
     /// The opening fence was found but its metadata terminator was missing.
+    #[error("context-malformed-fences: opening context fence is missing its `-->` line")]
     MissingOpeningFenceTerminator,
     /// The opening fence terminated before any key-value metadata lines.
+    #[error("context-malformed-fences: opening context fence must include metadata")]
     MissingOpeningFenceMetadata,
     /// The opening fence was found but the matching closing fence was missing.
+    #[error("context-malformed-fences: closing context fence not found")]
     MissingClosingFence,
     /// A metadata key appeared more than once in the opening fence.
+    #[error("context-malformed-fences: duplicate opening-fence metadata key `{0}`")]
     DuplicateMetadataKey(String),
     /// A metadata line was not strict `key: value` ASCII.
+    #[error("context-malformed-fences: invalid opening-fence metadata line `{0}`")]
     InvalidMetadataLine(String),
 }
-
-impl std::fmt::Display for FenceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ExistingUnfencedAgentsMd => f.write_str(
-                "context-existing-unfenced-agents-md: AGENTS.md exists without Specify context \
-                 fences; rerun with --force to rewrite it",
-            ),
-            Self::GeneratedDocumentMissingFences => f.write_str(
-                "context-generated-document-missing-fences: generated AGENTS.md content must \
-                 contain a Specify context fence",
-            ),
-            Self::MultipleOpeningFences => {
-                f.write_str("context-malformed-fences: multiple opening fences found")
-            }
-            Self::MultipleClosingFences => {
-                f.write_str("context-malformed-fences: multiple closing fences found")
-            }
-            Self::MissingOpeningFenceTerminator => f.write_str(
-                "context-malformed-fences: opening context fence is missing its `-->` line",
-            ),
-            Self::MissingOpeningFenceMetadata => {
-                f.write_str("context-malformed-fences: opening context fence must include metadata")
-            }
-            Self::MissingClosingFence => {
-                f.write_str("context-malformed-fences: closing context fence not found")
-            }
-            Self::DuplicateMetadataKey(key) => {
-                write!(f, "context-malformed-fences: duplicate opening-fence metadata key `{key}`")
-            }
-            Self::InvalidMetadataLine(line) => {
-                write!(f, "context-malformed-fences: invalid opening-fence metadata line `{line}`")
-            }
-        }
-    }
-}
-
-impl std::error::Error for FenceError {}
 
 /// Parse a document that may contain a Specify context fence.
 ///

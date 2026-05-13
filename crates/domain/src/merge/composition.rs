@@ -34,7 +34,9 @@ pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Er
             delta_doc.get("screens").and_then(|s| s.as_object()).map_or(0, serde_json::Map::len);
         return Ok(MergeResult {
             output: delta_text.to_string(),
-            operations: vec![MergeOperation::CreatedBaseline { requirement_count: screen_count }],
+            operations: vec![MergeOperation::CreatedBaseline {
+                requirement_count: screen_count,
+            }],
         });
     }
 
@@ -75,7 +77,10 @@ pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Er
     if let Some(removed) = delta.get("removed").and_then(|r| r.as_object()) {
         for (slug, _) in removed {
             screens.remove(slug.as_str());
-            operations.push(MergeOperation::Removed { id: slug.clone(), name: slug.clone() });
+            operations.push(MergeOperation::Removed {
+                id: slug.clone(),
+                name: slug.clone(),
+            });
         }
     }
 
@@ -88,7 +93,10 @@ pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Er
                 continue;
             }
             screens.insert(slug.clone(), screen_entry.clone());
-            operations.push(MergeOperation::Added { id: slug.clone(), name: slug.clone() });
+            operations.push(MergeOperation::Added {
+                id: slug.clone(),
+                name: slug.clone(),
+            });
         }
     }
 
@@ -101,7 +109,10 @@ pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Er
                 continue;
             }
             screens.insert(slug.clone(), screen_entry.clone());
-            operations.push(MergeOperation::Modified { id: slug.clone(), name: slug.clone() });
+            operations.push(MergeOperation::Modified {
+                id: slug.clone(),
+                name: slug.clone(),
+            });
         }
     }
 
@@ -130,7 +141,10 @@ mod tests {
             "version: 1\nscreens:\n  home:\n    title: Home\n  settings:\n    title: Settings\n";
         let result = merge(None, delta).unwrap();
         assert_eq!(result.output, delta);
-        assert_eq!(result.operations, vec![MergeOperation::CreatedBaseline { requirement_count: 2 }]);
+        assert_eq!(
+            result.operations,
+            vec![MergeOperation::CreatedBaseline { requirement_count: 2 }]
+        );
     }
 
     #[test]

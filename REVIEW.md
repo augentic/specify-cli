@@ -386,3 +386,4 @@ The discovery model loads skills by slash command (`/spec:analyze`), not by file
 | Item | Predicted ΔLOC | Actual ΔLOC | "Done when" clean? | Regressions |
 |---|---|---|---|---|
 | S1 | −55 | −62 | Yes — `rg '\bMergeOp\b' crates/domain/src/merge/composition.rs` returns 0 hits | None — 43 composition/merge tests pass, clippy clean |
+| S2 | −25 | −24 | Yes — `rg 'impl std::fmt::Display for FenceError' src/` returns 0 hits | None — full `cargo make ci` passes; added `thiserror.workspace = true` to root crate Cargo.toml (+1 line not predicted) |
