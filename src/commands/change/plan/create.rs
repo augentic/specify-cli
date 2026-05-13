@@ -48,7 +48,7 @@ pub(super) fn add(
             plan.create(entry)?;
             let created =
                 plan.entries.last().expect("Plan::create appended an entry that is now missing");
-            Ok(AddBody {
+            Ok(EntryBody {
                 plan: plan_ref(plan, &plan_path),
                 action: PlanAction::Create,
                 entry: change_entry_json(created),
@@ -56,7 +56,7 @@ pub(super) fn add(
         },
     )?;
 
-    ctx.write(&body, write_add_text)?;
+    ctx.write(&body, write_entry_text)?;
     Ok(())
 }
 
@@ -87,7 +87,7 @@ pub(super) fn amend(
             plan.amend(&name, patch)?;
             let amended =
                 plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
-            Ok(AmendBody {
+            Ok(EntryBody {
                 plan: plan_ref(plan, &plan_path),
                 action: PlanAction::Amend,
                 entry: change_entry_json(amended),
@@ -95,26 +95,13 @@ pub(super) fn amend(
         },
     )?;
 
-    ctx.write(&body, write_amend_text)?;
+    ctx.write(&body, write_entry_text)?;
     Ok(())
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct AddBody {
-    plan: Ref,
-    action: PlanAction,
-    entry: Value,
-}
-
-fn write_add_text(w: &mut dyn Write, body: &AddBody) -> std::io::Result<()> {
-    let name = body.entry.get("name").and_then(Value::as_str).unwrap_or("");
-    writeln!(w, "Created plan entry '{name}' with status 'pending'.")
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct AmendBody {
+struct EntryBody {
     plan: Ref,
     action: PlanAction,
     entry: Value,
@@ -127,7 +114,10 @@ enum PlanAction {
     Amend,
 }
 
-fn write_amend_text(w: &mut dyn Write, body: &AmendBody) -> std::io::Result<()> {
+fn write_entry_text(w: &mut dyn Write, body: &EntryBody) -> std::io::Result<()> {
     let name = body.entry.get("name").and_then(Value::as_str).unwrap_or("");
-    writeln!(w, "Amended plan entry '{name}'.")
+    match body.action {
+        PlanAction::Create => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
+        PlanAction::Amend => writeln!(w, "Amended plan entry '{name}'."),
+    }
 }
