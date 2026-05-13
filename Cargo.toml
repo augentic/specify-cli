@@ -70,14 +70,24 @@ version = "0.3.0"
 
 [workspace.lints.rust]
 # https://dirname.github.io/rust-std-doc/rustc/lints/listing/allowed-by-default.html
-missing_docs = "warn"
+elided_lifetimes_in_paths = "warn"
+explicit_outlives_requirements = "warn"
+let_underscore_drop = "warn"
+macro_use_extern_crate = "warn"
+meta_variable_misuse = "warn"
+missing_copy_implementations = "warn"
 missing_debug_implementations = "warn"
+missing_docs = "warn"
 redundant_lifetimes = "warn"
 single_use_lifetimes = "warn"
 trivial_numeric_casts = "warn"
 unreachable_pub = "warn"
+unsafe_code = "warn"
 unsafe_op_in_unsafe_fn = "warn"
 unused_extern_crates = "warn"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
 
 [workspace.lints.clippy]
 # https://doc.rust-lang.org/stable/clippy/index.html
@@ -107,8 +117,8 @@ multiple_crate_versions = "allow"
 # Cherry-picked lints are from the `restriction` lint group in order to drive up
 # consistency, quality, and brevity
 # See https://microsoft.github.io/rust-guidelines/guidelines/universal/index.html
-
-# allow_attributes_without_reason = "warn"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
 as_pointer_underscore = "warn"
 assertions_on_result_states = "warn"
 clone_on_ref_ptr = "warn"
@@ -120,16 +130,41 @@ empty_enum_variants_with_brackets = "warn"
 empty_structs_with_brackets = "warn"
 fn_to_numeric_cast_any = "warn"
 if_then_some_else_none = "warn"
+infinite_loop = "warn"
+iter_over_hash_type = "warn"
 map_err_ignore = "warn"
+mixed_read_write_in_expression = "warn"
+mod_module_files = "warn"
+non_zero_suggestions = "warn"
+partial_pub_fields = "warn"
+pub_without_shorthand = "warn"
+rc_buffer = "warn"
+rc_mutex = "warn"
 redundant_type_annotations = "warn"
+ref_patterns = "warn"
 renamed_function_params = "warn"
+same_name_method = "warn"
 semicolon_outside_block = "warn"
+string_add = "warn"
 todo = "warn"
+try_err = "warn"
 undocumented_unsafe_blocks = "warn"
 unnecessary_safety_comment = "warn"
 unnecessary_safety_doc = "warn"
 unneeded_field_pattern = "warn"
+unseparated_literal_suffix = "warn"
 unused_result_ok = "warn"
+verbose_file_reads = "warn"
+
+# Recommended-but-skipped restriction lints with rationale:
+# - `tests_outside_test_module`: fires on every integration test in `tests/*.rs`
+#   (by construction, integration tests are top-level fns in their own crate
+#   and cannot be inside `#[cfg(test)] mod tests`).
+# - `str_to_string` / `string_to_string`: opinionated against `.to_string()` on
+#   `&str`; `string_to_string` was also removed from clippy in 1.95 in favour of
+#   `clippy::implicit_clone`.
+# - `field_scoped_visibility_modifiers`: the workspace deliberately uses
+#   `pub(crate)` / `pub(super)` on struct fields throughout.
 
 [workspace.dependencies]
 specify-error = { path = "crates/error" }

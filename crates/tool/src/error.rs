@@ -18,7 +18,7 @@ use std::path::PathBuf;
 /// with a kebab-case `code` carried at the constructor site.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-#[allow(missing_docs, reason = "field names are self-evident; variant docs carry the contract")]
+#[expect(missing_docs, reason = "field names are self-evident; variant docs carry the contract")]
 pub enum ToolError {
     /// Catch-all diagnostic. The `code` becomes the `error` field of the
     /// JSON envelope after [`From<ToolError> for specify_error::Error`];
@@ -90,7 +90,7 @@ pub enum SidecarKind {
 
 /// Sub-kind for [`ToolError::Network`].
 #[derive(Debug, thiserror::Error)]
-#[allow(missing_docs, reason = "field names are self-evident; variant docs carry the contract")]
+#[expect(missing_docs, reason = "field names are self-evident; variant docs carry the contract")]
 pub enum NetworkKind {
     /// An HTTPS source returned a non-200 status.
     #[error("returned HTTP status {0}; expected 200")]

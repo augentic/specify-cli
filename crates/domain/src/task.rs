@@ -85,7 +85,7 @@ fn skill_directive_re() -> &'static Regex {
 pub fn parse_tasks(content: &str) -> Progress {
     let mut current_group = String::new();
     let mut tasks: Vec<Task> = Vec::new();
-    let mut complete_count = 0usize;
+    let mut complete_count = 0_usize;
 
     for line in content.lines() {
         // `## ` (exactly two hashes + a space) starts a new group.
@@ -179,7 +179,7 @@ pub fn mark_complete(content: &str, task_number: &str) -> Result<String, Error> 
 
     // Walk lines and record their absolute byte offsets so we can rewrite
     // exactly one checkbox without touching surrounding bytes.
-    let mut offset = 0usize;
+    let mut offset = 0_usize;
     for line in content.split_inclusive('\n') {
         // Line length without the trailing '\n' (if any) — used to scope the
         // regex search to just this line.

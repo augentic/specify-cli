@@ -948,7 +948,7 @@ slices:
 /// exercised against a clean slate.
 fn init_without_plan() -> Project {
     let project = Project::init();
-    let _ = fs::remove_file(project.plan_path());
+    drop(fs::remove_file(project.plan_path()));
     project
 }
 

@@ -21,6 +21,7 @@ pub use error::ToolError;
 pub use manifest::{Tool, ToolManifest, ToolPermissions, ToolScope, ToolSource};
 
 #[cfg(test)]
+#[expect(unsafe_code, reason = "test helpers mutate process-wide env vars under env_lock")]
 pub(crate) mod test_support {
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -71,12 +72,12 @@ pub(crate) mod test_support {
 
     pub(crate) fn write_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
         let path = root.join(name);
-        std::fs::write(&path, bytes).expect("write source");
+        fs::write(&path, bytes).expect("write source");
         path
     }
 
     pub(crate) fn cached_bytes(scope: &ToolScope, tool: &Tool) -> Vec<u8> {
-        std::fs::read(cache::module_path(scope, &tool.name, &tool.version).expect("module path"))
+        fs::read(cache::module_path(scope, &tool.name, &tool.version).expect("module path"))
             .expect("read cached module")
     }
 

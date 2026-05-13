@@ -75,6 +75,10 @@ pub struct ContractRoles {
     pub consumes: Vec<String>,
 }
 
+#[expect(
+    clippy::same_name_method,
+    reason = "inherent `Registry::{path,load}` are intentionally shadowed by the `AtomicYaml` trait impls in `config/atomic.rs`; the trait impls delegate to these fns"
+)]
 impl Registry {
     /// Absolute path to `<project_dir>/registry.yaml`. The platform
     /// catalogue lives at the repo root.

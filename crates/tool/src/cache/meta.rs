@@ -107,7 +107,10 @@ impl Sidecar {
     /// or capability slug is empty, contains a path separator, or would escape
     /// the cache directory. Other fields are accepted verbatim and validated
     /// against the v1 schema by [`write_sidecar`] before persistence.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "constructor mirrors the sidecar schema fields verbatim; collapsing into a builder would obscure the schema-to-field mapping"
+    )]
     pub fn new(
         scope: &ToolScope, tool_name: impl Into<String>, tool_version: impl Into<String>,
         source: impl Into<String>, permissions_snapshot: PermissionsSnapshot,

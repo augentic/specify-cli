@@ -2,12 +2,16 @@
 //!
 //! Each test file `mod common;` to pull these in (cargo's "include
 //! shared module" idiom for `tests/`). Some test files use only a
-//! subset, so the items are tagged `#[allow(dead_code)]` to keep
-//! lints quiet.
+//! subset; the crate-level `#![expect(dead_code, ...)]` below keeps
+//! the unused-helper warnings off without per-item attributes.
 
 #![expect(
     unreachable_pub,
     reason = "test helpers shared across integration test binaries; each `tests/*.rs` is its own crate so `pub(crate)` is wrong here"
+)]
+#![expect(
+    dead_code,
+    reason = "test helpers shared across integration test binaries; not every binary uses every helper"
 )]
 
 use std::fs;
@@ -25,7 +29,6 @@ use tempfile::{TempDir, tempdir};
 /// registry`'s unit tests. Hoisted here so future integration tests can
 /// share the same `Result<()>`-shaped success check without re-inventing
 /// the wrapper.
-#[allow(dead_code)]
 #[track_caller]
 pub fn assert_ok(result: Result<()>, what: &str) {
     result.unwrap_or_else(|err| panic!("{what} failed: {err}"));
@@ -33,28 +36,24 @@ pub fn assert_ok(result: Result<()>, what: &str) {
 
 /// Path to the workspace root for the `specify` crate (where the
 /// integration tests live).
-#[allow(dead_code)]
 pub fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 /// Convenience pointer to the in-repo Omnia capability fixture used as
 /// the canonical positional argument for `specify init`.
-#[allow(dead_code)]
 pub fn omnia_schema_dir() -> PathBuf {
     repo_root().join("schemas").join("omnia")
 }
 
 /// Build a fresh `assert_cmd::Command` for the locally-built `specify`
 /// binary.
-#[allow(dead_code)]
 pub fn specify() -> Command {
     Command::cargo_bin("specify").expect("cargo_bin(specify)")
 }
 
 /// Deterministic git author/committer identity for tests that exercise
 /// real `git commit` invocations.
-#[allow(dead_code)]
 pub const GIT_ENV: [(&str, &str); 4] = [
     ("GIT_AUTHOR_NAME", "Specify Test"),
     ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
@@ -68,7 +67,6 @@ pub const GIT_ENV: [(&str, &str); 4] = [
 /// # Panics
 ///
 /// Panics if git fails to start or exits non-zero.
-#[allow(dead_code)]
 pub fn run_git(root: &Path, args: &[&str]) -> String {
     let output = ProcessCommand::new("git")
         .current_dir(root)
@@ -92,7 +90,6 @@ pub fn run_git(root: &Path, args: &[&str]) -> String {
 /// # Panics
 ///
 /// Panics if `stdout` is not UTF-8 or not valid JSON.
-#[allow(dead_code)]
 pub fn parse_json(stdout: &[u8]) -> Value {
     let text = std::str::from_utf8(stdout).expect("utf8 stdout");
     serde_json::from_str(text).unwrap_or_else(|err| panic!("stdout not JSON ({err}):\n{text}"))
@@ -104,7 +101,6 @@ pub fn parse_json(stdout: &[u8]) -> Value {
 ///
 /// Panics if a fixture directory cannot be read or copied into the test
 /// workspace.
-#[allow(dead_code)]
 pub fn copy_dir(src: &Path, dst: &Path) {
     fs::create_dir_all(dst).expect("create_dir_all dst");
     for entry in fs::read_dir(src).expect("read_dir src") {
@@ -124,7 +120,6 @@ pub fn copy_dir(src: &Path, dst: &Path) {
 /// # Panics
 ///
 /// Panics if the `specify init` invocation does not exit 0.
-#[allow(dead_code)]
 pub fn init_hub(tmp: &TempDir, name: &str) {
     specify()
         .current_dir(tmp.path())
@@ -136,19 +131,16 @@ pub fn init_hub(tmp: &TempDir, name: &str) {
 
 /// Placeholder substituted in for the test's tempdir path before
 /// comparing stdout against a checked-in golden.
-#[allow(dead_code)]
 pub const TEMPDIR_PLACEHOLDER: &str = "<TEMPDIR>";
 
 /// String-replacement rule applied to every JSON string before golden
 /// comparison.
-#[allow(dead_code)]
 pub struct Sub {
     pub from: String,
     pub to: &'static str,
 }
 
 impl Sub {
-    #[allow(dead_code)]
     pub fn new(from: impl Into<String>, to: &'static str) -> Self {
         Self {
             from: from.into(),
@@ -166,7 +158,6 @@ impl Sub {
 /// canonical path is replaced first; otherwise the shorter raw path
 /// would match inside the canonical one and leave a stray `/private`
 /// prefix in the golden.
-#[allow(dead_code)]
 pub fn tempdir_subs(root: &Path) -> Vec<Sub> {
     let mut subs: Vec<Sub> = Vec::new();
     if let Some(raw) = root.to_str() {
@@ -184,7 +175,6 @@ pub fn tempdir_subs(root: &Path) -> Vec<Sub> {
 
 /// Walk `value` recursively and replace every occurrence of
 /// `sub.from` with `sub.to` in any contained string.
-#[allow(dead_code)]
 pub fn strip_substitutions(value: &mut Value, subs: &[Sub]) {
     match value {
         Value::String(s) => {
@@ -213,7 +203,6 @@ pub fn strip_substitutions(value: &mut Value, subs: &[Sub]) {
 /// # Panics
 ///
 /// Panics if `stdout` is not UTF-8 or not valid JSON.
-#[allow(dead_code)]
 pub fn parse_stdout(stdout: &[u8], root: &Path) -> Value {
     parse_json_stream("stdout", stdout, root)
 }
@@ -225,7 +214,6 @@ pub fn parse_stdout(stdout: &[u8], root: &Path) -> Value {
 /// # Panics
 ///
 /// Panics if `stderr` is not UTF-8 or not valid JSON.
-#[allow(dead_code)]
 pub fn parse_stderr(stderr: &[u8], root: &Path) -> Value {
     parse_json_stream("stderr", stderr, root)
 }
@@ -246,7 +234,8 @@ fn parse_json_stream(label: &str, bytes: &[u8], root: &Path) -> Value {
 /// `tests/capability.rs`, `tests/change_plan_orchestrate.rs`) so the same
 /// `Project::init()` / `.with_schemas()` / `.stage_slice()` shape works
 /// across every integration suite. Each test binary uses a different
-/// subset, hence the `#[allow(dead_code)]` on every public item.
+/// subset; the module-level `#![expect(dead_code, ...)]` covers helpers
+/// that any particular binary doesn't reach.
 pub struct Project {
     _tmp: TempDir,
     root: PathBuf,
@@ -256,7 +245,6 @@ impl Project {
     /// Build a fresh tempdir and run `specify init <repo>/schemas/omnia`
     /// with a default `--name`. The resulting project sits at the
     /// tempdir root.
-    #[allow(dead_code)]
     pub fn init() -> Self {
         let tmp = tempdir().expect("tempdir");
         let root = tmp.path().to_path_buf();
@@ -274,7 +262,6 @@ impl Project {
     /// The fixture is mirrored into `<tmp>/schemas/<name>/` so that
     /// subsequent `specify` invocations resolve it via the usual
     /// `schemas/<name>/` probe.
-    #[allow(dead_code)]
     pub fn init_from_fixture(name: &str, fixture_dir: &Path) -> Self {
         let tmp = tempdir().expect("tempdir");
         let root = tmp.path().to_path_buf();
@@ -292,7 +279,6 @@ impl Project {
     /// Mirror the in-repo `schemas/omnia` tree into the project so any
     /// subcommand that loads a `PipelineView` can resolve the schema
     /// from the project's own `schemas/` dir.
-    #[allow(dead_code)]
     #[must_use]
     pub fn with_schemas(self) -> Self {
         copy_dir(&repo_root().join("schemas/omnia"), &self.root.join("schemas/omnia"));
@@ -301,7 +287,6 @@ impl Project {
 
     /// Populate the schema cache instead of the local `schemas/` tree so
     /// `Capability::resolve` picks the `CapabilitySource::Cached` branch.
-    #[allow(dead_code)]
     #[must_use]
     pub fn with_cached_schema(self) -> Self {
         copy_dir(&repo_root().join("schemas/omnia"), &self.root.join(".specify/.cache/omnia"));
@@ -310,7 +295,6 @@ impl Project {
 
     /// Copy a fixture subtree under `tests/fixtures/e2e/<fixture>` into
     /// `.specify/slices/my-slice/` and return the slice directory path.
-    #[allow(dead_code)]
     pub fn stage_slice(&self, fixture: &str) -> PathBuf {
         let dst = self.root.join(".specify/slices/my-slice");
         fs::create_dir_all(&dst).expect("mkdir slice");
@@ -319,25 +303,21 @@ impl Project {
     }
 
     /// Path to the project root (the tempdir).
-    #[allow(dead_code)]
     pub fn root(&self) -> &Path {
         &self.root
     }
 
     /// Path to `.specify/slices/` under the project root.
-    #[allow(dead_code)]
     pub fn slices_dir(&self) -> PathBuf {
         self.root.join(".specify/slices")
     }
 
     /// Path to `.specify/specs/` under the project root.
-    #[allow(dead_code)]
     pub fn specs_dir(&self) -> PathBuf {
         self.root.join(".specify/specs")
     }
 
     /// Path to the umbrella `plan.yaml` at the repo root.
-    #[allow(dead_code)]
     pub fn plan_path(&self) -> PathBuf {
         self.root.join("plan.yaml")
     }
@@ -345,7 +325,6 @@ impl Project {
     /// Seed `plan.yaml` (at the project root) with arbitrary YAML. Used
     /// by the change-umbrella tests to drive the file directly without
     /// going through the `plan create` verb.
-    #[allow(dead_code)]
     pub fn seed_plan(&self, yaml: &str) {
         fs::write(self.plan_path(), yaml).expect("write plan.yaml");
     }
@@ -358,8 +337,10 @@ impl Project {
 ///
 /// Panics if the golden cannot be read, is not JSON, or differs from
 /// `actual`.
-#[allow(dead_code)]
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "callers naturally pass owned `serde_json::Value` results"
+)]
 pub fn assert_golden_at(dir: &Path, name: &str, actual: Value) {
     let golden_path = dir.join(name);
     let rendered = serde_json::to_string_pretty(&actual).expect("pretty json");

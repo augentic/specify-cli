@@ -49,7 +49,7 @@ const HUB_INIT_NAME: &str = "hub";
     clippy::needless_pass_by_value,
     reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
 )]
-pub(crate) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
+pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.capability.is_some() {
         return Err(Error::Diag {
             code: "init-requires-capability-or-hub",

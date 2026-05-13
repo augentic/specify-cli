@@ -53,7 +53,7 @@ pub trait PackageClient {
 /// per-call current-thread Tokio runtime. Without the feature, the type still
 /// exists so [`crate::resolver`] dispatch compiles, but [`Self::fetch`]
 /// returns the `tool-package-source-disabled` diagnostic.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct WasmPkgClient;
 
 #[cfg(not(feature = "oci"))]
@@ -132,7 +132,7 @@ mod oci_backend {
             ToolError::cache_io("open package download tempfile", temp.path(), err)
         })?);
         let mut hasher = sha2::Sha256::new();
-        let mut total = 0u64;
+        let mut total = 0_u64;
         while let Some(chunk) = stream
             .try_next()
             .await

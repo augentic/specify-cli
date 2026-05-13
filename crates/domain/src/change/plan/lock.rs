@@ -12,7 +12,7 @@ mod status;
 mod tests;
 
 /// Result of a successful [`Stamp::acquire`] call.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Acquired {
     /// PID written into the stamp file.
     pub pid: u32,
@@ -28,7 +28,7 @@ pub struct Acquired {
 
 /// Outcome of a [`Stamp::release`] call. The CLI surfaces this
 /// verbatim via `specify change plan lock release --format json`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Released {
     /// Stamp file was present and held our PID — now removed.
     Removed {
@@ -49,7 +49,7 @@ pub enum Released {
 
 /// Snapshot of the on-disk `.specify/plan.lock` stamp, as reported by
 /// `specify change plan lock status`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct State {
     /// `true` when the stamp file exists and the stamped PID is
     /// considered alive by the host liveness probe.
@@ -79,7 +79,7 @@ pub struct State {
 /// The `/change:execute` skill calls these verbs around its agent-side
 /// loop; no Rust-level process stays alive for the full driver run,
 /// so the stamp is the only signalling channel available.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Stamp;
 
 impl Stamp {

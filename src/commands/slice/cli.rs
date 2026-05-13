@@ -259,7 +259,7 @@ pub(crate) enum JournalAction {
 }
 
 #[derive(Debug, Copy, Clone, ValueEnum)]
-pub(crate) enum CreateIfExistsArg {
+pub enum CreateIfExistsArg {
     /// Refuse when the directory exists (default)
     Fail,
     /// Reuse the existing directory — requires a valid `.metadata.yaml`

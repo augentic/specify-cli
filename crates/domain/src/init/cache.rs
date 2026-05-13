@@ -13,11 +13,11 @@ use crate::config::Layout;
 use crate::init::capability_uri::{CapabilityUri, ensure_capability_dir};
 
 #[derive(Debug)]
-pub(crate) struct CachedCapability {
+pub(super) struct CachedCapability {
     pub(crate) capability_value: String,
 }
 
-pub(crate) fn cache_capability(
+pub(super) fn cache_capability(
     capability: &str, project_dir: &Path, now: Timestamp,
 ) -> Result<CachedCapability, Error> {
     if capability.trim().is_empty() || capability != capability.trim() {

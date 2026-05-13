@@ -481,7 +481,7 @@ fn allowed_fs_reads_and_writes_declared() {
     assert!(stdout.contains("read-only: fixture-probe"), "{stdout}");
 
     let result = project.join("outputs/result.txt");
-    let _ = fs::remove_file(&result);
+    drop(fs::remove_file(&result));
     let write = specify()
         .current_dir(&project)
         .env("SPECIFY_TOOLS_CACHE", &cache)
@@ -548,7 +548,7 @@ fn name_collision_project_scope_wins() {
     let cap_exit =
         tool_entry("exit-seven", "0.1.0", &file_uri(&fixtures.cap_wasm("exit-seven")), None, None);
     write_project_manifest(&project, &capability_project_manifest(Some(&project_echo)));
-    write_capability_tools(&fixtures.capability(), &(cap_echo + &cap_exit));
+    write_capability_tools(&fixtures.capability(), &format!("{cap_echo}{cap_exit}"));
 
     let value = json_tool_list(&project, &cache);
     let warnings = value["warnings"].as_array().expect("warnings array");

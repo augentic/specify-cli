@@ -71,7 +71,7 @@ pub struct CompatibilityFinding {
 }
 
 /// Aggregate counts for a compatibility report.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct CompatibilitySummary {
     /// Number of findings in the report.

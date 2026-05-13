@@ -28,8 +28,7 @@ fn init_hub_validate_succeeds_on_empty() {
         .args(["--format", "json", "registry", "validate"])
         .assert()
         .success();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert!(value["error"].is_null(), "success envelope must omit error: {value}");
 }
 
@@ -62,8 +61,7 @@ fn init_hub_validate_rejects_dot_url() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(
         value["error"], "hub-cannot-be-project",
         "error must carry the stable diagnostic code, got: {value}"
@@ -98,8 +96,7 @@ fn registry_add_round_trips_through_show() {
         ])
         .assert()
         .success();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["added"]["name"], "alpha");
     assert_eq!(value["added"]["url"], "git@github.com:augentic/alpha.git");
@@ -114,8 +111,7 @@ fn registry_add_round_trips_through_show() {
         .args(["--format", "json", "registry", "show"])
         .assert()
         .success();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
     let projects = value["registry"]["projects"].as_array().expect("projects array");
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0]["name"], "alpha");
@@ -141,8 +137,7 @@ fn registry_add_rejects_dot_url_in_hub_mode() {
         ])
         .assert()
         .failure();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "hub-cannot-be-project");
     let msg = value["message"].as_str().expect("message");
     assert!(
@@ -171,8 +166,7 @@ fn registry_add_rejects_non_kebab() {
         ])
         .assert()
         .failure();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "registry-add-name-not-kebab");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("kebab-case"), "diagnostic must mention kebab-case, got: {msg}");
@@ -213,8 +207,7 @@ fn registry_remove_succeeds_and_round_trips() {
         .args(["--format", "json", "registry", "remove", "beta"])
         .assert()
         .success();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["removed"], "beta");
     assert!(
@@ -270,8 +263,7 @@ fn registry_remove_warns_on_plan_ref() {
         .args(["--format", "json", "registry", "remove", "alpha"])
         .assert()
         .success();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["removed"], "alpha");
     let warnings = value["warnings"].as_array().expect("warnings array");
@@ -291,8 +283,7 @@ fn registry_remove_unknown_project_errors() {
         .args(["--format", "json", "registry", "remove", "ghost"])
         .assert()
         .failure();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "registry-remove-not-found");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("not found"), "msg: {msg}");
@@ -318,8 +309,7 @@ fn registry_remove_refuses_when_absent() {
         .args(["--format", "json", "registry", "remove", "alpha"])
         .assert()
         .failure();
-    let value: serde_json::Value =
-        serde_json::from_slice(&assert.get_output().stderr).expect("json");
+    let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "registry-remove-no-registry");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("no registry declared"), "msg: {msg}");

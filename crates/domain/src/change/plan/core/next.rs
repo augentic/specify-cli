@@ -104,7 +104,7 @@ impl Plan {
             indegree.iter().filter_map(|(&n, &d)| (d == 0).then_some(Reverse(n))).collect();
 
         let mut rank: HashMap<NodeIndex, usize> = HashMap::with_capacity(self.entries.len());
-        let mut next_rank = 0usize;
+        let mut next_rank = 0_usize;
         while let Some(Reverse(node)) = ready.pop() {
             rank.insert(node, next_rank);
             next_rank += 1;

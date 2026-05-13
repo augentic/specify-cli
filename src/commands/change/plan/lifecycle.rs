@@ -71,7 +71,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
             entry: None,
         });
     }
-    if let Some(ref reg) = registry {
+    if let Some(reg) = &registry {
         let workspace_base = ctx.layout().specify_dir().join("workspace");
         for rp in &reg.projects {
             let slot_project_yaml =

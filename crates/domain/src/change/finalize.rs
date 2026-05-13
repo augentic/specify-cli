@@ -2,7 +2,10 @@
 //! and every workspace clone is clean, then atomically archives
 //! `plan.yaml`, `change.md`, and `.specify/plans/<name>/`.
 
-#![allow(clippy::needless_pass_by_value)]
+#![expect(
+    clippy::needless_pass_by_value,
+    reason = "module-wide: probe/runner functions take owned config values mirroring the legacy plan API; cascade refactor deferred"
+)]
 
 use std::path::Path;
 
@@ -101,7 +104,7 @@ pub struct ProjectResult {
 }
 
 /// Per-status counters for the summary row.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Summary {
     /// PRs in `MERGED` state on remote.
@@ -231,7 +234,7 @@ pub enum PlanLoad {
 /// failures live in [`Outcome::projects`] and never bubble up.
 pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refusal> {
     // Refuse if any plan entry is still in a non-terminal state.
-    let outstanding = summary::outstanding(inputs.plan);
+    let outstanding = outstanding(inputs.plan);
     if !outstanding.is_empty() {
         return Err(Refusal::NonTerminalEntries(outstanding));
     }
@@ -247,7 +250,7 @@ pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refu
         projects.push(probe::probe_one(runner, &path, rp, &expected_branch, inputs.clean));
     }
 
-    let aggregated = summary::summarise(&projects);
+    let aggregated = summarise(&projects);
     let any_refusing = projects.iter().any(|p| !p.status.is_passing());
 
     let mut outcome = Outcome {

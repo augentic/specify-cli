@@ -95,7 +95,7 @@ impl Brief {
 
 /// Given the text *after* the leading `---\n`, split it into
 /// `(frontmatter, body)` at the first closing `---` on its own line.
-pub(crate) fn split_on_closing_delimiter(after_open: &str) -> Option<(&str, &str)> {
+pub(super) fn split_on_closing_delimiter(after_open: &str) -> Option<(&str, &str)> {
     let mut offset = 0;
     for line in after_open.split_inclusive('\n') {
         let trimmed = line.trim_end_matches(['\n', '\r']);

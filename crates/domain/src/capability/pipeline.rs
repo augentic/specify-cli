@@ -215,7 +215,7 @@ impl PipelineView {
 
 /// Resolve `generates` (a literal filename or glob pattern) against
 /// `change_dir`, returning `true` when it matches at least one file.
-pub(crate) fn artifact_present(change_dir: &Path, generates: &str) -> bool {
+pub(super) fn artifact_present(change_dir: &Path, generates: &str) -> bool {
     let joined = change_dir.join(generates);
     if generates.contains('*') {
         let Some(pattern) = joined.to_str() else {

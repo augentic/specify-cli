@@ -191,7 +191,7 @@ fn active_slice_names(
     }
 
     let mut names = Vec::new();
-    for entry in std::fs::read_dir(slices_dir)? {
+    for entry in fs::read_dir(slices_dir)? {
         let entry = entry?;
         if !entry.file_type()?.is_dir() {
             continue;

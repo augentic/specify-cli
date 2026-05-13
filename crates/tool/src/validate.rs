@@ -26,7 +26,7 @@ const RULE_NAME_UNIQUE: &str = "tool.name-unique";
 impl Tool {
     /// Validate the tool declaration against the structural rules (`name`, `version`, `source`, `sha256`, permission shape).
     #[must_use]
-    #[allow(clippy::too_many_lines, reason = "rules inlined into vec! site per R9")]
+    #[expect(clippy::too_many_lines, reason = "rules inlined into vec! site per R9")]
     pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationSummary> {
         let package = match &self.source {
             ToolSource::Package(p) => Some(p),

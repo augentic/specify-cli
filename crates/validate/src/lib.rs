@@ -84,6 +84,10 @@ pub fn validate_baseline(contracts_dir: &Path) -> Vec<ContractFinding> {
         }
     }
 
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "findings.sort_by below re-establishes deterministic order across the whole vec"
+    )]
     for (id, paths) in &id_to_paths {
         if paths.len() < 2 {
             continue;

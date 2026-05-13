@@ -263,7 +263,7 @@ fn write_push_text(w: &mut dyn Write, body: &PushBody) -> std::io::Result<()> {
     let prefix = if body.dry_run_flag { "[dry-run] " } else { "" };
     writeln!(w, "{prefix}specify: workspace push — {}", body.plan_name)?;
     writeln!(w)?;
-    let mut counts = [0usize; 6];
+    let mut counts = [0_usize; 6];
     for r in &body.projects {
         let raw = r.status.to_string();
         let label = if body.dry_run_flag

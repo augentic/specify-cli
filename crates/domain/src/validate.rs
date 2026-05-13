@@ -70,7 +70,7 @@ pub enum RuleOutcome {
 }
 
 /// A named rule attached to a specific brief id.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Rule {
     /// Stable dot-namespaced identifier (e.g. `proposal.why-has-content`).
     pub id: &'static str,
@@ -103,7 +103,7 @@ pub struct BriefContext<'a> {
 }
 
 /// A rule that spans multiple briefs.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct CrossRule {
     /// Stable dot-namespaced identifier (e.g. `cross.proposal-crates-have-specs`).
     pub id: &'static str,

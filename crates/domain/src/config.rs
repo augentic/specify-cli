@@ -58,6 +58,10 @@ pub struct ProjectConfig {
     pub hub: bool,
 }
 
+#[expect(
+    clippy::same_name_method,
+    reason = "inherent `ProjectConfig::load` is intentionally shadowed by the `AtomicYaml::load` trait impl in `config/atomic.rs`; the trait impl delegates to this fn"
+)]
 impl ProjectConfig {
     /// Load `.specify/project.yaml` from `project_dir`.
     ///

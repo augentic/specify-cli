@@ -73,9 +73,9 @@ pub fn stage_and_install(staged: &Path, dest: &Path) -> Result<(), ToolError> {
         }
         Err(source) => {
             if let Some(backup) = &backup {
-                let _ = fs::rename(backup, dest);
+                drop(fs::rename(backup, dest));
             }
-            let _ = fs::remove_dir_all(&install_dir);
+            drop(fs::remove_dir_all(&install_dir));
             Err(ToolError::atomic_move_failed(install_dir, dest.to_path_buf(), source))
         }
     }

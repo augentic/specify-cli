@@ -18,7 +18,7 @@ use crate::init::{InitOptions, InitResult, resolve_version, resolved_name, upser
     clippy::needless_pass_by_value,
     reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
 )]
-pub(crate) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
+pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
     let capability = opts.capability.ok_or_else(|| Error::Diag {
         code: "init-requires-capability-or-hub",
         detail: "pass <capability> or --hub".to_string(),

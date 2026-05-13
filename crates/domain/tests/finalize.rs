@@ -171,6 +171,7 @@ impl FinalizeMock {
         // Map PR number → owned PrView so `gh pr view <number>` can look
         // up the canned payload.
         let mut by_number: HashMap<u64, PrView> = HashMap::new();
+        #[expect(clippy::iter_over_hash_type, reason = "rebuilds an unordered index for lookups")]
         for v in view.values() {
             if let Ok(Some(pr)) = v {
                 by_number.insert(pr.number, pr.clone());
@@ -273,7 +274,7 @@ fn refuses_when_plan_has_outstanding() {
         now: jiff::Timestamp::now(),
     };
     let err = run(inputs, &runner).expect_err("non-terminal must refuse");
-    assert!(matches!(err, Refusal::NonTerminalEntries(ref names) if names == &["b"]));
+    assert!(matches!(&err, Refusal::NonTerminalEntries(names) if names == &["b"]));
     // Probe must not have been called — guard runs before any IO.
     assert!(runner.calls.borrow().is_empty(), "no probes on non-terminal refusal");
 }

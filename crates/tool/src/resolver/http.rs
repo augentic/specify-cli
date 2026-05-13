@@ -97,7 +97,7 @@ fn stream_to_tempfile<R: Read>(
 ) -> Result<String, ToolError> {
     let mut hasher = Sha256::new();
     let mut writer = io::BufWriter::with_capacity(STREAM_CHUNK_BYTES, temp.as_file());
-    let mut buf = vec![0u8; STREAM_CHUNK_BYTES];
+    let mut buf = vec![0_u8; STREAM_CHUNK_BYTES];
     let mut total: u64 = 0;
     loop {
         let n = match reader.read(&mut buf) {

@@ -25,7 +25,7 @@ pub(super) fn add(
     description: Option<String>, project: Option<String>, capability: Option<String>,
     context: Vec<String>,
 ) -> Result<()> {
-    if let Some(ref proj) = project {
+    if let Some(proj) = &project {
         check_project(&ctx.project_dir, proj)?;
     }
 
@@ -65,7 +65,7 @@ pub(super) fn amend(
     description: Option<String>, project: Option<String>, capability: Option<String>,
     context: Option<Vec<String>>,
 ) -> Result<()> {
-    if let Some(ref proj) = project
+    if let Some(proj) = &project
         && !proj.is_empty()
     {
         check_project(&ctx.project_dir, proj)?;

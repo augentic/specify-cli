@@ -4,7 +4,7 @@
 
 mod brief;
 mod cache;
-#[allow(
+#[expect(
     clippy::module_inception,
     reason = "preserves the per-concern split inherited from the pre-collapse `specify-capability` crate; rename would cascade across many imports"
 )]

@@ -97,7 +97,7 @@ impl Registry {
 
         // Invariant 3: Path validity — no absolute or `..` paths.
         for project in &self.projects {
-            if let Some(ref roles) = project.contracts {
+            if let Some(roles) = &project.contracts {
                 for path in roles.produces.iter().chain(roles.consumes.iter()) {
                     if path.starts_with('/') || path.contains("..") {
                         return Err(Error::Diag {
@@ -115,9 +115,9 @@ impl Registry {
         // Invariant 4: Self-consistency — a project must not list the
         // same path in both `produces` and `consumes`.
         for project in &self.projects {
-            if let Some(ref roles) = project.contracts {
+            if let Some(roles) = &project.contracts {
                 let produced: HashSet<&str> =
-                    roles.produces.iter().map(std::string::String::as_str).collect();
+                    roles.produces.iter().map(String::as_str).collect();
                 for path in &roles.consumes {
                     if produced.contains(path.as_str()) {
                         return Err(Error::Diag {
@@ -136,7 +136,7 @@ impl Registry {
         // `produces` for at most one project.
         let mut producers: HashMap<&str, &str> = HashMap::new();
         for project in &self.projects {
-            if let Some(ref roles) = project.contracts {
+            if let Some(roles) = &project.contracts {
                 for path in &roles.produces {
                     if let Some(existing) = producers.get(path.as_str()) {
                         return Err(Error::Diag {
