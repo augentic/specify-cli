@@ -6,18 +6,6 @@ use specify_error::{Error, ValidationSummary};
 
 use crate::cli::Format;
 
-/// Output sink for [`emit`]. `Stdout` is the default success channel;
-/// `Stderr` is reserved for failure envelopes and any diagnostic
-/// rendering that should not interleave with the structured success
-/// stream skills consume. Private to `src/output.rs`: handlers route
-/// through `ctx.write(&Body, write_text)?;`; `Stream::Stderr` is
-/// reached only by [`report`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Stream {
-    Stdout,
-    Stderr,
-}
-
 /// Serialise `data` and write it to stdout in `format`, using
 /// `render_text` for the text-format branch. The closure-based form
 /// is the single success-path emission entry point — handlers either
@@ -31,7 +19,7 @@ enum Stream {
 pub(crate) fn write<T: Serialize>(
     format: Format, data: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
 ) -> Result<(), Error> {
-    emit(Stream::Stdout, format, data, render_text)
+    emit(Box::new(std::io::stdout().lock()), format, data, render_text)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,7 +87,7 @@ impl From<&Error> for Exit {
 /// Render `err` as a failure envelope and return the matching exit
 /// code. JSON serialises the body directly; Text writes
 /// `error: {err}` plus any long-form hint for the variant. Both
-/// formats route through [`emit`] against [`Stream::Stderr`] so
+/// formats route through [`emit`] against `std::io::stderr()` so
 /// failure output never interleaves with the structured success
 /// stream skills consume.
 ///
@@ -111,7 +99,7 @@ impl From<&Error> for Exit {
 pub(crate) fn report(format: Format, err: &Error) -> Exit {
     let code = Exit::from(err);
     let body = ErrorBody::from(err);
-    let result = emit(Stream::Stderr, format, &body, write_error_text);
+    let result = emit(Box::new(std::io::stderr().lock()), format, &body, write_error_text);
     if let Err(serialise_err) = result {
         eprintln!("error: {err}");
         eprintln!("error: {serialise_err}");
@@ -119,38 +107,26 @@ pub(crate) fn report(format: Format, err: &Error) -> Exit {
     code
 }
 
-/// Return a locked stdout/stderr writer for `stream`. Boxed to keep
-/// the JSON and text emitter signatures uniform across both sinks.
-fn writer_for(stream: Stream) -> Box<dyn Write> {
-    match stream {
-        Stream::Stdout => Box::new(std::io::stdout().lock()),
-        Stream::Stderr => Box::new(std::io::stderr().lock()),
-    }
-}
-
-/// Emit `payload` to `stream` in the requested format. JSON
+/// Emit `payload` through `writer` in the requested format. JSON
 /// serialises the body directly via `serde_json::to_writer_pretty`;
-/// Text locks the sink and delegates to `render_text`. The single
-/// signature covers both success (`Stream::Stdout`) and failure
-/// (`Stream::Stderr`) — there is one entry point for all structured
-/// output.
+/// Text delegates to `render_text`. The single signature covers
+/// both success (stdout) and failure (stderr) — there is one entry
+/// point for all structured output. Callers construct the locked
+/// writer at the boundary so the sink choice is visible at the
+/// call site.
 fn emit<T: Serialize>(
-    stream: Stream, format: Format, payload: &T,
+    mut writer: Box<dyn Write>, format: Format, payload: &T,
     render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
 ) -> Result<(), Error> {
     match format {
         Format::Json => {
-            let mut writer = writer_for(stream);
             serde_json::to_writer_pretty(&mut writer, payload).map_err(|err| Error::Diag {
                 code: "json-serialize-failed",
                 detail: format!("failed to serialize JSON response: {err}"),
             })?;
             writeln!(writer).map_err(Error::Io)
         }
-        Format::Text => {
-            let mut writer = writer_for(stream);
-            render_text(&mut writer, payload).map_err(Error::Io)
-        }
+        Format::Text => render_text(&mut writer, payload).map_err(Error::Io),
     }
 }
 

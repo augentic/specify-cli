@@ -500,7 +500,7 @@ fn plan_status_missing_file_errors() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    // R4 routes every error envelope through Stream::Stderr.
+    // Failure envelopes are written to stderr.
     let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(value["error"], "artifact-not-found");
     assert!(
@@ -1221,7 +1221,7 @@ fn plan_archive_refuses_json_lists_entries() {
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
 
-    // R4 routes the typed failure envelope through Stream::Stderr.
+    // The typed failure envelope is written to stderr.
     let actual = parse_stderr(&assert.get_output().stderr, project.root());
     assert_eq!(actual["error"], "plan-has-outstanding-work");
     assert_eq!(actual["exit-code"], 1);
@@ -1503,7 +1503,7 @@ fn plan_lock_acquire_refuses_on_live_pid() {
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
 
-    // R4 routes every error envelope through Stream::Stderr.
+    // Failure envelopes are written to stderr.
     let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json stderr");
     assert_eq!(value["error"], "driver-busy");
     assert_eq!(value["exit-code"], 1, "DriverBusy must surface the generic-failure exit code");

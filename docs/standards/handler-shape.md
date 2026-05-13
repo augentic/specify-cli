@@ -29,7 +29,7 @@ A free `fn ... -> Result<Exit>` belongs in `src/commands.rs`. Elsewhere, default
 
 Success bodies leave handlers via `ctx.write(&body, write_text)?;`. `Ctx::write` chooses the JSON vs text path based on `Format`; the handler never sees the branch. The `write_text` closure has signature `FnOnce(&mut dyn Write, &T) -> std::io::Result<()>` and is colocated with each handler so the response shape stays in a single block of code; the JSON path goes through `serde::Serialize` automatically.
 
-`Stream::Stdout` / `Stream::Stderr` and the underlying `emit` function are private to `src/output.rs`. Handlers never spell them. Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::capability::resolve`, `commands::capability::check` — receive a bare `Format` and call the free `output::write(format, &body, write_text)?;` instead.
+The underlying `emit` function is private to `src/output.rs`, and handlers never pick a stdout/stderr sink directly — `output::write` and `output::report` are the only sink-bearing entry points. Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::capability::resolve`, `commands::capability::check` — receive a bare `Format` and call the free `output::write(format, &body, write_text)?;` instead.
 
 For the full DTO and dispatch rules see [coding-standards.md §"Format dispatch"](./coding-standards.md#format-dispatch), [§"One emit path"](./coding-standards.md#one-emit-path), and [§"DTOs"](./coding-standards.md#dtos). The canonical pattern is [`src/commands/codex.rs`](../../src/commands/codex.rs).
 
@@ -59,7 +59,7 @@ Dispatchers live in `src/commands/<verb>.rs` and call back into the workspace cr
 3. The dispatcher loads `ProjectConfig` (which enforces the `specify_version` floor for free) and any other state it needs.
 4. The dispatcher delegates the deterministic work to a workspace crate (`specify_slice`, `specify_change`, etc.) and converts the result to a `*Body` for `ctx.write(&body, write_text)`.
 
-Failure envelopes leave handlers as `Err(Error::*)`; the dispatcher in `src/commands.rs` routes them through `output::report(format, &err)`. No handler emits its own `Stream::Stderr` envelope.
+Failure envelopes leave handlers as `Err(Error::*)`; the dispatcher in `src/commands.rs` routes them through `output::report(format, &err)`. No handler writes its own stderr envelope.
 
 Never put domain logic in the binary. If a function needs unit tests, it belongs in a workspace crate. The binary owns argv parsing, formatting, and dispatch only. For the crate dependency direction this enforces see [architecture.md §"Workspace layout"](./architecture.md#workspace-layout).
 

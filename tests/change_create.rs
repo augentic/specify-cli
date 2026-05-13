@@ -105,7 +105,7 @@ fn create_rejects_non_kebab_name() {
         .args(["--format", "json", "change", "create", "NotKebab"])
         .assert()
         .failure();
-    // R4 routes every error envelope through Stream::Stderr.
+    // Failure envelopes are written to stderr.
     let actual = parse_stderr(&assert.get_output().stderr, project.root());
     assert_eq!(actual["error"], "change-brief-name-not-kebab");
     let msg = actual["message"].as_str().expect("message");

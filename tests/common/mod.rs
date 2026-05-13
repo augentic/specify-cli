@@ -207,9 +207,9 @@ pub fn parse_stdout(stdout: &[u8], root: &Path) -> Value {
     parse_json_stream("stdout", stdout, root)
 }
 
-/// Mirror of [`parse_stdout`] for the stderr channel. Used by failure
-/// tests since R4 routes every error envelope (JSON or text) through
-/// `Stream::Stderr`.
+/// Mirror of [`parse_stdout`] for the stderr channel. Used by
+/// failure tests, which write the error envelope to stderr in both
+/// JSON and text formats.
 ///
 /// # Panics
 ///

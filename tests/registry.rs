@@ -516,7 +516,7 @@ fn registry_validate_malformed_version() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    // R4 routes every error envelope through Stream::Stderr.
+    // Failure envelopes are written to stderr.
     let actual = parse_stderr(&assert.get_output().stderr, project.root());
     assert_eq!(actual["error"], "registry-version-unsupported");
     let msg = actual["message"].as_str().expect("message string");
@@ -547,7 +547,7 @@ projects:
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
-    // R4 routes every error envelope through Stream::Stderr.
+    // Failure envelopes are written to stderr.
     let actual = parse_stderr(&assert.get_output().stderr, project.root());
     assert_eq!(actual["error"], "registry-project-name-duplicate");
     let msg = actual["message"].as_str().expect("message string");
