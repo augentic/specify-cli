@@ -131,11 +131,11 @@ pub fn parse_tasks(content: &str) -> Progress {
 /// stripped from the description and returned as a [`SkillDirective`].
 /// Non-matching comments (e.g. `<!-- TODO: … -->`) are left untouched.
 fn extract_skill_directive(rest: &str) -> (String, Option<SkillDirective>) {
-    let Some(m) = skill_directive_re().find(rest) else {
+    let Some(caps) = skill_directive_re().captures(rest) else {
         return (rest.trim().to_string(), None);
     };
 
-    let caps = skill_directive_re().captures(rest).expect("find matched; captures must too");
+    let m = caps.get(0).expect("group 0 always present on a successful match");
     let directive = SkillDirective {
         plugin: caps[1].to_string(),
         skill: caps[2].to_string(),
