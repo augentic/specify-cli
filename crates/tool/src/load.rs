@@ -69,7 +69,6 @@ pub fn merge_scoped(
 ) -> (Vec<(ToolScope, Tool)>, Vec<Warning>) {
     let mut merged: Vec<(ToolScope, Tool)> = Vec::with_capacity(project.len() + capability.len());
     let mut project_names: HashSet<String> = HashSet::new();
-    let mut warning_names: HashSet<String> = HashSet::new();
     let mut warnings: Vec<Warning> = Vec::new();
 
     for (scope, tool) in project {
@@ -79,9 +78,7 @@ pub fn merge_scoped(
 
     for (scope, tool) in capability {
         if project_names.contains(&tool.name) {
-            if warning_names.insert(tool.name.clone()) {
-                warnings.push(Warning::ToolNameCollision { name: tool.name });
-            }
+            warnings.push(Warning::ToolNameCollision { name: tool.name });
             continue;
         }
         merged.push((scope, tool));
