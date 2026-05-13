@@ -12,26 +12,11 @@ use specify_error::{Error, Result};
 use super::{Ref, plan_ref, require_file};
 use crate::context::Ctx;
 
-/// Wire shape of the JSON `diagnostics:` row. Mirrors
-/// [`PlanDoctorDiagnostic`] but with `severity` rendered as the
-/// kebab-case label string (`error` / `warning`).
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct DiagnosticRow {
-    severity: &'static str,
-    code: String,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    entry: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<serde_json::Value>,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct DoctorBody {
     plan: Ref,
-    diagnostics: Vec<DiagnosticRow>,
+    diagnostics: Vec<PlanDoctorDiagnostic>,
 }
 
 fn write_doctor_text(w: &mut dyn Write, body: &DoctorBody) -> std::io::Result<()> {
@@ -39,7 +24,7 @@ fn write_doctor_text(w: &mut dyn Write, body: &DoctorBody) -> std::io::Result<()
         return writeln!(w, "Plan OK");
     }
     for d in &body.diagnostics {
-        let prefix = if d.severity == "error" { "ERROR  " } else { "WARNING" };
+        let prefix = if matches!(d.severity, Severity::Error) { "ERROR  " } else { "WARNING" };
         let entry_col = d.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
         writeln!(w, "{prefix} {:<24} {entry_col:<24} {}", d.code, d.message)?;
     }
@@ -72,12 +57,11 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     }
 
     let has_errors = diagnostics.iter().any(|d| matches!(d.severity, Severity::Error));
-    let rows: Vec<DiagnosticRow> = diagnostics.iter().map(diagnostic_row).collect();
 
     ctx.write(
         &DoctorBody {
             plan: plan_ref(&plan, &plan_path),
-            diagnostics: rows,
+            diagnostics,
         },
         write_doctor_text,
     )?;
@@ -90,19 +74,5 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         })
     } else {
         Ok(())
-    }
-}
-
-fn diagnostic_row(d: &PlanDoctorDiagnostic) -> DiagnosticRow {
-    let data = d
-        .data
-        .as_ref()
-        .map(|p| serde_json::to_value(p).expect("DiagnosticPayload serialises as JSON"));
-    DiagnosticRow {
-        severity: d.severity.label(),
-        code: d.code.clone(),
-        message: d.message.clone(),
-        entry: d.entry.clone(),
-        data,
     }
 }
