@@ -297,28 +297,16 @@ fn summarise_ops(ops: &[MergeOperation]) -> String {
 // ---------------------------------------------------------------------------
 
 /// Detect whether a project directory is inside a workspace clone.
-/// Two-part heuristic: (1) the path contains `/.specify/workspace/*/`
-/// as an ancestor via structural component walk, and (2)
-/// `.specify/project.yaml` exists in the project directory. The
-/// secondary guard — CWD does not contain `.specify/plan.yaml` — is
-/// retained as a safety check but is not sufficient on its own
-/// because `plan.yaml` may be absent after `specify change plan
-/// archive`.
+/// The path must contain `/.specify/workspace/*/` as an ancestor via
+/// structural component walk, and `.specify/plan.yaml` must be absent
+/// — the plan file's presence indicates an in-flight change rather
+/// than a freshly merged clone. The `.specify/project.yaml` check is
+/// already enforced upstream by `Ctx::load`.
 fn is_clone_eligible(project_dir: &Path) -> bool {
     if !is_workspace_clone(project_dir) {
         return false;
     }
-    let has_project_yaml = project_dir.join(".specify").join("project.yaml").exists();
-    let has_plan_yaml = Layout::new(project_dir).plan_path().exists();
-    has_project_yaml && !has_plan_yaml
-}
-
-fn merge_pathspecs(project_dir: &Path) -> Vec<&'static str> {
-    WORKSPACE_MERGE_COMMIT_PATHS
-        .iter()
-        .copied()
-        .filter(|path| project_dir.join(path).exists())
-        .collect()
+    !Layout::new(project_dir).plan_path().exists()
 }
 
 fn git(project_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
@@ -326,7 +314,11 @@ fn git(project_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Outpu
 }
 
 fn auto_commit(project_dir: &Path, name: &str) {
-    let pathspecs = merge_pathspecs(project_dir);
+    let pathspecs: Vec<&'static str> = WORKSPACE_MERGE_COMMIT_PATHS
+        .iter()
+        .copied()
+        .filter(|path| project_dir.join(path).exists())
+        .collect();
     if pathspecs.is_empty() {
         return;
     }
