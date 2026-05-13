@@ -12,7 +12,8 @@ use crate::registry::Registry;
 use crate::registry::catalog::RegistryProject;
 
 /// One row for `specify workspace status` text/JSON output.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 #[must_use]
 pub struct SlotStatus {
     /// Registry project name (`.specify/workspace/<name>/`).

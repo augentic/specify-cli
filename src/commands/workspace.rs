@@ -10,8 +10,7 @@ use specify_domain::change::Plan;
 use specify_domain::registry::Registry;
 use specify_domain::registry::branch::{Prepared, Request as BranchRequest, prepare};
 use specify_domain::registry::workspace::{
-    ConfiguredTargetKind, PushOutcome, SlotKind, SlotStatus, push_projects, status_projects,
-    sync_projects,
+    PushOutcome, SlotStatus, push_projects, status_projects, sync_projects,
 };
 use specify_error::{Error, Result};
 
@@ -54,8 +53,7 @@ pub(crate) fn status(ctx: &Ctx, projects: &[String]) -> Result<()> {
         }
         Some(registry) => {
             let selected = registry.select(projects)?;
-            let slots =
-                status_projects(&ctx.project_dir, &selected).iter().map(SlotRow::from).collect();
+            let slots = status_projects(&ctx.project_dir, &selected);
             StatusBody::Present { slots }
         }
     };
@@ -184,8 +182,8 @@ fn write_sync_text(w: &mut dyn Write, body: &SyncBody) -> std::io::Result<()> {
 #[derive(Serialize)]
 #[serde(untagged, rename_all = "kebab-case")]
 enum StatusBody {
-    Absent { registry: Option<Registry>, slots: Option<Vec<SlotRow>> },
-    Present { slots: Vec<SlotRow> },
+    Absent { registry: Option<Registry>, slots: Option<Vec<SlotStatus>> },
+    Present { slots: Vec<SlotStatus> },
 }
 
 fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()> {
@@ -193,78 +191,37 @@ fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()
         StatusBody::Absent { .. } => writeln!(w, "no registry declared at registry.yaml"),
         StatusBody::Present { slots } => {
             for slot in slots {
-                slot.render_line(w)?;
+                render_slot_line(w, slot)?;
             }
             Ok(())
         }
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct SlotRow {
-    name: String,
-    kind: SlotKind,
-    slot_path: String,
-    configured_target_kind: ConfiguredTargetKind,
-    configured_target: String,
-    actual_symlink_target: Option<String>,
-    actual_origin: Option<String>,
-    current_branch: Option<String>,
-    head_sha: Option<String>,
-    dirty: Option<bool>,
-    branch_matches_change: Option<bool>,
-    project_config_present: bool,
-    active_slices: Vec<String>,
-}
-
-impl From<&SlotStatus> for SlotRow {
-    fn from(slot: &SlotStatus) -> Self {
-        Self {
-            name: slot.name.clone(),
-            kind: slot.kind,
-            slot_path: slot.slot_path.display().to_string(),
-            configured_target_kind: slot.configured_target_kind,
-            configured_target: slot.configured_target.clone(),
-            actual_symlink_target: slot
-                .actual_symlink_target
-                .as_ref()
-                .map(|p| p.display().to_string()),
-            actual_origin: slot.actual_origin.clone(),
-            current_branch: slot.current_branch.clone(),
-            head_sha: slot.head_sha.clone(),
-            dirty: slot.dirty,
-            branch_matches_change: slot.branch_matches_change,
-            project_config_present: slot.project_config_present,
-            active_slices: slot.active_slices.clone(),
-        }
-    }
-}
-
-impl SlotRow {
-    fn render_line(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(
-            w,
-            "{}: kind={} path={} configured-{}={} target={} origin={} branch={} change-branch={} head={} dirty={} project.yaml={} active-slices={}",
-            self.name,
-            self.kind,
-            self.slot_path,
-            self.configured_target_kind,
-            self.configured_target,
-            self.actual_symlink_target.as_deref().unwrap_or("-"),
-            self.actual_origin.as_deref().unwrap_or("-"),
-            self.current_branch.as_deref().unwrap_or("-"),
-            self.branch_matches_change.map_or("-", |v| if v { "match" } else { "mismatch" }),
-            self.head_sha.as_deref().unwrap_or("-"),
-            self.dirty.map_or("-", |v| if v { "yes" } else { "no" }),
-            if self.project_config_present { "present" } else { "missing" },
-            if self.active_slices.is_empty() {
-                "-".to_string()
-            } else {
-                self.active_slices.join(",")
-            },
-        )
-    }
+fn render_slot_line(w: &mut dyn Write, slot: &SlotStatus) -> std::io::Result<()> {
+    let symlink_target =
+        slot.actual_symlink_target.as_ref().map(|p| p.display().to_string());
+    writeln!(
+        w,
+        "{}: kind={} path={} configured-{}={} target={} origin={} branch={} change-branch={} head={} dirty={} project.yaml={} active-slices={}",
+        slot.name,
+        slot.kind,
+        slot.slot_path.display(),
+        slot.configured_target_kind,
+        slot.configured_target,
+        symlink_target.as_deref().unwrap_or("-"),
+        slot.actual_origin.as_deref().unwrap_or("-"),
+        slot.current_branch.as_deref().unwrap_or("-"),
+        slot.branch_matches_change.map_or("-", |v| if v { "match" } else { "mismatch" }),
+        slot.head_sha.as_deref().unwrap_or("-"),
+        slot.dirty.map_or("-", |v| if v { "yes" } else { "no" }),
+        if slot.project_config_present { "present" } else { "missing" },
+        if slot.active_slices.is_empty() {
+            "-".to_string()
+        } else {
+            slot.active_slices.join(",")
+        },
+    )
 }
 
 #[derive(Serialize)]
