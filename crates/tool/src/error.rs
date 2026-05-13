@@ -163,24 +163,6 @@ pub enum NetworkKind {
 }
 
 impl ToolError {
-    /// Build a manifest-read error with path context.
-    #[must_use]
-    pub const fn manifest_read(path: PathBuf, source: std::io::Error) -> Self {
-        Self::Manifest {
-            path,
-            kind: ManifestKind::Read(source),
-        }
-    }
-
-    /// Build a manifest-parse error with path context.
-    #[must_use]
-    pub fn manifest_parse(path: PathBuf, source: YamlError) -> Self {
-        Self::Manifest {
-            path,
-            kind: ManifestKind::Parse(Box::new(source)),
-        }
-    }
-
     /// Build a cache or local-source I/O error. The single named helper
     /// keeps call sites readable across cache writes, resolver staging,
     /// and local-source reads; all produce the merged [`Self::Io`]

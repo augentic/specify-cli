@@ -12,8 +12,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use specify_domain::change::finalize::{
-    Inputs, Landing, Outcome, ProjectResult, Refusal, classify_pr, combine, is_terminal,
-    outstanding, run, summarise,
+    Inputs, Landing, ProjectResult, Refusal, classify_pr, combine, is_terminal, outstanding, run,
+    summarise,
 };
 use specify_domain::change::{Entry, Plan, Status};
 use specify_domain::registry::forge::{PrState, PrView};
@@ -933,13 +933,6 @@ fn summary_counts_per_status() {
     assert_eq!(s.no_branch, 1);
     assert_eq!(s.unmerged, 1);
     assert_eq!(s.dirty, 1);
-}
-
-// silence unused-import warnings for Outcome — referenced in doctest-only
-// examples below.
-#[allow(dead_code)]
-const fn _outcome_type_alias() -> Option<Outcome> {
-    None
 }
 
 // ---- helpers --------------------------------------------------------

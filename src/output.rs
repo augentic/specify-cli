@@ -176,9 +176,7 @@ pub(crate) struct ErrorBody<'a> {
 impl<'a> From<&'a Error> for ErrorBody<'a> {
     fn from(err: &'a Error) -> Self {
         let results = match err {
-            Error::Validation { results } => {
-                Some(results.as_slice())
-            }
+            Error::Validation { results } => Some(results.as_slice()),
             _ => None,
         };
         Self {
@@ -198,4 +196,3 @@ fn write_error_text(w: &mut dyn Write, body: &ErrorBody<'_>) -> std::io::Result<
     }
     Ok(())
 }
-
