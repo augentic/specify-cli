@@ -28,7 +28,7 @@ fn resolve(ctx: &Ctx) -> Result<ResolvedCodex> {
 
 fn list(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
-    let rules: Vec<_> = codex.rules.iter().map(RuleSummary::from).collect();
+    let rules: Vec<_> = codex.rules.iter().map(RuleView::summary).collect();
     ctx.write(
         &ListBody {
             rule_count: rules.len(),
@@ -53,7 +53,7 @@ fn show(ctx: &Ctx, rule_id: &str) -> Result<()> {
 
     ctx.write(
         &ShowBody {
-            rule: RuleExport::from(resolved),
+            rule: RuleView::full(resolved),
         },
         write_show_text,
     )?;
@@ -90,7 +90,7 @@ fn validate(ctx: &Ctx) -> Result<()> {
 
 fn export(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
-    let rules: Vec<_> = codex.rules.iter().map(RuleExport::from).collect();
+    let rules: Vec<_> = codex.rules.iter().map(RuleView::full).collect();
     ctx.write(
         &ExportBody {
             rule_count: rules.len(),
@@ -105,7 +105,7 @@ fn export(ctx: &Ctx) -> Result<()> {
 #[serde(rename_all = "kebab-case")]
 struct ListBody<'a> {
     rule_count: usize,
-    rules: Vec<RuleSummary<'a>>,
+    rules: Vec<RuleView<'a>>,
 }
 
 fn write_list_text(w: &mut dyn Write, body: &ListBody<'_>) -> std::io::Result<()> {
@@ -118,7 +118,7 @@ fn write_list_text(w: &mut dyn Write, body: &ListBody<'_>) -> std::io::Result<()
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ShowBody<'a> {
-    rule: RuleExport<'a>,
+    rule: RuleView<'a>,
 }
 
 fn write_show_text(w: &mut dyn Write, body: &ShowBody<'_>) -> std::io::Result<()> {
@@ -126,18 +126,18 @@ fn write_show_text(w: &mut dyn Write, body: &ShowBody<'_>) -> std::io::Result<()
     writeln!(w, "id: {}", r.id)?;
     writeln!(w, "title: {}", r.title)?;
     writeln!(w, "severity: {}", r.severity)?;
-    writeln!(w, "trigger: {}", r.trigger)?;
+    writeln!(w, "trigger: {}", r.trigger.unwrap_or_default())?;
     writeln!(w, "source: {}", r.source_path)?;
-    writeln!(w, "provenance: {}", export_provenance_text(r))?;
+    writeln!(w, "provenance: {}", provenance_text(r))?;
     writeln!(w)?;
-    write!(w, "{}", r.body)
+    write!(w, "{}", r.body.unwrap_or_default())
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ExportBody<'a> {
     rule_count: usize,
-    rules: Vec<RuleExport<'a>>,
+    rules: Vec<RuleView<'a>>,
 }
 
 fn write_export_text(w: &mut dyn Write, _body: &ExportBody<'_>) -> std::io::Result<()> {
@@ -166,10 +166,14 @@ fn write_validate_text(w: &mut dyn Write, body: &ValidateBody<'_>) -> std::io::R
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct RuleSummary<'a> {
+struct RuleView<'a> {
     id: &'a str,
     title: &'a str,
     severity: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trigger: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<&'a str>,
     source_path: String,
     provenance_kind: &'static str,
     capability_name: Option<&'a str>,
@@ -177,100 +181,44 @@ struct RuleSummary<'a> {
     catalog_name: Option<&'a str>,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct RuleExport<'a> {
-    id: &'a str,
-    title: &'a str,
-    severity: &'static str,
-    trigger: &'a str,
-    body: &'a str,
-    source_path: String,
-    provenance_kind: &'static str,
-    capability_name: Option<&'a str>,
-    capability_version: Option<u32>,
-    catalog_name: Option<&'a str>,
-}
-
-impl<'a> From<&'a ResolvedCodexRule> for RuleSummary<'a> {
-    fn from(resolved: &'a ResolvedCodexRule) -> Self {
-        let provenance = provenance_fields(&resolved.provenance);
-        Self {
-            id: &resolved.rule.frontmatter.id,
-            title: &resolved.rule.frontmatter.title,
-            severity: severity_label(resolved.rule.frontmatter.severity),
-            source_path: resolved.rule.path.display().to_string(),
-            provenance_kind: provenance.kind,
-            capability_name: provenance.capability_name,
-            capability_version: provenance.capability_version,
-            catalog_name: provenance.catalog_name,
-        }
+impl<'a> RuleView<'a> {
+    fn summary(resolved: &'a ResolvedCodexRule) -> Self {
+        Self::build(resolved, false)
     }
-}
 
-impl<'a> From<&'a ResolvedCodexRule> for RuleExport<'a> {
-    fn from(resolved: &'a ResolvedCodexRule) -> Self {
+    fn full(resolved: &'a ResolvedCodexRule) -> Self {
+        Self::build(resolved, true)
+    }
+
+    fn build(resolved: &'a ResolvedCodexRule, with_body: bool) -> Self {
         let rule = &resolved.rule;
         let frontmatter = &rule.frontmatter;
-        let provenance = provenance_fields(&resolved.provenance);
+        let (provenance_kind, capability_name, capability_version, catalog_name) =
+            match &resolved.provenance {
+                CodexProvenance::Capability { name, version } => {
+                    ("capability", Some(name.as_str()), Some(*version), None)
+                }
+                CodexProvenance::Catalog { name } => {
+                    ("catalog", None, None, Some(name.as_str()))
+                }
+                CodexProvenance::Repo => ("repo", None, None, None),
+            };
         Self {
             id: &frontmatter.id,
             title: &frontmatter.title,
             severity: severity_label(frontmatter.severity),
-            trigger: &frontmatter.trigger,
-            body: &rule.body,
+            trigger: with_body.then_some(frontmatter.trigger.as_str()),
+            body: with_body.then_some(rule.body.as_str()),
             source_path: rule.path.display().to_string(),
-            provenance_kind: provenance.kind,
-            capability_name: provenance.capability_name,
-            capability_version: provenance.capability_version,
-            catalog_name: provenance.catalog_name,
+            provenance_kind,
+            capability_name,
+            capability_version,
+            catalog_name,
         }
     }
 }
 
-struct ProvenanceFields<'a> {
-    kind: &'static str,
-    capability_name: Option<&'a str>,
-    capability_version: Option<u32>,
-    catalog_name: Option<&'a str>,
-}
-
-const fn provenance_fields(provenance: &CodexProvenance) -> ProvenanceFields<'_> {
-    match provenance {
-        CodexProvenance::Capability { name, version } => ProvenanceFields {
-            kind: "capability",
-            capability_name: Some(name.as_str()),
-            capability_version: Some(*version),
-            catalog_name: None,
-        },
-        CodexProvenance::Catalog { name } => ProvenanceFields {
-            kind: "catalog",
-            capability_name: None,
-            capability_version: None,
-            catalog_name: Some(name.as_str()),
-        },
-        CodexProvenance::Repo => ProvenanceFields {
-            kind: "repo",
-            capability_name: None,
-            capability_version: None,
-            catalog_name: None,
-        },
-    }
-}
-
-fn provenance_text(rule: &RuleSummary<'_>) -> String {
-    match rule.provenance_kind {
-        "capability" => format!(
-            "capability {}@v{}",
-            rule.capability_name.unwrap_or(""),
-            rule.capability_version.unwrap_or(0)
-        ),
-        "catalog" => format!("catalog {}", rule.catalog_name.unwrap_or("")),
-        _ => "repo".into(),
-    }
-}
-
-fn export_provenance_text(rule: &RuleExport<'_>) -> String {
+fn provenance_text(rule: &RuleView<'_>) -> String {
     match rule.provenance_kind {
         "capability" => format!(
             "capability {}@v{}",
