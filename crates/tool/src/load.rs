@@ -17,19 +17,13 @@ pub enum Warning {
     },
 }
 
-/// Attach a declaration scope to each tool in a generic list.
-#[must_use]
-pub fn scope_tools(scope: &ToolScope, tools: Vec<Tool>) -> Vec<(ToolScope, Tool)> {
-    tools.into_iter().map(|tool| (scope.clone(), tool)).collect()
-}
-
 /// Attach a project scope to tools parsed by the binary from `ProjectConfig`.
 #[must_use]
 pub fn project_tools(project_name: impl Into<String>, tools: Vec<Tool>) -> Vec<(ToolScope, Tool)> {
     let scope = ToolScope::Project {
         project_name: project_name.into(),
     };
-    scope_tools(&scope, tools)
+    tools.into_iter().map(|tool| (scope.clone(), tool)).collect()
 }
 
 /// Read the capability-scope `tools.yaml` sidecar next to a resolved
@@ -64,7 +58,7 @@ pub fn capability_sidecar(
         capability_slug: capability_slug.to_string(),
         capability_dir: capability_dir.to_path_buf(),
     };
-    Ok(scope_tools(&scope, manifest.tools))
+    Ok(manifest.tools.into_iter().map(|tool| (scope.clone(), tool)).collect())
 }
 
 /// Merge project and capability declarations. Project-scope tools win on name
