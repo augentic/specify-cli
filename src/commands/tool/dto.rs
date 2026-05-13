@@ -5,7 +5,7 @@ use std::io::Write;
 use serde::Serialize;
 use specify_error::Result;
 use specify_tool::cache::{self, OciSnapshot, PackageSnapshot, Status as CacheStatus};
-use specify_tool::load::Warning;
+use specify_tool::load::Collision;
 use specify_tool::{Tool, ToolPermissions, ToolScope};
 
 pub(super) type CacheKey = (String, String, String);
@@ -90,12 +90,7 @@ pub(super) fn write_list_text(w: &mut dyn Write, body: &ListBody) -> std::io::Re
         writeln!(
             w,
             "{}\t{}\t{}:{}\t{}\t{}",
-            row.name,
-            row.version,
-            row.scope,
-            row.scope_detail,
-            cache_status_label(row.cache_status),
-            row.cached_path
+            row.name, row.version, row.scope, row.scope_detail, row.cache_status, row.cached_path
         )?;
     }
     Ok(())
@@ -137,7 +132,7 @@ pub(super) fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Re
     writeln!(w, "version: {}", row.row.version)?;
     writeln!(w, "source: {}", row.row.source)?;
     writeln!(w, "scope: {}:{}", row.row.scope, row.row.scope_detail)?;
-    writeln!(w, "cache: {}", cache_status_label(row.row.cache_status))?;
+    writeln!(w, "cache: {}", row.row.cache_status)?;
     writeln!(w, "cached path: {}", row.row.cached_path)?;
     if let Some(fetched_at) = &row.fetched_at {
         writeln!(w, "fetched at: {fetched_at}")?;
@@ -225,14 +220,6 @@ pub(super) fn cache_status_for(scoped: &ScopedTool) -> Result<CacheStatus> {
     )?)
 }
 
-pub(super) const fn cache_status_label(status: CacheStatus) -> &'static str {
-    match status {
-        CacheStatus::Hit => "hit",
-        CacheStatus::MissNotFound => "miss-not-found",
-        CacheStatus::MissChanged => "miss-changed",
-    }
-}
-
 pub(super) fn scope_labels(scope: &ToolScope) -> (ToolScopeKind, String) {
     match scope {
         ToolScope::Project { project_name } => (ToolScopeKind::Project, project_name.clone()),
@@ -242,15 +229,14 @@ pub(super) fn scope_labels(scope: &ToolScope) -> (ToolScopeKind, String) {
     }
 }
 
-pub(super) fn warning_row(warning: Warning) -> WarningRow {
-    match warning {
-        Warning::ToolNameCollision { name } => WarningRow {
-            code: "tool-name-collision",
-            message: format!(
-                "project-scope declaration for `{name}` overrides the capability-scope declaration"
-            ),
-            name,
-        },
+pub(super) fn warning_row(collision: Collision) -> WarningRow {
+    let Collision { name } = collision;
+    WarningRow {
+        code: "tool-name-collision",
+        message: format!(
+            "project-scope declaration for `{name}` overrides the capability-scope declaration"
+        ),
+        name,
     }
 }
 

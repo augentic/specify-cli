@@ -109,7 +109,7 @@ struct ListBody<'a> {
 
 fn write_list_text(w: &mut dyn Write, body: &ListBody<'_>) -> std::io::Result<()> {
     for rule in &body.rules {
-        writeln!(w, "{}\t{}\t{}\t{}", rule.id, rule.severity, provenance_text(rule), rule.title)?;
+        writeln!(w, "{}\t{}\t{}\t{}", rule.id, rule.severity, rule.provenance, rule.title)?;
     }
     Ok(())
 }
@@ -127,7 +127,7 @@ fn write_show_text(w: &mut dyn Write, body: &ShowBody<'_>) -> std::io::Result<()
     writeln!(w, "severity: {}", r.severity)?;
     writeln!(w, "trigger: {}", r.trigger.unwrap_or_default())?;
     writeln!(w, "source: {}", r.source_path)?;
-    writeln!(w, "provenance: {}", provenance_text(r))?;
+    writeln!(w, "provenance: {}", r.provenance)?;
     writeln!(w)?;
     write!(w, "{}", r.body.unwrap_or_default())
 }
@@ -200,8 +200,4 @@ impl<'a> RuleView<'a> {
             provenance: &resolved.provenance,
         }
     }
-}
-
-fn provenance_text(rule: &RuleView<'_>) -> String {
-    rule.provenance.to_string()
 }

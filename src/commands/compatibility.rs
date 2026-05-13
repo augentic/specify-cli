@@ -3,8 +3,7 @@ pub(crate) mod cli;
 use std::io::Write;
 
 use specify_domain::validate::{
-    CompatibilityClassification, CompatibilityFinding, CompatibilityReport,
-    classify_project_compatibility,
+    CompatibilityFinding, CompatibilityReport, classify_project_compatibility,
 };
 use specify_error::{Error, Result};
 
@@ -67,7 +66,7 @@ fn render_finding(w: &mut dyn Write, finding: &CompatibilityFinding) -> std::io:
     writeln!(
         w,
         "- {} [{}] {} -> {} {}",
-        classification_label(finding.classification),
+        finding.classification,
         kind,
         finding.producer_project,
         finding.consumer_project,
@@ -75,13 +74,4 @@ fn render_finding(w: &mut dyn Write, finding: &CompatibilityFinding) -> std::io:
     )?;
     writeln!(w, "  locator: {}", finding.locator)?;
     writeln!(w, "  detail: {}", finding.details)
-}
-
-const fn classification_label(classification: CompatibilityClassification) -> &'static str {
-    match classification {
-        CompatibilityClassification::Additive => "additive",
-        CompatibilityClassification::Breaking => "breaking",
-        CompatibilityClassification::Ambiguous => "ambiguous",
-        CompatibilityClassification::Unverifiable => "unverifiable",
-    }
 }

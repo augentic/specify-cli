@@ -103,7 +103,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         entries.push(entry);
     }
 
-    ctx.write(&StatusBody::new(&entries), write_status_text)?;
+    ctx.write(&StatusBody { slices: &entries }, write_status_text)?;
     Ok(())
 }
 
@@ -112,19 +112,18 @@ pub(super) fn status_one(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
     let entry = collect_status(&slice_dir, name, &pipeline, &ctx.project_dir)?;
 
-    ctx.write(&StatusBody::new(std::slice::from_ref(&entry)), write_status_text)?;
+    ctx.write(
+        &StatusBody {
+            slices: std::slice::from_ref(&entry),
+        },
+        write_status_text,
+    )?;
     Ok(())
 }
 
 #[derive(Serialize)]
 struct StatusBody<'a> {
     slices: &'a [StatusEntry],
-}
-
-impl<'a> StatusBody<'a> {
-    const fn new(slices: &'a [StatusEntry]) -> Self {
-        Self { slices }
-    }
 }
 
 fn write_status_text(w: &mut dyn Write, body: &StatusBody<'_>) -> std::io::Result<()> {

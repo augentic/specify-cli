@@ -26,7 +26,11 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         entries.push(collect_status(&dir, &name, &pipeline, &ctx.project_dir)?);
     }
 
-    let body = DashboardBody::new(registry, plan_summary, entries);
+    let body = DashboardBody {
+        registry,
+        plan: plan_summary,
+        slices: entries,
+    };
     ctx.write(&body, write_dashboard_text)?;
     Ok(())
 }
@@ -36,18 +40,6 @@ struct DashboardBody {
     registry: Option<Registry>,
     plan: Option<PlanSummary>,
     slices: Vec<StatusEntry>,
-}
-
-impl DashboardBody {
-    const fn new(
-        registry: Option<Registry>, plan: Option<PlanSummary>, slices: Vec<StatusEntry>,
-    ) -> Self {
-        Self {
-            registry,
-            plan,
-            slices,
-        }
-    }
 }
 
 fn write_dashboard_text(w: &mut dyn Write, body: &DashboardBody) -> std::io::Result<()> {

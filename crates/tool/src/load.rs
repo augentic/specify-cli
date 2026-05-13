@@ -6,15 +6,12 @@ use std::path::Path;
 use crate::error::ToolError;
 use crate::manifest::{Tool, ToolManifest, ToolScope};
 
-/// Warning emitted while combining declaration sites.
+/// Warning emitted while combining declaration sites: a project-scope
+/// declaration replaced a capability-scope declaration with the same name.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Warning {
-    /// A project-scope declaration replaced a capability-scope declaration with
-    /// the same name.
-    ToolNameCollision {
-        /// Colliding tool name.
-        name: String,
-    },
+pub struct Collision {
+    /// Colliding tool name.
+    pub name: String,
 }
 
 /// Attach a project scope to tools parsed by the binary from `ProjectConfig`.
@@ -58,10 +55,10 @@ pub fn capability_sidecar(
 #[must_use]
 pub fn merge_scoped(
     project: Vec<(ToolScope, Tool)>, capability: Vec<(ToolScope, Tool)>,
-) -> (Vec<(ToolScope, Tool)>, Vec<Warning>) {
+) -> (Vec<(ToolScope, Tool)>, Vec<Collision>) {
     let mut merged: Vec<(ToolScope, Tool)> = Vec::with_capacity(project.len() + capability.len());
     let mut project_names: HashSet<String> = HashSet::new();
-    let mut warnings: Vec<Warning> = Vec::new();
+    let mut warnings: Vec<Collision> = Vec::new();
 
     for (scope, tool) in project {
         project_names.insert(tool.name.clone());
@@ -70,7 +67,7 @@ pub fn merge_scoped(
 
     for (scope, tool) in capability {
         if project_names.contains(&tool.name) {
-            warnings.push(Warning::ToolNameCollision { name: tool.name });
+            warnings.push(Collision { name: tool.name });
             continue;
         }
         merged.push((scope, tool));
@@ -177,7 +174,7 @@ mod tests {
         let (merged, warnings) = merge_scoped(project, capability);
         assert_eq!(
             warnings,
-            vec![Warning::ToolNameCollision {
+            vec![Collision {
                 name: "contract".to_string()
             }]
         );

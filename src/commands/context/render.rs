@@ -67,13 +67,6 @@ pub(super) struct Dep {
     pub(super) description: Option<String>,
 }
 
-/// Render a complete fenced `AGENTS.md` document.
-#[cfg(test)]
-#[must_use]
-fn render_document(input: &Input) -> String {
-    render_document_with_fingerprint(input, PLACEHOLDER_FINGERPRINT)
-}
-
 /// Render a complete fenced `AGENTS.md` document with a computed fingerprint.
 #[must_use]
 pub(super) fn render_document_with_fingerprint(input: &Input, fingerprint: &str) -> String {
@@ -243,6 +236,10 @@ fn one_line(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn render_document(input: &Input) -> String {
+        render_document_with_fingerprint(input, PLACEHOLDER_FINGERPRINT)
+    }
 
     fn regular_input() -> Input {
         Input {

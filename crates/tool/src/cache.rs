@@ -31,8 +31,9 @@ pub const SIDECAR_FILENAME: &str = "meta.yaml";
 pub const TOOL_SIDECAR_JSON_SCHEMA: &str = include_str!("../schemas/tool-sidecar.schema.json");
 
 /// Cache reuse state for a declared tool.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 pub enum Status {
     /// Cached bytes and sidecar metadata match the live declaration tuple.
     Hit,
