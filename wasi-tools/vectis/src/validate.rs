@@ -12,15 +12,6 @@ use serde_json::Value;
 
 use crate::render_json as render_value;
 
-/// Process exit code for clean validation.
-pub const EXIT_CLEAN: u8 = 0;
-
-/// Process exit code for successful validation runs that found errors.
-pub const EXIT_FINDINGS: u8 = 1;
-
-/// Process exit code for invocation, I/O, and runtime failures.
-pub const EXIT_FAILURE: u8 = 2;
-
 /// Arguments accepted by `vectis validate`.
 #[derive(ClapArgs, Debug, Clone, PartialEq, Eq)]
 pub struct ValidateArgs {
@@ -69,62 +60,16 @@ pub enum CommandOutcome {
     Success(Value),
 }
 
-/// Error types used by deterministic validation.
+/// Re-export the crate-wide error type at its historical path.
+///
+/// External tests and the engine modules import
+/// `specify_vectis::validate::error::VectisError`; the type itself
+/// now lives at the crate root so `scaffold` can share it.
 pub mod error {
-    use serde_json::Value;
-    use thiserror::Error;
-
-    /// Terminal validation failures that are not validation findings.
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum VectisError {
-        /// The project structure or requested input is invalid or unreadable.
-        #[error("invalid project: {message}")]
-        InvalidProject {
-            /// Diagnostic describing what is wrong.
-            message: String,
-        },
-
-        /// An internal invariant was violated.
-        #[error("internal error: {message}")]
-        Internal {
-            /// Diagnostic describing what went wrong.
-            message: String,
-        },
-    }
-
-    impl VectisError {
-        /// Process exit code for this error.
-        #[must_use]
-        pub const fn exit_code(&self) -> u8 {
-            crate::validate::EXIT_FAILURE
-        }
-
-        /// Kebab-case identifier used in the structured JSON payload.
-        #[must_use]
-        pub const fn variant_str(&self) -> &'static str {
-            match self {
-                Self::InvalidProject { .. } => "invalid-project",
-                Self::Internal { .. } => "internal",
-            }
-        }
-
-        /// Render the error as the structured JSON shape.
-        #[must_use]
-        pub fn to_json(&self) -> Value {
-            match self {
-                Self::InvalidProject { message } | Self::Internal { message } => {
-                    serde_json::json!({
-                        "error": self.variant_str(),
-                        "message": message,
-                    })
-                }
-            }
-        }
-    }
+    pub use crate::VectisError;
 }
 
-pub use error::VectisError;
+pub use crate::VectisError;
 
 mod engine;
 
@@ -177,7 +122,7 @@ pub fn validate_exit_code(value: &Value) -> u8 {
         false
     }
 
-    if has_errors(value) { EXIT_FINDINGS } else { EXIT_CLEAN }
+    u8::from(has_errors(value))
 }
 
 #[cfg(test)]
@@ -195,7 +140,7 @@ mod tests {
             "warnings": [],
         }))));
 
-        assert_eq!(code, EXIT_CLEAN);
+        assert_eq!(code, 0);
         let value: Value = serde_json::from_str(&json).expect("json body");
         assert_eq!(value["mode"], "tokens");
     }
@@ -214,7 +159,7 @@ mod tests {
             }],
         });
 
-        assert_eq!(validate_exit_code(&payload), EXIT_FINDINGS);
+        assert_eq!(validate_exit_code(&payload), 1);
     }
 
     #[test]
@@ -223,9 +168,9 @@ mod tests {
             message: "tokens.yaml not readable".into(),
         }));
 
-        assert_eq!(code, EXIT_FAILURE);
+        assert_eq!(code, 2);
         let value: Value = serde_json::from_str(&json).expect("json body");
         assert_eq!(value["error"], "invalid-project");
-        assert_eq!(value["exit-code"], EXIT_FAILURE);
+        assert_eq!(value["exit-code"], 2);
     }
 }

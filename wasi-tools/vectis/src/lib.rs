@@ -21,8 +21,11 @@
 //! Each subcommand serialises its body directly; there is no shared
 //! envelope wrapper.
 
+mod error;
 pub mod scaffold;
 pub mod validate;
+
+pub use error::{EXIT_FAILURE, VectisError};
 
 use clap::{Parser, Subcommand};
 use serde_json::Value;
