@@ -14,43 +14,21 @@ use specify_error::Result;
 
 use crate::context::Ctx;
 
-pub(in crate::commands) struct StatusEntry {
-    pub name: String,
-    pub capability: String,
-    pub status: LifecycleStatus,
-    pub tasks: Option<(usize, usize)>,
-    pub artifacts: BTreeMap<String, bool>,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct EntryJson<'a> {
-    name: &'a str,
-    status: LifecycleStatus,
-    capability: &'a str,
-    tasks: Option<TaskCounts>,
-    artifacts: &'a BTreeMap<String, bool>,
+pub(in crate::commands) struct StatusEntry {
+    pub name: String,
+    pub status: LifecycleStatus,
+    pub capability: String,
+    pub tasks: Option<TaskCounts>,
+    pub artifacts: BTreeMap<String, bool>,
 }
 
 #[derive(Serialize, Copy, Clone)]
 #[serde(rename_all = "kebab-case")]
-struct TaskCounts {
-    total: usize,
-    complete: usize,
-}
-
-impl Serialize for StatusEntry {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let tasks = self.tasks.map(|(complete, total)| TaskCounts { total, complete });
-        EntryJson {
-            name: &self.name,
-            status: self.status,
-            capability: &self.capability,
-            tasks,
-            artifacts: &self.artifacts,
-        }
-        .serialize(serializer)
-    }
+pub(in crate::commands) struct TaskCounts {
+    pub total: usize,
+    pub complete: usize,
 }
 
 pub(in crate::commands) fn collect_status(
@@ -71,7 +49,7 @@ pub(in crate::commands) fn collect_status(
             if path.is_file() {
                 let content = std::fs::read_to_string(&path)?;
                 let progress = parse_tasks(&content);
-                Some((progress.complete, progress.total))
+                Some(TaskCounts { total: progress.total, complete: progress.complete })
             } else {
                 None
             }
@@ -81,8 +59,8 @@ pub(in crate::commands) fn collect_status(
 
     Ok(StatusEntry {
         name: name.to_string(),
-        capability: metadata.capability,
         status: metadata.status,
+        capability: metadata.capability,
         tasks,
         artifacts,
     })
@@ -161,7 +139,7 @@ fn render_single(w: &mut dyn Write, e: &StatusEntry) -> std::io::Result<()> {
     writeln!(w, "  capability: {}", e.capability)?;
     writeln!(w, "  status: {}", e.status)?;
     match e.tasks {
-        Some((complete, total)) => writeln!(w, "  tasks: {complete}/{total}")?,
+        Some(tc) => writeln!(w, "  tasks: {}/{}", tc.complete, tc.total)?,
         None => writeln!(w, "  tasks: (no tasks.md)")?,
     }
     if !e.artifacts.is_empty() {
@@ -186,10 +164,10 @@ fn render_table(w: &mut dyn Write, entries: &[StatusEntry]) -> std::io::Result<(
         status_w = status_w,
     )?;
     for e in entries {
-        let tasks = match e.tasks {
-            Some((complete, total)) => format!("{complete}/{total}"),
-            None => "-".to_string(),
-        };
+        let tasks = e.tasks.map_or_else(
+            || "-".to_string(),
+            |tc| format!("{}/{}", tc.complete, tc.total),
+        );
         writeln!(
             w,
             "{:<name_w$}  {:<status_w$}  {}",
