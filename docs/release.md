@@ -35,7 +35,7 @@ The `.github/workflows/release.yaml` workflow fires on the tag push and runs fou
 
 4. **`publish-crates-io`.** Gated behind `if: github.repository == 'augentic/specify-cli'` so forks and non-canonical clones silently skip it. Publishes crates to crates.io in dependency order:
 
-   `specify-error` → `specify-capability` → `specify-spec` → `specify-task` → `specify-change` → `specify-merge` → `specify-validate` → `specify`
+   `specify-error` → `specify-validate` → `specify-domain` → `specify`
 
    A `sleep 30` between each publish gives the crates.io index time to propagate before the next dependent crate tries to resolve it. The job reads `secrets.CARGO_REGISTRY_TOKEN`; because the job is gated at the job-level `if:`, the workflow file remains valid even in repos where the secret does not exist (GitHub only evaluates `secrets.*` inside steps that actually execute).
 

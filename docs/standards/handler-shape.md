@@ -4,7 +4,7 @@ The contract every CLI command handler obeys: how `Ctx` is constructed, how outp
 
 ## Ctx construction
 
-Handlers take `&Ctx` (renamed from `CommandContext` so the module path `crate::context::Ctx` carries the noun). `Ctx` exposes the resolved project dir, layout, output format, and a few thin facade methods for handler ergonomics; everything else flows through workspace crates. `Layout<'a>` lives on `Ctx` rather than at call sites so path helpers stay anchored in `specify-config` — see [architecture.md §"Layout boundary"](./architecture.md#layout-boundary).
+Handlers take `&Ctx` (renamed from `CommandContext` so the module path `crate::context::Ctx` carries the noun). `Ctx` exposes the resolved project dir, layout, output format, and a few thin facade methods for handler ergonomics; everything else flows through workspace crates. `Layout<'a>` lives on `Ctx` rather than at call sites so path helpers stay anchored in `specify-domain` — see [architecture.md §"Layout boundary"](./architecture.md#layout-boundary).
 
 ## Default handler signature
 

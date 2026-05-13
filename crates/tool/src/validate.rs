@@ -22,9 +22,6 @@ const RULE_CAPABILITY_DIR_SCOPE: &str = "tool.capability-dir-out-of-scope";
 const RULE_NAME_UNIQUE: &str = "tool.name-unique";
 
 /// Outcome of a structural validation rule.
-///
-/// This mirrors `specify_capability::ValidationResult` locally so
-/// `specify-tool` does not depend on `specify-capability`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ValidationResult {

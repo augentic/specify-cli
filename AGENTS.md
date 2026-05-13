@@ -8,10 +8,9 @@ The workspace is leaf → root. `specify-error` is the dependency leaf and depen
 
 ```text
 specify-error                    # leaf — thiserror + serde-saphyr only
-specify-{registry,capability,task,spec,tool}   # depend on specify-error (spec has no workspace deps)
-specify-slice                    # depends on specify-{error,capability,registry}
-specify-{merge,config,validate}  # depend on specify-error + the leaves they need
-specify-{change,init}            # depend on specify-{error,config,registry,...}
+specify-validate                 # leaf — baseline-contract validation, shared with the wasi-tools/contract carve-out
+specify-tool                     # depends on specify-error (WASI tool runner; wasmtime, gated)
+specify-domain                   # depends on specify-{error,validate,tool} (every other domain module)
 specify (root crate)             # wires every workspace crate above into the CLI binary
 ```
 

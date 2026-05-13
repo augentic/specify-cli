@@ -74,9 +74,9 @@ Module and crate docs describe what the code *does today*, in ≤ 3 lines. "Phas
 
 ```rust
 // BAD
-//! Phase 3.7 split this off from `specify-init` (RFC-13 §Migration);
+//! Phase 3.7 split this off from `<old-crate>` (RFC-N §Migration);
 //! the pre-cutover name was `initiative`. To avoid the
-//! init → registry → init cycle we re-export `Layout` from here.
+//! foo → bar → foo cycle we re-export `Layout` from here.
 // GOOD
 //! Resolves project layout and `project.yaml` for every command.
 ```
