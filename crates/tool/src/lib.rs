@@ -9,10 +9,6 @@
 
 pub mod cache;
 pub mod error;
-#[cfg(feature = "host")]
-pub mod host;
-#[cfg(not(feature = "host"))]
-#[path = "host_stub.rs"]
 pub mod host;
 pub mod load;
 pub mod manifest;
