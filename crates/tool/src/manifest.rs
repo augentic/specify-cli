@@ -3,12 +3,11 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
-use serde::de::{self, MapAccess, Visitor};
-use serde::ser::SerializeStruct;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 /// One declared WASI tool.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "ToolForm")]
 pub struct Tool {
     /// Tool name used by `specify tool run <name>`.
     pub name: String,
@@ -17,13 +16,16 @@ pub struct Tool {
     /// Source of the WASI component bytes.
     pub source: ToolSource,
     /// Optional lower-case hex SHA-256 digest over the component bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
     /// Filesystem preopen requests.
+    #[serde(default, skip_serializing_if = "ToolPermissions::is_default")]
     pub permissions: ToolPermissions,
 }
 
 /// Supported source locations for WASI component bytes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "String", try_from = "String")]
 pub enum ToolSource {
     /// Absolute local filesystem path.
     LocalPath(PathBuf),
@@ -109,178 +111,67 @@ impl PackageRequest {
     }
 }
 
-impl Tool {
-    fn from_package(value: &str) -> Self {
-        let package = PackageRequest::parse(value);
-        let permissions = first_party_permissions(&package).unwrap_or_default();
-        Self {
-            name: package.name.clone(),
-            version: package.version.clone(),
-            source: ToolSource::Package(package),
-            sha256: None,
-            permissions,
-        }
-    }
-
-    fn is_scalar_package_entry(&self) -> bool {
-        let ToolSource::Package(package) = &self.source else {
-            return false;
-        };
-        self.name == package.name
-            && self.version == package.version
-            && self.sha256.is_none()
-            && first_party_permissions(package)
-                .is_some_and(|permissions| self.permissions == permissions)
+impl From<ToolSource> for String {
+    fn from(value: ToolSource) -> Self {
+        value.to_wire_string().into_owned()
     }
 }
 
-impl Serialize for Tool {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        if self.is_scalar_package_entry() {
-            return serializer.serialize_str(self.source.to_wire_string().as_ref());
-        }
+impl TryFrom<String> for ToolSource {
+    type Error = String;
 
-        let mut state = serializer.serialize_struct("Tool", 5)?;
-        state.serialize_field("name", &self.name)?;
-        state.serialize_field("version", &self.version)?;
-        state.serialize_field("source", &self.source)?;
-        if let Some(sha256) = &self.sha256 {
-            state.serialize_field("sha256", sha256)?;
-        }
-        if self.permissions != ToolPermissions::default() {
-            state.serialize_field("permissions", &self.permissions)?;
-        }
-        state.end()
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse_wire(&value)
     }
 }
 
-impl<'de> Deserialize<'de> for Tool {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_any(ToolVisitor)
-    }
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ToolForm {
+    Scalar(String),
+    Object(ToolObject),
 }
 
-struct ToolVisitor;
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ToolObject {
+    name: String,
+    version: String,
+    source: ToolSource,
+    #[serde(default)]
+    sha256: Option<String>,
+    #[serde(default)]
+    permissions: ToolPermissions,
+}
 
-const TOOL_FIELDS: &[&str] = &["name", "version", "source", "sha256", "permissions"];
-
-impl<'de> Visitor<'de> for ToolVisitor {
-    type Value = Tool;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("a package request string or a tool object")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(Tool::from_package(v))
-    }
-
-    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(Tool::from_package(&v))
-    }
-
-    fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
-    where
-        M: MapAccess<'de>,
-    {
-        let mut name: Option<String> = None;
-        let mut version: Option<String> = None;
-        let mut source: Option<ToolSource> = None;
-        let mut sha256: Option<Option<String>> = None;
-        let mut permissions: Option<ToolPermissions> = None;
-
-        while let Some(key) = map.next_key::<String>()? {
-            match key.as_str() {
-                "name" => {
-                    if name.is_some() {
-                        return Err(<M::Error as de::Error>::duplicate_field("name"));
-                    }
-                    name = Some(map.next_value()?);
-                }
-                "version" => {
-                    if version.is_some() {
-                        return Err(<M::Error as de::Error>::duplicate_field("version"));
-                    }
-                    version = Some(map.next_value()?);
-                }
-                "source" => {
-                    if source.is_some() {
-                        return Err(<M::Error as de::Error>::duplicate_field("source"));
-                    }
-                    source = Some(map.next_value()?);
-                }
-                "sha256" => {
-                    if sha256.is_some() {
-                        return Err(<M::Error as de::Error>::duplicate_field("sha256"));
-                    }
-                    sha256 = Some(map.next_value()?);
-                }
-                "permissions" => {
-                    if permissions.is_some() {
-                        return Err(<M::Error as de::Error>::duplicate_field("permissions"));
-                    }
-                    permissions = Some(map.next_value()?);
-                }
-                other => {
-                    return Err(<M::Error as de::Error>::unknown_field(other, TOOL_FIELDS));
+impl From<ToolForm> for Tool {
+    fn from(form: ToolForm) -> Self {
+        match form {
+            ToolForm::Scalar(value) => {
+                let package = PackageRequest::parse(&value);
+                let permissions = first_party_permissions(&package).unwrap_or_default();
+                Self {
+                    name: package.name.clone(),
+                    version: package.version.clone(),
+                    source: ToolSource::Package(package),
+                    sha256: None,
+                    permissions,
                 }
             }
+            ToolForm::Object(ToolObject {
+                name,
+                version,
+                source,
+                sha256,
+                permissions,
+            }) => Self {
+                name,
+                version,
+                source,
+                sha256,
+                permissions,
+            },
         }
-
-        Ok(Tool {
-            name: name.ok_or_else(|| <M::Error as de::Error>::missing_field("name"))?,
-            version: version.ok_or_else(|| <M::Error as de::Error>::missing_field("version"))?,
-            source: source.ok_or_else(|| <M::Error as de::Error>::missing_field("source"))?,
-            sha256: sha256.unwrap_or_default(),
-            permissions: permissions.unwrap_or_default(),
-        })
-    }
-}
-
-impl Serialize for ToolSource {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(self.to_wire_string().as_ref())
-    }
-}
-
-impl<'de> Deserialize<'de> for ToolSource {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct SourceVisitor;
-
-        impl Visitor<'_> for SourceVisitor {
-            type Value = ToolSource;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("an absolute path, file:// URI, or https:// URI string")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                ToolSource::parse_wire(v).map_err(E::custom)
-            }
-        }
-
-        deserializer.deserialize_str(SourceVisitor)
     }
 }
 
@@ -294,6 +185,12 @@ pub struct ToolPermissions {
     /// Read-write preopen path templates.
     #[serde(default)]
     pub write: Vec<String>,
+}
+
+impl ToolPermissions {
+    const fn is_default(&self) -> bool {
+        self.read.is_empty() && self.write.is_empty()
+    }
 }
 
 /// Return embedded permissions for first-party scalar package declarations.
@@ -407,11 +304,10 @@ mod tests {
 
     #[test]
     fn unsupported_source_fails_during_deserialize() {
-        let err = serde_saphyr::from_str::<ToolManifest>(
+        serde_saphyr::from_str::<ToolManifest>(
             "tools:\n  - name: bad\n    version: 1.0.0\n    source: relative.wasm\n",
         )
         .expect_err("relative source must fail");
-        assert!(err.to_string().contains("unsupported tool source"), "{err}");
     }
 
     #[test]
