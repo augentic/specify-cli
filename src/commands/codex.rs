@@ -174,10 +174,8 @@ struct RuleView<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     body: Option<&'a str>,
     source_path: String,
-    provenance_kind: &'static str,
-    capability_name: Option<&'a str>,
-    capability_version: Option<u32>,
-    catalog_name: Option<&'a str>,
+    #[serde(flatten)]
+    provenance: &'a CodexProvenance,
 }
 
 impl<'a> RuleView<'a> {
@@ -192,14 +190,6 @@ impl<'a> RuleView<'a> {
     fn build(resolved: &'a ResolvedCodexRule, with_body: bool) -> Self {
         let rule = &resolved.rule;
         let frontmatter = &rule.frontmatter;
-        let (provenance_kind, capability_name, capability_version, catalog_name) =
-            match &resolved.provenance {
-                CodexProvenance::Capability { name, version } => {
-                    ("capability", Some(name.as_str()), Some(*version), None)
-                }
-                CodexProvenance::Catalog { name } => ("catalog", None, None, Some(name.as_str())),
-                CodexProvenance::Repo => ("repo", None, None, None),
-            };
         Self {
             id: &frontmatter.id,
             title: &frontmatter.title,
@@ -207,22 +197,11 @@ impl<'a> RuleView<'a> {
             trigger: with_body.then_some(frontmatter.trigger.as_str()),
             body: with_body.then_some(rule.body.as_str()),
             source_path: rule.path.display().to_string(),
-            provenance_kind,
-            capability_name,
-            capability_version,
-            catalog_name,
+            provenance: &resolved.provenance,
         }
     }
 }
 
 fn provenance_text(rule: &RuleView<'_>) -> String {
-    match rule.provenance_kind {
-        "capability" => format!(
-            "capability {}@v{}",
-            rule.capability_name.unwrap_or(""),
-            rule.capability_version.unwrap_or(0)
-        ),
-        "catalog" => format!("catalog {}", rule.catalog_name.unwrap_or("")),
-        _ => "repo".into(),
-    }
+    rule.provenance.to_string()
 }

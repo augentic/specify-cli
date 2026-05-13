@@ -8,8 +8,7 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::config::{Layout, is_workspace_clone};
 use specify_domain::merge::{
-    BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction,
-    conflict_check, slice,
+    BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, conflict_check, slice,
 };
 use specify_error::Result;
 
@@ -65,14 +64,12 @@ pub(super) fn preview(ctx: &Ctx, name: &str) -> Result<()> {
         .opaque
         .iter()
         .filter(|e| e.class_name == "contracts")
-        .filter_map(|entry| {
-            match entry.action {
-                OpaqueAction::Added | OpaqueAction::Replaced => Some(ContractItem {
-                    path: entry.relative_path.clone(),
-                    action: entry.action.clone(),
-                }),
-                _ => None,
-            }
+        .filter_map(|entry| match entry.action {
+            OpaqueAction::Added | OpaqueAction::Replaced => Some(ContractItem {
+                path: entry.relative_path.clone(),
+                action: entry.action.clone(),
+            }),
+            _ => None,
         })
         .collect();
 

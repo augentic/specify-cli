@@ -2,6 +2,7 @@
 //! rules compose. Each helper is `pub(crate)` and side-effect free
 //! apart from `specs_dir` reads in two helpers.
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -16,11 +17,6 @@ use crate::task::Progress;
 // patterns. The dynamic `ids_match_pattern` accessor stays inline because its
 // pattern is caller-supplied.
 // ---------------------------------------------------------------------------
-
-fn bullet_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^\s*-\s+\S").expect("bullet regex is valid"))
-}
 
 fn checkbox_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -119,7 +115,18 @@ pub(crate) fn all_tasks_use_checkbox(tasks: &Progress, content: &str) -> bool {
         return false;
     }
     for line in content.lines() {
-        if bullet_re().is_match(line) && !checkbox_re().is_match(line) {
+        let trimmed = line.trim_start();
+        let Some(rest) = trimmed.strip_prefix('-') else {
+            continue;
+        };
+        // Require at least one whitespace between `-` and a non-space payload
+        // (mirrors the previous `^\s*-\s+\S` regex). Plain `-` separators or
+        // `-foo` are not bullets.
+        let after_ws = rest.trim_start_matches(|c: char| c.is_whitespace());
+        if after_ws.len() == rest.len() || after_ws.is_empty() {
+            continue;
+        }
+        if !checkbox_re().is_match(line) {
             return false;
         }
     }
@@ -228,10 +235,8 @@ pub(crate) fn extract_ref(line: &str) -> Option<&str> {
 /// in at least one `specs/*/spec.md` under `specs_dir`. Returns `true` if
 /// no references are found.
 pub(crate) fn design_references_exist(design: &str, specs_dir: &Path) -> bool {
-    let mut refs: Vec<String> =
+    let refs: HashSet<String> =
         req_id_ref_re().find_iter(design).map(|m| m.as_str().to_string()).collect();
-    refs.sort();
-    refs.dedup();
     if refs.is_empty() {
         return true;
     }

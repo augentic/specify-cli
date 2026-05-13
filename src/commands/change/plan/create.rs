@@ -14,9 +14,9 @@ use crate::context::Ctx;
 /// any other value replaces it.
 fn cli_patch(value: Option<String>) -> Patch<String> {
     match value {
-        None => Patch::keep(),
-        Some(s) if s.is_empty() => Patch::clear(),
-        Some(s) => Patch::set(s),
+        None => Patch::Keep,
+        Some(s) if s.is_empty() => Patch::Clear,
+        Some(s) => Patch::Set(s),
     }
 }
 

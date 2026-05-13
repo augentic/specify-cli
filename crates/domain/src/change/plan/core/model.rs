@@ -122,23 +122,6 @@ pub enum Patch<T> {
 }
 
 impl<T> Patch<T> {
-    /// Convenience constructor for the keep-as-is case.
-    #[must_use]
-    pub const fn keep() -> Self {
-        Self::Keep
-    }
-
-    /// Convenience constructor for the clear-to-`None` case.
-    #[must_use]
-    pub const fn clear() -> Self {
-        Self::Clear
-    }
-
-    /// Convenience constructor for the replace-with-`Some(v)` case.
-    pub const fn set(value: T) -> Self {
-        Self::Set(value)
-    }
-
     /// Apply the patch to an `Option<T>` field in place.
     pub fn apply(self, field: &mut Option<T>) {
         match self {
@@ -178,15 +161,7 @@ pub struct EntryPatch {
 /// Severity of a validation finding produced by
 /// [`Plan::validate`].
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    strum::Display,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]

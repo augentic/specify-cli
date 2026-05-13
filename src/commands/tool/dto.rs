@@ -44,15 +44,7 @@ pub(super) struct ToolRow {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    Serialize,
-    serde::Deserialize,
-    strum::Display,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, serde::Deserialize, strum::Display,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
