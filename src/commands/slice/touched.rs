@@ -35,11 +35,10 @@ pub(super) fn specs(ctx: &Ctx, name: String, scan: bool, set: &[String]) -> Resu
         metadata.touched_specs
     };
 
-    let touched: Vec<SpecRow> = entries.iter().map(SpecRow::from).collect();
     ctx.write(
         &SpecsBody {
             name,
-            touched_specs: touched,
+            touched_specs: entries,
         },
         write_specs_text,
     )?;
@@ -50,7 +49,7 @@ pub(super) fn specs(ctx: &Ctx, name: String, scan: bool, set: &[String]) -> Resu
 #[serde(rename_all = "kebab-case")]
 struct SpecsBody {
     name: String,
-    touched_specs: Vec<SpecRow>,
+    touched_specs: Vec<TouchedSpec>,
 }
 
 fn write_specs_text(w: &mut dyn Write, body: &SpecsBody) -> std::io::Result<()> {
@@ -59,25 +58,9 @@ fn write_specs_text(w: &mut dyn Write, body: &SpecsBody) -> std::io::Result<()> 
     }
     writeln!(w, "{}:", body.name)?;
     for entry in &body.touched_specs {
-        writeln!(w, "  {} ({})", entry.name, entry.r#type)?;
+        writeln!(w, "  {} ({})", entry.name, entry.kind)?;
     }
     Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct SpecRow {
-    name: String,
-    r#type: String,
-}
-
-impl From<&TouchedSpec> for SpecRow {
-    fn from(t: &TouchedSpec) -> Self {
-        Self {
-            name: t.name.clone(),
-            r#type: t.kind.to_string(),
-        }
-    }
 }
 
 fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>> {
