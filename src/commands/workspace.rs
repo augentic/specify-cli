@@ -5,7 +5,7 @@ pub(crate) mod cli;
 use std::io::Write;
 use std::path::PathBuf;
 
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 use specify_domain::change::Plan;
 use specify_domain::registry::Registry;
 use specify_domain::registry::branch::{Prepared, Request as BranchRequest, prepare};
@@ -344,7 +344,6 @@ fn write_push_text(w: &mut dyn Write, body: &PushBody) -> std::io::Result<()> {
 #[serde(rename_all = "kebab-case")]
 struct PushItem {
     name: String,
-    #[serde(serialize_with = "serialize_push_outcome")]
     status: PushOutcome,
     #[serde(skip_serializing_if = "Option::is_none")]
     branch: Option<String>,
@@ -352,12 +351,4 @@ struct PushItem {
     pr: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
-}
-
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "serde::serialize_with requires the `fn(&T, S) -> _` shape."
-)]
-fn serialize_push_outcome<S: Serializer>(o: &PushOutcome, s: S) -> Result<S::Ok, S::Error> {
-    s.collect_str(o)
 }

@@ -42,7 +42,6 @@ pub use summary::{is_terminal, outstanding, summarise};
     serde::Serialize,
     serde::Deserialize,
     strum::Display,
-    strum::IntoStaticStr,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -87,7 +86,6 @@ pub struct ProjectResult {
     /// Registry project name.
     pub name: String,
     /// Outcome of the finalize attempt.
-    #[serde(serialize_with = "serialize_status")]
     pub status: Landing,
     /// PR number when discovered (any state).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -108,14 +106,6 @@ pub struct ProjectResult {
     /// Free-form context — gh stderr, parse errors, hint at remediation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
-}
-
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "serde's `serialize_with` signature requires `&T`."
-)]
-fn serialize_status<S: serde::Serializer>(status: &Landing, s: S) -> Result<S::Ok, S::Error> {
-    s.serialize_str(status.into())
 }
 
 /// Per-status counters for the summary row.

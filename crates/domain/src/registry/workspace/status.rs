@@ -57,7 +57,6 @@ pub struct SlotStatus {
     serde::Serialize,
     serde::Deserialize,
     strum::Display,
-    strum::IntoStaticStr,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -66,14 +65,6 @@ pub enum ConfiguredTargetKind {
     Local,
     /// Remote-backed target materialised as a Git clone.
     Remote,
-}
-
-impl ConfiguredTargetKind {
-    /// Stable label used by CLI text/JSON output.
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        self.into()
-    }
 }
 
 /// Classification of a workspace slot on disk.
@@ -87,7 +78,6 @@ impl ConfiguredTargetKind {
     serde::Serialize,
     serde::Deserialize,
     strum::Display,
-    strum::IntoStaticStr,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -100,14 +90,6 @@ pub enum SlotKind {
     GitClone,
     /// Present but neither a recognised symlink nor a git work tree.
     Other,
-}
-
-impl SlotKind {
-    /// Stable label used by CLI text/JSON output and diagnostics.
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        self.into()
-    }
 }
 
 /// Inspect `.specify/workspace/<name>/` for each registry project.

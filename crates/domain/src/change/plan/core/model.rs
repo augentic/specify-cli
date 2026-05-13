@@ -187,7 +187,6 @@ pub struct EntryPatch {
     serde::Serialize,
     serde::Deserialize,
     strum::Display,
-    strum::IntoStaticStr,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -197,14 +196,6 @@ pub enum Severity {
     /// Non-blocking advisory — the plan is usable but something looks
     /// off (e.g. a source key is defined but unreferenced).
     Warning,
-}
-
-impl Severity {
-    /// Fixed wire string (`"error"` or `"warning"`).
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        self.into()
-    }
 }
 
 /// A single finding reported by [`Plan::validate`].

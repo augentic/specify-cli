@@ -53,7 +53,6 @@ pub(super) struct ToolRow {
     Serialize,
     serde::Deserialize,
     strum::Display,
-    strum::IntoStaticStr,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
