@@ -178,19 +178,12 @@ fn render_brief(w: &mut dyn Write, brief: &ChangeBrief, path: &str) -> std::io::
 /// [`Ctx::emit_with`] in [`run_finalize`] — the domain type ships its
 /// own `Serialize`, so the binary only needs to own the text shape.
 fn render_finalize_outcome(w: &mut dyn Write, outcome: &finalize::Outcome) -> std::io::Result<()> {
-    if outcome.dry_run {
-        writeln!(
-            w,
-            "[dry-run] specify: change finalize \u{2014} {} ({})",
-            outcome.name, outcome.expected_branch
-        )?;
-    } else {
-        writeln!(
-            w,
-            "specify: change finalize \u{2014} {} ({})",
-            outcome.name, outcome.expected_branch
-        )?;
-    }
+    let prefix = if outcome.dry_run { "[dry-run] " } else { "" };
+    writeln!(
+        w,
+        "{prefix}specify: change finalize \u{2014} {} ({})",
+        outcome.name, outcome.expected_branch
+    )?;
     writeln!(w)?;
 
     for r in &outcome.projects {

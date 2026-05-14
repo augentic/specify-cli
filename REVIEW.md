@@ -179,3 +179,4 @@ enum StatusBody {
 ## Post-mortem
 
 - **S1**: predicted ≈−11 LOC, actual −6 LOC net (18 ins / 24 del across the four files); doc-comment trim was only −2 (vs implied −3) and the two `change.rs` reads were 1-line-for-1-line swaps. "Done when" rg pattern flipped clean (0 matches) and `cargo make ci` was green; no regression — the only on-the-wire pin (`tests/change_finalize.rs` asserting `value["dry-run"] == true`) still passes because `skip_serializing_if = "std::ops::Not::not"` produces the identical JSON shape.
+- **S2**: predicted ≈−7 LOC, actual −7 LOC net (6 ins / 13 del in `src/commands/change.rs`); the prediction was exact because S1 had already simplified `outcome.dry_run` to a plain `bool`, so the prefix-fold was a pure 1-for-1 collapse. Both "done when" rg patterns flipped clean (0 matches for the duplicated literal, 1 for `let prefix = if`) and `cargo test --test change_finalize` was green (7/7); no regression.
