@@ -4,8 +4,8 @@
 
 use jiff::Timestamp;
 use specify_error::Result;
-use specify_tool::ToolScope;
 use specify_tool::host::{RunContext, WasiRunner};
+use specify_tool::manifest::ToolScope;
 
 use super::{build_inventory, emit_warnings_to_stderr, find};
 use crate::context::Ctx;

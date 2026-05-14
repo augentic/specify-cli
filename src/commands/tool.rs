@@ -21,7 +21,7 @@ pub(super) use show::run as show;
 use specify_domain::capability::{Capability, ResolvedCapability};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
-use specify_tool::{Tool, ToolManifest, ToolScope};
+use specify_tool::manifest::{Tool, ToolManifest, ToolScope};
 
 use self::dto::{CacheKey, Inventory, ScopedTool, WarningRow, warning_row};
 use crate::context::Ctx;

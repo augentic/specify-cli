@@ -44,7 +44,7 @@ pub struct ProjectConfig {
     /// Project-scope WASI tool declarations. These are generic extension
     /// points owned by `specify-tool`, not by any capability.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<specify_tool::Tool>,
+    pub tools: Vec<specify_tool::manifest::Tool>,
 
     /// `true` when this project is a registry-only **platform hub**.
     /// Hubs hold platform-level state — `registry.yaml`, `change.md`,
@@ -412,7 +412,7 @@ mod tests {
         assert_eq!(cfg.tools[0].name, "contract");
         assert!(matches!(
             &cfg.tools[0].source,
-            specify_tool::ToolSource::HttpsUri(uri) if uri == "https://example.com/contract.wasm"
+            specify_tool::manifest::ToolSource::HttpsUri(uri) if uri == "https://example.com/contract.wasm"
         ));
 
         let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
