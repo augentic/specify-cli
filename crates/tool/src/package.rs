@@ -189,13 +189,11 @@ async fn fetch(
     {
         total = total.saturating_add(chunk.len() as u64);
         if total > MAX_PACKAGE_BYTES {
-            return Err(ToolError::Network {
-                url: request.to_wire_string(),
-                kind: crate::error::NetworkKind::TooLarge {
-                    limit: MAX_PACKAGE_BYTES,
-                    actual: Some(total),
-                },
-            });
+            return Err(ToolError::network_too_large(
+                request.to_wire_string(),
+                MAX_PACKAGE_BYTES,
+                Some(total),
+            ));
         }
         hasher.update(&chunk);
         file.write_all(&chunk).await.map_err(|err| {

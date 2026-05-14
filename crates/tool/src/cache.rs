@@ -131,9 +131,9 @@ pub fn sidecar_path(scope: &ToolScope, name: &str, version: &str) -> Result<Path
 ///
 /// Forwards every error returned by [`module_path()`], [`sidecar_path`], and
 /// [`read_sidecar`] — the latter surfaces the `tool-io` diagnostic and
-/// the `ToolError::Sidecar` parse/schema variants when an existing
-/// `meta.yaml` is unreadable or malformed (a missing sidecar is reported
-/// as [`Status::MissNotFound`] rather than as an error).
+/// the `tool-sidecar-parse` / `tool-sidecar-schema` diagnostics when an
+/// existing `meta.yaml` is unreadable or malformed (a missing sidecar is
+/// reported as [`Status::MissNotFound`] rather than as an error).
 pub fn status(
     scope: &ToolScope, tool_name: &str, tool_version: &str, source: &str, sha256: Option<&str>,
 ) -> Result<Status, ToolError> {

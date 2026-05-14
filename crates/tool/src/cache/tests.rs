@@ -110,8 +110,8 @@ fn sidecar_round_trips_and_schema_rejects_invalid_shape() {
     .expect("write invalid sidecar");
     assert!(matches!(
         read_sidecar(&path),
-        Err(ToolError::Sidecar {
-            kind: crate::error::SidecarKind::Schema(_),
+        Err(ToolError::Diag {
+            code: "tool-sidecar-schema",
             ..
         })
     ));
