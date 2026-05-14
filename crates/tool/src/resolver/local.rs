@@ -36,7 +36,7 @@ mod tests {
     use crate::error::ToolError;
     use crate::manifest::ToolSource;
     use crate::test_support::{
-        fixed_now, named_tool, project_scope, scratch_dir, tool, with_cache_env, write_source,
+        EnvGuard, env_lock, fixed_now, named_tool, project_scope, scratch_dir, tool, write_source,
     };
 
     #[test]
@@ -53,13 +53,15 @@ mod tests {
             None,
         );
 
-        with_cache_env(Some(&cache_dir), None, None, || {
-            let local = resolve(&scope, &local, fixed_now(), &project_dir).expect("local resolves");
-            let uri = resolve(&scope, &file_uri, fixed_now(), &project_dir)
-                .expect("file URI resolves");
-            assert_eq!(std::fs::read(local.bytes_path).expect("local bytes"), b"file-uri");
-            assert_eq!(std::fs::read(uri.bytes_path).expect("uri bytes"), b"file-uri");
-        });
+        let _g = env_lock();
+        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
+        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
+        let _home = EnvGuard::unset("HOME");
+
+        let local = resolve(&scope, &local, fixed_now(), &project_dir).expect("local resolves");
+        let uri = resolve(&scope, &file_uri, fixed_now(), &project_dir).expect("file URI resolves");
+        assert_eq!(std::fs::read(local.bytes_path).expect("local bytes"), b"file-uri");
+        assert_eq!(std::fs::read(uri.bytes_path).expect("uri bytes"), b"file-uri");
     }
 
     #[test]
@@ -70,25 +72,24 @@ mod tests {
         let empty = write_source(&source_dir, "empty.wasm", b"");
         let scope = project_scope();
 
-        with_cache_env(Some(&cache_dir), None, None, || {
-            let dir_err = resolve(
-                &scope,
-                &tool(ToolSource::LocalPath(source_dir.clone()), None),
-                fixed_now(),
-                &project_dir,
-            )
-            .expect_err("directory source must fail");
-            assert!(matches!(dir_err, ToolError::InvalidSource { .. }), "{dir_err}");
+        let _g = env_lock();
+        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
+        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
+        let _home = EnvGuard::unset("HOME");
 
-            let empty_err = resolve(
-                &scope,
-                &tool(ToolSource::LocalPath(empty), None),
-                fixed_now(),
-                &project_dir,
-            )
-            .expect_err("empty file");
-            assert!(matches!(empty_err, ToolError::EmptySource { .. }), "{empty_err}");
-        });
+        let dir_err = resolve(
+            &scope,
+            &tool(ToolSource::LocalPath(source_dir), None),
+            fixed_now(),
+            &project_dir,
+        )
+        .expect_err("directory source must fail");
+        assert!(matches!(dir_err, ToolError::InvalidSource { .. }), "{dir_err}");
+
+        let empty_err =
+            resolve(&scope, &tool(ToolSource::LocalPath(empty), None), fixed_now(), &project_dir)
+                .expect_err("empty file");
+        assert!(matches!(empty_err, ToolError::EmptySource { .. }), "{empty_err}");
     }
 
     #[cfg(unix)]
@@ -103,13 +104,13 @@ mod tests {
         let scope = project_scope();
         let symlink_tool = tool(ToolSource::LocalPath(link), None);
 
-        with_cache_env(Some(&cache_dir), None, None, || {
-            let resolved = resolve(&scope, &symlink_tool, fixed_now(), &project_dir)
-                .expect("symlink resolves");
-            assert_eq!(
-                std::fs::read(resolved.bytes_path).expect("cached bytes"),
-                b"symlink-target"
-            );
-        });
+        let _g = env_lock();
+        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
+        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
+        let _home = EnvGuard::unset("HOME");
+
+        let resolved =
+            resolve(&scope, &symlink_tool, fixed_now(), &project_dir).expect("symlink resolves");
+        assert_eq!(std::fs::read(resolved.bytes_path).expect("cached bytes"), b"symlink-target");
     }
 }

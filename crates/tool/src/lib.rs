@@ -100,47 +100,42 @@ mod test_support {
         dir
     }
 
-    /// Run a closure with cache-related environment variables set.
-    pub fn with_cache_env<T>(
-        specify_cache: Option<&Path>, xdg_cache: Option<&Path>, home: Option<&Path>,
-        f: impl FnOnce() -> T,
-    ) -> T {
-        let _guard = env_lock();
-        let previous_specify = env::var_os("SPECIFY_TOOLS_CACHE");
-        let previous_xdg = env::var_os("XDG_CACHE_HOME");
-        let previous_home = env::var_os("HOME");
-
-        set_or_remove_env("SPECIFY_TOOLS_CACHE", specify_cache);
-        set_or_remove_env("XDG_CACHE_HOME", xdg_cache);
-        set_or_remove_env("HOME", home);
-
-        let result = f();
-
-        restore_env("SPECIFY_TOOLS_CACHE", previous_specify);
-        restore_env("XDG_CACHE_HOME", previous_xdg);
-        restore_env("HOME", previous_home);
-
-        result
+    /// Snapshot a process-wide env var and restore on drop.
+    ///
+    /// Tests construct one of these per env var they touch, always
+    /// after acquiring [`env_lock`], so concurrent tests cannot
+    /// observe partial state. `Drop` runs in reverse declaration
+    /// order, which keeps restores ordered relative to the lock.
+    pub struct EnvGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
     }
 
-    fn set_or_remove_env(key: &str, value: Option<&Path>) {
-        // SAFETY: every test that mutates these process-wide environment
-        // variables goes through `env_lock`, preventing concurrent readers from
-        // observing partial setup or teardown.
-        unsafe {
-            match value {
-                Some(value) => env::set_var(key, value),
-                None => env::remove_var(key),
-            }
+    impl EnvGuard {
+        pub fn set(key: &'static str, value: &Path) -> Self {
+            let previous = env::var_os(key);
+            // SAFETY: callers hold `env_lock`, so no concurrent reader
+            // can observe partial state.
+            unsafe { env::set_var(key, value) };
+            Self { key, previous }
+        }
+
+        pub fn unset(key: &'static str) -> Self {
+            let previous = env::var_os(key);
+            // SAFETY: see [`EnvGuard::set`].
+            unsafe { env::remove_var(key) };
+            Self { key, previous }
         }
     }
 
-    fn restore_env(key: &str, value: Option<std::ffi::OsString>) {
-        // SAFETY: protected by `env_lock`; see `set_or_remove_env`.
-        unsafe {
-            match value {
-                Some(value) => env::set_var(key, value),
-                None => env::remove_var(key),
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: see [`EnvGuard::set`].
+            unsafe {
+                match self.previous.take() {
+                    Some(value) => env::set_var(self.key, value),
+                    None => env::remove_var(self.key),
+                }
             }
         }
     }

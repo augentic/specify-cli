@@ -135,16 +135,18 @@ async fn fetch(
     let version = Version::parse(&request.version)
         .map_err(|err| ToolError::package(request, format!("parse package version: {err}")))?;
     let config = load_config(&package, project_dir).await?;
-    let resolved_registry: Registry = config
-        .resolve_registry(&package)
-        .cloned()
-        .unwrap_or_else(|| {
+    let resolved_registry: Registry =
+        config.resolve_registry(&package).cloned().unwrap_or_else(|| {
             FIRST_PARTY_REGISTRY.parse().expect("FIRST_PARTY_REGISTRY parses as a Registry")
         });
     let registry_string = resolved_registry.to_string();
-    let oci_reference =
-        derive_oci_reference(&resolved_registry, &request.namespace, &request.name, &request.version)
-            .await;
+    let oci_reference = derive_oci_reference(
+        &resolved_registry,
+        &request.namespace,
+        &request.name,
+        &request.version,
+    )
+    .await;
     let client = Client::new(config);
     let release = client
         .get_release(&package, &version)
@@ -293,13 +295,11 @@ struct OciProtocolMetadata {
 }
 
 #[cfg(test)]
-#[expect(unsafe_code, reason = "tests mutate process-wide env vars under env_lock")]
 mod tests {
-    use std::env;
     use std::fs;
 
     use super::*;
-    use crate::test_support::{env_lock, scratch_dir};
+    use crate::test_support::{EnvGuard, env_lock, scratch_dir};
 
     fn package_ref() -> PackageRef {
         "specify:contract".parse().expect("parse first-party package ref")
@@ -309,52 +309,12 @@ mod tests {
         "ba:demo".parse().expect("parse third-party package ref")
     }
 
-    /// Snapshot a process-wide env var and restore on drop. Tests
-    /// construct one of these per var they touch, always under
-    /// [`env_lock`], so concurrent tests cannot observe partial state.
-    struct EnvGuard {
-        key: &'static str,
-        previous: Option<std::ffi::OsString>,
-    }
-
-    impl EnvGuard {
-        fn set(key: &'static str, value: &Path) -> Self {
-            let previous = env::var_os(key);
-            // SAFETY: every test that mutates these process-wide environment
-            // variables holds `env_lock`, preventing concurrent readers.
-            unsafe { env::set_var(key, value) };
-            Self { key, previous }
-        }
-
-        fn unset(key: &'static str) -> Self {
-            let previous = env::var_os(key);
-            // SAFETY: see [`EnvGuard::set`].
-            unsafe { env::remove_var(key) };
-            Self { key, previous }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            // SAFETY: see [`EnvGuard::set`].
-            unsafe {
-                match self.previous.take() {
-                    Some(value) => env::set_var(self.key, value),
-                    None => env::remove_var(self.key),
-                }
-            }
-        }
-    }
-
     /// Point `HOME` and `XDG_CONFIG_HOME` at a fresh scratch dir so
     /// `Config::global_defaults` cannot pull in a developer's personal
     /// `~/.config/wasm-pkg/config.toml` and surprise the assertions.
     fn isolate_global_config_dir(label: &str) -> (PathBuf, [EnvGuard; 2]) {
         let home = scratch_dir(label);
-        let guards = [
-            EnvGuard::set("HOME", &home),
-            EnvGuard::set("XDG_CONFIG_HOME", &home),
-        ];
+        let guards = [EnvGuard::set("HOME", &home), EnvGuard::set("XDG_CONFIG_HOME", &home)];
         (home, guards)
     }
 
@@ -427,11 +387,8 @@ mod tests {
         .expect("write project wasm-pkg.toml");
 
         let wkg_config = project.join("wkg-override.toml");
-        fs::write(
-            &wkg_config,
-            "[namespace_registries]\nspecify = \"override.example.com\"\n",
-        )
-        .expect("write wkg override");
+        fs::write(&wkg_config, "[namespace_registries]\nspecify = \"override.example.com\"\n")
+            .expect("write wkg override");
         let _wkg = EnvGuard::set("WKG_CONFIG", &wkg_config);
 
         let package = package_ref();
@@ -472,17 +429,11 @@ mod tests {
                 "namespacePrefix": "augentic/"
             }
         });
-        let metadata: RegistryMetadata =
-            serde_json::from_value(raw).expect("deserialize metadata");
+        let metadata: RegistryMetadata = serde_json::from_value(raw).expect("deserialize metadata");
         let registry: Registry = "augentic.io".parse().expect("parse registry");
-        let reference = oci_reference_from_metadata(
-            &metadata,
-            &registry,
-            "specify",
-            "contract",
-            "1.0.0",
-        )
-        .expect("oci reference derived");
+        let reference =
+            oci_reference_from_metadata(&metadata, &registry, "specify", "contract", "1.0.0")
+                .expect("oci reference derived");
         assert_eq!(reference, "ghcr.io/augentic/specify/contract:1.0.0");
     }
 
@@ -491,14 +442,8 @@ mod tests {
         let metadata = RegistryMetadata::default();
         let registry: Registry = "augentic.io".parse().expect("parse registry");
         assert!(
-            oci_reference_from_metadata(
-                &metadata,
-                &registry,
-                "specify",
-                "contract",
-                "1.0.0"
-            )
-            .is_none(),
+            oci_reference_from_metadata(&metadata, &registry, "specify", "contract", "1.0.0")
+                .is_none(),
             "default metadata must produce no OCI reference"
         );
     }
@@ -511,17 +456,11 @@ mod tests {
                 "registry": "ghcr.io"
             }
         });
-        let metadata: RegistryMetadata =
-            serde_json::from_value(raw).expect("deserialize metadata");
+        let metadata: RegistryMetadata = serde_json::from_value(raw).expect("deserialize metadata");
         let registry: Registry = "augentic.io".parse().expect("parse registry");
-        let reference = oci_reference_from_metadata(
-            &metadata,
-            &registry,
-            "specify",
-            "contract",
-            "1.0.0",
-        )
-        .expect("oci reference derived");
+        let reference =
+            oci_reference_from_metadata(&metadata, &registry, "specify", "contract", "1.0.0")
+                .expect("oci reference derived");
         assert_eq!(reference, "ghcr.io/specify/contract:1.0.0");
     }
 
@@ -533,17 +472,11 @@ mod tests {
                 "namespacePrefix": "augentic/"
             }
         });
-        let metadata: RegistryMetadata =
-            serde_json::from_value(raw).expect("deserialize metadata");
+        let metadata: RegistryMetadata = serde_json::from_value(raw).expect("deserialize metadata");
         let registry: Registry = "augentic.io".parse().expect("parse registry");
-        let reference = oci_reference_from_metadata(
-            &metadata,
-            &registry,
-            "specify",
-            "contract",
-            "1.0.0",
-        )
-        .expect("oci reference derived");
+        let reference =
+            oci_reference_from_metadata(&metadata, &registry, "specify", "contract", "1.0.0")
+                .expect("oci reference derived");
         assert_eq!(reference, "augentic.io/augentic/specify/contract:1.0.0");
     }
 }

@@ -319,14 +319,12 @@ mod tests {
         init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("first init");
 
         let path = tmp.path().join(".specify/wasm-pkg.toml");
-        let edited = "[namespace_registries]\nspecify = \"mirror.internal\"\nacme = \"acme.example.com\"\n";
+        let edited =
+            "[namespace_registries]\nspecify = \"mirror.internal\"\nacme = \"acme.example.com\"\n";
         fs::write(&path, edited).expect("operator edit");
 
         let result = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("re-init");
-        assert!(
-            !result.wasm_pkg_config_written,
-            "re-init must not report writing the file"
-        );
+        assert!(!result.wasm_pkg_config_written, "re-init must not report writing the file");
         let contents = fs::read_to_string(&path).expect("read after re-init");
         assert_eq!(contents, edited, "operator edits must be preserved byte-for-byte");
     }

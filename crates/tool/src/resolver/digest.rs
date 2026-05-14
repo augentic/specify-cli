@@ -56,7 +56,7 @@ mod tests {
     use crate::error::ToolError;
     use crate::manifest::ToolSource;
     use crate::test_support::{
-        cached_bytes, fixed_now, project_scope, scratch_dir, tool, with_cache_env, write_source,
+        EnvGuard, cached_bytes, env_lock, fixed_now, project_scope, scratch_dir, tool, write_source,
     };
 
     fn corrupt_cached_module(path: &Path, bytes: &[u8]) {
@@ -82,19 +82,21 @@ mod tests {
         let old_tool = tool(ToolSource::LocalPath(old_source), Some(old_sha));
         let wrong_tool = tool(ToolSource::LocalPath(new_source.clone()), Some(wrong_sha));
 
-        with_cache_env(Some(&cache_dir), None, None, || {
-            resolve(&scope, &old_tool, fixed_now(), &project_dir).expect("initial digest install");
-            let err = resolve(&scope, &wrong_tool, fixed_now(), &project_dir)
-                .expect_err("wrong digest must fail");
-            assert!(matches!(err, ToolError::DigestMismatch { .. }), "{err}");
-            assert_eq!(cached_bytes(&scope, &old_tool), b"old-good");
+        let _g = env_lock();
+        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
+        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
+        let _home = EnvGuard::unset("HOME");
 
-            let correct_tool =
-                tool(ToolSource::LocalPath(new_source), Some(sha256_hex(b"new-good")));
-            resolve(&scope, &correct_tool, fixed_now(), &project_dir)
-                .expect("correct digest updates cache");
-            assert_eq!(cached_bytes(&scope, &correct_tool), b"new-good");
-        });
+        resolve(&scope, &old_tool, fixed_now(), &project_dir).expect("initial digest install");
+        let err = resolve(&scope, &wrong_tool, fixed_now(), &project_dir)
+            .expect_err("wrong digest must fail");
+        assert!(matches!(err, ToolError::DigestMismatch { .. }), "{err}");
+        assert_eq!(cached_bytes(&scope, &old_tool), b"old-good");
+
+        let correct_tool = tool(ToolSource::LocalPath(new_source), Some(sha256_hex(b"new-good")));
+        resolve(&scope, &correct_tool, fixed_now(), &project_dir)
+            .expect("correct digest updates cache");
+        assert_eq!(cached_bytes(&scope, &correct_tool), b"new-good");
     }
 
     #[test]
@@ -106,14 +108,16 @@ mod tests {
         let scope = project_scope();
         let pinned = tool(ToolSource::LocalPath(source), Some(sha256_hex(b"trusted")));
 
-        with_cache_env(Some(&cache_dir), None, None, || {
-            let resolved =
-                resolve(&scope, &pinned, fixed_now(), &project_dir).expect("install pinned");
-            corrupt_cached_module(&resolved.bytes_path, b"corrupt");
-            let repaired = resolve(&scope, &pinned, fixed_now(), &project_dir)
-                .expect("digest mismatch re-fetches");
-            assert_eq!(repaired.bytes_path, resolved.bytes_path);
-            assert_eq!(fs::read(repaired.bytes_path).expect("repaired bytes"), b"trusted");
-        });
+        let _g = env_lock();
+        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
+        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
+        let _home = EnvGuard::unset("HOME");
+
+        let resolved = resolve(&scope, &pinned, fixed_now(), &project_dir).expect("install pinned");
+        corrupt_cached_module(&resolved.bytes_path, b"corrupt");
+        let repaired = resolve(&scope, &pinned, fixed_now(), &project_dir)
+            .expect("digest mismatch re-fetches");
+        assert_eq!(repaired.bytes_path, resolved.bytes_path);
+        assert_eq!(fs::read(repaired.bytes_path).expect("repaired bytes"), b"trusted");
     }
 }

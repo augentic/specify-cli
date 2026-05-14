@@ -48,12 +48,7 @@ pub struct ResolvedTool {
 pub fn resolve(
     scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, project_dir: &Path,
 ) -> Result<ResolvedTool, ToolError> {
-    resolve_with(
-        scope,
-        tool,
-        now,
-        &WasmPkgClient::new(Some(project_dir.to_path_buf())),
-    )
+    resolve_with(scope, tool, now, &WasmPkgClient::new(Some(project_dir.to_path_buf())))
 }
 
 /// Resolve a declared tool using an injected package client.
@@ -238,8 +233,8 @@ mod tests {
     use crate::manifest::{PackageRequest, ToolSource};
     use crate::package::{FetchedPackage, PackageClient, PackageMetadata};
     use crate::test_support::{
-        cached_bytes, capability_scope, fixed_now, project_scope, scratch_dir, tool,
-        with_cache_env, write_source,
+        EnvGuard, cached_bytes, capability_scope, env_lock, fixed_now, project_scope, scratch_dir,
+        tool, write_source,
     };
 
     struct MockPackageClient {
@@ -291,23 +286,26 @@ mod tests {
         let scope = project_scope();
         let first_tool = tool(ToolSource::LocalPath(first.clone()), None);
 
-        with_cache_env(Some(&cache_dir), None, None, || {
-            let resolved =
-                resolve(&scope, &first_tool, fixed_now(), &project_dir).expect("cache miss resolves");
-            assert_eq!(fs::read(&resolved.bytes_path).expect("cached bytes"), b"first");
+        let _g = env_lock();
+        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
+        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
+        let _home = EnvGuard::unset("HOME");
 
-            fs::write(&first, b"changed-at-source").expect("mutate source");
-            let hit = resolve(&scope, &first_tool, fixed_now(), &project_dir)
-                .expect("cache hit resolves");
-            assert_eq!(hit.bytes_path, resolved.bytes_path);
-            assert_eq!(cached_bytes(&scope, &first_tool), b"first");
+        let resolved =
+            resolve(&scope, &first_tool, fixed_now(), &project_dir).expect("cache miss resolves");
+        assert_eq!(fs::read(&resolved.bytes_path).expect("cached bytes"), b"first");
 
-            let changed_tool = tool(ToolSource::LocalPath(second), None);
-            let changed = resolve(&scope, &changed_tool, fixed_now(), &project_dir)
-                .expect("changed source re-stages");
-            assert_eq!(changed.bytes_path, resolved.bytes_path);
-            assert_eq!(cached_bytes(&scope, &changed_tool), b"second");
-        });
+        fs::write(&first, b"changed-at-source").expect("mutate source");
+        let hit =
+            resolve(&scope, &first_tool, fixed_now(), &project_dir).expect("cache hit resolves");
+        assert_eq!(hit.bytes_path, resolved.bytes_path);
+        assert_eq!(cached_bytes(&scope, &first_tool), b"first");
+
+        let changed_tool = tool(ToolSource::LocalPath(second), None);
+        let changed = resolve(&scope, &changed_tool, fixed_now(), &project_dir)
+            .expect("changed source re-stages");
+        assert_eq!(changed.bytes_path, resolved.bytes_path);
+        assert_eq!(cached_bytes(&scope, &changed_tool), b"second");
     }
 
     #[test]
@@ -321,17 +319,18 @@ mod tests {
         let capability = capability_scope(&capability_dir);
         let declared = tool(ToolSource::LocalPath(source), None);
 
-        with_cache_env(Some(&cache_dir), None, None, || {
-            let project_resolved =
-                resolve(&project, &declared, fixed_now(), &project_dir).expect("project resolve");
-            let capability_resolved = resolve(&capability, &declared, fixed_now(), &project_dir)
-                .expect("capability resolve");
-            assert_ne!(project_resolved.bytes_path, capability_resolved.bytes_path);
-            assert!(project_resolved.bytes_path.to_string_lossy().contains("project--demo"));
-            assert!(
-                capability_resolved.bytes_path.to_string_lossy().contains("capability--contracts")
-            );
-        });
+        let _g = env_lock();
+        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
+        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
+        let _home = EnvGuard::unset("HOME");
+
+        let project_resolved =
+            resolve(&project, &declared, fixed_now(), &project_dir).expect("project resolve");
+        let capability_resolved =
+            resolve(&capability, &declared, fixed_now(), &project_dir).expect("capability resolve");
+        assert_ne!(project_resolved.bytes_path, capability_resolved.bytes_path);
+        assert!(project_resolved.bytes_path.to_string_lossy().contains("project--demo"));
+        assert!(capability_resolved.bytes_path.to_string_lossy().contains("capability--contracts"));
     }
 
     #[test]
@@ -346,31 +345,32 @@ mod tests {
         let declared = tool(ToolSource::Package(package), None);
         let client = MockPackageClient::new(b"package-bytes");
 
-        with_cache_env(Some(&cache_dir), None, None, || {
-            let resolved =
-                resolve_with(&scope, &declared, fixed_now(), &client).expect("package resolves");
-            assert_eq!(fs::read(resolved.bytes_path).expect("cached bytes"), b"package-bytes");
-            assert_eq!(client.calls.get(), 1);
+        let _g = env_lock();
+        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
+        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
+        let _home = EnvGuard::unset("HOME");
 
-            let sidecar = cache::read_sidecar(
-                &cache::sidecar_path(&scope, &declared.name, &declared.version)
-                    .expect("sidecar path"),
-            )
-            .expect("read sidecar")
-            .expect("sidecar exists");
-            assert_eq!(sidecar.source, "specify:contract@1.0.0");
-            assert_eq!(
-                sidecar.package.as_ref().map(|package| package.name.as_str()),
-                Some("specify:contract")
-            );
-            assert_eq!(
-                sidecar.oci.as_ref().map(|oci| oci.reference.as_str()),
-                Some("ghcr.io/augentic/specify/contract:1.0.0")
-            );
+        let resolved =
+            resolve_with(&scope, &declared, fixed_now(), &client).expect("package resolves");
+        assert_eq!(fs::read(resolved.bytes_path).expect("cached bytes"), b"package-bytes");
+        assert_eq!(client.calls.get(), 1);
 
-            resolve_with(&scope, &declared, fixed_now(), &client)
-                .expect("package cache hit resolves");
-            assert_eq!(client.calls.get(), 1, "cache hit must not fetch package again");
-        });
+        let sidecar = cache::read_sidecar(
+            &cache::sidecar_path(&scope, &declared.name, &declared.version).expect("sidecar path"),
+        )
+        .expect("read sidecar")
+        .expect("sidecar exists");
+        assert_eq!(sidecar.source, "specify:contract@1.0.0");
+        assert_eq!(
+            sidecar.package.as_ref().map(|package| package.name.as_str()),
+            Some("specify:contract")
+        );
+        assert_eq!(
+            sidecar.oci.as_ref().map(|oci| oci.reference.as_str()),
+            Some("ghcr.io/augentic/specify/contract:1.0.0")
+        );
+
+        resolve_with(&scope, &declared, fixed_now(), &client).expect("package cache hit resolves");
+        assert_eq!(client.calls.get(), 1, "cache hit must not fetch package again");
     }
 }
