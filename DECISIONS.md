@@ -130,7 +130,7 @@ binary.
 History: until Phase 1B of the 2026-05 cleanup the workspace had 13
 crates; the fragmentation cost more than it earned (wide build graph,
 redundant `Cargo.toml` files, indirect re-export hops, repeated
-`multiple_crate_versions` waivers). Module boundaries inside
+duplicate-version exemptions). Module boundaries inside
 `specify-domain` preserve the original separation; `pub` cross-module
 surfaces match the prior cross-crate `pub use` exports.
 

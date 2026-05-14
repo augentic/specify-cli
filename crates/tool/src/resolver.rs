@@ -1,4 +1,5 @@
-//! Source resolution for local paths, `file:` URIs, and `https:` URIs.
+//! Source resolution for local paths, `file:` URIs, `https:` URIs, and
+//! wasm-pkg package requests.
 
 use std::ffi::OsStr;
 use std::fs;
@@ -54,7 +55,7 @@ pub fn resolve(
 /// # Errors
 ///
 /// Returns the same cache, source, digest, and resolver errors as [`resolve`].
-pub fn resolve_with(
+pub(crate) fn resolve_with(
     scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, package_client: &impl PackageClient,
 ) -> Result<ResolvedTool, ToolError> {
     let source = tool.source.to_wire_string().into_owned();

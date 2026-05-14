@@ -2,7 +2,6 @@
     clippy::doc_markdown,
     reason = "The crate-level decision record mirrors RFC prose and manifest keys."
 )]
-
 //! Specify's declared WASI tool model, cache, resolver, and
 //! Wasmtime-backed execution host. See `DECISIONS.md`
 //! §"Tool architecture" for the canonical contract.
@@ -12,7 +11,7 @@ pub mod error;
 pub mod host;
 pub mod load;
 pub mod manifest;
-pub mod package;
+mod package;
 pub mod permissions;
 pub mod resolver;
 pub mod validate;
@@ -22,7 +21,7 @@ pub use manifest::{Tool, ToolManifest, ToolPermissions, ToolScope, ToolScopeKind
 
 #[cfg(test)]
 #[expect(unsafe_code, reason = "test helpers mutate process-wide env vars under env_lock")]
-pub(crate) mod test_support {
+mod test_support {
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Mutex, MutexGuard, OnceLock};

@@ -13,15 +13,6 @@ readme = "README.md"
 name = "specify"
 path = "src/main.rs"
 
-[features]
-default = []
-# Opt into wasm-pkg / OCI package resolution. Adds `wasm-pkg-client`,
-# `tokio`, `reqwest`, `oci-client`, and the rest of the wasm-pkg
-# transitive stack to the dep graph. The default build keeps the CLI
-# OCI-free; declared `package:` tool sources still parse but resolution
-# returns `tool-package-source-disabled` at run time.
-oci = ["specify-tool/oci"]
-
 [dependencies]
 clap.workspace = true
 clap_complete.workspace = true
@@ -34,7 +25,7 @@ serde_json.workspace = true
 sha2.workspace = true
 specify-domain.workspace = true
 specify-error.workspace = true
-specify-tool = { workspace = true, features = ["host"] }
+specify-tool.workspace = true
 strum.workspace = true
 thiserror.workspace = true
 

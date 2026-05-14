@@ -19,11 +19,5 @@ clap_mangen = "0.3"
 # renders roff (`clap_mangen`) and shell completions (`clap_complete`).
 specify = { path = ".." }
 
-# Inherit workspace lints. The two xtask-specific relaxations
-# (`missing_docs`, `clippy::cargo`) live as crate-level `#![allow(...)]`
-# attributes in `src/main.rs` rather than package-level `[lints.*]` tables —
-# Even Better TOML 0.21.2 ships a stale Cargo schema that fails to validate
-# package-level lint tables (rust-lang/cargo#15030, fixed upstream in
-# rust-lang/cargo#15035 but not yet in the bundled schema).
 [lints]
 workspace = true

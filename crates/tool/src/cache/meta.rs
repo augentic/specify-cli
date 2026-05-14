@@ -111,7 +111,7 @@ impl Sidecar {
         clippy::too_many_arguments,
         reason = "constructor mirrors the sidecar schema fields verbatim; collapsing into a builder would obscure the schema-to-field mapping"
     )]
-    pub fn new(
+    pub(crate) fn new(
         scope: &ToolScope, tool_name: impl Into<String>, tool_version: impl Into<String>,
         source: impl Into<String>, permissions_snapshot: PermissionsSnapshot,
         sha256: Option<String>, package_metadata: Option<PackageMetadata>, now: Timestamp,
