@@ -43,7 +43,7 @@ pub struct ChangeFrontmatter {
 #[serde(deny_unknown_fields)]
 pub struct ChangeInput {
     /// Relative or absolute path. Stored verbatim; resolution happens
-    /// downstream in `/spec:analyze` (not in this crate).
+    /// downstream in `/change:analyze` (not in this crate).
     pub path: String,
     /// Closed enum — see [`InputKind`].
     pub kind: InputKind,
