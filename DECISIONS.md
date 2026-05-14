@@ -122,10 +122,9 @@ without extra plumbing.
 
 ## Crate layout
 
-Five workspace crates: `specify-error` (leaf), `specify-validate`
-(carve-out-shared contract validation), `specify-domain` (every other
-domain module), `specify-tool` (WASI host, gated), and the `specify`
-binary.
+Four workspace crates: `specify-error` (leaf), `specify-domain`
+(every domain module), `specify-tool` (WASI host, gated), and the
+`specify` binary.
 
 History: until Phase 1B of the 2026-05 cleanup the workspace had 13
 crates; the fragmentation cost more than it earned (wide build graph,
@@ -134,17 +133,19 @@ duplicate-version exemptions). Module boundaries inside
 `specify-domain` preserve the original separation; `pub` cross-module
 surfaces match the prior cross-crate `pub use` exports.
 
-`specify-validate` is the one cleanup-era re-extraction. It owns the
+`specify-validate` was a Phase 1B re-extraction that owned the
 baseline-contract validation primitives (`ContractFinding`,
-`validate_baseline`) and is consumed by both `specify-domain` (for
-compatibility classification) and the `wasi-tools/contract` carve-out
-(for the standalone `wasm32-wasip2` binary, which renders findings
-through a small inline serializer). The carve-out invariant in `wasi-tools/Cargo.toml` forbids a
-dep on `specify-domain` (would drag `wasmtime` / `tokio` / `ureq`),
-and inlining the ~300 LOC of validation into the carve-out would lose
-the single source of truth. The crate is dependency-minimal (`semver`,
-`serde`, `serde-saphyr`, `serde_json`) so it does not regrow the
-duplicate-version surface that motivated Phase 1B.
+`validate_baseline`) and was shared between `specify-domain` (for
+compatibility classification) and the `wasi-tools/contract` carve-out.
+The 2026-05 architecture-inversion pass collapsed it into the
+carve-out: a capability's validation logic belongs inside its WASI
+tool, not as a `specify-*` workspace crate the host can link
+against. The host's `compatibility::classify_project` no longer
+short-circuits on contract baseline failures — operators run
+`specify tool run contract -- "$PWD/contracts"` as a pre-flight when
+they need that gate, identical to every other capability. The
+carve-out is now self-contained; `wasi-tools/Cargo.toml` no longer
+has a path bridge into the host workspace.
 
 Rule: new functionality lands in an existing module by default. New
 workspace crates require a paragraph in this file justifying why an
@@ -153,7 +154,8 @@ invariant the new crate enforces (i.e. which leaf-→-root edge it
 preserves, and which existing crate would have grown a cycle if the
 code had gone there). A new crate that does not strengthen the
 dependency direction is overhead; refactor within an existing module
-instead.
+instead. Capability-specific logic never lands as a workspace crate
+— it lands in the capability's WASI carve-out.
 
 ## Tool architecture
 

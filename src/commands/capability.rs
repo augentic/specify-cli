@@ -162,10 +162,11 @@ pub fn check(format: Format, capability_dir: &Path) -> Result<()> {
     if passed {
         Ok(())
     } else {
-        Err(Error::Diag {
-            code: "capability-check-failed",
-            detail: format!("capability at {} failed validation", capability_dir.display()),
-        })
+        Err(Error::validation_failed(
+            "capability-check-failed",
+            "capability must satisfy structural validation",
+            format!("capability at {} failed validation", capability_dir.display()),
+        ))
     }
 }
 

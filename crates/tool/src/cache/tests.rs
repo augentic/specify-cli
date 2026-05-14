@@ -53,9 +53,9 @@ fn cache_root_honours_override_precedence() {
     let xdg_dir = scratch_dir("xdg");
     let home_dir = scratch_dir("home");
     let _g = env_lock();
-    let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &override_dir);
-    let _xdg = EnvGuard::set("XDG_CACHE_HOME", &xdg_dir);
-    let _home = EnvGuard::set("HOME", &home_dir);
+    let _cache = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", Some(&override_dir));
+    let _xdg = EnvGuard::scoped("XDG_CACHE_HOME", Some(&xdg_dir));
+    let _home = EnvGuard::scoped("HOME", Some(&home_dir));
     assert_eq!(root().expect("cache root"), override_dir);
 }
 
@@ -64,9 +64,9 @@ fn cache_root_uses_xdg_before_home_fallback() {
     let xdg_dir = scratch_dir("xdg-only");
     let home_dir = scratch_dir("home-only");
     let _g = env_lock();
-    let _cache = EnvGuard::unset("SPECIFY_TOOLS_CACHE");
-    let _xdg = EnvGuard::set("XDG_CACHE_HOME", &xdg_dir);
-    let _home = EnvGuard::set("HOME", &home_dir);
+    let _cache = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", None);
+    let _xdg = EnvGuard::scoped("XDG_CACHE_HOME", Some(&xdg_dir));
+    let _home = EnvGuard::scoped("HOME", Some(&home_dir));
     assert_eq!(root().expect("cache root"), xdg_dir.join("specify").join("tools"));
 }
 
@@ -74,9 +74,9 @@ fn cache_root_uses_xdg_before_home_fallback() {
 fn cache_root_uses_home_when_no_explicit_env() {
     let home_dir = scratch_dir("home-fallback");
     let _g = env_lock();
-    let _cache = EnvGuard::unset("SPECIFY_TOOLS_CACHE");
-    let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-    let _home = EnvGuard::set("HOME", &home_dir);
+    let _cache = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", None);
+    let _xdg = EnvGuard::scoped("XDG_CACHE_HOME", None);
+    let _home = EnvGuard::scoped("HOME", Some(&home_dir));
     assert_eq!(root().expect("cache root"), home_dir.join(".cache").join("specify").join("tools"));
 }
 
@@ -110,8 +110,8 @@ fn sidecar_round_trips_and_schema_rejects_invalid_shape() {
     .expect("write invalid sidecar");
     assert!(matches!(
         read_sidecar(&path),
-        Err(ToolError::Sidecar {
-            kind: crate::error::SidecarKind::Schema(_),
+        Err(ToolError::Diag {
+            code: "tool-sidecar-schema",
             ..
         })
     ));

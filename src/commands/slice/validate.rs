@@ -30,10 +30,11 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     if passed {
         Ok(())
     } else {
-        Err(Error::Diag {
-            code: "slice-validation-failed",
-            detail: format!("slice `{name}` failed validation"),
-        })
+        Err(Error::validation_failed(
+            "slice-validation-failed",
+            "slice must satisfy capability validation",
+            format!("slice `{name}` failed validation"),
+        ))
     }
 }
 

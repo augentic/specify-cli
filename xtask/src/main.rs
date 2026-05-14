@@ -1,12 +1,10 @@
-//! Workspace task runner: `gen-man` (`clap_mangen` roff pages) and
-//! `gen-completions` (`clap_complete` shell scripts).
+//! Workspace task runner: `gen-man` (`clap_mangen` roff pages).
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-mod completions;
 mod manpage;
 
 #[derive(Parser)]
@@ -19,50 +17,24 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Render roff man pages for the `specify` binary and every
-    /// (non-`help`) subcommand into `out_dir` via `clap_mangen`. One
-    /// `.1` file per command, named `specify[-sub...].1`. The default
-    /// `target/man/` is gitignored; release tooling reads from there.
-    GenMan {
-        /// Output directory for the rendered `.1` files. Created if
-        /// missing.
-        #[arg(long, default_value = "target/man")]
-        out_dir: PathBuf,
-    },
-    /// Render `clap_complete` shell-completion scripts for the
-    /// `specify` binary into `out_dir/<shell>/specify.<ext>` for every
-    /// `clap_complete::Shell` value. The default `target/completions/`
-    /// is gitignored; release tooling reads from there.
-    GenCompletions {
-        /// Output directory for the rendered completion scripts.
-        /// Created (with one subdirectory per shell) if missing.
-        #[arg(long, default_value = "target/completions")]
-        out_dir: PathBuf,
-    },
+    /// (non-`help`) subcommand into `target/man/` via `clap_mangen`.
+    /// One `.1` file per command, named `specify[-sub...].1`. The
+    /// directory is gitignored; release tooling reads from there.
+    GenMan,
 }
+
+const MAN_DIR: &str = "target/man";
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::GenMan { out_dir } => match manpage::render(&out_dir) {
+        Command::GenMan => match manpage::render(Path::new(MAN_DIR)) {
             Ok(count) => {
-                eprintln!("xtask gen-man: wrote {count} man page(s) to {}", out_dir.display());
+                eprintln!("xtask gen-man: wrote {count} man page(s) to {MAN_DIR}");
                 ExitCode::SUCCESS
             }
             Err(err) => {
                 eprintln!("xtask gen-man: {err}");
-                ExitCode::from(2)
-            }
-        },
-        Command::GenCompletions { out_dir } => match completions::render(&out_dir) {
-            Ok(count) => {
-                eprintln!(
-                    "xtask gen-completions: wrote {count} completion script(s) to {}",
-                    out_dir.display()
-                );
-                ExitCode::SUCCESS
-            }
-            Err(err) => {
-                eprintln!("xtask gen-completions: {err}");
                 ExitCode::from(2)
             }
         },

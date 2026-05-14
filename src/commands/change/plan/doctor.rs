@@ -67,11 +67,11 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     )?;
 
     if has_errors {
-        Err(Error::Diag {
-            code: "plan-structural-errors",
-            detail: "plan has structural errors; run 'specify change plan validate' for detail"
-                .to_string(),
-        })
+        Err(Error::validation_failed(
+            "plan-structural-errors",
+            "plan must be free of structural errors",
+            "run 'specify change plan validate' for detail",
+        ))
     } else {
         Ok(())
     }

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Workspace task runner: gen-man and gen-completions"
+description = "Workspace task runner: gen-man"
 
 [[bin]]
 name = "xtask"
@@ -12,11 +12,10 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
-clap_complete.workspace = true
 clap_mangen = "0.3"
-# Pulled in for the `gen-man` and `gen-completions` subcommands: xtask
-# reflects the binary's clap command tree via `specify::command()` and
-# renders roff (`clap_mangen`) and shell completions (`clap_complete`).
+# Pulled in for the `gen-man` subcommand: xtask reflects the binary's
+# clap command tree via `specify::command()` and renders roff
+# (`clap_mangen`).
 specify = { path = ".." }
 
 [lints]

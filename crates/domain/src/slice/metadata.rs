@@ -42,42 +42,42 @@ pub struct SliceMetadata {
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339"
     )]
     pub created_at: Option<Timestamp>,
     /// When the slice entered `Defined`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339"
     )]
     pub defined_at: Option<Timestamp>,
     /// When the build phase started.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339"
     )]
     pub build_started_at: Option<Timestamp>,
     /// When the slice reached `Complete`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339"
     )]
     pub completed_at: Option<Timestamp>,
     /// When the slice was merged.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339"
     )]
     pub merged_at: Option<Timestamp>,
     /// When the slice was dropped.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339"
     )]
     pub dropped_at: Option<Timestamp>,
     /// Human-readable reason for dropping the slice.

@@ -1,29 +1,15 @@
 //! Wasmtime-backed WASI Preview 2 runner boundary.
-//!
-//! `RunContext` is always compiled; only `WasiRunner` and its
-//! wasmtime-dependent helpers are gated behind the `host` Cargo feature.
-//! Builds without `host` get a stub `WasiRunner` whose `run` returns the
-//! `tool-host-not-built` diagnostic.
 
-#[cfg(feature = "host")]
 use std::collections::BTreeMap;
-#[cfg(feature = "host")]
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-#[cfg(feature = "host")]
 use wasmtime::component::{Component, Linker, ResourceTable};
-#[cfg(feature = "host")]
 use wasmtime::{Config, Engine, Store};
-#[cfg(feature = "host")]
 use wasmtime_wasi::p2::bindings::sync::Command;
-#[cfg(feature = "host")]
 use wasmtime_wasi::{DirPerms, FilePerms, I32Exit, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use crate::error::ToolError;
-#[cfg(feature = "host")]
 use crate::manifest::ToolScope;
-#[cfg(feature = "host")]
 use crate::permissions::{canonicalise_under, deny_lifecycle_write, substitute};
 use crate::resolver::ResolvedTool;
 
@@ -58,17 +44,11 @@ impl RunContext {
 }
 
 /// Wasmtime-backed synchronous WASI Preview 2 runner.
-///
-/// When the crate is built without the `host` feature this becomes a stub
-/// whose `run` returns the `tool-host-not-built` diagnostic; the public
-/// surface is preserved so plan-time callers compile against either build.
-#[cfg(feature = "host")]
 #[expect(missing_debug_implementations, reason = "wraps non-Debug wasmtime::Engine")]
 pub struct WasiRunner {
     engine: Engine,
 }
 
-#[cfg(feature = "host")]
 impl WasiRunner {
     /// Construct a reusable Wasmtime engine for WASI Preview 2 components.
     ///
@@ -123,13 +103,11 @@ impl WasiRunner {
     }
 }
 
-#[cfg(feature = "host")]
 struct WasiState {
     ctx: WasiCtx,
     table: ResourceTable,
 }
 
-#[cfg(feature = "host")]
 impl WasiView for WasiState {
     fn ctx(&mut self) -> WasiCtxView<'_> {
         WasiCtxView {
@@ -139,7 +117,6 @@ impl WasiView for WasiState {
     }
 }
 
-#[cfg(feature = "host")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Preopen {
     host_path: PathBuf,
@@ -147,7 +124,6 @@ struct Preopen {
     writable: bool,
 }
 
-#[cfg(feature = "host")]
 fn canonical_project_dir(project_dir: &Path) -> Result<PathBuf, ToolError> {
     project_dir.canonicalize().map_err(|err| {
         ToolError::permission_denied(
@@ -157,7 +133,6 @@ fn canonical_project_dir(project_dir: &Path) -> Result<PathBuf, ToolError> {
     })
 }
 
-#[cfg(feature = "host")]
 fn canonical_capability_dir(
     scope: &ToolScope, ctx_capability_dir: Option<&Path>,
 ) -> Result<Option<PathBuf>, ToolError> {
@@ -176,7 +151,6 @@ fn canonical_capability_dir(
     }
 }
 
-#[cfg(feature = "host")]
 fn prepare_preopens(
     resolved: &ResolvedTool, project_dir: &Path, capability_dir: Option<&Path>,
 ) -> Result<Vec<Preopen>, ToolError> {
@@ -211,7 +185,6 @@ fn prepare_preopens(
         .collect()
 }
 
-#[cfg(feature = "host")]
 fn build_wasi_ctx(
     resolved: &ResolvedTool, ctx: &RunContext, project_dir: &Path, capability_dir: Option<&Path>,
     preopens: &[Preopen],
@@ -270,7 +243,6 @@ fn build_wasi_ctx(
     Ok(builder.build())
 }
 
-#[cfg(feature = "host")]
 fn guest_path(path: &Path) -> Result<String, ToolError> {
     path.to_str().map(ToOwned::to_owned).ok_or_else(|| {
         ToolError::permission_denied(
@@ -280,7 +252,6 @@ fn guest_path(path: &Path) -> Result<String, ToolError> {
     })
 }
 
-#[cfg(feature = "host")]
 fn map_guest_error(err: &wasmtime::Error) -> Result<i32, ToolError> {
     if let Some(exit) = err.downcast_ref::<I32Exit>() {
         return Ok(exit.0.clamp(0, 255));
@@ -288,40 +259,7 @@ fn map_guest_error(err: &wasmtime::Error) -> Result<i32, ToolError> {
     Err(ToolError::runtime(format!("guest trapped or failed at runtime: {err}")))
 }
 
-/// Stub runner used when the `host` Cargo feature is disabled.
-///
-/// Mirrors the public surface of the wasmtime-backed `WasiRunner` so
-/// plan-time helpers build either way; every guest-execution path returns
-/// the `tool-host-not-built` diagnostic.
-#[cfg(not(feature = "host"))]
-#[derive(Debug, Default)]
-pub struct WasiRunner {
-    _private: (),
-}
-
-#[cfg(not(feature = "host"))]
-impl WasiRunner {
-    /// Construct the stub. Always succeeds; the missing-host diagnostic is
-    /// deferred to [`Self::run`] so plan-time helpers still build.
-    ///
-    /// # Errors
-    ///
-    /// Never returns an error in this build, but mirrors the host signature.
-    pub const fn new() -> Result<Self, ToolError> {
-        Ok(Self { _private: () })
-    }
-
-    /// Reject the run with the `tool-host-not-built` diagnostic.
-    ///
-    /// # Errors
-    ///
-    /// Always returns the `tool-host-not-built` diagnostic.
-    pub fn run(&self, _resolved: &ResolvedTool, _ctx: &RunContext) -> Result<i32, ToolError> {
-        Err(ToolError::host_not_built())
-    }
-}
-
-#[cfg(all(test, feature = "host"))]
+#[cfg(test)]
 mod tests {
     use std::fs;
 

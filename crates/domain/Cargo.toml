@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Specify domain crate: slice, change, spec, task, capability, registry, config, merge, validate, init (re-exports `specify-validate` for the baseline-contract surface)"
+description = "Specify domain crate: slice, change, spec, task, capability, registry, config, merge, validate, init"
 categories = ["development-tools"]
 keywords = ["specify", "domain", "workflow"]
 readme = "../../README.md"
@@ -16,7 +16,6 @@ workspace = true
 [dependencies]
 specify-error = { workspace = true }
 specify-tool = { workspace = true }
-specify-validate = { workspace = true }
 jiff = { workspace = true }
 clap = { workspace = true }
 glob = { workspace = true }

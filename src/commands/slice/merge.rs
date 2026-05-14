@@ -2,7 +2,7 @@
 //! JSON DTOs, summarisers, and the workspace-clone auto-commit shim.
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::Serialize;
@@ -38,7 +38,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     ctx.write(
         &RunBody {
             merged_specs: entries,
-            archive_path: archive_path.display().to_string(),
+            archive_path,
         },
         write_run_text,
     )?;
@@ -109,14 +109,14 @@ pub(super) fn conflicts(ctx: &Ctx, name: &str) -> Result<()> {
 struct RunBody {
     merged_specs: Vec<MergedEntry>,
     #[serde(skip)]
-    archive_path: String,
+    archive_path: PathBuf,
 }
 
 fn write_run_text(w: &mut dyn Write, body: &RunBody) -> std::io::Result<()> {
     for entry in &body.merged_specs {
         writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
     }
-    writeln!(w, "Archived to {}", body.archive_path)
+    writeln!(w, "Archived to {}", body.archive_path.display())
 }
 
 #[derive(Serialize)]

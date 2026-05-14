@@ -4487,7 +4487,6 @@ dependencies = [
  "serde_json",
  "specify-error",
  "specify-tool",
- "specify-validate",
  "strum 0.28.0",
  "tempfile",
 ]
@@ -4524,17 +4523,6 @@ dependencies = [
  "wasm-pkg-client",
  "wasmtime",
  "wasmtime-wasi",
-]
-
-[[package]]
-name = "specify-validate"
-version = "0.3.0"
-dependencies = [
- "semver",
- "serde",
- "serde-saphyr",
- "serde_json",
- "tempfile",
 ]
 
 [[package]]
@@ -6521,7 +6509,6 @@ name = "xtask"
 version = "0.3.0"
 dependencies = [
  "clap",
- "clap_complete",
  "clap_mangen",
  "specify",
 ]

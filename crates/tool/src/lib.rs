@@ -16,11 +16,7 @@ pub mod permissions;
 pub mod resolver;
 pub mod validate;
 
-pub use error::ToolError;
-pub use manifest::{Tool, ToolManifest, ToolPermissions, ToolScope, ToolScopeKind, ToolSource};
-pub use package::{
-    DEFAULT_WASM_PKG_CONFIG, PackageMetadata, WASM_PKG_CONFIG_FILENAME, WASM_PKG_CONFIG_PATH,
-};
+pub use package::{DEFAULT_WASM_PKG_CONFIG, PackageMetadata, WASM_PKG_CONFIG_FILENAME};
 
 #[cfg(test)]
 #[expect(unsafe_code, reason = "test helpers mutate process-wide env vars under env_lock")]
@@ -99,9 +95,9 @@ mod test_support {
     pub fn cache_env(cache_dir: &Path) -> ([EnvGuard; 3], MutexGuard<'static, ()>) {
         let lock = env_lock();
         let guards = [
-            EnvGuard::set("SPECIFY_TOOLS_CACHE", cache_dir),
-            EnvGuard::unset("XDG_CACHE_HOME"),
-            EnvGuard::unset("HOME"),
+            EnvGuard::scoped("SPECIFY_TOOLS_CACHE", Some(cache_dir)),
+            EnvGuard::scoped("XDG_CACHE_HOME", None),
+            EnvGuard::scoped("HOME", None),
         ];
         (guards, lock)
     }
@@ -129,25 +125,23 @@ mod test_support {
     }
 
     impl EnvGuard {
-        pub fn set(key: &'static str, value: &Path) -> Self {
+        pub fn scoped(key: &'static str, value: Option<&Path>) -> Self {
             let previous = env::var_os(key);
             // SAFETY: callers hold `env_lock`, so no concurrent reader
             // can observe partial state.
-            unsafe { env::set_var(key, value) };
-            Self { key, previous }
-        }
-
-        pub fn unset(key: &'static str) -> Self {
-            let previous = env::var_os(key);
-            // SAFETY: see [`EnvGuard::set`].
-            unsafe { env::remove_var(key) };
+            unsafe {
+                match value {
+                    Some(value) => env::set_var(key, value),
+                    None => env::remove_var(key),
+                }
+            }
             Self { key, previous }
         }
     }
 
     impl Drop for EnvGuard {
         fn drop(&mut self) {
-            // SAFETY: see [`EnvGuard::set`].
+            // SAFETY: see [`EnvGuard::scoped`].
             unsafe {
                 match self.previous.take() {
                     Some(value) => env::set_var(self.key, value),

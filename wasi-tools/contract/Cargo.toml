@@ -17,9 +17,10 @@ name = "specify-contract"
 path = "src/main.rs"
 
 [dependencies]
-specify-validate.workspace = true
 clap.workspace = true
+semver.workspace = true
 serde = { workspace = true, features = ["derive"] }
+serde-saphyr.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

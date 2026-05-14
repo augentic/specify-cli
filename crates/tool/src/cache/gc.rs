@@ -25,9 +25,9 @@ use crate::manifest::ToolScope;
 /// be selected, `ToolError::InvalidCacheSegment` when a discovered
 /// directory name is not valid UTF-8 or violates the cache-segment
 /// invariants, the `tool-io` diagnostic when the scope or tool directory
-/// cannot be read, and the `ToolError::Sidecar` parse/schema variants
-/// when an existing `meta.yaml` is malformed (a missing sidecar marks
-/// the directory as unreferenced rather than erroring).
+/// cannot be read, and the `tool-sidecar-parse` / `tool-sidecar-schema`
+/// diagnostics when an existing `meta.yaml` is malformed (a missing
+/// sidecar marks the directory as unreferenced rather than erroring).
 pub fn scan<S: BuildHasher>(
     scope: &ToolScope, kept: &HashSet<(String, String, String), S>,
 ) -> Result<Vec<PathBuf>, ToolError> {
