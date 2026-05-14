@@ -48,8 +48,8 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
         }
     }
 
-    let resolved = cache_capability(capability, opts.project_dir, now)?;
-    let view = PipelineView::load(&resolved.capability_value, opts.project_dir)?;
+    let capability_value = cache_capability(capability, opts.project_dir, now)?;
+    let view = PipelineView::load(&capability_value, opts.project_dir)?;
     let capability_name = view.capability.manifest.name.clone();
     let scaffolded_rule_keys: Vec<String> =
         view.capability.manifest.pipeline.define.iter().map(|entry| entry.id.clone()).collect();
@@ -63,7 +63,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
     let cfg = ProjectConfig {
         name,
         domain: opts.domain.map(str::to_string),
-        capability: Some(resolved.capability_value),
+        capability: Some(capability_value),
         specify_version: Some(specify_version.clone()),
         rules,
         tools: Vec::new(),
