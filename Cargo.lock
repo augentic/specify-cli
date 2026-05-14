@@ -6521,7 +6521,6 @@ name = "xtask"
 version = "0.3.0"
 dependencies = [
  "clap",
- "clap_complete",
  "clap_mangen",
  "specify",
 ]

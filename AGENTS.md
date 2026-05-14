@@ -57,7 +57,7 @@ cargo make test           # cargo nextest run --all --all-features --no-tests=pa
 cargo make lint           # cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 cargo make fmt            # nightly cargo fmt --all
 cargo make audit          # cargo-audit; cargo make deny / outdated / deps / vet for the rest
-cargo make xtask gen-man  # roff man pages into target/man/ (also: gen-completions)
+cargo make xtask gen-man  # roff man pages into target/man/
 cargo make contract-wasm  # build wasi-tools/contract — required before tests/contract_tool.rs
 ```
 

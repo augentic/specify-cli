@@ -118,10 +118,9 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 # -------------------------------------
 
 # Generic xtask passthrough. Use for any subcommand exposed by
-# `xtask` (`gen-man`, `gen-completions`):
+# `xtask` (`gen-man`):
 # ```bash
 # cargo make xtask gen-man
-# cargo make xtask gen-completions
 # ```
 [tasks.xtask]
 command = "cargo"
