@@ -5,3 +5,18 @@ doc-valid-idents = [
   "WebAssembly",
   "YAML",
 ]
+
+allowed-duplicate-crates = [
+  "embedded-io",
+  "foldhash",
+  "getrandom",
+  "hashbrown",
+  "linux-raw-sys",
+  "r-efi",
+  "rustix",
+  "wasm-encoder",
+  "wasmparser",
+  "windows-sys",
+  "wit-bindgen",
+  "wit-parser",
+]
