@@ -79,8 +79,6 @@ pub fn serialize<T: Rfc3339, S: Serializer>(value: &T, serializer: S) -> Result<
 ///
 /// Returns the deserializer's error type when the input is not a
 /// well-formed rfc3339 timestamp.
-pub fn deserialize<'de, T: Rfc3339, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<T, D::Error> {
+pub fn deserialize<'de, T: Rfc3339, D: Deserializer<'de>>(deserializer: D) -> Result<T, D::Error> {
     T::de(deserializer)
 }

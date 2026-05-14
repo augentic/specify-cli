@@ -116,11 +116,6 @@ pub fn validate_baseline(contracts_dir: &Path) -> Vec<ContractFinding> {
     findings
 }
 
-/// Convenience alias matching the historic re-export name. The host
-/// CLI's `specify_domain::validate::validate_baseline_contracts` and
-/// `wasi-tools/contract` both use this spelling.
-pub use validate_baseline as validate_baseline_contracts;
-
 #[cfg(test)]
 mod tests {
     use std::fs;

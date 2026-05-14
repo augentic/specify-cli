@@ -213,9 +213,7 @@ mod tests {
             matches!(
                 err,
                 ToolError::Diag {
-                    code: "tool-network-other"
-                        | "tool-network-timeout"
-                        | "tool-network-malformed",
+                    code: "tool-network-other" | "tool-network-timeout" | "tool-network-malformed",
                     ..
                 }
             ),

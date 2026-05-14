@@ -13,7 +13,7 @@
 //! `output::emit` dispatcher; those couplings would re-attach this
 //! tool to the host CLI's release cadence.
 //!
-//! Wraps [`specify_validate::validate_baseline_contracts`] to surface
+//! Wraps [`specify_validate::validate_baseline`] to surface
 //! the contract Validation checks (`SemVer` `info.version`,
 //! `info.x-specify-id` format, cross-project id uniqueness) as a
 //! standalone executable that the contracts capability can shell out
@@ -58,7 +58,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, ValueEnum};
 use serde::Serialize;
-use specify_validate::{ContractFinding, validate_baseline_contracts};
+use specify_validate::{ContractFinding, validate_baseline};
 
 const EXIT_OK: u8 = 0;
 const EXIT_FINDINGS: u8 = 1;
@@ -112,7 +112,7 @@ fn run(baseline_dir: &std::path::Path, format: OutputFormat) -> ExitCode {
         return ExitCode::from(EXIT_INVOCATION_ERROR);
     }
 
-    let findings = validate_baseline_contracts(baseline_dir);
+    let findings = validate_baseline(baseline_dir);
     let exit_code = if findings.is_empty() { EXIT_OK } else { EXIT_FINDINGS };
 
     match format {

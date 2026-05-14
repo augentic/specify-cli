@@ -180,7 +180,9 @@ impl ToolError {
     }
 
     /// Build a `tool-sidecar-parse` diagnostic.
-    pub(crate) fn sidecar_parse(path: impl Into<PathBuf>, source: Box<specify_error::YamlError>) -> Self {
+    pub(crate) fn sidecar_parse(
+        path: impl Into<PathBuf>, source: Box<specify_error::YamlError>,
+    ) -> Self {
         let path = path.into();
         Self::Diag {
             code: "tool-sidecar-parse",
@@ -193,7 +195,11 @@ impl ToolError {
         let path = path.into();
         Self::Diag {
             code: "tool-sidecar-schema",
-            detail: format!("tool sidecar at {}: invalid schema: {}", path.display(), detail.into()),
+            detail: format!(
+                "tool sidecar at {}: invalid schema: {}",
+                path.display(),
+                detail.into()
+            ),
         }
     }
 
@@ -222,7 +228,9 @@ impl ToolError {
     }
 
     /// Build a `tool-network-too-large` diagnostic.
-    pub(crate) fn network_too_large(url: impl Into<String>, limit: u64, actual: Option<u64>) -> Self {
+    pub(crate) fn network_too_large(
+        url: impl Into<String>, limit: u64, actual: Option<u64>,
+    ) -> Self {
         let observed = actual.map_or_else(String::new, |size| format!(" (observed {size} bytes)"));
         Self::Diag {
             code: "tool-network-too-large",

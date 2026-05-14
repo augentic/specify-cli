@@ -90,8 +90,9 @@ pub fn write_sidecar(path: &Path, sidecar: &Sidecar) -> Result<(), ToolError> {
     };
     fs::create_dir_all(parent)
         .map_err(|err| ToolError::cache_io("create sidecar parent", parent, err))?;
-    let contents = serde_saphyr::to_string(sidecar)
-        .map_err(|err| ToolError::sidecar_schema(path, format!("failed to serialize sidecar: {err}")))?;
+    let contents = serde_saphyr::to_string(sidecar).map_err(|err| {
+        ToolError::sidecar_schema(path, format!("failed to serialize sidecar: {err}"))
+    })?;
     let prefix = format!(".{SIDECAR_FILENAME}.");
     let tmp = Builder::new()
         .prefix(&prefix)
