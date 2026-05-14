@@ -36,11 +36,12 @@ impl Tool {
             && self.name.len() <= 64
             && self.name.as_bytes()[0].is_ascii_lowercase()
             && self.name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-        let name_detail = (!name_valid).then(|| format!("`{}` is not a valid tool name", self.name));
+        let name_detail =
+            (!name_valid).then(|| format!("`{}` is not a valid tool name", self.name));
 
-        let version_detail = semver::Version::parse(&self.version).err().map(|err| {
-            format!("`{}` is not an exact SemVer version: {err}", self.version)
-        });
+        let version_detail = semver::Version::parse(&self.version)
+            .err()
+            .map(|err| format!("`{}` is not an exact SemVer version: {err}", self.version));
 
         let source_valid = match &self.source {
             ToolSource::LocalPath(path) => {
@@ -75,9 +76,9 @@ impl Tool {
             if p.version.starts_with('v') {
                 Some(format!("`{}` uses a leading v", p.version))
             } else {
-                semver::Version::parse(&p.version).err().map(|err| {
-                    format!("`{}` is not an exact SemVer version: {err}", p.version)
-                })
+                semver::Version::parse(&p.version)
+                    .err()
+                    .map(|err| format!("`{}` is not an exact SemVer version: {err}", p.version))
             }
         });
 
@@ -166,11 +167,14 @@ impl ToolManifest {
     }
 }
 
-fn check(
-    rule_id: &'static str, rule: &'static str, detail: Option<String>,
-) -> ValidationSummary {
+fn check(rule_id: &'static str, rule: &'static str, detail: Option<String>) -> ValidationSummary {
     let status = if detail.is_none() { ValidationStatus::Pass } else { ValidationStatus::Fail };
-    ValidationSummary { status, rule_id: rule_id.to_string(), rule: rule.to_string(), detail }
+    ValidationSummary {
+        status,
+        rule_id: rule_id.to_string(),
+        rule: rule.to_string(),
+        detail,
+    }
 }
 
 fn validate_permission_paths(read: &[String], write: &[String]) -> ValidationSummary {
@@ -183,11 +187,7 @@ fn validate_permission_paths(read: &[String], write: &[String]) -> ValidationSum
             permission_path_form_error(entry).map(|err| format!("{kind}: {err}"))
         })
         .collect();
-    check(
-        RULE_PERMISSION_PATH_FORM,
-        RULE,
-        (!failures.is_empty()).then(|| failures.join("; ")),
-    )
+    check(RULE_PERMISSION_PATH_FORM, RULE, (!failures.is_empty()).then(|| failures.join("; ")))
 }
 
 fn validate_lifecycle_writes(write: &[String]) -> ValidationSummary {
@@ -197,11 +197,7 @@ fn validate_lifecycle_writes(write: &[String]) -> ValidationSummary {
         .filter(|entry| targets_lifecycle_state(entry))
         .map(|entry| format!("write path `{entry}` targets `.specify` lifecycle state"))
         .collect();
-    check(
-        RULE_LIFECYCLE_WRITE_DENIED,
-        RULE,
-        (!failures.is_empty()).then(|| failures.join("; ")),
-    )
+    check(RULE_LIFECYCLE_WRITE_DENIED, RULE, (!failures.is_empty()).then(|| failures.join("; ")))
 }
 
 fn validate_capability_dir_scope(
@@ -217,11 +213,7 @@ fn validate_capability_dir_scope(
             .map(|entry| format!("project-scope permission `{entry}` references $CAPABILITY_DIR"))
             .collect()
     };
-    check(
-        RULE_CAPABILITY_DIR_SCOPE,
-        RULE,
-        (!failures.is_empty()).then(|| failures.join("; ")),
-    )
+    check(RULE_CAPABILITY_DIR_SCOPE, RULE, (!failures.is_empty()).then(|| failures.join("; ")))
 }
 
 fn permission_path_form_error(value: &str) -> Option<String> {

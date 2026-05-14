@@ -31,7 +31,9 @@ fn fixed_sidecar(scope: &ToolScope, name: &str, version: &str, source: &str) -> 
             read: vec!["$PROJECT_DIR/contracts".to_string()],
             write: Vec::new(),
         },
-        sha256: Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string()),
+        sha256: Some(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+        ),
         package: None,
     }
 }

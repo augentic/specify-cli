@@ -96,9 +96,7 @@ mod test_support {
     /// `HOME` cannot leak from the host. Tuple fields drop in
     /// declaration order, so the `EnvGuard` array restores env vars
     /// first and the lock guard releases last.
-    pub fn cache_env(
-        cache_dir: &Path,
-    ) -> ([EnvGuard; 3], MutexGuard<'static, ()>) {
+    pub fn cache_env(cache_dir: &Path) -> ([EnvGuard; 3], MutexGuard<'static, ()>) {
         let lock = env_lock();
         let guards = [
             EnvGuard::set("SPECIFY_TOOLS_CACHE", cache_dir),
