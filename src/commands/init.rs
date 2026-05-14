@@ -23,11 +23,6 @@ pub(super) fn run(
 ) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
-    debug_assert!(
-        hub != capability.is_some(),
-        "clap enforces <capability> xor --hub; reached dispatcher with hub={hub}, capability={capability:?}",
-    );
-
     let opts = InitOptions {
         project_dir: &project_dir,
         capability,
@@ -39,30 +34,38 @@ pub(super) fn run(
 
     let result = init(opts, Timestamp::now())?;
     let current_dir = std::env::current_dir().map_err(Error::Io)?;
-    let context_generation = generate_initial_context(format, &current_dir)?;
-    emit_init_result(format, &result, hub, context_generation)
+    let context_skip_reason = generate_initial_context(format, &current_dir)?;
+    emit_init_result(format, &result, context_skip_reason)
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "JSON wire DTO: each bool is a stable, independently consumed field on the init envelope."
+)]
 struct Body {
     config_path: String,
-    /// Resolved capability name (or `"hub"` for hub init).
+    /// Resolved capability name (or `"hub"` for hub init — both
+    /// renderers dispatch on this value).
     capability_name: String,
     cache_present: bool,
     directories_created: Vec<String>,
     scaffolded_rule_keys: Vec<String>,
     specify_version: String,
-    /// `true` when this init scaffolded a registry-only platform hub.
-    /// Always present so consumers can distinguish hub from regular
-    /// initialisations without parsing the capability name.
-    hub: bool,
-    #[serde(flatten)]
-    context: ContextBody,
+    /// `true` when this run scaffolded `.specify/wasm-pkg.toml`. Stays
+    /// `false` on re-init so consumers can distinguish a fresh write
+    /// from a preserved operator-edited file.
+    wasm_pkg_config_written: bool,
+    context_generated: bool,
+    context_skipped: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context_skip_reason: Option<&'static str>,
 }
 
 fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
-    if body.hub {
+    let hub = body.capability_name == "hub";
+    if hub {
         writeln!(w, "Initialized .specify/ as a registry-only platform hub")?;
     } else {
         writeln!(w, "Initialized .specify/")?;
@@ -74,11 +77,14 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
         writeln!(w, "  directories created: {}", body.directories_created.join(", "))?;
     }
     writeln!(w, "  specify_version: {}", body.specify_version)?;
-    if body.context.skipped && body.context.skip_reason == Some("existing-agents-md") {
+    if body.wasm_pkg_config_written {
+        writeln!(w, "  wrote .specify/wasm-pkg.toml (edit to add registry mappings)")?;
+    }
+    if body.context_skipped && body.context_skip_reason == Some("existing-agents-md") {
         writeln!(w, "AGENTS.md already present; skipping context generate")?;
     }
     writeln!(w)?;
-    if body.hub {
+    if hub {
         writeln!(
             w,
             "Next: run `specify registry add <id> <url>` to declare the projects this hub coordinates."
@@ -92,28 +98,8 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     Ok(())
 }
 
-#[derive(Serialize)]
-struct ContextBody {
-    #[serde(rename = "context-generated")]
-    generated: bool,
-    #[serde(rename = "context-skipped")]
-    skipped: bool,
-    #[serde(rename = "context-skip-reason", skip_serializing_if = "Option::is_none")]
-    skip_reason: Option<&'static str>,
-}
-
-impl From<ContextGeneration> for ContextBody {
-    fn from(context_generation: ContextGeneration) -> Self {
-        Self {
-            generated: matches!(context_generation, ContextGeneration::Generated),
-            skipped: context_generation.skipped(),
-            skip_reason: context_generation.skip_reason(),
-        }
-    }
-}
-
 fn emit_init_result(
-    format: Format, result: &InitResult, hub: bool, context_generation: ContextGeneration,
+    format: Format, result: &InitResult, context_skip_reason: Option<&'static str>,
 ) -> Result<()> {
     let body = Body {
         config_path: canonical(&result.config_path),
@@ -122,44 +108,22 @@ fn emit_init_result(
         directories_created: result.directories_created.iter().map(|p| canonical(p)).collect(),
         scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
         specify_version: result.specify_version.clone(),
-        hub,
-        context: ContextBody::from(context_generation),
+        wasm_pkg_config_written: result.wasm_pkg_config_written,
+        context_generated: context_skip_reason.is_none(),
+        context_skipped: context_skip_reason.is_some(),
+        context_skip_reason,
     };
     output::write(format, &body, write_text)?;
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ContextGeneration {
-    Generated,
-    Skipped { reason: &'static str },
-}
-
-impl ContextGeneration {
-    const fn skip_reason(&self) -> Option<&'static str> {
-        match self {
-            Self::Generated => None,
-            Self::Skipped { reason } => Some(*reason),
-        }
-    }
-
-    const fn skipped(&self) -> bool {
-        self.skip_reason().is_some()
-    }
-}
-
-fn generate_initial_context(format: Format, project_dir: &Path) -> Result<ContextGeneration> {
+/// Returns `None` when initial context generation ran, `Some(reason)` when it was skipped.
+fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Option<&'static str>> {
     if is_workspace_clone(project_dir) {
-        return Ok(ContextGeneration::Skipped {
-            reason: "workspace-clone",
-        });
+        return Ok(Some("workspace-clone"));
     }
     match project_dir.join("AGENTS.md").try_exists() {
-        Ok(true) => {
-            return Ok(ContextGeneration::Skipped {
-                reason: "existing-agents-md",
-            });
-        }
+        Ok(true) => return Ok(Some("existing-agents-md")),
         Ok(false) => {}
         Err(err) if err.kind() == ErrorKind::NotFound => {}
         Err(err) => return Err(Error::Io(err)),
@@ -177,5 +141,5 @@ fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Contex
         "init context generation is called only when AGENTS.md is absent"
     );
     debug_assert_eq!(outcome.disposition, "create");
-    Ok(ContextGeneration::Generated)
+    Ok(None)
 }

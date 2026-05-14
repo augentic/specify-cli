@@ -171,8 +171,10 @@ fn init_hub_writes_canonical_on_disk_shape() {
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
-    assert_eq!(value["hub"], true, "JSON response must surface hub: true, got: {value}");
-    assert_eq!(value["capability-name"], "hub");
+    assert_eq!(
+        value["capability-name"], "hub",
+        "JSON response must surface capability-name: \"hub\", got: {value}"
+    );
     assert!(
         value["scaffolded-rule-keys"].as_array().expect("array").is_empty(),
         "hub init must not scaffold rule keys, got: {}",

@@ -19,12 +19,5 @@ clap_mangen = "0.3"
 # renders roff (`clap_mangen`) and shell completions (`clap_complete`).
 specify = { path = ".." }
 
-[lints.rust]
-missing_docs = "allow"
-
-[lints.clippy]
-all = "warn"
-pedantic = "warn"
-nursery = "warn"
-# xtask is workspace-internal; cargo metadata lints don't apply.
-cargo = "allow"
+[lints]
+workspace = true

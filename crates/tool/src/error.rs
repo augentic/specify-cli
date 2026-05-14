@@ -216,7 +216,6 @@ impl ToolError {
     }
 
     /// Build a `tool-package` diagnostic for wasm-pkg fetch failures.
-    #[cfg(feature = "oci")]
     pub(crate) fn package(
         request: &crate::manifest::PackageRequest, reason: impl Into<String>,
     ) -> Self {
@@ -233,21 +232,10 @@ impl ToolError {
     /// Build a `tool-package` diagnostic from a free-form source label.
     /// Used by the wasm-pkg config loader where the originating
     /// `PackageRequest` is no longer in scope.
-    #[cfg(feature = "oci")]
     pub(crate) fn package_label(label: impl Into<String>, reason: impl Into<String>) -> Self {
         Self::Diag {
             code: "tool-package",
             detail: format!("tool package `{}` failed: {}", label.into(), reason.into()),
-        }
-    }
-
-    /// Build the `tool-package-source-disabled` diagnostic returned when
-    /// the CLI is compiled without the `oci` Cargo feature.
-    #[must_use]
-    pub fn package_disabled() -> Self {
-        Self::Diag {
-            code: "tool-package-source-disabled",
-            detail: "tool package source disabled: this build of the `specify` CLI was compiled without the `oci` feature; rebuild with `--features oci` to resolve `package:` tool sources".to_string(),
         }
     }
 }

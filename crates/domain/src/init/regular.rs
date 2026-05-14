@@ -12,7 +12,10 @@ use specify_error::Error;
 use crate::capability::{CacheMeta, PipelineView};
 use crate::config::{Layout, ProjectConfig};
 use crate::init::cache::cache_capability;
-use crate::init::{InitOptions, InitResult, resolve_version, resolved_name, upsert_gitignore};
+use crate::init::{
+    InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
+    upsert_gitignore,
+};
 
 #[expect(
     clippy::needless_pass_by_value,
@@ -45,8 +48,8 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
         }
     }
 
-    let resolved = cache_capability(capability, opts.project_dir, now)?;
-    let view = PipelineView::load(&resolved.capability_value, opts.project_dir)?;
+    let capability_value = cache_capability(capability, opts.project_dir, now)?;
+    let view = PipelineView::load(&capability_value, opts.project_dir)?;
     let capability_name = view.capability.manifest.name.clone();
     let scaffolded_rule_keys: Vec<String> =
         view.capability.manifest.pipeline.define.iter().map(|entry| entry.id.clone()).collect();
@@ -60,7 +63,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
     let cfg = ProjectConfig {
         name,
         domain: opts.domain.map(str::to_string),
-        capability: Some(resolved.capability_value),
+        capability: Some(capability_value),
         specify_version: Some(specify_version.clone()),
         rules,
         tools: Vec::new(),
@@ -70,6 +73,8 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
     let config_path = layout.config_path();
     let serialised = serde_saphyr::to_string(&cfg)?;
     fs::write(&config_path, serialised)?;
+
+    let wasm_pkg_config_written = scaffold_wasm_pkg_config(&layout)?;
 
     upsert_gitignore(opts.project_dir)?;
 
@@ -82,6 +87,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
         directories_created,
         scaffolded_rule_keys,
         specify_version,
+        wasm_pkg_config_written,
     })
 }
 
@@ -90,16 +96,11 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use jiff::Timestamp;
     use tempfile::tempdir;
 
     use crate::capability::CacheMeta;
     use crate::config::{Layout, ProjectConfig};
-    use crate::init::{InitOptions, VersionMode, init};
-
-    fn fixed_now() -> Timestamp {
-        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
-    }
+    use crate::init::{InitOptions, VersionMode, fixed_now, init};
 
     fn repo_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -287,6 +288,40 @@ mod tests {
         )
         .expect("preserve init");
         assert_eq!(result.specify_version, "0.0.1");
+    }
+
+    #[test]
+    fn init_writes_default_wasm_pkg_config() {
+        let tmp = tempdir().unwrap();
+        let schema_dir = omnia_schema_dir();
+        let result = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
+
+        assert!(result.wasm_pkg_config_written, "fresh init must write the file");
+        let path = tmp.path().join(".specify/wasm-pkg.toml");
+        assert!(path.is_file(), "wasm-pkg.toml must exist after init");
+        let contents = fs::read_to_string(&path).expect("read wasm-pkg.toml");
+        assert!(contents.contains("default_registry = \"augentic.io\""), "{contents}");
+        assert!(
+            contents.contains("specify = \"augentic.io\""),
+            "namespace mapping missing from {contents}"
+        );
+    }
+
+    #[test]
+    fn reinit_preserves_operator_edited_wasm_pkg_config() {
+        let tmp = tempdir().unwrap();
+        let schema_dir = omnia_schema_dir();
+        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("first init");
+
+        let path = tmp.path().join(".specify/wasm-pkg.toml");
+        let edited =
+            "[namespace_registries]\nspecify = \"mirror.internal\"\nacme = \"acme.example.com\"\n";
+        fs::write(&path, edited).expect("operator edit");
+
+        let result = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("re-init");
+        assert!(!result.wasm_pkg_config_written, "re-init must not report writing the file");
+        let contents = fs::read_to_string(&path).expect("read after re-init");
+        assert_eq!(contents, edited, "operator edits must be preserved byte-for-byte");
     }
 
     #[test]

@@ -12,14 +12,9 @@ use crate::capability::{CacheMeta, DEFAULT_CODEX_CAPABILITY};
 use crate::config::Layout;
 use crate::init::capability_uri::{CapabilityUri, ensure_capability_dir};
 
-#[derive(Debug)]
-pub(super) struct CachedCapability {
-    pub(crate) capability_value: String,
-}
-
 pub(super) fn cache_capability(
     capability: &str, project_dir: &Path, now: Timestamp,
-) -> Result<CachedCapability, Error> {
+) -> Result<String, Error> {
     if capability.trim().is_empty() || capability != capability.trim() {
         return Err(Error::Diag {
             code: "capability-arg-malformed",
@@ -36,9 +31,7 @@ pub(super) fn cache_capability(
     cache_sibling_default_capability(&source.source_dir, &cache_dir)?;
     write_cache_meta(project_dir, &source.capability_value, now)?;
 
-    Ok(CachedCapability {
-        capability_value: source.capability_value,
-    })
+    Ok(source.capability_value)
 }
 
 fn cache_sibling_default_capability(source_dir: &Path, cache_dir: &Path) -> Result<(), Error> {

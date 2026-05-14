@@ -36,12 +36,13 @@ mod tests {
     use crate::error::ToolError;
     use crate::manifest::ToolSource;
     use crate::test_support::{
-        fixed_now, named_tool, project_scope, scratch_dir, tool, with_cache_env, write_source,
+        cache_env, fixed_now, named_tool, project_scope, scratch_dir, tool, write_source,
     };
 
     #[test]
     fn file_uri_reuses_local_path_resolution() {
         let cache_dir = scratch_dir("resolver-file-cache");
+        let project_dir = scratch_dir("resolver-file-project");
         let source_dir = scratch_dir("resolver-file-source");
         let source = write_source(&source_dir, "module.wasm", b"file-uri");
         let scope = project_scope();
@@ -52,40 +53,44 @@ mod tests {
             None,
         );
 
-        with_cache_env(Some(&cache_dir), None, None, || {
-            let local = resolve(&scope, &local, fixed_now()).expect("local resolves");
-            let uri = resolve(&scope, &file_uri, fixed_now()).expect("file URI resolves");
-            assert_eq!(std::fs::read(local.bytes_path).expect("local bytes"), b"file-uri");
-            assert_eq!(std::fs::read(uri.bytes_path).expect("uri bytes"), b"file-uri");
-        });
+        let _env = cache_env(&cache_dir);
+
+        let local = resolve(&scope, &local, fixed_now(), &project_dir).expect("local resolves");
+        let uri = resolve(&scope, &file_uri, fixed_now(), &project_dir).expect("file URI resolves");
+        assert_eq!(std::fs::read(local.bytes_path).expect("local bytes"), b"file-uri");
+        assert_eq!(std::fs::read(uri.bytes_path).expect("uri bytes"), b"file-uri");
     }
 
     #[test]
     fn local_path_rejects_non_file_and_empty_file() {
         let cache_dir = scratch_dir("resolver-invalid-local-cache");
+        let project_dir = scratch_dir("resolver-invalid-local-project");
         let source_dir = scratch_dir("resolver-invalid-local-source");
         let empty = write_source(&source_dir, "empty.wasm", b"");
         let scope = project_scope();
 
-        with_cache_env(Some(&cache_dir), None, None, || {
-            let dir_err = resolve(
-                &scope,
-                &tool(ToolSource::LocalPath(source_dir.clone()), None),
-                fixed_now(),
-            )
-            .expect_err("directory source must fail");
-            assert!(matches!(dir_err, ToolError::InvalidSource { .. }), "{dir_err}");
+        let _env = cache_env(&cache_dir);
 
-            let empty_err = resolve(&scope, &tool(ToolSource::LocalPath(empty), None), fixed_now())
+        let dir_err = resolve(
+            &scope,
+            &tool(ToolSource::LocalPath(source_dir), None),
+            fixed_now(),
+            &project_dir,
+        )
+        .expect_err("directory source must fail");
+        assert!(matches!(dir_err, ToolError::InvalidSource { .. }), "{dir_err}");
+
+        let empty_err =
+            resolve(&scope, &tool(ToolSource::LocalPath(empty), None), fixed_now(), &project_dir)
                 .expect_err("empty file");
-            assert!(matches!(empty_err, ToolError::EmptySource { .. }), "{empty_err}");
-        });
+        assert!(matches!(empty_err, ToolError::EmptySource { .. }), "{empty_err}");
     }
 
     #[cfg(unix)]
     #[test]
     fn local_path_chases_symlinks_to_regular_files() {
         let cache_dir = scratch_dir("resolver-symlink-cache");
+        let project_dir = scratch_dir("resolver-symlink-project");
         let source_dir = scratch_dir("resolver-symlink-source");
         let target = write_source(&source_dir, "target.wasm", b"symlink-target");
         let link = source_dir.join("link.wasm");
@@ -93,12 +98,10 @@ mod tests {
         let scope = project_scope();
         let symlink_tool = tool(ToolSource::LocalPath(link), None);
 
-        with_cache_env(Some(&cache_dir), None, None, || {
-            let resolved = resolve(&scope, &symlink_tool, fixed_now()).expect("symlink resolves");
-            assert_eq!(
-                std::fs::read(resolved.bytes_path).expect("cached bytes"),
-                b"symlink-target"
-            );
-        });
+        let _env = cache_env(&cache_dir);
+
+        let resolved =
+            resolve(&scope, &symlink_tool, fixed_now(), &project_dir).expect("symlink resolves");
+        assert_eq!(std::fs::read(resolved.bytes_path).expect("cached bytes"), b"symlink-target");
     }
 }

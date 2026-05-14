@@ -10,15 +10,11 @@ use specify_error::{Error, is_kebab};
 
 use crate::capability::CacheMeta;
 use crate::config::{Layout, ProjectConfig};
-use crate::init::{InitOptions, InitResult, resolve_version, resolved_name, upsert_gitignore};
+use crate::init::{
+    InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
+    upsert_gitignore,
+};
 use crate::registry::Registry;
-
-/// Sentinel value reported in [`InitResult::capability_name`] for hub
-/// init. Hub `project.yaml` itself does **not** carry this string —
-/// the absence of `capability:` together with `hub: true` is the
-/// discriminator. The constant is kept solely so the JSON envelope
-/// and the text response have a stable string to display.
-const HUB_INIT_NAME: &str = "hub";
 
 /// Scaffold a registry-only platform hub.
 ///
@@ -100,6 +96,8 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let serialised = serde_saphyr::to_string(&cfg)?;
     fs::write(&config_path, serialised)?;
 
+    let wasm_pkg_config_written = scaffold_wasm_pkg_config(&layout)?;
+
     let registry = Registry {
         version: 1,
         projects: Vec::new(),
@@ -107,10 +105,6 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let registry_path = Registry::path(opts.project_dir);
     let registry_yaml = serde_saphyr::to_string(&registry)?;
     fs::write(&registry_path, registry_yaml)?;
-    // Trivially passes for an empty list, but exercise the hub-mode
-    // shape check so any future registry-write code paths inherit
-    // the same invariant from this seed.
-    registry.validate_shape_hub()?;
 
     upsert_gitignore(opts.project_dir)?;
 
@@ -118,11 +112,12 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
 
     Ok(InitResult {
         config_path,
-        capability_name: HUB_INIT_NAME.to_string(),
+        capability_name: "hub".to_string(),
         cache_present,
         directories_created,
         scaffolded_rule_keys: Vec::new(),
         specify_version,
+        wasm_pkg_config_written,
     })
 }
 
@@ -131,17 +126,11 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use jiff::Timestamp;
     use tempfile::tempdir;
 
-    use super::HUB_INIT_NAME;
     use crate::config::ProjectConfig;
-    use crate::init::{InitOptions, VersionMode, init};
+    use crate::init::{InitOptions, VersionMode, fixed_now, init};
     use crate::registry::Registry;
-
-    fn fixed_now() -> Timestamp {
-        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
-    }
 
     fn hub_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
         InitOptions {
@@ -206,7 +195,7 @@ mod tests {
         assert_eq!(registry.version, 1);
         assert!(registry.projects.is_empty(), "hub registry starts empty");
 
-        assert_eq!(result.capability_name, HUB_INIT_NAME);
+        assert_eq!(result.capability_name, "hub");
         assert!(result.scaffolded_rule_keys.is_empty());
     }
 
@@ -237,6 +226,19 @@ mod tests {
         }
         let on_disk = fs::read_to_string(tmp.path().join(".specify/project.yaml")).unwrap();
         assert_eq!(on_disk, "name: existing\ncapability: omnia\n");
+    }
+
+    #[test]
+    fn hub_init_writes_default_wasm_pkg_config() {
+        let tmp = tempdir().unwrap();
+        let result = init(hub_opts(tmp.path(), "platform-hub"), fixed_now()).expect("hub init ok");
+
+        assert!(result.wasm_pkg_config_written, "fresh hub init must write the file");
+        let path = tmp.path().join(".specify/wasm-pkg.toml");
+        assert!(path.is_file(), "wasm-pkg.toml must exist after hub init");
+        let contents = fs::read_to_string(&path).expect("read wasm-pkg.toml");
+        assert!(contents.contains("default_registry = \"augentic.io\""));
+        assert!(contents.contains("specify = \"augentic.io\""));
     }
 
     #[test]

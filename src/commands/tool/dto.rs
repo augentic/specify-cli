@@ -4,9 +4,8 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_error::Result;
-use specify_tool::cache::{self, OciSnapshot, PackageSnapshot, Status as CacheStatus};
-use specify_tool::load::Collision;
-use specify_tool::{Tool, ToolPermissions, ToolScope, ToolScopeKind};
+use specify_tool::cache::{self, Status as CacheStatus};
+use specify_tool::{PackageMetadata, Tool, ToolPermissions, ToolScope, ToolScopeKind};
 
 pub(super) type CacheKey = (String, String, String);
 
@@ -59,8 +58,7 @@ pub(super) struct ToolShowRow {
     pub(super) permissions: ToolPermissions,
     pub(super) sha256: Option<String>,
     pub(super) fetched_at: Option<String>,
-    pub(super) package: Option<PackageSnapshot>,
-    pub(super) oci: Option<OciSnapshot>,
+    pub(super) package: Option<PackageMetadata>,
 }
 
 #[derive(Serialize)]
@@ -132,9 +130,9 @@ pub(super) fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Re
     }
     if let Some(package) = &row.package {
         writeln!(w, "package: {}@{} ({})", package.name, package.version, package.registry)?;
-    }
-    if let Some(oci) = &row.oci {
-        writeln!(w, "oci: {}", oci.reference)?;
+        if let Some(reference) = &package.oci_reference {
+            writeln!(w, "oci: {reference}")?;
+        }
     }
     writeln!(w, "permissions:")?;
     writeln!(w, "  read: {}", format_permission_list(&row.permissions.read))?;
@@ -189,14 +187,12 @@ pub(super) fn show_row_for(scoped: &ScopedTool) -> Result<ToolShowRow> {
         .as_ref()
         .map(|sidecar| sidecar.fetched_at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string());
     let package = sidecar.as_ref().and_then(|sidecar| sidecar.package.clone());
-    let oci = sidecar.as_ref().and_then(|sidecar| sidecar.oci.clone());
     Ok(ToolShowRow {
         row,
         permissions: scoped.tool.permissions.clone(),
         sha256: scoped.tool.sha256.clone(),
         fetched_at,
         package,
-        oci,
     })
 }
 
@@ -219,8 +215,7 @@ pub(super) fn scope_labels(scope: &ToolScope) -> (ToolScopeKind, String) {
     }
 }
 
-pub(super) fn warning_row(collision: Collision) -> WarningRow {
-    let Collision { name } = collision;
+pub(super) fn warning_row(name: String) -> WarningRow {
     WarningRow {
         code: "tool-name-collision",
         message: format!(

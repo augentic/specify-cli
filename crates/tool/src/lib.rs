@@ -2,7 +2,6 @@
     clippy::doc_markdown,
     reason = "The crate-level decision record mirrors RFC prose and manifest keys."
 )]
-
 //! Specify's declared WASI tool model, cache, resolver, and
 //! Wasmtime-backed execution host. See `DECISIONS.md`
 //! §"Tool architecture" for the canonical contract.
@@ -12,17 +11,20 @@ pub mod error;
 pub mod host;
 pub mod load;
 pub mod manifest;
-pub mod package;
+mod package;
 pub mod permissions;
 pub mod resolver;
 pub mod validate;
 
 pub use error::ToolError;
 pub use manifest::{Tool, ToolManifest, ToolPermissions, ToolScope, ToolScopeKind, ToolSource};
+pub use package::{
+    DEFAULT_WASM_PKG_CONFIG, PackageMetadata, WASM_PKG_CONFIG_FILENAME, WASM_PKG_CONFIG_PATH,
+};
 
 #[cfg(test)]
 #[expect(unsafe_code, reason = "test helpers mutate process-wide env vars under env_lock")]
-pub(crate) mod test_support {
+mod test_support {
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -89,6 +91,21 @@ pub(crate) mod test_support {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// Acquire the env lock and pin the cache-root precedence to
+    /// `SPECIFY_TOOLS_CACHE = cache_dir`, ensuring `XDG_CACHE_HOME` and
+    /// `HOME` cannot leak from the host. Tuple fields drop in
+    /// declaration order, so the `EnvGuard` array restores env vars
+    /// first and the lock guard releases last.
+    pub fn cache_env(cache_dir: &Path) -> ([EnvGuard; 3], MutexGuard<'static, ()>) {
+        let lock = env_lock();
+        let guards = [
+            EnvGuard::set("SPECIFY_TOOLS_CACHE", cache_dir),
+            EnvGuard::unset("XDG_CACHE_HOME"),
+            EnvGuard::unset("HOME"),
+        ];
+        (guards, lock)
+    }
+
     /// Create a unique temporary directory for tests.
     pub fn scratch_dir(label: &str) -> PathBuf {
         let n = SCRATCH_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -100,47 +117,42 @@ pub(crate) mod test_support {
         dir
     }
 
-    /// Run a closure with cache-related environment variables set.
-    pub fn with_cache_env<T>(
-        specify_cache: Option<&Path>, xdg_cache: Option<&Path>, home: Option<&Path>,
-        f: impl FnOnce() -> T,
-    ) -> T {
-        let _guard = env_lock();
-        let previous_specify = env::var_os("SPECIFY_TOOLS_CACHE");
-        let previous_xdg = env::var_os("XDG_CACHE_HOME");
-        let previous_home = env::var_os("HOME");
-
-        set_or_remove_env("SPECIFY_TOOLS_CACHE", specify_cache);
-        set_or_remove_env("XDG_CACHE_HOME", xdg_cache);
-        set_or_remove_env("HOME", home);
-
-        let result = f();
-
-        restore_env("SPECIFY_TOOLS_CACHE", previous_specify);
-        restore_env("XDG_CACHE_HOME", previous_xdg);
-        restore_env("HOME", previous_home);
-
-        result
+    /// Snapshot a process-wide env var and restore on drop.
+    ///
+    /// Tests construct one of these per env var they touch, always
+    /// after acquiring [`env_lock`], so concurrent tests cannot
+    /// observe partial state. `Drop` runs in reverse declaration
+    /// order, which keeps restores ordered relative to the lock.
+    pub struct EnvGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
     }
 
-    fn set_or_remove_env(key: &str, value: Option<&Path>) {
-        // SAFETY: every test that mutates these process-wide environment
-        // variables goes through `env_lock`, preventing concurrent readers from
-        // observing partial setup or teardown.
-        unsafe {
-            match value {
-                Some(value) => env::set_var(key, value),
-                None => env::remove_var(key),
-            }
+    impl EnvGuard {
+        pub fn set(key: &'static str, value: &Path) -> Self {
+            let previous = env::var_os(key);
+            // SAFETY: callers hold `env_lock`, so no concurrent reader
+            // can observe partial state.
+            unsafe { env::set_var(key, value) };
+            Self { key, previous }
+        }
+
+        pub fn unset(key: &'static str) -> Self {
+            let previous = env::var_os(key);
+            // SAFETY: see [`EnvGuard::set`].
+            unsafe { env::remove_var(key) };
+            Self { key, previous }
         }
     }
 
-    fn restore_env(key: &str, value: Option<std::ffi::OsString>) {
-        // SAFETY: protected by `env_lock`; see `set_or_remove_env`.
-        unsafe {
-            match value {
-                Some(value) => env::set_var(key, value),
-                None => env::remove_var(key),
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: see [`EnvGuard::set`].
+            unsafe {
+                match self.previous.take() {
+                    Some(value) => env::set_var(self.key, value),
+                    None => env::remove_var(self.key),
+                }
             }
         }
     }

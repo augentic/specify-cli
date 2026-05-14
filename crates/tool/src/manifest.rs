@@ -60,7 +60,7 @@ impl ToolSource {
             Ok(Self::HttpsUri(value.to_string()))
         } else if value.starts_with("file://") {
             Ok(Self::FileUri(value.to_string()))
-        } else if Path::new(value).is_absolute() || looks_like_windows_absolute_path(value) {
+        } else if Path::new(value).is_absolute() || looks_like_windows_absolute(value) {
             Ok(Self::LocalPath(PathBuf::from(value)))
         } else if looks_like_package_request(value) {
             Ok(Self::Package(PackageRequest::parse(value)))
@@ -242,12 +242,17 @@ pub enum ToolScope {
     },
 }
 
-fn looks_like_windows_absolute_path(value: &str) -> bool {
+pub(crate) fn looks_like_windows_absolute(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.len() >= 3
         && bytes[0].is_ascii_alphabetic()
         && bytes[1] == b':'
         && matches!(bytes[2], b'\\' | b'/')
+}
+
+/// True when `value` is a 64-character lowercase hexadecimal SHA-256 digest.
+pub(crate) fn looks_like_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn looks_like_package_request(value: &str) -> bool {

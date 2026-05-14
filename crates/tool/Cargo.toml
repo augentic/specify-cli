@@ -19,29 +19,24 @@ default = ["host"]
 # (and its duplicate transitive deps) into the dependency graph; callers get a
 # stub `WasiRunner` that returns `tool-host-not-built` at run time.
 host = ["dep:wasmtime", "dep:wasmtime-wasi"]
-# Compile the wasm-pkg / OCI-backed `PackageClient`. Disable to build without
-# `wasm-pkg-client` (and its duplicate `reqwest` / `tokio` / `oci-client` /
-# `warg-client` transitive stack); the `package:` source variant still parses,
-# but resolution returns the `tool-package-source-disabled` diagnostic.
-oci = ["dep:wasm-pkg-client", "dep:tokio", "dep:futures-util"]
 
 [dependencies]
-specify-error.workspace = true
-wasmtime = { workspace = true, optional = true }
-wasmtime-wasi = { workspace = true, optional = true }
-ureq.workspace = true
-sha2.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-serde-saphyr.workspace = true
-strum.workspace = true
+futures-util.workspace = true
 jiff.workspace = true
 semver.workspace = true
+serde.workspace = true
+serde-saphyr.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+specify-error.workspace = true
+strum.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
-wasm-pkg-client = { workspace = true, optional = true }
-futures-util = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
+tokio.workspace = true
+ureq.workspace = true
+wasm-pkg-client.workspace = true
+wasmtime = { workspace = true, optional = true }
+wasmtime-wasi = { workspace = true, optional = true }
 
 [dev-dependencies]
 jsonschema.workspace = true

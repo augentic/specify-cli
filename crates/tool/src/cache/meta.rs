@@ -7,63 +7,15 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use tempfile::Builder;
 
-use super::{SIDECAR_FILENAME, scope_segment};
+use super::SIDECAR_FILENAME;
 use crate::error::{SidecarKind, ToolError};
-use crate::manifest::{ToolPermissions, ToolScope};
+use crate::manifest::{ToolPermissions, looks_like_sha256_hex};
 use crate::package::PackageMetadata;
 
-const SIDECAR_SCHEMA_VERSION: u32 = 1;
-
-/// Permission metadata captured at fetch time for operator inspection.
-#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct PermissionsSnapshot {
-    /// Read-only preopen templates from the live declaration.
-    #[serde(default)]
-    pub read: Vec<String>,
-    /// Read-write preopen templates from the live declaration.
-    #[serde(default)]
-    pub write: Vec<String>,
-}
-
-/// Package metadata captured at fetch time for operator inspection.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct PackageSnapshot {
-    /// Package name without the version suffix.
-    pub name: String,
-    /// Exact package version.
-    pub version: String,
-    /// Registry host used to resolve the package.
-    pub registry: String,
-}
-
-/// OCI metadata captured at fetch time for operator inspection.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct OciSnapshot {
-    /// Resolved OCI artifact reference when known.
-    pub reference: String,
-}
-
-impl From<&PackageMetadata> for PackageSnapshot {
-    fn from(value: &PackageMetadata) -> Self {
-        Self {
-            name: value.name.clone(),
-            version: value.version.clone(),
-            registry: value.registry.clone(),
-        }
-    }
-}
-
-impl From<&ToolPermissions> for PermissionsSnapshot {
-    fn from(value: &ToolPermissions) -> Self {
-        Self {
-            read: value.read.clone(),
-            write: value.write.clone(),
-        }
-    }
-}
+/// Currently supported sidecar schema version. Bumped on any breaking
+/// shape change; readers must reject anything else with a schema
+/// diagnostic.
+pub(crate) const SIDECAR_SCHEMA_VERSION: u32 = 1;
 
 /// On-disk `meta.yaml` metadata beside cached tool bytes.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -83,57 +35,13 @@ pub struct Sidecar {
     #[serde(with = "specify_error::serde_rfc3339")]
     pub fetched_at: Timestamp,
     /// Fetch-time permissions snapshot. Informational only.
-    pub permissions_snapshot: PermissionsSnapshot,
+    pub permissions_snapshot: ToolPermissions,
     /// Optional lower-case hex SHA-256 digest copied from the declaration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
     /// Optional package metadata for wasm-pkg sources.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub package: Option<PackageSnapshot>,
-    /// Optional OCI metadata for wasm-pkg sources.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub oci: Option<OciSnapshot>,
-}
-
-impl Sidecar {
-    /// Construct a v1 sidecar from a live declaration tuple.
-    ///
-    /// `now` records the `fetched_at` stamp; the resolver supplies
-    /// `Utc::now` and tests pin a deterministic value.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ToolError::InvalidCacheSegment` when the scope's project name
-    /// or capability slug is empty, contains a path separator, or would escape
-    /// the cache directory. Other fields are accepted verbatim and validated
-    /// against the v1 schema by [`write_sidecar`] before persistence.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "constructor mirrors the sidecar schema fields verbatim; collapsing into a builder would obscure the schema-to-field mapping"
-    )]
-    pub fn new(
-        scope: &ToolScope, tool_name: impl Into<String>, tool_version: impl Into<String>,
-        source: impl Into<String>, permissions_snapshot: PermissionsSnapshot,
-        sha256: Option<String>, package_metadata: Option<PackageMetadata>, now: Timestamp,
-    ) -> Result<Self, ToolError> {
-        let (package, oci) = package_metadata.map_or((None, None), |metadata| {
-            let package = Some(PackageSnapshot::from(&metadata));
-            let oci = metadata.oci_reference.map(|reference| OciSnapshot { reference });
-            (package, oci)
-        });
-        Ok(Self {
-            schema_version: SIDECAR_SCHEMA_VERSION,
-            scope: scope_segment(scope)?,
-            tool_name: tool_name.into(),
-            tool_version: tool_version.into(),
-            source: source.into(),
-            fetched_at: now,
-            permissions_snapshot,
-            sha256,
-            package,
-            oci,
-        })
-    }
+    pub package: Option<PackageMetadata>,
 }
 
 /// Read `meta.yaml` from `path`.
@@ -216,7 +124,7 @@ fn validate_sidecar_schema(path: &Path, sidecar: &Sidecar) -> Result<(), ToolErr
         }
     }
     if let Some(sha256) = &sidecar.sha256
-        && !valid_sha256(sha256)
+        && !looks_like_sha256_hex(sha256)
     {
         return sidecar_schema_error(path, "sha256 must be 64 lowercase hexadecimal characters");
     }
@@ -230,11 +138,9 @@ fn validate_sidecar_schema(path: &Path, sidecar: &Sidecar) -> Result<(), ToolErr
                 return sidecar_schema_error(path, format!("{field} must not be empty"));
             }
         }
-    }
-    if let Some(oci) = &sidecar.oci
-        && oci.reference.is_empty()
-    {
-        return sidecar_schema_error(path, "oci.reference must not be empty");
+        if package.oci_reference.as_deref().is_some_and(str::is_empty) {
+            return sidecar_schema_error(path, "package.oci-reference must not be empty");
+        }
     }
     Ok(())
 }
@@ -244,8 +150,4 @@ fn sidecar_schema_error(path: &Path, detail: impl Into<String>) -> Result<(), To
         path: path.to_path_buf(),
         kind: SidecarKind::Schema(detail.into()),
     })
-}
-
-fn valid_sha256(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }

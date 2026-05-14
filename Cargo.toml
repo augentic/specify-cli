@@ -13,36 +13,27 @@ readme = "README.md"
 name = "specify"
 path = "src/main.rs"
 
-[features]
-default = []
-# Opt into wasm-pkg / OCI package resolution. Adds `wasm-pkg-client`,
-# `tokio`, `reqwest`, `oci-client`, and the rest of the wasm-pkg
-# transitive stack to the dep graph. The default build keeps the CLI
-# OCI-free; declared `package:` tool sources still parse but resolution
-# returns `tool-package-source-disabled` at run time.
-oci = ["specify-tool/oci"]
-
 [dependencies]
-specify-error.workspace = true
-specify-domain.workspace = true
-specify-tool = { workspace = true, features = ["host"] }
 clap.workspace = true
 clap_complete.workspace = true
+glob.workspace = true
+jiff.workspace = true
+semver.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-semver.workspace = true
+specify-domain.workspace = true
+specify-error.workspace = true
+specify-tool.workspace = true
 strum.workspace = true
-jiff.workspace = true
-glob.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
-tempfile.workspace = true
-regex.workspace = true
 jsonschema.workspace = true
+regex.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true
@@ -65,7 +56,7 @@ edition = "2024"
 homepage = "https://augentic.io"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/augentic/specify-cli"
-rust-version = "1.93"
+rust-version = "1.95"
 version = "0.3.0"
 
 [workspace.lints.rust]
@@ -90,21 +81,10 @@ unused_qualifications = "warn"
 
 [workspace.lints.clippy]
 # https://doc.rust-lang.org/stable/clippy/index.html
-# Negative priorities let individual lint overrides below the group take
-# effect (the lint-table "lints with higher priority are applied later"
-# rule — see https://doc.rust-lang.org/cargo/reference/manifest.html#the-lints-section).
-all = { level = "warn", priority = -1 }      # correctness, suspicious, style, complexity, perf
-cargo = { level = "warn", priority = -1 }
-nursery = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
-
-# The WASI tool runner (`specify-tool` with `host`/`oci` features) pulls in
-# Wasmtime/WASI transitive versions the workspace cannot unify yet, and
-# `ProjectConfig` in `specify-domain` re-exports `specify_tool::Tool`, so the
-# duplicate-crate-version warning surfaces at every crate that pulls in
-# either. Hoisted once here rather than per-file; see DECISIONS.md for the
-# rationale.
-multiple_crate_versions = "allow"
+all = "warn"
+cargo = "warn"
+nursery = "warn"
+pedantic = "warn"
 
 # Cherry-picked lints are from the `restriction` lint group in order to drive up
 # consistency, quality, and brevity
@@ -159,34 +139,34 @@ verbose_file_reads = "warn"
 #   `pub(crate)` / `pub(super)` on struct fields throughout.
 
 [workspace.dependencies]
-specify-error = { path = "crates/error" }
-specify-validate = { path = "crates/validate" }
-specify-domain = { path = "crates/domain" }
-specify-tool = { path = "crates/tool" }
+assert_cmd = "2"
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
-thiserror = "2"
+futures-util = "0.3"
+glob = "0.3"
+jiff = { version = "0.2", default-features = false, features = ["serde", "std"] }
+jsonschema = { version = "0.46", default-features = false }
+libc = "0.2"
+petgraph = "0.8"
+regex = "1"
+semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde-saphyr = "0.0.25"
 serde_json = "1"
-regex = "1"
-glob = "0.3"
-jiff = { version = "0.2", default-features = false, features = ["std", "serde"] }
-futures-util = "0.3"
-jsonschema = { version = "0.46", default-features = false }
-semver = "1"
-tempfile = "3"
-tokio = { version = "1", features = ["rt", "fs", "io-util"] }
-toml = "1"
 sha2 = "0.10"
+specify-domain = { path = "crates/domain" }
+specify-error = { path = "crates/error" }
+specify-tool = { path = "crates/tool" }
+specify-validate = { path = "crates/validate" }
 strum = { version = "0.28", features = ["derive"] }
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "io-util", "rt"] }
+toml = "1"
 ureq = { version = "3", features = ["json"] }
 wasm-pkg-client = "0.15"
-wasmtime = { version = "44.0.1", default-features = false, features = ["component-model", "runtime", "cranelift"] }
+wasmtime = { version = "44.0.1", default-features = false, features = ["component-model", "cranelift", "runtime"] }
 wasmtime-wasi = { version = "44.0.1", default-features = false, features = ["p2"] }
-assert_cmd = "2"
-libc = "0.2"
-petgraph = "0.8"
 
 [profile.release]
 lto = true

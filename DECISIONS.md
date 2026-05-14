@@ -130,7 +130,7 @@ binary.
 History: until Phase 1B of the 2026-05 cleanup the workspace had 13
 crates; the fragmentation cost more than it earned (wide build graph,
 redundant `Cargo.toml` files, indirect re-export hops, repeated
-`multiple_crate_versions` waivers). Module boundaries inside
+duplicate-version exemptions). Module boundaries inside
 `specify-domain` preserve the original separation; `pub` cross-module
 surfaces match the prior cross-crate `pub use` exports.
 
@@ -221,6 +221,20 @@ crate project-scope and capability-scope tool declarations.
   `(scope, name, version, source)` tuple is not referenced by the live
   merged manifest of the current project. It does not scan other
   projects on the host.
+- **Registry resolution.** Wasm-pkg config is layered, last-write-wins:
+  (1) wasm-pkg global defaults, (2) the project-local
+  `.specify/wasm-pkg.toml` (when present), (3) the `WKG_CONFIG`
+  override, (4) an embedded `specify -> augentic.io` namespace
+  fallback applied only when no earlier layer mapped the `specify`
+  namespace. `specify init` (regular and hub modes) scaffolds
+  `.specify/wasm-pkg.toml` with the canonical RFC-17 mapping; the
+  file is checked in and operators edit it to register internal
+  mirrors. Re-init never overwrites an operator-edited file. The
+  scaffold is the only first-party constant the binary still ships;
+  the previous hardcoded GHCR prefix is gone — `meta.yaml`'s
+  `oci.reference` is now derived best-effort from the resolved
+  registry's well-known wasm-pkg metadata, and stays `None` when the
+  registry advertises no OCI protocol or the metadata fetch fails.
 - **Time crate.** UTC-only domain; `jiff::Timestamp` replaces
   `chrono::DateTime<Utc>` across every host crate. All persisted
   stamps route through `specify_error::serde_rfc3339` so the on-disk

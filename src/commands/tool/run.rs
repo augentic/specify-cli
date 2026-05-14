@@ -14,7 +14,12 @@ pub fn run(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<u8> {
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
     let scoped = find(&inventory, name)?;
-    let resolved = specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, Timestamp::now())?;
+    let resolved = specify_tool::resolver::resolve(
+        &scoped.scope,
+        &scoped.tool,
+        Timestamp::now(),
+        &ctx.project_dir,
+    )?;
     let mut run_ctx = RunContext::new(&ctx.project_dir, args);
     if let ToolScope::Capability { capability_dir, .. } = &scoped.scope {
         run_ctx = run_ctx.with_capability_dir(capability_dir);
