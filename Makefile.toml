@@ -137,3 +137,12 @@ set -euo pipefail
 cd wasi-tools
 cargo build -p specify-contract --target wasm32-wasip2 --release
 '''
+
+# Build the `vectis` WASI tool locally with sha256 sidecars for
+# pre-release smoke tests. Delegates to `scripts/build-vectis-local.sh`;
+# override `VECTIS_WASI_DIST_DIR` to control the output directory.
+[tasks.vectis-wasm]
+script = '''
+set -euo pipefail
+"${CARGO_MAKE_WORKING_DIRECTORY}/scripts/build-vectis-local.sh"
+'''
