@@ -39,8 +39,8 @@ pub(super) fn run(
 
     let result = init(opts, Timestamp::now())?;
     let current_dir = std::env::current_dir().map_err(Error::Io)?;
-    let context_generation = generate_initial_context(format, &current_dir)?;
-    emit_init_result(format, &result, hub, context_generation)
+    let context_skip_reason = generate_initial_context(format, &current_dir)?;
+    emit_init_result(format, &result, hub, context_skip_reason)
 }
 
 #[derive(Serialize)]
@@ -106,9 +106,8 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
 }
 
 fn emit_init_result(
-    format: Format, result: &InitResult, hub: bool, context_generation: ContextGeneration,
+    format: Format, result: &InitResult, hub: bool, context_skip_reason: Option<&'static str>,
 ) -> Result<()> {
-    let context_skip_reason = context_generation.skip_reason();
     let body = Body {
         config_path: canonical(&result.config_path),
         capability_name: result.capability_name.clone(),
@@ -126,33 +125,13 @@ fn emit_init_result(
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ContextGeneration {
-    Generated,
-    Skipped { reason: &'static str },
-}
-
-impl ContextGeneration {
-    const fn skip_reason(&self) -> Option<&'static str> {
-        match self {
-            Self::Generated => None,
-            Self::Skipped { reason } => Some(*reason),
-        }
-    }
-}
-
-fn generate_initial_context(format: Format, project_dir: &Path) -> Result<ContextGeneration> {
+/// Returns `None` when initial context generation ran, `Some(reason)` when it was skipped.
+fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Option<&'static str>> {
     if is_workspace_clone(project_dir) {
-        return Ok(ContextGeneration::Skipped {
-            reason: "workspace-clone",
-        });
+        return Ok(Some("workspace-clone"));
     }
     match project_dir.join("AGENTS.md").try_exists() {
-        Ok(true) => {
-            return Ok(ContextGeneration::Skipped {
-                reason: "existing-agents-md",
-            });
-        }
+        Ok(true) => return Ok(Some("existing-agents-md")),
         Ok(false) => {}
         Err(err) if err.kind() == ErrorKind::NotFound => {}
         Err(err) => return Err(Error::Io(err)),
@@ -170,5 +149,5 @@ fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Contex
         "init context generation is called only when AGENTS.md is absent"
     );
     debug_assert_eq!(outcome.disposition, "create");
-    Ok(ContextGeneration::Generated)
+    Ok(None)
 }
