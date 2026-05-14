@@ -17,7 +17,8 @@ Canonical JSON Schema (2020-12) for the response body emitted by `specify change
       "level": "error | warning",
       "code": "<stable-identifier>",
       "entry": "<plan-entry-name> | null",
-      "message": "<human readable>"
+      "message": "<human readable>",
+      "data": { "kind": "cycle | orphan-source | stale-clone | unreachable-entry", "...": "..." }
     }
   ],
   "passed": true
@@ -40,6 +41,13 @@ The same `schema.json` is the source of truth for Rust-side CLI tests (`tests/pl
 - `project-missing-multi-repo` (error): when the registry has multiple projects, a slice is missing the required `project` field.
 - `description-missing-multi-repo` (error): when the registry has multiple projects, a project entry is missing the required `description` field.
 - `capability-mismatch-workspace` (warning): a workspace clone's `.specify/project.yaml` declares a different `capability` than the corresponding registry entry.
+
+The four health diagnostics layer additional codes that carry an optional `data` payload describing the offending shape:
+
+- `cycle-in-depends-on` (error): one or more cycles in the `depends-on` graph; `data.kind` is `cycle` and `data.cycle` is the cycle path with the first node repeated at the end.
+- `orphan-source-key` (warning): a top-level `sources:` key that no entry references; `data.kind` is `orphan-source` and `data.key` is the unreferenced key.
+- `stale-workspace-clone` (warning): a registry-backed `.specify/workspace/<project>/` slot whose materialisation no longer matches `registry.yaml`; `data.kind` is `stale-clone` with `data.project`, `data.reason`, and optional `data.expected` / `data.observed` signature snapshots.
+- `unreachable-entry` (warning): a pending entry whose dependency closure is rooted in a `failed` or `skipped` predecessor; `data.kind` is `unreachable-entry` with `data.entry` and `data.blocking[]` predecessor descriptors.
 
 ## See also
 

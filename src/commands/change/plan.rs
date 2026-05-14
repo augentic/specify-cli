@@ -5,7 +5,6 @@
 
 pub mod cli;
 mod create;
-mod doctor;
 mod lifecycle;
 mod lock;
 mod status;
@@ -26,7 +25,6 @@ pub(super) fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
     match action {
         PlanAction::Create { name, sources } => lifecycle::create(ctx, name, sources),
         PlanAction::Validate => lifecycle::validate(ctx),
-        PlanAction::Doctor => doctor::run(ctx),
         PlanAction::Next => lifecycle::next(ctx),
         PlanAction::Status => status::run(ctx),
         PlanAction::Add {

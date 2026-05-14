@@ -3,7 +3,9 @@ use std::io::Write;
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
-use specify_domain::change::{Finding, Plan, Severity, Status};
+use specify_domain::change::{
+    Plan, PlanDoctorDiagnostic, PlanDoctorPayload, Severity, Status, plan_doctor,
+};
 use specify_domain::config::{InitPolicy, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
@@ -62,13 +64,20 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         Ok(reg) => (reg, None),
         Err(err) => (None, Some(err)),
     };
-    let mut results = plan.validate(Some(&slices_dir), registry.as_ref());
+
+    let mut results: Vec<ValidateRow> =
+        plan_doctor(&plan, Some(&slices_dir), registry.as_ref(), Some(&ctx.project_dir))
+            .into_iter()
+            .map(ValidateRow::from)
+            .collect();
+
     if let Some(err) = registry_err {
-        results.push(Finding {
+        results.push(ValidateRow {
             level: Severity::Error,
-            code: "registry-shape",
+            code: "registry-shape".to_string(),
             message: err.to_string(),
             entry: None,
+            data: None,
         });
     }
     if let Some(reg) = &registry {
@@ -82,15 +91,16 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
                 && let Some(slot_capability) = config.get("capability").and_then(|v| v.as_str())
                 && slot_capability != rp.capability
             {
-                results.push(Finding {
+                results.push(ValidateRow {
                     level: Severity::Warning,
-                    code: "capability-mismatch-workspace",
+                    code: "capability-mismatch-workspace".to_string(),
                     message: format!(
                         "workspace clone '{}' has capability '{}' but registry declares '{}'; \
                          the clone's project.yaml is authoritative at execution time",
                         rp.name, slot_capability, rp.capability
                     ),
                     entry: None,
+                    data: None,
                 });
             }
         }
@@ -234,11 +244,42 @@ fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()
     writeln!(w, "Initialised plan '{}' at {}.", body.plan.name, body.plan.path)
 }
 
+/// One row in `specify change plan validate`'s `results[]`.
+///
+/// Mirrors the historical `Finding` wire shape (`level` / `code` /
+/// `message` / `entry`) for backwards compatibility, plus an optional
+/// structured `data` payload carried by the four health diagnostics
+/// (`cycle-in-depends-on`, `orphan-source-key`, `stale-workspace-clone`,
+/// `unreachable-entry`) — codes that previously surfaced through the
+/// retired `change plan doctor` verb.
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ValidateRow {
+    level: Severity,
+    code: String,
+    message: String,
+    entry: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<PlanDoctorPayload>,
+}
+
+impl From<PlanDoctorDiagnostic> for ValidateRow {
+    fn from(d: PlanDoctorDiagnostic) -> Self {
+        Self {
+            level: d.severity,
+            code: d.code,
+            message: d.message,
+            entry: d.entry,
+            data: d.data,
+        }
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct PlanValidateBody<'a> {
     plan: Ref,
-    results: &'a [Finding],
+    results: &'a [ValidateRow],
     passed: bool,
 }
 
@@ -246,16 +287,16 @@ fn write_plan_validate_text(w: &mut dyn Write, body: &PlanValidateBody<'_>) -> s
     if body.results.is_empty() {
         return writeln!(w, "Plan OK");
     }
-    for finding in body.results {
-        write_finding_text(w, finding)?;
+    for row in body.results {
+        write_validate_row_text(w, row)?;
     }
     Ok(())
 }
 
-fn write_finding_text(w: &mut dyn Write, finding: &Finding) -> std::io::Result<()> {
-    let label = if matches!(finding.level, Severity::Error) { "ERROR  " } else { "WARNING" };
-    let entry_col = finding.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
-    writeln!(w, "{label} {:<32} {:<24} {}", finding.code, entry_col, finding.message)
+fn write_validate_row_text(w: &mut dyn Write, row: &ValidateRow) -> std::io::Result<()> {
+    let label = if matches!(row.level, Severity::Error) { "ERROR  " } else { "WARNING" };
+    let entry_col = row.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
+    writeln!(w, "{label} {:<32} {:<24} {}", row.code, entry_col, row.message)
 }
 
 #[derive(Serialize, Default)]

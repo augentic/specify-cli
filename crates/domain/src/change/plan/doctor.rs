@@ -1,6 +1,7 @@
-//! `specify change plan doctor` — superset of `plan validate` that
-//! layers four extra health diagnostics (`cycle-in-depends-on`,
-//! `orphan-source-key`, `stale-workspace-clone`, `unreachable-entry`).
+//! Health diagnostics layered on top of `Plan::validate`:
+//! `cycle-in-depends-on`, `orphan-source-key`,
+//! `stale-workspace-clone`, and `unreachable-entry`. Surfaced through
+//! `specify change plan validate`.
 
 use std::path::Path;
 

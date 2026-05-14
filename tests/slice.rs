@@ -132,6 +132,36 @@ fn transition_rejects_illegal_edge() {
     assert_eq!(value["error"], "lifecycle");
 }
 
+#[test]
+fn transition_rejects_merged_target() {
+    // The `merged` lifecycle status is reserved for `slice merge run`,
+    // which writes it atomically alongside the spec merge and archive
+    // move. Hand-driven `slice transition <name> merged` would skip
+    // that bookkeeping, so the CLI must refuse the value before the
+    // dispatcher ever sees it.
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["slice", "transition", "my-slice", "merged"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
+    assert!(
+        stderr.contains("invalid value 'merged'") || stderr.contains("merged"),
+        "transition must reject the `merged` target with a clap-rendered error; got:\n{stderr}"
+    );
+    // Sanity: at least one legal target name appears in the error so
+    // operators can self-correct.
+    for target in ["defined", "building", "complete", "dropped"] {
+        assert!(
+            stderr.contains(target),
+            "clap rejection must list legal targets; missing `{target}` in:\n{stderr}"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // slice touched-specs
 // ---------------------------------------------------------------------------
@@ -260,31 +290,8 @@ fn overlap_empty_for_disjoint_slices() {
 }
 
 // ---------------------------------------------------------------------------
-// slice archive and drop
+// slice drop
 // ---------------------------------------------------------------------------
-
-#[test]
-fn archive_moves_dir_into_dated_path() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "archive", "my-slice"])
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    let archive_path = value["archive-path"].as_str().unwrap();
-    assert!(archive_path.contains(".specify/archive/"));
-    assert!(archive_path.ends_with("-my-slice"));
-
-    // Original is gone; archive dir has one dated subdirectory.
-    assert!(!project.slices_dir().join("my-slice").exists());
-    let archive = project.root().join(".specify/archive");
-    let entries: Vec<_> = fs::read_dir(&archive).unwrap().filter_map(Result::ok).collect();
-    assert_eq!(entries.len(), 1);
-    assert!(entries[0].file_name().to_string_lossy().ends_with("-my-slice"));
-}
 
 #[test]
 fn drop_transitions_and_archives() {
@@ -318,29 +325,8 @@ fn drop_transitions_and_archives() {
 }
 
 // ---------------------------------------------------------------------------
-// slice list / status
+// slice status
 // ---------------------------------------------------------------------------
-
-#[test]
-fn list_shows_every_active_slice() {
-    let project = Project::init().with_schemas();
-    specify().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
-    specify().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "list"])
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    let names: Vec<_> = value["slices"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|c| c["name"].as_str().unwrap().to_string())
-        .collect();
-    assert_eq!(names, vec!["alpha", "beta"]);
-}
 
 #[test]
 fn status_by_name_returns_single_entry() {
@@ -357,10 +343,9 @@ fn status_by_name_returns_single_entry() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    let items = value["slices"].as_array().unwrap();
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0]["name"], "only-slice");
-    assert_eq!(items[0]["status"], "defining");
+    let entry = &value["slice"];
+    assert_eq!(entry["name"], "only-slice");
+    assert_eq!(entry["status"], "defining");
 }
 
 // ---------------------------------------------------------------------------

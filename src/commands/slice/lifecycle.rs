@@ -110,31 +110,6 @@ fn write_transition_text(w: &mut dyn Write, body: &TransitionBody) -> std::io::R
     writeln!(w, "{}: status = {}", body.name, body.status)
 }
 
-pub(super) fn archive(ctx: &Ctx, name: String) -> Result<()> {
-    let slice_dir = ctx.slices_dir().join(&name);
-    let archive_dir = ctx.archive_dir();
-    let target = slice_actions::archive(&slice_dir, &archive_dir, Timestamp::now())?;
-    ctx.write(
-        &ArchiveBody {
-            name,
-            archive_path: target.display().to_string(),
-        },
-        write_archive_text,
-    )?;
-    Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ArchiveBody {
-    name: String,
-    archive_path: String,
-}
-
-fn write_archive_text(w: &mut dyn Write, body: &ArchiveBody) -> std::io::Result<()> {
-    writeln!(w, "{}: archived to {}", body.name, body.archive_path)
-}
-
 pub(super) fn discard_slice(ctx: &Ctx, name: String, reason: Option<&str>) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();

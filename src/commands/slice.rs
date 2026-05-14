@@ -51,7 +51,6 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             capability,
             if_exists,
         } => lifecycle::create(ctx, &name, capability, if_exists.into()),
-        SliceAction::List => list::run(ctx),
         SliceAction::Status { name } => list::status_one(ctx, &name),
         SliceAction::Validate { name } => validate::run(ctx, &name),
         SliceAction::Merge { action } => match action {
@@ -77,10 +76,11 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             } => journal::append(ctx, name, phase, kind, summary, context),
             JournalAction::Show { name } => journal::show(ctx, name),
         },
-        SliceAction::Transition { name, target } => lifecycle::transition(ctx, name, target),
+        SliceAction::Transition { name, target } => {
+            lifecycle::transition(ctx, name, target.into())
+        }
         SliceAction::TouchedSpecs { name, scan, set } => touched::specs(ctx, name, scan, &set),
         SliceAction::Overlap { name } => touched::overlap(ctx, name),
-        SliceAction::Archive { name } => lifecycle::archive(ctx, name),
         SliceAction::Drop { name, reason } => {
             lifecycle::discard_slice(ctx, name, reason.as_deref())
         }

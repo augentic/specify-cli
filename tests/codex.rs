@@ -214,53 +214,10 @@ fn schema_rejects_malformed_rule_id() {
 fn help_lists_subcommands() {
     let assert = specify().args(["codex", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    for subcommand in ["list", "show", "validate", "export"] {
-        assert!(
-            stdout.contains(subcommand),
-            "codex help should mention `{subcommand}`, got:\n{stdout}"
-        );
-    }
-}
-
-#[test]
-fn list_text_shows_summary_fields() {
-    let project = Project::new();
-    let default_root = project.root().join("schemas/default");
-    let project_root = project.root().join("schemas/project");
-    write_rule(&default_root, "default.md", "UNI-001");
-    write_rule(&project_root, "project.md", "OMNIA-001");
-
-    let assert = specify().current_dir(project.root()).args(["codex", "list"]).assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-
-    assert!(stdout.contains("UNI-001"), "list should include default rule id:\n{stdout}");
-    assert!(stdout.contains("suggestion"), "list should include severity:\n{stdout}");
     assert!(
-        stdout.contains("capability default@v1"),
-        "list should include default capability provenance:\n{stdout}"
+        stdout.contains("export"),
+        "codex help should mention `export`, got:\n{stdout}"
     );
-    assert!(stdout.contains("Test Rule OMNIA-001"), "list should include rule title:\n{stdout}");
-}
-
-#[test]
-fn show_text_prints_summary_and_body() {
-    let project = Project::initialized_with_codex_distribution();
-
-    let assert =
-        specify().current_dir(project.root()).args(["codex", "show", "UNI-002"]).assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-
-    assert!(stdout.contains("id: UNI-002"), "show should include id:\n{stdout}");
-    assert!(
-        stdout.contains("severity: critical"),
-        "show should include severity summary:\n{stdout}"
-    );
-    assert!(
-        stdout.contains(".specify/.cache/default/codex/002.md"),
-        "show should locate default rule through the init-populated cache:\n{stdout}"
-    );
-    assert!(stdout.contains("## Rule"), "show should print markdown body:\n{stdout}");
-    assert!(stdout.contains("Validate external input"), "show should print rule prose:\n{stdout}");
 }
 
 #[test]
@@ -339,19 +296,7 @@ fn export_json_resolves_cache_and_overlay() {
 }
 
 #[test]
-fn validate_clean_exits_zero() {
-    let project = Project::new();
-    let default_root = project.root().join("schemas/default");
-    write_rule(&default_root, "default.md", "UNI-001");
-
-    let assert =
-        specify().current_dir(project.root()).args(["codex", "validate"]).assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(stdout.contains("Codex OK"), "validate should report pass summary:\n{stdout}");
-}
-
-#[test]
-fn validate_invalid_rule_exits_two() {
+fn export_invalid_rule_exits_two() {
     let project = Project::new();
     let default_root = project.root().join("schemas/default");
     write_rule(&default_root, "default.md", "UNI-001");
@@ -364,18 +309,21 @@ fn validate_invalid_rule_exits_two() {
         "\n## Guidance\n\nMissing the required heading.\n",
     );
 
-    let assert = specify().current_dir(project.root()).args(["codex", "validate"]).assert().code(2);
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(stdout.contains("Codex invalid"), "validate should report failure:\n{stdout}");
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "codex", "export"])
+        .assert()
+        .code(2);
+    let value = parse_json(&assert.get_output().stdout);
+    let results = value["results"].as_array().expect("results array");
     assert!(
-        stdout.contains("codex.body-has-rule-heading"),
-        "validate should include failing validation rule id:\n{stdout}"
+        results.iter().any(|r| r["rule-id"] == "codex.body-has-rule-heading"),
+        "export should surface the failing validation rule id: {value}"
     );
-    assert!(stdout.contains("broken.md"), "validate should include failing path:\n{stdout}");
 }
 
 #[test]
-fn validate_duplicate_ids_exits_two() {
+fn export_duplicate_ids_exits_two() {
     let project = Project::new();
     let default_root = project.root().join("schemas/default");
     let project_root = project.root().join("schemas/project");
@@ -385,33 +333,14 @@ fn validate_duplicate_ids_exits_two() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "codex", "validate"])
+        .args(["--format", "json", "codex", "export"])
         .assert()
         .code(2);
     let value = parse_json(&assert.get_output().stdout);
-
-    assert_eq!(value["error-count"], 1);
-    assert_eq!(value["results"][0]["rule-id"], "codex.rule-id-unique");
+    let results = value["results"].as_array().expect("results array");
     assert!(
-        value["results"][0]["detail"].as_str().unwrap().contains("OMNIA-001"),
-        "duplicate detail should name the id: {value}"
-    );
-}
-
-#[test]
-fn show_missing_rule_id_fails() {
-    let project = Project::new();
-    let default_root = project.root().join("schemas/default");
-    write_rule(&default_root, "default.md", "UNI-001");
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["codex", "show", "NOPE-999"])
-        .assert()
-        .failure();
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
-    assert!(
-        stderr.contains("codex-rule-not-found") && stderr.contains("NOPE-999"),
-        "missing show should name the stable diagnostic and requested id:\n{stderr}"
+        results.iter().any(|r| r["rule-id"] == "codex.rule-id-unique"
+            && r["detail"].as_str().is_some_and(|s| s.contains("OMNIA-001"))),
+        "export should surface the duplicate-id validation failure: {value}"
     );
 }

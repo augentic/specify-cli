@@ -18,12 +18,13 @@ pub enum PlanAction {
         #[arg(long = "source")]
         sources: Vec<SourceArg>,
     },
-    /// Validate plan.yaml (structure + plan/change consistency)
+    /// Validate plan.yaml (structure + plan/change consistency).
+    ///
+    /// Includes the four health diagnostics — `cycle-in-depends-on`,
+    /// `orphan-source-key`, `stale-workspace-clone`, and
+    /// `unreachable-entry` — alongside the base shape rules. The first
+    /// triage step when `/change:execute loop` reports `stuck`.
     Validate,
-    /// Diagnose plan health (superset of `validate`). Adds
-    /// `cycle-in-depends-on`, `orphan-source-key`, `stale-workspace-clone`,
-    /// and `unreachable-entry` checks on top of `validate`.
-    Doctor,
     /// Return the next eligible plan entry (respects depends-on + in-progress)
     Next,
     /// Show change progress report

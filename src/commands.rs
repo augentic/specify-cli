@@ -35,9 +35,6 @@ pub fn run(cli: Cli) -> Exit {
                 capability_value,
                 project_dir,
             } => dispatch(format, || capability::resolve(format, capability_value, &project_dir)),
-            CapabilityAction::Check { capability_dir } => {
-                dispatch(format, || capability::check(format, &capability_dir))
-            }
             CapabilityAction::Pipeline { phase, slice } => {
                 scoped(format, |ctx| capability::pipeline(ctx, phase, slice.as_deref()))
             }
@@ -102,8 +99,8 @@ where
 }
 
 /// Run a command that does NOT need project context but may still fail
-/// with an `Error` (e.g. `capability resolve`, `capability check`).
-/// The `Ctx`-bearing peer is [`scoped`].
+/// with an `Error` (e.g. `capability resolve`). The `Ctx`-bearing peer
+/// is [`scoped`].
 fn dispatch<F>(format: Format, f: F) -> Exit
 where
     F: FnOnce() -> Result<()>,

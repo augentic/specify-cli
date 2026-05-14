@@ -14,9 +14,6 @@ use crate::context::Ctx;
 /// Dispatch `specify codex *`.
 pub fn run(ctx: &Ctx, action: CodexAction) -> Result<()> {
     match action {
-        CodexAction::List => list(ctx),
-        CodexAction::Show { rule_id } => show(ctx, &rule_id),
-        CodexAction::Validate => validate(ctx),
         CodexAction::Export => export(ctx),
     }
 }
@@ -25,61 +22,36 @@ fn resolve(ctx: &Ctx) -> Result<ResolvedCodex> {
     ResolvedCodex::resolve(&ctx.project_dir, ctx.config.capability.as_deref(), ctx.config.hub)
 }
 
-fn list(ctx: &Ctx) -> Result<()> {
-    let codex = resolve(ctx)?;
-    let rules: Vec<_> = codex.rules.iter().map(|r| RuleView::build(r, false)).collect();
-    ctx.write(
-        &ListBody {
-            rule_count: rules.len(),
-            rules,
-        },
-        write_list_text,
-    )?;
-    Ok(())
-}
-
-fn show(ctx: &Ctx, rule_id: &str) -> Result<()> {
-    let codex = resolve(ctx)?;
-    let normalized = rule_id.to_ascii_uppercase();
-    let resolved = codex
-        .rules
-        .iter()
-        .find(|candidate| candidate.rule.normalized_id == normalized)
-        .ok_or_else(|| Error::Diag {
-            code: "codex-rule-not-found",
-            detail: format!("rule `{rule_id}` not found"),
-        })?;
-
-    ctx.write(
-        &ShowBody {
-            rule: RuleView::build(resolved, true),
-        },
-        write_show_text,
-    )?;
-    Ok(())
-}
-
-fn validate(ctx: &Ctx) -> Result<()> {
+/// Resolve the codex and either emit the export body or — when
+/// resolution surfaces validation failures — render the per-rule
+/// findings on the standard envelope before propagating exit-code 2.
+/// The structured payload preserves the actionability that the retired
+/// `specify codex validate` verb used to provide so operators can still
+/// see which rule misbehaved.
+fn export(ctx: &Ctx) -> Result<()> {
     match resolve(ctx) {
         Ok(codex) => {
+            let rules: Vec<_> = codex.rules.iter().map(|r| RuleView::build(r, true)).collect();
             ctx.write(
-                &ValidateBody {
-                    rule_count: Some(codex.rules.len()),
+                &ExportBody {
+                    rule_count: Some(rules.len()),
                     error_count: 0,
+                    rules,
                     results: &[],
                 },
-                write_validate_text,
+                write_export_text,
             )?;
             Ok(())
         }
         Err(Error::Validation { results }) => {
             ctx.write(
-                &ValidateBody {
+                &ExportBody {
                     rule_count: None,
                     error_count: results.len(),
+                    rules: Vec::new(),
                     results: &results,
                 },
-                write_validate_text,
+                write_export_text,
             )?;
             Err(Error::Validation { results })
         }
@@ -87,73 +59,22 @@ fn validate(ctx: &Ctx) -> Result<()> {
     }
 }
 
-fn export(ctx: &Ctx) -> Result<()> {
-    let codex = resolve(ctx)?;
-    let rules: Vec<_> = codex.rules.iter().map(|r| RuleView::build(r, true)).collect();
-    ctx.write(
-        &ExportBody {
-            rule_count: rules.len(),
-            rules,
-        },
-        write_export_text,
-    )?;
-    Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ListBody<'a> {
-    rule_count: usize,
-    rules: Vec<RuleView<'a>>,
-}
-
-fn write_list_text(w: &mut dyn Write, body: &ListBody<'_>) -> std::io::Result<()> {
-    for rule in &body.rules {
-        writeln!(w, "{}\t{}\t{}\t{}", rule.id, rule.severity, rule.provenance, rule.title)?;
-    }
-    Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ShowBody<'a> {
-    rule: RuleView<'a>,
-}
-
-fn write_show_text(w: &mut dyn Write, body: &ShowBody<'_>) -> std::io::Result<()> {
-    let r = &body.rule;
-    writeln!(w, "id: {}", r.id)?;
-    writeln!(w, "title: {}", r.title)?;
-    writeln!(w, "severity: {}", r.severity)?;
-    writeln!(w, "trigger: {}", r.trigger.unwrap_or_default())?;
-    writeln!(w, "source: {}", r.source_path)?;
-    writeln!(w, "provenance: {}", r.provenance)?;
-    writeln!(w)?;
-    write!(w, "{}", r.body.unwrap_or_default())
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ExportBody<'a> {
-    rule_count: usize,
-    rules: Vec<RuleView<'a>>,
-}
-
-fn write_export_text(w: &mut dyn Write, _body: &ExportBody<'_>) -> std::io::Result<()> {
-    writeln!(w, "Codex export is a JSON contract; rerun with `specify codex export --format json`.")
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ValidateBody<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
     rule_count: Option<usize>,
     error_count: usize,
+    rules: Vec<RuleView<'a>>,
     results: &'a [ValidationSummary],
 }
 
-fn write_validate_text(w: &mut dyn Write, body: &ValidateBody<'_>) -> std::io::Result<()> {
+fn write_export_text(w: &mut dyn Write, body: &ExportBody<'_>) -> std::io::Result<()> {
     if body.error_count == 0 {
-        return writeln!(w, "Codex OK: {} rule(s)", body.rule_count.unwrap_or(0));
+        return writeln!(
+            w,
+            "Codex export is a JSON contract; rerun with `specify codex export --format json`."
+        );
     }
     writeln!(w, "Codex invalid: {} error(s)", body.error_count)?;
     for r in body.results {

@@ -1628,14 +1628,15 @@ fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
     specify().current_dir(project.root()).args(["change", "plan", "validate"]).assert().success();
 }
 
-// ---- specify change plan doctor (RFC-9 §4B) ----
+// ---- specify change plan validate health diagnostics (RFC-9 §4B) ----
 //
-// `plan doctor` is a strict superset of `plan validate`. The
-// integration tests below pin the wire-shape skill authors will rely
-// on: doctor MUST surface every diagnostic class on a synthetic
-// fixture that exercises all four; validate on the same fixture MUST
-// produce only the validate-level subset (proving doctor's additions
-// are purely additive).
+// `plan validate` carries the four health diagnostics
+// (`cycle-in-depends-on`, `orphan-source-key`, `stale-workspace-clone`,
+// `unreachable-entry`) alongside its base shape rules. The integration
+// tests below pin the wire-shape skill authors rely on: validate MUST
+// surface every diagnostic class on a synthetic fixture that exercises
+// all four, and the structured `data` payload MUST round-trip through
+// the JSON envelope.
 
 fn init_omnia_project(tmp: &TempDir) {
     specify()
@@ -1648,7 +1649,7 @@ fn init_omnia_project(tmp: &TempDir) {
 }
 
 #[test]
-fn plan_doctor_reports_all_four_classes() {
+fn plan_validate_reports_all_four_health_diagnostics() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1716,22 +1717,22 @@ fn plan_doctor_reports_all_four_classes() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "change", "plan", "doctor"])
+        .args(["--format", "json", "change", "plan", "validate"])
         .assert();
     let output = assert.get_output();
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
-    assert!(!diagnostics.is_empty(), "doctor with broken plan must surface diagnostics: {value}");
-    let codes: Vec<&str> = diagnostics.iter().filter_map(|d| d["code"].as_str()).collect();
+    let results = value["results"].as_array().expect("results array");
+    assert!(!results.is_empty(), "validate with broken plan must surface results: {value}");
+    let codes: Vec<&str> = results.iter().filter_map(|r| r["code"].as_str()).collect();
 
     for expected in
         ["cycle-in-depends-on", "orphan-source-key", "stale-workspace-clone", "unreachable-entry"]
     {
         assert!(
             codes.contains(&expected),
-            "doctor must emit `{expected}` for the synthetic fixture; saw: {codes:?}"
+            "validate must emit `{expected}` for the synthetic fixture; saw: {codes:?}"
         );
     }
 
@@ -1742,7 +1743,7 @@ fn plan_doctor_reports_all_four_classes() {
 }
 
 #[test]
-fn plan_doctor_payloads_round_trip_typed() {
+fn plan_validate_payloads_round_trip_typed() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1768,13 +1769,13 @@ fn plan_doctor_payloads_round_trip_typed() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "change", "plan", "doctor"])
+        .args(["--format", "json", "change", "plan", "validate"])
         .assert();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
-    let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
+    let results = value["results"].as_array().expect("results array");
 
-    let cycle = diagnostics
+    let cycle = results
         .iter()
         .find(|d| d["code"] == "cycle-in-depends-on")
         .expect("expected cycle-in-depends-on diagnostic");
@@ -1788,85 +1789,17 @@ fn plan_doctor_payloads_round_trip_typed() {
     );
     assert_eq!(cycle["data"]["kind"], "cycle");
 
-    let orphan = diagnostics
+    let orphan = results
         .iter()
         .find(|d| d["code"] == "orphan-source-key")
         .expect("expected orphan-source-key diagnostic");
     assert_eq!(orphan["data"]["kind"], "orphan-source");
     assert_eq!(orphan["data"]["key"], "orphan-key");
-    assert_eq!(orphan["severity"], "warning");
+    assert_eq!(orphan["level"], "warning");
 }
 
 #[test]
-fn plan_validate_unchanged_by_doctor_fixture() {
-    // Same fixture as `plan_doctor_reports_all_four_diagnostic_classes`
-    // but routed through `plan validate` — only the validate-level
-    // subset must surface; the four doctor codes must be absent.
-    let tmp = tempdir().unwrap();
-    init_omnia_project(&tmp);
-
-    fs::write(
-        tmp.path().join("plan.yaml"),
-        "name: demo\n\
-             sources:\n\
-             \x20\x20monolith: /tmp/legacy\n\
-             \x20\x20orphaned: /tmp/elsewhere\n\
-             slices:\n\
-             \x20\x20- name: cyclic-a\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
-             \x20\x20\x20\x20status: pending\n\
-             \x20\x20\x20\x20depends-on: [cyclic-b]\n\
-             \x20\x20- name: cyclic-b\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
-             \x20\x20\x20\x20status: pending\n\
-             \x20\x20\x20\x20depends-on: [cyclic-a]\n\
-             \x20\x20- name: failed-root\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
-             \x20\x20\x20\x20status: failed\n\
-             \x20\x20\x20\x20status-reason: regression in upstream service\n\
-             \x20\x20- name: unreachable-leaf\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
-             \x20\x20\x20\x20status: pending\n\
-             \x20\x20\x20\x20depends-on: [failed-root]\n\
-             \x20\x20- name: orphaned-source-user\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
-             \x20\x20\x20\x20status: pending\n\
-             \x20\x20\x20\x20sources: [monolith]\n",
-    )
-    .unwrap();
-
-    let assert = specify()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "change", "plan", "validate"])
-        .assert();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
-
-    let codes: Vec<&str> = value["results"]
-        .as_array()
-        .expect("results array")
-        .iter()
-        .filter_map(|r| r["code"].as_str())
-        .collect();
-
-    // validate's existing cycle code must still fire.
-    assert!(
-        codes.contains(&"dependency-cycle"),
-        "validate must continue to emit dependency-cycle, got: {codes:?}"
-    );
-    // None of doctor's four new codes should leak into validate.
-    for doctor_code in
-        ["cycle-in-depends-on", "orphan-source-key", "stale-workspace-clone", "unreachable-entry"]
-    {
-        assert!(
-            !codes.contains(&doctor_code),
-            "validate must NOT emit doctor-only code `{doctor_code}`; got: {codes:?}"
-        );
-    }
-}
-
-#[test]
-fn plan_doctor_healthy_exits_zero() {
+fn plan_validate_healthy_exits_zero() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1878,27 +1811,14 @@ fn plan_doctor_healthy_exits_zero() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "change", "plan", "doctor"])
+        .args(["--format", "json", "change", "plan", "validate"])
         .assert()
         .success();
     let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert_eq!(
-        value["diagnostics"].as_array().unwrap().len(),
+        value["results"].as_array().unwrap().len(),
         0,
-        "empty plan must emit zero diagnostics: {value}"
+        "empty plan must emit zero results: {value}"
     );
-}
-
-#[test]
-fn plan_doctor_help_documents_superset() {
-    let assert = specify().args(["change", "plan", "doctor", "--help"]).assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    for code in
-        ["cycle-in-depends-on", "orphan-source-key", "stale-workspace-clone", "unreachable-entry"]
-    {
-        assert!(
-            stdout.contains(code),
-            "plan doctor --help must document the `{code}` diagnostic; got:\n{stdout}"
-        );
-    }
+    assert_eq!(value["passed"], true, "empty plan must pass: {value}");
 }

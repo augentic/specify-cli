@@ -19,8 +19,6 @@ pub enum SliceAction {
         #[arg(long, value_enum, default_value = "fail")]
         if_exists: CreateIfExistsArg,
     },
-    /// List every active slice under `.specify/slices/`
-    List,
     /// Show the status of one slice
     Status {
         /// Slice name (under `.specify/slices/`)
@@ -51,13 +49,16 @@ pub enum SliceAction {
         #[command(subcommand)]
         action: JournalAction,
     },
-    /// Transition a slice to a new lifecycle status
+    /// Transition a slice to a new lifecycle status. Note: `merged` is
+    /// not a valid target — the only legal writer of `Merged` is
+    /// `specify slice merge run`, which performs the spec merge,
+    /// status transition, and archive move atomically.
     Transition {
         /// Slice name
         name: String,
-        /// Target status (`defined`, `building`, `complete`, `merged`, `dropped`, or `defining`)
+        /// Target status (`defined`, `building`, `complete`, `dropped`, or `defining`)
         #[arg(value_enum)]
-        target: LifecycleStatus,
+        target: TransitionTarget,
     },
     /// Scan or overwrite `touched_specs` on `.metadata.yaml`
     TouchedSpecs {
@@ -72,11 +73,6 @@ pub enum SliceAction {
     },
     /// Report overlapping `touched_specs` with other active slices
     Overlap {
-        /// Slice name
-        name: String,
-    },
-    /// Archive a slice directory into `.specify/archive/YYYY-MM-DD-<name>/`
-    Archive {
         /// Slice name
         name: String,
     },
@@ -256,6 +252,38 @@ pub enum JournalAction {
         /// Slice name
         name: String,
     },
+}
+
+/// CLI-only transition target enum. Mirrors [`LifecycleStatus`]
+/// minus `Merged` so operators cannot drive the merge-success
+/// transition out-of-band — that is reserved for
+/// `specify slice merge run`, which writes `Merged`, stamps the
+/// merge outcome, and archives the slice atomically.
+#[derive(Debug, Copy, Clone, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum TransitionTarget {
+    /// Slice is being defined (artifacts authored).
+    Defining,
+    /// Definition complete, awaiting build.
+    Defined,
+    /// Build phase in progress.
+    Building,
+    /// Build complete, awaiting merge.
+    Complete,
+    /// Slice discarded without merging.
+    Dropped,
+}
+
+impl From<TransitionTarget> for LifecycleStatus {
+    fn from(value: TransitionTarget) -> Self {
+        match value {
+            TransitionTarget::Defining => Self::Defining,
+            TransitionTarget::Defined => Self::Defined,
+            TransitionTarget::Building => Self::Building,
+            TransitionTarget::Complete => Self::Complete,
+            TransitionTarget::Dropped => Self::Dropped,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, ValueEnum)]
