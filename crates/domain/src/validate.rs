@@ -26,7 +26,6 @@ pub use compatibility::{
 pub use registry::{cross_rules, rules_for};
 pub use run::validate_slice;
 pub use serialize::serialize_report;
-pub use specify_validate::{ContractFinding, validate_baseline};
 
 pub use crate::capability::ValidationResult;
 

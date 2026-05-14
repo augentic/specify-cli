@@ -251,7 +251,10 @@ impl From<ToolError> for specify_error::Error {
     fn from(value: ToolError) -> Self {
         match value {
             ToolError::Diag { code, detail } => Self::Diag { code, detail },
-            ToolError::Runtime(detail) => Self::Diag { code: "tool-runtime", detail },
+            ToolError::Runtime(detail) => Self::Diag {
+                code: "tool-runtime",
+                detail,
+            },
             err @ ToolError::ToolNotDeclared { .. } => Self::validation_failed(
                 "tool-not-declared",
                 "tool must be declared in tools.yaml",

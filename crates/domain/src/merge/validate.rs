@@ -118,8 +118,8 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
     if let Some(design_text) = design {
         // Parity quirk: Python's regex is anchored with ^...$ but lacks
         // re.MULTILINE, so finditer() on a multi-line design string never
-        // matches. `specify-validate` (Change G, rule
-        // `cross.design-references-valid`) will implement a correct
+        // matches. The rule `cross.design-references-valid` in
+        // `specify-domain::validate` covers this with a correct
         // multi-line check. `REQ_ID_PATTERN` itself already
         // contains ^ and $ — Rust's default `Regex` treats them as
         // string boundaries (no MULTILINE flag), so we match Python

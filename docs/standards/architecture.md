@@ -8,9 +8,8 @@ Binary crate (`name = "specify"`) at the repo root. `src/main.rs` is a thin `Exi
 
 ```text
 specify-error                    # leaf — thiserror + serde-saphyr only
-specify-validate                 # leaf — baseline-contract validation, shared with the wasi-tools/contract carve-out
 specify-tool                     # depends on specify-error (WASI tool runner; wasmtime, gated)
-specify-domain                   # depends on specify-{error,validate,tool} (every other domain module)
+specify-domain                   # depends on specify-{error,tool} (every other domain module)
 specify (root crate)             # wires every workspace crate above into the CLI binary
 ```
 
@@ -30,10 +29,12 @@ WASI tools live in `wasi-tools/`, a sibling workspace excluded from the main lin
 
 `wasi-tools/contract` and `wasi-tools/vectis` are deliberate carve-outs from the workspace's Render/emit/`specify-error` discipline. They ship as standalone WASI components and live in their own sibling workspace at `wasi-tools/Cargo.toml`, which inherits a leaner lint posture and a minimal `[workspace.dependencies]` set. Do not pull `specify-error` (or any other host workspace crate that drags in `wasmtime`, `tokio`, `ureq`, …) into either; the carve-out comments in `wasi-tools/contract/src/main.rs` and `wasi-tools/vectis/src/lib.rs` are authoritative.
 
+**Carve-out invariant.** A capability's validation, scaffold, and rendering logic lives inside its carve-out; the host CLI consumes it only through `specify tool run <name>`. No `specify-*` workspace crate may import capability-specific logic — the previous shared-validation split (`specify-validate` re-extracted for the contract baseline checks) was an architectural leak collapsed in the 2026-05 inversion pass. New capabilities ship as carve-outs and stay there.
+
 When editing these crates:
 
 - They cannot use anything that isn't WASI-compatible. No threads, no networking primitives outside the declared WASI imports, no clock unless the manifest declares it.
-- They stay outside the host workspace's Render/emit/`specify-error` discipline. Do not pull host workspace crates into either; `specify-validate` is the only path-dep bridge and it lives in `wasi-tools/Cargo.toml`'s `[workspace.dependencies]`.
+- They stay outside the host workspace's Render/emit/`specify-error` discipline. Do not pull host workspace crates into either; the carve-out is the single source of truth for the capability's logic.
 - Rebuild artifacts from inside `wasi-tools/` so the sibling workspace's lockfile is used (`cargo make contract-wasm` and `scripts/build-vectis-local.sh` both do this). Do not check the `.wasm` outputs into git — the release workflow handles distribution.
 - Keep their crate dependency surface minimal — they ship as standalone components and bloat the WASM size if you pull in heavy crates.
 

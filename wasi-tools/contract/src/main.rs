@@ -13,15 +13,15 @@
 //! `output::emit` dispatcher; those couplings would re-attach this
 //! tool to the host CLI's release cadence.
 //!
-//! Wraps [`specify_validate::validate_baseline`] to surface
+//! Wraps the in-crate [`validate::validate_baseline`] to surface
 //! the contract Validation checks (`SemVer` `info.version`,
 //! `info.x-specify-id` format, cross-project id uniqueness) as a
 //! standalone executable that the contracts capability can shell out
 //! to from skill runtimes.
 //!
-//! The validator functions stay in `specify-validate`; this binary is
-//! deliberately a thin argument-parsing + JSON-rendering shell over
-//! them.
+//! The validator functions live in the sibling [`validate`] module;
+//! this binary is deliberately a thin argument-parsing +
+//! JSON-rendering shell over them.
 //!
 //! # Exit codes
 //!
@@ -58,7 +58,10 @@ use std::process::ExitCode;
 
 use clap::{Parser, ValueEnum};
 use serde::Serialize;
-use specify_validate::{ContractFinding, validate_baseline};
+
+mod validate;
+
+use validate::{ContractFinding, validate_baseline};
 
 const EXIT_OK: u8 = 0;
 const EXIT_FINDINGS: u8 = 1;

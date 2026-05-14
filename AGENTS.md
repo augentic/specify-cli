@@ -8,13 +8,12 @@ The workspace is leaf → root. `specify-error` is the dependency leaf and depen
 
 ```text
 specify-error                    # leaf — thiserror + serde-saphyr only
-specify-validate                 # leaf — baseline-contract validation, shared with the wasi-tools/contract carve-out
 specify-tool                     # depends on specify-error (WASI tool runner; wasmtime, gated)
-specify-domain                   # depends on specify-{error,validate,tool} (every other domain module)
+specify-domain                   # depends on specify-{error,tool} (every other domain module)
 specify (root crate)             # wires every workspace crate above into the CLI binary
 ```
 
-WASI tools live in the sibling workspace at `wasi-tools/` (`wasi-tools/contract`, `wasi-tools/vectis`) and are carved out of the host workspace's discipline.
+WASI tools live in the sibling workspace at `wasi-tools/` (`wasi-tools/contract`, `wasi-tools/vectis`) and are carved out of the host workspace's discipline. Both carve-outs are self-contained — capability-specific validation, scaffold, and rendering logic lives inside the carve-out and the host CLI consumes it only through `specify tool run <name>`.
 
 ## Exit codes
 

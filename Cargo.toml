@@ -41,7 +41,6 @@ workspace = true
 [workspace]
 members = [
     "crates/error",
-    "crates/validate",
     "crates/domain",
     "crates/tool",
     "xtask",
@@ -165,7 +164,6 @@ sha2 = "0.10"
 specify-domain = { path = "crates/domain" }
 specify-error = { path = "crates/error" }
 specify-tool = { path = "crates/tool" }
-specify-validate = { path = "crates/validate" }
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3"
 thiserror = "2"

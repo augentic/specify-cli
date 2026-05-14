@@ -11,6 +11,6 @@ Each case directory contains a subset of:
 - `design.md` — optional design file for validation orphan-reference checks.
 - `expected-validation.txt` — canonical stderr from `validate_baseline`. Empty file = all coherence checks passed.
 
-These are checked in so Rust unit tests can compare byte-for-byte without invoking any external tool. A change to one of the cases must land alongside the corresponding source edit in `specify_domain::merge` / `specify_validate` and a hand-crafted update to the `expected-*` file in the same commit.
+These are checked in so Rust unit tests can compare byte-for-byte without invoking any external tool. A change to one of the cases must land alongside the corresponding source edit in `specify_domain::merge` / `specify_domain::validate` and a hand-crafted update to the `expected-*` file in the same commit.
 
-The `case-10-design-refs` empty `expected-validation.txt` is a deliberate Python-era quirk (see the parity-quirk comment in `crates/domain/src/merge/validate.rs`); a correct orphan-reference check lives in `specify_validate` (rule `cross.design-references-valid`).
+The `case-10-design-refs` empty `expected-validation.txt` is a deliberate Python-era quirk (see the parity-quirk comment in `crates/domain/src/merge/validate.rs`); a correct orphan-reference check lives in `specify_domain::validate` (rule `cross.design-references-valid`).
