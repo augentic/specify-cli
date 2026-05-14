@@ -5,7 +5,6 @@ use std::io::Write;
 use serde::Serialize;
 use specify_error::Result;
 use specify_tool::cache::{self, Status as CacheStatus};
-use specify_tool::load::Collision;
 use specify_tool::{PackageMetadata, Tool, ToolPermissions, ToolScope, ToolScopeKind};
 
 pub(super) type CacheKey = (String, String, String);
@@ -216,8 +215,7 @@ pub(super) fn scope_labels(scope: &ToolScope) -> (ToolScopeKind, String) {
     }
 }
 
-pub(super) fn warning_row(collision: Collision) -> WarningRow {
-    let Collision { name } = collision;
+pub(super) fn warning_row(name: String) -> WarningRow {
     WarningRow {
         code: "tool-name-collision",
         message: format!(
