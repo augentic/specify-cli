@@ -14,7 +14,7 @@ pub mod local;
 use crate::cache::{self, MODULE_FILENAME, PermissionsSnapshot, SIDECAR_FILENAME, Sidecar};
 use crate::error::ToolError;
 use crate::manifest::{Tool, ToolScope, ToolSource};
-use crate::package::{FetchedPackage, PackageClient, PackageMetadata, WasmPkgClient};
+use crate::package::{AcquiredBytes, PackageClient, WasmPkgClient};
 
 /// Cached component bytes plus the live declaration data needed to run them.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,7 +113,7 @@ fn stage_and_install(
     let module_dest = staged.join(MODULE_FILENAME);
     let acquired = acquire_source_bytes(&tool.source, &module_dest, package_client)?;
     digest::validate(source, &acquired, tool.sha256.as_deref())?;
-    let package_metadata = acquired.package_metadata();
+    let package_metadata = acquired.package_metadata.clone();
     acquired.persist_to(&module_dest)?;
     let sidecar = Sidecar::new(
         scope,
@@ -147,17 +147,7 @@ fn acquire_source_bytes(
         ),
         ToolSource::FileUri(uri) => buffered_into_acquired(&local::read_file_uri(uri)?, dest_hint),
         ToolSource::HttpsUri(url) => http::download_https(url, dest_hint),
-        ToolSource::Package(package) => package_client.fetch(package, dest_hint).map(
-            |FetchedPackage {
-                 temp,
-                 sha256,
-                 metadata,
-             }| AcquiredBytes {
-                temp,
-                sha256,
-                package_metadata: Some(metadata),
-            },
-        ),
+        ToolSource::Package(package) => package_client.fetch(package, dest_hint),
     }
 }
 
@@ -182,46 +172,6 @@ fn buffered_into_acquired(bytes: &[u8], dest_hint: &Path) -> Result<AcquiredByte
     })
 }
 
-/// Bytes acquired from a tool source, ready for digest validation and
-/// installation into the cache. Every source streams to a sibling
-/// `NamedTempFile` so the install step is a uniform `persist` regardless of
-/// whether the bytes came from a local file, an HTTPS download, or a
-/// package registry.
-#[derive(Debug)]
-pub(crate) struct AcquiredBytes {
-    pub(crate) temp: NamedTempFile,
-    pub(crate) sha256: String,
-    pub(crate) package_metadata: Option<PackageMetadata>,
-}
-
-impl AcquiredBytes {
-    pub(crate) fn len(&self) -> Result<u64, ToolError> {
-        self.temp
-            .as_file()
-            .metadata()
-            .map(|m| m.len())
-            .map_err(|err| ToolError::cache_io("stat staged tool body", self.temp.path(), err))
-    }
-
-    pub(crate) fn sha256_hex(&self) -> String {
-        self.sha256.clone()
-    }
-
-    pub(crate) fn package_metadata(&self) -> Option<PackageMetadata> {
-        self.package_metadata.clone()
-    }
-
-    pub(crate) fn persist_to(self, dest: &Path) -> Result<(), ToolError> {
-        self.temp.persist(dest).map(|_| ()).map_err(|err| {
-            ToolError::atomic_move_failed(
-                err.file.path().to_path_buf(),
-                dest.to_path_buf(),
-                err.error,
-            )
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
@@ -231,7 +181,7 @@ mod tests {
 
     use super::*;
     use crate::manifest::{PackageRequest, ToolSource};
-    use crate::package::{FetchedPackage, PackageClient, PackageMetadata};
+    use crate::package::{PackageClient, PackageMetadata};
     use crate::test_support::{
         EnvGuard, cached_bytes, capability_scope, env_lock, fixed_now, project_scope, scratch_dir,
         tool, write_source,
@@ -254,16 +204,16 @@ mod tests {
     impl PackageClient for MockPackageClient {
         fn fetch(
             &self, request: &PackageRequest, dest_hint: &Path,
-        ) -> Result<FetchedPackage, ToolError> {
+        ) -> Result<AcquiredBytes, ToolError> {
             self.calls.set(self.calls.get() + 1);
             let parent = dest_hint.parent().expect("dest hint has parent");
             fs::create_dir_all(parent).expect("create mock package temp parent");
             let mut temp = NamedTempFile::new_in(parent).expect("create mock package tempfile");
             temp.write_all(self.bytes).expect("write mock package bytes");
-            Ok(FetchedPackage {
+            Ok(AcquiredBytes {
                 temp,
                 sha256: digest::sha256_hex(self.bytes),
-                metadata: PackageMetadata {
+                package_metadata: Some(PackageMetadata {
                     name: request.name_ref(),
                     version: request.version.clone(),
                     registry: "augentic.io".to_string(),
@@ -271,7 +221,7 @@ mod tests {
                         "ghcr.io/augentic/specify/{}:{}",
                         request.name, request.version
                     )),
-                },
+                }),
             })
         }
     }

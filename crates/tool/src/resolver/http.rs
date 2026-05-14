@@ -11,8 +11,8 @@ use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 use ureq::ResponseExt;
 
-use super::AcquiredBytes;
 use crate::error::{NetworkKind, ToolError};
+use crate::package::AcquiredBytes;
 
 /// Whole-call cap; covers DNS + connect + headers + body.
 const REQUEST_TIMEOUT: Duration = Duration::from_mins(2);

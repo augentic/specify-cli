@@ -56,15 +56,36 @@ pub struct PackageMetadata {
     pub oci_reference: Option<String>,
 }
 
-/// Package bytes staged into a temporary file.
+/// Bytes acquired from a tool source, ready for digest validation and
+/// installation into the cache. Every source streams to a sibling
+/// `NamedTempFile` so the install step is a uniform `persist` regardless of
+/// whether the bytes came from a local file, an HTTPS download, or a
+/// package registry.
 #[derive(Debug)]
-pub struct FetchedPackage {
-    /// Temporary file containing the downloaded package component bytes.
+pub struct AcquiredBytes {
     pub temp: NamedTempFile,
-    /// SHA-256 digest computed while streaming.
     pub sha256: String,
-    /// Resolution metadata for the sidecar.
-    pub metadata: PackageMetadata,
+    pub package_metadata: Option<PackageMetadata>,
+}
+
+impl AcquiredBytes {
+    pub fn len(&self) -> Result<u64, ToolError> {
+        self.temp
+            .as_file()
+            .metadata()
+            .map(|m| m.len())
+            .map_err(|err| ToolError::cache_io("stat staged tool body", self.temp.path(), err))
+    }
+
+    pub fn persist_to(self, dest: &Path) -> Result<(), ToolError> {
+        self.temp.persist(dest).map(|_| ()).map_err(|err| {
+            ToolError::atomic_move_failed(
+                err.file.path().to_path_buf(),
+                dest.to_path_buf(),
+                err.error,
+            )
+        })
+    }
 }
 
 /// Pulls wasm-pkg package bytes for a package request.
@@ -74,9 +95,8 @@ pub trait PackageClient {
     /// # Errors
     ///
     /// Returns package resolution, registry, stream, or cache staging errors.
-    fn fetch(
-        &self, request: &PackageRequest, dest_hint: &Path,
-    ) -> Result<FetchedPackage, ToolError>;
+    fn fetch(&self, request: &PackageRequest, dest_hint: &Path)
+    -> Result<AcquiredBytes, ToolError>;
 }
 
 /// Default wasm-pkg package client.
@@ -104,7 +124,7 @@ impl WasmPkgClient {
 impl PackageClient for WasmPkgClient {
     fn fetch(
         &self, request: &PackageRequest, dest_hint: &Path,
-    ) -> Result<FetchedPackage, ToolError> {
+    ) -> Result<AcquiredBytes, ToolError> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -115,7 +135,7 @@ impl PackageClient for WasmPkgClient {
 
 async fn fetch(
     request: &PackageRequest, dest_hint: &Path, project_dir: Option<&Path>,
-) -> Result<FetchedPackage, ToolError> {
+) -> Result<AcquiredBytes, ToolError> {
     let temp_parent = dest_hint.parent().ok_or_else(|| {
         ToolError::cache_root(format!(
             "tool package destination has no parent: {}",
@@ -189,15 +209,15 @@ async fn fetch(
         .map_err(|err| ToolError::cache_io("sync package download tempfile", temp.path(), err))?;
     drop(file);
 
-    Ok(FetchedPackage {
+    Ok(AcquiredBytes {
         temp,
         sha256: format!("{:x}", hasher.finalize()),
-        metadata: PackageMetadata {
+        package_metadata: Some(PackageMetadata {
             name: request.name_ref(),
             version: request.version.clone(),
             registry: registry_string,
             oci_reference,
-        },
+        }),
     })
 }
 

@@ -5,8 +5,8 @@ use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-use super::AcquiredBytes;
 use crate::error::ToolError;
+use crate::package::AcquiredBytes;
 
 pub(super) fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
@@ -32,15 +32,14 @@ pub(super) fn validate(
         });
     }
 
-    if let Some(expected) = expected_sha256 {
-        let actual = acquired.sha256_hex();
-        if actual != expected {
-            return Err(ToolError::DigestMismatch {
-                source_value: source.to_string(),
-                expected: expected.to_string(),
-                actual,
-            });
-        }
+    if let Some(expected) = expected_sha256
+        && acquired.sha256 != expected
+    {
+        return Err(ToolError::DigestMismatch {
+            source_value: source.to_string(),
+            expected: expected.to_string(),
+            actual: acquired.sha256.clone(),
+        });
     }
     Ok(())
 }
