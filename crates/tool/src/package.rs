@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use futures_util::TryStreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
@@ -42,7 +42,8 @@ pub const DEFAULT_WASM_PKG_CONFIG: &str = "default_registry = \"augentic.io\"\n\
                                            specify = \"augentic.io\"\n";
 
 /// Informational package metadata recorded in `meta.yaml`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct PackageMetadata {
     /// Package name without the version suffix.
     pub name: String,
@@ -53,6 +54,7 @@ pub struct PackageMetadata {
     /// Best-effort OCI reference derived from the resolved registry's
     /// well-known wasm-pkg metadata. `None` when metadata is absent or
     /// the registry uses a non-OCI protocol.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oci_reference: Option<String>,
 }
 

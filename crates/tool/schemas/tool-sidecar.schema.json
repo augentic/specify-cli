@@ -77,15 +77,8 @@
         "registry": {
           "type": "string",
           "minLength": 1
-        }
-      }
-    },
-    "oci": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["reference"],
-      "properties": {
-        "reference": {
+        },
+        "oci-reference": {
           "type": "string",
           "minLength": 1
         }

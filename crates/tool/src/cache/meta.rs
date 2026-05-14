@@ -14,57 +14,6 @@ use crate::package::PackageMetadata;
 
 const SIDECAR_SCHEMA_VERSION: u32 = 1;
 
-/// Permission metadata captured at fetch time for operator inspection.
-#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct PermissionsSnapshot {
-    /// Read-only preopen templates from the live declaration.
-    #[serde(default)]
-    pub read: Vec<String>,
-    /// Read-write preopen templates from the live declaration.
-    #[serde(default)]
-    pub write: Vec<String>,
-}
-
-/// Package metadata captured at fetch time for operator inspection.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct PackageSnapshot {
-    /// Package name without the version suffix.
-    pub name: String,
-    /// Exact package version.
-    pub version: String,
-    /// Registry host used to resolve the package.
-    pub registry: String,
-}
-
-/// OCI metadata captured at fetch time for operator inspection.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct OciSnapshot {
-    /// Resolved OCI artifact reference when known.
-    pub reference: String,
-}
-
-impl From<&PackageMetadata> for PackageSnapshot {
-    fn from(value: &PackageMetadata) -> Self {
-        Self {
-            name: value.name.clone(),
-            version: value.version.clone(),
-            registry: value.registry.clone(),
-        }
-    }
-}
-
-impl From<&ToolPermissions> for PermissionsSnapshot {
-    fn from(value: &ToolPermissions) -> Self {
-        Self {
-            read: value.read.clone(),
-            write: value.write.clone(),
-        }
-    }
-}
-
 /// On-disk `meta.yaml` metadata beside cached tool bytes.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -83,16 +32,13 @@ pub struct Sidecar {
     #[serde(with = "specify_error::serde_rfc3339")]
     pub fetched_at: Timestamp,
     /// Fetch-time permissions snapshot. Informational only.
-    pub permissions_snapshot: PermissionsSnapshot,
+    pub permissions_snapshot: ToolPermissions,
     /// Optional lower-case hex SHA-256 digest copied from the declaration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
     /// Optional package metadata for wasm-pkg sources.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub package: Option<PackageSnapshot>,
-    /// Optional OCI metadata for wasm-pkg sources.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub oci: Option<OciSnapshot>,
+    pub package: Option<PackageMetadata>,
 }
 
 impl Sidecar {
@@ -113,14 +59,9 @@ impl Sidecar {
     )]
     pub(crate) fn new(
         scope: &ToolScope, tool_name: impl Into<String>, tool_version: impl Into<String>,
-        source: impl Into<String>, permissions_snapshot: PermissionsSnapshot,
-        sha256: Option<String>, package_metadata: Option<PackageMetadata>, now: Timestamp,
+        source: impl Into<String>, permissions_snapshot: ToolPermissions, sha256: Option<String>,
+        package: Option<PackageMetadata>, now: Timestamp,
     ) -> Result<Self, ToolError> {
-        let (package, oci) = package_metadata.map_or((None, None), |metadata| {
-            let package = Some(PackageSnapshot::from(&metadata));
-            let oci = metadata.oci_reference.map(|reference| OciSnapshot { reference });
-            (package, oci)
-        });
         Ok(Self {
             schema_version: SIDECAR_SCHEMA_VERSION,
             scope: scope_segment(scope)?,
@@ -131,7 +72,6 @@ impl Sidecar {
             permissions_snapshot,
             sha256,
             package,
-            oci,
         })
     }
 }
@@ -230,11 +170,9 @@ fn validate_sidecar_schema(path: &Path, sidecar: &Sidecar) -> Result<(), ToolErr
                 return sidecar_schema_error(path, format!("{field} must not be empty"));
             }
         }
-    }
-    if let Some(oci) = &sidecar.oci
-        && oci.reference.is_empty()
-    {
-        return sidecar_schema_error(path, "oci.reference must not be empty");
+        if package.oci_reference.as_deref().is_some_and(str::is_empty) {
+            return sidecar_schema_error(path, "package.oci-reference must not be empty");
+        }
     }
     Ok(())
 }

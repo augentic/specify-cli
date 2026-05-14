@@ -18,7 +18,9 @@ pub mod validate;
 
 pub use error::ToolError;
 pub use manifest::{Tool, ToolManifest, ToolPermissions, ToolScope, ToolScopeKind, ToolSource};
-pub use package::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME, WASM_PKG_CONFIG_PATH};
+pub use package::{
+    DEFAULT_WASM_PKG_CONFIG, PackageMetadata, WASM_PKG_CONFIG_FILENAME, WASM_PKG_CONFIG_PATH,
+};
 
 #[cfg(test)]
 #[expect(unsafe_code, reason = "test helpers mutate process-wide env vars under env_lock")]

@@ -11,7 +11,7 @@ pub mod digest;
 pub mod http;
 pub mod local;
 
-use crate::cache::{self, MODULE_FILENAME, PermissionsSnapshot, SIDECAR_FILENAME, Sidecar};
+use crate::cache::{self, MODULE_FILENAME, SIDECAR_FILENAME, Sidecar};
 use crate::error::ToolError;
 use crate::manifest::{Tool, ToolScope, ToolSource};
 use crate::package::{AcquiredBytes, PackageClient, WasmPkgClient, persist_temp};
@@ -124,7 +124,7 @@ fn stage_and_install(
         &tool.name,
         &tool.version,
         source,
-        PermissionsSnapshot::from(&tool.permissions),
+        tool.permissions.clone(),
         tool.sha256.clone(),
         package_metadata,
         now,
@@ -315,12 +315,10 @@ mod tests {
         .expect("read sidecar")
         .expect("sidecar exists");
         assert_eq!(sidecar.source, "specify:contract@1.0.0");
+        let sidecar_package = sidecar.package.as_ref().expect("sidecar package");
+        assert_eq!(sidecar_package.name.as_str(), "specify:contract");
         assert_eq!(
-            sidecar.package.as_ref().map(|package| package.name.as_str()),
-            Some("specify:contract")
-        );
-        assert_eq!(
-            sidecar.oci.as_ref().map(|oci| oci.reference.as_str()),
+            sidecar_package.oci_reference.as_deref(),
             Some("ghcr.io/augentic/specify/contract:1.0.0")
         );
 

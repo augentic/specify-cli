@@ -1,449 +1,306 @@
-# Code & Skill Review — `specify` + `specify-cli`
+# Code & Skill Review — `specify` + `specify-cli` (second pass)
 
 ## Summary
 
-- **Top three by LOC**: S1 EnvGuard collapses `with_cache_env` (≈40 LOC), S2 drops `Stdio`/`with_stdio` test-only plumbing (≈25 LOC), S3 inlines `ContextBody` into `Body` (≈22 LOC).
-- **Total ΔLOC if all 8 structural findings land**: ≈ **−175 LOC** in `crates/tool/` and `src/commands/init.rs`; collapses 4 mirror/sentinel types and 2 duplicate helper triples.
-- **Non-LOC axes moved**: −4 types, −5 branches in `Stdio` + `ContextGeneration` dispatch, −1 trait return shape (`PackageClient::fetch`), −3 duplicate fn copies.
-- **Most likely to break in remediation**: S1 — the `with_cache_env` → `EnvGuard` port must touch every cache/resolver test sharing process-wide `SPECIFY_TOOLS_CACHE` / `XDG_CACHE_HOME` / `HOME`; getting drop order wrong silently leaks env vars across tests.
-- Reconnaissance: 49 099 Rust LOC; 70 test files; **no** `mod.rs` outside `tests/` (already disciplined); 3 standards docs (88 + 225 + 68 = **381** lines under `docs/standards/`); `cargo tree --duplicates` shows the duplicate set already curated in `clippy.toml::allowed-duplicate-crates`.
+- **Top three by LOC**: S1 collapses `PackageSnapshot` + `OciSnapshot` + `PermissionsSnapshot` mirror types into the underlying domain types (~50 LOC); S2 drops the `Collision` single-field newtype (~10 LOC); S3 drops `CachedCapability` newtype (~6 LOC).
+- **Total ΔLOC if all 4 structurals + 6 tidies land**: ≈ **−115 LOC**, mostly in `crates/tool/src/cache/meta.rs`, `crates/tool/src/load.rs`, `crates/tool/src/validate.rs`, and the test fixtures under `crates/tool/src/`.
+- **Non-LOC axes moved**: −5 types, −5 `From` impls, −1 wire-shape collapse (`oci.reference` folds into `package.oci-reference`), −2 helper functions.
+- **Most likely to break**: S1 — moving `oci_reference` from a sibling DTO into `PackageMetadata` flips the `meta.yaml` wire shape and the `tool show` JSON envelope; tests under `tests/tool.rs` and `tests/contract_tool.rs` assert on `oci.reference` and need the snapshot updated in lockstep.
+- **Reconnaissance**: 48 704 Rust LOC in `specify-cli`, 271 files; **no** `mod.rs` outside `tests/` (already disciplined); standards docs total **498 lines** under `docs/standards/`; one `cargo tree --duplicates` cluster (warg/base64/oci, already on the `clippy.toml` allow-list); `crates/tool/src/validate.rs` (511) and `crates/tool/src/package.rs` (503) are the only non-test sources >500 LOC and both stay under the 600-line tripwire.
 
 ---
 
 ## Structural findings
 
-### S1. Replace `with_cache_env` closure with RAII `EnvGuard`
+### S1. Collapse `PackageSnapshot` + `OciSnapshot` + `PermissionsSnapshot` mirror types
 
-**Evidence**: Two implementations of "snapshot a process env var, mutate under `env_lock`, restore on exit" live in the same crate.
+**Evidence**: Three sidecar DTOs in `crates/tool/src/cache/meta.rs` are byte-shape-identical mirrors of types that already live one module away.
 
 ```rust
-// crates/tool/src/lib.rs:104-146
-pub fn with_cache_env<T>(
-    specify_cache: Option<&Path>, xdg_cache: Option<&Path>, home: Option<&Path>,
-    f: impl FnOnce() -> T,
-) -> T { ... }
-
-fn set_or_remove_env(key: &str, value: Option<&Path>) { ... }
-fn restore_env(key: &str, value: Option<std::ffi::OsString>) { ... }
+// crates/tool/src/cache/meta.rs:18-27
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct PermissionsSnapshot {
+    #[serde(default)]
+    pub read: Vec<String>,
+    #[serde(default)]
+    pub write: Vec<String>,
+}
 ```
 
 ```rust
-// crates/tool/src/package.rs:315-347
-struct EnvGuard {
-    key: &'static str,
-    previous: Option<std::ffi::OsString>,
+// crates/tool/src/cache/meta.rs:30-47
+pub struct PackageSnapshot {
+    pub name: String,
+    pub version: String,
+    pub registry: String,
 }
-
-impl EnvGuard {
-    fn set(key: &'static str, value: &Path) -> Self { ... }
-    fn unset(key: &'static str) -> Self { ... }
+// ...
+pub struct OciSnapshot {
+    pub reference: String,
 }
-
-impl Drop for EnvGuard { ... }
 ```
 
-Current-state grep: `rg "struct EnvGuard|with_cache_env" crates/tool/src/` reports **two** distinct env-mutation primitives in the same crate. `EnvGuard` is the strict subset: every `with_cache_env(Some(a), None, None, || { ... })` call site is one `let _g = EnvGuard::set("SPECIFY_TOOLS_CACHE", a);` line; `None` arms become `EnvGuard::unset(...)`.
+```rust
+// crates/tool/src/cache/meta.rs:49-66
+impl From<&PackageMetadata> for PackageSnapshot { /* clones 3 fields */ }
+impl From<&ToolPermissions> for PermissionsSnapshot { /* clones 2 fields */ }
+```
+
+Current-state grep:
+
+```
+$ rg "struct (PackageSnapshot|OciSnapshot|PermissionsSnapshot)|impl From<&(PackageMetadata|ToolPermissions)>" crates/tool/src/cache/meta.rs
+20:pub struct PermissionsSnapshot {
+32:pub struct PackageSnapshot {
+44:pub struct OciSnapshot {
+49:impl From<&PackageMetadata> for PackageSnapshot {
+59:impl From<&ToolPermissions> for PermissionsSnapshot {
+```
+
+`PermissionsSnapshot { read, write }` is byte-identical to `ToolPermissions { read, write }` (kebab-case is a no-op on single-word fields). `PackageSnapshot { name, version, registry }` is `PackageMetadata { name, version, registry, oci_reference: Option<String> }` minus one optional field. `OciSnapshot { reference }` exists solely so `oci_reference` can serialize as a sibling block on the sidecar.
 
 **Action**:
 
-1. Move `EnvGuard` from `crates/tool/src/package.rs` into `crates/tool/src/lib.rs::test_support` next to `env_lock`.
-2. Delete `with_cache_env`, `set_or_remove_env`, `restore_env`.
-3. Port each `with_cache_env(Some(&cache_dir), None, None, || { ... })` call (`resolver.rs`, `resolver/digest.rs`, `resolver/local.rs`, `resolver/http.rs`, `cache/tests.rs`) to:
+1. In `crates/tool/src/package.rs`, add `serde::{Serialize, Deserialize}` derives + `#[serde(rename_all = "kebab-case", deny_unknown_fields)]` to `PackageMetadata`. Keep `#[serde(default, skip_serializing_if = "Option::is_none")]` on `oci_reference`.
+2. In `crates/tool/src/cache/meta.rs`:
+   - Delete `struct PackageSnapshot`, `struct OciSnapshot`, `struct PermissionsSnapshot`, the two `From` impls, and the `Sidecar.oci: Option<OciSnapshot>` field.
+   - Change `Sidecar.permissions_snapshot: PermissionsSnapshot` to `permissions_snapshot: ToolPermissions`.
+   - Change `Sidecar.package: Option<PackageSnapshot>` to `package: Option<PackageMetadata>`.
+   - Replace the `package_metadata.map_or((None, None), |metadata| ...)` block in `Sidecar::new` with `package: package_metadata`.
+   - Fold the `if let Some(oci)` non-empty check into the existing `if let Some(package)` branch in `validate_sidecar_schema`.
+3. In `crates/tool/src/cache.rs`, drop `OciSnapshot, PackageSnapshot, PermissionsSnapshot` from the `pub use` re-export.
+4. In `crates/tool/src/resolver.rs:127`, replace `PermissionsSnapshot::from(&tool.permissions)` with `tool.permissions.clone()`.
+5. In `crates/tool/src/cache/tests.rs:28`, replace `PermissionsSnapshot { ... }` with `ToolPermissions { ... }`.
+6. In `src/commands/tool/dto.rs`:
+   - Drop `OciSnapshot, PackageSnapshot` from the `use` and remove the `oci` field on `ToolShowRow`.
+   - Render `package.oci_reference` directly inside the `if let Some(package) = ...` branch in `write_show_text`.
+   - In `show_row_for`, drop `let oci = sidecar.as_ref().and_then(...)`.
+7. Update `tests/tool.rs` golden assertions on `value["oci"]["reference"]` → `value["package"]["oci-reference"]`.
 
+**Quality delta**: −50 LOC, −3 types, −2 `From` impls, −1 wire shape (`Sidecar.oci` folds into `package.oci-reference`), −1 sidecar struct field, −1 destructure block.
+**Net LOC**: meta.rs 252 + cache.rs 222 + dto.rs 236 + resolver.rs 330 + tests/tool.rs assertions → ≈ **−50 net**.
+**Done when**: `rg "struct (PackageSnapshot|OciSnapshot|PermissionsSnapshot)|impl From<&(PackageMetadata|ToolPermissions)>" crates/tool/src/` returns nothing; `cargo nextest run -p specify-tool` and `cargo nextest run --test tool --test contract_tool` are green; `specify tool show ... --format json | jq '.tool.package."oci-reference"'` resolves.
+**Rule?**: No.
+**Counter-argument**: "Snapshot types isolate the wire schema from internal domain churn." Loses: the wire is pinned by `tool-sidecar.schema.json`, not by Rust struct identity; `PackageMetadata` is itself `pub` and crate-stable. Cargo and ripgrep both serialize their domain types directly (`cargo::core::Package`, `ripgrep::Args`) rather than maintaining mirror DTOs.
+**Depends on**: none.
+
+---
+
+### S2. Replace `Collision` newtype struct with `String`
+
+**Evidence**:
+
+```rust
+// crates/tool/src/load.rs:9-15
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Collision {
+    /// Colliding tool name.
+    pub name: String,
+}
+```
+
+```rust
+// src/commands/tool/dto.rs:222-231
+pub(super) fn warning_row(collision: Collision) -> WarningRow {
+    let Collision { name } = collision;
+    WarningRow { code: "tool-name-collision", message: format!("..."), name }
+}
+```
+
+Current-state grep:
+
+```
+$ rg "Collision \{|struct Collision" crates/tool/ src/
+crates/tool/src/load.rs:12:pub struct Collision {
+crates/tool/src/load.rs:70:            warnings.push(Collision { name: tool.name });
+crates/tool/src/load.rs:177:            vec![Collision {
+src/commands/tool/dto.rs:223:    let Collision { name } = collision;
+```
+
+One field, no methods, no invariants, two constructions, one destructure. Pure shape ceremony.
+
+**Action**:
+
+1. In `crates/tool/src/load.rs`, delete `pub struct Collision`. Change `merge_scoped`'s return type from `Vec<Collision>` to `Vec<String>`. Replace `warnings.push(Collision { name: tool.name })` with `warnings.push(tool.name)`.
+2. Update the `merge_scoped_project_wins_and_warns_once` test: `vec!["contract".to_string()]`.
+3. In `src/commands/tool/dto.rs`, change `warning_row(collision: Collision)` to `warning_row(name: String)` and inline without the destructure. Update the call site in `commands/tool/list.rs`.
+
+**Quality delta**: −10 LOC, −1 public type, −1 destructure block, −1 module edge.
+**Net LOC**: load.rs 188 + dto.rs 236 → ≈ **−10 net**.
+**Done when**: `rg "Collision" crates/tool/ src/` returns nothing; `cargo nextest run -p specify-tool load::tests` is green.
+**Rule?**: No.
+**Counter-argument**: "`Collision` is more discoverable than a `String` in `Vec<String>`." Loses: discoverability lives in the function name `warning_row`, not the parameter type. `cargo`'s `core::compiler::warnings` tracks warnings as `Vec<String>` for the same reason.
+**Depends on**: none.
+
+---
+
+### S3. Drop `CachedCapability` single-field newtype
+
+**Evidence**:
+
+```rust
+// crates/domain/src/init/cache.rs:15-42
+#[derive(Debug)]
+pub(super) struct CachedCapability {
+    pub(crate) capability_value: String,
+}
+
+pub(super) fn cache_capability(...) -> Result<CachedCapability, Error> {
+    // ...
+    Ok(CachedCapability { capability_value: source.capability_value })
+}
+```
+
+```rust
+// crates/domain/src/init/regular.rs:50-66
+let resolved = cache_capability(capability, opts.project_dir, now)?;
+let view = PipelineView::load(&resolved.capability_value, opts.project_dir)?;
+// ...
+capability: Some(resolved.capability_value),
+```
+
+Current-state grep:
+
+```
+$ rg "struct CachedCapability|CachedCapability \{|resolved\.capability_value" crates/domain/src/init/
+crates/domain/src/init/cache.rs:16:pub(super) struct CachedCapability {
+crates/domain/src/init/cache.rs:39:    Ok(CachedCapability {
+crates/domain/src/init/regular.rs:52:    let view = PipelineView::load(&resolved.capability_value, opts.project_dir)?;
+crates/domain/src/init/regular.rs:66:        capability: Some(resolved.capability_value),
+```
+
+One field, no methods, no `Drop`, no invariants. The wrapper is paying nothing.
+
+**Action**:
+
+1. In `crates/domain/src/init/cache.rs`, delete `pub(super) struct CachedCapability`. Change `cache_capability` return type from `Result<CachedCapability, Error>` to `Result<String, Error>`. Replace the tail with `Ok(source.capability_value)`.
+2. In `crates/domain/src/init/regular.rs`, rename `let resolved = ...` to `let capability_value = ...` and replace the two field accesses.
+
+**Quality delta**: −6 LOC, −1 type, −1 derive (`#[derive(Debug)]`), −1 field-access pattern.
+**Net LOC**: cache.rs 95 + regular.rs 351 → ≈ **−6 net**.
+**Done when**: `rg "CachedCapability" crates/domain/src/init/` returns nothing.
+**Rule?**: No.
+**Counter-argument**: "Future fields might join `capability_value`." Loses: when the second field appears, re-introduce the struct then; YAGNI now. Cargo's resolver returns bare `String` ids for the same use case.
+**Depends on**: none.
+
+---
+
+### S4. Collapse `pass`/`fail`/`check` triple in `crates/tool/src/validate.rs`
+
+**Evidence**:
+
+```rust
+// crates/tool/src/validate.rs:194-216
+fn pass(rule_id: &'static str, rule: &'static str) -> ValidationSummary { /* 7 LOC */ }
+fn fail(rule_id: &'static str, rule: &'static str, detail: impl Into<String>) -> ValidationSummary { /* 7 LOC */ }
+fn check(rule_id: &'static str, rule: &'static str, valid: bool, detail: impl FnOnce() -> String) -> ValidationSummary {
+    if valid { pass(rule_id, rule) } else { fail(rule_id, rule, detail()) }
+}
+```
+
+`pass` and `fail` only have three callers each — the three `validate_*` helpers, each wrapping the same `if failures.is_empty() { pass(...) } else { fail(..., failures.join("; ")) }` shape. The `(bool, String)` tuple pattern earlier in `validate_structure` is the same idea inside-out — pre-compute a `(valid, detail)` pair, pass both to `check`, reconstruct internally.
+
+**Action**:
+
+1. Delete `pass` and `fail`. Rewrite `check` to take `Option<String>` (None = pass, Some = fail).
+2. Rewrite the three `(bool, String)` tuples in `validate_structure` (lines 71-105) as `Option<String>`:
    ```rust
-   let _g = env_lock();
-   let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-   let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-   let _home = EnvGuard::unset("HOME");
-   // ... test body ...
+   let package_namespace_detail = package.and_then(|p| {
+       (p.namespace != "specify").then(|| format!("`{}` is not in the specify namespace", p.name_ref()))
+   });
    ```
+3. Update the eleven `check(rule, "...", valid, || detail)` call sites to pass `Option<String>` directly.
+4. In the three `validate_*` helpers, replace the if/else tail with `check(RULE_X, RULE, (!failures.is_empty()).then(|| failures.join("; ")))`.
 
-**Quality delta**: −40 LOC, −1 helper trio (`set_or_remove_env` + `restore_env` + `with_cache_env`), −1 closure indent level at every call site.
-**Net LOC**: lib.rs 147 + package.rs 549 + ~6 resolver test files → roughly **≈ −40 net**.
-**Done when**: `rg "with_cache_env|set_or_remove_env|restore_env" crates/tool/` returns nothing; `cargo nextest run -p specify-tool` is green.
-**Rule?**: No — the duplicate is a one-time accumulation, not a recurring pattern.
-**Counter-argument**: "Closure scoping is more obviously bounded than RAII." Loses: every other env-snapshot guard in std (`tempfile::TempDir`, `std::sync::MutexGuard`) is RAII, and the call-site delta is monotonically smaller (one line per var vs. nested closure).
-**Depends on**: none.
-
----
-
-### S2. Drop `Stdio` / `with_stdio` test-only plumbing
-
-**Evidence**:
-
-```rust
-// crates/tool/src/host.rs:31-78
-pub enum Stdio {
-    #[default]
-    Inherit,
-    Null,
-}
-
-pub struct RunContext {
-    ...
-    pub stdio: Stdio,
-}
-
-impl RunContext {
-    pub const fn with_stdio(mut self, stdio: Stdio) -> Self { ... }
-}
-```
-
-Current-state grep: `rg "Stdio::Null|with_stdio"` reports **3 hits, all in `crates/tool/src/host.rs::tests`**. Production callers (`src/commands/tool/run.rs:23`) use `RunContext::new(...)` with default `Stdio::Inherit` and never call `with_stdio`. `Stdio::Null` exists exclusively so three tests can pass `RunContext::new(...).with_stdio(Stdio::Null)` to avoid spamming captured stderr — but `cargo nextest` already captures stderr, so the variant is buying nothing.
-
-**Action**:
-
-1. Delete `pub enum Stdio`, the `stdio` field on `RunContext`, the `with_stdio` method, and the `match ctx.stdio { Inherit => builder.inherit_stdio(), Null => {} }` block in `build_wasi_ctx` — replace with a single unconditional `builder.inherit_stdio();`.
-2. Remove `.with_stdio(Stdio::Null)` from the three host.rs tests.
-
-**Quality delta**: −25 LOC, −1 enum, −1 method, −1 struct field, −1 match arm.
-**Net LOC**: host.rs 457 → ≈432.
-**Done when**: `rg "Stdio|with_stdio" crates/tool/src/host.rs` is empty; `cargo nextest run -p specify-tool host::tests` is green.
+**Quality delta**: −20 LOC, −2 helper functions, −3 `(bool, String)` tuple bindings, −1 branch.
+**Net LOC**: validate.rs 511 → ≈ **−20 net**.
+**Done when**: `rg "^fn (pass|fail)\(" crates/tool/src/validate.rs` returns nothing; `cargo nextest run -p specify-tool validate::tests` is green; the `validate_structure` impl shrinks below `clippy::too_many_lines` (currently `#[expect]`-silenced) — verify by removing the `#[expect]`.
 **Rule?**: No.
-**Counter-argument**: "Future runs might want quiet stdio." Loses: pre-1.0, a YAGNI knob that only the tests touch is dead weight; re-add when the second caller appears.
-**Depends on**: none.
-
----
-
-### S3. Inline `ContextBody` fields into `Body` (drop the nested DTO + `#[serde(flatten)]`)
-
-**Evidence**:
-
-```rust
-// src/commands/init.rs:46-120
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct Body {
-    ...
-    #[serde(flatten)]
-    context: ContextBody,
-}
-
-#[derive(Serialize)]
-struct ContextBody {
-    #[serde(rename = "context-generated")]
-    generated: bool,
-    #[serde(rename = "context-skipped")]
-    skipped: bool,
-    #[serde(rename = "context-skip-reason", skip_serializing_if = "Option::is_none")]
-    skip_reason: Option<&'static str>,
-}
-
-impl From<ContextGeneration> for ContextBody {
-    fn from(context_generation: ContextGeneration) -> Self { ... }
-}
-```
-
-`Body` already has `#[serde(rename_all = "kebab-case")]`, so `context_generated` / `context_skipped` / `context_skip_reason` fields on `Body` serialise identically without `#[serde(flatten)]` or the explicit rename trio. The nested DTO + `From` impl exists purely to namespace three fields.
-
-**Action**:
-
-1. Lift the three fields directly onto `Body` (rename `generated` → `context_generated` etc., let kebab-case derive do the wire shape).
-2. Delete `struct ContextBody`, the `From<ContextGeneration>` impl, and the `#[serde(flatten)] context: ContextBody` field.
-3. Build the fields directly inside `emit_init_result`.
-
-**Quality delta**: −22 LOC, −1 DTO type, −1 `From` impl, −3 `#[serde(rename = ...)]` attributes, −1 `#[serde(flatten)]`.
-**Net LOC**: init.rs 189 → ≈167.
-**Done when**: `rg "ContextBody|#\[serde\(flatten\)" src/commands/init.rs` is empty; `cargo nextest run init` is green; `specify init … --format json | jq '.["context-generated"]'` still resolves.
-**Rule?**: No.
-**Counter-argument**: "`ContextBody` is reusable." Loses: it has one call site and one impl; nothing to reuse.
-**Depends on**: S4 (do them in the same PR so the `Body` build site is touched once).
-
----
-
-### S4. Replace `ContextGeneration` enum with `Option<&'static str>`
-
-**Evidence**:
-
-```rust
-// src/commands/init.rs:140-157
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ContextGeneration {
-    Generated,
-    Skipped { reason: &'static str },
-}
-
-impl ContextGeneration {
-    const fn skip_reason(&self) -> Option<&'static str> { ... }
-    const fn skipped(&self) -> bool { ... }
-}
-```
-
-The enum carries the same information as `Option<&'static str>` (`None` = generated, `Some(reason)` = skipped). Both methods are pure projections of that `Option`. The `matches!(..., Generated)` site in `ContextBody::from` is `option.is_none()`.
-
-**Action**:
-
-1. Change `generate_initial_context` return type to `Result<Option<&'static str>>`.
-2. Replace `Ok(ContextGeneration::Generated)` with `Ok(None)`, `Ok(ContextGeneration::Skipped { reason })` with `Ok(Some(reason))`.
-3. Delete the enum + impl block.
-4. At the build site (after S3) write `context_skip_reason: skip_reason, context_skipped: skip_reason.is_some(), context_generated: skip_reason.is_none()`.
-
-**Quality delta**: −20 LOC, −1 enum, −1 impl block, −2 helper methods.
-**Net LOC**: init.rs (already shrinking via S3) → another ≈ −20.
-**Done when**: `rg "ContextGeneration" src/` is empty; `cargo nextest run init` green; JSON envelope shape unchanged (compared with `tests/init.rs` snapshots).
-**Rule?**: No.
-**Counter-argument**: "The named enum reads better than `Option<&str>`." Loses: a two-state enum where one state is the absence of data is exactly what `Option` was designed for; the named alternative just costs more lines.
-**Depends on**: paired with S3.
-
----
-
-### S5. Collapse three duplicate `looks_like_windows_absolute*` helpers in `crates/tool/`
-
-**Evidence**:
-
-```rust
-// crates/tool/src/manifest.rs:245-251
-fn looks_like_windows_absolute_path(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    bytes.len() >= 3
-        && bytes[0].is_ascii_alphabetic()
-        && bytes[1] == b':'
-        && matches!(bytes[2], b'\\' | b'/')
-}
-```
-
-```rust
-// crates/tool/src/permissions.rs:178-184
-fn looks_like_windows_absolute_path(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    bytes.len() >= 3
-        && bytes[0].is_ascii_alphabetic()
-        && bytes[1] == b':'
-        && matches!(bytes[2], b'\\' | b'/')
-}
-```
-
-```rust
-// crates/tool/src/validate.rs:323-333
-fn path_looks_windows_absolute(path: &Path) -> bool {
-    path.to_str().is_some_and(looks_like_windows_absolute_str)
-}
-
-fn looks_like_windows_absolute_str(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    bytes.len() >= 3
-        && bytes[0].is_ascii_alphabetic()
-        && bytes[1] == b':'
-        && matches!(bytes[2], b'\\' | b'/')
-}
-```
-
-Three byte-for-byte copies of the same 6-line byte check in the same crate.
-
-**Action**:
-
-1. In `crates/tool/src/manifest.rs`, change the function to `pub(crate) fn looks_like_windows_absolute(value: &str) -> bool` (drop `_path` suffix per coding-standards.md naming rules — context already says `windows_absolute`).
-2. In `permissions.rs` and `validate.rs`, replace the duplicate definition with `use crate::manifest::looks_like_windows_absolute;` and inline the `path.to_str().is_some_and(looks_like_windows_absolute)` wrapper at the one validate.rs call site (line 49).
-
-**Quality delta**: −16 LOC, −2 duplicate fns, −1 wrapper fn (`path_looks_windows_absolute`).
-**Net LOC**: manifest.rs + permissions.rs + validate.rs combined → ≈ −16.
-**Done when**: `rg "fn looks_like_windows_absolute|fn path_looks_windows_absolute" crates/tool/src/` returns exactly one line.
-**Rule?**: No (already only 3 sites, all in one crate; a clippy lint here would be sandcastling).
-**Counter-argument**: "The wrapper documents intent." Loses: a one-line `path.to_str().is_some_and(looks_like_windows_absolute)` documents itself.
-**Depends on**: none.
-
----
-
-### S6. Collapse `FetchedPackage` mirror into `AcquiredBytes`
-
-**Evidence**:
-
-```rust
-// crates/tool/src/package.rs:60-80
-pub struct FetchedPackage {
-    pub temp: NamedTempFile,
-    pub sha256: String,
-    pub metadata: PackageMetadata,
-}
-
-pub trait PackageClient {
-    fn fetch(
-        &self, request: &PackageRequest, dest_hint: &Path,
-    ) -> Result<FetchedPackage, ToolError>;
-}
-```
-
-```rust
-// crates/tool/src/resolver.rs:195-200
-pub(crate) struct AcquiredBytes {
-    pub(crate) temp: NamedTempFile,
-    pub(crate) sha256: String,
-    pub(crate) package_metadata: Option<PackageMetadata>,
-}
-```
-
-```rust
-// crates/tool/src/resolver.rs:155-166
-ToolSource::Package(package) => package_client.fetch(package, dest_hint).map(
-    |FetchedPackage {
-         temp,
-         sha256,
-         metadata,
-     }| AcquiredBytes {
-        temp,
-        sha256,
-        package_metadata: Some(metadata),
-    },
-),
-```
-
-`FetchedPackage` exists solely so `acquire_source_bytes` can destructure it and rebuild an `AcquiredBytes` with `Some(metadata)`. `PackageClient` is in a private module (`mod package;` in lib.rs), so `AcquiredBytes` can be returned directly without leaking it out of the crate.
-
-**Action**:
-
-1. Move `pub(crate) struct AcquiredBytes` from `resolver.rs` into `package.rs`; keep `pub(crate) impl AcquiredBytes` next to it.
-2. Change `PackageClient::fetch` signature to `Result<AcquiredBytes, ToolError>`.
-3. Update `WasmPkgClient::fetch` (package.rs:190) to build `AcquiredBytes { temp, sha256: ..., package_metadata: Some(PackageMetadata { ... }) }` directly.
-4. In `resolver.rs::acquire_source_bytes`, replace the destructure-and-rebuild block with `ToolSource::Package(package) => package_client.fetch(package, dest_hint),`.
-5. Update the `MockPackageClient` in `resolver.rs::tests` (lines 259-282) and delete `use crate::package::{FetchedPackage, ...};` imports.
-6. Delete `pub struct FetchedPackage`.
-
-**Quality delta**: −18 LOC, −1 public-facing type, −1 destructure block.
-**Net LOC**: package.rs 549 + resolver.rs 376 → ≈ −18.
-**Done when**: `rg "FetchedPackage" crates/tool/` returns nothing; `cargo nextest run -p specify-tool` green.
-**Rule?**: No.
-**Counter-argument**: "Separating `fetch` result from internal `AcquiredBytes` keeps the trait clean." Loses: the trait is crate-internal already; the separation is imaginary.
-**Depends on**: pairs with S7.
-
----
-
-### S7. Drop `AcquiredBytes::sha256_hex` / `package_metadata` getters
-
-**Evidence**:
-
-```rust
-// crates/tool/src/resolver.rs:202-217
-impl AcquiredBytes {
-    pub(crate) fn len(&self) -> Result<u64, ToolError> { ... }
-
-    pub(crate) fn sha256_hex(&self) -> String {
-        self.sha256.clone()
-    }
-
-    pub(crate) fn package_metadata(&self) -> Option<PackageMetadata> {
-        self.package_metadata.clone()
-    }
-
-    pub(crate) fn persist_to(self, dest: &Path) -> Result<(), ToolError> { ... }
-}
-```
-
-`AcquiredBytes::sha256` and `AcquiredBytes::package_metadata` are already `pub(crate)` fields (line 197-199); the getters do a useless clone on read. Both call sites (resolver.rs:121, digest.rs:36) immediately consume the cloned value.
-
-**Action**:
-
-1. Delete `fn sha256_hex(&self)` and `fn package_metadata(&self)`.
-2. At resolver.rs:121, replace `acquired.package_metadata()` with `acquired.package_metadata.clone()` (only consumer; one clone is the same cost).
-3. At digest.rs:36, replace `acquired.sha256_hex()` with `acquired.sha256.as_str()` (no clone needed — comparison only).
-
-**Quality delta**: −10 LOC, −2 trivial methods, −1 forced clone on the digest comparison hot path.
-**Net LOC**: resolver.rs 376 → ≈ −10.
-**Done when**: `rg "sha256_hex|fn package_metadata" crates/tool/src/resolver.rs` returns nothing.
-**Rule?**: No.
-**Counter-argument**: "Methods are more refactor-friendly than field reads." Loses: the type is `pub(crate)`; refactoring it costs the same either way.
-**Depends on**: S6 (touch the type once).
-
----
-
-### S8. Deduplicate `fixed_now()` in `crates/domain/src/init*`
-
-**Evidence**:
-
-```rust
-// crates/domain/src/init.rs:178-180
-fn fixed_now() -> Timestamp {
-    "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
-}
-```
-
-```rust
-// crates/domain/src/init/regular.rs:106-108
-fn fixed_now() -> Timestamp {
-    "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
-}
-```
-
-```rust
-// crates/domain/src/init/hub.rs:148-150
-fn fixed_now() -> Timestamp {
-    "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
-}
-```
-
-Three byte-identical copies in the same module subtree. (A fourth identical body lives in `crates/tool/src/lib.rs::test_support`.)
-
-**Action**:
-
-1. In `crates/domain/src/init.rs`, hoist the test helper out of `#[cfg(test)] mod tests` to module scope as `#[cfg(test)] pub(super) fn fixed_now() -> Timestamp { ... }`.
-2. In `init/regular.rs::tests` and `init/hub.rs::tests`, replace the local definition with `use super::super::fixed_now;`.
-
-**Quality delta**: −6 LOC; tiny but reduces three copies to one.
-**Net LOC**: init.rs + init/regular.rs + init/hub.rs combined → ≈ −6.
-**Done when**: `rg "fn fixed_now" crates/domain/src/init` returns exactly one match.
-**Rule?**: No.
-**Counter-argument**: "Each test module should own its fixtures." Loses: the three modules live under the same parent file; "own" is one level up.
+**Counter-argument**: "`pass`/`fail` read more declaratively." Loses: `Option<String>` is the canonical "pass-or-explain-the-failure" idiom in std (`Result::ok` / `Option::then`); ripgrep's `args::ArgsImpl::validate` uses the same shape.
 **Depends on**: none.
 
 ---
 
 ## One-touch tidies (each < 30 LOC, single-axis)
 
-### T1. Inline `HUB_INIT_NAME` sentinel
+### T1. Drop the `cache-env` test-setup quad with one helper in `test_support`
 
-`crates/domain/src/init/hub.rs:19-24` defines `const HUB_INIT_NAME: &str = "hub";` with a 5-line comment explaining it's only used at one call site (line 126: `capability_name: HUB_INIT_NAME.to_string()`). Replace with `capability_name: "hub".to_string()`. **Delta**: −8 LOC. **Done when**: `rg HUB_INIT_NAME crates/` returns nothing.
+`crates/tool/src/resolver.rs`, `resolver/digest.rs`, `resolver/http.rs`, `resolver/local.rs`, `cache/tests.rs` repeat the exact 4-line setup eleven times:
 
-### T2. Drop trivial `registry.validate_shape_hub()?` after empty-seed write
+```rust
+let _g = env_lock();
+let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
+let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
+let _home = EnvGuard::unset("HOME");
+```
 
-`crates/domain/src/init/hub.rs:115-118` builds `Registry { version: 1, projects: Vec::new() }` then calls `registry.validate_shape_hub()?` with a 4-line comment admitting "Trivially passes for an empty list, but exercise the hub-mode shape check…". The validation is unreachable code. **Delta**: −5 LOC. **Done when**: `rg validate_shape_hub crates/domain/src/init/` returns nothing.
+Add one helper in `crates/tool/src/lib.rs::test_support` returning `(MutexGuard<'static, ()>, [EnvGuard; 3])` so each call site collapses to `let _env = test_support::cache_env(&cache_dir);`. Drop order is correct: the array drops first (guards restore env), then the lock drops last. **Delta**: −22 LOC. **Done when**: `rg "EnvGuard::unset\(\"HOME\"\)" crates/tool/src/` returns exactly one match (inside the helper).
 
-### T3. Share `sha256_hex` test helper via `tests/common/mod.rs`
+### T2. Drop `WasmPkgClient::default()` derive and unwrap `Option<PathBuf>`
 
-`tests/tool.rs:102`, `tests/contract_tool.rs:16`, `tests/vectis_tool.rs:19` each define an identical `fn sha256_hex(path: &Path) -> String { let bytes = fs::read(path).unwrap(); format!("{:x}", Sha256::digest(&bytes)) }`. `tests/common/mod.rs` already exists for this purpose. **Delta**: −10 LOC. **Done when**: `rg "fn sha256_hex" tests/` returns exactly one match (in `tests/common/mod.rs`).
+`crates/tool/src/package.rs:110-122`. `Default` has zero callers (`rg "WasmPkgClient::default|WasmPkgClient \{ \.\.Default" crates/ src/` is empty). The single `WasmPkgClient::new(...)` site at `resolver.rs:51` always passes `Some(project_dir.to_path_buf())`. Remove `Default` and the `Option` collapses; `fetch` swaps `self.project_dir.as_deref()` for `Some(&self.project_dir)`. **Delta**: −4 LOC. **Done when**: `rg "Option<PathBuf>" crates/tool/src/package.rs` returns nothing.
 
-### T4. Drop forced `package_metadata` clone in `resolver.rs::stage_and_install`
+### T3. Hoist the duplicated lowercase-hex SHA-256 predicate
 
-After S6/S7, the field access at resolver.rs:121 (`let package_metadata = acquired.package_metadata();`) is followed by `acquired.persist_to(...)` (line 122) which consumes `acquired`. The clone is forced only because the getter clones. Pull the metadata out via destructure (`let AcquiredBytes { temp, sha256, package_metadata } = acquired;`) and pass `temp` into a free `persist_to(temp, dest)`, removing the clone. **Delta**: −1 clone, +0 LOC. **Done when**: `package_metadata` is moved exactly once on this path.
+```rust
+// crates/tool/src/cache/meta.rs:249-251
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+```
 
-### T5. Replace `ToolForm::Object`'s field-by-field destructure with `..`-spread
+```rust
+// crates/tool/src/validate.rs:107-109
+let sha256_valid = self.sha256.as_deref().is_none_or(|v| {
+    v.len() == 64 && v.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+});
+```
 
-`crates/tool/src/manifest.rs:161-175`: the `ToolForm::Object { name, version, source, sha256, permissions }` arm rebuilds a `Tool` with the same five fields. Either rename `ToolObject` to `Tool` directly (impossible without breaking `#[serde(from = "ToolForm")]`) or change the `From` impl body to `ToolForm::Object(obj) => obj.into()` with `impl From<ToolObject> for Tool` deriving `..obj`-style mapping. **Delta**: −10 LOC. **Done when**: the `ToolForm::Object` arm body is one expression.
+Hoist to `crates/tool/src/manifest.rs::looks_like_sha256_hex` next to the existing `looks_like_windows_absolute`. **Delta**: −2 LOC. **Done when**: `rg "\(b'a'\.\.=b'f'\)" crates/tool/src/` returns one match (the hoisted helper).
 
-### T6. Drop `Body.hub` (duplicates `capability_name == "hub"`)
+### T4. Drop the `debug_assert!` xor check in `src/commands/init.rs`
 
-`src/commands/init.rs:46-66` carries `hub: bool` on the JSON body alongside `capability_name`. The text renderer dispatches on `body.hub` (lines 69, 88); the JSON consumer can dispatch on `capability_name == "hub"` just as well. The CLI's wire compatibility note in `DECISIONS.md` allows additive removal pre-1.0. **Delta**: −5 LOC, −1 redundant boolean on the wire. **Done when**: `rg "body.hub|Body.*hub:" src/commands/init.rs` returns zero hits.
+```rust
+// src/commands/init.rs:26-29
+debug_assert!(
+    hub != capability.is_some(),
+    "clap enforces <capability> xor --hub; reached dispatcher with hub={hub}, capability={capability:?}",
+);
+```
 
-### T7. Trim study-citation prose from `omnia/code-reviewer` SKILL.md
+Clap enforces the xor via `#[arg(conflicts_with = ...)]`; `domain::init::run` re-validates and emits `init-requires-capability-or-hub` for any caller that bypasses clap. The dispatcher `debug_assert!` is defence in depth on top of two real defences. **Delta**: −4 LOC. **Done when**: `rg "debug_assert.*hub.*capability" src/` returns nothing; `tests/init.rs::init_requires_capability_or_hub` still asserts the diagnostic.
 
-`plugins/omnia/skills/code-reviewer/SKILL.md:22-43` opens with "Research validation: Studies show AI-generated code has **1.7× more issues than human code**…" and a six-bullet study-findings list. The skill body is 180 lines (under the 200 cap), but `docs/standards/skill-authoring.md:49` says "long-form rules, code-block examples, output templates, and edge-case enumerations belong in siblings". The justification prose burns Stage-2 token budget on every invocation. **Delta**: −22 skill-body lines. **Done when**: `wc -l plugins/omnia/skills/code-reviewer/SKILL.md` ≤ 165.
+### T5. Inline the single-call-site `path_to_env` helper in `crates/tool/src/host.rs`
+
+```rust
+// crates/tool/src/host.rs:257-265
+fn path_to_env<'a>(path: &'a Path, name: &str) -> Result<&'a str, ToolError> {
+    path.to_str().ok_or_else(|| ToolError::invalid_permission(name, format!("...")))
+}
+```
+
+Two callers (`build_wasi_ctx` lines 233 and 235), both within the same function within ten lines of the helper. The four-line ladder per call site is exactly as long as inlining the body. **Delta**: −7 LOC. **Done when**: `rg "fn path_to_env|path_to_env\(" crates/tool/src/host.rs` returns nothing.
+
+### T6. Inline `Sidecar::new` at its single call site
+
+After S1 lands, `Sidecar::new`'s argument list is still 8, so the `#[expect(clippy::too_many_arguments, ...)]` stays. But the function is constructed at exactly one site (`resolver.rs::stage_and_install`); the only behaviour beyond field-assignment is `scope_segment(scope)?`. Inline `scope_segment` at the call site, write the struct literal directly, drop `Sidecar::new` and its `#[expect]`. **Delta**: −15 LOC, −1 method, −1 lint suppression. **Done when**: `rg "fn new\(" crates/tool/src/cache/meta.rs` returns nothing.
 
 ---
 
 ## Dropped during review (with reasons)
 
-- "Promote `mod test_support` out of `lib.rs`" — would need a new module file (`crates/tool/src/test_support.rs`), forbidden by the master rule.
-- "Add `clippy::module_name_repetitions` to lift `validate.rs::path_looks_windows_absolute`" — mechanical enforcement is forbidden by the master rule.
-- "Split `crates/tool/src/host.rs` (457 LOC)" — under the 600-LOC tripwire cited in `docs/standards/coding-standards.md:213`; the cap is the rule.
-- "Combine `has_parent_segment` in `permissions.rs:169` and `validate.rs:294`" — semantics differ (`permissions.rs` also checks `Component::ParentDir`); merging would change behaviour.
-- "Add a workspace clippy lint for `pub(crate) fn foo_hex(&self) -> String { self.foo.clone() }`" — no enforceable clippy lint, < 3 occurrences.
-- "Drop `tool-host-not-built` stub `WasiRunner`" — bin pulls `host` by default so the stub is dead in this workspace, but removing it changes the public crate surface for any consumer that opts out (`specify-tool` is published). Out of scope for this pass.
-- "Trim 16-line block comment over `scaffold_wasm_pkg_config`" — comment-edit-only finding violates the master rule.
+- **"Replace `unique_temp_dir` in `crates/domain/src/init/git.rs:57-68` with `tempfile::Builder::new().tempdir()`"** — `tempfile` is not in `crates/domain`'s `Cargo.toml`; adding it is a Cargo edge that the master rule freezes for this pass.
+- **"Promote `validate_*` helpers to a single `validate_with_failures` macro"** — would add a `macro_rules!` for three call sites; not strictly smaller than the inline `Vec<String>` + `if failures.is_empty()` pattern.
+- **"Split `crates/tool/src/validate.rs` (511 LOC)"** — under the 600-line tripwire; module-split adds a new file, forbidden by the master rule.
+- **"Drop `tool-host-not-built` stub `WasiRunner`"** — same finding raised in the previous review pass and dropped for the same reason: changes the public crate surface for any consumer that builds `specify-tool` without the `host` feature.
+- **"Combine `has_parent_segment` in `permissions.rs` and `validate.rs`"** — semantics differ (`permissions.rs` also checks `Component::ParentDir` via `Path::components`); merging would change behaviour.
+- **"Trim `analyze/SKILL.md` (168 lines, well under the 200-line cap)"** — comment/prose-edit-only finding without an LOC-cap violation; master rule rejects taste-only skill trims.
+- **"Replace `out.push_str(...)` ladder in `src/commands/context/render.rs::render_document_with_fingerprint` with a single `write!` block"** — formatting-only; LOC neutral after rustfmt.
+- **"Drop the `pub use specify_tool::{Tool, ToolManifest, ...}` re-export in `crates/tool/src/lib.rs:20`"** — the binary's `commands/tool/dto.rs` reaches through this surface; removing it just moves imports without a net LOC change.
 
 ---
 
 ## Post-mortem
 
-- **S1**: actual ΔLOC −57 (vs predicted −40); `rg "with_cache_env|set_or_remove_env|restore_env" crates/tool/` flipped clean to zero hits, all 57 `specify-tool` nextests + `cargo make ci` green; one regression caught by clippy and fixed in-pass — `redundant_clone` on `source_dir.clone()` in `resolver/local.rs::local_path_rejects_non_file_and_empty_file`, latent because the old closure form forced a borrow that masked the redundant clone (calibration: future closure → RAII ports should expect the same shadow lint).
-- **S2**: actual ΔLOC −25 (vs predicted −25, exact); `rg "Stdio|with_stdio" crates/tool/src/host.rs` flipped clean to zero hits, host.rs landed at 432 lines (predicted ≈432, exact), all 4 `host::tests` + full `cargo make ci` green on first attempt; no regressions, no shadow lints — straight YAGNI removal of a single-axis test-only knob is a calibration-friendly baseline (clean predictions track when the deleted code is purely additive plumbing with no borrowing/closure entanglement).
-- **S3**: actual ΔLOC −15 (vs predicted −22); `rg "ContextBody|#\[serde\(flatten\)" src/commands/init.rs` flipped clean to zero hits, init.rs landed at 174 lines (predicted ≈167, +7 over), all 12 init nextests (incl. `init_json_format_has_stable_shape` snapshot) + full `cargo make ci` green; one shadow lint caught and fixed in-pass — `clippy::struct_excessive_bools` tripped after inlining (Body had 3 bools at the default threshold of 3; flattening `ContextBody`'s 2 more bumped it to 5), needed a 4-line `#[expect(..., reason = "wire DTO")]` attribute (which then required swapping `allow` → `expect` per the workspace `clippy::allow_attributes` policy). Calibration: any "inline a flattened DTO" port should pre-count bools on the destination struct against clippy's default-3 cap, and budget an `#[expect(...)]` block when the wire shape is sticky; do S3 + S4 together next time so the build site is touched once.
-- **S4**: actual ΔLOC −21 (vs predicted −20, near-exact); `rg "ContextGeneration" src/` flipped clean to zero hits, init.rs landed at 153 lines (174 → 153, S3 build-site touched a second time after all), all 12 init nextests (incl. `init_json_format_has_stable_shape` snapshot) + full `cargo make ci` green on first attempt; no regressions, no shadow lints — `Option<&'static str>` carried the same two-state invariant without the projection methods, and because S3 already lifted the three boolean fields onto `Body`, the build site collapsed from `let context_skip_reason = context_generation.skip_reason();` to a direct parameter. Calibration: two-state enums where one variant is "absence" reliably translate to `Option<_>` with no shadow-lint surface (unlike S3's bool-counting trap), and a paired-with finding that was deferred costs ~5 net LOC of double-touched build site — worth doing in one PR next time as predicted.
-- **S5**: actual ΔLOC −15 (vs predicted −16, near-exact); `rg "fn looks_like_windows_absolute|fn path_looks_windows_absolute" crates/tool/src/` flipped clean to exactly one match (`manifest.rs:245`), full `cargo make ci` green on first attempt; no regressions, no shadow lints — straight byte-for-byte deduplication across three sibling modules behaved exactly like S2 (single-axis removal of additive code with no closure/borrow entanglement) once the `pub(crate)` visibility bump and one rustfmt-driven multi-line `use crate::manifest::{...}` import were absorbed (the +1 over-prediction came entirely from the wrapped import line; the inline-the-wrapper site at `validate.rs:49` rustfmt'd from one line to three but that was already in the budget). Calibration: pure byte-identical-helper consolidation tracks predictions to within a line as long as you budget for rustfmt expanding any `use` import that crosses ~100 columns.
-- **S6**: actual ΔLOC −25 (vs predicted −18, +7 over); `rg "FetchedPackage" crates/tool/` flipped clean to zero hits, applied paired with S7 in one PR per S4's calibration prior, all 57 `specify-tool` nextests + full `cargo make ci` green; one shadow lint caught and fixed in-pass — `clippy::redundant_pub_crate` tripped on the moved `AcquiredBytes` because its new parent `mod package;` is *private* at the crate root (versus its old parent `pub mod resolver;`), so `pub(crate)` on the struct, three fields, and two impl methods all had to drop to plain `pub` (the +7 LOC over-prediction was absorbed by the relocated impl methods being re-written with `pub` rather than re-emitted verbatim with `pub(crate)`). Calibration: any cross-module move of a `pub(crate)` type from a `pub mod` parent to a private-mod parent should pre-swap visibility to `pub` — the enclosing private module already restricts crate-scope, and clippy enforces the simpler form.
-- **S7**: actual ΔLOC −6 (vs predicted −10, −4 under); paired with S6 so per-finding attribution is fuzzy, but the two getter methods (`sha256_hex` + `package_metadata`) were deleted cleanly, `acquired.sha256_hex()` collapsed to `acquired.sha256 != expected` inside `digest::validate` (using an `if let … && …` chain that absorbed one line below predicted), and `acquired.package_metadata()` in `stage_and_install` flipped to `acquired.package_metadata.clone()` as predicted; full `cargo make ci` green on first attempt; no regressions, no shadow lints — the done-when regex `sha256_hex|fn package_metadata` was overly broad (it also matches the unrelated `digest::sha256_hex(&[u8])` free function, which has two callsites in `resolver.rs::buffered_into_acquired` and the test `MockPackageClient`), so the *literal* pattern still returns hits while the *intended* assertion ("no `AcquiredBytes::sha256_hex` method, no `fn package_metadata` getter") flips clean. Calibration: under-prediction stems from `if let Some(_) = … && cond { … }` collapsing the 5-line "bind, compare, error" pattern by one extra line versus a 1:1 method-call substitution, and done-when regexes need word-boundary or method-call anchors (`\.sha256_hex\(|fn sha256_hex\(`) when a free-function namesake exists in the same module tree. Pairing S6+S7 cost ≈0 net LOC of double-touched build sites (versus S3/S4's ~5 LOC penalty for deferring), confirming the S4 prior that paired-with findings belong in one PR.
-- **S8**: actual ΔLOC −9 (vs predicted −6, −3 over); `rg "fn fixed_now" crates/domain/src/init*` flipped clean to exactly one match (`init.rs:173`), all 48 `specify-domain` init nextests + full `cargo make ci` green on first attempt; no regressions, no shadow lints — the over-prediction is pure free-money: hoisting `fn fixed_now` from each `mod tests` into the parent `init.rs` at `#[cfg(test)] pub(super)` scope let both `init/regular.rs::tests` and `init/hub.rs::tests` drop their now-unused `use jiff::Timestamp;` imports (the `Timestamp` was only needed to type the local `fixed_now` return); the action plan accounted for the function bodies but not the cascading import cleanup. Done-when as written (`crates/domain/src/init`) is rg-ambiguous — that path resolves to the `init/` directory only and misses `init.rs`; the *intended* assertion (one match across `init.rs` + `init/`) needs `crates/domain/src/init*` to glob both, otherwise `rg` reports zero hits and falsely suggests the function was deleted. Calibration: cross-module test-helper hoists where the helper's only type dependency is a single import reliably yield 1–2 LOC of bonus savings beyond the bare function-body delta, and done-when paths that name a Rust module need the `module*` glob (or two explicit paths) when the module is split file+dir.
-- **T1**: actual ΔLOC −8 (vs predicted −8, exact); `rg HUB_INIT_NAME crates/` flipped clean to zero hits, full `cargo make ci` green on first attempt; no regressions, no shadow lints — straight sentinel-inlining matched the prediction line-for-line because the 5-line doc comment + 1-line const + 1-line `use super::HUB_INIT_NAME;` exactly accounted for the budget, and the two literal-replacement sites (`HUB_INIT_NAME.to_string()` → `"hub".to_string()` and `assert_eq!(..., HUB_INIT_NAME)` → `assert_eq!(..., "hub")`) are LOC-neutral. Calibration: single-call-site sentinel constants where the doc comment outweighs the value reliably track to within 1 LOC.
-- **T2**: actual ΔLOC −4 (vs predicted −5, −1 under); `rg validate_shape_hub crates/domain/src/init/` flipped clean to zero hits, full `cargo make ci` green on first attempt; no regressions, no shadow lints — the trailing blank line under `validate_shape_hub()?` collapsed into the existing separator above `upsert_gitignore`, so removal was 3-line comment + 1-line call (4 lines) rather than 5. Calibration: "drop trivial validation call after empty-seed write" tidies should budget for the surrounding blank-line absorption (predict body lines ± 1).
-- **T3**: actual ΔLOC −6 (vs predicted −10, −4 under); `rg "fn sha256_hex" tests/` flipped clean to exactly one match (`tests/common/mod.rs`), full `cargo make ci` green (837 tests pass) on first attempt; no regressions, no shadow lints — the canonical helper at `tests/common/mod.rs` came with a doc comment + `# Panics` block (10-line block), versus the original 4-line bare functions; net-net the consolidation removed 18 lines (3 × 4-line fn + 3 × `use sha2::{Digest, Sha256};` + 1 `use std::path::Path` import in `tests/contract_tool.rs` that lost its sole user) but added 12 (canonical helper + sha2 use line). Calibration: shared-test-helper hoists into `tests/common/mod.rs` should price in the ≈6-LOC documentation overhead the canonical site demands (panic discipline + reuse rationale), and the predicted savings should equal `(N − 1) × bare_fn_loc − doc_overhead`, not `N × bare_fn_loc`.
-- **T4**: actual ΔLOC +5 (vs predicted +0, +5 over) and −1 forced clone as predicted; the destructure pattern moves `package_metadata` exactly once on the `stage_and_install` path, full `cargo make ci` green (after one shadow-lint fix); one regression caught by clippy and fixed in-pass — `clippy::unneeded_field_pattern` tripped on `let AcquiredBytes { temp, sha256: _, package_metadata } = acquired;` and forced a swap to `let AcquiredBytes { temp, package_metadata, .. } = acquired;` (functionally equivalent, but rustfmt-/clippy-preferred). The +5 over-prediction came from (a) writing a 4-line doc comment on the new free `persist_temp` function explaining why it is free-fn-not-method (calibration insight: any "demote method to free fn" port that crosses a public boundary picks up a "why-free?" docstring), and (b) the destructure being one line longer than the previous `acquired.persist_to(...)` call site. Calibration: `+0 LOC` for "method → free fn to dodge a clone" tidies under-counts the `pub` documentation tax; predict ≈+4 LOC of doc surface and ≈+1 LOC at the call site, then claim the −1 forced clone as the actual win.
-- **T5**: ABANDONED; `rustfmt.toml` carries `struct_lit_width = 20`, which expands any struct literal wider than 20 columns into multi-line form. Both candidate shapes — single-line `ToolForm::Object(ToolObject { name, version, source, sha256, permissions }) => Self { name, version, source, sha256, permissions }` and the `From<ToolObject> for Tool` indirection with `ToolForm::Object(obj) => obj.into()` — get re-exploded by `cargo make fmt` because `Self { … 5 fields … }` and the destructure pattern both blow past the 20-col cap. The indirection variant settled at +7 net LOC after fmt (vs. predicted −10), inverting the tidy's value proposition. Reverted via `git checkout -- crates/tool/src/manifest.rs`. Done-when ("the `ToolForm::Object` arm body is one expression") *would* have flipped clean under the indirection, but only by paying +17 LOC in a new impl. Calibration: tidies that compress destructure-and-rebuild blocks against a tight-formatter rule (`struct_lit_width = 20`, `use_small_heuristics = "Max"` notwithstanding) need the rustfmt config inspected up front — predict +N LOC, not −N, when the destination shape exceeds the width threshold; future "compress field-by-field destructure" reviews on this workspace should include `cat rustfmt.toml | rg struct_lit_width` as a precondition.
-- **T6**: actual ΔLOC −1 (vs predicted −5, −4 under, after a mid-pass trim); `rg "body\.hub|Body.*hub:" src/commands/init.rs` flipped clean to zero hits, all 12 init nextests (incl. `init_hub_writes_canonical_on_disk_shape` which now asserts on `capability-name == "hub"` directly) + full `cargo make ci` green; no regressions, no shadow lints — the first-pass attempt added an `is_hub()` method on `Body` (5 lines) and a 3-line doc-comment expansion on `capability_name`, producing +5 net LOC; trimming to a single `let hub = body.capability_name == "hub";` binding inside `write_text` and a 2-line doc comment hit −1 net (still under predicted −5 because the test had to grow by 2 lines: the previous one-line `assert_eq!(value["hub"], true, …)` became a 4-line assertion on `capability-name` since the existing assertion was already covering that field). Calibration: "drop a redundant boolean wire field that has a textual cousin" tidies should anticipate (a) a cluster of doc-comment cleanup (the removed field's rationale prose tends to creep onto the surviving field) and (b) test-side migration to a slightly more verbose assertion when the surviving field already had its own assertion line.
-- **T7**: actual ΔLOC −22 (vs predicted −22 lines, exact); `wc -l plugins/omnia/skills/code-reviewer/SKILL.md` is 163 (predicted ≤ 165), `make checks` in `augentic/specify` would pass the predicate suite if not for one *pre-existing* failure (`docs/explanation/tool-declarations.md:115` RFC citation, confirmed unrelated by `git stash`); no regressions to skill body discipline — the 21-line study-citation block + section header (`## Overview` then `**Research validation**` and `### Why code review?` subsection) compressed into one final-paragraph sentence keeping the auto-fix / educational-feedback framing, with the [CodeRabbit study link](https://www.coderabbit.ai/blog/state-of-ai-vs-human-code-generation-report) preserved in the existing **Reference documentation** list per `docs/standards/skill-authoring.md:49`. Calibration: skill-body trims that compress a justification-prose block (study findings, "why" sections, marketing-style validation) into one sentence + a reference link consistently land within ±1 of the predicted line count when the reference list already exists; the win is freed Stage-2 token budget on every invocation rather than the LOC.
+- **S1**: predicted −50 LOC, actual **−72 LOC** (30 insertions, 102 deletions across 8 files); done-when flipped clean (`rg "struct (PackageSnapshot|OciSnapshot|PermissionsSnapshot)|impl From<&(PackageMetadata|ToolPermissions)>" crates/tool/src/` empty; 837/837 workspace tests green including `cache_miss_hit_and_override_observable`, `package_source_uses_injected_client_and_records_metadata`, `contract_tool`, `vectis_tool`); no regressions. Calibration: prediction undercounted by ~22 LOC because the doc-comments on the deleted `///`-prefixed snapshot fields and the schema-file collapse weren't in the LOC envelope; also pre-empted the prior-session `private_interfaces` trap by adding `pub use package::PackageMetadata` to `lib.rs` in the same edit (the action list didn't call this out, so future S-grade collapses that surface a private-mod type via a pub struct field should pre-add the re-export).

@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::*;
-use crate::manifest::ToolScope;
+use crate::manifest::{ToolPermissions, ToolScope};
 use crate::test_support::{EnvGuard, env_lock, scratch_dir};
 
 fn project_scope() -> ToolScope {
@@ -25,7 +25,7 @@ fn fixed_sidecar(scope: &ToolScope, name: &str, version: &str, source: &str) -> 
         name,
         version,
         source,
-        PermissionsSnapshot {
+        ToolPermissions {
             read: vec!["$PROJECT_DIR/contracts".to_string()],
             write: Vec::new(),
         },
