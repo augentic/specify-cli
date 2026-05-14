@@ -81,10 +81,18 @@ unused_qualifications = "warn"
 
 [workspace.lints.clippy]
 # https://doc.rust-lang.org/stable/clippy/index.html
-all = "warn"
-cargo = "warn"
-nursery = "warn"
-pedantic = "warn"
+# Groups carry priority = -1 so individual lints below can override them.
+all = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+
+# The `cargo` group's `multiple_crate_versions` lint is the wrong signal in a
+# workspace this size: transitive duplicates accrete from upstream crates we do
+# not control (windows-sys generations, wasmparser/wit-* cycles, rand v0.8/0.9),
+# and the ratchet allowlist that used to live in `clippy.toml` grew without ever
+# shrinking. A quarterly `cargo tree --duplicates` audit is the cheaper signal.
+multiple_crate_versions = "allow"
 
 # Cherry-picked lints are from the `restriction` lint group in order to drive up
 # consistency, quality, and brevity
