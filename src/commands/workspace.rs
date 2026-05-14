@@ -46,10 +46,7 @@ pub fn status(ctx: &Ctx, projects: &[String]) -> Result<()> {
             if !projects.is_empty() {
                 return Err(registry_missing());
             }
-            StatusBody::Absent {
-                registry: None,
-                slots: None,
-            }
+            StatusBody::Absent {}
         }
         Some(registry) => {
             let selected = registry.select(projects)?;
@@ -180,8 +177,12 @@ fn write_sync_text(w: &mut dyn Write, body: &SyncBody) -> std::io::Result<()> {
 
 #[derive(Serialize)]
 #[serde(untagged, rename_all = "kebab-case")]
+#[expect(
+    clippy::empty_enum_variants_with_brackets,
+    reason = "keep `Absent` as `{}` on the wire, not `null`"
+)]
 enum StatusBody {
-    Absent { registry: Option<Registry>, slots: Option<Vec<SlotStatus>> },
+    Absent {},
     Present { slots: Vec<SlotStatus> },
 }
 

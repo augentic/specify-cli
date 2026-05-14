@@ -27,7 +27,7 @@ fn resolve(ctx: &Ctx) -> Result<ResolvedCodex> {
 
 fn list(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
-    let rules: Vec<_> = codex.rules.iter().map(RuleView::summary).collect();
+    let rules: Vec<_> = codex.rules.iter().map(|r| RuleView::build(r, false)).collect();
     ctx.write(
         &ListBody {
             rule_count: rules.len(),
@@ -52,7 +52,7 @@ fn show(ctx: &Ctx, rule_id: &str) -> Result<()> {
 
     ctx.write(
         &ShowBody {
-            rule: RuleView::full(resolved),
+            rule: RuleView::build(resolved, true),
         },
         write_show_text,
     )?;
@@ -89,7 +89,7 @@ fn validate(ctx: &Ctx) -> Result<()> {
 
 fn export(ctx: &Ctx) -> Result<()> {
     let codex = resolve(ctx)?;
-    let rules: Vec<_> = codex.rules.iter().map(RuleView::full).collect();
+    let rules: Vec<_> = codex.rules.iter().map(|r| RuleView::build(r, true)).collect();
     ctx.write(
         &ExportBody {
             rule_count: rules.len(),
@@ -179,14 +179,6 @@ struct RuleView<'a> {
 }
 
 impl<'a> RuleView<'a> {
-    fn summary(resolved: &'a ResolvedCodexRule) -> Self {
-        Self::build(resolved, false)
-    }
-
-    fn full(resolved: &'a ResolvedCodexRule) -> Self {
-        Self::build(resolved, true)
-    }
-
     fn build(resolved: &'a ResolvedCodexRule, with_body: bool) -> Self {
         let rule = &resolved.rule;
         let frontmatter = &rule.frontmatter;
