@@ -333,7 +333,10 @@ mod tests {
     /// `~/.config/wasm-pkg/config.toml` and surprise the assertions.
     fn isolate_global_config_dir(label: &str) -> (PathBuf, [EnvGuard; 2]) {
         let home = scratch_dir(label);
-        let guards = [EnvGuard::set("HOME", &home), EnvGuard::set("XDG_CONFIG_HOME", &home)];
+        let guards = [
+            EnvGuard::scoped("HOME", Some(&home)),
+            EnvGuard::scoped("XDG_CONFIG_HOME", Some(&home)),
+        ];
         (home, guards)
     }
 
@@ -341,7 +344,7 @@ mod tests {
     fn embedded_default_injects_first_party_namespace() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-embedded-default");
-        let _wkg = EnvGuard::unset("WKG_CONFIG");
+        let _wkg = EnvGuard::scoped("WKG_CONFIG", None);
 
         let package = package_ref();
         let runtime =
@@ -355,7 +358,7 @@ mod tests {
     fn embedded_default_skipped_for_other_namespaces() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-embedded-other");
-        let _wkg = EnvGuard::unset("WKG_CONFIG");
+        let _wkg = EnvGuard::scoped("WKG_CONFIG", None);
 
         let package = third_party_ref();
         let runtime =
@@ -372,7 +375,7 @@ mod tests {
     fn project_local_config_overrides_embedded_default() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-project-config-home");
-        let _wkg = EnvGuard::unset("WKG_CONFIG");
+        let _wkg = EnvGuard::scoped("WKG_CONFIG", None);
 
         let project = scratch_dir("package-project-config");
         fs::create_dir_all(project.join(".specify")).expect("create .specify");
@@ -408,7 +411,7 @@ mod tests {
         let wkg_config = project.join("wkg-override.toml");
         fs::write(&wkg_config, "[namespace_registries]\nspecify = \"override.example.com\"\n")
             .expect("write wkg override");
-        let _wkg = EnvGuard::set("WKG_CONFIG", &wkg_config);
+        let _wkg = EnvGuard::scoped("WKG_CONFIG", Some(&wkg_config));
 
         let package = package_ref();
         let runtime =
@@ -424,7 +427,7 @@ mod tests {
     fn missing_project_config_is_silently_skipped() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-missing-project-home");
-        let _wkg = EnvGuard::unset("WKG_CONFIG");
+        let _wkg = EnvGuard::scoped("WKG_CONFIG", None);
 
         let project = scratch_dir("package-missing-project-config");
         // Intentionally do not create `.specify/wasm-pkg.toml`.

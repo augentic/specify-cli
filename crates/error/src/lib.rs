@@ -35,16 +35,12 @@ pub fn is_kebab(s: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::is_kebab;
-
-    #[test]
-    fn is_kebab_accepts_and_rejects() {
-        for ok in ["a", "abc", "alpha-gateway", "x-1", "a1-b2"] {
-            assert!(is_kebab(ok), "expected `{ok}` to pass");
-        }
-        for bad in ["", "-a", "a-", "a--b", "A", "alpha_gateway", "alpha gateway"] {
-            assert!(!is_kebab(bad), "expected `{bad}` to fail");
-        }
+#[test]
+fn is_kebab_accepts_and_rejects() {
+    for ok in ["a", "abc", "alpha-gateway", "x-1", "a1-b2"] {
+        assert!(is_kebab(ok), "expected `{ok}` to pass");
+    }
+    for bad in ["", "-a", "a-", "a--b", "A", "alpha_gateway", "alpha gateway"] {
+        assert!(!is_kebab(bad), "expected `{bad}` to fail");
     }
 }

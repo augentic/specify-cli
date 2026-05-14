@@ -129,7 +129,7 @@ pub struct ErrorBody<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) results: Option<&'a [ValidationSummary]>,
     #[serde(skip)]
-    hint_source: &'a Error,
+    hint: Option<&'static str>,
 }
 
 impl<'a> From<&'a Error> for ErrorBody<'a> {
@@ -143,14 +143,14 @@ impl<'a> From<&'a Error> for ErrorBody<'a> {
             message: err.to_string(),
             exit_code: Exit::from(err).code(),
             results,
-            hint_source: err,
+            hint: err.hint(),
         }
     }
 }
 
 fn write_error_text(w: &mut dyn Write, body: &ErrorBody<'_>) -> std::io::Result<()> {
     writeln!(w, "error: {}", body.message)?;
-    if let Some(hint) = body.hint_source.hint() {
+    if let Some(hint) = body.hint {
         writeln!(w, "hint: {hint}")?;
     }
     Ok(())

@@ -192,42 +192,20 @@ mod tests {
         write_source,
     };
 
-    struct MockPackageClient {
-        bytes: &'static [u8],
-        calls: Cell<u32>,
-    }
+    /// Wraps a closure so tests can stand in for `PackageClient` without
+    /// declaring a struct per scenario.
+    struct ClosurePackageClient<F>(F)
+    where
+        F: Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ToolError>;
 
-    impl MockPackageClient {
-        fn new(bytes: &'static [u8]) -> Self {
-            Self {
-                bytes,
-                calls: Cell::new(0),
-            }
-        }
-    }
-
-    impl PackageClient for MockPackageClient {
+    impl<F> PackageClient for ClosurePackageClient<F>
+    where
+        F: Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ToolError>,
+    {
         fn fetch(
             &self, request: &PackageRequest, dest_hint: &Path,
         ) -> Result<AcquiredBytes, ToolError> {
-            self.calls.set(self.calls.get() + 1);
-            let parent = dest_hint.parent().expect("dest hint has parent");
-            fs::create_dir_all(parent).expect("create mock package temp parent");
-            let mut temp = NamedTempFile::new_in(parent).expect("create mock package tempfile");
-            temp.write_all(self.bytes).expect("write mock package bytes");
-            Ok(AcquiredBytes {
-                temp,
-                sha256: digest::sha256_hex(self.bytes),
-                package_metadata: Some(PackageMetadata {
-                    name: request.name_ref(),
-                    version: request.version.clone(),
-                    registry: "augentic.io".to_string(),
-                    oci_reference: Some(format!(
-                        "ghcr.io/augentic/specify/{}:{}",
-                        request.name, request.version
-                    )),
-                }),
-            })
+            (self.0)(request, dest_hint)
         }
     }
 
@@ -292,14 +270,36 @@ mod tests {
             version: "1.0.0".to_string(),
         };
         let declared = tool(ToolSource::Package(package), None);
-        let client = MockPackageClient::new(b"package-bytes");
+
+        let bytes: &[u8] = b"package-bytes";
+        let calls = Cell::new(0_u32);
+        let client = ClosurePackageClient(|request: &PackageRequest, dest_hint: &Path| {
+            calls.set(calls.get() + 1);
+            let parent = dest_hint.parent().expect("dest hint has parent");
+            fs::create_dir_all(parent).expect("create mock package temp parent");
+            let mut temp = NamedTempFile::new_in(parent).expect("create mock package tempfile");
+            temp.write_all(bytes).expect("write mock package bytes");
+            Ok(AcquiredBytes {
+                temp,
+                sha256: digest::sha256_hex(bytes),
+                package_metadata: Some(PackageMetadata {
+                    name: request.name_ref(),
+                    version: request.version.clone(),
+                    registry: "augentic.io".to_string(),
+                    oci_reference: Some(format!(
+                        "ghcr.io/augentic/specify/{}:{}",
+                        request.name, request.version
+                    )),
+                }),
+            })
+        });
 
         let _env = cache_env(&cache_dir);
 
         let resolved =
             resolve_with(&scope, &declared, fixed_now(), &client).expect("package resolves");
         assert_eq!(fs::read(resolved.bytes_path).expect("cached bytes"), b"package-bytes");
-        assert_eq!(client.calls.get(), 1);
+        assert_eq!(calls.get(), 1);
 
         let sidecar = cache::read_sidecar(
             &cache::sidecar_path(&scope, &declared.name, &declared.version).expect("sidecar path"),
@@ -315,6 +315,6 @@ mod tests {
         );
 
         resolve_with(&scope, &declared, fixed_now(), &client).expect("package cache hit resolves");
-        assert_eq!(client.calls.get(), 1, "cache hit must not fetch package again");
+        assert_eq!(calls.get(), 1, "cache hit must not fetch package again");
     }
 }
