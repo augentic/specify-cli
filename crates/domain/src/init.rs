@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use specify_error::Error;
+use specify_tool::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};
 
 use crate::config::{Layout, ProjectConfig};
 
@@ -71,6 +72,11 @@ pub struct InitResult {
     pub scaffolded_rule_keys: Vec<String>,
     /// The `specify_version` value written into `project.yaml`.
     pub specify_version: String,
+    /// `true` when this run wrote `.specify/wasm-pkg.toml` for the
+    /// first time; `false` when an operator-edited file was preserved.
+    /// Lets the JSON envelope distinguish a fresh scaffold from a
+    /// re-init that left registry config intact.
+    pub wasm_pkg_config_written: bool,
 }
 
 /// Initialise `.specify/` inside `opts.project_dir`.
@@ -134,6 +140,33 @@ pub(crate) fn resolve_version(project_dir: &Path, mode: VersionMode) -> Result<S
 
 pub(crate) fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
     crate::registry::ensure_specify_gitignore_entries(project_dir)
+}
+
+/// Scaffold the project-local wasm-pkg config when absent, preserving
+/// any operator-edited file byte-for-byte on re-init.
+///
+/// The contents are the canonical RFC-17 mapping
+/// (`specify -> augentic.io`); see
+/// [`specify_tool::DEFAULT_WASM_PKG_CONFIG`]. Operators are expected
+/// to edit this file to add private mirrors or other namespace
+/// mappings, so a re-init must never clobber their changes.
+///
+/// Returns `Ok(true)` when this call wrote the file, `Ok(false)` when
+/// it already existed.
+///
+/// # Errors
+///
+/// Propagates filesystem errors from creating `.specify/` or writing
+/// the file.
+pub(crate) fn scaffold_wasm_pkg_config(layout: &Layout<'_>) -> Result<bool, Error> {
+    let specify_dir = layout.specify_dir();
+    let path = specify_dir.join(WASM_PKG_CONFIG_FILENAME);
+    if path.exists() {
+        return Ok(false);
+    }
+    fs::create_dir_all(&specify_dir)?;
+    fs::write(&path, DEFAULT_WASM_PKG_CONFIG)?;
+    Ok(true)
 }
 
 #[cfg(test)]

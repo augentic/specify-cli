@@ -37,14 +37,23 @@ pub struct ResolvedTool {
 /// `now` records the sidecar `fetched_at`; the dispatcher passes
 /// `Timestamp::now`, tests pin a deterministic stamp.
 ///
+/// `project_dir` is used to discover the project-local
+/// `.specify/wasm-pkg.toml` (when present) so package fetches inherit
+/// the project's namespace overrides without an env var.
+///
 /// # Errors
 ///
 /// Returns cache errors, source read errors, digest mismatches, or typed network
 /// resolver errors.
 pub fn resolve(
-    scope: &ToolScope, tool: &Tool, now: jiff::Timestamp,
+    scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, project_dir: &Path,
 ) -> Result<ResolvedTool, ToolError> {
-    resolve_with(scope, tool, now, &WasmPkgClient)
+    resolve_with(
+        scope,
+        tool,
+        now,
+        &WasmPkgClient::new(Some(project_dir.to_path_buf())),
+    )
 }
 
 /// Resolve a declared tool using an injected package client.
@@ -275,6 +284,7 @@ mod tests {
     #[test]
     fn local_path_cache_miss_hit_and_source_change() {
         let cache_dir = scratch_dir("resolver-local-cache");
+        let project_dir = scratch_dir("resolver-local-project");
         let source_dir = scratch_dir("resolver-local-source");
         let first = write_source(&source_dir, "first.wasm", b"first");
         let second = write_source(&source_dir, "second.wasm", b"second");
@@ -282,17 +292,19 @@ mod tests {
         let first_tool = tool(ToolSource::LocalPath(first.clone()), None);
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let resolved = resolve(&scope, &first_tool, fixed_now()).expect("cache miss resolves");
+            let resolved =
+                resolve(&scope, &first_tool, fixed_now(), &project_dir).expect("cache miss resolves");
             assert_eq!(fs::read(&resolved.bytes_path).expect("cached bytes"), b"first");
 
             fs::write(&first, b"changed-at-source").expect("mutate source");
-            let hit = resolve(&scope, &first_tool, fixed_now()).expect("cache hit resolves");
+            let hit = resolve(&scope, &first_tool, fixed_now(), &project_dir)
+                .expect("cache hit resolves");
             assert_eq!(hit.bytes_path, resolved.bytes_path);
             assert_eq!(cached_bytes(&scope, &first_tool), b"first");
 
             let changed_tool = tool(ToolSource::LocalPath(second), None);
-            let changed =
-                resolve(&scope, &changed_tool, fixed_now()).expect("changed source re-stages");
+            let changed = resolve(&scope, &changed_tool, fixed_now(), &project_dir)
+                .expect("changed source re-stages");
             assert_eq!(changed.bytes_path, resolved.bytes_path);
             assert_eq!(cached_bytes(&scope, &changed_tool), b"second");
         });
@@ -301,6 +313,7 @@ mod tests {
     #[test]
     fn project_and_capability_scopes_have_isolated_cache_dirs() {
         let cache_dir = scratch_dir("resolver-scope-cache");
+        let project_dir = scratch_dir("resolver-scope-project");
         let source_dir = scratch_dir("resolver-scope-source");
         let capability_dir = scratch_dir("resolver-capability");
         let source = write_source(&source_dir, "module.wasm", b"same");
@@ -310,9 +323,9 @@ mod tests {
 
         with_cache_env(Some(&cache_dir), None, None, || {
             let project_resolved =
-                resolve(&project, &declared, fixed_now()).expect("project resolve");
-            let capability_resolved =
-                resolve(&capability, &declared, fixed_now()).expect("capability resolve");
+                resolve(&project, &declared, fixed_now(), &project_dir).expect("project resolve");
+            let capability_resolved = resolve(&capability, &declared, fixed_now(), &project_dir)
+                .expect("capability resolve");
             assert_ne!(project_resolved.bytes_path, capability_resolved.bytes_path);
             assert!(project_resolved.bytes_path.to_string_lossy().contains("project--demo"));
             assert!(

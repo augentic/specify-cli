@@ -19,6 +19,11 @@ the project will use. The CLI writes:
 
 - `project.yaml` (capability identifier, `specify_version` floor).
 - `.specify/` (slices, archive, plans, cache, workspace, plan.lock).
+- `.specify/wasm-pkg.toml` — project-local wasm-pkg registry config,
+  prefilled with the canonical `specify -> augentic.io` namespace
+  mapping. Edit it to point first-party tool fetches at an internal
+  mirror or to register additional namespaces. The file is checked
+  in; re-running `init` never overwrites operator edits.
 
 ## Platform hub — `specify init --hub`
 
@@ -29,7 +34,10 @@ specify init --hub --name <hub-name>
 A hub is a registry-only project: it owns `registry.yaml` and the
 cross-repo workspace, but does not itself host capability artifacts.
 Use this for the platform repo that orchestrates a fleet of capability
-projects.
+projects. Hub init also writes `.specify/wasm-pkg.toml` so hub
+operators can publish or pull packages with `wkg --config
+.specify/wasm-pkg.toml` against the same registry config the runtime
+honours.
 
 ## Why the two shapes are exclusive
 

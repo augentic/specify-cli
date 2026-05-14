@@ -53,6 +53,10 @@ struct Body {
     directories_created: Vec<String>,
     scaffolded_rule_keys: Vec<String>,
     specify_version: String,
+    /// `true` when this run scaffolded `.specify/wasm-pkg.toml`. Stays
+    /// `false` on re-init so consumers can distinguish a fresh write
+    /// from a preserved operator-edited file.
+    wasm_pkg_config_written: bool,
     /// `true` when this init scaffolded a registry-only platform hub.
     /// Always present so consumers can distinguish hub from regular
     /// initialisations without parsing the capability name.
@@ -74,6 +78,9 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
         writeln!(w, "  directories created: {}", body.directories_created.join(", "))?;
     }
     writeln!(w, "  specify_version: {}", body.specify_version)?;
+    if body.wasm_pkg_config_written {
+        writeln!(w, "  wrote .specify/wasm-pkg.toml (edit to add registry mappings)")?;
+    }
     if body.context.skipped && body.context.skip_reason == Some("existing-agents-md") {
         writeln!(w, "AGENTS.md already present; skipping context generate")?;
     }
@@ -122,6 +129,7 @@ fn emit_init_result(
         directories_created: result.directories_created.iter().map(|p| canonical(p)).collect(),
         scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
         specify_version: result.specify_version.clone(),
+        wasm_pkg_config_written: result.wasm_pkg_config_written,
         hub,
         context: ContextBody::from(context_generation),
     };

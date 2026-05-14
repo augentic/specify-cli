@@ -71,6 +71,7 @@ mod tests {
     #[test]
     fn digest_mismatch_fails_before_install_and_preserves_previous_cache() {
         let cache_dir = scratch_dir("resolver-digest-cache");
+        let project_dir = scratch_dir("resolver-digest-project");
         let source_dir = scratch_dir("resolver-digest-source");
         let old_source = write_source(&source_dir, "old.wasm", b"old-good");
         let new_source = write_source(&source_dir, "new.wasm", b"new-good");
@@ -82,15 +83,16 @@ mod tests {
         let wrong_tool = tool(ToolSource::LocalPath(new_source.clone()), Some(wrong_sha));
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            resolve(&scope, &old_tool, fixed_now()).expect("initial digest install");
-            let err =
-                resolve(&scope, &wrong_tool, fixed_now()).expect_err("wrong digest must fail");
+            resolve(&scope, &old_tool, fixed_now(), &project_dir).expect("initial digest install");
+            let err = resolve(&scope, &wrong_tool, fixed_now(), &project_dir)
+                .expect_err("wrong digest must fail");
             assert!(matches!(err, ToolError::DigestMismatch { .. }), "{err}");
             assert_eq!(cached_bytes(&scope, &old_tool), b"old-good");
 
             let correct_tool =
                 tool(ToolSource::LocalPath(new_source), Some(sha256_hex(b"new-good")));
-            resolve(&scope, &correct_tool, fixed_now()).expect("correct digest updates cache");
+            resolve(&scope, &correct_tool, fixed_now(), &project_dir)
+                .expect("correct digest updates cache");
             assert_eq!(cached_bytes(&scope, &correct_tool), b"new-good");
         });
     }
@@ -98,16 +100,18 @@ mod tests {
     #[test]
     fn cached_bytes_are_rehashed_on_digest_pinned_hit() {
         let cache_dir = scratch_dir("resolver-hit-digest-cache");
+        let project_dir = scratch_dir("resolver-hit-digest-project");
         let source_dir = scratch_dir("resolver-hit-digest-source");
         let source = write_source(&source_dir, "module.wasm", b"trusted");
         let scope = project_scope();
         let pinned = tool(ToolSource::LocalPath(source), Some(sha256_hex(b"trusted")));
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let resolved = resolve(&scope, &pinned, fixed_now()).expect("install pinned");
+            let resolved =
+                resolve(&scope, &pinned, fixed_now(), &project_dir).expect("install pinned");
             corrupt_cached_module(&resolved.bytes_path, b"corrupt");
-            let repaired =
-                resolve(&scope, &pinned, fixed_now()).expect("digest mismatch re-fetches");
+            let repaired = resolve(&scope, &pinned, fixed_now(), &project_dir)
+                .expect("digest mismatch re-fetches");
             assert_eq!(repaired.bytes_path, resolved.bytes_path);
             assert_eq!(fs::read(repaired.bytes_path).expect("repaired bytes"), b"trusted");
         });

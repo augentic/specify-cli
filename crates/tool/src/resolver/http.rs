@@ -201,11 +201,13 @@ mod tests {
     #[test]
     fn http_sources_are_rejected_before_network_access() {
         let cache_dir = scratch_dir("resolver-http-cache");
+        let project_dir = scratch_dir("resolver-http-project");
         let scope = project_scope();
         let declared = tool(ToolSource::HttpsUri("http://127.0.0.1/tool.wasm".to_string()), None);
 
         with_cache_env(Some(&cache_dir), None, None, || {
-            let err = resolve(&scope, &declared, fixed_now()).expect_err("http must be rejected");
+            let err = resolve(&scope, &declared, fixed_now(), &project_dir)
+                .expect_err("http must be rejected");
             assert!(matches!(err, ToolError::InvalidSource { .. }), "{err}");
         });
     }

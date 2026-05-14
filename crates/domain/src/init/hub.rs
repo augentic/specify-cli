@@ -10,7 +10,10 @@ use specify_error::{Error, is_kebab};
 
 use crate::capability::CacheMeta;
 use crate::config::{Layout, ProjectConfig};
-use crate::init::{InitOptions, InitResult, resolve_version, resolved_name, upsert_gitignore};
+use crate::init::{
+    InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
+    upsert_gitignore,
+};
 use crate::registry::Registry;
 
 /// Sentinel value reported in [`InitResult::capability_name`] for hub
@@ -100,6 +103,8 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let serialised = serde_saphyr::to_string(&cfg)?;
     fs::write(&config_path, serialised)?;
 
+    let wasm_pkg_config_written = scaffold_wasm_pkg_config(&layout)?;
+
     let registry = Registry {
         version: 1,
         projects: Vec::new(),
@@ -123,6 +128,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         directories_created,
         scaffolded_rule_keys: Vec::new(),
         specify_version,
+        wasm_pkg_config_written,
     })
 }
 
@@ -237,6 +243,19 @@ mod tests {
         }
         let on_disk = fs::read_to_string(tmp.path().join(".specify/project.yaml")).unwrap();
         assert_eq!(on_disk, "name: existing\ncapability: omnia\n");
+    }
+
+    #[test]
+    fn hub_init_writes_default_wasm_pkg_config() {
+        let tmp = tempdir().unwrap();
+        let result = init(hub_opts(tmp.path(), "platform-hub"), fixed_now()).expect("hub init ok");
+
+        assert!(result.wasm_pkg_config_written, "fresh hub init must write the file");
+        let path = tmp.path().join(".specify/wasm-pkg.toml");
+        assert!(path.is_file(), "wasm-pkg.toml must exist after hub init");
+        let contents = fs::read_to_string(&path).expect("read wasm-pkg.toml");
+        assert!(contents.contains("default_registry = \"augentic.io\""));
+        assert!(contents.contains("specify = \"augentic.io\""));
     }
 
     #[test]
