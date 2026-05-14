@@ -25,10 +25,11 @@ fn check(ctx: &Ctx) -> Result<()> {
     if compatible {
         Ok(())
     } else {
-        Err(Error::Diag {
-            code: "compatibility-check-failed",
-            detail: "cross-project contracts are not all compatible".to_string(),
-        })
+        Err(Error::validation_failed(
+            "compatibility-check-failed",
+            "cross-project contracts must be compatible",
+            "review the compatibility report on stdout for the offending pairs",
+        ))
     }
 }
 

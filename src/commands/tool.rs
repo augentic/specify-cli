@@ -87,9 +87,12 @@ fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {
 }
 
 fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool> {
-    inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| Error::Diag {
-        code: "tool-not-declared",
-        detail: format!("tool not declared: {name}"),
+    inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| {
+        Error::validation_failed(
+            "tool-not-declared",
+            "tool must be declared in tools.yaml",
+            format!("tool not declared: {name}"),
+        )
     })
 }
 

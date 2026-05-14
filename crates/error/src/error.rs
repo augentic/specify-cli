@@ -2,7 +2,7 @@
 //! tables live in [`crate::display`]; the YAML wrapper behind `Yaml`
 //! lives in [`crate::yaml`].
 
-use crate::validation::Summary as ValidationSummary;
+use crate::validation::{Status as ValidationStatus, Summary as ValidationSummary};
 use crate::yaml::YamlError;
 
 /// Structured error type for all `specify-*` crates.
@@ -134,6 +134,29 @@ pub enum Error {
     /// A YAML serialization or deserialization error.
     #[error(transparent)]
     Yaml(#[from] YamlError),
+}
+
+impl Error {
+    /// Build a single-finding `Validation` failure. Use at sites that
+    /// previously routed through `Error::Diag` to land on `Exit::ValidationFailed`:
+    /// the kebab `rule_id` becomes the wire-visible discriminant inside
+    /// the `results[]` array, and `Exit::from(&Error)` matches on the
+    /// `Validation` variant rather than a magic code list. Compose
+    /// multi-finding payloads with `Error::Validation { results }`
+    /// directly.
+    #[must_use]
+    pub fn validation_failed(
+        rule_id: impl Into<String>, rule: impl Into<String>, detail: impl Into<String>,
+    ) -> Self {
+        Self::Validation {
+            results: vec![ValidationSummary {
+                status: ValidationStatus::Fail,
+                rule_id: rule_id.into(),
+                rule: rule.into(),
+                detail: Some(detail.into()),
+            }],
+        }
+    }
 }
 
 impl From<serde_saphyr::Error> for Error {

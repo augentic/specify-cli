@@ -175,11 +175,16 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
         .failure();
     assert_eq!(denied_value.get_output().status.code(), Some(2));
     let denied_json = parse_json(&denied_value.get_output().stderr);
-    assert_eq!(denied_json["error"], "tool-permission-denied", "{denied_json}");
+    assert_eq!(denied_json["error"], "validation", "{denied_json}");
+    let results = denied_json["results"].as_array().expect("validation results array");
+    let denied_row = results
+        .iter()
+        .find(|row| row["rule-id"] == "tool-permission-denied")
+        .unwrap_or_else(|| panic!("expected tool-permission-denied row in {denied_json}"));
     assert!(
-        denied_json["message"]
+        denied_row["detail"]
             .as_str()
-            .expect("denied message")
+            .expect("denied detail")
             .contains("escapes PROJECT_DIR/CAPABILITY_DIR"),
         "{denied_json}"
     );

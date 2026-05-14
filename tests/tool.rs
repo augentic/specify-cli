@@ -506,7 +506,7 @@ fn denied_fs_and_lifecycle_fail_before_guest() {
     write_project_manifest(&project, &project_manifest(&denied));
 
     let value = run_json_failure(&project, &cache, &["tool", "run", "read-only"], 2);
-    assert_eq!(value["error"], "tool-permission-denied", "{value}");
+    assert_validation_rule(&value, "tool-permission-denied");
 
     let lifecycle = tool_entry(
         "read-write",

@@ -109,11 +109,11 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         write_plan_validate_text,
     )?;
     if has_errors {
-        Err(Error::Diag {
-            code: "plan-structural-errors",
-            detail: "plan has structural errors; run 'specify change plan validate' for detail"
-                .to_string(),
-        })
+        Err(Error::validation_failed(
+            "plan-structural-errors",
+            "plan must be free of structural errors",
+            "run 'specify change plan validate' for detail",
+        ))
     } else {
         Ok(())
     }
@@ -126,11 +126,11 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 
     let results = plan.validate(Some(&slices_dir), None);
     if results.iter().any(|r| matches!(r.level, Severity::Error)) {
-        return Err(Error::Diag {
-            code: "plan-structural-errors",
-            detail: "plan has structural errors; run 'specify change plan validate' for detail"
-                .to_string(),
-        });
+        return Err(Error::validation_failed(
+            "plan-structural-errors",
+            "plan must be free of structural errors",
+            "run 'specify change plan validate' for detail",
+        ));
     }
 
     let body = if let Some(active) = plan.entries.iter().find(|c| c.status == Status::InProgress) {

@@ -61,23 +61,6 @@ impl From<&Error> for Exit {
         match err {
             Error::CliTooOld { .. } => Self::VersionTooOld,
             Error::Validation { .. } => Self::ValidationFailed,
-            // Diag-routed siblings of the typed validation cluster.
-            // Their typed variants collapsed to `Diag` but their exit
-            // slot stays exit 2 — the kebab `code` is the wire contract
-            // and skills branch on it.
-            Error::Diag { code, .. }
-                if matches!(
-                    *code,
-                    "plan-structural-errors"
-                        | "compatibility-check-failed"
-                        | "capability-check-failed"
-                        | "slice-validation-failed"
-                        | "tool-permission-denied"
-                        | "tool-not-declared"
-                ) =>
-            {
-                Self::ValidationFailed
-            }
             Error::Argument { .. } => Self::ArgumentError,
             _ => Self::GenericFailure,
         }

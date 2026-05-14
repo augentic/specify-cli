@@ -249,19 +249,25 @@ impl ToolError {
 
 impl From<ToolError> for specify_error::Error {
     fn from(value: ToolError) -> Self {
-        let code: &'static str = match &value {
-            ToolError::Diag { code, .. } => code,
-            ToolError::ToolNotDeclared { .. } => "tool-not-declared",
-            ToolError::Runtime(_) => "tool-runtime",
-            ToolError::InvalidPermission { .. } | ToolError::PermissionDenied { .. } => {
-                "tool-permission-denied"
+        match value {
+            ToolError::Diag { code, detail } => Self::Diag { code, detail },
+            ToolError::Runtime(detail) => Self::Diag { code: "tool-runtime", detail },
+            err @ ToolError::ToolNotDeclared { .. } => Self::validation_failed(
+                "tool-not-declared",
+                "tool must be declared in tools.yaml",
+                err.to_string(),
+            ),
+            err @ (ToolError::InvalidPermission { .. } | ToolError::PermissionDenied { .. }) => {
+                Self::validation_failed(
+                    "tool-permission-denied",
+                    "tool must request permitted resources",
+                    err.to_string(),
+                )
             }
-            _ => "tool-resolver",
-        };
-        let detail = match value {
-            ToolError::Diag { detail, .. } => detail,
-            other => other.to_string(),
-        };
-        Self::Diag { code, detail }
+            other => Self::Diag {
+                code: "tool-resolver",
+                detail: other.to_string(),
+            },
+        }
     }
 }
