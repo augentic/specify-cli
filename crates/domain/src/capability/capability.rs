@@ -27,7 +27,7 @@ pub struct Capability {
 /// Pipeline phases and their brief entries.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Pipeline {
-    /// Optional Layer 3 authoring-phase briefs for `/change:plan`.
+    /// Optional Layer 2 authoring-phase briefs for `/change:plan`.
     /// Absent in pre-existing manifests; present ones expose briefs such
     /// as `discovery.md` → `propose.md` that run before the
     /// define→build→merge execution loop.
@@ -79,7 +79,7 @@ pub enum CapabilitySource {
 /// `SliceMetadata.outcome.phase` and by `pipeline.*` keys in the
 /// manifest, keeping a single source of truth for phase naming.
 ///
-/// `Plan` is the Layer 3 authoring phase (`/change:plan`) that runs
+/// `Plan` is the Layer 2 authoring phase (`/change:plan`) that runs
 /// ahead of the define→build→merge execution loop. It is intentionally
 /// omitted from `Capability::entries()` (see that iterator's docs) —
 /// call `Capability::plan_entries()` to enumerate plan-phase briefs.
@@ -99,7 +99,7 @@ pub enum CapabilitySource {
 #[strum(serialize_all = "kebab-case")]
 #[non_exhaustive]
 pub enum Phase {
-    /// Layer 3 authoring phase (`/change:plan`).
+    /// Layer 2 authoring phase (`/change:plan`).
     Plan,
     /// Define phase — artifact generation.
     Define,
@@ -214,7 +214,7 @@ impl Capability {
             .chain(self.pipeline.merge.iter().map(|e| (Phase::Merge, e)))
     }
 
-    /// Plan-phase (Layer 3 authoring) pipeline entries in declared
+    /// Plan-phase (Layer 2 authoring) pipeline entries in declared
     /// order. Returns an empty slice for capabilities that don't declare
     /// a `pipeline.plan` block.
     #[must_use]

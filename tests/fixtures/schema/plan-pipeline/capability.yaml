@@ -1,6 +1,6 @@
 name: plan-pipeline
 version: 1
-description: fixture schema exercising pipeline.plan (Layer 3 authoring)
+description: fixture schema exercising pipeline.plan (Layer 2 authoring)
 pipeline:
   plan:
     - { id: discovery, brief: briefs/plan/discovery.md }

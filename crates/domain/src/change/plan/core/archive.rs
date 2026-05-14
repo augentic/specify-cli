@@ -11,7 +11,7 @@ use super::model::{Plan, Status};
 use crate::slice::actions::move_atomic;
 
 impl Plan {
-    /// Move `plan.yaml` — and, when present, the Layer-3 authoring
+    /// Move `plan.yaml` — and, when present, the Layer-2 authoring
     /// working directory `.specify/plans/<plan.name>/` and the
     /// operator brief (`change.md`) — into the archive directory.
     ///

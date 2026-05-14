@@ -128,7 +128,7 @@ fn yaml_parse_error_surface_for_missing_required_field() {
     );
 }
 
-// ---------- pipeline.plan (Layer 3 authoring) ----------
+// ---------- pipeline.plan (Layer 2 authoring) ----------
 
 #[test]
 fn plan_entries_merge_overrides_by_id_and_appends_new_entries() {
