@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use super::*;
 use crate::manifest::{ToolPermissions, ToolScope};
-use crate::test_support::{EnvGuard, env_lock, scratch_dir};
+use crate::test_support::{EnvGuard, cache_env, env_lock, scratch_dir};
 
 fn project_scope() -> ToolScope {
     ToolScope::Project {
@@ -20,20 +20,20 @@ fn capability_scope() -> ToolScope {
 }
 
 fn fixed_sidecar(scope: &ToolScope, name: &str, version: &str, source: &str) -> Sidecar {
-    Sidecar::new(
-        scope,
-        name,
-        version,
-        source,
-        ToolPermissions {
+    Sidecar {
+        schema_version: SIDECAR_SCHEMA_VERSION,
+        scope: scope_segment(scope).expect("scope segment"),
+        tool_name: name.to_string(),
+        tool_version: version.to_string(),
+        source: source.to_string(),
+        fetched_at: "2026-05-07T00:00:00Z".parse().expect("fixed test stamp"),
+        permissions_snapshot: ToolPermissions {
             read: vec!["$PROJECT_DIR/contracts".to_string()],
             write: Vec::new(),
         },
-        Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string()),
-        None,
-        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp"),
-    )
-    .expect("sidecar")
+        sha256: Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string()),
+        package: None,
+    }
 }
 
 fn write_cached_version(scope: &ToolScope, name: &str, version: &str, source: &str) -> PathBuf {
@@ -122,10 +122,7 @@ fn sidecar_round_trips_and_schema_rejects_invalid_shape() {
 #[test]
 fn cache_status_distinguishes_hit_not_found_and_changed_digest() {
     let cache_dir = scratch_dir("status-cache");
-    let _g = env_lock();
-    let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-    let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-    let _home = EnvGuard::unset("HOME");
+    let _env = cache_env(&cache_dir);
     assert_eq!(
         status(
             &project_scope(),
@@ -197,10 +194,7 @@ fn stage_and_install_installs_complete_tree_and_replaces_existing_version() {
 #[test]
 fn scan_for_gc_isolates_scope_and_uses_name_version_source_keep_set() {
     let cache_dir = scratch_dir("gc-cache");
-    let _g = env_lock();
-    let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-    let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-    let _home = EnvGuard::unset("HOME");
+    let _env = cache_env(&cache_dir);
 
     let kept_project = write_cached_version(
         &project_scope(),

@@ -23,11 +23,6 @@ pub(super) fn run(
 ) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
-    debug_assert!(
-        hub != capability.is_some(),
-        "clap enforces <capability> xor --hub; reached dispatcher with hub={hub}, capability={capability:?}",
-    );
-
     let opts = InitOptions {
         project_dir: &project_dir,
         capability,

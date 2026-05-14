@@ -55,7 +55,7 @@ mod tests {
     use crate::error::ToolError;
     use crate::manifest::ToolSource;
     use crate::test_support::{
-        EnvGuard, cached_bytes, env_lock, fixed_now, project_scope, scratch_dir, tool, write_source,
+        cache_env, cached_bytes, fixed_now, project_scope, scratch_dir, tool, write_source,
     };
 
     fn corrupt_cached_module(path: &Path, bytes: &[u8]) {
@@ -81,10 +81,7 @@ mod tests {
         let old_tool = tool(ToolSource::LocalPath(old_source), Some(old_sha));
         let wrong_tool = tool(ToolSource::LocalPath(new_source.clone()), Some(wrong_sha));
 
-        let _g = env_lock();
-        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-        let _home = EnvGuard::unset("HOME");
+        let _env = cache_env(&cache_dir);
 
         resolve(&scope, &old_tool, fixed_now(), &project_dir).expect("initial digest install");
         let err = resolve(&scope, &wrong_tool, fixed_now(), &project_dir)
@@ -107,10 +104,7 @@ mod tests {
         let scope = project_scope();
         let pinned = tool(ToolSource::LocalPath(source), Some(sha256_hex(b"trusted")));
 
-        let _g = env_lock();
-        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-        let _home = EnvGuard::unset("HOME");
+        let _env = cache_env(&cache_dir);
 
         let resolved = resolve(&scope, &pinned, fixed_now(), &project_dir).expect("install pinned");
         corrupt_cached_module(&resolved.bytes_path, b"corrupt");

@@ -11,7 +11,7 @@ pub mod digest;
 pub mod http;
 pub mod local;
 
-use crate::cache::{self, MODULE_FILENAME, SIDECAR_FILENAME, Sidecar};
+use crate::cache::{self, MODULE_FILENAME, SIDECAR_FILENAME, SIDECAR_SCHEMA_VERSION, Sidecar};
 use crate::error::ToolError;
 use crate::manifest::{Tool, ToolScope, ToolSource};
 use crate::package::{AcquiredBytes, PackageClient, WasmPkgClient, persist_temp};
@@ -48,7 +48,7 @@ pub struct ResolvedTool {
 pub fn resolve(
     scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, project_dir: &Path,
 ) -> Result<ResolvedTool, ToolError> {
-    resolve_with(scope, tool, now, &WasmPkgClient::new(Some(project_dir.to_path_buf())))
+    resolve_with(scope, tool, now, &WasmPkgClient::new(project_dir.to_path_buf()))
 }
 
 /// Resolve a declared tool using an injected package client.
@@ -119,16 +119,17 @@ fn stage_and_install(
         ..
     } = acquired;
     persist_temp(temp, &module_dest)?;
-    let sidecar = Sidecar::new(
-        scope,
-        &tool.name,
-        &tool.version,
-        source,
-        tool.permissions.clone(),
-        tool.sha256.clone(),
-        package_metadata,
-        now,
-    )?;
+    let sidecar = Sidecar {
+        schema_version: SIDECAR_SCHEMA_VERSION,
+        scope: cache::scope_segment(scope)?,
+        tool_name: tool.name.clone(),
+        tool_version: tool.version.clone(),
+        source: source.to_string(),
+        fetched_at: now,
+        permissions_snapshot: tool.permissions.clone(),
+        sha256: tool.sha256.clone(),
+        package: package_metadata,
+    };
     cache::write_sidecar(&staged.join(SIDECAR_FILENAME), &sidecar)?;
     cache::stage_and_install(staged, dest)
 }
@@ -187,8 +188,8 @@ mod tests {
     use crate::manifest::{PackageRequest, ToolSource};
     use crate::package::{PackageClient, PackageMetadata};
     use crate::test_support::{
-        EnvGuard, cached_bytes, capability_scope, env_lock, fixed_now, project_scope, scratch_dir,
-        tool, write_source,
+        cache_env, cached_bytes, capability_scope, fixed_now, project_scope, scratch_dir, tool,
+        write_source,
     };
 
     struct MockPackageClient {
@@ -240,10 +241,7 @@ mod tests {
         let scope = project_scope();
         let first_tool = tool(ToolSource::LocalPath(first.clone()), None);
 
-        let _g = env_lock();
-        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-        let _home = EnvGuard::unset("HOME");
+        let _env = cache_env(&cache_dir);
 
         let resolved =
             resolve(&scope, &first_tool, fixed_now(), &project_dir).expect("cache miss resolves");
@@ -273,10 +271,7 @@ mod tests {
         let capability = capability_scope(&capability_dir);
         let declared = tool(ToolSource::LocalPath(source), None);
 
-        let _g = env_lock();
-        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-        let _home = EnvGuard::unset("HOME");
+        let _env = cache_env(&cache_dir);
 
         let project_resolved =
             resolve(&project, &declared, fixed_now(), &project_dir).expect("project resolve");
@@ -299,10 +294,7 @@ mod tests {
         let declared = tool(ToolSource::Package(package), None);
         let client = MockPackageClient::new(b"package-bytes");
 
-        let _g = env_lock();
-        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-        let _home = EnvGuard::unset("HOME");
+        let _env = cache_env(&cache_dir);
 
         let resolved =
             resolve_with(&scope, &declared, fixed_now(), &client).expect("package resolves");

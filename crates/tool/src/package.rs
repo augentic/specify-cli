@@ -109,17 +109,15 @@ pub trait PackageClient {
 /// `.specify/wasm-pkg.toml` (when present) into the wasm-pkg config
 /// chain. Tests inject their own [`PackageClient`] via
 /// `resolver::resolve_with` and bypass this entirely.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct WasmPkgClient {
-    project_dir: Option<PathBuf>,
+    project_dir: PathBuf,
 }
 
 impl WasmPkgClient {
-    /// Build a client anchored at `project_dir`. Pass `None` when no
-    /// project context is available (e.g. ad-hoc invocations); the
-    /// project-local config layer is then skipped.
+    /// Build a client anchored at `project_dir`.
     #[must_use]
-    pub const fn new(project_dir: Option<PathBuf>) -> Self {
+    pub const fn new(project_dir: PathBuf) -> Self {
         Self { project_dir }
     }
 }
@@ -132,7 +130,7 @@ impl PackageClient for WasmPkgClient {
             .enable_all()
             .build()
             .map_err(|err| ToolError::package(request, format!("create tokio runtime: {err}")))?;
-        runtime.block_on(fetch(request, dest_hint, self.project_dir.as_deref()))
+        runtime.block_on(fetch(request, dest_hint, Some(&self.project_dir)))
     }
 }
 

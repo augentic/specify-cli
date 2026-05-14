@@ -230,9 +230,25 @@ fn build_wasi_ctx(
     argv.extend(ctx.args.iter().cloned());
     builder.args(&argv);
 
-    builder.env("PROJECT_DIR", path_to_env(project_dir, "PROJECT_DIR")?);
+    builder.env(
+        "PROJECT_DIR",
+        project_dir.to_str().ok_or_else(|| {
+            ToolError::invalid_permission(
+                "PROJECT_DIR",
+                "PROJECT_DIR contains non-UTF-8 bytes and cannot be exposed to WASI",
+            )
+        })?,
+    );
     if let Some(capability_dir) = capability_dir {
-        builder.env("CAPABILITY_DIR", path_to_env(capability_dir, "CAPABILITY_DIR")?);
+        builder.env(
+            "CAPABILITY_DIR",
+            capability_dir.to_str().ok_or_else(|| {
+                ToolError::invalid_permission(
+                    "CAPABILITY_DIR",
+                    "CAPABILITY_DIR contains non-UTF-8 bytes and cannot be exposed to WASI",
+                )
+            })?,
+        );
     }
 
     for preopen in preopens {
@@ -252,16 +268,6 @@ fn build_wasi_ctx(
     }
 
     Ok(builder.build())
-}
-
-#[cfg(feature = "host")]
-fn path_to_env<'a>(path: &'a Path, name: &str) -> Result<&'a str, ToolError> {
-    path.to_str().ok_or_else(|| {
-        ToolError::invalid_permission(
-            name,
-            format!("{name} contains non-UTF-8 bytes and cannot be exposed to WASI"),
-        )
-    })
 }
 
 #[cfg(feature = "host")]

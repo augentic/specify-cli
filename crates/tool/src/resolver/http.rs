@@ -196,7 +196,7 @@ mod tests {
     use super::*;
     use crate::error::ToolError;
     use crate::manifest::ToolSource;
-    use crate::test_support::{EnvGuard, env_lock, fixed_now, project_scope, scratch_dir, tool};
+    use crate::test_support::{cache_env, fixed_now, project_scope, scratch_dir, tool};
 
     #[test]
     fn http_sources_are_rejected_before_network_access() {
@@ -205,10 +205,7 @@ mod tests {
         let scope = project_scope();
         let declared = tool(ToolSource::HttpsUri("http://127.0.0.1/tool.wasm".to_string()), None);
 
-        let _g = env_lock();
-        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-        let _home = EnvGuard::unset("HOME");
+        let _env = cache_env(&cache_dir);
 
         let err = resolve(&scope, &declared, fixed_now(), &project_dir)
             .expect_err("http must be rejected");

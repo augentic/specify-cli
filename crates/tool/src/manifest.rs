@@ -250,6 +250,11 @@ pub(crate) fn looks_like_windows_absolute(value: &str) -> bool {
         && matches!(bytes[2], b'\\' | b'/')
 }
 
+/// True when `value` is a 64-character lowercase hexadecimal SHA-256 digest.
+pub(crate) fn looks_like_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
 fn looks_like_package_request(value: &str) -> bool {
     value.contains(':') || value.starts_with("specify:")
 }

@@ -7,12 +7,15 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use tempfile::Builder;
 
-use super::{SIDECAR_FILENAME, scope_segment};
+use super::SIDECAR_FILENAME;
 use crate::error::{SidecarKind, ToolError};
-use crate::manifest::{ToolPermissions, ToolScope};
+use crate::manifest::{ToolPermissions, looks_like_sha256_hex};
 use crate::package::PackageMetadata;
 
-const SIDECAR_SCHEMA_VERSION: u32 = 1;
+/// Currently supported sidecar schema version. Bumped on any breaking
+/// shape change; readers must reject anything else with a schema
+/// diagnostic.
+pub(crate) const SIDECAR_SCHEMA_VERSION: u32 = 1;
 
 /// On-disk `meta.yaml` metadata beside cached tool bytes.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -39,41 +42,6 @@ pub struct Sidecar {
     /// Optional package metadata for wasm-pkg sources.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<PackageMetadata>,
-}
-
-impl Sidecar {
-    /// Construct a v1 sidecar from a live declaration tuple.
-    ///
-    /// `now` records the `fetched_at` stamp; the resolver supplies
-    /// `Utc::now` and tests pin a deterministic value.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ToolError::InvalidCacheSegment` when the scope's project name
-    /// or capability slug is empty, contains a path separator, or would escape
-    /// the cache directory. Other fields are accepted verbatim and validated
-    /// against the v1 schema by [`write_sidecar`] before persistence.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "constructor mirrors the sidecar schema fields verbatim; collapsing into a builder would obscure the schema-to-field mapping"
-    )]
-    pub(crate) fn new(
-        scope: &ToolScope, tool_name: impl Into<String>, tool_version: impl Into<String>,
-        source: impl Into<String>, permissions_snapshot: ToolPermissions, sha256: Option<String>,
-        package: Option<PackageMetadata>, now: Timestamp,
-    ) -> Result<Self, ToolError> {
-        Ok(Self {
-            schema_version: SIDECAR_SCHEMA_VERSION,
-            scope: scope_segment(scope)?,
-            tool_name: tool_name.into(),
-            tool_version: tool_version.into(),
-            source: source.into(),
-            fetched_at: now,
-            permissions_snapshot,
-            sha256,
-            package,
-        })
-    }
 }
 
 /// Read `meta.yaml` from `path`.
@@ -156,7 +124,7 @@ fn validate_sidecar_schema(path: &Path, sidecar: &Sidecar) -> Result<(), ToolErr
         }
     }
     if let Some(sha256) = &sidecar.sha256
-        && !valid_sha256(sha256)
+        && !looks_like_sha256_hex(sha256)
     {
         return sidecar_schema_error(path, "sha256 must be 64 lowercase hexadecimal characters");
     }
@@ -182,8 +150,4 @@ fn sidecar_schema_error(path: &Path, detail: impl Into<String>) -> Result<(), To
         path: path.to_path_buf(),
         kind: SidecarKind::Schema(detail.into()),
     })
-}
-
-fn valid_sha256(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }

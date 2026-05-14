@@ -91,6 +91,23 @@ mod test_support {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// Acquire the env lock and pin the cache-root precedence to
+    /// `SPECIFY_TOOLS_CACHE = cache_dir`, ensuring `XDG_CACHE_HOME` and
+    /// `HOME` cannot leak from the host. Tuple fields drop in
+    /// declaration order, so the `EnvGuard` array restores env vars
+    /// first and the lock guard releases last.
+    pub fn cache_env(
+        cache_dir: &Path,
+    ) -> ([EnvGuard; 3], MutexGuard<'static, ()>) {
+        let lock = env_lock();
+        let guards = [
+            EnvGuard::set("SPECIFY_TOOLS_CACHE", cache_dir),
+            EnvGuard::unset("XDG_CACHE_HOME"),
+            EnvGuard::unset("HOME"),
+        ];
+        (guards, lock)
+    }
+
     /// Create a unique temporary directory for tests.
     pub fn scratch_dir(label: &str) -> PathBuf {
         let n = SCRATCH_COUNTER.fetch_add(1, Ordering::Relaxed);

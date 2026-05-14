@@ -36,7 +36,7 @@ mod tests {
     use crate::error::ToolError;
     use crate::manifest::ToolSource;
     use crate::test_support::{
-        EnvGuard, env_lock, fixed_now, named_tool, project_scope, scratch_dir, tool, write_source,
+        cache_env, fixed_now, named_tool, project_scope, scratch_dir, tool, write_source,
     };
 
     #[test]
@@ -53,10 +53,7 @@ mod tests {
             None,
         );
 
-        let _g = env_lock();
-        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-        let _home = EnvGuard::unset("HOME");
+        let _env = cache_env(&cache_dir);
 
         let local = resolve(&scope, &local, fixed_now(), &project_dir).expect("local resolves");
         let uri = resolve(&scope, &file_uri, fixed_now(), &project_dir).expect("file URI resolves");
@@ -72,10 +69,7 @@ mod tests {
         let empty = write_source(&source_dir, "empty.wasm", b"");
         let scope = project_scope();
 
-        let _g = env_lock();
-        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-        let _home = EnvGuard::unset("HOME");
+        let _env = cache_env(&cache_dir);
 
         let dir_err = resolve(
             &scope,
@@ -104,10 +98,7 @@ mod tests {
         let scope = project_scope();
         let symlink_tool = tool(ToolSource::LocalPath(link), None);
 
-        let _g = env_lock();
-        let _cache = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache_dir);
-        let _xdg = EnvGuard::unset("XDG_CACHE_HOME");
-        let _home = EnvGuard::unset("HOME");
+        let _env = cache_env(&cache_dir);
 
         let resolved =
             resolve(&scope, &symlink_tool, fixed_now(), &project_dir).expect("symlink resolves");

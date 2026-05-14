@@ -6,7 +6,8 @@ use std::path::Path;
 use specify_error::{ValidationStatus, ValidationSummary};
 
 use crate::manifest::{
-    Tool, ToolManifest, ToolScope, ToolSource, first_party_permissions, looks_like_windows_absolute,
+    Tool, ToolManifest, ToolScope, ToolSource, first_party_permissions, looks_like_sha256_hex,
+    looks_like_windows_absolute,
 };
 
 /// Canonical JSON Schema for the two `tools:` declaration sites.
@@ -91,9 +92,7 @@ impl Tool {
         let sha256_detail = self
             .sha256
             .as_deref()
-            .filter(|v| {
-                v.len() != 64 || !v.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            })
+            .filter(|v| !looks_like_sha256_hex(v))
             .map(|_| "`sha256` must be exactly 64 lowercase hex characters".to_string());
 
         vec![
