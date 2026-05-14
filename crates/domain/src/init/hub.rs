@@ -16,13 +16,6 @@ use crate::init::{
 };
 use crate::registry::Registry;
 
-/// Sentinel value reported in [`InitResult::capability_name`] for hub
-/// init. Hub `project.yaml` itself does **not** carry this string —
-/// the absence of `capability:` together with `hub: true` is the
-/// discriminator. The constant is kept solely so the JSON envelope
-/// and the text response have a stable string to display.
-const HUB_INIT_NAME: &str = "hub";
-
 /// Scaffold a registry-only platform hub.
 ///
 /// On-disk shape after success:
@@ -112,10 +105,6 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let registry_path = Registry::path(opts.project_dir);
     let registry_yaml = serde_saphyr::to_string(&registry)?;
     fs::write(&registry_path, registry_yaml)?;
-    // Trivially passes for an empty list, but exercise the hub-mode
-    // shape check so any future registry-write code paths inherit
-    // the same invariant from this seed.
-    registry.validate_shape_hub()?;
 
     upsert_gitignore(opts.project_dir)?;
 
@@ -123,7 +112,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
 
     Ok(InitResult {
         config_path,
-        capability_name: HUB_INIT_NAME.to_string(),
+        capability_name: "hub".to_string(),
         cache_present,
         directories_created,
         scaffolded_rule_keys: Vec::new(),
@@ -139,7 +128,6 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::HUB_INIT_NAME;
     use crate::config::ProjectConfig;
     use crate::init::{InitOptions, VersionMode, fixed_now, init};
     use crate::registry::Registry;
@@ -207,7 +195,7 @@ mod tests {
         assert_eq!(registry.version, 1);
         assert!(registry.projects.is_empty(), "hub registry starts empty");
 
-        assert_eq!(result.capability_name, HUB_INIT_NAME);
+        assert_eq!(result.capability_name, "hub");
         assert!(result.scaffolded_rule_keys.is_empty());
     }
 

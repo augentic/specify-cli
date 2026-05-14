@@ -16,6 +16,7 @@ use std::process::Command as ProcessCommand;
 
 use assert_cmd::Command;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use specify_error::Result;
 use tempfile::{TempDir, tempdir};
 
@@ -46,6 +47,17 @@ pub fn omnia_schema_dir() -> PathBuf {
 /// binary.
 pub fn specify() -> Command {
     Command::cargo_bin("specify").expect("cargo_bin(specify)")
+}
+
+/// Hex-encoded SHA-256 of the bytes at `path`, used by every tool
+/// integration suite to pin a `sha256:` digest into a manifest fixture.
+///
+/// # Panics
+///
+/// Panics if `path` cannot be read.
+pub fn sha256_hex(path: &Path) -> String {
+    let bytes = fs::read(path).expect("read bytes for sha256");
+    format!("{:x}", Sha256::digest(bytes))
 }
 
 /// Deterministic git author/committer identity for tests that exercise

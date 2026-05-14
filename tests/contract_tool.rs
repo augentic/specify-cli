@@ -1,21 +1,15 @@
 //! Acceptance coverage for the first-party `contract` WASI tool.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use sha2::{Digest, Sha256};
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::{parse_json, repo_root, specify};
+use common::{parse_json, repo_root, sha256_hex, specify};
 
 fn contract_wasm() -> PathBuf {
     repo_root().join("wasi-tools/contract/dist/contract-0.2.0.wasm")
-}
-
-fn sha256_hex(path: &Path) -> String {
-    let bytes = fs::read(path).expect("read contract wasm");
-    format!("{:x}", Sha256::digest(bytes))
 }
 
 struct ContractToolFixture {

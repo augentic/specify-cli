@@ -76,16 +76,17 @@ impl AcquiredBytes {
             .map(|m| m.len())
             .map_err(|err| ToolError::cache_io("stat staged tool body", self.temp.path(), err))
     }
+}
 
-    pub fn persist_to(self, dest: &Path) -> Result<(), ToolError> {
-        self.temp.persist(dest).map(|_| ()).map_err(|err| {
-            ToolError::atomic_move_failed(
-                err.file.path().to_path_buf(),
-                dest.to_path_buf(),
-                err.error,
-            )
-        })
-    }
+/// Atomically move `temp` over `dest`, mapping the typed `tempfile`
+/// persist error into the cache-error vocabulary the resolver speaks.
+/// Free function (rather than a method on [`AcquiredBytes`]) so the
+/// resolver can destructure the bytes once and move `temp` and
+/// `package_metadata` independently without forcing a clone.
+pub fn persist_temp(temp: NamedTempFile, dest: &Path) -> Result<(), ToolError> {
+    temp.persist(dest).map(|_| ()).map_err(|err| {
+        ToolError::atomic_move_failed(err.file.path().to_path_buf(), dest.to_path_buf(), err.error)
+    })
 }
 
 /// Pulls wasm-pkg package bytes for a package request.

@@ -40,7 +40,7 @@ pub(super) fn run(
     let result = init(opts, Timestamp::now())?;
     let current_dir = std::env::current_dir().map_err(Error::Io)?;
     let context_skip_reason = generate_initial_context(format, &current_dir)?;
-    emit_init_result(format, &result, hub, context_skip_reason)
+    emit_init_result(format, &result, context_skip_reason)
 }
 
 #[derive(Serialize)]
@@ -51,7 +51,8 @@ pub(super) fn run(
 )]
 struct Body {
     config_path: String,
-    /// Resolved capability name (or `"hub"` for hub init).
+    /// Resolved capability name (or `"hub"` for hub init — both
+    /// renderers dispatch on this value).
     capability_name: String,
     cache_present: bool,
     directories_created: Vec<String>,
@@ -61,10 +62,6 @@ struct Body {
     /// `false` on re-init so consumers can distinguish a fresh write
     /// from a preserved operator-edited file.
     wasm_pkg_config_written: bool,
-    /// `true` when this init scaffolded a registry-only platform hub.
-    /// Always present so consumers can distinguish hub from regular
-    /// initialisations without parsing the capability name.
-    hub: bool,
     context_generated: bool,
     context_skipped: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -72,7 +69,8 @@ struct Body {
 }
 
 fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
-    if body.hub {
+    let hub = body.capability_name == "hub";
+    if hub {
         writeln!(w, "Initialized .specify/ as a registry-only platform hub")?;
     } else {
         writeln!(w, "Initialized .specify/")?;
@@ -91,7 +89,7 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
         writeln!(w, "AGENTS.md already present; skipping context generate")?;
     }
     writeln!(w)?;
-    if body.hub {
+    if hub {
         writeln!(
             w,
             "Next: run `specify registry add <id> <url>` to declare the projects this hub coordinates."
@@ -106,7 +104,7 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
 }
 
 fn emit_init_result(
-    format: Format, result: &InitResult, hub: bool, context_skip_reason: Option<&'static str>,
+    format: Format, result: &InitResult, context_skip_reason: Option<&'static str>,
 ) -> Result<()> {
     let body = Body {
         config_path: canonical(&result.config_path),
@@ -116,7 +114,6 @@ fn emit_init_result(
         scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
         specify_version: result.specify_version.clone(),
         wasm_pkg_config_written: result.wasm_pkg_config_written,
-        hub,
         context_generated: context_skip_reason.is_none(),
         context_skipped: context_skip_reason.is_some(),
         context_skip_reason,

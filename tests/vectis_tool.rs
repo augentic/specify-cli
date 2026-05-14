@@ -6,19 +6,13 @@ use std::process::Command as ProcessCommand;
 use std::sync::OnceLock;
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::{parse_json, repo_root, specify};
+use common::{parse_json, repo_root, sha256_hex, specify};
 
 fn file_uri(path: &Path) -> String {
     format!("file://{}", path.display())
-}
-
-fn sha256_hex(path: &Path) -> String {
-    let bytes = fs::read(path).expect("read wasm bytes for sha256");
-    format!("{:x}", Sha256::digest(bytes))
 }
 
 fn vectis_wasi_artifact() -> &'static PathBuf {

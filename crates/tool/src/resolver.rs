@@ -14,7 +14,7 @@ pub mod local;
 use crate::cache::{self, MODULE_FILENAME, PermissionsSnapshot, SIDECAR_FILENAME, Sidecar};
 use crate::error::ToolError;
 use crate::manifest::{Tool, ToolScope, ToolSource};
-use crate::package::{AcquiredBytes, PackageClient, WasmPkgClient};
+use crate::package::{AcquiredBytes, PackageClient, WasmPkgClient, persist_temp};
 
 /// Cached component bytes plus the live declaration data needed to run them.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,8 +113,12 @@ fn stage_and_install(
     let module_dest = staged.join(MODULE_FILENAME);
     let acquired = acquire_source_bytes(&tool.source, &module_dest, package_client)?;
     digest::validate(source, &acquired, tool.sha256.as_deref())?;
-    let package_metadata = acquired.package_metadata.clone();
-    acquired.persist_to(&module_dest)?;
+    let AcquiredBytes {
+        temp,
+        package_metadata,
+        ..
+    } = acquired;
+    persist_temp(temp, &module_dest)?;
     let sidecar = Sidecar::new(
         scope,
         &tool.name,
