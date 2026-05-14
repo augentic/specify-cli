@@ -1,9 +1,9 @@
 //! Wasmtime-backed WASI Preview 2 runner boundary.
 //!
-//! `Stdio` and `RunContext` are always compiled; only `WasiRunner` and
-//! its wasmtime-dependent helpers are gated behind the `host` Cargo
-//! feature. Builds without `host` get a stub `WasiRunner` whose `run`
-//! returns the `tool-host-not-built` diagnostic.
+//! `RunContext` is always compiled; only `WasiRunner` and its
+//! wasmtime-dependent helpers are gated behind the `host` Cargo feature.
+//! Builds without `host` get a stub `WasiRunner` whose `run` returns the
+//! `tool-host-not-built` diagnostic.
 
 #[cfg(feature = "host")]
 use std::collections::BTreeMap;
@@ -27,16 +27,6 @@ use crate::manifest::ToolScope;
 use crate::permissions::{canonicalise_under, deny_lifecycle_write, substitute};
 use crate::resolver::ResolvedTool;
 
-/// Stdio configuration for a tool run.
-#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
-pub enum Stdio {
-    /// Explicitly inherit stdin, stdout, and stderr from the host process.
-    #[default]
-    Inherit,
-    /// Keep Wasmtime's closed stdin and sink stdout/stderr defaults.
-    Null,
-}
-
 /// Host-side context for running a resolved tool.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunContext {
@@ -46,8 +36,6 @@ pub struct RunContext {
     pub capability_dir: Option<PathBuf>,
     /// Arguments forwarded after `argv[0]`, which is always the tool name.
     pub args: Vec<String>,
-    /// Stdio handling for the WASI context.
-    pub stdio: Stdio,
 }
 
 impl RunContext {
@@ -58,7 +46,6 @@ impl RunContext {
             project_dir: project_dir.into(),
             capability_dir: None,
             args,
-            stdio: Stdio::Inherit,
         }
     }
 
@@ -66,13 +53,6 @@ impl RunContext {
     #[must_use]
     pub fn with_capability_dir(mut self, capability_dir: impl Into<PathBuf>) -> Self {
         self.capability_dir = Some(capability_dir.into());
-        self
-    }
-
-    /// Override stdio handling.
-    #[must_use]
-    pub const fn with_stdio(mut self, stdio: Stdio) -> Self {
-        self.stdio = stdio;
         self
     }
 }
@@ -243,12 +223,7 @@ fn build_wasi_ctx(
         .allow_udp(false)
         .allow_ip_name_lookup(false);
 
-    match ctx.stdio {
-        Stdio::Inherit => {
-            builder.inherit_stdio();
-        }
-        Stdio::Null => {}
-    }
+    builder.inherit_stdio();
 
     let mut argv = Vec::with_capacity(ctx.args.len() + 1);
     argv.push(resolved.tool.name.clone());
@@ -407,7 +382,7 @@ mod tests {
 
         let runner = WasiRunner::new().expect("runner");
         let err = runner
-            .run(&resolved, &RunContext::new(&project, Vec::new()).with_stdio(Stdio::Null))
+            .run(&resolved, &RunContext::new(&project, Vec::new()))
             .expect_err("permission preparation must fail before component load");
         assert!(matches!(err, ToolError::InvalidPermission { .. }), "{err}");
     }
@@ -427,7 +402,7 @@ mod tests {
 
         let runner = WasiRunner::new().expect("runner");
         let err = runner
-            .run(&resolved, &RunContext::new(&project, Vec::new()).with_stdio(Stdio::Null))
+            .run(&resolved, &RunContext::new(&project, Vec::new()))
             .expect_err("lifecycle permission must fail before component load");
         assert!(matches!(err, ToolError::PermissionDenied { .. }), "{err}");
         assert!(err.to_string().contains("tool.lifecycle-state-write-denied"), "{err}");
@@ -450,7 +425,7 @@ mod tests {
 
         let runner = WasiRunner::new().expect("runner");
         let err = runner
-            .run(&resolved, &RunContext::new(&project, Vec::new()).with_stdio(Stdio::Null))
+            .run(&resolved, &RunContext::new(&project, Vec::new()))
             .expect_err("invalid component must fail");
         assert!(matches!(err, ToolError::Runtime(_)), "{err}");
     }
