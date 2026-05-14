@@ -30,16 +30,7 @@ const KIND_REMOVED_OPERATION: &str = "removed-operation";
 
 /// Compatibility buckets for a producer-to-consumer contract delta.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    strum::Display,
-    strum::IntoStaticStr,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -80,7 +71,7 @@ pub struct CompatibilityFinding {
 }
 
 /// Aggregate counts for a compatibility report.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct CompatibilitySummary {
     /// Number of findings in the report.
@@ -143,10 +134,7 @@ impl CompatibilityReport {
                 .then_with(|| a.consumer_project.cmp(&b.consumer_project))
                 .then_with(|| a.producer_contract.cmp(&b.producer_contract))
                 .then_with(|| a.locator.cmp(&b.locator))
-                .then_with(|| {
-                    <&'static str>::from(&a.classification)
-                        .cmp(<&'static str>::from(&b.classification))
-                })
+                .then_with(|| a.classification.to_string().cmp(&b.classification.to_string()))
         });
         let summary = CompatibilitySummary::from_findings(&findings);
         let ok = summary.breaking == 0 && summary.ambiguous == 0 && summary.unverifiable == 0;

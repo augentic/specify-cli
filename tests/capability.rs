@@ -21,7 +21,6 @@ fn pipeline_define_lists_briefs_in_order() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["phase"], "define");
     assert_eq!(value["slice"], Value::Null);
 
@@ -173,7 +172,6 @@ fn check_succeeds_on_omnia_yaml() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["passed"], true, "omnia fixture must validate clean: {value}");
 }
 

@@ -1,8 +1,9 @@
 //! Validation outcome enum + summary used by [`crate::Error::Validation`].
 
 /// Validation outcome for a single rule check.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 pub enum Status {
     /// Rule passed.
     Pass,
@@ -12,18 +13,9 @@ pub enum Status {
     Deferred,
 }
 
-impl std::fmt::Display for Status {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Pass => f.write_str("pass"),
-            Self::Fail => f.write_str("fail"),
-            Self::Deferred => f.write_str("deferred"),
-        }
-    }
-}
-
 /// Compact summary of a validation result, embedded in `Error::Validation`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct Summary {
     /// Outcome of this validation check.
     pub status: Status,

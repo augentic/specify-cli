@@ -4,7 +4,7 @@
 
 mod brief;
 mod cache;
-#[allow(
+#[expect(
     clippy::module_inception,
     reason = "preserves the per-concern split inherited from the pre-collapse `specify-capability` crate; rename would cascade across many imports"
 )]
@@ -44,7 +44,8 @@ pub use pipeline::PipelineView;
 /// the rationale — moving the type into `specify-validate` would close a
 /// dependency cycle because `specify-validate` already depends on
 /// `specify-capability` for `PipelineView`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "status", rename_all = "kebab-case", rename_all_fields = "kebab-case")]
 #[non_exhaustive]
 pub enum ValidationResult {
     /// Rule passed.

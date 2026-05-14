@@ -13,45 +13,22 @@ use specify_domain::task::parse_tasks;
 use specify_error::Result;
 
 use crate::context::Ctx;
-use crate::output::Render;
-
-pub(in crate::commands) struct StatusEntry {
-    pub name: String,
-    pub capability: String,
-    pub status: LifecycleStatus,
-    pub tasks: Option<(usize, usize)>,
-    pub artifacts: BTreeMap<String, bool>,
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct EntryJson<'a> {
-    name: &'a str,
-    status: LifecycleStatus,
-    capability: &'a str,
-    tasks: Option<TaskCounts>,
-    artifacts: &'a BTreeMap<String, bool>,
+pub(in crate::commands) struct StatusEntry {
+    pub name: String,
+    pub status: LifecycleStatus,
+    pub capability: String,
+    pub tasks: Option<TaskCounts>,
+    pub artifacts: BTreeMap<String, bool>,
 }
 
 #[derive(Serialize, Copy, Clone)]
 #[serde(rename_all = "kebab-case")]
-struct TaskCounts {
-    total: usize,
-    complete: usize,
-}
-
-impl Serialize for StatusEntry {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let tasks = self.tasks.map(|(complete, total)| TaskCounts { total, complete });
-        EntryJson {
-            name: &self.name,
-            status: self.status,
-            capability: &self.capability,
-            tasks,
-            artifacts: &self.artifacts,
-        }
-        .serialize(serializer)
-    }
+pub(in crate::commands) struct TaskCounts {
+    pub total: usize,
+    pub complete: usize,
 }
 
 pub(in crate::commands) fn collect_status(
@@ -72,7 +49,10 @@ pub(in crate::commands) fn collect_status(
             if path.is_file() {
                 let content = std::fs::read_to_string(&path)?;
                 let progress = parse_tasks(&content);
-                Some((progress.complete, progress.total))
+                Some(TaskCounts {
+                    total: progress.total,
+                    complete: progress.complete,
+                })
             } else {
                 None
             }
@@ -82,8 +62,8 @@ pub(in crate::commands) fn collect_status(
 
     Ok(StatusEntry {
         name: name.to_string(),
-        capability: metadata.capability,
         status: metadata.status,
+        capability: metadata.capability,
         tasks,
         artifacts,
     })
@@ -123,7 +103,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         entries.push(entry);
     }
 
-    ctx.write(&StatusBody::new(&entries))?;
+    ctx.write(&StatusBody { slices: &entries }, write_status_text)?;
     Ok(())
 }
 
@@ -132,7 +112,12 @@ pub(super) fn status_one(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
     let entry = collect_status(&slice_dir, name, &pipeline, &ctx.project_dir)?;
 
-    ctx.write(&StatusBody::new(std::slice::from_ref(&entry)))?;
+    ctx.write(
+        &StatusBody {
+            slices: std::slice::from_ref(&entry),
+        },
+        write_status_text,
+    )?;
     Ok(())
 }
 
@@ -141,22 +126,14 @@ struct StatusBody<'a> {
     slices: &'a [StatusEntry],
 }
 
-impl<'a> StatusBody<'a> {
-    const fn new(slices: &'a [StatusEntry]) -> Self {
-        Self { slices }
+fn write_status_text(w: &mut dyn Write, body: &StatusBody<'_>) -> std::io::Result<()> {
+    if body.slices.is_empty() {
+        return writeln!(w, "No slices.");
     }
-}
-
-impl Render for StatusBody<'_> {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.slices.is_empty() {
-            return writeln!(w, "No slices.");
-        }
-        if self.slices.len() == 1 {
-            return render_single(w, &self.slices[0]);
-        }
-        render_table(w, self.slices)
+    if body.slices.len() == 1 {
+        return render_single(w, &body.slices[0]);
     }
+    render_table(w, body.slices)
 }
 
 fn render_single(w: &mut dyn Write, e: &StatusEntry) -> std::io::Result<()> {
@@ -164,7 +141,7 @@ fn render_single(w: &mut dyn Write, e: &StatusEntry) -> std::io::Result<()> {
     writeln!(w, "  capability: {}", e.capability)?;
     writeln!(w, "  status: {}", e.status)?;
     match e.tasks {
-        Some((complete, total)) => writeln!(w, "  tasks: {complete}/{total}")?,
+        Some(tc) => writeln!(w, "  tasks: {}/{}", tc.complete, tc.total)?,
         None => writeln!(w, "  tasks: (no tasks.md)")?,
     }
     if !e.artifacts.is_empty() {
@@ -189,10 +166,8 @@ fn render_table(w: &mut dyn Write, entries: &[StatusEntry]) -> std::io::Result<(
         status_w = status_w,
     )?;
     for e in entries {
-        let tasks = match e.tasks {
-            Some((complete, total)) => format!("{complete}/{total}"),
-            None => "-".to_string(),
-        };
+        let tasks =
+            e.tasks.map_or_else(|| "-".to_string(), |tc| format!("{}/{}", tc.complete, tc.total));
         writeln!(
             w,
             "{:<name_w$}  {:<status_w$}  {}",

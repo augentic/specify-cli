@@ -1,8 +1,9 @@
-//! PID-liveness probe used by both [`super::Guard`] and [`super::Stamp`].
-//! Unix uses `kill(pid, 0)` (treating `EPERM` as alive); non-Unix is a
+//! PID-liveness probe used by [`super::Stamp`]. Unix uses
+//! `kill(pid, 0)` (treating `EPERM` as alive); non-Unix is a
 //! conservative `true` so we never reclaim.
 
 #[cfg(unix)]
+#[expect(unsafe_code, reason = "libc::kill(pid, 0) is the canonical Unix liveness probe")]
 pub(super) fn is_pid_alive(pid: u32) -> bool {
     // SAFETY: `kill(pid, 0)` is a liveness probe with no side
     // effects. It returns `0` when the process exists and the

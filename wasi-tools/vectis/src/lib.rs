@@ -5,8 +5,7 @@
 //! This crate is a deliberate carve-out from the workspace's
 //! `Render` / `emit` / `specify-error` discipline. It ships as a
 //! self-contained `wasm32-wasip2` component distributed independently
-//! of the `specify` binary, so it owns its own envelope (see
-//! [`JSON_SCHEMA_VERSION`]), its own error rendering, and its own
+//! of the `specify` binary, so it owns its own error rendering and
 //! exit-code shape. Future changes here MUST preserve that boundary
 //! — do not pull in `specify-error`, `Render`, or the host
 //! `output::emit` dispatcher; those couplings would re-attach the
@@ -19,28 +18,29 @@
 //! - `scaffold` — render-only Crux project scaffolds (core / iOS /
 //!   Android shells).
 //!
-//! Each subcommand owns its own JSON envelope shape; the shared
-//! `envelope-version: 2` framing lives in this crate so both halves stay
-//! byte-compatible with their pre-merge dispatchers.
+//! Each subcommand serialises its body directly; there is no shared
+//! envelope wrapper.
 
+mod error;
 pub mod scaffold;
 pub mod validate;
 
+pub use error::{EXIT_FAILURE, VectisError};
+
 use clap::{Parser, Subcommand};
-use serde::Serialize;
 use serde_json::Value;
 
-/// JSON contract version emitted on every structured response.
-pub const JSON_SCHEMA_VERSION: u64 = 2;
-
-/// Wire shape for every structured response: the envelope-version envelope
-/// plus a flattened payload supplied by the dispatching subcommand.
-#[derive(Serialize)]
-struct Envelope {
-    #[serde(rename = "envelope-version")]
-    envelope_version: u64,
-    #[serde(flatten)]
-    payload: Value,
+/// Render a payload as pretty-printed JSON without a trailing newline.
+///
+/// # Panics
+///
+/// Panics only if `serde_json` cannot serialise the value, which is
+/// impossible for any payload constructed by the subcommand renderers
+/// (each carries fully-owned `String` / `bool` / `u64` / `Value`
+/// fields).
+#[must_use]
+pub fn render_json(payload: &Value) -> String {
+    serde_json::to_string_pretty(payload).expect("JSON serialise")
 }
 
 /// Top-level argument parser for the `vectis` binary.
@@ -69,28 +69,12 @@ pub enum VectisCommand {
     Scaffold(scaffold::ScaffoldCommand),
 }
 
-/// Render the v2 JSON envelope for a fully-formed payload.
-///
-/// # Panics
-///
-/// Panics only if `serde_json` cannot serialise the envelope, which is
-/// impossible for the `Envelope` shape (a `u64` plus an already-parsed
-/// `serde_json::Value`).
-#[must_use]
-pub fn envelope_json(payload: Value) -> String {
-    serde_json::to_string_pretty(&Envelope {
-        envelope_version: JSON_SCHEMA_VERSION,
-        payload,
-    })
-    .expect("JSON serialise")
-}
-
 /// Dispatch a parsed `Args` to the matching subcommand and render the
-/// JSON envelope plus exit code the binary should surface.
+/// JSON body plus exit code the binary should surface.
 #[must_use]
 pub fn run(args: &Args) -> (String, u8) {
     match &args.command {
-        VectisCommand::Validate(v) => validate::render_envelope_json(validate::run(v)),
-        VectisCommand::Scaffold(s) => scaffold::render_envelope_json(scaffold::run(s)),
+        VectisCommand::Validate(v) => validate::render_json(validate::run(v)),
+        VectisCommand::Scaffold(s) => scaffold::render_json(scaffold::run(s)),
     }
 }

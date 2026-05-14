@@ -13,9 +13,8 @@
 //! `output::emit` dispatcher; those couplings would re-attach this
 //! tool to the host CLI's release cadence.
 //!
-//! Wraps [`specify_validate::validate_baseline_contracts`] and
-//! [`specify_validate::serialize_contract_findings`] to surface the
-//! contract Validation checks (`SemVer` `info.version`,
+//! Wraps [`specify_validate::validate_baseline_contracts`] to surface
+//! the contract Validation checks (`SemVer` `info.version`,
 //! `info.x-specify-id` format, cross-project id uniqueness) as a
 //! standalone executable that the contracts capability can shell out
 //! to from skill runtimes.
@@ -34,14 +33,13 @@
 //! This binary uses the conventional shell-friendly exit-code mapping
 //! (`0` clean / `1` findings / `2` invocation error) so capability
 //! skills can branch on the exit code without needing the broader
-//! `Exit` taxonomy. The JSON envelope's `"exit-code"` field
-//! reflects the same value.
+//! `Exit` taxonomy. The JSON body's `"exit-code"` field reflects the
+//! same value.
 //!
 //! # JSON shape
 //!
 //! ```json
 //! {
-//!   "envelope-version": 2,
 //!   "contracts-dir": "<baseline-dir>",
 //!   "ok": true,
 //!   "findings": [
@@ -55,11 +53,12 @@
 //! `<baseline-dir>` when that prefix matches, so paths are reported
 //! relative to the project root.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, ValueEnum};
-use specify_validate::{serialize_contract_findings, validate_baseline_contracts};
+use serde::Serialize;
+use specify_validate::{ContractFinding, validate_baseline_contracts};
 
 const EXIT_OK: u8 = 0;
 const EXIT_FINDINGS: u8 = 1;
@@ -118,8 +117,8 @@ fn run(baseline_dir: &std::path::Path, format: OutputFormat) -> ExitCode {
 
     match format {
         OutputFormat::Json => {
-            let envelope = serialize_contract_findings(baseline_dir, &findings, exit_code);
-            println!("{envelope}");
+            let body = serialize_findings(baseline_dir, &findings, exit_code);
+            println!("{body}");
         }
         OutputFormat::Text => {
             if findings.is_empty() {
@@ -137,6 +136,56 @@ fn run(baseline_dir: &std::path::Path, format: OutputFormat) -> ExitCode {
     }
 
     ExitCode::from(exit_code)
+}
+
+/// Render findings as the canonical pretty-printed JSON body. Field
+/// order is preserved (typed `Serialize` structs piped through
+/// `serde_json::to_string_pretty`) so the byte sequence is
+/// deterministic. Findings paths are emitted relative to
+/// `baseline_dir.parent()` when that prefix matches; otherwise the raw
+/// path is rendered.
+fn serialize_findings(
+    baseline_dir: &Path, findings: &[ContractFinding], exit_code: u8,
+) -> String {
+    let strip_root = baseline_dir.parent();
+    let payload: Vec<FindingPayload> = findings
+        .iter()
+        .map(|f| {
+            let rendered = strip_root
+                .and_then(|root| f.path.strip_prefix(root).ok())
+                .map_or_else(|| f.path.display().to_string(), |p| p.display().to_string());
+            FindingPayload {
+                path: rendered,
+                rule_id: f.rule_id,
+                detail: f.detail.clone(),
+            }
+        })
+        .collect();
+
+    let body = ValidateBody {
+        contracts_dir: baseline_dir.display().to_string(),
+        ok: findings.is_empty(),
+        findings: payload,
+        exit_code,
+    };
+    serde_json::to_string_pretty(&body).expect("body is JSON-safe")
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ValidateBody {
+    contracts_dir: String,
+    ok: bool,
+    findings: Vec<FindingPayload>,
+    exit_code: u8,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct FindingPayload {
+    path: String,
+    rule_id: &'static str,
+    detail: String,
 }
 
 fn baseline_directory_error(baseline_dir: &std::path::Path) -> Result<(), String> {

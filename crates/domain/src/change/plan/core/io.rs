@@ -45,6 +45,10 @@ impl AtomicYaml for Plan {
     }
 }
 
+#[expect(
+    clippy::same_name_method,
+    reason = "inherent `Plan::load` is intentionally shadowed by the `AtomicYaml::load` trait impl in `config/atomic.rs`; the trait impl delegates to this fn"
+)]
 impl Plan {
     /// Load `plan.yaml` (at the repo root) from disk.
     ///

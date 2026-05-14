@@ -66,18 +66,17 @@ impl LifecycleStatus {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Lifecycle`] when `target` is not reachable from
-    /// `self` per [`Self::can_transition_to`]. The error carries
-    /// stringified `expected` and `found` fields so the JSON envelope
-    /// surfaces the rejected edge verbatim — callers and tests grep on
-    /// the `lifecycle` discriminant for routing.
+    /// Returns [`Error::Diag`] with `code = "lifecycle"` when `target`
+    /// is not reachable from `self` per [`Self::can_transition_to`].
+    /// The detail carries the rejected edge verbatim — callers and
+    /// tests grep on the `lifecycle` discriminant for routing.
     pub fn transition(self, target: Self) -> Result<Self, Error> {
         if self.can_transition_to(target) {
             Ok(target)
         } else {
-            Err(Error::Lifecycle {
-                expected: format!("valid transition from {self:?}"),
-                found: format!("{target:?}"),
+            Err(Error::Diag {
+                code: "lifecycle",
+                detail: format!("expected valid transition from {self:?}, found {target:?}"),
             })
         }
     }

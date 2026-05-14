@@ -278,13 +278,12 @@ fn export_json_includes_rules_and_paths() {
         .success();
     let value = parse_json(&assert.get_output().stdout);
 
-    assert!(value.get("envelope-version").is_some(), "JSON envelope must include envelope-version");
     assert_eq!(value["rule-count"], 2);
     let rules = value["rules"].as_array().expect("rules array");
     assert_eq!(rules[0]["id"], "UNI-001");
-    assert_eq!(rules[0]["provenance-kind"], "capability");
-    assert_eq!(rules[0]["capability-name"], "default");
-    assert_eq!(rules[0]["capability-version"], 1);
+    assert_eq!(rules[0]["kind"], "capability");
+    assert_eq!(rules[0]["name"], "default");
+    assert_eq!(rules[0]["version"], 1);
     assert!(
         rules[0]["source-path"].as_str().unwrap().ends_with("schemas/default/codex/default.md")
     );
@@ -303,24 +302,23 @@ fn export_json_resolves_cache_and_overlay() {
         .success();
     let value = parse_json(&assert.get_output().stdout);
 
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["rule-count"], 4);
     let rules = value["rules"].as_array().expect("rules array");
     let ids: Vec<_> = rules.iter().map(|rule| rule["id"].as_str().expect("id str")).collect();
     assert_eq!(ids, ["UNI-001", "UNI-002", "OMNIA-001", "ORG-001"]);
 
-    assert_eq!(rules[0]["provenance-kind"], "capability");
-    assert_eq!(rules[0]["capability-name"], "default");
-    assert_eq!(rules[0]["capability-version"], 1);
+    assert_eq!(rules[0]["kind"], "capability");
+    assert_eq!(rules[0]["name"], "default");
+    assert_eq!(rules[0]["version"], 1);
     assert!(
         rules[0]["source-path"].as_str().unwrap().ends_with(".specify/.cache/default/codex/001.md"),
         "default rule should come from the init-populated default cache: {}",
         rules[0]["source-path"]
     );
 
-    assert_eq!(rules[2]["provenance-kind"], "capability");
-    assert_eq!(rules[2]["capability-name"], "project");
-    assert_eq!(rules[2]["capability-version"], 2);
+    assert_eq!(rules[2]["kind"], "capability");
+    assert_eq!(rules[2]["name"], "project");
+    assert_eq!(rules[2]["version"], 2);
     assert!(
         rules[2]["source-path"]
             .as_str()
@@ -330,9 +328,9 @@ fn export_json_resolves_cache_and_overlay() {
         rules[2]["source-path"]
     );
 
-    assert_eq!(rules[3]["provenance-kind"], "repo");
-    assert_eq!(rules[3]["capability-name"], JsonValue::Null);
-    assert_eq!(rules[3]["capability-version"], JsonValue::Null);
+    assert_eq!(rules[3]["kind"], "repo");
+    assert_eq!(rules[3]["name"], JsonValue::Null);
+    assert_eq!(rules[3]["version"], JsonValue::Null);
     assert!(
         rules[3]["source-path"].as_str().unwrap().ends_with("codex/repo/overlay.md"),
         "repo overlay rule should come from repo-root codex: {}",
@@ -392,7 +390,6 @@ fn validate_duplicate_ids_exits_two() {
         .code(2);
     let value = parse_json(&assert.get_output().stdout);
 
-    assert!(value.get("envelope-version").is_some(), "JSON envelope must include envelope-version");
     assert_eq!(value["error-count"], 1);
     assert_eq!(value["results"][0]["rule-id"], "codex.rule-id-unique");
     assert!(

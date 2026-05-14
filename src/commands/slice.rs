@@ -4,14 +4,14 @@
 
 use std::path::Path;
 
-use specify_domain::config::LayoutExt;
+use specify_domain::config::Layout;
 use specify_domain::merge::{ArtifactClass, MergeStrategy};
 use specify_error::Result;
 
 use crate::cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
 use crate::context::Ctx;
 
-pub(crate) mod cli;
+pub mod cli;
 mod journal;
 mod lifecycle;
 mod list;
@@ -32,7 +32,7 @@ pub(super) fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<Art
         ArtifactClass {
             name: "specs".to_string(),
             staged_dir: slice_dir.join("specs"),
-            baseline_dir: project_root.layout().specify_dir().join("specs"),
+            baseline_dir: Layout::new(project_root).specify_dir().join("specs"),
             strategy: MergeStrategy::ThreeWayMerge,
         },
         ArtifactClass {
@@ -44,7 +44,7 @@ pub(super) fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<Art
     ]
 }
 
-pub(crate) fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
     match action {
         SliceAction::Create {
             name,

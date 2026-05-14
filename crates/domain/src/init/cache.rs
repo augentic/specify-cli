@@ -9,15 +9,15 @@ use jiff::Timestamp;
 use specify_error::Error;
 
 use crate::capability::{CacheMeta, DEFAULT_CODEX_CAPABILITY};
-use crate::config::LayoutExt;
+use crate::config::Layout;
 use crate::init::capability_uri::{CapabilityUri, ensure_capability_dir};
 
 #[derive(Debug)]
-pub(crate) struct CachedCapability {
+pub(super) struct CachedCapability {
     pub(crate) capability_value: String,
 }
 
-pub(crate) fn cache_capability(
+pub(super) fn cache_capability(
     capability: &str, project_dir: &Path, now: Timestamp,
 ) -> Result<CachedCapability, Error> {
     if capability.trim().is_empty() || capability != capability.trim() {
@@ -30,7 +30,7 @@ pub(crate) fn cache_capability(
     }
 
     let source = CapabilityUri::parse(capability, project_dir)?;
-    let cache_dir = project_dir.layout().cache_dir();
+    let cache_dir = Layout::new(project_dir).cache_dir();
     let target = cache_dir.join(&source.capability_name);
     refresh_cached_capability(&source.source_dir, &target)?;
     cache_sibling_default_capability(&source.source_dir, &cache_dir)?;

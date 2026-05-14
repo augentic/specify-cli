@@ -28,15 +28,6 @@ run` WASI passthrough.
 | 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, or a tool request rejected as undeclared.           |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
-## File locks
-
-Advisory `flock(2)` on `.specify/plan.lock` (see `crates/domain/src/change/plan/lock/acquire.rs`)
-goes through the std-library inherent method `std::fs::File::try_lock`,
-stable since Rust 1.89 and matched by the workspace MSRV (1.93).
-Returns `Result<(), TryLockError>` with `TryLockError::WouldBlock` for
-the contended case. The previous `fs2` dependency was dropped — std
-ships the same syscall and `cargo deny` flags `fs2` as unmaintained.
-
 ## Atomic writes
 
 Use `yaml_write` (in `crates/slice/src/atomic.rs`) for any file a
@@ -55,8 +46,8 @@ actively maintained, in contrast to `serde_yaml` (deprecated) and
 `serde_yaml_ng` (community fork carrying the same debt). Saphyr omits a
 `Value` DOM, so code that needs untyped YAML access deserializes into
 `serde_json::Value`. Its separate deser/ser error types are wrapped
-behind `specify_error::YamlError` / `YamlSerError` so the upstream crate
-name does not leak through every public surface.
+behind a single `specify_error::YamlError` enum (`De` / `Ser` variants)
+so the upstream crate name does not leak through every public surface.
 
 ## Diag-first error policy
 
@@ -84,29 +75,19 @@ site without a typed variant can still surface guidance.
 
 ## Wire compatibility
 
-`ENVELOPE_VERSION` (defined in `src/output.rs`, currently `6`) tags
-every JSON envelope the CLI writes. Skills and downstream consumers
-read it to refuse output they cannot parse. Bump rules:
+The CLI's JSON output is a flat envelope: every successful body is the
+typed `*Body` rendered directly with `serde_json::to_writer_pretty`,
+and every failure body is `ErrorBody` (with an optional `results` list
+when the variant is `Error::Validation`). Skills grep on the
+`error` / `code` discriminants; tests assert on them. There is no
+top-level `envelope-version` integer — re-introduce one only if a
+breaking shape change ships and consumers need a version stamp to
+refuse output they cannot parse.
 
-- **Minor bump (additive):** adding a new top-level field to a
-  success-body envelope is a minor bump *only* when existing consumers
-  can ignore the field with no behaviour change. Adding an optional
-  field next to required fields qualifies; adding a required field that
-  consumers must read does not.
-- **Major bump (breaking):** renaming or removing any envelope field,
-  changing a field's type or domain (e.g. string → enum, scalar →
-  array), or changing the kebab-case `code` discriminant on an existing
-  `Error::*` variant is a major bump. Skills grep on those discriminants
-  and tests assert on them.
-- **Always major:** any change to the `error` envelope shape itself —
-  the structure of `ErrorBody` / `ValidationErrBody`, the keys inside,
-  or the relationship between `code`, `detail`, and `hint`.
-
-The `error` envelope is the most-grepped surface in the workflow and
-the most expensive to bump; treat it accordingly. Adding a new
-`Error::*` variant with a fresh kebab-case `code` is not a bump
-(consumers see a new discriminant in the same shape). Renaming an
-existing one is.
+The kebab-case `code` discriminant on `Error::*` variants is the
+public contract. Renaming or removing one is a breaking change.
+Adding a new `Error::*` variant with a fresh kebab-case `code` is
+additive (consumers see a new discriminant in the same shape).
 
 CLI **input** flags are a peer wire surface — skill drivers shell out
 through them. The same minor/major rules apply: adding a new optional
@@ -155,10 +136,10 @@ surfaces match the prior cross-crate `pub use` exports.
 
 `specify-validate` is the one cleanup-era re-extraction. It owns the
 baseline-contract validation primitives (`ContractFinding`,
-`validate_baseline`, `serialize_contract_findings`) and is consumed by
-both `specify-domain` (for compatibility classification) and the
-`wasi-tools/contract` carve-out (for the standalone `wasm32-wasip2`
-binary). The carve-out invariant in `wasi-tools/Cargo.toml` forbids a
+`validate_baseline`) and is consumed by both `specify-domain` (for
+compatibility classification) and the `wasi-tools/contract` carve-out
+(for the standalone `wasm32-wasip2` binary, which renders findings
+through a small inline serializer). The carve-out invariant in `wasi-tools/Cargo.toml` forbids a
 dep on `specify-domain` (would drag `wasmtime` / `tokio` / `ureq`),
 and inlining the ~300 LOC of validation into the carve-out would lose
 the single source of truth. The crate is dependency-minimal (`semver`,
@@ -242,64 +223,10 @@ crate project-scope and capability-scope tool declarations.
   projects on the host.
 - **Time crate.** UTC-only domain; `jiff::Timestamp` replaces
   `chrono::DateTime<Utc>` across every host crate. All persisted
-  stamps still route through `specify_domain::serde_rfc3339`
-  (`Sidecar.fetched_at` mirrors the same shape via a private adapter
-  inlined in `crates/tool/src/cache/meta.rs` because `specify-tool`
-  cannot depend on `specify-domain`) so the on-disk wire shape stays
-  `%Y-%m-%dT%H:%M:%SZ` byte-for-byte. `system_time_to_utc` consolidates
+  stamps route through `specify_error::serde_rfc3339` so the on-disk
+  wire shape stays `%Y-%m-%dT%H:%M:%SZ` byte-for-byte across both the
+  domain DTOs and `Sidecar.fetched_at`. `system_time_to_utc` consolidates
   the previous three `Error::Diag` codes (`merge-mtime-pre-epoch`,
   `merge-mtime-overflow`, `merge-mtime-out-of-range`) into a single
   `merge-mtime-out-of-range` whose `detail` carries the underlying
   `jiff` error.
-
-## Follow-up: wasm-pkg-client HTTP duplication
-
-`wasm-pkg-client` (0.15) is wired in as a non-optional dep of
-`specify-tool` and used at one site (`crates/tool/src/package.rs`)
-behind the `PackageClient` trait. It wraps both `warg-client`
-(WebAssembly registries) and `oci-client` / `oci-wasm` (OCI), so it
-pulls *two* full HTTP stacks:
-
-- `reqwest 0.12.28` (via `warg-client`) and `reqwest 0.13.3` (via
-  `oci-client` / `oci-wasm`) — both used concurrently.
-- `base64 0.21.7` and `base64 0.22.1`.
-- `hyper-util 0.1.x`, `hyper-rustls 0.27`, `tower-http 0.6` shared
-  across both reqwest versions.
-- `rustls-platform-verifier`, `security-framework 3.x`, `keyring`,
-  `oci-spec`, the `warg-*` family, `pbjson`, `prost-build`,
-  `dialoguer`, `config`, `ron`, `ptree`, `ordered-multimap`, etc.
-
-With `--no-default-features` on `specify-tool` (Wasmtime gated off),
-the dep tree still contains roughly 344 unique crates — about 90% of
-which are `wasm-pkg-client` transitives. Building with the default
-`host` feature pushes that to ~380 unique crates. The duplicate
-`reqwest`/`base64`/`hyper`/`tower-http` versions are why
-`crates/tool/src/lib.rs` carries an `allow(clippy::multiple_crate_versions)`
-waiver covering "Wasmtime, WASI, and `wasm-pkg-client`".
-
-Realistic options, ranked by cost:
-
-1. **Gate `wasm-pkg-client` behind a `wasm-pkg` feature** (smallest
-   delta). Make the dep optional, fold the package-resolution path in
-   `package.rs` behind `cfg(feature = "wasm-pkg")`, and let callers
-   that only need manifest/cache/resolver/validator surface drop the
-   ~344-crate tail. The host CLI keeps the feature on; downstream
-   embedders and the `--no-default-features` path get a stub
-   `WasmPkgClient` analogous to the existing `WasiRunner`
-   "tool-host-not-built" stub. Recommended.
-2. **Replace with direct `ureq` + minimal OCI client** (medium).
-   `specify-tool` already depends on `ureq` v3. Implementing the
-   subset of OCI / warg resolution the CLI actually exercises (one
-   first-party registry, one OCI prefix, sha-streaming download)
-   removes the entire `reqwest`/`hyper`/`tower-http` duplication.
-   Cost: writing and maintaining registry-resolution code that
-   `wasm-pkg-client` currently provides for free, plus losing
-   compatibility with `WKG_CONFIG`-flavoured registry configs.
-3. **Accept as-is.** Status quo. Already covered by the
-   `multiple_crate_versions` allow.
-
-Recommendation: option (1). It removes dependency weight from the
-non-host build path (where the duplication is least justified) at
-roughly the same cost as the existing `host` feature pattern, and
-leaves option (2) on the table for a later pass if `wasm-pkg-client`
-becomes the long-pole on host-feature build times or audit surface.

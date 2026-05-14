@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 use specify_error::{Error, is_kebab};
 
-use crate::registry::catalog::Registry;
+use crate::registry::catalog::{Registry, RegistryProject};
 
 impl Registry {
     /// Enforce invariants that serde cannot express on its own:
@@ -18,10 +18,6 @@ impl Registry {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Single fast-fail validator: one block per shape rule keeps the policy table auditable."
-    )]
     pub fn validate_shape(&self) -> Result<(), Error> {
         if self.version != 1 {
             return Err(Error::Diag {
@@ -34,6 +30,7 @@ impl Registry {
         }
 
         let mut seen_names: HashSet<&str> = HashSet::new();
+        let mut producers: HashMap<&str, &str> = HashMap::new();
         for (idx, project) in self.projects.iter().enumerate() {
             if project.name.is_empty() {
                 return Err(Error::Diag {
@@ -76,6 +73,8 @@ impl Registry {
                     detail: format!("registry.yaml: duplicate project name `{}`", project.name),
                 });
             }
+
+            validate_project_contracts(project, &mut producers)?;
         }
 
         if self.projects.len() > 1 {
@@ -89,65 +88,6 @@ impl Registry {
                             project.name
                         ),
                     });
-                }
-            }
-        }
-
-        // --- Contract role invariants ---
-
-        // Invariant 3: Path validity — no absolute or `..` paths.
-        for project in &self.projects {
-            if let Some(ref roles) = project.contracts {
-                for path in roles.produces.iter().chain(roles.consumes.iter()) {
-                    if path.starts_with('/') || path.contains("..") {
-                        return Err(Error::Diag {
-                            code: "registry-contract-path-not-relative",
-                            detail: format!(
-                                "registry.yaml: contract path '{}' in project '{}' must be relative (no '..' or absolute paths)",
-                                path, project.name
-                            ),
-                        });
-                    }
-                }
-            }
-        }
-
-        // Invariant 4: Self-consistency — a project must not list the
-        // same path in both `produces` and `consumes`.
-        for project in &self.projects {
-            if let Some(ref roles) = project.contracts {
-                let produced: HashSet<&str> =
-                    roles.produces.iter().map(std::string::String::as_str).collect();
-                for path in &roles.consumes {
-                    if produced.contains(path.as_str()) {
-                        return Err(Error::Diag {
-                            code: "registry-contract-produces-and-consumes",
-                            detail: format!(
-                                "registry.yaml: project '{}' lists '{}' in both 'produces' and 'consumes'",
-                                project.name, path
-                            ),
-                        });
-                    }
-                }
-            }
-        }
-
-        // Invariant 1: Single producer — each contract path appears in
-        // `produces` for at most one project.
-        let mut producers: HashMap<&str, &str> = HashMap::new();
-        for project in &self.projects {
-            if let Some(ref roles) = project.contracts {
-                for path in &roles.produces {
-                    if let Some(existing) = producers.get(path.as_str()) {
-                        return Err(Error::Diag {
-                            code: "registry-contract-multiple-producers",
-                            detail: format!(
-                                "registry.yaml: contract path '{}' is produced by both '{}' and '{}'",
-                                path, existing, project.name
-                            ),
-                        });
-                    }
-                    producers.insert(path, &project.name);
                 }
             }
         }
@@ -191,6 +131,55 @@ impl Registry {
         }
         Ok(())
     }
+}
+
+/// Enforce contract-roles invariants for a single project: path
+/// validity (no absolute or `..` paths), self-consistency (no path
+/// appearing in both `produces` and `consumes`), and single-producer
+/// registration into the shared `producers` accumulator. Returns the
+/// first error encountered.
+fn validate_project_contracts<'a>(
+    project: &'a RegistryProject, producers: &mut HashMap<&'a str, &'a str>,
+) -> Result<(), Error> {
+    let Some(roles) = &project.contracts else {
+        return Ok(());
+    };
+    for path in roles.produces.iter().chain(roles.consumes.iter()) {
+        if path.starts_with('/') || path.contains("..") {
+            return Err(Error::Diag {
+                code: "registry-contract-path-not-relative",
+                detail: format!(
+                    "registry.yaml: contract path '{}' in project '{}' must be relative (no '..' or absolute paths)",
+                    path, project.name
+                ),
+            });
+        }
+    }
+    let produced: HashSet<&str> = roles.produces.iter().map(String::as_str).collect();
+    for path in &roles.consumes {
+        if produced.contains(path.as_str()) {
+            return Err(Error::Diag {
+                code: "registry-contract-produces-and-consumes",
+                detail: format!(
+                    "registry.yaml: project '{}' lists '{}' in both 'produces' and 'consumes'",
+                    project.name, path
+                ),
+            });
+        }
+    }
+    for path in &roles.produces {
+        if let Some(existing) = producers.get(path.as_str()) {
+            return Err(Error::Diag {
+                code: "registry-contract-multiple-producers",
+                detail: format!(
+                    "registry.yaml: contract path '{}' is produced by both '{}' and '{}'",
+                    path, existing, project.name
+                ),
+            });
+        }
+        producers.insert(path, &project.name);
+    }
+    Ok(())
 }
 
 /// Reject malformed `projects[].url` while accepting: `.`,

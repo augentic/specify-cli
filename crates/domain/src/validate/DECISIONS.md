@@ -45,19 +45,18 @@ rules:
    across the walked set; on duplicates, both offending paths are
    reported.
 
-## Change D — Validate JSON envelope shape
+## Change D — Validate JSON body shape
 
 Source: `rfcs/archive/rfc-13-contract-validate-binary.md` §4.2a.
 
-`serialize_contract_findings` in
-`crates/validate/src/contracts/envelope.rs` emits the canonical
-pretty-printed JSON envelope consumed by the standalone
-`specify-contract` binary. The shape is byte-compatible with
-the pre-Phase-2.7 `specify contract validate --format json` envelope:
-top-level keys `envelope-version`, `contracts-dir`, `ok`, `findings`,
+The standalone `specify-contract` binary (in
+`wasi-tools/contract/src/main.rs`) renders a flat pretty-printed JSON
+body with top-level keys `contracts-dir`, `ok`, `findings`,
 `exit-code`; per-finding keys `path`, `rule-id`, `detail`. Field order
 is preserved (typed `Serialize` structs piped through
-`serde_json::to_string_pretty`) so the byte sequence is deterministic
-and matches the legacy envelope key-for-key. Findings paths are
-rendered relative to `baseline_dir.parent()` when that prefix is
-present; otherwise the raw path is used.
+`serde_json::to_string_pretty`) so the byte sequence is deterministic.
+Findings paths are rendered relative to `baseline_dir.parent()` when
+that prefix is present; otherwise the raw path is used. There is no
+top-level `envelope-version` integer — re-introduce one only if a
+breaking shape change ships and consumers need a version stamp to
+refuse output they cannot parse.

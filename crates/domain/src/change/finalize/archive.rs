@@ -8,7 +8,7 @@ use jiff::Timestamp;
 
 use super::{Landing, Outcome, ProjectResult};
 use crate::change::plan::core::Plan;
-use crate::config::LayoutExt;
+use crate::config::Layout;
 use crate::registry::Registry;
 
 /// Try to archive `plan.yaml`, the change brief, and the plans working
@@ -18,7 +18,7 @@ use crate::registry::Registry;
 /// project row (or a synthetic `<archive>` row when the registry is
 /// empty), records a summary message, and returns `false`.
 pub(super) fn sweep(project_dir: &Path, outcome: &mut Outcome, now: Timestamp) -> bool {
-    let layout = project_dir.layout();
+    let layout = Layout::new(project_dir);
     let plan_file = layout.plan_path();
     let brief_file = layout.change_brief_path();
     let archive_root = layout.archive_dir().join("plans");

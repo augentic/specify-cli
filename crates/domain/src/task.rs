@@ -8,7 +8,8 @@ use regex::Regex;
 use specify_error::Error;
 
 /// A single task entry parsed from `tasks.md`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct Task {
     /// The `##` heading text without the leading `## `, e.g. `"1. Setup"`.
     /// Empty string if the task appears before any `## ` heading.
@@ -24,7 +25,8 @@ pub struct Task {
 }
 
 /// A `<!-- skill: plugin:skill -->` directive attached to a task line.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct SkillDirective {
     /// Plugin name (e.g. `"omnia"`).
     pub plugin: String,
@@ -83,7 +85,7 @@ fn skill_directive_re() -> &'static Regex {
 pub fn parse_tasks(content: &str) -> Progress {
     let mut current_group = String::new();
     let mut tasks: Vec<Task> = Vec::new();
-    let mut complete_count = 0usize;
+    let mut complete_count = 0_usize;
 
     for line in content.lines() {
         // `## ` (exactly two hashes + a space) starts a new group.
@@ -131,11 +133,11 @@ pub fn parse_tasks(content: &str) -> Progress {
 /// stripped from the description and returned as a [`SkillDirective`].
 /// Non-matching comments (e.g. `<!-- TODO: … -->`) are left untouched.
 fn extract_skill_directive(rest: &str) -> (String, Option<SkillDirective>) {
-    let Some(m) = skill_directive_re().find(rest) else {
+    let Some(caps) = skill_directive_re().captures(rest) else {
         return (rest.trim().to_string(), None);
     };
 
-    let caps = skill_directive_re().captures(rest).expect("find matched; captures must too");
+    let m = caps.get(0).expect("group 0 always present on a successful match");
     let directive = SkillDirective {
         plugin: caps[1].to_string(),
         skill: caps[2].to_string(),
@@ -177,7 +179,7 @@ pub fn mark_complete(content: &str, task_number: &str) -> Result<String, Error> 
 
     // Walk lines and record their absolute byte offsets so we can rewrite
     // exactly one checkbox without touching surrounding bytes.
-    let mut offset = 0usize;
+    let mut offset = 0_usize;
     for line in content.split_inclusive('\n') {
         // Line length without the trailing '\n' (if any) — used to scope the
         // regex search to just this line.

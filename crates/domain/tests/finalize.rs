@@ -12,8 +12,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use specify_domain::change::finalize::{
-    Inputs, Landing, Outcome, ProjectResult, Refusal, classify_pr, combine, is_terminal,
-    outstanding, run, summarise,
+    Inputs, Landing, ProjectResult, Refusal, classify_pr, combine, is_terminal, outstanding, run,
+    summarise,
 };
 use specify_domain::change::{Entry, Plan, Status};
 use specify_domain::registry::forge::{PrState, PrView};
@@ -171,6 +171,7 @@ impl FinalizeMock {
         // Map PR number → owned PrView so `gh pr view <number>` can look
         // up the canned payload.
         let mut by_number: HashMap<u64, PrView> = HashMap::new();
+        #[expect(clippy::iter_over_hash_type, reason = "rebuilds an unordered index for lookups")]
         for v in view.values() {
             if let Ok(Some(pr)) = v {
                 by_number.insert(pr.number, pr.clone());
@@ -273,7 +274,7 @@ fn refuses_when_plan_has_outstanding() {
         now: jiff::Timestamp::now(),
     };
     let err = run(inputs, &runner).expect_err("non-terminal must refuse");
-    assert!(matches!(err, Refusal::NonTerminalEntries(ref names) if names == &["b"]));
+    assert!(matches!(&err, Refusal::NonTerminalEntries(names) if names == &["b"]));
     // Probe must not have been called — guard runs before any IO.
     assert!(runner.calls.borrow().is_empty(), "no probes on non-terminal refusal");
 }
@@ -638,7 +639,7 @@ fn dry_run_does_not_archive_or_clean() {
     };
     let outcome = run(inputs, &runner).expect("ok");
     assert!(outcome.finalized, "dry-run with all-passing must report finalized=true");
-    assert_eq!(outcome.dry_run, Some(true));
+    assert!(outcome.dry_run);
     assert!(outcome.archived.is_none(), "dry-run must not archive");
     assert!(outcome.cleaned.is_empty(), "dry-run must not clean");
     // On-disk state must be unchanged.
@@ -676,7 +677,7 @@ fn dry_run_with_unmerged_pr_reports_not_finalized() {
     let outcome = run(inputs, &runner).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Unmerged);
-    assert_eq!(outcome.dry_run, Some(true));
+    assert!(outcome.dry_run);
 }
 
 // ---- --clean ---------------------------------------------------------
@@ -933,13 +934,6 @@ fn summary_counts_per_status() {
     assert_eq!(s.no_branch, 1);
     assert_eq!(s.unmerged, 1);
     assert_eq!(s.dirty, 1);
-}
-
-// silence unused-import warnings for Outcome — referenced in doctest-only
-// examples below.
-#[allow(dead_code)]
-const fn _outcome_type_alias() -> Option<Outcome> {
-    None
 }
 
 // ---- helpers --------------------------------------------------------

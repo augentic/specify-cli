@@ -2,7 +2,7 @@
 //! helpers (declared-tool merge, capability resolution, manifest
 //! validation) consumed by every per-subcommand handler.
 
-pub(crate) mod cli;
+pub mod cli;
 mod dto;
 mod fetch;
 mod gc;
@@ -21,7 +21,6 @@ pub(super) use show::run as show;
 use specify_domain::capability::{Capability, ResolvedCapability};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
-use specify_tool::validate::ValidationResult as ToolValidationResult;
 use specify_tool::{Tool, ToolManifest, ToolScope};
 
 use self::dto::{CacheKey, Inventory, ScopedTool, WarningRow, warning_row};
@@ -69,8 +68,9 @@ fn resolve_project_capability(ctx: &Ctx) -> Result<Option<ResolvedCapability>> {
 }
 
 fn enforce_capability_filename(dir: &Path) -> Result<()> {
-    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::CapabilityManifestMissing {
-        dir: dir.to_path_buf(),
+    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::Diag {
+        code: "capability-manifest-missing",
+        detail: format!("no `capability.yaml` at {}", dir.display()),
     })
 }
 
@@ -78,32 +78,18 @@ fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {
     let manifest = ToolManifest {
         tools: tools.to_vec(),
     };
-    let summaries: Vec<ValidationSummary> =
-        manifest.validate_structure(scope).iter().filter_map(validation_failure).collect();
+    let summaries: Vec<ValidationSummary> = manifest
+        .validate_structure(scope)
+        .into_iter()
+        .filter(|summary| summary.status == ValidationStatus::Fail)
+        .collect();
     if summaries.is_empty() { Ok(()) } else { Err(Error::Validation { results: summaries }) }
 }
 
-fn validation_failure(result: &ToolValidationResult) -> Option<ValidationSummary> {
-    match result {
-        ToolValidationResult::Fail {
-            rule_id,
-            rule,
-            detail,
-        } => Some(ValidationSummary {
-            status: ValidationStatus::Fail,
-            rule_id: (*rule_id).to_string(),
-            rule: (*rule).to_string(),
-            detail: Some(detail.clone()),
-        }),
-        _ => None,
-    }
-}
-
 fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool> {
-    inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| {
-        Error::ToolNotDeclared {
-            name: name.to_string(),
-        }
+    inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| Error::Diag {
+        code: "tool-not-declared",
+        detail: format!("tool not declared: {name}"),
     })
 }
 

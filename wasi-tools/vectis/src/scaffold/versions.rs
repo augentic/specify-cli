@@ -8,7 +8,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::scaffold::error::ScaffoldError;
+use crate::scaffold::ScaffoldError;
 
 /// The raw text of the embedded defaults compiled into the scaffold renderer.
 const EMBEDDED_DEFAULTS: &str = include_str!("../../embedded/versions.toml");

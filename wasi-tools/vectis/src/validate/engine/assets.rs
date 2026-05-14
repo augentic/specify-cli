@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 
 use super::paths::{discover_artifact, resolve_default_path};
 use super::shared::{assets_validator, escape_pointer_token, parse_yaml_file};
+use crate::validate::ValidateMode;
 use crate::validate::error::VectisError;
-use crate::validate::{CommandOutcome, ValidateMode};
 
 /// Validate `assets.yaml` against the embedded assets schema and
 /// layer the cross-artifact checks for resolved files and composition
@@ -39,7 +39,7 @@ use crate::validate::{CommandOutcome, ValidateMode};
 /// Returns [`VectisError::InvalidProject`] when the resolved file is
 /// unreadable, and [`VectisError::Internal`] if the embedded schema
 /// fails to compile.
-pub(super) fn validate(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
+pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
     let target = path
         .map_or_else(|| resolve_default_path(ValidateMode::Assets), std::path::Path::to_path_buf);
 
@@ -104,12 +104,12 @@ pub(super) fn validate(path: Option<&Path>) -> Result<CommandOutcome, VectisErro
         }
     }
 
-    Ok(CommandOutcome::Success(json!({
+    Ok(json!({
         "mode": ValidateMode::Assets.as_str(),
         "path": target.display().to_string(),
         "errors": errors,
         "warnings": warnings,
-    })))
+    }))
 }
 
 /// Walk a single asset entry's filePaths and append a "file not found"

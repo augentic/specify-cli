@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 
 use super::paths::{default_project_root, resolve_default_path_with_root};
 use super::run_inner;
+use crate::validate::ValidateMode;
 use crate::validate::error::VectisError;
-use crate::validate::{CommandOutcome, ValidateMode};
 
 /// Run every per-mode validator against the supplied project root (or
 /// CWD when none is given) and fold the per-mode envelopes into a
@@ -29,7 +29,7 @@ use crate::validate::{CommandOutcome, ValidateMode};
 /// Returns [`VectisError::InvalidProject`] when a sub-mode whose input
 /// IS present on disk fails to read it, and [`VectisError::Internal`]
 /// if an embedded schema fails to compile.
-pub(super) fn validate(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
+pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
     let project_root = path.map_or_else(default_project_root, Path::to_path_buf);
 
     let mut results: Vec<Value> = Vec::new();
@@ -61,9 +61,9 @@ pub(super) fn validate(path: Option<&Path>) -> Result<CommandOutcome, VectisErro
         }));
     }
 
-    Ok(CommandOutcome::Success(json!({
+    Ok(json!({
         "mode": ValidateMode::All.as_str(),
         "path": project_root.display().to_string(),
         "results": results,
-    })))
+    }))
 }

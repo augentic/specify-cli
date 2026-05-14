@@ -75,7 +75,6 @@ impl<'a> Detector<'a> {
     fn detect_node(&mut self) {
         let package_path = self.project_dir.join("package.json");
         let Some(package) = self.parse_json_marker(&package_path) else {
-            self.detect_eslint_without_npm_script();
             return;
         };
 
@@ -98,16 +97,6 @@ impl<'a> Detector<'a> {
             self.detection
                 .linting
                 .push(LintDetection::Command(CommandDetection::new("node-lint", "npm run lint")));
-        } else {
-            self.detect_eslint_without_npm_script();
-        }
-    }
-
-    fn detect_eslint_without_npm_script(&mut self) {
-        if self.eslint_marker_detected() {
-            self.detection
-                .linting
-                .push(LintDetection::Command(CommandDetection::new("eslint", "eslint")));
         }
     }
 
@@ -227,51 +216,6 @@ impl<'a> Detector<'a> {
             return;
         };
         self.detection.linting.push(LintDetection::Workflow(name.to_string()));
-    }
-
-    fn eslint_marker_detected(&mut self) -> bool {
-        let Ok(entries) = fs::read_dir(self.project_dir) else {
-            return false;
-        };
-        let mut candidates = Vec::new();
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Some(file_name) = path.file_name().and_then(OsStr::to_str) else {
-                continue;
-            };
-            if file_name.starts_with(".eslintrc") {
-                candidates.push(path);
-            }
-        }
-        candidates.sort();
-        for candidate in candidates {
-            if self.eslint_marker_file_detected(&candidate) {
-                return true;
-            }
-        }
-        false
-    }
-
-    fn eslint_marker_file_detected(&mut self, path: &Path) -> bool {
-        let Some(contents) = self.read_marker(path) else {
-            return false;
-        };
-        let trimmed = contents.trim_start();
-        if trimmed.starts_with('{') || trimmed.starts_with('[') {
-            match serde_json::from_str::<Value>(&contents) {
-                Ok(_value) => true,
-                Err(err) => {
-                    self.warn(path, format!("failed to parse JSON marker: {err}"));
-                    false
-                }
-            }
-        } else if path.extension() == Some(OsStr::new("yaml"))
-            || path.extension() == Some(OsStr::new("yml"))
-        {
-            self.parse_yaml_marker(path).is_some()
-        } else {
-            true
-        }
     }
 
     fn parse_json_marker(&mut self, path: &Path) -> Option<Value> {

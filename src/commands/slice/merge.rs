@@ -6,15 +6,14 @@ use std::path::Path;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::config::{LayoutExt, is_workspace_clone};
+use specify_domain::config::{Layout, is_workspace_clone};
 use specify_domain::merge::{
-    BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry, conflict_check, slice,
+    BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, conflict_check, slice,
 };
 use specify_error::Result;
 
 use super::artifact_classes;
 use crate::context::Ctx;
-use crate::output::Render;
 
 const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/archive"];
 
@@ -36,10 +35,13 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let archive_path = archive_dir.join(format!("{today}-{name}"));
 
     let entries: Vec<MergedEntry> = merged.iter().map(MergedEntry::from).collect();
-    ctx.write(&RunBody {
-        merged_specs: entries,
-        archive_path: archive_path.display().to_string(),
-    })?;
+    ctx.write(
+        &RunBody {
+            merged_specs: entries,
+            archive_path: archive_path.display().to_string(),
+        },
+        write_run_text,
+    )?;
     Ok(())
 }
 
@@ -62,14 +64,23 @@ pub(super) fn preview(ctx: &Ctx, name: &str) -> Result<()> {
         .opaque
         .iter()
         .filter(|e| e.class_name == "contracts")
-        .map(ContractItem::from)
+        .filter_map(|entry| match entry.action {
+            OpaqueAction::Added | OpaqueAction::Replaced => Some(ContractItem {
+                path: entry.relative_path.clone(),
+                action: entry.action.clone(),
+            }),
+            _ => None,
+        })
         .collect();
 
-    ctx.write(&PreviewBody {
-        slice_dir: slice_dir.display().to_string(),
-        specs,
-        contracts,
-    })?;
+    ctx.write(
+        &PreviewBody {
+            slice_dir: slice_dir.display().to_string(),
+            specs,
+            contracts,
+        },
+        write_preview_text,
+    )?;
     Ok(())
 }
 
@@ -79,10 +90,13 @@ pub(super) fn conflicts(ctx: &Ctx, name: &str) -> Result<()> {
     let conflicts = conflict_check(&slice_dir, &classes)?;
     let rows: Vec<ConflictRow> = conflicts.iter().map(ConflictRow::from).collect();
 
-    ctx.write(&ConflictCheckBody {
-        slice_dir: slice_dir.display().to_string(),
-        conflicts: rows,
-    })?;
+    ctx.write(
+        &ConflictCheckBody {
+            slice_dir: slice_dir.display().to_string(),
+            conflicts: rows,
+        },
+        write_conflict_check_text,
+    )?;
     Ok(())
 }
 
@@ -98,27 +112,25 @@ struct RunBody {
     archive_path: String,
 }
 
-impl Render for RunBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        for entry in &self.merged_specs {
-            writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
-        }
-        writeln!(w, "Archived to {}", self.archive_path)
+fn write_run_text(w: &mut dyn Write, body: &RunBody) -> std::io::Result<()> {
+    for entry in &body.merged_specs {
+        writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
     }
+    writeln!(w, "Archived to {}", body.archive_path)
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct MergedEntry {
     name: String,
-    operations: Vec<MergeOp>,
+    operations: Vec<MergeOperation>,
 }
 
 impl From<&MergePreviewEntry> for MergedEntry {
     fn from(entry: &MergePreviewEntry) -> Self {
         Self {
             name: entry.name.clone(),
-            operations: entry.result.operations.iter().map(MergeOp::from).collect(),
+            operations: entry.result.operations.clone(),
         }
     }
 }
@@ -131,31 +143,29 @@ struct PreviewBody {
     contracts: Vec<ContractItem>,
 }
 
-impl Render for PreviewBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.specs.is_empty() {
-            writeln!(w, "No delta specs to merge.")?;
-        } else {
-            for entry in &self.specs {
-                writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
-                for op in &entry.operations {
-                    writeln!(w, "  {}", operation_label(op))?;
-                }
+fn write_preview_text(w: &mut dyn Write, body: &PreviewBody) -> std::io::Result<()> {
+    if body.specs.is_empty() {
+        writeln!(w, "No delta specs to merge.")?;
+    } else {
+        for entry in &body.specs {
+            writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
+            for op in &entry.operations {
+                writeln!(w, "  {}", operation_label(op))?;
             }
         }
-        if !self.contracts.is_empty() {
-            writeln!(w, "\nContract changes:")?;
-            for c in &self.contracts {
-                let (sigil, label) = match c.action {
-                    ContractAction::Added => ("+", "added"),
-                    ContractAction::Replaced => ("~", "replaced"),
-                    ContractAction::Unknown => ("?", "unknown"),
-                };
-                writeln!(w, "  {sigil} contracts/{} ({label})", c.path)?;
-            }
-        }
-        Ok(())
     }
+    if !body.contracts.is_empty() {
+        writeln!(w, "\nContract changes:")?;
+        for c in &body.contracts {
+            let (sigil, label) = match c.action {
+                OpaqueAction::Added => ("+", "added"),
+                OpaqueAction::Replaced => ("~", "replaced"),
+                _ => ("?", "unknown"),
+            };
+            writeln!(w, "  {sigil} contracts/{} ({label})", c.path)?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -163,7 +173,7 @@ impl Render for PreviewBody {
 struct SpecPreviewEntry {
     name: String,
     baseline_path: String,
-    operations: Vec<MergeOp>,
+    operations: Vec<MergeOperation>,
 }
 
 impl From<&MergePreviewEntry> for SpecPreviewEntry {
@@ -171,7 +181,7 @@ impl From<&MergePreviewEntry> for SpecPreviewEntry {
         Self {
             name: entry.name.clone(),
             baseline_path: entry.baseline_path.display().to_string(),
-            operations: entry.result.operations.iter().map(MergeOp::from).collect(),
+            operations: entry.result.operations.clone(),
         }
     }
 }
@@ -180,29 +190,7 @@ impl From<&MergePreviewEntry> for SpecPreviewEntry {
 #[serde(rename_all = "kebab-case")]
 struct ContractItem {
     path: String,
-    action: ContractAction,
-}
-
-#[derive(Serialize, Clone, Copy)]
-#[serde(rename_all = "kebab-case")]
-enum ContractAction {
-    Added,
-    Replaced,
-    Unknown,
-}
-
-impl From<&OpaquePreviewEntry> for ContractItem {
-    fn from(entry: &OpaquePreviewEntry) -> Self {
-        let action = match entry.action {
-            OpaqueAction::Added => ContractAction::Added,
-            OpaqueAction::Replaced => ContractAction::Replaced,
-            _ => ContractAction::Unknown,
-        };
-        Self {
-            path: entry.relative_path.clone(),
-            action,
-        }
-    }
+    action: OpaqueAction,
 }
 
 #[derive(Serialize)]
@@ -212,20 +200,18 @@ struct ConflictCheckBody {
     conflicts: Vec<ConflictRow>,
 }
 
-impl Render for ConflictCheckBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.conflicts.is_empty() {
-            return writeln!(w, "No baseline conflicts.");
-        }
-        for c in &self.conflicts {
-            writeln!(
-                w,
-                "{}: baseline modified {} (defined_at {})",
-                c.capability, c.baseline_modified_at, c.defined_at,
-            )?;
-        }
-        Ok(())
+fn write_conflict_check_text(w: &mut dyn Write, body: &ConflictCheckBody) -> std::io::Result<()> {
+    if body.conflicts.is_empty() {
+        return writeln!(w, "No baseline conflicts.");
     }
+    for c in &body.conflicts {
+        writeln!(
+            w,
+            "{}: baseline modified {} (defined_at {})",
+            c.capability, c.baseline_modified_at, c.defined_at,
+        )?;
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -247,73 +233,29 @@ impl From<&BaselineConflict> for ConflictRow {
 }
 
 // ---------------------------------------------------------------------------
-// MergeOp — typed wire representation of a `MergeOperation`.
+// MergeOperation rendering.
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-enum MergeOp {
-    Added { id: String, name: String },
-    Modified { id: String, name: String },
-    Removed { id: String, name: String },
-    Renamed { id: String, old_name: String, new_name: String },
-    CreatedBaseline { requirement_count: usize },
-    Unknown,
-}
-
-impl From<&specify_domain::merge::MergeOperation> for MergeOp {
-    fn from(op: &specify_domain::merge::MergeOperation) -> Self {
-        use specify_domain::merge::MergeOperation;
-        match op {
-            MergeOperation::Added { id, name } => Self::Added {
-                id: id.clone(),
-                name: name.clone(),
-            },
-            MergeOperation::Modified { id, name } => Self::Modified {
-                id: id.clone(),
-                name: name.clone(),
-            },
-            MergeOperation::Removed { id, name } => Self::Removed {
-                id: id.clone(),
-                name: name.clone(),
-            },
-            MergeOperation::Renamed {
-                id,
-                old_name,
-                new_name,
-            } => Self::Renamed {
-                id: id.clone(),
-                old_name: old_name.clone(),
-                new_name: new_name.clone(),
-            },
-            MergeOperation::CreatedBaseline { requirement_count } => Self::CreatedBaseline {
-                requirement_count: *requirement_count,
-            },
-            // `MergeOperation` is `#[non_exhaustive]`; future variants
-            // surface as `{"kind": "unknown"}` until mapped.
-            _ => Self::Unknown,
-        }
-    }
-}
-
-fn operation_label(op: &MergeOp) -> String {
+fn operation_label(op: &MergeOperation) -> String {
     match op {
-        MergeOp::Added { id, name } => format!("ADDING: {id} — {name}"),
-        MergeOp::Modified { id, name } => format!("MODIFYING: {id} — {name}"),
-        MergeOp::Removed { id, name } => format!("REMOVING: {id} — {name}"),
-        MergeOp::Renamed {
+        MergeOperation::Added { id, name } => format!("ADDING: {id} — {name}"),
+        MergeOperation::Modified { id, name } => format!("MODIFYING: {id} — {name}"),
+        MergeOperation::Removed { id, name } => format!("REMOVING: {id} — {name}"),
+        MergeOperation::Renamed {
             id,
             old_name,
             new_name,
         } => format!("RENAMING: {id} — {old_name} -> {new_name}"),
-        MergeOp::CreatedBaseline { requirement_count } => {
+        MergeOperation::CreatedBaseline { requirement_count } => {
             format!("CREATING baseline with {requirement_count} requirement(s)")
         }
-        MergeOp::Unknown => "UNKNOWN operation".to_string(),
+        // `MergeOperation` is `#[non_exhaustive]`; surface unmapped
+        // future variants as a generic label.
+        _ => "UNKNOWN operation".to_string(),
     }
 }
 
-fn summarise_ops(ops: &[MergeOp]) -> String {
+fn summarise_ops(ops: &[MergeOperation]) -> String {
     let mut added = 0;
     let mut modified = 0;
     let mut removed = 0;
@@ -321,14 +263,14 @@ fn summarise_ops(ops: &[MergeOp]) -> String {
     let mut created_baseline = None;
     for op in ops {
         match op {
-            MergeOp::Added { .. } => added += 1,
-            MergeOp::Modified { .. } => modified += 1,
-            MergeOp::Removed { .. } => removed += 1,
-            MergeOp::Renamed { .. } => renamed += 1,
-            MergeOp::CreatedBaseline { requirement_count } => {
+            MergeOperation::Added { .. } => added += 1,
+            MergeOperation::Modified { .. } => modified += 1,
+            MergeOperation::Removed { .. } => removed += 1,
+            MergeOperation::Renamed { .. } => renamed += 1,
+            MergeOperation::CreatedBaseline { requirement_count } => {
                 created_baseline = Some(*requirement_count);
             }
-            MergeOp::Unknown => {}
+            _ => {}
         }
     }
     if let Some(count) = created_baseline {
@@ -355,28 +297,16 @@ fn summarise_ops(ops: &[MergeOp]) -> String {
 // ---------------------------------------------------------------------------
 
 /// Detect whether a project directory is inside a workspace clone.
-/// Two-part heuristic: (1) the path contains `/.specify/workspace/*/`
-/// as an ancestor via structural component walk, and (2)
-/// `.specify/project.yaml` exists in the project directory. The
-/// secondary guard — CWD does not contain `.specify/plan.yaml` — is
-/// retained as a safety check but is not sufficient on its own
-/// because `plan.yaml` may be absent after `specify change plan
-/// archive`.
+/// The path must contain `/.specify/workspace/*/` as an ancestor via
+/// structural component walk, and `.specify/plan.yaml` must be absent
+/// — the plan file's presence indicates an in-flight change rather
+/// than a freshly merged clone. The `.specify/project.yaml` check is
+/// already enforced upstream by `Ctx::load`.
 fn is_clone_eligible(project_dir: &Path) -> bool {
     if !is_workspace_clone(project_dir) {
         return false;
     }
-    let has_project_yaml = project_dir.join(".specify").join("project.yaml").exists();
-    let has_plan_yaml = project_dir.layout().plan_path().exists();
-    has_project_yaml && !has_plan_yaml
-}
-
-fn merge_pathspecs(project_dir: &Path) -> Vec<&'static str> {
-    WORKSPACE_MERGE_COMMIT_PATHS
-        .iter()
-        .copied()
-        .filter(|path| project_dir.join(path).exists())
-        .collect()
+    !Layout::new(project_dir).plan_path().exists()
 }
 
 fn git(project_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
@@ -384,7 +314,11 @@ fn git(project_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Outpu
 }
 
 fn auto_commit(project_dir: &Path, name: &str) {
-    let pathspecs = merge_pathspecs(project_dir);
+    let pathspecs: Vec<&'static str> = WORKSPACE_MERGE_COMMIT_PATHS
+        .iter()
+        .copied()
+        .filter(|path| project_dir.join(path).exists())
+        .collect();
     if pathspecs.is_empty() {
         return;
     }

@@ -5,8 +5,8 @@
 //! Schema and feed it YAML fixtures converted to `serde_json::Value`.
 //! CLI integration tests for the `specify change plan *` group that
 //! used to live alongside these schema tests have moved to
-//! `tests/change_umbrella.rs` (RFC-13 §"What becomes a capability"
-//! folded `specify plan *` under the `change` umbrella).
+//! `tests/change_plan_orchestrate.rs` (RFC-13 §"What becomes a
+//! capability" folded `specify plan *` under the `change` umbrella).
 
 use std::fs;
 use std::path::PathBuf;

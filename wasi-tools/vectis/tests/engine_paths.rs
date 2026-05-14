@@ -2,7 +2,7 @@
 
 mod engine_support;
 
-use engine_support::{extract_envelope, write_specify_project};
+use engine_support::write_specify_project;
 use serde_json::Value;
 use specify_vectis::validate::__test_internals::{
     discover_artifact, expand_path_template, find_project_root, paths_for_key,
@@ -189,13 +189,11 @@ fn all_envelope_runs_every_mode_in_canonical_order() {
     std::fs::write(specs.join("composition.yaml"), "version: 1\nscreens: {}\n")
         .expect("write composition.yaml");
 
-    let envelope = extract_envelope(
-        run(&Args {
-            mode: ValidateMode::All,
-            path: Some(tmp.path().to_path_buf()),
-        })
-        .expect("run all succeeds"),
-    );
+    let envelope = run(&Args {
+        mode: ValidateMode::All,
+        path: Some(tmp.path().to_path_buf()),
+    })
+    .expect("run all succeeds");
 
     assert_eq!(envelope["mode"], "all");
     assert_eq!(envelope["path"].as_str().expect("path string"), tmp.path().display().to_string());
@@ -229,13 +227,11 @@ fn all_envelope_skips_missing_inputs_without_failing() {
     std::fs::create_dir_all(&design).expect("mkdir design-system");
     std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("write tokens.yaml");
 
-    let envelope = extract_envelope(
-        run(&Args {
-            mode: ValidateMode::All,
-            path: Some(tmp.path().to_path_buf()),
-        })
-        .expect("run all does not fail on missing inputs"),
-    );
+    let envelope = run(&Args {
+        mode: ValidateMode::All,
+        path: Some(tmp.path().to_path_buf()),
+    })
+    .expect("run all does not fail on missing inputs");
 
     let results = envelope["results"].as_array().expect("results array");
     let by_mode: std::collections::BTreeMap<&str, &Value> =
@@ -276,13 +272,11 @@ fn all_envelope_propagates_sub_mode_errors_into_nested_report() {
     )
     .expect("write tokens.yaml");
 
-    let envelope = extract_envelope(
-        run(&Args {
-            mode: ValidateMode::All,
-            path: Some(tmp.path().to_path_buf()),
-        })
-        .expect("run all succeeds"),
-    );
+    let envelope = run(&Args {
+        mode: ValidateMode::All,
+        path: Some(tmp.path().to_path_buf()),
+    })
+    .expect("run all succeeds");
     let results = envelope["results"].as_array().expect("results array");
     let tokens_entry =
         results.iter().find(|e| e["mode"] == "tokens").expect("tokens sub-report present");

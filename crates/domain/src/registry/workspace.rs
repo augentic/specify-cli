@@ -9,15 +9,6 @@ mod slot_problem;
 mod status;
 mod sync;
 
-#[cfg(test)]
-#[allow(
-    clippy::unnecessary_wraps,
-    clippy::struct_field_names,
-    clippy::type_complexity,
-    reason = "test helpers favour readability over clippy heuristics"
-)]
-mod tests;
-
 use std::path::{Component, Path, PathBuf};
 
 pub use push::{PushOutcome, PushResult, github_slug, push_all, push_projects};

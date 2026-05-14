@@ -282,7 +282,7 @@ pub(in crate::registry::workspace) fn push_single_project<R: CmdRunner>(
         if dry_run {
             return push_result(rp, PushOutcome::Created, Some(branch_name), None, None);
         }
-        if let Some(ref slug) = slug {
+        if let Some(slug) = &slug {
             if let Err(err) = forge::create_repo(runner, slug, &project_path) {
                 return push_result(
                     rp,

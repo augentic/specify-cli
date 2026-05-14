@@ -49,15 +49,19 @@ pub struct Created {
 ///
 /// # Errors
 ///
-/// Returns `Error::InvalidName` if the name is not valid kebab-case.
+/// Returns `Error::Diag` with `code = "invalid-name"` if the name is not
+/// valid kebab-case.
 pub fn validate_name(name: &str) -> Result<(), Error> {
     if is_kebab(name) {
         Ok(())
     } else {
-        Err(Error::InvalidName(format!(
-            "slice name `{name}` must be kebab-case (lowercase ascii, digits, single hyphens; \
-             no leading/trailing/doubled hyphens)"
-        )))
+        Err(Error::Diag {
+            code: "invalid-name",
+            detail: format!(
+                "slice name `{name}` must be kebab-case (lowercase ascii, digits, single \
+                 hyphens; no leading/trailing/doubled hyphens)"
+            ),
+        })
     }
 }
 
@@ -72,9 +76,9 @@ pub fn validate_name(name: &str) -> Result<(), Error> {
 ///
 /// # Errors
 ///
-/// `Error::InvalidName` for a non-kebab `name`; `Error::Diag` with
-/// `slice-already-exists` / `slice-dir-missing-metadata` for the
-/// existing-dir branches; otherwise propagates I/O or save failures.
+/// `Error::Diag` with `code = "invalid-name"` for a non-kebab `name`;
+/// `Error::Diag` with `slice-already-exists` / `slice-dir-missing-metadata`
+/// for the existing-dir branches; otherwise propagates I/O or save failures.
 #[expect(
     clippy::similar_names,
     reason = "`slices_dir` and `slice_dir` name distinct concepts (parent dir vs. this slice's dir)."

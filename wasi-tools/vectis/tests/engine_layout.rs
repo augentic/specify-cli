@@ -5,7 +5,7 @@ mod engine_support;
 
 use std::path::PathBuf;
 
-use engine_support::{errors_array, extract_envelope, warnings_array, write_named};
+use engine_support::{errors_array, warnings_array, write_named};
 use serde_json::Value;
 use specify_vectis::validate::__test_internals::composition_validator;
 use specify_vectis::validate::error::VectisError;
@@ -162,7 +162,7 @@ fn run_layout(content: &str) -> Value {
         mode: ValidateMode::Layout,
         path: Some(file.path().to_path_buf()),
     };
-    extract_envelope(run(&args).expect("run succeeds"))
+    run(&args).expect("run succeeds")
 }
 
 #[test]

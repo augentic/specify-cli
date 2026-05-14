@@ -15,20 +15,6 @@ impl Stamp {
     ///
     /// [`Error::Io`] if the stamp file exists but cannot be read.
     pub fn status(project_dir: &Path) -> Result<State, Error> {
-        Self::status_with_liveness_check(project_dir, is_pid_alive)
-    }
-
-    /// Snapshot with an injected liveness predicate.
-    ///
-    /// # Errors
-    ///
-    /// Same as [`Self::status`].
-    pub fn status_with_liveness_check<F>(
-        project_dir: &Path, is_pid_alive: F,
-    ) -> Result<State, Error>
-    where
-        F: Fn(u32) -> bool,
-    {
         let path = Self::lockfile_path(project_dir);
         if !path.exists() {
             return Ok(State {

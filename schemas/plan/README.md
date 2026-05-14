@@ -11,7 +11,7 @@ Canonical JSON Schema (2020-12) for `plan.yaml` (at the repo root).
 
 Scope and delta-targeting intent are carried in the `description` and `context` fields. The define skill infers extract filters and baseline targets from those fields at execution time.
 
-Semantic checks (cycle detection, referential integrity of `depends-on` / `sources` targets, at-most-one `in-progress`, registry project checks, etc.) are performed by `Plan::validate` in `specify-change`; this schema covers shape only.
+Semantic checks (cycle detection, referential integrity of `depends-on` / `sources` targets, at-most-one `in-progress`, registry project checks, etc.) are performed by the CLI; this schema covers shape only.
 
 The JSON response produced by `specify change plan validate --format json` is itself covered by a sibling schema at [`../plan-validate-output/schema.json`](../plan-validate-output/schema.json); skill authors consuming the validator should match the response against that schema.
 

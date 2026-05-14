@@ -10,7 +10,7 @@ use jiff::Timestamp;
 use specify_error::Error;
 
 use crate::capability::{CacheMeta, PipelineView};
-use crate::config::{LayoutExt, ProjectConfig};
+use crate::config::{Layout, ProjectConfig};
 use crate::init::cache::cache_capability;
 use crate::init::{InitOptions, InitResult, resolve_version, resolved_name, upsert_gitignore};
 
@@ -18,13 +18,13 @@ use crate::init::{InitOptions, InitResult, resolve_version, resolved_name, upser
     clippy::needless_pass_by_value,
     reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
 )]
-pub(crate) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
+pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
     let capability = opts.capability.ok_or_else(|| Error::Diag {
         code: "init-requires-capability-or-hub",
         detail: "pass <capability> or --hub".to_string(),
     })?;
     let name = resolved_name(opts.project_dir, opts.name);
-    let layout = opts.project_dir.layout();
+    let layout = Layout::new(opts.project_dir);
 
     let mut directories_created: Vec<PathBuf> = Vec::new();
     // Repo-root artefacts (`registry.yaml`, `change.md`, `plan.yaml`)
@@ -94,7 +94,7 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::capability::CacheMeta;
-    use crate::config::{LayoutExt, ProjectConfig};
+    use crate::config::{Layout, ProjectConfig};
     use crate::init::{InitOptions, VersionMode, init};
 
     fn fixed_now() -> Timestamp {
@@ -270,7 +270,7 @@ mod tests {
 
         // Manually edit the pinned version to an older one; Preserve
         // should keep it on re-init.
-        let config_path = tmp.path().layout().config_path();
+        let config_path = Layout::new(tmp.path()).config_path();
         let original = fs::read_to_string(&config_path).expect("read");
         let edited = original.replace(
             &format!("specify_version: {}", env!("CARGO_PKG_VERSION")),

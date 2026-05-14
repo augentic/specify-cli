@@ -5,55 +5,36 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_domain::change::{Plan, PlanDoctorDiagnostic, PlanDoctorSeverity, plan_doctor};
-use specify_domain::config::LayoutExt;
+use specify_domain::change::{Plan, PlanDoctorDiagnostic, Severity, plan_doctor};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
 use super::{Ref, plan_ref, require_file};
 use crate::context::Ctx;
-use crate::output::Render;
-
-/// Wire shape of the JSON `diagnostics:` row. Mirrors
-/// [`PlanDoctorDiagnostic`] but with `severity` rendered as the
-/// kebab-case label string (`error` / `warning`).
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct DiagnosticRow {
-    severity: &'static str,
-    code: String,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    entry: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<serde_json::Value>,
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct DoctorBody {
     plan: Ref,
-    diagnostics: Vec<DiagnosticRow>,
+    diagnostics: Vec<PlanDoctorDiagnostic>,
 }
 
-impl Render for DoctorBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.diagnostics.is_empty() {
-            return writeln!(w, "Plan OK");
-        }
-        for d in &self.diagnostics {
-            let prefix = if d.severity == "error" { "ERROR  " } else { "WARNING" };
-            let entry_col = d.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
-            writeln!(w, "{prefix} {:<24} {entry_col:<24} {}", d.code, d.message)?;
-        }
-        Ok(())
+fn write_doctor_text(w: &mut dyn Write, body: &DoctorBody) -> std::io::Result<()> {
+    if body.diagnostics.is_empty() {
+        return writeln!(w, "Plan OK");
     }
+    for d in &body.diagnostics {
+        let prefix = if matches!(d.severity, Severity::Error) { "ERROR  " } else { "WARNING" };
+        let entry_col = d.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
+        writeln!(w, "{prefix} {:<24} {entry_col:<24} {}", d.code, d.message)?;
+    }
+    Ok(())
 }
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ctx.project_dir.layout().slices_dir();
+    let slices_dir = ctx.slices_dir();
 
     // We tolerate a malformed registry by surfacing it as a synthetic
     // diagnostic (matching the `plan validate` posture) so doctor
@@ -67,7 +48,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         plan_doctor(&plan, Some(&slices_dir), registry.as_ref(), Some(&ctx.project_dir));
     if let Some(err) = registry_err {
         diagnostics.push(PlanDoctorDiagnostic {
-            severity: PlanDoctorSeverity::Error,
+            severity: Severity::Error,
             code: "registry-shape".to_string(),
             message: err.to_string(),
             entry: None,
@@ -75,13 +56,15 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         });
     }
 
-    let has_errors = diagnostics.iter().any(|d| matches!(d.severity, PlanDoctorSeverity::Error));
-    let rows: Vec<DiagnosticRow> = diagnostics.iter().map(diagnostic_row).collect();
+    let has_errors = diagnostics.iter().any(|d| matches!(d.severity, Severity::Error));
 
-    ctx.write(&DoctorBody {
-        plan: plan_ref(&plan, &plan_path),
-        diagnostics: rows,
-    })?;
+    ctx.write(
+        &DoctorBody {
+            plan: plan_ref(&plan, &plan_path),
+            diagnostics,
+        },
+        write_doctor_text,
+    )?;
 
     if has_errors {
         Err(Error::Diag {
@@ -91,19 +74,5 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         })
     } else {
         Ok(())
-    }
-}
-
-fn diagnostic_row(d: &PlanDoctorDiagnostic) -> DiagnosticRow {
-    let data = d
-        .data
-        .as_ref()
-        .map(|p| serde_json::to_value(p).expect("DiagnosticPayload serialises as JSON"));
-    DiagnosticRow {
-        severity: d.severity.label(),
-        code: d.code.clone(),
-        message: d.message.clone(),
-        entry: d.entry.clone(),
-        data,
     }
 }

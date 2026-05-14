@@ -2,6 +2,6 @@
 //! (`core`), the `specify change plan doctor` health diagnostics
 //! (`doctor`), and the advisory PID lock (`lock`).
 
-pub(crate) mod core;
-pub(crate) mod doctor;
-pub(crate) mod lock;
+pub(super) mod core;
+pub(super) mod doctor;
+pub(super) mod lock;

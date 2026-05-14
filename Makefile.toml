@@ -18,11 +18,15 @@ skip_rust_env_info = true
 dependencies = ["audit", "fmt", "lint", "outdated", "deps"]
 
 [tasks.ci]
-dependencies = ["lint", "standards", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
+dependencies = ["lint", "file-size", "test", "test-docs", "doc", "vet", "outdated", "deny", "fmt"]
 
-[tasks.standards]
-command = "cargo"
-args = ["run", "--quiet", "-p", "xtask", "--", "standards-check"]
+[tasks.file-size]
+script = '''
+set -e
+out=$(find crates src -name '*.rs' -not -path '*/tests/*' -not -name tests.rs | xargs wc -l | awk '$1 > 600 && $2 != "total" { print $2": "$1" lines" }')
+[ -z "$out" ] && exit 0
+echo "$out"; exit 1
+'''
 
 # -------------------------------------
 # Individual Actions
@@ -114,9 +118,8 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 # -------------------------------------
 
 # Generic xtask passthrough. Use for any subcommand exposed by
-# `xtask` (`standards-check`, `gen-man`, `gen-completions`, …):
+# `xtask` (`gen-man`, `gen-completions`):
 # ```bash
-# cargo make xtask standards-check
 # cargo make xtask gen-man
 # cargo make xtask gen-completions
 # ```

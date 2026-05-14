@@ -123,6 +123,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::iter_over_hash_type, reason = "test exhausts a HashSet of edges")]
     fn legal_edges_succeed() {
         for (from, to) in allowed_edges() {
             assert!(

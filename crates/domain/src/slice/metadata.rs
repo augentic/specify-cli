@@ -42,42 +42,42 @@ pub struct SliceMetadata {
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "crate::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339::option"
     )]
     pub created_at: Option<Timestamp>,
     /// When the slice entered `Defined`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "crate::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339::option"
     )]
     pub defined_at: Option<Timestamp>,
     /// When the build phase started.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "crate::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339::option"
     )]
     pub build_started_at: Option<Timestamp>,
     /// When the slice reached `Complete`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "crate::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339::option"
     )]
     pub completed_at: Option<Timestamp>,
     /// When the slice was merged.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "crate::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339::option"
     )]
     pub merged_at: Option<Timestamp>,
     /// When the slice was dropped.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "crate::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339::option"
     )]
     pub dropped_at: Option<Timestamp>,
     /// Human-readable reason for dropping the slice.
@@ -111,7 +111,7 @@ pub struct Outcome {
     #[serde(rename = "outcome")]
     pub kind: OutcomeKind,
     /// When the outcome was recorded.
-    #[serde(with = "crate::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339")]
     pub at: Timestamp,
     /// Short human-readable summary.
     pub summary: String,
@@ -182,7 +182,7 @@ impl SliceMetadata {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::YamlSer`] when serde-saphyr fails to encode
+    /// Returns [`Error::Yaml`] when serde-saphyr fails to encode
     /// `self` — typically a serializer bug rather than a data issue,
     /// since every field of [`SliceMetadata`] is YAML-safe by
     /// construction. Returns [`Error::Io`] when the temp-file create /

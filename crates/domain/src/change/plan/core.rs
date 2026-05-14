@@ -2,14 +2,14 @@
 //! state machine that wraps it. [`Plan::transition`] is the only path
 //! that mutates `Entry::status`; see `rfcs/rfc-2-execution.md`.
 
-pub(crate) mod amend;
-pub(crate) mod archive;
-pub(crate) mod create;
-pub(crate) mod io;
-pub(crate) mod model;
-pub(crate) mod next;
-pub(crate) mod transitions;
-pub(crate) mod validate;
+pub mod amend;
+pub mod archive;
+pub mod create;
+pub mod io;
+pub mod model;
+pub mod next;
+pub mod transitions;
+pub mod validate;
 
 #[cfg(test)]
 mod test_support;

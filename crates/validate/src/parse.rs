@@ -8,7 +8,7 @@ use serde_json::Value;
 
 /// Parsed top-level contract document — the YAML root plus the
 /// absolute path it came from.
-pub(super) struct TopLevelDoc {
+pub struct TopLevelDoc {
     pub(super) path: PathBuf,
     pub(super) value: Value,
 }
@@ -17,7 +17,7 @@ pub(super) struct TopLevelDoc {
 /// those whose root carries `openapi:` or `asyncapi:`. YAML parse errors
 /// are swallowed silently — the contracts-brief verifier owns that
 /// diagnostic; this module is identity / version only.
-pub(super) fn collect_top_level_docs(contracts_dir: &Path) -> Vec<TopLevelDoc> {
+pub fn collect_top_level_docs(contracts_dir: &Path) -> Vec<TopLevelDoc> {
     let mut paths = Vec::new();
     collect_yaml_paths(contracts_dir, &mut paths);
     paths.sort();
@@ -65,18 +65,18 @@ fn is_top_level(value: &Value) -> bool {
     obj.contains_key("openapi") || obj.contains_key("asyncapi")
 }
 
-pub(super) fn version_str(info: Option<&Value>) -> Option<&str> {
+pub fn version_str(info: Option<&Value>) -> Option<&str> {
     info?.get("version")?.as_str()
 }
 
-pub(super) fn id_str(info: Option<&Value>) -> Option<&str> {
+pub fn id_str(info: Option<&Value>) -> Option<&str> {
     info?.get("x-specify-id")?.as_str()
 }
 
 /// Mirror of the kebab-case rule used by `composition.screen-slugs-kebab`
 /// and `RegistryProject::name`. Inlined here so the id check stays
 /// self-contained and so the 64-character cap is enforced.
-pub(super) fn is_valid_specify_id(id: &str) -> bool {
+pub fn is_valid_specify_id(id: &str) -> bool {
     if id.is_empty() || id.len() > 64 {
         return false;
     }

@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use petgraph::algo::tarjan_scc;
 use petgraph::graph::DiGraph;
 
-use super::{CYCLE, Diagnostic, DiagnosticPayload, DiagnosticSeverity};
+use super::{CYCLE, Diagnostic, DiagnosticPayload, Severity};
 use crate::change::plan::core::Entry;
 
 /// One [`CYCLE`] diagnostic per cycle in the depends-on graph.
@@ -40,7 +40,7 @@ pub(super) fn detect(changes: &[Entry]) -> Vec<Diagnostic> {
         };
         let pretty = cycle_names.join(" → ");
         out.push(Diagnostic {
-            severity: DiagnosticSeverity::Error,
+            severity: Severity::Error,
             code: CYCLE.to_string(),
             message: format!("dependency cycle: {pretty}"),
             entry: None,

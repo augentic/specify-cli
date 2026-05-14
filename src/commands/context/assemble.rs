@@ -7,7 +7,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use specify_domain::capability::{Capability, PipelineView};
-use specify_domain::config::{LayoutExt, ProjectConfig};
+use specify_domain::config::{Layout, ProjectConfig};
 use specify_domain::registry::Registry;
 use specify_domain::slice::SliceMetadata;
 use specify_error::{Error, Result};
@@ -21,7 +21,7 @@ pub(super) struct RenderAssembly {
 }
 
 pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
-    let layout = ctx.project_dir.layout();
+    let layout = ctx.layout();
     let mut collector = fingerprint::InputCollector::new(&ctx.project_dir);
     collector.add_file(&layout.config_path())?;
 
@@ -166,7 +166,7 @@ fn materialized_workspace_peers(
         return Ok(Vec::new());
     }
 
-    let workspace_dir = project_dir.layout().specify_dir().join("workspace");
+    let workspace_dir = Layout::new(project_dir).specify_dir().join("workspace");
     let mut peers = Vec::new();
     for project in &registry.projects {
         let path = workspace_dir.join(&project.name);
@@ -191,7 +191,7 @@ fn active_slice_names(
     }
 
     let mut names = Vec::new();
-    for entry in std::fs::read_dir(slices_dir)? {
+    for entry in fs::read_dir(slices_dir)? {
         let entry = entry?;
         if !entry.file_type()?.is_dir() {
             continue;

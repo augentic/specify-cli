@@ -116,7 +116,7 @@ mod tests {
         plan.amend(
             "foo",
             EntryPatch {
-                description: Patch::clear(),
+                description: Patch::Clear,
                 ..EntryPatch::default()
             },
         )
@@ -129,7 +129,7 @@ mod tests {
         plan.amend(
             "foo",
             EntryPatch {
-                description: Patch::set("new".into()),
+                description: Patch::Set("new".into()),
                 ..EntryPatch::default()
             },
         )
@@ -261,7 +261,7 @@ mod tests {
         plan.amend(
             "foo",
             EntryPatch {
-                project: Patch::set("beta".into()),
+                project: Patch::Set("beta".into()),
                 ..EntryPatch::default()
             },
         )
@@ -275,8 +275,8 @@ mod tests {
         plan.amend(
             "foo",
             EntryPatch {
-                project: Patch::clear(),
-                capability: Patch::set("contracts@v1".into()),
+                project: Patch::Clear,
+                capability: Patch::Set("contracts@v1".into()),
                 ..EntryPatch::default()
             },
         )
@@ -308,7 +308,7 @@ mod tests {
         plan.amend(
             "foo",
             EntryPatch {
-                capability: Patch::set("contracts@v1".into()),
+                capability: Patch::Set("contracts@v1".into()),
                 ..EntryPatch::default()
             },
         )
@@ -322,7 +322,7 @@ mod tests {
         plan.amend(
             "foo",
             EntryPatch {
-                capability: Patch::clear(),
+                capability: Patch::Clear,
                 ..EntryPatch::default()
             },
         )

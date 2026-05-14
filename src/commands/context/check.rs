@@ -9,12 +9,11 @@ use specify_error::Result;
 
 use super::{context_lock_path, diag, fences, fingerprint, lock, read_optional, render_document};
 use crate::context::Ctx;
-use crate::output::Render;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let body = body(ctx)?;
     let status = body.status;
-    ctx.write(&body)?;
+    ctx.write(&body, write_text)?;
     match status {
         "up-to-date" => Ok(()),
         "context-not-generated" => Err(diag("context-not-generated", "AGENTS.md is missing")),
@@ -51,26 +50,24 @@ struct Fingerprint {
     actual: Option<String>,
 }
 
-impl Render for Body {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        match self.status {
-            "up-to-date" => writeln!(w, "context up to date"),
-            "context-not-generated" => writeln!(w, "context-not-generated: AGENTS.md is missing"),
-            "context-lock-missing" => {
-                writeln!(w, "context-lock-missing: .specify/context.lock is missing")
-            }
-            "drift" => {
-                writeln!(w, "context drift detected")?;
-                write_drift_list(w, "inputs changed", &self.inputs_changed)?;
-                write_drift_list(w, "inputs added", &self.inputs_added)?;
-                write_drift_list(w, "inputs removed", &self.inputs_removed)?;
-                if self.fences_modified {
-                    writeln!(w, "fences modified: true")?;
-                }
-                Ok(())
-            }
-            _ => writeln!(w, "context check finished"),
+fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
+    match body.status {
+        "up-to-date" => writeln!(w, "context up to date"),
+        "context-not-generated" => writeln!(w, "context-not-generated: AGENTS.md is missing"),
+        "context-lock-missing" => {
+            writeln!(w, "context-lock-missing: .specify/context.lock is missing")
         }
+        "drift" => {
+            writeln!(w, "context drift detected")?;
+            write_drift_list(w, "inputs changed", &body.inputs_changed)?;
+            write_drift_list(w, "inputs added", &body.inputs_added)?;
+            write_drift_list(w, "inputs removed", &body.inputs_removed)?;
+            if body.fences_modified {
+                writeln!(w, "fences modified: true")?;
+            }
+            Ok(())
+        }
+        _ => writeln!(w, "context check finished"),
     }
 }
 

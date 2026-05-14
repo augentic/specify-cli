@@ -3,9 +3,7 @@
 
 use std::path::Path;
 
-use super::{
-    CloneSignature, Diagnostic, DiagnosticPayload, DiagnosticSeverity, STALE_CLONE, StaleReason,
-};
+use super::{CloneSignature, Diagnostic, DiagnosticPayload, STALE_CLONE, Severity, StaleReason};
 use crate::registry::workspace::{SlotProblem, SlotProblemReason, slot_problem};
 use crate::registry::{Registry, RegistryProject};
 
@@ -30,13 +28,13 @@ pub(super) fn detect(registry: &Registry, project_dir: &Path) -> Vec<Diagnostic>
 
 fn diag(project: &RegistryProject, problem: &SlotProblem) -> Diagnostic {
     let expected = CloneSignature {
-        slot_kind: Some(problem.expected_kind.label().to_string()),
+        slot_kind: Some(problem.expected_kind.to_string()),
         url: Some(project.url.clone()),
         capability: Some(project.capability.clone()),
         target: problem.expected_target.as_ref().map(|path| path.display().to_string()),
     };
     let observed = CloneSignature {
-        slot_kind: problem.observed_kind.map(|kind| kind.label().to_string()),
+        slot_kind: problem.observed_kind.map(|kind| kind.to_string()),
         url: problem.observed_url.clone(),
         capability: None,
         target: problem.observed_target.as_ref().map(|path| path.display().to_string()),
@@ -47,7 +45,7 @@ fn diag(project: &RegistryProject, problem: &SlotProblem) -> Diagnostic {
         StaleReason::SlotMismatch
     };
     Diagnostic {
-        severity: DiagnosticSeverity::Warning,
+        severity: Severity::Warning,
         code: STALE_CLONE.to_string(),
         message: format!(
             "workspace slot '{}' is out of sync with `registry.yaml`: {}",

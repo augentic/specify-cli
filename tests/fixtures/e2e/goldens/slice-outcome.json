@@ -1,5 +1,4 @@
 {
-  "envelope-version": 6,
   "name": "foo",
   "outcome": {
     "at": "<ISO8601>",

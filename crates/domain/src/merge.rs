@@ -4,7 +4,7 @@
 
 mod artifact_class;
 pub mod composition;
-#[allow(
+#[expect(
     clippy::module_inception,
     reason = "preserves the per-concern split inherited from the pre-collapse `specify-merge` crate; rename would cascade across many imports"
 )]

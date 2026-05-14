@@ -22,15 +22,15 @@ use crate::error::ToolError;
 ///
 /// # Errors
 ///
-/// Returns `ToolError::Io` when `staged` is not a directory, an entry
-/// inside it is neither a file nor a directory, the parent of `dest` cannot
-/// be created, a unique sibling temporary path cannot be allocated, or any
-/// individual file copy fails. Returns `ToolError::CacheRoot` when `dest`
-/// has no parent component, and
-/// `ToolError::AtomicMoveFailed` when the rename of the existing destination
-/// to a sibling backup or the rename of the new tree into place fails (in
-/// the latter case the previous tree is restored on a best-effort basis and
-/// the in-progress copy is removed).
+/// Returns the `tool-io` diagnostic when `staged` is not a directory, an
+/// entry inside it is neither a file nor a directory, the parent of
+/// `dest` cannot be created, a unique sibling temporary path cannot be
+/// allocated, or any individual file copy fails. Returns the
+/// `tool-cache-root` diagnostic when `dest` has no parent component, and
+/// the `tool-atomic-move-failed` diagnostic when the rename of the
+/// existing destination to a sibling backup or the rename of the new
+/// tree into place fails (in the latter case the previous tree is
+/// restored on a best-effort basis and the in-progress copy is removed).
 pub fn stage_and_install(staged: &Path, dest: &Path) -> Result<(), ToolError> {
     if !staged.is_dir() {
         return Err(ToolError::cache_io(
@@ -40,7 +40,7 @@ pub fn stage_and_install(staged: &Path, dest: &Path) -> Result<(), ToolError> {
         ));
     }
     let Some(parent) = dest.parent() else {
-        return Err(ToolError::CacheRoot(format!(
+        return Err(ToolError::cache_root(format!(
             "destination path has no parent: {}",
             dest.display()
         )));
@@ -54,10 +54,8 @@ pub fn stage_and_install(staged: &Path, dest: &Path) -> Result<(), ToolError> {
 
     let backup = if dest.exists() {
         let backup = unique_sibling_backup(parent)?;
-        fs::rename(dest, &backup).map_err(|err| ToolError::AtomicMoveFailed {
-            from: dest.to_path_buf(),
-            to: backup.clone(),
-            source: err,
+        fs::rename(dest, &backup).map_err(|err| {
+            ToolError::atomic_move_failed(dest.to_path_buf(), backup.clone(), err)
         })?;
         Some(backup)
     } else {
@@ -75,14 +73,10 @@ pub fn stage_and_install(staged: &Path, dest: &Path) -> Result<(), ToolError> {
         }
         Err(source) => {
             if let Some(backup) = &backup {
-                let _ = fs::rename(backup, dest);
+                drop(fs::rename(backup, dest));
             }
-            let _ = fs::remove_dir_all(&install_dir);
-            Err(ToolError::AtomicMoveFailed {
-                from: install_dir,
-                to: dest.to_path_buf(),
-                source,
-            })
+            drop(fs::remove_dir_all(&install_dir));
+            Err(ToolError::atomic_move_failed(install_dir, dest.to_path_buf(), source))
         }
     }
 }

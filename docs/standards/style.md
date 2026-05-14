@@ -1,6 +1,6 @@
 # Style
 
-Cross-cutting code-quality rules every Rust change in this workspace honours. These complement the mechanical predicates in [predicates.md](./predicates.md) and the broader rules in [coding-standards.md](./coding-standards.md).
+Cross-cutting code-quality rules every Rust change in this workspace honours. These complement the broader rules in [coding-standards.md](./coding-standards.md).
 
 ## Naming by context
 
@@ -70,13 +70,13 @@ enum Kind { /* ... */ }
 
 ## No archaeology in code
 
-Module and crate docs describe what the code *does today*, in ≤ 3 lines. "Phase 1 …", "RFC-N renamed …", "previously lived in …", "to avoid the X → Y cycle" belong in [DECISIONS.md](../../DECISIONS.md) or are deleted. The `crate-root-prose` predicate enforces this mechanically.
+Module and crate docs describe what the code *does today*, in ≤ 3 lines. "Phase 1 …", "RFC-N renamed …", "previously lived in …", "to avoid the X → Y cycle" belong in [DECISIONS.md](../../DECISIONS.md) or are deleted.
 
 ```rust
 // BAD
-//! Phase 3.7 split this off from `specify-init` (RFC-13 §Migration);
+//! Phase 3.7 split this off from `<old-crate>` (RFC-N §Migration);
 //! the pre-cutover name was `initiative`. To avoid the
-//! init → registry → init cycle we re-export `Layout` from here.
+//! foo → bar → foo cycle we re-export `Layout` from here.
 // GOOD
 //! Resolves project layout and `project.yaml` for every command.
 ```

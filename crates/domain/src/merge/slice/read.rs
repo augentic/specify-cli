@@ -11,7 +11,7 @@ use specify_error::Error;
 use super::parse::system_time_to_utc;
 use super::{BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry};
 use crate::merge::artifact_class::{ArtifactClass, MergeStrategy};
-use crate::merge::merge::{MergeOperation, MergeResult, merge};
+use crate::merge::merge::merge;
 use crate::merge::validate::validate_baseline;
 
 /// File name for the optional composition delta that lives at the top
@@ -179,43 +179,11 @@ pub(super) fn plan_three_way(
 
                 match crate::merge::composition::merge(baseline_text.as_deref(), &delta_text) {
                     Ok(comp_result) => {
-                        let spec_merge_result = MergeResult {
-                            output: comp_result.output,
-                            operations: comp_result
-                                .operations
-                                .iter()
-                                .map(|op| match op {
-                                    crate::merge::composition::MergeOp::Added { slug } => {
-                                        MergeOperation::Added {
-                                            id: slug.clone(),
-                                            name: slug.clone(),
-                                        }
-                                    }
-                                    crate::merge::composition::MergeOp::Modified { slug } => {
-                                        MergeOperation::Modified {
-                                            id: slug.clone(),
-                                            name: slug.clone(),
-                                        }
-                                    }
-                                    crate::merge::composition::MergeOp::Removed { slug } => {
-                                        MergeOperation::Removed {
-                                            id: slug.clone(),
-                                            name: slug.clone(),
-                                        }
-                                    }
-                                    crate::merge::composition::MergeOp::CreatedBaseline {
-                                        screen_count,
-                                    } => MergeOperation::CreatedBaseline {
-                                        requirement_count: *screen_count,
-                                    },
-                                })
-                                .collect(),
-                        };
                         merged.push(MergePreviewEntry {
                             class_name: class.name.clone(),
                             name: "composition".to_string(),
                             baseline_path,
-                            result: spec_merge_result,
+                            result: comp_result,
                         });
                     }
                     Err(Error::Diag {

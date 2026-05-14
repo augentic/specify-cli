@@ -2,12 +2,17 @@
 //! (archived Python reference, `validate_baseline` lines 298–352).
 
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 use regex::Regex;
 
 use crate::capability::ValidationResult;
-use crate::spec::format::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING};
-use crate::spec::parse_baseline;
+use crate::spec::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING, parse_baseline};
+
+fn req_id_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(REQ_ID_PATTERN).expect("REQ_ID_PATTERN must be a valid regex"))
+}
 
 const RULE_NO_DUPLICATE_IDS: &str = "merge.no-duplicate-ids";
 const RULE_NO_DUPLICATE_IDS_DESC: &str = "baseline has no duplicate requirement IDs";
@@ -75,7 +80,7 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
     }
 
     // (c) Heading structure — ID present, ID matches pattern, scenario present.
-    let id_pattern = Regex::new(REQ_ID_PATTERN).expect("REQ_ID_PATTERN must be a valid regex");
+    let id_pattern = req_id_re();
     // The scenario check in Python strips the trailing colon so the
     // substring match still fires when body text contains `"#### Scenario"`
     // without a colon; preserve that.
@@ -119,9 +124,8 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
         // contains ^ and $ — Rust's default `Regex` treats them as
         // string boundaries (no MULTILINE flag), so we match Python
         // byte-for-byte by feeding the constant straight to the engine.
-        let ref_pattern = Regex::new(REQ_ID_PATTERN).expect("REQ_ID_PATTERN must compile");
         let baseline_ids: HashSet<&str> = seen_ids.iter().copied().collect();
-        for m in ref_pattern.find_iter(design_text) {
+        for m in req_id_re().find_iter(design_text) {
             let ref_id = m.as_str();
             if !baseline_ids.contains(ref_id) {
                 results.push(ValidationResult::Fail {

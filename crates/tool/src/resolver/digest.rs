@@ -109,7 +109,7 @@ mod tests {
             let repaired =
                 resolve(&scope, &pinned, fixed_now()).expect("digest mismatch re-fetches");
             assert_eq!(repaired.bytes_path, resolved.bytes_path);
-            assert_eq!(std::fs::read(repaired.bytes_path).expect("repaired bytes"), b"trusted");
+            assert_eq!(fs::read(repaired.bytes_path).expect("repaired bytes"), b"trusted");
         });
     }
 }

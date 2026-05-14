@@ -12,17 +12,18 @@ use crate::slice::{LifecycleStatus, SliceMetadata};
 ///
 /// The transition is validated by
 /// [`LifecycleStatus::transition`](crate::slice::LifecycleStatus::transition) —
-/// illegal edges return `Error::Lifecycle` without touching disk. On
-/// success the metadata's `status` is updated, the appropriate
-/// `*_at` timestamp is filled in (idempotent: an existing non-`None`
-/// timestamp is preserved), and `.metadata.yaml` is rewritten atomically.
+/// illegal edges return `Error::Diag` with `code = "lifecycle"` without
+/// touching disk. On success the metadata's `status` is updated, the
+/// appropriate `*_at` timestamp is filled in (idempotent: an existing
+/// non-`None` timestamp is preserved), and `.metadata.yaml` is rewritten
+/// atomically.
 ///
 /// Returns the updated `SliceMetadata`.
 ///
 /// # Errors
 ///
-/// `Error::Lifecycle` for an illegal edge; otherwise propagates load /
-/// save failures from `SliceMetadata`.
+/// `Error::Diag` with `code = "lifecycle"` for an illegal edge; otherwise
+/// propagates load / save failures from `SliceMetadata`.
 pub fn transition(
     slice_dir: &Path, target: LifecycleStatus, now: Timestamp,
 ) -> Result<SliceMetadata, Error> {

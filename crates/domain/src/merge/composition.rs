@@ -4,39 +4,7 @@
 use serde_json::Value;
 use specify_error::Error;
 
-/// Result of a successful composition merge.
-#[derive(Debug, Clone)]
-pub struct MergeResult {
-    /// The merged baseline YAML string.
-    pub output: String,
-    /// Operations applied during the merge.
-    pub operations: Vec<MergeOp>,
-}
-
-/// One screen-level operation applied during a composition merge.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MergeOp {
-    /// A new screen was added.
-    Added {
-        /// Screen slug.
-        slug: String,
-    },
-    /// An existing screen was replaced.
-    Modified {
-        /// Screen slug.
-        slug: String,
-    },
-    /// A screen was removed from the baseline.
-    Removed {
-        /// Screen slug.
-        slug: String,
-    },
-    /// Baseline created from a full `screens` document.
-    CreatedBaseline {
-        /// Number of screens in the new baseline.
-        screen_count: usize,
-    },
-}
+use crate::merge::merge::{MergeOperation, MergeResult};
 
 /// Merge a composition delta into an optional baseline.
 ///
@@ -66,7 +34,9 @@ pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Er
             delta_doc.get("screens").and_then(|s| s.as_object()).map_or(0, serde_json::Map::len);
         return Ok(MergeResult {
             output: delta_text.to_string(),
-            operations: vec![MergeOp::CreatedBaseline { screen_count }],
+            operations: vec![MergeOperation::CreatedBaseline {
+                requirement_count: screen_count,
+            }],
         });
     }
 
@@ -101,13 +71,16 @@ pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Er
             detail: "baseline has no `screens` mapping".to_string(),
         })?;
 
-    let mut operations: Vec<MergeOp> = Vec::new();
+    let mut operations: Vec<MergeOperation> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
 
     if let Some(removed) = delta.get("removed").and_then(|r| r.as_object()) {
         for (slug, _) in removed {
             screens.remove(slug.as_str());
-            operations.push(MergeOp::Removed { slug: slug.clone() });
+            operations.push(MergeOperation::Removed {
+                id: slug.clone(),
+                name: slug.clone(),
+            });
         }
     }
 
@@ -120,7 +93,10 @@ pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Er
                 continue;
             }
             screens.insert(slug.clone(), screen_entry.clone());
-            operations.push(MergeOp::Added { slug: slug.clone() });
+            operations.push(MergeOperation::Added {
+                id: slug.clone(),
+                name: slug.clone(),
+            });
         }
     }
 
@@ -133,7 +109,10 @@ pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Er
                 continue;
             }
             screens.insert(slug.clone(), screen_entry.clone());
-            operations.push(MergeOp::Modified { slug: slug.clone() });
+            operations.push(MergeOperation::Modified {
+                id: slug.clone(),
+                name: slug.clone(),
+            });
         }
     }
 
@@ -162,7 +141,10 @@ mod tests {
             "version: 1\nscreens:\n  home:\n    title: Home\n  settings:\n    title: Settings\n";
         let result = merge(None, delta).unwrap();
         assert_eq!(result.output, delta);
-        assert_eq!(result.operations, vec![MergeOp::CreatedBaseline { screen_count: 2 }]);
+        assert_eq!(
+            result.operations,
+            vec![MergeOperation::CreatedBaseline { requirement_count: 2 }]
+        );
     }
 
     #[test]
@@ -174,8 +156,9 @@ mod tests {
         assert!(result.output.contains("home"));
         assert_eq!(
             result.operations,
-            vec![MergeOp::Added {
-                slug: "settings".to_string()
+            vec![MergeOperation::Added {
+                id: "settings".to_string(),
+                name: "settings".to_string(),
             }]
         );
     }
@@ -188,8 +171,9 @@ mod tests {
         assert!(result.output.contains("Home v2"));
         assert_eq!(
             result.operations,
-            vec![MergeOp::Modified {
-                slug: "home".to_string()
+            vec![MergeOperation::Modified {
+                id: "home".to_string(),
+                name: "home".to_string(),
             }]
         );
     }
@@ -204,8 +188,9 @@ mod tests {
         assert!(result.output.contains("home"));
         assert_eq!(
             result.operations,
-            vec![MergeOp::Removed {
-                slug: "settings".to_string()
+            vec![MergeOperation::Removed {
+                id: "settings".to_string(),
+                name: "settings".to_string(),
             }]
         );
     }
@@ -258,8 +243,9 @@ mod tests {
         assert!(result.output.contains("home"));
         assert_eq!(
             result.operations,
-            vec![MergeOp::Added {
-                slug: "home".to_string()
+            vec![MergeOperation::Added {
+                id: "home".to_string(),
+                name: "home".to_string(),
             }]
         );
     }

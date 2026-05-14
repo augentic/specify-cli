@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 mod assemble;
 mod check;
-pub(crate) mod cli;
+pub mod cli;
 mod detect;
 mod fences;
 mod fingerprint;
@@ -17,13 +17,14 @@ mod lock;
 mod render;
 
 pub(super) use generate::for_init as generate_for_init;
-use specify_domain::config::LayoutExt;
+#[cfg(test)]
+use specify_domain::config::Layout;
 use specify_error::{Error, Result};
 
 use crate::cli::ContextAction;
 use crate::context::Ctx;
 
-pub(crate) fn run(ctx: &Ctx, action: &ContextAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: &ContextAction) -> Result<()> {
     match action {
         ContextAction::Generate { check, force } => generate::run(ctx, *check, *force),
         ContextAction::Check => check::run(ctx),
@@ -77,7 +78,7 @@ fn error_from_fence(err: fences::FenceError) -> Error {
 }
 
 fn context_lock_path(ctx: &Ctx) -> PathBuf {
-    ctx.project_dir.layout().specify_dir().join("context.lock")
+    ctx.layout().specify_dir().join("context.lock")
 }
 
 #[cfg(test)]
@@ -125,7 +126,7 @@ mod tests {
     fn assemble_render_input_reads_existing_metadata_in_sorted_order() {
         let tmp = tempdir().expect("tempdir");
         write_minimal_capability(tmp.path());
-        let slices_dir = tmp.path().layout().slices_dir();
+        let slices_dir = Layout::new(tmp.path()).slices_dir();
         fs::create_dir_all(slices_dir.join("zeta")).expect("create zeta");
         fs::create_dir_all(slices_dir.join("alpha")).expect("create alpha");
         fs::write(slices_dir.join("zeta").join(".metadata.yaml"), "not parsed").expect("zeta meta");
@@ -136,7 +137,7 @@ mod tests {
             "version: 1\nprojects:\n  - name: zeta\n    url: ../zeta\n    capability: mini@v1\n    description: Zeta service\n  - name: alpha\n    url: ../alpha\n    capability: mini@v1\n    description: Alpha service\n",
         )
         .expect("write registry");
-        let cfg_path = tmp.path().layout().config_path();
+        let cfg_path = Layout::new(tmp.path()).config_path();
         fs::create_dir_all(cfg_path.parent().expect("config parent")).expect("create .specify");
         fs::write(
             &cfg_path,
@@ -184,7 +185,7 @@ mod tests {
     #[test]
     fn assemble_render_input_skips_pipeline_for_hubs() {
         let tmp = tempdir().expect("tempdir");
-        let cfg_path = tmp.path().layout().config_path();
+        let cfg_path = Layout::new(tmp.path()).config_path();
         fs::create_dir_all(cfg_path.parent().expect("config parent")).expect("create .specify");
         fs::write(&cfg_path, "name: platform\nhub: true\n").expect("write project config");
         let ctx = Ctx {

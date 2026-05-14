@@ -8,21 +8,15 @@ Binary crate (`name = "specify"`) at the repo root. `src/main.rs` is a thin `Exi
 
 ```text
 specify-error                    # leaf — thiserror + serde-saphyr only
-specify-registry                 # depends on specify-error
-specify-capability               # depends on specify-error
-specify-task                     # depends on specify-error
-specify-spec                     # leaf — no workspace deps (spec parser)
-specify-tool                     # depends on specify-error (WASI tool runner; wasmtime)
-specify-slice                    # depends on specify-{error,capability,registry}
-specify-merge                    # depends on specify-{error,spec,capability,slice}
-specify-config                   # depends on specify-{error,capability,slice,tool}
-specify-validate                 # depends on specify-{error,spec,capability,registry,task}
-specify-change                   # depends on specify-{error,config,registry,slice}
-specify-init                     # depends on specify-{error,capability,config,registry}
+specify-validate                 # leaf — baseline-contract validation, shared with the wasi-tools/contract carve-out
+specify-tool                     # depends on specify-error (WASI tool runner; wasmtime, gated)
+specify-domain                   # depends on specify-{error,validate,tool} (every other domain module)
 specify (root crate)             # wires every workspace crate above into the CLI binary
 ```
 
-Every crate uses the shared `[workspace.package]` (`edition = "2024"`, `rust-version = "1.93"`, MIT/Apache-2.0) and the shared `[workspace.lints]` block in the root `Cargo.toml` (clippy `all`/`cargo`/`nursery`/`pedantic` warned, plus a hand-picked `restriction` subset and a tightened rust lint set — `missing_debug_implementations`, `unreachable_pub`, `single_use_lifetimes`, `redundant_lifetimes`).
+The Phase 1B collapse from 13 crates to these four library crates is logged in [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout); the module boundaries inside `specify-domain` preserve the prior cross-crate split.
+
+Every crate uses the shared `[workspace.package]` (`edition = "2024"`, `rust-version = "1.93"`, MIT/Apache-2.0) and the shared `[workspace.lints]` block in the root `Cargo.toml` (clippy `all`/`cargo`/`nursery`/`pedantic` warned, plus a hand-picked `restriction` subset and a tightened rust lint set — `missing_debug_implementations`, `single_use_lifetimes`, `redundant_lifetimes`).
 
 **Hard dependency rule:** `specify-error` is the leaf and depends on no other workspace crate. Adding a workspace dep to `specify-error` re-introduces the cycle the layering was designed to avoid; do not. The long-form rationale lives in [DECISIONS.md §"Error layering"](../../DECISIONS.md#error-layering).
 
@@ -47,7 +41,7 @@ The `specify-tool` runner (`wasmtime` + `wasmtime-wasi`) loads them through `spe
 
 ## Layout boundary
 
-`.specify/` is framework-managed state every CLI verb writes through (configuration under `project.yaml`, `slices/`, `archive/`, `.cache/`, `workspace/`, `plans/`, `plan.lock`). Operator-facing platform artifacts (`registry.yaml`, `plan.yaml`, `change.md`, `contracts/`) live at the repo root. The boundary is enforced by the `Layout<'a>` newtype in `specify-config` (`crates/config/src/lib.rs`): path helpers are inherent methods on `Layout<'a>`, and call sites write `dir.layout().plan_path()` (via the `LayoutExt` trait on `&Path`) or `Layout::new(&dir).plan_path()`. Do not hard-code `.specify/registry.yaml` or sibling paths, and do not declare free path-helper functions outside `crates/config/`; any new `.specify/` path lands on `Layout`. The `path-helper-inlined` predicate (see [predicates.md](./predicates.md)) enforces this.
+`.specify/` is framework-managed state every CLI verb writes through (configuration under `project.yaml`, `slices/`, `archive/`, `.cache/`, `workspace/`, `plans/`, `plan.lock`). Operator-facing platform artifacts (`registry.yaml`, `plan.yaml`, `change.md`, `contracts/`) live at the repo root. The boundary is enforced by the `Layout<'a>` newtype in `specify-domain` (`crates/domain/src/config.rs`): path helpers are inherent methods on `Layout<'a>`, and call sites write `Layout::new(&dir).plan_path()`. Do not hard-code `.specify/registry.yaml` or sibling paths, and do not declare free path-helper functions outside `crates/domain/src/config/`; any new `.specify/` path lands on `Layout`.
 
 ## Time injection
 
@@ -61,7 +55,7 @@ The WASI tool fetch in `crates/tool/src/resolver.rs` runs every HTTP request wit
 
 Use `yaml_write` (in `crates/slice/src/atomic.rs`) for any file a concurrent reader may observe mid-write: `plan.yaml`, `.metadata.yaml`, `journal.yaml`, `plan.lock`, and the registry. It serialises to `NamedTempFile::new_in(parent)` and `persist`-renames over the target so readers either see the prior bytes or the new bytes. Plain `fs::write` is reserved for files no other process reads concurrently with the writer (one-shot scratch output, fixtures inside a tempdir test).
 
-The rule is mechanically enforced by the `direct-fs-write` predicate (see [predicates.md](./predicates.md)). The standards-side phrasing of the rule lives in [coding-standards.md §"YAML, JSON, and atomic writes"](./coding-standards.md#yaml-json-and-atomic-writes); the long-form rationale lives in [DECISIONS.md §"Atomic writes"](../../DECISIONS.md#atomic-writes).
+The standards-side phrasing of the rule lives in [coding-standards.md §"YAML, JSON, and atomic writes"](./coding-standards.md#yaml-json-and-atomic-writes); the long-form rationale lives in [DECISIONS.md §"Atomic writes"](../../DECISIONS.md#atomic-writes).
 
 ## Toolchain
 

@@ -5,10 +5,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-mod envelope;
 mod parse;
-
-pub use envelope::serialize_contract_findings;
 
 /// One validation finding produced by [`validate_baseline`].
 ///
@@ -87,6 +84,10 @@ pub fn validate_baseline(contracts_dir: &Path) -> Vec<ContractFinding> {
         }
     }
 
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "findings.sort_by below re-establishes deterministic order across the whole vec"
+    )]
     for (id, paths) in &id_to_paths {
         if paths.len() < 2 {
             continue;

@@ -5,7 +5,7 @@ use clap::Subcommand;
 
 /// Contract compatibility classification verbs.
 #[derive(Subcommand)]
-pub(crate) enum CompatibilityAction {
+pub enum CompatibilityAction {
     /// Check current producer/consumer contract compatibility.
     Check,
     /// Render a classified compatibility report.

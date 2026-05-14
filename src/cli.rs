@@ -7,19 +7,19 @@ use std::str::FromStr;
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 
-pub(crate) use crate::commands::capability::cli::CapabilityAction;
-pub(crate) use crate::commands::change::cli::ChangeAction;
-pub(crate) use crate::commands::change::plan::cli::{LockAction, PlanAction};
-pub(crate) use crate::commands::codex::cli::CodexAction;
-pub(crate) use crate::commands::compatibility::cli::CompatibilityAction;
-pub(crate) use crate::commands::context::cli::ContextAction;
-pub(crate) use crate::commands::registry::cli::RegistryAction;
-pub(crate) use crate::commands::slice::cli::{
+pub use crate::commands::capability::cli::CapabilityAction;
+pub use crate::commands::change::cli::ChangeAction;
+pub use crate::commands::change::plan::cli::{LockAction, PlanAction};
+pub use crate::commands::codex::cli::CodexAction;
+pub use crate::commands::compatibility::cli::CompatibilityAction;
+pub use crate::commands::context::cli::ContextAction;
+pub use crate::commands::registry::cli::RegistryAction;
+pub use crate::commands::slice::cli::{
     JournalAction, OutcomeAction, OutcomeKindAction, RegistryAmendmentProposal, SliceAction,
     SliceMergeAction, SliceTaskAction,
 };
-pub(crate) use crate::commands::tool::cli::ToolAction;
-pub(crate) use crate::commands::workspace::cli::WorkspaceAction;
+pub use crate::commands::tool::cli::ToolAction;
+pub use crate::commands::workspace::cli::WorkspaceAction;
 
 #[derive(Parser)]
 #[command(
@@ -27,7 +27,7 @@ pub(crate) use crate::commands::workspace::cli::WorkspaceAction;
     version,
     about = "Deterministic primitives for spec-driven development"
 )]
-pub(crate) struct Cli {
+pub struct Cli {
     #[command(subcommand)]
     pub(crate) command: Commands,
 
@@ -39,13 +39,13 @@ pub(crate) struct Cli {
 }
 
 #[derive(Copy, Clone, ValueEnum, PartialEq, Eq)]
-pub(crate) enum Format {
+pub enum Format {
     Text,
     Json,
 }
 
 #[derive(Subcommand)]
-pub(crate) enum Commands {
+pub enum Commands {
     /// Initialize .specify/ in a project.
     ///
     /// Pass `<capability>` (bare name or URL) for a regular project, or
@@ -146,7 +146,7 @@ pub(crate) enum Commands {
 /// clap surfaces a standard usage diagnostic (exit code 2). Call sites
 /// read `arg.key` / `arg.value` instead of unpacking a positional tuple.
 #[derive(Clone)]
-pub(crate) struct SourceArg {
+pub struct SourceArg {
     /// Source key (left of `=`).
     pub(crate) key: String,
     /// Source value — path or URL (right of `=`).

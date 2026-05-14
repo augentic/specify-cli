@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
+use serde::Serialize;
 use specify_error::Error;
 
 use crate::merge::artifact_class::{ArtifactClass, MergeStrategy};
@@ -57,7 +58,8 @@ pub struct OpaquePreviewEntry {
 
 /// Whether an opaque-replace file is new or replaces an existing
 /// baseline file.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
 pub enum OpaqueAction {
     /// New file — no corresponding baseline file exists.
@@ -145,8 +147,8 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 ///
 /// # Errors
 ///
-/// - [`Error::Lifecycle`] when the slice's status is not
-///   [`LifecycleStatus::Complete`] on entry, or when the
+/// - [`Error::Diag`] with `code = "lifecycle"` when the slice's status
+///   is not [`LifecycleStatus::Complete`] on entry, or when the
 ///   `Complete → Merged` transition is rejected (e.g. terminal-state
 ///   re-entry).
 /// - Every error documented on [`preview`] (the in-memory plan
@@ -159,15 +161,15 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// - [`Error::Diag { code: "merge-archive-failed" }`] when the archive
 ///   move fails after metadata has already been flipped.
 /// - Whatever atomic-write [`Error`] [`SliceMetadata::save`] surfaces
-///   (`Error::Io`, `Error::YamlSer`).
+///   (`Error::Io`, `Error::Yaml`).
 pub fn commit(
     slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path, now: Timestamp,
 ) -> Result<Vec<MergePreviewEntry>, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     if metadata.status != LifecycleStatus::Complete {
-        return Err(Error::Lifecycle {
-            expected: "Complete".to_string(),
-            found: format!("{:?}", metadata.status),
+        return Err(Error::Diag {
+            code: "lifecycle",
+            detail: format!("expected Complete, found {:?}", metadata.status),
         });
     }
 

@@ -28,7 +28,6 @@ fn create_writes_dir_and_metadata() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "my-slice");
     assert_eq!(value["status"], "defining");
     let capability = value["capability"].as_str().expect("capability string");
@@ -282,8 +281,7 @@ fn archive_moves_dir_into_dated_path() {
     // Original is gone; archive dir has one dated subdirectory.
     assert!(!project.slices_dir().join("my-slice").exists());
     let archive = project.root().join(".specify/archive");
-    let entries: Vec<_> =
-        fs::read_dir(&archive).unwrap().filter_map(std::result::Result::ok).collect();
+    let entries: Vec<_> = fs::read_dir(&archive).unwrap().filter_map(Result::ok).collect();
     assert_eq!(entries.len(), 1);
     assert!(entries[0].file_name().to_string_lossy().ends_with("-my-slice"));
 }
@@ -409,7 +407,6 @@ fn phase_outcome_stamps_success_on_define() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["outcome"], "success");
@@ -673,7 +670,6 @@ fn outcome_returns_stamped_as_json() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "foo");
     let outcome = &value["outcome"];
     assert_eq!(outcome["phase"].as_str(), Some("build"));
@@ -1060,7 +1056,6 @@ fn journal_append_writes_to_file() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["slice"], "foo");
     assert_eq!(value["phase"], "define");
     assert_eq!(value["kind"], "question");
@@ -1212,7 +1207,6 @@ fn journal_show_empty_then_populated() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "foo");
     assert!(
         value["entries"].as_array().unwrap().is_empty(),

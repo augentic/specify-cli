@@ -5,10 +5,6 @@ entry quotes (or paraphrases) the RFC that grounds the rule and names
 the call site(s) that implement it. Inline comments in `src/validate/engine/`
 state the rules without RFC numbers; this file carries the citation.
 
-The file lives at the crate root (outside `src/`) so the
-standards-check `rfc-numbers-in-code` predicate (which only scans
-`.rs` files under `src/` and `crates/`) does not flag it.
-
 ## RFC-11 — Vectis UI artifact surface
 
 The umbrella RFC for `tokens.yaml`, `assets.yaml`, `layout.yaml`,
@@ -202,14 +198,13 @@ composition mode reuses)._
 > `vectis validate` is a WASI command tool. The library crate carries
 > the deterministic engine and the embedded schemas so the WASI
 > command surface has a single source of truth. The dispatcher
-> renders an envelope with `envelope-version: 2`, `errors: [...]`,
-> `warnings: [...]`, and (for `all` / auto-invoke) `results: [...]`,
-> and exits non-zero only when a real sub-report carries errors.
+> renders a flat body with `mode`, `errors: [...]`, `warnings: [...]`,
+> and (for `all` / auto-invoke) `results: [...]`, and exits non-zero
+> only when a real sub-report carries errors.
 
 _Codified in: `crates/vectis/src/validate.rs` (the public
-`Args`, `ValidateMode`, `CommandOutcome`, `render_envelope_json`,
-and `validate_exit_code` surface) and `src/main.rs` (the binary
-entry point)._
+`Args`, `ValidateMode`, `render_json`, and `validate_exit_code`
+surface) and `src/main.rs` (the binary entry point)._
 
 ### Scaffold version-pin resolution
 

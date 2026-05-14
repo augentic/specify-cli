@@ -1,6 +1,6 @@
 //! JSON serialization for [`ValidationReport`] — emits the report
-//! payload; the surrounding `envelope-version` envelope is added by
-//! the CLI's `emit` helper in `src/output.rs`.
+//! payload directly; the host CLI writes it to stdout through
+//! `Ctx::write` in `src/output.rs`.
 
 use serde_json::{Value, json};
 
@@ -30,7 +30,7 @@ fn validation_result_to_json(r: &ValidationResult) -> Value {
     // load-bearing across the crate boundary. After Phase 1B collapsed the
     // domain crates the enum and its match site share a crate, so the arm
     // is statically unreachable; suppress the lint without changing logic.
-    #[allow(unreachable_patterns, reason = "non_exhaustive enum, same-crate match")]
+    #[expect(unreachable_patterns, reason = "non_exhaustive enum, same-crate match")]
     match r {
         ValidationResult::Pass { rule_id, rule } => json!({
             "status": "pass",

@@ -2,9 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{
-    BlockingPredecessor, Diagnostic, DiagnosticPayload, DiagnosticSeverity, UNREACHABLE, cycle,
-};
+use super::{BlockingPredecessor, Diagnostic, DiagnosticPayload, Severity, UNREACHABLE, cycle};
 use crate::change::plan::core::{Entry, Status};
 
 /// Pending entries whose dependency closure is rooted in a terminal blocker.
@@ -95,7 +93,7 @@ pub(super) fn detect(changes: &[Entry]) -> Vec<Diagnostic> {
                 .collect::<Vec<_>>()
                 .join(", ");
             Diagnostic {
-                severity: DiagnosticSeverity::Error,
+                severity: Severity::Error,
                 code: UNREACHABLE.to_string(),
                 message: format!("entry '{}' is unreachable: blocked by {}", entry.name, detail),
                 entry: Some(entry.name.clone()),

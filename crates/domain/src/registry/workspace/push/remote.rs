@@ -100,11 +100,13 @@ pub(super) fn remote_default_branch_is(project_path: &Path, branch_name: &str) -
         return true;
     }
 
-    let _ = Command::new("git")
-        .arg("-C")
-        .arg(project_path)
-        .args(["remote", "set-head", "origin", "--auto"])
-        .output();
+    drop(
+        Command::new("git")
+            .arg("-C")
+            .arg(project_path)
+            .args(["remote", "set-head", "origin", "--auto"])
+            .output(),
+    );
 
     origin_head_branch(project_path).as_deref() == Some(branch_name)
 }
@@ -137,11 +139,13 @@ fn resolve_remote_default_branch(project_path: &Path) -> Result<String, Error> {
         return Ok(branch);
     }
 
-    let _ = Command::new("git")
-        .arg("-C")
-        .arg(project_path)
-        .args(["remote", "set-head", "origin", "--auto"])
-        .output();
+    drop(
+        Command::new("git")
+            .arg("-C")
+            .arg(project_path)
+            .args(["remote", "set-head", "origin", "--auto"])
+            .output(),
+    );
 
     origin_head_branch(project_path).ok_or_else(|| Error::Diag {
         code: "workspace-origin-head-unresolved",

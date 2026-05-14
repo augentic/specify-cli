@@ -6,13 +6,11 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_domain::change::{Plan, Status};
-use specify_domain::config::LayoutExt;
 use specify_domain::registry::Registry;
 use specify_error::Result;
 
 use super::slice::{StatusEntry, collect_status, list_slice_names};
 use crate::context::Ctx;
-use crate::output::Render;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
@@ -28,8 +26,12 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         entries.push(collect_status(&dir, &name, &pipeline, &ctx.project_dir)?);
     }
 
-    let body = DashboardBody::new(registry, plan_summary, entries);
-    ctx.write(&body)?;
+    let body = DashboardBody {
+        registry,
+        plan: plan_summary,
+        slices: entries,
+    };
+    ctx.write(&body, write_dashboard_text)?;
     Ok(())
 }
 
@@ -40,22 +42,8 @@ struct DashboardBody {
     slices: Vec<StatusEntry>,
 }
 
-impl DashboardBody {
-    const fn new(
-        registry: Option<Registry>, plan: Option<PlanSummary>, slices: Vec<StatusEntry>,
-    ) -> Self {
-        Self {
-            registry,
-            plan,
-            slices,
-        }
-    }
-}
-
-impl Render for DashboardBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        render_dashboard(w, self.registry.as_ref(), self.plan.as_ref(), &self.slices)
-    }
+fn write_dashboard_text(w: &mut dyn Write, body: &DashboardBody) -> std::io::Result<()> {
+    render_dashboard(w, body.registry.as_ref(), body.plan.as_ref(), &body.slices)
 }
 
 #[derive(Serialize)]
@@ -78,7 +66,7 @@ struct PlanCounts {
 }
 
 fn load_plan_summary(ctx: &Ctx) -> Option<PlanSummary> {
-    let plan_path = ctx.project_dir.layout().plan_path();
+    let plan_path = ctx.layout().plan_path();
     if !plan_path.exists() {
         return None;
     }
@@ -161,10 +149,8 @@ fn render_dashboard(
         status_w = status_w
     )?;
     for e in entries {
-        let tasks = match e.tasks {
-            Some((complete, total)) => format!("{complete}/{total}"),
-            None => "-".to_string(),
-        };
+        let tasks =
+            e.tasks.map_or_else(|| "-".to_string(), |tc| format!("{}/{}", tc.complete, tc.total));
         writeln!(
             w,
             "  {:<name_w$}  {:<status_w$}  {}",

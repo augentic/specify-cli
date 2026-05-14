@@ -45,7 +45,6 @@ fn init_json_format_has_stable_shape() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["capability-name"], "omnia");
     assert!(value["config-path"].is_string());
     let config_path = value["config-path"].as_str().unwrap();

@@ -3,16 +3,16 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use specify_domain::capability::PipelineView;
-use specify_domain::config::{Layout, LayoutExt, ProjectConfig};
+use specify_domain::config::{Layout, ProjectConfig};
 use specify_error::Error;
 
 use crate::cli::Format;
-use crate::output::{self, Render};
+use crate::output;
 
 /// Shared context for every subcommand that operates inside an
 /// initialised `.specify/` project. Created once at the top of each
 /// command handler via [`Ctx::load`].
-pub(crate) struct Ctx {
+pub struct Ctx {
     pub(crate) format: Format,
     pub(crate) project_dir: PathBuf,
     pub(crate) config: ProjectConfig,
@@ -59,43 +59,29 @@ impl Ctx {
     /// [`specify_domain::config::with_state`] in handlers that mutate
     /// `plan.yaml` / `registry.yaml`.
     pub(crate) fn layout(&self) -> Layout<'_> {
-        self.project_dir.layout()
+        Layout::new(&self.project_dir)
     }
 
     pub(crate) fn slices_dir(&self) -> PathBuf {
-        self.project_dir.layout().slices_dir()
+        self.layout().slices_dir()
     }
 
     pub(crate) fn archive_dir(&self) -> PathBuf {
-        self.project_dir.layout().archive_dir()
+        self.layout().archive_dir()
     }
 
     /// Serialise `body` and write it to stdout in this `Ctx`'s
-    /// format. Handlers reach for `ctx.write(&Body::from(&result))?;`
-    /// so the `Stream::Stdout` constant stays inside `src/output.rs`.
+    /// format, using `render_text` for the text-format branch. The
+    /// text rendering is a free function colocated with the handler,
+    /// so the response shape stays in a single block of code.
     ///
     /// # Errors
     ///
     /// Propagates the underlying serialization or I/O error from
     /// [`output::write`].
-    pub(crate) fn write<R: Render>(&self, body: &R) -> Result<(), Error> {
-        output::write(self.format, body)
-    }
-
-    /// Serialise `data` and write it to stdout in this `Ctx`'s
-    /// format, using `render_text` for the text-format branch.
-    /// Use this when the text rendering is a one-off — the closure
-    /// lives next to the call site, so the response shape stays in a
-    /// single block of code rather than spreading across a `*Body`
-    /// type and an `impl Render for *Body` sibling.
-    ///
-    /// # Errors
-    ///
-    /// Propagates the underlying serialization or I/O error from
-    /// [`output::write_with`].
-    pub(crate) fn emit_with<T: Serialize>(
-        &self, data: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
+    pub(crate) fn write<T: Serialize>(
+        &self, body: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
     ) -> Result<(), Error> {
-        output::write_with(self.format, data, render_text)
+        output::write(self.format, body, render_text)
     }
 }

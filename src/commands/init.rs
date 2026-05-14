@@ -1,12 +1,6 @@
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
-/// Display a path as the canonical absolute form when it exists; fall back
-/// to the lossy display when it does not (e.g. a path we just deleted).
-fn canonical(p: &Path) -> String {
-    std::fs::canonicalize(p).map_or_else(|_| p.display().to_string(), |c| c.display().to_string())
-}
-
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::config::{ProjectConfig, is_workspace_clone};
@@ -16,15 +10,14 @@ use specify_error::{Error, Result};
 use crate::cli::Format;
 use crate::commands::context;
 use crate::context::Ctx;
-use crate::output::{self, Render};
+use crate::output;
 
-/// Dispatcher for `specify init`.
-///
-/// The `<capability>` xor `--hub` invariant is enforced by clap (see
-/// `#[arg(conflicts_with = "hub", required_unless_present = "hub")]`
-/// on the `capability` positional in `crate::cli::Commands::Init`),
-/// so by the time this function runs the `(hub, capability)` pair is
-/// guaranteed to be one of `(false, Some(_))` or `(true, None)`.
+/// Display a path as the canonical absolute form when it exists; fall back
+/// to the lossy display when it does not (e.g. a path we just deleted).
+fn canonical(p: &Path) -> String {
+    std::fs::canonicalize(p).map_or_else(|_| p.display().to_string(), |c| c.display().to_string())
+}
+
 pub(super) fn run(
     format: Format, capability: Option<&str>, name: Option<&str>, domain: Option<&str>, hub: bool,
 ) -> Result<()> {
@@ -68,37 +61,35 @@ struct Body {
     context: ContextBody,
 }
 
-impl Render for Body {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.hub {
-            writeln!(w, "Initialized .specify/ as a registry-only platform hub")?;
-        } else {
-            writeln!(w, "Initialized .specify/")?;
-        }
-        writeln!(w, "  capability: {}", self.capability_name)?;
-        writeln!(w, "  config: {}", self.config_path)?;
-        writeln!(w, "  cache present: {}", self.cache_present)?;
-        if !self.directories_created.is_empty() {
-            writeln!(w, "  directories created: {}", self.directories_created.join(", "))?;
-        }
-        writeln!(w, "  specify_version: {}", self.specify_version)?;
-        if self.context.skipped && self.context.skip_reason == Some("existing-agents-md") {
-            writeln!(w, "AGENTS.md already present; skipping context generate")?;
-        }
-        writeln!(w)?;
-        if self.hub {
-            writeln!(
-                w,
-                "Next: run `specify registry add <id> <url>` to declare the projects this hub coordinates."
-            )?;
-        } else {
-            writeln!(
-                w,
-                "Next: run `specify change create <name>` to start a change, then `specify change plan create <name>` to plan it."
-            )?;
-        }
-        Ok(())
+fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
+    if body.hub {
+        writeln!(w, "Initialized .specify/ as a registry-only platform hub")?;
+    } else {
+        writeln!(w, "Initialized .specify/")?;
     }
+    writeln!(w, "  capability: {}", body.capability_name)?;
+    writeln!(w, "  config: {}", body.config_path)?;
+    writeln!(w, "  cache present: {}", body.cache_present)?;
+    if !body.directories_created.is_empty() {
+        writeln!(w, "  directories created: {}", body.directories_created.join(", "))?;
+    }
+    writeln!(w, "  specify_version: {}", body.specify_version)?;
+    if body.context.skipped && body.context.skip_reason == Some("existing-agents-md") {
+        writeln!(w, "AGENTS.md already present; skipping context generate")?;
+    }
+    writeln!(w)?;
+    if body.hub {
+        writeln!(
+            w,
+            "Next: run `specify registry add <id> <url>` to declare the projects this hub coordinates."
+        )?;
+    } else {
+        writeln!(
+            w,
+            "Next: run `specify change create <name>` to start a change, then `specify change plan create <name>` to plan it."
+        )?;
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -134,7 +125,7 @@ fn emit_init_result(
         hub,
         context: ContextBody::from(context_generation),
     };
-    output::write(format, &body)?;
+    output::write(format, &body, write_text)?;
     Ok(())
 }
 

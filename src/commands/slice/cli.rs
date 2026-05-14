@@ -7,7 +7,7 @@ use specify_domain::capability::Phase;
 use specify_domain::slice::{CreateIfExists, EntryKind, LifecycleStatus};
 
 #[derive(Subcommand)]
-pub(crate) enum SliceAction {
+pub enum SliceAction {
     /// Create a new slice directory with an initial `.metadata.yaml`
     Create {
         /// Kebab-case slice name
@@ -92,7 +92,7 @@ pub(crate) enum SliceAction {
 
 /// Spec-merge subcommands grouped under `slice merge`.
 #[derive(Subcommand)]
-pub(crate) enum SliceMergeAction {
+pub enum SliceMergeAction {
     /// Merge all delta specs for the slice into baseline and archive the slice
     Run {
         /// Slice name
@@ -112,7 +112,7 @@ pub(crate) enum SliceMergeAction {
 
 /// Task-list subcommands grouped under `slice task`.
 #[derive(Subcommand)]
-pub(crate) enum SliceTaskAction {
+pub enum SliceTaskAction {
     /// Report task completion counts (total, complete, pending)
     Progress {
         /// Slice name
@@ -129,7 +129,7 @@ pub(crate) enum SliceTaskAction {
 
 /// Phase-outcome subcommands grouped under `slice outcome`.
 #[derive(Subcommand)]
-pub(crate) enum OutcomeAction {
+pub enum OutcomeAction {
     /// Record the outcome of a phase (define|build|merge) on `.metadata.yaml`.
     /// The outcome kind is itself a subcommand so each variant carries
     /// only its own flags.
@@ -153,7 +153,7 @@ pub(crate) enum OutcomeAction {
 /// Outcome-kind subcommands under `slice outcome set`. Each variant
 /// owns the flags that are valid for it; clap rejects everything else.
 #[derive(Subcommand)]
-pub(crate) enum OutcomeKindAction {
+pub enum OutcomeKindAction {
     /// Phase completed successfully.
     Success {
         /// Short explanation of what happened.
@@ -209,7 +209,7 @@ pub(crate) enum OutcomeKindAction {
 /// `OutcomeKind::RegistryAmendmentRequired` without further validation.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(crate) struct RegistryAmendmentProposal {
+pub struct RegistryAmendmentProposal {
     /// Proposed kebab-case project name.
     pub(crate) proposed_name: String,
     /// Proposed clone URL.
@@ -233,7 +233,7 @@ fn parse_proposal(raw: &str) -> Result<RegistryAmendmentProposal, String> {
 
 /// Journal subcommands grouped under `slice journal`.
 #[derive(Subcommand)]
-pub(crate) enum JournalAction {
+pub enum JournalAction {
     /// Append an entry to the slice's `journal.yaml`
     Append {
         /// Slice name
@@ -259,7 +259,7 @@ pub(crate) enum JournalAction {
 }
 
 #[derive(Debug, Copy, Clone, ValueEnum)]
-pub(crate) enum CreateIfExistsArg {
+pub enum CreateIfExistsArg {
     /// Refuse when the directory exists (default)
     Fail,
     /// Reuse the existing directory — requires a valid `.metadata.yaml`

@@ -1,8 +1,7 @@
-pub(crate) mod cli;
-pub(crate) mod plan;
+pub mod cli;
+pub mod plan;
 
 use std::io::Write;
-use std::path::PathBuf;
 
 use jiff::Timestamp;
 use serde::Serialize;
@@ -15,10 +14,9 @@ use specify_error::{Error, Result, is_kebab};
 
 use crate::cli::ChangeAction;
 use crate::context::Ctx;
-use crate::output::{Render, serialize_path};
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
-pub(crate) fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
     match action {
         ChangeAction::Create { name } => brief_create(ctx, name),
         ChangeAction::Show => brief_show(ctx),
@@ -48,20 +46,26 @@ fn brief_create(ctx: &Ctx, name: String) -> Result<()> {
 
     bytes_write(&brief_path, ChangeBrief::template(&name).as_bytes())?;
 
-    ctx.write(&BriefCreateBody {
-        name,
-        path: brief_path,
-    })?;
+    ctx.write(
+        &BriefCreateBody {
+            name,
+            path: brief_path.display().to_string(),
+        },
+        write_brief_create_text,
+    )?;
     Ok(())
 }
 
 fn brief_show(ctx: &Ctx) -> Result<()> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let brief = ChangeBrief::load(&ctx.project_dir)?;
-    ctx.write(&BriefShowBody {
-        brief,
-        path: brief_path,
-    })?;
+    ctx.write(
+        &BriefShowBody {
+            brief,
+            path: brief_path.display().to_string(),
+        },
+        write_brief_show_text,
+    )?;
     Ok(())
 }
 
@@ -107,19 +111,19 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
             let finalized = outcome.finalized;
             let summary = blocked_reason(&outcome.summary);
             let plan_name = outcome.name.clone();
-            ctx.emit_with(&outcome, render_finalize_outcome)?;
+            ctx.write(&outcome, render_finalize_outcome)?;
             if finalized {
                 Ok(())
             } else {
-                Err(Error::ChangeFinalizeBlocked {
-                    change: plan_name,
-                    summary,
+                Err(Error::Diag {
+                    code: "change-finalize-blocked",
+                    detail: format!("change `{plan_name}` blocked: {summary}"),
                 })
             }
         }
-        Err(finalize::Refusal::NonTerminalEntries(entries)) => Err(Error::PlanNonTerminalEntries {
-            change: plan.name.clone(),
-            entries,
+        Err(finalize::Refusal::NonTerminalEntries(entries)) => Err(Error::Diag {
+            code: "non-terminal-entries-present",
+            detail: format!("plan `{}` has non-terminal entries: {entries:?}", plan.name),
         }),
     }
 }
@@ -132,14 +136,11 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
 #[serde(rename_all = "kebab-case")]
 struct BriefCreateBody {
     name: String,
-    #[serde(serialize_with = "serialize_path")]
-    path: PathBuf,
+    path: String,
 }
 
-impl Render for BriefCreateBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Created change brief for {} at {}", self.name, self.path.display())
-    }
+fn write_brief_create_text(w: &mut dyn Write, body: &BriefCreateBody) -> std::io::Result<()> {
+    writeln!(w, "Created change brief for {} at {}", body.name, body.path)
 }
 
 #[derive(Serialize)]
@@ -147,17 +148,13 @@ impl Render for BriefCreateBody {
 struct BriefShowBody {
     #[serde(flatten)]
     brief: Option<ChangeBrief>,
-    #[serde(serialize_with = "serialize_path")]
-    path: PathBuf,
+    path: String,
 }
 
-impl Render for BriefShowBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let path = self.path.display().to_string();
-        match &self.brief {
-            None => writeln!(w, "no change brief declared at {path}"),
-            Some(brief) => render_brief(w, brief, &path),
-        }
+fn write_brief_show_text(w: &mut dyn Write, body: &BriefShowBody) -> std::io::Result<()> {
+    match &body.brief {
+        None => writeln!(w, "no change brief declared at {}", body.path),
+        Some(brief) => render_brief(w, brief, &body.path),
     }
 }
 
@@ -181,19 +178,12 @@ fn render_brief(w: &mut dyn Write, brief: &ChangeBrief, path: &str) -> std::io::
 /// [`Ctx::emit_with`] in [`run_finalize`] — the domain type ships its
 /// own `Serialize`, so the binary only needs to own the text shape.
 fn render_finalize_outcome(w: &mut dyn Write, outcome: &finalize::Outcome) -> std::io::Result<()> {
-    if outcome.dry_run == Some(true) {
-        writeln!(
-            w,
-            "[dry-run] specify: change finalize \u{2014} {} ({})",
-            outcome.name, outcome.expected_branch
-        )?;
-    } else {
-        writeln!(
-            w,
-            "specify: change finalize \u{2014} {} ({})",
-            outcome.name, outcome.expected_branch
-        )?;
-    }
+    let prefix = if outcome.dry_run { "[dry-run] " } else { "" };
+    writeln!(
+        w,
+        "{prefix}specify: change finalize \u{2014} {} ({})",
+        outcome.name, outcome.expected_branch
+    )?;
     writeln!(w)?;
 
     for r in &outcome.projects {
@@ -206,7 +196,7 @@ fn render_finalize_outcome(w: &mut dyn Write, outcome: &finalize::Outcome) -> st
     writeln!(w)?;
 
     if outcome.finalized {
-        if outcome.dry_run == Some(true) {
+        if outcome.dry_run {
             writeln!(w, "[dry-run] Change `{}` would be finalized.", outcome.name)?;
         } else {
             writeln!(w, "Change `{}` finalized.", outcome.name)?;

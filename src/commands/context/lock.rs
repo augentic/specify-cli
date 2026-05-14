@@ -81,43 +81,31 @@ pub(super) fn load(path: &Path) -> Result<Option<ContextLock>, Error> {
     let version: Version = serde_saphyr::from_str(&contents).map_err(|err| {
         validation_error(
             "context-lock-malformed",
-            Error::ContextLockMalformed {
-                detail: format!("failed to read lock version: {err}"),
-            }
-            .to_string(),
+            format!("context-lock-malformed: failed to read lock version: {err}"),
         )
     })?;
     if version.version > CURRENT_LOCK_VERSION {
         return Err(validation_error(
             "context-lock-version-too-new",
-            Error::ContextLockTooNew {
-                found: version.version,
-                supported: CURRENT_LOCK_VERSION,
-            }
-            .to_string(),
+            format!(
+                "context-lock-version-too-new: lock version {} > supported {CURRENT_LOCK_VERSION}",
+                version.version
+            ),
         ));
     }
     if version.version != CURRENT_LOCK_VERSION {
         return Err(validation_error(
             "context-lock-malformed",
-            Error::ContextLockMalformed {
-                detail: format!(
-                    "unsupported lock version {}; expected {}",
-                    version.version, CURRENT_LOCK_VERSION
-                ),
-            }
-            .to_string(),
+            format!(
+                "context-lock-malformed: unsupported lock version {}; expected \
+                 {CURRENT_LOCK_VERSION}",
+                version.version
+            ),
         ));
     }
 
     let lock: ContextLock = serde_saphyr::from_str(&contents).map_err(|err| {
-        validation_error(
-            "context-lock-malformed",
-            Error::ContextLockMalformed {
-                detail: err.to_string(),
-            }
-            .to_string(),
-        )
+        validation_error("context-lock-malformed", format!("context-lock-malformed: {err}"))
     })?;
     Ok(Some(lock))
 }

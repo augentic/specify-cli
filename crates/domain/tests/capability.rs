@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use specify_domain::capability::{
     Brief, CacheMeta, Capability, CapabilitySource, ChangeBrief, CodexProvenance, CodexRule,
     CodexSeverity, DEFAULT_CODEX_CAPABILITY, InputKind, Phase, Pipeline, PipelineEntry,
-    PipelineView, ResolvedCodex, ValidationResult, validate_against_schema,
+    PipelineView, ResolvedCodex, ValidationResult,
 };
 use specify_error::Error;
 use tempfile::TempDir;
@@ -86,41 +86,6 @@ fn validate_structure_valid_for_omnia() {
     );
 }
 
-/// Phase 1.8 invariant: the canonical omnia `capability.yaml` carries
-/// none of the dropped fields. RFC-13 §Capability manifest and
-/// protocol froze the post-Phase-1 manifest at `name`, `version`,
-/// `description`, and `pipeline { define, build, merge }` only. The
-/// JSON Schema validator already enforces this for arbitrary inputs;
-/// this test pins the bundled fixture itself so a future hand-edit of
-/// `schemas/omnia/capability.yaml` cannot quietly reintroduce the
-/// pre-RFC-13 fields.
-#[test]
-fn omnia_capability_yaml_has_no_dropped_fields() {
-    let raw = std::fs::read_to_string(omnia_capability_path()).unwrap();
-
-    for forbidden in ["domain:", "extends:"] {
-        let starts_at_col_zero = raw.lines().any(|line| line.starts_with(forbidden));
-        assert!(
-            !starts_at_col_zero,
-            "post-RFC-13 omnia capability must not carry top-level `{forbidden}`"
-        );
-    }
-
-    let pipeline_plan_present =
-        raw.lines().map(str::trim_end).any(|line| line == "  plan:" || line == "  plan: []");
-    assert!(
-        !pipeline_plan_present,
-        "post-RFC-13 omnia capability must not declare `pipeline.plan` \
-         (planning moves to the change surface in Phase 3)"
-    );
-
-    let parsed: Capability = serde_saphyr::from_str(&raw).expect("omnia capability parses");
-    assert!(
-        parsed.pipeline.plan.is_empty(),
-        "parsed omnia pipeline.plan must be empty after Phase 1"
-    );
-}
-
 #[test]
 fn validate_structure_fails_when_define_phase_is_empty() {
     let schema = Capability {
@@ -166,76 +131,6 @@ fn yaml_parse_error_surface_for_missing_required_field() {
 // ---------- pipeline.plan (Layer 3 authoring) ----------
 
 #[test]
-fn pipeline_plan_parses_when_present() {
-    let yaml = r"
-name: demo
-version: 1
-description: demo with plan
-pipeline:
-  plan:
-    - { id: discovery, brief: briefs/plan/discovery.md }
-    - { id: propose,   brief: briefs/plan/propose.md }
-  define:
-    - { id: proposal, brief: briefs/proposal.md }
-  build:
-    - { id: build, brief: briefs/build.md }
-  merge:
-    - { id: merge, brief: briefs/merge.md }
-";
-    let schema: Capability = serde_saphyr::from_str(yaml).expect("parses");
-    let plan = schema.plan_entries();
-    assert_eq!(plan.len(), 2);
-    assert_eq!(plan[0].id, "discovery");
-    assert_eq!(plan[0].brief, "briefs/plan/discovery.md");
-    assert_eq!(plan[1].id, "propose");
-    assert_eq!(plan[1].brief, "briefs/plan/propose.md");
-
-    // `entries()` stays the execution loop only — plan briefs do not
-    // leak into define/build/merge iteration.
-    assert!(!schema.entries().any(|(p, _)| p == Phase::Plan));
-
-    // Plan briefs are still discoverable via `entry()`.
-    let (phase, entry) = schema.entry("discovery").expect("discovery visible via entry()");
-    assert_eq!(phase, Phase::Plan);
-    assert_eq!(entry.id, "discovery");
-
-    // RFC-13 chunk 1.4: the JSON Schema now actively rejects
-    // `pipeline.plan` (planning leaves the capability surface and moves
-    // to `specify change`). The parser stays tolerant for one more
-    // chunk so existing on-disk manifests load, but `validate_structure`
-    // is the boundary that pins the post-RFC field set.
-    let results = schema.validate_structure();
-    let detail = results
-        .iter()
-        .find_map(|r| match r {
-            ValidationResult::Fail { detail, .. } => Some(detail.as_str()),
-            _ => None,
-        })
-        .expect("plan-bearing schema must fail validation");
-    assert!(
-        detail.contains("plan"),
-        "rejection diagnostic must name the offending field, got: {detail}"
-    );
-}
-
-#[test]
-fn pipeline_without_plan_parses_unchanged() {
-    let raw = std::fs::read_to_string(omnia_capability_path()).unwrap();
-    let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
-    assert!(schema.pipeline.plan.is_empty());
-    assert!(schema.plan_entries().is_empty());
-
-    // Serializing back out must not introduce a `plan: []` key — we
-    // skip-serialize empty plan vectors so round-trips of legacy
-    // manifests are byte-stable for the plan field.
-    let written = serde_saphyr::to_string(&schema).unwrap();
-    assert!(
-        !written.contains("plan:"),
-        "expected no plan key in re-serialized omnia capability, got:\n{written}"
-    );
-}
-
-#[test]
 fn plan_entries_merge_overrides_by_id_and_appends_new_entries() {
     let parent_yaml = r"
 name: parent
@@ -275,110 +170,6 @@ pipeline:
     assert_eq!(ids, vec!["discovery", "propose", "record"]);
     let propose = merged.plan_entries().iter().find(|e| e.id == "propose").unwrap();
     assert_eq!(propose.brief, "briefs/plan/propose-v2.md");
-}
-
-/// JSON Schema body shipped with the crate. Read directly from disk so
-/// the rejection tests below stay coupled to the on-disk file used by
-/// `Capability::validate_structure`.
-const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../schemas/capability.schema.json");
-
-fn validate_raw(instance: &serde_json::Value) -> Vec<ValidationResult> {
-    validate_against_schema(
-        CAPABILITY_JSON_SCHEMA,
-        "capability.valid",
-        "capability manifest conforms to schemas/capability.schema.json",
-        instance,
-    )
-}
-
-fn fail_detail(results: &[ValidationResult], context: &str) -> String {
-    results
-        .iter()
-        .find_map(|r| match r {
-            ValidationResult::Fail { detail, .. } => Some(detail.clone()),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("expected failure for {context}, got: {results:?}"))
-}
-
-#[test]
-fn json_schema_rejects_capability_domain_field() {
-    let instance = serde_json::json!({
-        "name": "broken",
-        "version": 1,
-        "description": "manifest still carrying legacy `domain`",
-        "domain": "Tech stack: Rust",
-        "pipeline": {
-            "define": [{ "id": "proposal", "brief": "briefs/proposal.md" }],
-            "build": [{ "id": "build", "brief": "briefs/build.md" }],
-            "merge": [{ "id": "merge", "brief": "briefs/merge.md" }]
-        }
-    });
-    let results = validate_raw(&instance);
-    let detail = fail_detail(&results, "domain field");
-    assert!(detail.contains("domain"), "diagnostic must name `domain`, got: {detail}");
-}
-
-#[test]
-fn json_schema_rejects_capability_extends_field() {
-    let instance = serde_json::json!({
-        "name": "broken",
-        "version": 1,
-        "description": "manifest still carrying legacy `extends`",
-        "extends": "https://example.com/parent.yaml",
-        "pipeline": {
-            "define": [{ "id": "proposal", "brief": "briefs/proposal.md" }],
-            "build": [{ "id": "build", "brief": "briefs/build.md" }],
-            "merge": [{ "id": "merge", "brief": "briefs/merge.md" }]
-        }
-    });
-    let results = validate_raw(&instance);
-    let detail = fail_detail(&results, "extends field");
-    assert!(detail.contains("extends"), "diagnostic must name `extends`, got: {detail}");
-}
-
-#[test]
-fn json_schema_rejects_pipeline_plan_block() {
-    // RFC-13 chunk 1.4 tightens the JSON Schema to forbid
-    // `pipeline.plan` outright — planning leaves the capability surface
-    // and moves to the change surface. A manifest that still carries a
-    // `plan` block must fail structure validation even when the rest of
-    // the pipeline is well-formed.
-    let schema = Capability {
-        name: "broken".into(),
-        version: 1,
-        description: "plan still present".into(),
-        pipeline: Pipeline {
-            plan: vec![PipelineEntry {
-                id: "discovery".into(),
-                brief: "briefs/plan/discovery.md".into(),
-            }],
-            define: vec![PipelineEntry {
-                id: "proposal".into(),
-                brief: "briefs/proposal.md".into(),
-            }],
-            build: vec![PipelineEntry {
-                id: "build".into(),
-                brief: "briefs/build.md".into(),
-            }],
-            merge: vec![PipelineEntry {
-                id: "merge".into(),
-                brief: "briefs/merge.md".into(),
-            }],
-        },
-    };
-    let results = schema.validate_structure();
-    let detail = results
-        .iter()
-        .find_map(|r| match r {
-            ValidationResult::Fail { detail, .. } => Some(detail.as_str()),
-            _ => None,
-        })
-        .expect("pipeline.plan must be rejected");
-    assert!(
-        detail.contains("plan"),
-        "rejection diagnostic must name the offending field, got: {detail}"
-    );
 }
 
 // ---------- Manifest composition ----------
@@ -1091,7 +882,7 @@ fn scaffold_initiative_brief(contents: &str) -> TempDir {
 
 /// Byte-for-byte golden for [`ChangeBrief::template`] applied to
 /// the RFC's `traffic-modernisation` example. The CLI integration
-/// suite (`tests/change_umbrella.rs`) pins the exact same bytes
+/// suite (`tests/change_create.rs`) pins the exact same bytes
 /// against `specify change create traffic-modernisation`.
 ///
 /// RFC-13 chunk 3.7 refreshed the prose to name the artefact a

@@ -3,25 +3,26 @@
 use std::path::Path;
 
 use specify_domain::change::Plan;
-use specify_domain::config::{InitPolicy, LayoutExt, with_state};
+use specify_domain::config::{InitPolicy, Layout, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
-use super::dto::RemoveBody;
+use super::dto::{RemoveBody, write_remove_text};
 use crate::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
-    let path = Registry::path(&ctx.project_dir);
+    let path_buf = Registry::path(&ctx.project_dir);
+    let path = path_buf.display().to_string();
     let hub_mode = ctx.config.hub;
 
     // Pre-flight: surface the legacy `registry-remove-no-registry`
     // diagnostic when the file is absent. `with_state` would
     // emit the generic `Error::ArtifactNotFound`; the registry-specific
     // diag is part of the wire contract.
-    if !path.exists() {
+    if !path_buf.exists() {
         return Err(Error::Diag {
             code: "registry-remove-no-registry",
-            detail: format!("registry remove: no registry declared at {}", path.display()),
+            detail: format!("registry remove: no registry declared at {path}"),
         });
     }
 
@@ -33,10 +34,7 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
                 registry.projects.iter().position(|p| p.name == name).ok_or_else(|| {
                     Error::Diag {
                         code: "registry-remove-not-found",
-                        detail: format!(
-                            "registry remove: project `{name}` not found in {}",
-                            path.display()
-                        ),
+                        detail: format!("registry remove: project `{name}` not found in {path}"),
                     }
                 })?;
             registry.projects.remove(position);
@@ -60,7 +58,7 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
         },
     )?;
 
-    ctx.write(&body)?;
+    ctx.write(&body, write_remove_text)?;
     Ok(())
 }
 
@@ -71,7 +69,7 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
 /// write has already landed, so the operator needs to learn about
 /// both halves).
 pub(super) fn plan_refs(project_dir: &Path, removed: &str) -> Vec<String> {
-    let plan_path = project_dir.layout().plan_path();
+    let plan_path = Layout::new(project_dir).plan_path();
     if !plan_path.exists() {
         return Vec::new();
     }

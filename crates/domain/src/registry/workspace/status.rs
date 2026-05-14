@@ -12,7 +12,8 @@ use crate::registry::Registry;
 use crate::registry::catalog::RegistryProject;
 
 /// One row for `specify workspace status` text/JSON output.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 #[must_use]
 pub struct SlotStatus {
     /// Registry project name (`.specify/workspace/<name>/`).
@@ -48,16 +49,7 @@ pub struct SlotStatus {
 
 /// Whether a registry entry is configured as a local filesystem target or a remote URL.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    strum::Display,
-    strum::IntoStaticStr,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -68,26 +60,9 @@ pub enum ConfiguredTargetKind {
     Remote,
 }
 
-impl ConfiguredTargetKind {
-    /// Stable label used by CLI text/JSON output.
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        self.into()
-    }
-}
-
 /// Classification of a workspace slot on disk.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    strum::Display,
-    strum::IntoStaticStr,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -100,14 +75,6 @@ pub enum SlotKind {
     GitClone,
     /// Present but neither a recognised symlink nor a git work tree.
     Other,
-}
-
-impl SlotKind {
-    /// Stable label used by CLI text/JSON output and diagnostics.
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        self.into()
-    }
 }
 
 /// Inspect `.specify/workspace/<name>/` for each registry project.

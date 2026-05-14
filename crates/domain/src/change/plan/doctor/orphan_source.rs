@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use super::{Diagnostic, DiagnosticPayload, DiagnosticSeverity, ORPHAN_SOURCE};
+use super::{Diagnostic, DiagnosticPayload, ORPHAN_SOURCE, Severity};
 use crate::change::plan::core::Plan;
 
 /// Top-level `sources:` keys declared but not referenced by any entry.
@@ -27,7 +27,7 @@ pub(super) fn detect(plan: &Plan) -> Vec<Diagnostic> {
     orphans
         .into_iter()
         .map(|key| Diagnostic {
-            severity: DiagnosticSeverity::Warning,
+            severity: Severity::Warning,
             code: ORPHAN_SOURCE.to_string(),
             message: format!(
                 "source key '{key}' is declared in the plan-level `sources:` map but no entry references it; either reference it from an entry's `sources:` list or remove the declaration"

@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use jiff::Timestamp;
 use specify_error::Error;
 
-use crate::config::{LayoutExt, ProjectConfig};
+use crate::config::{Layout, ProjectConfig};
 
 /// Inputs to [`init`]. Borrow-shaped so callers (the CLI and tests) can
 /// build the struct without cloning path buffers.
@@ -122,7 +122,7 @@ pub(crate) fn resolve_version(project_dir: &Path, mode: VersionMode) -> Result<S
     // reject the load when the existing floor is newer than the
     // running binary — but `Preserve` is meant precisely for that
     // case).
-    let path = project_dir.layout().config_path();
+    let path = Layout::new(project_dir).config_path();
     let text = match fs::read_to_string(&path) {
         Ok(text) => text,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(current),

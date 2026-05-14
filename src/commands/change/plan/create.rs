@@ -8,16 +8,15 @@ use specify_error::Result;
 
 use super::{Ref, change_entry_json, check_project, plan_ref};
 use crate::context::Ctx;
-use crate::output::Render;
 
 /// Convert a CLI-supplied optional string to a [`Patch<String>`]: an
 /// absent flag leaves the field unchanged, an empty value clears it,
 /// any other value replaces it.
 fn cli_patch(value: Option<String>) -> Patch<String> {
     match value {
-        None => Patch::keep(),
-        Some(s) if s.is_empty() => Patch::clear(),
-        Some(s) => Patch::set(s),
+        None => Patch::Keep,
+        Some(s) if s.is_empty() => Patch::Clear,
+        Some(s) => Patch::Set(s),
     }
 }
 
@@ -26,7 +25,7 @@ pub(super) fn add(
     description: Option<String>, project: Option<String>, capability: Option<String>,
     context: Vec<String>,
 ) -> Result<()> {
-    if let Some(ref proj) = project {
+    if let Some(proj) = &project {
         check_project(&ctx.project_dir, proj)?;
     }
 
@@ -49,7 +48,7 @@ pub(super) fn add(
             plan.create(entry)?;
             let created =
                 plan.entries.last().expect("Plan::create appended an entry that is now missing");
-            Ok(AddBody {
+            Ok(EntryBody {
                 plan: plan_ref(plan, &plan_path),
                 action: PlanAction::Create,
                 entry: change_entry_json(created),
@@ -57,7 +56,7 @@ pub(super) fn add(
         },
     )?;
 
-    ctx.write(&body)?;
+    ctx.write(&body, write_entry_text)?;
     Ok(())
 }
 
@@ -66,7 +65,7 @@ pub(super) fn amend(
     description: Option<String>, project: Option<String>, capability: Option<String>,
     context: Option<Vec<String>>,
 ) -> Result<()> {
-    if let Some(ref proj) = project
+    if let Some(proj) = &project
         && !proj.is_empty()
     {
         check_project(&ctx.project_dir, proj)?;
@@ -88,7 +87,7 @@ pub(super) fn amend(
             plan.amend(&name, patch)?;
             let amended =
                 plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
-            Ok(AmendBody {
+            Ok(EntryBody {
                 plan: plan_ref(plan, &plan_path),
                 action: PlanAction::Amend,
                 entry: change_entry_json(amended),
@@ -96,28 +95,13 @@ pub(super) fn amend(
         },
     )?;
 
-    ctx.write(&body)?;
+    ctx.write(&body, write_entry_text)?;
     Ok(())
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct AddBody {
-    plan: Ref,
-    action: PlanAction,
-    entry: Value,
-}
-
-impl Render for AddBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let name = self.entry.get("name").and_then(Value::as_str).unwrap_or("");
-        writeln!(w, "Created plan entry '{name}' with status 'pending'.")
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct AmendBody {
+struct EntryBody {
     plan: Ref,
     action: PlanAction,
     entry: Value,
@@ -130,9 +114,10 @@ enum PlanAction {
     Amend,
 }
 
-impl Render for AmendBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let name = self.entry.get("name").and_then(Value::as_str).unwrap_or("");
-        writeln!(w, "Amended plan entry '{name}'.")
+fn write_entry_text(w: &mut dyn Write, body: &EntryBody) -> std::io::Result<()> {
+    let name = body.entry.get("name").and_then(Value::as_str).unwrap_or("");
+    match body.action {
+        PlanAction::Create => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
+        PlanAction::Amend => writeln!(w, "Amended plan entry '{name}'."),
     }
 }

@@ -182,11 +182,12 @@ fn wrong_precondition_aborts_cleanly() {
     let err = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
         .expect_err("should refuse on Building status");
     match err {
-        Error::Lifecycle { expected, found } => {
-            assert_eq!(expected, "Complete");
-            assert!(found.contains("Building"), "unexpected found: {found}");
+        Error::Diag { code, detail } => {
+            assert_eq!(code, "lifecycle");
+            assert!(detail.contains("Complete"), "unexpected detail: {detail}");
+            assert!(detail.contains("Building"), "unexpected detail: {detail}");
         }
-        other => panic!("expected Lifecycle error, got {other:?}"),
+        other => panic!("expected lifecycle diag, got {other:?}"),
     }
 
     // Filesystem untouched.

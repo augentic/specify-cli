@@ -2,7 +2,10 @@
 //! and every workspace clone is clean, then atomically archives
 //! `plan.yaml`, `change.md`, and `.specify/plans/<name>/`.
 
-#![allow(clippy::needless_pass_by_value)]
+#![expect(
+    clippy::needless_pass_by_value,
+    reason = "module-wide: probe/runner functions take owned config values mirroring the legacy plan API; cascade refactor deferred"
+)]
 
 use std::path::Path;
 
@@ -12,7 +15,7 @@ use specify_error::Error;
 
 use crate::change::plan::core::Plan;
 use crate::cmd::CmdRunner;
-use crate::config::LayoutExt;
+use crate::config::Layout;
 use crate::registry::Registry;
 use crate::registry::forge::{SPECIFY_BRANCH_PREFIX, project_path};
 
@@ -33,16 +36,7 @@ pub use summary::{is_terminal, outstanding, summarise};
 /// Skill authors and operators rely on this vocabulary; treat it as a
 /// stable wire contract.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    strum::Display,
-    strum::IntoStaticStr,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -87,7 +81,6 @@ pub struct ProjectResult {
     /// Registry project name.
     pub name: String,
     /// Outcome of the finalize attempt.
-    #[serde(serialize_with = "serialize_status")]
     pub status: Landing,
     /// PR number when discovered (any state).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,16 +103,8 @@ pub struct ProjectResult {
     pub detail: Option<String>,
 }
 
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "serde's `serialize_with` signature requires `&T`."
-)]
-fn serialize_status<S: serde::Serializer>(status: &Landing, s: S) -> Result<S::Ok, S::Error> {
-    s.serialize_str(status.into())
-}
-
 /// Per-status counters for the summary row.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Summary {
     /// PRs in `MERGED` state on remote.
@@ -180,11 +165,9 @@ pub struct Outcome {
     /// archive was refused.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub cleaned: Vec<String>,
-    /// Echo of the `--dry-run` flag. `Some(true)` only when the run
-    /// was a dry-run; serialised omitted otherwise so real-run output
-    /// stays minimal.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dry_run: Option<bool>,
+    /// Echo of the `--dry-run` flag; omitted from JSON when `false`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub dry_run: bool,
 }
 
 /// Inputs that don't fit the per-project loop.
@@ -248,24 +231,24 @@ pub enum PlanLoad {
 /// Returns [`Refusal`] for whole-run refusals. Per-project
 /// failures live in [`Outcome::projects`] and never bubble up.
 pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refusal> {
-    // Guard: terminal states.
-    let outstanding = summary::outstanding(inputs.plan);
+    // Refuse if any plan entry is still in a non-terminal state.
+    let outstanding = outstanding(inputs.plan);
     if !outstanding.is_empty() {
         return Err(Refusal::NonTerminalEntries(outstanding));
     }
 
     let change_name = inputs.plan.name.clone();
     let expected_branch = format!("{SPECIFY_BRANCH_PREFIX}{change_name}");
-    let workspace_base = inputs.project_dir.layout().specify_dir().join("workspace");
+    let workspace_base = Layout::new(inputs.project_dir).specify_dir().join("workspace");
 
-    // Guard: per-project PR state + dirty clones.
+    // Probe per-project PR state + dirty clones.
     let mut projects: Vec<ProjectResult> = Vec::with_capacity(inputs.registry.projects.len());
     for rp in &inputs.registry.projects {
         let path = project_path(inputs.project_dir, &workspace_base, rp);
         projects.push(probe::probe_one(runner, &path, rp, &expected_branch, inputs.clean));
     }
 
-    let aggregated = summary::summarise(&projects);
+    let aggregated = summarise(&projects);
     let any_refusing = projects.iter().any(|p| !p.status.is_passing());
 
     let mut outcome = Outcome {
@@ -278,7 +261,7 @@ pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refu
         archived: None,
         archived_plans_dir: None,
         cleaned: Vec::new(),
-        dry_run: inputs.dry_run.then_some(true),
+        dry_run: inputs.dry_run,
     };
 
     if any_refusing {
@@ -313,7 +296,7 @@ pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refu
 /// Bubbles up `Plan::load` errors verbatim — a malformed plan is a
 /// real failure, not a "plan absent" sentinel.
 pub fn load_plan(project_dir: &Path) -> Result<PlanLoad, Error> {
-    let plan_file = project_dir.layout().plan_path();
+    let plan_file = Layout::new(project_dir).plan_path();
     if !plan_file.exists() {
         return Ok(PlanLoad::Missing);
     }

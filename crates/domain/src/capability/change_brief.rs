@@ -199,7 +199,7 @@ inputs: []
 fn title_case(name: &str) -> String {
     let with_spaces: String = name.chars().map(|c| if c == '-' { ' ' } else { c }).collect();
     let mut chars = with_spaces.chars();
-    chars
-        .next()
-        .map_or_else(String::new, |first| first.to_ascii_uppercase().to_string() + chars.as_str())
+    chars.next().map_or_else(String::new, |first| {
+        format!("{}{}", first.to_ascii_uppercase(), chars.as_str())
+    })
 }

@@ -28,7 +28,6 @@ fn preview_reports_operations() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["envelope-version"], 6);
 
     let specs = value["specs"].as_array().expect("specs array");
     // Two-spec fixture: each spec uses `## ADDED Requirements` with one

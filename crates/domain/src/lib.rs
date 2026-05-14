@@ -9,8 +9,6 @@ pub mod config;
 pub mod init;
 pub mod merge;
 pub mod registry;
-pub mod serde_helpers;
-pub mod serde_rfc3339;
 pub mod slice;
 pub mod spec;
 pub mod task;

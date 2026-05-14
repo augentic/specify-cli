@@ -21,8 +21,8 @@ impl Plan {
     /// 1. Load the plan at `path`.
     /// 2. Collect every entry whose status is non-terminal for archival
     ///    purposes — anything not in `{Done, Skipped}`. If the list is
-    ///    non-empty and `force == false`, return
-    ///    [`Error::PlanIncomplete`] carrying those names in
+    ///    non-empty and `force == false`, return [`Error::Diag`] with
+    ///    `code = "plan-has-outstanding-work"` carrying those names in
     ///    plan list order. When `force == true`, proceed; the archived
     ///    file preserves the statuses verbatim.
     /// 3. Preflight the on-disk destinations (before any mutation):
@@ -68,7 +68,10 @@ impl Plan {
                 .map(|c| c.name.clone())
                 .collect();
             if !entries.is_empty() {
-                return Err(Error::PlanIncomplete { entries });
+                return Err(Error::Diag {
+                    code: "plan-has-outstanding-work",
+                    detail: format!("plan has outstanding non-terminal work: {entries:?}"),
+                });
             }
         }
 

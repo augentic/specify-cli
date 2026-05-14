@@ -18,8 +18,9 @@ use crate::slice::{LifecycleStatus, SliceMetadata};
 ///
 /// # Errors
 ///
-/// `Error::Lifecycle` if the slice is already terminal; otherwise
-/// propagates whatever `transition` and `archive` surface.
+/// `Error::Diag` with `code = "lifecycle"` if the slice is already
+/// terminal; otherwise propagates whatever `transition` and `archive`
+/// surface.
 pub fn discard(
     slice_dir: &Path, archive_dir: &Path, reason: Option<&str>, now: Timestamp,
 ) -> Result<(SliceMetadata, PathBuf), Error> {

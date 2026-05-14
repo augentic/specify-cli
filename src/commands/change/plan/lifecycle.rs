@@ -4,17 +4,16 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
 use specify_domain::change::{Finding, Plan, Severity, Status};
-use specify_domain::config::{InitPolicy, LayoutExt, with_state};
+use specify_domain::config::{InitPolicy, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
 use super::{Ref, plan_ref, require_file};
 use crate::cli::SourceArg;
 use crate::context::Ctx;
-use crate::output::{Render, Validation};
 
 pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
-    let plan_path = ctx.project_dir.layout().plan_path();
+    let plan_path = ctx.layout().plan_path();
     if plan_path.exists() {
         return Err(Error::Diag {
             code: "plan-already-exists",
@@ -42,19 +41,22 @@ pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result
     // and the pre-existence check above is the documented contract.
     plan.save(&plan_path)?;
 
-    ctx.write(&CreateBody {
-        plan: Ref {
-            name,
-            path: plan_path,
+    ctx.write(
+        &CreateBody {
+            plan: Ref {
+                name,
+                path: plan_path.display().to_string(),
+            },
         },
-    })?;
+        write_create_text,
+    )?;
     Ok(())
 }
 
 pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ctx.project_dir.layout().slices_dir();
+    let slices_dir = ctx.layout().slices_dir();
 
     let (registry, registry_err) = match Registry::load(&ctx.project_dir) {
         Ok(reg) => (reg, None),
@@ -69,8 +71,8 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
             entry: None,
         });
     }
-    if let Some(ref reg) = registry {
-        let workspace_base = ctx.project_dir.layout().specify_dir().join("workspace");
+    if let Some(reg) = &registry {
+        let workspace_base = ctx.layout().specify_dir().join("workspace");
         for rp in &reg.projects {
             let slot_project_yaml =
                 workspace_base.join(&rp.name).join(".specify").join("project.yaml");
@@ -95,15 +97,17 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     }
 
     let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
-    let rows: Vec<FindingRow<'_>> = results.iter().map(FindingRow::from).collect();
-    ctx.write(&PlanValidateBody {
-        plan: Ref {
-            name: plan.name,
-            path: plan_path,
+    ctx.write(
+        &PlanValidateBody {
+            plan: Ref {
+                name: plan.name,
+                path: plan_path.display().to_string(),
+            },
+            results: &results,
+            passed: !has_errors,
         },
-        validation: Validation { results: rows },
-        passed: !has_errors,
-    })?;
+        write_plan_validate_text,
+    )?;
     if has_errors {
         Err(Error::Diag {
             code: "plan-structural-errors",
@@ -118,7 +122,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let plan = Plan::load(&plan_path)?;
-    let slices_dir = ctx.project_dir.layout().slices_dir();
+    let slices_dir = ctx.layout().slices_dir();
 
     let results = plan.validate(Some(&slices_dir), None);
     if results.iter().any(|r| matches!(r.level, Severity::Error)) {
@@ -153,7 +157,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
             ..NextBody::default()
         }
     };
-    ctx.write(&body)?;
+    ctx.write(&body, write_next_text)?;
     Ok(())
 }
 
@@ -190,12 +194,12 @@ pub(super) fn transition(
             })
         },
     )?;
-    ctx.write(&body)?;
+    ctx.write(&body, write_transition_text)?;
     Ok(())
 }
 
 pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
-    let layout = ctx.project_dir.layout();
+    let layout = ctx.layout();
     let plan_path = layout.plan_path();
     if !plan_path.exists() {
         return Err(Error::ArtifactNotFound {
@@ -209,11 +213,14 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
 
     let (archived, archived_plans_dir) =
         Plan::archive(&plan_path, &brief_path, &archive_dir, force, Timestamp::now())?;
-    ctx.write(&ArchiveBody {
-        archived: archived.display().to_string(),
-        archived_plans_dir: archived_plans_dir.as_deref().map(|p| p.display().to_string()),
-        plan: ArchivedPlan { name: plan_name },
-    })?;
+    ctx.write(
+        &ArchiveBody {
+            archived: archived.display().to_string(),
+            archived_plans_dir: archived_plans_dir.as_deref().map(|p| p.display().to_string()),
+            plan: ArchivedPlan { name: plan_name },
+        },
+        write_archive_text,
+    )?;
     Ok(())
 }
 
@@ -223,67 +230,32 @@ struct CreateBody {
     plan: Ref,
 }
 
-impl Render for CreateBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(w, "Initialised plan '{}' at {}.", self.plan.name, self.plan.path.display())
-    }
+fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
+    writeln!(w, "Initialised plan '{}' at {}.", body.plan.name, body.plan.path)
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct PlanValidateBody<'a> {
     plan: Ref,
-    #[serde(flatten)]
-    validation: Validation<FindingRow<'a>>,
+    results: &'a [Finding],
     passed: bool,
 }
 
-impl Render for PlanValidateBody<'_> {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.validation.results.is_empty() {
-            return writeln!(w, "Plan OK");
-        }
-        self.validation.render_text(w)
+fn write_plan_validate_text(w: &mut dyn Write, body: &PlanValidateBody<'_>) -> std::io::Result<()> {
+    if body.results.is_empty() {
+        return writeln!(w, "Plan OK");
     }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct FindingRow<'a> {
-    level: FindingLevel,
-    code: &'static str,
-    entry: &'a Option<String>,
-    message: &'a str,
-}
-
-#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-enum FindingLevel {
-    Error,
-    Warning,
-}
-
-impl<'a> From<&'a Finding> for FindingRow<'a> {
-    fn from(finding: &'a Finding) -> Self {
-        let level = match finding.level {
-            Severity::Error => FindingLevel::Error,
-            Severity::Warning => FindingLevel::Warning,
-        };
-        Self {
-            level,
-            code: finding.code,
-            entry: &finding.entry,
-            message: &finding.message,
-        }
+    for finding in body.results {
+        write_finding_text(w, finding)?;
     }
+    Ok(())
 }
 
-impl Render for FindingRow<'_> {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        let label = if self.level == FindingLevel::Error { "ERROR  " } else { "WARNING" };
-        let entry_col = self.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
-        writeln!(w, "{label} {:<32} {:<24} {}", self.code, entry_col, self.message)
-    }
+fn write_finding_text(w: &mut dyn Write, finding: &Finding) -> std::io::Result<()> {
+    let label = if matches!(finding.level, Severity::Error) { "ERROR  " } else { "WARNING" };
+    let entry_col = finding.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
+    writeln!(w, "{label} {:<32} {:<24} {}", finding.code, entry_col, finding.message)
 }
 
 #[derive(Serialize, Default)]
@@ -298,20 +270,18 @@ struct NextBody {
     sources: Option<Vec<String>>,
 }
 
-impl Render for NextBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if let Some(active) = &self.active {
-            writeln!(w, "Active change in progress: {active}")
-        } else if let Some(name) = &self.next {
-            writeln!(w, "{name}")
-        } else if self.reason.as_deref() == Some("all-done") {
-            writeln!(w, "All changes done.")
-        } else {
-            writeln!(
-                w,
-                "No eligible changes \u{2014} remaining entries are blocked, failed, or waiting on unmet dependencies."
-            )
-        }
+fn write_next_text(w: &mut dyn Write, body: &NextBody) -> std::io::Result<()> {
+    if let Some(active) = &body.active {
+        writeln!(w, "Active change in progress: {active}")
+    } else if let Some(name) = &body.next {
+        writeln!(w, "{name}")
+    } else if body.reason.as_deref() == Some("all-done") {
+        writeln!(w, "All changes done.")
+    } else {
+        writeln!(
+            w,
+            "No eligible changes \u{2014} remaining entries are blocked, failed, or waiting on unmet dependencies."
+        )
     }
 }
 
@@ -324,14 +294,12 @@ struct TransitionBody {
     previous_status: Status,
 }
 
-impl Render for TransitionBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(
-            w,
-            "Transitioned '{}': {} \u{2192} {}.",
-            self.entry.name, self.previous_status, self.entry.status
-        )
-    }
+fn write_transition_text(w: &mut dyn Write, body: &TransitionBody) -> std::io::Result<()> {
+    writeln!(
+        w,
+        "Transitioned '{}': {} \u{2192} {}.",
+        body.entry.name, body.previous_status, body.entry.status
+    )
 }
 
 #[derive(Serialize)]
@@ -350,14 +318,12 @@ struct ArchiveBody {
     plan: ArchivedPlan,
 }
 
-impl Render for ArchiveBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        match &self.archived_plans_dir {
-            Some(dir) => {
-                writeln!(w, "Archived plan to {}. Working directory moved to {dir}.", self.archived)
-            }
-            None => writeln!(w, "Archived plan to {}.", self.archived),
+fn write_archive_text(w: &mut dyn Write, body: &ArchiveBody) -> std::io::Result<()> {
+    match &body.archived_plans_dir {
+        Some(dir) => {
+            writeln!(w, "Archived plan to {}. Working directory moved to {dir}.", body.archived)
         }
+        None => writeln!(w, "Archived plan to {}.", body.archived),
     }
 }
 

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use specify_error::{Error, is_kebab};
 
 use crate::capability::CacheMeta;
-use crate::config::{LayoutExt, ProjectConfig};
+use crate::config::{Layout, ProjectConfig};
 use crate::init::{InitOptions, InitResult, resolve_version, resolved_name, upsert_gitignore};
 use crate::registry::Registry;
 
@@ -49,7 +49,7 @@ const HUB_INIT_NAME: &str = "hub";
     clippy::needless_pass_by_value,
     reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
 )]
-pub(crate) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
+pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.capability.is_some() {
         return Err(Error::Diag {
             code: "init-requires-capability-or-hub",
@@ -57,7 +57,7 @@ pub(crate) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         });
     }
 
-    let layout = opts.project_dir.layout();
+    let layout = Layout::new(opts.project_dir);
     let specify_dir = layout.specify_dir();
     if specify_dir.exists() {
         return Err(Error::Diag {

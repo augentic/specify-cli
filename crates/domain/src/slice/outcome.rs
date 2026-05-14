@@ -2,15 +2,14 @@
 //! [`Kind`] with phase + timestamp metadata lives in
 //! [`crate::slice::metadata`] as `Outcome`.
 
-use std::fmt;
-
 use serde::{Deserialize, Serialize};
 
 /// Phase outcome reported to `/change:execute`. Unit variants serialise
 /// as `outcome: success` etc.; [`Self::RegistryAmendmentRequired`] is
 /// an externally-tagged map carrying its proposal payload.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, strum::Display)]
 #[serde(rename_all = "kebab-case", rename_all_fields = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 #[non_exhaustive]
 pub enum Kind {
     /// Phase completed successfully.
@@ -37,27 +36,6 @@ pub enum Kind {
         /// Free-form rationale, surfaced verbatim to the operator.
         rationale: String,
     },
-}
-
-impl fmt::Display for Kind {
-    /// Renders the kebab-case discriminant; payload fields are emitted
-    /// via serde when callers need the structured shape.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.discriminant())
-    }
-}
-
-impl Kind {
-    /// Kebab-case discriminant matching the on-disk serde tag.
-    #[must_use]
-    pub const fn discriminant(&self) -> &'static str {
-        match self {
-            Self::Success => "success",
-            Self::Failure => "failure",
-            Self::Deferred => "deferred",
-            Self::RegistryAmendmentRequired { .. } => "registry-amendment-required",
-        }
-    }
 }
 
 #[cfg(test)]

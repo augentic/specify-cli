@@ -5,12 +5,12 @@ use std::fs;
 use specify_error::{Error, Result};
 use specify_tool::cache;
 
-use super::dto::GcBody;
+use super::dto::{GcBody, write_gc_text};
 use super::{build_inventory, emit_warnings_to_stderr, kept_by_scope};
 use crate::cli::Format;
 use crate::context::Ctx;
 
-pub(crate) fn run(ctx: &Ctx) -> Result<()> {
+pub fn run(ctx: &Ctx) -> Result<()> {
     let inventory = build_inventory(ctx)?;
     let mut kept_by_scope = kept_by_scope(&inventory);
     let mut removed = Vec::new();
@@ -30,7 +30,7 @@ pub(crate) fn run(ctx: &Ctx) -> Result<()> {
         removed,
         warnings: inventory.warnings,
     };
-    ctx.write(&body)?;
+    ctx.write(&body, write_gc_text)?;
     if matches!(ctx.format, Format::Text) {
         emit_warnings_to_stderr(&body.warnings);
     }

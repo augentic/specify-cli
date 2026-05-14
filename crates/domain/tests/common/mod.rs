@@ -3,7 +3,14 @@
 //! Centralises [`MockCmd`], a [`CmdRunner`] double that records every
 //! invocation and lets each test register a single dispatch closure.
 
-#![allow(dead_code, unreachable_pub, clippy::unnecessary_wraps)]
+#![expect(
+    dead_code,
+    reason = "shared test helpers; not every integration binary uses every helper"
+)]
+#![expect(
+    clippy::unnecessary_wraps,
+    reason = "mock dispatch closures share a Result<Output> signature for parity with the real CmdRunner trait"
+)]
 
 use std::cell::RefCell;
 use std::io;
@@ -24,6 +31,10 @@ type Handler = Box<dyn FnMut(&RecordedCall) -> io::Result<Output>>;
 
 /// In-process [`CmdRunner`] that records every call and delegates the
 /// response to `handler`.
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "tests inspect `calls` directly; `handler` is an implementation detail of the closure dispatch"
+)]
 pub struct MockCmd {
     handler: RefCell<Handler>,
     pub calls: RefCell<Vec<RecordedCall>>,

@@ -10,7 +10,7 @@ use std::fs;
 use tempfile::tempdir;
 
 mod common;
-use common::{init_hub, run_git, specify};
+use common::{Project, init_hub, parse_stdout, repo_root, run_git, specify};
 
 #[test]
 fn workspace_help_lists_active_subcommands() {
@@ -402,4 +402,64 @@ fn rfc14_c04_workspace_prepare_branch_surfaces_origin_head_diagnostic_key() {
         "message surfaces the diagnostic key: {message}"
     );
     assert_eq!(run_git(&alpha, &["branch", "--show-current"]).trim(), "main");
+}
+
+// ---- RFC-3a C35 — planning-path workspace smoke ----
+#[test]
+fn rfc3a_c35_workspace_sync_absent_registry_exits_zero() {
+    let project = Project::init();
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "workspace", "sync"])
+        .assert()
+        .success();
+    let v = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(v["synced"], false);
+    assert!(v["message"].as_str().unwrap().contains("no registry"));
+}
+
+#[test]
+fn rfc3a_c35_workspace_sync_two_local_symlink_peers() {
+    let tmp = tempdir().expect("tempdir");
+    let peer = tmp.path().join("peer-proj");
+    fs::create_dir_all(peer.join(".specify")).expect("peer .specify");
+    let root = tmp.path().join("root");
+    fs::create_dir_all(&root).expect("root");
+    specify()
+        .current_dir(&root)
+        .args(["init"])
+        .arg(repo_root().join("schemas").join("omnia"))
+        .args(["--name", "rfc3a-ws"])
+        .assert()
+        .success();
+
+    let reg = "\
+version: 1
+projects:
+  - name: alpha
+    url: .
+    capability: omnia@v1
+    description: Root project
+  - name: beta
+    url: ../peer-proj
+    capability: omnia@v1
+    description: Peer project
+";
+    fs::write(root.join("registry.yaml"), reg).expect("registry");
+
+    specify().current_dir(&root).args(["workspace", "sync"]).assert().success();
+
+    assert!(root.join(".specify/workspace/alpha").exists());
+    assert!(root.join(".specify/workspace/beta").exists());
+
+    let assert_st = specify()
+        .current_dir(&root)
+        .args(["--format", "json", "workspace", "status"])
+        .assert()
+        .success();
+    let v = parse_stdout(&assert_st.get_output().stdout, &root);
+    let slots = v["slots"].as_array().expect("slots array");
+    assert_eq!(slots.len(), 2);
+    let kinds: Vec<&str> = slots.iter().map(|s| s["kind"].as_str().expect("kind")).collect();
+    assert!(kinds.contains(&"symlink"), "expected symlink slots, got {kinds:?}");
 }

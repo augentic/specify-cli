@@ -52,8 +52,9 @@ fn assert_golden(name: &str, actual: Value) {
 
 /// Replace any RFC3339 `YYYY-MM-DDTHH:MM:SS(Z|±HH:MM)` timestamp in JSON
 /// strings with the placeholder `<ISO8601>` so goldens stay stable
-/// across test runs. Mirrors `change_umbrella.rs::strip_date_stamps`
-/// for the timestamp case.
+/// across test runs. Mirrors
+/// `change_plan_orchestrate.rs::strip_date_stamps` for the timestamp
+/// case.
 fn strip_iso8601(value: &mut Value) {
     fn visit(re: &regex::Regex, v: &mut Value) {
         match v {
@@ -95,7 +96,6 @@ fn validate_good_slice_passes() {
     assert_eq!(assert.get_output().status.code(), Some(0));
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["passed"], true);
     assert_golden("validate-good.json", actual);
 }
@@ -117,7 +117,6 @@ fn validate_bad_slice_fails_with_exit_two() {
     assert_eq!(assert.get_output().status.code(), Some(2), "validate on bad fixture must exit 2");
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["passed"], false);
     assert_golden("validate-bad.json", actual);
 }
@@ -145,10 +144,8 @@ fn merge_two_spec_slice_produces_baselines() {
 
     // Slice dir moved under archive/<YYYY-MM-DD>-my-slice/.
     let archive_root = project.root().join(".specify/archive");
-    let archived: Vec<_> = fs::read_dir(&archive_root)
-        .expect("read archive dir")
-        .filter_map(std::result::Result::ok)
-        .collect();
+    let archived: Vec<_> =
+        fs::read_dir(&archive_root).expect("read archive dir").filter_map(Result::ok).collect();
     assert_eq!(archived.len(), 1, "expected one archived slice");
     let archived_name = archived[0].file_name().to_string_lossy().into_owned();
     assert!(
@@ -161,7 +158,6 @@ fn merge_two_spec_slice_produces_baselines() {
     );
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["envelope-version"], 6);
     assert_golden("merge-two-spec.json", actual);
 }
 
@@ -256,7 +252,6 @@ fn task_progress_reports_counts_and_items() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["total"], 5);
     assert_eq!(actual["complete"], 2);
     assert_eq!(actual["pending"], 3);
@@ -283,7 +278,6 @@ fn task_mark_is_idempotent() {
         .assert()
         .success();
     let first_value = parse_stdout(&first.get_output().stdout, project.root());
-    assert_eq!(first_value["envelope-version"], 6);
     assert_eq!(first_value["marked"], "1.1");
     assert_eq!(first_value["idempotent"], false);
 
@@ -328,7 +322,6 @@ fn capability_resolve_local_returns_local() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["capability-value"], "omnia");
     assert_eq!(actual["source"], "local");
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
@@ -356,7 +349,6 @@ fn capability_resolve_returns_cached() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["source"], "cached");
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
@@ -405,7 +397,6 @@ fn phase_outcome_round_trip_via_slice() {
 
     let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-    assert_eq!(actual["envelope-version"], 6);
     assert_eq!(actual["name"], "foo");
     let outcome = &actual["outcome"];
     assert_eq!(outcome["phase"], "build");
@@ -435,7 +426,6 @@ fn phase_outcome_round_trip_via_slice() {
     assert_eq!(assert.get_output().status.code(), Some(0));
 
     let value = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["name"], "bar");
     assert!(
         value["outcome"].is_null(),

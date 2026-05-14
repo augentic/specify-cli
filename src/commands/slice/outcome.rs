@@ -7,13 +7,12 @@ use jiff::Timestamp;
 use serde::Serialize;
 use serde_json::Value;
 use specify_domain::capability::Phase;
-use specify_domain::config::LayoutExt;
+use specify_domain::config::Layout;
 use specify_domain::slice::{OutcomeKind, SliceMetadata, actions as slice_actions};
 use specify_error::{Error, Result};
 
 use crate::cli::{OutcomeKindAction, RegistryAmendmentProposal};
 use crate::context::Ctx;
-use crate::output::Render;
 
 pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
@@ -37,12 +36,15 @@ pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction
         .as_ref()
         .expect("stamp_outcome action must set metadata.outcome on success");
 
-    ctx.write(&PhaseStampBody {
-        slice: name,
-        phase: phase.to_string(),
-        outcome: outcome.discriminant().to_string(),
-        at: stamped.at,
-    })?;
+    ctx.write(
+        &PhaseStampBody {
+            slice: name,
+            phase: phase.to_string(),
+            outcome: outcome.to_string(),
+            at: stamped.at,
+        },
+        write_phase_stamp_text,
+    )?;
     Ok(())
 }
 
@@ -52,18 +54,16 @@ struct PhaseStampBody {
     slice: String,
     phase: String,
     outcome: String,
-    #[serde(with = "specify_domain::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339")]
     at: Timestamp,
 }
 
-impl Render for PhaseStampBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        writeln!(
-            w,
-            "Stamped outcome '{}' for phase '{}' on slice '{}'.",
-            self.outcome, self.phase, self.slice,
-        )
-    }
+fn write_phase_stamp_text(w: &mut dyn Write, body: &PhaseStampBody) -> std::io::Result<()> {
+    writeln!(
+        w,
+        "Stamped outcome '{}' for phase '{}' on slice '{}'.",
+        body.outcome, body.phase, body.slice,
+    )
 }
 
 /// Lower a `slice outcome set` subcommand into the wire `OutcomeKind`,
@@ -124,7 +124,7 @@ pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
     };
 
     let outcome = metadata.outcome.as_ref().map(Row::from);
-    ctx.write(&ShowBody { name, outcome })?;
+    ctx.write(&ShowBody { name, outcome }, write_show_text)?;
     Ok(())
 }
 
@@ -135,23 +135,21 @@ struct ShowBody {
     outcome: Option<Row>,
 }
 
-impl Render for ShowBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        match &self.outcome {
-            None => writeln!(w, "{}: no outcome stamped", self.name),
-            Some(o) => {
-                writeln!(w, "{}: {}/{} — {}", self.name, o.phase, o.outcome, o.summary)?;
-                if let Some(p) = &o.proposal {
-                    writeln!(w, "  proposed-name: {}", p.proposed_name)?;
-                    writeln!(w, "  proposed-url: {}", p.proposed_url)?;
-                    writeln!(w, "  proposed-capability: {}", p.proposed_capability)?;
-                    if let Some(desc) = &p.proposed_description {
-                        writeln!(w, "  proposed-description: {desc}")?;
-                    }
-                    writeln!(w, "  rationale: {}", p.rationale)?;
+fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Result<()> {
+    match &body.outcome {
+        None => writeln!(w, "{}: no outcome stamped", body.name),
+        Some(o) => {
+            writeln!(w, "{}: {}/{} — {}", body.name, o.phase, o.outcome, o.summary)?;
+            if let Some(p) = &o.proposal {
+                writeln!(w, "  proposed-name: {}", p.proposed_name)?;
+                writeln!(w, "  proposed-url: {}", p.proposed_url)?;
+                writeln!(w, "  proposed-capability: {}", p.proposed_capability)?;
+                if let Some(desc) = &p.proposed_description {
+                    writeln!(w, "  proposed-description: {desc}")?;
                 }
-                Ok(())
+                writeln!(w, "  rationale: {}", p.rationale)?;
             }
+            Ok(())
         }
     }
 }
@@ -169,7 +167,7 @@ impl Render for ShowBody {
 struct Row {
     phase: String,
     outcome: String,
-    #[serde(with = "specify_domain::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339")]
     at: Timestamp,
     summary: String,
     context: Value,
@@ -181,7 +179,7 @@ impl From<&specify_domain::slice::Outcome> for Row {
     fn from(o: &specify_domain::slice::Outcome) -> Self {
         Self {
             phase: o.phase.to_string(),
-            outcome: o.kind.discriminant().to_string(),
+            outcome: o.kind.to_string(),
             at: o.at,
             summary: o.summary.clone(),
             context: o.context.clone().map_or(Value::Null, Value::from),
@@ -233,7 +231,7 @@ impl RegistryProposalRow {
 /// `created-at`. Used as a fallback when the active slice
 /// directory has been archived by `slice merge run`.
 fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<SliceMetadata> {
-    let archive_dir = project_dir.layout().archive_dir();
+    let archive_dir = Layout::new(project_dir).archive_dir();
     let suffix = format!("-{slice_name}");
     let mut candidates: Vec<(Option<Timestamp>, SliceMetadata)> = Vec::new();
 

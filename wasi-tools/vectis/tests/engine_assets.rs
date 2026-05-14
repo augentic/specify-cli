@@ -5,9 +5,7 @@ mod engine_support;
 
 use std::path::PathBuf;
 
-use engine_support::{
-    errors_array, extract_envelope, warnings_array, write_assets_project, write_specs_composition,
-};
+use engine_support::{errors_array, warnings_array, write_assets_project, write_specs_composition};
 use specify_vectis::validate::error::VectisError;
 use specify_vectis::validate::{ValidateArgs as Args, ValidateMode, run};
 
@@ -156,7 +154,7 @@ screens:
         mode: ValidateMode::Assets,
         path: Some(assets_path),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     assert_eq!(envelope["mode"], "assets");
     let errors = errors_array(&envelope);
     assert!(errors.is_empty(), "Appendix E + composition pairing unexpectedly errored: {errors:?}");
@@ -184,7 +182,7 @@ fn assets_missing_raster_file_is_a_pathful_error() {
         mode: ValidateMode::Assets,
         path: Some(assets_path),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     let errors = errors_array(&envelope);
     let any_hits = errors.iter().any(|e| {
         e["path"].as_str().unwrap_or("") == "/assets/empty-tasks-hero/sources/ios/1x"
@@ -244,7 +242,7 @@ screens:
         mode: ValidateMode::Assets,
         path: Some(assets_path),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     assert!(errors_array(&envelope).is_empty(), "errors unexpected: {envelope}");
     let warnings = warnings_array(&envelope);
     assert!(
@@ -283,7 +281,7 @@ screens:
         mode: ValidateMode::Assets,
         path: Some(assets_path),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     let errors = errors_array(&envelope);
     assert!(
         errors.iter().any(|e| e["message"]
@@ -328,7 +326,7 @@ screens:
         mode: ValidateMode::Assets,
         path: Some(assets_path),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     let errors = errors_array(&envelope);
     assert!(
         errors.iter().any(|e| {
@@ -361,7 +359,7 @@ assets:
         mode: ValidateMode::Assets,
         path: Some(assets_path),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     assert!(errors_array(&envelope).is_empty(), "no errors expected: {envelope}");
     assert!(
         warnings_array(&envelope).is_empty(),
@@ -402,7 +400,7 @@ assets:
         mode: ValidateMode::Assets,
         path: Some(assets_path),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     let errors = errors_array(&envelope);
     assert!(
         errors.iter().any(|e| e["path"].as_str().unwrap_or("").contains("/assets/bad")),
@@ -428,7 +426,7 @@ assets:
         mode: ValidateMode::Assets,
         path: Some(assets_path),
     };
-    let envelope = extract_envelope(run(&args).expect("run succeeds"));
+    let envelope = run(&args).expect("run succeeds");
     assert!(
         !errors_array(&envelope).is_empty(),
         "expected at least one schema error for `Bad-Id`: {envelope}"

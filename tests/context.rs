@@ -161,9 +161,9 @@ fn stdout_json(assert: &Assert) -> JsonValue {
     serde_json::from_slice(&assert.get_output().stdout).expect("stdout json")
 }
 
-/// Mirror of [`stdout_json`] for the stderr channel. R4 routes every
-/// error envelope through `Stream::Stderr`, so failure tests read
-/// their JSON envelopes here.
+/// Mirror of [`stdout_json`] for the stderr channel. Failure tests
+/// read their JSON envelopes here, since errors (JSON or text) are
+/// written to stderr.
 fn stderr_json(assert: &Assert) -> JsonValue {
     serde_json::from_slice(&assert.get_output().stderr).expect("stderr json")
 }
@@ -334,7 +334,6 @@ fn generate_json_uses_envelope_and_kebab() {
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("stdout json");
 
-    assert_eq!(value["envelope-version"], 6);
     assert_eq!(value["status"], "written");
     assert_eq!(value["path"], "AGENTS.md");
     assert_eq!(value["check"], false);
@@ -351,7 +350,7 @@ fn generate_reports_unfenced_agents() {
 
     let mut cmd = project.command();
     let assert = cmd.args(["--format", "json", "context", "generate"]).assert().code(1);
-    // R4 routes every error envelope through Stream::Stderr.
+    // Failure envelopes are written to stderr.
     let value = stderr_json(&assert);
 
     assert_eq!(value["error"], "context-existing-unfenced-agents-md");
@@ -676,7 +675,7 @@ fn check_rejects_newer_lock_version() {
     project.write_lock(&newer);
 
     let check = project.context_check(&["--format", "json"]).code(2);
-    // R4 routes every error envelope through Stream::Stderr.
+    // Failure envelopes are written to stderr.
     let value = stderr_json(&check);
 
     assert_eq!(value["error"], "validation");
@@ -696,7 +695,7 @@ fn check_rejects_malformed_lock() {
     project.write_lock("version: one\n");
 
     let check = project.context_check(&["--format", "json"]).code(2);
-    // R4 routes every error envelope through Stream::Stderr.
+    // Failure envelopes are written to stderr.
     let value = stderr_json(&check);
 
     assert_eq!(value["error"], "validation");

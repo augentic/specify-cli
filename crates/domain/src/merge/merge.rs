@@ -3,10 +3,10 @@
 
 use std::collections::{HashMap, HashSet};
 
+use serde::Serialize;
 use specify_error::Error;
 
-use crate::spec::format::REQ_HEADING;
-use crate::spec::{Requirement, has_delta_headers, parse_baseline, parse_delta};
+use crate::spec::{REQ_HEADING, Requirement, has_delta_headers, parse_baseline, parse_delta};
 
 /// Result of a successful [`merge`] call.
 ///
@@ -28,7 +28,8 @@ pub struct MergeResult {
 /// `CreatedBaseline` is the "no delta headers, baseline was empty" branch:
 /// the delta text is kept verbatim as the new baseline and we just record
 /// how many `### Requirement:` blocks it contains.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
 #[non_exhaustive]
 pub enum MergeOperation {
     /// A requirement was renamed (ID preserved, heading changed).

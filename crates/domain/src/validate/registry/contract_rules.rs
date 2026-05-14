@@ -12,7 +12,7 @@ fn contracts_schemas_dir_has_files(ctx: &BriefContext<'_>) -> RuleOutcome {
 
     let has_yaml = std::fs::read_dir(&schemas_dir).ok().is_some_and(|entries| {
         entries
-            .filter_map(std::result::Result::ok)
+            .filter_map(Result::ok)
             .any(|e| matches!(e.path().extension().and_then(|x| x.to_str()), Some("yaml" | "yml")))
     });
 
@@ -38,7 +38,7 @@ fn contracts_refs_resolve(ctx: &BriefContext<'_>) -> RuleOutcome {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
         };
-        for entry in entries.filter_map(std::result::Result::ok) {
+        for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             if !matches!(path.extension().and_then(|x| x.to_str()), Some("yaml" | "yml")) {
                 continue;
@@ -81,7 +81,7 @@ fn contracts_schema_metadata(ctx: &BriefContext<'_>) -> RuleOutcome {
     let Ok(entries) = std::fs::read_dir(&schemas_dir) else {
         return RuleOutcome::Pass;
     };
-    for entry in entries.filter_map(std::result::Result::ok) {
+    for entry in entries.filter_map(Result::ok) {
         let path = entry.path();
         if !matches!(path.extension().and_then(|x| x.to_str()), Some("yaml" | "yml")) {
             continue;

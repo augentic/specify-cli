@@ -11,7 +11,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let report = validate_slice(&slice_dir, &pipeline)?;
     let passed = report.passed;
 
-    ctx.emit_with(&serialize_report(&report), |w, _| {
+    ctx.write(&serialize_report(&report), |w, _| {
         writeln!(w, "{}", if report.passed { "PASS" } else { "FAIL" })?;
         for (key, results) in &report.brief_results {
             writeln!(w, "{key}:")?;

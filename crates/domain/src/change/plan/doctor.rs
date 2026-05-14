@@ -50,7 +50,7 @@ pub const UNREACHABLE: &str = "unreachable-entry";
 #[serde(rename_all = "kebab-case")]
 pub struct Diagnostic {
     /// Severity bucket.
-    pub severity: DiagnosticSeverity,
+    pub severity: Severity,
     /// Stable machine-readable code. The four doctor-only codes are the
     /// constants on this module (`CODE_*`); validate's codes come
     /// through unchanged.
@@ -65,46 +65,6 @@ pub struct Diagnostic {
     /// codes; `None` for findings forwarded from `Plan::validate`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<DiagnosticPayload>,
-}
-
-/// JSON-shape mirror of [`Severity`] with kebab-case casing for wire
-/// output.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    strum::Display,
-    strum::IntoStaticStr,
-)]
-#[serde(rename_all = "kebab-case")]
-#[strum(serialize_all = "kebab-case")]
-pub enum DiagnosticSeverity {
-    /// Blocking problem.
-    Error,
-    /// Non-blocking advisory.
-    Warning,
-}
-
-impl DiagnosticSeverity {
-    /// Fixed wire string.
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        self.into()
-    }
-}
-
-impl From<&Severity> for DiagnosticSeverity {
-    fn from(value: &Severity) -> Self {
-        match value {
-            Severity::Error => Self::Error,
-            Severity::Warning => Self::Warning,
-        }
-    }
 }
 
 /// Structured payload carried by the four doctor-only diagnostics.
@@ -204,7 +164,7 @@ impl Diagnostic {
     /// severity.
     fn from_finding(f: &Finding) -> Self {
         Self {
-            severity: DiagnosticSeverity::from(&f.level),
+            severity: f.level,
             code: f.code.to_string(),
             message: f.message.clone(),
             entry: f.entry.clone(),

@@ -3,14 +3,12 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_domain::config::LayoutExt;
 use specify_domain::merge::MergeStrategy;
 use specify_domain::slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
 use specify_error::{Error, Result};
 
 use super::artifact_classes;
 use crate::context::Ctx;
-use crate::output::Render;
 
 pub(super) fn specs(ctx: &Ctx, name: String, scan: bool, set: &[String]) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
@@ -28,10 +26,7 @@ pub(super) fn specs(ctx: &Ctx, name: String, scan: bool, set: &[String]) -> Resu
         let baseline_dir = classes
             .iter()
             .find(|c| matches!(c.strategy, MergeStrategy::ThreeWayMerge))
-            .map_or_else(
-                || ctx.project_dir.layout().specify_dir().join("specs"),
-                |c| c.baseline_dir.clone(),
-            );
+            .map_or_else(|| ctx.layout().specify_dir().join("specs"), |c| c.baseline_dir.clone());
         let scanned = slice_actions::scan_touched(&slice_dir, &baseline_dir)?;
         let metadata = slice_actions::write_touched(&slice_dir, scanned)?;
         metadata.touched_specs
@@ -40,11 +35,13 @@ pub(super) fn specs(ctx: &Ctx, name: String, scan: bool, set: &[String]) -> Resu
         metadata.touched_specs
     };
 
-    let touched: Vec<SpecRow> = entries.iter().map(SpecRow::from).collect();
-    ctx.write(&SpecsBody {
-        name,
-        touched_specs: touched,
-    })?;
+    ctx.write(
+        &SpecsBody {
+            name,
+            touched_specs: entries,
+        },
+        write_specs_text,
+    )?;
     Ok(())
 }
 
@@ -52,36 +49,18 @@ pub(super) fn specs(ctx: &Ctx, name: String, scan: bool, set: &[String]) -> Resu
 #[serde(rename_all = "kebab-case")]
 struct SpecsBody {
     name: String,
-    touched_specs: Vec<SpecRow>,
+    touched_specs: Vec<TouchedSpec>,
 }
 
-impl Render for SpecsBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.touched_specs.is_empty() {
-            return writeln!(w, "{}: no touched specs", self.name);
-        }
-        writeln!(w, "{}:", self.name)?;
-        for entry in &self.touched_specs {
-            writeln!(w, "  {} ({})", entry.name, entry.r#type)?;
-        }
-        Ok(())
+fn write_specs_text(w: &mut dyn Write, body: &SpecsBody) -> std::io::Result<()> {
+    if body.touched_specs.is_empty() {
+        return writeln!(w, "{}: no touched specs", body.name);
     }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct SpecRow {
-    name: String,
-    r#type: String,
-}
-
-impl From<&TouchedSpec> for SpecRow {
-    fn from(t: &TouchedSpec) -> Self {
-        Self {
-            name: t.name.clone(),
-            r#type: t.kind.to_string(),
-        }
+    writeln!(w, "{}:", body.name)?;
+    for entry in &body.touched_specs {
+        writeln!(w, "  {} ({})", entry.name, entry.kind)?;
     }
+    Ok(())
 }
 
 fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>> {
@@ -117,7 +96,7 @@ pub(super) fn overlap(ctx: &Ctx, name: String) -> Result<()> {
     let overlaps = slice_actions::overlap(&slices_dir, &name)?;
     let rows: Vec<OverlapRow> = overlaps.iter().map(OverlapRow::from).collect();
 
-    ctx.write(&OverlapBody { name, overlaps: rows })?;
+    ctx.write(&OverlapBody { name, overlaps: rows }, write_overlap_text)?;
     Ok(())
 }
 
@@ -128,20 +107,18 @@ struct OverlapBody {
     overlaps: Vec<OverlapRow>,
 }
 
-impl Render for OverlapBody {
-    fn render_text(&self, w: &mut dyn Write) -> std::io::Result<()> {
-        if self.overlaps.is_empty() {
-            return writeln!(w, "{}: no overlapping slices", self.name);
-        }
-        for o in &self.overlaps {
-            writeln!(
-                w,
-                "{}: also touched by `{}` ({} vs {})",
-                o.capability, o.other_slice, o.our_spec_type, o.other_spec_type,
-            )?;
-        }
-        Ok(())
+fn write_overlap_text(w: &mut dyn Write, body: &OverlapBody) -> std::io::Result<()> {
+    if body.overlaps.is_empty() {
+        return writeln!(w, "{}: no overlapping slices", body.name);
     }
+    for o in &body.overlaps {
+        writeln!(
+            w,
+            "{}: also touched by `{}` ({} vs {})",
+            o.capability, o.other_slice, o.our_spec_type, o.other_spec_type,
+        )?;
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]

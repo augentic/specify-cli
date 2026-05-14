@@ -134,10 +134,14 @@ mod tests {
         let bad = change("Bad-Name", Status::Pending);
         let err = plan.create(bad).expect_err("invalid name must be rejected");
         match err {
-            Error::InvalidName(msg) => {
-                assert!(msg.contains("kebab-case"), "expected kebab-case in message, got: {msg}");
+            Error::Diag { code, detail } => {
+                assert_eq!(code, "invalid-name");
+                assert!(
+                    detail.contains("kebab-case"),
+                    "expected kebab-case in detail, got: {detail}"
+                );
             }
-            other => panic!("expected Error::InvalidName, got {other:?}"),
+            other => panic!("expected invalid-name diag, got {other:?}"),
         }
         assert!(plan.entries.is_empty(), "plan must remain untouched after invalid name");
     }
@@ -279,10 +283,14 @@ mod tests {
     fn init_rejects_bad_name() {
         let err = Plan::init("BAD_NAME", BTreeMap::new()).expect_err("invalid name must Err");
         match err {
-            Error::InvalidName(msg) => {
-                assert!(msg.contains("kebab-case"), "expected kebab-case in message, got: {msg}");
+            Error::Diag { code, detail } => {
+                assert_eq!(code, "invalid-name");
+                assert!(
+                    detail.contains("kebab-case"),
+                    "expected kebab-case in detail, got: {detail}"
+                );
             }
-            other => panic!("expected Error::InvalidName, got {other:?}"),
+            other => panic!("expected invalid-name diag, got {other:?}"),
         }
     }
 

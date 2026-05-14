@@ -7,8 +7,8 @@ use serde_json::{Value, json};
 
 use super::paths::resolve_default_path;
 use super::shared::tokens_validator;
+use crate::validate::ValidateMode;
 use crate::validate::error::VectisError;
-use crate::validate::{CommandOutcome, ValidateMode};
 
 /// Validate `tokens.yaml` against the embedded tokens schema.
 ///
@@ -26,7 +26,7 @@ use crate::validate::{CommandOutcome, ValidateMode};
 /// Returns [`VectisError::InvalidProject`] when the resolved file is
 /// unreadable, and [`VectisError::Internal`] if the embedded schema
 /// fails to compile.
-pub(super) fn validate(path: Option<&Path>) -> Result<CommandOutcome, VectisError> {
+pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
     let target = path
         .map_or_else(|| resolve_default_path(ValidateMode::Tokens), std::path::Path::to_path_buf);
 
@@ -53,10 +53,10 @@ pub(super) fn validate(path: Option<&Path>) -> Result<CommandOutcome, VectisErro
         }
     }
 
-    Ok(CommandOutcome::Success(json!({
+    Ok(json!({
         "mode": ValidateMode::Tokens.as_str(),
         "path": target.display().to_string(),
         "errors": errors,
         "warnings": Vec::<Value>::new(),
-    })))
+    }))
 }
