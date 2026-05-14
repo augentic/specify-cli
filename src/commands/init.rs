@@ -45,6 +45,10 @@ pub(super) fn run(
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "JSON wire DTO: each bool is a stable, independently consumed field on the init envelope."
+)]
 struct Body {
     config_path: String,
     /// Resolved capability name (or `"hub"` for hub init).
@@ -61,8 +65,10 @@ struct Body {
     /// Always present so consumers can distinguish hub from regular
     /// initialisations without parsing the capability name.
     hub: bool,
-    #[serde(flatten)]
-    context: ContextBody,
+    context_generated: bool,
+    context_skipped: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context_skip_reason: Option<&'static str>,
 }
 
 fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
@@ -81,7 +87,7 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     if body.wasm_pkg_config_written {
         writeln!(w, "  wrote .specify/wasm-pkg.toml (edit to add registry mappings)")?;
     }
-    if body.context.skipped && body.context.skip_reason == Some("existing-agents-md") {
+    if body.context_skipped && body.context_skip_reason == Some("existing-agents-md") {
         writeln!(w, "AGENTS.md already present; skipping context generate")?;
     }
     writeln!(w)?;
@@ -99,29 +105,10 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     Ok(())
 }
 
-#[derive(Serialize)]
-struct ContextBody {
-    #[serde(rename = "context-generated")]
-    generated: bool,
-    #[serde(rename = "context-skipped")]
-    skipped: bool,
-    #[serde(rename = "context-skip-reason", skip_serializing_if = "Option::is_none")]
-    skip_reason: Option<&'static str>,
-}
-
-impl From<ContextGeneration> for ContextBody {
-    fn from(context_generation: ContextGeneration) -> Self {
-        Self {
-            generated: matches!(context_generation, ContextGeneration::Generated),
-            skipped: context_generation.skipped(),
-            skip_reason: context_generation.skip_reason(),
-        }
-    }
-}
-
 fn emit_init_result(
     format: Format, result: &InitResult, hub: bool, context_generation: ContextGeneration,
 ) -> Result<()> {
+    let context_skip_reason = context_generation.skip_reason();
     let body = Body {
         config_path: canonical(&result.config_path),
         capability_name: result.capability_name.clone(),
@@ -131,7 +118,9 @@ fn emit_init_result(
         specify_version: result.specify_version.clone(),
         wasm_pkg_config_written: result.wasm_pkg_config_written,
         hub,
-        context: ContextBody::from(context_generation),
+        context_generated: context_skip_reason.is_none(),
+        context_skipped: context_skip_reason.is_some(),
+        context_skip_reason,
     };
     output::write(format, &body, write_text)?;
     Ok(())
@@ -149,10 +138,6 @@ impl ContextGeneration {
             Self::Generated => None,
             Self::Skipped { reason } => Some(*reason),
         }
-    }
-
-    const fn skipped(&self) -> bool {
-        self.skip_reason().is_some()
     }
 }
 
