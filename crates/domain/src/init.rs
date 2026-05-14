@@ -170,14 +170,15 @@ pub(crate) fn scaffold_wasm_pkg_config(layout: &Layout<'_>) -> Result<bool, Erro
 }
 
 #[cfg(test)]
+pub(super) fn fixed_now() -> Timestamp {
+    "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
+}
+
+#[cfg(test)]
 mod tests {
     use tempfile::tempdir;
 
     use super::*;
-
-    fn fixed_now() -> Timestamp {
-        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
-    }
 
     #[test]
     fn regular_init_rejects_missing_capability() {

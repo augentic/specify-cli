@@ -137,17 +137,12 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use jiff::Timestamp;
     use tempfile::tempdir;
 
     use super::HUB_INIT_NAME;
     use crate::config::ProjectConfig;
-    use crate::init::{InitOptions, VersionMode, init};
+    use crate::init::{InitOptions, VersionMode, fixed_now, init};
     use crate::registry::Registry;
-
-    fn fixed_now() -> Timestamp {
-        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
-    }
 
     fn hub_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
         InitOptions {

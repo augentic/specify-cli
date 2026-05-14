@@ -96,16 +96,11 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use jiff::Timestamp;
     use tempfile::tempdir;
 
     use crate::capability::CacheMeta;
     use crate::config::{Layout, ProjectConfig};
-    use crate::init::{InitOptions, VersionMode, init};
-
-    fn fixed_now() -> Timestamp {
-        "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
-    }
+    use crate::init::{InitOptions, VersionMode, fixed_now, init};
 
     fn repo_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
