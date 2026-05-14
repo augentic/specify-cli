@@ -172,16 +172,6 @@ impl ToolError {
         }
     }
 
-    /// Build the `tool-host-not-built` diagnostic returned by the stub
-    /// runner when the CLI is compiled without the `host` Cargo feature.
-    #[must_use]
-    pub fn host_not_built() -> Self {
-        Self::Diag {
-            code: "tool-host-not-built",
-            detail: "tool host runtime not built: this build of the `specify` CLI was compiled without the `host` feature; rebuild with `--features host` (or use the default install) to run WASI tools".to_string(),
-        }
-    }
-
     /// Build a permission-shape error.
     #[must_use]
     pub fn invalid_permission(template: impl Into<String>, reason: impl Into<String>) -> Self {
