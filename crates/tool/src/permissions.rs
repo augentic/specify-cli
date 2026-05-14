@@ -3,6 +3,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use crate::error::ToolError;
+use crate::manifest::looks_like_windows_absolute;
 
 const PROJECT_DIR_VAR: &str = "PROJECT_DIR";
 const CAPABILITY_DIR_VAR: &str = "CAPABILITY_DIR";
@@ -172,15 +173,7 @@ fn has_parent_segment(value: &str) -> bool {
 }
 
 fn path_is_absolute(value: &str) -> bool {
-    Path::new(value).is_absolute() || looks_like_windows_absolute_path(value)
-}
-
-fn looks_like_windows_absolute_path(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    bytes.len() >= 3
-        && bytes[0].is_ascii_alphabetic()
-        && bytes[1] == b':'
-        && matches!(bytes[2], b'\\' | b'/')
+    Path::new(value).is_absolute() || looks_like_windows_absolute(value)
 }
 
 #[cfg(test)]

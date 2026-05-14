@@ -5,7 +5,9 @@ use std::path::Path;
 
 use specify_error::{ValidationStatus, ValidationSummary};
 
-use crate::manifest::{Tool, ToolManifest, ToolScope, ToolSource, first_party_permissions};
+use crate::manifest::{
+    Tool, ToolManifest, ToolScope, ToolSource, first_party_permissions, looks_like_windows_absolute,
+};
 
 /// Canonical JSON Schema for the two `tools:` declaration sites.
 pub const TOOL_JSON_SCHEMA: &str = include_str!("../../../schemas/tool.schema.json");
@@ -46,7 +48,9 @@ impl Tool {
         };
 
         let source_valid = match &self.source {
-            ToolSource::LocalPath(path) => path.is_absolute() || path_looks_windows_absolute(path),
+            ToolSource::LocalPath(path) => {
+                path.is_absolute() || path.to_str().is_some_and(looks_like_windows_absolute)
+            }
             ToolSource::FileUri(uri) => {
                 uri.strip_prefix("file://").is_some_and(|rest| !rest.is_empty())
             }
@@ -280,7 +284,7 @@ fn permission_path_form_error(value: &str) -> Option<String> {
     if is_project_dir_path(value)
         || is_capability_dir_path(value)
         || Path::new(value).is_absolute()
-        || looks_like_windows_absolute_str(value)
+        || looks_like_windows_absolute(value)
     {
         return None;
     }
@@ -318,18 +322,6 @@ fn targets_lifecycle_state(value: &str) -> bool {
     };
     let after = &normalized[specify_index..];
     after == ".specify" || after.starts_with(".specify/")
-}
-
-fn path_looks_windows_absolute(path: &Path) -> bool {
-    path.to_str().is_some_and(looks_like_windows_absolute_str)
-}
-
-fn looks_like_windows_absolute_str(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    bytes.len() >= 3
-        && bytes[0].is_ascii_alphabetic()
-        && bytes[1] == b':'
-        && matches!(bytes[2], b'\\' | b'/')
 }
 
 #[cfg(test)]

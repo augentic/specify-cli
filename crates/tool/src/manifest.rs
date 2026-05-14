@@ -60,7 +60,7 @@ impl ToolSource {
             Ok(Self::HttpsUri(value.to_string()))
         } else if value.starts_with("file://") {
             Ok(Self::FileUri(value.to_string()))
-        } else if Path::new(value).is_absolute() || looks_like_windows_absolute_path(value) {
+        } else if Path::new(value).is_absolute() || looks_like_windows_absolute(value) {
             Ok(Self::LocalPath(PathBuf::from(value)))
         } else if looks_like_package_request(value) {
             Ok(Self::Package(PackageRequest::parse(value)))
@@ -242,7 +242,7 @@ pub enum ToolScope {
     },
 }
 
-fn looks_like_windows_absolute_path(value: &str) -> bool {
+pub(crate) fn looks_like_windows_absolute(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.len() >= 3
         && bytes[0].is_ascii_alphabetic()
