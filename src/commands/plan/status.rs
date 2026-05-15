@@ -126,7 +126,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         return Err(Error::validation_failed(
             "plan-structural-errors",
             "plan must be free of structural errors",
-            "run 'specify change plan validate' for detail",
+            "run 'specify plan validate' for detail",
         ));
     }
 
@@ -134,7 +134,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         (v, OrderLabel::Topological)
     } else {
         eprintln!(
-            "warning: dependency cycle detected — falling back to list order. Run 'specify change plan validate' for detail."
+            "warning: dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
         );
         (plan.entries.iter().collect::<Vec<_>>(), OrderLabel::List)
     };

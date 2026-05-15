@@ -123,4 +123,3 @@ pub fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<&Path>) -> Result<()> {
     )?;
     Ok(())
 }
-

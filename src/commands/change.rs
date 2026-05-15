@@ -1,27 +1,25 @@
 pub mod cli;
-pub mod plan;
 
-use std::collections::BTreeMap;
 use std::io::Write;
 
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
-use specify_domain::change::{Plan, finalize};
+use specify_domain::change::finalize;
 use specify_domain::cmd::RealCmd;
 use specify_domain::registry::Registry;
 use specify_domain::slice::atomic::bytes_write;
-use specify_error::{Error, Result, is_kebab};
+use specify_error::{Error, Result};
 
 use crate::cli::{ChangeAction, SourceArg};
+use crate::commands::plan;
 use crate::context::Ctx;
 
-/// Dispatch `specify change *` — operator brief, plan, finalize.
+/// Dispatch `specify change *` — operator brief and finalize.
 pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
     match action {
         ChangeAction::Create { name, sources } => create(ctx, name, sources),
         ChangeAction::Show => brief_show(ctx),
-        ChangeAction::Plan { action } => plan::run(ctx, action),
         ChangeAction::Finalize { clean, dry_run } => run_finalize(ctx, clean, dry_run),
     }
 }
@@ -31,28 +29,12 @@ pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
 /// Atomicity contract: if either file already exists, refuse with
 /// `already-exists` and write neither. Validation order is fixed —
 /// kebab-case first, source-argument shape next, file collisions last
-/// — so operators see the most actionable diagnostic first.
+/// — so operators see the most actionable diagnostic first. The plan
+/// half delegates to [`plan::write_scaffold`], the same helper that
+/// backs `specify plan create`.
 fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
-    if !is_kebab(&name) {
-        return Err(Error::Diag {
-            code: "change-name-not-kebab",
-            detail: format!(
-                "change: name `{name}` must be kebab-case \
-                 (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
-            ),
-        });
-    }
-
-    let mut source_map: BTreeMap<String, String> = BTreeMap::new();
-    for SourceArg { key, value } in sources {
-        if source_map.contains_key(&key) {
-            return Err(Error::Diag {
-                code: "plan-source-duplicate-key",
-                detail: format!("duplicate key `{key}` in --source arguments"),
-            });
-        }
-        source_map.insert(key, value);
-    }
+    plan::require_kebab_change_name(&name)?;
+    let source_map = plan::build_source_map(sources)?;
 
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let plan_path = ctx.layout().plan_path();
@@ -70,9 +52,8 @@ fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
         });
     }
 
-    let plan = Plan::init(&name, source_map)?;
     bytes_write(&brief_path, ChangeBrief::template(&name).as_bytes())?;
-    plan.save(&plan_path)?;
+    plan::write_scaffold(&plan_path, &name, source_map)?;
 
     ctx.write(
         &CreateBody {

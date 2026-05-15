@@ -1,7 +1,7 @@
 //! Health diagnostics layered on top of `Plan::validate`:
 //! `cycle-in-depends-on`, `orphan-source-key`,
 //! `stale-workspace-clone`, and `unreachable-entry`. Surfaced through
-//! `specify change plan validate`.
+//! `specify plan validate`.
 
 use std::path::Path;
 
@@ -179,7 +179,7 @@ impl Diagnostic {
 ///
 /// `slices_dir` and `registry` are forwarded to `Plan::validate` so
 /// the validate-level findings are bit-identical to those emitted by
-/// `specify change plan validate`. `project_dir` is consulted only by the
+/// `specify plan validate`. `project_dir` is consulted only by the
 /// stale-workspace-clone check; pass `None` to skip that check
 /// (`Plan::doctor_pure` does the same — see the unit tests).
 ///

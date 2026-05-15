@@ -129,17 +129,11 @@ fn create_refuses_atomically_when_brief_exists() {
     let actual = parse_stderr(&assert.get_output().stderr, project.root());
     assert_eq!(actual["error"], "already-exists");
     let msg = actual["message"].as_str().expect("message");
-    assert!(
-        msg.contains("change brief at"),
-        "message must name the brief collision; got: {msg}"
-    );
+    assert!(msg.contains("change brief at"), "message must name the brief collision; got: {msg}");
 
     let on_disk = fs::read_to_string(brief_path(&project)).expect("read");
     assert_eq!(on_disk, "---\nname: pre-existing\n---\n\nhands off\n");
-    assert!(
-        !project.plan_path().exists(),
-        "atomic refusal must not have written plan.yaml"
-    );
+    assert!(!project.plan_path().exists(), "atomic refusal must not have written plan.yaml");
 }
 
 #[test]
@@ -158,10 +152,7 @@ fn create_refuses_atomically_when_plan_exists() {
     let msg = actual["message"].as_str().expect("message");
     assert!(msg.contains("plan at"), "message must name the plan collision; got: {msg}");
 
-    assert!(
-        !brief_path(&project).exists(),
-        "atomic refusal must not have written change.md"
-    );
+    assert!(!brief_path(&project).exists(), "atomic refusal must not have written change.md");
 }
 
 #[test]
@@ -189,15 +180,7 @@ fn create_rejects_duplicate_source_key() {
     let assert = specify()
         .current_dir(project.root())
         .args([
-            "--format",
-            "json",
-            "change",
-            "create",
-            "x",
-            "--source",
-            "a=/p1",
-            "--source",
-            "a=/p2",
+            "--format", "json", "change", "create", "x", "--source", "a=/p1", "--source", "a=/p2",
         ])
         .assert()
         .failure();
@@ -245,7 +228,7 @@ slices:
     );
     write_brief(&project, TRAFFIC_BRIEF_GOLDEN);
 
-    specify().current_dir(project.root()).args(["change", "plan", "archive"]).assert().success();
+    specify().current_dir(project.root()).args(["plan", "archive"]).assert().success();
 
     assert!(!brief_path(&project).exists(), "change.md must leave the repo root");
 

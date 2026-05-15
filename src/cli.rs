@@ -9,10 +9,10 @@ use clap_complete::Shell;
 
 pub use crate::commands::capability::cli::CapabilityAction;
 pub use crate::commands::change::cli::ChangeAction;
-pub use crate::commands::change::plan::cli::{LockAction, PlanAction};
 pub use crate::commands::codex::cli::CodexAction;
 pub use crate::commands::compatibility::cli::CompatibilityAction;
 pub use crate::commands::context::cli::ContextAction;
+pub use crate::commands::plan::cli::{LockAction, PlanAction};
 pub use crate::commands::registry::cli::RegistryAction;
 pub use crate::commands::slice::cli::{
     JournalAction, OutcomeAction, OutcomeKindAction, RegistryAmendmentProposal, SliceAction,
@@ -110,10 +110,17 @@ pub enum Commands {
         action: SliceAction,
     },
 
-    /// Change orchestration — operator brief, plan, finalize.
+    /// Change orchestration — operator brief and finalize.
     Change {
         #[command(subcommand)]
         action: ChangeAction,
+    },
+
+    /// Executable plan operations — `plan.yaml` lifecycle and the
+    /// `/change:execute` driver lock.
+    Plan {
+        #[command(subcommand)]
+        action: PlanAction,
     },
 
     /// Platform registry at `registry.yaml` (repo root)

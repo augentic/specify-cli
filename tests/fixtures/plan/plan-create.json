@@ -1,0 +1,6 @@
+{
+  "name": "my-change",
+  "plan": {
+    "path": "<TEMPDIR>/plan.yaml"
+  }
+}

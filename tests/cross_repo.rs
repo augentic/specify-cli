@@ -365,7 +365,6 @@ fn seed_change_plan(envs: &TestEnv) {
     envs.command().args(["change", "create", CHANGE_NAME]).assert().success();
     envs.command()
         .args([
-            "change",
             "plan",
             "add",
             "oauth-login-contract",
@@ -380,7 +379,6 @@ fn seed_change_plan(envs: &TestEnv) {
         .success();
     envs.command()
         .args([
-            "change",
             "plan",
             "add",
             "add-oauth-tokens",
@@ -397,7 +395,6 @@ fn seed_change_plan(envs: &TestEnv) {
         .success();
     envs.command()
         .args([
-            "change",
             "plan",
             "add",
             "add-oauth-screens",
@@ -423,10 +420,9 @@ fn assert_registry_and_plan_are_valid(envs: &TestEnv) {
     assert!(projects.iter().any(|p| p["name"] == "shop-mobile"));
 
     envs.command().args(["registry", "validate"]).assert().success();
-    envs.command().args(["change", "plan", "validate"]).assert().success();
+    envs.command().args(["plan", "validate"]).assert().success();
 
-    let status =
-        envs.command().args(["--format", "json", "change", "plan", "status"]).assert().success();
+    let status = envs.command().args(["--format", "json", "plan", "status"]).assert().success();
     let status = parse_json(&status.get_output().stdout);
     let entries = status["entries"].as_array().expect("entries");
     assert_eq!(entries.len(), 3);
@@ -454,13 +450,12 @@ fn sync_workspace(envs: &TestEnv) {
 }
 
 fn next_entry(envs: &TestEnv) -> Value {
-    let assert =
-        envs.command().args(["--format", "json", "change", "plan", "next"]).assert().success();
+    let assert = envs.command().args(["--format", "json", "plan", "next"]).assert().success();
     parse_json(&assert.get_output().stdout)
 }
 
 fn transition(envs: &TestEnv, name: &str, target: &str) {
-    envs.command().args(["change", "plan", "transition", name, target]).assert().success();
+    envs.command().args(["plan", "transition", name, target]).assert().success();
 }
 
 fn replay_contract_slice(envs: &TestEnv) {
@@ -551,8 +546,7 @@ fn assert_all_done(envs: &TestEnv) {
     assert_eq!(next["next"], Value::Null);
     assert_eq!(next["reason"], "all-done");
 
-    let status =
-        envs.command().args(["--format", "json", "change", "plan", "status"]).assert().success();
+    let status = envs.command().args(["--format", "json", "plan", "status"]).assert().success();
     let status = parse_json(&status.get_output().stdout);
     let entries = status["entries"].as_array().expect("entries");
     assert!(entries.iter().all(|entry| entry["status"] == "done"), "{entries:#?}");

@@ -11,6 +11,7 @@ mod status;
 
 use std::path::{Path, PathBuf};
 
+pub use create::{build_source_map, require_kebab_change_name, write_scaffold};
 use serde::Serialize;
 use serde_json::Value;
 use specify_domain::change::{Entry, Plan};
@@ -21,8 +22,9 @@ use specify_error::{Error, Result};
 use crate::cli::{LockAction, PlanAction};
 use crate::context::Ctx;
 
-pub(super) fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
     match action {
+        PlanAction::Create { name, sources } => create::create(ctx, name, sources),
         PlanAction::Validate => lifecycle::validate(ctx),
         PlanAction::Next => lifecycle::next(ctx),
         PlanAction::Status => status::run(ctx),

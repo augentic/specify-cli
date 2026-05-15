@@ -161,4 +161,3 @@ fn pipeline_with_slice_reports_completion() {
     assert_eq!(presence.get("design"), Some(&false));
     assert_eq!(presence.get("tasks"), Some(&false));
 }
-

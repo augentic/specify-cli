@@ -255,7 +255,7 @@ fn registry_remove_warns_on_plan_ref() {
         .success();
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "change", "plan", "add", "alpha-feature", "--project", "alpha"])
+        .args(["--format", "json", "plan", "add", "alpha-feature", "--project", "alpha"])
         .assert()
         .success();
 

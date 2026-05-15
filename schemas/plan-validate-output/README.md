@@ -1,10 +1,10 @@
 # `plan-validate-output/schema.json`
 
-Canonical JSON Schema (2020-12) for the response body emitted by `specify change plan validate --format json`.
+Canonical JSON Schema (2020-12) for the response body emitted by `specify plan validate --format json`.
 
 ## Producer
 
-`specify change plan validate --format json` emits an object shaped like:
+`specify plan validate --format json` emits an object shaped like:
 
 ```json
 {
@@ -29,13 +29,13 @@ Canonical JSON Schema (2020-12) for the response body emitted by `specify change
 
 ## Consumer wiring
 
-Skills that shell out to `specify change plan validate --format json` should parse the response against this schema before branching on `results`. The recommended pattern in a Node- or Python-driven runner is to pin the schema via the checked-in file path rather than fetching it at runtime so validation stays hermetic.
+Skills that shell out to `specify plan validate --format json` should parse the response against this schema before branching on `results`. The recommended pattern in a Node- or Python-driven runner is to pin the schema via the checked-in file path rather than fetching it at runtime so validation stays hermetic.
 
 The same `schema.json` is the source of truth for Rust-side CLI tests (`tests/plan.rs` under `specify-cli`); treat that file as the canonical consumer when patching the schema.
 
 ## Validation codes
 
-`specify change plan validate` emits additional codes when `registry.yaml` is present:
+`specify plan validate` emits additional codes when `registry.yaml` is present:
 
 - `project-not-in-registry` (error): a slice's `project` value does not match any `projects[].name` in the registry.
 - `project-missing-multi-repo` (error): when the registry has multiple projects, a slice is missing the required `project` field.

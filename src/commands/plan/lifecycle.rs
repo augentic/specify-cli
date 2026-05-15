@@ -80,7 +80,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         Err(Error::validation_failed(
             "plan-structural-errors",
             "plan must be free of structural errors",
-            "run 'specify change plan validate' for detail",
+            "run 'specify plan validate' for detail",
         ))
     } else {
         Ok(())
@@ -97,7 +97,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
         return Err(Error::validation_failed(
             "plan-structural-errors",
             "plan must be free of structural errors",
-            "run 'specify change plan validate' for detail",
+            "run 'specify plan validate' for detail",
         ));
     }
 
@@ -192,7 +192,7 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
     Ok(())
 }
 
-/// One row in `specify change plan validate`'s `results[]`.
+/// One row in `specify plan validate`'s `results[]`.
 ///
 /// Mirrors the historical `Finding` wire shape (`level` / `code` /
 /// `message` / `entry`) for backwards compatibility, plus an optional

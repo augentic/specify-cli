@@ -76,9 +76,7 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             } => journal::append(ctx, name, phase, kind, summary, context),
             JournalAction::Show { name } => journal::show(ctx, name),
         },
-        SliceAction::Transition { name, target } => {
-            lifecycle::transition(ctx, name, target.into())
-        }
+        SliceAction::Transition { name, target } => lifecycle::transition(ctx, name, target.into()),
         SliceAction::TouchedSpecs { name, scan, set } => touched::specs(ctx, name, scan, &set),
         SliceAction::Overlap { name } => touched::overlap(ctx, name),
         SliceAction::Drop { name, reason } => {

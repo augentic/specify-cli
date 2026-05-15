@@ -1,4 +1,4 @@
-//! Snapshot path for `specify change plan lock status`.
+//! Snapshot path for `specify plan lock status`.
 
 use std::fs;
 use std::path::Path;

@@ -214,10 +214,7 @@ fn schema_rejects_malformed_rule_id() {
 fn help_lists_subcommands() {
     let assert = specify().args(["codex", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        stdout.contains("export"),
-        "codex help should mention `export`, got:\n{stdout}"
-    );
+    assert!(stdout.contains("export"), "codex help should mention `export`, got:\n{stdout}");
 }
 
 #[test]

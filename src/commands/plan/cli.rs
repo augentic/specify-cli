@@ -1,17 +1,30 @@
-//! Clap derive surface for `specify change plan *` and the nested
+//! Clap derive surface for `specify plan *` and the nested
 //! `plan lock *` verbs. The umbrella `cli.rs` re-exports both action
 //! enums.
 
 use clap::{ArgAction, Subcommand};
 use specify_domain::change::Status;
 
-/// Plan-authoring verbs (`specify change plan *`).
+use crate::cli::SourceArg;
+
+/// Plan-authoring verbs (`specify plan *`).
 ///
-/// Plan scaffolding (the former `specify change plan create`) now
-/// lives on the umbrella verb as [`crate::cli::ChangeAction::Create`],
-/// which scaffolds `change.md` and `plan.yaml` together.
+/// `specify change create` scaffolds `change.md` and `plan.yaml`
+/// together; the same scaffolding is also reachable plan-only via
+/// [`PlanAction::Create`] when no operator brief is wanted.
 #[derive(Subcommand)]
 pub enum PlanAction {
+    /// Scaffold an empty `plan.yaml` at the repo root. Refuses to
+    /// overwrite an existing plan. Shares its scaffold helper with
+    /// `specify change create`, which also writes `change.md`.
+    Create {
+        /// Kebab-case change name
+        name: String,
+        /// Named source, repeated: --source `<key>`=`<path-or-url>`.
+        /// Recorded in the plan's `sources:` map.
+        #[arg(long = "source")]
+        sources: Vec<SourceArg>,
+    },
     /// Validate plan.yaml (structure + plan/change consistency).
     ///
     /// Includes the four health diagnostics — `cycle-in-depends-on`,

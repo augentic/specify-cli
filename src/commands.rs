@@ -4,6 +4,7 @@ pub mod codex;
 pub mod compatibility;
 pub mod context;
 mod init;
+pub mod plan;
 pub mod registry;
 pub mod slice;
 mod status;
@@ -50,6 +51,7 @@ pub fn run(cli: Cli) -> Exit {
         },
         Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
         Commands::Change { action } => scoped(format, |ctx| change::run(ctx, action)),
+        Commands::Plan { action } => scoped(format, |ctx| plan::run(ctx, action)),
         Commands::Registry { action } => scoped(format, |ctx| registry::run(ctx, action)),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();

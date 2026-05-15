@@ -1,12 +1,15 @@
+use std::collections::BTreeMap;
 use std::io::Write;
+use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
 use specify_domain::change::{Entry, EntryPatch, Patch, Plan, Status};
 use specify_domain::config::{InitPolicy, with_state};
-use specify_error::Result;
+use specify_error::{Error, Result, is_kebab};
 
 use super::{Ref, change_entry_json, check_project, plan_ref};
+use crate::cli::SourceArg;
 use crate::context::Ctx;
 
 /// Convert a CLI-supplied optional string to a [`Patch<String>`]: an
@@ -18,6 +21,78 @@ fn cli_patch(value: Option<String>) -> Patch<String> {
         Some(s) if s.is_empty() => Patch::Clear,
         Some(s) => Patch::Set(s),
     }
+}
+
+/// Validate `--source key=value` arguments and collapse them into the
+/// `BTreeMap` shape `Plan::init` expects. Refuses duplicate keys with
+/// the stable `plan-source-duplicate-key` diagnostic.
+pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, String>> {
+    let mut map: BTreeMap<String, String> = BTreeMap::new();
+    for SourceArg { key, value } in sources {
+        if map.contains_key(&key) {
+            return Err(Error::Diag {
+                code: "plan-source-duplicate-key",
+                detail: format!("duplicate key `{key}` in --source arguments"),
+            });
+        }
+        map.insert(key, value);
+    }
+    Ok(map)
+}
+
+/// Validate `name` is kebab-case. Mirrors the diagnostic code that
+/// `specify change create` and `specify plan create` both surface.
+pub fn require_kebab_change_name(name: &str) -> Result<()> {
+    if !is_kebab(name) {
+        return Err(Error::Diag {
+            code: "change-name-not-kebab",
+            detail: format!(
+                "change: name `{name}` must be kebab-case \
+                 (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Build the in-memory [`Plan`] and write it atomically to `plan_path`.
+///
+/// Callers (`specify plan create` and `specify change create`) own the
+/// "refuse if any conflicting file exists" pre-flight and the
+/// kebab-case validation; this helper is happy to overwrite and assumes
+/// `name` is already validated.
+pub fn write_scaffold(
+    plan_path: &Path, name: &str, sources: BTreeMap<String, String>,
+) -> Result<Plan> {
+    let plan = Plan::init(name, sources)?;
+    plan.save(plan_path)?;
+    Ok(plan)
+}
+
+/// `specify plan create <name> [--source ...]`. Scaffolds `plan.yaml`
+/// only — the joint scaffolder that also writes `change.md` is
+/// `specify change create`, which delegates here for the plan half.
+pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
+    require_kebab_change_name(&name)?;
+    let source_map = build_source_map(sources)?;
+    let plan_path = ctx.layout().plan_path();
+    if plan_path.exists() {
+        return Err(Error::Diag {
+            code: "already-exists",
+            detail: format!("refusing to overwrite existing plan at {}", plan_path.display()),
+        });
+    }
+    write_scaffold(&plan_path, &name, source_map)?;
+    ctx.write(
+        &CreateBody {
+            name,
+            plan: PathRef {
+                path: plan_path.display().to_string(),
+            },
+        },
+        write_create_text,
+    )?;
+    Ok(())
 }
 
 pub(super) fn add(
@@ -50,7 +125,7 @@ pub(super) fn add(
                 plan.entries.last().expect("Plan::create appended an entry that is now missing");
             Ok(EntryBody {
                 plan: plan_ref(plan, &plan_path),
-                action: PlanAction::Create,
+                action: EntryAction::Create,
                 entry: change_entry_json(created),
             })
         },
@@ -89,7 +164,7 @@ pub(super) fn amend(
                 plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
             Ok(EntryBody {
                 plan: plan_ref(plan, &plan_path),
-                action: PlanAction::Amend,
+                action: EntryAction::Amend,
                 entry: change_entry_json(amended),
             })
         },
@@ -101,15 +176,35 @@ pub(super) fn amend(
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct EntryBody {
-    plan: Ref,
-    action: PlanAction,
-    entry: Value,
+struct CreateBody {
+    name: String,
+    plan: PathRef,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-enum PlanAction {
+struct PathRef {
+    path: String,
+}
+
+fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
+    writeln!(w, "Initialised plan '{}' at {}.", body.name, body.plan.path)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct EntryBody {
+    plan: Ref,
+    action: EntryAction,
+    entry: Value,
+}
+
+/// Discriminator for the [`EntryBody`] envelope used by `add` / `amend`.
+/// The wire string (`"create"` / `"amend"`) is unchanged from the
+/// pre-flatten shape — skill consumers depend on it.
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum EntryAction {
     Create,
     Amend,
 }
@@ -117,7 +212,7 @@ enum PlanAction {
 fn write_entry_text(w: &mut dyn Write, body: &EntryBody) -> std::io::Result<()> {
     let name = body.entry.get("name").and_then(Value::as_str).unwrap_or("");
     match body.action {
-        PlanAction::Create => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
-        PlanAction::Amend => writeln!(w, "Amended plan entry '{name}'."),
+        EntryAction::Create => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
+        EntryAction::Amend => writeln!(w, "Amended plan entry '{name}'."),
     }
 }

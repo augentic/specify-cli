@@ -27,7 +27,7 @@ pub struct Acquired {
 }
 
 /// Outcome of a [`Stamp::release`] call. The CLI surfaces this
-/// verbatim via `specify change plan lock release --format json`.
+/// verbatim via `specify plan lock release --format json`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Released {
     /// Stamp file was present and held our PID — now removed.
@@ -48,7 +48,7 @@ pub enum Released {
 }
 
 /// Snapshot of the on-disk `.specify/plan.lock` stamp, as reported by
-/// `specify change plan lock status`.
+/// `specify plan lock status`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct State {
     /// `true` when the stamp file exists and the stamped PID is
@@ -67,13 +67,13 @@ pub struct State {
 /// This primitive manages `.specify/plan.lock` as a persistent PID
 /// marker that survives the process writing it:
 ///
-/// - `specify change plan lock acquire --pid <P>` stamps `P` into the file
+/// - `specify plan lock acquire --pid <P>` stamps `P` into the file
 ///   (failing with [`specify_error::Error::DriverBusy`] when another
 ///   live PID holds it).
-/// - `specify change plan lock release --pid <P>` removes the file when it
+/// - `specify plan lock release --pid <P>` removes the file when it
 ///   still holds `P`; refuses when it holds another PID (stale locks
 ///   are reclaimed by the L2.G self-heal path, not by release).
-/// - `specify change plan lock status` reports the current holder (if any)
+/// - `specify plan lock status` reports the current holder (if any)
 ///   and whether the stamp is considered stale.
 ///
 /// The `/change:execute` skill calls these verbs around its agent-side
