@@ -2,22 +2,24 @@
 
 use std::path::Path;
 
+use serde::Serialize;
 use specify_error::Error;
 
 use crate::slice::{SliceMetadata, SpecKind};
 
 /// A capability-level conflict between two active slices both touching
 /// the same spec.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct Overlap {
     /// The shared capability name.
     pub capability: String,
     /// Name of the other slice that touches the same capability.
-    pub other: String,
+    pub other_slice: String,
     /// How our slice touches the capability.
-    pub ours: SpecKind,
+    pub our_spec_type: SpecKind,
     /// How the other slice touches the capability.
-    pub theirs: SpecKind,
+    pub other_spec_type: SpecKind,
 }
 
 /// Detect overlap between this slice's `touched_specs` and every other
@@ -69,14 +71,16 @@ pub fn overlap(slices_dir: &Path, slice_name: &str) -> Result<Vec<Overlap>, Erro
                 if ours.name == theirs.name {
                     overlaps.push(Overlap {
                         capability: ours.name.clone(),
-                        other: other_name.to_string(),
-                        ours: ours.kind,
-                        theirs: theirs.kind,
+                        other_slice: other_name.to_string(),
+                        our_spec_type: ours.kind,
+                        other_spec_type: theirs.kind,
                     });
                 }
             }
         }
     }
-    overlaps.sort_by(|a, b| a.capability.cmp(&b.capability).then_with(|| a.other.cmp(&b.other)));
+    overlaps.sort_by(|a, b| {
+        a.capability.cmp(&b.capability).then_with(|| a.other_slice.cmp(&b.other_slice))
+    });
     Ok(overlaps)
 }

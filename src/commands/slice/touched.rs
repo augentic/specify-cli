@@ -4,7 +4,7 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_domain::merge::MergeStrategy;
-use specify_domain::slice::{SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
+use specify_domain::slice::{Overlap, SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
 use specify_error::{Error, Result};
 
 use super::artifact_classes;
@@ -94,24 +94,23 @@ fn parse_touched_spec_set(raw: &[String]) -> Result<Vec<TouchedSpec>> {
 pub(super) fn overlap(ctx: &Ctx, name: String) -> Result<()> {
     let slices_dir = ctx.slices_dir();
     let overlaps = slice_actions::overlap(&slices_dir, &name)?;
-    let rows: Vec<OverlapRow> = overlaps.iter().map(OverlapRow::from).collect();
 
-    ctx.write(&OverlapBody { name, overlaps: rows }, write_overlap_text)?;
+    ctx.write(&OverlapBody { name, overlaps: &overlaps }, write_overlap_text)?;
     Ok(())
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct OverlapBody {
+struct OverlapBody<'a> {
     name: String,
-    overlaps: Vec<OverlapRow>,
+    overlaps: &'a [Overlap],
 }
 
-fn write_overlap_text(w: &mut dyn Write, body: &OverlapBody) -> std::io::Result<()> {
+fn write_overlap_text(w: &mut dyn Write, body: &OverlapBody<'_>) -> std::io::Result<()> {
     if body.overlaps.is_empty() {
         return writeln!(w, "{}: no overlapping slices", body.name);
     }
-    for o in &body.overlaps {
+    for o in body.overlaps {
         writeln!(
             w,
             "{}: also touched by `{}` ({} vs {})",
@@ -119,24 +118,4 @@ fn write_overlap_text(w: &mut dyn Write, body: &OverlapBody) -> std::io::Result<
         )?;
     }
     Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct OverlapRow {
-    capability: String,
-    other_slice: String,
-    our_spec_type: String,
-    other_spec_type: String,
-}
-
-impl From<&specify_domain::slice::Overlap> for OverlapRow {
-    fn from(o: &specify_domain::slice::Overlap) -> Self {
-        Self {
-            capability: o.capability.clone(),
-            other_slice: o.other.clone(),
-            our_spec_type: o.ours.to_string(),
-            other_spec_type: o.theirs.to_string(),
-        }
-    }
 }
