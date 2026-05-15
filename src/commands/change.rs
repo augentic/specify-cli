@@ -1,57 +1,90 @@
 pub mod cli;
 pub mod plan;
 
+use std::collections::BTreeMap;
 use std::io::Write;
 
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
-use specify_domain::change::finalize;
+use specify_domain::change::{Plan, finalize};
 use specify_domain::cmd::RealCmd;
 use specify_domain::registry::Registry;
 use specify_domain::slice::atomic::bytes_write;
 use specify_error::{Error, Result, is_kebab};
 
-use crate::cli::ChangeAction;
+use crate::cli::{ChangeAction, SourceArg};
 use crate::context::Ctx;
 
 /// Dispatch `specify change *` — operator brief, plan, finalize.
 pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
     match action {
-        ChangeAction::Create { name } => brief_create(ctx, name),
+        ChangeAction::Create { name, sources } => create(ctx, name, sources),
         ChangeAction::Show => brief_show(ctx),
         ChangeAction::Plan { action } => plan::run(ctx, action),
         ChangeAction::Finalize { clean, dry_run } => run_finalize(ctx, clean, dry_run),
     }
 }
 
-fn brief_create(ctx: &Ctx, name: String) -> Result<()> {
+/// Scaffold both `change.md` and `plan.yaml` atomically.
+///
+/// Atomicity contract: if either file already exists, refuse with
+/// `already-exists` and write neither. Validation order is fixed —
+/// kebab-case first, source-argument shape next, file collisions last
+/// — so operators see the most actionable diagnostic first.
+fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
     if !is_kebab(&name) {
         return Err(Error::Diag {
-            code: "change-brief-name-not-kebab",
+            code: "change-name-not-kebab",
             detail: format!(
-                "change brief: name `{name}` must be kebab-case \
+                "change: name `{name}` must be kebab-case \
                  (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
             ),
         });
     }
 
+    let mut source_map: BTreeMap<String, String> = BTreeMap::new();
+    for SourceArg { key, value } in sources {
+        if source_map.contains_key(&key) {
+            return Err(Error::Diag {
+                code: "plan-source-duplicate-key",
+                detail: format!("duplicate key `{key}` in --source arguments"),
+            });
+        }
+        source_map.insert(key, value);
+    }
+
     let brief_path = ChangeBrief::path(&ctx.project_dir);
+    let plan_path = ctx.layout().plan_path();
+    let mut existing: Vec<String> = Vec::new();
     if brief_path.exists() {
+        existing.push(format!("change brief at {}", brief_path.display()));
+    }
+    if plan_path.exists() {
+        existing.push(format!("plan at {}", plan_path.display()));
+    }
+    if !existing.is_empty() {
         return Err(Error::Diag {
             code: "already-exists",
-            detail: format!("change brief already exists at {}", brief_path.display()),
+            detail: format!("refusing to overwrite existing {}", existing.join(" and ")),
         });
     }
 
+    let plan = Plan::init(&name, source_map)?;
     bytes_write(&brief_path, ChangeBrief::template(&name).as_bytes())?;
+    plan.save(&plan_path)?;
 
     ctx.write(
-        &BriefCreateBody {
+        &CreateBody {
             name,
-            path: brief_path.display().to_string(),
+            brief: PathRef {
+                path: brief_path.display().to_string(),
+            },
+            plan: PathRef {
+                path: plan_path.display().to_string(),
+            },
         },
-        write_brief_create_text,
+        write_create_text,
     )?;
     Ok(())
 }
@@ -82,8 +115,8 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
                 detail: "no plan to finalize: plan.yaml is absent. \
                          If the change was already finalized, the archive is at \
                          .specify/archive/plans/. Otherwise run \
-                         `specify change plan create` (and `specify change create` \
-                         if the change brief is also missing) to start the loop."
+                         `specify change create <name> [--source ...]` to scaffold \
+                         change.md and plan.yaml together and start the loop."
                     .to_string(),
             });
         }
@@ -134,13 +167,21 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct BriefCreateBody {
+struct CreateBody {
     name: String,
+    brief: PathRef,
+    plan: PathRef,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct PathRef {
     path: String,
 }
 
-fn write_brief_create_text(w: &mut dyn Write, body: &BriefCreateBody) -> std::io::Result<()> {
-    writeln!(w, "Created change brief for {} at {}", body.name, body.path)
+fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
+    writeln!(w, "Created change brief for {} at {}", body.name, body.brief.path)?;
+    writeln!(w, "Initialised plan '{}' at {}.", body.name, body.plan.path)
 }
 
 #[derive(Serialize)]

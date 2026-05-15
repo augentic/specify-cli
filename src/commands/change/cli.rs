@@ -4,15 +4,23 @@
 
 use clap::Subcommand;
 
+use crate::cli::SourceArg;
 use crate::commands::change::plan::cli::PlanAction;
 
 /// Umbrella `change` verbs — owns `change.md` and `plan.yaml`.
 #[derive(Subcommand)]
 pub enum ChangeAction {
-    /// Scaffold `change.md` at the repo root. Refuses to overwrite.
+    /// Scaffold `change.md` and `plan.yaml` at the repo root in one
+    /// shot. Atomic: refuses if either file already exists, and writes
+    /// neither file in that case.
     Create {
-        /// Kebab-case change name (baked into the frontmatter).
+        /// Kebab-case change name (baked into both the brief
+        /// frontmatter and the plan).
         name: String,
+        /// Named source, repeated: --source `<key>`=`<path-or-url>`.
+        /// Recorded in the plan's `sources:` map.
+        #[arg(long = "source")]
+        sources: Vec<SourceArg>,
     },
     /// Print the parsed change brief (text or JSON). Absent file exits 0.
     Show,

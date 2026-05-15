@@ -363,7 +363,6 @@ fn register_project(envs: &TestEnv, project: &FixtureProject, description: &str)
 
 fn seed_change_plan(envs: &TestEnv) {
     envs.command().args(["change", "create", CHANGE_NAME]).assert().success();
-    envs.command().args(["change", "plan", "create", CHANGE_NAME]).assert().success();
     envs.command()
         .args([
             "change",

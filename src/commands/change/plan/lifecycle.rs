@@ -11,49 +11,7 @@ use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
 use super::{Ref, plan_ref, require_file};
-use crate::cli::SourceArg;
 use crate::context::Ctx;
-
-pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
-    let plan_path = ctx.layout().plan_path();
-    if plan_path.exists() {
-        return Err(Error::Diag {
-            code: "plan-already-exists",
-            detail: format!(
-                "plan already exists at {}; run `specify change plan archive` first",
-                plan_path.display()
-            ),
-        });
-    }
-
-    let mut source_map: std::collections::BTreeMap<String, String> =
-        std::collections::BTreeMap::new();
-    for SourceArg { key, value } in sources {
-        if source_map.contains_key(&key) {
-            return Err(Error::Diag {
-                code: "plan-source-duplicate-key",
-                detail: format!("duplicate key `{key}` in --source arguments"),
-            });
-        }
-        source_map.insert(key, value);
-    }
-
-    let plan = Plan::init(&name, source_map)?;
-    // `with_state` is for load → mutate → save; `create` writes a fresh plan
-    // and the pre-existence check above is the documented contract.
-    plan.save(&plan_path)?;
-
-    ctx.write(
-        &CreateBody {
-            plan: Ref {
-                name,
-                path: plan_path.display().to_string(),
-            },
-        },
-        write_create_text,
-    )?;
-    Ok(())
-}
 
 pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
@@ -232,16 +190,6 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
         write_archive_text,
     )?;
     Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct CreateBody {
-    plan: Ref,
-}
-
-fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
-    writeln!(w, "Initialised plan '{}' at {}.", body.plan.name, body.plan.path)
 }
 
 /// One row in `specify change plan validate`'s `results[]`.

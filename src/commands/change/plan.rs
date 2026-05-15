@@ -23,7 +23,6 @@ use crate::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
     match action {
-        PlanAction::Create { name, sources } => lifecycle::create(ctx, name, sources),
         PlanAction::Validate => lifecycle::validate(ctx),
         PlanAction::Next => lifecycle::next(ctx),
         PlanAction::Status => status::run(ctx),

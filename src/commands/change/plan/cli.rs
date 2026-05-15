@@ -5,19 +5,13 @@
 use clap::{ArgAction, Subcommand};
 use specify_domain::change::Status;
 
-use crate::cli::SourceArg;
-
 /// Plan-authoring verbs (`specify change plan *`).
+///
+/// Plan scaffolding (the former `specify change plan create`) now
+/// lives on the umbrella verb as [`crate::cli::ChangeAction::Create`],
+/// which scaffolds `change.md` and `plan.yaml` together.
 #[derive(Subcommand)]
 pub enum PlanAction {
-    /// Scaffold an empty plan.yaml at the repo root
-    Create {
-        /// Kebab-case change name
-        name: String,
-        /// Named source, repeated: --source `<key>`=`<path-or-url>`
-        #[arg(long = "source")]
-        sources: Vec<SourceArg>,
-    },
     /// Validate plan.yaml (structure + plan/change consistency).
     ///
     /// Includes the four health diagnostics — `cycle-in-depends-on`,

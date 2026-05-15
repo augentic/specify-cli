@@ -108,8 +108,9 @@ pub fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
     if !plan_path.exists() {
         return Err(Error::Diag {
             code: "workspace-push-no-plan",
-            detail: "No active plan found at plan.yaml. Run 'specify change plan create' \
-                     to create one, or check whether the plan was already archived."
+            detail: "No active plan found at plan.yaml. Run 'specify change create <name>' \
+                     to scaffold change.md and plan.yaml together, or check whether the plan \
+                     was already archived."
                 .to_string(),
         });
     }

@@ -56,12 +56,11 @@ fn change_finalize_refuses_when_plan_absent() {
     assert_eq!(value["error"], "plan-not-found");
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("plan.yaml"), "msg should reference plan.yaml: {msg}");
-    // Diagnostic should hint at the recovery sequence — post-Phase-3.5
-    // the umbrella surface is `specify change plan create` (and
-    // `specify change create` for the brief).
+    // Diagnostic should hint at the recovery sequence — `specify
+    // change create <name>` scaffolds change.md and plan.yaml together.
     assert!(
-        msg.contains("plan create") || msg.contains("change create"),
-        "msg should hint at the change/plan create verbs, got: {msg}",
+        msg.contains("change create"),
+        "msg should hint at `change create`, got: {msg}",
     );
 }
 

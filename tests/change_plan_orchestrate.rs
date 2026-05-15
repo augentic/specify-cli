@@ -941,153 +941,53 @@ slices:
     );
 }
 
-// -- plan create (L3.A) -----------------------------------------------
-
-/// Build a blank `Project` via `specify init` and then delete the
-/// auto-created `plan.yaml` (if any) so `specify plan create` is
-/// exercised against a clean slate.
-fn init_without_plan() -> Project {
-    let project = Project::init();
-    drop(fs::remove_file(project.plan_path()));
-    project
-}
+// -- change create + plan validate smoke (L3.A) ----------------------
+//
+// `specify change create` (the merged verb that scaffolds change.md
+// and plan.yaml together) gets its envelope/refusal/source coverage
+// in `tests/change_create.rs`. The smoke test below confirms that a
+// freshly-scaffolded plan validates cleanly out of the box, and that
+// the JSON envelope produced by the merged verb matches the pinned
+// golden.
 
 #[test]
-fn plan_create_empty_json() {
-    let project = init_without_plan();
+fn change_create_empty_json_matches_golden() {
+    let project = Project::init();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "plan", "create", "my-change"])
+        .args(["--format", "json", "change", "create", "my-change"])
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-    assert_eq!(actual["plan"]["name"], "my-change");
-    let path_str = actual["plan"]["path"].as_str().expect("plan.path string");
+    assert_eq!(actual["name"], "my-change");
+    let plan_path = actual["plan"]["path"].as_str().expect("plan.path string");
     assert!(
-        path_str.ends_with("/plan.yaml"),
-        "plan.path should end with /plan.yaml at the repo root, got: {path_str}"
+        plan_path.ends_with("/plan.yaml"),
+        "plan.path should end with /plan.yaml at the repo root, got: {plan_path}"
+    );
+    let brief_path = actual["brief"]["path"].as_str().expect("brief.path string");
+    assert!(
+        brief_path.ends_with("/change.md"),
+        "brief.path should end with /change.md at the repo root, got: {brief_path}"
     );
 
     assert!(project.plan_path().exists(), "plan.yaml should be created");
     let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
     assert!(saved.contains("name: my-change"), "plan missing name:\n{saved}");
-    // Empty maps/vecs serialise with either `{}`/`[]` or are omitted
-    // via serde's default — either way, no actual source/change entries.
     assert!(!saved.contains("- name:"), "plan should have no change entries:\n{saved}");
 
     assert_golden("init-success.json", actual);
 }
 
 #[test]
-fn plan_create_with_sources_roundtrips() {
-    let project = init_without_plan();
-
-    specify()
-        .current_dir(project.root())
-        .args([
-            "change",
-            "plan",
-            "create",
-            "big",
-            "--source",
-            "monolith=/tmp/legacy",
-            "--source",
-            "orders=git@github.com:org/orders.git",
-        ])
-        .assert()
-        .success();
-
-    let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
-    assert!(saved.contains("name: big"), "plan missing name:\n{saved}");
-    assert!(saved.contains("monolith: /tmp/legacy"), "plan missing monolith source:\n{saved}");
-    assert!(
-        saved.contains("orders: git@github.com:org/orders.git"),
-        "plan missing orders source:\n{saved}"
-    );
-}
-
-#[test]
-fn plan_create_refuses_when_present() {
+fn change_create_then_validate_passes_clean() {
     let project = Project::init();
-    project.seed_plan(EMPTY_PLAN);
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["change", "plan", "create", "other"])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
-    assert!(
-        stderr.contains("specify change plan archive"),
-        "stderr should suggest `specify change plan archive`, got: {stderr:?}"
-    );
-
-    let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
-    assert!(saved.contains("name: demo"), "existing plan.yaml must not be overwritten:\n{saved}");
-}
-
-#[test]
-fn plan_create_rejects_invalid_name() {
-    let project = init_without_plan();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["change", "plan", "create", "BadName"])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
-    assert!(stderr.contains("kebab-case"), "stderr should mention kebab-case, got: {stderr:?}");
-    assert!(!project.plan_path().exists(), "no plan.yaml on invalid name");
-}
-
-#[test]
-fn plan_create_rejects_duplicate_source_key() {
-    let project = init_without_plan();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["change", "plan", "create", "x", "--source", "a=/p1", "--source", "a=/p2"])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
-    assert!(
-        stderr.contains("duplicate key"),
-        "stderr should mention duplicate key, got: {stderr:?}"
-    );
-    assert!(!project.plan_path().exists(), "no plan.yaml on duplicate key");
-}
-
-#[test]
-fn plan_create_rejects_malformed_source() {
-    let project = init_without_plan();
-
-    // No `=` in the --source value → clap's value_parser rejects
-    // the argument at parse time (exit code 2).
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["change", "plan", "create", "x", "--source", "badkey"])
-        .assert()
-        .failure();
-    assert_eq!(
-        assert.get_output().status.code(),
-        Some(2),
-        "clap parse errors must surface as exit code 2"
-    );
-    assert!(!project.plan_path().exists(), "no plan.yaml on malformed --source");
-}
-
-#[test]
-fn plan_create_validates_result() {
-    let project = init_without_plan();
 
     specify()
         .current_dir(project.root())
-        .args(["change", "plan", "create", "fresh"])
+        .args(["change", "create", "fresh"])
         .assert()
         .success();
 
@@ -1100,7 +1000,7 @@ fn plan_create_validates_result() {
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
     assert!(
         !stdout.contains("ERROR"),
-        "freshly-init'd plan must pass `specify plan validate` with no errors, got:\n{stdout}"
+        "freshly-scaffolded plan must pass `specify change plan validate` with no errors, got:\n{stdout}"
     );
 }
 
@@ -1617,12 +1517,7 @@ fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["change", "create", "rfc3a-planning"])
-        .assert()
-        .success();
-    specify()
-        .current_dir(project.root())
-        .args(["change", "plan", "create", "rfc3a-planning", "--source", "app=."])
+        .args(["change", "create", "rfc3a-planning", "--source", "app=."])
         .assert()
         .success();
     specify().current_dir(project.root()).args(["change", "plan", "validate"]).assert().success();
@@ -1805,7 +1700,7 @@ fn plan_validate_healthy_exits_zero() {
 
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "change", "plan", "create", "demo"])
+        .args(["--format", "json", "change", "create", "demo"])
         .assert()
         .success();
 

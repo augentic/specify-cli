@@ -15,8 +15,9 @@ impl AtomicYaml for Plan {
         layout.plan_path()
     }
 
-    /// `plan.yaml` is created by `specify change plan create`, never
-    /// synthesised implicitly. Mutation handlers (`add`, `amend`,
+    /// `plan.yaml` is created by `specify change create` (alongside
+    /// `change.md`), never synthesised implicitly. Mutation handlers
+    /// (`add`, `amend`,
     /// `transition`) should drive `with_state` with
     /// [`crate::config::InitPolicy::RequireExisting`] to surface
     /// absence as a typed [`Error::ArtifactNotFound`].
