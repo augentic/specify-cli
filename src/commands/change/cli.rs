@@ -1,22 +1,23 @@
-//! Clap derive surface for `specify change *` (the operator umbrella).
+//! Clap derive surface for `specify change *` — the operator-facing
+//! Layer 1 verbs that own `change.md` and `plan.yaml`.
 //!
 //! The executable plan moved to its own top-level verb after the
 //! `change plan *` flatten — see [`crate::commands::plan::cli`]. The
-//! umbrella retains only the operator-facing brief verbs (`create`,
-//! `show`, `finalize`).
+//! remaining verbs here are peer Layer 1 commands supporting peer
+//! Layer 2 skills (`draft`, `show`, `finalize`).
 
 use clap::Subcommand;
 
 use crate::cli::SourceArg;
 
-/// Umbrella `change` verbs — owns `change.md` and `plan.yaml`.
+/// `change` verbs — own `change.md` and `plan.yaml`.
 #[derive(Subcommand)]
 pub enum ChangeAction {
     /// Scaffold `change.md` and `plan.yaml` at the repo root in one
     /// shot. Atomic: refuses if either file already exists, and writes
     /// neither file in that case. Delegates the plan half to the same
     /// helper that backs `specify plan create`.
-    Create {
+    Draft {
         /// Kebab-case change name (baked into both the brief
         /// frontmatter and the plan).
         name: String,

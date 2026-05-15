@@ -41,7 +41,7 @@ pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, Stri
 }
 
 /// Validate `name` is kebab-case. Mirrors the diagnostic code that
-/// `specify change create` and `specify plan create` both surface.
+/// `specify change draft` and `specify plan create` both surface.
 pub fn require_kebab_change_name(name: &str) -> Result<()> {
     if !is_kebab(name) {
         return Err(Error::Diag {
@@ -57,7 +57,7 @@ pub fn require_kebab_change_name(name: &str) -> Result<()> {
 
 /// Build the in-memory [`Plan`] and write it atomically to `plan_path`.
 ///
-/// Callers (`specify plan create` and `specify change create`) own the
+/// Callers (`specify plan create` and `specify change draft`) own the
 /// "refuse if any conflicting file exists" pre-flight and the
 /// kebab-case validation; this helper is happy to overwrite and assumes
 /// `name` is already validated.
@@ -71,7 +71,7 @@ pub fn write_scaffold(
 
 /// `specify plan create <name> [--source ...]`. Scaffolds `plan.yaml`
 /// only — the joint scaffolder that also writes `change.md` is
-/// `specify change create`, which delegates here for the plan half.
+/// `specify change draft`, which delegates here for the plan half.
 pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
     require_kebab_change_name(&name)?;
     let source_map = build_source_map(sources)?;

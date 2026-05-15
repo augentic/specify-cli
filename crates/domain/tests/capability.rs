@@ -882,8 +882,8 @@ fn scaffold_initiative_brief(contents: &str) -> TempDir {
 
 /// Byte-for-byte golden for [`ChangeBrief::template`] applied to
 /// the RFC's `traffic-modernisation` example. The CLI integration
-/// suite (`tests/change_create.rs`) pins the exact same bytes
-/// against `specify change create traffic-modernisation`.
+/// suite (`tests/change_draft.rs`) pins the exact same bytes
+/// against `specify change draft traffic-modernisation`.
 ///
 /// RFC-13 chunk 3.7 refreshed the prose to name the artefact a
 /// "change" (matching the new filename and the surface verbs); the

@@ -1,7 +1,7 @@
-//! Integration tests for `specify change create` — scaffolds both the
+//! Integration tests for `specify change draft` — scaffolds both the
 //! operator brief (`change.md`) and the plan (`plan.yaml`) at the repo
 //! root in a single atomic write. Template byte stability is the key
-//! contract: `create` must produce the same brief bytes every time so
+//! contract: `draft` must produce the same brief bytes every time so
 //! operators can diff against the RFC-matching golden, and refuse
 //! atomically (writing nothing) when either output already exists.
 
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 mod common;
 use common::{Project, parse_stderr, parse_stdout, specify};
 
-/// Byte-for-byte golden for `specify change create
+/// Byte-for-byte golden for `specify change draft
 /// traffic-modernisation`. Kept in-source (not a fixture file) so the
 /// assertion is a trivial `assert_eq!` against literal bytes — the
 /// plan's "Done when" criterion.
@@ -40,14 +40,14 @@ fn today_yyyymmdd() -> String {
 }
 
 #[test]
-fn create_scaffolds_canonical_brief_and_plan() {
+fn draft_scaffolds_canonical_brief_and_plan() {
     let project = Project::init();
     assert!(!brief_path(&project).exists(), "bare project must not have change.md");
     assert!(!project.plan_path().exists(), "bare project must not have plan.yaml");
 
     specify()
         .current_dir(project.root())
-        .args(["change", "create", "traffic-modernisation"])
+        .args(["change", "draft", "traffic-modernisation"])
         .assert()
         .success();
 
@@ -62,14 +62,14 @@ fn create_scaffolds_canonical_brief_and_plan() {
 }
 
 #[test]
-fn create_records_sources_in_plan() {
+fn draft_records_sources_in_plan() {
     let project = Project::init();
 
     specify()
         .current_dir(project.root())
         .args([
             "change",
-            "create",
+            "draft",
             "big",
             "--source",
             "monolith=/tmp/legacy",
@@ -91,16 +91,16 @@ fn create_records_sources_in_plan() {
 }
 
 #[test]
-fn create_json_response() {
+fn draft_json_response() {
     let project = Project::init();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "create", "my-change"])
+        .args(["--format", "json", "change", "draft", "my-change"])
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert!(actual["action"].is_null(), "CreateBody does not carry an `action` field");
+    assert!(actual["action"].is_null(), "DraftBody does not carry an `action` field");
     assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
     assert_eq!(actual["name"], "my-change");
     assert!(
@@ -116,14 +116,14 @@ fn create_json_response() {
 }
 
 #[test]
-fn create_refuses_atomically_when_brief_exists() {
+fn draft_refuses_atomically_when_brief_exists() {
     let project = Project::init();
     write_brief(&project, "---\nname: pre-existing\n---\n\nhands off\n");
     assert!(!project.plan_path().exists(), "fixture must start without a plan.yaml");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "create", "pre-existing"])
+        .args(["--format", "json", "change", "draft", "pre-existing"])
         .assert()
         .failure();
     let actual = parse_stderr(&assert.get_output().stderr, project.root());
@@ -137,14 +137,14 @@ fn create_refuses_atomically_when_brief_exists() {
 }
 
 #[test]
-fn create_refuses_atomically_when_plan_exists() {
+fn draft_refuses_atomically_when_plan_exists() {
     let project = Project::init();
     project.seed_plan("name: pre-existing\nslices: []\n");
     assert!(!brief_path(&project).exists(), "fixture must start without a change.md");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "create", "pre-existing"])
+        .args(["--format", "json", "change", "draft", "pre-existing"])
         .assert()
         .failure();
     let actual = parse_stderr(&assert.get_output().stderr, project.root());
@@ -156,12 +156,12 @@ fn create_refuses_atomically_when_plan_exists() {
 }
 
 #[test]
-fn create_rejects_non_kebab_name() {
+fn draft_rejects_non_kebab_name() {
     let project = Project::init();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "create", "NotKebab"])
+        .args(["--format", "json", "change", "draft", "NotKebab"])
         .assert()
         .failure();
     let actual = parse_stderr(&assert.get_output().stderr, project.root());
@@ -174,13 +174,13 @@ fn create_rejects_non_kebab_name() {
 }
 
 #[test]
-fn create_rejects_duplicate_source_key() {
+fn draft_rejects_duplicate_source_key() {
     let project = Project::init();
 
     let assert = specify()
         .current_dir(project.root())
         .args([
-            "--format", "json", "change", "create", "x", "--source", "a=/p1", "--source", "a=/p2",
+            "--format", "json", "change", "draft", "x", "--source", "a=/p1", "--source", "a=/p2",
         ])
         .assert()
         .failure();
@@ -191,12 +191,12 @@ fn create_rejects_duplicate_source_key() {
 }
 
 #[test]
-fn create_rejects_malformed_source() {
+fn draft_rejects_malformed_source() {
     let project = Project::init();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["change", "create", "x", "--source", "badkey"])
+        .args(["change", "draft", "x", "--source", "badkey"])
         .assert()
         .failure();
     assert_eq!(

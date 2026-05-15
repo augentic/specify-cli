@@ -22,7 +22,7 @@ pub struct Registry {
     /// with an actionable diagnostic.
     pub version: u32,
     /// Platform catalogue. Empty or single-entry is equivalent to
-    /// "single-repo mode"; multi-entry activates the `/change:plan`
+    /// "single-repo mode"; multi-entry activates the `/change:draft`
     /// *sync workspace* phase (C28/C30).
     #[serde(default)]
     pub projects: Vec<RegistryProject>,
@@ -118,7 +118,7 @@ impl Registry {
     /// `true` when the registry declares at most one project.
     ///
     /// Absent registry + single-entry registry behave identically in
-    /// the `/change:plan` flow. Useful where the *sync workspace* phase is
+    /// the `/change:draft` flow. Useful where the *sync workspace* phase is
     /// gated on `len(projects) > 1`.
     #[must_use]
     pub const fn is_single_repo(&self) -> bool {

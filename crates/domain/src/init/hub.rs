@@ -30,7 +30,7 @@ use crate::registry::Registry;
 /// `registry.yaml` is the one platform-component artefact init
 /// scaffolds — bootstrapping a hub *is* bootstrapping its registry.
 /// `change.md` and `plan.yaml` stay operator-managed even on a hub;
-/// the operator runs `specify change create <name> [--source ...]`
+/// the operator runs `specify change draft <name> [--source ...]`
 /// (which scaffolds both files atomically) when the work itself begins.
 ///
 /// Capability resolution is intentionally skipped — there is no

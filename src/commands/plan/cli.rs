@@ -9,14 +9,14 @@ use crate::cli::SourceArg;
 
 /// Plan-authoring verbs (`specify plan *`).
 ///
-/// `specify change create` scaffolds `change.md` and `plan.yaml`
+/// `specify change draft` scaffolds `change.md` and `plan.yaml`
 /// together; the same scaffolding is also reachable plan-only via
 /// [`PlanAction::Create`] when no operator brief is wanted.
 #[derive(Subcommand)]
 pub enum PlanAction {
     /// Scaffold an empty `plan.yaml` at the repo root. Refuses to
     /// overwrite an existing plan. Shares its scaffold helper with
-    /// `specify change create`, which also writes `change.md`.
+    /// `specify change draft`, which also writes `change.md`.
     Create {
         /// Kebab-case change name
         name: String,

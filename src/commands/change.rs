@@ -19,7 +19,7 @@ use crate::context::Ctx;
 /// Dispatch `specify change *` — operator brief and finalize.
 pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
     match action {
-        ChangeAction::Create { name, sources } => create(ctx, name, sources),
+        ChangeAction::Draft { name, sources } => draft(ctx, name, sources),
         ChangeAction::Show => brief_show(ctx),
         ChangeAction::Finalize { clean, dry_run } => run_finalize(ctx, clean, dry_run),
     }
@@ -33,7 +33,7 @@ pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
 /// — so operators see the most actionable diagnostic first. The plan
 /// half delegates to [`plan::write_scaffold`], the same helper that
 /// backs `specify plan create`.
-fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
+fn draft(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
     plan::require_kebab_change_name(&name)?;
     let source_map = plan::build_source_map(sources)?;
 
@@ -57,12 +57,12 @@ fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
     plan::write_scaffold(&plan_path, &name, source_map)?;
 
     ctx.write(
-        &CreateBody {
+        &DraftBody {
             name,
             brief: brief_path.display().to_string(),
             plan: plan_path.display().to_string(),
         },
-        write_create_text,
+        write_draft_text,
     )?;
     Ok(())
 }
@@ -91,7 +91,7 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
                 detail: "no plan to finalize: plan.yaml is absent. \
                          If the change was already finalized, the archive is at \
                          .specify/archive/plans/. Otherwise run \
-                         `specify change create <name> [--source ...]` to scaffold \
+                         `specify change draft <name> [--source ...]` to scaffold \
                          change.md and plan.yaml together and start the loop."
                     .to_string(),
             });
@@ -143,14 +143,14 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct CreateBody {
+struct DraftBody {
     name: String,
     brief: String,
     plan: String,
 }
 
-fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
-    writeln!(w, "Created change brief for {} at {}", body.name, body.brief)?;
+fn write_draft_text(w: &mut dyn Write, body: &DraftBody) -> std::io::Result<()> {
+    writeln!(w, "Drafted change brief for {} at {}", body.name, body.brief)?;
     writeln!(w, "Initialised plan '{}' at {}.", body.name, body.plan)
 }
 

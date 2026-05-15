@@ -57,8 +57,8 @@ fn change_finalize_refuses_when_plan_absent() {
     let msg = value["message"].as_str().expect("message");
     assert!(msg.contains("plan.yaml"), "msg should reference plan.yaml: {msg}");
     // Diagnostic should hint at the recovery sequence — `specify
-    // change create <name>` scaffolds change.md and plan.yaml together.
-    assert!(msg.contains("change create"), "msg should hint at `change create`, got: {msg}");
+    // change draft <name>` scaffolds change.md and plan.yaml together.
+    assert!(msg.contains("change draft"), "msg should hint at `change draft`, got: {msg}");
 }
 
 #[test]

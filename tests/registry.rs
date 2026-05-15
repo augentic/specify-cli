@@ -247,10 +247,10 @@ fn registry_remove_warns_on_plan_ref() {
     }
 
     // Author a plan with one entry pointing at alpha. The merged
-    // `change create` verb scaffolds change.md and plan.yaml together.
+    // `change draft` verb scaffolds change.md and plan.yaml together.
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "change", "create", "demo"])
+        .args(["--format", "json", "change", "draft", "demo"])
         .assert()
         .success();
     specify()

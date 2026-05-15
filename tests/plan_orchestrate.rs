@@ -922,22 +922,22 @@ slices:
     );
 }
 
-// -- change create + plan validate smoke (L3.A) ----------------------
+// -- change draft + plan validate smoke (L3.A) -----------------------
 //
-// `specify change create` (the merged verb that scaffolds change.md
+// `specify change draft` (the merged verb that scaffolds change.md
 // and plan.yaml together) gets its envelope/refusal/source coverage
-// in `tests/change_create.rs`. The smoke test below confirms that a
+// in `tests/change_draft.rs`. The smoke test below confirms that a
 // freshly-scaffolded plan validates cleanly out of the box, and that
 // the JSON envelope produced by the merged verb matches the pinned
 // golden.
 
 #[test]
-fn change_create_empty_json_matches_golden() {
+fn change_draft_empty_json_matches_golden() {
     let project = Project::init();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "change", "create", "my-change"])
+        .args(["--format", "json", "change", "draft", "my-change"])
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -1001,10 +1001,10 @@ fn plan_create_refuses_to_overwrite_existing_plan() {
 }
 
 #[test]
-fn change_create_then_validate_passes_clean() {
+fn change_draft_then_validate_passes_clean() {
     let project = Project::init();
 
-    specify().current_dir(project.root()).args(["change", "create", "fresh"]).assert().success();
+    specify().current_dir(project.root()).args(["change", "draft", "fresh"]).assert().success();
 
     let assert =
         specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
@@ -1499,7 +1499,7 @@ fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["change", "create", "rfc3a-planning", "--source", "app=."])
+        .args(["change", "draft", "rfc3a-planning", "--source", "app=."])
         .assert()
         .success();
     specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
@@ -1678,7 +1678,7 @@ fn plan_validate_healthy_exits_zero() {
 
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "change", "create", "demo"])
+        .args(["--format", "json", "change", "draft", "demo"])
         .assert()
         .success();
 

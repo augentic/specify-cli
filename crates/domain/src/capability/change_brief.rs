@@ -11,7 +11,7 @@ use crate::capability::brief::split_on_closing_delimiter;
 
 /// Filename of the operator brief at the repo root.
 ///
-/// Written by `specify change create <name>`.
+/// Written by `specify change draft <name>`.
 pub const FILENAME: &str = "change.md";
 
 /// In-memory representation of `change.md` (at the repo root).
@@ -165,7 +165,7 @@ impl ChangeBrief {
     }
 
     /// Render the canonical `change.md` template for the given
-    /// kebab-case change name. Byte-stable — the `change create` CLI
+    /// kebab-case change name. Byte-stable — the `change draft` CLI
     /// verb compares against a golden fixture.
     #[must_use]
     #[expect(
@@ -177,7 +177,7 @@ impl ChangeBrief {
     }
 }
 
-/// Canonical template shipped by `specify change create`. The
+/// Canonical template shipped by `specify change draft`. The
 /// golden-fixture test pins this byte-for-byte; any edit here must be
 /// mirrored in the test constant.
 const CHANGE_TEMPLATE: &str = "\

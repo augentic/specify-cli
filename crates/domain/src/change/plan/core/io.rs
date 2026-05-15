@@ -15,7 +15,7 @@ impl AtomicYaml for Plan {
         layout.plan_path()
     }
 
-    /// `plan.yaml` is created by `specify change create` (alongside
+    /// `plan.yaml` is created by `specify change draft` (alongside
     /// `change.md`), never synthesised implicitly. Mutation handlers
     /// (`add`, `amend`,
     /// `transition`) should drive `with_state` with
