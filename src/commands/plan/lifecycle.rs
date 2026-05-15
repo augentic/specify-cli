@@ -3,9 +3,7 @@ use std::io::Write;
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
-use specify_domain::change::{
-    Plan, PlanDoctorDiagnostic, PlanDoctorPayload, Severity, Status, plan_doctor,
-};
+use specify_domain::change::{Plan, PlanDoctorDiagnostic, Severity, Status, plan_doctor};
 use specify_domain::config::{InitPolicy, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
@@ -23,15 +21,12 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         Err(err) => (None, Some(err)),
     };
 
-    let mut results: Vec<ValidateRow> =
-        plan_doctor(&plan, Some(&slices_dir), registry.as_ref(), Some(&ctx.project_dir))
-            .into_iter()
-            .map(ValidateRow::from)
-            .collect();
+    let mut results: Vec<PlanDoctorDiagnostic> =
+        plan_doctor(&plan, Some(&slices_dir), registry.as_ref(), Some(&ctx.project_dir));
 
     if let Some(err) = registry_err {
-        results.push(ValidateRow {
-            level: Severity::Error,
+        results.push(PlanDoctorDiagnostic {
+            severity: Severity::Error,
             code: "registry-shape".to_string(),
             message: err.to_string(),
             entry: None,
@@ -49,8 +44,8 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
                 && let Some(slot_capability) = config.get("capability").and_then(|v| v.as_str())
                 && slot_capability != rp.capability
             {
-                results.push(ValidateRow {
-                    level: Severity::Warning,
+                results.push(PlanDoctorDiagnostic {
+                    severity: Severity::Warning,
                     code: "capability-mismatch-workspace".to_string(),
                     message: format!(
                         "workspace clone '{}' has capability '{}' but registry declares '{}'; \
@@ -64,7 +59,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         }
     }
 
-    let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
+    let has_errors = results.iter().any(|r| matches!(r.severity, Severity::Error));
     ctx.write(
         &PlanValidateBody {
             plan: Ref {
@@ -192,42 +187,11 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
     Ok(())
 }
 
-/// One row in `specify plan validate`'s `results[]`.
-///
-/// Mirrors the historical `Finding` wire shape (`level` / `code` /
-/// `message` / `entry`) for backwards compatibility, plus an optional
-/// structured `data` payload carried by the four health diagnostics
-/// (`cycle-in-depends-on`, `orphan-source-key`, `stale-workspace-clone`,
-/// `unreachable-entry`) — codes that previously surfaced through the
-/// retired `change plan doctor` verb.
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ValidateRow {
-    level: Severity,
-    code: String,
-    message: String,
-    entry: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<PlanDoctorPayload>,
-}
-
-impl From<PlanDoctorDiagnostic> for ValidateRow {
-    fn from(d: PlanDoctorDiagnostic) -> Self {
-        Self {
-            level: d.severity,
-            code: d.code,
-            message: d.message,
-            entry: d.entry,
-            data: d.data,
-        }
-    }
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct PlanValidateBody<'a> {
     plan: Ref,
-    results: &'a [ValidateRow],
+    results: &'a [PlanDoctorDiagnostic],
     passed: bool,
 }
 
@@ -241,8 +205,8 @@ fn write_plan_validate_text(w: &mut dyn Write, body: &PlanValidateBody<'_>) -> s
     Ok(())
 }
 
-fn write_validate_row_text(w: &mut dyn Write, row: &ValidateRow) -> std::io::Result<()> {
-    let label = if matches!(row.level, Severity::Error) { "ERROR  " } else { "WARNING" };
+fn write_validate_row_text(w: &mut dyn Write, row: &PlanDoctorDiagnostic) -> std::io::Result<()> {
+    let label = if matches!(row.severity, Severity::Error) { "ERROR  " } else { "WARNING" };
     let entry_col = row.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
     writeln!(w, "{label} {:<32} {:<24} {}", row.code, entry_col, row.message)
 }

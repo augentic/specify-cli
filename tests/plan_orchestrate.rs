@@ -267,7 +267,7 @@ fn plan_validate_tolerates_in_progress() {
         1,
         "expected exactly one missing-slice-dir-for-in-progress result, got: {results:#?}"
     );
-    assert_eq!(matching[0]["level"], "warning");
+    assert_eq!(matching[0]["severity"], "warning");
     assert_eq!(matching[0]["entry"], "a");
 }
 
@@ -291,7 +291,7 @@ fn plan_validate_with_errors_json() {
     assert_eq!(actual["passed"], false);
     let results = actual["results"].as_array().expect("results array");
     assert!(
-        results.iter().any(|r| r["code"] == "duplicate-name" && r["level"] == "error"),
+        results.iter().any(|r| r["code"] == "duplicate-name" && r["severity"] == "error"),
         "expected a duplicate-name error, got: {results:#?}"
     );
     assert_golden("validate-duplicate-name.json", actual);
@@ -1486,7 +1486,7 @@ fn plan_validate_surfaces_registry_errors() {
         1,
         "expected one registry-shape finding, got: {results:#?}"
     );
-    assert_eq!(registry_findings[0]["level"], "error");
+    assert_eq!(registry_findings[0]["severity"], "error");
     let msg = registry_findings[0]["message"].as_str().expect("message string");
     assert!(msg.contains("version"), "expected version in message, got: {msg}");
     assert_eq!(value["passed"], false);
@@ -1668,7 +1668,7 @@ fn plan_validate_payloads_round_trip_typed() {
         .expect("expected orphan-source-key diagnostic");
     assert_eq!(orphan["data"]["kind"], "orphan-source");
     assert_eq!(orphan["data"]["key"], "orphan-key");
-    assert_eq!(orphan["level"], "warning");
+    assert_eq!(orphan["severity"], "warning");
 }
 
 #[test]

@@ -14,7 +14,7 @@ Canonical JSON Schema (2020-12) for the response body emitted by `specify plan v
   },
   "results": [
     {
-      "level": "error | warning",
+      "severity": "error | warning",
       "code": "<stable-identifier>",
       "entry": "<plan-entry-name> | null",
       "message": "<human readable>",

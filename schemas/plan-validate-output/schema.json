@@ -38,11 +38,11 @@
   "$defs": {
     "validationResult": {
       "type": "object",
-      "required": ["level", "code", "message"],
+      "required": ["severity", "code", "message"],
       "additionalProperties": false,
       "description": "One finding from `Plan::validate` or the layered health checks. See `specify_domain::change::plan_doctor` for the canonical producer.",
       "properties": {
-        "level": {
+        "severity": {
           "type": "string",
           "enum": ["error", "warning"],
           "description": "Severity bucket. `error` blocks the plan from being used as-is; `warning` is advisory."

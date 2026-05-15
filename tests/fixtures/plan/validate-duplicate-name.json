@@ -8,8 +8,8 @@
     {
       "code": "duplicate-name",
       "entry": "foo",
-      "level": "error",
-      "message": "duplicate plan entry name 'foo'"
+      "message": "duplicate plan entry name 'foo'",
+      "severity": "error"
     }
   ]
 }
