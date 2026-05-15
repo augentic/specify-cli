@@ -5,7 +5,6 @@ use std::io::Write;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use serde_json::Value;
 use specify_domain::capability::Phase;
 use specify_domain::slice::{EntryKind, Journal, JournalEntry, SliceMetadata};
 use specify_error::{Error, Result};
@@ -65,8 +64,13 @@ pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
     }
 
     let journal = Journal::load(&slice_dir)?;
-    let entries: Vec<EntryRow> = journal.entries.iter().map(EntryRow::from).collect();
-    ctx.write(&ShowBody { name, entries }, write_show_text)?;
+    ctx.write(
+        &ShowBody {
+            name,
+            entries: journal.entries,
+        },
+        write_show_text,
+    )?;
     Ok(())
 }
 
@@ -81,11 +85,11 @@ fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Result<()> {
             w,
             "  [{}] {}/{} — {}",
             entry.timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            entry.phase,
-            entry.kind,
+            entry.step,
+            entry.r#type,
             entry.summary,
         )?;
-        if let Value::String(context) = &entry.context {
+        if let Some(context) = &entry.context {
             for line in context.lines() {
                 writeln!(w, "      {line}")?;
             }
@@ -98,28 +102,5 @@ fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Result<()> {
 #[serde(rename_all = "kebab-case")]
 struct ShowBody {
     name: String,
-    entries: Vec<EntryRow>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct EntryRow {
-    #[serde(with = "specify_error::serde_rfc3339")]
-    timestamp: Timestamp,
-    phase: String,
-    kind: String,
-    summary: String,
-    context: Value,
-}
-
-impl From<&JournalEntry> for EntryRow {
-    fn from(entry: &JournalEntry) -> Self {
-        Self {
-            timestamp: entry.timestamp,
-            phase: entry.step.to_string(),
-            kind: entry.r#type.to_string(),
-            summary: entry.summary.clone(),
-            context: entry.context.clone().map_or(Value::Null, Value::from),
-        }
-    }
+    entries: Vec<JournalEntry>,
 }

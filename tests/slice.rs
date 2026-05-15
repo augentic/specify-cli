@@ -1049,8 +1049,8 @@ fn journal_append_writes_to_file() {
     assert!(journal_path.is_file(), "journal.yaml must exist after append");
     let text = fs::read_to_string(&journal_path).expect("read journal");
     assert!(text.contains("entries:"), "missing entries list in:\n{text}");
-    assert!(text.contains("step: define"), "missing kebab-case step:\n{text}");
-    assert!(text.contains("type: question"), "missing literal `type: question`:\n{text}");
+    assert!(text.contains("phase: define"), "missing kebab-case phase:\n{text}");
+    assert!(text.contains("kind: question"), "missing kebab-case kind:\n{text}");
     assert!(text.contains("summary: scope unclear"), "missing summary:\n{text}");
     assert!(text.contains("line one"), "missing first context line:\n{text}");
     assert!(text.contains("line two"), "missing second context line:\n{text}");
@@ -1063,8 +1063,8 @@ fn journal_append_writes_to_file() {
     let yaml: serde_json::Value = serde_saphyr::from_str(&text).expect("parse journal");
     let entries = yaml["entries"].as_array().expect("entries seq");
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0]["step"].as_str(), Some("define"));
-    assert_eq!(entries[0]["type"].as_str(), Some("question"));
+    assert_eq!(entries[0]["phase"].as_str(), Some("define"));
+    assert_eq!(entries[0]["kind"].as_str(), Some("question"));
     assert_eq!(entries[0]["summary"].as_str(), Some("scope unclear"));
     assert_eq!(entries[0]["context"].as_str(), Some("line one\nline two"));
 }
