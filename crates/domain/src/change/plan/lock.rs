@@ -1,14 +1,13 @@
 //! Stateless PID stamp at `.specify/plan.lock` used by the short-lived
 //! CLI driver-lock verbs.
 
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use specify_error::Error;
 
-mod acquire;
-mod pid;
-mod release;
-mod status;
+use crate::slice::atomic::bytes_write;
 
 #[cfg(test)]
 mod tests;
@@ -94,4 +93,144 @@ impl Stamp {
     pub(super) fn lockfile_path(project_dir: &Path) -> PathBuf {
         project_dir.join(".specify").join("plan.lock")
     }
+
+    /// Acquire the stamp for `our_pid`.
+    ///
+    /// Reclaims the stamp silently if the recorded PID is dead or the
+    /// stamp contents are malformed.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::DriverBusy`] when another live PID is already
+    ///   stamped in `.specify/plan.lock`.
+    /// - [`Error::Io`] if `.specify/` cannot be created, the existing
+    ///   stamp cannot be read, or the new stamp cannot be atomically
+    ///   written.
+    pub fn acquire(project_dir: &Path, our_pid: u32) -> Result<Acquired, Error> {
+        let specify_dir = project_dir.join(".specify");
+        fs::create_dir_all(&specify_dir)?;
+        let path = Self::lockfile_path(project_dir);
+
+        let mut reclaimed_stale_pid: Option<u32> = None;
+        let mut already_held = false;
+
+        if path.exists() {
+            let contents = fs::read_to_string(&path).unwrap_or_default();
+            match contents.trim().parse::<u32>() {
+                Ok(pid) if pid == our_pid => {
+                    already_held = true;
+                }
+                Ok(pid) if is_pid_alive(pid) => {
+                    return Err(Error::DriverBusy { pid });
+                }
+                Ok(pid) => {
+                    reclaimed_stale_pid = Some(pid);
+                }
+                Err(_) => {
+                    // Malformed — treat as stale. No PID to surface.
+                }
+            }
+        }
+
+        // Atomic write via tempfile + rename, matching the convention
+        // used by `Plan::save` and `SliceMetadata::save`. Readers
+        // never observe a partial stamp.
+        bytes_write(&path, our_pid.to_string().as_bytes())?;
+
+        Ok(Acquired {
+            pid: our_pid,
+            reclaimed_stale_pid,
+            already_held,
+        })
+    }
+
+    /// Release the stamp if we own it. See [`Released`] for the three
+    /// successful outcomes.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Io`] if the stamp file exists but cannot be read,
+    ///   or if removing it (when we own the PID) fails.
+    /// - [`Error::Diag`] with code `stamp-malformed` when the stamp
+    ///   contents are not a valid PID — the self-heal path should
+    ///   reclaim deliberately rather than `release` clobbering blindly.
+    pub fn release(project_dir: &Path, our_pid: u32) -> Result<Released, Error> {
+        let path = Self::lockfile_path(project_dir);
+        if !path.exists() {
+            return Ok(Released::WasAbsent);
+        }
+        let contents = fs::read_to_string(&path)?;
+        match contents.trim().parse::<u32>() {
+            Ok(pid) if pid == our_pid => {
+                fs::remove_file(&path)?;
+                Ok(Released::Removed { pid })
+            }
+            Ok(pid) => Ok(Released::HeldByOther { pid }),
+            Err(_) => Err(Error::Diag {
+                code: "stamp-malformed",
+                detail: format!(
+                    "{}: contents are not a valid PID; refusing to clobber (run the L2.G self-heal path)",
+                    path.display()
+                ),
+            }),
+        }
+    }
+
+    /// Snapshot the current stamp.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Io`] if the stamp file exists but cannot be read.
+    pub fn status(project_dir: &Path) -> Result<State, Error> {
+        let path = Self::lockfile_path(project_dir);
+        if !path.exists() {
+            return Ok(State {
+                held: false,
+                pid: None,
+                stale: None,
+            });
+        }
+        let contents = fs::read_to_string(&path)?;
+        contents.trim().parse::<u32>().map_or(
+            Ok(State {
+                held: false,
+                pid: None,
+                stale: Some(true),
+            }),
+            |pid| {
+                let alive = is_pid_alive(pid);
+                Ok(State {
+                    held: alive,
+                    pid: Some(pid),
+                    stale: Some(!alive),
+                })
+            },
+        )
+    }
+}
+
+/// PID-liveness probe. Unix uses `kill(pid, 0)` (treating `EPERM` as
+/// alive); non-Unix is a conservative `true` so we never reclaim.
+#[cfg(unix)]
+#[expect(unsafe_code, reason = "libc::kill(pid, 0) is the canonical Unix liveness probe")]
+fn is_pid_alive(pid: u32) -> bool {
+    // SAFETY: `kill(pid, 0)` is a liveness probe with no side
+    // effects. It returns `0` when the process exists and the
+    // caller has permission to signal it. `EPERM` means the
+    // process exists but is owned by another user — still alive.
+    // `ESRCH` means no such process.
+    let rc = unsafe { libc::kill(pid.cast_signed(), 0) };
+    if rc == 0 {
+        return true;
+    }
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+#[cfg(not(unix))]
+fn is_pid_alive(_pid: u32) -> bool {
+    // Conservative default on non-Unix: assume any recorded PID is
+    // still live. This trades reclaim recovery for safety —
+    // operators on Windows will see `DriverBusy` until they remove
+    // the stale lockfile by hand.
+    true
 }
