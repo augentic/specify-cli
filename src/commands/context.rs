@@ -21,7 +21,7 @@ pub(super) use generate::for_init as generate_for_init;
 use specify_domain::config::Layout;
 use specify_error::{Error, Result};
 
-use crate::cli::ContextAction;
+use self::cli::ContextAction;
 use crate::context::Ctx;
 
 pub fn run(ctx: &Ctx, action: &ContextAction) -> Result<()> {

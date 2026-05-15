@@ -17,7 +17,7 @@ pub enum SliceAction {
         capability: Option<String>,
         /// Behaviour when `<slices_dir>/<name>/` already exists
         #[arg(long, value_enum, default_value = "fail")]
-        if_exists: CreateIfExistsArg,
+        if_exists: CreateIfExists,
     },
     /// Show the status of one slice
     Status {
@@ -282,26 +282,6 @@ impl From<TransitionTarget> for LifecycleStatus {
             TransitionTarget::Building => Self::Building,
             TransitionTarget::Complete => Self::Complete,
             TransitionTarget::Dropped => Self::Dropped,
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, ValueEnum)]
-pub enum CreateIfExistsArg {
-    /// Refuse when the directory exists (default)
-    Fail,
-    /// Reuse the existing directory — requires a valid `.metadata.yaml`
-    Continue,
-    /// Delete and recreate — destructive
-    Restart,
-}
-
-impl From<CreateIfExistsArg> for CreateIfExists {
-    fn from(value: CreateIfExistsArg) -> Self {
-        match value {
-            CreateIfExistsArg::Fail => Self::Fail,
-            CreateIfExistsArg::Continue => Self::Continue,
-            CreateIfExistsArg::Restart => Self::Restart,
         }
     }
 }

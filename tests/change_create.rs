@@ -104,14 +104,14 @@ fn create_json_response() {
     assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
     assert_eq!(actual["name"], "my-change");
     assert!(
-        actual["brief"]["path"].as_str().expect("brief.path string").ends_with("/change.md"),
-        "brief.path should point at change.md, got: {}",
-        actual["brief"]["path"]
+        actual["brief"].as_str().expect("brief string").ends_with("/change.md"),
+        "brief should point at change.md, got: {}",
+        actual["brief"]
     );
     assert!(
-        actual["plan"]["path"].as_str().expect("plan.path string").ends_with("/plan.yaml"),
-        "plan.path should point at plan.yaml, got: {}",
-        actual["plan"]["path"]
+        actual["plan"].as_str().expect("plan string").ends_with("/plan.yaml"),
+        "plan should point at plan.yaml, got: {}",
+        actual["plan"]
     );
 }
 

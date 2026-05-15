@@ -11,7 +11,8 @@ use specify_domain::registry::Registry;
 use specify_domain::slice::atomic::bytes_write;
 use specify_error::{Error, Result};
 
-use crate::cli::{ChangeAction, SourceArg};
+use self::cli::ChangeAction;
+use crate::cli::SourceArg;
 use crate::commands::plan;
 use crate::context::Ctx;
 
@@ -58,12 +59,8 @@ fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
     ctx.write(
         &CreateBody {
             name,
-            brief: PathRef {
-                path: brief_path.display().to_string(),
-            },
-            plan: PathRef {
-                path: plan_path.display().to_string(),
-            },
+            brief: brief_path.display().to_string(),
+            plan: plan_path.display().to_string(),
         },
         write_create_text,
     )?;
@@ -73,13 +70,11 @@ fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
 fn brief_show(ctx: &Ctx) -> Result<()> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let brief = ChangeBrief::load(&ctx.project_dir)?;
-    ctx.write(
-        &BriefShowBody {
-            brief,
-            path: brief_path.display().to_string(),
-        },
-        write_brief_show_text,
-    )?;
+    let path = brief_path.display().to_string();
+    ctx.write(&brief, |w, brief| match brief {
+        None => writeln!(w, "no change brief declared at {path}"),
+        Some(brief) => render_brief(w, brief, &path),
+    })?;
     Ok(())
 }
 
@@ -150,34 +145,13 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
 #[serde(rename_all = "kebab-case")]
 struct CreateBody {
     name: String,
-    brief: PathRef,
-    plan: PathRef,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct PathRef {
-    path: String,
+    brief: String,
+    plan: String,
 }
 
 fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
-    writeln!(w, "Created change brief for {} at {}", body.name, body.brief.path)?;
-    writeln!(w, "Initialised plan '{}' at {}.", body.name, body.plan.path)
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct BriefShowBody {
-    #[serde(flatten)]
-    brief: Option<ChangeBrief>,
-    path: String,
-}
-
-fn write_brief_show_text(w: &mut dyn Write, body: &BriefShowBody) -> std::io::Result<()> {
-    match &body.brief {
-        None => writeln!(w, "no change brief declared at {}", body.path),
-        Some(brief) => render_brief(w, brief, &body.path),
-    }
+    writeln!(w, "Created change brief for {} at {}", body.name, body.brief)?;
+    writeln!(w, "Initialised plan '{}' at {}.", body.name, body.plan)
 }
 
 fn render_brief(w: &mut dyn Write, brief: &ChangeBrief, path: &str) -> std::io::Result<()> {

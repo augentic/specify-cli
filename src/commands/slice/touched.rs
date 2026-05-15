@@ -4,7 +4,9 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_domain::merge::MergeStrategy;
-use specify_domain::slice::{Overlap, SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions};
+use specify_domain::slice::{
+    Overlap, SliceMetadata, SpecKind, TouchedSpec, actions as slice_actions,
+};
 use specify_error::{Error, Result};
 
 use super::artifact_classes;
@@ -95,7 +97,13 @@ pub(super) fn overlap(ctx: &Ctx, name: String) -> Result<()> {
     let slices_dir = ctx.slices_dir();
     let overlaps = slice_actions::overlap(&slices_dir, &name)?;
 
-    ctx.write(&OverlapBody { name, overlaps: &overlaps }, write_overlap_text)?;
+    ctx.write(
+        &OverlapBody {
+            name,
+            overlaps: &overlaps,
+        },
+        write_overlap_text,
+    )?;
     Ok(())
 }
 

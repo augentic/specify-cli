@@ -943,15 +943,15 @@ fn change_create_empty_json_matches_golden() {
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
     assert_eq!(actual["name"], "my-change");
-    let plan_path = actual["plan"]["path"].as_str().expect("plan.path string");
+    let plan_path = actual["plan"].as_str().expect("plan string");
     assert!(
         plan_path.ends_with("/plan.yaml"),
-        "plan.path should end with /plan.yaml at the repo root, got: {plan_path}"
+        "plan should end with /plan.yaml at the repo root, got: {plan_path}"
     );
-    let brief_path = actual["brief"]["path"].as_str().expect("brief.path string");
+    let brief_path = actual["brief"].as_str().expect("brief string");
     assert!(
         brief_path.ends_with("/change.md"),
-        "brief.path should end with /change.md at the repo root, got: {brief_path}"
+        "brief should end with /change.md at the repo root, got: {brief_path}"
     );
 
     assert!(project.plan_path().exists(), "plan.yaml should be created");
@@ -974,10 +974,10 @@ fn plan_create_scaffolds_plan_only_json_matches_golden() {
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
     assert_eq!(actual["name"], "my-change");
-    let plan_path = actual["plan"]["path"].as_str().expect("plan.path string");
+    let plan_path = actual["plan"].as_str().expect("plan string");
     assert!(
         plan_path.ends_with("/plan.yaml"),
-        "plan.path should end with /plan.yaml at the repo root, got: {plan_path}"
+        "plan should end with /plan.yaml at the repo root, got: {plan_path}"
     );
 
     assert!(project.plan_path().exists(), "plan.yaml should be created");

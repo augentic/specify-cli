@@ -7,19 +7,16 @@ use std::str::FromStr;
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 
-pub use crate::commands::capability::cli::CapabilityAction;
-pub use crate::commands::change::cli::ChangeAction;
-pub use crate::commands::codex::cli::CodexAction;
-pub use crate::commands::compatibility::cli::CompatibilityAction;
-pub use crate::commands::context::cli::ContextAction;
-pub use crate::commands::plan::cli::{LockAction, PlanAction};
-pub use crate::commands::registry::cli::RegistryAction;
-pub use crate::commands::slice::cli::{
-    JournalAction, OutcomeAction, OutcomeKindAction, RegistryAmendmentProposal, SliceAction,
-    SliceMergeAction, SliceTaskAction,
-};
-pub use crate::commands::tool::cli::ToolAction;
-pub use crate::commands::workspace::cli::WorkspaceAction;
+use crate::commands::capability::cli::CapabilityAction;
+use crate::commands::change::cli::ChangeAction;
+use crate::commands::codex::cli::CodexAction;
+use crate::commands::compatibility::cli::CompatibilityAction;
+use crate::commands::context::cli::ContextAction;
+use crate::commands::plan::cli::PlanAction;
+use crate::commands::registry::cli::RegistryAction;
+use crate::commands::slice::cli::SliceAction;
+use crate::commands::tool::cli::ToolAction;
+use crate::commands::workspace::cli::WorkspaceAction;
 
 #[derive(Parser)]
 #[command(

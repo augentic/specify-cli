@@ -19,7 +19,7 @@ use specify_domain::config::Layout;
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
-use crate::cli::{LockAction, PlanAction};
+use self::cli::{LockAction, PlanAction};
 use crate::context::Ctx;
 
 pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {

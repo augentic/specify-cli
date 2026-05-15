@@ -4,35 +4,38 @@
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
+use serde::Serialize;
 use specify_error::{Error, is_kebab};
 
 use crate::slice::{LifecycleStatus, SliceMetadata};
 
 /// What to do when [`create`] finds an existing directory at the
 /// target path.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, clap::ValueEnum)]
 #[non_exhaustive]
 pub enum CreateIfExists {
-    /// Default. Refuse and return `Error::Diag`.
+    /// Refuse when the directory exists (default).
     Fail,
-    /// Reuse the existing directory. The function reloads its
-    /// `.metadata.yaml` and returns it without writing. Intended for the
-    /// define skill's "continue in-flight slice" flow.
+    /// Reuse the existing directory — requires a valid `.metadata.yaml`.
+    /// Intended for the define skill's "continue in-flight slice" flow.
     Continue,
-    /// Delete and recreate. Intended for the define skill's "restart"
-    /// flow. The caller is expected to have already archived anything it
-    /// wants to keep — this branch is destructive.
+    /// Delete and recreate — destructive. Intended for the define
+    /// skill's "restart" flow. The caller is expected to have already
+    /// archived anything it wants to keep.
     Restart,
 }
 
 /// Outcome of [`create`], surfacing whether a new directory was written
 /// or an existing one was reused.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 #[must_use]
 pub struct Created {
     /// Path to the slice directory.
+    #[serde(serialize_with = "specify_error::serde_path_display::serialize")]
     pub dir: PathBuf,
     /// Loaded or freshly-created metadata.
+    #[serde(flatten)]
     pub metadata: SliceMetadata,
     /// `true` when the call created a new directory; `false` when an
     /// existing directory was reused (`CreateIfExists::Continue`).

@@ -8,9 +8,6 @@ use specify_domain::config::Layout;
 use specify_domain::merge::{ArtifactClass, MergeStrategy};
 use specify_error::Result;
 
-use crate::cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
-use crate::context::Ctx;
-
 pub mod cli;
 mod journal;
 mod lifecycle;
@@ -21,7 +18,10 @@ mod task;
 mod touched;
 mod validate;
 
+use cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
 pub(super) use list::{StatusEntry, collect_status, list_slice_names};
+
+use crate::context::Ctx;
 
 /// Default omnia [`ArtifactClass`] set: `specs` (3-way merge) and
 /// `contracts` (opaque replace). Single source of truth in the
@@ -50,7 +50,7 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             name,
             capability,
             if_exists,
-        } => lifecycle::create(ctx, &name, capability, if_exists.into()),
+        } => lifecycle::create(ctx, &name, capability, if_exists),
         SliceAction::Status { name } => list::status_one(ctx, &name),
         SliceAction::Validate { name } => validate::run(ctx, &name),
         SliceAction::Merge { action } => match action {

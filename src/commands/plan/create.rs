@@ -86,9 +86,7 @@ pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result
     ctx.write(
         &CreateBody {
             name,
-            plan: PathRef {
-                path: plan_path.display().to_string(),
-            },
+            plan: plan_path.display().to_string(),
         },
         write_create_text,
     )?;
@@ -178,17 +176,11 @@ pub(super) fn amend(
 #[serde(rename_all = "kebab-case")]
 struct CreateBody {
     name: String,
-    plan: PathRef,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct PathRef {
-    path: String,
+    plan: String,
 }
 
 fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
-    writeln!(w, "Initialised plan '{}' at {}.", body.name, body.plan.path)
+    writeln!(w, "Initialised plan '{}' at {}.", body.name, body.plan)
 }
 
 #[derive(Serialize)]

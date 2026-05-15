@@ -8,7 +8,7 @@ use specify_domain::capability::{
 };
 use specify_error::{Error, Result, ValidationSummary};
 
-use crate::cli::CodexAction;
+use self::cli::CodexAction;
 use crate::context::Ctx;
 
 /// Dispatch `specify codex *`.

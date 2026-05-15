@@ -14,7 +14,10 @@ pub mod workspace;
 use clap::CommandFactory;
 use specify_error::Result;
 
-use crate::cli::{CapabilityAction, Cli, Commands, Format, ToolAction, WorkspaceAction};
+use crate::cli::{Cli, Commands, Format};
+use crate::commands::capability::cli::CapabilityAction;
+use crate::commands::tool::cli::ToolAction;
+use crate::commands::workspace::cli::WorkspaceAction;
 use crate::context::Ctx;
 use crate::output::{Exit, report};
 

@@ -7,7 +7,7 @@ use specify_domain::validate::{
 };
 use specify_error::{Error, Result};
 
-use crate::cli::CompatibilityAction;
+use self::cli::CompatibilityAction;
 use crate::context::Ctx;
 
 /// Dispatch `specify compatibility *`.

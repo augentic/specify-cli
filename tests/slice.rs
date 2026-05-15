@@ -28,7 +28,8 @@ fn create_writes_dir_and_metadata() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["name"], "my-slice");
+    let dir = value["dir"].as_str().expect("dir string");
+    assert!(dir.ends_with("/my-slice"), "dir should end with /my-slice, got: {dir}");
     assert_eq!(value["status"], "defining");
     let capability = value["capability"].as_str().expect("capability string");
     assert!(capability.starts_with("file://"));
@@ -898,17 +899,14 @@ fn outcome_registry_amendment_writes_payload() {
         .success();
     let value = parse_json(&assert.get_output().stdout);
     let outcome = &value["outcome"];
-    assert_eq!(outcome["outcome"].as_str(), Some("registry-amendment-required"));
-    let proposal = &outcome["proposal"];
-    assert_eq!(proposal["proposed-name"].as_str(), Some("alpha-gateway"));
+    let payload = &outcome["outcome"]["registry-amendment-required"];
+    assert!(payload.is_object(), "expected externally-tagged variant, got: {outcome}");
+    assert_eq!(payload["proposed-name"].as_str(), Some("alpha-gateway"));
+    assert_eq!(payload["proposed-url"].as_str(), Some("git@github.com:augentic/alpha-gateway.git"),);
+    assert_eq!(payload["proposed-capability"].as_str(), Some("omnia@v1"));
+    assert_eq!(payload["proposed-description"].as_str(), Some("Gateway for alpha capability."));
     assert_eq!(
-        proposal["proposed-url"].as_str(),
-        Some("git@github.com:augentic/alpha-gateway.git"),
-    );
-    assert_eq!(proposal["proposed-capability"].as_str(), Some("omnia@v1"));
-    assert_eq!(proposal["proposed-description"].as_str(), Some("Gateway for alpha capability."),);
-    assert_eq!(
-        proposal["rationale"].as_str(),
+        payload["rationale"].as_str(),
         Some("build discovered tangled code requiring a split"),
     );
     assert_eq!(
