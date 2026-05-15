@@ -1,5 +1,6 @@
-//! Source resolution for local paths, `file:` URIs, `https:` URIs, and
-//! wasm-pkg package requests.
+//! Source resolution for local paths, `file:` URIs, `https:` URIs,
+//! `$PROJECT_DIR`/`$CAPABILITY_DIR` template paths, and wasm-pkg
+//! package requests.
 
 use std::ffi::OsStr;
 use std::fs;
@@ -48,7 +49,7 @@ pub struct ResolvedTool {
 pub fn resolve(
     scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, project_dir: &Path,
 ) -> Result<ResolvedTool, ToolError> {
-    resolve_with(scope, tool, now, &WasmPkgClient::new(project_dir.to_path_buf()))
+    resolve_with(scope, tool, now, project_dir, &WasmPkgClient::new(project_dir.to_path_buf()))
 }
 
 /// Resolve a declared tool using an injected package client.
@@ -60,7 +61,8 @@ pub fn resolve(
 ///
 /// Returns the same cache, source, digest, and resolver errors as [`resolve`].
 pub(crate) fn resolve_with(
-    scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, package_client: &impl PackageClient,
+    scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, project_dir: &Path,
+    package_client: &impl PackageClient,
 ) -> Result<ResolvedTool, ToolError> {
     let source = tool.source.to_wire_string().into_owned();
     let module = cache::module_path(scope, &tool.name, &tool.version)?;
@@ -88,8 +90,24 @@ pub(crate) fn resolve_with(
         .tempdir_in(parent)
         .map_err(|err| ToolError::cache_io("create resolver staging directory", parent, err))?
         .keep();
-    let install_result =
-        stage_and_install(scope, tool, &source, &staged, &dest, now, package_client);
+    let capability_dir = match scope {
+        ToolScope::Capability { capability_dir, .. } => Some(capability_dir.as_path()),
+        ToolScope::Project { .. } => None,
+    };
+    let expanded_source = tool
+        .source
+        .expand(project_dir, capability_dir)
+        .map_err(|reason| ToolError::invalid_source(tool.source.to_wire_string(), reason))?;
+    let install_result = stage_and_install(
+        scope,
+        tool,
+        &source,
+        &staged,
+        &dest,
+        now,
+        package_client,
+        &expanded_source,
+    );
     // The atomic install moves `staged/` into `dest/`, so its absence on
     // success is expected. On failure we tear down the staging tree.
     let cleanup_result = if install_result.is_ok() && !staged.exists() {
@@ -106,12 +124,16 @@ pub(crate) fn resolve_with(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "expanded_source is a resolution-time addition; splitting further obscures the staging pipeline"
+)]
 fn stage_and_install(
     scope: &ToolScope, tool: &Tool, source: &str, staged: &Path, dest: &Path, now: jiff::Timestamp,
-    package_client: &impl PackageClient,
+    package_client: &impl PackageClient, expanded_source: &ToolSource,
 ) -> Result<(), ToolError> {
     let module_dest = staged.join(MODULE_FILENAME);
-    let acquired = acquire_source_bytes(&tool.source, &module_dest, package_client)?;
+    let acquired = acquire_source_bytes(expanded_source, &module_dest, package_client)?;
     digest::validate(source, &acquired, tool.sha256.as_deref())?;
     let AcquiredBytes {
         temp,
@@ -153,6 +175,9 @@ fn acquire_source_bytes(
         ToolSource::FileUri(uri) => buffered_into_acquired(&local::read_file_uri(uri)?, dest_hint),
         ToolSource::HttpsUri(url) => http::download_https(url, dest_hint),
         ToolSource::Package(package) => package_client.fetch(package, dest_hint),
+        ToolSource::TemplatePath(t) => {
+            Err(ToolError::invalid_source(t, "template source was not expanded before resolution"))
+        }
     }
 }
 
@@ -285,6 +310,7 @@ mod tests {
     #[test]
     fn package_source_uses_injected_client_and_records_metadata() {
         let cache_dir = scratch_dir("resolver-package-cache");
+        let project_dir = scratch_dir("resolver-package-project");
         let scope = project_scope();
         let package = PackageRequest {
             namespace: "specify".to_string(),
@@ -296,8 +322,8 @@ mod tests {
 
         let _env = cache_env(&cache_dir);
 
-        let resolved =
-            resolve_with(&scope, &declared, fixed_now(), &client).expect("package resolves");
+        let resolved = resolve_with(&scope, &declared, fixed_now(), &project_dir, &client)
+            .expect("package resolves");
         assert_eq!(fs::read(resolved.bytes_path).expect("cached bytes"), b"package-bytes");
         assert_eq!(client.calls.get(), 1);
 
@@ -314,7 +340,48 @@ mod tests {
             Some("ghcr.io/augentic/specify/contract:1.0.0")
         );
 
-        resolve_with(&scope, &declared, fixed_now(), &client).expect("package cache hit resolves");
+        resolve_with(&scope, &declared, fixed_now(), &project_dir, &client)
+            .expect("package cache hit resolves");
         assert_eq!(client.calls.get(), 1, "cache hit must not fetch package again");
+    }
+
+    #[test]
+    fn template_path_source_expands_and_resolves() {
+        let cache_dir = scratch_dir("resolver-template-cache");
+        let project_dir = scratch_dir("resolver-template-project");
+        let wasm_dir = project_dir.join("tools");
+        fs::create_dir_all(&wasm_dir).expect("create tools dir");
+        fs::write(wasm_dir.join("vectis.wasm"), b"template-bytes").expect("write wasm");
+
+        let scope = project_scope();
+        let declared =
+            tool(ToolSource::TemplatePath("$PROJECT_DIR/tools/vectis.wasm".to_string()), None);
+
+        let _env = cache_env(&cache_dir);
+
+        let resolved =
+            resolve(&scope, &declared, fixed_now(), &project_dir).expect("template resolves");
+        assert_eq!(fs::read(&resolved.bytes_path).expect("cached bytes"), b"template-bytes");
+    }
+
+    #[test]
+    fn template_path_with_parent_segments_resolves() {
+        let cache_dir = scratch_dir("resolver-template-parent-cache");
+        let project_dir = scratch_dir("resolver-template-parent-project");
+        let sibling_dir = project_dir.parent().expect("parent").join("sibling-cli");
+        fs::create_dir_all(&sibling_dir).expect("create sibling dir");
+        fs::write(sibling_dir.join("vectis.wasm"), b"sibling-bytes").expect("write wasm");
+
+        let scope = project_scope();
+        let declared = tool(
+            ToolSource::TemplatePath("$PROJECT_DIR/../sibling-cli/vectis.wasm".to_string()),
+            None,
+        );
+
+        let _env = cache_env(&cache_dir);
+
+        let resolved = resolve(&scope, &declared, fixed_now(), &project_dir)
+            .expect("parent-segment template resolves");
+        assert_eq!(fs::read(&resolved.bytes_path).expect("cached bytes"), b"sibling-bytes");
     }
 }

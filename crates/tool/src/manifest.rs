@@ -35,6 +35,10 @@ pub enum ToolSource {
     HttpsUri(String),
     /// Exact wasm-pkg package request.
     Package(PackageRequest),
+    /// Template path starting with `$PROJECT_DIR` or `$CAPABILITY_DIR`.
+    /// Expanded to a [`LocalPath`](Self::LocalPath) at resolution time
+    /// when the project directory is known.
+    TemplatePath(String),
 }
 
 /// Exact wasm-pkg package request used by first-party tool declarations.
@@ -62,11 +66,13 @@ impl ToolSource {
             Ok(Self::FileUri(value.to_string()))
         } else if Path::new(value).is_absolute() || looks_like_windows_absolute(value) {
             Ok(Self::LocalPath(PathBuf::from(value)))
+        } else if looks_like_template_path(value) {
+            Ok(Self::TemplatePath(value.to_string()))
         } else if looks_like_package_request(value) {
             Ok(Self::Package(PackageRequest::parse(value)))
         } else {
             Err(format!(
-                "unsupported tool source `{value}`; expected an absolute path, file:// URI, https:// URI, or wasm package request"
+                "unsupported tool source `{value}`; expected an absolute path, file:// URI, https:// URI, $PROJECT_DIR/$CAPABILITY_DIR template, or wasm package request"
             ))
         }
     }
@@ -78,7 +84,40 @@ impl ToolSource {
             Self::LocalPath(path) => path.to_string_lossy(),
             Self::FileUri(uri) | Self::HttpsUri(uri) => Cow::Borrowed(uri),
             Self::Package(package) => Cow::Owned(package.to_wire_string()),
+            Self::TemplatePath(template) => Cow::Borrowed(template),
         }
+    }
+
+    /// Expand a [`TemplatePath`](Self::TemplatePath) into a [`LocalPath`](Self::LocalPath)
+    /// by substituting `$PROJECT_DIR` and `$CAPABILITY_DIR`.
+    ///
+    /// Non-template variants are returned unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the template references `$CAPABILITY_DIR` but
+    /// no capability directory is provided, when the expanded path is not
+    /// absolute, or when the root directory is not valid UTF-8.
+    pub fn expand(
+        &self, project_dir: &Path, capability_dir: Option<&Path>,
+    ) -> Result<Self, String> {
+        let Self::TemplatePath(template) = self else {
+            return Ok(self.clone());
+        };
+        let project = project_dir.to_str().ok_or("$PROJECT_DIR contains non-UTF-8 bytes")?;
+        let mut expanded = template.replace("$PROJECT_DIR", project);
+        if expanded.contains("$CAPABILITY_DIR") {
+            let capability = capability_dir
+                .ok_or("$CAPABILITY_DIR is only available to capability-scope tools")?
+                .to_str()
+                .ok_or("$CAPABILITY_DIR contains non-UTF-8 bytes")?;
+            expanded = expanded.replace("$CAPABILITY_DIR", capability);
+        }
+        let path = PathBuf::from(&expanded);
+        if !path.is_absolute() {
+            return Err(format!("expanded source path must be absolute: {expanded}"));
+        }
+        Ok(Self::LocalPath(path))
     }
 }
 
@@ -259,6 +298,10 @@ fn looks_like_package_request(value: &str) -> bool {
     value.contains(':') || value.starts_with("specify:")
 }
 
+fn looks_like_template_path(value: &str) -> bool {
+    value.starts_with("$PROJECT_DIR") || value.starts_with("$CAPABILITY_DIR")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,5 +399,50 @@ mod tests {
         assert_eq!(tool.name, "helper");
         assert_eq!(tool.version, "latest");
         assert_eq!(tool.permissions, ToolPermissions::default());
+    }
+
+    #[test]
+    fn template_path_source_parses_and_round_trips() {
+        let manifest: ToolManifest = serde_saphyr::from_str(
+            "tools:\n  - name: vectis\n    version: 0.3.0\n    source: $PROJECT_DIR/../specify-cli/target/vectis.wasm\n",
+        )
+        .expect("parse template source");
+        let tool = &manifest.tools[0];
+        assert!(
+            matches!(&tool.source, ToolSource::TemplatePath(t) if t == "$PROJECT_DIR/../specify-cli/target/vectis.wasm"),
+        );
+        let yaml = serde_saphyr::to_string(&manifest).expect("serialize template source");
+        assert!(yaml.contains("source: $PROJECT_DIR/../specify-cli/target/vectis.wasm"), "{yaml}");
+    }
+
+    #[test]
+    fn expand_replaces_project_dir() {
+        let source = ToolSource::TemplatePath("$PROJECT_DIR/tools/vectis.wasm".to_string());
+        let expanded = source.expand(Path::new("/home/user/project"), None).expect("expand");
+        assert_eq!(
+            expanded,
+            ToolSource::LocalPath(PathBuf::from("/home/user/project/tools/vectis.wasm"))
+        );
+    }
+
+    #[test]
+    fn expand_replaces_capability_dir() {
+        let source = ToolSource::TemplatePath("$CAPABILITY_DIR/bin/tool.wasm".to_string());
+        let expanded =
+            source.expand(Path::new("/project"), Some(Path::new("/caps/vectis"))).expect("expand");
+        assert_eq!(expanded, ToolSource::LocalPath(PathBuf::from("/caps/vectis/bin/tool.wasm")));
+    }
+
+    #[test]
+    fn expand_rejects_capability_dir_without_scope() {
+        let source = ToolSource::TemplatePath("$CAPABILITY_DIR/bin/tool.wasm".to_string());
+        source.expand(Path::new("/project"), None).expect_err("must reject missing capability dir");
+    }
+
+    #[test]
+    fn expand_is_identity_for_non_template_sources() {
+        let source = ToolSource::LocalPath(PathBuf::from("/absolute/path.wasm"));
+        let expanded = source.expand(Path::new("/project"), None).expect("expand");
+        assert_eq!(expanded, ToolSource::LocalPath(PathBuf::from("/absolute/path.wasm")));
     }
 }
