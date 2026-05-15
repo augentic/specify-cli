@@ -1349,10 +1349,10 @@ fn plan_lock_acquire_release_cycles() {
         .assert()
         .success();
     let acquired = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(acquired["held"], true);
     assert_eq!(acquired["pid"], std::process::id());
     assert_eq!(acquired["already-held"], false);
     assert_eq!(acquired["reclaimed-stale-pid"], Value::Null);
+    assert_eq!(acquired.get("held"), None, "acquire body must not carry the redundant `held` flag");
 
     assert!(lock_path(&project).exists(), "lockfile must exist after acquire");
     let contents = fs::read_to_string(lock_path(&project)).expect("read lockfile");

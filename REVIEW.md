@@ -312,6 +312,7 @@ Reconnaissance numbers used: 207 Rust source files / 29 500 LOC under `crates/` 
 ## Post-mortem
 
 - **F-01.** Applied. Actual ΔLOC `−36` (323 → 287) vs predicted `−25`; the review undercounted by missing the `.into_iter().map(ValidateRow::from).collect()` chain that collapsed to a direct `plan_doctor(...)` assignment. "Done when" (`rg 'struct ValidateRow' src/commands/plan/lifecycle.rs` → nothing) flipped cleanly. Wire rename `level` → `severity` propagated to `schemas/plan-validate-output/{schema.json,README.md}`, `tests/fixtures/plan/validate-duplicate-name.json`, and four `["level"]` lookups in `tests/plan_orchestrate.rs`; full `cargo test` + `cargo clippy --all-targets -- -D warnings` clean, no regressions.
+- **F-02.** Applied. Actual ΔLOC `−32` (132 → 100) vs predicted `−30`; "Done when" (`rg 'struct (AcquireBody|StatusBody)' src/commands/plan/lock.rs` → nothing) flipped cleanly. Wire change: `acquire` body no longer carries the redundant `held: true` constant — `tests/plan_orchestrate.rs::plan_lock_acquire_release_cycles` now asserts `acquired.get("held") == None` instead. `Acquired` and `State` derive `Serialize` + `rename_all = "kebab-case"` directly in the domain; full `cargo test --all-targets` + `cargo clippy --all-targets -- -D warnings` clean, no regressions.
 
 ## Notes on items considered and dropped
 

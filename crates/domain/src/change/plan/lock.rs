@@ -3,6 +3,8 @@
 
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
 mod acquire;
 mod pid;
 mod release;
@@ -12,7 +14,8 @@ mod status;
 mod tests;
 
 /// Result of a successful [`Stamp::acquire`] call.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct Acquired {
     /// PID written into the stamp file.
     pub pid: u32,
@@ -49,7 +52,8 @@ pub enum Released {
 
 /// Snapshot of the on-disk `.specify/plan.lock` stamp, as reported by
 /// `specify plan lock status`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct State {
     /// `true` when the stamp file exists and the stamped PID is
     /// considered alive by the host liveness probe.
