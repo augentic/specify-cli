@@ -6,7 +6,8 @@ use std::path::Path;
 
 use specify_domain::config::Layout;
 use specify_domain::merge::{ArtifactClass, MergeStrategy};
-use specify_error::Result;
+use specify_domain::slice::LifecycleStatus;
+use specify_error::{Error, Result};
 
 pub mod cli;
 mod journal;
@@ -76,7 +77,15 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             } => journal::append(ctx, name, phase, kind, summary, context),
             JournalAction::Show { name } => journal::show(ctx, name),
         },
-        SliceAction::Transition { name, target } => lifecycle::transition(ctx, name, target.into()),
+        SliceAction::Transition { name, target } => {
+            if matches!(target, LifecycleStatus::Merged) {
+                return Err(Error::Argument {
+                    flag: "<target>",
+                    detail: "use `specify slice merge run` to reach `merged`".to_string(),
+                });
+            }
+            lifecycle::transition(ctx, name, target)
+        }
         SliceAction::TouchedSpecs { name, scan, set } => touched::specs(ctx, name, scan, &set),
         SliceAction::Overlap { name } => touched::overlap(ctx, name),
         SliceAction::Drop { name, reason } => {

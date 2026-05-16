@@ -138,29 +138,28 @@ fn transition_rejects_merged_target() {
     // The `merged` lifecycle status is reserved for `slice merge run`,
     // which writes it atomically alongside the spec merge and archive
     // move. Hand-driven `slice transition <name> merged` would skip
-    // that bookkeeping, so the CLI must refuse the value before the
-    // dispatcher ever sees it.
+    // that bookkeeping, so the dispatcher refuses the value with an
+    // argument-error envelope (exit 2) before lifecycle ever runs.
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["slice", "transition", "my-slice", "merged"])
+        .args(["--format", "json", "slice", "transition", "my-slice", "merged"])
         .assert()
-        .failure();
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
+        .code(2);
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "argument");
+    assert_eq!(value["exit-code"], 2);
+    let message = value["message"].as_str().expect("message string");
     assert!(
-        stderr.contains("invalid value 'merged'") || stderr.contains("merged"),
-        "transition must reject the `merged` target with a clap-rendered error; got:\n{stderr}"
+        message.contains("specify slice merge run"),
+        "argument-error message must redirect to the merge runner; got:\n{message}"
     );
-    // Sanity: at least one legal target name appears in the error so
-    // operators can self-correct.
-    for target in ["defined", "building", "complete", "dropped"] {
-        assert!(
-            stderr.contains(target),
-            "clap rejection must list legal targets; missing `{target}` in:\n{stderr}"
-        );
-    }
+    assert!(
+        message.contains("merged"),
+        "argument-error message must name the rejected target; got:\n{message}"
+    );
 }
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 //! Clap derive surface for `specify slice *` and its nested verbs.
 //! The umbrella `cli.rs` re-exports the action enums.
 
-use clap::{Subcommand, ValueEnum};
+use clap::Subcommand;
 use serde::Deserialize;
 use specify_domain::capability::Phase;
 use specify_domain::slice::{CreateIfExists, EntryKind, LifecycleStatus};
@@ -56,9 +56,11 @@ pub enum SliceAction {
     Transition {
         /// Slice name
         name: String,
-        /// Target status (`defined`, `building`, `complete`, `dropped`, or `defining`)
+        /// Target status (`defined`, `building`, `complete`, `dropped`, or `defining`).
+        /// `merged` is reserved for `specify slice merge run` and is
+        /// rejected with exit 2 if passed here.
         #[arg(value_enum)]
-        target: TransitionTarget,
+        target: LifecycleStatus,
     },
     /// Scan or overwrite `touched_specs` on `.metadata.yaml`
     TouchedSpecs {
@@ -252,36 +254,4 @@ pub enum JournalAction {
         /// Slice name
         name: String,
     },
-}
-
-/// CLI-only transition target enum. Mirrors [`LifecycleStatus`]
-/// minus `Merged` so operators cannot drive the merge-success
-/// transition out-of-band — that is reserved for
-/// `specify slice merge run`, which writes `Merged`, stamps the
-/// merge outcome, and archives the slice atomically.
-#[derive(Debug, Copy, Clone, ValueEnum)]
-#[clap(rename_all = "kebab-case")]
-pub enum TransitionTarget {
-    /// Slice is being defined (artifacts authored).
-    Defining,
-    /// Definition complete, awaiting build.
-    Defined,
-    /// Build phase in progress.
-    Building,
-    /// Build complete, awaiting merge.
-    Complete,
-    /// Slice discarded without merging.
-    Dropped,
-}
-
-impl From<TransitionTarget> for LifecycleStatus {
-    fn from(value: TransitionTarget) -> Self {
-        match value {
-            TransitionTarget::Defining => Self::Defining,
-            TransitionTarget::Defined => Self::Defined,
-            TransitionTarget::Building => Self::Building,
-            TransitionTarget::Complete => Self::Complete,
-            TransitionTarget::Dropped => Self::Dropped,
-        }
-    }
 }
