@@ -47,11 +47,16 @@ pub struct MergePreviewEntry {
     /// Spec/composition name (e.g. `"login"`, `"composition"`).
     pub name: String,
     /// Absolute path where the merged baseline will be written.
-    #[serde(serialize_with = "specify_error::serde_path_display::serialize")]
+    #[serde(serialize_with = "ser_baseline_path")]
     pub baseline_path: PathBuf,
     /// In-memory merge result.
     #[serde(flatten)]
     pub result: MergeResult,
+}
+
+#[expect(clippy::ptr_arg, reason = "serde `serialize_with` requires `&PathBuf`")]
+fn ser_baseline_path<S: serde::Serializer>(v: &PathBuf, s: S) -> Result<S::Ok, S::Error> {
+    s.collect_str(&v.display())
 }
 
 /// One opaque-replace file pre-image discovered under a

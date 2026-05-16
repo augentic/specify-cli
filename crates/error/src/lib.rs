@@ -3,7 +3,6 @@
 //! structured so the binary can route them to exit codes and formats.
 
 pub mod error;
-pub mod serde_path_display;
 pub mod serde_rfc3339;
 pub mod validation;
 pub mod yaml;

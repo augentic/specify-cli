@@ -32,7 +32,7 @@ pub enum CreateIfExists {
 #[must_use]
 pub struct Created {
     /// Path to the slice directory.
-    #[serde(serialize_with = "specify_error::serde_path_display::serialize")]
+    #[serde(serialize_with = "ser_dir")]
     pub dir: PathBuf,
     /// Loaded or freshly-created metadata.
     #[serde(flatten)]
@@ -43,6 +43,11 @@ pub struct Created {
     /// `true` when the call replaced an existing directory
     /// (`CreateIfExists::Restart`).
     pub restarted: bool,
+}
+
+#[expect(clippy::ptr_arg, reason = "serde `serialize_with` requires `&PathBuf`")]
+fn ser_dir<S: serde::Serializer>(v: &PathBuf, s: S) -> Result<S::Ok, S::Error> {
+    s.collect_str(&v.display())
 }
 
 /// Validate a kebab-case slice name.
