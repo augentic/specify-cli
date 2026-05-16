@@ -16,11 +16,6 @@ pub enum CapabilityAction {
         #[arg(long, default_value = ".")]
         project_dir: PathBuf,
     },
-    /// Validate a `capability.yaml` file.
-    Check {
-        /// Directory containing `capability.yaml`
-        capability_dir: PathBuf,
-    },
     /// List the briefs for a phase in topological order (optionally
     /// with completion status against a specific slice)
     Pipeline {

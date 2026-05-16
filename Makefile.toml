@@ -118,13 +118,3 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 command = "cargo"
 args = ["run", "--quiet", "-p", "xtask", "--", "${@}"]
 
-# Build the first-party `contract` WASI tool into the sibling
-# workspace's target dir. `tests/contract_tool.rs` reads the
-# artifact directly from `wasi-tools/target/wasm32-wasip2/release/`,
-# so this task is a precondition for that integration test.
-[tasks.contract-wasm]
-script = '''
-set -euo pipefail
-cd wasi-tools
-cargo build -p specify-contract --target wasm32-wasip2 --release
-'''

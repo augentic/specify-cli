@@ -53,7 +53,7 @@ fn assert_golden(name: &str, actual: Value) {
 /// Replace any RFC3339 `YYYY-MM-DDTHH:MM:SS(Z|±HH:MM)` timestamp in JSON
 /// strings with the placeholder `<ISO8601>` so goldens stay stable
 /// across test runs. Mirrors
-/// `change_plan_orchestrate.rs::strip_date_stamps` for the timestamp
+/// `plan_orchestrate.rs::strip_date_stamps` for the timestamp
 /// case.
 fn strip_iso8601(value: &mut Value) {
     fn visit(re: &regex::Regex, v: &mut Value) {

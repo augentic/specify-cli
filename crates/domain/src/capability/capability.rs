@@ -27,7 +27,7 @@ pub struct Capability {
 /// Pipeline phases and their brief entries.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Pipeline {
-    /// Optional Layer 2 authoring-phase briefs for `/change:plan`.
+    /// Optional Layer 2 authoring-phase briefs for `/change:draft`.
     /// Absent in pre-existing manifests; present ones expose briefs such
     /// as `discovery.md` → `propose.md` that run before the
     /// define→build→merge execution loop.
@@ -79,7 +79,7 @@ pub enum CapabilitySource {
 /// `SliceMetadata.outcome.phase` and by `pipeline.*` keys in the
 /// manifest, keeping a single source of truth for phase naming.
 ///
-/// `Plan` is the Layer 2 authoring phase (`/change:plan`) that runs
+/// `Plan` is the Layer 2 authoring phase (`/change:draft`) that runs
 /// ahead of the define→build→merge execution loop. It is intentionally
 /// omitted from `Capability::entries()` (see that iterator's docs) —
 /// call `Capability::plan_entries()` to enumerate plan-phase briefs.
@@ -99,7 +99,7 @@ pub enum CapabilitySource {
 #[strum(serialize_all = "kebab-case")]
 #[non_exhaustive]
 pub enum Phase {
-    /// Layer 2 authoring phase (`/change:plan`).
+    /// Layer 2 authoring phase (`/change:draft`).
     Plan,
     /// Define phase — artifact generation.
     Define,
@@ -199,7 +199,7 @@ impl Capability {
     /// (define → build → merge), paired with its phase.
     ///
     /// This intentionally skips `pipeline.plan`: the plan phase is an
-    /// authoring-time step driven by `/change:plan` and is not part of
+    /// authoring-time step driven by `/change:draft` and is not part of
     /// the per-change execution loop that `specify change status`,
     /// `specify change outcome`, and the define/build/merge skills
     /// iterate over. Plan briefs are exposed via

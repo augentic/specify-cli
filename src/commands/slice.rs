@@ -6,10 +6,8 @@ use std::path::Path;
 
 use specify_domain::config::Layout;
 use specify_domain::merge::{ArtifactClass, MergeStrategy};
-use specify_error::Result;
-
-use crate::cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
-use crate::context::Ctx;
+use specify_domain::slice::LifecycleStatus;
+use specify_error::{Error, Result};
 
 pub mod cli;
 mod journal;
@@ -21,7 +19,10 @@ mod task;
 mod touched;
 mod validate;
 
+use cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
 pub(super) use list::{StatusEntry, collect_status, list_slice_names};
+
+use crate::context::Ctx;
 
 /// Default omnia [`ArtifactClass`] set: `specs` (3-way merge) and
 /// `contracts` (opaque replace). Single source of truth in the
@@ -50,8 +51,7 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             name,
             capability,
             if_exists,
-        } => lifecycle::create(ctx, &name, capability, if_exists.into()),
-        SliceAction::List => list::run(ctx),
+        } => lifecycle::create(ctx, &name, capability, if_exists),
         SliceAction::Status { name } => list::status_one(ctx, &name),
         SliceAction::Validate { name } => validate::run(ctx, &name),
         SliceAction::Merge { action } => match action {
@@ -77,10 +77,17 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             } => journal::append(ctx, name, phase, kind, summary, context),
             JournalAction::Show { name } => journal::show(ctx, name),
         },
-        SliceAction::Transition { name, target } => lifecycle::transition(ctx, name, target),
+        SliceAction::Transition { name, target } => {
+            if matches!(target, LifecycleStatus::Merged) {
+                return Err(Error::Argument {
+                    flag: "<target>",
+                    detail: "use `specify slice merge run` to reach `merged`".to_string(),
+                });
+            }
+            lifecycle::transition(ctx, name, target)
+        }
         SliceAction::TouchedSpecs { name, scan, set } => touched::specs(ctx, name, scan, &set),
         SliceAction::Overlap { name } => touched::overlap(ctx, name),
-        SliceAction::Archive { name } => lifecycle::archive(ctx, name),
         SliceAction::Drop { name, reason } => {
             lifecycle::discard_slice(ctx, name, reason.as_deref())
         }

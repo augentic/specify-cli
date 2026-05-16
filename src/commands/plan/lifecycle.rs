@@ -3,55 +3,13 @@ use std::io::Write;
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::capability::ChangeBrief;
-use specify_domain::change::{Finding, Plan, Severity, Status};
+use specify_domain::change::{Plan, PlanDoctorDiagnostic, Severity, Status, plan_doctor};
 use specify_domain::config::{InitPolicy, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
 use super::{Ref, plan_ref, require_file};
-use crate::cli::SourceArg;
 use crate::context::Ctx;
-
-pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
-    let plan_path = ctx.layout().plan_path();
-    if plan_path.exists() {
-        return Err(Error::Diag {
-            code: "plan-already-exists",
-            detail: format!(
-                "plan already exists at {}; run `specify change plan archive` first",
-                plan_path.display()
-            ),
-        });
-    }
-
-    let mut source_map: std::collections::BTreeMap<String, String> =
-        std::collections::BTreeMap::new();
-    for SourceArg { key, value } in sources {
-        if source_map.contains_key(&key) {
-            return Err(Error::Diag {
-                code: "plan-source-duplicate-key",
-                detail: format!("duplicate key `{key}` in --source arguments"),
-            });
-        }
-        source_map.insert(key, value);
-    }
-
-    let plan = Plan::init(&name, source_map)?;
-    // `with_state` is for load → mutate → save; `create` writes a fresh plan
-    // and the pre-existence check above is the documented contract.
-    plan.save(&plan_path)?;
-
-    ctx.write(
-        &CreateBody {
-            plan: Ref {
-                name,
-                path: plan_path.display().to_string(),
-            },
-        },
-        write_create_text,
-    )?;
-    Ok(())
-}
 
 pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
@@ -62,13 +20,17 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         Ok(reg) => (reg, None),
         Err(err) => (None, Some(err)),
     };
-    let mut results = plan.validate(Some(&slices_dir), registry.as_ref());
+
+    let mut results: Vec<PlanDoctorDiagnostic> =
+        plan_doctor(&plan, Some(&slices_dir), registry.as_ref(), Some(&ctx.project_dir));
+
     if let Some(err) = registry_err {
-        results.push(Finding {
-            level: Severity::Error,
-            code: "registry-shape",
+        results.push(PlanDoctorDiagnostic {
+            severity: Severity::Error,
+            code: "registry-shape".to_string(),
             message: err.to_string(),
             entry: None,
+            data: None,
         });
     }
     if let Some(reg) = &registry {
@@ -82,21 +44,22 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
                 && let Some(slot_capability) = config.get("capability").and_then(|v| v.as_str())
                 && slot_capability != rp.capability
             {
-                results.push(Finding {
-                    level: Severity::Warning,
-                    code: "capability-mismatch-workspace",
+                results.push(PlanDoctorDiagnostic {
+                    severity: Severity::Warning,
+                    code: "capability-mismatch-workspace".to_string(),
                     message: format!(
                         "workspace clone '{}' has capability '{}' but registry declares '{}'; \
                          the clone's project.yaml is authoritative at execution time",
                         rp.name, slot_capability, rp.capability
                     ),
                     entry: None,
+                    data: None,
                 });
             }
         }
     }
 
-    let has_errors = results.iter().any(|r| matches!(r.level, Severity::Error));
+    let has_errors = results.iter().any(|r| matches!(r.severity, Severity::Error));
     ctx.write(
         &PlanValidateBody {
             plan: Ref {
@@ -112,7 +75,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         Err(Error::validation_failed(
             "plan-structural-errors",
             "plan must be free of structural errors",
-            "run 'specify change plan validate' for detail",
+            "run 'specify plan validate' for detail",
         ))
     } else {
         Ok(())
@@ -129,7 +92,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
         return Err(Error::validation_failed(
             "plan-structural-errors",
             "plan must be free of structural errors",
-            "run 'specify change plan validate' for detail",
+            "run 'specify plan validate' for detail",
         ));
     }
 
@@ -226,19 +189,9 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct CreateBody {
-    plan: Ref,
-}
-
-fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
-    writeln!(w, "Initialised plan '{}' at {}.", body.plan.name, body.plan.path)
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
 struct PlanValidateBody<'a> {
     plan: Ref,
-    results: &'a [Finding],
+    results: &'a [PlanDoctorDiagnostic],
     passed: bool,
 }
 
@@ -246,16 +199,16 @@ fn write_plan_validate_text(w: &mut dyn Write, body: &PlanValidateBody<'_>) -> s
     if body.results.is_empty() {
         return writeln!(w, "Plan OK");
     }
-    for finding in body.results {
-        write_finding_text(w, finding)?;
+    for row in body.results {
+        write_validate_row_text(w, row)?;
     }
     Ok(())
 }
 
-fn write_finding_text(w: &mut dyn Write, finding: &Finding) -> std::io::Result<()> {
-    let label = if matches!(finding.level, Severity::Error) { "ERROR  " } else { "WARNING" };
-    let entry_col = finding.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
-    writeln!(w, "{label} {:<32} {:<24} {}", finding.code, entry_col, finding.message)
+fn write_validate_row_text(w: &mut dyn Write, row: &PlanDoctorDiagnostic) -> std::io::Result<()> {
+    let label = if matches!(row.severity, Severity::Error) { "ERROR  " } else { "WARNING" };
+    let entry_col = row.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
+    writeln!(w, "{label} {:<32} {:<24} {}", row.code, entry_col, row.message)
 }
 
 #[derive(Serialize, Default)]

@@ -1,26 +1,33 @@
-//! Clap derive surface for `specify change *` (the umbrella verb).
-//! The nested `plan *` and `plan lock *` enums live next to their
-//! dispatchers in [`crate::commands::change::plan::cli`].
+//! Clap derive surface for `specify change *` — the operator-facing
+//! Layer 1 verbs that own `change.md` and `plan.yaml`.
+//!
+//! The executable plan moved to its own top-level verb after the
+//! `change plan *` flatten — see [`crate::commands::plan::cli`]. The
+//! remaining verbs here are peer Layer 1 commands supporting peer
+//! Layer 2 skills (`draft`, `show`, `finalize`).
 
 use clap::Subcommand;
 
-use crate::commands::change::plan::cli::PlanAction;
+use crate::cli::SourceArg;
 
-/// Umbrella `change` verbs — owns `change.md` and `plan.yaml`.
+/// `change` verbs — own `change.md` and `plan.yaml`.
 #[derive(Subcommand)]
 pub enum ChangeAction {
-    /// Scaffold `change.md` at the repo root. Refuses to overwrite.
-    Create {
-        /// Kebab-case change name (baked into the frontmatter).
+    /// Scaffold `change.md` and `plan.yaml` at the repo root in one
+    /// shot. Atomic: refuses if either file already exists, and writes
+    /// neither file in that case. Delegates the plan half to the same
+    /// helper that backs `specify plan create`.
+    Draft {
+        /// Kebab-case change name (baked into both the brief
+        /// frontmatter and the plan).
         name: String,
+        /// Named source, repeated: --source `<key>`=`<path-or-url>`.
+        /// Recorded in the plan's `sources:` map.
+        #[arg(long = "source")]
+        sources: Vec<SourceArg>,
     },
     /// Print the parsed change brief (text or JSON). Absent file exits 0.
     Show,
-    /// Manage the change's executable plan (`plan.yaml`).
-    Plan {
-        #[command(subcommand)]
-        action: PlanAction,
-    },
     /// Close out a change once every plan entry is terminal and every
     /// per-project PR has been operator-merged on its remote. Atomic:
     /// any guard failure leaves on-disk state untouched. Never merges

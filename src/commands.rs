@@ -4,6 +4,7 @@ pub mod codex;
 pub mod compatibility;
 pub mod context;
 mod init;
+pub mod plan;
 pub mod registry;
 pub mod slice;
 mod status;
@@ -13,7 +14,10 @@ pub mod workspace;
 use clap::CommandFactory;
 use specify_error::Result;
 
-use crate::cli::{CapabilityAction, Cli, Commands, Format, ToolAction, WorkspaceAction};
+use crate::cli::{Cli, Commands, Format};
+use crate::commands::capability::cli::CapabilityAction;
+use crate::commands::tool::cli::ToolAction;
+use crate::commands::workspace::cli::WorkspaceAction;
 use crate::context::Ctx;
 use crate::output::{Exit, report};
 
@@ -35,9 +39,6 @@ pub fn run(cli: Cli) -> Exit {
                 capability_value,
                 project_dir,
             } => dispatch(format, || capability::resolve(format, capability_value, &project_dir)),
-            CapabilityAction::Check { capability_dir } => {
-                dispatch(format, || capability::check(format, &capability_dir))
-            }
             CapabilityAction::Pipeline { phase, slice } => {
                 scoped(format, |ctx| capability::pipeline(ctx, phase, slice.as_deref()))
             }
@@ -53,6 +54,7 @@ pub fn run(cli: Cli) -> Exit {
         },
         Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
         Commands::Change { action } => scoped(format, |ctx| change::run(ctx, action)),
+        Commands::Plan { action } => scoped(format, |ctx| plan::run(ctx, action)),
         Commands::Registry { action } => scoped(format, |ctx| registry::run(ctx, action)),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
@@ -102,8 +104,8 @@ where
 }
 
 /// Run a command that does NOT need project context but may still fail
-/// with an `Error` (e.g. `capability resolve`, `capability check`).
-/// The `Ctx`-bearing peer is [`scoped`].
+/// with an `Error` (e.g. `capability resolve`). The `Ctx`-bearing peer
+/// is [`scoped`].
 fn dispatch<F>(format: Format, f: F) -> Exit
 where
     F: FnOnce() -> Result<()>,

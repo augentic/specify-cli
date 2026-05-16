@@ -235,12 +235,6 @@ fn capability_scope_lists_sidecar_tool() {
         .expect("read capability.yaml");
     assert!(!cap_yaml.contains("\ntools:"), "capability.yaml must stay closed");
 
-    specify()
-        .args(["--format", "json", "capability", "check"])
-        .arg(fixtures.capability())
-        .assert()
-        .success();
-
     let value = json_tool_list(&fixtures.cap_project(), &cache_dir("capability-list"));
     let tools = value["tools"].as_array().expect("tools array");
     assert_eq!(tools.len(), 1, "{value}");

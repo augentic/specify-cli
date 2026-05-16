@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::Path;
 
+use clap::ValueEnum;
 use serde::Serialize;
 use specify_domain::change::{Entry, Plan, Severity, Status};
 use specify_domain::slice::{LifecycleStatus, SliceMetadata};
@@ -32,14 +33,34 @@ enum OrderLabel {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct Counts {
-    done: usize,
-    in_progress: usize,
-    pending: usize,
-    blocked: usize,
-    failed: usize,
-    skipped: usize,
-    total: usize,
+pub struct Counts {
+    pub done: usize,
+    pub in_progress: usize,
+    pub pending: usize,
+    pub blocked: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    pub total: usize,
+}
+
+impl Counts {
+    pub fn from_entries(entries: &[Entry]) -> Self {
+        let mut counts: BTreeMap<Status, usize> =
+            Status::value_variants().iter().map(|&s| (s, 0)).collect();
+        for entry in entries {
+            *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
+        }
+        let total: usize = counts.values().sum();
+        Self {
+            done: counts[&Status::Done],
+            in_progress: counts[&Status::InProgress],
+            pending: counts[&Status::Pending],
+            blocked: counts[&Status::Blocked],
+            failed: counts[&Status::Failed],
+            skipped: counts[&Status::Skipped],
+            total,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -126,7 +147,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         return Err(Error::validation_failed(
             "plan-structural-errors",
             "plan must be free of structural errors",
-            "run 'specify change plan validate' for detail",
+            "run 'specify plan validate' for detail",
         ));
     }
 
@@ -134,16 +155,12 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         (v, OrderLabel::Topological)
     } else {
         eprintln!(
-            "warning: dependency cycle detected — falling back to list order. Run 'specify change plan validate' for detail."
+            "warning: dependency cycle detected — falling back to list order. Run 'specify plan validate' for detail."
         );
         (plan.entries.iter().collect::<Vec<_>>(), OrderLabel::List)
     };
 
-    let mut counts: BTreeMap<Status, usize> = Status::ALL.iter().map(|&s| (s, 0)).collect();
-    for entry in &plan.entries {
-        *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
-    }
-    let total: usize = counts.values().sum();
+    let counts = Counts::from_entries(&plan.entries);
 
     let active = plan.entries.iter().find(|c| c.status == Status::InProgress);
     let active_lifecycle = active.and_then(|a| read_lifecycle(&slices_dir.join(&a.name)));
@@ -172,15 +189,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
             name: plan.name.clone(),
             path: plan_path.display().to_string(),
         },
-        counts: Counts {
-            done: counts[&Status::Done],
-            in_progress: counts[&Status::InProgress],
-            pending: counts[&Status::Pending],
-            blocked: counts[&Status::Blocked],
-            failed: counts[&Status::Failed],
-            skipped: counts[&Status::Skipped],
-            total,
-        },
+        counts,
         order: order_label,
         entries,
         in_progress,

@@ -1,6 +1,6 @@
-//! Multi-slice list (`slice list`) and single-slice status
-//! (`slice status`). Exposes the helpers consumed by the top-level
-//! `specify status` dashboard.
+//! Single-slice status (`slice status`). Exposes the helpers consumed
+//! by the top-level `specify status` dashboard so multi-slice
+//! enumeration goes through one canonical reader.
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -91,52 +91,22 @@ pub(in crate::commands) fn list_slice_names(slices_dir: &Path) -> Result<Vec<Str
     Ok(names)
 }
 
-pub(super) fn run(ctx: &Ctx) -> Result<()> {
-    let pipeline = ctx.load_pipeline()?;
-    let slices_dir = ctx.slices_dir();
-    let names = list_slice_names(&slices_dir)?;
-
-    let mut entries: Vec<StatusEntry> = Vec::with_capacity(names.len());
-    for name in names {
-        let dir = slices_dir.join(&name);
-        let entry = collect_status(&dir, &name, &pipeline, &ctx.project_dir)?;
-        entries.push(entry);
-    }
-
-    ctx.write(&StatusBody { slices: &entries }, write_status_text)?;
-    Ok(())
-}
-
 pub(super) fn status_one(ctx: &Ctx, name: &str) -> Result<()> {
     let pipeline = ctx.load_pipeline()?;
     let slice_dir = ctx.slices_dir().join(name);
     let entry = collect_status(&slice_dir, name, &pipeline, &ctx.project_dir)?;
 
-    ctx.write(
-        &StatusBody {
-            slices: std::slice::from_ref(&entry),
-        },
-        write_status_text,
-    )?;
+    ctx.write(&StatusBody { slice: &entry }, write_status_text)?;
     Ok(())
 }
 
 #[derive(Serialize)]
 struct StatusBody<'a> {
-    slices: &'a [StatusEntry],
+    slice: &'a StatusEntry,
 }
 
 fn write_status_text(w: &mut dyn Write, body: &StatusBody<'_>) -> std::io::Result<()> {
-    if body.slices.is_empty() {
-        return writeln!(w, "No slices.");
-    }
-    if body.slices.len() == 1 {
-        return render_single(w, &body.slices[0]);
-    }
-    render_table(w, body.slices)
-}
-
-fn render_single(w: &mut dyn Write, e: &StatusEntry) -> std::io::Result<()> {
+    let e = body.slice;
     writeln!(w, "{}", e.name)?;
     writeln!(w, "  capability: {}", e.capability)?;
     writeln!(w, "  status: {}", e.status)?;
@@ -150,33 +120,6 @@ fn render_single(w: &mut dyn Write, e: &StatusEntry) -> std::io::Result<()> {
             let mark = if *present { "x" } else { " " };
             writeln!(w, "    [{mark}] {k}")?;
         }
-    }
-    Ok(())
-}
-
-fn render_table(w: &mut dyn Write, entries: &[StatusEntry]) -> std::io::Result<()> {
-    let name_w = entries.iter().map(|e| e.name.len()).max().unwrap_or(6).max(6);
-    let status_w = entries.iter().map(|e| e.status.to_string().len()).max().unwrap_or(6).max(6);
-    writeln!(
-        w,
-        "{:<name_w$}  {:<status_w$}  tasks",
-        "slice",
-        "status",
-        name_w = name_w,
-        status_w = status_w,
-    )?;
-    for e in entries {
-        let tasks =
-            e.tasks.map_or_else(|| "-".to_string(), |tc| format!("{}/{}", tc.complete, tc.total));
-        writeln!(
-            w,
-            "{:<name_w$}  {:<status_w$}  {}",
-            e.name,
-            e.status,
-            tasks,
-            name_w = name_w,
-            status_w = status_w,
-        )?;
     }
     Ok(())
 }

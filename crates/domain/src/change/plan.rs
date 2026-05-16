@@ -1,6 +1,7 @@
 //! Plan orchestration primitives: the `plan.yaml` state machine
-//! (`core`), the `specify change plan doctor` health diagnostics
-//! (`doctor`), and the advisory PID lock (`lock`).
+//! (`core`), the four health diagnostics surfaced through
+//! `specify plan validate` (`doctor`), and the advisory PID
+//! lock (`lock`).
 
 pub(super) mod core;
 pub(super) mod doctor;

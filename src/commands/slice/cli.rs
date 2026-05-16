@@ -1,7 +1,7 @@
 //! Clap derive surface for `specify slice *` and its nested verbs.
 //! The umbrella `cli.rs` re-exports the action enums.
 
-use clap::{Subcommand, ValueEnum};
+use clap::Subcommand;
 use serde::Deserialize;
 use specify_domain::capability::Phase;
 use specify_domain::slice::{CreateIfExists, EntryKind, LifecycleStatus};
@@ -17,10 +17,8 @@ pub enum SliceAction {
         capability: Option<String>,
         /// Behaviour when `<slices_dir>/<name>/` already exists
         #[arg(long, value_enum, default_value = "fail")]
-        if_exists: CreateIfExistsArg,
+        if_exists: CreateIfExists,
     },
-    /// List every active slice under `.specify/slices/`
-    List,
     /// Show the status of one slice
     Status {
         /// Slice name (under `.specify/slices/`)
@@ -51,11 +49,16 @@ pub enum SliceAction {
         #[command(subcommand)]
         action: JournalAction,
     },
-    /// Transition a slice to a new lifecycle status
+    /// Transition a slice to a new lifecycle status. Note: `merged` is
+    /// not a valid target — the only legal writer of `Merged` is
+    /// `specify slice merge run`, which performs the spec merge,
+    /// status transition, and archive move atomically.
     Transition {
         /// Slice name
         name: String,
-        /// Target status (`defined`, `building`, `complete`, `merged`, `dropped`, or `defining`)
+        /// Target status (`defined`, `building`, `complete`, `dropped`, or `defining`).
+        /// `merged` is reserved for `specify slice merge run` and is
+        /// rejected with exit 2 if passed here.
         #[arg(value_enum)]
         target: LifecycleStatus,
     },
@@ -72,11 +75,6 @@ pub enum SliceAction {
     },
     /// Report overlapping `touched_specs` with other active slices
     Overlap {
-        /// Slice name
-        name: String,
-    },
-    /// Archive a slice directory into `.specify/archive/YYYY-MM-DD-<name>/`
-    Archive {
         /// Slice name
         name: String,
     },
@@ -256,24 +254,4 @@ pub enum JournalAction {
         /// Slice name
         name: String,
     },
-}
-
-#[derive(Debug, Copy, Clone, ValueEnum)]
-pub enum CreateIfExistsArg {
-    /// Refuse when the directory exists (default)
-    Fail,
-    /// Reuse the existing directory — requires a valid `.metadata.yaml`
-    Continue,
-    /// Delete and recreate — destructive
-    Restart,
-}
-
-impl From<CreateIfExistsArg> for CreateIfExists {
-    fn from(value: CreateIfExistsArg) -> Self {
-        match value {
-            CreateIfExistsArg::Fail => Self::Fail,
-            CreateIfExistsArg::Continue => Self::Continue,
-            CreateIfExistsArg::Restart => Self::Restart,
-        }
-    }
 }

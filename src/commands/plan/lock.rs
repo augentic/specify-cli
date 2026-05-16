@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_domain::change::{PlanLockReleased, Stamp};
+use specify_domain::change::{Acquired, PlanLockReleased, PlanLockState, Stamp};
 use specify_error::Result;
 
 use crate::cli::Format;
@@ -10,15 +10,7 @@ use crate::context::Ctx;
 pub(super) fn acquire(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
     let our_pid = pid.unwrap_or_else(std::process::id);
     let acquired = Stamp::acquire(&ctx.project_dir, our_pid)?;
-    ctx.write(
-        &AcquireBody {
-            held: true,
-            pid: acquired.pid,
-            already_held: acquired.already_held,
-            reclaimed_stale_pid: acquired.reclaimed_stale_pid,
-        },
-        write_acquire_text,
-    )?;
+    ctx.write(&acquired, write_acquire_text)?;
     Ok(())
 }
 
@@ -53,27 +45,11 @@ pub(super) fn release(ctx: &Ctx, pid: Option<u32>) -> Result<()> {
 
 pub(super) fn status(ctx: &Ctx) -> Result<()> {
     let state = Stamp::status(&ctx.project_dir)?;
-    ctx.write(
-        &StatusBody {
-            held: state.held,
-            pid: state.pid,
-            stale: state.stale,
-        },
-        write_status_text,
-    )?;
+    ctx.write(&state, write_status_text)?;
     Ok(())
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct AcquireBody {
-    held: bool,
-    pid: u32,
-    already_held: bool,
-    reclaimed_stale_pid: Option<u32>,
-}
-
-fn write_acquire_text(w: &mut dyn Write, body: &AcquireBody) -> std::io::Result<()> {
+fn write_acquire_text(w: &mut dyn Write, body: &Acquired) -> std::io::Result<()> {
     if body.already_held {
         writeln!(w, "Lock already held by pid {}; re-stamped.", body.pid)?;
     } else {
@@ -107,15 +83,7 @@ fn write_release_text(w: &mut dyn Write, body: &ReleaseBody) -> std::io::Result<
     Ok(())
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct StatusBody {
-    held: bool,
-    pid: Option<u32>,
-    stale: Option<bool>,
-}
-
-fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()> {
+fn write_status_text(w: &mut dyn Write, body: &PlanLockState) -> std::io::Result<()> {
     match body.pid {
         Some(pid) => {
             if body.stale.unwrap_or(false) {

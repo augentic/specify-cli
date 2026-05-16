@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/plan-validate-output/schema.json",
-  "title": "specify change plan validate --format json response",
-  "description": "Validates the JSON response body emitted by `specify change plan validate --format json`. The CLI exits 0 when `passed` is true and 2 (EXIT_VALIDATION_FAILED) otherwise; downstream skills should match on the structured payload rather than the exit code alone.",
+  "title": "specify plan validate --format json response",
+  "description": "Validates the JSON response body emitted by `specify plan validate --format json`. The CLI exits 0 when `passed` is true and 2 (EXIT_VALIDATION_FAILED) otherwise; downstream skills should match on the structured payload rather than the exit code alone.",
   "type": "object",
   "required": ["plan", "results", "passed"],
   "additionalProperties": false,
@@ -27,7 +27,7 @@
     },
     "results": {
       "type": "array",
-      "description": "Every structural and semantic finding produced by `Plan::validate`. Empty when the plan is clean. Warnings do not affect `passed`; only `error`-level findings cause `passed` to be false.",
+      "description": "Every structural, semantic, and health diagnostic produced by `Plan::validate` and the four supplementary doctor checks (`cycle-in-depends-on`, `orphan-source-key`, `stale-workspace-clone`, `unreachable-entry`). Empty when the plan is clean. Warnings do not affect `passed`; only `error`-level findings cause `passed` to be false.",
       "items": { "$ref": "#/$defs/validationResult" }
     },
     "passed": {
@@ -38,11 +38,11 @@
   "$defs": {
     "validationResult": {
       "type": "object",
-      "required": ["level", "code", "message"],
+      "required": ["severity", "code", "message"],
       "additionalProperties": false,
-      "description": "One finding from `Plan::validate`. See `specify_change::Plan::validate` for the canonical producer.",
+      "description": "One finding from `Plan::validate` or the layered health checks. See `specify_domain::change::plan_doctor` for the canonical producer.",
       "properties": {
-        "level": {
+        "severity": {
           "type": "string",
           "enum": ["error", "warning"],
           "description": "Severity bucket. `error` blocks the plan from being used as-is; `warning` is advisory."
@@ -50,7 +50,7 @@
         "code": {
           "type": "string",
           "minLength": 1,
-          "description": "Stable machine-readable identifier (e.g. `duplicate-name`, `dependency-cycle`, `missing-change-dir-for-in-progress`). Skills may pattern-match on this value."
+          "description": "Stable machine-readable identifier (e.g. `duplicate-name`, `dependency-cycle`, `missing-change-dir-for-in-progress`, `cycle-in-depends-on`, `orphan-source-key`, `stale-workspace-clone`, `unreachable-entry`). Skills may pattern-match on this value."
         },
         "entry": {
           "type": ["string", "null"],
@@ -60,6 +60,10 @@
           "type": "string",
           "minLength": 1,
           "description": "Human-readable rendering of the finding. Not a machine contract — match on `code`."
+        },
+        "data": {
+          "type": "object",
+          "description": "Structured payload attached to the four health diagnostics. Absent for the base `Plan::validate` findings; readers should not require this key. Shape depends on the `kind` discriminant — see `specify_domain::change::PlanDoctorPayload` for the variants (`cycle`, `orphan-source`, `stale-clone`, `unreachable-entry`)."
         }
       }
     }

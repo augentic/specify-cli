@@ -2,6 +2,7 @@
   "merged-specs": [
     {
       "name": "login",
+      "baseline-path": "<TEMPDIR>/.specify/specs/login/spec.md",
       "operations": [
         {
           "id": "REQ-001",
@@ -12,6 +13,7 @@
     },
     {
       "name": "oauth",
+      "baseline-path": "<TEMPDIR>/.specify/specs/oauth/spec.md",
       "operations": [
         {
           "id": "REQ-001",

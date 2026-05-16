@@ -13,7 +13,7 @@ First, read the proposal's **Source** section to determine the workflow:
 
   1. Clone the source repository into `legacy/<repo-name>` as a detached
      tree using an inlined `git clone` snippet (see the *Cloning a source
-     tree* section in `plugins/spec/skills/analyze/SKILL.md` for the
+     tree* section in `plugins/change/skills/analyze/SKILL.md` for the
      guarded form).
   2. Generate specs and design. Invoke `/spec:extract` with
      arguments:

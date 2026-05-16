@@ -1,9 +1,9 @@
-//! Integration tests for `specify capability {resolve, check, pipeline}`.
+//! Integration tests for `specify capability {resolve, pipeline}`.
 //!
 //! `specify capability resolve` and the `Cached` source flavour of
 //! `capability resolve` get extra coverage in `tests/e2e.rs`; this file
-//! focuses on `capability pipeline` (the verb the define / build / merge
-//! skill rewrites drive directly) and the `capability check` happy path.
+//! focuses on `capability pipeline` — the verb the define / build / merge
+//! skill rewrites drive directly.
 
 use std::fs;
 
@@ -160,31 +160,4 @@ fn pipeline_with_slice_reports_completion() {
     assert_eq!(presence.get("proposal"), Some(&true));
     assert_eq!(presence.get("design"), Some(&false));
     assert_eq!(presence.get("tasks"), Some(&false));
-}
-
-// ---- specify capability check ------------------------------------------------
-
-#[test]
-fn check_succeeds_on_omnia_yaml() {
-    let assert = specify()
-        .args(["--format", "json", "capability", "check"])
-        .arg(repo_root().join("schemas").join("omnia"))
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["passed"], true, "omnia fixture must validate clean: {value}");
-}
-
-#[test]
-fn check_text_says_ok() {
-    let assert = specify()
-        .args(["capability", "check"])
-        .arg(repo_root().join("schemas").join("omnia"))
-        .assert()
-        .success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        stdout.contains("Capability OK"),
-        "text mode must use the post-RFC-13 noun, got: {stdout}"
-    );
 }

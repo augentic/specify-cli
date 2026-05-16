@@ -31,16 +31,32 @@ use write::{build_merge_summary, commit_opaque, write_three_way_baselines};
 /// [`ArtifactClass::name`] so callers can group results without the
 /// engine having to know any per-domain vocabulary. `name` is the spec
 /// (or composition) identifier within that class.
-#[derive(Debug, Clone)]
+///
+/// The `Serialize` derive is the wire shape used by `slice merge run`
+/// and `slice merge preview`: `class_name` is a routing tag for the
+/// CLI's `filter().map()` step (skipped on the wire), `baseline_path`
+/// flows through `Path::display`, and `result` is flattened so the
+/// envelope exposes only `operations` (the merged text travels to
+/// disk via the commit writer, never to JSON callers).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct MergePreviewEntry {
     /// Originating artefact class name (e.g. `"specs"`).
+    #[serde(skip)]
     pub class_name: String,
     /// Spec/composition name (e.g. `"login"`, `"composition"`).
     pub name: String,
     /// Absolute path where the merged baseline will be written.
+    #[serde(serialize_with = "ser_baseline_path")]
     pub baseline_path: PathBuf,
     /// In-memory merge result.
+    #[serde(flatten)]
     pub result: MergeResult,
+}
+
+#[expect(clippy::ptr_arg, reason = "serde `serialize_with` requires `&PathBuf`")]
+fn ser_baseline_path<S: serde::Serializer>(v: &PathBuf, s: S) -> Result<S::Ok, S::Error> {
+    s.collect_str(&v.display())
 }
 
 /// One opaque-replace file pre-image discovered under a
@@ -84,13 +100,15 @@ pub struct PreviewResult {
 /// One `type: modified` `touched_spec` whose baseline has been modified
 /// after the slice's `defined_at` timestamp. The plan skill surfaces
 /// this list to the human so they can confirm or abort the merge.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct BaselineConflict {
     /// Capability (spec directory) name.
     pub capability: String,
     /// Slice's `defined_at` stamp, copied verbatim from `.metadata.yaml`.
     pub defined_at: String,
     /// Baseline file modification time.
+    #[serde(with = "specify_error::serde_rfc3339")]
     pub baseline_modified_at: Timestamp,
 }
 

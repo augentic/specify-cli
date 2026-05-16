@@ -5,28 +5,26 @@
 
 pub mod cli;
 mod create;
-mod doctor;
 mod lifecycle;
 mod lock;
-mod status;
+pub(super) mod status;
 
 use std::path::{Path, PathBuf};
 
+pub use create::{build_source_map, require_kebab_change_name, write_scaffold};
 use serde::Serialize;
-use serde_json::Value;
-use specify_domain::change::{Entry, Plan};
+use specify_domain::change::Plan;
 use specify_domain::config::Layout;
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
-use crate::cli::{LockAction, PlanAction};
+use self::cli::{LockAction, PlanAction};
 use crate::context::Ctx;
 
-pub(super) fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
+pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
     match action {
-        PlanAction::Create { name, sources } => lifecycle::create(ctx, name, sources),
+        PlanAction::Create { name, sources } => create::create(ctx, name, sources),
         PlanAction::Validate => lifecycle::validate(ctx),
-        PlanAction::Doctor => doctor::run(ctx),
         PlanAction::Next => lifecycle::next(ctx),
         PlanAction::Status => status::run(ctx),
         PlanAction::Add {
@@ -89,11 +87,6 @@ pub(super) fn plan_ref(plan: &Plan, plan_path: &Path) -> Ref {
         name: plan.name.clone(),
         path: plan_path.display().to_string(),
     }
-}
-
-/// Serialize a plan `Entry` into the on-the-wire kebab-case JSON shape.
-pub(super) fn change_entry_json(entry: &Entry) -> Value {
-    serde_json::to_value(entry).expect("plan Entry serialises as JSON")
 }
 
 /// Verify that `project_name` appears in `registry.yaml`.

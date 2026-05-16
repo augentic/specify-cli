@@ -7,22 +7,21 @@ use specify_domain::validate::{
 };
 use specify_error::{Error, Result};
 
-use crate::cli::CompatibilityAction;
+use self::cli::CompatibilityAction;
 use crate::context::Ctx;
 
 /// Dispatch `specify compatibility *`.
 pub fn run(ctx: &Ctx, action: CompatibilityAction) -> Result<()> {
     match action {
-        CompatibilityAction::Check => check(ctx),
-        CompatibilityAction::Report { change } => report(ctx, change),
+        CompatibilityAction::Check { change, report_only } => check(ctx, change, report_only),
     }
 }
 
-fn check(ctx: &Ctx) -> Result<()> {
-    let report = classify_project_compatibility(&ctx.project_dir, None)?;
+fn check(ctx: &Ctx, change: Option<String>, report_only: bool) -> Result<()> {
+    let report = classify_project_compatibility(&ctx.project_dir, change)?;
     let compatible = report.is_compatible();
     ctx.write(&report, write_report_text)?;
-    if compatible {
+    if compatible || report_only {
         Ok(())
     } else {
         Err(Error::validation_failed(
@@ -31,12 +30,6 @@ fn check(ctx: &Ctx) -> Result<()> {
             "review the compatibility report on stdout for the offending pairs",
         ))
     }
-}
-
-fn report(ctx: &Ctx, change: String) -> Result<()> {
-    let report = classify_project_compatibility(&ctx.project_dir, Some(change))?;
-    ctx.write(&report, write_report_text)?;
-    Ok(())
 }
 
 fn write_report_text(w: &mut dyn Write, report: &CompatibilityReport) -> std::io::Result<()> {

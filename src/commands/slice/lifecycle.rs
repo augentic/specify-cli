@@ -30,45 +30,21 @@ pub(super) fn create(
     let outcome =
         slice_actions::create(&slices_dir, name, &capability_value, if_exists, Timestamp::now())?;
 
-    ctx.write(&CreateBody::from(&outcome), write_create_text)?;
+    ctx.write(&outcome, write_create_text)?;
     Ok(())
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct CreateBody {
-    name: String,
-    slice_dir: String,
-    status: LifecycleStatus,
-    capability: String,
-    created: bool,
-    restarted: bool,
-}
-
-impl From<&Created> for CreateBody {
-    fn from(outcome: &Created) -> Self {
-        Self {
-            name: outcome.dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
-            slice_dir: outcome.dir.display().to_string(),
-            status: outcome.metadata.status,
-            capability: outcome.metadata.capability.clone(),
-            created: outcome.created,
-            restarted: outcome.restarted,
-        }
-    }
-}
-
-fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
-    if body.created {
-        writeln!(w, "Created slice {}", body.slice_dir)?;
+fn write_create_text(w: &mut dyn Write, c: &Created) -> std::io::Result<()> {
+    if c.created {
+        writeln!(w, "Created slice {}", c.dir.display())?;
     } else {
-        writeln!(w, "Reusing existing slice {}", body.slice_dir)?;
+        writeln!(w, "Reusing existing slice {}", c.dir.display())?;
     }
-    if body.restarted {
+    if c.restarted {
         writeln!(w, "  (previous directory was removed)")?;
     }
-    writeln!(w, "  capability: {}", body.capability)?;
-    writeln!(w, "  status: {}", body.status)
+    writeln!(w, "  capability: {}", c.metadata.capability)?;
+    writeln!(w, "  status: {}", c.metadata.status)
 }
 
 pub(super) fn transition(ctx: &Ctx, name: String, target: LifecycleStatus) -> Result<()> {
@@ -108,31 +84,6 @@ struct TransitionBody {
 
 fn write_transition_text(w: &mut dyn Write, body: &TransitionBody) -> std::io::Result<()> {
     writeln!(w, "{}: status = {}", body.name, body.status)
-}
-
-pub(super) fn archive(ctx: &Ctx, name: String) -> Result<()> {
-    let slice_dir = ctx.slices_dir().join(&name);
-    let archive_dir = ctx.archive_dir();
-    let target = slice_actions::archive(&slice_dir, &archive_dir, Timestamp::now())?;
-    ctx.write(
-        &ArchiveBody {
-            name,
-            archive_path: target.display().to_string(),
-        },
-        write_archive_text,
-    )?;
-    Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ArchiveBody {
-    name: String,
-    archive_path: String,
-}
-
-fn write_archive_text(w: &mut dyn Write, body: &ArchiveBody) -> std::io::Result<()> {
-    writeln!(w, "{}: archived to {}", body.name, body.archive_path)
 }
 
 pub(super) fn discard_slice(ctx: &Ctx, name: String, reason: Option<&str>) -> Result<()> {
