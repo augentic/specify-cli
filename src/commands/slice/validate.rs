@@ -1,6 +1,6 @@
 //! `slice validate` — coherence check against the capability validation rules.
 
-use specify_domain::validate::{ValidationResult, serialize_report, validate_slice};
+use specify_domain::validate::{ValidationResult, validate_slice};
 use specify_error::{Error, Result};
 
 use crate::context::Ctx;
@@ -11,7 +11,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let report = validate_slice(&slice_dir, &pipeline)?;
     let passed = report.passed;
 
-    ctx.write(&serialize_report(&report), |w, _| {
+    ctx.write(&report, |w, _| {
         writeln!(w, "{}", if report.passed { "PASS" } else { "FAIL" })?;
         for (key, results) in &report.brief_results {
             writeln!(w, "{key}:")?;
