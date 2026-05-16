@@ -74,9 +74,8 @@ pub struct OpaquePreviewEntry {
 
 /// Whether an opaque-replace file is new or replaces an existing
 /// baseline file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[non_exhaustive]
 pub enum OpaqueAction {
     /// New file — no corresponding baseline file exists.
     Added,

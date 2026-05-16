@@ -45,6 +45,5 @@ fn format_result_line(r: &ValidationResult) -> String {
         ValidationResult::Deferred { rule_id, reason, .. } => {
             format!("[defer] {rule_id} ({reason})")
         }
-        _ => "[?] unknown validation result".to_string(),
     }
 }

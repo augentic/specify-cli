@@ -59,12 +59,9 @@ pub(super) fn preview(ctx: &Ctx, name: &str) -> Result<()> {
         .opaque
         .iter()
         .filter(|e| e.class_name == "contracts")
-        .filter_map(|entry| match entry.action {
-            OpaqueAction::Added | OpaqueAction::Replaced => Some(ContractItem {
-                path: entry.relative_path.clone(),
-                action: entry.action.clone(),
-            }),
-            _ => None,
+        .map(|entry| ContractItem {
+            path: entry.relative_path.clone(),
+            action: entry.action,
         })
         .collect();
 
@@ -138,7 +135,6 @@ fn write_preview_text(w: &mut dyn Write, body: &PreviewBody<'_>) -> std::io::Res
             let (sigil, label) = match c.action {
                 OpaqueAction::Added => ("+", "added"),
                 OpaqueAction::Replaced => ("~", "replaced"),
-                _ => ("?", "unknown"),
             };
             writeln!(w, "  {sigil} contracts/{} ({label})", c.path)?;
         }
@@ -195,9 +191,6 @@ fn operation_label(op: &MergeOperation) -> String {
         MergeOperation::CreatedBaseline { requirement_count } => {
             format!("CREATING baseline with {requirement_count} requirement(s)")
         }
-        // `MergeOperation` is `#[non_exhaustive]`; surface unmapped
-        // future variants as a generic label.
-        _ => "UNKNOWN operation".to_string(),
     }
 }
 
@@ -216,7 +209,6 @@ fn summarise_ops(ops: &[MergeOperation]) -> String {
             MergeOperation::CreatedBaseline { requirement_count } => {
                 created_baseline = Some(*requirement_count);
             }
-            _ => {}
         }
     }
     if let Some(count) = created_baseline {

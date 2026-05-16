@@ -45,7 +45,6 @@ pub use pipeline::PipelineView;
 /// rationale.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "status", rename_all = "kebab-case", rename_all_fields = "kebab-case")]
-#[non_exhaustive]
 pub enum ValidationResult {
     /// Rule passed.
     Pass {

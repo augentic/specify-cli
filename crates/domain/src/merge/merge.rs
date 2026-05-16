@@ -36,7 +36,6 @@ pub struct MergeResult {
 /// how many `### Requirement:` blocks it contains.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
-#[non_exhaustive]
 pub enum MergeOperation {
     /// A requirement was renamed (ID preserved, heading changed).
     Renamed {
