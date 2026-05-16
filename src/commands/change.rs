@@ -54,7 +54,10 @@ fn draft(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
     }
 
     bytes_write(&brief_path, ChangeBrief::template(&name).as_bytes())?;
-    plan::write_scaffold(&plan_path, &name, source_map)?;
+    if let Err(e) = plan::write_scaffold(&plan_path, &name, source_map) {
+        drop(std::fs::remove_file(&brief_path));
+        return Err(e);
+    }
 
     ctx.write(
         &DraftBody {

@@ -29,12 +29,12 @@ pub struct JournalEntry {
     pub timestamp: Timestamp,
     /// Phase that wrote the entry (`define | build | merge`).
     /// Serialised as `phase` on disk and on the CLI wire.
-    #[serde(rename = "phase")]
+    #[serde(rename = "phase", alias = "step")]
     pub step: Phase,
     /// Entry classification. Named `r#type` because `type` is a
     /// reserved keyword; serialised as `kind` so the YAML/JSON
     /// surface stays free of raw-identifier oddities.
-    #[serde(rename = "kind")]
+    #[serde(rename = "kind", alias = "type")]
     pub r#type: EntryKind,
     /// Short human-readable summary.
     pub summary: String,

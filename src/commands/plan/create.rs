@@ -123,7 +123,7 @@ pub(super) fn add(
                 plan.entries.last().expect("Plan::create appended an entry that is now missing");
             Ok(EntryBody {
                 plan: plan_ref(plan, &plan_path),
-                action: "create",
+                action: PlanAction::Create,
                 entry: serde_json::to_value(created).expect("plan Entry serialises as JSON"),
             })
         },
@@ -162,7 +162,7 @@ pub(super) fn amend(
                 plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
             Ok(EntryBody {
                 plan: plan_ref(plan, &plan_path),
-                action: "amend",
+                action: PlanAction::Amend,
                 entry: serde_json::to_value(amended).expect("plan Entry serialises as JSON"),
             })
         },
@@ -185,17 +185,23 @@ fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
+enum PlanAction {
+    Create,
+    Amend,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
 struct EntryBody {
     plan: Ref,
-    action: &'static str,
+    action: PlanAction,
     entry: Value,
 }
 
 fn write_entry_text(w: &mut dyn Write, body: &EntryBody) -> std::io::Result<()> {
     let name = body.entry.get("name").and_then(Value::as_str).unwrap_or("");
     match body.action {
-        "create" => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
-        "amend" => writeln!(w, "Amended plan entry '{name}'."),
-        other => unreachable!("unexpected EntryBody action: {other}"),
+        PlanAction::Create => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
+        PlanAction::Amend => writeln!(w, "Amended plan entry '{name}'."),
     }
 }
