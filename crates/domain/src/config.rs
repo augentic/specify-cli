@@ -66,7 +66,7 @@ impl ProjectConfig {
     /// Load `.specify/project.yaml` from `project_dir`.
     ///
     /// - Returns `Err(Error::NotInitialized)` if the file is absent.
-    /// - Propagates YAML parse failures as `Error::Yaml`.
+    /// - Propagates YAML parse failures as `Error::YamlDe`.
     /// - Enforces the `specify_version` floor: if the pinned version in
     ///   the file is newer than `CARGO_PKG_VERSION`, returns
     ///   `Err(Error::CliTooOld { required, found })`.

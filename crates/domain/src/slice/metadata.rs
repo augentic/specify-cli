@@ -160,7 +160,7 @@ impl SliceMetadata {
     /// Returns [`Error::ArtifactNotFound`] (`kind = ".metadata.yaml"`)
     /// when the file is absent — the canonical "not a slice directory"
     /// signal that `specify slice list` and `/change:execute` rely on.
-    /// [`Error::Yaml`] surfaces serde-saphyr deserialisation failures
+    /// [`Error::YamlDe`] surfaces serde-saphyr deserialisation failures
     /// (malformed YAML, unknown enum tags, type mismatches);
     /// [`Error::Io`] propagates filesystem read errors past the
     /// existence probe (permissions, mid-flight truncation).
@@ -182,7 +182,7 @@ impl SliceMetadata {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Yaml`] when serde-saphyr fails to encode
+    /// Returns [`Error::YamlSer`] when serde-saphyr fails to encode
     /// `self` — typically a serializer bug rather than a data issue,
     /// since every field of [`SliceMetadata`] is YAML-safe by
     /// construction. Returns [`Error::Io`] when the temp-file create /

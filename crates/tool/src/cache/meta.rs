@@ -63,8 +63,8 @@ pub fn read_sidecar(path: &Path) -> Result<Option<Sidecar>, ToolError> {
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(ToolError::cache_io("read sidecar", path, err)),
     };
-    let sidecar: Sidecar = serde_saphyr::from_str(&contents)
-        .map_err(|err| ToolError::sidecar_parse(path, Box::new(err.into())))?;
+    let sidecar: Sidecar =
+        serde_saphyr::from_str(&contents).map_err(|err| ToolError::sidecar_parse(path, err))?;
     validate_sidecar_schema(path, &sidecar)?;
     Ok(Some(sidecar))
 }

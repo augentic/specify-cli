@@ -13,8 +13,8 @@ use specify_error::Error;
 ///
 /// # Errors
 ///
-/// Returns `Error::Yaml` if serialisation fails, or `Error::Io` if the
-/// temp-file write or rename fails.
+/// Returns `Error::YamlSer` if serialisation fails, or `Error::Io` if
+/// the temp-file write or rename fails.
 pub fn yaml_write<T: Serialize>(path: &Path, value: &T) -> Result<(), Error> {
     let mut content = serde_saphyr::to_string(value)?;
     if !content.ends_with('\n') {

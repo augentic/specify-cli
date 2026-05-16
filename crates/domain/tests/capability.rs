@@ -116,7 +116,7 @@ fn validate_structure_fails_when_define_phase_is_empty() {
 #[test]
 fn yaml_parse_error_surface_for_missing_required_field() {
     // `description` missing -> serde error is propagated as an
-    // `Error::Yaml` when surfaced through `Capability::resolve`, but
+    // `Error::YamlDe` when surfaced through `Capability::resolve`, but
     // here we just exercise the parser directly and assert the Display
     // message.
     let yaml = "name: broken\nversion: 1\npipeline:\n  define: []\n  build: []\n  merge: []\n";

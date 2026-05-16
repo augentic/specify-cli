@@ -45,9 +45,12 @@ deserialization and serialization. It is pure-Rust, panic-free, and
 actively maintained, in contrast to `serde_yaml` (deprecated) and
 `serde_yaml_ng` (community fork carrying the same debt). Saphyr omits a
 `Value` DOM, so code that needs untyped YAML access deserializes into
-`serde_json::Value`. Its separate deser/ser error types are wrapped
-behind a single `specify_error::YamlError` enum (`De` / `Ser` variants)
-so the upstream crate name does not leak through every public surface.
+`serde_json::Value`. Its separate deser/ser error types ride directly on
+`specify_error::Error::YamlDe` and `Error::YamlSer` (both
+`#[error(transparent)]` `#[from]` variants), so `?` on a raw
+`serde_saphyr` result still propagates and the kebab discriminant on
+the wire stays `yaml` for either side; library crates that don't care
+which API tripped match on either variant.
 
 ## Diag-first error policy
 

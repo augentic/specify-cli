@@ -55,7 +55,7 @@ impl Plan {
     ///
     /// Errors mirror [`crate::slice::SliceMetadata::load`]:
     ///   - missing file -> `Error::ArtifactNotFound`
-    ///   - malformed YAML -> `Error::Yaml`
+    ///   - malformed YAML -> `Error::YamlDe`
     ///   - other I/O failure -> `Error::Io`
     ///
     /// Tolerant of files with or without a trailing newline —
@@ -91,7 +91,7 @@ impl Plan {
     ///
     /// # Errors
     ///
-    /// Returns `Error::Io` on any I/O failure and `Error::Yaml` if
+    /// Returns `Error::Io` on any I/O failure and `Error::YamlSer` if
     /// serialization fails.
     pub fn save(&self, path: &Path) -> Result<(), Error> {
         yaml_write(path, self)
