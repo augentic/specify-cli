@@ -16,7 +16,10 @@ use crate::context::Ctx;
 pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
-        return Err(Error::SliceNotFound { name });
+        return Err(Error::Diag {
+            code: "slice-not-found",
+            detail: format!("slice '{name}' not found"),
+        });
     }
 
     let (outcome, summary, context) = lower_kind(kind);
@@ -191,8 +194,9 @@ fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<Sli
     }
 
     if candidates.is_empty() {
-        return Err(Error::SliceNotFound {
-            name: slice_name.to_string(),
+        return Err(Error::Diag {
+            code: "slice-not-found",
+            detail: format!("slice '{slice_name}' not found"),
         });
     }
 

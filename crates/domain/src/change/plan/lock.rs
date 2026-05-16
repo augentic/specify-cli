@@ -71,8 +71,8 @@ pub struct State {
 /// marker that survives the process writing it:
 ///
 /// - `specify plan lock acquire --pid <P>` stamps `P` into the file
-///   (failing with [`specify_error::Error::DriverBusy`] when another
-///   live PID holds it).
+///   (failing with [`specify_error::Error::Diag`] code `driver-busy`
+///   when another live PID holds it).
 /// - `specify plan lock release --pid <P>` removes the file when it
 ///   still holds `P`; refuses when it holds another PID (stale locks
 ///   are reclaimed by the L2.G self-heal path, not by release).
@@ -101,8 +101,8 @@ impl Stamp {
     ///
     /// # Errors
     ///
-    /// - [`Error::DriverBusy`] when another live PID is already
-    ///   stamped in `.specify/plan.lock`.
+    /// - [`Error::Diag`] with code `driver-busy` when another live PID
+    ///   is already stamped in `.specify/plan.lock`.
     /// - [`Error::Io`] if `.specify/` cannot be created, the existing
     ///   stamp cannot be read, or the new stamp cannot be atomically
     ///   written.
@@ -121,7 +121,12 @@ impl Stamp {
                     already_held = true;
                 }
                 Ok(pid) if is_pid_alive(pid) => {
-                    return Err(Error::DriverBusy { pid });
+                    return Err(Error::Diag {
+                        code: "driver-busy",
+                        detail: format!(
+                            "another /change:execute driver is running (pid {pid}); refusing to proceed"
+                        ),
+                    });
                 }
                 Ok(pid) => {
                     reclaimed_stale_pid = Some(pid);
@@ -230,7 +235,7 @@ fn is_pid_alive(pid: u32) -> bool {
 fn is_pid_alive(_pid: u32) -> bool {
     // Conservative default on non-Unix: assume any recorded PID is
     // still live. This trades reclaim recovery for safety —
-    // operators on Windows will see `DriverBusy` until they remove
-    // the stale lockfile by hand.
+    // operators on Windows will see the `driver-busy` diagnostic
+    // until they remove the stale lockfile by hand.
     true
 }

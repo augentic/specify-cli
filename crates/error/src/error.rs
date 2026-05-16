@@ -60,23 +60,6 @@ pub enum Error {
         found: String,
     },
 
-    /// Illegal plan entry status transition.
-    #[error("illegal plan transition: cannot go from {from} to {to}")]
-    PlanTransition {
-        /// Source status of the attempted transition.
-        from: String,
-        /// Target status of the attempted transition.
-        to: String,
-    },
-
-    /// Another live `/change:execute` driver holds `.specify/plan.lock`.
-    /// Stale locks (dead PID / malformed content) are reclaimed silently.
-    #[error("another /change:execute driver is running (pid {pid}); refusing to proceed")]
-    DriverBusy {
-        /// PID of the process that holds the lock.
-        pid: u32,
-    },
-
     /// A required artifact was not found at the expected path.
     #[error("{kind} not found at {}", path.display())]
     ArtifactNotFound {
@@ -84,13 +67,6 @@ pub enum Error {
         kind: &'static str,
         /// Path where the artifact was expected.
         path: std::path::PathBuf,
-    },
-
-    /// A slice directory was expected but not found.
-    #[error("slice '{name}' not found")]
-    SliceNotFound {
-        /// Kebab-case slice name.
-        name: String,
     },
 
     /// A filesystem operation failed. The `op` field is a stable
@@ -181,10 +157,7 @@ impl Error {
             Self::Argument { .. } => Cow::Borrowed("argument"),
             Self::Validation { .. } => Cow::Borrowed("validation"),
             Self::CliTooOld { .. } => Cow::Borrowed("specify-version-too-old"),
-            Self::PlanTransition { .. } => Cow::Borrowed("plan-transition"),
-            Self::DriverBusy { .. } => Cow::Borrowed("driver-busy"),
             Self::ArtifactNotFound { .. } => Cow::Borrowed("artifact-not-found"),
-            Self::SliceNotFound { .. } => Cow::Borrowed("slice-not-found"),
             Self::Filesystem { op, .. } => Cow::Owned(format!("filesystem-{op}")),
             Self::BranchPrepareFailed { .. } => Cow::Borrowed("branch-preparation-failed"),
             Self::Io(_) => Cow::Borrowed("io"),

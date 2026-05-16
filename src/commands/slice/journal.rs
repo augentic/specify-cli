@@ -17,7 +17,10 @@ pub(super) fn append(
 ) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
-        return Err(Error::SliceNotFound { name });
+        return Err(Error::Diag {
+            code: "slice-not-found",
+            detail: format!("slice '{name}' not found"),
+        });
     }
 
     let timestamp = Timestamp::now();
@@ -60,7 +63,10 @@ struct AppendBody {
 pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
-        return Err(Error::SliceNotFound { name });
+        return Err(Error::Diag {
+            code: "slice-not-found",
+            detail: format!("slice '{name}' not found"),
+        });
     }
 
     let journal = Journal::load(&slice_dir)?;
