@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "source-key": "legacy-monolith",
+  "language": "typescript",
+  "surfaces": [
+    {
+      "id": "http-get-users",
+      "kind": "http-route",
+      "identifier": "GET /users",
+      "handler": "src/routes/users.ts:listUsers",
+      "touches": [
+        "src/routes/users.ts",
+        "src/users/repository.ts"
+      ],
+      "declared-at": [
+        "src/server.ts:10"
+      ]
+    },
+    {
+      "id": "http-post-users",
+      "kind": "http-route",
+      "identifier": "POST /users",
+      "handler": "src/auth/register.ts:registerUser",
+      "touches": [
+        "src/auth/register.ts",
+        "src/notifications/email.ts",
+        "src/users/repository.ts"
+      ],
+      "declared-at": [
+        "src/server.ts:42"
+      ]
+    },
+    {
+      "id": "message-pub-user-created",
+      "kind": "message-pub",
+      "identifier": "user.created",
+      "handler": "src/users/events.ts:publishUserCreated",
+      "touches": [
+        "src/users/events.ts"
+      ],
+      "declared-at": [
+        "src/users/events.ts:18"
+      ]
+    },
+    {
+      "id": "scheduled-job-cleanup",
+      "kind": "scheduled-job",
+      "identifier": "cleanup-expired-sessions",
+      "handler": "src/jobs/cleanup.ts:run",
+      "touches": [
+        "src/jobs/cleanup.ts",
+        "src/sessions/repository.ts"
+      ],
+      "declared-at": [
+        "src/jobs/scheduler.ts:5"
+      ]
+    }
+  ]
+}

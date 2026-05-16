@@ -4,7 +4,9 @@
 //! The executable plan moved to its own top-level verb after the
 //! `change plan *` flatten — see [`crate::commands::plan::cli`]. The
 //! remaining verbs here are peer Layer 1 commands supporting peer
-//! Layer 2 skills (`draft`, `show`, `finalize`).
+//! Layer 2 skills (`draft`, `show`, `finalize`, `survey`).
+
+use std::path::PathBuf;
 
 use clap::Subcommand;
 
@@ -40,5 +42,24 @@ pub enum ChangeAction {
         /// Show what would happen without writing anything.
         #[arg(long)]
         dry_run: bool,
+    },
+    /// Mechanically scan legacy sources for externally observable
+    /// surfaces, write `surfaces.json` + `metadata.json` per source.
+    Survey {
+        /// Single-source mode: path to the legacy source root.
+        #[arg(conflicts_with = "sources")]
+        source_path: Option<PathBuf>,
+
+        /// Single-source mode: kebab-case source key.
+        #[arg(long, requires = "source_path")]
+        source_key: Option<String>,
+
+        /// Batch mode: YAML file listing one row per source.
+        #[arg(long, conflicts_with_all = ["source_path", "source_key"])]
+        sources: Option<PathBuf>,
+
+        /// Output directory for `surfaces.json` and `metadata.json`.
+        #[arg(long)]
+        out: PathBuf,
     },
 }

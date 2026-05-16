@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "source-key": "nestjs-fixture",
+  "language": "typescript",
+  "surfaces": [
+    {
+      "id": "http-delete-users-id",
+      "kind": "http-route",
+      "identifier": "DELETE /users/:id",
+      "handler": "src/users/users.controller.ts:UsersController.remove",
+      "touches": [
+        "src/users/users.controller.ts",
+        "src/users/users.service.ts"
+      ],
+      "declared-at": [
+        "src/users/users.controller.ts:18"
+      ]
+    },
+    {
+      "id": "http-get-health",
+      "kind": "http-route",
+      "identifier": "GET /health",
+      "handler": "src/app.controller.ts:AppController.health",
+      "touches": [
+        "src/app.controller.ts"
+      ],
+      "declared-at": [
+        "src/app.controller.ts:5"
+      ]
+    },
+    {
+      "id": "http-get-users",
+      "kind": "http-route",
+      "identifier": "GET /users",
+      "handler": "src/users/users.controller.ts:UsersController.findAll",
+      "touches": [
+        "src/users/users.controller.ts",
+        "src/users/users.service.ts"
+      ],
+      "declared-at": [
+        "src/users/users.controller.ts:8"
+      ]
+    },
+    {
+      "id": "http-post-users",
+      "kind": "http-route",
+      "identifier": "POST /users",
+      "handler": "src/users/users.controller.ts:UsersController.create",
+      "touches": [
+        "src/users/users.controller.ts",
+        "src/users/users.service.ts"
+      ],
+      "declared-at": [
+        "src/users/users.controller.ts:13"
+      ]
+    }
+  ]
+}

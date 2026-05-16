@@ -1,4 +1,5 @@
 pub mod cli;
+mod survey;
 
 use std::io::Write;
 
@@ -16,13 +17,45 @@ use crate::cli::SourceArg;
 use crate::commands::plan;
 use crate::context::Ctx;
 
-/// Dispatch `specify change *` — operator brief and finalize.
+/// Dispatch `specify change *` — operator brief, finalize, and survey.
 pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
     match action {
         ChangeAction::Draft { name, sources } => draft(ctx, name, sources),
         ChangeAction::Show => brief_show(ctx),
         ChangeAction::Finalize { clean, dry_run } => run_finalize(ctx, clean, dry_run),
+        ChangeAction::Survey {
+            source_path,
+            source_key,
+            sources,
+            out,
+        } => dispatch_survey(ctx, source_path, source_key, sources, out),
     }
+}
+
+fn dispatch_survey(
+    ctx: &Ctx, source_path: Option<std::path::PathBuf>, source_key: Option<String>,
+    sources: Option<std::path::PathBuf>, out: std::path::PathBuf,
+) -> Result<()> {
+    let form = match (source_path, source_key, sources) {
+        (Some(sp), Some(sk), None) => survey::Form::Single {
+            source_path: sp,
+            source_key: sk,
+            out,
+        },
+        (None, None, Some(sf)) => survey::Form::Batch {
+            sources_file: sf,
+            out,
+        },
+        _ => {
+            return Err(Error::Argument {
+                flag: "<source-path> / --sources",
+                detail: "provide either <source-path> --source-key <key> or --sources <file>, \
+                         not both or neither"
+                    .to_string(),
+            });
+        }
+    };
+    survey::run(ctx, form)
 }
 
 /// Scaffold both `change.md` and `plan.yaml` atomically.

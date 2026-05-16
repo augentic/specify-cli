@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/augentic/specify-cli/schemas/survey-metadata.schema.json",
+  "title": "Specify survey metadata.json",
+  "description": "Validates the structure of a source survey metadata file. One file per legacy-code source, recording coarse source facts. Defined by RFC-20 §Artifacts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source-key", "language", "loc", "module-count", "top-level-modules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Must be 1; bumps require an RFC update."
+    },
+    "source-key": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Kebab-case identifier for the legacy source this file describes."
+    },
+    "language": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Primary programming language of the source (e.g. typescript, python)."
+    },
+    "loc": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Production lines of code (excluding tests, generated code, vendored deps, blank lines, comment-only lines)."
+    },
+    "module-count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of modules in the source."
+    },
+    "top-level-modules": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Names of top-level modules in the source."
+    }
+  }
+}
