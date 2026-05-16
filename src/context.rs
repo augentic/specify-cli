@@ -78,10 +78,10 @@ impl Ctx {
     /// # Errors
     ///
     /// Propagates the underlying serialization or I/O error from
-    /// [`output::write`].
+    /// [`output::emit`].
     pub(crate) fn write<T: Serialize>(
         &self, body: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
     ) -> Result<(), Error> {
-        output::write(self.format, body, render_text)
+        output::emit(Box::new(std::io::stdout().lock()), self.format, body, render_text)
     }
 }

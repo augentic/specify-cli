@@ -6,22 +6,6 @@ use specify_error::{Error, ValidationSummary};
 
 use crate::cli::Format;
 
-/// Serialise `data` and write it to stdout in `format`, using
-/// `render_text` for the text-format branch. The closure-based form
-/// is the single success-path emission entry point — handlers either
-/// reach for `ctx.write(&body, write_text)?;` or, on the rare
-/// `Ctx`-less verbs, call this directly.
-///
-/// # Errors
-///
-/// Propagates the underlying serialization or I/O error from
-/// [`emit`].
-pub fn write<T: Serialize>(
-    format: Format, data: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
-) -> Result<(), Error> {
-    emit(Box::new(std::io::stdout().lock()), format, data, render_text)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
 pub enum Exit {
@@ -97,7 +81,11 @@ pub fn report(format: Format, err: &Error) -> Exit {
 /// point for all structured output. Callers construct the locked
 /// writer at the boundary so the sink choice is visible at the
 /// call site.
-fn emit<T: Serialize>(
+///
+/// # Errors
+///
+/// Propagates the underlying serialization or I/O error.
+pub fn emit<T: Serialize>(
     mut writer: Box<dyn Write>, format: Format, payload: &T,
     render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
 ) -> Result<(), Error> {
