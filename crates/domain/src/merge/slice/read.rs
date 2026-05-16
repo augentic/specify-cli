@@ -70,12 +70,10 @@ pub(super) fn plan_three_way(
                     path: class.staged_dir.clone(),
                     source: err,
                 })?;
-                let file_type = entry.file_type().map_err(|err| Error::Diag {
-                    code: "merge-file-type-failed",
-                    detail: format!(
-                        "failed to read file type for {}: {err}",
-                        entry.path().display()
-                    ),
+                let file_type = entry.file_type().map_err(|err| Error::Filesystem {
+                    op: "file-type",
+                    path: entry.path(),
+                    source: err,
                 })?;
                 if !file_type.is_dir() {
                     continue;
@@ -104,18 +102,18 @@ pub(super) fn plan_three_way(
         delta_specs.sort_by(|a, b| a.delta_path.cmp(&b.delta_path));
 
         for spec in delta_specs {
-            let delta_text = fs::read_to_string(&spec.delta_path).map_err(|err| Error::Diag {
-                code: "merge-read-delta-failed",
-                detail: format!("failed to read delta {}: {err}", spec.delta_path.display()),
-            })?;
+            let delta_text =
+                fs::read_to_string(&spec.delta_path).map_err(|err| Error::Filesystem {
+                    op: "read",
+                    path: spec.delta_path.clone(),
+                    source: err,
+                })?;
 
             let baseline_text = if spec.baseline_path.is_file() {
-                Some(fs::read_to_string(&spec.baseline_path).map_err(|err| Error::Diag {
-                    code: "merge-read-baseline-failed",
-                    detail: format!(
-                        "failed to read baseline {}: {err}",
-                        spec.baseline_path.display()
-                    ),
+                Some(fs::read_to_string(&spec.baseline_path).map_err(|err| Error::Filesystem {
+                    op: "read",
+                    path: spec.baseline_path.clone(),
+                    source: err,
                 })?)
             } else {
                 None
@@ -155,23 +153,20 @@ pub(super) fn plan_three_way(
             composition_handled = true;
             let composition_delta_path = slice_dir.join(COMPOSITION_FILENAME);
             if composition_delta_path.is_file() {
-                let delta_text =
-                    fs::read_to_string(&composition_delta_path).map_err(|err| Error::Diag {
-                        code: "merge-read-composition-delta-failed",
-                        detail: format!(
-                            "failed to read composition delta {}: {err}",
-                            composition_delta_path.display()
-                        ),
-                    })?;
+                let delta_text = fs::read_to_string(&composition_delta_path).map_err(|err| {
+                    Error::Filesystem {
+                        op: "read",
+                        path: composition_delta_path.clone(),
+                        source: err,
+                    }
+                })?;
 
                 let baseline_path = class.baseline_dir.join(COMPOSITION_FILENAME);
                 let baseline_text = if baseline_path.is_file() {
-                    Some(fs::read_to_string(&baseline_path).map_err(|err| Error::Diag {
-                        code: "merge-read-composition-baseline-failed",
-                        detail: format!(
-                            "failed to read composition baseline {}: {err}",
-                            baseline_path.display()
-                        ),
+                    Some(fs::read_to_string(&baseline_path).map_err(|err| Error::Filesystem {
+                        op: "read",
+                        path: baseline_path.clone(),
+                        source: err,
                     })?)
                 } else {
                     None

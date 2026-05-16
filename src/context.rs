@@ -27,7 +27,7 @@ impl Ctx {
     /// the format-aware exit code.
     pub(crate) fn load(format: Format) -> Result<Self, Error> {
         let current_dir = std::env::current_dir().map_err(Error::Io)?;
-        let project_dir = ProjectConfig::find_root(&current_dir)?.ok_or(Error::NotInitialized)?;
+        let project_dir = ProjectConfig::find_root(&current_dir).ok_or(Error::NotInitialized)?;
         let config = ProjectConfig::load(&project_dir)?;
         Ok(Self {
             format,

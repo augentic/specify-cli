@@ -102,23 +102,15 @@ impl ProjectConfig {
     }
 
     /// Walk `start_dir` and its ancestors looking for the first directory
-    /// that contains `.specify/project.yaml`. Returns `Ok(None)` when no
-    /// ancestor is initialised.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a filesystem probe fails (other than the
-    /// "not found" case, which is expressed as `Ok(None)` per ancestor).
-    pub fn find_root(start_dir: &Path) -> Result<Option<PathBuf>, Error> {
-        for candidate in start_dir.ancestors() {
-            let config_path = Layout::new(candidate).config_path();
-            match config_path.try_exists() {
-                Ok(true) => return Ok(Some(candidate.to_path_buf())),
-                Ok(false) => {}
-                Err(err) => return Err(Error::Io(err)),
-            }
-        }
-        Ok(None)
+    /// that contains `.specify/project.yaml`. Returns `None` when no
+    /// ancestor is initialised. Filesystem probe errors are treated as
+    /// "this candidate isn't initialised" — the next ancestor is tried.
+    #[must_use]
+    pub fn find_root(start_dir: &Path) -> Option<PathBuf> {
+        start_dir
+            .ancestors()
+            .find(|candidate| Layout::new(candidate).config_path().try_exists().unwrap_or(false))
+            .map(Path::to_path_buf)
     }
 
     /// Resolve a `rules` value to an absolute path under `.specify/`.
@@ -457,13 +449,13 @@ mod tests {
         fs::create_dir_all(&nested).expect("mkdir nested");
         write_config(root, "name: demo\ncapability: omnia\n");
 
-        assert_eq!(ProjectConfig::find_root(root).unwrap().as_deref(), Some(root));
-        assert_eq!(ProjectConfig::find_root(&nested).unwrap().as_deref(), Some(root));
+        assert_eq!(ProjectConfig::find_root(root).as_deref(), Some(root));
+        assert_eq!(ProjectConfig::find_root(&nested).as_deref(), Some(root));
     }
 
     #[test]
     fn find_root_returns_none_outside_initialised_tree() {
         let tmp = tempdir().unwrap();
-        assert!(ProjectConfig::find_root(tmp.path()).unwrap().is_none());
+        assert!(ProjectConfig::find_root(tmp.path()).is_none());
     }
 }

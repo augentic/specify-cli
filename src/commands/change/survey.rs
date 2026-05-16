@@ -390,18 +390,18 @@ fn emit_summary(ctx: &Ctx, outcomes: &[RowOutcome]) -> Result<(), Error> {
 
 fn extract_code(err: &Error) -> &'static str {
     match err {
-        Error::Argument { .. } => {
-            let msg = err.to_string();
-            if msg.contains("does not exist") {
-                "source-path-missing"
-            } else if msg.contains("sources file not found") {
-                "sources-file-missing"
-            } else if msg.contains("sources file malformed") {
-                "sources-file-malformed"
-            } else {
-                "argument"
-            }
-        }
+        Error::Argument {
+            flag: "<source-path>",
+            ..
+        } => "source-path-missing",
+        Error::Argument {
+            flag: "--sources",
+            detail,
+        } if detail.starts_with("sources file not found") => "sources-file-missing",
+        Error::Argument {
+            flag: "--sources", ..
+        } => "sources-file-malformed",
+        Error::Argument { .. } => "argument",
         Error::Diag { code, .. } => code,
         Error::Validation { .. } => "validation",
         _ => "io",

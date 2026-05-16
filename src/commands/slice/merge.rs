@@ -195,17 +195,15 @@ fn operation_label(op: &MergeOperation) -> String {
 }
 
 fn summarise_ops(ops: &[MergeOperation]) -> String {
-    let mut added = 0;
-    let mut modified = 0;
-    let mut removed = 0;
-    let mut renamed = 0;
+    let mut counts: [(u32, &str, &str); 4] =
+        [(0, "added", "+"), (0, "modified", ""), (0, "removed", "-"), (0, "renamed", "")];
     let mut created_baseline = None;
     for op in ops {
         match op {
-            MergeOperation::Added { .. } => added += 1,
-            MergeOperation::Modified { .. } => modified += 1,
-            MergeOperation::Removed { .. } => removed += 1,
-            MergeOperation::Renamed { .. } => renamed += 1,
+            MergeOperation::Added { .. } => counts[0].0 += 1,
+            MergeOperation::Modified { .. } => counts[1].0 += 1,
+            MergeOperation::Removed { .. } => counts[2].0 += 1,
+            MergeOperation::Renamed { .. } => counts[3].0 += 1,
             MergeOperation::CreatedBaseline { requirement_count } => {
                 created_baseline = Some(*requirement_count);
             }
@@ -214,19 +212,11 @@ fn summarise_ops(ops: &[MergeOperation]) -> String {
     if let Some(count) = created_baseline {
         return format!("created baseline with {count} requirement(s)");
     }
-    let mut parts: Vec<String> = Vec::new();
-    if added > 0 {
-        parts.push(format!("+{added} added"));
-    }
-    if modified > 0 {
-        parts.push(format!("{modified} modified"));
-    }
-    if removed > 0 {
-        parts.push(format!("-{removed} removed"));
-    }
-    if renamed > 0 {
-        parts.push(format!("{renamed} renamed"));
-    }
+    let parts: Vec<String> = counts
+        .iter()
+        .filter(|(c, _, _)| *c > 0)
+        .map(|(c, label, prefix)| format!("{prefix}{c} {label}"))
+        .collect();
     if parts.is_empty() { "no-op".to_string() } else { parts.join(", ") }
 }
 
