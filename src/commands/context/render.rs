@@ -1,5 +1,7 @@
 //! Deterministic Markdown renderer for generated `AGENTS.md` context.
 
+use std::fmt::Write;
+
 #[cfg(test)]
 const PLACEHOLDER_FINGERPRINT: &str = "sha256:pending";
 use super::detect::Detection;
@@ -70,21 +72,18 @@ pub(super) struct Dep {
 /// Render a complete fenced `AGENTS.md` document with a computed fingerprint.
 #[must_use]
 pub(super) fn render_document_with_fingerprint(input: &Input, fingerprint: &str) -> String {
-    let mut out = String::new();
-    out.push_str("# ");
-    out.push_str(&one_line(&input.project_name));
-    out.push_str(" - Agent Instructions\n\n");
-    out.push_str("<!-- specify:context begin\n");
-    out.push_str("fingerprint: ");
-    out.push_str(fingerprint);
-    out.push('\n');
-    out.push_str("generated-by: specify ");
-    out.push_str(env!("CARGO_PKG_VERSION"));
-    out.push('\n');
-    out.push_str("-->\n\n");
-    out.push_str(&render_body(input));
-    out.push_str("<!-- specify:context end -->\n");
-    out
+    format!(
+        "# {name} - Agent Instructions\n\n\
+         <!-- specify:context begin\n\
+         fingerprint: {fingerprint}\n\
+         generated-by: specify {version}\n\
+         -->\n\n\
+         {body}\
+         <!-- specify:context end -->\n",
+        name = one_line(&input.project_name),
+        version = env!("CARGO_PKG_VERSION"),
+        body = render_body(input),
+    )
 }
 
 /// Render only the managed Markdown body between context fences.
@@ -110,14 +109,9 @@ fn render_section(title: &str, mut bullets: Vec<String>) -> String {
     bullets.sort();
     bullets.dedup();
 
-    let mut out = String::new();
-    out.push_str("## ");
-    out.push_str(title);
-    out.push('\n');
+    let mut out = format!("## {title}\n");
     for bullet in bullets {
-        out.push_str("- ");
-        out.push_str(&bullet);
-        out.push('\n');
+        let _ = writeln!(&mut out, "- {bullet}");
     }
     out
 }
