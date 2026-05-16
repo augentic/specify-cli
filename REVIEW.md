@@ -208,3 +208,9 @@ Same pattern for `LifecycleStatus::ALL_STATUSES` in `crates/domain/src/slice/lif
 - **Cargo `--duplicates`.** Only transitive (`base64 v0.21/v0.22`, `bitflags v2/v1`, `rustix v0.38/v1`) all coming through `wasm-pkg-client` / `warg-*`. No first-party fix.
 - **`docs/standards/*.md` size (823 LOC across 5 files in CLI repo).** Per scope rules, doc-only changes are out. Plus they're under the agent-navigation budget (`AGENTS.md` says "three hops").
 - **`xtask/src/manpage.rs` (44 LOC).** Genuinely useful, no duplication, leave alone.
+
+---
+
+## Post-mortem
+
+- **F1** — applied. Predicted −22 net LOC in prod, actual −21 (16 +, 37 −). Done-when (`rg -c '\bTransitionTarget\b' --type rust` → 0) flipped cleanly. No regressions: 813/813 nextest tests pass. One follow-on the review under-counted: `tests/slice.rs::transition_rejects_merged_target` was asserting clap's "invalid value" + the legal-targets list, so it had to be rewritten to assert `error: "argument"`, exit 2, and that the message names `merged` + redirects to `specify slice merge run` (net −1 LOC in tests). `cargo make ci` blocked at the `vet` step on a DNS lookup failure (no network for `raw.githubusercontent.com/divviup/libprio-rs/...`); unrelated to this finding.
