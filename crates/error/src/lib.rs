@@ -4,6 +4,7 @@
 
 pub mod error;
 pub mod serde_rfc3339;
+pub mod serde_rfc3339_opt;
 pub mod validation;
 pub mod yaml;
 

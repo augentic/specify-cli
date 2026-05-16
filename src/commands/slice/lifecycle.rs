@@ -70,15 +70,15 @@ pub(super) fn transition(ctx: &Ctx, name: String, target: LifecycleStatus) -> Re
 struct TransitionBody {
     name: String,
     status: LifecycleStatus,
-    #[serde(with = "specify_error::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339_opt")]
     defined_at: Option<Timestamp>,
-    #[serde(with = "specify_error::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339_opt")]
     build_started_at: Option<Timestamp>,
-    #[serde(with = "specify_error::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339_opt")]
     completed_at: Option<Timestamp>,
-    #[serde(with = "specify_error::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339_opt")]
     merged_at: Option<Timestamp>,
-    #[serde(with = "specify_error::serde_rfc3339")]
+    #[serde(with = "specify_error::serde_rfc3339_opt")]
     dropped_at: Option<Timestamp>,
 }
 
