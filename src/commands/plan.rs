@@ -7,7 +7,7 @@ pub mod cli;
 mod create;
 mod lifecycle;
 mod lock;
-mod status;
+pub(super) mod status;
 
 use std::path::{Path, PathBuf};
 

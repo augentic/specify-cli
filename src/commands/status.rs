@@ -1,14 +1,14 @@
 //! Top-level `specify status` — project dashboard. Aggregates the
 //! registry summary, plan progress counts, and the active-slice list.
 
-use std::collections::BTreeMap;
 use std::io::Write;
 
 use serde::Serialize;
-use specify_domain::change::{Plan, Status};
+use specify_domain::change::Plan;
 use specify_domain::registry::Registry;
 use specify_error::Result;
 
+use super::plan::status::Counts;
 use super::slice::{StatusEntry, collect_status, list_slice_names};
 use crate::context::Ctx;
 
@@ -50,19 +50,7 @@ fn write_dashboard_text(w: &mut dyn Write, body: &DashboardBody) -> std::io::Res
 #[serde(rename_all = "kebab-case")]
 struct PlanSummary {
     name: String,
-    counts: PlanCounts,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct PlanCounts {
-    done: usize,
-    in_progress: usize,
-    pending: usize,
-    blocked: usize,
-    failed: usize,
-    skipped: usize,
-    total: usize,
+    counts: Counts,
 }
 
 fn load_plan_summary(ctx: &Ctx) -> Option<PlanSummary> {
@@ -71,24 +59,9 @@ fn load_plan_summary(ctx: &Ctx) -> Option<PlanSummary> {
         return None;
     }
     let plan = Plan::load(&plan_path).ok()?;
-
-    let mut counts: BTreeMap<Status, usize> = Status::ALL.iter().map(|&s| (s, 0)).collect();
-    for entry in &plan.entries {
-        *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
-    }
-    let total: usize = counts.values().sum();
-
     Some(PlanSummary {
         name: plan.name,
-        counts: PlanCounts {
-            done: counts[&Status::Done],
-            in_progress: counts[&Status::InProgress],
-            pending: counts[&Status::Pending],
-            blocked: counts[&Status::Blocked],
-            failed: counts[&Status::Failed],
-            skipped: counts[&Status::Skipped],
-            total,
-        },
+        counts: Counts::from_entries(&plan.entries),
     })
 }
 

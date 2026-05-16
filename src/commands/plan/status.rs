@@ -32,14 +32,33 @@ enum OrderLabel {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct Counts {
-    done: usize,
-    in_progress: usize,
-    pending: usize,
-    blocked: usize,
-    failed: usize,
-    skipped: usize,
-    total: usize,
+pub struct Counts {
+    pub done: usize,
+    pub in_progress: usize,
+    pub pending: usize,
+    pub blocked: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    pub total: usize,
+}
+
+impl Counts {
+    pub fn from_entries(entries: &[Entry]) -> Self {
+        let mut counts: BTreeMap<Status, usize> = Status::ALL.iter().map(|&s| (s, 0)).collect();
+        for entry in entries {
+            *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
+        }
+        let total: usize = counts.values().sum();
+        Self {
+            done: counts[&Status::Done],
+            in_progress: counts[&Status::InProgress],
+            pending: counts[&Status::Pending],
+            blocked: counts[&Status::Blocked],
+            failed: counts[&Status::Failed],
+            skipped: counts[&Status::Skipped],
+            total,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -139,11 +158,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         (plan.entries.iter().collect::<Vec<_>>(), OrderLabel::List)
     };
 
-    let mut counts: BTreeMap<Status, usize> = Status::ALL.iter().map(|&s| (s, 0)).collect();
-    for entry in &plan.entries {
-        *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
-    }
-    let total: usize = counts.values().sum();
+    let counts = Counts::from_entries(&plan.entries);
 
     let active = plan.entries.iter().find(|c| c.status == Status::InProgress);
     let active_lifecycle = active.and_then(|a| read_lifecycle(&slices_dir.join(&a.name)));
@@ -172,15 +187,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
             name: plan.name.clone(),
             path: plan_path.display().to_string(),
         },
-        counts: Counts {
-            done: counts[&Status::Done],
-            in_progress: counts[&Status::InProgress],
-            pending: counts[&Status::Pending],
-            blocked: counts[&Status::Blocked],
-            failed: counts[&Status::Failed],
-            skipped: counts[&Status::Skipped],
-            total,
-        },
+        counts,
         order: order_label,
         entries,
         in_progress,
