@@ -139,7 +139,7 @@ impl<'a> From<&'a Error> for ErrorBody<'a> {
             _ => None,
         };
         Self {
-            error: err.variant_str().to_string(),
+            error: err.variant_str(),
             message: err.to_string(),
             exit_code: Exit::from(err).code(),
             results,

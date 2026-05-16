@@ -186,7 +186,7 @@ A dedicated typed variant remains correct for entries that already meet the crit
 
 **Hint colocation.** Long-form recovery hints live on the error, not on the renderer. `Error::hint(&self) -> Option<&'static str>` is the single hint surface; `ErrorBody::render_text` calls it. Adding a new hint means extending `Error::hint`, not the renderer.
 
-`unwrap()` and `expect()` are reserved for invariants the type system can't express (e.g. "this enum variant covers `Status::ALL`"). Always include a justification string in `expect`. User-facing errors must surface as `Error::*` variants, not panics.
+`unwrap()` and `expect()` are reserved for invariants the type system can't express (e.g. "this enum variant covers `Status::value_variants()`"). Always include a justification string in `expect`. User-facing errors must surface as `Error::*` variants, not panics.
 
 ## `#[non_exhaustive]`
 

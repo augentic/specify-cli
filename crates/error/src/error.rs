@@ -1,8 +1,6 @@
 //! `Error` enum and saphyr-error conversions. The YAML wrapper behind
 //! `Yaml` lives in [`crate::yaml`].
 
-use std::borrow::Cow;
-
 use crate::validation::{Status as ValidationStatus, Summary as ValidationSummary};
 use crate::yaml::YamlError;
 
@@ -147,21 +145,21 @@ impl Error {
 
     /// Kebab-case identifier used in structured CLI error payloads.
     ///
-    /// Most arms borrow a `&'static str`; [`Self::Filesystem`] composes
-    /// `filesystem-<op>` and returns the owned form.
+    /// Most arms return a `&'static str` literal; [`Self::Filesystem`]
+    /// composes `filesystem-<op>` and returns the owned form.
     #[must_use]
-    pub fn variant_str(&self) -> Cow<'static, str> {
+    pub fn variant_str(&self) -> String {
         match self {
-            Self::NotInitialized => Cow::Borrowed("not-initialized"),
-            Self::Diag { code, .. } => Cow::Borrowed(code),
-            Self::Argument { .. } => Cow::Borrowed("argument"),
-            Self::Validation { .. } => Cow::Borrowed("validation"),
-            Self::CliTooOld { .. } => Cow::Borrowed("specify-version-too-old"),
-            Self::ArtifactNotFound { .. } => Cow::Borrowed("artifact-not-found"),
-            Self::Filesystem { op, .. } => Cow::Owned(format!("filesystem-{op}")),
-            Self::BranchPrepareFailed { .. } => Cow::Borrowed("branch-preparation-failed"),
-            Self::Io(_) => Cow::Borrowed("io"),
-            Self::Yaml(_) => Cow::Borrowed("yaml"),
+            Self::NotInitialized => "not-initialized".to_string(),
+            Self::Diag { code, .. } => (*code).to_string(),
+            Self::Argument { .. } => "argument".to_string(),
+            Self::Validation { .. } => "validation".to_string(),
+            Self::CliTooOld { .. } => "specify-version-too-old".to_string(),
+            Self::ArtifactNotFound { .. } => "artifact-not-found".to_string(),
+            Self::Filesystem { op, .. } => format!("filesystem-{op}"),
+            Self::BranchPrepareFailed { .. } => "branch-preparation-failed".to_string(),
+            Self::Io(_) => "io".to_string(),
+            Self::Yaml(_) => "yaml".to_string(),
         }
     }
 

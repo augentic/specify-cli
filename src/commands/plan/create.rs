@@ -8,7 +8,7 @@ use specify_domain::change::{Entry, EntryPatch, Patch, Plan, Status};
 use specify_domain::config::{InitPolicy, with_state};
 use specify_error::{Error, Result, is_kebab};
 
-use super::{Ref, change_entry_json, check_project, plan_ref};
+use super::{Ref, check_project, plan_ref};
 use crate::cli::SourceArg;
 use crate::context::Ctx;
 
@@ -123,8 +123,8 @@ pub(super) fn add(
                 plan.entries.last().expect("Plan::create appended an entry that is now missing");
             Ok(EntryBody {
                 plan: plan_ref(plan, &plan_path),
-                action: EntryAction::Create,
-                entry: change_entry_json(created),
+                action: "create",
+                entry: serde_json::to_value(created).expect("plan Entry serialises as JSON"),
             })
         },
     )?;
@@ -162,8 +162,8 @@ pub(super) fn amend(
                 plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
             Ok(EntryBody {
                 plan: plan_ref(plan, &plan_path),
-                action: EntryAction::Amend,
-                entry: change_entry_json(amended),
+                action: "amend",
+                entry: serde_json::to_value(amended).expect("plan Entry serialises as JSON"),
             })
         },
     )?;
@@ -187,24 +187,15 @@ fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()
 #[serde(rename_all = "kebab-case")]
 struct EntryBody {
     plan: Ref,
-    action: EntryAction,
+    action: &'static str,
     entry: Value,
-}
-
-/// Discriminator for the [`EntryBody`] envelope used by `add` / `amend`.
-/// The wire string (`"create"` / `"amend"`) is unchanged from the
-/// pre-flatten shape — skill consumers depend on it.
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-enum EntryAction {
-    Create,
-    Amend,
 }
 
 fn write_entry_text(w: &mut dyn Write, body: &EntryBody) -> std::io::Result<()> {
     let name = body.entry.get("name").and_then(Value::as_str).unwrap_or("");
     match body.action {
-        EntryAction::Create => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
-        EntryAction::Amend => writeln!(w, "Amended plan entry '{name}'."),
+        "create" => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
+        "amend" => writeln!(w, "Amended plan entry '{name}'."),
+        other => unreachable!("unexpected EntryBody action: {other}"),
     }
 }

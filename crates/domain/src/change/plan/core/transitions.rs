@@ -7,11 +7,6 @@ use specify_error::Error;
 use super::model::{Entry, Plan, Status};
 
 impl Status {
-    /// Every variant in declaration order. Used by exhaustive transition
-    /// tests and dashboard counters that need to enumerate states.
-    pub const ALL: [Self; 6] =
-        [Self::Pending, Self::InProgress, Self::Done, Self::Blocked, Self::Failed, Self::Skipped];
-
     /// Whether `self -> target` is a legal edge in the plan-entry state
     /// machine. See `rfc-2-execution.md` §"Transition Rules" for the canonical
     /// table; the 10 edges enumerated below are the *only* legal ones.
@@ -100,6 +95,8 @@ impl Plan {
 mod tests {
     use std::collections::HashSet;
 
+    use clap::ValueEnum;
+
     use super::super::test_support::{change, plan_with_changes};
     use super::*;
 
@@ -139,7 +136,7 @@ mod tests {
 
     #[test]
     fn done_is_terminal() {
-        for &t in &Status::ALL {
+        for &t in Status::value_variants() {
             assert!(!Status::Done.can_transition_to(&t), "Done must not allow -> {t:?}");
         }
     }
@@ -190,8 +187,8 @@ mod tests {
     #[test]
     fn table_matches_oracle() {
         let allowed = allowed_edges();
-        for &from in &Status::ALL {
-            for &to in &Status::ALL {
+        for &from in Status::value_variants() {
+            for &to in Status::value_variants() {
                 let expected = allowed.contains(&(from, to));
                 let actual = from.can_transition_to(&to);
                 assert_eq!(
