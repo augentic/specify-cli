@@ -209,3 +209,18 @@ mod tests {
         assert_eq!(err.to_string(), "kebab-prefix: specific detail");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+
+    #[test]
+    fn diag_round_trip() {
+        let err = Error::Diag {
+            code: "kebab-prefix",
+            detail: "specific detail".to_string(),
+        };
+        assert_eq!(err.variant_str(), "kebab-prefix");
+        assert_eq!(err.to_string(), "kebab-prefix: specific detail");
+    }
+}
