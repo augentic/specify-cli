@@ -3,10 +3,11 @@
 //! JSON-schema validation catches structural errors (handled by callers
 //! via `validate_against_schema`). The functions here enforce invariants
 //! the schema cannot express: sorted lists, non-empty `declared-at`,
-//! no absolute paths, and no duplicate surface ids.
+//! no out-of-tree paths (absolute, Windows-drive, or `..`-traversing),
+//! and no duplicate surface ids.
 //!
 //! "No timestamps" and "no host-state leaks" are enforced by schema
-//! closure (`additionalProperties: false`) plus the absolute-path check
+//! closure (`additionalProperties: false`) plus the out-of-tree check
 //! below. No extra code is needed for those guardrails.
 
 use std::collections::HashSet;
@@ -14,6 +15,12 @@ use std::collections::HashSet;
 use specify_error::Error;
 
 use super::dto::{MetadataDocument, SurfacesDocument};
+
+/// Rule id for any `touches[]` / `declared-at[]` entry that is not a
+/// relative path under the source root: absolute, Windows-drive-prefixed,
+/// `..`-traversing, or (when checked on disk) escaping the canonical
+/// source root.
+pub const RULE_TOUCHES_OUT_OF_TREE: &str = "surfaces-touches-out-of-tree";
 
 /// Validate semantic invariants on a `SurfacesDocument`.
 ///
@@ -40,7 +47,7 @@ pub fn validate_surfaces(doc: &SurfacesDocument) -> Result<(), Error> {
     }
 
     let mut seen_ids = HashSet::new();
-    for s in &doc.surfaces {
+    for (i, s) in doc.surfaces.iter().enumerate() {
         if !seen_ids.insert(&s.id) {
             findings.push(finding(
                 "surface-id-duplicate",
@@ -73,11 +80,13 @@ pub fn validate_surfaces(doc: &SurfacesDocument) -> Result<(), Error> {
             ));
         }
 
-        check_absolute_paths(&s.touches, &s.id, "touches", &mut findings);
-        check_absolute_paths(&s.declared_at, &s.id, "declared-at", &mut findings);
+        for (j, p) in s.touches.iter().enumerate() {
+            check_out_of_tree(p, &format!("surfaces[{i}].touches[{j}]"), false, &mut findings);
+        }
+        for (j, p) in s.declared_at.iter().enumerate() {
+            check_out_of_tree(p, &format!("surfaces[{i}].declared-at[{j}]"), true, &mut findings);
+        }
     }
-
-    check_absolute_path(&doc.source_key, "<root>", "source-key", &mut findings);
 
     if findings.is_empty() { Ok(()) } else { Err(Error::Validation { results: findings }) }
 }
@@ -98,41 +107,52 @@ pub fn validate_metadata(doc: &MetadataDocument) -> Result<(), Error> {
         ));
     }
 
-    check_absolute_path(&doc.source_key, "<root>", "source-key", &mut findings);
-
-    for m in &doc.top_level_modules {
-        check_absolute_path(m, "<root>", "top-level-modules", &mut findings);
+    for (i, m) in doc.top_level_modules.iter().enumerate() {
+        check_out_of_tree(m, &format!("top-level-modules[{i}]"), false, &mut findings);
     }
 
     if findings.is_empty() { Ok(()) } else { Err(Error::Validation { results: findings }) }
 }
 
-fn is_absolute_path(p: &str) -> bool {
+/// Is `p` an absolute filesystem path (Unix root, Windows backslash-root,
+/// or Windows drive-letter prefix)?
+#[must_use]
+pub fn is_absolute_path(p: &str) -> bool {
     p.starts_with('/')
         || p.starts_with('\\')
         || (p.len() >= 3
-            && p.as_bytes()[0].is_ascii_alphabetic()
+            && p.as_bytes()[0].is_ascii_alphanumeric()
             && p.as_bytes()[1] == b':'
             && (p.as_bytes()[2] == b'/' || p.as_bytes()[2] == b'\\'))
 }
 
-fn check_absolute_paths(
-    paths: &[String], surface_id: &str, field: &str,
-    findings: &mut Vec<specify_error::ValidationSummary>,
-) {
-    for p in paths {
-        check_absolute_path(p, surface_id, field, findings);
+/// Strip a trailing `:<line>` (decimal) from `declared-at` entries.
+/// Returns `path` unchanged when there is no suffix.
+#[must_use]
+pub fn strip_line_suffix(path: &str) -> &str {
+    if let Some((head, tail)) = path.rsplit_once(':')
+        && !tail.is_empty()
+        && tail.bytes().all(|b| b.is_ascii_digit())
+    {
+        return head;
     }
+    path
 }
 
-fn check_absolute_path(
-    path: &str, surface_id: &str, field: &str, findings: &mut Vec<specify_error::ValidationSummary>,
+fn has_parent_segment(p: &str) -> bool {
+    p.split(['/', '\\']).any(|seg| seg == "..")
+}
+
+fn check_out_of_tree(
+    path: &str, field_path: &str, allow_line_suffix: bool,
+    findings: &mut Vec<specify_error::ValidationSummary>,
 ) {
-    if is_absolute_path(path) {
+    let candidate = if allow_line_suffix { strip_line_suffix(path) } else { path };
+    if is_absolute_path(candidate) || has_parent_segment(candidate) {
         findings.push(finding(
-            "surfaces-absolute-path",
-            "paths must be relative, not absolute",
-            format!("absolute path in {field} of surface `{surface_id}`: {path}"),
+            RULE_TOUCHES_OUT_OF_TREE,
+            "paths must be relative and stay under the source root",
+            format!("{field_path}: {path}"),
         ));
     }
 }
@@ -209,5 +229,60 @@ mod tests {
         assert!(!is_absolute_path("src/foo.ts"));
         assert!(!is_absolute_path("src/foo.ts:42"));
         assert!(!is_absolute_path(""));
+    }
+
+    #[test]
+    fn touches_absolute_path_is_out_of_tree() {
+        let mut doc = valid_doc();
+        doc.surfaces[0].touches = vec!["/absolute/path.ts".to_string()];
+        let err = validate_surfaces(&doc).unwrap_err();
+        assert_has_rule(&err, RULE_TOUCHES_OUT_OF_TREE);
+    }
+
+    #[test]
+    fn touches_parent_segment_is_out_of_tree() {
+        let mut doc = valid_doc();
+        doc.surfaces[0].touches = vec!["src/../escaped/path.ts".to_string()];
+        let err = validate_surfaces(&doc).unwrap_err();
+        let detail = first_detail(&err, RULE_TOUCHES_OUT_OF_TREE);
+        assert!(detail.contains("surfaces[0].touches[0]"), "field path missing: {detail}");
+    }
+
+    #[test]
+    fn declared_at_parent_segment_is_out_of_tree() {
+        let mut doc = valid_doc();
+        doc.surfaces[0].declared_at = vec!["../escaped/path.ts:42".to_string()];
+        let err = validate_surfaces(&doc).unwrap_err();
+        let detail = first_detail(&err, RULE_TOUCHES_OUT_OF_TREE);
+        assert!(detail.contains("surfaces[0].declared-at[0]"), "field path missing: {detail}");
+    }
+
+    #[test]
+    fn declared_at_windows_path_is_out_of_tree() {
+        let mut doc = valid_doc();
+        doc.surfaces[0].declared_at = vec!["C:\\Windows\\path.ts:1".to_string()];
+        let err = validate_surfaces(&doc).unwrap_err();
+        assert_has_rule(&err, RULE_TOUCHES_OUT_OF_TREE);
+    }
+
+    fn assert_has_rule(err: &Error, expected_rule_id: &str) {
+        let Error::Validation { results } = err else {
+            panic!("expected Error::Validation, got: {err}");
+        };
+        assert!(
+            results.iter().any(|r| r.rule_id == expected_rule_id),
+            "expected finding `{expected_rule_id}` in {results:?}"
+        );
+    }
+
+    fn first_detail(err: &Error, expected_rule_id: &str) -> String {
+        let Error::Validation { results } = err else {
+            panic!("expected Error::Validation, got: {err}");
+        };
+        results
+            .iter()
+            .find(|r| r.rule_id == expected_rule_id)
+            .and_then(|r| r.detail.clone())
+            .unwrap_or_else(|| panic!("expected finding `{expected_rule_id}` in {results:?}"))
     }
 }

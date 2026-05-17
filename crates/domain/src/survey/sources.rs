@@ -37,8 +37,8 @@ impl SourcesFile {
     pub fn load(path: &Path) -> Result<Self, Error> {
         let content = std::fs::read_to_string(path).map_err(|err| {
             if err.kind() == std::io::ErrorKind::NotFound {
-                Error::Argument {
-                    flag: "--sources",
+                Error::Diag {
+                    code: "sources-file-missing",
                     detail: format!("sources file not found: {}", path.display()),
                 }
             } else {
@@ -54,14 +54,14 @@ impl SourcesFile {
     ///
     /// Returns `sources-file-malformed` on any schema violation.
     pub fn parse(yaml: &str) -> Result<Self, Error> {
-        let file: Self = serde_saphyr::from_str(yaml).map_err(|err| Error::Argument {
-            flag: "--sources",
+        let file: Self = serde_saphyr::from_str(yaml).map_err(|err| Error::Diag {
+            code: "sources-file-malformed",
             detail: format!("sources file malformed: {err}"),
         })?;
 
         if file.version != 1 {
-            return Err(Error::Argument {
-                flag: "--sources",
+            return Err(Error::Diag {
+                code: "sources-file-malformed",
                 detail: format!(
                     "sources file malformed: unsupported version {} (expected 1)",
                     file.version
@@ -70,8 +70,8 @@ impl SourcesFile {
         }
 
         if file.sources.is_empty() {
-            return Err(Error::Argument {
-                flag: "--sources",
+            return Err(Error::Diag {
+                code: "sources-file-malformed",
                 detail: "sources file malformed: sources list is empty".to_string(),
             });
         }
@@ -79,8 +79,8 @@ impl SourcesFile {
         let mut seen = HashSet::new();
         for row in &file.sources {
             if !seen.insert(&row.key) {
-                return Err(Error::Argument {
-                    flag: "--sources",
+                return Err(Error::Diag {
+                    code: "sources-file-malformed",
                     detail: format!("sources file malformed: duplicate key `{}`", row.key),
                 });
             }

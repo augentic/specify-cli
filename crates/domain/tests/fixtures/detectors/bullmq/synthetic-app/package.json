@@ -1,6 +1,0 @@
-{
-  "name": "bullmq-fixture",
-  "dependencies": {
-    "bullmq": "^4.0.0"
-  }
-}

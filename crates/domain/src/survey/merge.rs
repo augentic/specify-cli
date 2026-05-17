@@ -1,6 +1,13 @@
 //! Merge + dedup helper for detector outputs. Consumes results from
 //! all detectors, validates no duplicate surface ids across detectors,
 //! and returns a sorted `Vec<Surface>` ready for `SurfacesDocument`.
+//!
+//! Deferred extension point. v1 ships an empty
+//! [`super::registry::DetectorRegistry`] and routes every legacy-code
+//! source through the agent-driven [`mod@super::ingest`] pipeline, so the
+//! `detector-failure` and `detector-id-collision` codes are unreachable
+//! through the CLI handler today. The module stays in tree as the
+//! mechanical-reversion seam (RFC-20 §"Future mechanical reversion").
 
 use std::collections::HashMap;
 

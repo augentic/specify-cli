@@ -1,13 +1,17 @@
-//! Detector registry populated at binary build time. See RFC-20
-//! §"Detector Contract" — mirrors the resolver layering in
-//! `crates/tool/src/resolver/`.
+//! Detector registry — deferred extension point.
+//!
+//! v1 ships an empty registry; every legacy-code source flows through
+//! the agent-driven [`mod@super::ingest`] pipeline. A future RFC may
+//! register an in-binary detector for a specific (language, framework)
+//! pair where regex-style enumeration is cheaper to maintain than the
+//! brief; the artifact contract does not change in either direction.
+//! See RFC-20 §"Future mechanical reversion".
 
 use super::detector::Detector;
 
 /// Registry of built-in detectors available to `specify change survey`.
 ///
-/// Populated at binary build time via [`Self::with_builtins`]. Change D
-/// wires concrete detectors; until then the registry is empty.
+/// Empty in v1; reserved for deferred extension points.
 #[derive(Debug)]
 pub struct DetectorRegistry {
     detectors: Vec<Box<dyn Detector + Send + Sync>>,
@@ -15,14 +19,12 @@ pub struct DetectorRegistry {
 
 impl DetectorRegistry {
     /// Build the registry with all built-in detectors.
+    ///
+    /// Empty in v1; reserved for deferred extension points (RFC-20).
     #[must_use]
     pub fn with_builtins() -> Self {
         Self {
-            detectors: vec![
-                Box::new(super::detectors::BullMqDetector),
-                Box::new(super::detectors::ExpressDetector),
-                Box::new(super::detectors::NestJsDetector),
-            ],
+            detectors: Vec::new(),
         }
     }
 

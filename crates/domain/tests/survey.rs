@@ -256,22 +256,38 @@ fn surfaces_declared_at_empty() {
     assert_has_finding(&err, "surfaces-declared-at-empty");
 }
 
-// ── Validation: no absolute paths ───────────────────────────────────
+// ── Validation: paths under source root ─────────────────────────────
 
 #[test]
-fn surfaces_absolute_path_in_touches() {
+fn surfaces_absolute_path_in_touches_out_of_tree() {
     let mut doc = canonical_surfaces_doc();
     doc.surfaces[0].touches = vec!["/absolute/path.ts".to_string()];
     let err = validate_surfaces(&doc).unwrap_err();
-    assert_has_finding(&err, "surfaces-absolute-path");
+    assert_has_finding(&err, "surfaces-touches-out-of-tree");
 }
 
 #[test]
-fn surfaces_absolute_path_in_declared_at() {
+fn surfaces_absolute_path_in_declared_at_out_of_tree() {
     let mut doc = canonical_surfaces_doc();
     doc.surfaces[0].declared_at = vec!["C:\\Windows\\path.ts:1".to_string()];
     let err = validate_surfaces(&doc).unwrap_err();
-    assert_has_finding(&err, "surfaces-absolute-path");
+    assert_has_finding(&err, "surfaces-touches-out-of-tree");
+}
+
+#[test]
+fn surfaces_parent_segment_in_touches_out_of_tree() {
+    let mut doc = canonical_surfaces_doc();
+    doc.surfaces[0].touches = vec!["src/../escaped/path.ts".to_string()];
+    let err = validate_surfaces(&doc).unwrap_err();
+    assert_has_finding(&err, "surfaces-touches-out-of-tree");
+}
+
+#[test]
+fn surfaces_parent_segment_in_declared_at_out_of_tree() {
+    let mut doc = canonical_surfaces_doc();
+    doc.surfaces[0].declared_at = vec!["../escaped/path.ts:1".to_string()];
+    let err = validate_surfaces(&doc).unwrap_err();
+    assert_has_finding(&err, "surfaces-touches-out-of-tree");
 }
 
 // ── Validation: duplicate ids ───────────────────────────────────────
@@ -426,9 +442,13 @@ fn test_surface(id: &str, kind: SurfaceKind) -> Surface {
 // ── DetectorRegistry ────────────────────────────────────────────────
 
 #[test]
-fn registry_with_builtins_has_detectors() {
+fn registry_with_builtins_is_empty() {
     let registry = DetectorRegistry::with_builtins();
-    assert_eq!(registry.iter().count(), 3);
+    assert_eq!(
+        registry.iter().count(),
+        0,
+        "registry is empty in v1; reserved for deferred extension points"
+    );
 }
 
 // ── Merge: empty registry produces empty surfaces ───────────────────

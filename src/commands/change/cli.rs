@@ -43,23 +43,38 @@ pub enum ChangeAction {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Mechanically scan legacy sources for externally observable
-    /// surfaces, write `surfaces.json` + `metadata.json` per source.
+    /// Validate a staged candidate `surfaces.json`, canonicalize,
+    /// capture coarse source metadata, and write per source-key.
+    /// JSON-only; no LLM.
     Survey {
         /// Single-source mode: path to the legacy source root.
-        #[arg(conflicts_with = "sources")]
+        #[arg(conflicts_with_all = ["sources", "staged"])]
         source_path: Option<PathBuf>,
 
         /// Single-source mode: kebab-case source key.
-        #[arg(long, requires = "source_path")]
+        #[arg(long, requires = "source_path", conflicts_with_all = ["sources", "staged"])]
         source_key: Option<String>,
 
+        /// Single-source mode: staged candidate `surfaces.json`.
+        #[arg(long, requires_all = ["source_path", "source_key"], conflicts_with_all = ["sources", "staged"])]
+        surfaces: Option<PathBuf>,
+
         /// Batch mode: YAML file listing one row per source.
-        #[arg(long, conflicts_with_all = ["source_path", "source_key"])]
+        #[arg(long, requires = "staged", conflicts_with_all = ["source_path", "source_key", "surfaces"])]
         sources: Option<PathBuf>,
 
-        /// Output directory for `surfaces.json` and `metadata.json`.
+        /// Batch mode: directory of staged `<source-key>.json` candidates.
+        #[arg(long, requires = "sources", conflicts_with_all = ["source_path", "source_key", "surfaces"])]
+        staged: Option<PathBuf>,
+
+        /// Output directory. Single-source: written under `<out>/`.
+        /// Batch: written under `<out>/<source-key>/`.
         #[arg(long)]
         out: PathBuf,
+
+        /// Validate and canonicalize without writing outputs; used by
+        /// the skill's repair loop.
+        #[arg(long)]
+        validate_only: bool,
     },
 }
