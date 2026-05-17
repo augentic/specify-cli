@@ -299,7 +299,12 @@ fn looks_like_package_request(value: &str) -> bool {
 }
 
 fn looks_like_template_path(value: &str) -> bool {
-    value.starts_with("$PROJECT_DIR") || value.starts_with("$CAPABILITY_DIR")
+    is_template_var_prefix(value, "$PROJECT_DIR")
+        || is_template_var_prefix(value, "$CAPABILITY_DIR")
+}
+
+fn is_template_var_prefix(value: &str, var: &str) -> bool {
+    value == var || value.starts_with(&format!("{var}/")) || value.starts_with(&format!("{var}\\"))
 }
 
 #[cfg(test)]
@@ -444,5 +449,15 @@ mod tests {
         let source = ToolSource::LocalPath(PathBuf::from("/absolute/path.wasm"));
         let expanded = source.expand(Path::new("/project"), None).expect("expand");
         assert_eq!(expanded, ToolSource::LocalPath(PathBuf::from("/absolute/path.wasm")));
+    }
+
+    #[test]
+    fn template_detection_requires_boundary_after_variable() {
+        assert!(!looks_like_template_path("$PROJECT_DIRX/foo.wasm"));
+        assert!(!looks_like_template_path("$CAPABILITY_DIRX/foo.wasm"));
+        assert!(looks_like_template_path("$PROJECT_DIR/foo.wasm"));
+        assert!(looks_like_template_path("$CAPABILITY_DIR/foo.wasm"));
+        assert!(looks_like_template_path("$PROJECT_DIR"));
+        assert!(looks_like_template_path("$CAPABILITY_DIR"));
     }
 }

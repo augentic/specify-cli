@@ -182,9 +182,7 @@ fn validate_source(source: &ToolSource, scope: &ToolScope) -> (Option<String>, O
             uri.strip_prefix("https://").is_some_and(|rest| !rest.is_empty())
         }
         ToolSource::Package(p) => !p.name_ref().is_empty(),
-        ToolSource::TemplatePath(t) => {
-            t.starts_with("$PROJECT_DIR") || t.starts_with("$CAPABILITY_DIR")
-        }
+        ToolSource::TemplatePath(t) => is_project_dir_path(t) || is_capability_dir_path(t),
     };
     let detail =
         (!valid).then(|| format!("`{}` is not a supported source", source.to_wire_string()));
