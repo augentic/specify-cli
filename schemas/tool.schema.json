@@ -38,7 +38,7 @@
         "source": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(https://.+|file://.+|/.*|[A-Za-z]:[\\\\/].*|specify:[a-z][a-z0-9-]*@\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?(\\+[A-Za-z0-9.-]+)?)$"
+          "pattern": "^(https://.+|file://.+|/.*|[A-Za-z]:[\\\\/].*|\\$PROJECT_DIR($|[\\\\/].*)|\\$CAPABILITY_DIR($|[\\\\/].*)|specify:[a-z][a-z0-9-]*@\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?(\\+[A-Za-z0-9.-]+)?)$"
         },
         "sha256": {
           "type": "string",

@@ -50,8 +50,18 @@ colors:
     light: "#B3261E"
     dark: "#F2B8B5"
 
+typefaces:
+  default:
+    family: "Inter"
+    fallback: "system-ui, sans-serif"
+    source: google-fonts
+  mono:
+    family: "Roboto Mono"
+    source: google-fonts
+
 typography:
   caption:
+    typeface: default
     size: 12
     weight: regular
     lineHeight: 16
@@ -60,6 +70,7 @@ typography:
     weight: regular
     lineHeight: 24
   title:
+    typeface: default
     size: 22
     weight: semibold
     lineHeight: 28
@@ -68,6 +79,11 @@ typography:
     weight: bold
     lineHeight: 40
     letterSpacing: -0.5
+  code-inline:
+    typeface: mono
+    size: 14
+    weight: regular
+    lineHeight: 20
 
 spacing:
   xs: 4
@@ -92,7 +108,7 @@ border:
   emphasis:
     width: 2
     color: primary
-    radius: 8
+    radius: md
 
 opacity:
   disabled: 0.38
@@ -202,6 +218,113 @@ fn missing_file_returns_invalid_project_error() {
         }
         other => panic!("expected InvalidProject for missing file, got {other:?}"),
     }
+}
+
+#[test]
+fn typefaces_with_typeface_references_validates_cleanly() {
+    let yaml = r#"version: 1
+typefaces:
+  default:
+    family: "Inter"
+    fallback: "system-ui, sans-serif"
+    source: google-fonts
+  mono:
+    family: "Roboto Mono"
+    source: bundled
+typography:
+  body:
+    typeface: default
+    size: 16
+    weight: regular
+    lineHeight: 24
+  code:
+    typeface: mono
+    size: 14
+    weight: regular
+    lineHeight: 20
+"#;
+    let file = write_named(yaml);
+    let args = Args {
+        mode: ValidateMode::Tokens,
+        path: Some(file.path().to_path_buf()),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(errors_array(&envelope).is_empty(), "typefaces + typeface should pass: {envelope}");
+}
+
+#[test]
+fn typeface_field_accepts_any_valid_token_name() {
+    let yaml = "version: 1\ntypography:\n  body:\n    typeface: unknown-face\n    size: 16\n";
+    let file = write_named(yaml);
+    let args = Args {
+        mode: ValidateMode::Tokens,
+        path: Some(file.path().to_path_buf()),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        errors_array(&envelope).is_empty(),
+        "typeface is a tokenName pattern, not a cross-reference check: {envelope}"
+    );
+}
+
+#[test]
+fn border_radius_as_token_ref_string_passes() {
+    let yaml = "version: 1\ncornerRadius:\n  md: 8\nborder:\n  card:\n    width: 1\n    color: outline\n    radius: md\n";
+    let file = write_named(yaml);
+    let args = Args {
+        mode: ValidateMode::Tokens,
+        path: Some(file.path().to_path_buf()),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(errors_array(&envelope).is_empty(), "string radius should pass: {envelope}");
+}
+
+#[test]
+fn border_radius_as_number_is_rejected() {
+    let yaml = "version: 1\nborder:\n  card:\n    width: 1\n    color: outline\n    radius: 8\n";
+    let file = write_named(yaml);
+    let args = Args {
+        mode: ValidateMode::Tokens,
+        path: Some(file.path().to_path_buf()),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    let errors = errors_array(&envelope);
+    assert!(!errors.is_empty(), "numeric radius should fail: {envelope}");
+    let any_hits_radius = errors
+        .iter()
+        .any(|e| e.get("path").and_then(Value::as_str).is_some_and(|p| p.contains("/radius")));
+    assert!(any_hits_radius, "expected error at border radius path: {errors:?}");
+}
+
+#[test]
+fn typeface_entry_rejects_invalid_source_enum() {
+    let yaml = r#"version: 1
+typefaces:
+  custom:
+    family: "MyFont"
+    source: cdn
+"#;
+    let file = write_named(yaml);
+    let args = Args {
+        mode: ValidateMode::Tokens,
+        path: Some(file.path().to_path_buf()),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    let errors = errors_array(&envelope);
+    assert!(!errors.is_empty(), "invalid source enum should fail: {envelope}");
+}
+
+#[test]
+fn typeface_entry_requires_family() {
+    let yaml = "version: 1\ntypefaces:\n  custom:\n    source: system\n";
+    let file = write_named(yaml);
+    let args = Args {
+        mode: ValidateMode::Tokens,
+        path: Some(file.path().to_path_buf()),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    let errors = errors_array(&envelope);
+    assert!(!errors.is_empty(), "missing family should fail: {envelope}");
 }
 
 #[test]

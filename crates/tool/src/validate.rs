@@ -24,6 +24,7 @@ const RULE_SHA256_FORMAT: &str = "tool.sha256-format";
 const RULE_PERMISSION_PATH_FORM: &str = "tool.permission-path-form";
 const RULE_LIFECYCLE_WRITE_DENIED: &str = "tool.lifecycle-state-write-denied";
 const RULE_CAPABILITY_DIR_SCOPE: &str = "tool.capability-dir-out-of-scope";
+const RULE_SOURCE_CAPABILITY_DIR_SCOPE: &str = "tool.source-capability-dir-out-of-scope";
 const RULE_NAME_UNIQUE: &str = "tool.name-unique";
 
 impl Tool {
@@ -43,20 +44,7 @@ impl Tool {
             .err()
             .map(|err| format!("`{}` is not an exact SemVer version: {err}", self.version));
 
-        let source_valid = match &self.source {
-            ToolSource::LocalPath(path) => {
-                path.is_absolute() || path.to_str().is_some_and(looks_like_windows_absolute)
-            }
-            ToolSource::FileUri(uri) => {
-                uri.strip_prefix("file://").is_some_and(|rest| !rest.is_empty())
-            }
-            ToolSource::HttpsUri(uri) => {
-                uri.strip_prefix("https://").is_some_and(|rest| !rest.is_empty())
-            }
-            ToolSource::Package(p) => !p.name_ref().is_empty(),
-        };
-        let source_detail = (!source_valid)
-            .then(|| format!("`{}` is not a supported source", self.source.to_wire_string()));
+        let (source_detail, source_scope_detail) = validate_source(&self.source, scope);
 
         let package_format_detail = package.and_then(|p| {
             let valid = !p.namespace.is_empty()
@@ -105,8 +93,13 @@ impl Tool {
             check(RULE_VERSION_SEMVER, "tool versions are exact SemVer versions", version_detail),
             check(
                 RULE_SOURCE_SUPPORTED,
-                "tool sources are absolute paths, file:// URIs, https:// URIs, or wasm package requests",
+                "tool sources are absolute paths, file:// URIs, https:// URIs, $PROJECT_DIR/$CAPABILITY_DIR templates, or wasm package requests",
                 source_detail,
+            ),
+            check(
+                RULE_SOURCE_CAPABILITY_DIR_SCOPE,
+                "$CAPABILITY_DIR in source is only available to capability-scope tools",
+                source_scope_detail,
             ),
             check(
                 RULE_PACKAGE_FORMAT,
@@ -144,7 +137,7 @@ impl ToolManifest {
     /// Validate a manifest and all of its contained tools.
     #[must_use]
     pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationSummary> {
-        let mut results = Vec::with_capacity(1 + self.tools.len() * 11);
+        let mut results = Vec::with_capacity(1 + self.tools.len() * 12);
 
         let mut seen: HashSet<&str> = HashSet::new();
         let mut duplicates: Vec<&str> = Vec::new();
@@ -175,6 +168,31 @@ fn check(rule_id: &'static str, rule: &'static str, detail: Option<String>) -> V
         rule: rule.to_string(),
         detail,
     }
+}
+
+fn validate_source(source: &ToolSource, scope: &ToolScope) -> (Option<String>, Option<String>) {
+    let valid = match source {
+        ToolSource::LocalPath(path) => {
+            path.is_absolute() || path.to_str().is_some_and(looks_like_windows_absolute)
+        }
+        ToolSource::FileUri(uri) => {
+            uri.strip_prefix("file://").is_some_and(|rest| !rest.is_empty())
+        }
+        ToolSource::HttpsUri(uri) => {
+            uri.strip_prefix("https://").is_some_and(|rest| !rest.is_empty())
+        }
+        ToolSource::Package(p) => !p.name_ref().is_empty(),
+        ToolSource::TemplatePath(t) => is_project_dir_path(t) || is_capability_dir_path(t),
+    };
+    let detail =
+        (!valid).then(|| format!("`{}` is not a supported source", source.to_wire_string()));
+    let scope_detail = if let ToolSource::TemplatePath(t) = source {
+        (t.contains("$CAPABILITY_DIR") && !matches!(scope, ToolScope::Capability { .. }))
+            .then(|| "project-scope source references $CAPABILITY_DIR".to_string())
+    } else {
+        None
+    };
+    (detail, scope_detail)
 }
 
 fn validate_permission_paths(read: &[String], write: &[String]) -> ValidationSummary {
@@ -455,5 +473,48 @@ mod tests {
         ] {
             assert!(validator.is_valid(&case), "schema should accept package case: {case}");
         }
+    }
+
+    #[test]
+    fn tool_schema_accepts_template_path_sources() {
+        let schema: serde_json::Value =
+            serde_json::from_str(TOOL_JSON_SCHEMA).expect("schema parses");
+        let validator = jsonschema::validator_for(&schema).expect("schema compiles");
+        for case in [
+            json!({ "tools": [{ "name": "vectis", "version": "0.3.0", "source": "$PROJECT_DIR/../cli/target/vectis.wasm" }] }),
+            json!({ "tools": [{ "name": "vectis", "version": "0.3.0", "source": "$PROJECT_DIR/tools/vectis.wasm" }] }),
+            json!({ "tools": [{ "name": "vectis", "version": "0.3.0", "source": "$CAPABILITY_DIR/bin/vectis.wasm" }] }),
+        ] {
+            assert!(validator.is_valid(&case), "schema should accept template source: {case}");
+        }
+    }
+
+    #[test]
+    fn template_source_passes_structure_validation() {
+        let tool = Tool {
+            name: "vectis".to_string(),
+            version: "0.3.0".to_string(),
+            source: ToolSource::TemplatePath("$PROJECT_DIR/../cli/target/vectis.wasm".to_string()),
+            sha256: None,
+            permissions: ToolPermissions {
+                read: vec!["$PROJECT_DIR".to_string()],
+                write: Vec::new(),
+            },
+        };
+        let results = tool.validate_structure(&project_scope());
+        assert!(results.iter().all(|s| s.status == ValidationStatus::Pass), "{results:?}");
+    }
+
+    #[test]
+    fn template_source_capability_dir_rejected_in_project_scope() {
+        let tool = Tool {
+            name: "vectis".to_string(),
+            version: "0.3.0".to_string(),
+            source: ToolSource::TemplatePath("$CAPABILITY_DIR/bin/vectis.wasm".to_string()),
+            sha256: None,
+            permissions: ToolPermissions::default(),
+        };
+        let results = tool.validate_structure(&project_scope());
+        assert!(fail_rule_ids(&results).contains(&RULE_SOURCE_CAPABILITY_DIR_SCOPE));
     }
 }

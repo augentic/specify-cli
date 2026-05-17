@@ -110,9 +110,9 @@ _Codified in:
 ### Appendix A — embedded `tokens.schema.json`
 
 > The embedded tokens schema is vendored from `specify` at
-> `schemas/vectis/tokens.schema.json`. The two copies stay in
+> `capabilities/vectis/tokens.schema.json`. The two copies stay in
 > lock-step: the upstream is canonical and any edit there must be
-> mirrored here.
+> mirrored here byte-for-byte.
 
 _Codified in:
 `crates/vectis/src/validate/engine/shared.rs::TOKENS_SCHEMA_SOURCE`
@@ -121,7 +121,7 @@ and `tokens_validator`._
 ### Appendix B — embedded `assets.schema.json`
 
 > The embedded assets schema is vendored from `specify` at
-> `schemas/vectis/assets.schema.json`. The order of platform
+> `capabilities/vectis/assets.schema.json`. The order of platform
 > densities (`1x`, `2x`, `3x` for iOS; `mdpi` … `xxxhdpi` for
 > Android) matches the schema's `propertyNames` and is the order
 > warnings render in. The same byte-identity discipline as the
@@ -155,11 +155,11 @@ _Codified in: `crates/vectis/tests/engine_assets.rs::APPENDIX_E_ASSETS_YAML`._
 ### Appendix F — patched `composition.schema.json`
 
 > The embedded composition schema is the upstream
-> `schemas/vectis/composition.schema.json` with the F-patch applied.
-> The schema is shared between `layout` mode (unwired-subset runtime)
-> and `composition` mode (full lifecycle runtime). The F.2 patch's
-> `component.not.enum` rejects reserved slugs (`header`, `body`,
-> `footer`, `fab`).
+> `capabilities/vectis/composition.schema.json` (in the `specify`
+> repo) with the F-patch applied. The schema is shared between
+> `layout` mode (unwired-subset runtime) and `composition` mode (full
+> lifecycle runtime). The F.2 patch's `component.not.enum` rejects
+> reserved slugs (`header`, `body`, `footer`, `fab`).
 
 _Codified in:
 `crates/vectis/src/validate/engine/shared.rs::COMPOSITION_SCHEMA_SOURCE`
