@@ -86,16 +86,9 @@ impl LifecycleStatus {
 mod tests {
     use std::collections::HashSet;
 
-    use super::*;
+    use clap::ValueEnum;
 
-    const ALL_STATUSES: [LifecycleStatus; 6] = [
-        LifecycleStatus::Defining,
-        LifecycleStatus::Defined,
-        LifecycleStatus::Building,
-        LifecycleStatus::Complete,
-        LifecycleStatus::Merged,
-        LifecycleStatus::Dropped,
-    ];
+    use super::*;
 
     fn allowed_edges() -> HashSet<(LifecycleStatus, LifecycleStatus)> {
         use LifecycleStatus::*;
@@ -132,8 +125,8 @@ mod tests {
     #[test]
     fn transition_table_matches_oracle() {
         let allowed = allowed_edges();
-        for &from in &ALL_STATUSES {
-            for &to in &ALL_STATUSES {
+        for &from in LifecycleStatus::value_variants() {
+            for &to in LifecycleStatus::value_variants() {
                 let expected = allowed.contains(&(from, to));
                 let actual = from.can_transition_to(to);
                 assert_eq!(

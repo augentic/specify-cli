@@ -38,15 +38,13 @@ pub use pipeline::PipelineView;
 
 /// Outcome of a structural validation rule.
 ///
-/// Canonical home for `ValidationResult`. `specify-validate` re-exports
-/// this type so consumers can depend on either crate. See
-/// `DECISIONS.md` (§"Change G — `ValidationResult` canonical home") for
-/// the rationale — moving the type into `specify-validate` would close a
-/// dependency cycle because `specify-validate` already depends on
-/// `specify-capability` for `PipelineView`.
+/// Canonical home for `ValidationResult`. Lives in `specify-domain`
+/// because every consumer of the validation registry already depends
+/// on the broader domain surface (`Capability`, `PipelineView`,
+/// `Registry`). See `DECISIONS.md` §"Crate layout" for the full
+/// rationale.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "status", rename_all = "kebab-case", rename_all_fields = "kebab-case")]
-#[non_exhaustive]
 pub enum ValidationResult {
     /// Rule passed.
     Pass {

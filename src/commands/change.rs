@@ -1,5 +1,5 @@
 pub mod cli;
-pub mod plan;
+mod survey;
 
 use std::io::Write;
 
@@ -10,48 +10,71 @@ use specify_domain::change::finalize;
 use specify_domain::cmd::RealCmd;
 use specify_domain::registry::Registry;
 use specify_domain::slice::atomic::bytes_write;
-use specify_error::{Error, Result, is_kebab};
+use specify_error::{Error, Result};
 
-use crate::cli::ChangeAction;
+use self::cli::ChangeAction;
+use crate::cli::SourceArg;
+use crate::commands::plan;
 use crate::context::Ctx;
 
-/// Dispatch `specify change *` — operator brief, plan, finalize.
+/// Dispatch `specify change *` — operator brief, finalize, and survey.
 pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
     match action {
-        ChangeAction::Create { name } => brief_create(ctx, name),
+        ChangeAction::Draft { name, sources } => draft(ctx, name, sources),
         ChangeAction::Show => brief_show(ctx),
-        ChangeAction::Plan { action } => plan::run(ctx, action),
         ChangeAction::Finalize { clean, dry_run } => run_finalize(ctx, clean, dry_run),
+        ChangeAction::Survey {
+            source_path,
+            source_key,
+            surfaces,
+            sources,
+            staged,
+            out,
+            validate_only,
+        } => {
+            survey::run(ctx, source_path, source_key, surfaces, sources, staged, out, validate_only)
+        }
     }
 }
 
-fn brief_create(ctx: &Ctx, name: String) -> Result<()> {
-    if !is_kebab(&name) {
-        return Err(Error::Diag {
-            code: "change-brief-name-not-kebab",
-            detail: format!(
-                "change brief: name `{name}` must be kebab-case \
-                 (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
-            ),
-        });
-    }
+/// Scaffold both `change.md` and `plan.yaml` atomically.
+///
+/// Atomicity contract: if either file already exists, refuse with
+/// `already-exists` and write neither. Validation order is fixed —
+/// kebab-case first, source-argument shape next, file collisions last
+/// — so operators see the most actionable diagnostic first. The plan
+/// half delegates to [`plan::write_scaffold`], the same helper that
+/// backs `specify plan create`.
+fn draft(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
+    plan::require_kebab_change_name(&name)?;
+    let source_map = plan::build_source_map(sources)?;
 
     let brief_path = ChangeBrief::path(&ctx.project_dir);
+    let plan_path = ctx.layout().plan_path();
+    let mut existing: Vec<String> = Vec::new();
     if brief_path.exists() {
+        existing.push(format!("change brief at {}", brief_path.display()));
+    }
+    if plan_path.exists() {
+        existing.push(format!("plan at {}", plan_path.display()));
+    }
+    if !existing.is_empty() {
         return Err(Error::Diag {
             code: "already-exists",
-            detail: format!("change brief already exists at {}", brief_path.display()),
+            detail: format!("refusing to overwrite existing {}", existing.join(" and ")),
         });
     }
 
     bytes_write(&brief_path, ChangeBrief::template(&name).as_bytes())?;
+    plan::write_scaffold(&plan_path, &name, source_map)?;
 
     ctx.write(
-        &BriefCreateBody {
+        &DraftBody {
             name,
-            path: brief_path.display().to_string(),
+            brief: brief_path.display().to_string(),
+            plan: plan_path.display().to_string(),
         },
-        write_brief_create_text,
+        write_draft_text,
     )?;
     Ok(())
 }
@@ -59,13 +82,11 @@ fn brief_create(ctx: &Ctx, name: String) -> Result<()> {
 fn brief_show(ctx: &Ctx) -> Result<()> {
     let brief_path = ChangeBrief::path(&ctx.project_dir);
     let brief = ChangeBrief::load(&ctx.project_dir)?;
-    ctx.write(
-        &BriefShowBody {
-            brief,
-            path: brief_path.display().to_string(),
-        },
-        write_brief_show_text,
-    )?;
+    let path = brief_path.display().to_string();
+    ctx.write(&brief, |w, brief| match brief {
+        None => writeln!(w, "no change brief declared at {path}"),
+        Some(brief) => render_brief(w, brief, &path),
+    })?;
     Ok(())
 }
 
@@ -82,8 +103,8 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
                 detail: "no plan to finalize: plan.yaml is absent. \
                          If the change was already finalized, the archive is at \
                          .specify/archive/plans/. Otherwise run \
-                         `specify change plan create` (and `specify change create` \
-                         if the change brief is also missing) to start the loop."
+                         `specify change draft <name> [--source ...]` to scaffold \
+                         change.md and plan.yaml together and start the loop."
                     .to_string(),
             });
         }
@@ -134,28 +155,15 @@ fn run_finalize(ctx: &Ctx, clean: bool, dry_run: bool) -> Result<()> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct BriefCreateBody {
+struct DraftBody {
     name: String,
-    path: String,
+    brief: String,
+    plan: String,
 }
 
-fn write_brief_create_text(w: &mut dyn Write, body: &BriefCreateBody) -> std::io::Result<()> {
-    writeln!(w, "Created change brief for {} at {}", body.name, body.path)
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct BriefShowBody {
-    #[serde(flatten)]
-    brief: Option<ChangeBrief>,
-    path: String,
-}
-
-fn write_brief_show_text(w: &mut dyn Write, body: &BriefShowBody) -> std::io::Result<()> {
-    match &body.brief {
-        None => writeln!(w, "no change brief declared at {}", body.path),
-        Some(brief) => render_brief(w, brief, &body.path),
-    }
+fn write_draft_text(w: &mut dyn Write, body: &DraftBody) -> std::io::Result<()> {
+    writeln!(w, "Drafted change brief for {} at {}", body.name, body.brief)?;
+    writeln!(w, "Initialised plan '{}' at {}.", body.name, body.plan)
 }
 
 fn render_brief(w: &mut dyn Write, brief: &ChangeBrief, path: &str) -> std::io::Result<()> {

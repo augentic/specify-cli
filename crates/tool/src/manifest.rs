@@ -295,7 +295,7 @@ pub(crate) fn looks_like_sha256_hex(value: &str) -> bool {
 }
 
 fn looks_like_package_request(value: &str) -> bool {
-    value.contains(':') || value.starts_with("specify:")
+    value.contains(':')
 }
 
 fn looks_like_template_path(value: &str) -> bool {

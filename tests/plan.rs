@@ -3,10 +3,8 @@
 //!
 //! The schema tests are pure-library: they compile the bundled JSON
 //! Schema and feed it YAML fixtures converted to `serde_json::Value`.
-//! CLI integration tests for the `specify change plan *` group that
-//! used to live alongside these schema tests have moved to
-//! `tests/change_plan_orchestrate.rs` (RFC-13 §"What becomes a
-//! capability" folded `specify plan *` under the `change` umbrella).
+//! CLI integration tests for the `specify plan *` group live in
+//! `tests/plan_orchestrate.rs`.
 
 use std::fs;
 use std::path::PathBuf;

@@ -1,8 +1,11 @@
 //! Validation rule registry and runner.
 //!
 //! `Rule` / `CrossRule` declare their `Classification`; [`validate_slice`]
-//! returns a `ValidationReport` with `Pass` / `Fail` / `Deferred` results,
-//! serialised by [`serialize_report`].
+//! returns a `ValidationReport` with `Pass` / `Fail` / `Deferred` results.
+//! The report serialises directly via its `serde::Serialize` derive — the
+//! kebab-case wire shape (`brief-results`, `cross-checks`, `rule-id`) is
+//! produced by the `rename_all = "kebab-case"` attribute on the report and
+//! the matching attribute on `ValidationResult`.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -17,7 +20,6 @@ pub mod compatibility;
 mod primitives;
 mod registry;
 mod run;
-mod serialize;
 
 pub use compatibility::{
     CompatibilityClassification, CompatibilityFinding, CompatibilityReport, CompatibilitySummary,
@@ -25,8 +27,6 @@ pub use compatibility::{
 };
 pub use registry::{cross_rules, rules_for};
 pub use run::validate_slice;
-pub use serialize::serialize_report;
-pub use specify_validate::{ContractFinding, validate_baseline_contracts};
 
 pub use crate::capability::ValidationResult;
 
@@ -36,7 +36,8 @@ pub use crate::capability::ValidationResult;
 /// artifact (e.g. `"proposal"` → `proposal.md`), or by the artifact path
 /// relative to `slice_dir` when the brief's `generates` is a glob
 /// matching multiple files (e.g. `"specs/login/spec.md"`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 #[must_use]
 pub struct ValidationReport {
     /// Per-brief validation results, keyed by brief id or artifact path.
@@ -148,6 +149,49 @@ mod tests {
         assert!(!rules_for("composition").is_empty());
         assert!(rules_for("contracts").len() >= 3);
         assert!(cross_rules().len() >= 3);
+    }
+
+    /// `ValidationReport` serialises with the canonical kebab-case wire
+    /// shape — `passed` / `brief-results` / `cross-checks` at the top,
+    /// `status` / `rule-id` / `rule` (+ variant-specific fields) per
+    /// result. Pins the derive against accidental rename or reshape.
+    #[test]
+    fn report_serialises_kebab_case_shape() {
+        use crate::capability::ValidationResult;
+
+        let mut brief_results: BTreeMap<String, Vec<ValidationResult>> = BTreeMap::new();
+        brief_results.insert(
+            "proposal".to_string(),
+            vec![ValidationResult::Pass {
+                rule_id: "proposal.why-has-content".into(),
+                rule: "Has a Why section with at least one sentence".into(),
+            }],
+        );
+        let report = ValidationReport {
+            brief_results,
+            cross_checks: vec![
+                ValidationResult::Fail {
+                    rule_id: "cross.design-references-valid".into(),
+                    rule: "Every requirement id referenced in design.md exists in specs".into(),
+                    detail: "REQ-999 not found".to_string(),
+                },
+                ValidationResult::Deferred {
+                    rule_id: "specs.uses-normative-language".into(),
+                    rule: "Uses SHALL/MUST language for normative requirements".into(),
+                    reason: "Semantic check — requires LLM judgment",
+                },
+            ],
+            passed: false,
+        };
+
+        let value = serde_json::to_value(&report).expect("report serialises");
+        assert_eq!(value["passed"], false);
+        assert_eq!(value["brief-results"]["proposal"][0]["status"], "pass");
+        assert_eq!(value["brief-results"]["proposal"][0]["rule-id"], "proposal.why-has-content");
+        assert_eq!(value["cross-checks"][0]["status"], "fail");
+        assert_eq!(value["cross-checks"][0]["detail"], "REQ-999 not found");
+        assert_eq!(value["cross-checks"][1]["status"], "deferred");
+        assert_eq!(value["cross-checks"][1]["reason"], "Semantic check — requires LLM judgment");
     }
 
     /// Every rule carries a stable `<brief>.<kebab>` id.

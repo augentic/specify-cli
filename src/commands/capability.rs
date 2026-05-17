@@ -1,4 +1,4 @@
-//! `specify capability {resolve, check, pipeline}`.
+//! `specify capability {resolve, pipeline}`.
 
 pub mod cli;
 
@@ -8,7 +8,6 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 use specify_domain::capability::{Capability, CapabilitySource, Phase};
-use specify_domain::validate::ValidationResult;
 use specify_error::{Error, Result};
 
 use crate::cli::Format;
@@ -29,14 +28,18 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
 
 pub fn resolve(format: Format, capability_value: String, project_dir: &Path) -> Result<()> {
     let (root_dir, source) = Capability::locate(&capability_value, project_dir)?;
-    enforce_capability_filename(&root_dir)?;
+    Capability::probe_dir(&root_dir).ok_or_else(|| Error::Diag {
+        code: "capability-manifest-missing",
+        detail: format!("no `capability.yaml` at {}", root_dir.display()),
+    })?;
     let (source_label, path) = match &source {
         CapabilitySource::Local(p) => ("local", p.clone()),
         CapabilitySource::Cached(p) => ("cached", p.clone()),
         _ => ("unknown", PathBuf::new()),
     };
 
-    output::write(
+    output::emit(
+        Box::new(std::io::stdout().lock()),
         format,
         &ResolveBody {
             capability_value,
@@ -120,66 +123,4 @@ pub fn pipeline(ctx: &Ctx, phase: Phase, slice: Option<&Path>) -> Result<()> {
         write_pipeline_text,
     )?;
     Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct CheckBody<'a> {
-    passed: bool,
-    results: &'a [ValidationResult],
-}
-
-fn write_check_text(w: &mut dyn Write, body: &CheckBody<'_>) -> std::io::Result<()> {
-    if body.passed {
-        writeln!(w, "Capability OK")
-    } else {
-        let fail_count =
-            body.results.iter().filter(|r| matches!(r, ValidationResult::Fail { .. })).count();
-        writeln!(w, "Capability invalid: {fail_count} errors")?;
-        for r in body.results {
-            if let ValidationResult::Fail { rule_id, detail, .. } = r {
-                writeln!(w, "  [fail] {rule_id}: {detail}")?;
-            }
-        }
-        Ok(())
-    }
-}
-
-pub fn check(format: Format, capability_dir: &Path) -> Result<()> {
-    let manifest_path = Capability::probe_dir(capability_dir).ok_or_else(|| Error::Diag {
-        code: "capability-manifest-missing",
-        detail: format!("no `capability.yaml` at {}", capability_dir.display()),
-    })?;
-    let capability = load_manifest(&manifest_path)?;
-    let results = capability.validate_structure();
-    let passed = !results.iter().any(|r| matches!(r, ValidationResult::Fail { .. }));
-
-    let body = CheckBody {
-        passed,
-        results: &results,
-    };
-    output::write(format, &body, write_check_text)?;
-    if passed {
-        Ok(())
-    } else {
-        Err(Error::Diag {
-            code: "capability-check-failed",
-            detail: format!("capability at {} failed validation", capability_dir.display()),
-        })
-    }
-}
-
-/// Surface a `capability-manifest-missing` diagnostic when `dir` does
-/// not carry a `capability.yaml`.
-fn enforce_capability_filename(dir: &Path) -> Result<()> {
-    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::Diag {
-        code: "capability-manifest-missing",
-        detail: format!("no `capability.yaml` at {}", dir.display()),
-    })
-}
-
-fn load_manifest(manifest_path: &Path) -> Result<Capability> {
-    let text = std::fs::read_to_string(manifest_path)?;
-    let capability: Capability = serde_saphyr::from_str(&text)?;
-    Ok(capability)
 }

@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use specify_error::Error;
+use tempfile::TempDir;
 
 use crate::init::git::sparse_checkout_github;
 
@@ -14,6 +15,7 @@ pub(super) struct CapabilityUri {
     pub(crate) capability_value: String,
     pub(crate) capability_name: String,
     pub(crate) source_dir: PathBuf,
+    _checkout_guard: Option<TempDir>,
 }
 
 impl CapabilityUri {
@@ -43,21 +45,23 @@ impl CapabilityUri {
             capability_value,
             capability_name,
             source_dir: canonical,
+            _checkout_guard: None,
         })
     }
 
     fn from_github(capability: &str) -> Result<Self, Error> {
         let spec = GithubCapabilityUri::parse(capability)?;
         let repo_url = format!("https://github.com/{}/{}.git", spec.owner, spec.repo);
-        let checkout_dir =
+        let checkout =
             sparse_checkout_github(&repo_url, spec.checkout_ref.as_deref(), &spec.capability_path)?;
-        let source_dir = checkout_dir.join(&spec.capability_path);
+        let source_dir = checkout.path().join(&spec.capability_path);
         ensure_capability_dir(&source_dir, capability)?;
 
         Ok(Self {
             capability_value: capability.to_string(),
             capability_name: spec.capability_name,
             source_dir,
+            _checkout_guard: Some(checkout),
         })
     }
 }

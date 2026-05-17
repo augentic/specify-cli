@@ -1,6 +1,5 @@
 {
-  "plan": {
-    "name": "my-change",
-    "path": "<TEMPDIR>/plan.yaml"
-  }
+  "name": "my-change",
+  "brief": "<TEMPDIR>/change.md",
+  "plan": "<TEMPDIR>/plan.yaml"
 }

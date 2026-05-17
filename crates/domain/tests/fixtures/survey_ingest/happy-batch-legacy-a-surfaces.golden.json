@@ -1,0 +1,47 @@
+{
+  "language": "typescript",
+  "source-key": "legacy-a",
+  "surfaces": [
+    {
+      "declared-at": [
+        "src/server.ts:10"
+      ],
+      "handler": "src/routes/users.ts:listUsers",
+      "id": "http-get-users",
+      "identifier": "GET /users",
+      "kind": "http-route",
+      "touches": [
+        "src/routes/users.ts",
+        "src/users/repository.ts"
+      ]
+    },
+    {
+      "declared-at": [
+        "src/server.ts:42"
+      ],
+      "handler": "src/auth/register.ts:registerUser",
+      "id": "http-post-users",
+      "identifier": "POST /users",
+      "kind": "http-route",
+      "touches": [
+        "src/auth/register.ts",
+        "src/notifications/email.ts",
+        "src/users/repository.ts"
+      ]
+    },
+    {
+      "declared-at": [
+        "src/jobs/scheduler.ts:5"
+      ],
+      "handler": "src/jobs/cleanup.ts:run",
+      "id": "scheduled-job-cleanup",
+      "identifier": "cleanup-expired-sessions",
+      "kind": "scheduled-job",
+      "touches": [
+        "src/jobs/cleanup.ts",
+        "src/sessions/repository.ts"
+      ]
+    }
+  ],
+  "version": 1
+}

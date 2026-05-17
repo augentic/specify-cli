@@ -9,7 +9,7 @@ use std::{fs, io};
 /// `out_dir`. Returns the number of `.1` files written.
 ///
 /// File naming follows the standard `man(1)` dash-joined convention
-/// (`specify.1`, `specify-change.1`, `specify-change-plan-create.1`),
+/// (`specify.1`, `specify-change.1`, `specify-change-draft.1`),
 /// matching what `help2man` / Debian's `dh_installman` expect.
 pub fn render(out_dir: &Path) -> io::Result<usize> {
     fs::create_dir_all(out_dir)?;

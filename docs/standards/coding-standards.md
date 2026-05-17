@@ -8,7 +8,7 @@ Workspace lints live in `Cargo.toml`. Defaults are aggressive — clippy `all`/`
 
 Visibility on internal items follows clippy's `redundant_pub_crate` (nursery) rather than rustc's `unreachable_pub`: prefer bare `pub` and let the parent module's privacy do the constraining. The two lints are mutually exclusive — enabling both would loop. `unreachable_pub` stays at its allow-by-default, and any `#[expect(unreachable_pub, …)]` carve-out is a rot signal, not a tool you reach for.
 
-When you must silence a lint, use `#[expect(<lint>, reason = "…")]` at the **smallest possible scope**. `#[expect]` is preferred over `#[allow]` everywhere except module-level waivers: a dead `#[expect]` is a build failure, so the suppression cannot rot. `#![allow(...)]` at the crate or module root is still the right tool when the lint legitimately applies to every item below. Duplicate-version exemptions live in `clippy.toml` `allowed-duplicate-crates`; doc idents such as `GitHub`, `OAuth`, `OpenTelemetry`, `WebAssembly`, and `YAML` live in `clippy.toml` `doc-valid-idents`.
+When you must silence a lint, use `#[expect(<lint>, reason = "…")]` at the **smallest possible scope**. `#[expect]` is preferred over `#[allow]` everywhere except module-level waivers: a dead `#[expect]` is a build failure, so the suppression cannot rot. `#![allow(...)]` at the crate or module root is still the right tool when the lint legitimately applies to every item below. Doc idents such as `GitHub`, `OAuth`, `OpenTelemetry`, `WebAssembly`, and `YAML` live in `clippy.toml` `doc-valid-idents`.
 
 `taplo.toml` formats `Cargo.toml` files. Dependency arrays under `*-dependencies` and `dependencies` reorder alphabetically; preserve that on edit.
 
@@ -124,7 +124,7 @@ Response DTOs (`*Body`, `*Row`) are **top-level** structs under `mod`. Declaring
 | Filesystem path | `PathBuf` | never `String`; serde's default carries the path losslessly |
 | Status / kind / phase with finite domain | the underlying enum + `#[serde(rename_all = "kebab-case")]` | drop `.to_string()` at construction |
 | Stable kebab discriminant | `&'static str` | lives in the binary |
-| Timestamp written into JSON | `jiff::Timestamp` with `#[serde(with = "specify_error::serde_rfc3339")]` | serde owns the format |
+| Timestamp written into JSON | `jiff::Timestamp` with `#[serde(with = "specify_error::serde_rfc3339")]` (or `serde_rfc3339_opt` on `Option<Timestamp>`) | serde owns the format |
 | Count | `usize` | JSON has neither `u32` nor `u64` |
 
 **Single-variant enums are dead overhead.** Drop either the variant or the enum; the type's name already says "this DTO represents kind X". The `BriefAction::Init` pattern is the canonical example of what not to add.
@@ -182,11 +182,11 @@ fn handle(ctx: &Ctx, outcome: &Outcome) -> Result<()> {
 
 The kebab `code` is the wire contract; the Rust variant is for callers that pattern-match. Adding a typed variant for a one-site diagnostic doubles the `variant_str` table for no functional gain. When in doubt, stay on `Diag`.
 
-A dedicated typed variant remains correct for entries that already meet the criteria above (`Error::Argument`, `Error::Validation`, `Error::PlanTransition`, `Error::BranchPrepareFailed`, …).
+A dedicated typed variant remains correct for entries that already meet the criteria above (`Error::Argument`, `Error::Validation`, `Error::BranchPrepareFailed`, …). Typed variants must carry data the *wire* exposes; payloads that only round-trip into `detail` belong on `Error::Diag`.
 
 **Hint colocation.** Long-form recovery hints live on the error, not on the renderer. `Error::hint(&self) -> Option<&'static str>` is the single hint surface; `ErrorBody::render_text` calls it. Adding a new hint means extending `Error::hint`, not the renderer.
 
-`unwrap()` and `expect()` are reserved for invariants the type system can't express (e.g. "this enum variant covers `Status::ALL`"). Always include a justification string in `expect`. User-facing errors must surface as `Error::*` variants, not panics.
+`unwrap()` and `expect()` are reserved for invariants the type system can't express (e.g. "this enum variant covers `Status::value_variants()`"). Always include a justification string in `expect`. User-facing errors must surface as `Error::*` variants, not panics.
 
 ## `#[non_exhaustive]`
 
@@ -194,7 +194,7 @@ Every public `enum` or `struct` that may grow gets `#[non_exhaustive]`. The exce
 
 ## YAML, JSON, and atomic writes
 
-YAML (de)serialization goes through `serde-saphyr`, not `serde_yaml_ng` (retired) or `serde_yaml` (deprecated). `serde-saphyr` has no `Value` type; for dynamic YAML access deserialize into `serde_json::Value`. Deser and ser errors are wrapped behind a single `specify_error::YamlError` enum (`De` / `Ser` variants) so the upstream crate name does not leak through every `specify-*` public surface; `specify_error::Error` carries both via `Yaml(#[from] YamlError)`, and `?` on a raw `serde_saphyr` result still propagates because `Error` also implements `From<serde_saphyr::Error>` and `From<serde_saphyr::ser::Error>` through the wrapper. Library crates use the wrapper type in their public signatures; never expose `serde_saphyr::*::Error` directly.
+YAML (de)serialization goes through `serde-saphyr`, not `serde_yaml_ng` (retired) or `serde_yaml` (deprecated). `serde-saphyr` has no `Value` type; for dynamic YAML access deserialize into `serde_json::Value`. Deser and ser errors ride directly on `specify_error::Error::YamlDe(serde_saphyr::Error)` and `Error::YamlSer(serde_saphyr::ser::Error)` — both `#[error(transparent)]` `#[from]` variants — so `?` on a raw `serde_saphyr` result still propagates, the kebab discriminant on the wire stays `yaml` for either side, and call sites that don't care which API tripped match on either variant. Library crates return `Result<…, specify_error::Error>` rather than re-exposing `serde_saphyr::*::Error` types in their own public signatures.
 
 Writes that must not be observed mid-update use the shared atomic helpers in `specify_slice::atomic` (`yaml_write` / `bytes_write`). `fs::write` is fine for single-shot scratch files but never for files that other live processes read (`plan.yaml`, `registry.yaml`, `change.md`, `tasks.md`, `.specify/plan.lock`, `.metadata.yaml`). See [architecture.md §"Atomic writes"](./architecture.md#atomic-writes) for the rationale and [DECISIONS.md §"Atomic writes"](../../DECISIONS.md#atomic-writes) for the long form.
 

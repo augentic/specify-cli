@@ -92,7 +92,7 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     } else {
         writeln!(
             w,
-            "Next: run `specify change create <name>` to start a change, then `specify change plan create <name>` to plan it."
+            "Next: run `specify change draft <name> [--source <key>=<path-or-url> ...]` to scaffold the change brief and plan, then run `/change:draft` to author it."
         )?;
     }
     Ok(())
@@ -113,7 +113,7 @@ fn emit_init_result(
         context_skipped: context_skip_reason.is_some(),
         context_skip_reason,
     };
-    output::write(format, &body, write_text)?;
+    output::emit(Box::new(std::io::stdout().lock()), format, &body, write_text)?;
     Ok(())
 }
 

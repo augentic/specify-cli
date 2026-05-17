@@ -11,5 +11,6 @@ pub mod merge;
 pub mod registry;
 pub mod slice;
 pub mod spec;
+pub mod survey;
 pub mod task;
 pub mod validate;

@@ -21,7 +21,7 @@ pub(super) use show::run as show;
 use specify_domain::capability::{Capability, ResolvedCapability};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
-use specify_tool::{Tool, ToolManifest, ToolScope};
+use specify_tool::manifest::{Tool, ToolManifest, ToolScope};
 
 use self::dto::{CacheKey, Inventory, ScopedTool, WarningRow, warning_row};
 use crate::context::Ctx;
@@ -87,9 +87,12 @@ fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {
 }
 
 fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool> {
-    inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| Error::Diag {
-        code: "tool-not-declared",
-        detail: format!("tool not declared: {name}"),
+    inventory.tools.iter().find(|scoped| scoped.tool.name == name).ok_or_else(|| {
+        Error::validation_failed(
+            "tool-not-declared",
+            "tool must be declared in tools.yaml",
+            format!("tool not declared: {name}"),
+        )
     })
 }
 

@@ -34,7 +34,7 @@ pub fn capability_sidecar(
     };
 
     let manifest: ToolManifest = serde_saphyr::from_str(&text)
-        .map_err(|err| ToolError::manifest_parse(sidecar_path.clone(), Box::new(err.into())))?;
+        .map_err(|err| ToolError::manifest_parse(sidecar_path.clone(), err))?;
     let scope = ToolScope::Capability {
         capability_slug: capability_slug.to_string(),
         capability_dir: capability_dir.to_path_buf(),

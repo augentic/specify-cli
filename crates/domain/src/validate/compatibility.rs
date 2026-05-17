@@ -6,7 +6,6 @@ use std::path::Path;
 
 use serde::Serialize;
 use specify_error::Error;
-use specify_validate::validate_baseline;
 
 use crate::registry::{Registry, RegistryProject};
 
@@ -171,7 +170,6 @@ pub fn classify_project(
     let Some(registry) = Registry::load(project_dir)? else {
         return Ok(CompatibilityReport::new(change, 0, Vec::new()));
     };
-    let baseline_findings = validate_baseline(&project_dir.join("contracts"));
     let mut findings = Vec::new();
     let mut checked_pairs = 0;
 
@@ -189,7 +187,7 @@ pub fn classify_project(
                     producer_contract: repo_contract_path(&rel),
                     consumer_contract: repo_contract_path(&rel),
                 };
-                diff_pair_contracts(project_dir, &rel, &baseline_findings, &ctx, &mut findings);
+                diff_pair_contracts(project_dir, &rel, &ctx, &mut findings);
             }
         }
     }

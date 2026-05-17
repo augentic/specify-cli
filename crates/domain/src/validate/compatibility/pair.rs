@@ -43,23 +43,8 @@ enum ContractFormat {
 }
 
 pub(super) fn diff_pair_contracts(
-    project_dir: &Path, rel: &str, baseline_findings: &[crate::validate::ContractFinding],
-    ctx: &PairContext<'_>, findings: &mut Vec<CompatibilityFinding>,
+    project_dir: &Path, rel: &str, ctx: &PairContext<'_>, findings: &mut Vec<CompatibilityFinding>,
 ) {
-    let pair_baseline_findings: Vec<_> =
-        baseline_findings.iter().filter(|finding| finding.path.ends_with(rel)).collect();
-    if !pair_baseline_findings.is_empty() {
-        for finding in pair_baseline_findings {
-            findings.push(ctx.finding(
-                CompatibilityClassification::Unverifiable,
-                None,
-                repo_contract_path(rel),
-                format!("Producer baseline failed `{}`: {}", finding.rule_id, finding.detail),
-            ));
-        }
-        return;
-    }
-
     let producer_path = project_dir.join("contracts").join(rel);
     let consumer_path = project_dir
         .join(".specify")

@@ -28,7 +28,8 @@ fn create_writes_dir_and_metadata() {
         .success();
 
     let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["name"], "my-slice");
+    let dir = value["dir"].as_str().expect("dir string");
+    assert!(dir.ends_with("/my-slice"), "dir should end with /my-slice, got: {dir}");
     assert_eq!(value["status"], "defining");
     let capability = value["capability"].as_str().expect("capability string");
     assert!(capability.starts_with("file://"));
@@ -130,6 +131,35 @@ fn transition_rejects_illegal_edge() {
         .failure();
     let value = parse_json(&assert.get_output().stderr);
     assert_eq!(value["error"], "lifecycle");
+}
+
+#[test]
+fn transition_rejects_merged_target() {
+    // The `merged` lifecycle status is reserved for `slice merge run`,
+    // which writes it atomically alongside the spec merge and archive
+    // move. Hand-driven `slice transition <name> merged` would skip
+    // that bookkeeping, so the dispatcher refuses the value with an
+    // argument-error envelope (exit 2) before lifecycle ever runs.
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "transition", "my-slice", "merged"])
+        .assert()
+        .code(2);
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "argument");
+    assert_eq!(value["exit-code"], 2);
+    let message = value["message"].as_str().expect("message string");
+    assert!(
+        message.contains("specify slice merge run"),
+        "argument-error message must redirect to the merge runner; got:\n{message}"
+    );
+    assert!(
+        message.contains("merged"),
+        "argument-error message must name the rejected target; got:\n{message}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -260,31 +290,8 @@ fn overlap_empty_for_disjoint_slices() {
 }
 
 // ---------------------------------------------------------------------------
-// slice archive and drop
+// slice drop
 // ---------------------------------------------------------------------------
-
-#[test]
-fn archive_moves_dir_into_dated_path() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "archive", "my-slice"])
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    let archive_path = value["archive-path"].as_str().unwrap();
-    assert!(archive_path.contains(".specify/archive/"));
-    assert!(archive_path.ends_with("-my-slice"));
-
-    // Original is gone; archive dir has one dated subdirectory.
-    assert!(!project.slices_dir().join("my-slice").exists());
-    let archive = project.root().join(".specify/archive");
-    let entries: Vec<_> = fs::read_dir(&archive).unwrap().filter_map(Result::ok).collect();
-    assert_eq!(entries.len(), 1);
-    assert!(entries[0].file_name().to_string_lossy().ends_with("-my-slice"));
-}
 
 #[test]
 fn drop_transitions_and_archives() {
@@ -318,29 +325,8 @@ fn drop_transitions_and_archives() {
 }
 
 // ---------------------------------------------------------------------------
-// slice list / status
+// slice status
 // ---------------------------------------------------------------------------
-
-#[test]
-fn list_shows_every_active_slice() {
-    let project = Project::init().with_schemas();
-    specify().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
-    specify().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "list"])
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    let names: Vec<_> = value["slices"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|c| c["name"].as_str().unwrap().to_string())
-        .collect();
-    assert_eq!(names, vec!["alpha", "beta"]);
-}
 
 #[test]
 fn status_by_name_returns_single_entry() {
@@ -357,10 +343,9 @@ fn status_by_name_returns_single_entry() {
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
-    let items = value["slices"].as_array().unwrap();
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0]["name"], "only-slice");
-    assert_eq!(items[0]["status"], "defining");
+    let entry = &value["slice"];
+    assert_eq!(entry["name"], "only-slice");
+    assert_eq!(entry["status"], "defining");
 }
 
 // ---------------------------------------------------------------------------
@@ -913,17 +898,14 @@ fn outcome_registry_amendment_writes_payload() {
         .success();
     let value = parse_json(&assert.get_output().stdout);
     let outcome = &value["outcome"];
-    assert_eq!(outcome["outcome"].as_str(), Some("registry-amendment-required"));
-    let proposal = &outcome["proposal"];
-    assert_eq!(proposal["proposed-name"].as_str(), Some("alpha-gateway"));
+    let payload = &outcome["outcome"]["registry-amendment-required"];
+    assert!(payload.is_object(), "expected externally-tagged variant, got: {outcome}");
+    assert_eq!(payload["proposed-name"].as_str(), Some("alpha-gateway"));
+    assert_eq!(payload["proposed-url"].as_str(), Some("git@github.com:augentic/alpha-gateway.git"),);
+    assert_eq!(payload["proposed-capability"].as_str(), Some("omnia@v1"));
+    assert_eq!(payload["proposed-description"].as_str(), Some("Gateway for alpha capability."));
     assert_eq!(
-        proposal["proposed-url"].as_str(),
-        Some("git@github.com:augentic/alpha-gateway.git"),
-    );
-    assert_eq!(proposal["proposed-capability"].as_str(), Some("omnia@v1"));
-    assert_eq!(proposal["proposed-description"].as_str(), Some("Gateway for alpha capability."),);
-    assert_eq!(
-        proposal["rationale"].as_str(),
+        payload["rationale"].as_str(),
         Some("build discovered tangled code requiring a split"),
     );
     assert_eq!(
@@ -1064,8 +1046,8 @@ fn journal_append_writes_to_file() {
     assert!(journal_path.is_file(), "journal.yaml must exist after append");
     let text = fs::read_to_string(&journal_path).expect("read journal");
     assert!(text.contains("entries:"), "missing entries list in:\n{text}");
-    assert!(text.contains("step: define"), "missing kebab-case step:\n{text}");
-    assert!(text.contains("type: question"), "missing literal `type: question`:\n{text}");
+    assert!(text.contains("phase: define"), "missing kebab-case phase:\n{text}");
+    assert!(text.contains("kind: question"), "missing kebab-case kind:\n{text}");
     assert!(text.contains("summary: scope unclear"), "missing summary:\n{text}");
     assert!(text.contains("line one"), "missing first context line:\n{text}");
     assert!(text.contains("line two"), "missing second context line:\n{text}");
@@ -1078,8 +1060,8 @@ fn journal_append_writes_to_file() {
     let yaml: serde_json::Value = serde_saphyr::from_str(&text).expect("parse journal");
     let entries = yaml["entries"].as_array().expect("entries seq");
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0]["step"].as_str(), Some("define"));
-    assert_eq!(entries[0]["type"].as_str(), Some("question"));
+    assert_eq!(entries[0]["phase"].as_str(), Some("define"));
+    assert_eq!(entries[0]["kind"].as_str(), Some("question"));
     assert_eq!(entries[0]["summary"].as_str(), Some("scope unclear"));
     assert_eq!(entries[0]["context"].as_str(), Some("line one\nline two"));
 }

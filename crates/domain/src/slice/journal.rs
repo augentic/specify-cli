@@ -28,12 +28,13 @@ pub struct JournalEntry {
     #[serde(with = "specify_error::serde_rfc3339")]
     pub timestamp: Timestamp,
     /// Phase that wrote the entry (`define | build | merge`).
+    /// Serialised as `phase` on disk and on the CLI wire.
+    #[serde(rename = "phase")]
     pub step: Phase,
     /// Entry classification. Named `r#type` because `type` is a
-    /// reserved keyword; the serialised field name is literally
-    /// `type` — no `#[serde(rename)]` needed, since `r#type`'s
-    /// identifier is `type` once the raw-identifier prefix is
-    /// stripped.
+    /// reserved keyword; serialised as `kind` so the YAML/JSON
+    /// surface stays free of raw-identifier oddities.
+    #[serde(rename = "kind")]
     pub r#type: EntryKind,
     /// Short human-readable summary.
     pub summary: String,
@@ -80,8 +81,8 @@ impl Journal {
     ///
     /// Returns an empty [`Journal`] (not `Err`) when the file is
     /// absent — journals are lazily created on first [`Journal::append`].
-    /// A malformed file surfaces `Error::Yaml` (via
-    /// `From<YamlError>`) with the underlying parser's
+    /// A malformed file surfaces `Error::YamlDe` (via
+    /// `From<serde_saphyr::Error>`) with the underlying parser's
     /// location hint; load never silently recovers from corruption.
     ///
     /// # Errors
@@ -157,8 +158,8 @@ mod tests {
         let raw = std::fs::read_to_string(Journal::path(dir.path())).expect("read ok");
         assert!(raw.contains("entries:"), "missing `entries:` in:\n{raw}");
         assert!(raw.contains("timestamp:"), "missing `timestamp:` in:\n{raw}");
-        assert!(raw.contains("step: build"), "missing kebab-case step:\n{raw}");
-        assert!(raw.contains("type: question"), "missing literal `type:`:\n{raw}");
+        assert!(raw.contains("phase: build"), "missing kebab-case phase:\n{raw}");
+        assert!(raw.contains("kind: question"), "missing kebab-case kind:\n{raw}");
         assert!(raw.contains("summary: task 3/7 unclear"), "missing summary:\n{raw}");
 
         let loaded = Journal::load(dir.path()).expect("load ok");

@@ -7,11 +7,6 @@ use specify_error::Error;
 use super::model::{Entry, Plan, Status};
 
 impl Status {
-    /// Every variant in declaration order. Used by exhaustive transition
-    /// tests and dashboard counters that need to enumerate states.
-    pub const ALL: [Self; 6] =
-        [Self::Pending, Self::InProgress, Self::Done, Self::Blocked, Self::Failed, Self::Skipped];
-
     /// Whether `self -> target` is a legal edge in the plan-entry state
     /// machine. See `rfc-2-execution.md` §"Transition Rules" for the canonical
     /// table; the 10 edges enumerated below are the *only* legal ones.
@@ -29,20 +24,20 @@ impl Status {
     }
 
     /// Return `target` if the edge is legal, otherwise an
-    /// `Error::PlanTransition` carrying both endpoints by their `Debug`
-    /// representation.
+    /// `Error::Diag` (code `plan-transition`) whose detail carries both
+    /// endpoints by their `Debug` representation.
     ///
     /// # Errors
     ///
-    /// Errors with `Error::PlanTransition` when `self -> target` is not
-    /// in the legal edge table.
+    /// Errors with `Error::Diag { code: "plan-transition", .. }` when
+    /// `self -> target` is not in the legal edge table.
     pub fn transition(&self, target: Self) -> Result<Self, Error> {
         if self.can_transition_to(&target) {
             Ok(target)
         } else {
-            Err(Error::PlanTransition {
-                from: format!("{self:?}"),
-                to: format!("{target:?}"),
+            Err(Error::Diag {
+                code: "plan-transition",
+                detail: format!("cannot transition from {self:?} to {target:?}"),
             })
         }
     }
@@ -100,6 +95,8 @@ impl Plan {
 mod tests {
     use std::collections::HashSet;
 
+    use clap::ValueEnum;
+
     use super::super::test_support::{change, plan_with_changes};
     use super::*;
 
@@ -139,7 +136,7 @@ mod tests {
 
     #[test]
     fn done_is_terminal() {
-        for &t in &Status::ALL {
+        for &t in Status::value_variants() {
             assert!(!Status::Done.can_transition_to(&t), "Done must not allow -> {t:?}");
         }
     }
@@ -172,11 +169,17 @@ mod tests {
             );
             let err = from.transition(to).expect_err(&format!("{from:?} -> {to:?} should be Err"));
             match err {
-                Error::PlanTransition { from: f, to: t } => {
-                    assert_eq!(f, format!("{from:?}"), "from payload mismatch");
-                    assert_eq!(t, format!("{to:?}"), "to payload mismatch");
+                Error::Diag {
+                    code: "plan-transition",
+                    detail,
+                } => {
+                    assert!(
+                        detail.contains(&format!("{from:?}"))
+                            && detail.contains(&format!("{to:?}")),
+                        "expected both endpoints in detail, got {detail:?}"
+                    );
                 }
-                other => panic!("expected Error::PlanTransition, got {other:?}"),
+                other => panic!("expected Error::Diag(plan-transition), got {other:?}"),
             }
         }
     }
@@ -184,8 +187,8 @@ mod tests {
     #[test]
     fn table_matches_oracle() {
         let allowed = allowed_edges();
-        for &from in &Status::ALL {
-            for &to in &Status::ALL {
+        for &from in Status::value_variants() {
+            for &to in Status::value_variants() {
                 let expected = allowed.contains(&(from, to));
                 let actual = from.can_transition_to(&to);
                 assert_eq!(
@@ -200,11 +203,14 @@ mod tests {
     fn error_carries_endpoints() {
         let err = Status::Done.transition(Status::Pending).expect_err("Done -> Pending must error");
         match err {
-            Error::PlanTransition { from, to } => {
-                assert_eq!(from, "Done");
-                assert_eq!(to, "Pending");
+            Error::Diag {
+                code: "plan-transition",
+                detail,
+            } => {
+                assert!(detail.contains("Done"), "detail should mention Done: {detail}");
+                assert!(detail.contains("Pending"), "detail should mention Pending: {detail}");
             }
-            other => panic!("expected Error::PlanTransition, got {other:?}"),
+            other => panic!("expected Error::Diag(plan-transition), got {other:?}"),
         }
     }
 
@@ -290,11 +296,14 @@ mod tests {
             .transition("a", Status::Pending, None)
             .expect_err("Done -> Pending must Err from state machine");
         match err {
-            Error::PlanTransition { from, to } => {
-                assert_eq!(from, "Done");
-                assert_eq!(to, "Pending");
+            Error::Diag {
+                code: "plan-transition",
+                detail,
+            } => {
+                assert!(detail.contains("Done"), "detail should mention Done: {detail}");
+                assert!(detail.contains("Pending"), "detail should mention Pending: {detail}");
             }
-            other => panic!("expected Error::PlanTransition, got {other:?}"),
+            other => panic!("expected Error::Diag(plan-transition), got {other:?}"),
         }
         let a = plan.entries.iter().find(|c| c.name == "a").unwrap();
         assert_eq!(a.status, Status::Done, "status must not be mutated on illegal edge");

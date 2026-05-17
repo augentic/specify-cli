@@ -41,17 +41,21 @@ pub enum PushOutcome {
 }
 
 /// Result of a per-project push operation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct PushResult {
     /// Registry project name.
     pub name: String,
     /// Outcome of this push.
     pub status: PushOutcome,
     /// Git branch pushed to.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
     /// `GitHub` PR number when one was created or found.
+    #[serde(rename = "pr", skip_serializing_if = "Option::is_none")]
     pub pr_number: Option<u64>,
     /// Human-readable error when the push failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 

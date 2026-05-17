@@ -14,10 +14,16 @@ use crate::spec::{REQ_HEADING, Requirement, has_delta_headers, parse_baseline, p
 /// Python reference). `operations` records every change applied, in the
 /// order `RENAMED → REMOVED → MODIFIED → ADDED` — the same order used
 /// when mutating the underlying block list.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// The `Serialize` derive omits `output` so the type can be `#[serde(flatten)]`-ed
+/// into wire envelopes (e.g. `MergePreviewEntry`) that carry only the
+/// operations list — the merged text travels separately to disk via
+/// the commit writer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[must_use]
 pub struct MergeResult {
     /// Merged baseline text.
+    #[serde(skip)]
     pub output: String,
     /// Ordered list of changes applied during the merge.
     pub operations: Vec<MergeOperation>,
@@ -30,7 +36,6 @@ pub struct MergeResult {
 /// how many `### Requirement:` blocks it contains.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
-#[non_exhaustive]
 pub enum MergeOperation {
     /// A requirement was renamed (ID preserved, heading changed).
     Renamed {

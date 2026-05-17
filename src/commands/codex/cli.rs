@@ -4,17 +4,8 @@
 use clap::Subcommand;
 
 /// Project-resolved codex rule catalogue verbs.
-#[derive(Subcommand)]
+#[derive(Subcommand, Copy, Clone)]
 pub enum CodexAction {
-    /// List resolved codex rules.
-    List,
-    /// Show one resolved codex rule.
-    Show {
-        /// Stable codex rule id, e.g. `UNI-002`.
-        rule_id: String,
-    },
-    /// Validate the resolved codex rule set.
-    Validate,
     /// Export the resolved codex as JSON.
     Export,
 }

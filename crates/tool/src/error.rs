@@ -15,7 +15,8 @@ use std::path::PathBuf;
 /// destructures the payload, (b) the variant routes to a non-default
 /// `Exit` slot via `From<ToolError> for Error`, or (c) three or more call
 /// sites share the exact shape. Everything else lands on [`Self::Diag`]
-/// with a kebab-case `code` carried at the constructor site.
+/// with a kebab-case `code` carried at the constructor site (see the
+/// `sidecar_*` / `network_*` helpers below).
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 #[expect(missing_docs, reason = "field names are self-evident; variant docs carry the contract")]
@@ -25,13 +26,6 @@ pub enum ToolError {
     /// `detail` is the human-readable message.
     #[error("{detail}")]
     Diag { code: &'static str, detail: String },
-    /// `meta.yaml` could not be parsed or violated the sidecar schema.
-    #[error("tool sidecar at {}: {kind}", path.display())]
-    Sidecar {
-        path: PathBuf,
-        #[source]
-        kind: SidecarKind,
-    },
     /// The requested tool name was not present in merged declarations.
     #[error("tool not declared: {name}")]
     ToolNotDeclared { name: String },
@@ -67,50 +61,6 @@ pub enum ToolError {
         /// Lowercase hex SHA-256 digest computed from the fetched bytes.
         actual: String,
     },
-    /// An HTTPS source request failed (status, timeout, malformed URL, body
-    /// cap exceeded, or generic transport failure).
-    #[error("tool source `{url}`: {kind}")]
-    Network {
-        url: String,
-        #[source]
-        kind: NetworkKind,
-    },
-}
-
-/// Sub-kind for [`ToolError::Sidecar`].
-#[derive(Debug, thiserror::Error)]
-pub enum SidecarKind {
-    /// `meta.yaml` existed but could not be parsed as YAML.
-    #[error("invalid YAML: {0}")]
-    Parse(#[source] Box<specify_error::YamlError>),
-    /// `meta.yaml` parsed, but did not satisfy the sidecar schema.
-    #[error("invalid schema: {0}")]
-    Schema(String),
-}
-
-/// Sub-kind for [`ToolError::Network`].
-#[derive(Debug, thiserror::Error)]
-#[expect(missing_docs, reason = "field names are self-evident; variant docs carry the contract")]
-pub enum NetworkKind {
-    /// An HTTPS source returned a non-200 status.
-    #[error("returned HTTP status {0}; expected 200")]
-    Status(u16),
-    /// An HTTPS source timed out.
-    #[error("timed out: {0}")]
-    Timeout(String),
-    /// An HTTPS source URL or response was malformed.
-    #[error("is malformed: {0}")]
-    Malformed(String),
-    /// An HTTPS source response exceeded the resolver body cap.
-    #[error("exceeded {limit} bytes")]
-    TooLarge {
-        limit: u64,
-        /// Reported or observed body size when available.
-        actual: Option<u64>,
-    },
-    /// A non-status, non-timeout transport failure.
-    #[error("network error: {0}")]
-    Other(String),
 }
 
 impl ToolError {
@@ -146,9 +96,7 @@ impl ToolError {
     }
 
     /// Build a manifest-parse error.
-    pub(crate) fn manifest_parse(
-        path: impl Into<PathBuf>, source: Box<specify_error::YamlError>,
-    ) -> Self {
+    pub(crate) fn manifest_parse(path: impl Into<PathBuf>, source: impl std::fmt::Display) -> Self {
         let path = path.into();
         Self::Diag {
             code: "tool-manifest-parse",
@@ -169,16 +117,6 @@ impl ToolError {
                 from.display(),
                 to.display()
             ),
-        }
-    }
-
-    /// Build the `tool-host-not-built` diagnostic returned by the stub
-    /// runner when the CLI is compiled without the `host` Cargo feature.
-    #[must_use]
-    pub fn host_not_built() -> Self {
-        Self::Diag {
-            code: "tool-host-not-built",
-            detail: "tool host runtime not built: this build of the `specify` CLI was compiled without the `host` feature; rebuild with `--features host` (or use the default install) to run WASI tools".to_string(),
         }
     }
 
@@ -238,23 +176,97 @@ impl ToolError {
             detail: format!("tool package `{}` failed: {}", label.into(), reason.into()),
         }
     }
+
+    /// Build a `tool-sidecar-parse` diagnostic.
+    pub(crate) fn sidecar_parse(path: impl Into<PathBuf>, source: impl std::fmt::Display) -> Self {
+        let path = path.into();
+        Self::Diag {
+            code: "tool-sidecar-parse",
+            detail: format!("tool sidecar at {}: invalid YAML: {source}", path.display()),
+        }
+    }
+
+    /// Build a `tool-sidecar-schema` diagnostic.
+    pub(crate) fn sidecar_schema(path: impl Into<PathBuf>, detail: impl Into<String>) -> Self {
+        let path = path.into();
+        Self::Diag {
+            code: "tool-sidecar-schema",
+            detail: format!(
+                "tool sidecar at {}: invalid schema: {}",
+                path.display(),
+                detail.into()
+            ),
+        }
+    }
+
+    /// Build a `tool-network-status` diagnostic.
+    pub(crate) fn network_status(url: impl Into<String>, status: u16) -> Self {
+        Self::Diag {
+            code: "tool-network-status",
+            detail: format!("`{}` returned HTTP status {status}; expected 200", url.into()),
+        }
+    }
+
+    /// Build a `tool-network-timeout` diagnostic.
+    pub(crate) fn network_timeout(url: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self::Diag {
+            code: "tool-network-timeout",
+            detail: format!("`{}` timed out: {}", url.into(), detail.into()),
+        }
+    }
+
+    /// Build a `tool-network-malformed` diagnostic.
+    pub(crate) fn network_malformed(url: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self::Diag {
+            code: "tool-network-malformed",
+            detail: format!("`{}` is malformed: {}", url.into(), detail.into()),
+        }
+    }
+
+    /// Build a `tool-network-too-large` diagnostic.
+    pub(crate) fn network_too_large(
+        url: impl Into<String>, limit: u64, actual: Option<u64>,
+    ) -> Self {
+        let observed = actual.map_or_else(String::new, |size| format!(" (observed {size} bytes)"));
+        Self::Diag {
+            code: "tool-network-too-large",
+            detail: format!("`{}` exceeded {limit} bytes{observed}", url.into()),
+        }
+    }
+
+    /// Build a `tool-network-other` diagnostic.
+    pub(crate) fn network_other(url: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self::Diag {
+            code: "tool-network-other",
+            detail: format!("`{}` network error: {}", url.into(), detail.into()),
+        }
+    }
 }
 
 impl From<ToolError> for specify_error::Error {
     fn from(value: ToolError) -> Self {
-        let code: &'static str = match &value {
-            ToolError::Diag { code, .. } => code,
-            ToolError::ToolNotDeclared { .. } => "tool-not-declared",
-            ToolError::Runtime(_) => "tool-runtime",
-            ToolError::InvalidPermission { .. } | ToolError::PermissionDenied { .. } => {
-                "tool-permission-denied"
+        match value {
+            ToolError::Diag { code, detail } => Self::Diag { code, detail },
+            ToolError::Runtime(detail) => Self::Diag {
+                code: "tool-runtime",
+                detail,
+            },
+            err @ ToolError::ToolNotDeclared { .. } => Self::validation_failed(
+                "tool-not-declared",
+                "tool must be declared in tools.yaml",
+                err.to_string(),
+            ),
+            err @ (ToolError::InvalidPermission { .. } | ToolError::PermissionDenied { .. }) => {
+                Self::validation_failed(
+                    "tool-permission-denied",
+                    "tool must request permitted resources",
+                    err.to_string(),
+                )
             }
-            _ => "tool-resolver",
-        };
-        let detail = match value {
-            ToolError::Diag { detail, .. } => detail,
-            other => other.to_string(),
-        };
-        Self::Diag { code, detail }
+            other => Self::Diag {
+                code: "tool-resolver",
+                detail: other.to_string(),
+            },
+        }
     }
 }

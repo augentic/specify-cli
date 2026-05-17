@@ -27,7 +27,7 @@ impl Ctx {
     /// the format-aware exit code.
     pub(crate) fn load(format: Format) -> Result<Self, Error> {
         let current_dir = std::env::current_dir().map_err(Error::Io)?;
-        let project_dir = ProjectConfig::find_root(&current_dir)?.ok_or(Error::NotInitialized)?;
+        let project_dir = ProjectConfig::find_root(&current_dir).ok_or(Error::NotInitialized)?;
         let config = ProjectConfig::load(&project_dir)?;
         Ok(Self {
             format,
@@ -78,10 +78,10 @@ impl Ctx {
     /// # Errors
     ///
     /// Propagates the underlying serialization or I/O error from
-    /// [`output::write`].
+    /// [`output::emit`].
     pub(crate) fn write<T: Serialize>(
         &self, body: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
     ) -> Result<(), Error> {
-        output::write(self.format, body, render_text)
+        output::emit(Box::new(std::io::stdout().lock()), self.format, body, render_text)
     }
 }

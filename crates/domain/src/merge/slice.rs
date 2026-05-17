@@ -31,16 +31,32 @@ use write::{build_merge_summary, commit_opaque, write_three_way_baselines};
 /// [`ArtifactClass::name`] so callers can group results without the
 /// engine having to know any per-domain vocabulary. `name` is the spec
 /// (or composition) identifier within that class.
-#[derive(Debug, Clone)]
+///
+/// The `Serialize` derive is the wire shape used by `slice merge run`
+/// and `slice merge preview`: `class_name` is a routing tag for the
+/// CLI's `filter().map()` step (skipped on the wire), `baseline_path`
+/// flows through `Path::display`, and `result` is flattened so the
+/// envelope exposes only `operations` (the merged text travels to
+/// disk via the commit writer, never to JSON callers).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct MergePreviewEntry {
     /// Originating artefact class name (e.g. `"specs"`).
+    #[serde(skip)]
     pub class_name: String,
     /// Spec/composition name (e.g. `"login"`, `"composition"`).
     pub name: String,
     /// Absolute path where the merged baseline will be written.
+    #[serde(serialize_with = "ser_baseline_path")]
     pub baseline_path: PathBuf,
     /// In-memory merge result.
+    #[serde(flatten)]
     pub result: MergeResult,
+}
+
+#[expect(clippy::ptr_arg, reason = "serde `serialize_with` requires `&PathBuf`")]
+fn ser_baseline_path<S: serde::Serializer>(v: &PathBuf, s: S) -> Result<S::Ok, S::Error> {
+    s.collect_str(&v.display())
 }
 
 /// One opaque-replace file pre-image discovered under a
@@ -58,9 +74,8 @@ pub struct OpaquePreviewEntry {
 
 /// Whether an opaque-replace file is new or replaces an existing
 /// baseline file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[non_exhaustive]
 pub enum OpaqueAction {
     /// New file — no corresponding baseline file exists.
     Added,
@@ -84,13 +99,15 @@ pub struct PreviewResult {
 /// One `type: modified` `touched_spec` whose baseline has been modified
 /// after the slice's `defined_at` timestamp. The plan skill surfaces
 /// this list to the human so they can confirm or abort the merge.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct BaselineConflict {
     /// Capability (spec directory) name.
     pub capability: String,
     /// Slice's `defined_at` stamp, copied verbatim from `.metadata.yaml`.
     pub defined_at: String,
     /// Baseline file modification time.
+    #[serde(with = "specify_error::serde_rfc3339")]
     pub baseline_modified_at: Timestamp,
 }
 
@@ -112,13 +129,12 @@ pub struct BaselineConflict {
 /// - [`Error::Diag { code: "merge-spec-conflicts" }`] aggregating every
 ///   per-spec merge conflict and post-merge `validate_baseline` failure
 ///   into a single newline-joined detail string.
-/// - [`Error::Filesystem`] (`op = "readdir" | "dir-entry" | "path-prefix"`)
-///   for directory-walk failures while scanning the staged trees.
-/// - [`Error::Diag { code: "merge-file-type-failed" | "merge-non-utf8-name"
-///   | "merge-read-delta-failed" | "merge-read-baseline-failed"
-///   | "merge-read-composition-delta-failed"
-///   | "merge-read-composition-baseline-failed" }`] for the per-file
-///   reads that have no `Error::Filesystem` op equivalent.
+/// - [`Error::Filesystem`] (`op = "readdir" | "dir-entry" | "path-prefix"
+///   | "file-type" | "read"`) for directory-walk and per-file I/O
+///   failures while scanning the staged trees and reading deltas /
+///   baselines.
+/// - [`Error::Diag { code: "merge-non-utf8-name" }`] for the rare
+///   non-I/O failure that has no `Error::Filesystem` op equivalent.
 /// - Whatever [`Error`] the inner [`crate::merge::merge::merge`] or
 ///   [`crate::merge::composition::merge`] surfaces, propagated unchanged.
 pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewResult, Error> {
@@ -161,7 +177,7 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// - [`Error::Diag { code: "merge-archive-failed" }`] when the archive
 ///   move fails after metadata has already been flipped.
 /// - Whatever atomic-write [`Error`] [`SliceMetadata::save`] surfaces
-///   (`Error::Io`, `Error::Yaml`).
+///   (`Error::Io`, `Error::YamlSer`).
 pub fn commit(
     slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path, now: Timestamp,
 ) -> Result<Vec<MergePreviewEntry>, Error> {

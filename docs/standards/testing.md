@@ -10,7 +10,7 @@ Use `cargo make test` rather than `cargo test`. It runs `cargo nextest run --all
 
 ## Integration-first policy
 
-Integration tests under `tests/` use `assert_cmd::Command::cargo_bin("specify")`, drive the binary through clap, and assert against stdout JSON or filesystem state. Test-binary names are `tests/<area>.rs` (`change_create`, `change_finalize`, `change_plan_orchestrate`, `change_show`, `cli`, `contract_tool`, `cross_repo`, `e2e`, `plan`, `slice`, `slice_merge`, `tool`, `vectis_tool`, `capability`).
+Integration tests under `tests/` use `assert_cmd::Command::cargo_bin("specify")`, drive the binary through clap, and assert against stdout JSON or filesystem state. Test-binary names are `tests/<area>.rs` (`change_draft`, `change_finalize`, `change_show`, `cli`, `contract_tool`, `cross_repo`, `e2e`, `plan`, `plan_orchestrate`, `slice`, `slice_merge`, `tool`, `vectis_tool`, `capability`).
 
 One file per integration binary is the intentional layout — `tests/it.rs` consolidation was measured and dropped, see [DECISIONS.md "Integration tests"](../../DECISIONS.md#integration-tests--keep-per-file-binaries-no-testsitrs-umbrella). The cold-build win was 7.3 % cargo-reported (well below the 20 % bar we apply to "Idiomatic Rust Cleanup" chunks) and the per-binary split keeps `cargo test --test <area>` cheap for local iteration.
 
@@ -31,5 +31,5 @@ If a function needs unit tests, it belongs in a workspace crate, not the binary 
 
 ## Test-side gotchas
 
-- Never hand-edit `.metadata.yaml` from a test or fixture. Drive transitions through `specify slice transition`, `specify slice outcome set`, `specify change plan transition`. The tests in `tests/slice.rs` are the canonical patterns.
+- Never hand-edit `.metadata.yaml` from a test or fixture. Drive transitions through `specify slice transition`, `specify slice outcome set`, `specify plan transition`. The tests in `tests/slice.rs` are the canonical patterns.
 - WASI fixture components used by `tests/tool.rs` are rebuilt via `scripts/regen-wasm-fixtures.sh`. The outputs are checked in; only re-run when a fixture source changes.

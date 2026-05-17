@@ -2,7 +2,7 @@
 //! JSON DTOs, summarisers, and the workspace-clone auto-commit shim.
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::Serialize;
@@ -34,11 +34,10 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let today = Timestamp::now().strftime("%Y-%m-%d").to_string();
     let archive_path = archive_dir.join(format!("{today}-{name}"));
 
-    let entries: Vec<MergedEntry> = merged.iter().map(MergedEntry::from).collect();
     ctx.write(
         &RunBody {
-            merged_specs: entries,
-            archive_path: archive_path.display().to_string(),
+            merged_specs: &merged,
+            archive_path,
         },
         write_run_text,
     )?;
@@ -54,22 +53,15 @@ pub(super) fn preview(ctx: &Ctx, name: &str) -> Result<()> {
     // by grouping the engine's class-tagged entries by their `class_name`.
     // The literal output keys live here — alongside the omnia-default
     // synthesiser — rather than in the engine.
-    let specs: Vec<SpecPreviewEntry> = result
-        .three_way
-        .iter()
-        .filter(|e| e.class_name == "specs")
-        .map(SpecPreviewEntry::from)
-        .collect();
+    let specs: Vec<&MergePreviewEntry> =
+        result.three_way.iter().filter(|e| e.class_name == "specs").collect();
     let contracts: Vec<ContractItem> = result
         .opaque
         .iter()
         .filter(|e| e.class_name == "contracts")
-        .filter_map(|entry| match entry.action {
-            OpaqueAction::Added | OpaqueAction::Replaced => Some(ContractItem {
-                path: entry.relative_path.clone(),
-                action: entry.action.clone(),
-            }),
-            _ => None,
+        .map(|entry| ContractItem {
+            path: entry.relative_path.clone(),
+            action: entry.action,
         })
         .collect();
 
@@ -88,12 +80,11 @@ pub(super) fn conflicts(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
     let conflicts = conflict_check(&slice_dir, &classes)?;
-    let rows: Vec<ConflictRow> = conflicts.iter().map(ConflictRow::from).collect();
 
     ctx.write(
         &ConflictCheckBody {
             slice_dir: slice_dir.display().to_string(),
-            conflicts: rows,
+            conflicts: &conflicts,
         },
         write_conflict_check_text,
     )?;
@@ -101,55 +92,39 @@ pub(super) fn conflicts(ctx: &Ctx, name: &str) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// Bodies + rows.
+// Bodies.
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct RunBody {
-    merged_specs: Vec<MergedEntry>,
+struct RunBody<'a> {
+    merged_specs: &'a [MergePreviewEntry],
     #[serde(skip)]
-    archive_path: String,
+    archive_path: PathBuf,
 }
 
-fn write_run_text(w: &mut dyn Write, body: &RunBody) -> std::io::Result<()> {
-    for entry in &body.merged_specs {
-        writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
+fn write_run_text(w: &mut dyn Write, body: &RunBody<'_>) -> std::io::Result<()> {
+    for entry in body.merged_specs {
+        writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.result.operations))?;
     }
-    writeln!(w, "Archived to {}", body.archive_path)
+    writeln!(w, "Archived to {}", body.archive_path.display())
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct MergedEntry {
-    name: String,
-    operations: Vec<MergeOperation>,
-}
-
-impl From<&MergePreviewEntry> for MergedEntry {
-    fn from(entry: &MergePreviewEntry) -> Self {
-        Self {
-            name: entry.name.clone(),
-            operations: entry.result.operations.clone(),
-        }
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct PreviewBody {
+struct PreviewBody<'a> {
     slice_dir: String,
-    specs: Vec<SpecPreviewEntry>,
+    specs: Vec<&'a MergePreviewEntry>,
     contracts: Vec<ContractItem>,
 }
 
-fn write_preview_text(w: &mut dyn Write, body: &PreviewBody) -> std::io::Result<()> {
+fn write_preview_text(w: &mut dyn Write, body: &PreviewBody<'_>) -> std::io::Result<()> {
     if body.specs.is_empty() {
         writeln!(w, "No delta specs to merge.")?;
     } else {
         for entry in &body.specs {
-            writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.operations))?;
-            for op in &entry.operations {
+            writeln!(w, "{}: {}", entry.name, summarise_ops(&entry.result.operations))?;
+            for op in &entry.result.operations {
                 writeln!(w, "  {}", operation_label(op))?;
             }
         }
@@ -160,30 +135,11 @@ fn write_preview_text(w: &mut dyn Write, body: &PreviewBody) -> std::io::Result<
             let (sigil, label) = match c.action {
                 OpaqueAction::Added => ("+", "added"),
                 OpaqueAction::Replaced => ("~", "replaced"),
-                _ => ("?", "unknown"),
             };
             writeln!(w, "  {sigil} contracts/{} ({label})", c.path)?;
         }
     }
     Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct SpecPreviewEntry {
-    name: String,
-    baseline_path: String,
-    operations: Vec<MergeOperation>,
-}
-
-impl From<&MergePreviewEntry> for SpecPreviewEntry {
-    fn from(entry: &MergePreviewEntry) -> Self {
-        Self {
-            name: entry.name.clone(),
-            baseline_path: entry.baseline_path.display().to_string(),
-            operations: entry.result.operations.clone(),
-        }
-    }
 }
 
 #[derive(Serialize)]
@@ -195,41 +151,27 @@ struct ContractItem {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct ConflictCheckBody {
+struct ConflictCheckBody<'a> {
     slice_dir: String,
-    conflicts: Vec<ConflictRow>,
+    conflicts: &'a [BaselineConflict],
 }
 
-fn write_conflict_check_text(w: &mut dyn Write, body: &ConflictCheckBody) -> std::io::Result<()> {
+fn write_conflict_check_text(
+    w: &mut dyn Write, body: &ConflictCheckBody<'_>,
+) -> std::io::Result<()> {
     if body.conflicts.is_empty() {
         return writeln!(w, "No baseline conflicts.");
     }
-    for c in &body.conflicts {
+    for c in body.conflicts {
         writeln!(
             w,
             "{}: baseline modified {} (defined_at {})",
-            c.capability, c.baseline_modified_at, c.defined_at,
+            c.capability,
+            c.baseline_modified_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            c.defined_at,
         )?;
     }
     Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ConflictRow {
-    capability: String,
-    defined_at: String,
-    baseline_modified_at: String,
-}
-
-impl From<&BaselineConflict> for ConflictRow {
-    fn from(c: &BaselineConflict) -> Self {
-        Self {
-            capability: c.capability.clone(),
-            defined_at: c.defined_at.clone(),
-            baseline_modified_at: c.baseline_modified_at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -249,46 +191,32 @@ fn operation_label(op: &MergeOperation) -> String {
         MergeOperation::CreatedBaseline { requirement_count } => {
             format!("CREATING baseline with {requirement_count} requirement(s)")
         }
-        // `MergeOperation` is `#[non_exhaustive]`; surface unmapped
-        // future variants as a generic label.
-        _ => "UNKNOWN operation".to_string(),
     }
 }
 
 fn summarise_ops(ops: &[MergeOperation]) -> String {
-    let mut added = 0;
-    let mut modified = 0;
-    let mut removed = 0;
-    let mut renamed = 0;
+    let mut counts: [(u32, &str, &str); 4] =
+        [(0, "added", "+"), (0, "modified", ""), (0, "removed", "-"), (0, "renamed", "")];
     let mut created_baseline = None;
     for op in ops {
         match op {
-            MergeOperation::Added { .. } => added += 1,
-            MergeOperation::Modified { .. } => modified += 1,
-            MergeOperation::Removed { .. } => removed += 1,
-            MergeOperation::Renamed { .. } => renamed += 1,
+            MergeOperation::Added { .. } => counts[0].0 += 1,
+            MergeOperation::Modified { .. } => counts[1].0 += 1,
+            MergeOperation::Removed { .. } => counts[2].0 += 1,
+            MergeOperation::Renamed { .. } => counts[3].0 += 1,
             MergeOperation::CreatedBaseline { requirement_count } => {
                 created_baseline = Some(*requirement_count);
             }
-            _ => {}
         }
     }
     if let Some(count) = created_baseline {
         return format!("created baseline with {count} requirement(s)");
     }
-    let mut parts: Vec<String> = Vec::new();
-    if added > 0 {
-        parts.push(format!("+{added} added"));
-    }
-    if modified > 0 {
-        parts.push(format!("{modified} modified"));
-    }
-    if removed > 0 {
-        parts.push(format!("-{removed} removed"));
-    }
-    if renamed > 0 {
-        parts.push(format!("{renamed} renamed"));
-    }
+    let parts: Vec<String> = counts
+        .iter()
+        .filter(|(c, _, _)| *c > 0)
+        .map(|(c, label, prefix)| format!("{prefix}{c} {label}"))
+        .collect();
     if parts.is_empty() { "no-op".to_string() } else { parts.join(", ") }
 }
 

@@ -235,12 +235,6 @@ fn capability_scope_lists_sidecar_tool() {
         .expect("read capability.yaml");
     assert!(!cap_yaml.contains("\ntools:"), "capability.yaml must stay closed");
 
-    specify()
-        .args(["--format", "json", "capability", "check"])
-        .arg(fixtures.capability())
-        .assert()
-        .success();
-
     let value = json_tool_list(&fixtures.cap_project(), &cache_dir("capability-list"));
     let tools = value["tools"].as_array().expect("tools array");
     assert_eq!(tools.len(), 1, "{value}");
@@ -441,7 +435,11 @@ fn https_network_failure_is_typed() {
     write_project_manifest(&project, &project_manifest(&entry));
 
     let value = run_json_failure(&project, &cache, &["tool", "run", "echo"], 1);
-    assert_eq!(value["error"], "tool-resolver", "{value}");
+    let code = value["error"].as_str().expect("error code");
+    assert!(
+        matches!(code, "tool-network-other" | "tool-network-timeout" | "tool-network-malformed"),
+        "{value}"
+    );
     assert!(value["message"].as_str().expect("message").contains(&url), "{value}");
 }
 
@@ -502,7 +500,7 @@ fn denied_fs_and_lifecycle_fail_before_guest() {
     write_project_manifest(&project, &project_manifest(&denied));
 
     let value = run_json_failure(&project, &cache, &["tool", "run", "read-only"], 2);
-    assert_eq!(value["error"], "tool-permission-denied", "{value}");
+    assert_validation_rule(&value, "tool-permission-denied");
 
     let lifecycle = tool_entry(
         "read-write",

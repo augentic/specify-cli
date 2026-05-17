@@ -10,7 +10,7 @@ use specify_domain::change::Plan;
 use specify_domain::registry::Registry;
 use specify_domain::registry::branch::{Prepared, Request as BranchRequest, prepare};
 use specify_domain::registry::workspace::{
-    PushOutcome, SlotStatus, push_projects, status_projects, sync_projects,
+    PushOutcome, PushResult, SlotStatus, push_projects, status_projects, sync_projects,
 };
 use specify_error::{Error, Result};
 
@@ -46,7 +46,7 @@ pub fn status(ctx: &Ctx, projects: &[String]) -> Result<()> {
             if !projects.is_empty() {
                 return Err(registry_missing());
             }
-            StatusBody::Absent {}
+            StatusBody::Absent
         }
         Some(registry) => {
             let selected = registry.select(projects)?;
@@ -108,8 +108,9 @@ pub fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
     if !plan_path.exists() {
         return Err(Error::Diag {
             code: "workspace-push-no-plan",
-            detail: "No active plan found at plan.yaml. Run 'specify change plan create' \
-                     to create one, or check whether the plan was already archived."
+            detail: "No active plan found at plan.yaml. Run 'specify change draft <name>' \
+                     to scaffold change.md and plan.yaml together, or check whether the plan \
+                     was already archived."
                 .to_string(),
         });
     }
@@ -117,22 +118,12 @@ pub fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
 
     let results = push_projects(&ctx.project_dir, &plan.name, &selected, dry_run)?;
     let any_failed = results.iter().any(|r| r.status == PushOutcome::Failed);
-    let items: Vec<PushItem> = results
-        .iter()
-        .map(|r| PushItem {
-            name: r.name.clone(),
-            status: r.status,
-            branch: r.branch.clone(),
-            pr: r.pr_number,
-            error: r.error.clone(),
-        })
-        .collect();
 
     let plan_name = plan.name.clone();
     ctx.write(
         &PushBody {
             plan_name: plan.name,
-            projects: items,
+            projects: results,
             dry_run,
         },
         write_push_text,
@@ -176,19 +167,15 @@ fn write_sync_text(w: &mut dyn Write, body: &SyncBody) -> std::io::Result<()> {
 }
 
 #[derive(Serialize)]
-#[serde(untagged, rename_all = "kebab-case")]
-#[expect(
-    clippy::empty_enum_variants_with_brackets,
-    reason = "keep `Absent` as `{}` on the wire, not `null`"
-)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
 enum StatusBody {
-    Absent {},
+    Absent,
     Present { slots: Vec<SlotStatus> },
 }
 
 fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()> {
     match body {
-        StatusBody::Absent { .. } => writeln!(w, "no registry declared at registry.yaml"),
+        StatusBody::Absent => writeln!(w, "no registry declared at registry.yaml"),
         StatusBody::Present { slots } => {
             for slot in slots {
                 render_slot_line(w, slot)?;
@@ -252,7 +239,7 @@ fn write_prepare_branch_text(
 struct PushBody {
     #[serde(skip)]
     plan_name: String,
-    projects: Vec<PushItem>,
+    projects: Vec<PushResult>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     dry_run: bool,
 }
@@ -270,7 +257,7 @@ fn write_push_text(w: &mut dyn Write, body: &PushBody) -> std::io::Result<()> {
             } else {
                 raw
             };
-        let pr = r.pr.map_or_else(String::new, |n| format!("PR #{n}"));
+        let pr = r.pr_number.map_or_else(String::new, |n| format!("PR #{n}"));
         writeln!(w, "  {:<20} {:<14} {} {}", r.name, label, r.branch.as_deref().unwrap_or(""), pr)?;
         counts[match r.status {
             PushOutcome::Created => 0,
@@ -287,17 +274,4 @@ fn write_push_text(w: &mut dyn Write, body: &PushBody) -> std::io::Result<()> {
         "{} created, {} pushed, {} up-to-date, {} local-only, {} no-branch. {} failed.",
         counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]
     )
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct PushItem {
-    name: String,
-    status: PushOutcome,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    branch: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pr: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
 }

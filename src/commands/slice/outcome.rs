@@ -5,19 +5,21 @@ use std::path::Path;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use serde_json::Value;
 use specify_domain::capability::Phase;
 use specify_domain::config::Layout;
-use specify_domain::slice::{OutcomeKind, SliceMetadata, actions as slice_actions};
+use specify_domain::slice::{Outcome, OutcomeKind, SliceMetadata, actions as slice_actions};
 use specify_error::{Error, Result};
 
-use crate::cli::{OutcomeKindAction, RegistryAmendmentProposal};
+use super::cli::{OutcomeKindAction, RegistryAmendmentProposal};
 use crate::context::Ctx;
 
 pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
-        return Err(Error::SliceNotFound { name });
+        return Err(Error::Diag {
+            code: "slice-not-found",
+            detail: format!("slice '{name}' not found"),
+        });
     }
 
     let (outcome, summary, context) = lower_kind(kind);
@@ -123,104 +125,45 @@ pub(super) fn show(ctx: &Ctx, name: String) -> Result<()> {
         resolve_archived_metadata(&ctx.project_dir, &name)?
     };
 
-    let outcome = metadata.outcome.as_ref().map(Row::from);
-    ctx.write(&ShowBody { name, outcome }, write_show_text)?;
+    ctx.write(
+        &ShowBody {
+            name,
+            outcome: metadata.outcome.as_ref(),
+        },
+        write_show_text,
+    )?;
     Ok(())
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct ShowBody {
+struct ShowBody<'a> {
     name: String,
-    outcome: Option<Row>,
+    outcome: Option<&'a Outcome>,
 }
 
-fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Result<()> {
-    match &body.outcome {
+fn write_show_text(w: &mut dyn Write, body: &ShowBody<'_>) -> std::io::Result<()> {
+    match body.outcome {
         None => writeln!(w, "{}: no outcome stamped", body.name),
         Some(o) => {
-            writeln!(w, "{}: {}/{} — {}", body.name, o.phase, o.outcome, o.summary)?;
-            if let Some(p) = &o.proposal {
-                writeln!(w, "  proposed-name: {}", p.proposed_name)?;
-                writeln!(w, "  proposed-url: {}", p.proposed_url)?;
-                writeln!(w, "  proposed-capability: {}", p.proposed_capability)?;
-                if let Some(desc) = &p.proposed_description {
+            writeln!(w, "{}: {}/{} — {}", body.name, o.phase, o.kind, o.summary)?;
+            if let OutcomeKind::RegistryAmendmentRequired {
+                proposed_name,
+                proposed_url,
+                proposed_capability,
+                proposed_description,
+                rationale,
+            } = &o.kind
+            {
+                writeln!(w, "  proposed-name: {proposed_name}")?;
+                writeln!(w, "  proposed-url: {proposed_url}")?;
+                writeln!(w, "  proposed-capability: {proposed_capability}")?;
+                if let Some(desc) = proposed_description {
                     writeln!(w, "  proposed-description: {desc}")?;
                 }
-                writeln!(w, "  rationale: {}", p.rationale)?;
+                writeln!(w, "  rationale: {rationale}")?;
             }
             Ok(())
-        }
-    }
-}
-
-/// One stamped phase outcome.
-///
-/// On disk the metadata nests the registry-amendment proposal under
-/// `outcome.outcome.registry-amendment-required.*`; the CLI shape is
-/// flatter — `outcome.outcome` stays a kebab-case string and the
-/// structured payload is hoisted into a sibling `outcome.proposal`
-/// object so existing consumers that only read `.outcome.outcome`
-/// keep working unchanged.
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct Row {
-    phase: String,
-    outcome: String,
-    #[serde(with = "specify_error::serde_rfc3339")]
-    at: Timestamp,
-    summary: String,
-    context: Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    proposal: Option<RegistryProposalRow>,
-}
-
-impl From<&specify_domain::slice::Outcome> for Row {
-    fn from(o: &specify_domain::slice::Outcome) -> Self {
-        Self {
-            phase: o.phase.to_string(),
-            outcome: o.kind.to_string(),
-            at: o.at,
-            summary: o.summary.clone(),
-            context: o.context.clone().map_or(Value::Null, Value::from),
-            proposal: RegistryProposalRow::from_kind(&o.kind),
-        }
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct RegistryProposalRow {
-    proposed_name: String,
-    proposed_url: String,
-    proposed_capability: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    proposed_description: Option<String>,
-    rationale: String,
-}
-
-impl RegistryProposalRow {
-    // Filters on `OutcomeKind::RegistryAmendmentRequired`; returns
-    // `Option<Self>` rather than `Self`, so a `From` impl would be a
-    // poor fit. Kept as a named constructor.
-    fn from_kind(outcome: &OutcomeKind) -> Option<Self> {
-        if let OutcomeKind::RegistryAmendmentRequired {
-            proposed_name,
-            proposed_url,
-            proposed_capability,
-            proposed_description,
-            rationale,
-        } = outcome
-        {
-            Some(Self {
-                proposed_name: proposed_name.clone(),
-                proposed_url: proposed_url.clone(),
-                proposed_capability: proposed_capability.clone(),
-                proposed_description: proposed_description.clone(),
-                rationale: rationale.clone(),
-            })
-        } else {
-            None
         }
     }
 }
@@ -251,8 +194,9 @@ fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<Sli
     }
 
     if candidates.is_empty() {
-        return Err(Error::SliceNotFound {
-            name: slice_name.to_string(),
+        return Err(Error::Diag {
+            code: "slice-not-found",
+            detail: format!("slice '{slice_name}' not found"),
         });
     }
 

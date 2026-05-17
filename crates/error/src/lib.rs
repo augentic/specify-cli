@@ -2,15 +2,13 @@
 //! Every public function returns `Result<T, Error>`; variants are
 //! structured so the binary can route them to exit codes and formats.
 
-pub mod display;
 pub mod error;
 pub mod serde_rfc3339;
+pub mod serde_rfc3339_opt;
 pub mod validation;
-pub mod yaml;
 
 pub use error::Error;
 pub use validation::{Status as ValidationStatus, Summary as ValidationSummary};
-pub use yaml::YamlError;
 
 /// Workspace-wide `Result` alias bound to [`Error`].
 ///
@@ -35,16 +33,12 @@ pub fn is_kebab(s: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::is_kebab;
-
-    #[test]
-    fn is_kebab_accepts_and_rejects() {
-        for ok in ["a", "abc", "alpha-gateway", "x-1", "a1-b2"] {
-            assert!(is_kebab(ok), "expected `{ok}` to pass");
-        }
-        for bad in ["", "-a", "a-", "a--b", "A", "alpha_gateway", "alpha gateway"] {
-            assert!(!is_kebab(bad), "expected `{bad}` to fail");
-        }
+#[test]
+fn is_kebab_accepts_and_rejects() {
+    for ok in ["a", "abc", "alpha-gateway", "x-1", "a1-b2"] {
+        assert!(is_kebab(ok), "expected `{ok}` to pass");
+    }
+    for bad in ["", "-a", "a-", "a--b", "A", "alpha_gateway", "alpha gateway"] {
+        assert!(!is_kebab(bad), "expected `{bad}` to fail");
     }
 }

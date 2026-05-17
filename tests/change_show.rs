@@ -5,8 +5,6 @@
 use std::fs;
 use std::path::PathBuf;
 
-use serde_json::Value;
-
 mod common;
 use common::{Project, parse_stdout, specify};
 
@@ -28,15 +26,17 @@ fn show_absent() {
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["brief"], Value::Null);
-    let path = actual["path"].as_str().expect("path");
-    assert!(path.ends_with("/change.md"), "path should point at change.md, got: {path}");
+    assert!(actual.is_null(), "absent brief must serialise as null, got: {actual}");
 
     let text = specify().current_dir(project.root()).args(["change", "show"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
     assert!(
         stdout.contains("no change brief declared"),
         "text show should say 'no change brief declared', got: {stdout:?}"
+    );
+    assert!(
+        stdout.contains("change.md"),
+        "text show should mention the brief path, got: {stdout:?}"
     );
 }
 

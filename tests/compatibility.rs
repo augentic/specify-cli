@@ -48,7 +48,15 @@ fn classifies_required_field_as_breaking() {
 
     let assert = specify()
         .current_dir(&fixture.project)
-        .args(["--format", "json", "compatibility", "report", "--change", "user-api-v2"])
+        .args([
+            "--format",
+            "json",
+            "compatibility",
+            "check",
+            "--change",
+            "user-api-v2",
+            "--report-only",
+        ])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);

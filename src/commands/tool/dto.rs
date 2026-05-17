@@ -4,8 +4,9 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_error::Result;
+use specify_tool::PackageMetadata;
 use specify_tool::cache::{self, Status as CacheStatus};
-use specify_tool::{PackageMetadata, Tool, ToolPermissions, ToolScope, ToolScopeKind};
+use specify_tool::manifest::{Tool, ToolPermissions, ToolScope, ToolScopeKind};
 
 pub(super) type CacheKey = (String, String, String);
 

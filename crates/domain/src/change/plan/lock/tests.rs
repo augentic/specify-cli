@@ -51,8 +51,19 @@ fn stamp_acquire_busy() {
 
     // Pick any PID that isn't this process's PID.
     let contender = if live_pid == 1 { 2 } else { 1 };
-    let err = Stamp::acquire(dir.path(), contender).expect_err("expected DriverBusy");
-    assert!(matches!(err, Error::DriverBusy { pid } if pid == live_pid));
+    let err = Stamp::acquire(dir.path(), contender).expect_err("expected driver-busy");
+    match &err {
+        Error::Diag {
+            code: "driver-busy",
+            detail,
+        } => {
+            assert!(
+                detail.contains(&live_pid.to_string()),
+                "detail should mention holder pid {live_pid}: {detail}"
+            );
+        }
+        other => panic!("expected Error::Diag(driver-busy), got {other:?}"),
+    }
     // Contents unchanged — we never clobbered the live holder.
     assert_eq!(read_lock_pid(dir.path()).trim(), live_pid.to_string());
 }

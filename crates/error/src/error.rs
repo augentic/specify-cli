@@ -1,9 +1,10 @@
-//! `Error` enum and saphyr-error conversions. Hint and discriminant
-//! tables live in [`crate::display`]; the YAML wrapper behind `Yaml`
-//! lives in [`crate::yaml`].
+//! `Error` enum and saphyr-error conversions.
+//!
+//! The `YamlDe` / `YamlSer` variants flatten `serde_saphyr`'s two error
+//! types directly into the crate's error surface; callers that don't
+//! care which API tripped can continue to `?`-propagate.
 
-use crate::validation::Summary as ValidationSummary;
-use crate::yaml::YamlError;
+use crate::validation::{Status as ValidationStatus, Summary as ValidationSummary};
 
 /// Structured error type for all `specify-*` crates.
 ///
@@ -59,23 +60,6 @@ pub enum Error {
         found: String,
     },
 
-    /// Illegal plan entry status transition.
-    #[error("illegal plan transition: cannot go from {from} to {to}")]
-    PlanTransition {
-        /// Source status of the attempted transition.
-        from: String,
-        /// Target status of the attempted transition.
-        to: String,
-    },
-
-    /// Another live `/change:execute` driver holds `.specify/plan.lock`.
-    /// Stale locks (dead PID / malformed content) are reclaimed silently.
-    #[error("another /change:execute driver is running (pid {pid}); refusing to proceed")]
-    DriverBusy {
-        /// PID of the process that holds the lock.
-        pid: u32,
-    },
-
     /// A required artifact was not found at the expected path.
     #[error("{kind} not found at {}", path.display())]
     ArtifactNotFound {
@@ -85,19 +69,12 @@ pub enum Error {
         path: std::path::PathBuf,
     },
 
-    /// A slice directory was expected but not found.
-    #[error("slice '{name}' not found")]
-    SliceNotFound {
-        /// Kebab-case slice name.
-        name: String,
-    },
-
     /// A filesystem operation failed. The `op` field is a stable
     /// kebab-case suffix that, prefixed with `filesystem-`, becomes the
     /// JSON envelope's `error` discriminant (e.g. `filesystem-readdir`).
     /// Canonical call sites: the slice-merge engine
-    /// (`specify_merge::slice::{read, write}`), where every recursive
-    /// directory walk and file copy needs a stable, testable
+    /// (`specify_domain::merge::slice::{read, write}`), where every
+    /// recursive directory walk and file copy needs a stable, testable
     /// discriminant for operator follow-up.
     #[error("filesystem-{op}: {} ({source})", path.display())]
     Filesystem {
@@ -131,19 +108,104 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
-    /// A YAML serialization or deserialization error.
+    /// A YAML deserialization error (e.g. `serde_saphyr::from_str`).
+    /// Library crates rely on `?`-propagation; the variant docstring is
+    /// the canonical "you don't have to care which `serde_saphyr` API
+    /// tripped" — match on either YAML variant when that distinction is
+    /// irrelevant.
     #[error(transparent)]
-    Yaml(#[from] YamlError),
+    YamlDe(#[from] serde_saphyr::Error),
+
+    /// A YAML serialization error (e.g. `serde_saphyr::to_string`).
+    #[error(transparent)]
+    YamlSer(#[from] serde_saphyr::ser::Error),
 }
 
-impl From<serde_saphyr::Error> for Error {
-    fn from(value: serde_saphyr::Error) -> Self {
-        Self::Yaml(YamlError::from(value))
+impl Error {
+    /// Long-form recovery hint for tightened diagnostics. Returns
+    /// `None` when the variant has no actionable follow-up beyond the
+    /// `#[error("…")]` body.
+    ///
+    /// The renderer in `src/output.rs` calls this to surface guidance
+    /// alongside the kebab discriminant on a TTY, while keeping the
+    /// machine-readable JSON envelope compact. New hints land here
+    /// (typed-arm for typed variants; `Self::Diag { code, .. }` arm for
+    /// `Diag`-routed sites), not in the renderer.
+    #[must_use]
+    pub fn hint(&self) -> Option<&'static str> {
+        match self {
+            Self::Diag { code, .. } => match *code {
+                "plan-has-outstanding-work" => Some(
+                    "complete or drop the listed entries, or rerun with --force to archive anyway.",
+                ),
+                "init-requires-capability-or-hub" => Some(
+                    "`specify init <capability>` for a regular project, or `specify init --hub` for a platform hub.\nsee: docs/init.md",
+                ),
+                "context-existing-unfenced-agents-md" => {
+                    Some("rerun with --force to rewrite AGENTS.md.")
+                }
+                "context-fenced-content-modified" => Some(
+                    "reconcile the edits or rerun with --force to replace the generated block.",
+                ),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Kebab-case identifier used in structured CLI error payloads.
+    ///
+    /// Most arms return a `&'static str` literal; [`Self::Filesystem`]
+    /// composes `filesystem-<op>` and returns the owned form.
+    #[must_use]
+    pub fn variant_str(&self) -> String {
+        match self {
+            Self::NotInitialized => "not-initialized".to_string(),
+            Self::Diag { code, .. } => (*code).to_string(),
+            Self::Argument { .. } => "argument".to_string(),
+            Self::Validation { .. } => "validation".to_string(),
+            Self::CliTooOld { .. } => "specify-version-too-old".to_string(),
+            Self::ArtifactNotFound { .. } => "artifact-not-found".to_string(),
+            Self::Filesystem { op, .. } => format!("filesystem-{op}"),
+            Self::BranchPrepareFailed { .. } => "branch-preparation-failed".to_string(),
+            Self::Io(_) => "io".to_string(),
+            Self::YamlDe(_) | Self::YamlSer(_) => "yaml".to_string(),
+        }
+    }
+
+    /// Build a single-finding `Validation` failure. Use at sites that
+    /// previously routed through `Error::Diag` to land on `Exit::ValidationFailed`:
+    /// the kebab `rule_id` becomes the wire-visible discriminant inside
+    /// the `results[]` array, and `Exit::from(&Error)` matches on the
+    /// `Validation` variant rather than a magic code list. Compose
+    /// multi-finding payloads with `Error::Validation { results }`
+    /// directly.
+    #[must_use]
+    pub fn validation_failed(
+        rule_id: impl Into<String>, rule: impl Into<String>, detail: impl Into<String>,
+    ) -> Self {
+        Self::Validation {
+            results: vec![ValidationSummary {
+                status: ValidationStatus::Fail,
+                rule_id: rule_id.into(),
+                rule: rule.into(),
+                detail: Some(detail.into()),
+            }],
+        }
     }
 }
 
-impl From<serde_saphyr::ser::Error> for Error {
-    fn from(value: serde_saphyr::ser::Error) -> Self {
-        Self::Yaml(YamlError::from(value))
+#[cfg(test)]
+mod tests {
+    use super::Error;
+
+    #[test]
+    fn diag_round_trip() {
+        let err = Error::Diag {
+            code: "kebab-prefix",
+            detail: "specific detail".to_string(),
+        };
+        assert_eq!(err.variant_str(), "kebab-prefix");
+        assert_eq!(err.to_string(), "kebab-prefix: specific detail");
     }
 }

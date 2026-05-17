@@ -143,8 +143,8 @@ mod tests {
 
         // Non-hub init must not pre-touch any platform-component
         // artefact at the repo root. Operators mint these via
-        // `specify registry add`, `specify change create`, and
-        // `specify change plan create`.
+        // `specify registry add` and `specify change draft`
+        // (which scaffolds change.md + plan.yaml together).
         for absent in ["registry.yaml", "plan.yaml", "change.md"] {
             assert!(
                 !tmp.path().join(absent).exists(),

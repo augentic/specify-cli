@@ -42,42 +42,42 @@ pub struct SliceMetadata {
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339_opt"
     )]
     pub created_at: Option<Timestamp>,
     /// When the slice entered `Defined`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339_opt"
     )]
     pub defined_at: Option<Timestamp>,
     /// When the build phase started.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339_opt"
     )]
     pub build_started_at: Option<Timestamp>,
     /// When the slice reached `Complete`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339_opt"
     )]
     pub completed_at: Option<Timestamp>,
     /// When the slice was merged.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339_opt"
     )]
     pub merged_at: Option<Timestamp>,
     /// When the slice was dropped.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        with = "specify_error::serde_rfc3339::option"
+        with = "specify_error::serde_rfc3339_opt"
     )]
     pub dropped_at: Option<Timestamp>,
     /// Human-readable reason for dropping the slice.
@@ -160,7 +160,7 @@ impl SliceMetadata {
     /// Returns [`Error::ArtifactNotFound`] (`kind = ".metadata.yaml"`)
     /// when the file is absent — the canonical "not a slice directory"
     /// signal that `specify slice list` and `/change:execute` rely on.
-    /// [`Error::Yaml`] surfaces serde-saphyr deserialisation failures
+    /// [`Error::YamlDe`] surfaces serde-saphyr deserialisation failures
     /// (malformed YAML, unknown enum tags, type mismatches);
     /// [`Error::Io`] propagates filesystem read errors past the
     /// existence probe (permissions, mid-flight truncation).
@@ -182,7 +182,7 @@ impl SliceMetadata {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Yaml`] when serde-saphyr fails to encode
+    /// Returns [`Error::YamlSer`] when serde-saphyr fails to encode
     /// `self` — typically a serializer bug rather than a data issue,
     /// since every field of [`SliceMetadata`] is YAML-safe by
     /// construction. Returns [`Error::Io`] when the temp-file create /
