@@ -38,7 +38,8 @@ pub fn resolve(format: Format, capability_value: String, project_dir: &Path) -> 
         _ => ("unknown", PathBuf::new()),
     };
 
-    output::write(
+    output::emit(
+        Box::new(std::io::stdout().lock()),
         format,
         &ResolveBody {
             capability_value,

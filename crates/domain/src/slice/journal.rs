@@ -81,8 +81,8 @@ impl Journal {
     ///
     /// Returns an empty [`Journal`] (not `Err`) when the file is
     /// absent — journals are lazily created on first [`Journal::append`].
-    /// A malformed file surfaces `Error::Yaml` (via
-    /// `From<YamlError>`) with the underlying parser's
+    /// A malformed file surfaces `Error::YamlDe` (via
+    /// `From<serde_saphyr::Error>`) with the underlying parser's
     /// location hint; load never silently recovers from corruption.
     ///
     /// # Errors

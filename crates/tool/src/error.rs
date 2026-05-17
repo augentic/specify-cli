@@ -96,9 +96,7 @@ impl ToolError {
     }
 
     /// Build a manifest-parse error.
-    pub(crate) fn manifest_parse(
-        path: impl Into<PathBuf>, source: Box<specify_error::YamlError>,
-    ) -> Self {
+    pub(crate) fn manifest_parse(path: impl Into<PathBuf>, source: impl std::fmt::Display) -> Self {
         let path = path.into();
         Self::Diag {
             code: "tool-manifest-parse",
@@ -180,9 +178,7 @@ impl ToolError {
     }
 
     /// Build a `tool-sidecar-parse` diagnostic.
-    pub(crate) fn sidecar_parse(
-        path: impl Into<PathBuf>, source: Box<specify_error::YamlError>,
-    ) -> Self {
+    pub(crate) fn sidecar_parse(path: impl Into<PathBuf>, source: impl std::fmt::Display) -> Self {
         let path = path.into();
         Self::Diag {
             code: "tool-sidecar-parse",

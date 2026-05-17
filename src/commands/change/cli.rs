@@ -4,7 +4,9 @@
 //! The executable plan moved to its own top-level verb after the
 //! `change plan *` flatten — see [`crate::commands::plan::cli`]. The
 //! remaining verbs here are peer Layer 1 commands supporting peer
-//! Layer 2 skills (`draft`, `show`, `finalize`).
+//! Layer 2 skills (`draft`, `show`, `finalize`, `survey`).
+
+use std::path::PathBuf;
 
 use clap::Subcommand;
 
@@ -40,5 +42,39 @@ pub enum ChangeAction {
         /// Show what would happen without writing anything.
         #[arg(long)]
         dry_run: bool,
+    },
+    /// Validate a staged candidate `surfaces.json`, canonicalize,
+    /// capture coarse source metadata, and write per source-key.
+    /// JSON-only; no LLM.
+    Survey {
+        /// Single-source mode: path to the legacy source root.
+        #[arg(conflicts_with_all = ["sources", "staged"])]
+        source_path: Option<PathBuf>,
+
+        /// Single-source mode: kebab-case source key.
+        #[arg(long, requires = "source_path", conflicts_with_all = ["sources", "staged"])]
+        source_key: Option<String>,
+
+        /// Single-source mode: staged candidate `surfaces.json`.
+        #[arg(long, requires_all = ["source_path", "source_key"], conflicts_with_all = ["sources", "staged"])]
+        surfaces: Option<PathBuf>,
+
+        /// Batch mode: YAML file listing one row per source.
+        #[arg(long, requires = "staged", conflicts_with_all = ["source_path", "source_key", "surfaces"])]
+        sources: Option<PathBuf>,
+
+        /// Batch mode: directory of staged `<source-key>.json` candidates.
+        #[arg(long, requires = "sources", conflicts_with_all = ["source_path", "source_key", "surfaces"])]
+        staged: Option<PathBuf>,
+
+        /// Output directory. Single-source: written under `<out>/`.
+        /// Batch: written under `<out>/<source-key>/`.
+        #[arg(long)]
+        out: PathBuf,
+
+        /// Validate and canonicalize without writing outputs; used by
+        /// the skill's repair loop.
+        #[arg(long)]
+        validate_only: bool,
     },
 }

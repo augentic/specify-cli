@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/augentic/specify-cli/schemas/surfaces.schema.json",
+  "title": "Specify surfaces.json",
+  "description": "Validates the structure of a source survey surfaces file. One file per legacy-code source, recording externally observable surfaces and their code footprints. Defined by RFC-20 §Artifacts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source-key", "language", "surfaces"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Must be 1; bumps require an RFC update."
+    },
+    "source-key": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Kebab-case identifier for the legacy source this file describes."
+    },
+    "language": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Primary programming language of the source (e.g. typescript, python)."
+    },
+    "surfaces": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/surface" },
+      "description": "Externally observable surfaces sorted by id. Empty when no detector found applicable surfaces."
+    }
+  },
+  "$defs": {
+    "surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "identifier", "handler", "touches", "declared-at"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable identifier unique within this file. The per-language enumeration brief produces it; reruns diff cleanly."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "http-route",
+            "message-pub",
+            "message-sub",
+            "ws-handler",
+            "scheduled-job",
+            "cli-command",
+            "ui-route",
+            "external-call-out"
+          ],
+          "description": "Closed surface kind enum. Extensions require an RFC update."
+        },
+        "identifier": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Legacy spelling of the observable surface (route, topic, command, etc.)."
+        },
+        "handler": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Handler or call site reference, typically file:function."
+        },
+        "touches": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Source files reached from the handler, sorted alphabetically. Relative to the source root."
+        },
+        "declared-at": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Declaration sites where the surface is registered with its framework, sorted alphabetically. Non-empty; relative paths optionally suffixed with :line."
+        }
+      }
+    }
+  }
+}

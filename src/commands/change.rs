@@ -1,4 +1,5 @@
 pub mod cli;
+mod survey;
 
 use std::io::Write;
 
@@ -16,12 +17,23 @@ use crate::cli::SourceArg;
 use crate::commands::plan;
 use crate::context::Ctx;
 
-/// Dispatch `specify change *` — operator brief and finalize.
+/// Dispatch `specify change *` — operator brief, finalize, and survey.
 pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
     match action {
         ChangeAction::Draft { name, sources } => draft(ctx, name, sources),
         ChangeAction::Show => brief_show(ctx),
         ChangeAction::Finalize { clean, dry_run } => run_finalize(ctx, clean, dry_run),
+        ChangeAction::Survey {
+            source_path,
+            source_key,
+            surfaces,
+            sources,
+            staged,
+            out,
+            validate_only,
+        } => {
+            survey::run(ctx, source_path, source_key, surfaces, sources, staged, out, validate_only)
+        }
     }
 }
 

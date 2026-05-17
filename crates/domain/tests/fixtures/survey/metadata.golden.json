@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "source-key": "legacy-monolith",
+  "language": "typescript",
+  "loc": 42000,
+  "module-count": 15,
+  "top-level-modules": [
+    "auth",
+    "billing",
+    "jobs",
+    "notifications",
+    "sessions",
+    "users"
+  ]
+}

@@ -74,9 +74,8 @@ pub struct OpaquePreviewEntry {
 
 /// Whether an opaque-replace file is new or replaces an existing
 /// baseline file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[non_exhaustive]
 pub enum OpaqueAction {
     /// New file — no corresponding baseline file exists.
     Added,
@@ -130,13 +129,12 @@ pub struct BaselineConflict {
 /// - [`Error::Diag { code: "merge-spec-conflicts" }`] aggregating every
 ///   per-spec merge conflict and post-merge `validate_baseline` failure
 ///   into a single newline-joined detail string.
-/// - [`Error::Filesystem`] (`op = "readdir" | "dir-entry" | "path-prefix"`)
-///   for directory-walk failures while scanning the staged trees.
-/// - [`Error::Diag { code: "merge-file-type-failed" | "merge-non-utf8-name"
-///   | "merge-read-delta-failed" | "merge-read-baseline-failed"
-///   | "merge-read-composition-delta-failed"
-///   | "merge-read-composition-baseline-failed" }`] for the per-file
-///   reads that have no `Error::Filesystem` op equivalent.
+/// - [`Error::Filesystem`] (`op = "readdir" | "dir-entry" | "path-prefix"
+///   | "file-type" | "read"`) for directory-walk and per-file I/O
+///   failures while scanning the staged trees and reading deltas /
+///   baselines.
+/// - [`Error::Diag { code: "merge-non-utf8-name" }`] for the rare
+///   non-I/O failure that has no `Error::Filesystem` op equivalent.
 /// - Whatever [`Error`] the inner [`crate::merge::merge::merge`] or
 ///   [`crate::merge::composition::merge`] surfaces, propagated unchanged.
 pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewResult, Error> {
@@ -179,7 +177,7 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// - [`Error::Diag { code: "merge-archive-failed" }`] when the archive
 ///   move fails after metadata has already been flipped.
 /// - Whatever atomic-write [`Error`] [`SliceMetadata::save`] surfaces
-///   (`Error::Io`, `Error::Yaml`).
+///   (`Error::Io`, `Error::YamlSer`).
 pub fn commit(
     slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path, now: Timestamp,
 ) -> Result<Vec<MergePreviewEntry>, Error> {

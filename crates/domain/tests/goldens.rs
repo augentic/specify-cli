@@ -3,8 +3,9 @@
 //! Each test stages a fixture slice under a tempdir in the expected
 //! layout (`<project>/.specify/slices/<name>/` + a copy of
 //! `schemas/omnia/` under `<project>/schemas/omnia/`), runs
-//! `validate_slice`, serialises the report via `serialize_report`, and
-//! compares the pretty-printed JSON against a checked-in golden file.
+//! `validate_slice`, serialises the report via its `Serialize` derive,
+//! and compares the pretty-printed JSON against a checked-in golden
+//! file.
 //!
 //! The goldens pin `envelope_version: 1` and the full shape of a
 //! `ValidationReport` as observed by skill consumers. If you change the
@@ -16,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use specify_domain::capability::PipelineView;
 use specify_domain::slice::SLICES_DIR_NAME;
-use specify_domain::validate::{serialize_report, validate_slice};
+use specify_domain::validate::validate_slice;
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
@@ -74,7 +75,7 @@ fn run_fixture_and_diff(fixture_name: &str, expected_passed: bool) {
         "report.passed mismatch for `{fixture_name}`: {report:#?}"
     );
 
-    let value = serialize_report(&report);
+    let value = serde_json::to_value(&report).expect("report serialises");
     let serialised = serde_json::to_string_pretty(&value).unwrap();
 
     let path = golden_path(fixture_name);

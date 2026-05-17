@@ -1,8 +1,10 @@
-//! `Error` enum and saphyr-error conversions. The YAML wrapper behind
-//! `Yaml` lives in [`crate::yaml`].
+//! `Error` enum and saphyr-error conversions.
+//!
+//! The `YamlDe` / `YamlSer` variants flatten `serde_saphyr`'s two error
+//! types directly into the crate's error surface; callers that don't
+//! care which API tripped can continue to `?`-propagate.
 
 use crate::validation::{Status as ValidationStatus, Summary as ValidationSummary};
-use crate::yaml::YamlError;
 
 /// Structured error type for all `specify-*` crates.
 ///
@@ -71,8 +73,8 @@ pub enum Error {
     /// kebab-case suffix that, prefixed with `filesystem-`, becomes the
     /// JSON envelope's `error` discriminant (e.g. `filesystem-readdir`).
     /// Canonical call sites: the slice-merge engine
-    /// (`specify_merge::slice::{read, write}`), where every recursive
-    /// directory walk and file copy needs a stable, testable
+    /// (`specify_domain::merge::slice::{read, write}`), where every
+    /// recursive directory walk and file copy needs a stable, testable
     /// discriminant for operator follow-up.
     #[error("filesystem-{op}: {} ({source})", path.display())]
     Filesystem {
@@ -106,9 +108,17 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
-    /// A YAML serialization or deserialization error.
+    /// A YAML deserialization error (e.g. `serde_saphyr::from_str`).
+    /// Library crates rely on `?`-propagation; the variant docstring is
+    /// the canonical "you don't have to care which `serde_saphyr` API
+    /// tripped" — match on either YAML variant when that distinction is
+    /// irrelevant.
     #[error(transparent)]
-    Yaml(#[from] YamlError),
+    YamlDe(#[from] serde_saphyr::Error),
+
+    /// A YAML serialization error (e.g. `serde_saphyr::to_string`).
+    #[error(transparent)]
+    YamlSer(#[from] serde_saphyr::ser::Error),
 }
 
 impl Error {
@@ -159,7 +169,7 @@ impl Error {
             Self::Filesystem { op, .. } => format!("filesystem-{op}"),
             Self::BranchPrepareFailed { .. } => "branch-preparation-failed".to_string(),
             Self::Io(_) => "io".to_string(),
-            Self::Yaml(_) => "yaml".to_string(),
+            Self::YamlDe(_) | Self::YamlSer(_) => "yaml".to_string(),
         }
     }
 
@@ -182,18 +192,6 @@ impl Error {
                 detail: Some(detail.into()),
             }],
         }
-    }
-}
-
-impl From<serde_saphyr::Error> for Error {
-    fn from(value: serde_saphyr::Error) -> Self {
-        Self::Yaml(YamlError::from(value))
-    }
-}
-
-impl From<serde_saphyr::ser::Error> for Error {
-    fn from(value: serde_saphyr::ser::Error) -> Self {
-        Self::Yaml(YamlError::from(value))
     }
 }
 
