@@ -17,36 +17,6 @@ use crate::context::Ctx;
 
 // ── Public entry point ──────────────────────────────────────────────
 
-/// Resolved invocation form: either single-source or batch.
-pub enum Form {
-    /// `<source-path> --source-key <key> --surfaces <input.json> --out <dir>`.
-    Single {
-        /// Path to the legacy source root.
-        source_path: PathBuf,
-        /// Kebab-case source key.
-        source_key: String,
-        /// Path to the staged candidate `surfaces.json`.
-        surfaces: PathBuf,
-        /// Output directory.
-        out: PathBuf,
-        /// Skip metadata and output writes; useful for the skill's
-        /// repair loop.
-        validate_only: bool,
-    },
-    /// `--sources <file> --staged <dir> --out <dir>`.
-    Batch {
-        /// YAML file listing one row per source.
-        sources_file: PathBuf,
-        /// Staged-candidate directory; one `<source-key>.json` per row.
-        staged: PathBuf,
-        /// Output parent directory.
-        out: PathBuf,
-        /// Skip metadata and output writes; useful for the skill's
-        /// repair loop.
-        validate_only: bool,
-    },
-}
-
 struct Row {
     key: String,
     source: PathBuf,
@@ -55,36 +25,38 @@ struct Row {
 }
 
 /// Run the survey verb after clap has resolved the raw arguments.
-pub fn run(ctx: &Ctx, form: Form) -> Result<(), Error> {
-    let (rows, validate_only, batch_mode) = plan_rows(form)?;
+///
+/// Accepts the raw clap fields directly and resolves them into either
+/// single-source or batch shape; the shape mirrors the two mutually
+/// exclusive argument groups declared on `ChangeAction::Survey`.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors the clap-declared ChangeAction::Survey fields one-to-one"
+)]
+pub fn run(
+    ctx: &Ctx, source_path: Option<PathBuf>, source_key: Option<String>, surfaces: Option<PathBuf>,
+    sources: Option<PathBuf>, staged: Option<PathBuf>, out: PathBuf, validate_only: bool,
+) -> Result<(), Error> {
+    let (rows, batch_mode) = plan_rows(source_path, source_key, surfaces, sources, staged, out)?;
     let outcomes = run_rows(&rows, validate_only, batch_mode)?;
     emit_summary(ctx, &outcomes, validate_only)
 }
 
-fn plan_rows(form: Form) -> Result<(Vec<Row>, bool, bool), Error> {
-    match form {
-        Form::Single {
-            source_path,
-            source_key,
-            surfaces,
-            out,
-            validate_only,
-        } => Ok((
+fn plan_rows(
+    source_path: Option<PathBuf>, source_key: Option<String>, surfaces: Option<PathBuf>,
+    sources: Option<PathBuf>, staged: Option<PathBuf>, out: PathBuf,
+) -> Result<(Vec<Row>, bool), Error> {
+    match (source_path, source_key, surfaces, sources, staged) {
+        (Some(source_path), Some(source_key), Some(surfaces), None, None) => Ok((
             vec![Row {
                 key: source_key,
                 source: source_path,
                 staged: surfaces,
                 out,
             }],
-            validate_only,
             false,
         )),
-        Form::Batch {
-            sources_file,
-            staged,
-            out,
-            validate_only,
-        } => {
+        (None, None, None, Some(sources_file), Some(staged)) => {
             let file = SourcesFile::load(&sources_file)?;
             let rows: Vec<Row> = file
                 .sources
@@ -96,8 +68,14 @@ fn plan_rows(form: Form) -> Result<(Vec<Row>, bool, bool), Error> {
                     key: r.key,
                 })
                 .collect();
-            Ok((rows, validate_only, true))
+            Ok((rows, true))
         }
+        _ => Err(Error::Argument {
+            flag: "<source-path> / --sources",
+            detail: "provide either <source-path> --source-key <key> --surfaces <file> or \
+                     --sources <file> --staged <dir>, not both or neither"
+                .to_string(),
+        }),
     }
 }
 

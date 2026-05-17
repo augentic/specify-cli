@@ -31,65 +31,10 @@ pub fn run(ctx: &Ctx, action: ChangeAction) -> Result<()> {
             staged,
             out,
             validate_only,
-        } => dispatch_survey(
-            ctx,
-            SurveyArgs {
-                source_path,
-                source_key,
-                surfaces,
-                sources,
-                staged,
-                out,
-                validate_only,
-            },
-        ),
-    }
-}
-
-struct SurveyArgs {
-    source_path: Option<std::path::PathBuf>,
-    source_key: Option<String>,
-    surfaces: Option<std::path::PathBuf>,
-    sources: Option<std::path::PathBuf>,
-    staged: Option<std::path::PathBuf>,
-    out: std::path::PathBuf,
-    validate_only: bool,
-}
-
-fn dispatch_survey(ctx: &Ctx, args: SurveyArgs) -> Result<()> {
-    let SurveyArgs {
-        source_path,
-        source_key,
-        surfaces,
-        sources,
-        staged,
-        out,
-        validate_only,
-    } = args;
-    let form = match (source_path, source_key, surfaces, sources, staged) {
-        (Some(source_path), Some(source_key), Some(surfaces), None, None) => survey::Form::Single {
-            source_path,
-            source_key,
-            surfaces,
-            out,
-            validate_only,
-        },
-        (None, None, None, Some(sources_file), Some(staged)) => survey::Form::Batch {
-            sources_file,
-            staged,
-            out,
-            validate_only,
-        },
-        _ => {
-            return Err(Error::Argument {
-                flag: "<source-path> / --sources",
-                detail: "provide either <source-path> --source-key <key> --surfaces <file> or \
-                         --sources <file> --staged <dir>, not both or neither"
-                    .to_string(),
-            });
+        } => {
+            survey::run(ctx, source_path, source_key, surfaces, sources, staged, out, validate_only)
         }
-    };
-    survey::run(ctx, form)
+    }
 }
 
 /// Scaffold both `change.md` and `plan.yaml` atomically.
