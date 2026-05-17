@@ -90,7 +90,7 @@ struct RowOutcome {
 
 #[derive(Debug)]
 struct RowError {
-    code: &'static str,
+    code: String,
     detail: String,
 }
 
@@ -110,7 +110,7 @@ fn run_rows(rows: &[Row], validate_only: bool, batch_mode: bool) -> Result<Vec<R
                         key: row.key.clone(),
                         surface_count: 0,
                         error: Some(RowError {
-                            code: extract_code(&err),
+                            code: err.variant_str(),
                             detail: err.to_string(),
                         }),
                     });
@@ -132,7 +132,7 @@ fn run_rows(rows: &[Row], validate_only: bool, batch_mode: bool) -> Result<Vec<R
             .collect();
         parts.sort();
         return Err(Error::Diag {
-            code: failures[0].error.as_ref().expect("filtered for Some").code,
+            code: "survey-row-failed",
             detail: parts.join("; "),
         });
     }
@@ -254,14 +254,4 @@ fn emit_summary(ctx: &Ctx, outcomes: &[RowOutcome], validate_only: bool) -> Resu
     let body = SurveyBody { validate_only, rows };
     ctx.write(&body, write_text)?;
     Ok(())
-}
-
-// ── Error code extraction ──────────────────────────────────────────
-
-const fn extract_code(err: &Error) -> &'static str {
-    match err {
-        Error::Diag { code, .. } => code,
-        Error::Validation { .. } => "validation",
-        _ => "io",
-    }
 }
