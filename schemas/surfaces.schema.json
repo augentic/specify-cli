@@ -38,7 +38,7 @@
         "id": {
           "type": "string",
           "minLength": 1,
-          "description": "Stable identifier unique within this file. Detectors produce it; reruns diff cleanly."
+          "description": "Stable identifier unique within this file. The per-language enumeration brief produces it; reruns diff cleanly."
         },
         "kind": {
           "type": "string",
