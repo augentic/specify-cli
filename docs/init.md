@@ -2,22 +2,22 @@
 
 `specify init` scaffolds the per-project `.specify/` tree plus
 `project.yaml`. It has two mutually exclusive shapes; missing both
-surfaces as `init-requires-capability-or-hub`.
+surfaces as `init-requires-adapter-or-hub`.
 
-## Regular project — `specify init <capability>`
+## Regular project — `specify init <adapter>`
 
-Pass a capability identifier or a directory/URL that resolves to one:
+Pass a adapter identifier or a directory/URL that resolves to one:
 
 ```bash
 specify init omnia
 specify init https://github.com/augentic/omnia.git
-specify init ./path/to/capability
+specify init ./path/to/adapter
 ```
 
-The capability supplies the schemas, plan template, and registry hooks
+The adapter supplies the schemas, plan template, and registry hooks
 the project will use. The CLI writes:
 
-- `project.yaml` (capability identifier, `specify_version` floor).
+- `project.yaml` (adapter identifier, `specify_version` floor).
 - `.specify/` (slices, archive, plans, cache, workspace, plan.lock).
 - `.specify/wasm-pkg.toml` — project-local wasm-pkg registry config,
   prefilled with the canonical `specify -> augentic.io` namespace
@@ -32,8 +32,8 @@ specify init --hub --name <hub-name>
 ```
 
 A hub is a registry-only project: it owns `registry.yaml` and the
-cross-repo workspace, but does not itself host capability artifacts.
-Use this for the platform repo that orchestrates a fleet of capability
+cross-repo workspace, but does not itself host adapter artifacts.
+Use this for the platform repo that orchestrates a fleet of adapter
 projects. Hub init also writes `.specify/wasm-pkg.toml` so hub
 operators can publish or pull packages with `wkg --config
 .specify/wasm-pkg.toml` against the same registry config the runtime
@@ -41,10 +41,10 @@ honours.
 
 ## Why the two shapes are exclusive
 
-A capability project pins one capability identifier; a hub pins none
+A adapter project pins one adapter identifier; a hub pins none
 (it owns the registry of many). Mixing the two would produce a
 `project.yaml` whose semantics depend on whether downstream verbs
-treat the project as a capability source or as a registry root, and
+treat the project as a adapter source or as a registry root, and
 different verbs would disagree. The CLI refuses the ambiguous shape
-at the entry point with the `init-requires-capability-or-hub`
+at the entry point with the `init-requires-adapter-or-hub`
 discriminant.

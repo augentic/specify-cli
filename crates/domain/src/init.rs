@@ -1,9 +1,9 @@
 //! Orchestration for `specify init`. Scaffolds `.specify/`, resolves
-//! the requested capability, writes `project.yaml`, and upserts
+//! the requested adapter, writes `project.yaml`, and upserts
 //! `.gitignore` lines. Hub mode additionally mints `registry.yaml`.
 
+mod adapter_uri;
 mod cache;
-mod capability_uri;
 mod git;
 mod hub;
 mod regular;
@@ -23,11 +23,11 @@ use crate::config::{Layout, ProjectConfig};
 pub struct InitOptions<'a> {
     /// Root of the project being initialised.
     pub project_dir: &'a Path,
-    /// Capability identifier (bare name like `omnia` or a URL) to fetch
+    /// Adapter identifier (bare name like `omnia` or a URL) to fetch
     /// or copy into `.specify/.cache/`. Required for regular init; must
     /// be `None` when [`InitOptions::hub`] is `true` (hubs do not
-    /// resolve a capability at init time).
-    pub capability: Option<&'a str>,
+    /// resolve a adapter at init time).
+    pub adapter: Option<&'a str>,
     /// Project name; defaults to the project directory name when `None`.
     pub name: Option<&'a str>,
     /// Optional project domain description.
@@ -36,7 +36,7 @@ pub struct InitOptions<'a> {
     pub version_mode: VersionMode,
     /// When `true`, scaffold a registry-only platform **hub** instead
     /// of a regular project: writes `registry.yaml` at the repo root
-    /// and `project.yaml { hub: true }` (with `capability:` omitted)
+    /// and `project.yaml { hub: true }` (with `adapter:` omitted)
     /// under `.specify/`. Hub init refuses to run when `.specify/`
     /// already exists so it never clobbers a regular single-repo
     /// project.
@@ -60,10 +60,10 @@ pub enum VersionMode {
 pub struct InitResult {
     /// Path to the written `project.yaml`.
     pub config_path: PathBuf,
-    /// Resolved capability name from the capability root. For hub init
+    /// Resolved adapter name from the adapter root. For hub init
     /// this is the literal `"hub"` so the JSON envelope stays stable
     /// for downstream consumers.
-    pub capability_name: String,
+    pub adapter_name: String,
     /// Whether `.specify/.cache/cache_meta.yaml` exists.
     pub cache_present: bool,
     /// Directories that were newly created (empty on re-init).
@@ -94,10 +94,10 @@ pub struct InitResult {
 /// # Errors
 ///
 /// Pre-condition: regular (non-hub) init requires
-/// [`InitOptions::capability`] to be set; the CLI dispatcher enforces
-/// the `init-requires-capability-or-hub` invariant ahead of this call,
+/// [`InitOptions::adapter`] to be set; the CLI dispatcher enforces
+/// the `init-requires-adapter-or-hub` invariant ahead of this call,
 /// but `init` re-validates as a defence in depth. Bubbles up
-/// filesystem, capability resolution, and serialisation errors from
+/// filesystem, adapter resolution, and serialisation errors from
 /// the underlying calls.
 pub fn init(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
     if opts.hub {
@@ -181,12 +181,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn regular_init_rejects_missing_capability() {
+    fn regular_init_rejects_missing_adapter() {
         let tmp = tempdir().unwrap();
         let err = init(
             InitOptions {
                 project_dir: tmp.path(),
-                capability: None,
+                adapter: None,
                 name: Some("demo"),
                 domain: None,
                 version_mode: VersionMode::WriteCurrent,
@@ -194,12 +194,12 @@ mod tests {
             },
             fixed_now(),
         )
-        .expect_err("missing capability must error");
+        .expect_err("missing adapter must error");
         assert!(
             matches!(
                 &err,
                 Error::Diag {
-                    code: "init-requires-capability-or-hub",
+                    code: "init-requires-adapter-or-hub",
                     ..
                 }
             ),
@@ -208,15 +208,15 @@ mod tests {
     }
 
     #[test]
-    fn hub_init_rejects_capability_argument() {
-        // `--hub` and `<capability>` are mutually exclusive; the
+    fn hub_init_rejects_adapter_argument() {
+        // `--hub` and `<adapter>` are mutually exclusive; the
         // orchestrator re-checks even when the CLI layer already
         // filtered.
         let tmp = tempdir().unwrap();
         let err = init(
             InitOptions {
                 project_dir: tmp.path(),
-                capability: Some("omnia"),
+                adapter: Some("omnia"),
                 name: Some("platform-hub"),
                 domain: None,
                 version_mode: VersionMode::WriteCurrent,
@@ -224,12 +224,12 @@ mod tests {
             },
             fixed_now(),
         )
-        .expect_err("hub + capability must error");
+        .expect_err("hub + adapter must error");
         assert!(
             matches!(
                 &err,
                 Error::Diag {
-                    code: "init-requires-capability-or-hub",
+                    code: "init-requires-adapter-or-hub",
                     ..
                 }
             ),

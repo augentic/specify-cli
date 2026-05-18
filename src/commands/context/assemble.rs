@@ -1,12 +1,12 @@
 //! Render-input assembly for `specify context *`. Walks the project
-//! (capability, registry, slices, root markers) and emits a
+//! (adapter, registry, slices, root markers) and emits a
 //! [`render::Input`] plus the per-input fingerprint set.
 
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use specify_domain::capability::{Capability, PipelineView};
+use specify_domain::adapter::{Adapter, PipelineView};
 use specify_domain::config::{Layout, ProjectConfig};
 use specify_domain::registry::Registry;
 use specify_domain::slice::SliceMetadata;
@@ -28,12 +28,12 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
     let registry = Registry::load(&ctx.project_dir)?;
     collector.add_file_if_present(&layout.registry_path())?;
 
-    let capability = if ctx.config.hub {
+    let adapter = if ctx.config.hub {
         None
     } else {
         let pipeline = ctx.load_pipeline()?;
-        collect_capability_inputs(&mut collector, &pipeline)?;
-        Some(capability_summary(&pipeline))
+        collect_adapter_inputs(&mut collector, &pipeline)?;
+        Some(adapter_summary(&pipeline))
     };
     let detection = if ctx.config.hub {
         detect::Detection::default()
@@ -53,7 +53,7 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
         is_hub: ctx.config.hub,
         detection,
         domain: ctx.config.domain.clone(),
-        capability,
+        adapter,
         rule_overrides: rule_overrides(&ctx.config),
         declared_tools: declared_tools(&ctx.config),
         active_slices,
@@ -66,10 +66,10 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
     })
 }
 
-fn collect_capability_inputs(
+fn collect_adapter_inputs(
     collector: &mut fingerprint::InputCollector, pipeline: &PipelineView,
 ) -> Result<()> {
-    if let Some(path) = Capability::probe_dir(&pipeline.capability.root_dir) {
+    if let Some(path) = Adapter::probe_dir(&pipeline.adapter.root_dir) {
         collector.add_file(&path)?;
     }
     for (_phase, brief) in &pipeline.briefs {
@@ -78,7 +78,7 @@ fn collect_capability_inputs(
     Ok(())
 }
 
-fn capability_summary(pipeline: &PipelineView) -> render::Capability {
+fn adapter_summary(pipeline: &PipelineView) -> render::Adapter {
     let mut briefs: Vec<render::Brief> = pipeline
         .briefs
         .iter()
@@ -96,10 +96,10 @@ fn capability_summary(pipeline: &PipelineView) -> render::Capability {
         ))
     });
 
-    render::Capability {
-        name: pipeline.capability.manifest.name.clone(),
-        version: pipeline.capability.manifest.version,
-        description: pipeline.capability.manifest.description.clone(),
+    render::Adapter {
+        name: pipeline.adapter.manifest.name.clone(),
+        version: pipeline.adapter.manifest.version,
+        description: pipeline.adapter.manifest.description.clone(),
         briefs,
     }
 }
@@ -145,13 +145,13 @@ fn dependency_peers(registry: Option<&Registry>) -> Vec<render::Dep> {
         .iter()
         .map(|project| render::Dep {
             name: project.name.clone(),
-            capability: project.capability.clone(),
+            adapter: project.adapter.clone(),
             url: project.url.clone(),
             description: project.description.clone(),
         })
         .collect();
     peers.sort_by(|left, right| {
-        (&left.name, &left.capability, &left.url).cmp(&(&right.name, &right.capability, &right.url))
+        (&left.name, &left.adapter, &left.url).cmp(&(&right.name, &right.adapter, &right.url))
     });
     peers
 }

@@ -39,7 +39,7 @@ Comments answer "why does this look like this *today*?" — non-obvious intent, 
 
 ```rust
 // BAD
-//! Per RFC-13 chunk 2.9 ("Init wires components, not capabilities"),
+//! Per RFC-13 chunk 2.9 ("Init wires components, not adapters"),
 //! `init` writes only the per-project skeleton — `project.yaml` plus
 //! the `.specify/` tree. The pre-Phase-3.7 filename was `initiative.md`;
 //! RFC-13 chunk 3.7 renamed it to `change.md` …
@@ -99,7 +99,7 @@ match ctx.format {
 ctx.write(&SomeBody::from(&result), write_text)?;
 ```
 
-Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::capability::resolve`, `commands::capability::check` — receive a bare `Format` and call the free `output::write(format, &body, write_text)?;` instead.
+Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::adapter::resolve` — receive a bare `Format` and call the free `output::write(format, &body, write_text)?;` instead.
 
 The `write_text` closure receives `(&mut dyn Write, &Body)` and renders the text-mode body; the JSON path goes through `serde::Serialize` automatically. New code must not introduce `match … format`. See [`src/commands/codex.rs`](../../src/commands/codex.rs) for the canonical pattern.
 

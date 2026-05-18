@@ -16,7 +16,7 @@ use std::path::PathBuf;
 /// driven by [`ArtifactClass::strategy`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtifactClass {
-    /// Identifier from the capability or call site (e.g. `"specs"` or
+    /// Identifier from the adapter or call site (e.g. `"specs"` or
     /// `"contracts"` for the omnia-default synthesiser). Used purely
     /// for diagnostics and the merge-summary string. The engine never
     /// branches on this field.

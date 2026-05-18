@@ -2,7 +2,7 @@ use std::io::Write;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::capability::ChangeBrief;
+use specify_domain::adapter::ChangeBrief;
 use specify_domain::change::{Plan, PlanDoctorDiagnostic, Severity, Status, plan_doctor};
 use specify_domain::config::{InitPolicy, with_state};
 use specify_domain::registry::Registry;
@@ -41,16 +41,16 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
             if slot_project_yaml.exists()
                 && let Ok(content) = std::fs::read_to_string(&slot_project_yaml)
                 && let Ok(config) = serde_saphyr::from_str::<serde_json::Value>(&content)
-                && let Some(slot_capability) = config.get("capability").and_then(|v| v.as_str())
-                && slot_capability != rp.capability
+                && let Some(slot_adapter) = config.get("adapter").and_then(|v| v.as_str())
+                && slot_adapter != rp.adapter
             {
                 results.push(PlanDoctorDiagnostic {
                     severity: Severity::Warning,
-                    code: "capability-mismatch-workspace".to_string(),
+                    code: "adapter-mismatch-workspace".to_string(),
                     message: format!(
-                        "workspace clone '{}' has capability '{}' but registry declares '{}'; \
+                        "workspace clone '{}' has adapter '{}' but registry declares '{}'; \
                          the clone's project.yaml is authoritative at execution time",
-                        rp.name, slot_capability, rp.capability
+                        rp.name, slot_adapter, rp.adapter
                     ),
                     entry: None,
                     data: None,
@@ -106,7 +106,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
         NextBody {
             next: Some(entry.name.clone()),
             project: entry.project.clone(),
-            capability: entry.capability.clone(),
+            adapter: entry.adapter.clone(),
             description: entry.description.clone(),
             sources: Some(entry.sources.clone()),
             ..NextBody::default()
@@ -218,7 +218,7 @@ struct NextBody {
     reason: Option<String>,
     active: Option<String>,
     project: Option<String>,
-    capability: Option<String>,
+    adapter: Option<String>,
     description: Option<String>,
     sources: Option<Vec<String>>,
 }

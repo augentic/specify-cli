@@ -7,7 +7,7 @@ use std::str::FromStr;
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 
-use crate::commands::capability::cli::CapabilityAction;
+use crate::commands::adapter::cli::AdapterAction;
 use crate::commands::change::cli::ChangeAction;
 use crate::commands::codex::cli::CodexAction;
 use crate::commands::compatibility::cli::CompatibilityAction;
@@ -45,17 +45,17 @@ pub enum Format {
 pub enum Commands {
     /// Initialize .specify/ in a project.
     ///
-    /// Pass `<capability>` (bare name or URL) for a regular project, or
+    /// Pass `<adapter>` (bare name or URL) for a regular project, or
     /// `--hub` for a registry-only platform hub. The two are mutually
-    /// exclusive — clap enforces the `<capability>` xor `--hub` shape
+    /// exclusive — clap enforces the `<adapter>` xor `--hub` shape
     /// and exits `2` with its standard parse-error diagnostic when the
     /// invariant is violated.
     Init {
-        /// Capability identifier or URL (e.g. `omnia`,
-        /// `https://github.com/<owner>/<repo>/capabilities/<name>`).
+        /// Adapter identifier or URL (e.g. `omnia`,
+        /// `https://github.com/<owner>/<repo>/adapters/<name>`).
         /// Required unless `--hub` is set; mutually exclusive with `--hub`.
         #[arg(conflicts_with = "hub", required_unless_present = "hub")]
-        capability: Option<String>,
+        adapter: Option<String>,
         /// Project name (defaults to the project directory name)
         #[arg(long)]
         name: Option<String>,
@@ -77,10 +77,10 @@ pub enum Commands {
         action: ContextAction,
     },
 
-    /// Capability operations
-    Capability {
+    /// Adapter operations
+    Adapter {
         #[command(subcommand)]
-        action: CapabilityAction,
+        action: AdapterAction,
     },
 
     /// Codex rule catalogue operations

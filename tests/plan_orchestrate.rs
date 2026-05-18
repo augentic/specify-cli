@@ -553,7 +553,7 @@ fn plan_add_appends_pending_entry_json() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "add", "foo", "--capability", "contracts@v1"])
+        .args(["--format", "json", "plan", "add", "foo", "--adapter", "contracts@v1"])
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -578,13 +578,13 @@ fn plan_add_rejects_duplicate_name_text() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--capability", "contracts@v1"])
+        .args(["plan", "add", "foo", "--adapter", "contracts@v1"])
         .assert()
         .success();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--capability", "contracts@v1"])
+        .args(["plan", "add", "foo", "--adapter", "contracts@v1"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -602,7 +602,7 @@ fn plan_add_rejects_invalid_name() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["plan", "add", "NotKebab", "--capability", "contracts@v1"])
+        .args(["plan", "add", "NotKebab", "--adapter", "contracts@v1"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -866,7 +866,7 @@ slices:
             "plan",
             "add",
             "registration-duplicate-email-crash",
-            "--capability",
+            "--adapter",
             "contracts@v1",
             "--description",
             "Duplicate email submission returns 500 instead of 409. Modifies user-registration.",
@@ -1542,23 +1542,23 @@ fn plan_validate_reports_all_four_health_diagnostics() {
              \x20\x20orphaned: /tmp/elsewhere\n\
              slices:\n\
              \x20\x20- name: cyclic-a\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20adapter: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyclic-b]\n\
              \x20\x20- name: cyclic-b\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20adapter: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyclic-a]\n\
              \x20\x20- name: failed-root\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20adapter: omnia@v1\n\
              \x20\x20\x20\x20status: failed\n\
              \x20\x20\x20\x20status-reason: regression in upstream service\n\
              \x20\x20- name: unreachable-leaf\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20adapter: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [failed-root]\n\
              \x20\x20- name: orphaned-source-user\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20adapter: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20sources: [monolith]\n",
     )
@@ -1573,7 +1573,7 @@ fn plan_validate_reports_all_four_health_diagnostics() {
              projects:\n\
              \x20\x20- name: alpha\n\
              \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-             \x20\x20\x20\x20capability: omnia@v1\n",
+             \x20\x20\x20\x20adapter: omnia@v1\n",
     )
     .unwrap();
     let slot = tmp.path().join(".specify/workspace/alpha");
@@ -1632,11 +1632,11 @@ fn plan_validate_payloads_round_trip_typed() {
              \x20\x20orphan-key: /tmp/somewhere\n\
              slices:\n\
              \x20\x20- name: cyc-a\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20adapter: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyc-b]\n\
              \x20\x20- name: cyc-b\n\
-             \x20\x20\x20\x20capability: omnia@v1\n\
+             \x20\x20\x20\x20adapter: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyc-a]\n",
     )

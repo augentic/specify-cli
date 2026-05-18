@@ -1,5 +1,5 @@
-//! In-memory model of `capability.yaml` (`Capability`, `Pipeline`,
-//! `PipelineEntry`, `Phase`, `ResolvedCapability`, `CapabilitySource`)
+//! In-memory model of `adapter.yaml` (`Adapter`, `Pipeline`,
+//! `PipelineEntry`, `Phase`, `ResolvedAdapter`, `AdapterSource`)
 //! plus local / cache resolution. Remote resolution is the agent's job.
 
 use std::path::{Path, PathBuf};
@@ -7,18 +7,18 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
-use crate::capability::ValidationResult;
+use crate::adapter::ValidationResult;
 
-const CAPABILITY_JSON_SCHEMA: &str = include_str!("../../../../schemas/capability.schema.json");
+const ADAPTER_JSON_SCHEMA: &str = include_str!("../../../../schemas/adapter.schema.json");
 
-/// In-memory representation of a `capability.yaml` manifest.
+/// In-memory representation of a `adapter.yaml` manifest.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct Capability {
-    /// Capability name (e.g. `"omnia"`).
+pub struct Adapter {
+    /// Adapter name (e.g. `"omnia"`).
     pub name: String,
-    /// Capability version number.
+    /// Adapter version number.
     pub version: u32,
-    /// Human-readable description of this capability.
+    /// Human-readable description of this adapter.
     pub description: String,
     /// The pipeline of briefs organised by phase.
     pub pipeline: Pipeline,
@@ -50,29 +50,29 @@ pub struct PipelineEntry {
     pub brief: String,
 }
 
-/// A `Capability` plus the directory it was resolved from and how it got
+/// A `Adapter` plus the directory it was resolved from and how it got
 /// there.
 #[derive(Debug)]
-pub struct ResolvedCapability {
-    /// The parsed capability manifest.
-    pub manifest: Capability,
+pub struct ResolvedAdapter {
+    /// The parsed adapter manifest.
+    pub manifest: Adapter,
     /// Filesystem directory the manifest was loaded from.
     pub root_dir: PathBuf,
     /// How the manifest was located (local workspace or agent cache).
-    pub source: CapabilitySource,
+    pub source: AdapterSource,
 }
 
-/// How a capability manifest was located on disk.
+/// How a adapter manifest was located on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum CapabilitySource {
+pub enum AdapterSource {
     /// Resolved from a local `schemas/<name>/` directory.
     Local(PathBuf),
     /// Resolved from the agent-populated `.specify/.cache/<name>/` directory.
     Cached(PathBuf),
 }
 
-/// The phases of a capability's pipeline.
+/// The phases of a adapter's pipeline.
 ///
 /// Serializes as the lowercase identifiers `plan | define | build | merge`
 /// on the wire — this is the same wire format consumed by
@@ -81,8 +81,8 @@ pub enum CapabilitySource {
 ///
 /// `Plan` is the Layer 2 authoring phase (`/change:draft`) that runs
 /// ahead of the define→build→merge execution loop. It is intentionally
-/// omitted from `Capability::entries()` (see that iterator's docs) —
-/// call `Capability::plan_entries()` to enumerate plan-phase briefs.
+/// omitted from `Adapter::entries()` (see that iterator's docs) —
+/// call `Adapter::plan_entries()` to enumerate plan-phase briefs.
 #[derive(
     Debug,
     Clone,
@@ -109,10 +109,10 @@ pub enum Phase {
     Merge,
 }
 
-/// Filename of a capability manifest.
-pub const CAPABILITY_FILENAME: &str = "capability.yaml";
+/// Filename of a adapter manifest.
+pub const ADAPTER_FILENAME: &str = "adapter.yaml";
 
-impl Capability {
+impl Adapter {
     /// Resolve `schema_value` against `project_dir`.
     ///
     /// - Bare names (no `/`, no `://`) resolve against
@@ -126,25 +126,22 @@ impl Capability {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedCapability, Error> {
+    pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedAdapter, Error> {
         let (root_dir, source) = Self::locate(schema_value, project_dir)?;
         let manifest_path = Self::probe_dir(&root_dir).ok_or_else(|| Error::Diag {
-            code: "capability-manifest-missing",
-            detail: format!("no `capability.yaml` at {}", root_dir.display()),
+            code: "adapter-manifest-missing",
+            detail: format!("no `adapter.yaml` at {}", root_dir.display()),
         })?;
         let raw = std::fs::read_to_string(&manifest_path).map_err(|err| Error::Diag {
-            code: "capability-manifest-read-failed",
-            detail: format!(
-                "failed to read capability manifest {}: {err}",
-                manifest_path.display()
-            ),
+            code: "adapter-manifest-read-failed",
+            detail: format!("failed to read adapter manifest {}: {err}", manifest_path.display()),
         })?;
         let manifest: Self = serde_saphyr::from_str(&raw).map_err(|err| Error::Diag {
-            code: "capability-manifest-malformed",
+            code: "adapter-manifest-malformed",
             detail: format!("failed to parse {}: {err}", manifest_path.display()),
         })?;
 
-        Ok(ResolvedCapability {
+        Ok(ResolvedAdapter {
             manifest,
             root_dir,
             source,
@@ -152,7 +149,7 @@ impl Capability {
     }
 
     /// Locate the directory `schema_value` resolves to without reading
-    /// the manifest. Mirrors [`Capability::resolve`]'s search order
+    /// the manifest. Mirrors [`Adapter::resolve`]'s search order
     /// (cache → local).
     ///
     /// # Errors
@@ -160,20 +157,20 @@ impl Capability {
     /// Returns the same resolution diagnostics `resolve` would.
     pub fn locate(
         schema_value: &str, project_dir: &Path,
-    ) -> Result<(PathBuf, CapabilitySource), Error> {
-        locate_capability_root(schema_value, project_dir)
+    ) -> Result<(PathBuf, AdapterSource), Error> {
+        locate_adapter_root(schema_value, project_dir)
     }
 
-    /// Probe `dir` for a `capability.yaml` manifest without reading it.
+    /// Probe `dir` for a `adapter.yaml` manifest without reading it.
     /// Returns `Some(path)` when present, `None` otherwise.
     #[must_use]
     pub fn probe_dir(dir: &Path) -> Option<PathBuf> {
-        let cap = dir.join(CAPABILITY_FILENAME);
+        let cap = dir.join(ADAPTER_FILENAME);
         cap.is_file().then_some(cap)
     }
 
-    /// Validate this in-memory capability against the embedded
-    /// `schemas/capability.schema.json`. Returns one `ValidationResult`
+    /// Validate this in-memory adapter against the embedded
+    /// `schemas/adapter.schema.json`. Returns one `ValidationResult`
     /// per check performed (empty = fully valid).
     #[must_use]
     pub fn validate_structure(&self) -> Vec<ValidationResult> {
@@ -181,16 +178,16 @@ impl Capability {
             Ok(value) => value,
             Err(err) => {
                 return vec![ValidationResult::Fail {
-                    rule_id: "capability.serializable".into(),
-                    rule: "capability is serializable to JSON".into(),
+                    rule_id: "adapter.serializable".into(),
+                    rule: "adapter is serializable to JSON".into(),
                     detail: err.to_string(),
                 }];
             }
         };
         validate_against_schema(
-            CAPABILITY_JSON_SCHEMA,
-            "capability.valid",
-            "capability manifest conforms to schemas/capability.schema.json",
+            ADAPTER_JSON_SCHEMA,
+            "adapter.valid",
+            "adapter manifest conforms to schemas/adapter.schema.json",
             &schema_value,
         )
     }
@@ -203,7 +200,7 @@ impl Capability {
     /// the per-change execution loop that `specify change status`,
     /// `specify change outcome`, and the define/build/merge skills
     /// iterate over. Plan briefs are exposed via
-    /// [`Capability::plan_entries`] instead so existing callers keep
+    /// [`Adapter::plan_entries`] instead so existing callers keep
     /// their current semantics.
     pub fn entries(&self) -> impl Iterator<Item = (Phase, &PipelineEntry)> + '_ {
         self.pipeline
@@ -215,7 +212,7 @@ impl Capability {
     }
 
     /// Plan-phase (Layer 2 authoring) pipeline entries in declared
-    /// order. Returns an empty slice for capabilities that don't declare
+    /// order. Returns an empty slice for adapters that don't declare
     /// a `pipeline.plan` block.
     #[must_use]
     pub fn plan_entries(&self) -> &[PipelineEntry] {
@@ -276,9 +273,9 @@ fn merge_phase(parent: Vec<PipelineEntry>, child: Vec<PipelineEntry>) -> Vec<Pip
     out
 }
 
-fn locate_capability_root(
+fn locate_adapter_root(
     schema_value: &str, project_dir: &Path,
-) -> Result<(PathBuf, CapabilitySource), Error> {
+) -> Result<(PathBuf, AdapterSource), Error> {
     let cache_dir = project_dir.join(".specify").join(".cache");
     if schema_value.contains("://") {
         let name = schema_value
@@ -286,17 +283,17 @@ fn locate_capability_root(
             .find(|seg| !seg.is_empty())
             .map(|seg| seg.split('@').next().unwrap_or(seg))
             .ok_or_else(|| Error::Diag {
-                code: "capability-url-name-unresolved",
-                detail: format!("cannot derive a capability name from URL `{schema_value}`"),
+                code: "adapter-url-name-unresolved",
+                detail: format!("cannot derive a adapter name from URL `{schema_value}`"),
             })?;
         let candidate = cache_dir.join(name);
         if candidate.is_dir() {
-            return Ok((candidate.clone(), CapabilitySource::Cached(candidate)));
+            return Ok((candidate.clone(), AdapterSource::Cached(candidate)));
         }
         return Err(Error::Diag {
-            code: "capability-cache-missing",
+            code: "adapter-cache-missing",
             detail: format!(
-                "capability `{schema_value}` not present under {}; the agent must fetch it before the CLI can resolve",
+                "adapter `{schema_value}` not present under {}; the agent must fetch it before the CLI can resolve",
                 cache_dir.display()
             ),
         });
@@ -304,27 +301,27 @@ fn locate_capability_root(
 
     if schema_value.contains('/') {
         return Err(Error::Diag {
-            code: "capability-value-malformed",
+            code: "adapter-value-malformed",
             detail: format!(
-                "capability value `{schema_value}` looks like a path but is not a URL; use a bare name or a full URL"
+                "adapter value `{schema_value}` looks like a path but is not a URL; use a bare name or a full URL"
             ),
         });
     }
 
     let cached = cache_dir.join(schema_value);
     if cached.is_dir() {
-        return Ok((cached.clone(), CapabilitySource::Cached(cached)));
+        return Ok((cached.clone(), AdapterSource::Cached(cached)));
     }
 
     let local = project_dir.join("schemas").join(schema_value);
     if local.is_dir() {
-        return Ok((local.clone(), CapabilitySource::Local(local)));
+        return Ok((local.clone(), AdapterSource::Local(local)));
     }
 
     Err(Error::Diag {
-        code: "capability-not-found",
+        code: "adapter-not-found",
         detail: format!(
-            "capability `{schema_value}` not found under {} or {}",
+            "adapter `{schema_value}` not found under {} or {}",
             cached.display(),
             local.display()
         ),

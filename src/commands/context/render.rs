@@ -13,7 +13,7 @@ pub(super) struct Input {
     pub(super) is_hub: bool,
     pub(super) detection: Detection,
     pub(super) domain: Option<String>,
-    pub(super) capability: Option<Capability>,
+    pub(super) adapter: Option<Adapter>,
     pub(super) rule_overrides: Vec<Rule>,
     pub(super) declared_tools: Vec<Tool>,
     pub(super) active_slices: Vec<String>,
@@ -21,17 +21,17 @@ pub(super) struct Input {
     pub(super) dependencies: Vec<Dep>,
 }
 
-/// Capability details surfaced without embedding capability-specific prose in
+/// Adapter details surfaced without embedding adapter-specific prose in
 /// the binary.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Capability {
+pub(super) struct Adapter {
     pub(super) name: String,
     pub(super) version: u32,
     pub(super) description: String,
     pub(super) briefs: Vec<Brief>,
 }
 
-/// One resolved capability brief.
+/// One resolved adapter brief.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Brief {
     pub(super) phase: String,
@@ -64,7 +64,7 @@ pub(super) struct Peer {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Dep {
     pub(super) name: String,
-    pub(super) capability: String,
+    pub(super) adapter: String,
     pub(super) url: String,
     pub(super) description: Option<String>,
 }
@@ -141,14 +141,14 @@ fn conventions_bullets(input: &Input) -> Vec<String> {
     if let Some(domain) = input.domain.as_deref().map(one_line).filter(|value| !value.is_empty()) {
         bullets.push(format!("project domain: {domain}."));
     }
-    if let Some(capability) = &input.capability {
+    if let Some(adapter) = &input.adapter {
         bullets.push(format!(
-            "capability `{}` v{}: {}.",
-            one_line(&capability.name),
-            capability.version,
-            one_line(&capability.description)
+            "adapter `{}` v{}: {}.",
+            one_line(&adapter.name),
+            adapter.version,
+            one_line(&adapter.description)
         ));
-        for brief in &capability.briefs {
+        for brief in &adapter.briefs {
             bullets.push(format!(
                 "pipeline `{}/{}`: {}.",
                 one_line(&brief.phase),
@@ -177,11 +177,9 @@ fn boundaries_bullets(input: &Input) -> Vec<String> {
         "`.specify/archive/` is framework-managed history.".to_string(),
         "`project.yaml` is the source of truth for Specify project metadata.".to_string(),
     ];
-    if let Some(capability) = &input.capability {
-        bullets.push(format!(
-            "capability `{}` owns generated artifact layout.",
-            one_line(&capability.name)
-        ));
+    if let Some(adapter) = &input.adapter {
+        bullets
+            .push(format!("adapter `{}` owns generated artifact layout.", one_line(&adapter.name)));
     }
     if input.declared_tools.is_empty() {
         bullets.push("no project-scoped WASI tools declared.".to_string());
@@ -208,7 +206,7 @@ fn dependency_bullets(input: &Input) -> Vec<String> {
             let mut line = format!(
                 "`{}` @ `{}` -> `{}`.",
                 one_line(&peer.name),
-                one_line(&peer.capability),
+                one_line(&peer.adapter),
                 one_line(&peer.url)
             );
             if let Some(description) =
@@ -241,7 +239,7 @@ mod tests {
             is_hub: false,
             detection: Detection::default(),
             domain: Some("Rust services".to_string()),
-            capability: Some(Capability {
+            adapter: Some(Adapter {
                 name: "omnia".to_string(),
                 version: 1,
                 description: "Omnia Rust WASM workflow".to_string(),
@@ -298,7 +296,7 @@ mod tests {
     fn hub_project_omits_detection_sections() {
         let mut input = regular_input();
         input.is_hub = true;
-        input.capability = None;
+        input.adapter = None;
 
         let rendered = render_body(&input);
 
@@ -315,13 +313,13 @@ mod tests {
         input.dependencies = vec![
             Dep {
                 name: "zeta".to_string(),
-                capability: "omnia@v1".to_string(),
+                adapter: "omnia@v1".to_string(),
                 url: "../zeta".to_string(),
                 description: None,
             },
             Dep {
                 name: "alpha".to_string(),
-                capability: "omnia@v1".to_string(),
+                adapter: "omnia@v1".to_string(),
                 url: "../alpha".to_string(),
                 description: None,
             },
@@ -339,7 +337,7 @@ mod tests {
         let mut input = regular_input();
         input.dependencies = vec![Dep {
             name: "alpha".to_string(),
-            capability: "omnia@v1".to_string(),
+            adapter: "omnia@v1".to_string(),
             url: "../alpha".to_string(),
             description: Some("Alpha service".to_string()),
         }];

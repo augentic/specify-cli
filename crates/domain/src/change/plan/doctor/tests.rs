@@ -12,7 +12,7 @@ fn change(name: &str, status: Status) -> Entry {
     Entry {
         name: name.into(),
         project: Some("default".into()),
-        capability: None,
+        adapter: None,
         status,
         depends_on: vec![],
         sources: vec![],
@@ -302,7 +302,7 @@ fn rp(name: &str, url: &str, schema: &str, description: &str) -> RegistryProject
     RegistryProject {
         name: name.into(),
         url: url.into(),
-        capability: schema.into(),
+        adapter: schema.into(),
         description: Some(description.into()),
         contracts: None,
     }

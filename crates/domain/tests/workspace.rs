@@ -68,7 +68,7 @@ fn registry_with_projects(names: &[&str]) -> Registry {
             .map(|name| RegistryProject {
                 name: (*name).to_string(),
                 url: format!("./{name}"),
-                capability: "omnia@v1".to_string(),
+                adapter: "omnia@v1".to_string(),
                 description: Some(format!("{name} service")),
                 contracts: None,
             })
@@ -88,7 +88,7 @@ fn remote_project(url: String) -> RegistryProject {
     RegistryProject {
         name: "alpha".to_string(),
         url,
-        capability: "omnia@v1".to_string(),
+        adapter: "omnia@v1".to_string(),
         description: Some("alpha service".to_string()),
         contracts: None,
     }
@@ -186,7 +186,7 @@ version: 1
 projects:
   - name: peer
     url: ./peer
-    capability: omnia@v1
+    adapter: omnia@v1
 ",
     )
     .unwrap();
@@ -218,11 +218,11 @@ version: 1
 projects:
   - name: alpha
     url: ./alpha
-    capability: omnia@v1
+    adapter: omnia@v1
     description: alpha service
   - name: beta
     url: ./beta
-    capability: omnia@v1
+    adapter: omnia@v1
     description: beta service
 ",
     )
@@ -391,7 +391,7 @@ fn rfc14_c02_remote_slot_refuses_existing_symlink() {
     let project = RegistryProject {
         name: "remote".to_string(),
         url: "https://example.invalid/org/remote.git".to_string(),
-        capability: "https://example.invalid/capability".to_string(),
+        adapter: "https://example.invalid/adapter".to_string(),
         description: Some("remote service".to_string()),
         contracts: None,
     };
@@ -444,7 +444,7 @@ fn rfc14_c10_slot_problem_matches_sync_for_wrong_remote_origin() {
     let project = RegistryProject {
         name: "remote".to_string(),
         url: "https://example.invalid/new.git".to_string(),
-        capability: "https://example.invalid/capability".to_string(),
+        adapter: "https://example.invalid/adapter".to_string(),
         description: Some("remote service".to_string()),
         contracts: None,
     };
@@ -466,7 +466,7 @@ fn rfc14_c02_sync_refuses_project_name_that_escapes_workspace_slot() {
     let project = RegistryProject {
         name: "../escape".to_string(),
         url: "./peer".to_string(),
-        capability: "omnia@v1".to_string(),
+        adapter: "omnia@v1".to_string(),
         description: Some("bad selector".to_string()),
         contracts: None,
     };
@@ -691,11 +691,11 @@ version: 1
 projects:
   - name: alpha
     url: git@github.com:org/alpha.git
-    capability: omnia@v1
+    adapter: omnia@v1
     description: alpha
   - name: beta
     url: git@github.com:org/beta.git
-    capability: omnia@v1
+    adapter: omnia@v1
     description: beta
 ",
     )
@@ -731,7 +731,7 @@ version: 1
 projects:
   - name: peer
     url: ./peer
-    capability: omnia@v1
+    adapter: omnia@v1
 ",
     )
     .unwrap();
@@ -752,7 +752,7 @@ fn rfc14_c03_workspace_status_enriches_symlink_project_state() {
     let peer = project_dir.join("peer");
     fs::create_dir_all(peer.join(".specify/slices/zeta")).unwrap();
     fs::create_dir_all(peer.join(".specify/slices/alpha")).unwrap();
-    fs::write(peer.join(".specify/project.yaml"), "name: peer\ncapability: omnia@v1\n").unwrap();
+    fs::write(peer.join(".specify/project.yaml"), "name: peer\nadapter: omnia@v1\n").unwrap();
     fs::write(peer.join("README.md"), "# peer\n").unwrap();
     run_git(&peer, &["init"]);
     run_git(&peer, &["add", "."]);
@@ -766,7 +766,7 @@ version: 1
 projects:
   - name: peer
     url: ./peer
-    capability: omnia@v1
+    adapter: omnia@v1
 ",
     )
     .unwrap();
@@ -798,7 +798,7 @@ fn rfc14_c03_workspace_status_enriches_git_clone_mismatch_dirty_and_origin() {
     let slot_path = project_dir.join(".specify/workspace/remote");
     let remote_url = "https://example.invalid/org/remote.git";
     fs::create_dir_all(slot_path.join(".specify/slices/draft")).unwrap();
-    fs::write(slot_path.join(".specify/project.yaml"), "name: remote\ncapability: omnia@v1\n")
+    fs::write(slot_path.join(".specify/project.yaml"), "name: remote\nadapter: omnia@v1\n")
         .unwrap();
     fs::write(slot_path.join("README.md"), "# remote\n").unwrap();
     run_git(&slot_path, &["init"]);
@@ -811,7 +811,7 @@ fn rfc14_c03_workspace_status_enriches_git_clone_mismatch_dirty_and_origin() {
     let project = RegistryProject {
         name: "remote".to_string(),
         url: remote_url.to_string(),
-        capability: "omnia@v1".to_string(),
+        adapter: "omnia@v1".to_string(),
         description: Some("remote service".to_string()),
         contracts: None,
     };
@@ -839,12 +839,11 @@ fn rfc14_c03_workspace_status_reports_other_materialisation_with_project_metadat
     let project_dir = tmp.path();
     let slot_path = project_dir.join(".specify/workspace/odd");
     fs::create_dir_all(slot_path.join(".specify/slices/manual")).unwrap();
-    fs::write(slot_path.join(".specify/project.yaml"), "name: odd\ncapability: omnia@v1\n")
-        .unwrap();
+    fs::write(slot_path.join(".specify/project.yaml"), "name: odd\nadapter: omnia@v1\n").unwrap();
     let project = RegistryProject {
         name: "odd".to_string(),
         url: "https://example.invalid/org/odd.git".to_string(),
-        capability: "omnia@v1".to_string(),
+        adapter: "omnia@v1".to_string(),
         description: Some("odd service".to_string()),
         contracts: None,
     };
@@ -1032,7 +1031,7 @@ version: 1
 projects:
   - name: peer
     url: ./peer
-    capability: omnia@v1
+    adapter: omnia@v1
 ",
     )
     .unwrap();

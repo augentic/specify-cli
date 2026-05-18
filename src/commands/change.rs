@@ -5,7 +5,7 @@ use std::io::Write;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::capability::ChangeBrief;
+use specify_domain::adapter::ChangeBrief;
 use specify_domain::change::finalize;
 use specify_domain::cmd::RealCmd;
 use specify_domain::registry::Registry;

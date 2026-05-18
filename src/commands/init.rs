@@ -19,13 +19,13 @@ fn canonical(p: &Path) -> String {
 }
 
 pub(super) fn run(
-    format: Format, capability: Option<&str>, name: Option<&str>, domain: Option<&str>, hub: bool,
+    format: Format, adapter: Option<&str>, name: Option<&str>, domain: Option<&str>, hub: bool,
 ) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
     let opts = InitOptions {
         project_dir: &project_dir,
-        capability,
+        adapter,
         name,
         domain,
         version_mode: VersionMode::WriteCurrent,
@@ -46,9 +46,9 @@ pub(super) fn run(
 )]
 struct Body {
     config_path: String,
-    /// Resolved capability name (or `"hub"` for hub init — both
+    /// Resolved adapter name (or `"hub"` for hub init — both
     /// renderers dispatch on this value).
-    capability_name: String,
+    adapter_name: String,
     cache_present: bool,
     directories_created: Vec<String>,
     scaffolded_rule_keys: Vec<String>,
@@ -64,13 +64,13 @@ struct Body {
 }
 
 fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
-    let hub = body.capability_name == "hub";
+    let hub = body.adapter_name == "hub";
     if hub {
         writeln!(w, "Initialized .specify/ as a registry-only platform hub")?;
     } else {
         writeln!(w, "Initialized .specify/")?;
     }
-    writeln!(w, "  capability: {}", body.capability_name)?;
+    writeln!(w, "  adapter: {}", body.adapter_name)?;
     writeln!(w, "  config: {}", body.config_path)?;
     writeln!(w, "  cache present: {}", body.cache_present)?;
     if !body.directories_created.is_empty() {
@@ -103,7 +103,7 @@ fn emit_init_result(
 ) -> Result<()> {
     let body = Body {
         config_path: canonical(&result.config_path),
-        capability_name: result.capability_name.clone(),
+        adapter_name: result.adapter_name.clone(),
         cache_present: result.cache_present,
         directories_created: result.directories_created.iter().map(|p| canonical(p)).collect(),
         scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),

@@ -102,8 +102,8 @@ pub struct PreviewResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct BaselineConflict {
-    /// Capability (spec directory) name.
-    pub capability: String,
+    /// Adapter (spec directory) name.
+    pub adapter: String,
     /// Slice's `defined_at` stamp, copied verbatim from `.metadata.yaml`.
     pub defined_at: String,
     /// Baseline file modification time.
@@ -282,7 +282,7 @@ pub fn conflict_check(
             let mtime = system_time_to_utc(meta.modified()?)?;
             if mtime > defined_at {
                 conflicts.push(BaselineConflict {
-                    capability: touched.name.clone(),
+                    adapter: touched.name.clone(),
                     defined_at: defined_raw.clone(),
                     baseline_modified_at: mtime,
                 });
@@ -302,7 +302,7 @@ pub fn conflict_check(
             let mtime = system_time_to_utc(meta.modified()?)?;
             if mtime > defined_at {
                 conflicts.push(BaselineConflict {
-                    capability: "composition".to_string(),
+                    adapter: "composition".to_string(),
                     defined_at: defined_raw.clone(),
                     baseline_modified_at: mtime,
                 });
@@ -325,6 +325,6 @@ pub fn conflict_check(
         )?;
     }
 
-    conflicts.sort_by(|a, b| a.capability.cmp(&b.capability));
+    conflicts.sort_by(|a, b| a.adapter.cmp(&b.adapter));
     Ok(conflicts)
 }

@@ -1,4 +1,4 @@
-//! `slice validate` — coherence check against the capability validation rules.
+//! `slice validate` — coherence check against the adapter validation rules.
 
 use specify_domain::validate::{ValidationResult, validate_slice};
 use specify_error::{Error, Result};
@@ -32,7 +32,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     } else {
         Err(Error::validation_failed(
             "slice-validation-failed",
-            "slice must satisfy capability validation",
+            "slice must satisfy adapter validation",
             format!("slice `{name}` failed validation"),
         ))
     }

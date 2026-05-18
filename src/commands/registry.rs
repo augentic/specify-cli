@@ -20,9 +20,9 @@ pub fn run(ctx: &Ctx, action: RegistryAction) -> Result<()> {
         RegistryAction::Add {
             name,
             url,
-            capability,
+            adapter,
             description,
-        } => add::run(ctx, name, url, capability, description),
+        } => add::run(ctx, name, url, adapter, description),
         RegistryAction::Remove { name } => remove::run(ctx, name),
     }
 }

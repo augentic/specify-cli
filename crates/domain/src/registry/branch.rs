@@ -23,7 +23,7 @@ pub struct Request {
     pub change_name: String,
     /// Active plan-entry source paths that belong to this slice.
     pub source_paths: Vec<PathBuf>,
-    /// Capability-owned output paths that belong to this slice.
+    /// Adapter-owned output paths that belong to this slice.
     pub output_paths: Vec<PathBuf>,
 }
 

@@ -166,7 +166,7 @@ fn write_conflict_check_text(
         writeln!(
             w,
             "{}: baseline modified {} (defined_at {})",
-            c.capability,
+            c.adapter,
             c.baseline_modified_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
             c.defined_at,
         )?;

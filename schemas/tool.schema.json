@@ -72,7 +72,7 @@
     "permissionPath": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(\\$PROJECT_DIR($|[\\\\/].*)|\\$CAPABILITY_DIR($|[\\\\/].*)|/.*|[A-Za-z]:[\\\\/].*)$",
+      "pattern": "^(\\$PROJECT_DIR($|[\\\\/].*)|\\$ADAPTER_DIR($|[\\\\/].*)|/.*|[A-Za-z]:[\\\\/].*)$",
       "not": {
         "anyOf": [
           { "pattern": "(^|[\\\\/])\\.\\.($|[\\\\/])" },

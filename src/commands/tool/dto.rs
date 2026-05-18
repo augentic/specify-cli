@@ -210,9 +210,7 @@ pub(super) fn cache_status_for(scoped: &ScopedTool) -> Result<CacheStatus> {
 pub(super) fn scope_labels(scope: &ToolScope) -> (ToolScopeKind, String) {
     match scope {
         ToolScope::Project { project_name } => (ToolScopeKind::Project, project_name.clone()),
-        ToolScope::Capability { capability_slug, .. } => {
-            (ToolScopeKind::Capability, capability_slug.clone())
-        }
+        ToolScope::Adapter { adapter_slug, .. } => (ToolScopeKind::Adapter, adapter_slug.clone()),
     }
 }
 
@@ -220,7 +218,7 @@ pub(super) fn warning_row(name: String) -> WarningRow {
     WarningRow {
         code: "tool-name-collision",
         message: format!(
-            "project-scope declaration for `{name}` overrides the capability-scope declaration"
+            "project-scope declaration for `{name}` overrides the adapter-scope declaration"
         ),
         name,
     }

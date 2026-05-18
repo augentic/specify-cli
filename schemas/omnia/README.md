@@ -1,6 +1,6 @@
-# Omnia Capability
+# Omnia Adapter
 
-- **URL**: `https://github.com/augentic/specify/capabilities/omnia`
+- **URL**: `https://github.com/augentic/specify/adapters/omnia`
 - **Purpose**: Rust WASM development (greenfield or migration)
 - **Source**: Git Repository, Source Code, or Manual (all analyzed via `/spec:extract`)
 - **Target**: Rust WASM (Omnia SDK)
@@ -10,7 +10,7 @@
 
 | File | Description |
 |------|-------------|
-| `capability.yaml` | Pipeline phases (`define`, `build`, `merge`) and per-phase brief references |
+| `adapter.yaml` | Pipeline phases (`define`, `build`, `merge`) and per-phase brief references |
 | `briefs/proposal.md` | Generation brief for the proposal stage |
 | `briefs/specs.md` | Generation brief for the specs stage |
 | `briefs/design.md` | Generation brief for the design stage |
@@ -20,7 +20,7 @@
 
 ## Pipeline
 
-The capability declares four briefs under `pipeline.define` in dependency order:
+The adapter declares four briefs under `pipeline.define` in dependency order:
 
 1. **proposal** — initial proposal document (`proposal.md`)
 2. **specs** — detailed specifications (`specs/**/*.md`), requires proposal
@@ -30,9 +30,9 @@ The capability declares four briefs under `pipeline.define` in dependency order:
 `pipeline.build` requires tasks to be complete and is tracked via `tasks.md`.
 `pipeline.merge` finalises the slice and runs the merge brief.
 
-## Capability framework
+## Adapter framework
 
-For general capability concepts — directory structure, field reference for
-`capability.yaml`, capability resolution, composition, caching, and rules
-override — see the [Capabilities README](../README.md) and the bundled
-[`capability.schema.json`](../capability.schema.json).
+For general adapter concepts — directory structure, field reference for
+`adapter.yaml`, adapter resolution, composition, caching, and rules
+override — see the [Adapters README](../README.md) and the bundled
+[`adapter.schema.json`](../adapter.schema.json).

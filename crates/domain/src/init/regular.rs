@@ -1,5 +1,5 @@
 //! Regular (non-hub) init body. Scaffolds the per-project `.specify/`
-//! tree, resolves the requested capability into the cache, and writes
+//! tree, resolves the requested adapter into the cache, and writes
 //! `project.yaml`.
 
 use std::collections::BTreeMap;
@@ -9,9 +9,9 @@ use std::path::PathBuf;
 use jiff::Timestamp;
 use specify_error::Error;
 
-use crate::capability::{CacheMeta, PipelineView};
+use crate::adapter::{CacheMeta, PipelineView};
 use crate::config::{Layout, ProjectConfig};
-use crate::init::cache::cache_capability;
+use crate::init::cache::cache_adapter;
 use crate::init::{
     InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
     upsert_gitignore,
@@ -22,9 +22,9 @@ use crate::init::{
     reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
 )]
 pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
-    let capability = opts.capability.ok_or_else(|| Error::Diag {
-        code: "init-requires-capability-or-hub",
-        detail: "pass <capability> or --hub".to_string(),
+    let adapter = opts.adapter.ok_or_else(|| Error::Diag {
+        code: "init-requires-adapter-or-hub",
+        detail: "pass <adapter> or --hub".to_string(),
     })?;
     let name = resolved_name(opts.project_dir, opts.name);
     let layout = Layout::new(opts.project_dir);
@@ -33,7 +33,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
     // Repo-root artefacts (`registry.yaml`, `change.md`, `plan.yaml`)
     // are not pre-touched — their owning verbs mint them on demand.
     // `.specify/specs/` is retained as a per-project convention used
-    // by the bundled `omnia` capability.
+    // by the bundled `omnia` adapter.
     for dir in [
         layout.specify_dir(),
         layout.slices_dir(),
@@ -48,11 +48,11 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
         }
     }
 
-    let capability_value = cache_capability(capability, opts.project_dir, now)?;
-    let view = PipelineView::load(&capability_value, opts.project_dir)?;
-    let capability_name = view.capability.manifest.name.clone();
+    let adapter_value = cache_adapter(adapter, opts.project_dir, now)?;
+    let view = PipelineView::load(&adapter_value, opts.project_dir)?;
+    let adapter_name = view.adapter.manifest.name.clone();
     let scaffolded_rule_keys: Vec<String> =
-        view.capability.manifest.pipeline.define.iter().map(|entry| entry.id.clone()).collect();
+        view.adapter.manifest.pipeline.define.iter().map(|entry| entry.id.clone()).collect();
 
     let specify_version = resolve_version(opts.project_dir, opts.version_mode)?;
 
@@ -63,7 +63,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
     let cfg = ProjectConfig {
         name,
         domain: opts.domain.map(str::to_string),
-        capability: Some(capability_value),
+        adapter: Some(adapter_value),
         specify_version: Some(specify_version.clone()),
         rules,
         tools: Vec::new(),
@@ -82,7 +82,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
 
     Ok(InitResult {
         config_path,
-        capability_name,
+        adapter_name,
         cache_present,
         directories_created,
         scaffolded_rule_keys,
@@ -98,7 +98,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use crate::capability::CacheMeta;
+    use crate::adapter::CacheMeta;
     use crate::config::{Layout, ProjectConfig};
     use crate::init::{InitOptions, VersionMode, fixed_now, init};
 
@@ -117,7 +117,7 @@ mod tests {
     fn base_opts<'a>(project_dir: &'a Path, schema_dir: &'a Path) -> InitOptions<'a> {
         InitOptions {
             project_dir,
-            capability: Some(schema_dir.to_str().expect("schema path utf8")),
+            adapter: Some(schema_dir.to_str().expect("schema path utf8")),
             name: Some("demo"),
             domain: None,
             version_mode: VersionMode::WriteCurrent,
@@ -139,7 +139,7 @@ mod tests {
         let config_path = tmp.path().join(".specify/project.yaml");
         assert!(config_path.is_file());
         assert_eq!(result.config_path, config_path);
-        assert_eq!(result.capability_name, "omnia");
+        assert_eq!(result.adapter_name, "omnia");
 
         // Non-hub init must not pre-touch any platform-component
         // artefact at the repo root. Operators mint these via
@@ -158,9 +158,9 @@ mod tests {
 
         let cfg = ProjectConfig::load(tmp.path()).expect("reload ok");
         assert_eq!(cfg.name, "demo");
-        let cap = cfg.capability.as_deref().expect("capability set on regular init");
-        assert!(cap.starts_with("file://"), "capability: {cap}");
-        assert!(cap.ends_with("/schemas/omnia"), "capability: {cap}");
+        let cap = cfg.adapter.as_deref().expect("adapter set on regular init");
+        assert!(cap.starts_with("file://"), "adapter: {cap}");
+        assert!(cap.ends_with("/schemas/omnia"), "adapter: {cap}");
         assert!(!cfg.hub, "regular init must not set hub");
         assert_eq!(cfg.specify_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
         let mut rule_keys: Vec<_> = cfg.rules.keys().cloned().collect();
@@ -334,7 +334,7 @@ mod tests {
         let result = init(
             InitOptions {
                 project_dir: &project,
-                capability: Some(schema_dir.to_str().expect("schema path utf8")),
+                adapter: Some(schema_dir.to_str().expect("schema path utf8")),
                 name: None,
                 domain: None,
                 version_mode: VersionMode::WriteCurrent,
@@ -346,6 +346,6 @@ mod tests {
 
         let cfg = ProjectConfig::load(&project).expect("reload");
         assert_eq!(cfg.name, "my-project");
-        assert_eq!(result.capability_name, "omnia");
+        assert_eq!(result.adapter_name, "omnia");
     }
 }

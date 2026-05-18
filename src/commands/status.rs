@@ -79,7 +79,7 @@ fn render_dashboard(
             } else {
                 writeln!(w, "  projects ({}):", r.projects.len())?;
                 for p in &r.projects {
-                    writeln!(w, "    - {} ({})", p.name, p.capability)?;
+                    writeln!(w, "    - {} ({})", p.name, p.adapter)?;
                 }
             }
         }

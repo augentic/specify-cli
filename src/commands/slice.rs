@@ -26,8 +26,8 @@ use crate::context::Ctx;
 
 /// Default omnia [`ArtifactClass`] set: `specs` (3-way merge) and
 /// `contracts` (opaque replace). Single source of truth in the
-/// binary; future capability manifests should drive this through
-/// `specify-capability`.
+/// binary; future adapter manifests should drive this through
+/// `specify-adapter`.
 pub(super) fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<ArtifactClass> {
     vec![
         ArtifactClass {
@@ -49,9 +49,9 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
     match action {
         SliceAction::Create {
             name,
-            capability,
+            adapter,
             if_exists,
-        } => lifecycle::create(ctx, &name, capability, if_exists),
+        } => lifecycle::create(ctx, &name, adapter, if_exists),
         SliceAction::Status { name } => list::status_one(ctx, &name),
         SliceAction::Validate { name } => validate::run(ctx, &name),
         SliceAction::Merge { action } => match action {

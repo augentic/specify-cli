@@ -68,10 +68,10 @@ impl Project {
         let tmp = tempdir().expect("tempdir");
         let root = tmp.path().to_path_buf();
         fs::create_dir_all(root.join(".specify")).expect("create .specify");
-        fs::write(root.join(".specify/project.yaml"), "name: demo\ncapability: project\n")
+        fs::write(root.join(".specify/project.yaml"), "name: demo\nadapter: project\n")
             .expect("write project.yaml");
-        write_capability(&root, "default", 1);
-        write_capability(&root, "project", 2);
+        write_adapter(&root, "default", 1);
+        write_adapter(&root, "project", 2);
         Self { _tmp: tmp, root }
     }
 
@@ -80,9 +80,9 @@ impl Project {
         let root = tmp.path().join("project");
         fs::create_dir_all(&root).expect("create project dir");
 
-        let capabilities = tmp.path().join("capabilities");
-        let default_root = write_capability_under(&capabilities, "default", 1);
-        let project_root = write_capability_under(&capabilities, "project", 2);
+        let adapters = tmp.path().join("adapters");
+        let default_root = write_adapter_under(&adapters, "default", 1);
+        let project_root = write_adapter_under(&adapters, "project", 2);
         write_rule(&default_root, "001.md", "UNI-001");
         write_rule_with_body(
             &default_root,
@@ -102,8 +102,8 @@ impl Project {
             .assert()
             .success();
         assert!(
-            root.join(".specify/.cache/default/capability.yaml").is_file(),
-            "init should cache sibling default capability for codex resolution"
+            root.join(".specify/.cache/default/adapter.yaml").is_file(),
+            "init should cache sibling default adapter for codex resolution"
         );
 
         Self { _tmp: tmp, root }
@@ -114,20 +114,20 @@ impl Project {
     }
 }
 
-fn write_capability(project_dir: &std::path::Path, name: &str, version: u32) -> PathBuf {
-    write_capability_under(&project_dir.join("schemas"), name, version)
+fn write_adapter(project_dir: &std::path::Path, name: &str, version: u32) -> PathBuf {
+    write_adapter_under(&project_dir.join("schemas"), name, version)
 }
 
-fn write_capability_under(parent_dir: &std::path::Path, name: &str, version: u32) -> PathBuf {
+fn write_adapter_under(parent_dir: &std::path::Path, name: &str, version: u32) -> PathBuf {
     let root = parent_dir.join(name);
-    fs::create_dir_all(&root).expect("create capability root");
+    fs::create_dir_all(&root).expect("create adapter root");
     fs::write(
-        root.join("capability.yaml"),
+        root.join("adapter.yaml"),
         format!(
             "\
 name: {name}
 version: {version}
-description: {name} test capability
+description: {name} test adapter
 pipeline:
   define: []
   build: []
@@ -135,7 +135,7 @@ pipeline:
 "
         ),
     )
-    .expect("write capability manifest");
+    .expect("write adapter manifest");
     root
 }
 
@@ -235,7 +235,7 @@ fn export_json_includes_rules_and_paths() {
     assert_eq!(value["rule-count"], 2);
     let rules = value["rules"].as_array().expect("rules array");
     assert_eq!(rules[0]["id"], "UNI-001");
-    assert_eq!(rules[0]["kind"], "capability");
+    assert_eq!(rules[0]["kind"], "adapter");
     assert_eq!(rules[0]["name"], "default");
     assert_eq!(rules[0]["version"], 1);
     assert!(
@@ -261,7 +261,7 @@ fn export_json_resolves_cache_and_overlay() {
     let ids: Vec<_> = rules.iter().map(|rule| rule["id"].as_str().expect("id str")).collect();
     assert_eq!(ids, ["UNI-001", "UNI-002", "OMNIA-001", "ORG-001"]);
 
-    assert_eq!(rules[0]["kind"], "capability");
+    assert_eq!(rules[0]["kind"], "adapter");
     assert_eq!(rules[0]["name"], "default");
     assert_eq!(rules[0]["version"], 1);
     assert!(
@@ -270,7 +270,7 @@ fn export_json_resolves_cache_and_overlay() {
         rules[0]["source-path"]
     );
 
-    assert_eq!(rules[2]["kind"], "capability");
+    assert_eq!(rules[2]["kind"], "adapter");
     assert_eq!(rules[2]["name"], "project");
     assert_eq!(rules[2]["version"], 2);
     assert!(

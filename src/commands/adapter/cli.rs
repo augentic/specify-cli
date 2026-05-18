@@ -1,18 +1,18 @@
-//! Clap derive surface for `specify capability *`. The umbrella
-//! `cli.rs` re-exports `CapabilityAction`.
+//! Clap derive surface for `specify adapter *`. The umbrella
+//! `cli.rs` re-exports `AdapterAction`.
 
 use std::path::PathBuf;
 
 use clap::Subcommand;
-use specify_domain::capability::Phase;
+use specify_domain::adapter::Phase;
 
 #[derive(Subcommand)]
-pub enum CapabilityAction {
-    /// Resolve a capability value to a directory path
+pub enum AdapterAction {
+    /// Resolve a adapter value to a directory path
     Resolve {
-        /// Capability value (bare name or URL) to resolve through the
-        /// project-local cache and bundled capability lookup
-        capability_value: String,
+        /// Adapter value (bare name or URL) to resolve through the
+        /// project-local cache and bundled adapter lookup
+        adapter_value: String,
         #[arg(long, default_value = ".")]
         project_dir: PathBuf,
     },

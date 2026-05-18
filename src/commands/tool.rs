@@ -1,5 +1,5 @@
 //! `specify tool *` dispatcher. Hosts the shared inventory-assembly
-//! helpers (declared-tool merge, capability resolution, manifest
+//! helpers (declared-tool merge, adapter resolution, manifest
 //! validation) consumed by every per-subcommand handler.
 
 pub mod cli;
@@ -18,7 +18,7 @@ pub(super) use gc::run as gc;
 pub(super) use list::run as list;
 pub(super) use run::run;
 pub(super) use show::run as show;
-use specify_domain::capability::{Capability, ResolvedCapability};
+use specify_domain::adapter::{Adapter, ResolvedAdapter};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
 use specify_tool::manifest::{Tool, ToolManifest, ToolScope};
@@ -34,23 +34,22 @@ fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let project_tools = load::project_tools(ctx.config.name.clone(), ctx.config.tools.clone());
 
     let mut scopes = vec![project_scope];
-    let capability = resolve_project_capability(ctx)?;
-    let capability_tools = if let Some(capability) = capability {
-        let capability_scope = ToolScope::Capability {
-            capability_slug: capability.manifest.name.clone(),
-            capability_dir: capability.root_dir.clone(),
+    let adapter = resolve_project_adapter(ctx)?;
+    let adapter_tools = if let Some(adapter) = adapter {
+        let adapter_scope = ToolScope::Adapter {
+            adapter_slug: adapter.manifest.name.clone(),
+            adapter_dir: adapter.root_dir.clone(),
         };
-        scopes.push(capability_scope.clone());
-        let sidecar_tools =
-            load::capability_sidecar(&capability.root_dir, &capability.manifest.name)?;
+        scopes.push(adapter_scope.clone());
+        let sidecar_tools = load::adapter_sidecar(&adapter.root_dir, &adapter.manifest.name)?;
         let tools: Vec<Tool> = sidecar_tools.iter().map(|(_, tool)| tool.clone()).collect();
-        validate_manifest_tools(&tools, &capability_scope)?;
+        validate_manifest_tools(&tools, &adapter_scope)?;
         sidecar_tools
     } else {
         Vec::new()
     };
 
-    let (merged, warnings) = load::merge_scoped(project_tools, capability_tools);
+    let (merged, warnings) = load::merge_scoped(project_tools, adapter_tools);
     Ok(Inventory {
         tools: merged.into_iter().map(|(scope, tool)| ScopedTool { scope, tool }).collect(),
         warnings: warnings.into_iter().map(warning_row).collect(),
@@ -58,19 +57,19 @@ fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     })
 }
 
-fn resolve_project_capability(ctx: &Ctx) -> Result<Option<ResolvedCapability>> {
-    let Some(value) = ctx.config.capability.as_deref() else {
+fn resolve_project_adapter(ctx: &Ctx) -> Result<Option<ResolvedAdapter>> {
+    let Some(value) = ctx.config.adapter.as_deref() else {
         return Ok(None);
     };
-    let (root_dir, _) = Capability::locate(value, &ctx.project_dir)?;
-    enforce_capability_filename(&root_dir)?;
-    Capability::resolve(value, &ctx.project_dir).map(Some)
+    let (root_dir, _) = Adapter::locate(value, &ctx.project_dir)?;
+    enforce_adapter_filename(&root_dir)?;
+    Adapter::resolve(value, &ctx.project_dir).map(Some)
 }
 
-fn enforce_capability_filename(dir: &Path) -> Result<()> {
-    Capability::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::Diag {
-        code: "capability-manifest-missing",
-        detail: format!("no `capability.yaml` at {}", dir.display()),
+fn enforce_adapter_filename(dir: &Path) -> Result<()> {
+    Adapter::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::Diag {
+        code: "adapter-manifest-missing",
+        detail: format!("no `adapter.yaml` at {}", dir.display()),
     })
 }
 

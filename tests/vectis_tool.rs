@@ -65,35 +65,35 @@ struct VectisToolFixture {
 impl VectisToolFixture {
     fn from_tempdir(tmp: TempDir, write_permission: &str) -> Self {
         let project = tmp.path().join("project");
-        let capability = project.join("schemas/vectis");
+        let adapter = project.join("schemas/vectis");
         let design = project.join("design-system");
         let cache = tmp.path().join("tools-cache");
         let outside = tmp.path().join("outside");
 
         fs::create_dir_all(project.join(".specify")).expect("create .specify");
-        fs::create_dir_all(&capability).expect("create capability");
+        fs::create_dir_all(&adapter).expect("create adapter");
         fs::create_dir_all(&design).expect("create design-system");
         fs::create_dir_all(&cache).expect("create cache");
         fs::create_dir_all(&outside).expect("create outside dir");
 
         fs::write(
             project.join(".specify/project.yaml"),
-            "name: vectis-tool-test\ncapability: vectis\nrules: {}\n",
+            "name: vectis-tool-test\nadapter: vectis\nrules: {}\n",
         )
         .expect("write project.yaml");
         fs::write(
-            capability.join("capability.yaml"),
-            "name: vectis\nversion: 2\ndescription: Test Vectis capability\npipeline:\n  define: []\n  build: []\n  merge: []\n",
+            adapter.join("adapter.yaml"),
+            "name: vectis\nversion: 2\ndescription: Test Vectis adapter\npipeline:\n  define: []\n  build: []\n  merge: []\n",
         )
-        .expect("write capability.yaml");
+        .expect("write adapter.yaml");
 
         let artifact = vectis_wasi_artifact();
         let source = file_uri(artifact);
         let sha = sha256_hex(artifact);
         fs::write(
-            capability.join("tools.yaml"),
+            adapter.join("tools.yaml"),
             format!(
-                "tools:\n  - name: vectis\n    version: 0.2.0\n    source: \"{source}\"\n    sha256: \"{sha}\"\n    permissions:\n      read:\n        - \"$PROJECT_DIR\"\n        - \"$CAPABILITY_DIR\"\n      write:\n        - \"{write_permission}\"\n"
+                "tools:\n  - name: vectis\n    version: 0.2.0\n    source: \"{source}\"\n    sha256: \"{sha}\"\n    permissions:\n      read:\n        - \"$PROJECT_DIR\"\n        - \"$ADAPTER_DIR\"\n      write:\n        - \"{write_permission}\"\n"
             ),
         )
         .expect("write tools.yaml");
@@ -185,7 +185,7 @@ fn assert_scaffold_run_and_permission_denial(fixture: &VectisToolFixture) {
         denied_row["detail"]
             .as_str()
             .expect("denied detail")
-            .contains("escapes PROJECT_DIR/CAPABILITY_DIR"),
+            .contains("escapes PROJECT_DIR/ADAPTER_DIR"),
         "{denied_json}"
     );
 }
@@ -203,7 +203,7 @@ fn runs_through_fetch_cache_perms_and_exits() {
     let tools = list["tools"].as_array().expect("tools array");
     let names: Vec<&str> = tools.iter().map(|tool| tool["name"].as_str().unwrap()).collect();
     assert_eq!(names, ["vectis"], "{list}");
-    assert!(tools.iter().all(|tool| tool["scope"] == "capability"), "{list}");
+    assert!(tools.iter().all(|tool| tool["scope"] == "adapter"), "{list}");
     assert!(tools.iter().all(|tool| tool["scope-detail"] == "vectis"), "{list}");
     assert!(tools.iter().all(|tool| tool["cache-status"] == "miss-not-found"), "{list}");
 

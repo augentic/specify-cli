@@ -60,7 +60,7 @@ pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Resul
             if project.is_local() {
                 materialise_symlink(project_dir, &project.url, &dest)
             } else {
-                materialise_git_remote(&project.url, &dest, &project.capability, project_dir)
+                materialise_git_remote(&project.url, &dest, &project.adapter, project_dir)
             }
         });
         if let Err(err) = result {
@@ -206,7 +206,7 @@ fn symlink(target: &Path, link: &Path) -> Result<(), Error> {
 }
 
 pub(super) fn materialise_git_remote(
-    url: &str, dest: &Path, capability: &str, initiating_project_dir: &Path,
+    url: &str, dest: &Path, adapter: &str, initiating_project_dir: &Path,
 ) -> Result<(), Error> {
     match std::fs::symlink_metadata(dest) {
         Ok(meta) if meta.file_type().is_symlink() => Err(Error::Diag {
@@ -235,7 +235,7 @@ pub(super) fn materialise_git_remote(
                 )
                 .or(Ok(()))
             } else {
-                greenfield_init(dest, capability, initiating_project_dir, true)
+                greenfield_init(dest, adapter, initiating_project_dir, true)
             }
         }
         Ok(_) => Err(Error::Diag {
@@ -265,7 +265,7 @@ pub(super) fn materialise_git_remote(
                 ensure_origin_matches(dest, url)?;
                 Ok(())
             } else {
-                bootstrap::bootstrap(url, dest, capability, initiating_project_dir)
+                bootstrap::bootstrap(url, dest, adapter, initiating_project_dir)
             }
         }
         Err(err) => Err(Error::Io(err)),

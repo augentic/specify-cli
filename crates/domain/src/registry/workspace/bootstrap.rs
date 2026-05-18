@@ -9,24 +9,24 @@ use super::git::{self, git_output_ok, git_porcelain_non_empty};
 use crate::registry::gitignore::ensure_specify_gitignore_entries;
 
 pub(super) fn bootstrap(
-    url: &str, dest: &Path, capability: &str, initiating_project_dir: &Path,
+    url: &str, dest: &Path, adapter: &str, initiating_project_dir: &Path,
 ) -> Result<(), Error> {
     std::fs::create_dir_all(dest).map_err(Error::Io)?;
 
     git::run(dest, &["init"], &format!("git init in {}", dest.display()))?;
     git::run(dest, &["remote", "add", "origin", url], &format!("git remote add origin {url}"))?;
 
-    greenfield_init(dest, capability, initiating_project_dir, false)?;
+    greenfield_init(dest, adapter, initiating_project_dir, false)?;
 
     Ok(())
 }
 
 pub(super) fn greenfield_init(
-    dest: &Path, capability: &str, initiating_project_dir: &Path, is_rerun: bool,
+    dest: &Path, adapter: &str, initiating_project_dir: &Path, is_rerun: bool,
 ) -> Result<(), Error> {
-    let capability = resolve_greenfield_capability(capability, initiating_project_dir)?;
+    let adapter = resolve_greenfield_adapter(adapter, initiating_project_dir)?;
 
-    scaffold_greenfield_specify_tree(dest, &capability)?;
+    scaffold_greenfield_specify_tree(dest, &adapter)?;
 
     git::run(dest, &["add", "."], &format!("git add in {}", dest.display()))?;
 
@@ -45,7 +45,7 @@ pub(super) fn greenfield_init(
     Ok(())
 }
 
-fn scaffold_greenfield_specify_tree(dest: &Path, capability: &str) -> Result<(), Error> {
+fn scaffold_greenfield_specify_tree(dest: &Path, adapter: &str) -> Result<(), Error> {
     let specify_dir = dest.join(".specify");
     for dir in [
         specify_dir.clone(),
@@ -63,7 +63,7 @@ fn scaffold_greenfield_specify_tree(dest: &Path, capability: &str) -> Result<(),
         .filter(|name| !name.is_empty())
         .unwrap_or("greenfield");
     let project_yaml = format!(
-        "name: {name}\ncapability: {capability}\nspecify_version: \"{}\"\nrules: {{}}\n",
+        "name: {name}\nadapter: {adapter}\nspecify_version: \"{}\"\nrules: {{}}\n",
         env!("CARGO_PKG_VERSION")
     );
     std::fs::write(specify_dir.join("project.yaml"), project_yaml).map_err(Error::Io)?;
@@ -72,26 +72,26 @@ fn scaffold_greenfield_specify_tree(dest: &Path, capability: &str) -> Result<(),
     Ok(())
 }
 
-/// Resolve the capability identifier to pass into a greenfield slot's
-/// `specify init <capability>`.
+/// Resolve the adapter identifier to pass into a greenfield slot's
+/// `specify init <adapter>`.
 ///
-/// URL-shaped capabilities are already self-contained. Bare registry
-/// capability identifiers are local to the initiating repo's cache, so
+/// URL-shaped adapters are already self-contained. Bare registry
+/// adapter identifiers are local to the initiating repo's cache, so
 /// convert them into a file URI the spawned init can copy directly.
-fn resolve_greenfield_capability(
-    capability: &str, initiating_project_dir: &Path,
+fn resolve_greenfield_adapter(
+    adapter: &str, initiating_project_dir: &Path,
 ) -> Result<String, Error> {
-    if capability.contains("://") {
-        return Ok(capability.to_string());
+    if adapter.contains("://") {
+        return Ok(adapter.to_string());
     }
     let cache_base = initiating_project_dir.join(".specify").join(".cache");
 
-    let direct = cache_base.join(capability);
+    let direct = cache_base.join(adapter);
     if direct.is_dir() {
         return Ok(format!("file://{}", direct.display()));
     }
 
-    let without_ref = capability.split('@').next().unwrap_or(capability);
+    let without_ref = adapter.split('@').next().unwrap_or(adapter);
     if let Some(segment) = without_ref.rsplit('/').find(|s| !s.is_empty()) {
         let by_segment = cache_base.join(segment);
         if by_segment.is_dir() {
@@ -100,10 +100,10 @@ fn resolve_greenfield_capability(
     }
 
     Err(Error::Diag {
-        code: "workspace-capability-not-cached",
+        code: "workspace-adapter-not-cached",
         detail: format!(
-            "capability '{}' not cached in {}; run /spec:init in the initiating repo first",
-            capability,
+            "adapter '{}' not cached in {}; run /spec:init in the initiating repo first",
+            adapter,
             cache_base.display()
         ),
     })

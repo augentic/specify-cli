@@ -21,8 +21,8 @@ pub fn run(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<u8> {
         &ctx.project_dir,
     )?;
     let mut run_ctx = RunContext::new(&ctx.project_dir, args);
-    if let ToolScope::Capability { capability_dir, .. } = &scoped.scope {
-        run_ctx = run_ctx.with_capability_dir(capability_dir);
+    if let ToolScope::Adapter { adapter_dir, .. } = &scoped.scope {
+        run_ctx = run_ctx.with_adapter_dir(adapter_dir);
     }
     let runner = WasiRunner::new()?;
     let exit = runner.run(&resolved, &run_ctx)?;

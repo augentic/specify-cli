@@ -5,7 +5,7 @@ use std::path::Path;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::capability::Phase;
+use specify_domain::adapter::Phase;
 use specify_domain::config::Layout;
 use specify_domain::slice::{Outcome, OutcomeKind, SliceMetadata, actions as slice_actions};
 use specify_error::{Error, Result};
@@ -85,7 +85,7 @@ fn lower_kind(kind: OutcomeKindAction) -> (OutcomeKind, String, Option<String>) 
                 RegistryAmendmentProposal {
                     proposed_name,
                     proposed_url,
-                    proposed_capability,
+                    proposed_adapter,
                     proposed_description,
                     rationale,
                 },
@@ -95,7 +95,7 @@ fn lower_kind(kind: OutcomeKindAction) -> (OutcomeKind, String, Option<String>) 
             let outcome = OutcomeKind::RegistryAmendmentRequired {
                 proposed_name,
                 proposed_url,
-                proposed_capability,
+                proposed_adapter,
                 proposed_description,
                 rationale,
             };
@@ -150,14 +150,14 @@ fn write_show_text(w: &mut dyn Write, body: &ShowBody<'_>) -> std::io::Result<()
             if let OutcomeKind::RegistryAmendmentRequired {
                 proposed_name,
                 proposed_url,
-                proposed_capability,
+                proposed_adapter,
                 proposed_description,
                 rationale,
             } = &o.kind
             {
                 writeln!(w, "  proposed-name: {proposed_name}")?;
                 writeln!(w, "  proposed-url: {proposed_url}")?;
-                writeln!(w, "  proposed-capability: {proposed_capability}")?;
+                writeln!(w, "  proposed-adapter: {proposed_adapter}")?;
                 if let Some(desc) = proposed_description {
                     writeln!(w, "  proposed-description: {desc}")?;
                 }

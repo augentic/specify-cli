@@ -1,4 +1,4 @@
-//! `specify capability {resolve, pipeline}`.
+//! `specify adapter {resolve, pipeline}`.
 
 pub mod cli;
 
@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use specify_domain::capability::{Capability, CapabilitySource, Phase};
+use specify_domain::adapter::{Adapter, AdapterSource, Phase};
 use specify_error::{Error, Result};
 
 use crate::cli::Format;
@@ -17,7 +17,7 @@ use crate::output;
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ResolveBody {
-    capability_value: String,
+    adapter_value: String,
     resolved_path: String,
     source: &'static str,
 }
@@ -26,15 +26,15 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
     writeln!(w, "{}", body.resolved_path)
 }
 
-pub fn resolve(format: Format, capability_value: String, project_dir: &Path) -> Result<()> {
-    let (root_dir, source) = Capability::locate(&capability_value, project_dir)?;
-    Capability::probe_dir(&root_dir).ok_or_else(|| Error::Diag {
-        code: "capability-manifest-missing",
-        detail: format!("no `capability.yaml` at {}", root_dir.display()),
+pub fn resolve(format: Format, adapter_value: String, project_dir: &Path) -> Result<()> {
+    let (root_dir, source) = Adapter::locate(&adapter_value, project_dir)?;
+    Adapter::probe_dir(&root_dir).ok_or_else(|| Error::Diag {
+        code: "adapter-manifest-missing",
+        detail: format!("no `adapter.yaml` at {}", root_dir.display()),
     })?;
     let (source_label, path) = match &source {
-        CapabilitySource::Local(p) => ("local", p.clone()),
-        CapabilitySource::Cached(p) => ("cached", p.clone()),
+        AdapterSource::Local(p) => ("local", p.clone()),
+        AdapterSource::Cached(p) => ("cached", p.clone()),
         _ => ("unknown", PathBuf::new()),
     };
 
@@ -42,7 +42,7 @@ pub fn resolve(format: Format, capability_value: String, project_dir: &Path) -> 
         Box::new(std::io::stdout().lock()),
         format,
         &ResolveBody {
-            capability_value,
+            adapter_value,
             resolved_path: path.display().to_string(),
             source: source_label,
         },

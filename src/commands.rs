@@ -1,4 +1,4 @@
-pub mod capability;
+pub mod adapter;
 pub mod change;
 pub mod codex;
 pub mod compatibility;
@@ -15,7 +15,7 @@ use clap::CommandFactory;
 use specify_error::Result;
 
 use crate::cli::{Cli, Commands, Format};
-use crate::commands::capability::cli::CapabilityAction;
+use crate::commands::adapter::cli::AdapterAction;
 use crate::commands::tool::cli::ToolAction;
 use crate::commands::workspace::cli::WorkspaceAction;
 use crate::context::Ctx;
@@ -25,22 +25,22 @@ pub fn run(cli: Cli) -> Exit {
     let format = cli.format;
     match cli.command {
         Commands::Init {
-            capability,
+            adapter,
             name,
             domain,
             hub,
         } => dispatch(format, || {
-            init::run(format, capability.as_deref(), name.as_deref(), domain.as_deref(), hub)
+            init::run(format, adapter.as_deref(), name.as_deref(), domain.as_deref(), hub)
         }),
         Commands::Status => scoped(format, status::run),
         Commands::Context { action } => scoped(format, |ctx| context::run(ctx, &action)),
-        Commands::Capability { action } => match action {
-            CapabilityAction::Resolve {
-                capability_value,
+        Commands::Adapter { action } => match action {
+            AdapterAction::Resolve {
+                adapter_value,
                 project_dir,
-            } => dispatch(format, || capability::resolve(format, capability_value, &project_dir)),
-            CapabilityAction::Pipeline { phase, slice } => {
-                scoped(format, |ctx| capability::pipeline(ctx, phase, slice.as_deref()))
+            } => dispatch(format, || adapter::resolve(format, adapter_value, &project_dir)),
+            AdapterAction::Pipeline { phase, slice } => {
+                scoped(format, |ctx| adapter::pipeline(ctx, phase, slice.as_deref()))
             }
         },
         Commands::Codex { action } => scoped(format, |ctx| codex::run(ctx, action)),
@@ -104,7 +104,7 @@ where
 }
 
 /// Run a command that does NOT need project context but may still fail
-/// with an `Error` (e.g. `capability resolve`). The `Ctx`-bearing peer
+/// with an `Error` (e.g. `adapter resolve`). The `Ctx`-bearing peer
 /// is [`scoped`].
 fn dispatch<F>(format: Format, f: F) -> Exit
 where

@@ -5,8 +5,8 @@ fn main() {
     println!("echo: {}", args.join(" "));
     println!("PROJECT_DIR={}", env::var("PROJECT_DIR").unwrap_or_else(|_| "<unset>".to_string()));
     println!(
-        "CAPABILITY_DIR={}",
-        env::var("CAPABILITY_DIR").unwrap_or_else(|_| "<unset>".to_string())
+        "ADAPTER_DIR={}",
+        env::var("ADAPTER_DIR").unwrap_or_else(|_| "<unset>".to_string())
     );
     println!("PATH={}", env::var("PATH").unwrap_or_else(|_| "<unset>".to_string()));
 }

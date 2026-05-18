@@ -95,7 +95,7 @@ pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result
 
 pub(super) fn add(
     ctx: &Ctx, name: String, depends_on: Vec<String>, sources: Vec<String>,
-    description: Option<String>, project: Option<String>, capability: Option<String>,
+    description: Option<String>, project: Option<String>, adapter: Option<String>,
     context: Vec<String>,
 ) -> Result<()> {
     if let Some(proj) = &project {
@@ -105,7 +105,7 @@ pub(super) fn add(
     let entry = Entry {
         name,
         project,
-        capability,
+        adapter,
         status: Status::Pending,
         depends_on,
         sources,
@@ -135,7 +135,7 @@ pub(super) fn add(
 
 pub(super) fn amend(
     ctx: &Ctx, name: String, depends_on: Option<Vec<String>>, sources: Option<Vec<String>>,
-    description: Option<String>, project: Option<String>, capability: Option<String>,
+    description: Option<String>, project: Option<String>, adapter: Option<String>,
     context: Option<Vec<String>>,
 ) -> Result<()> {
     if let Some(proj) = &project
@@ -148,7 +148,7 @@ pub(super) fn amend(
         depends_on,
         sources,
         project: cli_patch(project),
-        capability: cli_patch(capability),
+        adapter: cli_patch(adapter),
         description: cli_patch(description),
         context,
     };

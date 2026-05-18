@@ -304,25 +304,25 @@ fn task_mark_is_idempotent() {
 }
 
 // ---------------------------------------------------------------------------
-// 6. capability resolve — local
+// 6. adapter resolve — local
 // ---------------------------------------------------------------------------
 
 #[test]
-fn capability_resolve_local_returns_local() {
+fn adapter_resolve_local_returns_local() {
     let project = Project::init().with_schemas();
     fs::remove_dir_all(project.root().join(".specify/.cache/omnia"))
-        .expect("remove cached capability");
+        .expect("remove cached adapter");
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "capability", "resolve", "omnia"])
+        .args(["--format", "json", "adapter", "resolve", "omnia"])
         .arg("--project-dir")
         .arg(project.root())
         .assert()
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["capability-value"], "omnia");
+    assert_eq!(actual["adapter-value"], "omnia");
     assert_eq!(actual["source"], "local");
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
@@ -332,17 +332,17 @@ fn capability_resolve_local_returns_local() {
 }
 
 // ---------------------------------------------------------------------------
-// 7. capability resolve — cached
+// 7. adapter resolve — cached
 // ---------------------------------------------------------------------------
 
 #[test]
-fn capability_resolve_returns_cached() {
+fn adapter_resolve_returns_cached() {
     // `init` + cache-only layout (no `schemas/omnia` under the tempdir).
     let project = Project::init().with_cached_schema();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "capability", "resolve", "omnia"])
+        .args(["--format", "json", "adapter", "resolve", "omnia"])
         .arg("--project-dir")
         .arg(project.root())
         .assert()

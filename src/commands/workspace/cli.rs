@@ -31,7 +31,7 @@ pub enum WorkspaceAction {
         /// Active entry source path allowed to be dirty during resume.
         #[arg(long = "source", value_name = "PATH")]
         sources: Vec<PathBuf>,
-        /// Capability-owned output path allowed to be dirty during resume.
+        /// Adapter-owned output path allowed to be dirty during resume.
         #[arg(long = "output", value_name = "PATH")]
         outputs: Vec<PathBuf>,
     },

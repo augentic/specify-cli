@@ -205,7 +205,7 @@ pub fn first_party_permissions(package: &PackageRequest) -> Option<ToolPermissio
             write: Vec::new(),
         }),
         "vectis" => Some(ToolPermissions {
-            read: vec!["$PROJECT_DIR".to_string(), "$CAPABILITY_DIR".to_string()],
+            read: vec!["$PROJECT_DIR".to_string(), "$ADAPTER_DIR".to_string()],
             write: vec!["$PROJECT_DIR".to_string()],
         }),
         _ => None,
@@ -233,12 +233,12 @@ pub enum ToolScope {
         /// Project name from `project.yaml`.
         project_name: String,
     },
-    /// Tool declared in a resolved capability's sidecar `tools.yaml`.
-    Capability {
-        /// Capability slug from `capability.yaml`.
-        capability_slug: String,
-        /// Resolved capability directory.
-        capability_dir: PathBuf,
+    /// Tool declared in a resolved adapter's sidecar `tools.yaml`.
+    Adapter {
+        /// Adapter slug from `adapter.yaml`.
+        adapter_slug: String,
+        /// Resolved adapter directory.
+        adapter_dir: PathBuf,
     },
 }
 

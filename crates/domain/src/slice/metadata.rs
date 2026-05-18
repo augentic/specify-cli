@@ -10,7 +10,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
-use crate::capability::Phase;
+use crate::adapter::Phase;
 use crate::slice::OutcomeKind;
 
 /// Basename of the slice working directory under `.specify/`.
@@ -34,8 +34,8 @@ pub struct SliceMetadata {
     /// the outcome discriminant, not this field.
     #[serde(default = "default_version")]
     pub version: u32,
-    /// Capability identifier (e.g. `omnia@v1`).
-    pub capability: String,
+    /// Adapter identifier (e.g. `omnia@v1`).
+    pub adapter: String,
     /// Current lifecycle state.
     pub status: crate::slice::LifecycleStatus,
     /// When the slice was created.
@@ -124,7 +124,7 @@ pub struct Outcome {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct TouchedSpec {
-    /// Capability name (kebab-case).
+    /// Adapter name (kebab-case).
     pub name: String,
     /// Whether this spec is new or modifies an existing baseline.
     #[serde(rename = "type")]
@@ -210,7 +210,7 @@ mod tests {
     fn sample() -> SliceMetadata {
         SliceMetadata {
             version: METADATA_VERSION,
-            capability: "omnia".to_string(),
+            adapter: "omnia".to_string(),
             status: LifecycleStatus::Building,
             created_at: Some(parse_stamp("2024-08-01T10:00:00Z")),
             defined_at: Some(parse_stamp("2024-08-01T12:00:00Z")),
@@ -248,7 +248,7 @@ mod tests {
     /// `1`.
     #[test]
     fn defaults_version_when_absent() {
-        let yaml = r#"capability: omnia
+        let yaml = r#"adapter: omnia
 status: complete
 created-at: "2024-08-01T10:00:00Z"
 defined-at: "2024-08-01T12:00:00Z"

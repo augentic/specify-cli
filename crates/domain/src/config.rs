@@ -18,15 +18,15 @@ pub struct ProjectConfig {
     pub name: String,
 
     /// Free-text description of the project's tech stack, architecture,
-    /// and testing approach. Falls back to `capability.domain` when empty.
+    /// and testing approach. Falls back to `adapter.domain` when empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
 
-    /// Capability identifier — either a bare name (`omnia`) or a URL.
+    /// Adapter identifier — either a bare name (`omnia`) or a URL.
     /// Absent for registry-only platform hubs (`hub: true`); see the
     /// `hub` field for the discriminator.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub capability: Option<String>,
+    pub adapter: Option<String>,
 
     /// Minimum `specify` CLI version required to operate on this project.
     /// Written by `specify init` as the running binary's version and
@@ -42,7 +42,7 @@ pub struct ProjectConfig {
     pub rules: BTreeMap<String, String>,
 
     /// Project-scope WASI tool declarations. These are generic extension
-    /// points owned by `specify-tool`, not by any capability.
+    /// points owned by `specify-tool`, not by any adapter.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<specify_tool::manifest::Tool>,
 
@@ -50,7 +50,7 @@ pub struct ProjectConfig {
     /// Hubs hold platform-level state — `registry.yaml`, `change.md`,
     /// `plan.yaml`, `workspace/` — but never appear in their own
     /// `registry.yaml` and have phase pipelines disabled. Hubs **omit**
-    /// the `capability:` field entirely; the absence of `capability:`
+    /// the `adapter:` field entirely; the absence of `adapter:`
     /// together with `hub: true` is the discriminator.
     /// Defaults to `false`; serialised only when `true` so non-hub
     /// `project.yaml` files round-trip byte-stable.
@@ -199,7 +199,7 @@ impl<'a> Layout<'a> {
     /// operator brief at the repo root. Platform-level artifact.
     #[must_use]
     pub fn change_brief_path(&self) -> PathBuf {
-        self.project_dir.join(crate::capability::CHANGE_BRIEF_FILENAME)
+        self.project_dir.join(crate::adapter::CHANGE_BRIEF_FILENAME)
     }
 }
 
@@ -264,7 +264,7 @@ mod tests {
         ProjectConfig {
             name: "demo".to_string(),
             domain: None,
-            capability: Some("omnia".to_string()),
+            adapter: Some("omnia".to_string()),
             specify_version: None,
             rules,
             tools: Vec::new(),
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn load_refuses_future_specify_version() {
         let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\ncapability: omnia\nspecify_version: \"99.0.0\"\n");
+        write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"99.0.0\"\n");
         let err = ProjectConfig::load(tmp.path()).expect_err("future version rejected");
         match err {
             Error::CliTooOld { required, found } => {
@@ -321,14 +321,14 @@ mod tests {
     #[test]
     fn load_accepts_floor_lte_current() {
         let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\ncapability: omnia\nspecify_version: \"0.0.1\"\n");
+        write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");
         ProjectConfig::load(tmp.path()).expect("older version loads");
 
         let tmp = tempdir().unwrap();
         let exact = env!("CARGO_PKG_VERSION");
         write_config(
             tmp.path(),
-            &format!("name: demo\ncapability: omnia\nspecify_version: \"{exact}\"\n"),
+            &format!("name: demo\nadapter: omnia\nspecify_version: \"{exact}\"\n"),
         );
         ProjectConfig::load(tmp.path()).expect("exact version loads");
     }
@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn load_allows_invalid_pinned_version() {
         let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\ncapability: omnia\nspecify_version: not-a-semver\n");
+        write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: not-a-semver\n");
         let cfg = ProjectConfig::load(tmp.path()).expect("unparseable version is permissive");
         assert_eq!(cfg.specify_version.as_deref(), Some("not-a-semver"));
     }
@@ -344,17 +344,17 @@ mod tests {
     #[test]
     fn hub_field_defaults_false_and_round_trips_when_true() {
         let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\ncapability: omnia\n");
+        write_config(tmp.path(), "name: demo\nadapter: omnia\n");
         let cfg = ProjectConfig::load(tmp.path()).expect("loads");
         assert!(!cfg.hub, "hub must default to false when absent");
-        assert_eq!(cfg.capability.as_deref(), Some("omnia"));
+        assert_eq!(cfg.adapter.as_deref(), Some("omnia"));
         assert!(cfg.tools.is_empty(), "tools must default empty when absent");
 
         let tmp = tempdir().unwrap();
         write_config(tmp.path(), "name: demo\nhub: true\n");
         let cfg = ProjectConfig::load(tmp.path()).expect("loads");
         assert!(cfg.hub, "hub: true must round-trip through deserialize");
-        assert!(cfg.capability.is_none(), "hub project.yaml must omit capability:");
+        assert!(cfg.adapter.is_none(), "hub project.yaml must omit adapter:");
     }
 
     #[test]
@@ -362,7 +362,7 @@ mod tests {
         let cfg = ProjectConfig {
             name: "demo".to_string(),
             domain: None,
-            capability: Some("omnia".to_string()),
+            adapter: Some("omnia".to_string()),
             specify_version: None,
             rules: BTreeMap::new(),
             tools: Vec::new(),
@@ -370,15 +370,15 @@ mod tests {
         };
         let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
         assert!(!yaml.contains("hub:"), "hub: false should be omitted, got:\n{yaml}");
-        assert!(yaml.contains("capability: omnia"), "capability: must serialise, got:\n{yaml}");
+        assert!(yaml.contains("adapter: omnia"), "adapter: must serialise, got:\n{yaml}");
     }
 
     #[test]
-    fn hub_field_serialised_when_true_and_capability_omitted() {
+    fn hub_field_serialised_when_true_and_adapter_omitted() {
         let cfg = ProjectConfig {
             name: "platform".to_string(),
             domain: None,
-            capability: None,
+            adapter: None,
             specify_version: None,
             rules: BTreeMap::new(),
             tools: Vec::new(),
@@ -386,10 +386,7 @@ mod tests {
         };
         let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
         assert!(yaml.contains("hub: true"), "hub: true must serialise, got:\n{yaml}");
-        assert!(
-            !yaml.contains("capability:"),
-            "hub project.yaml must omit `capability:`, got:\n{yaml}"
-        );
+        assert!(!yaml.contains("adapter:"), "hub project.yaml must omit `adapter:`, got:\n{yaml}");
     }
 
     #[test]
@@ -397,7 +394,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         write_config(
             tmp.path(),
-            "name: demo\ncapability: omnia\ntools:\n  - name: contract\n    version: 1.0.0\n    source: https://example.com/contract.wasm\n",
+            "name: demo\nadapter: omnia\ntools:\n  - name: contract\n    version: 1.0.0\n    source: https://example.com/contract.wasm\n",
         );
         let cfg = ProjectConfig::load(tmp.path()).expect("loads");
         assert_eq!(cfg.tools.len(), 1);
@@ -447,7 +444,7 @@ mod tests {
         let root = tmp.path();
         let nested = root.join("sub").join("dir");
         fs::create_dir_all(&nested).expect("mkdir nested");
-        write_config(root, "name: demo\ncapability: omnia\n");
+        write_config(root, "name: demo\nadapter: omnia\n");
 
         assert_eq!(ProjectConfig::find_root(root).as_deref(), Some(root));
         assert_eq!(ProjectConfig::find_root(&nested).as_deref(), Some(root));

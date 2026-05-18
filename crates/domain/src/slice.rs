@@ -17,4 +17,4 @@ pub use metadata::{
 };
 pub use outcome::Kind as OutcomeKind;
 
-pub use crate::capability::Phase;
+pub use crate::adapter::Phase;

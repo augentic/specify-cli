@@ -5,7 +5,7 @@ use std::io::Write;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::capability::Phase;
+use specify_domain::adapter::Phase;
 use specify_domain::slice::{EntryKind, Journal, JournalEntry, SliceMetadata};
 use specify_error::{Error, Result};
 

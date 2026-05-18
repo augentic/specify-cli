@@ -88,7 +88,7 @@ mod tests {
         let incoming = Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            capability: None,
+            adapter: None,
             status: Status::Failed,
             depends_on: vec![],
             sources: vec![],
@@ -182,12 +182,12 @@ mod tests {
     }
 
     #[test]
-    fn create_rejects_no_project_or_capability() {
+    fn create_rejects_no_project_or_adapter() {
         let mut plan = plan_with_changes(vec![]);
         let entry = Entry {
             name: "bad".into(),
             project: None,
-            capability: None,
+            adapter: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -195,13 +195,13 @@ mod tests {
             description: None,
             status_reason: None,
         };
-        let err = plan.create(entry).expect_err("must reject entry without project or capability");
+        let err = plan.create(entry).expect_err("must reject entry without project or adapter");
         match err {
             Error::Diag { code, detail } => {
                 assert_eq!(code, "plan-create-validation-failed");
                 assert!(
-                    detail.contains("project") && detail.contains("capability"),
-                    "error should mention project and capability: {detail}"
+                    detail.contains("project") && detail.contains("adapter"),
+                    "error should mention project and adapter: {detail}"
                 );
             }
             other => panic!("expected Error::Diag, got {other:?}"),
@@ -215,7 +215,7 @@ mod tests {
         let entry = Entry {
             name: "with-ctx".into(),
             project: Some("default".into()),
-            capability: None,
+            adapter: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -237,7 +237,7 @@ mod tests {
         let entry = Entry {
             name: "bad-ctx".into(),
             project: Some("default".into()),
-            capability: None,
+            adapter: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],

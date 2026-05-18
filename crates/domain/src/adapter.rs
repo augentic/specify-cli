@@ -1,14 +1,14 @@
-//! Capability resolution and brief frontmatter parsing — the canonical
-//! home for `Capability`, `Brief`, `ChangeBrief`, `CacheMeta`, the
+//! Adapter resolution and brief frontmatter parsing — the canonical
+//! home for `Adapter`, `Brief`, `ChangeBrief`, `CacheMeta`, the
 //! codex catalogue, and the resolved `PipelineView`.
 
-mod brief;
-mod cache;
 #[expect(
     clippy::module_inception,
-    reason = "preserves the per-concern split inherited from the pre-collapse `specify-capability` crate; rename would cascade across many imports"
+    reason = "preserves the per-concern split inherited from the pre-collapse `specify-adapter` crate; rename would cascade across many imports"
 )]
-mod capability;
+mod adapter;
+mod brief;
+mod cache;
 mod change_brief;
 mod codex;
 mod codex_resolver;
@@ -16,22 +16,22 @@ mod pipeline;
 
 use std::borrow::Cow;
 
+// --- Adapter core ---
+pub use adapter::{
+    ADAPTER_FILENAME, Adapter, AdapterSource, Phase, Pipeline, PipelineEntry, ResolvedAdapter,
+    validate_against_schema,
+};
 // --- Brief frontmatter ---
 pub use brief::{Brief, BriefFrontmatter};
 // --- Agent-populated cache ---
 pub use cache::CacheMeta;
-// --- Capability core ---
-pub use capability::{
-    CAPABILITY_FILENAME, Capability, CapabilitySource, Phase, Pipeline, PipelineEntry,
-    ResolvedCapability, validate_against_schema,
-};
 pub use change_brief::{
     ChangeBrief, ChangeFrontmatter, ChangeInput, FILENAME as CHANGE_BRIEF_FILENAME, InputKind,
 };
 // --- Codex (rules catalog) ---
 pub use codex::{CodexRule, CodexRuleFrontmatter, CodexSeverity};
 pub use codex_resolver::{
-    CODEX_DIR_NAME, CodexCatalogSource, CodexProvenance, CodexResolver, DEFAULT_CODEX_CAPABILITY,
+    CODEX_DIR_NAME, CodexCatalogSource, CodexProvenance, CodexResolver, DEFAULT_CODEX_ADAPTER,
     ResolvedCodex, ResolvedCodexRule,
 };
 pub use pipeline::PipelineView;
@@ -40,7 +40,7 @@ pub use pipeline::PipelineView;
 ///
 /// Canonical home for `ValidationResult`. Lives in `specify-domain`
 /// because every consumer of the validation registry already depends
-/// on the broader domain surface (`Capability`, `PipelineView`,
+/// on the broader domain surface (`Adapter`, `PipelineView`,
 /// `Registry`). See `DECISIONS.md` §"Crate layout" for the full
 /// rationale.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

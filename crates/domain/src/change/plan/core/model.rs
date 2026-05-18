@@ -73,13 +73,13 @@ pub struct Entry {
     /// Target registry project. Required for multi-project registries.
     #[serde(default)]
     pub project: Option<String>,
-    /// Plan-entry `capability` target for project-less entries (e.g.
+    /// Plan-entry `adapter` target for project-less entries (e.g.
     /// `contracts@v1`). Required when `project` is `None`; optional
     /// override when `project` is `Some`. Mutually enriching with
-    /// `project`: `project` identifies the target codebase; `capability`
+    /// `project`: `project` identifies the target codebase; `adapter`
     /// identifies the target directly.
     #[serde(default)]
-    pub capability: Option<String>,
+    pub adapter: Option<String>,
     /// Current lifecycle state of this entry.
     pub status: Status,
     /// Names of other plan entries that must reach `done` before this
@@ -150,8 +150,8 @@ pub struct EntryPatch {
     pub sources: Option<Vec<String>>,
     /// Three-way patch over `project`.
     pub project: Patch<String>,
-    /// Three-way patch over `capability`.
-    pub capability: Patch<String>,
+    /// Three-way patch over `adapter`.
+    pub adapter: Patch<String>,
     /// Three-way patch over `description`.
     pub description: Patch<String>,
     /// Replace `context` wholesale when `Some`.
@@ -216,7 +216,7 @@ mod tests {
             entries: vec![Entry {
                 name: "entry-one".to_string(),
                 project: Some("default".into()),
-                capability: None,
+                adapter: None,
                 status: Status::InProgress,
                 depends_on: vec!["entry-zero".to_string()],
                 sources: vec![],
@@ -303,21 +303,21 @@ status: pending
     }
 
     #[test]
-    fn capability_field_round_trips() {
+    fn adapter_field_round_trips() {
         let yaml = r"name: test
 slices:
   - name: define-contracts
-    capability: contracts@v1
+    adapter: contracts@v1
     status: pending
   - name: impl-auth
     project: auth-service
-    capability: omnia@v1
+    adapter: omnia@v1
     status: pending
 ";
         let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-        assert_eq!(plan.entries[0].capability.as_deref(), Some("contracts@v1"));
+        assert_eq!(plan.entries[0].adapter.as_deref(), Some("contracts@v1"));
         assert_eq!(plan.entries[0].project, None);
-        assert_eq!(plan.entries[1].capability.as_deref(), Some("omnia@v1"));
+        assert_eq!(plan.entries[1].adapter.as_deref(), Some("omnia@v1"));
         assert_eq!(plan.entries[1].project.as_deref(), Some("auth-service"));
 
         let rendered = serde_saphyr::to_string(&plan).expect("serialize");
@@ -365,7 +365,7 @@ slices:
         assert!(patch.depends_on.is_none());
         assert!(patch.sources.is_none());
         assert_eq!(patch.project, Patch::Keep);
-        assert_eq!(patch.capability, Patch::Keep);
+        assert_eq!(patch.adapter, Patch::Keep);
         assert_eq!(patch.description, Patch::Keep);
         assert!(patch.context.is_none());
     }

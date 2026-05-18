@@ -6,7 +6,7 @@ Canonical JSON Schema (2020-12) for `plan.yaml` (at the repo root).
 
 - Top-level `name` (kebab-case) and `slices` (ordered list) are required.
 - Optional top-level `sources` map (kebab-case keys to path-or-URL values).
-- Each slice carries a required kebab-case `name`, a required `status` drawn from `{pending, in-progress, done, blocked, failed, skipped}`, plus optional `project`, `capability`, `depends-on`, `sources`, `context`, `description`, and `status-reason` fields.
+- Each slice carries a required kebab-case `name`, a required `status` drawn from `{pending, in-progress, done, blocked, failed, skipped}`, plus optional `project`, `adapter`, `depends-on`, `sources`, `context`, `description`, and `status-reason` fields.
 - `additionalProperties: false` everywhere; unknown fields are a hard error.
 
 Scope and delta-targeting intent are carried in the `description` and `context` fields. The define skill infers extract filters and baseline targets from those fields at execution time.

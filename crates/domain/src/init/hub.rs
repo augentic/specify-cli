@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use specify_error::{Error, is_kebab};
 
-use crate::capability::CacheMeta;
+use crate::adapter::CacheMeta;
 use crate::config::{Layout, ProjectConfig};
 use crate::init::{
     InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
@@ -33,12 +33,12 @@ use crate::registry::Registry;
 /// the operator runs `specify change draft <name> [--source ...]`
 /// (which scaffolds both files atomically) when the work itself begins.
 ///
-/// Capability resolution is intentionally skipped — there is no
+/// Adapter resolution is intentionally skipped — there is no
 /// `pipeline.define` for a hub to walk.
 ///
 /// # Errors
 ///
-/// Returns an error if [`InitOptions::capability`] is set (mutually
+/// Returns an error if [`InitOptions::adapter`] is set (mutually
 /// exclusive with `--hub`), if the project name is not kebab-case, if
 /// `.specify/` already exists, or if any filesystem write fails.
 #[expect(
@@ -46,10 +46,10 @@ use crate::registry::Registry;
     reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
 )]
 pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
-    if opts.capability.is_some() {
+    if opts.adapter.is_some() {
         return Err(Error::Diag {
-            code: "init-requires-capability-or-hub",
-            detail: "pass <capability> or --hub".to_string(),
+            code: "init-requires-adapter-or-hub",
+            detail: "pass <adapter> or --hub".to_string(),
         });
     }
 
@@ -86,7 +86,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let cfg = ProjectConfig {
         name,
         domain: opts.domain.map(str::to_string),
-        capability: None,
+        adapter: None,
         specify_version: Some(specify_version.clone()),
         rules: BTreeMap::new(),
         tools: Vec::new(),
@@ -112,7 +112,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
 
     Ok(InitResult {
         config_path,
-        capability_name: "hub".to_string(),
+        adapter_name: "hub".to_string(),
         cache_present,
         directories_created,
         scaffolded_rule_keys: Vec::new(),
@@ -135,7 +135,7 @@ mod tests {
     fn hub_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
         InitOptions {
             project_dir,
-            capability: None,
+            adapter: None,
             name: Some(name),
             domain: None,
             version_mode: VersionMode::WriteCurrent,
@@ -164,7 +164,7 @@ mod tests {
         }
 
         // Phase-pipeline directories MUST NOT be scaffolded for a
-        // hub — the absence of `capability:` (with `hub: true`) is
+        // hub — the absence of `adapter:` (with `hub: true`) is
         // the discriminator that disables the define-build-merge
         // loop on the hub itself.
         assert!(!tmp.path().join(".specify/slices").exists());
@@ -172,15 +172,15 @@ mod tests {
         assert!(!tmp.path().join(".specify/.cache").exists());
 
         let cfg = ProjectConfig::load(tmp.path()).expect("reload project.yaml");
-        assert!(cfg.capability.is_none(), "hub project.yaml must omit capability:");
+        assert!(cfg.adapter.is_none(), "hub project.yaml must omit adapter:");
         assert!(cfg.hub, "project.yaml must carry hub: true");
         assert!(cfg.rules.is_empty(), "hubs do not scaffold rules");
         assert_eq!(cfg.name, "platform-hub");
 
         let on_disk = fs::read_to_string(&project_yaml).expect("read project.yaml");
         assert!(
-            !on_disk.contains("capability:"),
-            "hub project.yaml must omit `capability:`, got:\n{on_disk}"
+            !on_disk.contains("adapter:"),
+            "hub project.yaml must omit `adapter:`, got:\n{on_disk}"
         );
         assert!(
             !on_disk.contains("schema:"),
@@ -195,7 +195,7 @@ mod tests {
         assert_eq!(registry.version, 1);
         assert!(registry.projects.is_empty(), "hub registry starts empty");
 
-        assert_eq!(result.capability_name, "hub");
+        assert_eq!(result.adapter_name, "hub");
         assert!(result.scaffolded_rule_keys.is_empty());
     }
 
@@ -205,7 +205,7 @@ mod tests {
         // Pre-create `.specify/` with arbitrary content as if a regular
         // `specify init` had already run here.
         fs::create_dir_all(tmp.path().join(".specify")).unwrap();
-        fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\ncapability: omnia\n")
+        fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\nadapter: omnia\n")
             .unwrap();
 
         let err = init(hub_opts(tmp.path(), "platform-hub"), fixed_now())
@@ -225,7 +225,7 @@ mod tests {
             other => panic!("wrong error variant: {other:?}"),
         }
         let on_disk = fs::read_to_string(tmp.path().join(".specify/project.yaml")).unwrap();
-        assert_eq!(on_disk, "name: existing\ncapability: omnia\n");
+        assert_eq!(on_disk, "name: existing\nadapter: omnia\n");
     }
 
     #[test]

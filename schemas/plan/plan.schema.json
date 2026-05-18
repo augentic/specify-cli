@@ -45,9 +45,9 @@
           "type": "string",
           "description": "Target registry project name. Required for multi-project registries; optional for single-project."
         },
-        "capability": {
+        "adapter": {
           "type": "string",
-          "description": "Capability identifier for project-less entries (e.g. `contracts@v1`). Required when `project` is absent; optional override when `project` is present."
+          "description": "Adapter identifier for project-less entries (e.g. `contracts@v1`). Required when `project` is absent; optional override when `project` is present."
         },
         "status": {
           "type": "string",

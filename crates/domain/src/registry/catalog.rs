@@ -1,5 +1,5 @@
 //! Parser and types for `registry.yaml` — the platform-level catalogue
-//! of peer projects and their capabilities. Shape is enforced by
+//! of peer projects and their adapters. Shape is enforced by
 //! [`Registry::validate_shape`] (in [`crate::registry::validate`]).
 
 use std::collections::HashSet;
@@ -40,9 +40,9 @@ pub struct RegistryProject {
     /// `git+http(s)://` / `git+ssh://` remote. Shape-validated by
     /// [`Registry::validate_shape`]. Stored verbatim.
     pub url: String,
-    /// Capability identifier — e.g. `omnia@v1`. Opaque at this layer;
+    /// Adapter identifier — e.g. `omnia@v1`. Opaque at this layer;
     /// the `name@version` suffix is **not** parsed here.
-    pub capability: String,
+    pub adapter: String,
     /// Domain-level characterisation of the project. Required when
     /// `len(projects) > 1`; optional for single-project registries.
     #[serde(default)]

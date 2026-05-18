@@ -1,4 +1,4 @@
-//! Loaders and merge helpers for project and capability tool declarations.
+//! Loaders and merge helpers for project and adapter tool declarations.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -15,18 +15,18 @@ pub fn project_tools(project_name: impl Into<String>, tools: Vec<Tool>) -> Vec<(
     tools.into_iter().map(|tool| (scope.clone(), tool)).collect()
 }
 
-/// Read the capability-scope `tools.yaml` sidecar next to a resolved
-/// `capability.yaml`.
+/// Read the adapter-scope `tools.yaml` sidecar next to a resolved
+/// `adapter.yaml`.
 ///
-/// Capabilities without a sidecar remain valid and return an empty list.
+/// Adapters without a sidecar remain valid and return an empty list.
 ///
 /// # Errors
 ///
 /// Returns an error when the sidecar exists but cannot be read or parsed.
-pub fn capability_sidecar(
-    capability_dir: &Path, capability_slug: &str,
+pub fn adapter_sidecar(
+    adapter_dir: &Path, adapter_slug: &str,
 ) -> Result<Vec<(ToolScope, Tool)>, ToolError> {
-    let sidecar_path = capability_dir.join("tools.yaml");
+    let sidecar_path = adapter_dir.join("tools.yaml");
     let text = match std::fs::read_to_string(&sidecar_path) {
         Ok(text) => text,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -35,20 +35,20 @@ pub fn capability_sidecar(
 
     let manifest: ToolManifest = serde_saphyr::from_str(&text)
         .map_err(|err| ToolError::manifest_parse(sidecar_path.clone(), err))?;
-    let scope = ToolScope::Capability {
-        capability_slug: capability_slug.to_string(),
-        capability_dir: capability_dir.to_path_buf(),
+    let scope = ToolScope::Adapter {
+        adapter_slug: adapter_slug.to_string(),
+        adapter_dir: adapter_dir.to_path_buf(),
     };
     Ok(manifest.tools.into_iter().map(|tool| (scope.clone(), tool)).collect())
 }
 
-/// Merge project and capability declarations. Project-scope tools win on name
-/// collision so operators can override capability-shipped declarations.
+/// Merge project and adapter declarations. Project-scope tools win on name
+/// collision so operators can override adapter-shipped declarations.
 #[must_use]
 pub fn merge_scoped(
-    project: Vec<(ToolScope, Tool)>, capability: Vec<(ToolScope, Tool)>,
+    project: Vec<(ToolScope, Tool)>, adapter: Vec<(ToolScope, Tool)>,
 ) -> (Vec<(ToolScope, Tool)>, Vec<String>) {
-    let mut merged: Vec<(ToolScope, Tool)> = Vec::with_capacity(project.len() + capability.len());
+    let mut merged: Vec<(ToolScope, Tool)> = Vec::with_capacity(project.len() + adapter.len());
     let mut project_names: HashSet<String> = HashSet::new();
     let mut warnings: Vec<String> = Vec::new();
 
@@ -57,7 +57,7 @@ pub fn merge_scoped(
         merged.push((scope, tool));
     }
 
-    for (scope, tool) in capability {
+    for (scope, tool) in adapter {
         if project_names.contains(&tool.name) {
             warnings.push(tool.name);
             continue;
@@ -88,14 +88,14 @@ mod tests {
     }
 
     #[test]
-    fn load_capability_sidecar_returns_empty_when_absent() {
+    fn load_adapter_sidecar_returns_empty_when_absent() {
         let tmp = tempdir().expect("tempdir");
-        let loaded = capability_sidecar(tmp.path(), "contracts").expect("absent sidecar is valid");
+        let loaded = adapter_sidecar(tmp.path(), "contracts").expect("absent sidecar is valid");
         assert!(loaded.is_empty());
     }
 
     #[test]
-    fn load_capability_sidecar_rejects_wrong_top_level_shape() {
+    fn load_adapter_sidecar_rejects_wrong_top_level_shape() {
         let tmp = tempdir().expect("tempdir");
         fs::write(
             tmp.path().join("tools.yaml"),
@@ -103,8 +103,8 @@ mod tests {
         )
         .expect("write sidecar");
 
-        let err = capability_sidecar(tmp.path(), "contracts")
-            .expect_err("array top-level shape must fail");
+        let err =
+            adapter_sidecar(tmp.path(), "contracts").expect_err("array top-level shape must fail");
         assert!(
             matches!(
                 err,
@@ -118,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn load_capability_sidecar_scopes_parsed_tools() {
+    fn load_adapter_sidecar_scopes_parsed_tools() {
         let tmp = tempdir().expect("tempdir");
         fs::write(
             tmp.path().join("tools.yaml"),
@@ -126,15 +126,15 @@ mod tests {
         )
         .expect("write sidecar");
 
-        let loaded = capability_sidecar(tmp.path(), "contracts").expect("load sidecar");
+        let loaded = adapter_sidecar(tmp.path(), "contracts").expect("load sidecar");
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].1.name, "contract");
         assert!(matches!(
             &loaded[0].0,
-            ToolScope::Capability {
-                capability_slug,
-                capability_dir
-            } if capability_slug == "contracts" && capability_dir == tmp.path()
+            ToolScope::Adapter {
+                adapter_slug,
+                adapter_dir
+            } if adapter_slug == "contracts" && adapter_dir == tmp.path()
         ));
     }
 
@@ -143,27 +143,27 @@ mod tests {
         let project_scope = ToolScope::Project {
             project_name: "demo".to_string(),
         };
-        let capability_scope = ToolScope::Capability {
-            capability_slug: "contracts".to_string(),
-            capability_dir: "/cap".into(),
+        let adapter_scope = ToolScope::Adapter {
+            adapter_slug: "contracts".to_string(),
+            adapter_dir: "/cap".into(),
         };
 
         let project = vec![(
             project_scope,
             tool("contract", "2.0.0", ToolSource::LocalPath("/project/contract.wasm".into())),
         )];
-        let capability = vec![
+        let adapter = vec![
             (
-                capability_scope.clone(),
+                adapter_scope.clone(),
                 tool("contract", "1.0.0", ToolSource::LocalPath("/cap/contract.wasm".into())),
             ),
             (
-                capability_scope,
+                adapter_scope,
                 tool("other", "1.0.0", ToolSource::LocalPath("/cap/other.wasm".into())),
             ),
         ];
 
-        let (merged, warnings) = merge_scoped(project, capability);
+        let (merged, warnings) = merge_scoped(project, adapter);
         assert_eq!(warnings, vec!["contract".to_string()]);
         assert_eq!(
             merged.iter().map(|(_, t)| t.name.as_str()).collect::<Vec<_>>(),

@@ -159,7 +159,7 @@ main() {
             ;;
         *)
             log "NOTE: ${_install_dir} is not on your PATH."
-            log "      add this line to your shell profile:"
+            log "      add this line to your shell adapter:"
             log "        export PATH=\"${_install_dir}:\$PATH\""
             ;;
     esac

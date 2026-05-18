@@ -1,8 +1,8 @@
-//! Integration tests for `specify capability {resolve, pipeline}`.
+//! Integration tests for `specify adapter {resolve, pipeline}`.
 //!
-//! `specify capability resolve` and the `Cached` source flavour of
-//! `capability resolve` get extra coverage in `tests/e2e.rs`; this file
-//! focuses on `capability pipeline` — the verb the define / build / merge
+//! `specify adapter resolve` and the `Cached` source flavour of
+//! `adapter resolve` get extra coverage in `tests/e2e.rs`; this file
+//! focuses on `adapter pipeline` — the verb the define / build / merge
 //! skill rewrites drive directly.
 
 use std::fs;
@@ -17,7 +17,7 @@ fn pipeline_define_lists_briefs_in_order() {
     let project = Project::init().with_schemas();
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "capability", "pipeline", "define"])
+        .args(["--format", "json", "adapter", "pipeline", "define"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -45,7 +45,7 @@ fn pipeline_build_and_merge_each_have_brief() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "capability", "pipeline", "build"])
+        .args(["--format", "json", "adapter", "pipeline", "build"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -55,7 +55,7 @@ fn pipeline_build_and_merge_each_have_brief() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "capability", "pipeline", "merge"])
+        .args(["--format", "json", "adapter", "pipeline", "merge"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -71,7 +71,7 @@ fn pipeline_phase_plan_lists_briefs_in_topo() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "capability", "pipeline", "plan"])
+        .args(["--format", "json", "adapter", "pipeline", "plan"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -92,7 +92,7 @@ fn pipeline_phase_plan_lists_briefs_in_topo() {
 
 #[test]
 fn pipeline_phase_plan_empty_without_block() {
-    // Omnia (the in-repo capability) does not declare pipeline.plan at
+    // Omnia (the in-repo adapter) does not declare pipeline.plan at
     // all. Asking for --phase plan must succeed and return an empty
     // briefs list rather than erroring out, so callers can probe for
     // plan support without conditional logic.
@@ -100,7 +100,7 @@ fn pipeline_phase_plan_empty_without_block() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "capability", "pipeline", "plan"])
+        .args(["--format", "json", "adapter", "pipeline", "plan"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -118,7 +118,7 @@ fn pipeline_phase_plan_preserves_define() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "capability", "pipeline", "define"])
+        .args(["--format", "json", "adapter", "pipeline", "define"])
         .assert()
         .success();
     let value = parse_json(&assert.get_output().stdout);
@@ -139,7 +139,7 @@ fn pipeline_with_slice_reports_completion() {
         .args([
             "--format",
             "json",
-            "capability",
+            "adapter",
             "pipeline",
             "define",
             "--slice",

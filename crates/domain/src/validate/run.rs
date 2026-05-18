@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use specify_error::Error;
 
-use crate::capability::{PipelineView, ValidationResult};
+use crate::adapter::{PipelineView, ValidationResult};
 use crate::validate::registry::{cross_rules, rules_for};
 use crate::validate::{BriefContext, Classification, CrossContext, RuleOutcome, ValidationReport};
 
@@ -78,12 +78,12 @@ pub fn validate_slice(
     })
 }
 
-/// Infer whether to use "crate" or "feature" terminology from the capability
+/// Infer whether to use "crate" or "feature" terminology from the adapter
 /// name. `vectis` uses "feature"; everything else defaults to "crate".
 /// See `DECISIONS.md` §"Change G — Terminology inference" for the
 /// rationale.
 fn infer_terminology(pipeline: &PipelineView) -> &'static str {
-    match pipeline.capability.manifest.name.as_str() {
+    match pipeline.adapter.manifest.name.as_str() {
         "vectis" => "feature",
         _ => "crate",
     }

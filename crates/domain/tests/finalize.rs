@@ -118,7 +118,7 @@ fn entry(name: &str, status: Status) -> Entry {
     Entry {
         name: name.to_string(),
         project: None,
-        capability: Some("omnia@v1".to_string()),
+        adapter: Some("omnia@v1".to_string()),
         status,
         depends_on: Vec::new(),
         sources: Vec::new(),
@@ -232,7 +232,7 @@ fn registry_with(names: &[&str]) -> Registry {
             .map(|n| RegistryProject {
                 name: (*n).to_string(),
                 url: format!("git@github.com:org/{n}.git"),
-                capability: "omnia@v1".to_string(),
+                adapter: "omnia@v1".to_string(),
                 description: Some(format!("{n} service")),
                 contracts: None,
             })
@@ -793,7 +793,7 @@ fn clean_skips_symlink_projects() {
         projects: vec![RegistryProject {
             name: "alpha".to_string(),
             url: ".".to_string(),
-            capability: "omnia@v1".to_string(),
+            adapter: "omnia@v1".to_string(),
             description: Some("alpha service".to_string()),
             contracts: None,
         }],

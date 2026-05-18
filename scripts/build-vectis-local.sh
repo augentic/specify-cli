@@ -2,7 +2,7 @@
 # Build the `vectis` WASI tool locally and emit sha256 sidecars,
 # mirroring the bytes the release workflow publishes through `wkg`.
 # Use this for pre-release smoke tests via a `file://` source in a
-# capability's `tools.yaml`.
+# adapter's `tools.yaml`.
 #
 # Output directory is controlled by `VECTIS_WASI_DIST_DIR` and
 # defaults to `target/vectis-wasi-tools/release/`.

@@ -38,7 +38,7 @@ pub enum Error {
     /// argument-error exit code.
     #[error("invalid argument {flag}: {detail}")]
     Argument {
-        /// Argument name (e.g. `--capability`, `<name>`, `phase`).
+        /// Argument name (e.g. `--adapter`, `<name>`, `phase`).
         flag: &'static str,
         /// Human-readable explanation, suitable for display alongside `--help`.
         detail: String,
@@ -138,8 +138,8 @@ impl Error {
                 "plan-has-outstanding-work" => Some(
                     "complete or drop the listed entries, or rerun with --force to archive anyway.",
                 ),
-                "init-requires-capability-or-hub" => Some(
-                    "`specify init <capability>` for a regular project, or `specify init --hub` for a platform hub.\nsee: docs/init.md",
+                "init-requires-adapter-or-hub" => Some(
+                    "`specify init <adapter>` for a regular project, or `specify init --hub` for a platform hub.\nsee: docs/init.md",
                 ),
                 "context-existing-unfenced-agents-md" => {
                     Some("rerun with --force to rewrite AGENTS.md.")

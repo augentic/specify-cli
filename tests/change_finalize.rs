@@ -72,10 +72,10 @@ fn change_finalize_refuses_on_non_terminal() {
         "name: foo\n\
          slices:\n\
          \x20\x20- name: a\n\
-         \x20\x20\x20\x20capability: contracts@v1\n\
+         \x20\x20\x20\x20adapter: contracts@v1\n\
          \x20\x20\x20\x20status: done\n\
          \x20\x20- name: b\n\
-         \x20\x20\x20\x20capability: contracts@v1\n\
+         \x20\x20\x20\x20adapter: contracts@v1\n\
          \x20\x20\x20\x20status: pending\n",
     )
     .unwrap();

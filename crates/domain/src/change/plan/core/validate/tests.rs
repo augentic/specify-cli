@@ -178,7 +178,7 @@ fn project_not_in_registry() {
         entries: vec![Entry {
             name: "a".to_string(),
             project: Some("nonexistent".to_string()),
-            capability: None,
+            adapter: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -192,7 +192,7 @@ fn project_not_in_registry() {
         projects: vec![RegistryProject {
             name: "real-project".to_string(),
             url: ".".to_string(),
-            capability: "omnia@v1".to_string(),
+            adapter: "omnia@v1".to_string(),
             description: None,
             contracts: None,
         }],
@@ -209,7 +209,7 @@ fn project_missing_multi_repo() {
         entries: vec![Entry {
             name: "a".to_string(),
             project: None,
-            capability: None,
+            adapter: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -224,14 +224,14 @@ fn project_missing_multi_repo() {
             RegistryProject {
                 name: "alpha".to_string(),
                 url: ".".to_string(),
-                capability: "omnia@v1".to_string(),
+                adapter: "omnia@v1".to_string(),
                 description: Some("Alpha project".to_string()),
                 contracts: None,
             },
             RegistryProject {
                 name: "beta".to_string(),
                 url: "git@github.com:org/beta.git".to_string(),
-                capability: "omnia@v1".to_string(),
+                adapter: "omnia@v1".to_string(),
                 description: Some("Beta project".to_string()),
                 contracts: None,
             },
@@ -242,14 +242,14 @@ fn project_missing_multi_repo() {
 }
 
 #[test]
-fn capability_only_entry_valid_multi_repo() {
+fn adapter_only_entry_valid_multi_repo() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "contracts".to_string(),
             project: None,
-            capability: Some("contracts@v1".into()),
+            adapter: Some("contracts@v1".into()),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -264,14 +264,14 @@ fn capability_only_entry_valid_multi_repo() {
             RegistryProject {
                 name: "alpha".to_string(),
                 url: ".".to_string(),
-                capability: "omnia@v1".to_string(),
+                adapter: "omnia@v1".to_string(),
                 description: Some("Alpha project".to_string()),
                 contracts: None,
             },
             RegistryProject {
                 name: "beta".to_string(),
                 url: "git@github.com:org/beta.git".to_string(),
-                capability: "omnia@v1".to_string(),
+                adapter: "omnia@v1".to_string(),
                 description: Some("Beta project".to_string()),
                 contracts: None,
             },
@@ -292,7 +292,7 @@ fn project_valid_single_repo() {
         entries: vec![Entry {
             name: "a".to_string(),
             project: None,
-            capability: Some("contracts@v1".into()),
+            adapter: Some("contracts@v1".into()),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -306,7 +306,7 @@ fn project_valid_single_repo() {
         projects: vec![RegistryProject {
             name: "solo".to_string(),
             url: ".".to_string(),
-            capability: "omnia@v1".to_string(),
+            adapter: "omnia@v1".to_string(),
             description: None,
             contracts: None,
         }],
@@ -324,7 +324,7 @@ fn project_matches_registry() {
         entries: vec![Entry {
             name: "a".to_string(),
             project: Some("alpha".to_string()),
-            capability: None,
+            adapter: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -339,14 +339,14 @@ fn project_matches_registry() {
             RegistryProject {
                 name: "alpha".to_string(),
                 url: ".".to_string(),
-                capability: "omnia@v1".to_string(),
+                adapter: "omnia@v1".to_string(),
                 description: Some("Alpha".to_string()),
                 contracts: None,
             },
             RegistryProject {
                 name: "beta".to_string(),
                 url: "git@github.com:org/beta.git".to_string(),
-                capability: "omnia@v1".to_string(),
+                adapter: "omnia@v1".to_string(),
                 description: Some("Beta".to_string()),
                 contracts: None,
             },
@@ -357,14 +357,14 @@ fn project_matches_registry() {
 }
 
 #[test]
-fn neither_project_nor_capability_error() {
+fn neither_project_nor_adapter_error() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "orphan".to_string(),
             project: None,
-            capability: None,
+            adapter: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -377,21 +377,20 @@ fn neither_project_nor_capability_error() {
     assert!(
         results
             .iter()
-            .any(|r| r.code == "plan.entry-needs-project-or-capability"
-                && r.level == Severity::Error),
-        "expected entry-needs-project-or-capability error, got: {results:#?}"
+            .any(|r| r.code == "plan.entry-needs-project-or-adapter" && r.level == Severity::Error),
+        "expected entry-needs-project-or-adapter error, got: {results:#?}"
     );
 }
 
 #[test]
-fn capability_only_passes() {
+fn adapter_only_passes() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "contracts".to_string(),
             project: None,
-            capability: Some("contracts@v1".into()),
+            adapter: Some("contracts@v1".into()),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -402,20 +401,20 @@ fn capability_only_passes() {
     };
     let results = plan.validate(None, None);
     assert!(
-        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-capability"),
-        "capability-only entry must not trigger project-or-capability error"
+        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-adapter"),
+        "adapter-only entry must not trigger project-or-adapter error"
     );
 }
 
 #[test]
-fn project_and_capability_passes() {
+fn project_and_adapter_passes() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "impl".to_string(),
             project: Some("auth-service".into()),
-            capability: Some("omnia@v1".into()),
+            adapter: Some("omnia@v1".into()),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -426,8 +425,8 @@ fn project_and_capability_passes() {
     };
     let results = plan.validate(None, None);
     assert!(
-        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-capability"),
-        "entry with both project and capability must pass"
+        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-adapter"),
+        "entry with both project and adapter must pass"
     );
 }
 

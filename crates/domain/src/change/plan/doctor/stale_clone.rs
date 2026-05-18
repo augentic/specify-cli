@@ -30,13 +30,13 @@ fn diag(project: &RegistryProject, problem: &SlotProblem) -> Diagnostic {
     let expected = CloneSignature {
         slot_kind: Some(problem.expected_kind.to_string()),
         url: Some(project.url.clone()),
-        capability: Some(project.capability.clone()),
+        adapter: Some(project.adapter.clone()),
         target: problem.expected_target.as_ref().map(|path| path.display().to_string()),
     };
     let observed = CloneSignature {
         slot_kind: problem.observed_kind.map(|kind| kind.to_string()),
         url: problem.observed_url.clone(),
-        capability: None,
+        adapter: None,
         target: problem.observed_target.as_ref().map(|path| path.display().to_string()),
     };
     let reason = if problem.reason == SlotProblemReason::RemoteOriginMismatch {
