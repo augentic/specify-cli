@@ -20,7 +20,7 @@ CARGO_TARGET_DIR=target/tools-test-fixtures cargo build \
     --release \
     --bins
 
-mkdir -p tests/fixtures/tools-test-project/wasm tests/fixtures/tools-test-cap/wasm
+mkdir -p tests/fixtures/tools-test-project/wasm tests/fixtures/tools-test-adp/wasm
 
 for bin in echo read-only read-write read-denied; do
     cp "target/tools-test-fixtures/wasm32-wasip2/release/${bin}.wasm" \
@@ -28,5 +28,5 @@ for bin in echo read-only read-write read-denied; do
 done
 
 wasm-tools parse \
-    tests/fixtures/tools-test-cap/src-wat/exit-seven.component.wat \
-    -o tests/fixtures/tools-test-cap/wasm/exit-seven.wasm
+    tests/fixtures/tools-test-adp/src-wat/exit-seven.component.wat \
+    -o tests/fixtures/tools-test-adp/wasm/exit-seven.wasm

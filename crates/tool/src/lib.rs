@@ -44,10 +44,10 @@ mod test_support {
         }
     }
 
-    pub fn capability_scope(root: &Path) -> ToolScope {
-        ToolScope::Capability {
-            capability_slug: "contracts".to_string(),
-            capability_dir: root.to_path_buf(),
+    pub fn adapter_scope(root: &Path) -> ToolScope {
+        ToolScope::Adapter {
+            adapter_slug: "contracts".to_string(),
+            adapter_dir: root.to_path_buf(),
         }
     }
 

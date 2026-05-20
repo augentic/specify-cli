@@ -378,11 +378,11 @@ version: 1
 projects:
   - name: billing
     url: billing-src
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Billing service
   - name: orders
     url: orders-src
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Orders service
 ",
     );
@@ -415,11 +415,11 @@ version: 1
 projects:
   - name: billing
     url: billing-src
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Billing service
   - name: orders
     url: orders-src
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Orders service
 ",
     );
@@ -603,7 +603,7 @@ version: 1
 projects:
   - name: context-demo
     url: .
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Context demo
 ",
     );
@@ -615,11 +615,11 @@ version: 1
 projects:
   - name: context-demo
     url: .
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Context demo
   - name: billing
     url: ../billing
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Billing service
 ",
     );

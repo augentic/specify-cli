@@ -1,6 +1,6 @@
 ## WASI Tool Fixtures
 
-`tools-test-project/` and `tools-test-cap/` hold deterministic RFC-15 acceptance fixtures.
+`tools-test-project/` and `tools-test-adp/` hold deterministic RFC-15 acceptance fixtures.
 The `.wasm` files are checked in so developer machines and CI do not need to rebuild
 WASI components before running `cargo test --workspace`.
 
@@ -13,7 +13,7 @@ make tools-test-fixtures
 ```
 
 The Rust source crate lives at `tools-test-project/src-rust/`. `exit-seven.wasm`
-is generated from `tools-test-cap/src-wat/exit-seven.component.wat` because the
+is generated from `tools-test-adp/src-wat/exit-seven.component.wat` because the
 stable WASI 0.2 Rust bindings expose only success/failure through `std::process`,
 while this fixture needs the Preview 2 `exit-with-code` import to assert exit 7.
 

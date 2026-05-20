@@ -267,11 +267,11 @@ exit 1
 struct FixtureProject {
     name: &'static str,
     slug: &'static str,
-    capability: &'static str,
+    adapter: &'static str,
 }
 
 impl FixtureProject {
-    fn new(envs: &TestEnv, name: &'static str, capability: &'static str) -> Self {
+    fn new(envs: &TestEnv, name: &'static str, adapter: &'static str) -> Self {
         let source = envs.path().join("sources").join(name);
         let remote = envs.remotes_dir().join(format!("{name}.git"));
         fs::create_dir_all(source.join(".specify")).expect("mkdir project specify");
@@ -279,7 +279,7 @@ impl FixtureProject {
         fs::write(source.join("README.md"), format!("# {name}\n")).expect("write README");
         fs::write(
             source.join(".specify/project.yaml"),
-            format!("name: {name}\ncapability: {capability}\n"),
+            format!("name: {name}\nadapter: {adapter}\n"),
         )
         .expect("write project.yaml");
         run_git(&source, &["add", "."], envs);
@@ -297,7 +297,7 @@ impl FixtureProject {
                 "shop-mobile" => "shop/shop-mobile",
                 _ => unreachable!("unexpected fixture project"),
             },
-            capability,
+            adapter,
         }
     }
 
@@ -352,8 +352,8 @@ fn register_project(envs: &TestEnv, project: &FixtureProject, description: &str)
             project.name,
             "--url",
             &project.github_url(),
-            "--capability",
-            project.capability,
+            "--adapter",
+            project.adapter,
             "--description",
             description,
         ])
@@ -368,7 +368,7 @@ fn seed_change_plan(envs: &TestEnv) {
             "plan",
             "add",
             "oauth-login-contract",
-            "--capability",
+            "--adapter",
             "contracts@v1",
             "--description",
             "Author the shared OAuth login HTTP contract.",
@@ -431,10 +431,7 @@ fn assert_registry_and_plan_are_valid(envs: &TestEnv) {
     assert!(entries.iter().any(|entry| entry["name"] == "add-oauth-screens"));
 
     let plan_yaml = fs::read_to_string(envs.path().join("plan.yaml")).expect("read plan.yaml");
-    assert!(
-        plan_yaml.contains("capability: contracts@v1"),
-        "contract slice must target capability"
-    );
+    assert!(plan_yaml.contains("adapter: contracts@v1"), "contract slice must target adapter");
     assert!(plan_yaml.contains("project: shop-backend"), "backend slice must be routed");
     assert!(plan_yaml.contains("project: shop-mobile"), "mobile slice must be routed");
 }

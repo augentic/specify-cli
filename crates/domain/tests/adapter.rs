@@ -1,4 +1,4 @@
-//! Integration tests for `specify_domain::capability`.
+//! Integration tests for `specify_domain::adapter`.
 //!
 //! The "workspace" fixture we test against is the `specify` repo itself:
 //! `schemas/omnia/` and `schemas/omnia/briefs/*.md` are real, hand-edited
@@ -9,10 +9,10 @@
 
 use std::path::{Path, PathBuf};
 
-use specify_domain::capability::{
-    Brief, CacheMeta, Capability, CapabilitySource, ChangeBrief, CodexProvenance, CodexRule,
-    CodexSeverity, DEFAULT_CODEX_CAPABILITY, InputKind, Phase, Pipeline, PipelineEntry,
-    PipelineView, ResolvedCodex, ValidationResult,
+use specify_domain::adapter::{
+    Adapter, AdapterSource, Brief, CacheMeta, ChangeBrief, CodexProvenance, CodexRule,
+    CodexSeverity, DEFAULT_CODEX_ADAPTER, InputKind, Phase, Pipeline, PipelineEntry, PipelineView,
+    ResolvedCodex, ValidationResult,
 };
 use specify_error::Error;
 use tempfile::TempDir;
@@ -28,20 +28,20 @@ fn repo_root() -> PathBuf {
         .expect("CARGO_MANIFEST_DIR should have two ancestors (crates/, repo root)")
 }
 
-fn omnia_capability_path() -> PathBuf {
-    repo_root().join("schemas").join("omnia").join("capability.yaml")
+fn omnia_adapter_path() -> PathBuf {
+    repo_root().join("schemas").join("omnia").join("adapter.yaml")
 }
 
 fn codex_fixture_path(name: &str) -> PathBuf {
     repo_root().join("tests").join("fixtures").join(name)
 }
 
-// ---------- Capability parsing ----------
+// ---------- Adapter parsing ----------
 
 #[test]
-fn parses_omnia_capability_yaml_fields_and_entries() {
-    let raw = std::fs::read_to_string(omnia_capability_path()).expect("omnia capability on disk");
-    let schema: Capability = serde_saphyr::from_str(&raw).expect("omnia capability is valid YAML");
+fn parses_omnia_adapter_yaml_fields_and_entries() {
+    let raw = std::fs::read_to_string(omnia_adapter_path()).expect("omnia adapter on disk");
+    let schema: Adapter = serde_saphyr::from_str(&raw).expect("omnia adapter is valid YAML");
 
     assert_eq!(schema.name, "omnia");
     assert_eq!(schema.version, 1);
@@ -77,8 +77,8 @@ fn parses_omnia_capability_yaml_fields_and_entries() {
 
 #[test]
 fn validate_structure_valid_for_omnia() {
-    let raw = std::fs::read_to_string(omnia_capability_path()).unwrap();
-    let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
+    let raw = std::fs::read_to_string(omnia_adapter_path()).unwrap();
+    let schema: Adapter = serde_saphyr::from_str(&raw).unwrap();
     let results = schema.validate_structure();
     assert!(
         results.iter().all(|r| matches!(r, ValidationResult::Pass { .. })),
@@ -88,7 +88,7 @@ fn validate_structure_valid_for_omnia() {
 
 #[test]
 fn validate_structure_fails_when_define_phase_is_empty() {
-    let schema = Capability {
+    let schema = Adapter {
         name: "broken".into(),
         version: 1,
         description: "empty define phase".into(),
@@ -116,11 +116,11 @@ fn validate_structure_fails_when_define_phase_is_empty() {
 #[test]
 fn yaml_parse_error_surface_for_missing_required_field() {
     // `description` missing -> serde error is propagated as an
-    // `Error::YamlDe` when surfaced through `Capability::resolve`, but
+    // `Error::YamlDe` when surfaced through `Adapter::resolve`, but
     // here we just exercise the parser directly and assert the Display
     // message.
     let yaml = "name: broken\nversion: 1\npipeline:\n  define: []\n  build: []\n  merge: []\n";
-    let err = serde_saphyr::from_str::<Capability>(yaml).expect_err("missing description");
+    let err = serde_saphyr::from_str::<Adapter>(yaml).expect_err("missing description");
     let message = err.to_string();
     assert!(
         message.contains("description"),
@@ -162,9 +162,9 @@ pipeline:
   merge:
     - { id: merge, brief: briefs/merge.md }
 ";
-    let parent: Capability = serde_saphyr::from_str(parent_yaml).unwrap();
-    let child: Capability = serde_saphyr::from_str(child_yaml).unwrap();
-    let merged = Capability::merge(parent, child);
+    let parent: Adapter = serde_saphyr::from_str(parent_yaml).unwrap();
+    let child: Adapter = serde_saphyr::from_str(child_yaml).unwrap();
+    let merged = Adapter::merge(parent, child);
 
     let ids: Vec<&str> = merged.plan_entries().iter().map(|e| e.id.as_str()).collect();
     assert_eq!(ids, vec!["discovery", "propose", "record"]);
@@ -179,7 +179,7 @@ fn merge_overrides_by_id_and_appends_new_entries() {
     let parent_yaml = r"
 name: parent
 version: 1
-description: parent capability
+description: parent adapter
 pipeline:
   define:
     - { id: proposal, brief: briefs/proposal.md }
@@ -192,7 +192,7 @@ pipeline:
     let child_yaml = r"
 name: child
 version: 2
-description: child capability
+description: child adapter
 pipeline:
   define:
     - { id: specs,   brief: briefs/specs-v2.md }
@@ -203,9 +203,9 @@ pipeline:
     - { id: merge, brief: briefs/merge.md }
 ";
 
-    let parent: Capability = serde_saphyr::from_str(parent_yaml).unwrap();
-    let child: Capability = serde_saphyr::from_str(child_yaml).unwrap();
-    let merged = Capability::merge(parent, child);
+    let parent: Adapter = serde_saphyr::from_str(parent_yaml).unwrap();
+    let child: Adapter = serde_saphyr::from_str(child_yaml).unwrap();
+    let merged = Adapter::merge(parent, child);
 
     assert_eq!(merged.name, "child");
     assert_eq!(merged.version, 2);
@@ -221,8 +221,8 @@ pipeline:
 
 #[test]
 fn entries_iterates_in_phase_order_and_entry_lookup_works() {
-    let raw = std::fs::read_to_string(omnia_capability_path()).unwrap();
-    let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
+    let raw = std::fs::read_to_string(omnia_adapter_path()).unwrap();
+    let schema: Adapter = serde_saphyr::from_str(&raw).unwrap();
 
     let total =
         schema.pipeline.define.len() + schema.pipeline.build.len() + schema.pipeline.merge.len();
@@ -250,8 +250,8 @@ fn entries_iterates_in_phase_order_and_entry_lookup_works() {
 
 #[test]
 fn parses_every_omnia_brief_and_frontmatter_ids_match_pipeline_ids() {
-    let raw = std::fs::read_to_string(omnia_capability_path()).unwrap();
-    let schema: Capability = serde_saphyr::from_str(&raw).unwrap();
+    let raw = std::fs::read_to_string(omnia_adapter_path()).unwrap();
+    let schema: Adapter = serde_saphyr::from_str(&raw).unwrap();
     let root = repo_root().join("schemas").join("omnia");
 
     for (_phase, entry) in schema.entries() {
@@ -327,16 +327,16 @@ fn codex_fail_detail(results: &[ValidationResult], rule_id: &str) -> String {
         .unwrap_or_else(|| panic!("expected codex failure `{rule_id}`, got: {results:?}"))
 }
 
-fn write_codex_capability(project_dir: &Path, name: &str, version: u32) -> PathBuf {
+fn write_codex_adapter(project_dir: &Path, name: &str, version: u32) -> PathBuf {
     let root = project_dir.join("schemas").join(name);
-    std::fs::create_dir_all(&root).expect("create capability root");
+    std::fs::create_dir_all(&root).expect("create adapter root");
     std::fs::write(
-        root.join("capability.yaml"),
+        root.join("adapter.yaml"),
         format!(
             "\
 name: {name}
 version: {version}
-description: {name} test capability
+description: {name} test adapter
 pipeline:
   define: []
   build: []
@@ -344,7 +344,7 @@ pipeline:
 "
         ),
     )
-    .expect("write capability manifest");
+    .expect("write adapter manifest");
     root
 }
 
@@ -400,8 +400,8 @@ fn codex_parse_accepts_minimal_rule() {
 fn codex_resolver_orders_sources_and_ignores_specify_codex() {
     let tmp = TempDir::new().expect("tempdir");
     let project_dir = tmp.path();
-    let default_root = write_codex_capability(project_dir, "default", 1);
-    let project_root = write_codex_capability(project_dir, "project", 2);
+    let default_root = write_codex_adapter(project_dir, "default", 1);
+    let project_root = write_codex_adapter(project_dir, "project", 2);
 
     write_codex_rule(&default_root, "z-last.md", "UNI-002");
     write_codex_rule(&default_root, "nested/a-first.md", "UNI-001");
@@ -415,14 +415,14 @@ fn codex_resolver_orders_sources_and_ignores_specify_codex() {
     assert_eq!(resolved_ids(&codex), vec!["UNI-001", "UNI-002", "OMNIA-001", "ORG-001"]);
     assert_eq!(
         codex.rules[0].provenance,
-        CodexProvenance::Capability {
+        CodexProvenance::Adapter {
             name: "default".to_string(),
             version: 1,
         }
     );
     assert_eq!(
         codex.rules[2].provenance,
-        CodexProvenance::Capability {
+        CodexProvenance::Adapter {
             name: "project".to_string(),
             version: 2,
         }
@@ -434,8 +434,8 @@ fn codex_resolver_orders_sources_and_ignores_specify_codex() {
 fn codex_resolver_rejects_duplicate_ids_with_validation_error() {
     let tmp = TempDir::new().expect("tempdir");
     let project_dir = tmp.path();
-    let default_root = write_codex_capability(project_dir, "default", 1);
-    let project_root = write_codex_capability(project_dir, "project", 1);
+    let default_root = write_codex_adapter(project_dir, "default", 1);
+    let project_root = write_codex_adapter(project_dir, "project", 1);
 
     write_codex_rule(&default_root, "default.md", "UNI-001");
     write_codex_rule(&project_root, "project.md", "OMNIA-001");
@@ -455,10 +455,10 @@ fn codex_resolver_rejects_duplicate_ids_with_validation_error() {
 }
 
 #[test]
-fn codex_resolver_hub_skips_project_capability_and_keeps_repo_overlay() {
+fn codex_resolver_hub_skips_project_adapter_and_keeps_repo_overlay() {
     let tmp = TempDir::new().expect("tempdir");
     let project_dir = tmp.path();
-    let default_root = write_codex_capability(project_dir, "default", 1);
+    let default_root = write_codex_adapter(project_dir, "default", 1);
 
     write_codex_rule(&default_root, "default.md", "UNI-001");
     write_codex_rule(project_dir, "repo.md", "ORG-001");
@@ -470,18 +470,18 @@ fn codex_resolver_hub_skips_project_capability_and_keeps_repo_overlay() {
 }
 
 #[test]
-fn codex_resolver_names_missing_default_capability() {
+fn codex_resolver_names_missing_default_adapter() {
     let tmp = TempDir::new().expect("tempdir");
     let err = ResolvedCodex::resolve(tmp.path(), None, true)
-        .expect_err("missing default capability should fail");
+        .expect_err("missing default adapter should fail");
 
     let Error::Diag { code, detail } = err else {
         panic!("expected schema resolution error");
     };
-    assert_eq!(code, "codex-default-capability-unavailable", "detail: {detail}");
+    assert_eq!(code, "codex-default-adapter-unavailable", "detail: {detail}");
     assert!(
-        detail.contains(DEFAULT_CODEX_CAPABILITY),
-        "detail should name default codex capability: {detail}"
+        detail.contains(DEFAULT_CODEX_ADAPTER),
+        "detail should name default codex adapter: {detail}"
     );
 }
 
@@ -596,7 +596,7 @@ fn pipeline_view_loads_omnia_schema_from_workspace() {
     let root = repo_root();
     let view = PipelineView::load("omnia", &root).expect("omnia view loads");
     assert_eq!(view.briefs.len(), 6);
-    assert!(matches!(view.capability.source, CapabilitySource::Local(_)));
+    assert!(matches!(view.adapter.source, AdapterSource::Local(_)));
 
     assert!(view.brief("proposal").is_some());
     assert!(view.brief("build").is_some());
@@ -611,15 +611,15 @@ fn pipeline_view_loads_omnia_schema_from_workspace() {
     assert_eq!(build.frontmatter.needs, vec!["specs", "design", "tasks"]);
 }
 
-/// Scaffold a minimal local capability at `<project>/schemas/<name>/`
-/// with the given `capability.yaml` and brief contents. Each brief content
+/// Scaffold a minimal local adapter at `<project>/schemas/<name>/`
+/// with the given `adapter.yaml` and brief contents. Each brief content
 /// map entry is `(filename, contents)` written under `schemas/<name>/`.
 fn scaffold_schema_project(name: &str, schema_yaml: &str, briefs: &[(&str, &str)]) -> TempDir {
     let tmp = TempDir::new().unwrap();
     let schema_dir = tmp.path().join("schemas").join(name);
     let briefs_dir = schema_dir.join("briefs");
     std::fs::create_dir_all(&briefs_dir).unwrap();
-    std::fs::write(schema_dir.join("capability.yaml"), schema_yaml).unwrap();
+    std::fs::write(schema_dir.join("adapter.yaml"), schema_yaml).unwrap();
     for (rel, contents) in briefs {
         let target = schema_dir.join(rel);
         if let Some(parent) = target.parent() {
@@ -778,7 +778,7 @@ fn pipeline_view_load_rejects_tracks_pointing_at_unknown_brief() {
 #[test]
 fn schema_resolve_errors_when_url_schema_not_in_cache() {
     let tmp = TempDir::new().unwrap();
-    let err = Capability::resolve("https://example.com/schemas/nope", tmp.path())
+    let err = Adapter::resolve("https://example.com/schemas/nope", tmp.path())
         .expect_err("url with empty cache fails");
     match err {
         Error::Diag { detail: msg, .. } => assert!(msg.contains(".cache"), "msg: {msg}"),
@@ -798,11 +798,11 @@ fn schema_resolve_prefers_cache_over_local_for_bare_names() {
 
     let local_yaml = VALID_SCHEMA_YAML.replace("description: demo", "description: local");
     let cached_yaml = VALID_SCHEMA_YAML.replace("description: demo", "description: cached");
-    std::fs::write(local.join("capability.yaml"), local_yaml).unwrap();
-    std::fs::write(cached.join("capability.yaml"), cached_yaml).unwrap();
+    std::fs::write(local.join("adapter.yaml"), local_yaml).unwrap();
+    std::fs::write(cached.join("adapter.yaml"), cached_yaml).unwrap();
 
-    let resolved = Capability::resolve("demo", tmp.path()).unwrap();
-    assert!(matches!(resolved.source, CapabilitySource::Cached(_)));
+    let resolved = Adapter::resolve("demo", tmp.path()).unwrap();
+    assert!(matches!(resolved.source, AdapterSource::Cached(_)));
     assert_eq!(resolved.manifest.description, "cached");
 }
 

@@ -25,7 +25,7 @@ pub(super) fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Re
     for project in &reg.projects {
         writeln!(w, "  - name: {}", project.name)?;
         writeln!(w, "    url: {}", project.url)?;
-        writeln!(w, "    capability: {}", project.capability)?;
+        writeln!(w, "    adapter: {}", project.adapter)?;
     }
     Ok(())
 }

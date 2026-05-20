@@ -37,7 +37,7 @@ pub fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Convenience pointer to the in-repo Omnia capability fixture used as
+/// Convenience pointer to the in-repo Omnia adapter fixture used as
 /// the canonical positional argument for `specify init`.
 pub fn omnia_schema_dir() -> PathBuf {
     repo_root().join("schemas").join("omnia")
@@ -235,11 +235,11 @@ fn parse_json_stream(label: &str, bytes: &[u8], root: &Path) -> Value {
 }
 
 /// A throwaway `.specify/` project rooted in a tempdir, scaffolded by
-/// running `specify init` with the in-repo Omnia capability fixture.
+/// running `specify init` with the in-repo Omnia adapter fixture.
 ///
 /// Hoisted from the per-test-file `struct Project` harnesses
 /// (`tests/slice.rs`, `tests/slice_merge.rs`, `tests/e2e.rs`,
-/// `tests/capability.rs`, `tests/plan_orchestrate.rs`) so the same
+/// `tests/adapter.rs`, `tests/plan_orchestrate.rs`) so the same
 /// `Project::init()` / `.with_schemas()` / `.stage_slice()` shape works
 /// across every integration suite. Each test binary uses a different
 /// subset; the module-level `#![expect(dead_code, ...)]` covers helpers
@@ -266,7 +266,7 @@ impl Project {
         Self { _tmp: tmp, root }
     }
 
-    /// Initialise a project backed by a local fixture capability dir.
+    /// Initialise a project backed by a local fixture adapter dir.
     /// The fixture is mirrored into `<tmp>/schemas/<name>/` so that
     /// subsequent `specify` invocations resolve it via the usual
     /// `schemas/<name>/` probe.
@@ -294,7 +294,7 @@ impl Project {
     }
 
     /// Populate the schema cache instead of the local `schemas/` tree so
-    /// `Capability::resolve` picks the `CapabilitySource::Cached` branch.
+    /// `Adapter::resolve` picks the `AdapterSource::Cached` branch.
     #[must_use]
     pub fn with_cached_schema(self) -> Self {
         copy_dir(&repo_root().join("schemas/omnia"), &self.root.join(".specify/.cache/omnia"));

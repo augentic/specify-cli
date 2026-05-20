@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::capability::ValidationResult;
+use crate::adapter::ValidationResult;
 use crate::spec::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING, parse_baseline};
 
 fn req_id_re() -> &'static Regex {

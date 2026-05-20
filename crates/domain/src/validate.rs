@@ -12,7 +12,7 @@ use std::path::Path;
 
 use specify_error as _; // dependency declared; re-exported via `Error` return type
 
-use crate::capability::PipelineView;
+use crate::adapter::PipelineView;
 use crate::spec::ParsedSpec;
 use crate::task::Progress;
 
@@ -28,7 +28,7 @@ pub use compatibility::{
 pub use registry::{cross_rules, rules_for};
 pub use run::validate_slice;
 
-pub use crate::capability::ValidationResult;
+pub use crate::adapter::ValidationResult;
 
 /// Structured result of running every applicable rule over a slice dir.
 ///
@@ -157,7 +157,7 @@ mod tests {
     /// result. Pins the derive against accidental rename or reshape.
     #[test]
     fn report_serialises_kebab_case_shape() {
-        use crate::capability::ValidationResult;
+        use crate::adapter::ValidationResult;
 
         let mut brief_results: BTreeMap<String, Vec<ValidationResult>> = BTreeMap::new();
         brief_results.insert(

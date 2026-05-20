@@ -2,7 +2,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use serde::Serialize;
-use specify_domain::capability::PipelineView;
+use specify_domain::adapter::PipelineView;
 use specify_domain::config::{Layout, ProjectConfig};
 use specify_error::Error;
 
@@ -36,23 +36,23 @@ impl Ctx {
         })
     }
 
-    /// Load the capability pipeline for this project.
+    /// Load the adapter pipeline for this project.
     ///
-    /// Hub projects (`hub: true`, `capability:` omitted) do not declare
-    /// a capability and have no pipeline to walk, so this returns a
-    /// `hub-no-capability` diagnostic naming the hub case rather than a
-    /// stray capability-resolution error lower down the stack.
+    /// Hub projects (`hub: true`, `adapter:` omitted) do not declare
+    /// a adapter and have no pipeline to walk, so this returns a
+    /// `hub-no-adapter` diagnostic naming the hub case rather than a
+    /// stray adapter-resolution error lower down the stack.
     pub(crate) fn load_pipeline(&self) -> Result<PipelineView, Error> {
-        let Some(capability) = self.config.capability.as_deref() else {
+        let Some(adapter) = self.config.adapter.as_deref() else {
             return Err(Error::Diag {
-                code: "hub-no-capability",
-                detail: "this project has no capability declared (hub projects do not run \
+                code: "hub-no-adapter",
+                detail: "this project has no adapter declared (hub projects do not run \
                          phase pipelines); only `specify registry` and `specify change` \
                          verbs are supported on hubs"
                     .to_string(),
             });
         };
-        PipelineView::load(capability, &self.project_dir)
+        PipelineView::load(adapter, &self.project_dir)
     }
 
     /// Typed view over `.specify/`-anchored paths. Hand this to

@@ -89,7 +89,7 @@ fn build_project() -> Project {
 
     let metadata = SliceMetadata {
         version: METADATA_VERSION,
-        capability: "omnia".to_string(),
+        adapter: "omnia".to_string(),
         status: LifecycleStatus::Complete,
         created_at: Some(parse_stamp("2024-08-01T10:00:00Z")),
         defined_at: Some(parse_stamp("2024-08-01T12:00:00Z")),
@@ -277,7 +277,7 @@ fn merge_copies_contract_files_to_baseline() {
 
     fs::create_dir_all(slice_dir.join("contracts/schemas")).expect("mkdir schemas");
     fs::create_dir_all(slice_dir.join("contracts/http")).expect("mkdir http");
-    fs::write(slice_dir.join("contracts/schemas/test.yaml"), "capability: test\n")
+    fs::write(slice_dir.join("contracts/schemas/test.yaml"), "adapter: test\n")
         .expect("write schema");
     fs::write(slice_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write api");
 
@@ -417,7 +417,7 @@ fn preview_new_contract_files_reported_as_added() {
 
     fs::create_dir_all(slice_dir.join("contracts/schemas")).expect("mkdir");
     fs::create_dir_all(slice_dir.join("contracts/http")).expect("mkdir");
-    fs::write(slice_dir.join("contracts/schemas/user.yaml"), "capability: user\n").expect("write");
+    fs::write(slice_dir.join("contracts/schemas/user.yaml"), "adapter: user\n").expect("write");
     fs::write(slice_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write");
 
     let classes = omnia_classes(&slice_dir, &project.root);

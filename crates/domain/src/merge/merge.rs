@@ -77,7 +77,7 @@ pub enum MergeOperation {
 /// Merge a delta spec into an optional baseline.
 ///
 /// `baseline == None` (or `Some("")`, or `Some(whitespace-only)`) means
-/// "new capability": the baseline is being created from scratch. In that
+/// "new adapter": the baseline is being created from scratch. In that
 /// case:
 ///   * if the delta has **no** delta-section headers (per
 ///     [`crate::spec::has_delta_headers`]), the delta text is returned

@@ -19,9 +19,9 @@ pub enum RegistryAction {
         /// `http(s)://` / `ssh://` / `git+...` remote.
         #[arg(long)]
         url: String,
-        /// Capability identifier (e.g. `omnia@v1`). Non-empty after trim.
+        /// Adapter identifier (e.g. `omnia@v1`). Non-empty after trim.
         #[arg(long)]
-        capability: String,
+        adapter: String,
         /// Domain-level characterisation; required when the registry
         /// declares more than one project.
         #[arg(long)]

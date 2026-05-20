@@ -1,5 +1,5 @@
-//! Capability cache management: copy the resolved source into
-//! `.specify/.cache/<capability>/`, mirror the bundled `codex` sibling
+//! Adapter cache management: copy the resolved source into
+//! `.specify/.cache/<adapter>/`, mirror the bundled `codex` sibling
 //! when present, and stamp `cache_meta.yaml` with the resolved URI.
 
 use std::fs;
@@ -8,50 +8,49 @@ use std::path::Path;
 use jiff::Timestamp;
 use specify_error::Error;
 
-use crate::capability::{CacheMeta, DEFAULT_CODEX_CAPABILITY};
+use crate::adapter::{CacheMeta, DEFAULT_CODEX_ADAPTER};
 use crate::config::Layout;
-use crate::init::capability_uri::{CapabilityUri, ensure_capability_dir};
+use crate::init::adapter_uri::{AdapterUri, ensure_adapter_dir};
 
-pub(super) fn cache_capability(
-    capability: &str, project_dir: &Path, now: Timestamp,
+pub(super) fn cache_adapter(
+    adapter: &str, project_dir: &Path, now: Timestamp,
 ) -> Result<String, Error> {
-    if capability.trim().is_empty() || capability != capability.trim() {
+    if adapter.trim().is_empty() || adapter != adapter.trim() {
         return Err(Error::Diag {
-            code: "capability-arg-malformed",
-            detail:
-                "<capability> must be non-empty and must not have leading or trailing whitespace"
-                    .to_string(),
+            code: "adapter-arg-malformed",
+            detail: "<adapter> must be non-empty and must not have leading or trailing whitespace"
+                .to_string(),
         });
     }
 
-    let source = CapabilityUri::parse(capability, project_dir)?;
+    let source = AdapterUri::parse(adapter, project_dir)?;
     let cache_dir = Layout::new(project_dir).cache_dir();
-    let target = cache_dir.join(&source.capability_name);
-    refresh_cached_capability(&source.source_dir, &target)?;
-    cache_sibling_default_capability(&source.source_dir, &cache_dir)?;
-    write_cache_meta(project_dir, &source.capability_value, now)?;
+    let target = cache_dir.join(&source.adapter_name);
+    refresh_cached_adapter(&source.source_dir, &target)?;
+    cache_sibling_default_adapter(&source.source_dir, &cache_dir)?;
+    write_cache_meta(project_dir, &source.adapter_value, now)?;
 
-    Ok(source.capability_value)
+    Ok(source.adapter_value)
 }
 
-fn cache_sibling_default_capability(source_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
-    if source_dir.file_name().and_then(|name| name.to_str()) == Some(DEFAULT_CODEX_CAPABILITY) {
+fn cache_sibling_default_adapter(source_dir: &Path, cache_dir: &Path) -> Result<(), Error> {
+    if source_dir.file_name().and_then(|name| name.to_str()) == Some(DEFAULT_CODEX_ADAPTER) {
         return Ok(());
     }
 
     let Some(parent) = source_dir.parent() else {
         return Ok(());
     };
-    let default_source = parent.join(DEFAULT_CODEX_CAPABILITY);
+    let default_source = parent.join(DEFAULT_CODEX_ADAPTER);
     if !default_source.is_dir() {
         return Ok(());
     }
 
-    ensure_capability_dir(&default_source, DEFAULT_CODEX_CAPABILITY)?;
-    refresh_cached_capability(&default_source, &cache_dir.join(DEFAULT_CODEX_CAPABILITY))
+    ensure_adapter_dir(&default_source, DEFAULT_CODEX_ADAPTER)?;
+    refresh_cached_adapter(&default_source, &cache_dir.join(DEFAULT_CODEX_ADAPTER))
 }
 
-fn refresh_cached_capability(source: &Path, target: &Path) -> Result<(), Error> {
+fn refresh_cached_adapter(source: &Path, target: &Path) -> Result<(), Error> {
     if target.exists() {
         fs::remove_dir_all(target)?;
     }
@@ -73,11 +72,9 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-fn write_cache_meta(
-    project_dir: &Path, capability_value: &str, now: Timestamp,
-) -> Result<(), Error> {
+fn write_cache_meta(project_dir: &Path, adapter_value: &str, now: Timestamp) -> Result<(), Error> {
     let meta = CacheMeta {
-        schema_url: capability_value.to_string(),
+        schema_url: adapter_value.to_string(),
         fetched_at: now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
     };
     let meta_path = CacheMeta::path(project_dir);

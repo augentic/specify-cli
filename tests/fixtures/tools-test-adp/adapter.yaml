@@ -1,7 +1,7 @@
-# yaml-language-server: $schema=../../../schemas/capability.schema.json
-name: tools-test-cap
+# yaml-language-server: $schema=../../../schemas/adapter.schema.json
+name: tools-test-adp
 version: 1
-description: Fixture capability for RFC-15 sidecar tool acceptance tests
+description: Fixture adapter for RFC-15 sidecar tool acceptance tests
 
 pipeline:
   define:

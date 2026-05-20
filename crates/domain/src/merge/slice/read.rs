@@ -132,7 +132,7 @@ pub(super) fn plan_three_way(
             };
 
             for vr in validate_baseline(&result.output, None) {
-                if let crate::capability::ValidationResult::Fail { detail, .. } = vr {
+                if let crate::adapter::ValidationResult::Fail { detail, .. } = vr {
                     aborts.push(format!("{}: {detail}", spec.spec_name));
                 }
             }
@@ -330,7 +330,7 @@ pub(super) fn check_opaque_drift(
             let mtime = system_time_to_utc(meta.modified()?)?;
             if mtime > defined_at {
                 conflicts.push(BaselineConflict {
-                    capability: format!("{class_name}/{}", relative.to_string_lossy()),
+                    adapter: format!("{class_name}/{}", relative.to_string_lossy()),
                     defined_at: defined_raw.to_string(),
                     baseline_modified_at: mtime,
                 });

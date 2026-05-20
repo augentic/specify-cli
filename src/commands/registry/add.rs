@@ -8,7 +8,7 @@ use super::dto::{AddBody, write_add_text};
 use crate::context::Ctx;
 
 pub(super) fn run(
-    ctx: &Ctx, name: String, url: String, capability: String, description: Option<String>,
+    ctx: &Ctx, name: String, url: String, adapter: String, description: Option<String>,
 ) -> Result<()> {
     if !is_kebab(&name) {
         return Err(Error::Diag {
@@ -19,10 +19,10 @@ pub(super) fn run(
             ),
         });
     }
-    if capability.trim().is_empty() {
+    if adapter.trim().is_empty() {
         return Err(Error::Diag {
-            code: "registry-add-capability-empty",
-            detail: "registry add: --capability must be non-empty (e.g. `omnia@v1`)".into(),
+            code: "registry-add-adapter-empty",
+            detail: "registry add: --adapter must be non-empty (e.g. `omnia@v1`)".into(),
         });
     }
 
@@ -31,7 +31,7 @@ pub(super) fn run(
     let candidate = RegistryProject {
         name,
         url,
-        capability,
+        adapter,
         description: description.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         contracts: None,
     };

@@ -28,8 +28,8 @@ pub enum Kind {
         /// http(s) / `git+...`). Same shape rules as
         /// `specify registry add --url`.
         proposed_url: String,
-        /// Capability identifier (e.g. `omnia@v1`).
-        proposed_capability: String,
+        /// Adapter identifier (e.g. `omnia@v1`).
+        proposed_adapter: String,
         /// Optional human-readable description of the proposed project.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         proposed_description: Option<String>,
@@ -50,7 +50,7 @@ mod tests {
         let proposal = Kind::RegistryAmendmentRequired {
             proposed_name: "alpha-gateway".to_string(),
             proposed_url: "git@github.com:augentic/alpha-gateway.git".to_string(),
-            proposed_capability: "omnia@v1".to_string(),
+            proposed_adapter: "omnia@v1".to_string(),
             proposed_description: None,
             rationale: "build discovered tangled code".to_string(),
         };

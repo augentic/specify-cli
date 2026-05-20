@@ -78,7 +78,7 @@ pub fn root() -> Result<PathBuf, ToolError> {
 /// # Errors
 ///
 /// Returns `ToolError::InvalidCacheSegment` when the project name or
-/// capability slug is empty, contains a path separator, equals `.` or `..`,
+/// adapter slug is empty, contains a path separator, equals `.` or `..`,
 /// or contains a component that would escape the scope directory.
 pub fn scope_segment(scope: &ToolScope) -> Result<String, ToolError> {
     match scope {
@@ -86,9 +86,9 @@ pub fn scope_segment(scope: &ToolScope) -> Result<String, ToolError> {
             validate_segment("project name", project_name)?;
             Ok(format!("project--{project_name}"))
         }
-        ToolScope::Capability { capability_slug, .. } => {
-            validate_segment("capability slug", capability_slug)?;
-            Ok(format!("capability--{capability_slug}"))
+        ToolScope::Adapter { adapter_slug, .. } => {
+            validate_segment("adapter slug", adapter_slug)?;
+            Ok(format!("adapter--{adapter_slug}"))
         }
     }
 }
@@ -99,7 +99,7 @@ pub fn scope_segment(scope: &ToolScope) -> Result<String, ToolError> {
 ///
 /// Returns the `tool-cache-root` diagnostic when no cache root can be
 /// selected from the environment, and `ToolError::InvalidCacheSegment`
-/// when `name`, `version`, or the scope's project/capability slug fails
+/// when `name`, `version`, or the scope's project/adapter slug fails
 /// segment validation.
 pub fn tool_dir(scope: &ToolScope, name: &str, version: &str) -> Result<PathBuf, ToolError> {
     validate_segment("tool name", name)?;

@@ -34,7 +34,7 @@ fn rfc14_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20capability: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@v1\n",
     )
     .unwrap();
     let gitignore_before = fs::read_to_string(tmp.path().join(".gitignore")).ok();
@@ -71,7 +71,7 @@ fn rfc14_c01_workspace_status_unknown_selector_fails_before_side_effects() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20capability: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@v1\n",
     )
     .unwrap();
 
@@ -105,15 +105,15 @@ fn rfc14_c01_workspace_sync_and_status_select_projects_in_registry_order() {
          projects:\n\
          \x20\x20- name: billing\n\
          \x20\x20\x20\x20url: ./billing\n\
-         \x20\x20\x20\x20capability: omnia@v1\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n\
          \x20\x20\x20\x20description: billing service\n\
          \x20\x20- name: orders\n\
          \x20\x20\x20\x20url: ./orders\n\
-         \x20\x20\x20\x20capability: omnia@v1\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n\
          \x20\x20\x20\x20description: orders service\n\
          \x20\x20- name: inventory\n\
          \x20\x20\x20\x20url: ./inventory\n\
-         \x20\x20\x20\x20capability: omnia@v1\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n\
          \x20\x20\x20\x20description: inventory service\n",
     )
     .unwrap();
@@ -157,7 +157,7 @@ fn rfc14_c03_workspace_status_json_reports_enriched_slot_fields() {
     fs::create_dir_all(tmp.path().join("billing/.specify/slices/alpha")).unwrap();
     fs::write(
         tmp.path().join("billing/.specify/project.yaml"),
-        "name: billing\ncapability: omnia@v1\n",
+        "name: billing\nadapter: omnia@v1\n",
     )
     .unwrap();
     fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
@@ -167,11 +167,11 @@ fn rfc14_c03_workspace_status_json_reports_enriched_slot_fields() {
          projects:\n\
          \x20\x20- name: billing\n\
          \x20\x20\x20\x20url: ./billing\n\
-         \x20\x20\x20\x20capability: omnia@v1\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n\
          \x20\x20\x20\x20description: billing service\n\
          \x20\x20- name: remote\n\
          \x20\x20\x20\x20url: git@github.com:org/remote.git\n\
-         \x20\x20\x20\x20capability: omnia@v1\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n\
          \x20\x20\x20\x20description: remote service\n",
     )
     .unwrap();
@@ -216,7 +216,7 @@ fn rfc14_c03_workspace_status_text_flags_mismatch_dirty_and_project_config() {
     let slot_path = tmp.path().join(".specify/workspace/remote");
     let remote_url = "git@github.com:org/remote.git";
     fs::create_dir_all(slot_path.join(".specify")).unwrap();
-    fs::write(slot_path.join(".specify/project.yaml"), "name: remote\ncapability: omnia@v1\n")
+    fs::write(slot_path.join(".specify/project.yaml"), "name: remote\nadapter: omnia@v1\n")
         .unwrap();
     fs::write(slot_path.join("README.md"), "# remote\n").unwrap();
     run_git(&slot_path, &["init"]);
@@ -232,7 +232,7 @@ fn rfc14_c03_workspace_status_text_flags_mismatch_dirty_and_project_config() {
          projects:\n\
          \x20\x20- name: remote\n\
          \x20\x20\x20\x20url: git@github.com:org/remote.git\n\
-         \x20\x20\x20\x20capability: omnia@v1\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n\
          \x20\x20\x20\x20description: remote service\n",
     )
     .unwrap();
@@ -267,7 +267,7 @@ fn rfc14_c01_workspace_push_unknown_selector_fails_before_side_effects() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-         \x20\x20\x20\x20capability: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@v1\n",
     )
     .unwrap();
 
@@ -310,7 +310,7 @@ fn rfc14_c04_workspace_prepare_branch_hidden_helper_returns_structured_json() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: ./alpha\n\
-         \x20\x20\x20\x20capability: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@v1\n",
     )
     .unwrap();
 
@@ -373,7 +373,7 @@ fn rfc14_c04_workspace_prepare_branch_surfaces_origin_head_diagnostic_key() {
          projects:\n\
          \x20\x20- name: alpha\n\
          \x20\x20\x20\x20url: ./alpha\n\
-         \x20\x20\x20\x20capability: omnia@v1\n",
+         \x20\x20\x20\x20adapter: omnia@v1\n",
     )
     .unwrap();
 
@@ -438,11 +438,11 @@ version: 1
 projects:
   - name: alpha
     url: .
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Root project
   - name: beta
     url: ../peer-proj
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Peer project
 ";
     fs::write(root.join("registry.yaml"), reg).expect("registry");

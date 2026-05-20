@@ -1,4 +1,4 @@
-# New capability: OAuth handler
+# New adapter: OAuth handler
 
 Creating a baseline from scratch via delta ADDED only.
 

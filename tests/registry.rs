@@ -51,7 +51,7 @@ fn init_hub_validate_rejects_dot_url() {
          projects:\n\
          \x20\x20- name: platform\n\
          \x20\x20\x20\x20url: .\n\
-         \x20\x20\x20\x20capability: hub\n",
+         \x20\x20\x20\x20adapter: hub\n",
     )
     .unwrap();
 
@@ -89,7 +89,7 @@ fn registry_add_round_trips_through_show() {
             "alpha",
             "--url",
             "git@github.com:augentic/alpha.git",
-            "--capability",
+            "--adapter",
             "omnia@v1",
             "--description",
             "Alpha service",
@@ -100,7 +100,7 @@ fn registry_add_round_trips_through_show() {
     assert!(value["error"].is_null(), "success envelope must omit error: {value}");
     assert_eq!(value["added"]["name"], "alpha");
     assert_eq!(value["added"]["url"], "git@github.com:augentic/alpha.git");
-    assert_eq!(value["added"]["capability"], "omnia@v1");
+    assert_eq!(value["added"]["adapter"], "omnia@v1");
     assert_eq!(value["added"]["description"], "Alpha service");
     assert_eq!(value["registry"]["projects"].as_array().unwrap().len(), 1);
 
@@ -132,7 +132,7 @@ fn registry_add_rejects_dot_url_in_hub_mode() {
             "self",
             "--url",
             ".",
-            "--capability",
+            "--adapter",
             "omnia@v1",
         ])
         .assert()
@@ -161,7 +161,7 @@ fn registry_add_rejects_non_kebab() {
             "BadName",
             "--url",
             "git@github.com:org/bad.git",
-            "--capability",
+            "--adapter",
             "omnia@v1",
         ])
         .assert()
@@ -193,7 +193,7 @@ fn registry_remove_succeeds_and_round_trips() {
                 name,
                 "--url",
                 url,
-                "--capability",
+                "--adapter",
                 "omnia@v1",
                 "--description",
                 &format!("{name} service"),
@@ -237,7 +237,7 @@ fn registry_remove_warns_on_plan_ref() {
                 name,
                 "--url",
                 url,
-                "--capability",
+                "--adapter",
                 "omnia@v1",
                 "--description",
                 &format!("{name} service"),
@@ -330,7 +330,7 @@ fn registry_load_from_tempdir() {
              projects:\n\
              \x20\x20- name: traffic\n\
              \x20\x20\x20\x20url: .\n\
-             \x20\x20\x20\x20capability: omnia@v1\n",
+             \x20\x20\x20\x20adapter: omnia@v1\n",
     )
     .expect("write registry.yaml");
 
@@ -340,7 +340,7 @@ fn registry_load_from_tempdir() {
     assert_eq!(loaded.projects.len(), 1);
     assert_eq!(loaded.projects[0].name, "traffic");
     assert_eq!(loaded.projects[0].url, ".");
-    assert_eq!(loaded.projects[0].capability, "omnia@v1");
+    assert_eq!(loaded.projects[0].adapter, "omnia@v1");
     assert!(loaded.is_single_repo());
 }
 
@@ -357,7 +357,7 @@ version: 1
 projects:
   - name: traffic
     url: .
-    capability: omnia@v1
+    adapter: omnia@v1
 ";
 
 const REGISTRY_THREE: &str = "\
@@ -365,15 +365,15 @@ version: 1
 projects:
   - name: monolith
     url: .
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Core monolith service
   - name: orders
     url: ../orders
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Order management service
   - name: payments
     url: git@github.com:org/payments.git
-    capability: omnia@v1
+    adapter: omnia@v1
     description: Payment processing service
 ";
 
@@ -417,7 +417,7 @@ fn registry_show_valid() {
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0]["name"], "traffic");
     assert_eq!(projects[0]["url"], ".");
-    assert_eq!(projects[0]["capability"], "omnia@v1");
+    assert_eq!(projects[0]["adapter"], "omnia@v1");
 }
 
 #[test]
@@ -428,7 +428,7 @@ fn registry_show_text_mode() {
     let assert =
         specify().current_dir(project.root()).args(["registry", "show"]).assert().success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
-    for fragment in ["version: 1", "name: traffic", "url: .", "capability: omnia@v1"] {
+    for fragment in ["version: 1", "name: traffic", "url: .", "adapter: omnia@v1"] {
         assert!(
             stdout.contains(fragment),
             "text show output should mention `{fragment}`, got:\n{stdout}"
@@ -535,10 +535,10 @@ version: 1
 projects:
   - name: dup
     url: .
-    capability: omnia@v1
+    adapter: omnia@v1
   - name: dup
     url: ../other
-    capability: omnia@v1
+    adapter: omnia@v1
 ",
     );
 
@@ -565,7 +565,7 @@ version: 1
 projects:
   - name: NotKebab
     url: .
-    capability: omnia@v1
+    adapter: omnia@v1
 ",
     );
 

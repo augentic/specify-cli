@@ -23,7 +23,7 @@ impl Fixture {
         );
         write_file(
             &project.join("registry.yaml"),
-            "version: 1\nprojects:\n  - name: backend\n    url: ../backend\n    capability: omnia@v1\n    description: Backend API producer.\n    contracts:\n      produces:\n        - http/user-api.yaml\n  - name: mobile\n    url: ../mobile\n    capability: vectis@v1\n    description: Mobile API consumer.\n    contracts:\n      consumes:\n        - http/user-api.yaml\n",
+            "version: 1\nprojects:\n  - name: backend\n    url: ../backend\n    adapter: omnia@v1\n    description: Backend API producer.\n    contracts:\n      produces:\n        - http/user-api.yaml\n  - name: mobile\n    url: ../mobile\n    adapter: vectis@v1\n    description: Mobile API consumer.\n    contracts:\n      consumes:\n        - http/user-api.yaml\n",
         );
         Self { _tmp: tmp, project }
     }

@@ -1,12 +1,12 @@
 //! Baseline-contract validation primitives. Owned by the contract
-//! capability's WASI carve-out: walks `contracts/` and enforces
+//! adapter's WASI carve-out: walks `contracts/` and enforces
 //! `version-is-semver`, `id-format`, and `id-unique` against each
 //! top-level `OpenAPI` / `AsyncAPI` document.
 //!
 //! Until the 2026-05 architecture pass these primitives lived in a
 //! shared `specify-validate` crate alongside the host CLI; collapsing
-//! them into the carve-out preserves the capability-extension
-//! invariant (a capability's logic is reachable from the host only
+//! them into the carve-out preserves the adapter-extension
+//! invariant (a adapter's logic is reachable from the host only
 //! through `specify tool run <name>`).
 
 use std::collections::HashMap;

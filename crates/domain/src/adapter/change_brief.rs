@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use specify_error::{Error, is_kebab};
 
-use crate::capability::brief::split_on_closing_delimiter;
+use crate::adapter::brief::split_on_closing_delimiter;
 
 /// Filename of the operator brief at the repo root.
 ///

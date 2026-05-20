@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
-use crate::capability::ValidationResult;
-use crate::capability::capability::validate_against_schema;
+use crate::adapter::ValidationResult;
+use crate::adapter::adapter::validate_against_schema;
 
 const CACHE_META_JSON_SCHEMA: &str = include_str!("../../../../schemas/cache-meta.schema.json");
 

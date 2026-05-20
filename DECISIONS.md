@@ -64,7 +64,7 @@ rule. Twelve historical one-site variants
 (`RegistryMissing`, `PlanNotFound`, `PlanStructural`,
 `CompatibilityCheckFailed`, `ContextDriftDetected`,
 `ContextWouldUpdate`, `ContextNoLock`, `ContextMissing`,
-`ContextUnfenced`, `ContextDrift`, `InitNeedsCapability`,
+`ContextUnfenced`, `ContextDrift`, `InitNeedsAdapter`,
 `WorkspacePushFailed`) collapsed to `Diag` under this policy with their
 kebab discriminants preserved.
 
@@ -101,14 +101,14 @@ above:
 - `slice outcome set <slice> <phase> registry-amendment-required`
   takes a single `--proposal '<json>'` instead of seven
   `--proposed-*` flags. Skills build the proposal as a JSON object
-  (`{"proposed-name": ..., "proposed-url": ..., "proposed-capability":
+  (`{"proposed-name": ..., "proposed-url": ..., "proposed-adapter":
   ..., "proposed-description": ..., "rationale": ...}`) and pass it
   verbatim. The on-disk `outcome.outcome.registry-amendment-required.*`
   shape and the `outcome.proposal` JSON returned by `slice outcome
   show` are unchanged.
-- `specify init` enforces the `<capability>` xor `--hub` invariant
+- `specify init` enforces the `<adapter>` xor `--hub` invariant
   through clap. The historical post-parse
-  `init-requires-capability-or-hub` envelope is gone on the CLI
+  `init-requires-adapter-or-hub` envelope is gone on the CLI
   surface; clap parse errors exit `2` with the standard "required
   arguments were not provided" / "the argument cannot be used with"
   diagnostics. The discriminant survives in the domain library
@@ -141,12 +141,12 @@ baseline-contract validation primitives (`ContractFinding`,
 `validate_baseline`) and was shared between `specify-domain` (for
 compatibility classification) and the `wasi-tools/contract` carve-out.
 The 2026-05 architecture-inversion pass collapsed it into the
-carve-out: a capability's validation logic belongs inside its WASI
+carve-out: a adapter's validation logic belongs inside its WASI
 tool, not as a `specify-*` workspace crate the host can link
 against. The host's `compatibility::classify_project` no longer
 short-circuits on contract baseline failures — operators run
 `specify tool run contract -- "$PWD/contracts"` as a pre-flight when
-they need that gate, identical to every other capability. The
+they need that gate, identical to every other adapter. The
 carve-out is now self-contained; `wasi-tools/Cargo.toml` no longer
 has a path bridge into the host workspace.
 
@@ -157,30 +157,30 @@ invariant the new crate enforces (i.e. which leaf-→-root edge it
 preserves, and which existing crate would have grown a cycle if the
 code had gone there). A new crate that does not strengthen the
 dependency direction is overhead; refactor within an existing module
-instead. Capability-specific logic never lands as a workspace crate
-— it lands in the capability's WASI carve-out.
+instead. Adapter-specific logic never lands as a workspace crate
+— it lands in the adapter's WASI carve-out.
 
 ## Tool architecture
 
 `specify-tool` owns the declared WASI tool model, cache, resolver, and
 Wasmtime-backed execution host. It is deliberately independent of
-`specify-capability`: the binary resolves capabilities, then hands this
-crate project-scope and capability-scope tool declarations.
+`specify-adapter`: the binary resolves adapters, then hands this
+crate project-scope and adapter-scope tool declarations.
 
 - **Declaration sites.** Tools are declared at *project scope* (a
   top-level `tools:` array in `.specify/project.yaml`) and / or
-  *capability scope* (a `tools.yaml` sidecar next to `capability.yaml`
-  inside the resolved capability directory). Both shapes share
+  *adapter scope* (a `tools.yaml` sidecar next to `adapter.yaml`
+  inside the resolved adapter directory). Both shapes share
   `schemas/tool.schema.json`. `specify tool` merges by `name`, with
   project scope winning on collision and a typed `tool-name-collision`
-  warning emitted once per session. `capability.yaml` itself is never
+  warning emitted once per session. `adapter.yaml` itself is never
   modified and never gains a `tools:` field.
 - **Cache layout.** The cache root resolves
   `$SPECIFY_TOOLS_CACHE` → `$XDG_CACHE_HOME/specify/tools/` →
   `$HOME/.cache/specify/tools/`. Within it, paths are
   `<scope-segment>/<tool-name>/<version>/{module.wasm,meta.yaml}` where
   `<scope-segment>` is `project--<project-name>` or
-  `capability--<capability-slug>`. The `--` separator avoids collisions
+  `adapter--<adapter-slug>`. The `--` separator avoids collisions
   with hyphenated tool names. `<version>` is the literal manifest
   string; SemVer is parsed only at structural validation time.
 - **Sidecar metadata.** `meta.yaml` records
@@ -193,18 +193,18 @@ crate project-scope and capability-scope tool declarations.
   evaluated per `run`).
 - **Permission substitution.** Substitutions apply only inside
   `permissions.{read,write}` entries (not `source`, not module argv).
-  `$PROJECT_DIR` is always available; `$CAPABILITY_DIR` is available
-  only to capability-scope tools — project-scope use is rejected as
-  `tool.capability-dir-out-of-scope`. After substitution paths must be
+  `$PROJECT_DIR` is always available; `$ADAPTER_DIR` is available
+  only to adapter-scope tools — project-scope use is rejected as
+  `tool.adapter-dir-out-of-scope`. After substitution paths must be
   absolute, free of `..`, and canonicalise inside `PROJECT_DIR`
-  (or `CAPABILITY_DIR` for capability-scope). `write:` entries that
+  (or `ADAPTER_DIR` for adapter-scope). `write:` entries that
   target Specify lifecycle state (`.specify/project.yaml`, slice /
   archive `.metadata.yaml`, `.specify/plan.lock`, etc.) are rejected.
 - **Argument forwarding and environment.** `specify tool run <name>
   [-- <args>...]` forwards everything after `--` verbatim with
   `<name>` as `argv[0]`. The module receives exactly two environment
-  variables — `PROJECT_DIR` always, `CAPABILITY_DIR` only for
-  capability-scope tools — plus stdio. No host environment is
+  variables — `PROJECT_DIR` always, `ADAPTER_DIR` only for
+  adapter-scope tools — plus stdio. No host environment is
   inherited. Working directory is the canonicalised project root.
 - **Exit-code mapping.** Module exit `0` → `0`; module exit `N`
   (1..=255) → `N`; runtime trap → `2` with a typed `runtime` envelope;

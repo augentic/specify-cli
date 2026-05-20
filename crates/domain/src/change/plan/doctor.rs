@@ -138,9 +138,9 @@ pub struct CloneSignature {
     /// `origin` for observed remote-backed slots.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    /// Capability identifier from the registry's `capability` field.
+    /// Adapter identifier from the registry's `adapter` field.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub capability: Option<String>,
+    pub adapter: Option<String>,
     /// Canonical filesystem target for symlink-backed slots.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,

@@ -6,8 +6,8 @@ This directory contains JSON Schemas and bundled workflow fixtures used by the `
 
 | Schema | Purpose |
 |---|---|
-| [`capability.schema.json`](capability.schema.json) | Validates a Specify capability manifest (`capability.yaml`) per RFC-13 §Capability manifest and protocol. |
-| [`brief/schema.json`](brief/schema.json) | Validates YAML frontmatter in capability brief markdown files. |
+| [`adapter.schema.json`](adapter.schema.json) | Validates a Specify adapter manifest (`adapter.yaml`) per RFC-13 §Adapter manifest and protocol. |
+| [`brief/schema.json`](brief/schema.json) | Validates YAML frontmatter in adapter brief markdown files. |
 | [`codex-rule.schema.json`](codex-rule.schema.json) | Validates YAML frontmatter in codex rule markdown files. |
 | [`plan/plan.schema.json`](plan/plan.schema.json) | Validates `plan.yaml` structure. |
 | [`plan-validate-output/schema.json`](plan-validate-output/schema.json) | Validates `specify plan validate --format json` output. |

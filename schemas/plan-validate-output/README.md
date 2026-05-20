@@ -40,7 +40,7 @@ The same `schema.json` is the source of truth for Rust-side CLI tests (`tests/pl
 - `project-not-in-registry` (error): a slice's `project` value does not match any `projects[].name` in the registry.
 - `project-missing-multi-repo` (error): when the registry has multiple projects, a slice is missing the required `project` field.
 - `description-missing-multi-repo` (error): when the registry has multiple projects, a project entry is missing the required `description` field.
-- `capability-mismatch-workspace` (warning): a workspace clone's `.specify/project.yaml` declares a different `capability` than the corresponding registry entry.
+- `adapter-mismatch-workspace` (warning): a workspace clone's `.specify/project.yaml` declares a different `adapter` than the corresponding registry entry.
 
 The four health diagnostics layer additional codes that carry an optional `data` payload describing the offending shape:
 

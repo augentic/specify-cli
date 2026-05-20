@@ -3,9 +3,7 @@ pub mod cli;
 use std::io::Write;
 
 use serde::Serialize;
-use specify_domain::capability::{
-    CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule,
-};
+use specify_domain::adapter::{CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule};
 use specify_error::{Error, Result, ValidationSummary};
 
 use self::cli::CodexAction;
@@ -19,7 +17,7 @@ pub fn run(ctx: &Ctx, action: CodexAction) -> Result<()> {
 }
 
 fn resolve(ctx: &Ctx) -> Result<ResolvedCodex> {
-    ResolvedCodex::resolve(&ctx.project_dir, ctx.config.capability.as_deref(), ctx.config.hub)
+    ResolvedCodex::resolve(&ctx.project_dir, ctx.config.adapter.as_deref(), ctx.config.hub)
 }
 
 /// Resolve the codex and either emit the export body or — when

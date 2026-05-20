@@ -1,15 +1,15 @@
 //! Codex rule frontmatter + body parsing — validates one markdown rule
 //! file at a time. Project-aware resolution and duplicate-id checks
-//! layer on top in [`crate::capability::codex_resolver`].
+//! layer on top in [`crate::adapter::codex_resolver`].
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::{Error, ValidationStatus, ValidationSummary};
 
-use crate::capability::ValidationResult;
-use crate::capability::brief::split_on_closing_delimiter;
-use crate::capability::capability::validate_against_schema;
+use crate::adapter::ValidationResult;
+use crate::adapter::adapter::validate_against_schema;
+use crate::adapter::brief::split_on_closing_delimiter;
 
 const CODEX_RULE_JSON_SCHEMA: &str = include_str!("../../../../schemas/codex-rule.schema.json");
 

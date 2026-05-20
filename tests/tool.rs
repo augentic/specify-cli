@@ -43,21 +43,21 @@ impl ToolFixtures {
     fn new() -> Self {
         let tmp = tempdir().expect("tempdir");
         let root = tmp.path().to_path_buf();
-        for name in ["tools-test-project", "tools-test-cap", "tools-test-project-cap"] {
+        for name in ["tools-test-project", "tools-test-adp", "tools-test-project-adp"] {
             copy_dir(&fixtures_root().join(name), &root.join(name));
         }
         for path in [
             root.join("tools-test-project/.specify/project.yaml"),
-            root.join("tools-test-cap/tools.yaml"),
-            root.join("tools-test-project-cap/.specify/project.yaml"),
+            root.join("tools-test-adp/tools.yaml"),
+            root.join("tools-test-project-adp/.specify/project.yaml"),
         ] {
             let text = fs::read_to_string(&path).expect("read fixture manifest");
             fs::write(&path, text.replace("/__SPECIFY_FIXTURE_ROOT__", &root.to_string_lossy()))
                 .expect("write materialized manifest");
         }
         copy_dir(
-            &root.join("tools-test-cap"),
-            &root.join("tools-test-project-cap/schemas/tools-test-cap"),
+            &root.join("tools-test-adp"),
+            &root.join("tools-test-project-adp/schemas/tools-test-adp"),
         );
         Self { _tmp: tmp, root }
     }
@@ -67,11 +67,11 @@ impl ToolFixtures {
     }
 
     fn cap_project(&self) -> PathBuf {
-        self.root.join("tools-test-project-cap")
+        self.root.join("tools-test-project-adp")
     }
 
-    fn capability(&self) -> PathBuf {
-        self.cap_project().join("schemas/tools-test-cap")
+    fn adapter(&self) -> PathBuf {
+        self.cap_project().join("schemas/tools-test-adp")
     }
 
     fn project_wasm(&self, name: &str) -> PathBuf {
@@ -79,7 +79,7 @@ impl ToolFixtures {
     }
 
     fn cap_wasm(&self, name: &str) -> PathBuf {
-        self.capability().join("wasm").join(format!("{name}.wasm"))
+        self.adapter().join("wasm").join(format!("{name}.wasm"))
     }
 }
 
@@ -115,9 +115,8 @@ fn project_manifest(tools: &str) -> String {
     format!("name: tools-test\nhub: true\ntools:\n{tools}")
 }
 
-fn capability_project_manifest(tools: Option<&str>) -> String {
-    let mut yaml =
-        "name: tools-test-project-cap\ncapability: tools-test-cap\nrules: {}\n".to_string();
+fn adapter_project_manifest(tools: Option<&str>) -> String {
+    let mut yaml = "name: tools-test-project-adp\nadapter: tools-test-adp\nrules: {}\n".to_string();
     if let Some(tools) = tools {
         yaml.push_str("tools:\n");
         yaml.push_str(tools);
@@ -129,8 +128,8 @@ fn write_project_manifest(project: &Path, yaml: &str) {
     fs::write(project.join(".specify/project.yaml"), yaml).expect("write project.yaml");
 }
 
-fn write_capability_tools(capability: &Path, tools: &str) {
-    fs::write(capability.join("tools.yaml"), format!("tools:\n{tools}")).expect("write tools.yaml");
+fn write_adapter_tools(adapter: &Path, tools: &str) {
+    fs::write(adapter.join("tools.yaml"), format!("tools:\n{tools}")).expect("write tools.yaml");
 }
 
 fn json_tool_list(project: &Path, cache: &Path) -> Value {
@@ -229,18 +228,18 @@ fn scalar_package_declaration_lists_derived_fields() {
 }
 
 #[test]
-fn capability_scope_lists_sidecar_tool() {
+fn adapter_scope_lists_sidecar_tool() {
     let fixtures = ToolFixtures::new();
-    let cap_yaml = fs::read_to_string(fixtures.capability().join("capability.yaml"))
-        .expect("read capability.yaml");
-    assert!(!cap_yaml.contains("\ntools:"), "capability.yaml must stay closed");
+    let cap_yaml =
+        fs::read_to_string(fixtures.adapter().join("adapter.yaml")).expect("read adapter.yaml");
+    assert!(!cap_yaml.contains("\ntools:"), "adapter.yaml must stay closed");
 
-    let value = json_tool_list(&fixtures.cap_project(), &cache_dir("capability-list"));
+    let value = json_tool_list(&fixtures.cap_project(), &cache_dir("adapter-list"));
     let tools = value["tools"].as_array().expect("tools array");
     assert_eq!(tools.len(), 1, "{value}");
     assert_eq!(tools[0]["name"], "exit-seven");
-    assert_eq!(tools[0]["scope"], "capability");
-    assert_eq!(tools[0]["scope-detail"], "tools-test-cap");
+    assert_eq!(tools[0]["scope"], "adapter");
+    assert_eq!(tools[0]["scope-detail"], "tools-test-adp");
 }
 
 #[test]
@@ -280,9 +279,9 @@ fn project_manifest_validation_reports_rule_ids() {
                 "0.1.0",
                 &source,
                 None,
-                Some("    permissions:\n      read:\n        - \"$CAPABILITY_DIR/templates\"\n"),
+                Some("    permissions:\n      read:\n        - \"$ADAPTER_DIR/templates\"\n"),
             ),
-            "tool.capability-dir-out-of-scope",
+            "tool.adapter-dir-out-of-scope",
         ),
     ];
 
@@ -294,9 +293,9 @@ fn project_manifest_validation_reports_rule_ids() {
 }
 
 #[test]
-fn capability_manifest_reports_sidecar_rules() {
+fn adapter_manifest_reports_sidecar_rules() {
     let fixtures = ToolFixtures::new();
-    let cache = cache_dir("capability-validation");
+    let cache = cache_dir("adapter-validation");
     let cases = [
         (tool_entry("exit-seven", "0.1.0", "https://", None, None), "tool.source-is-supported-uri"),
         (
@@ -312,12 +311,12 @@ fn capability_manifest_reports_sidecar_rules() {
     ];
 
     for (entry, rule_id) in cases {
-        write_capability_tools(&fixtures.capability(), &entry);
+        write_adapter_tools(&fixtures.adapter(), &entry);
         let value = run_json_failure(&fixtures.cap_project(), &cache, &["tool", "list"], 2);
         assert_validation_rule(&value, rule_id);
-        let cap_yaml = fs::read_to_string(fixtures.capability().join("capability.yaml"))
-            .expect("read capability.yaml");
-        assert!(!cap_yaml.contains("\ntools:"), "sidecar mutation must not touch capability.yaml");
+        let cap_yaml =
+            fs::read_to_string(fixtures.adapter().join("adapter.yaml")).expect("read adapter.yaml");
+        assert!(!cap_yaml.contains("\ntools:"), "sidecar mutation must not touch adapter.yaml");
     }
 }
 
@@ -338,7 +337,7 @@ fn cache_miss_hit_and_override_observable() {
         .success();
     let stdout = String::from_utf8(first.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(stdout.contains("echo: hello world"), "{stdout}");
-    assert!(stdout.contains("CAPABILITY_DIR=<unset>"), "{stdout}");
+    assert!(stdout.contains("ADAPTER_DIR=<unset>"), "{stdout}");
     assert!(stdout.contains("PATH=<unset>"), "{stdout}");
 
     let sidecar = cache.join("project--tools-test/echo/0.1.0/meta.yaml");
@@ -515,7 +514,7 @@ fn denied_fs_and_lifecycle_fail_before_guest() {
 }
 
 #[test]
-fn capability_non_zero_exit_caches_by_scope() {
+fn adapter_non_zero_exit_caches_by_scope() {
     let fixtures = ToolFixtures::new();
     let cache = cache_dir("exit-seven");
     let assert = specify()
@@ -525,7 +524,7 @@ fn capability_non_zero_exit_caches_by_scope() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(7));
-    assert!(cache.join("capability--tools-test-cap/exit-seven/0.1.0/module.wasm").is_file());
+    assert!(cache.join("adapter--tools-test-adp/exit-seven/0.1.0/module.wasm").is_file());
 }
 
 #[test]
@@ -539,8 +538,8 @@ fn name_collision_project_scope_wins() {
         tool_entry("echo", "0.1.0", &file_uri(&fixtures.cap_wasm("exit-seven")), None, None);
     let cap_exit =
         tool_entry("exit-seven", "0.1.0", &file_uri(&fixtures.cap_wasm("exit-seven")), None, None);
-    write_project_manifest(&project, &capability_project_manifest(Some(&project_echo)));
-    write_capability_tools(&fixtures.capability(), &format!("{cap_echo}{cap_exit}"));
+    write_project_manifest(&project, &adapter_project_manifest(Some(&project_echo)));
+    write_adapter_tools(&fixtures.adapter(), &format!("{cap_echo}{cap_exit}"));
 
     let value = json_tool_list(&project, &cache);
     let warnings = value["warnings"].as_array().expect("warnings array");

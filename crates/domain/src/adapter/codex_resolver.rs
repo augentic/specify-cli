@@ -10,11 +10,11 @@ use std::path::{Component, Path, PathBuf};
 use serde::Serialize;
 use specify_error::{Error, ValidationStatus, ValidationSummary};
 
-use crate::capability::capability::Capability;
-use crate::capability::codex::CodexRule;
+use crate::adapter::adapter::Adapter;
+use crate::adapter::codex::CodexRule;
 
-/// Foundational capability name resolved before the project capability.
-pub const DEFAULT_CODEX_CAPABILITY: &str = "default";
+/// Foundational adapter name resolved before the project adapter.
+pub const DEFAULT_CODEX_ADAPTER: &str = "default";
 
 /// Conventional directory containing codex rule markdown files.
 pub const CODEX_DIR_NAME: &str = "codex";
@@ -41,11 +41,11 @@ pub struct ResolvedCodexRule {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum CodexProvenance {
-    /// Rule came from a capability's `codex/` tree.
-    Capability {
-        /// Capability manifest name.
+    /// Rule came from a adapter's `codex/` tree.
+    Adapter {
+        /// Adapter manifest name.
         name: String,
-        /// Capability manifest version.
+        /// Adapter manifest version.
         version: u32,
     },
     /// Rule came from a future shared catalog codex source.
@@ -70,7 +70,7 @@ pub struct CodexCatalogSource {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexResolver {
     project_dir: PathBuf,
-    project_capability: Option<String>,
+    project_adapter: Option<String>,
     hub: bool,
     catalogs: Vec<CodexCatalogSource>,
 }
@@ -80,27 +80,23 @@ impl ResolvedCodex {
     ///
     /// # Errors
     ///
-    /// Returns an error if a capability cannot be resolved, a rule file
+    /// Returns an error if a adapter cannot be resolved, a rule file
     /// is invalid, or duplicate rule ids are found in the resolved set.
     pub fn resolve(
-        project_dir: &Path, project_capability: Option<&str>, hub: bool,
+        project_dir: &Path, project_adapter: Option<&str>, hub: bool,
     ) -> Result<Self, Error> {
-        CodexResolver::new(
-            project_dir.to_path_buf(),
-            project_capability.map(ToOwned::to_owned),
-            hub,
-        )
-        .resolve()
+        CodexResolver::new(project_dir.to_path_buf(), project_adapter.map(ToOwned::to_owned), hub)
+            .resolve()
     }
 }
 
 impl CodexResolver {
     /// Create a resolver for a project.
     #[must_use]
-    pub const fn new(project_dir: PathBuf, project_capability: Option<String>, hub: bool) -> Self {
+    pub const fn new(project_dir: PathBuf, project_adapter: Option<String>, hub: bool) -> Self {
         Self {
             project_dir,
-            project_capability,
+            project_adapter,
             hub,
             catalogs: Vec::new(),
         }
@@ -120,8 +116,8 @@ impl CodexResolver {
     ///
     /// Source order is always:
     ///
-    /// 1. foundational `default` capability,
-    /// 2. project capability, unless this is a hub or it resolves to the
+    /// 1. foundational `default` adapter,
+    /// 2. project adapter, unless this is a hub or it resolves to the
     ///    same root as `default`,
     /// 3. shared catalog hook sources,
     /// 4. repo-root `codex/` overlay.
@@ -133,17 +129,17 @@ impl CodexResolver {
     pub fn resolve(&self) -> Result<ResolvedCodex, Error> {
         let default = resolve_default(&self.project_dir)?;
         let default_root = default.root_dir.clone();
-        let mut rules = load_capability_rules(&default)?;
+        let mut rules = load_adapter_rules(&default)?;
 
-        if let Some(capability) = self.project_capability.as_deref() {
-            let project = Capability::resolve(capability, &self.project_dir)?;
+        if let Some(adapter) = self.project_adapter.as_deref() {
+            let project = Adapter::resolve(adapter, &self.project_dir)?;
             if project.root_dir != default_root {
-                rules.extend(load_capability_rules(&project)?);
+                rules.extend(load_adapter_rules(&project)?);
             }
         } else if !self.hub {
             return Err(Error::Diag {
-                code: "codex-project-capability-missing",
-                detail: "non-hub projects must declare a capability".to_string(),
+                code: "codex-project-adapter-missing",
+                detail: "non-hub projects must declare a adapter".to_string(),
             });
         }
 
@@ -163,24 +159,22 @@ impl CodexResolver {
 impl fmt::Display for CodexProvenance {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Capability { name, version } => write!(f, "capability {name}@v{version}"),
+            Self::Adapter { name, version } => write!(f, "adapter {name}@v{version}"),
             Self::Catalog { name } => write!(f, "catalog {name}"),
             Self::Repo => f.write_str("repo overlay"),
         }
     }
 }
 
-fn resolve_default(
-    project_dir: &Path,
-) -> Result<crate::capability::capability::ResolvedCapability, Error> {
-    match Capability::resolve(DEFAULT_CODEX_CAPABILITY, project_dir) {
-        Ok(capability) => Ok(capability),
+fn resolve_default(project_dir: &Path) -> Result<crate::adapter::adapter::ResolvedAdapter, Error> {
+    match Adapter::resolve(DEFAULT_CODEX_ADAPTER, project_dir) {
+        Ok(adapter) => Ok(adapter),
         Err(err @ Error::Diag { .. }) => {
             let detail = err.to_string();
             Err(Error::Diag {
-                code: "codex-default-capability-unavailable",
+                code: "codex-default-adapter-unavailable",
                 detail: format!(
-                    "foundational `{DEFAULT_CODEX_CAPABILITY}` capability could not be resolved: \
+                    "foundational `{DEFAULT_CODEX_ADAPTER}` adapter could not be resolved: \
                      {detail}"
                 ),
             })
@@ -189,14 +183,14 @@ fn resolve_default(
     }
 }
 
-fn load_capability_rules(
-    capability: &crate::capability::capability::ResolvedCapability,
+fn load_adapter_rules(
+    adapter: &crate::adapter::adapter::ResolvedAdapter,
 ) -> Result<Vec<ResolvedCodexRule>, Error> {
-    let provenance = CodexProvenance::Capability {
-        name: capability.manifest.name.clone(),
-        version: capability.manifest.version,
+    let provenance = CodexProvenance::Adapter {
+        name: adapter.manifest.name.clone(),
+        version: adapter.manifest.version,
     };
-    load_rules(&capability.root_dir, &provenance)
+    load_rules(&adapter.root_dir, &provenance)
 }
 
 fn load_rules(

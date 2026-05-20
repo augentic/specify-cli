@@ -33,20 +33,18 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
             sources,
             description,
             project,
-            capability,
+            adapter,
             context,
-        } => create::add(ctx, name, depends_on, sources, description, project, capability, context),
+        } => create::add(ctx, name, depends_on, sources, description, project, adapter, context),
         PlanAction::Amend {
             name,
             depends_on,
             sources,
             description,
             project,
-            capability,
+            adapter,
             context,
-        } => {
-            create::amend(ctx, name, depends_on, sources, description, project, capability, context)
-        }
+        } => create::amend(ctx, name, depends_on, sources, description, project, adapter, context),
         PlanAction::Transition { name, target, reason } => {
             lifecycle::transition(ctx, name, target, reason)
         }

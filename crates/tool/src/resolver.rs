@@ -1,5 +1,5 @@
 //! Source resolution for local paths, `file:` URIs, `https:` URIs,
-//! `$PROJECT_DIR`/`$CAPABILITY_DIR` template paths, and wasm-pkg
+//! `$PROJECT_DIR`/`$ADAPTER_DIR` template paths, and wasm-pkg
 //! package requests.
 
 use std::ffi::OsStr;
@@ -90,13 +90,13 @@ pub(crate) fn resolve_with(
         .tempdir_in(parent)
         .map_err(|err| ToolError::cache_io("create resolver staging directory", parent, err))?
         .keep();
-    let capability_dir = match scope {
-        ToolScope::Capability { capability_dir, .. } => Some(capability_dir.as_path()),
+    let adapter_dir = match scope {
+        ToolScope::Adapter { adapter_dir, .. } => Some(adapter_dir.as_path()),
         ToolScope::Project { .. } => None,
     };
     let expanded_source = tool
         .source
-        .expand(project_dir, capability_dir)
+        .expand(project_dir, adapter_dir)
         .map_err(|reason| ToolError::invalid_source(tool.source.to_wire_string(), reason))?;
     let install_result = stage_and_install(
         scope,
@@ -213,7 +213,7 @@ mod tests {
     use crate::manifest::{PackageRequest, ToolSource};
     use crate::package::{PackageClient, PackageMetadata};
     use crate::test_support::{
-        cache_env, cached_bytes, capability_scope, fixed_now, project_scope, scratch_dir, tool,
+        adapter_scope, cache_env, cached_bytes, fixed_now, project_scope, scratch_dir, tool,
         write_source,
     };
 
@@ -264,25 +264,25 @@ mod tests {
     }
 
     #[test]
-    fn project_and_capability_scopes_have_isolated_cache_dirs() {
+    fn project_and_adapter_scopes_have_isolated_cache_dirs() {
         let cache_dir = scratch_dir("resolver-scope-cache");
         let project_dir = scratch_dir("resolver-scope-project");
         let source_dir = scratch_dir("resolver-scope-source");
-        let capability_dir = scratch_dir("resolver-capability");
+        let adapter_dir = scratch_dir("resolver-adapter");
         let source = write_source(&source_dir, "module.wasm", b"same");
         let project = project_scope();
-        let capability = capability_scope(&capability_dir);
+        let adapter = adapter_scope(&adapter_dir);
         let declared = tool(ToolSource::LocalPath(source), None);
 
         let _env = cache_env(&cache_dir);
 
         let project_resolved =
             resolve(&project, &declared, fixed_now(), &project_dir).expect("project resolve");
-        let capability_resolved =
-            resolve(&capability, &declared, fixed_now(), &project_dir).expect("capability resolve");
-        assert_ne!(project_resolved.bytes_path, capability_resolved.bytes_path);
+        let adapter_resolved =
+            resolve(&adapter, &declared, fixed_now(), &project_dir).expect("adapter resolve");
+        assert_ne!(project_resolved.bytes_path, adapter_resolved.bytes_path);
         assert!(project_resolved.bytes_path.to_string_lossy().contains("project--demo"));
-        assert!(capability_resolved.bytes_path.to_string_lossy().contains("capability--contracts"));
+        assert!(adapter_resolved.bytes_path.to_string_lossy().contains("adapter--contracts"));
     }
 
     #[test]

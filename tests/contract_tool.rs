@@ -22,27 +22,27 @@ impl ContractToolFixture {
     fn new() -> Self {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
-        let capability = project.join("schemas/contracts");
+        let adapter = project.join("schemas/contracts");
         fs::create_dir_all(project.join(".specify")).expect("create .specify");
         fs::create_dir_all(project.join("contracts/http")).expect("create contracts");
-        fs::create_dir_all(&capability).expect("create capability");
+        fs::create_dir_all(&adapter).expect("create adapter");
 
         fs::write(
             project.join(".specify/project.yaml"),
-            "name: contract-tool-test\ncapability: contracts\nrules: {}\n",
+            "name: contract-tool-test\nadapter: contracts\nrules: {}\n",
         )
         .expect("write project.yaml");
         fs::write(
-            capability.join("capability.yaml"),
-            "name: contracts\nversion: 1\ndescription: Test contracts capability\npipeline:\n  define: []\n  build: []\n  merge: []\n",
+            adapter.join("adapter.yaml"),
+            "name: contracts\nversion: 1\ndescription: Test contracts adapter\npipeline:\n  define: []\n  build: []\n  merge: []\n",
         )
-        .expect("write capability.yaml");
+        .expect("write adapter.yaml");
 
         let wasm = contract_wasm();
         let source = format!("file://{}", wasm.display());
         let sha256 = sha256_hex(&wasm);
         fs::write(
-            capability.join("tools.yaml"),
+            adapter.join("tools.yaml"),
             format!(
                 "tools:\n  - name: contract\n    version: 0.2.0\n    source: \"{source}\"\n    sha256: \"{sha256}\"\n    permissions:\n      read:\n        - \"$PROJECT_DIR/contracts\"\n      write: []\n"
             ),
@@ -70,7 +70,7 @@ impl ContractToolFixture {
 }
 
 #[test]
-fn lists_from_capability_sidecar() {
+fn lists_from_adapter_sidecar() {
     let fixture = ContractToolFixture::new();
 
     let assert = specify()
@@ -84,7 +84,7 @@ fn lists_from_capability_sidecar() {
     assert_eq!(tools.len(), 1, "{value}");
     assert_eq!(tools[0]["name"], "contract");
     assert_eq!(tools[0]["version"], "0.2.0");
-    assert_eq!(tools[0]["scope"], "capability");
+    assert_eq!(tools[0]["scope"], "adapter");
     assert_eq!(tools[0]["scope-detail"], "contracts");
 }
 

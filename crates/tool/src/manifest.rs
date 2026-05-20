@@ -35,7 +35,7 @@ pub enum ToolSource {
     HttpsUri(String),
     /// Exact wasm-pkg package request.
     Package(PackageRequest),
-    /// Template path starting with `$PROJECT_DIR` or `$CAPABILITY_DIR`.
+    /// Template path starting with `$PROJECT_DIR` or `$ADAPTER_DIR`.
     /// Expanded to a [`LocalPath`](Self::LocalPath) at resolution time
     /// when the project directory is known.
     TemplatePath(String),
@@ -72,7 +72,7 @@ impl ToolSource {
             Ok(Self::Package(PackageRequest::parse(value)))
         } else {
             Err(format!(
-                "unsupported tool source `{value}`; expected an absolute path, file:// URI, https:// URI, $PROJECT_DIR/$CAPABILITY_DIR template, or wasm package request"
+                "unsupported tool source `{value}`; expected an absolute path, file:// URI, https:// URI, $PROJECT_DIR/$ADAPTER_DIR template, or wasm package request"
             ))
         }
     }
@@ -89,29 +89,27 @@ impl ToolSource {
     }
 
     /// Expand a [`TemplatePath`](Self::TemplatePath) into a [`LocalPath`](Self::LocalPath)
-    /// by substituting `$PROJECT_DIR` and `$CAPABILITY_DIR`.
+    /// by substituting `$PROJECT_DIR` and `$ADAPTER_DIR`.
     ///
     /// Non-template variants are returned unchanged.
     ///
     /// # Errors
     ///
-    /// Returns an error when the template references `$CAPABILITY_DIR` but
-    /// no capability directory is provided, when the expanded path is not
+    /// Returns an error when the template references `$ADAPTER_DIR` but
+    /// no adapter directory is provided, when the expanded path is not
     /// absolute, or when the root directory is not valid UTF-8.
-    pub fn expand(
-        &self, project_dir: &Path, capability_dir: Option<&Path>,
-    ) -> Result<Self, String> {
+    pub fn expand(&self, project_dir: &Path, adapter_dir: Option<&Path>) -> Result<Self, String> {
         let Self::TemplatePath(template) = self else {
             return Ok(self.clone());
         };
         let project = project_dir.to_str().ok_or("$PROJECT_DIR contains non-UTF-8 bytes")?;
         let mut expanded = template.replace("$PROJECT_DIR", project);
-        if expanded.contains("$CAPABILITY_DIR") {
-            let capability = capability_dir
-                .ok_or("$CAPABILITY_DIR is only available to capability-scope tools")?
+        if expanded.contains("$ADAPTER_DIR") {
+            let adapter = adapter_dir
+                .ok_or("$ADAPTER_DIR is only available to adapter-scope tools")?
                 .to_str()
-                .ok_or("$CAPABILITY_DIR contains non-UTF-8 bytes")?;
-            expanded = expanded.replace("$CAPABILITY_DIR", capability);
+                .ok_or("$ADAPTER_DIR contains non-UTF-8 bytes")?;
+            expanded = expanded.replace("$ADAPTER_DIR", adapter);
         }
         let path = PathBuf::from(&expanded);
         if !path.is_absolute() {
@@ -244,7 +242,7 @@ pub fn first_party_permissions(package: &PackageRequest) -> Option<ToolPermissio
             write: Vec::new(),
         }),
         "vectis" => Some(ToolPermissions {
-            read: vec!["$PROJECT_DIR".to_string(), "$CAPABILITY_DIR".to_string()],
+            read: vec!["$PROJECT_DIR".to_string(), "$ADAPTER_DIR".to_string()],
             write: vec!["$PROJECT_DIR".to_string()],
         }),
         _ => None,
@@ -272,12 +270,12 @@ pub enum ToolScope {
         /// Project name from `project.yaml`.
         project_name: String,
     },
-    /// Tool declared in a resolved capability's sidecar `tools.yaml`.
-    Capability {
-        /// Capability slug from `capability.yaml`.
-        capability_slug: String,
-        /// Resolved capability directory.
-        capability_dir: PathBuf,
+    /// Tool declared in a resolved adapter's sidecar `tools.yaml`.
+    Adapter {
+        /// Adapter slug from `adapter.yaml`.
+        adapter_slug: String,
+        /// Resolved adapter directory.
+        adapter_dir: PathBuf,
     },
 }
 
@@ -299,8 +297,7 @@ fn looks_like_package_request(value: &str) -> bool {
 }
 
 fn looks_like_template_path(value: &str) -> bool {
-    is_template_var_prefix(value, "$PROJECT_DIR")
-        || is_template_var_prefix(value, "$CAPABILITY_DIR")
+    is_template_var_prefix(value, "$PROJECT_DIR") || is_template_var_prefix(value, "$ADAPTER_DIR")
 }
 
 fn is_template_var_prefix(value: &str, var: &str) -> bool {
@@ -431,17 +428,17 @@ mod tests {
     }
 
     #[test]
-    fn expand_replaces_capability_dir() {
-        let source = ToolSource::TemplatePath("$CAPABILITY_DIR/bin/tool.wasm".to_string());
+    fn expand_replaces_adapter_dir() {
+        let source = ToolSource::TemplatePath("$ADAPTER_DIR/bin/tool.wasm".to_string());
         let expanded =
             source.expand(Path::new("/project"), Some(Path::new("/caps/vectis"))).expect("expand");
         assert_eq!(expanded, ToolSource::LocalPath(PathBuf::from("/caps/vectis/bin/tool.wasm")));
     }
 
     #[test]
-    fn expand_rejects_capability_dir_without_scope() {
-        let source = ToolSource::TemplatePath("$CAPABILITY_DIR/bin/tool.wasm".to_string());
-        source.expand(Path::new("/project"), None).expect_err("must reject missing capability dir");
+    fn expand_rejects_adapter_dir_without_scope() {
+        let source = ToolSource::TemplatePath("$ADAPTER_DIR/bin/tool.wasm".to_string());
+        source.expand(Path::new("/project"), None).expect_err("must reject missing adapter dir");
     }
 
     #[test]
@@ -454,10 +451,10 @@ mod tests {
     #[test]
     fn template_detection_requires_boundary_after_variable() {
         assert!(!looks_like_template_path("$PROJECT_DIRX/foo.wasm"));
-        assert!(!looks_like_template_path("$CAPABILITY_DIRX/foo.wasm"));
+        assert!(!looks_like_template_path("$ADAPTER_DIRX/foo.wasm"));
         assert!(looks_like_template_path("$PROJECT_DIR/foo.wasm"));
-        assert!(looks_like_template_path("$CAPABILITY_DIR/foo.wasm"));
+        assert!(looks_like_template_path("$ADAPTER_DIR/foo.wasm"));
         assert!(looks_like_template_path("$PROJECT_DIR"));
-        assert!(looks_like_template_path("$CAPABILITY_DIR"));
+        assert!(looks_like_template_path("$ADAPTER_DIR"));
     }
 }

@@ -12,10 +12,10 @@ fn project_scope() -> ToolScope {
     }
 }
 
-fn capability_scope() -> ToolScope {
-    ToolScope::Capability {
-        capability_slug: "contracts".to_string(),
-        capability_dir: PathBuf::from("/capabilities/contracts"),
+fn adapter_scope() -> ToolScope {
+    ToolScope::Adapter {
+        adapter_slug: "contracts".to_string(),
+        adapter_dir: PathBuf::from("/adapters/contracts"),
     }
 }
 
@@ -83,10 +83,7 @@ fn cache_root_uses_home_when_no_explicit_env() {
 #[test]
 fn scope_segment_formats_and_rejects_empty_names() {
     assert_eq!(scope_segment(&project_scope()).expect("project segment"), "project--demo");
-    assert_eq!(
-        scope_segment(&capability_scope()).expect("capability segment"),
-        "capability--contracts"
-    );
+    assert_eq!(scope_segment(&adapter_scope()).expect("adapter segment"), "adapter--contracts");
     let empty = ToolScope::Project {
         project_name: String::new(),
     };
@@ -210,8 +207,8 @@ fn scan_for_gc_isolates_scope_and_uses_name_version_source_keep_set() {
         "1.1.0",
         "https://example.test/contract-new.wasm",
     );
-    let stale_capability = write_cached_version(
-        &capability_scope(),
+    let stale_adapter = write_cached_version(
+        &adapter_scope(),
         "contract",
         "1.0.0",
         "https://example.test/contract.wasm",
@@ -227,6 +224,6 @@ fn scan_for_gc_isolates_scope_and_uses_name_version_source_keep_set() {
     assert_eq!(project_gc, vec![stale_project]);
     assert!(kept_project.exists());
 
-    let capability_gc = scan_for_gc(&capability_scope(), &HashSet::new()).expect("capability gc");
-    assert_eq!(capability_gc, vec![stale_capability]);
+    let adapter_gc = scan_for_gc(&adapter_scope(), &HashSet::new()).expect("adapter gc");
+    assert_eq!(adapter_gc, vec![stale_adapter]);
 }

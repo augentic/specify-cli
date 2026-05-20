@@ -64,7 +64,7 @@ target/vectis-wasi-tools/release/vectis.wasm.sha256
 target/vectis-wasi-tools/release/SHA256SUMS
 ```
 
-To smoke-test a capability before release, add a project-scope object declaration in `.specify/project.yaml` that keeps the capability's tool name and permissions but overrides `source` to a local `file://` or absolute path. Include a matching `sha256` value if you want cache verification; otherwise omit `sha256` for rapid rebuilds and run `specify tool gc` when switching bytes without changing the declaration tuple. For package-path smoke tests, publish a unique prerelease package such as `specify:vectis@${VERSION}-dev.${RUN_ID}` and point a local `tools.yaml` override at that package.
+To smoke-test a adapter before release, add a project-scope object declaration in `.specify/project.yaml` that keeps the adapter's tool name and permissions but overrides `source` to a local `file://` or absolute path. Include a matching `sha256` value if you want cache verification; otherwise omit `sha256` for rapid rebuilds and run `specify tool gc` when switching bytes without changing the declaration tuple. For package-path smoke tests, publish a unique prerelease package such as `specify:vectis@${VERSION}-dev.${RUN_ID}` and point a local `tools.yaml` override at that package.
 
 ## Updating the Homebrew formula
 

@@ -13,7 +13,7 @@ specify-domain                   # depends on specify-{error,tool} (every other 
 specify (root crate)             # wires every workspace crate above into the CLI binary
 ```
 
-WASI tools live in the sibling workspace at `wasi-tools/` (`wasi-tools/contract`, `wasi-tools/vectis`) and are carved out of the host workspace's discipline. Both carve-outs are self-contained — capability-specific validation, scaffold, and rendering logic lives inside the carve-out and the host CLI consumes it only through `specify tool run <name>`.
+WASI tools live in the sibling workspace at `wasi-tools/` (`wasi-tools/contract`, `wasi-tools/vectis`) and are carved out of the host workspace's discipline. Both carve-outs are self-contained — adapter-specific validation, scaffold, and rendering logic lives inside the carve-out and the host CLI consumes it only through `specify tool run <name>`.
 
 ## Exit codes
 

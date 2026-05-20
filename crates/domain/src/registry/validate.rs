@@ -58,11 +58,11 @@ impl Registry {
                 });
             }
             validate_project_url(&project.url, idx, &project.name)?;
-            if project.capability.is_empty() {
+            if project.adapter.is_empty() {
                 return Err(Error::Diag {
-                    code: "registry-project-capability-empty",
+                    code: "registry-project-adapter-empty",
                     detail: format!(
-                        "registry.yaml: projects[{idx}] (`{}`).capability is empty",
+                        "registry.yaml: projects[{idx}] (`{}`).adapter is empty",
                         project.name
                     ),
                 });

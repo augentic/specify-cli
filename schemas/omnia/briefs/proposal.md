@@ -20,7 +20,7 @@ Sections:
   - **Manual**: Requirements are described directly in this proposal.
     This is the default workflow — specs and design are written by hand.
 - **What Changes**: Bullet list of changes. Be specific about new
-  capabilities, modifications, or removals. Mark breaking changes with
+  adapters, modifications, or removals. Mark breaking changes with
   **BREAKING**.
 - **Crates**: Identify which specs will be created or modified:
   - **New Crates**: List crates being introduced. Each
@@ -60,7 +60,7 @@ This is the foundation - specs, design, and tasks all build on this.
 
 ## What Changes
 
-<!-- Describe what will change. Be specific about new capabilities or modifications. -->
+<!-- Describe what will change. Be specific about new adapters or modifications. -->
 
 ## Crates
 

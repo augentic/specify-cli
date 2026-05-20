@@ -14,7 +14,7 @@ use crate::manifest::ToolScope;
 /// Return version directories under `scope` not referenced by `kept`.
 ///
 /// The keep-set tuple is `(tool-name, tool-version, source)`. The scan is
-/// limited to the supplied scope segment; another project or capability with
+/// limited to the supplied scope segment; another project or adapter with
 /// the same tool name is not considered. The returned vector is deduplicated
 /// by the directory layout (one entry per `<tool>/<version>/` directory) and
 /// sorted for deterministic output.

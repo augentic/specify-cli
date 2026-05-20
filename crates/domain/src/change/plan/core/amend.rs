@@ -9,7 +9,7 @@ impl Plan {
     /// fields (`depends_on`, `sources`, `context`) replace when `Some`
     /// and leave the corresponding
     /// [`Entry`](super::model::Entry) field unchanged when `None`.
-    /// Nullable fields (`project`, `capability`, `description`) take a
+    /// Nullable fields (`project`, `adapter`, `description`) take a
     /// three-way [`Patch`](super::model::Patch): `Keep` leaves the field
     /// alone, `Clear` sets it to `None`, `Set(v)` replaces it with
     /// `Some(v)`. `status` is intentionally not patchable — see
@@ -46,7 +46,7 @@ impl Plan {
                 entry.sources = v;
             }
             patch.project.apply(&mut entry.project);
-            patch.capability.apply(&mut entry.capability);
+            patch.adapter.apply(&mut entry.adapter);
             patch.description.apply(&mut entry.description);
             if let Some(v) = patch.context {
                 entry.context = v;
@@ -97,7 +97,7 @@ mod tests {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            capability: None,
+            adapter: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -154,7 +154,7 @@ mod tests {
                 Entry {
                     name: "foo".into(),
                     project: Some("default".into()),
-                    capability: None,
+                    adapter: None,
                     status: Status::Pending,
                     depends_on: vec![],
                     sources: vec!["a".into()],
@@ -242,7 +242,7 @@ mod tests {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("alpha".into()),
-            capability: None,
+            adapter: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -276,7 +276,7 @@ mod tests {
             "foo",
             EntryPatch {
                 project: Patch::Clear,
-                capability: Patch::Set("contracts@v1".into()),
+                adapter: Patch::Set("contracts@v1".into()),
                 ..EntryPatch::default()
             },
         )
@@ -285,11 +285,11 @@ mod tests {
     }
 
     #[test]
-    fn amend_capability_three_way() {
+    fn amend_adapter_three_way() {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            capability: Some("omnia@v1".into()),
+            adapter: Some("omnia@v1".into()),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -300,34 +300,34 @@ mod tests {
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
         assert_eq!(
-            plan.entries[0].capability.as_deref(),
+            plan.entries[0].adapter.as_deref(),
             Some("omnia@v1"),
-            "None must leave capability unchanged"
+            "None must leave adapter unchanged"
         );
 
         plan.amend(
             "foo",
             EntryPatch {
-                capability: Patch::Set("contracts@v1".into()),
+                adapter: Patch::Set("contracts@v1".into()),
                 ..EntryPatch::default()
             },
         )
         .expect("amend replace ok");
         assert_eq!(
-            plan.entries[0].capability.as_deref(),
+            plan.entries[0].adapter.as_deref(),
             Some("contracts@v1"),
-            "Patch::Set(s) must replace capability"
+            "Patch::Set(s) must replace adapter"
         );
 
         plan.amend(
             "foo",
             EntryPatch {
-                capability: Patch::Clear,
+                adapter: Patch::Clear,
                 ..EntryPatch::default()
             },
         )
         .expect("amend clear ok");
-        assert_eq!(plan.entries[0].capability, None, "Patch::Clear must clear capability");
+        assert_eq!(plan.entries[0].adapter, None, "Patch::Clear must clear adapter");
     }
 
     #[test]

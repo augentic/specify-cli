@@ -1,7 +1,7 @@
-//! Integration tests for `specify init` (capability and `--hub` modes).
+//! Integration tests for `specify init` (adapter and `--hub` modes).
 //!
 //! Covers the on-disk shape produced by `init`, the JSON envelope, and
-//! the clap-level invariants around the positional `<capability>`
+//! the clap-level invariants around the positional `<adapter>`
 //! argument and the `--hub` flag.
 
 use std::fs;
@@ -45,7 +45,7 @@ fn init_json_format_has_stable_shape() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    assert_eq!(value["capability-name"], "omnia");
+    assert_eq!(value["adapter-name"], "omnia");
     assert!(value["config-path"].is_string());
     let config_path = value["config-path"].as_str().unwrap();
     // Canonicalized tmp path so substring match handles macOS
@@ -66,16 +66,16 @@ fn init_github_directory_uri_succeeds() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
-        .args(["init", "https://github.com/augentic/specify/capabilities/omnia", "--name", "demo"])
+        .args(["init", "https://github.com/augentic/specify/adapters/omnia", "--name", "demo"])
         .assert()
         .success();
 }
 
-// ---- RFC-13 Phase 1.3: positional <capability> + --hub mutual exclusion ----
+// ---- RFC-13 Phase 1.3: positional <adapter> + --hub mutual exclusion ----
 
 #[test]
-fn init_writes_capability_field_for_url_arg() {
-    // Acceptance (a): `specify init <url>` writes `capability: <url>`
+fn init_writes_adapter_field_for_url_arg() {
+    // Acceptance (a): `specify init <url>` writes `adapter: <url>`
     // and no `schema:` field; `hub:` either absent or false.
     let tmp = tempdir().unwrap();
     specify()
@@ -89,8 +89,8 @@ fn init_writes_capability_field_for_url_arg() {
     let project_yaml =
         fs::read_to_string(tmp.path().join(".specify/project.yaml")).expect("read project.yaml");
     assert!(
-        project_yaml.contains("capability:"),
-        "project.yaml must carry `capability:` after non-hub init, got:\n{project_yaml}"
+        project_yaml.contains("adapter:"),
+        "project.yaml must carry `adapter:` after non-hub init, got:\n{project_yaml}"
     );
     assert!(
         !project_yaml.lines().any(|line| line.trim_start().starts_with("schema:")),
@@ -119,14 +119,14 @@ fn init_with_no_args_errors() {
     // Acceptance (c): `specify init` (no positional, no `--hub`) must
     // exit `2` (clap's parse-error slot) with clap's standard
     // "required arguments were not provided" diagnostic. The historical
-    // post-parse `init-requires-capability-or-hub` diagnostic was lifted
+    // post-parse `init-requires-adapter-or-hub` diagnostic was lifted
     // into the clap surface (`required_unless_present = "hub"`).
     let tmp = tempdir().unwrap();
     let assert = specify().current_dir(tmp.path()).args(["init"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(2), "clap parse errors map to exit code 2");
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
     assert!(
-        stderr.contains("required arguments were not provided") && stderr.contains("CAPABILITY"),
+        stderr.contains("required arguments were not provided") && stderr.contains("ADAPTER"),
         "diagnostic must surface clap's required-arg parse error, got stderr:\n{stderr}"
     );
     assert!(
@@ -136,7 +136,7 @@ fn init_with_no_args_errors() {
 }
 
 #[test]
-fn init_with_capability_and_hub_errors() {
+fn init_with_adapter_and_hub_errors() {
     // Acceptance (d): `specify init <url> --hub` must exit `2` with
     // clap's "the argument cannot be used with" diagnostic. Same
     // motivation as `init_with_no_args_errors`: the invariant lives in
@@ -172,8 +172,8 @@ fn init_hub_writes_canonical_on_disk_shape() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
     assert_eq!(
-        value["capability-name"], "hub",
-        "JSON response must surface capability-name: \"hub\", got: {value}"
+        value["adapter-name"], "hub",
+        "JSON response must surface adapter-name: \"hub\", got: {value}"
     );
     assert!(
         value["scaffolded-rule-keys"].as_array().expect("array").is_empty(),
@@ -198,7 +198,7 @@ fn init_hub_writes_canonical_on_disk_shape() {
     assert!(!tmp.path().join(".specify/specs").exists());
     assert!(!tmp.path().join(".specify/.cache").exists());
 
-    // project.yaml shape: `hub: true` only, no `capability:` field, and
+    // project.yaml shape: `hub: true` only, no `adapter:` field, and
     // no stale `schema:` sentinel.
     let project_yaml =
         fs::read_to_string(tmp.path().join(".specify/project.yaml")).expect("read project.yaml");
@@ -207,8 +207,8 @@ fn init_hub_writes_canonical_on_disk_shape() {
         "hub project.yaml must omit the stale `schema:` field:\n{project_yaml}"
     );
     assert!(
-        !project_yaml.lines().any(|l| l.trim_start().starts_with("capability:")),
-        "hub project.yaml must omit the `capability:` field:\n{project_yaml}"
+        !project_yaml.lines().any(|l| l.trim_start().starts_with("adapter:")),
+        "hub project.yaml must omit the `adapter:` field:\n{project_yaml}"
     );
     assert!(
         project_yaml.contains("hub: true"),
@@ -239,7 +239,7 @@ fn init_hub_refuses_when_present() {
     let tmp = tempdir().unwrap();
     // Pre-create `.specify/` with arbitrary content.
     fs::create_dir_all(tmp.path().join(".specify")).unwrap();
-    fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\ncapability: omnia\n")
+    fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\nadapter: omnia\n")
         .unwrap();
 
     let assert = specify()
@@ -255,7 +255,7 @@ fn init_hub_refuses_when_present() {
     );
 
     let on_disk = fs::read_to_string(tmp.path().join(".specify/project.yaml")).unwrap();
-    assert_eq!(on_disk, "name: existing\ncapability: omnia\n");
+    assert_eq!(on_disk, "name: existing\nadapter: omnia\n");
 }
 
 /// Tiny YAML→JSON helper — we only need it for the hub on-disk shape

@@ -254,7 +254,7 @@ mod tests {
                 reg.projects.push(crate::registry::RegistryProject {
                     name: "alpha".into(),
                     url: ".".into(),
-                    capability: "omnia@v1".into(),
+                    adapter: "omnia@v1".into(),
                     description: None,
                     contracts: None,
                 });
@@ -283,7 +283,7 @@ mod tests {
         let cfg = ProjectConfig {
             name: "demo".into(),
             domain: None,
-            capability: Some("omnia".into()),
+            adapter: Some("omnia".into()),
             specify_version: None,
             rules: BTreeMap::new(),
             tools: Vec::new(),

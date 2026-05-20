@@ -1,4 +1,4 @@
-//! `PipelineView` — a resolved capability paired with every brief its
+//! `PipelineView` — a resolved adapter paired with every brief its
 //! pipeline references, with cross-reference validations applied.
 
 use std::collections::{BTreeMap, HashSet};
@@ -6,28 +6,28 @@ use std::path::Path;
 
 use specify_error::Error;
 
-use crate::capability::brief::Brief;
-use crate::capability::capability::{Capability, Phase, ResolvedCapability};
+use crate::adapter::adapter::{Adapter, Phase, ResolvedAdapter};
+use crate::adapter::brief::Brief;
 
-/// A capability plus every brief referenced by
+/// A adapter plus every brief referenced by
 /// `pipeline.{define,build,merge}`, iterated in pipeline order.
 #[derive(Debug)]
 pub struct PipelineView {
-    /// The resolved capability manifest.
-    pub capability: ResolvedCapability,
+    /// The resolved adapter manifest.
+    pub adapter: ResolvedAdapter,
     /// Briefs in pipeline order, each paired with its phase.
     pub briefs: Vec<(Phase, Brief)>,
 }
 
 impl PipelineView {
     /// Resolve `schema_value`, load every referenced brief from the
-    /// capability root, and validate cross-references:
+    /// adapter root, and validate cross-references:
     ///
     /// 1. Every `PipelineEntry.brief` path exists and parses.
     /// 2. `Brief.frontmatter.id` equals the referencing `PipelineEntry.id`.
     /// 3. Every `needs` id refers to a brief that appears **earlier** in
     ///    pipeline order (plan → define → build → merge).
-    /// 4. Every `tracks` id refers to a brief in the same capability
+    /// 4. Every `tracks` id refers to a brief in the same adapter
     ///    (any phase).
     ///
     /// Plan-phase briefs are loaded ahead of the execution-loop phases
@@ -39,7 +39,7 @@ impl PipelineView {
     ///
     /// Returns an error if the operation fails.
     pub fn load(schema_value: &str, project_dir: &Path) -> Result<Self, Error> {
-        let resolved = Capability::resolve(schema_value, project_dir)?;
+        let resolved = Adapter::resolve(schema_value, project_dir)?;
 
         let mut briefs: Vec<(Phase, Brief)> = Vec::new();
         let plan_iter = resolved.manifest.plan_entries().iter().map(|e| (Phase::Plan, e));
@@ -92,7 +92,7 @@ impl PipelineView {
         }
 
         Ok(Self {
-            capability: resolved,
+            adapter: resolved,
             briefs,
         })
     }
@@ -110,8 +110,8 @@ impl PipelineView {
 
     /// Briefs for `phase` in topological order derived from each brief's
     /// `needs` frontmatter. `PipelineView::load` already rejects
-    /// capabilities where a brief references a later-in-pipeline `needs`
-    /// target, so for well-formed capabilities this is equivalent to
+    /// adapters where a brief references a later-in-pipeline `needs`
+    /// target, so for well-formed adapters this is equivalent to
     /// `self.phase(phase)`. Running Kahn's algorithm on the subgraph
     /// anyway pins the contract so the callers (e.g. the define skill
     /// driving artifact generation in dependency order) do not have to

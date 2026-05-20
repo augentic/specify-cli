@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::Path;
 
 use serde::Serialize;
-use specify_domain::capability::{Phase, PipelineView};
+use specify_domain::adapter::{Phase, PipelineView};
 use specify_domain::slice::{LifecycleStatus, SliceMetadata};
 use specify_domain::task::parse_tasks;
 use specify_error::Result;
@@ -19,7 +19,7 @@ use crate::context::Ctx;
 pub(in crate::commands) struct StatusEntry {
     pub name: String,
     pub status: LifecycleStatus,
-    pub capability: String,
+    pub adapter: String,
     pub tasks: Option<TaskCounts>,
     pub artifacts: BTreeMap<String, bool>,
 }
@@ -42,7 +42,7 @@ pub(in crate::commands) fn collect_status(
 
     let tasks = match super::task::resolve_tasks_path_for(
         slice_dir,
-        &metadata.capability,
+        &metadata.adapter,
         Some(project_dir),
     ) {
         Ok(path) => {
@@ -63,7 +63,7 @@ pub(in crate::commands) fn collect_status(
     Ok(StatusEntry {
         name: name.to_string(),
         status: metadata.status,
-        capability: metadata.capability,
+        adapter: metadata.adapter,
         tasks,
         artifacts,
     })
@@ -108,7 +108,7 @@ struct StatusBody<'a> {
 fn write_status_text(w: &mut dyn Write, body: &StatusBody<'_>) -> std::io::Result<()> {
     let e = body.slice;
     writeln!(w, "{}", e.name)?;
-    writeln!(w, "  capability: {}", e.capability)?;
+    writeln!(w, "  adapter: {}", e.adapter)?;
     writeln!(w, "  status: {}", e.status)?;
     match e.tasks {
         Some(tc) => writeln!(w, "  tasks: {}/{}", tc.complete, tc.total)?,

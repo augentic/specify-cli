@@ -1,5 +1,5 @@
 //! `specify-contract` — standalone validator binary for the contracts
-//! capability.
+//! adapter.
 //!
 //! ## Carve-out from workspace standards
 //!
@@ -16,7 +16,7 @@
 //! Wraps the in-crate [`validate::validate_baseline`] to surface
 //! the contract Validation checks (`SemVer` `info.version`,
 //! `info.x-specify-id` format, cross-project id uniqueness) as a
-//! standalone executable that the contracts capability can shell out
+//! standalone executable that the contracts adapter can shell out
 //! to from skill runtimes.
 //!
 //! The validator functions live in the sibling [`validate`] module;
@@ -31,7 +31,7 @@
 //! - `2` — validator failed to run (path missing, not a directory, …).
 //!
 //! This binary uses the conventional shell-friendly exit-code mapping
-//! (`0` clean / `1` findings / `2` invocation error) so capability
+//! (`0` clean / `1` findings / `2` invocation error) so adapter
 //! skills can branch on the exit code without needing the broader
 //! `Exit` taxonomy. The JSON body's `"exit-code"` field reflects the
 //! same value.
@@ -72,7 +72,7 @@ const EXIT_INVOCATION_ERROR: u8 = 2;
 #[command(
     name = "specify-contract",
     version,
-    about = "Standalone validator for the contracts capability — SemVer + info.x-specify-id + cross-project uniqueness checks.",
+    about = "Standalone validator for the contracts adapter — SemVer + info.x-specify-id + cross-project uniqueness checks.",
     long_about = "Walks <BASELINE_DIR> for top-level OpenAPI 3.1 / AsyncAPI 3.0 documents \
                   (root key `openapi:` or `asyncapi:`) and runs the contract Validation rules:\n\
                   \n  \

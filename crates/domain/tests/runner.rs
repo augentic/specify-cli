@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use specify_domain::capability::{PipelineView, ValidationResult};
+use specify_domain::adapter::{PipelineView, ValidationResult};
 use specify_domain::slice::SLICES_DIR_NAME;
 use specify_domain::validate::validate_slice;
 use tempfile::TempDir;

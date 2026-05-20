@@ -59,7 +59,7 @@ pub fn write_specify_project() -> TempDir {
     let tmp = tempfile::tempdir().expect("tempdir");
     let dot_specify = tmp.path().join(".specify");
     std::fs::create_dir_all(&dot_specify).expect("mkdir .specify");
-    std::fs::write(dot_specify.join("project.yaml"), "name: demo\ncapability: vectis\n")
+    std::fs::write(dot_specify.join("project.yaml"), "name: demo\nadapter: vectis\n")
         .expect("write project.yaml");
     tmp
 }

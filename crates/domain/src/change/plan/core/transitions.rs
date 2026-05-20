@@ -219,7 +219,7 @@ mod tests {
         let mut plan = plan_with_changes(vec![Entry {
             name: "a".into(),
             project: Some("default".into()),
-            capability: None,
+            adapter: None,
             status: Status::Failed,
             depends_on: vec![],
             sources: vec![],

@@ -1,7 +1,7 @@
 {
   "action": "create",
   "entry": {
-    "capability": "contracts@v1",
+    "adapter": "contracts@v1",
     "depends-on": [],
     "description": null,
     "name": "foo",

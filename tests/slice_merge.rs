@@ -139,7 +139,7 @@ fn conflict_check_flags_modified_newer() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "capability: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: modified\n",
+        "adapter: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: modified\n",
     )
     .unwrap();
 
@@ -157,7 +157,7 @@ fn conflict_check_flags_modified_newer() {
     let value = parse_json(&assert.get_output().stdout);
     let conflicts = value["conflicts"].as_array().unwrap();
     assert_eq!(conflicts.len(), 1, "expected one conflict, got {conflicts:?}");
-    assert_eq!(conflicts[0]["capability"], "login");
+    assert_eq!(conflicts[0]["adapter"], "login");
     assert_eq!(conflicts[0]["defined-at"], "2020-01-01T00:00:00Z");
     assert!(conflicts[0]["baseline-modified-at"].is_string());
 }
@@ -171,7 +171,7 @@ fn conflict_check_no_drift_when_older() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "capability: omnia\nstatus: complete\ndefined-at: \"2099-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "adapter: omnia\nstatus: complete\ndefined-at: \"2099-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 
@@ -207,7 +207,7 @@ fn conflict_check_detects_drift_when_newer() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "capability: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "adapter: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 
@@ -231,7 +231,7 @@ fn conflict_check_detects_drift_when_newer() {
     let value = parse_json(&assert.get_output().stdout);
     let conflicts = value["conflicts"].as_array().unwrap();
     assert_eq!(conflicts.len(), 1, "expected one contract conflict, got {conflicts:?}");
-    assert_eq!(conflicts[0]["capability"], "contracts/schemas/test.yaml");
+    assert_eq!(conflicts[0]["adapter"], "contracts/schemas/test.yaml");
     assert_eq!(conflicts[0]["defined-at"], "2020-01-01T00:00:00Z");
 }
 
@@ -243,7 +243,7 @@ fn conflict_check_no_drift_for_new_files() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "capability: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "adapter: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 
@@ -273,7 +273,7 @@ fn conflict_check_no_drift_without_contracts() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "capability: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "adapter: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 
@@ -297,7 +297,7 @@ fn conflict_check_no_drift_without_contracts() {
 
 #[test]
 fn conflict_check_ignores_new_entries() {
-    // `type: new` baselines are "we're creating this capability" — even
+    // `type: new` baselines are "we're creating this adapter" — even
     // if a file already exists at the baseline path, it is not a drift
     // conflict in the mtime-vs-defined_at sense, just a different kind
     // of integrity issue the caller should handle separately.

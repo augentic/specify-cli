@@ -3,7 +3,7 @@
 
 use clap::Subcommand;
 use serde::Deserialize;
-use specify_domain::capability::Phase;
+use specify_domain::adapter::Phase;
 use specify_domain::slice::{CreateIfExists, EntryKind, LifecycleStatus};
 
 #[derive(Subcommand)]
@@ -12,9 +12,9 @@ pub enum SliceAction {
     Create {
         /// Kebab-case slice name
         name: String,
-        /// Capability identifier; defaults to the value in `.specify/project.yaml`
+        /// Adapter identifier; defaults to the value in `.specify/project.yaml`
         #[arg(long)]
-        capability: Option<String>,
+        adapter: Option<String>,
         /// Behaviour when `<slices_dir>/<name>/` already exists
         #[arg(long, value_enum, default_value = "fail")]
         if_exists: CreateIfExists,
@@ -24,7 +24,7 @@ pub enum SliceAction {
         /// Slice name (under `.specify/slices/`)
         name: String,
     },
-    /// Validate a slice's artifacts against capability validation rules
+    /// Validate a slice's artifacts against adapter validation rules
     Validate {
         /// Slice name (under `.specify/slices/`)
         name: String,
@@ -69,7 +69,7 @@ pub enum SliceAction {
         /// Scan `specs/` subdirs and classify each as new or modified
         #[arg(long, conflicts_with = "set")]
         scan: bool,
-        /// Replace `touched_specs` with the listed capabilities (each `<name>:new|modified`)
+        /// Replace `touched_specs` with the listed adapters (each `<name>:new|modified`)
         #[arg(long, value_delimiter = ',')]
         set: Vec<String>,
     },
@@ -190,7 +190,7 @@ pub enum OutcomeKindAction {
         /// Structured proposal payload as a single JSON object.
         ///
         /// Required keys: `proposed-name`, `proposed-url`,
-        /// `proposed-capability`, `rationale`. Optional:
+        /// `proposed-adapter`, `rationale`. Optional:
         /// `proposed-description`. Skill drivers build the JSON object;
         /// humans never type it. Parsed via `serde_json::from_str` —
         /// malformed JSON or missing required keys exit `2` with a
@@ -212,8 +212,8 @@ pub struct RegistryAmendmentProposal {
     pub(crate) proposed_name: String,
     /// Proposed clone URL.
     pub(crate) proposed_url: String,
-    /// Proposed capability identifier (e.g. `omnia@v1`).
-    pub(crate) proposed_capability: String,
+    /// Proposed adapter identifier (e.g. `omnia@v1`).
+    pub(crate) proposed_adapter: String,
     /// Optional human-readable description of the proposed project.
     #[serde(default)]
     pub(crate) proposed_description: Option<String>,

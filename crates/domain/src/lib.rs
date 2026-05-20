@@ -1,8 +1,8 @@
-//! Specify domain — slice, change, spec, task, capability, registry,
+//! Specify domain — slice, change, spec, task, adapter, registry,
 //! config, merge, validate, init. See `docs/standards/architecture.md`
 //! for the rationale.
 
-pub mod capability;
+pub mod adapter;
 pub mod change;
 pub mod cmd;
 pub mod config;

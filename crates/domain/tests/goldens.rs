@@ -15,7 +15,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_domain::capability::PipelineView;
+use specify_domain::adapter::PipelineView;
 use specify_domain::slice::SLICES_DIR_NAME;
 use specify_domain::validate::validate_slice;
 use tempfile::TempDir;

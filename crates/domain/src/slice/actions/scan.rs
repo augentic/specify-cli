@@ -7,10 +7,10 @@ use specify_error::Error;
 
 use crate::slice::{SliceMetadata, SpecKind, TouchedSpec};
 
-/// Scan `<slice_dir>/specs/*` and classify each capability as
+/// Scan `<slice_dir>/specs/*` and classify each adapter as
 /// `new` or `modified` against `<specs_dir>/<name>/spec.md`.
 ///
-/// Returns entries sorted by capability name for stable output. The
+/// Returns entries sorted by adapter name for stable output. The
 /// scan is non-destructive — it does not mutate `.metadata.yaml`. The
 /// caller typically follows up with [`write_touched`].
 ///
