@@ -213,7 +213,7 @@ mod tests {
     use crate::manifest::{PackageRequest, ToolSource};
     use crate::package::{PackageClient, PackageMetadata};
     use crate::test_support::{
-        cache_env, cached_bytes, adapter_scope, fixed_now, project_scope, scratch_dir, tool,
+        adapter_scope, cache_env, cached_bytes, fixed_now, project_scope, scratch_dir, tool,
         write_source,
     };
 

@@ -334,10 +334,7 @@ mod tests {
             source: ToolSource::HttpsUri("oci://registry/tool.wasm".to_string()),
             sha256: Some("ABC".to_string()),
             permissions: ToolPermissions {
-                read: vec![
-                    "relative/../*.txt".to_string(),
-                    "$ADAPTER_DIR/templates".to_string(),
-                ],
+                read: vec!["relative/../*.txt".to_string(), "$ADAPTER_DIR/templates".to_string()],
                 write: vec!["$PROJECT_DIR/.specify/project.yaml".to_string()],
             },
         };

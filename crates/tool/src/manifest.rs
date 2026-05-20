@@ -98,9 +98,7 @@ impl ToolSource {
     /// Returns an error when the template references `$ADAPTER_DIR` but
     /// no adapter directory is provided, when the expanded path is not
     /// absolute, or when the root directory is not valid UTF-8.
-    pub fn expand(
-        &self, project_dir: &Path, adapter_dir: Option<&Path>,
-    ) -> Result<Self, String> {
+    pub fn expand(&self, project_dir: &Path, adapter_dir: Option<&Path>) -> Result<Self, String> {
         let Self::TemplatePath(template) = self else {
             return Ok(self.clone());
         };
@@ -299,8 +297,7 @@ fn looks_like_package_request(value: &str) -> bool {
 }
 
 fn looks_like_template_path(value: &str) -> bool {
-    is_template_var_prefix(value, "$PROJECT_DIR")
-        || is_template_var_prefix(value, "$ADAPTER_DIR")
+    is_template_var_prefix(value, "$PROJECT_DIR") || is_template_var_prefix(value, "$ADAPTER_DIR")
 }
 
 fn is_template_var_prefix(value: &str, var: &str) -> bool {
