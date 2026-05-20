@@ -110,7 +110,7 @@ _Codified in:
 ### Appendix A — embedded `tokens.schema.json`
 
 > The embedded tokens schema is vendored from `specify` at
-> `capabilities/vectis/tokens.schema.json`. The two copies stay in
+> `adapters/vectis/tokens.schema.json`. The two copies stay in
 > lock-step: the upstream is canonical and any edit there must be
 > mirrored here byte-for-byte.
 
@@ -121,7 +121,7 @@ and `tokens_validator`._
 ### Appendix B — embedded `assets.schema.json`
 
 > The embedded assets schema is vendored from `specify` at
-> `capabilities/vectis/assets.schema.json`. The order of platform
+> `adapters/vectis/assets.schema.json`. The order of platform
 > densities (`1x`, `2x`, `3x` for iOS; `mdpi` … `xxxhdpi` for
 > Android) matches the schema's `propertyNames` and is the order
 > warnings render in. The same byte-identity discipline as the
@@ -155,7 +155,7 @@ _Codified in: `crates/vectis/tests/engine_assets.rs::APPENDIX_E_ASSETS_YAML`._
 ### Appendix F — patched `composition.schema.json`
 
 > The embedded composition schema is the upstream
-> `capabilities/vectis/composition.schema.json` (in the `specify`
+> `adapters/vectis/composition.schema.json` (in the `specify`
 > repo) with the F-patch applied. The schema is shared between
 > `layout` mode (unwired-subset runtime) and `composition` mode (full
 > lifecycle runtime). The F.2 patch's `component.not.enum` rejects
