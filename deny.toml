@@ -27,6 +27,7 @@ allow = [
   "ISC",
   "MIT",
   "MIT-0",
+  "CC0-1.0",
   "Unicode-3.0",
   "Zlib",
 ]
@@ -36,7 +37,6 @@ exceptions = [
   { name = "im-rc", allow = ["MPL-2.0"] },
   { name = "option-ext", allow = ["MPL-2.0"] },
   { name = "sized-chunks", allow = ["MPL-2.0"] },
-  { name = "tiny-keccak", allow = ["CC0-1.0"] },
 ]
 
 [licenses.private]
