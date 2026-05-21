@@ -12,9 +12,9 @@ pub enum SliceAction {
     Create {
         /// Kebab-case slice name
         name: String,
-        /// Adapter identifier; defaults to the value in `.specify/project.yaml`
+        /// Target-adapter identifier; defaults to the value in `.specify/project.yaml`
         #[arg(long)]
-        adapter: Option<String>,
+        target: Option<String>,
         /// Behaviour when `<slices_dir>/<name>/` already exists
         #[arg(long, value_enum, default_value = "fail")]
         if_exists: CreateIfExists,

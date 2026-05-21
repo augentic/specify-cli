@@ -36,7 +36,7 @@ impl Plan {
         results.extend(check_unknown_depends_on(&self.entries));
         results.extend(check_unknown_sources(self));
         results.extend(check_single_in_progress(&self.entries));
-        results.extend(missing_project_or_adapter(&self.entries));
+        results.extend(missing_project_or_target(&self.entries));
         results.extend(check_context_paths(&self.entries));
         if let Some(reg) = registry {
             results.extend(check_project_in_registry(&self.entries, reg));
@@ -144,7 +144,8 @@ fn check_unknown_depends_on(changes: &[Entry]) -> Vec<Finding> {
 fn check_unknown_sources(plan: &Plan) -> Vec<Finding> {
     let mut out = Vec::new();
     for entry in &plan.entries {
-        for key in &entry.sources {
+        for binding in &entry.sources {
+            let key = binding.key();
             if !plan.sources.contains_key(key) {
                 out.push(Finding {
                     level: Severity::Error,
@@ -202,12 +203,12 @@ fn check_project_required_multi_repo(changes: &[Entry], registry: &Registry) -> 
     }
     let mut out = Vec::new();
     for entry in changes {
-        if entry.project.is_none() && entry.adapter.is_none() {
+        if entry.project.is_none() && entry.target.is_none() {
             out.push(Finding {
                 level: Severity::Error,
                 code: "project-missing-multi-repo",
                 message: format!(
-                    "slice '{}' has no project or adapter; multi-repo implementation slices must specify a project",
+                    "slice '{}' has no project or target; multi-repo implementation slices must specify a project",
                     entry.name
                 ),
                 entry: Some(entry.name.clone()),
@@ -217,15 +218,15 @@ fn check_project_required_multi_repo(changes: &[Entry], registry: &Registry) -> 
     out
 }
 
-fn missing_project_or_adapter(changes: &[Entry]) -> Vec<Finding> {
+fn missing_project_or_target(changes: &[Entry]) -> Vec<Finding> {
     let mut out = Vec::new();
     for entry in changes {
-        if entry.project.is_none() && entry.adapter.is_none() {
+        if entry.project.is_none() && entry.target.is_none() {
             out.push(Finding {
                 level: Severity::Error,
-                code: "plan.entry-needs-project-or-adapter",
+                code: "plan.entry-needs-project-or-target",
                 message: format!(
-                    "entry '{}' has neither 'project' nor 'adapter'; at least one is required",
+                    "entry '{}' has neither 'project' nor 'target'; at least one is required",
                     entry.name
                 ),
                 entry: Some(entry.name.clone()),

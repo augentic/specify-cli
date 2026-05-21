@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/augentic/specify-cli/schemas/target.schema.json",
+  "title": "Specify target adapter manifest",
+  "description": "Refines `plugin.schema.json` for target adapters per RFC-25 §Target adapter contract. Locks `axis` to the literal `target`, locks `operations` to the closed set `[shape, build, merge]`, and requires `briefs.shape`, `briefs.build`, and `briefs.merge`. The `kebabName` and `toolDeclaration` `$defs` are intentionally inlined (rather than `$ref`-resolved against `plugin.schema.json`) so the schema compiles without a registry lookup; keep the embedded `name` pattern byte-identical to `plugin.schema.json#/$defs/kebabName.pattern`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "version", "axis", "operations", "briefs"],
+  "properties": {
+    "name": { "$ref": "#/$defs/kebabName" },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "axis": {
+      "type": "string",
+      "const": "target",
+      "description": "Locked to `target` for target-adapter manifests."
+    },
+    "operations": {
+      "type": "array",
+      "uniqueItems": true,
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "enum": ["shape", "build", "merge"]
+      },
+      "description": "Closed set: target adapters declare exactly `shape`, `build`, and `merge` in any order."
+    },
+    "briefs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "build", "merge"],
+      "properties": {
+        "shape": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*://).+$"
+        },
+        "build": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*://).+$"
+        },
+        "merge": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*://).+$"
+        }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/toolDeclaration" }
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "kebabName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "toolDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/kebabName" },
+        "version": { "type": "string", "minLength": 1 },
+        "permissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

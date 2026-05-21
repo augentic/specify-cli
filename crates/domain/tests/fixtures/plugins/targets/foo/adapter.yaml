@@ -1,0 +1,8 @@
+name: foo
+version: 1
+axis: target
+operations: [shape, build, merge]
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md

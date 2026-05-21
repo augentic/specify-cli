@@ -19,7 +19,7 @@ use crate::context::Ctx;
 pub(in crate::commands) struct StatusEntry {
     pub name: String,
     pub status: LifecycleStatus,
-    pub adapter: String,
+    pub target: String,
     pub tasks: Option<TaskCounts>,
     pub artifacts: BTreeMap<String, bool>,
 }
@@ -40,30 +40,27 @@ pub(in crate::commands) fn collect_status(
     // consumer agrees on what "complete" means.
     let artifacts = pipeline.completion_for(Phase::Define, slice_dir);
 
-    let tasks = match super::task::resolve_tasks_path_for(
-        slice_dir,
-        &metadata.adapter,
-        Some(project_dir),
-    ) {
-        Ok(path) => {
-            if path.is_file() {
-                let content = std::fs::read_to_string(&path)?;
-                let progress = parse_tasks(&content);
-                Some(TaskCounts {
-                    total: progress.total,
-                    complete: progress.complete,
-                })
-            } else {
-                None
+    let tasks =
+        match super::task::resolve_tasks_path_for(slice_dir, &metadata.target, Some(project_dir)) {
+            Ok(path) => {
+                if path.is_file() {
+                    let content = std::fs::read_to_string(&path)?;
+                    let progress = parse_tasks(&content);
+                    Some(TaskCounts {
+                        total: progress.total,
+                        complete: progress.complete,
+                    })
+                } else {
+                    None
+                }
             }
-        }
-        Err(_) => None,
-    };
+            Err(_) => None,
+        };
 
     Ok(StatusEntry {
         name: name.to_string(),
         status: metadata.status,
-        adapter: metadata.adapter,
+        target: metadata.target,
         tasks,
         artifacts,
     })
@@ -108,7 +105,7 @@ struct StatusBody<'a> {
 fn write_status_text(w: &mut dyn Write, body: &StatusBody<'_>) -> std::io::Result<()> {
     let e = body.slice;
     writeln!(w, "{}", e.name)?;
-    writeln!(w, "  adapter: {}", e.adapter)?;
+    writeln!(w, "  target: {}", e.target)?;
     writeln!(w, "  status: {}", e.status)?;
     match e.tasks {
         Some(tc) => writeln!(w, "  tasks: {}/{}", tc.complete, tc.total)?,

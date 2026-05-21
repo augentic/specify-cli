@@ -95,11 +95,11 @@ fn write_mark_text(w: &mut dyn Write, body: &MarkBody) -> std::io::Result<()> {
 /// honour schemas that rename `tasks.md` or nest it elsewhere.
 fn resolve_tasks_path(project_dir: &Path, slice_dir: &Path) -> Result<PathBuf> {
     let metadata = SliceMetadata::load(slice_dir)?;
-    resolve_tasks_path_for(slice_dir, &metadata.adapter, Some(project_dir))
+    resolve_tasks_path_for(slice_dir, &metadata.target, Some(project_dir))
 }
 
 pub(super) fn resolve_tasks_path_for(
-    slice_dir: &Path, adapter_value: &str, project_hint: Option<&Path>,
+    slice_dir: &Path, target_value: &str, project_hint: Option<&Path>,
 ) -> Result<PathBuf> {
     let project_dir = match project_hint {
         Some(p) => p.to_path_buf(),
@@ -116,10 +116,10 @@ pub(super) fn resolve_tasks_path_for(
                 ),
             })?,
     };
-    let pipeline = PipelineView::load(adapter_value, &project_dir)?;
+    let pipeline = PipelineView::load(target_value, &project_dir)?;
     let build_brief = pipeline.brief("build").ok_or_else(|| Error::Diag {
         code: "slice-tasks-build-brief-missing",
-        detail: "adapter has no `build` brief".to_string(),
+        detail: "target has no `build` brief".to_string(),
     })?;
     let tracks_id = build_brief.frontmatter.tracks.as_deref().ok_or_else(|| Error::Diag {
         code: "slice-tasks-build-tracks-missing",

@@ -152,7 +152,7 @@ mod tests {
             entries: vec![Entry {
                 name: "only-entry".to_string(),
                 project: Some("default".into()),
-                adapter: None,
+                target: None,
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],
@@ -207,7 +207,7 @@ mod tests {
             entries: vec![Entry {
                 name: "entry-one".to_string(),
                 project: Some("default".into()),
-                adapter: None,
+                target: None,
                 status: Status::InProgress,
                 depends_on: vec!["foo".to_string()],
                 sources: vec![],
@@ -255,7 +255,7 @@ mod tests {
             entries: vec![Entry {
                 name: "new-entry".to_string(),
                 project: Some("default".into()),
-                adapter: None,
+                target: None,
                 status: Status::Pending,
                 depends_on: vec![],
                 sources: vec![],

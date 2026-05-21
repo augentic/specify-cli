@@ -138,7 +138,7 @@ impl Error {
                 "plan-has-outstanding-work" => Some(
                     "complete or drop the listed entries, or rerun with --force to archive anyway.",
                 ),
-                "init-requires-adapter-or-hub" => Some(
+                "init-requires-target-or-workspace" => Some(
                     "`specify init <adapter>` for a regular project, or `specify init --hub` for a platform hub.\nsee: docs/init.md",
                 ),
                 "context-existing-unfenced-agents-md" => {

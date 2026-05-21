@@ -78,7 +78,7 @@ pub(super) fn change(name: &str, status: Status) -> Entry {
     Entry {
         name: name.into(),
         project: Some("default".into()),
-        adapter: None,
+        target: None,
         status,
         depends_on: vec![],
         sources: vec![],
@@ -92,7 +92,7 @@ pub(super) fn change_with_deps(name: &str, status: Status, deps: &[&str]) -> Ent
     Entry {
         name: name.into(),
         project: Some("default".into()),
-        adapter: None,
+        target: None,
         status,
         depends_on: deps.iter().map(|s| (*s).to_string()).collect(),
         sources: vec![],

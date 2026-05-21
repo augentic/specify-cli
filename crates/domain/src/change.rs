@@ -6,7 +6,10 @@ pub mod finalize;
 mod plan;
 
 pub use finalize::summarise;
-pub use plan::core::{Entry, EntryPatch, Finding, Patch, Plan, Severity, Status};
+pub use plan::core::{
+    Entry, EntryPatch, Finding, Patch, Plan, ResolvedSourceBinding, Severity, SliceSourceBinding,
+    Status,
+};
 pub use plan::doctor::{
     BlockingPredecessor, CYCLE, CloneSignature, Diagnostic as PlanDoctorDiagnostic,
     DiagnosticPayload as PlanDoctorPayload, ORPHAN_SOURCE, STALE_CLONE, StaleReason, UNREACHABLE,

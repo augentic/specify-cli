@@ -119,7 +119,7 @@ fn init_with_no_args_errors() {
     // Acceptance (c): `specify init` (no positional, no `--hub`) must
     // exit `2` (clap's parse-error slot) with clap's standard
     // "required arguments were not provided" diagnostic. The historical
-    // post-parse `init-requires-adapter-or-hub` diagnostic was lifted
+    // post-parse `init-requires-target-or-workspace` diagnostic was lifted
     // into the clap surface (`required_unless_present = "hub"`).
     let tmp = tempdir().unwrap();
     let assert = specify().current_dir(tmp.path()).args(["init"]).assert().failure();

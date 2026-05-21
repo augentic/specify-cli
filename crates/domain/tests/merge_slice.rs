@@ -89,7 +89,7 @@ fn build_project() -> Project {
 
     let metadata = SliceMetadata {
         version: METADATA_VERSION,
-        adapter: "omnia".to_string(),
+        target: "omnia".to_string(),
         status: LifecycleStatus::Complete,
         created_at: Some(parse_stamp("2024-08-01T10:00:00Z")),
         defined_at: Some(parse_stamp("2024-08-01T12:00:00Z")),

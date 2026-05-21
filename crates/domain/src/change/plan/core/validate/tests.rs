@@ -178,7 +178,7 @@ fn project_not_in_registry() {
         entries: vec![Entry {
             name: "a".to_string(),
             project: Some("nonexistent".to_string()),
-            adapter: None,
+            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -209,7 +209,7 @@ fn project_missing_multi_repo() {
         entries: vec![Entry {
             name: "a".to_string(),
             project: None,
-            adapter: None,
+            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -242,14 +242,14 @@ fn project_missing_multi_repo() {
 }
 
 #[test]
-fn adapter_only_entry_valid_multi_repo() {
+fn target_only_entry_valid_multi_repo() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "contracts".to_string(),
             project: None,
-            adapter: Some("contracts@v1".into()),
+            target: Some("contracts@v1".into()),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -292,7 +292,7 @@ fn project_valid_single_repo() {
         entries: vec![Entry {
             name: "a".to_string(),
             project: None,
-            adapter: Some("contracts@v1".into()),
+            target: Some("contracts@v1".into()),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -324,7 +324,7 @@ fn project_matches_registry() {
         entries: vec![Entry {
             name: "a".to_string(),
             project: Some("alpha".to_string()),
-            adapter: None,
+            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -357,14 +357,14 @@ fn project_matches_registry() {
 }
 
 #[test]
-fn neither_project_nor_adapter_error() {
+fn neither_project_nor_target_error() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "orphan".to_string(),
             project: None,
-            adapter: None,
+            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -377,20 +377,20 @@ fn neither_project_nor_adapter_error() {
     assert!(
         results
             .iter()
-            .any(|r| r.code == "plan.entry-needs-project-or-adapter" && r.level == Severity::Error),
-        "expected entry-needs-project-or-adapter error, got: {results:#?}"
+            .any(|r| r.code == "plan.entry-needs-project-or-target" && r.level == Severity::Error),
+        "expected entry-needs-project-or-target error, got: {results:#?}"
     );
 }
 
 #[test]
-fn adapter_only_passes() {
+fn target_only_passes() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "contracts".to_string(),
             project: None,
-            adapter: Some("contracts@v1".into()),
+            target: Some("contracts@v1".into()),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -401,20 +401,20 @@ fn adapter_only_passes() {
     };
     let results = plan.validate(None, None);
     assert!(
-        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-adapter"),
-        "adapter-only entry must not trigger project-or-adapter error"
+        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-target"),
+        "target-only entry must not trigger project-or-target error"
     );
 }
 
 #[test]
-fn project_and_adapter_passes() {
+fn project_and_target_passes() {
     let plan = Plan {
         name: "test".to_string(),
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "impl".to_string(),
             project: Some("auth-service".into()),
-            adapter: Some("omnia@v1".into()),
+            target: Some("omnia@v1".into()),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -425,8 +425,8 @@ fn project_and_adapter_passes() {
     };
     let results = plan.validate(None, None);
     assert!(
-        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-adapter"),
-        "entry with both project and adapter must pass"
+        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-target"),
+        "entry with both project and target must pass"
     );
 }
 

@@ -92,7 +92,7 @@ pub fn validate_name(name: &str) -> Result<(), Error> {
     reason = "`slices_dir` and `slice_dir` name distinct concepts (parent dir vs. this slice's dir)."
 )]
 pub fn create(
-    slices_dir: &Path, name: &str, adapter: &str, if_exists: CreateIfExists, now: Timestamp,
+    slices_dir: &Path, name: &str, target: &str, if_exists: CreateIfExists, now: Timestamp,
 ) -> Result<Created, Error> {
     validate_name(name)?;
     let slice_dir = slices_dir.join(name);
@@ -133,7 +133,7 @@ pub fn create(
     std::fs::create_dir_all(slice_dir.join("specs"))?;
     let metadata = SliceMetadata {
         version: crate::slice::METADATA_VERSION,
-        adapter: adapter.to_string(),
+        target: target.to_string(),
         status: LifecycleStatus::Defining,
         created_at: Some(now),
         defined_at: None,

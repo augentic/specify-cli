@@ -84,7 +84,7 @@ fn lists_from_adapter_sidecar() {
     assert_eq!(tools.len(), 1, "{value}");
     assert_eq!(tools[0]["name"], "contract");
     assert_eq!(tools[0]["version"], "0.2.0");
-    assert_eq!(tools[0]["scope"], "adapter");
+    assert_eq!(tools[0]["scope"], "plugin");
     assert_eq!(tools[0]["scope-detail"], "contracts");
 }
 

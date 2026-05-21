@@ -23,7 +23,7 @@ use crate::init::{
 )]
 pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
     let adapter = opts.adapter.ok_or_else(|| Error::Diag {
-        code: "init-requires-adapter-or-hub",
+        code: "init-requires-target-or-workspace",
         detail: "pass <adapter> or --hub".to_string(),
     })?;
     let name = resolved_name(opts.project_dir, opts.name);

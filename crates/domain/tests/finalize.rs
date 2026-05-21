@@ -118,7 +118,7 @@ fn entry(name: &str, status: Status) -> Entry {
     Entry {
         name: name.to_string(),
         project: None,
-        adapter: Some("omnia@v1".to_string()),
+        target: Some("omnia@v1".to_string()),
         status,
         depends_on: Vec::new(),
         sources: Vec::new(),

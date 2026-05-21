@@ -4,7 +4,7 @@ use std::path::Path;
 
 use clap::ValueEnum;
 use serde::Serialize;
-use specify_domain::change::{Entry, Plan, Severity, Status};
+use specify_domain::change::{Entry, Plan, Severity, SliceSourceBinding, Status};
 use specify_domain::slice::{LifecycleStatus, SliceMetadata};
 use specify_error::{Error, Result};
 
@@ -83,7 +83,7 @@ struct EntryRow {
     name: String,
     status: Status,
     depends_on: Vec<String>,
-    sources: Vec<String>,
+    sources: Vec<SliceSourceBinding>,
     status_reason: Option<String>,
     description: Option<String>,
     lifecycle: Option<LifecycleStatus>,

@@ -1,4 +1,4 @@
-adapter: omnia
+target: omnia
 status: complete
 touched-specs:
   - name: login

@@ -1,6 +1,6 @@
 {
   "active": null,
-  "adapter": null,
+  "target": null,
   "description": null,
   "next": "b",
   "project": "default",

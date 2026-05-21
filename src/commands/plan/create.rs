@@ -4,8 +4,9 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::Value;
-use specify_domain::change::{Entry, EntryPatch, Patch, Plan, Status};
+use specify_domain::change::{Entry, EntryPatch, Patch, Plan, SliceSourceBinding, Status};
 use specify_domain::config::{InitPolicy, with_state};
+use specify_domain::schema::validate_plan;
 use specify_error::{Error, Result, is_kebab};
 
 use super::{Ref, check_project, plan_ref};
@@ -95,17 +96,19 @@ pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result
 
 pub(super) fn add(
     ctx: &Ctx, name: String, depends_on: Vec<String>, sources: Vec<String>,
-    description: Option<String>, project: Option<String>, adapter: Option<String>,
+    description: Option<String>, project: Option<String>, target: Option<String>,
     context: Vec<String>,
 ) -> Result<()> {
     if let Some(proj) = &project {
         check_project(&ctx.project_dir, proj)?;
     }
 
+    let sources: Vec<SliceSourceBinding> =
+        sources.into_iter().map(SliceSourceBinding::Bare).collect();
     let entry = Entry {
         name,
         project,
-        adapter,
+        target,
         status: Status::Pending,
         depends_on,
         sources,
@@ -119,6 +122,7 @@ pub(super) fn add(
         InitPolicy::RequireExisting("plan.yaml"),
         move |plan| {
             plan.create(entry)?;
+            validate_plan(plan)?;
             let created =
                 plan.entries.last().expect("Plan::create appended an entry that is now missing");
             Ok(EntryBody {
@@ -135,7 +139,7 @@ pub(super) fn add(
 
 pub(super) fn amend(
     ctx: &Ctx, name: String, depends_on: Option<Vec<String>>, sources: Option<Vec<String>>,
-    description: Option<String>, project: Option<String>, adapter: Option<String>,
+    description: Option<String>, project: Option<String>, target: Option<String>,
     context: Option<Vec<String>>,
 ) -> Result<()> {
     if let Some(proj) = &project
@@ -144,11 +148,13 @@ pub(super) fn amend(
         check_project(&ctx.project_dir, proj)?;
     }
 
+    let sources: Option<Vec<SliceSourceBinding>> =
+        sources.map(|v| v.into_iter().map(SliceSourceBinding::Bare).collect());
     let patch = EntryPatch {
         depends_on,
         sources,
         project: cli_patch(project),
-        adapter: cli_patch(adapter),
+        target: cli_patch(target),
         description: cli_patch(description),
         context,
     };
@@ -158,6 +164,7 @@ pub(super) fn amend(
         InitPolicy::RequireExisting("plan.yaml"),
         move |plan| {
             plan.amend(&name, patch)?;
+            validate_plan(plan)?;
             let amended =
                 plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
             Ok(EntryBody {

@@ -21,7 +21,7 @@ pub(super) use show::run as show;
 use specify_domain::adapter::{Adapter, ResolvedAdapter};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
-use specify_tool::manifest::{Tool, ToolManifest, ToolScope};
+use specify_tool::manifest::{Axis, Tool, ToolManifest, ToolScope};
 
 use self::dto::{CacheKey, Inventory, ScopedTool, WarningRow, warning_row};
 use crate::context::Ctx;
@@ -34,22 +34,24 @@ fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let project_tools = load::project_tools(ctx.config.name.clone(), ctx.config.tools.clone());
 
     let mut scopes = vec![project_scope];
-    let adapter = resolve_project_adapter(ctx)?;
-    let adapter_tools = if let Some(adapter) = adapter {
-        let adapter_scope = ToolScope::Adapter {
-            adapter_slug: adapter.manifest.name.clone(),
-            adapter_dir: adapter.root_dir.clone(),
+    let plugin = resolve_project_adapter(ctx)?;
+    let plugin_tools = if let Some(plugin) = plugin {
+        let plugin_scope = ToolScope::Plugin {
+            axis: Axis::Target,
+            plugin_slug: plugin.manifest.name.clone(),
+            capability_dir: plugin.root_dir.clone(),
         };
-        scopes.push(adapter_scope.clone());
-        let sidecar_tools = load::adapter_sidecar(&adapter.root_dir, &adapter.manifest.name)?;
+        scopes.push(plugin_scope.clone());
+        let sidecar_tools =
+            load::plugin_sidecar(&plugin.root_dir, &plugin.manifest.name, Axis::Target)?;
         let tools: Vec<Tool> = sidecar_tools.iter().map(|(_, tool)| tool.clone()).collect();
-        validate_manifest_tools(&tools, &adapter_scope)?;
+        validate_manifest_tools(&tools, &plugin_scope)?;
         sidecar_tools
     } else {
         Vec::new()
     };
 
-    let (merged, warnings) = load::merge_scoped(project_tools, adapter_tools);
+    let (merged, warnings) = load::merge_scoped(project_tools, plugin_tools);
     Ok(Inventory {
         tools: merged.into_iter().map(|(scope, tool)| ScopedTool { scope, tool }).collect(),
         warnings: warnings.into_iter().map(warning_row).collect(),

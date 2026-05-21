@@ -30,7 +30,7 @@ mod test_support {
     use jiff::Timestamp;
 
     use crate::cache;
-    use crate::manifest::{Tool, ToolPermissions, ToolScope, ToolSource};
+    use crate::manifest::{Axis, Tool, ToolPermissions, ToolScope, ToolSource};
 
     static SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -44,10 +44,11 @@ mod test_support {
         }
     }
 
-    pub fn adapter_scope(root: &Path) -> ToolScope {
-        ToolScope::Adapter {
-            adapter_slug: "contracts".to_string(),
-            adapter_dir: root.to_path_buf(),
+    pub fn plugin_target_scope(root: &Path) -> ToolScope {
+        ToolScope::Plugin {
+            axis: Axis::Target,
+            plugin_slug: "contracts".to_string(),
+            capability_dir: root.to_path_buf(),
         }
     }
 

@@ -31,9 +31,9 @@ fn create_writes_dir_and_metadata() {
     let dir = value["dir"].as_str().expect("dir string");
     assert!(dir.ends_with("/my-slice"), "dir should end with /my-slice, got: {dir}");
     assert_eq!(value["status"], "defining");
-    let adapter = value["adapter"].as_str().expect("adapter string");
-    assert!(adapter.starts_with("file://"));
-    assert!(adapter.ends_with("/schemas/omnia"));
+    let target = value["target"].as_str().expect("target string");
+    assert!(target.starts_with("file://"));
+    assert!(target.ends_with("/schemas/omnia"));
     assert_eq!(value["created"], true);
     assert_eq!(value["restarted"], false);
 
@@ -42,7 +42,7 @@ fn create_writes_dir_and_metadata() {
     assert!(slice_dir.join("specs").is_dir(), "specs/ must exist");
     let meta = fs::read_to_string(slice_dir.join(".metadata.yaml")).expect("read metadata");
     assert!(meta.contains("status: defining"));
-    assert!(meta.contains("adapter: file://"));
+    assert!(meta.contains("target: file://"));
     assert!(meta.contains("created-at:"));
 }
 
@@ -587,8 +587,8 @@ fn phase_outcome_preserves_metadata_fields() {
         meta_before["created-at"].as_str().expect("created-at populated after create").to_string();
     let status_before =
         meta_before["status"].as_str().expect("status populated after create").to_string();
-    let adapter_before =
-        meta_before["adapter"].as_str().expect("adapter populated after create").to_string();
+    let target_before =
+        meta_before["target"].as_str().expect("target populated after create").to_string();
 
     specify()
         .current_dir(project.root())
@@ -599,7 +599,7 @@ fn phase_outcome_preserves_metadata_fields() {
     let meta_after = read_metadata_yaml(&project, "foo");
     assert_eq!(meta_after["created-at"].as_str(), Some(created_at_before.as_str()));
     assert_eq!(meta_after["status"].as_str(), Some(status_before.as_str()));
-    assert_eq!(meta_after["adapter"].as_str(), Some(adapter_before.as_str()));
+    assert_eq!(meta_after["target"].as_str(), Some(target_before.as_str()));
     assert!(meta_after["outcome"].is_object(), "outcome should now be present");
 }
 
@@ -611,7 +611,7 @@ fn metadata_without_outcome_still_parses() {
     // `outcome` as None.
     let tmp = tempfile::tempdir().expect("tempdir");
     let slice_dir = tmp.path();
-    let yaml = r#"adapter: omnia
+    let yaml = r#"target: omnia
 status: defining
 created-at: "2024-08-01T10:00:00Z"
 "#;
@@ -815,7 +815,7 @@ fn outcome_archive_picks_most_recent() {
             "2026-04-24T00:00:00Z"
         };
         let yaml = format!(
-            "adapter: omnia\nstatus: merged\ncreated-at: \"{created_at}\"\noutcome:\n  phase: merge\n  outcome: success\n  at: \"{created_at}\"\n  summary: \"{summary}\"\n"
+            "target: omnia\nstatus: merged\ncreated-at: \"{created_at}\"\noutcome:\n  phase: merge\n  outcome: success\n  at: \"{created_at}\"\n  summary: \"{summary}\"\n"
         );
         fs::write(dir.join(".metadata.yaml"), yaml).unwrap();
     }

@@ -49,9 +49,9 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
     match action {
         SliceAction::Create {
             name,
-            adapter,
+            target,
             if_exists,
-        } => lifecycle::create(ctx, &name, adapter, if_exists),
+        } => lifecycle::create(ctx, &name, target, if_exists),
         SliceAction::Status { name } => list::status_one(ctx, &name),
         SliceAction::Validate { name } => validate::run(ctx, &name),
         SliceAction::Merge { action } => match action {

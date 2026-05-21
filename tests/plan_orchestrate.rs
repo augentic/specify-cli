@@ -553,7 +553,7 @@ fn plan_add_appends_pending_entry_json() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "add", "foo", "--adapter", "contracts@v1"])
+        .args(["--format", "json", "plan", "add", "foo", "--target", "contracts@v1"])
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -578,13 +578,13 @@ fn plan_add_rejects_duplicate_name_text() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--adapter", "contracts@v1"])
+        .args(["plan", "add", "foo", "--target", "contracts@v1"])
         .assert()
         .success();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--adapter", "contracts@v1"])
+        .args(["plan", "add", "foo", "--target", "contracts@v1"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -602,7 +602,7 @@ fn plan_add_rejects_invalid_name() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["plan", "add", "NotKebab", "--adapter", "contracts@v1"])
+        .args(["plan", "add", "NotKebab", "--target", "contracts@v1"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -866,7 +866,7 @@ slices:
             "plan",
             "add",
             "registration-duplicate-email-crash",
-            "--adapter",
+            "--target",
             "contracts@v1",
             "--description",
             "Duplicate email submission returns 500 instead of 409. Modifies user-registration.",

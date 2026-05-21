@@ -21,7 +21,7 @@
     "scope": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(project|adapter)--[^/\\\\]+$"
+      "pattern": "^(project|plugin--(source|target))--[^/\\\\]+$"
     },
     "tool-name": {
       "type": "string",
@@ -64,7 +64,11 @@
     "package": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "version", "registry"],
+      "required": [
+        "name",
+        "version",
+        "registry"
+      ],
       "properties": {
         "name": {
           "type": "string",

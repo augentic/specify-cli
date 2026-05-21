@@ -13,8 +13,8 @@ use crate::change::plan::core::Plan;
 pub(super) fn detect(plan: &Plan) -> Vec<Diagnostic> {
     let mut referenced: HashSet<&str> = HashSet::new();
     for entry in &plan.entries {
-        for k in &entry.sources {
-            referenced.insert(k.as_str());
+        for binding in &entry.sources {
+            referenced.insert(binding.key());
         }
     }
     let mut orphans: Vec<&str> = plan

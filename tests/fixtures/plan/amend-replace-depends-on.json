@@ -1,7 +1,6 @@
 {
   "action": "amend",
   "entry": {
-    "adapter": null,
     "depends-on": [
       "a",
       "b"

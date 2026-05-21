@@ -9,7 +9,7 @@ impl Plan {
     /// fields (`depends_on`, `sources`, `context`) replace when `Some`
     /// and leave the corresponding
     /// [`Entry`](super::model::Entry) field unchanged when `None`.
-    /// Nullable fields (`project`, `adapter`, `description`) take a
+    /// Nullable fields (`project`, `target`, `description`) take a
     /// three-way [`Patch`](super::model::Patch): `Keep` leaves the field
     /// alone, `Clear` sets it to `None`, `Set(v)` replaces it with
     /// `Some(v)`. `status` is intentionally not patchable — see
@@ -46,7 +46,7 @@ impl Plan {
                 entry.sources = v;
             }
             patch.project.apply(&mut entry.project);
-            patch.adapter.apply(&mut entry.adapter);
+            patch.target.apply(&mut entry.target);
             patch.description.apply(&mut entry.description);
             if let Some(v) = patch.context {
                 entry.context = v;
@@ -72,7 +72,7 @@ impl Plan {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::super::model::{Entry, Patch, Status};
+    use super::super::model::{Entry, Patch, SliceSourceBinding, Status};
     use super::super::test_support::{change, plan_with_changes};
     use super::*;
 
@@ -97,7 +97,7 @@ mod tests {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            adapter: None,
+            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -154,7 +154,7 @@ mod tests {
                 Entry {
                     name: "foo".into(),
                     project: Some("default".into()),
-                    adapter: None,
+                    target: None,
                     status: Status::Pending,
                     depends_on: vec![],
                     sources: vec!["a".into()],
@@ -174,7 +174,11 @@ mod tests {
         plan.amend("foo", patch).expect("amend ok");
         let foo = plan.entries.iter().find(|c| c.name == "foo").unwrap();
         assert_eq!(foo.depends_on, vec!["x".to_string()]);
-        assert_eq!(foo.sources, vec!["a".to_string()], "sources untouched");
+        assert_eq!(
+            foo.sources,
+            vec![SliceSourceBinding::Bare("a".to_string())],
+            "sources untouched"
+        );
         assert_eq!(foo.description.as_deref(), Some("d"), "description untouched");
     }
 
@@ -242,7 +246,7 @@ mod tests {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("alpha".into()),
-            adapter: None,
+            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -276,7 +280,7 @@ mod tests {
             "foo",
             EntryPatch {
                 project: Patch::Clear,
-                adapter: Patch::Set("contracts@v1".into()),
+                target: Patch::Set("contracts@v1".into()),
                 ..EntryPatch::default()
             },
         )
@@ -285,11 +289,11 @@ mod tests {
     }
 
     #[test]
-    fn amend_adapter_three_way() {
+    fn amend_target_three_way() {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            adapter: Some("omnia@v1".into()),
+            target: Some("omnia@v1".into()),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -300,34 +304,34 @@ mod tests {
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
         assert_eq!(
-            plan.entries[0].adapter.as_deref(),
+            plan.entries[0].target.as_deref(),
             Some("omnia@v1"),
-            "None must leave adapter unchanged"
+            "None must leave target unchanged"
         );
 
         plan.amend(
             "foo",
             EntryPatch {
-                adapter: Patch::Set("contracts@v1".into()),
+                target: Patch::Set("contracts@v1".into()),
                 ..EntryPatch::default()
             },
         )
         .expect("amend replace ok");
         assert_eq!(
-            plan.entries[0].adapter.as_deref(),
+            plan.entries[0].target.as_deref(),
             Some("contracts@v1"),
-            "Patch::Set(s) must replace adapter"
+            "Patch::Set(s) must replace target"
         );
 
         plan.amend(
             "foo",
             EntryPatch {
-                adapter: Patch::Clear,
+                target: Patch::Clear,
                 ..EntryPatch::default()
             },
         )
         .expect("amend clear ok");
-        assert_eq!(plan.entries[0].adapter, None, "Patch::Clear must clear adapter");
+        assert_eq!(plan.entries[0].target, None, "Patch::Clear must clear target");
     }
 
     #[test]

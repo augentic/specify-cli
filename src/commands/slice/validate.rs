@@ -1,5 +1,8 @@
-//! `slice validate` — coherence check against the adapter validation rules.
+//! `slice validate` — coherence check against the adapter validation rules
+//! plus first-use schema validation of per-source `Evidence` files
+//! (RFC-25 §Source adapter contract / §`extract`).
 
+use specify_domain::schema::validate_evidence_dir;
 use specify_domain::validate::{ValidationResult, validate_slice};
 use specify_error::{Error, Result};
 
@@ -7,6 +10,14 @@ use crate::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
+    // Per RFC-25 §Source adapter contract, any Evidence file under
+    // `<slice>/evidence/` must satisfy `schemas/evidence.schema.json`.
+    // Failure here short-circuits the rule-based validator below so the
+    // operator sees the structural problem first, before adapter rules
+    // start complaining about downstream artefacts derived from
+    // malformed Evidence.
+    validate_evidence_dir(&slice_dir)?;
+
     let pipeline = ctx.load_pipeline()?;
     let report = validate_slice(&slice_dir, &pipeline)?;
     let passed = report.passed;

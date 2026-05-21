@@ -3,7 +3,9 @@ use std::io::Write;
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::adapter::ChangeBrief;
-use specify_domain::change::{Plan, PlanDoctorDiagnostic, Severity, Status, plan_doctor};
+use specify_domain::change::{
+    Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, plan_doctor,
+};
 use specify_domain::config::{InitPolicy, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
@@ -106,7 +108,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
         NextBody {
             next: Some(entry.name.clone()),
             project: entry.project.clone(),
-            adapter: entry.adapter.clone(),
+            target: entry.target.clone(),
             description: entry.description.clone(),
             sources: Some(entry.sources.clone()),
             ..NextBody::default()
@@ -218,9 +220,9 @@ struct NextBody {
     reason: Option<String>,
     active: Option<String>,
     project: Option<String>,
-    adapter: Option<String>,
+    target: Option<String>,
     description: Option<String>,
-    sources: Option<Vec<String>>,
+    sources: Option<Vec<SliceSourceBinding>>,
 }
 
 fn write_next_text(w: &mut dyn Write, body: &NextBody) -> std::io::Result<()> {

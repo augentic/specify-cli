@@ -55,9 +55,9 @@ pub enum PlanAction {
         /// Target registry project name
         #[arg(long)]
         project: Option<String>,
-        /// Plan-entry `adapter` target for project-less entries (e.g. `contracts@v1`)
+        /// Plan-entry target-adapter identifier for project-less entries (e.g. `contracts@v1`)
         #[arg(long)]
-        adapter: Option<String>,
+        target: Option<String>,
         /// Baseline paths relevant to this change, relative to `.specify/` (repeatable)
         #[arg(long)]
         context: Vec<String>,
@@ -82,10 +82,10 @@ pub enum PlanAction {
         /// Replace project. Pass `--project ""` to clear; omit the flag to leave it unchanged.
         #[arg(long)]
         project: Option<String>,
-        /// Replace the plan-entry `adapter` target. Pass `--adapter ""` to clear;
+        /// Replace the plan-entry target-adapter identifier. Pass `--target ""` to clear;
         /// omit the flag to leave it unchanged.
         #[arg(long)]
-        adapter: Option<String>,
+        target: Option<String>,
         /// Replace context paths. Pass `--context` (with no value) to clear; omit the
         /// flag to leave it unchanged.
         #[arg(long, num_args = 0.., value_delimiter = ',')]

@@ -238,7 +238,7 @@ fn adapter_scope_lists_sidecar_tool() {
     let tools = value["tools"].as_array().expect("tools array");
     assert_eq!(tools.len(), 1, "{value}");
     assert_eq!(tools[0]["name"], "exit-seven");
-    assert_eq!(tools[0]["scope"], "adapter");
+    assert_eq!(tools[0]["scope"], "plugin");
     assert_eq!(tools[0]["scope-detail"], "tools-test-adp");
 }
 
@@ -279,9 +279,9 @@ fn project_manifest_validation_reports_rule_ids() {
                 "0.1.0",
                 &source,
                 None,
-                Some("    permissions:\n      read:\n        - \"$ADAPTER_DIR/templates\"\n"),
+                Some("    permissions:\n      read:\n        - \"$CAPABILITY_DIR/templates\"\n"),
             ),
-            "tool.adapter-dir-out-of-scope",
+            "tool.capability-dir-out-of-scope",
         ),
     ];
 
@@ -337,7 +337,7 @@ fn cache_miss_hit_and_override_observable() {
         .success();
     let stdout = String::from_utf8(first.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(stdout.contains("echo: hello world"), "{stdout}");
-    assert!(stdout.contains("ADAPTER_DIR=<unset>"), "{stdout}");
+    assert!(stdout.contains("CAPABILITY_DIR=<unset>"), "{stdout}");
     assert!(stdout.contains("PATH=<unset>"), "{stdout}");
 
     let sidecar = cache.join("project--tools-test/echo/0.1.0/meta.yaml");
@@ -524,7 +524,7 @@ fn adapter_non_zero_exit_caches_by_scope() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(7));
-    assert!(cache.join("adapter--tools-test-adp/exit-seven/0.1.0/module.wasm").is_file());
+    assert!(cache.join("plugin--target--tools-test-adp/exit-seven/0.1.0/module.wasm").is_file());
 }
 
 #[test]

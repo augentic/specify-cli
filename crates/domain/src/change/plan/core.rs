@@ -14,4 +14,7 @@ pub mod validate;
 #[cfg(test)]
 mod test_support;
 
-pub use model::{Entry, EntryPatch, Finding, Patch, Plan, Severity, Status};
+pub use model::{
+    Entry, EntryPatch, Finding, Patch, Plan, ResolvedSourceBinding, Severity, SliceSourceBinding,
+    Status,
+};

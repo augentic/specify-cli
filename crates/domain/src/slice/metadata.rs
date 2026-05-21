@@ -34,8 +34,13 @@ pub struct SliceMetadata {
     /// the outcome discriminant, not this field.
     #[serde(default = "default_version")]
     pub version: u32,
-    /// Adapter identifier (e.g. `omnia@v1`).
-    pub adapter: String,
+    /// Target-adapter identifier (e.g. `omnia@v1`).
+    ///
+    /// Renamed from `adapter` in RFC-25 W0.2 — the on-disk and
+    /// in-memory field is now `target`. The pre-RFC-25 `adapter`
+    /// alias was dropped together with the schema tightening that
+    /// shipped in the same change.
+    pub target: String,
     /// Current lifecycle state.
     pub status: crate::slice::LifecycleStatus,
     /// When the slice was created.
@@ -210,7 +215,7 @@ mod tests {
     fn sample() -> SliceMetadata {
         SliceMetadata {
             version: METADATA_VERSION,
-            adapter: "omnia".to_string(),
+            target: "omnia".to_string(),
             status: LifecycleStatus::Building,
             created_at: Some(parse_stamp("2024-08-01T10:00:00Z")),
             defined_at: Some(parse_stamp("2024-08-01T12:00:00Z")),
@@ -248,7 +253,7 @@ mod tests {
     /// `1`.
     #[test]
     fn defaults_version_when_absent() {
-        let yaml = r#"adapter: omnia
+        let yaml = r#"target: omnia
 status: complete
 created-at: "2024-08-01T10:00:00Z"
 defined-at: "2024-08-01T12:00:00Z"

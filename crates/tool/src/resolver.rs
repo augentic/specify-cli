@@ -1,5 +1,5 @@
 //! Source resolution for local paths, `file:` URIs, `https:` URIs,
-//! `$PROJECT_DIR`/`$ADAPTER_DIR` template paths, and wasm-pkg
+//! `$PROJECT_DIR`/`$CAPABILITY_DIR` template paths, and wasm-pkg
 //! package requests.
 
 use std::ffi::OsStr;
@@ -90,13 +90,13 @@ pub(crate) fn resolve_with(
         .tempdir_in(parent)
         .map_err(|err| ToolError::cache_io("create resolver staging directory", parent, err))?
         .keep();
-    let adapter_dir = match scope {
-        ToolScope::Adapter { adapter_dir, .. } => Some(adapter_dir.as_path()),
+    let capability_dir = match scope {
+        ToolScope::Plugin { capability_dir, .. } => Some(capability_dir.as_path()),
         ToolScope::Project { .. } => None,
     };
     let expanded_source = tool
         .source
-        .expand(project_dir, adapter_dir)
+        .expand(project_dir, capability_dir)
         .map_err(|reason| ToolError::invalid_source(tool.source.to_wire_string(), reason))?;
     let install_result = stage_and_install(
         scope,
@@ -213,7 +213,7 @@ mod tests {
     use crate::manifest::{PackageRequest, ToolSource};
     use crate::package::{PackageClient, PackageMetadata};
     use crate::test_support::{
-        adapter_scope, cache_env, cached_bytes, fixed_now, project_scope, scratch_dir, tool,
+        cache_env, cached_bytes, fixed_now, plugin_target_scope, project_scope, scratch_dir, tool,
         write_source,
     };
 
@@ -268,10 +268,10 @@ mod tests {
         let cache_dir = scratch_dir("resolver-scope-cache");
         let project_dir = scratch_dir("resolver-scope-project");
         let source_dir = scratch_dir("resolver-scope-source");
-        let adapter_dir = scratch_dir("resolver-adapter");
+        let capability_dir = scratch_dir("resolver-adapter");
         let source = write_source(&source_dir, "module.wasm", b"same");
         let project = project_scope();
-        let adapter = adapter_scope(&adapter_dir);
+        let adapter = plugin_target_scope(&capability_dir);
         let declared = tool(ToolSource::LocalPath(source), None);
 
         let _env = cache_env(&cache_dir);
@@ -282,7 +282,9 @@ mod tests {
             resolve(&adapter, &declared, fixed_now(), &project_dir).expect("adapter resolve");
         assert_ne!(project_resolved.bytes_path, adapter_resolved.bytes_path);
         assert!(project_resolved.bytes_path.to_string_lossy().contains("project--demo"));
-        assert!(adapter_resolved.bytes_path.to_string_lossy().contains("adapter--contracts"));
+        assert!(
+            adapter_resolved.bytes_path.to_string_lossy().contains("plugin--target--contracts")
+        );
     }
 
     #[test]

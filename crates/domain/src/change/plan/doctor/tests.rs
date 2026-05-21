@@ -12,7 +12,7 @@ fn change(name: &str, status: Status) -> Entry {
     Entry {
         name: name.into(),
         project: Some("default".into()),
-        adapter: None,
+        target: None,
         status,
         depends_on: vec![],
         sources: vec![],
