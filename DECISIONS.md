@@ -249,3 +249,141 @@ crate project-scope and adapter-scope tool declarations.
   `merge-mtime-overflow`, `merge-mtime-out-of-range`) into a single
   `merge-mtime-out-of-range` whose `detail` carries the underlying
   `jiff` error.
+
+## RFC-25 type rename: `Target*` is the output role, `Plugin` is the shared shape
+
+Wave 0.2 (`cli/W0.2`) renamed `Adapter*` → `Target*` for the output-role
+domain types (`Target`, the `Slice.target` field, the
+`init-requires-target-or-workspace` / `slice-create-target-missing` /
+`plan.entry-needs-project-or-target` error discriminants, plus every
+fixture, JSON envelope, and call site). Wave 0.3 (`cli/W0.3`) moved the
+shared manifest *shape* into the new `crates/domain/src/plugin/`
+loader so source and target adapters share one loader keyed by an
+explicit `axis: source | target`. The legacy `crates/domain/src/adapter/`
+module survives as a narrower home for `Brief`, `ChangeBrief`,
+`CodexProvenance`, `CacheMeta`, and `PipelineView` — concepts that are
+not part of the RFC-25 wire contract — but no new code should load a
+manifest through it. Per RFC-25 §"Note to the implementing agent",
+touching any of these symbols requires a cross-repo `rg` sweep against
+`augentic/specify-cli` and `augentic/specify` in the same PR.
+
+## Plugin loader axis routing
+
+`specify_domain::plugin::Plugin::resolve(axis, name, project_dir)` is
+the single entry point for loading a source or target adapter manifest.
+Probe order is path-agnostic and matches RFC-25 §"Resolver and cache"
+verbatim:
+
+1. `<project_dir>/.specify/.cache/{sources,targets}/<name>/` —
+   agent-populated cache, fetched by the plan/slice flow.
+2. `<project_dir>/{sources,targets}/<name>/` — in-repo manifests
+   checked into the project's source tree.
+
+The axis segment (`sources` for `Axis::Source`, `targets` for
+`Axis::Target`) keeps source and target adapters with colliding names
+disambiguated by axis. Cache placement matches the probe layout —
+`cache_dir(axis, name)` returns
+`<project_dir>/.specify/.cache/{sources,targets}/<name>/`. Refer to
+RFC-25 §"Resolver and cache" before changing the probe order or cache
+layout.
+
+## Plan lifecycle: two stored states
+
+`plan.yaml.lifecycle` is `pending | reviewed`. No other plan-level
+states ship in v1; `in-progress` and `drained` were dropped from RFC-23
+in Wave 1.2 (`cli/W1.2`). Per-entry status remains a closed enum of
+`pending | in-progress | done` and the writer ownership is split:
+`plan add` / `plan amend` write `pending`, `plan next` is the sole
+writer of `in-progress`, and `slice merge` (via `plan transition <entry>
+done` invoked by the `/spec:merge` skill body) writes `done`. "Drained"
+is computed at read time as "every entry is `done`", not stored.
+`specify plan transition <plan-name> reviewed` is Gate 1 and is
+operator-only — the CLI does not gate it (the call is ungated so
+operators can run it from any shell), but the `--help` text documents
+the rule and `/spec:plan` skill bodies MUST NOT call it. Refer to
+RFC-25 §"Execution model" for the full state diagram.
+
+## `SliceSourceBinding`: bare shorthand plus structured form
+
+`plan.yaml.slices[].sources` accepts two shapes on parse:
+
+- **Bare string shorthand** — `legacy` resolves to a binding whose
+  `key` is `legacy` and whose `candidate` is the matching
+  `plan.yaml.sources[].name` (one-to-one between source and slice).
+- **Structured form** — `{ key: legacy, candidate: legacy-monolith }`
+  is the canonical wire shape and is required whenever the key and
+  the candidate id differ.
+
+The CLI always serialises bindings in the structured form; the
+shorthand parser exists so `/spec:plan` and operator hand edits stay
+ergonomic. `plan amend --add-source <key>` accepts the same shorthand
+on the wire. Refer to RFC-25 §`Slice.sources`.
+
+## `Divergence` enum
+
+`plan.yaml.slices[].divergence` is the closed enum
+`none | likely | accepted | rejected` (kebab-case on the wire;
+`snake_case` Rust variants joined by `#[serde(rename = "…")]`). `none`
+is the implicit default and is elided from serialised output.
+`specify plan amend --divergence` only accepts `accepted | rejected`
+from the wire — `none` is the absent default, and `likely` is reserved
+for the `propose` sub-step of `/spec:plan`, which writes the value via
+a direct YAML edit (per the W3.2 hand-off). Operators flipping the
+field after Gate 1 review use `accepted | rejected` exclusively.
+Refer to RFC-25 §"Plan-time fusion".
+
+## Journal event names
+
+`crates/domain/src/journal.rs` emits a closed taxonomy of RFC-19
+events. The wire ids are dotted kebab-case; the Rust `EventKind`
+variants are `snake_case` and bridge to the wire via
+`#[serde(rename = "…")]`. The taxonomy added in Wave 1.4
+(`cli/W1.4`) is:
+
+| Wire id | Emitted by |
+|---|---|
+| `plan.transition.reviewed` | `specify plan transition <plan> reviewed` (Gate 1 stamp). |
+| `plan.propose.divergence` | `/spec:plan` `propose` sub-step when it flips a slice to `divergence: likely`. |
+| `plan.amend.divergence` | `specify plan amend --divergence accepted\|rejected` on any transition into or out of `accepted`/`rejected`. |
+| `slice.transition.refined` | `specify slice transition <slice> refined`. |
+| `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
+| `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specify slice validate`, one per requirement-block tag emitted by the synthesis substep. |
+
+Events persist as newline-delimited JSON at
+`<project_dir>/.specify/journal.jsonl`. The closed `from` / `to`
+enum on the divergence events is
+`none | likely | accepted | rejected`. Refer to RFC-25 §"Observability"
+and the per-event row table.
+
+## `$CAPABILITY_DIR` replaces `$ADAPTER_DIR`
+
+The WASI tool runner's plugin-scope substitution variable is
+`$CAPABILITY_DIR`. It expands to the resolved plugin's root directory
+(`<project_dir>/.specify/.cache/{sources,targets}/<name>/` or the
+in-repo equivalent) and is only valid in `permissions.{read,write}`
+entries (and the `source:` URI of a plugin-scope tool); project-scope
+references are rejected as `tool.capability-dir-out-of-scope` /
+`tool.source-capability-dir-out-of-scope`. The tool cache scope
+segment that pairs with it is `plugin--<axis>--<slug>` — e.g.
+`plugin--target--contracts` for the `contracts` target adapter's
+tools. Project-scope tools keep `project--<project-name>`
+unchanged. Refer to RFC-25 §"Sandboxing".
+
+## Lifecycle write-ownership
+
+Per-entry status writes route to exactly one CLI verb. Skill bodies
+never write status by hand; the CLI is the single source of truth for
+each transition:
+
+| State | Writer | Trigger |
+|---|---|---|
+| `pending` (per-entry) | `specify plan add` / `specify plan amend` | Operator (or `/spec:plan`) authors / edits a slice row. |
+| `in-progress` (per-entry) | `specify plan next` | Sole writer; the `/spec:execute` loop calls it once per slice. |
+| `done` (per-entry) | `specify plan transition <entry> done` | Called by `/spec:merge` after `specify slice merge` succeeds. |
+| `pending` (plan-level) | `specify plan create` | `/spec:plan` scaffolds the plan in `pending`. |
+| `reviewed` (plan-level) | `specify plan transition <plan> reviewed` | Operator-only (Gate 1). The CLI is ungated; `/spec:plan` MUST NOT call this verb — `--help` text documents the rule and the skill body is the actual gate. |
+
+The plan-level `reviewed` row is the lightest-touch shape the RFC
+allows: a wholly operator-driven stamp with no CLI-side authentication.
+Skills that drift from this contract get caught at review time. Refer
+to RFC-25 §"CLI surface" and §"Writer ownership".

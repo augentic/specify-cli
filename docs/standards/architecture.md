@@ -23,18 +23,35 @@ Every crate uses the shared `[workspace.package]` (`edition = "2024"`, `rust-ver
 
 The root `specify` crate has both `src/lib.rs` (the dispatcher) and `src/main.rs` (a thin `ExitCode` shim). New tooling that wants the clap command tree calls `specify::command()` through `xtask`; do **not** add a parallel binary or re-export.
 
+## RFC-25 domain modules
+
+Four `specify-domain` modules carry the RFC-25 contract; touching any of them requires a cross-repo `rg` sweep per [AGENTS.md §"When working in this repo"](../../AGENTS.md#when-working-in-this-repo).
+
+- **`crates/domain/src/plugin/`** — axis-aware loader. `Plugin::resolve(axis, name, project_dir)` is the single entry point for loading a source or target adapter manifest. The closed `Axis::{Source, Target}` enum routes both the probe paths and the cache placement; see [DECISIONS.md §"Plugin loader axis routing"](../../DECISIONS.md#plugin-loader-axis-routing) for the long form. The pre-RFC-25 `crate::adapter` module survives as a narrower home for `Brief`, `ChangeBrief`, `CodexProvenance`, `CacheMeta`, and `PipelineView`, but no new code should resolve a manifest through it.
+- **`crates/domain/src/spec/provenance.rs`** — parser and validator for the requirement-block provenance metadata (`ID:`, `Sources:`, `Status:`) that core synthesis emits at the top of every `spec.md` requirement. `RequirementStatus` is closed (`agreed | unknown | conflict | divergence`); the inline `[…]` tag on the requirement heading must agree with the `Status:` line. Findings aggregate so one malformed block does not mask later problems.
+- **`crates/domain/src/journal.rs`** — RFC-19 newline-delimited JSON event log at `<project_dir>/.specify/journal.jsonl`. Closed `Event` / `EventKind` taxonomy; kebab-case dotted wire ids (`plan.transition.reviewed`, `plan.propose.divergence`, `plan.amend.divergence`, `slice.transition.refined`, `slice.extract.completed`, `slice.synthesis.{conflict,divergence,unknown}`) bridge to `snake_case` Rust variants via `#[serde(rename = "…")]`. Append is atomic and is the only mutation; readers tail the file and skip blank lines.
+- **`crates/domain/src/schema.rs`** — embeds RFC-25 JSON Schemas (`schemas/plan/plan.schema.json`, `schemas/evidence.schema.json`, the plugin/source/target manifest schemas, `schemas/discovery/candidate.schema.json`) at compile time via `include_str!`. The validators return `Error::Validation` so the CLI exits with code 2 (`Exit::ValidationFailed`); `specify plan add` / `plan amend` / `slice validate` are the first-use hooks.
+
+## Per-axis cache layout
+
+`Plugin::resolve` probes — in order — the agent-populated cache at `<project_dir>/.specify/.cache/{sources,targets}/<name>/` and then the in-repo manifest at `<project_dir>/{sources,targets}/<name>/`. The `{sources,targets}` segment is keyed by `Axis`, so source and target adapters with colliding names disambiguate by axis. `cache_dir(axis, name)` returns the cache-side path. Do not collapse the two roots or special-case one axis — RFC-25 §"Resolver and cache" pins the shape.
+
+## WASI tool sidecar scope
+
+The WASI tool cache root resolves `$SPECIFY_TOOLS_CACHE` → `$XDG_CACHE_HOME/specify/tools/` → `$HOME/.cache/specify/tools/`. Inside it the scope segment is `project--<project-name>` for project-scope tools and `plugin--<axis>--<slug>` for plugin-scope tools (e.g. `plugin--target--contracts` for tools declared in the `contracts` target adapter's `tools.yaml`). The `--` separator avoids collisions with hyphenated tool names. The plugin-scope substitution variable that maps into permission paths is `$CAPABILITY_DIR` (it expands to the resolved plugin's root directory and is rejected on project-scope use as `tool.capability-dir-out-of-scope`). The pre-RFC-25 `adapter--<slug>` scope segment and `$ADAPTER_DIR` variable were retired in Wave 0.3 — see [DECISIONS.md §"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`"](../../DECISIONS.md#capability_dir-replaces-adapter_dir).
+
 ## WASI carve-outs
 
 WASI tools live in `wasi-tools/`, a sibling workspace excluded from the main lint posture. Members are `wasi-tools/contract` (`specify-contract`) and `wasi-tools/vectis` (`specify-vectis`). Build them by running `cargo build` inside `wasi-tools/` so the sibling workspace's lockfile and target dir are used — `cargo make contract-wasm` is a thin wrapper that does this for `specify-contract` and is required before running `tests/contract_tool.rs`; `scripts/build-vectis-local.sh` does the same for `specify-vectis` and adds sha256 sidecars for pre-release smoke tests.
 
 `wasi-tools/contract` and `wasi-tools/vectis` are deliberate carve-outs from the workspace's Render/emit/`specify-error` discipline. They ship as standalone WASI components and live in their own sibling workspace at `wasi-tools/Cargo.toml`, which inherits a leaner lint posture and a minimal `[workspace.dependencies]` set. Do not pull `specify-error` (or any other host workspace crate that drags in `wasmtime`, `tokio`, `ureq`, …) into either; the carve-out comments in `wasi-tools/contract/src/main.rs` and `wasi-tools/vectis/src/lib.rs` are authoritative.
 
-**Carve-out invariant.** A adapter's validation, scaffold, and rendering logic lives inside its carve-out; the host CLI consumes it only through `specify tool run <name>`. No `specify-*` workspace crate may import adapter-specific logic — the previous shared-validation split (`specify-validate` re-extracted for the contract baseline checks) was an architectural leak collapsed in the 2026-05 inversion pass. New adapters ship as carve-outs and stay there.
+**Carve-out invariant.** A plugin's validation, scaffold, and rendering logic lives inside its carve-out; the host CLI consumes it only through `specify tool run <name>`. No `specify-*` workspace crate may import plugin-specific logic — the previous shared-validation split (`specify-validate` re-extracted for the contract baseline checks) was an architectural leak collapsed in the 2026-05 inversion pass. New source / target adapters ship as carve-outs (or as in-repo brief bundles consumed by the agent) and stay there.
 
 When editing these crates:
 
 - They cannot use anything that isn't WASI-compatible. No threads, no networking primitives outside the declared WASI imports, no clock unless the manifest declares it.
-- They stay outside the host workspace's Render/emit/`specify-error` discipline. Do not pull host workspace crates into either; the carve-out is the single source of truth for the adapter's logic.
+- They stay outside the host workspace's Render/emit/`specify-error` discipline. Do not pull host workspace crates into either; the carve-out is the single source of truth for the plugin's logic.
 - Rebuild artifacts from inside `wasi-tools/` so the sibling workspace's lockfile is used (`cargo make contract-wasm` and `scripts/build-vectis-local.sh` both do this). Do not check the `.wasm` outputs into git — the release workflow handles distribution.
 - Keep their crate dependency surface minimal — they ship as standalone components and bloat the WASM size if you pull in heavy crates.
 
@@ -82,7 +99,7 @@ cargo +nightly fmt --all
 
 ## Skill / CLI responsibility split
 
-Every deterministic operation lives in this CLI: kebab-case validation, `.metadata.yaml` reads/writes, lifecycle transitions, adapter resolution, artifact-completion checks, spec-merge preview, baseline conflict detection, delta merge, coherence validation, archive moves, plan/registry validation. The plugin repo's phase skills (`/spec:define`, `/spec:build`, `/spec:merge`, `/spec:drop`, `/spec:init`, `/change:draft`, `/change:execute`, `/change:finalize`) shell out for all of those.
+Every deterministic operation lives in this CLI: kebab-case validation, `.metadata.yaml` reads/writes, lifecycle transitions, plugin resolution (`specify source resolve` / `specify target resolve`), artifact-completion checks, spec-merge preview, baseline conflict detection, delta merge, coherence validation, archive moves, plan/registry validation, schema validation of `plan.yaml` and per-source `Evidence`, RFC-19 journal append. The plugin repo's `/spec:` skills (`/spec:plan`, `/spec:refine`, `/spec:build`, `/spec:merge`, `/spec:execute`, `/spec:finalize`, `/spec:init`, `/spec:drop`) shell out for all of those.
 
 The corollary: when a skill currently does something deterministic in prose (parsing YAML, validating shape, computing topology, transitioning state), the right fix is to add a CLI verb here and have the skill call it. The wrong fix is to make the skill smarter.
 

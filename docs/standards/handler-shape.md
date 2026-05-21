@@ -29,7 +29,7 @@ A free `fn ... -> Result<Exit>` belongs in `src/commands.rs`. Elsewhere, default
 
 Success bodies leave handlers via `ctx.write(&body, write_text)?;`. `Ctx::write` chooses the JSON vs text path based on `Format`; the handler never sees the branch. The `write_text` closure has signature `FnOnce(&mut dyn Write, &T) -> std::io::Result<()>` and is colocated with each handler so the response shape stays in a single block of code; the JSON path goes through `serde::Serialize` automatically.
 
-The underlying `emit` function is private to `src/output.rs`, and handlers never pick a stdout/stderr sink directly — `output::write` and `output::report` are the only sink-bearing entry points. Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::adapter::resolve` — receive a bare `Format` and call the free `output::write(format, &body, write_text)?;` instead.
+Handlers never pick a stdout/stderr sink directly — `Ctx::write` (the success path), `output::report` (the failure path), and the free `output::emit` (the rare format-only path) are the sink-bearing entry points. Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::source::resolve`, `commands::target::resolve` (the two RFC-25 plugin-resolve verbs) — receive a bare `Format` and call `output::emit(Box::new(std::io::stdout().lock()), format, &body, write_text)?;` directly because `Ctx::write` is not available.
 
 For the full DTO and dispatch rules see [coding-standards.md §"Format dispatch"](./coding-standards.md#format-dispatch), [§"One emit path"](./coding-standards.md#one-emit-path), and [§"DTOs"](./coding-standards.md#dtos). The canonical pattern is [`src/commands/codex.rs`](../../src/commands/codex.rs).
 
@@ -48,7 +48,7 @@ The four-slot CLI exit-code table is fixed:
 
 ## Dispatcher contract
 
-`src/cli.rs` declares the clap derive surface. Every command has a doc comment that doubles as `--help` output — keep it accurate and operator-facing (no internal jargon, no RFC numbers without a hyperlink). Add new commands as enum variants on `Commands` with a nested action enum where the verb has subactions; mirror existing groups (`SliceAction`, `ChangeAction`, etc.).
+`src/cli.rs` declares the clap derive surface. Every command has a doc comment that doubles as `--help` output — keep it accurate and operator-facing (no internal jargon, no RFC numbers without a hyperlink). Add new commands as enum variants on `Commands` with a nested action enum where the verb has subactions; mirror existing groups (`SliceAction`, `PlanAction`, `SourceAction`, `TargetAction`, …).
 
 `--source key=value` arguments are parsed via the typed `SourceArg` (`impl FromStr for SourceArg`) so call sites read named fields instead of tuple positions.
 
@@ -62,6 +62,39 @@ Dispatchers live in `src/commands/<verb>.rs` and call back into the workspace cr
 Failure envelopes leave handlers as `Err(Error::*)`; the dispatcher in `src/commands.rs` routes them through `output::report(format, &err)`. No handler writes its own stderr envelope.
 
 Never put domain logic in the binary. If a function needs unit tests, it belongs in a workspace crate. The binary owns argv parsing, formatting, and dispatch only. For the crate dependency direction this enforces see [architecture.md §"Workspace layout"](./architecture.md#workspace-layout).
+
+## RFC-25 verb shapes
+
+`source resolve <name>` and `target resolve <value>` are format-only
+handlers — they take a bare `Format` plus the project dir, call
+`specify_domain::plugin::Plugin::resolve(Axis::Source | ::Target,
+name, project_dir)?`, and emit a `ResolveBody { axis, name,
+resolved_path, location, operations, description }` via the direct
+`output::emit` path described above. They never load a `Ctx`,
+because plugin resolution is read-only and runs before any project
+mutation. Both handlers share the same DTO shape and rendering
+closure (the axis discriminator is the only meaningful difference)
+so adding a third axis later is a one-line clap addition.
+
+`plan amend` extends the canonical `with_state::<Plan, _, _>(...)`
+handler shape with three RFC-25 flag families on the `--sources`
+axis: `--sources <binding>...` (wholesale replace), `--add-source
+<binding>` (repeatable), `--remove-source <key>` (repeatable). The
+parser routes `--add-source` / `--remove-source` *after* the
+wholesale `Plan::amend(name, patch)` call so wholesale replacement
+plus targeted edits compose cleanly in a single invocation. The
+`--divergence` flag accepts only `accepted | rejected` from the
+wire and emits a `plan.amend.divergence` journal event when (and
+only when) the field flips — see [DECISIONS.md §"Journal event
+names"](../../DECISIONS.md#journal-event-names).
+
+`plan transition <name> <target>` is one verb that dispatches on
+the operands: `<plan-name> reviewed` is the Gate 1 stamp and emits
+a `plan.transition.reviewed` journal event; `<entry-name> done` is
+the per-entry close (`/spec:merge` is the canonical caller).
+Anything else is an `Error::Argument` (exit 2). The journal append
+runs *after* `with_state` returns so the plan write and the journal
+append cannot interleave on failure.
 
 ## Gotcha — `specify init` and the version floor
 
