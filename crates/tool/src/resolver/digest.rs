@@ -27,18 +27,21 @@ pub(super) fn validate(
     source: &str, acquired: &AcquiredBytes, expected_sha256: Option<&str>,
 ) -> Result<(), ToolError> {
     if acquired.len()? == 0 {
-        return Err(ToolError::EmptySource {
-            source_value: source.to_string(),
+        return Err(ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!("tool source `{source}` produced empty bytes"),
         });
     }
 
     if let Some(expected) = expected_sha256
         && acquired.sha256 != expected
     {
-        return Err(ToolError::DigestMismatch {
-            source_value: source.to_string(),
-            expected: expected.to_string(),
-            actual: acquired.sha256.clone(),
+        return Err(ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!(
+                "tool source `{source}` sha256 mismatch: expected {expected}, got {}",
+                acquired.sha256
+            ),
         });
     }
     Ok(())
@@ -86,7 +89,11 @@ mod tests {
         resolve(&scope, &old_tool, fixed_now(), &project_dir).expect("initial digest install");
         let err = resolve(&scope, &wrong_tool, fixed_now(), &project_dir)
             .expect_err("wrong digest must fail");
-        assert!(matches!(err, ToolError::DigestMismatch { .. }), "{err}");
+        assert!(
+            matches!(&err, ToolError::Diag { code: "tool-resolver", detail }
+                if detail.contains("sha256 mismatch")),
+            "{err}"
+        );
         assert_eq!(cached_bytes(&scope, &old_tool), b"old-good");
 
         let correct_tool = tool(ToolSource::LocalPath(new_source), Some(sha256_hex(b"new-good")));

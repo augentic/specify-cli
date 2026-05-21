@@ -266,8 +266,8 @@ pub(super) fn amend(
                 divergence.map(|to| specify_domain::journal::EventKind::PlanAmendDivergence {
                     plan_name,
                     slice_name: amended.name.clone(),
-                    from: specify_domain::journal::DivergenceState::from(previous_divergence),
-                    to: specify_domain::journal::DivergenceState::from(Some(to)),
+                    from: previous_divergence.unwrap_or(Divergence::None),
+                    to,
                 });
 
             Ok((

@@ -169,7 +169,15 @@ pub struct Entry {
 
 /// RFC-25 §Plan-time fusion — slice-level fusion-outcome enum.
 ///
-/// Absent on disk (≡ semantic `none`) is the implicit default; the
+/// Closed `none | likely | accepted | rejected` taxonomy. On disk
+/// inside `plan.yaml.slices[].divergence` the field uses
+/// `Option<Divergence>` with `skip_serializing_if = "Option::is_none"`,
+/// so an absent line (`Option::None`) is the implicit default and the
+/// `none` variant never appears in slice records. The journal wire
+/// (`plan.amend.divergence` payload's `from` / `to`) does pin all
+/// four values literally — `Divergence::None` serialises as the
+/// kebab-case `"none"` for that channel.
+///
 /// `none` and `likely` literals are not accepted on the
 /// `specify plan amend --divergence` CLI flag (`likely` is reserved
 /// for the synthesised `propose` sub-step). The CLI accepts only
@@ -179,6 +187,11 @@ pub struct Entry {
 #[strum(serialize_all = "kebab-case")]
 #[non_exhaustive]
 pub enum Divergence {
+    /// No divergence — the implicit default for slice records (absent
+    /// on disk) and the explicit first value of the journal
+    /// `plan.amend.divergence` `from` field on the first transition.
+    #[serde(rename = "none")]
+    None,
     /// Synthesised by `/spec:plan`'s `propose` sub-step on
     /// materially-disagreeing candidate summaries.
     Likely,

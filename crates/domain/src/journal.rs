@@ -21,6 +21,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
+use crate::change::Divergence;
 use crate::config::Layout;
 
 /// Project-relative path the journal lives at.
@@ -83,11 +84,13 @@ pub enum EventKind {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: String,
         /// Previous value — may be any of `none | likely | accepted | rejected`.
-        from: DivergenceState,
+        /// Callers convert an absent on-disk slice field via
+        /// `previous.unwrap_or(Divergence::None)`.
+        from: Divergence,
         /// New value — `accepted` or `rejected` (the only operator-
         /// settable values; `likely` is propose-only, `none` is the
         /// implicit default and is never set explicitly).
-        to: DivergenceState,
+        to: Divergence,
     },
     /// Slice transitioned to `refined` — synthesis finished and the
     /// slice is ready for `/spec:build`.
@@ -137,38 +140,6 @@ pub enum EventKind {
     },
 }
 
-/// Closed `none | likely | accepted | rejected` enum used by the
-/// `plan.amend.divergence` payload's `from` / `to` fields.
-///
-/// Distinct from [`crate::change::Divergence`] (which has no `None`
-/// variant because absence on disk encodes the same meaning) so the
-/// wire shape can express the implicit-default first transition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
-#[serde(rename_all = "kebab-case")]
-#[strum(serialize_all = "kebab-case")]
-#[non_exhaustive]
-pub enum DivergenceState {
-    /// No divergence — the implicit default; absent on disk.
-    None,
-    /// `propose` flagged the slice as materially divergent.
-    Likely,
-    /// Operator acknowledged the divergence at Gate 1.
-    Accepted,
-    /// Operator rejected the divergence at Gate 1.
-    Rejected,
-}
-
-impl From<Option<crate::change::Divergence>> for DivergenceState {
-    fn from(value: Option<crate::change::Divergence>) -> Self {
-        match value {
-            None => Self::None,
-            Some(crate::change::Divergence::Likely) => Self::Likely,
-            Some(crate::change::Divergence::Accepted) => Self::Accepted,
-            Some(crate::change::Divergence::Rejected) => Self::Rejected,
-        }
-    }
-}
-
 /// Absolute path to the journal at `<project_dir>/.specify/journal.jsonl`.
 #[must_use]
 pub fn path(layout: Layout<'_>) -> PathBuf {
@@ -194,8 +165,8 @@ pub fn path(layout: Layout<'_>) -> PathBuf {
 ///
 /// Panics if [`serde_json::to_string`] fails for [`Event`]. Every
 /// variant is a closed serde derive whose fields are owned `String`s
-/// or [`DivergenceState`] (a flat enum); this branch is unreachable
-/// in normal operation and mirrors the `to_value(entry).expect("plan
+/// or [`Divergence`] (a flat enum); this branch is unreachable in
+/// normal operation and mirrors the `to_value(entry).expect("plan
 /// Entry serialises as JSON")` pattern in `src/commands/plan/create.rs`.
 pub fn append(layout: Layout<'_>, event: &Event) -> Result<(), Error> {
     std::fs::create_dir_all(layout.specify_dir())?;
@@ -251,8 +222,8 @@ mod tests {
             EventKind::PlanAmendDivergence {
                 plan_name: "platform-v2".to_string(),
                 slice_name: "checkout".to_string(),
-                from: DivergenceState::Likely,
-                to: DivergenceState::Accepted,
+                from: Divergence::Likely,
+                to: Divergence::Accepted,
             },
         );
         append(layout, &event).expect("append ok");
@@ -284,15 +255,6 @@ mod tests {
             "slice-name must be kebab-case, got:\n{}",
             lines[0]
         );
-    }
-
-    #[test]
-    fn divergence_state_from_option_divergence_round_trip() {
-        use crate::change::Divergence;
-        assert_eq!(DivergenceState::from(None), DivergenceState::None);
-        assert_eq!(DivergenceState::from(Some(Divergence::Likely)), DivergenceState::Likely);
-        assert_eq!(DivergenceState::from(Some(Divergence::Accepted)), DivergenceState::Accepted);
-        assert_eq!(DivergenceState::from(Some(Divergence::Rejected)), DivergenceState::Rejected);
     }
 
     #[test]
@@ -401,8 +363,8 @@ mod tests {
             EventKind::PlanAmendDivergence {
                 plan_name: "p".to_string(),
                 slice_name: "s".to_string(),
-                from: DivergenceState::None,
-                to: DivergenceState::Accepted,
+                from: Divergence::None,
+                to: Divergence::Accepted,
             },
             EventKind::SliceTransitionRefined {
                 slice_name: "s".to_string(),

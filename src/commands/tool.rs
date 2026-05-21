@@ -18,7 +18,7 @@ pub(super) use gc::run as gc;
 pub(super) use list::run as list;
 pub(super) use run::run;
 pub(super) use show::run as show;
-use specify_domain::adapter::{Adapter, ResolvedAdapter};
+use specify_domain::adapter::{ADAPTER_FILENAME, Adapter, ResolvedAdapter};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
 use specify_tool::manifest::{Axis, Tool, ToolManifest, ToolScope};
@@ -69,7 +69,10 @@ fn resolve_project_adapter(ctx: &Ctx) -> Result<Option<ResolvedAdapter>> {
 }
 
 fn enforce_adapter_filename(dir: &Path) -> Result<()> {
-    Adapter::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::Diag {
+    if dir.join(ADAPTER_FILENAME).is_file() {
+        return Ok(());
+    }
+    Err(Error::Diag {
         code: "adapter-manifest-missing",
         detail: format!("no `adapter.yaml` at {}", dir.display()),
     })

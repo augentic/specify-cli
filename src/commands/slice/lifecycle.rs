@@ -50,18 +50,6 @@ fn write_create_text(w: &mut dyn Write, c: &Created) -> std::io::Result<()> {
 pub(super) fn transition(ctx: &Ctx, name: String, target: LifecycleStatus) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     let metadata = slice_actions::transition(&slice_dir, target, Timestamp::now())?;
-    // RFC-25 §Observability: slices reaching `refined` (synthesis
-    // complete) emit a journal event. Other lifecycle transitions
-    // are not in the v1 event set — see RFC-25 §Observability table.
-    if metadata.status.to_string() == "refined" {
-        let event = specify_domain::journal::Event::new(
-            Timestamp::now(),
-            specify_domain::journal::EventKind::SliceTransitionRefined {
-                slice_name: name.clone(),
-            },
-        );
-        specify_domain::journal::append(ctx.layout(), &event)?;
-    }
     ctx.write(
         &TransitionBody {
             name,

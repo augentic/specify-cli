@@ -2,7 +2,7 @@
 //!
 //! `Rule` / `CrossRule` declare their `Classification`; [`validate_slice`]
 //! returns a `ValidationReport` whose entries are [`ValidationSummary`]
-//! values carrying a `Pass` / `Fail` / `Deferred` [`ValidationStatus`].
+//! values carrying a `Pass` / `Fail` / `Deferred` `ValidationStatus`.
 //! The report serialises directly via its `serde::Serialize` derive — the
 //! kebab-case wire shape (`brief-results`, `cross-checks`, `rule-id`) is
 //! produced by the `rename_all = "kebab-case"` attribute on the report and

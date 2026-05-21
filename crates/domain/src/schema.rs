@@ -150,7 +150,7 @@ fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationS
 
 /// Validate `instance` against the embedded JSON Schema `schema_source`.
 ///
-/// Returns one [`ValidationSummary::Pass`]-shaped entry on a clean
+/// Returns one `Pass`-status [`ValidationSummary`] entry on a clean
 /// validation, one `Fail` entry with the joined error list on a schema
 /// mismatch, or a single `Fail` carrying the meta-failure reason if the
 /// embedded schema itself cannot be parsed or compiled. Callers wrap

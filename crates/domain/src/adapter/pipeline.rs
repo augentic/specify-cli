@@ -26,14 +26,9 @@ impl PipelineView {
     /// 1. Every `PipelineEntry.brief` path exists and parses.
     /// 2. `Brief.frontmatter.id` equals the referencing `PipelineEntry.id`.
     /// 3. Every `needs` id refers to a brief that appears **earlier** in
-    ///    pipeline order (plan → define → build → merge).
+    ///    pipeline order (define → build → merge).
     /// 4. Every `tracks` id refers to a brief in the same adapter
     ///    (any phase).
-    ///
-    /// Plan-phase briefs are loaded ahead of the execution-loop phases
-    /// so that a define-phase brief legitimately referring back to a
-    /// plan-phase brief via `needs` / `tracks` still satisfies the
-    /// earlier-in-pipeline-order rule.
     ///
     /// # Errors
     ///
@@ -42,8 +37,7 @@ impl PipelineView {
         let resolved = Adapter::resolve(schema_value, project_dir)?;
 
         let mut briefs: Vec<(Phase, Brief)> = Vec::new();
-        let plan_iter = resolved.manifest.plan_entries().iter().map(|e| (Phase::Plan, e));
-        for (phase, entry) in plan_iter.chain(resolved.manifest.entries()) {
+        for (phase, entry) in resolved.manifest.entries() {
             let brief_path = resolved.root_dir.join(&entry.brief);
             let brief = Brief::load(&brief_path)?;
 

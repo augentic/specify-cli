@@ -612,7 +612,6 @@ fn is_valid_source_key(s: &str) -> bool {
         return false;
     }
     let mut prev_dash = false;
-    let mut last = first;
     for b in bytes {
         if b == b'-' {
             if prev_dash {
@@ -624,9 +623,8 @@ fn is_valid_source_key(s: &str) -> bool {
         } else {
             return false;
         }
-        last = b;
     }
-    last != b'-'
+    !prev_dash
 }
 
 #[cfg(test)]

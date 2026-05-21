@@ -92,7 +92,6 @@ fn validate_structure_fails_when_define_phase_is_empty() {
         version: 1,
         description: "empty define phase".into(),
         pipeline: Pipeline {
-            plan: vec![],
             define: vec![],
             build: vec![PipelineEntry {
                 id: "build".into(),
@@ -125,50 +124,6 @@ fn yaml_parse_error_surface_for_missing_required_field() {
         message.contains("description"),
         "expected parse error to mention missing field, got: {message}"
     );
-}
-
-// ---------- pipeline.plan (Layer 2 authoring) ----------
-
-#[test]
-fn plan_entries_merge_overrides_by_id_and_appends_new_entries() {
-    let parent_yaml = r"
-name: parent
-version: 1
-description: parent
-pipeline:
-  plan:
-    - { id: discovery, brief: briefs/plan/discovery.md }
-    - { id: propose,   brief: briefs/plan/propose.md }
-  define:
-    - { id: proposal, brief: briefs/proposal.md }
-  build:
-    - { id: build, brief: briefs/build.md }
-  merge:
-    - { id: merge, brief: briefs/merge.md }
-";
-    let child_yaml = r"
-name: child
-version: 1
-description: child
-pipeline:
-  plan:
-    - { id: propose, brief: briefs/plan/propose-v2.md }
-    - { id: record,  brief: briefs/plan/record.md }
-  define:
-    - { id: proposal, brief: briefs/proposal.md }
-  build:
-    - { id: build, brief: briefs/build.md }
-  merge:
-    - { id: merge, brief: briefs/merge.md }
-";
-    let parent: Adapter = serde_saphyr::from_str(parent_yaml).unwrap();
-    let child: Adapter = serde_saphyr::from_str(child_yaml).unwrap();
-    let merged = Adapter::merge(parent, child);
-
-    let ids: Vec<&str> = merged.plan_entries().iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(ids, vec!["discovery", "propose", "record"]);
-    let propose = merged.plan_entries().iter().find(|e| e.id == "propose").unwrap();
-    assert_eq!(propose.brief, "briefs/plan/propose-v2.md");
 }
 
 // ---------- Manifest composition ----------
@@ -647,75 +602,6 @@ fn valid_briefs() -> Vec<(&'static str, &'static str)> {
         ),
         ("briefs/merge.md", "---\nid: merge\ndescription: land\nneeds: [build]\n---\nbody\n"),
     ]
-}
-
-const PLAN_SCHEMA_YAML: &str = "\
-name: demo
-version: 1
-description: demo with plan
-pipeline:
-  plan:
-    - { id: discovery, brief: briefs/plan/discovery.md }
-    - { id: propose,   brief: briefs/plan/propose.md }
-  define:
-    - { id: proposal, brief: briefs/proposal.md }
-    - { id: specs,    brief: briefs/specs.md }
-  build:
-    - { id: build, brief: briefs/build.md }
-  merge:
-    - { id: merge, brief: briefs/merge.md }
-";
-
-fn plan_briefs() -> Vec<(&'static str, &'static str)> {
-    vec![
-        (
-            "briefs/plan/discovery.md",
-            "---\nid: discovery\ndescription: explore\ngenerates: discovery.md\n---\nbody\n",
-        ),
-        (
-            "briefs/plan/propose.md",
-            "---\nid: propose\ndescription: propose\nneeds: [discovery]\ngenerates: propose.md\n---\nbody\n",
-        ),
-        ("briefs/proposal.md", "---\nid: proposal\ndescription: why\n---\nbody\n"),
-        ("briefs/specs.md", "---\nid: specs\ndescription: what\nneeds: [proposal]\n---\nbody\n"),
-        (
-            "briefs/build.md",
-            "---\nid: build\ndescription: impl\nneeds: [specs]\ntracks: specs\n---\nbody\n",
-        ),
-        ("briefs/merge.md", "---\nid: merge\ndescription: land\nneeds: [build]\n---\nbody\n"),
-    ]
-}
-
-#[test]
-fn pipeline_view_load_includes_plan_briefs_in_topo_order() {
-    let tmp = scaffold_schema_project("demo", PLAN_SCHEMA_YAML, &plan_briefs());
-    let view = PipelineView::load("demo", tmp.path()).expect("loads with plan briefs");
-
-    assert_eq!(view.phase(Phase::Plan).count(), 2);
-    assert!(view.brief("discovery").is_some());
-    assert!(view.brief("propose").is_some());
-
-    // Topological order respects the plan-phase `needs: [discovery]` edge.
-    let order: Vec<&str> = view
-        .topo_order(Phase::Plan)
-        .expect("plan topo order")
-        .iter()
-        .map(|b| b.frontmatter.id.as_str())
-        .collect();
-    assert_eq!(order, vec!["discovery", "propose"]);
-
-    // Completion relative to an empty change dir: both briefs declare
-    // `generates` and neither is present.
-    let change_dir = tmp.path().join("change");
-    std::fs::create_dir_all(&change_dir).unwrap();
-    let completion = view.completion_for(Phase::Plan, &change_dir);
-    assert_eq!(completion.get("discovery"), Some(&false));
-    assert_eq!(completion.get("propose"), Some(&false));
-
-    std::fs::write(change_dir.join("discovery.md"), "body").unwrap();
-    let completion = view.completion_for(Phase::Plan, &change_dir);
-    assert_eq!(completion.get("discovery"), Some(&true));
-    assert_eq!(completion.get("propose"), Some(&false));
 }
 
 #[test]

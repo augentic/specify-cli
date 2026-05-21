@@ -6,7 +6,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use specify_domain::adapter::{Adapter, PipelineView};
+use specify_domain::adapter::{ADAPTER_FILENAME, PipelineView};
 use specify_domain::config::{Layout, ProjectConfig};
 use specify_domain::registry::Registry;
 use specify_domain::slice::SliceMetadata;
@@ -69,8 +69,9 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
 fn collect_adapter_inputs(
     collector: &mut fingerprint::InputCollector, pipeline: &PipelineView,
 ) -> Result<()> {
-    if let Some(path) = Adapter::probe_dir(&pipeline.adapter.root_dir) {
-        collector.add_file(&path)?;
+    let manifest = pipeline.adapter.root_dir.join(ADAPTER_FILENAME);
+    if manifest.is_file() {
+        collector.add_file(&manifest)?;
     }
     for (_phase, brief) in &pipeline.briefs {
         collector.add_file(&brief.path)?;

@@ -27,7 +27,7 @@ use crate::context::Ctx;
 /// `contracts` (opaque replace). Single source of truth in the
 /// binary; future adapter manifests should drive this through
 /// `specify-adapter`.
-pub(super) fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<ArtifactClass> {
+fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<ArtifactClass> {
     vec![
         ArtifactClass {
             name: "specs".to_string(),

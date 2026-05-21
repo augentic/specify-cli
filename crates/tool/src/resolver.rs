@@ -94,10 +94,11 @@ pub(crate) fn resolve_with(
         ToolScope::Plugin { capability_dir, .. } => Some(capability_dir.as_path()),
         ToolScope::Project { .. } => None,
     };
-    let expanded_source = tool
-        .source
-        .expand(project_dir, capability_dir)
-        .map_err(|reason| ToolError::invalid_source(tool.source.to_wire_string(), reason))?;
+    let expanded_source =
+        tool.source.expand(project_dir, capability_dir).map_err(|reason| ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!("tool source `{}` is invalid: {reason}", tool.source.to_wire_string()),
+        })?;
     let install_result = stage_and_install(
         scope,
         tool,
@@ -175,9 +176,12 @@ fn acquire_source_bytes(
         ToolSource::FileUri(uri) => buffered_into_acquired(&local::read_file_uri(uri)?, dest_hint),
         ToolSource::HttpsUri(url) => http::download_https(url, dest_hint),
         ToolSource::Package(package) => package_client.fetch(package, dest_hint),
-        ToolSource::TemplatePath(t) => {
-            Err(ToolError::invalid_source(t, "template source was not expanded before resolution"))
-        }
+        ToolSource::TemplatePath(t) => Err(ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!(
+                "tool source `{t}` is invalid: template source was not expanded before resolution"
+            ),
+        }),
     }
 }
 

@@ -11,7 +11,12 @@ pub mod target;
 pub mod tool;
 pub mod workspace;
 
+use std::io::Write;
+use std::path::Path;
+
 use clap::CommandFactory;
+use serde::Serialize;
+use specify_domain::plugin::{Axis, Plugin};
 use specify_error::Result;
 
 use crate::cli::{Cli, Commands, Format};
@@ -20,7 +25,7 @@ use crate::commands::target::cli::TargetAction;
 use crate::commands::tool::cli::ToolAction;
 use crate::commands::workspace::cli::WorkspaceAction;
 use crate::context::Ctx;
-use crate::output::{Exit, report};
+use crate::output::{self, Exit, report};
 
 pub fn run(cli: Cli) -> Exit {
     let format = cli.format;
@@ -37,12 +42,12 @@ pub fn run(cli: Cli) -> Exit {
         Commands::Context { action } => scoped(format, |ctx| context::run(ctx, &action)),
         Commands::Source { action } => match action {
             SourceAction::Resolve { name, project_dir } => {
-                dispatch(format, || source::resolve(format, &name, &project_dir))
+                dispatch(format, || resolve_plugin(format, Axis::Source, &name, &project_dir))
             }
         },
         Commands::Target { action } => match action {
             TargetAction::Resolve { value, project_dir } => {
-                dispatch(format, || target::resolve(format, &value, &project_dir))
+                dispatch(format, || resolve_plugin(format, Axis::Target, &value, &project_dir))
             }
         },
         Commands::Codex { action } => scoped(format, |ctx| codex::run(ctx, action)),
@@ -132,4 +137,56 @@ fn run_tool(format: Format, name: &str, args: Vec<String>) -> Exit {
         Ok(code) => Exit::Code(code),
         Err(err) => report(format, &err),
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ResolveBody {
+    axis: &'static str,
+    name: String,
+    resolved_path: String,
+    location: &'static str,
+    operations: Vec<String>,
+    description: Option<String>,
+}
+
+fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<()> {
+    writeln!(w, "{}", body.resolved_path)?;
+    writeln!(w, "  axis: {}", body.axis)?;
+    writeln!(w, "  name: {}", body.name)?;
+    writeln!(w, "  location: {}", body.location)?;
+    writeln!(w, "  operations: {}", body.operations.join(", "))?;
+    if let Some(desc) = &body.description {
+        writeln!(w, "  description: {desc}")?;
+    }
+    Ok(())
+}
+
+/// Resolve a source- or target-adapter manifest by kebab name and emit
+/// the wire-stable [`ResolveBody`] envelope. Probe order matches
+/// [`Plugin::resolve`]: agent-populated cache at
+/// `<project_dir>/.specify/.cache/{sources,targets}/<name>/` first, then
+/// the in-repo `<project_dir>/{sources,targets}/<name>/`.
+///
+/// For [`Axis::Target`], `value` accepts either `<name>` or
+/// `<name>@<version>`; the `@version` suffix is treated as an opaque
+/// identifier and stripped to leave the kebab name for the lookup
+/// (RFC-25 §CLI surface).
+fn resolve_plugin(format: Format, axis: Axis, value: &str, project_dir: &Path) -> Result<()> {
+    let name = if matches!(axis, Axis::Target) {
+        value.split_once('@').map_or(value, |(n, _)| n)
+    } else {
+        value
+    };
+    let resolved = Plugin::resolve(axis, name, project_dir)?;
+    let body = ResolveBody {
+        axis: axis.dir_segment(),
+        name: resolved.manifest.name.clone(),
+        resolved_path: resolved.root_dir.display().to_string(),
+        location: resolved.location.label(),
+        operations: resolved.manifest.operations.clone(),
+        description: resolved.manifest.description.clone(),
+    };
+    output::emit(Box::new(std::io::stdout().lock()), format, &body, write_resolve_text)?;
+    Ok(())
 }

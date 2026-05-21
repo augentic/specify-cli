@@ -91,7 +91,13 @@ fn scope_segment_formats_and_rejects_empty_names() {
     let empty = ToolScope::Project {
         project_name: String::new(),
     };
-    assert!(matches!(scope_segment(&empty), Err(ToolError::InvalidCacheSegment { .. })));
+    assert!(matches!(
+        scope_segment(&empty),
+        Err(ToolError::Diag {
+            code: "tool-resolver",
+            ..
+        })
+    ));
 }
 
 #[test]

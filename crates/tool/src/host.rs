@@ -58,8 +58,9 @@ impl WasiRunner {
     pub fn new() -> Result<Self, ToolError> {
         let mut config = Config::new();
         config.wasm_component_model(true);
-        let engine = Engine::new(&config).map_err(|err| {
-            ToolError::runtime(format!("failed to create Wasmtime engine: {err}"))
+        let engine = Engine::new(&config).map_err(|err| ToolError::Diag {
+            code: "tool-runtime",
+            detail: format!("failed to create Wasmtime engine: {err}"),
         })?;
         Ok(Self { engine })
     }
@@ -78,13 +79,22 @@ impl WasiRunner {
         let wasi =
             build_wasi_ctx(resolved, ctx, &project_dir, capability_dir.as_deref(), &preopens)?;
 
-        let component = Component::from_file(&self.engine, &resolved.bytes_path)
-            .map_err(|err| ToolError::runtime(format!("failed to compile component: {err}")))?;
+        let component =
+            Component::from_file(&self.engine, &resolved.bytes_path).map_err(|err| {
+                ToolError::Diag {
+                    code: "tool-runtime",
+                    detail: format!("failed to compile component: {err}"),
+                }
+            })?;
         let mut linker = Linker::<WasiState>::new(&self.engine);
         let mut link_options = wasmtime_wasi::p2::bindings::sync::LinkOptions::default();
         link_options.cli_exit_with_code(true);
-        wasmtime_wasi::p2::add_to_linker_with_options_sync(&mut linker, &link_options)
-            .map_err(|err| ToolError::runtime(format!("failed to link WASI Preview 2: {err}")))?;
+        wasmtime_wasi::p2::add_to_linker_with_options_sync(&mut linker, &link_options).map_err(
+            |err| ToolError::Diag {
+                code: "tool-runtime",
+                detail: format!("failed to link WASI Preview 2: {err}"),
+            },
+        )?;
         let mut store = Store::new(
             &self.engine,
             WasiState {
@@ -92,8 +102,12 @@ impl WasiRunner {
                 table: ResourceTable::new(),
             },
         );
-        let command = Command::instantiate(&mut store, &component, &linker)
-            .map_err(|err| ToolError::runtime(format!("failed to instantiate command: {err}")))?;
+        let command = Command::instantiate(&mut store, &component, &linker).map_err(|err| {
+            ToolError::Diag {
+                code: "tool-runtime",
+                detail: format!("failed to instantiate command: {err}"),
+            }
+        })?;
 
         match command.wasi_cli_run().call_run(&mut store) {
             Ok(Ok(())) => Ok(0),
@@ -256,7 +270,10 @@ fn map_guest_error(err: &wasmtime::Error) -> Result<i32, ToolError> {
     if let Some(exit) = err.downcast_ref::<I32Exit>() {
         return Ok(exit.0.clamp(0, 255));
     }
-    Err(ToolError::runtime(format!("guest trapped or failed at runtime: {err}")))
+    Err(ToolError::Diag {
+        code: "tool-runtime",
+        detail: format!("guest trapped or failed at runtime: {err}"),
+    })
 }
 
 #[cfg(test)]
@@ -371,6 +388,15 @@ mod tests {
         let err = runner
             .run(&resolved, &RunContext::new(&project, Vec::new()))
             .expect_err("invalid component must fail");
-        assert!(matches!(err, ToolError::Runtime(_)), "{err}");
+        assert!(
+            matches!(
+                err,
+                ToolError::Diag {
+                    code: "tool-runtime",
+                    ..
+                }
+            ),
+            "{err}"
+        );
     }
 }

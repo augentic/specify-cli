@@ -77,7 +77,7 @@ pub fn root() -> Result<PathBuf, ToolError> {
 ///
 /// # Errors
 ///
-/// Returns `ToolError::InvalidCacheSegment` when the project name or
+/// Returns the `tool-resolver` diagnostic when the project name or
 /// plugin slug is empty, contains a path separator, equals `.` or `..`,
 /// or contains a component that would escape the scope directory.
 pub fn scope_segment(scope: &ToolScope) -> Result<String, ToolError> {
@@ -100,7 +100,7 @@ pub fn scope_segment(scope: &ToolScope) -> Result<String, ToolError> {
 /// # Errors
 ///
 /// Returns the `tool-cache-root` diagnostic when no cache root can be
-/// selected from the environment, and `ToolError::InvalidCacheSegment`
+/// selected from the environment, and the `tool-resolver` diagnostic
 /// when `name`, `version`, or the scope's project/plugin slug fails
 /// segment validation.
 pub fn tool_dir(scope: &ToolScope, name: &str, version: &str) -> Result<PathBuf, ToolError> {
@@ -153,7 +153,7 @@ pub fn status(
 ///
 /// # Errors
 ///
-/// Returns `ToolError::InvalidCacheSegment` when the live scope cannot be
+/// Returns the `tool-resolver` diagnostic when the live scope cannot be
 /// converted into a valid cache segment.
 pub fn sidecar_status(
     scope: &ToolScope, tool_name: &str, tool_version: &str, source: &str, sha256: Option<&str>,
@@ -205,10 +205,9 @@ fn validate_segment(field: &'static str, value: &str) -> Result<(), ToolError> {
 }
 
 fn invalid_segment(field: &'static str, value: &str, reason: &'static str) -> ToolError {
-    ToolError::InvalidCacheSegment {
-        field,
-        value: value.to_string(),
-        reason,
+    ToolError::Diag {
+        code: "tool-resolver",
+        detail: format!("invalid tool cache segment `{value}` for {field}: {reason}"),
     }
 }
 

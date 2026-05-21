@@ -11,8 +11,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
+use specify_domain::change::Divergence;
 use specify_domain::config::Layout;
-use specify_domain::journal::{self, DivergenceState, Event, EventKind};
+use specify_domain::journal::{self, Event, EventKind};
 
 mod common;
 use common::{Project, assert_golden_at, repo_root, specify};
@@ -350,19 +351,15 @@ fn agent_emit_helper_writes_one_event_per_jsonl_line() {
 }
 
 #[test]
-fn divergence_state_kebab_case_round_trip() {
+fn divergence_kebab_case_round_trip() {
     // Wire-format guard: snake_case lifecycle values are never
     // produced anywhere on disk (RFC-25 §Wire format).
-    for state in [
-        DivergenceState::None,
-        DivergenceState::Likely,
-        DivergenceState::Accepted,
-        DivergenceState::Rejected,
-    ] {
-        let rendered = serde_json::to_string(&state).expect("DivergenceState serialises");
+    for state in [Divergence::None, Divergence::Likely, Divergence::Accepted, Divergence::Rejected]
+    {
+        let rendered = serde_json::to_string(&state).expect("Divergence serialises");
         assert!(
             !rendered.contains('_'),
-            "DivergenceState `{state:?}` must not contain `_` on the wire; got {rendered}"
+            "Divergence `{state:?}` must not contain `_` on the wire; got {rendered}"
         );
     }
 }

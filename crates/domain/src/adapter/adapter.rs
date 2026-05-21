@@ -27,12 +27,6 @@ pub struct Adapter {
 /// Pipeline phases and their brief entries.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Pipeline {
-    /// Optional Layer 2 authoring-phase briefs for `/change:draft`.
-    /// Absent in pre-existing manifests; present ones expose briefs such
-    /// as `discovery.md` → `propose.md` that run before the
-    /// define→build→merge execution loop.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub plan: Vec<PipelineEntry>,
     /// Define-phase brief entries.
     pub define: Vec<PipelineEntry>,
     /// Build-phase brief entries.
@@ -74,15 +68,10 @@ pub enum AdapterSource {
 
 /// The phases of a adapter's pipeline.
 ///
-/// Serializes as the lowercase identifiers `plan | define | build | merge`
+/// Serializes as the lowercase identifiers `define | build | merge`
 /// on the wire — this is the same wire format consumed by
 /// `SliceMetadata.outcome.phase` and by `pipeline.*` keys in the
 /// manifest, keeping a single source of truth for phase naming.
-///
-/// `Plan` is the Layer 2 authoring phase (`/change:draft`) that runs
-/// ahead of the define→build→merge execution loop. It is intentionally
-/// omitted from `Adapter::entries()` (see that iterator's docs) —
-/// call `Adapter::plan_entries()` to enumerate plan-phase briefs.
 #[derive(
     Debug,
     Clone,
@@ -99,8 +88,6 @@ pub enum AdapterSource {
 #[strum(serialize_all = "kebab-case")]
 #[non_exhaustive]
 pub enum Phase {
-    /// Layer 2 authoring phase (`/change:draft`).
-    Plan,
     /// Define phase — artifact generation.
     Define,
     /// Build phase — implementation.
@@ -128,10 +115,13 @@ impl Adapter {
     /// Returns an error if the operation fails.
     pub fn resolve(schema_value: &str, project_dir: &Path) -> Result<ResolvedAdapter, Error> {
         let (root_dir, source) = Self::locate(schema_value, project_dir)?;
-        let manifest_path = Self::probe_dir(&root_dir).ok_or_else(|| Error::Diag {
-            code: "adapter-manifest-missing",
-            detail: format!("no `adapter.yaml` at {}", root_dir.display()),
-        })?;
+        let manifest_path = root_dir.join(ADAPTER_FILENAME);
+        if !manifest_path.is_file() {
+            return Err(Error::Diag {
+                code: "adapter-manifest-missing",
+                detail: format!("no `adapter.yaml` at {}", root_dir.display()),
+            });
+        }
         let raw = std::fs::read_to_string(&manifest_path).map_err(|err| Error::Diag {
             code: "adapter-manifest-read-failed",
             detail: format!("failed to read adapter manifest {}: {err}", manifest_path.display()),
@@ -161,14 +151,6 @@ impl Adapter {
         locate_adapter_root(schema_value, project_dir)
     }
 
-    /// Probe `dir` for a `adapter.yaml` manifest without reading it.
-    /// Returns `Some(path)` when present, `None` otherwise.
-    #[must_use]
-    pub fn probe_dir(dir: &Path) -> Option<PathBuf> {
-        let cap = dir.join(ADAPTER_FILENAME);
-        cap.is_file().then_some(cap)
-    }
-
     /// Validate this in-memory adapter against the embedded
     /// `schemas/adapter.schema.json`. Returns one [`ValidationSummary`]
     /// per check performed.
@@ -195,14 +177,6 @@ impl Adapter {
 
     /// Iterator over every execution-loop pipeline entry in order
     /// (define → build → merge), paired with its phase.
-    ///
-    /// This intentionally skips `pipeline.plan`: the plan phase is an
-    /// authoring-time step driven by `/change:draft` and is not part of
-    /// the per-change execution loop that `specify change status`,
-    /// `specify change outcome`, and the define/build/merge skills
-    /// iterate over. Plan briefs are exposed via
-    /// [`Adapter::plan_entries`] instead so existing callers keep
-    /// their current semantics.
     pub fn entries(&self) -> impl Iterator<Item = (Phase, &PipelineEntry)> + '_ {
         self.pipeline
             .define
@@ -212,25 +186,11 @@ impl Adapter {
             .chain(self.pipeline.merge.iter().map(|e| (Phase::Merge, e)))
     }
 
-    /// Plan-phase (Layer 2 authoring) pipeline entries in declared
-    /// order. Returns an empty slice for adapters that don't declare
-    /// a `pipeline.plan` block.
-    #[must_use]
-    pub fn plan_entries(&self) -> &[PipelineEntry] {
-        &self.pipeline.plan
-    }
-
-    /// Look up a pipeline entry by id. Searches the plan phase first so
-    /// authoring briefs are discoverable, then the define→build→merge
+    /// Look up a pipeline entry by id across the define→build→merge
     /// execution loop.
     #[must_use]
     pub fn entry(&self, id: &str) -> Option<(Phase, &PipelineEntry)> {
-        self.pipeline
-            .plan
-            .iter()
-            .map(|e| (Phase::Plan, e))
-            .chain(self.entries())
-            .find(|(_, e)| e.id == id)
+        self.entries().find(|(_, e)| e.id == id)
     }
 
     /// Merge `child` on top of `parent`. Per the historical
@@ -248,7 +208,6 @@ impl Adapter {
             version: child.version,
             description: child.description,
             pipeline: Pipeline {
-                plan: merge_phase(parent.pipeline.plan, child.pipeline.plan),
                 define: merge_phase(parent.pipeline.define, child.pipeline.define),
                 build: merge_phase(parent.pipeline.build, child.pipeline.build),
                 merge: merge_phase(parent.pipeline.merge, child.pipeline.merge),
