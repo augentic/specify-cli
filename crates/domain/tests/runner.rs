@@ -4,9 +4,10 @@
 use std::fs;
 use std::path::PathBuf;
 
-use specify_domain::adapter::{PipelineView, ValidationResult};
+use specify_domain::adapter::PipelineView;
 use specify_domain::slice::SLICES_DIR_NAME;
 use specify_domain::validate::validate_slice;
+use specify_error::ValidationStatus;
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
@@ -58,27 +59,22 @@ fn missing_artifact_produces_synth_failure() {
             .get(*brief)
             .unwrap_or_else(|| panic!("missing entry for `{brief}`"));
         assert_eq!(results.len(), 1, "{brief} should have exactly one result");
-        match &results[0] {
-            ValidationResult::Fail { rule_id, detail, .. } => {
-                assert!(
-                    rule_id.ends_with(".artifact-exists"),
-                    "unexpected rule_id for `{brief}`: {rule_id}"
-                );
-                assert!(detail.contains("not found"));
-            }
-            other => panic!("expected Fail for `{brief}`, got {other:?}"),
-        }
+        let first = &results[0];
+        assert_eq!(first.status, ValidationStatus::Fail, "expected Fail for `{brief}`: {first:?}");
+        assert!(
+            first.rule_id.ends_with(".artifact-exists"),
+            "unexpected rule_id for `{brief}`: {}",
+            first.rule_id
+        );
+        let detail = first.detail.as_deref().unwrap_or("");
+        assert!(detail.contains("not found"), "unexpected detail for `{brief}`: {detail}");
     }
     // `specs` brief uses a glob → empty expansion also routes through the
     // artifact-missing path with key == brief_id.
     let specs = report.brief_results.get("specs").expect("specs key present");
     assert_eq!(specs.len(), 1);
-    match &specs[0] {
-        ValidationResult::Fail { rule_id, .. } => {
-            assert_eq!(*rule_id, "specs.artifact-exists");
-        }
-        other => panic!("expected Fail for specs, got {other:?}"),
-    }
+    assert_eq!(specs[0].status, ValidationStatus::Fail, "expected Fail for specs: {:?}", specs[0]);
+    assert_eq!(specs[0].rule_id, "specs.artifact-exists");
 
     assert!(!report.passed);
 }
@@ -104,7 +100,7 @@ fn validate_slice_reports_passed_without_panics_across_semantic_rules() {
         .values()
         .flatten()
         .chain(report.cross_checks.iter())
-        .filter(|r| matches!(r, ValidationResult::Deferred { .. }))
+        .filter(|r| r.status == ValidationStatus::Deferred)
         .count();
     assert!(deferred_count >= 2, "expected at least two deferred rules");
 }

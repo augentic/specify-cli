@@ -42,12 +42,16 @@ pub fn validate_plan(plan: &Plan) -> Result<()> {
         code: "plan-schema-serialise",
         detail: format!("failed to serialise plan to JSON for schema validation: {err}"),
     })?;
-    validate_value(
+    let results: Vec<ValidationSummary> = validate_value(
         &instance,
         PLAN_JSON_SCHEMA,
         "plan-schema",
         "plan.yaml conforms to schemas/plan/plan.schema.json",
     )
+    .into_iter()
+    .filter(|s| s.status == ValidationStatus::Fail)
+    .collect();
+    if results.is_empty() { Ok(()) } else { Err(Error::Validation { results }) }
 }
 
 /// Validate every `*.yaml` file under `<slice_dir>/evidence/` against
@@ -103,18 +107,18 @@ pub fn validate_evidence_dir(slice_dir: &Path) -> Result<()> {
     let mut summaries: Vec<ValidationSummary> = Vec::new();
     for path in &paths {
         match read_yaml_as_json(path) {
-            Ok(instance) => match validate_value(
-                &instance,
-                EVIDENCE_JSON_SCHEMA,
-                "evidence-schema",
-                "evidence file conforms to schemas/evidence.schema.json",
-            ) {
-                Ok(()) => {}
-                Err(Error::Validation { results }) => {
-                    summaries.extend(results.into_iter().map(|s| relabel_with_path(s, path)));
+            Ok(instance) => {
+                for summary in validate_value(
+                    &instance,
+                    EVIDENCE_JSON_SCHEMA,
+                    "evidence-schema",
+                    "evidence file conforms to schemas/evidence.schema.json",
+                ) {
+                    if summary.status == ValidationStatus::Fail {
+                        summaries.push(relabel_with_path(summary, path));
+                    }
                 }
-                Err(err) => return Err(err),
-            },
+            }
             Err(err) => {
                 summaries.push(ValidationSummary {
                     status: ValidationStatus::Fail,
@@ -144,23 +148,47 @@ fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationS
     summary
 }
 
-fn validate_value(
-    instance: &JsonValue, schema_source: &str, rule_id: &'static str, rule: &'static str,
-) -> Result<()> {
-    let validator = compile_schema(schema_source)?;
-    let errors: Vec<String> =
-        validator.iter_errors(instance).map(|e| format!("{}: {}", e.instance_path(), e)).collect();
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(Error::Validation {
-            results: vec![ValidationSummary {
+/// Validate `instance` against the embedded JSON Schema `schema_source`.
+///
+/// Returns one [`ValidationSummary::Pass`]-shaped entry on a clean
+/// validation, one `Fail` entry with the joined error list on a schema
+/// mismatch, or a single `Fail` carrying the meta-failure reason if the
+/// embedded schema itself cannot be parsed or compiled. Callers wrap
+/// the resulting vector into the [`Error`] variant that suits their
+/// exit-code policy: structural manifest checks fold failures into
+/// [`Error::Diag`] (exit 1); plan / evidence checks fold into
+/// [`Error::Validation`] (exit 2).
+#[must_use]
+pub fn validate_value(
+    instance: &JsonValue, schema_source: &str, rule_id: &str, rule: &str,
+) -> Vec<ValidationSummary> {
+    let validator = match compile_schema(schema_source) {
+        Ok(v) => v,
+        Err(err) => {
+            return vec![ValidationSummary {
                 status: ValidationStatus::Fail,
                 rule_id: rule_id.into(),
                 rule: rule.into(),
-                detail: Some(errors.join("; ")),
-            }],
-        })
+                detail: Some(err.to_string()),
+            }];
+        }
+    };
+    let errors: Vec<String> =
+        validator.iter_errors(instance).map(|e| format!("{}: {}", e.instance_path(), e)).collect();
+    if errors.is_empty() {
+        vec![ValidationSummary {
+            status: ValidationStatus::Pass,
+            rule_id: rule_id.into(),
+            rule: rule.into(),
+            detail: None,
+        }]
+    } else {
+        vec![ValidationSummary {
+            status: ValidationStatus::Fail,
+            rule_id: rule_id.into(),
+            rule: rule.into(),
+            detail: Some(errors.join("; ")),
+        }]
     }
 }
 

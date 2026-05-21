@@ -5,11 +5,40 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use specify_error::Error;
+use specify_error::{Error, ValidationStatus, ValidationSummary};
 
-use crate::adapter::{PipelineView, ValidationResult};
+use crate::adapter::PipelineView;
 use crate::validate::registry::{cross_rules, rules_for};
 use crate::validate::{BriefContext, Classification, CrossContext, RuleOutcome, ValidationReport};
+
+const DEFERRED_REASON: &str = "Semantic check — requires LLM judgment";
+
+fn pass(rule_id: &str, rule: &str) -> ValidationSummary {
+    ValidationSummary {
+        status: ValidationStatus::Pass,
+        rule_id: rule_id.into(),
+        rule: rule.into(),
+        detail: None,
+    }
+}
+
+const fn fail(rule_id: String, rule: String, detail: String) -> ValidationSummary {
+    ValidationSummary {
+        status: ValidationStatus::Fail,
+        rule_id,
+        rule,
+        detail: Some(detail),
+    }
+}
+
+fn deferred(rule_id: &str, rule: &str) -> ValidationSummary {
+    ValidationSummary {
+        status: ValidationStatus::Deferred,
+        rule_id: rule_id.into(),
+        rule: rule.into(),
+        detail: Some(DEFERRED_REASON.into()),
+    }
+}
 
 /// Run all deterministic validations for a slice directory.
 ///
@@ -24,7 +53,7 @@ use crate::validate::{BriefContext, Classification, CrossContext, RuleOutcome, V
 pub fn validate_slice(
     slice_dir: &Path, pipeline: &PipelineView,
 ) -> Result<ValidationReport, Error> {
-    let mut brief_results: BTreeMap<String, Vec<ValidationResult>> = BTreeMap::new();
+    let mut brief_results: BTreeMap<String, Vec<ValidationSummary>> = BTreeMap::new();
     let specs_dir = slice_dir.join("specs");
     let terminology = infer_terminology(pipeline);
 
@@ -69,7 +98,7 @@ pub fn validate_slice(
         .values()
         .flatten()
         .chain(cross_checks.iter())
-        .all(|r| !matches!(r, ValidationResult::Fail { .. }));
+        .all(|r| r.status != ValidationStatus::Fail);
 
     Ok(ValidationReport {
         brief_results,
@@ -138,19 +167,19 @@ fn relative_key(slice_dir: &Path, artifact_path: &Path) -> String {
 
 fn artifact_missing_result(
     brief_id: &str, artifact_path: &Path, slice_dir: &Path,
-) -> ValidationResult {
+) -> ValidationSummary {
     let rel = relative_key(slice_dir, artifact_path);
-    ValidationResult::Fail {
-        rule_id: format!("{brief_id}.artifact-exists").into(),
-        rule: format!("Generated artifact {rel} exists").into(),
-        detail: format!("artifact `{rel}` not found under slice dir"),
-    }
+    fail(
+        format!("{brief_id}.artifact-exists"),
+        format!("Generated artifact {rel} exists"),
+        format!("artifact `{rel}` not found under slice dir"),
+    )
 }
 
 fn run_brief_rules(
     brief_id: &str, artifact_path: &Path, slice_dir: &Path, specs_dir: &Path,
     terminology: &'static str,
-) -> Vec<ValidationResult> {
+) -> Vec<ValidationSummary> {
     let Ok(content) = std::fs::read_to_string(artifact_path) else {
         return vec![artifact_missing_result(brief_id, artifact_path, slice_dir)];
     };
@@ -169,24 +198,15 @@ fn run_brief_rules(
         terminology,
     };
 
-    let mut out: Vec<ValidationResult> = Vec::new();
+    let mut out: Vec<ValidationSummary> = Vec::new();
     for rule in rules_for(brief_id) {
         let result = rule.check.map_or_else(
-            || ValidationResult::Deferred {
-                rule_id: rule.id.into(),
-                rule: rule.description.into(),
-                reason: "Semantic check — requires LLM judgment",
-            },
+            || deferred(rule.id, rule.description),
             |check| match check(&ctx) {
-                RuleOutcome::Pass => ValidationResult::Pass {
-                    rule_id: rule.id.into(),
-                    rule: rule.description.into(),
-                },
-                RuleOutcome::Fail { detail } => ValidationResult::Fail {
-                    rule_id: rule.id.into(),
-                    rule: rule.description.into(),
-                    detail,
-                },
+                RuleOutcome::Pass => pass(rule.id, rule.description),
+                RuleOutcome::Fail { detail } => {
+                    fail(rule.id.into(), rule.description.into(), detail)
+                }
             },
         );
         out.push(result);
@@ -196,31 +216,22 @@ fn run_brief_rules(
 
 fn run_cross_rules(
     slice_dir: &Path, specs_dir: &Path, pipeline: &PipelineView, terminology: &'static str,
-) -> Vec<ValidationResult> {
+) -> Vec<ValidationSummary> {
     let ctx = CrossContext {
         slice_dir,
         specs_dir,
         pipeline,
         terminology,
     };
-    let mut out: Vec<ValidationResult> = Vec::new();
+    let mut out: Vec<ValidationSummary> = Vec::new();
     for rule in cross_rules() {
         let result = match rule.classification {
-            Classification::Semantic => ValidationResult::Deferred {
-                rule_id: rule.id.into(),
-                rule: rule.description.into(),
-                reason: "Semantic check — requires LLM judgment",
-            },
+            Classification::Semantic => deferred(rule.id, rule.description),
             Classification::Structural => match (rule.check)(&ctx) {
-                RuleOutcome::Pass => ValidationResult::Pass {
-                    rule_id: rule.id.into(),
-                    rule: rule.description.into(),
-                },
-                RuleOutcome::Fail { detail } => ValidationResult::Fail {
-                    rule_id: rule.id.into(),
-                    rule: rule.description.into(),
-                    detail,
-                },
+                RuleOutcome::Pass => pass(rule.id, rule.description),
+                RuleOutcome::Fail { detail } => {
+                    fail(rule.id.into(), rule.description.into(), detail)
+                }
             },
         };
         out.push(result);

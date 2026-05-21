@@ -7,9 +7,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use specify_error::{Error, ValidationStatus, ValidationSummary};
 
-use crate::adapter::ValidationResult;
-use crate::adapter::adapter::validate_against_schema;
 use crate::adapter::brief::split_on_closing_delimiter;
+use crate::schema::validate_value;
 
 const CODEX_RULE_JSON_SCHEMA: &str = include_str!("../../../../schemas/codex-rule.schema.json");
 
@@ -94,7 +93,8 @@ impl CodexRule {
     /// parser invariant fails.
     pub fn parse(path: &Path, contents: &str) -> Result<Self, Error> {
         let results = Self::validate_str(path, contents);
-        let failures = validation_failures(&results);
+        let failures: Vec<ValidationSummary> =
+            results.into_iter().filter(|s| s.status == ValidationStatus::Fail).collect();
         if !failures.is_empty() {
             return Err(Error::Validation { results: failures });
         }
@@ -120,47 +120,53 @@ impl CodexRule {
     /// Validate an in-memory codex rule file without constructing a
     /// [`CodexRule`].
     #[must_use]
-    pub fn validate_str(path: &Path, contents: &str) -> Vec<ValidationResult> {
+    pub fn validate_str(path: &Path, contents: &str) -> Vec<ValidationSummary> {
         let (frontmatter_text, body) = match frontmatter_parts(path, contents) {
             Ok(parts) => parts,
             Err(err) => {
-                return vec![ValidationResult::Fail {
+                return vec![ValidationSummary {
+                    status: ValidationStatus::Fail,
                     rule_id: RULE_FRONTMATTER_DELIMITED.into(),
                     rule: "codex rule has leading YAML frontmatter delimiters".into(),
-                    detail: err.to_string(),
+                    detail: Some(err.to_string()),
                 }];
             }
         };
 
-        let mut results = vec![ValidationResult::Pass {
+        let mut results = vec![ValidationSummary {
+            status: ValidationStatus::Pass,
             rule_id: RULE_FRONTMATTER_DELIMITED.into(),
             rule: "codex rule has leading YAML frontmatter delimiters".into(),
+            detail: None,
         }];
 
         let frontmatter_value: serde_json::Value = match serde_saphyr::from_str(frontmatter_text) {
             Ok(value) => value,
             Err(err) => {
-                results.push(ValidationResult::Fail {
+                results.push(ValidationSummary {
+                    status: ValidationStatus::Fail,
                     rule_id: RULE_FRONTMATTER_PARSEABLE.into(),
                     rule: "codex rule frontmatter parses as YAML".into(),
-                    detail: format!(
+                    detail: Some(format!(
                         "codex-rule-frontmatter-malformed: {} has invalid frontmatter YAML: {err}",
                         path.display()
-                    ),
+                    )),
                 });
                 return results;
             }
         };
 
-        results.push(ValidationResult::Pass {
+        results.push(ValidationSummary {
+            status: ValidationStatus::Pass,
             rule_id: RULE_FRONTMATTER_PARSEABLE.into(),
             rule: "codex rule frontmatter parses as YAML".into(),
+            detail: None,
         });
-        results.extend(validate_against_schema(
+        results.extend(validate_value(
+            &frontmatter_value,
             CODEX_RULE_JSON_SCHEMA,
             RULE_FRONTMATTER_VALID,
             "codex rule frontmatter conforms to schemas/codex-rule.schema.json",
-            &frontmatter_value,
         ));
         results.push(validate_rule_heading(path, body));
         results
@@ -182,43 +188,27 @@ fn frontmatter_parts<'a>(path: &Path, contents: &'a str) -> Result<(&'a str, &'a
     })
 }
 
-fn validate_rule_heading(path: &Path, body: &str) -> ValidationResult {
+fn validate_rule_heading(path: &Path, body: &str) -> ValidationSummary {
     if has_rule_heading(body) {
-        ValidationResult::Pass {
+        ValidationSummary {
+            status: ValidationStatus::Pass,
             rule_id: RULE_BODY_HAS_RULE_HEADING.into(),
             rule: "codex rule body contains a `## Rule` heading".into(),
+            detail: None,
         }
     } else {
-        ValidationResult::Fail {
+        ValidationSummary {
+            status: ValidationStatus::Fail,
             rule_id: RULE_BODY_HAS_RULE_HEADING.into(),
             rule: "codex rule body contains a `## Rule` heading".into(),
-            detail: format!(
+            detail: Some(format!(
                 "codex-rule-heading-missing: {} body must contain a `## Rule` heading",
                 path.display()
-            ),
+            )),
         }
     }
 }
 
 fn has_rule_heading(body: &str) -> bool {
     body.lines().any(|line| line.trim() == "## Rule")
-}
-
-fn validation_failures(results: &[ValidationResult]) -> Vec<ValidationSummary> {
-    results
-        .iter()
-        .filter_map(|result| match result {
-            ValidationResult::Fail {
-                rule_id,
-                rule,
-                detail,
-            } => Some(ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: (*rule_id).to_string(),
-                rule: (*rule).to_string(),
-                detail: Some(detail.clone()),
-            }),
-            _ => None,
-        })
-        .collect()
 }

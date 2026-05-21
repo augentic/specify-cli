@@ -12,9 +12,8 @@ use std::path::{Path, PathBuf};
 use specify_domain::adapter::{
     Adapter, AdapterSource, Brief, CacheMeta, CodexProvenance, CodexRule, CodexSeverity,
     DEFAULT_CODEX_ADAPTER, Phase, Pipeline, PipelineEntry, PipelineView, ResolvedCodex,
-    ValidationResult,
 };
-use specify_error::Error;
+use specify_error::{Error, ValidationStatus, ValidationSummary};
 use tempfile::TempDir;
 
 /// Absolute path to the repo root (the Cargo workspace root).
@@ -81,7 +80,7 @@ fn validate_structure_valid_for_omnia() {
     let schema: Adapter = serde_saphyr::from_str(&raw).unwrap();
     let results = schema.validate_structure();
     assert!(
-        results.iter().all(|r| matches!(r, ValidationResult::Pass { .. })),
+        results.iter().all(|r| r.status == ValidationStatus::Pass),
         "expected all passes, got: {results:?}"
     );
 }
@@ -108,7 +107,7 @@ fn validate_structure_fails_when_define_phase_is_empty() {
 
     let results = schema.validate_structure();
     assert!(
-        results.iter().any(|r| matches!(r, ValidationResult::Fail { .. })),
+        results.iter().any(|r| r.status == ValidationStatus::Fail),
         "expected at least one failure, got: {results:?}"
     );
 }
@@ -313,17 +312,11 @@ fn read_codex_fixture(name: &str) -> String {
     })
 }
 
-fn codex_fail_detail(results: &[ValidationResult], rule_id: &str) -> String {
+fn codex_fail_detail(results: &[ValidationSummary], rule_id: &str) -> String {
     results
         .iter()
-        .find_map(|result| match result {
-            ValidationResult::Fail {
-                rule_id: candidate,
-                detail,
-                ..
-            } if *candidate == rule_id => Some(detail.clone()),
-            _ => None,
-        })
+        .find(|r| r.status == ValidationStatus::Fail && r.rule_id == rule_id)
+        .and_then(|r| r.detail.clone())
         .unwrap_or_else(|| panic!("expected codex failure `{rule_id}`, got: {results:?}"))
 }
 
@@ -391,7 +384,7 @@ fn codex_parse_accepts_minimal_rule() {
 
     let results = CodexRule::validate_str(&rule.path, &contents);
     assert!(
-        results.iter().all(|result| matches!(result, ValidationResult::Pass { .. })),
+        results.iter().all(|result| result.status == ValidationStatus::Pass),
         "valid minimal fixture should pass all codex checks, got: {results:?}"
     );
 }
@@ -829,7 +822,7 @@ fn cache_meta_load_roundtrip_and_malformed() {
 
     let results = meta.validate_structure();
     assert!(
-        results.iter().all(|r| matches!(r, ValidationResult::Pass { .. })),
+        results.iter().all(|r| r.status == ValidationStatus::Pass),
         "expected valid, got {results:?}"
     );
 
@@ -865,7 +858,7 @@ fn cache_meta_validate_structure_fails_on_empty_fields() {
     };
     let results = meta.validate_structure();
     assert!(
-        results.iter().any(|r| matches!(r, ValidationResult::Fail { .. })),
+        results.iter().any(|r| r.status == ValidationStatus::Fail),
         "empty strings should fail minLength: {results:?}"
     );
 }

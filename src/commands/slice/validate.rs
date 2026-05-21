@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 use specify_domain::change::Plan;
 use specify_domain::schema::validate_evidence_dir;
 use specify_domain::spec::provenance;
-use specify_domain::validate::{ValidationResult, validate_slice};
-use specify_error::{Error, Result, ValidationSummary};
+use specify_domain::validate::validate_slice;
+use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 
 use crate::context::Ctx;
 
@@ -166,12 +166,14 @@ fn resolve_slice_source_keys(ctx: &Ctx, name: &str) -> Result<BTreeSet<String>> 
     Ok(entry.sources.iter().map(|b| b.key().to_string()).collect())
 }
 
-fn format_result_line(r: &ValidationResult) -> String {
-    match r {
-        ValidationResult::Pass { rule_id, .. } => format!("[ok] {rule_id}"),
-        ValidationResult::Fail { rule_id, detail, .. } => format!("[fail] {rule_id}: {detail}"),
-        ValidationResult::Deferred { rule_id, reason, .. } => {
-            format!("[defer] {rule_id} ({reason})")
+fn format_result_line(r: &ValidationSummary) -> String {
+    match r.status {
+        ValidationStatus::Pass => format!("[ok] {}", r.rule_id),
+        ValidationStatus::Fail => {
+            format!("[fail] {}: {}", r.rule_id, r.detail.as_deref().unwrap_or(""))
+        }
+        ValidationStatus::Deferred => {
+            format!("[defer] {} ({})", r.rule_id, r.detail.as_deref().unwrap_or(""))
         }
     }
 }

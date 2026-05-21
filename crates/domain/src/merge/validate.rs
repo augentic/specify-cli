@@ -5,9 +5,18 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use regex::Regex;
+use specify_error::{ValidationStatus, ValidationSummary};
 
-use crate::adapter::ValidationResult;
 use crate::spec::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING, parse_baseline};
+
+fn fail(rule_id: &str, rule: &str, detail: String) -> ValidationSummary {
+    ValidationSummary {
+        status: ValidationStatus::Fail,
+        rule_id: rule_id.into(),
+        rule: rule.into(),
+        detail: Some(detail),
+    }
+}
 
 fn req_id_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -35,20 +44,21 @@ const RULE_DESIGN_REFS_EXIST_DESC: &str =
 
 /// Post-merge coherence validation.
 ///
-/// Returns one [`ValidationResult::Fail`] per violation; an empty vec means
-/// the baseline passes every coherence rule. The `design` argument enables
-/// the orphan-reference rule (`merge.design-references-exist`) — see the
-/// inline parity quirk below.
+/// Returns one [`ValidationSummary`] per violation (always `Fail`); an
+/// empty vec means the baseline passes every coherence rule. The
+/// `design` argument enables the orphan-reference rule
+/// (`merge.design-references-exist`) — see the inline parity quirk
+/// below.
 ///
 /// # Panics
 ///
 /// Panics if `REQ_ID_PATTERN` is not a valid regex (compile-time
 /// constant — should never happen).
 #[must_use]
-pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<ValidationResult> {
+pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<ValidationSummary> {
     let parsed = parse_baseline(baseline);
     let blocks = parsed.requirements;
-    let mut results: Vec<ValidationResult> = Vec::new();
+    let mut results: Vec<ValidationSummary> = Vec::new();
 
     // (a) Duplicate IDs.
     let mut seen_ids: HashSet<&str> = HashSet::new();
@@ -57,11 +67,11 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
             continue;
         }
         if seen_ids.contains(block.id.as_str()) {
-            results.push(ValidationResult::Fail {
-                rule_id: RULE_NO_DUPLICATE_IDS.into(),
-                rule: RULE_NO_DUPLICATE_IDS_DESC.into(),
-                detail: format!("Duplicate ID: {}", block.id),
-            });
+            results.push(fail(
+                RULE_NO_DUPLICATE_IDS,
+                RULE_NO_DUPLICATE_IDS_DESC,
+                format!("Duplicate ID: {}", block.id),
+            ));
         }
         seen_ids.insert(block.id.as_str());
     }
@@ -70,11 +80,11 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
     let mut seen_names: HashSet<&str> = HashSet::new();
     for block in &blocks {
         if seen_names.contains(block.name.as_str()) {
-            results.push(ValidationResult::Fail {
-                rule_id: RULE_NO_DUPLICATE_NAMES.into(),
-                rule: RULE_NO_DUPLICATE_NAMES_DESC.into(),
-                detail: format!("Duplicate requirement name: {}", block.name),
-            });
+            results.push(fail(
+                RULE_NO_DUPLICATE_NAMES,
+                RULE_NO_DUPLICATE_NAMES_DESC,
+                format!("Duplicate requirement name: {}", block.name),
+            ));
         }
         seen_names.insert(block.name.as_str());
     }
@@ -87,30 +97,30 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
     let scenario_needle = SCENARIO_HEADING.trim_end_matches(':');
     for block in &blocks {
         if block.id.is_empty() {
-            results.push(ValidationResult::Fail {
-                rule_id: RULE_REQ_HAS_ID.into(),
-                rule: RULE_REQ_HAS_ID_DESC.into(),
-                detail: format!("Requirement '{}' has no {} line", block.name, REQ_ID_PREFIX),
-            });
+            results.push(fail(
+                RULE_REQ_HAS_ID,
+                RULE_REQ_HAS_ID_DESC,
+                format!("Requirement '{}' has no {} line", block.name, REQ_ID_PREFIX),
+            ));
         } else if !id_pattern.is_match(&block.id) {
-            results.push(ValidationResult::Fail {
-                rule_id: RULE_ID_MATCHES_PATTERN.into(),
-                rule: RULE_ID_MATCHES_PATTERN_DESC.into(),
-                detail: format!(
+            results.push(fail(
+                RULE_ID_MATCHES_PATTERN,
+                RULE_ID_MATCHES_PATTERN_DESC,
+                format!(
                     "Requirement '{}' has invalid ID '{}' (expected pattern: {})",
                     block.name, block.id, REQ_ID_PATTERN
                 ),
-            });
+            ));
         }
         if !block.body.contains(scenario_needle) {
-            results.push(ValidationResult::Fail {
-                rule_id: RULE_REQ_HAS_SCENARIO.into(),
-                rule: RULE_REQ_HAS_SCENARIO_DESC.into(),
-                detail: format!(
+            results.push(fail(
+                RULE_REQ_HAS_SCENARIO,
+                RULE_REQ_HAS_SCENARIO_DESC,
+                format!(
                     "Requirement '{}' ({}) has no {} section",
                     block.name, block.id, SCENARIO_HEADING
                 ),
-            });
+            ));
         }
     }
 
@@ -128,11 +138,11 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
         for m in req_id_re().find_iter(design_text) {
             let ref_id = m.as_str();
             if !baseline_ids.contains(ref_id) {
-                results.push(ValidationResult::Fail {
-                    rule_id: RULE_DESIGN_REFS_EXIST.into(),
-                    rule: RULE_DESIGN_REFS_EXIST_DESC.into(),
-                    detail: format!("Design references {ref_id} which does not exist in baseline"),
-                });
+                results.push(fail(
+                    RULE_DESIGN_REFS_EXIST,
+                    RULE_DESIGN_REFS_EXIST_DESC,
+                    format!("Design references {ref_id} which does not exist in baseline"),
+                ));
             }
         }
     }
@@ -195,12 +205,8 @@ mod tests {
         assert!(validate_baseline(baseline, Some(design)).is_empty());
     }
 
-    fn as_fail(result: &ValidationResult) -> Option<(&str, &str)> {
-        match result {
-            ValidationResult::Fail { rule_id, detail, .. } => {
-                Some((rule_id.as_ref(), detail.as_str()))
-            }
-            _ => None,
-        }
+    fn as_fail(result: &ValidationSummary) -> Option<(&str, &str)> {
+        (result.status == ValidationStatus::Fail)
+            .then(|| (result.rule_id.as_str(), result.detail.as_deref().unwrap_or("")))
     }
 }

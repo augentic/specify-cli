@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use specify_error::Error;
+use specify_error::{Error, ValidationStatus};
+
+use crate::schema::validate_value;
 
 /// Filename of a plugin manifest.
 ///
@@ -289,29 +291,20 @@ fn validate_schema(
 fn run_schema(
     schema_source: &str, manifest_path: &Path, instance: &serde_json::Value, label: &str,
 ) -> Result<(), Error> {
-    let schema: serde_json::Value =
-        serde_json::from_str(schema_source).map_err(|err| Error::Diag {
-            code: "plugin-schema-loadable",
-            detail: format!("embedded {label} schema does not parse as JSON: {err}"),
-        })?;
-    let validator = jsonschema::validator_for(&schema).map_err(|err| Error::Diag {
-        code: "plugin-schema-compilable",
-        detail: format!("embedded {label} schema does not compile: {err}"),
-    })?;
-    let errors: Vec<String> =
-        validator.iter_errors(instance).map(|e| format!("{}: {e}", e.instance_path())).collect();
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(Error::Diag {
-            code: "plugin-schema-violation",
-            detail: format!(
-                "{} violates {label} schema: {}",
-                manifest_path.display(),
-                errors.join("; ")
-            ),
-        })
+    let rule = format!("{} conforms to embedded {label} schema", manifest_path.display());
+    for summary in validate_value(instance, schema_source, "plugin-schema-violation", &rule) {
+        if summary.status == ValidationStatus::Fail {
+            return Err(Error::Diag {
+                code: "plugin-schema-violation",
+                detail: format!(
+                    "{} violates {label} schema: {}",
+                    manifest_path.display(),
+                    summary.detail.unwrap_or_default()
+                ),
+            });
+        }
     }
+    Ok(())
 }
 
 #[cfg(test)]

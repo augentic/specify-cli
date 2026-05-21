@@ -5,10 +5,9 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use specify_error::Error;
+use specify_error::{Error, ValidationStatus, ValidationSummary};
 
-use crate::adapter::ValidationResult;
-use crate::adapter::adapter::validate_against_schema;
+use crate::schema::validate_value;
 
 const CACHE_META_JSON_SCHEMA: &str = include_str!("../../../../schemas/cache-meta.schema.json");
 
@@ -59,22 +58,23 @@ impl CacheMeta {
     /// Validate this `CacheMeta` against the embedded
     /// `schemas/cache-meta.schema.json`.
     #[must_use]
-    pub fn validate_structure(&self) -> Vec<ValidationResult> {
+    pub fn validate_structure(&self) -> Vec<ValidationSummary> {
         let value: serde_json::Value = match serde_json::to_value(self) {
             Ok(v) => v,
             Err(err) => {
-                return vec![ValidationResult::Fail {
+                return vec![ValidationSummary {
+                    status: ValidationStatus::Fail,
                     rule_id: "cache-meta.serializable".into(),
                     rule: "cache-meta is serializable to JSON".into(),
-                    detail: err.to_string(),
+                    detail: Some(err.to_string()),
                 }];
             }
         };
-        validate_against_schema(
+        validate_value(
+            &value,
             CACHE_META_JSON_SCHEMA,
             "cache-meta.valid",
             "cache-meta.yaml conforms to schemas/cache-meta.schema.json",
-            &value,
         )
     }
 

@@ -132,7 +132,8 @@ pub(super) fn plan_three_way(
             };
 
             for vr in validate_baseline(&result.output, None) {
-                if let crate::adapter::ValidationResult::Fail { detail, .. } = vr {
+                if vr.status == specify_error::ValidationStatus::Fail {
+                    let detail = vr.detail.unwrap_or_default();
                     aborts.push(format!("{}: {detail}", spec.spec_name));
                 }
             }

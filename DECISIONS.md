@@ -9,7 +9,7 @@ changing error layering, exit codes, atomic writes, or the YAML library.
 on `thiserror` and `serde-saphyr`; every other `specify-*` crate may
 depend on it, and it depends on none of them. Variants that need to
 carry data from a downstream crate (e.g. `Error::Validation`) take a
-small projection type defined in `specify-error` (`ValidationResultSummary`)
+small projection type defined in `specify-error` (`ValidationSummary`)
 rather than re-exporting the rich domain type, so the leaf stays
 cycle-free. The cost is a lossy projection at the boundary; callers that
 need full fidelity reach for the downstream crate's own type directly.

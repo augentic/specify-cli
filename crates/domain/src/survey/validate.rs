@@ -1,7 +1,7 @@
 //! Semantic validators for `SurfacesDocument` and `MetadataDocument`.
 //!
 //! JSON-schema validation catches structural errors (handled by callers
-//! via `validate_against_schema`). The functions here enforce invariants
+//! via [`crate::schema::validate_value`]). The functions here enforce invariants
 //! the schema cannot express: sorted lists, non-empty `declared-at`,
 //! no out-of-tree paths (absolute, Windows-drive, or `..`-traversing),
 //! and no duplicate surface ids.

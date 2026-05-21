@@ -5,9 +5,9 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use specify_error::Error;
+use specify_error::{Error, ValidationStatus, ValidationSummary};
 
-use crate::adapter::ValidationResult;
+use crate::schema::validate_value;
 
 const ADAPTER_JSON_SCHEMA: &str = include_str!("../../../../schemas/adapter.schema.json");
 
@@ -170,25 +170,26 @@ impl Adapter {
     }
 
     /// Validate this in-memory adapter against the embedded
-    /// `schemas/adapter.schema.json`. Returns one `ValidationResult`
-    /// per check performed (empty = fully valid).
+    /// `schemas/adapter.schema.json`. Returns one [`ValidationSummary`]
+    /// per check performed.
     #[must_use]
-    pub fn validate_structure(&self) -> Vec<ValidationResult> {
+    pub fn validate_structure(&self) -> Vec<ValidationSummary> {
         let schema_value: serde_json::Value = match serde_json::to_value(self) {
             Ok(value) => value,
             Err(err) => {
-                return vec![ValidationResult::Fail {
+                return vec![ValidationSummary {
+                    status: ValidationStatus::Fail,
                     rule_id: "adapter.serializable".into(),
                     rule: "adapter is serializable to JSON".into(),
-                    detail: err.to_string(),
+                    detail: Some(err.to_string()),
                 }];
             }
         };
-        validate_against_schema(
+        validate_value(
+            &schema_value,
             ADAPTER_JSON_SCHEMA,
             "adapter.valid",
             "adapter manifest conforms to schemas/adapter.schema.json",
-            &schema_value,
         )
     }
 
@@ -326,51 +327,4 @@ fn locate_adapter_root(
             local.display()
         ),
     })
-}
-
-/// Validate `instance` against the embedded JSON Schema `schema_source`.
-///
-/// Emits one `ValidationResult` per error plus a single `Pass` (tagged with
-/// `pass_rule_id` / `pass_rule`) when the schema accepts the value.
-#[must_use]
-pub fn validate_against_schema(
-    schema_source: &str, pass_rule_id: &'static str, pass_rule: &'static str,
-    instance: &serde_json::Value,
-) -> Vec<ValidationResult> {
-    let meta_schema: serde_json::Value = match serde_json::from_str(schema_source) {
-        Ok(value) => value,
-        Err(err) => {
-            return vec![ValidationResult::Fail {
-                rule_id: "schema.meta-loadable".into(),
-                rule: "embedded JSON Schema parses as JSON".into(),
-                detail: err.to_string(),
-            }];
-        }
-    };
-    let validator = match jsonschema::validator_for(&meta_schema) {
-        Ok(v) => v,
-        Err(err) => {
-            return vec![ValidationResult::Fail {
-                rule_id: "schema.meta-compilable".into(),
-                rule: "embedded JSON Schema compiles".into(),
-                detail: err.to_string(),
-            }];
-        }
-    };
-
-    let errors: Vec<String> =
-        validator.iter_errors(instance).map(|e| format!("{}: {}", e.instance_path(), e)).collect();
-
-    if errors.is_empty() {
-        vec![ValidationResult::Pass {
-            rule_id: pass_rule_id.into(),
-            rule: pass_rule.into(),
-        }]
-    } else {
-        vec![ValidationResult::Fail {
-            rule_id: pass_rule_id.into(),
-            rule: pass_rule.into(),
-            detail: errors.join("; "),
-        }]
-    }
 }
