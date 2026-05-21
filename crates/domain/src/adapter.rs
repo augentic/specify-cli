@@ -1,6 +1,6 @@
 //! Adapter resolution and brief frontmatter parsing — the canonical
-//! home for `Adapter`, `Brief`, `ChangeBrief`, `CacheMeta`, the
-//! codex catalogue, and the resolved `PipelineView`.
+//! home for `Adapter`, `Brief`, `CacheMeta`, the codex catalogue, and
+//! the resolved `PipelineView`.
 
 #[expect(
     clippy::module_inception,
@@ -9,7 +9,6 @@
 mod adapter;
 mod brief;
 mod cache;
-mod change_brief;
 mod codex;
 mod codex_resolver;
 mod pipeline;
@@ -25,9 +24,6 @@ pub use adapter::{
 pub use brief::{Brief, BriefFrontmatter};
 // --- Agent-populated cache ---
 pub use cache::CacheMeta;
-pub use change_brief::{
-    ChangeBrief, ChangeFrontmatter, ChangeInput, FILENAME as CHANGE_BRIEF_FILENAME, InputKind,
-};
 // --- Codex (rules catalog) ---
 pub use codex::{CodexRule, CodexRuleFrontmatter, CodexSeverity};
 pub use codex_resolver::{

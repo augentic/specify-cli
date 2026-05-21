@@ -199,7 +199,7 @@ impl<'a> Layout<'a> {
     /// operator brief at the repo root. Platform-level artifact.
     #[must_use]
     pub fn change_brief_path(&self) -> PathBuf {
-        self.project_dir.join(crate::adapter::CHANGE_BRIEF_FILENAME)
+        self.project_dir.join("change.md")
     }
 }
 

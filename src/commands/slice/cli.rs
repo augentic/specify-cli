@@ -4,7 +4,7 @@
 use clap::Subcommand;
 use serde::Deserialize;
 use specify_domain::adapter::Phase;
-use specify_domain::slice::{CreateIfExists, EntryKind, LifecycleStatus};
+use specify_domain::slice::{CreateIfExists, LifecycleStatus};
 
 #[derive(Subcommand)]
 pub enum SliceAction {
@@ -43,11 +43,6 @@ pub enum SliceAction {
     Outcome {
         #[command(subcommand)]
         action: OutcomeAction,
-    },
-    /// Append-only audit log at `<slice_dir>/journal.yaml`
-    Journal {
-        #[command(subcommand)]
-        action: JournalAction,
     },
     /// Transition a slice to a new lifecycle status. Note: `merged` is
     /// not a valid target — the only legal writer of `Merged` is
@@ -227,31 +222,4 @@ pub struct RegistryAmendmentProposal {
 /// `value_parser` in the surface.
 fn parse_proposal(raw: &str) -> Result<RegistryAmendmentProposal, String> {
     serde_json::from_str(raw).map_err(|err| format!("--proposal: {err}"))
-}
-
-/// Journal subcommands grouped under `slice journal`.
-#[derive(Subcommand)]
-pub enum JournalAction {
-    /// Append an entry to the slice's `journal.yaml`
-    Append {
-        /// Slice name
-        name: String,
-        /// Phase that produced the entry
-        #[arg(value_enum)]
-        phase: Phase,
-        /// Entry classification
-        #[arg(value_enum)]
-        kind: EntryKind,
-        /// Short summary
-        #[arg(long)]
-        summary: String,
-        /// Optional verbatim context (multi-line)
-        #[arg(long)]
-        context: Option<String>,
-    },
-    /// Print the slice's journal entries (text or JSON)
-    Show {
-        /// Slice name
-        name: String,
-    },
 }

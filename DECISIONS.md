@@ -32,7 +32,7 @@ run` WASI passthrough.
 
 Use `yaml_write` (in `crates/slice/src/atomic.rs`) for any file a
 concurrent reader may observe mid-write: `plan.yaml`, `.metadata.yaml`,
-`journal.yaml`, `plan.lock`, and the registry. It serialises to
+`plan.lock`, and the registry. It serialises to
 `NamedTempFile::new_in(parent)` and `persist`-renames over the target so
 readers either see the prior bytes or the new bytes. Plain `fs::write`
 is reserved for files no other process reads concurrently with the
@@ -260,8 +260,8 @@ fixture, JSON envelope, and call site). Wave 0.3 (`cli/W0.3`) moved the
 shared manifest *shape* into the new `crates/domain/src/plugin/`
 loader so source and target adapters share one loader keyed by an
 explicit `axis: source | target`. The legacy `crates/domain/src/adapter/`
-module survives as a narrower home for `Brief`, `ChangeBrief`,
-`CodexProvenance`, `CacheMeta`, and `PipelineView` — concepts that are
+module survives as a narrower home for `Brief`, `CodexProvenance`,
+`CacheMeta`, and `PipelineView` — concepts that are
 not part of the RFC-25 wire contract — but no new code should load a
 manifest through it. Per RFC-25 §"Note to the implementing agent",
 touching any of these symbols requires a cross-repo `rg` sweep against

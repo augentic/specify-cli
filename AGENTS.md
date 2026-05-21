@@ -15,7 +15,7 @@ specify (root crate)             # wires every workspace crate above into the CL
 
 Modules of note inside `specify-domain` (RFC-25 reshapes from Wave 0):
 
-- `crates/domain/src/plugin/` — axis-aware loader (`Axis::Source` / `Axis::Target`). Replaces the pre-RFC-25 `crate::adapter` shared-shape loader; the remaining `crate::adapter` surface keeps narrower concerns (`Brief`, `ChangeBrief`, `CodexProvenance`, `PipelineView`, `CacheMeta`).
+- `crates/domain/src/plugin/` — axis-aware loader (`Axis::Source` / `Axis::Target`). Replaces the pre-RFC-25 `crate::adapter` shared-shape loader; the remaining `crate::adapter` surface keeps narrower concerns (`Brief`, `CodexProvenance`, `PipelineView`, `CacheMeta`).
 - `crates/domain/src/schema.rs` — JSON Schemas (`plan.yaml`, per-source `Evidence`, plugin/source/target manifests) embedded via `include_str!` and validated through `jsonschema::Validator`.
 - `crates/domain/src/spec/provenance.rs` — `spec.md` requirement-block parser (`ID:` / `Sources:` / `Status:` lines, closed `RequirementStatus` enum, inline `[…]` tag coherence).
 - `crates/domain/src/journal.rs` — RFC-19 newline-delimited JSON event log at `<project_dir>/.specify/journal.jsonl`; closed `Event` / `EventKind` taxonomy with kebab-case wire ids and `snake_case` Rust variants joined by `#[serde(rename = "…")]`.

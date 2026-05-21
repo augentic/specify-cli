@@ -2,7 +2,6 @@ use std::io::Write;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::adapter::ChangeBrief;
 use specify_domain::change::{
     Lifecycle, Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, plan_doctor,
 };
@@ -260,7 +259,7 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
         });
     }
     let archive_dir = layout.archive_dir().join("plans");
-    let brief_path = ChangeBrief::path(&ctx.project_dir);
+    let brief_path = layout.change_brief_path();
     let plan_name = Plan::load(&plan_path)?.name;
 
     let (archived, archived_plans_dir) =

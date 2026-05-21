@@ -94,7 +94,7 @@ pub struct SliceMetadata {
     /// Latest phase outcome. Written atomically by
     /// `specify slice outcome set` or by `crate::merge::slice::commit` (stamps `Success`
     /// before the archive move). New stamps overwrite; history lives in
-    /// `journal.yaml`.
+    /// `.specify/journal.jsonl` (RFC-25 §Observability).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<Outcome>,
 }
