@@ -1,0 +1,79 @@
+//! Integration tests for `specify source resolve`.
+//!
+//! Mirrors the RFC-25 source-adapter loader exposed by
+//! `crates/domain/src/plugin/`. The CLI verb is a thin
+//! `Plugin::resolve(Axis::Source, …)` wrapper; the cases below pin
+//! the wire shape skill bodies and downstream callers rely on.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+mod common;
+use common::{Project, parse_stderr, parse_stdout, repo_root, specify};
+
+fn plugin_fixtures_root() -> PathBuf {
+    repo_root().join("crates/domain/tests/fixtures/plugins")
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) {
+    fs::create_dir_all(dst).expect("create dst");
+    for entry in fs::read_dir(src).expect("read fixture dir") {
+        let entry = entry.expect("dir entry");
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            copy_dir_recursive(&from, &to);
+        } else {
+            fs::copy(&from, &to).expect("copy fixture file");
+        }
+    }
+}
+
+fn stage_source_fixture(project: &Project, name: &str) {
+    let src = plugin_fixtures_root().join("sources").join(name);
+    let dst = project.root().join("sources").join(name);
+    copy_dir_recursive(&src, &dst);
+}
+
+#[test]
+fn source_resolve_local_returns_resolved_manifest() {
+    let project = Project::init();
+    stage_source_fixture(&project, "code-typescript");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "source", "resolve", "code-typescript"])
+        .arg("--project-dir")
+        .arg(project.root())
+        .assert()
+        .success();
+
+    let actual = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(actual["axis"], "sources");
+    assert_eq!(actual["name"], "code-typescript");
+    assert_eq!(actual["location"], "local");
+    let operations = actual["operations"].as_array().expect("operations array");
+    let ops: Vec<&str> = operations.iter().map(|v| v.as_str().unwrap()).collect();
+    assert_eq!(ops, vec!["enumerate", "extract"]);
+    let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
+    assert!(
+        resolved.ends_with("sources/code-typescript"),
+        "resolved-path {resolved} must end with sources/code-typescript"
+    );
+}
+
+#[test]
+fn source_resolve_missing_emits_not_found() {
+    let project = Project::init();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "source", "resolve", "no-such-source"])
+        .arg("--project-dir")
+        .arg(project.root())
+        .assert()
+        .failure();
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "plugin-not-found");
+    assert_eq!(stderr["exit-code"], 1);
+}

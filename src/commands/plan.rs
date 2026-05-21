@@ -11,7 +11,6 @@ pub(super) mod status;
 
 use std::path::{Path, PathBuf};
 
-pub use create::{build_source_map, require_kebab_change_name, write_scaffold};
 use serde::Serialize;
 use specify_domain::change::Plan;
 use specify_domain::config::Layout;
@@ -40,14 +39,27 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
             name,
             depends_on,
             sources,
+            add_source,
+            remove_source,
+            divergence,
             description,
             project,
             target,
             context,
-        } => create::amend(ctx, name, depends_on, sources, description, project, target, context),
-        PlanAction::Transition { name, target, reason } => {
-            lifecycle::transition(ctx, name, target, reason)
-        }
+        } => create::amend(
+            ctx,
+            name,
+            depends_on,
+            sources,
+            add_source,
+            remove_source,
+            divergence.as_deref(),
+            description,
+            project,
+            target,
+            context,
+        ),
+        PlanAction::Transition { name, target } => lifecycle::transition(ctx, name, target),
         PlanAction::Archive { force } => lifecycle::archive(ctx, force),
         PlanAction::Lock { action } => match action {
             LockAction::Acquire { pid } => lock::acquire(ctx, pid),

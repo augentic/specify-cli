@@ -1,0 +1,10 @@
+{
+  "current": "reviewed",
+  "kind": "plan",
+  "name": "demo",
+  "plan": {
+    "name": "demo",
+    "path": "<TEMPDIR>/plan.yaml"
+  },
+  "previous": "pending"
+}

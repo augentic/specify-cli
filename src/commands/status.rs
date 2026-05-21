@@ -93,14 +93,8 @@ fn render_dashboard(
             writeln!(w, "  name: {}", p.name)?;
             writeln!(
                 w,
-                "  progress: done {}, in-progress {}, pending {}, blocked {}, failed {}, skipped {} (total {})",
-                p.counts.done,
-                p.counts.in_progress,
-                p.counts.pending,
-                p.counts.blocked,
-                p.counts.failed,
-                p.counts.skipped,
-                p.counts.total,
+                "  progress: done {}, in-progress {}, pending {} (total {})",
+                p.counts.done, p.counts.in_progress, p.counts.pending, p.counts.total,
             )?;
         }
     }

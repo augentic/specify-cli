@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use tempfile::tempdir;
 
-use super::super::model::{Entry, Plan, Severity, Status};
+use super::super::model::{Entry, Lifecycle, Plan, Severity, Status};
 use super::super::test_support::{RFC_EXAMPLE_YAML, change, plan_with_changes};
 use crate::registry::{Registry, RegistryProject};
 
@@ -174,6 +174,7 @@ fn no_short_circuit() {
 fn project_not_in_registry() {
     let plan = Plan {
         name: "test".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "a".to_string(),
@@ -184,7 +185,7 @@ fn project_not_in_registry() {
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
         }],
     };
     let registry = Registry {
@@ -205,6 +206,7 @@ fn project_not_in_registry() {
 fn project_missing_multi_repo() {
     let plan = Plan {
         name: "test".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "a".to_string(),
@@ -215,7 +217,7 @@ fn project_missing_multi_repo() {
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
         }],
     };
     let registry = Registry {
@@ -245,6 +247,7 @@ fn project_missing_multi_repo() {
 fn target_only_entry_valid_multi_repo() {
     let plan = Plan {
         name: "test".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "contracts".to_string(),
@@ -255,7 +258,7 @@ fn target_only_entry_valid_multi_repo() {
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
         }],
     };
     let registry = Registry {
@@ -288,6 +291,7 @@ fn target_only_entry_valid_multi_repo() {
 fn project_valid_single_repo() {
     let plan = Plan {
         name: "test".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "a".to_string(),
@@ -298,7 +302,7 @@ fn project_valid_single_repo() {
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
         }],
     };
     let registry = Registry {
@@ -320,6 +324,7 @@ fn project_valid_single_repo() {
 fn project_matches_registry() {
     let plan = Plan {
         name: "test".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "a".to_string(),
@@ -330,7 +335,7 @@ fn project_matches_registry() {
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
         }],
     };
     let registry = Registry {
@@ -360,6 +365,7 @@ fn project_matches_registry() {
 fn neither_project_nor_target_error() {
     let plan = Plan {
         name: "test".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "orphan".to_string(),
@@ -370,7 +376,7 @@ fn neither_project_nor_target_error() {
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
         }],
     };
     let results = plan.validate(None, None);
@@ -386,6 +392,7 @@ fn neither_project_nor_target_error() {
 fn target_only_passes() {
     let plan = Plan {
         name: "test".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "contracts".to_string(),
@@ -396,7 +403,7 @@ fn target_only_passes() {
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
         }],
     };
     let results = plan.validate(None, None);
@@ -410,6 +417,7 @@ fn target_only_passes() {
 fn project_and_target_passes() {
     let plan = Plan {
         name: "test".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![Entry {
             name: "impl".to_string(),
@@ -420,7 +428,7 @@ fn project_and_target_passes() {
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
         }],
     };
     let results = plan.validate(None, None);

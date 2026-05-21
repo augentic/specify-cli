@@ -51,6 +51,9 @@ impl Plan {
             if let Some(v) = patch.context {
                 entry.context = v;
             }
+            if let Some(d) = patch.divergence {
+                entry.divergence = Some(d);
+            }
         }
 
         let errors: Vec<_> =
@@ -72,7 +75,7 @@ impl Plan {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::super::model::{Entry, Patch, SliceSourceBinding, Status};
+    use super::super::model::{Entry, Lifecycle, Patch, SliceSourceBinding, Status};
     use super::super::test_support::{change, plan_with_changes};
     use super::*;
 
@@ -103,7 +106,7 @@ mod tests {
             sources: vec![],
             context: vec![],
             description: Some("original".into()),
-            status_reason: None,
+            divergence: None,
         }]);
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
@@ -145,6 +148,7 @@ mod tests {
     fn amend_leaves_unchanged() {
         let plan = Plan {
             name: "test".into(),
+            lifecycle: Lifecycle::Pending,
             sources: {
                 let mut m = BTreeMap::new();
                 m.insert("a".to_string(), "/path/a".to_string());
@@ -160,7 +164,7 @@ mod tests {
                     sources: vec!["a".into()],
                     context: vec![],
                     description: Some("d".into()),
-                    status_reason: None,
+                    divergence: None,
                 },
                 change("b", Status::Pending),
                 change("x", Status::Pending),
@@ -252,7 +256,7 @@ mod tests {
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
         }]);
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
@@ -299,7 +303,7 @@ mod tests {
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
         }]);
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");

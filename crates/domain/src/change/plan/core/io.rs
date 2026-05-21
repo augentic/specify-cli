@@ -104,7 +104,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::super::model::{Entry, Status};
+    use super::super::model::{Entry, Lifecycle, Status};
     use super::super::test_support::RFC_EXAMPLE_YAML;
     use super::*;
 
@@ -124,6 +124,7 @@ mod tests {
         let path = dir.path().join("plan.yaml");
         let plan = Plan {
             name: "init".to_string(),
+            lifecycle: Lifecycle::Pending,
             sources: BTreeMap::new(),
             entries: vec![],
         };
@@ -148,6 +149,7 @@ mod tests {
 
         let plan = Plan {
             name: "fresh".to_string(),
+            lifecycle: Lifecycle::Pending,
             sources: BTreeMap::new(),
             entries: vec![Entry {
                 name: "only-entry".to_string(),
@@ -158,7 +160,7 @@ mod tests {
                 sources: vec![],
                 context: vec![],
                 description: None,
-                status_reason: None,
+                divergence: None,
             }],
         };
         plan.save(&path).expect("save ok");
@@ -203,6 +205,7 @@ mod tests {
         let path = dir.path().join("plan.yaml");
         let plan = Plan {
             name: "demo".to_string(),
+            lifecycle: Lifecycle::Pending,
             sources: BTreeMap::new(),
             entries: vec![Entry {
                 name: "entry-one".to_string(),
@@ -213,7 +216,7 @@ mod tests {
                 sources: vec![],
                 context: vec![],
                 description: None,
-                status_reason: None,
+                divergence: None,
             }],
         };
         plan.save(&path).expect("save ok");
@@ -244,6 +247,7 @@ mod tests {
 
         let first = Plan {
             name: "first".to_string(),
+            lifecycle: Lifecycle::Pending,
             sources: BTreeMap::new(),
             entries: vec![],
         };
@@ -251,6 +255,7 @@ mod tests {
 
         let second = Plan {
             name: "second".to_string(),
+            lifecycle: Lifecycle::Pending,
             sources: BTreeMap::new(),
             entries: vec![Entry {
                 name: "new-entry".to_string(),
@@ -261,7 +266,7 @@ mod tests {
                 sources: vec![],
                 context: vec![],
                 description: None,
-                status_reason: None,
+                divergence: None,
             }],
         };
         second.save(&path).expect("save second ok");

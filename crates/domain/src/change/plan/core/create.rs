@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use specify_error::Error;
 
-use super::model::{Entry, Plan, Severity, Status};
+use super::model::{Entry, Lifecycle, Plan, Severity, Status};
 use crate::slice::actions::validate_name;
 
 impl Plan {
@@ -25,6 +25,7 @@ impl Plan {
         validate_name(name)?;
         Ok(Self {
             name: name.to_string(),
+            lifecycle: Lifecycle::Pending,
             sources,
             entries: vec![],
         })
@@ -59,7 +60,6 @@ impl Plan {
 
         let mut change = change;
         change.status = Status::Pending;
-        change.status_reason = None;
 
         self.entries.push(change);
         let errors: Vec<_> =
@@ -83,18 +83,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn create_forces_pending_clears_reason() {
+    fn create_forces_pending() {
         let mut plan = plan_with_changes(vec![]);
         let incoming = Entry {
             name: "foo".into(),
             project: Some("default".into()),
             target: None,
-            status: Status::Failed,
+            // Even an entry that arrives with `Done` (the only other
+            // legal status post-RFC-25) must be re-stamped to `Pending`
+            // by `Plan::create` — the single-writer rule on the
+            // per-entry status state machine.
+            status: Status::Done,
             depends_on: vec![],
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: Some("bogus".into()),
+            divergence: None,
         };
         plan.create(incoming).expect("create ok");
         assert_eq!(plan.entries.len(), 1);
@@ -103,10 +107,6 @@ mod tests {
             plan.entries[0].status,
             Status::Pending,
             "create must force status to Pending regardless of input"
-        );
-        assert_eq!(
-            plan.entries[0].status_reason, None,
-            "create must clear status_reason regardless of input"
         );
     }
 
@@ -193,7 +193,7 @@ mod tests {
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
         };
         let err = plan.create(entry).expect_err("must reject entry without project or target");
         match err {
@@ -221,7 +221,7 @@ mod tests {
             sources: vec![],
             context: vec!["contracts/http/foo.yaml".into()],
             description: None,
-            status_reason: None,
+            divergence: None,
         };
         plan.create(entry).expect("create ok");
         assert_eq!(
@@ -243,7 +243,7 @@ mod tests {
             sources: vec![],
             context: vec!["../escape".into()],
             description: None,
-            status_reason: None,
+            divergence: None,
         };
         let err = plan.create(entry).expect_err("invalid context path must be rejected");
         match err {

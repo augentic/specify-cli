@@ -1,9 +1,9 @@
 {
   "active": "a",
-  "target": null,
   "description": null,
   "next": null,
   "project": null,
   "reason": "in-progress",
-  "sources": null
+  "sources": null,
+  "target": null
 }

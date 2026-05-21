@@ -15,6 +15,6 @@ pub mod validate;
 mod test_support;
 
 pub use model::{
-    Entry, EntryPatch, Finding, Patch, Plan, ResolvedSourceBinding, Severity, SliceSourceBinding,
-    Status,
+    Divergence, Entry, EntryPatch, Finding, Lifecycle, Patch, Plan, ResolvedSourceBinding,
+    Severity, SliceSourceBinding, Status,
 };

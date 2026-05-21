@@ -1,6 +1,6 @@
 //! Type definitions for `plan.yaml` (`Plan`, `Entry`, `EntryPatch`,
-//! `Status`, `Severity`, `Finding`). Behaviour lives in the sibling
-//! submodules.
+//! `Status`, `Lifecycle`, `Severity`, `Finding`). Behaviour lives in
+//! the sibling submodules.
 
 use std::collections::BTreeMap;
 
@@ -8,6 +8,14 @@ use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
 /// Lifecycle state of a single entry in [`Plan::entries`].
+///
+/// RFC-25 collapses the per-entry state machine to three states:
+/// `pending` (default after `plan add` / `plan amend`), `in-progress`
+/// (written only by `plan next`), and `done` (written by
+/// `plan transition <name> done` — the final per-entry transition,
+/// stamped by `/spec:merge`). Build failures and merge conflicts leave
+/// the active entry `in-progress`; v1 has no per-entry `blocked`,
+/// `failed`, or `skipped` state.
 ///
 /// The enum is `Copy + Eq + Hash` so it can appear in `HashSet`s,
 /// `match` guards, and hash-keyed lookups without clones. Transition
@@ -36,24 +44,57 @@ pub enum Status {
     InProgress,
     /// Completed successfully.
     Done,
-    /// Blocked on an external dependency or question.
-    Blocked,
-    /// Execution failed.
-    Failed,
-    /// Intentionally skipped.
-    Skipped,
+}
+
+/// Plan-level lifecycle state stored at the top of `plan.yaml`
+/// (RFC-25 §Workflow vocabulary).
+///
+/// Two stored states only — `pending` (default after `plan create`)
+/// and `reviewed` (operator-stamped at Gate 1 via
+/// `specify plan transition <plan-name> reviewed`). "Currently
+/// executing" and "drained" are computed from per-entry [`Status`] at
+/// read time via [`Plan::is_executing`] / [`Plan::is_drained`].
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    strum::Display,
+    clap::ValueEnum,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+#[non_exhaustive]
+pub enum Lifecycle {
+    /// Default after `plan create`; awaits operator review at Gate 1.
+    #[default]
+    Pending,
+    /// Operator has stamped Gate 1 — `/spec:execute` is now legal.
+    Reviewed,
 }
 
 /// In-memory model of `plan.yaml` (at the repo root).
 ///
 /// A `Plan` is an ordered, dependency-aware list of [`Entry`]s plus
 /// a named map of [`Plan::sources`] (local paths or git URLs) that the
-/// entries draw from.
+/// entries draw from, gated by a top-level [`Plan::lifecycle`] stamp.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Plan {
     /// Human-readable plan name, e.g. `platform-v2`.
     pub name: String,
+    /// Plan-level lifecycle gate (RFC-25 §Workflow vocabulary).
+    /// Defaults to [`Lifecycle::Pending`] on parse so 1.x fixtures
+    /// without a `lifecycle:` field load cleanly.
+    #[serde(default)]
+    pub lifecycle: Lifecycle,
     /// Named source locations referenced by [`Entry::sources`].
     /// Optional in the YAML; defaults to an empty map.
     ///
@@ -116,12 +157,37 @@ pub struct Entry {
     /// Free-form human-readable description.
     #[serde(default)]
     pub description: Option<String>,
-    /// Operational explanation for the current non-terminal/terminal
-    /// status (`failed`, `blocked`, or `skipped`). Overwritten on each
-    /// status transition; cleared when the entry returns to `pending`,
-    /// `in-progress`, or `done`.
-    #[serde(default)]
-    pub status_reason: Option<String>,
+    /// RFC-25 §Plan-time fusion — closed enum capturing slice-level
+    /// fusion outcome. Absent on disk (the default) is semantic `none`.
+    /// `Likely` is set by `/spec:plan`'s `propose` sub-step on
+    /// materially-disagreeing candidate summaries; `Accepted` /
+    /// `Rejected` are written by the operator at Gate 1 via
+    /// `specify plan amend --divergence`. Advisory metadata in v1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub divergence: Option<Divergence>,
+}
+
+/// RFC-25 §Plan-time fusion — slice-level fusion-outcome enum.
+///
+/// Absent on disk (≡ semantic `none`) is the implicit default; the
+/// `none` and `likely` literals are not accepted on the
+/// `specify plan amend --divergence` CLI flag (`likely` is reserved
+/// for the synthesised `propose` sub-step). The CLI accepts only
+/// `Accepted` and `Rejected` from the operator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+#[non_exhaustive]
+pub enum Divergence {
+    /// Synthesised by `/spec:plan`'s `propose` sub-step on
+    /// materially-disagreeing candidate summaries.
+    Likely,
+    /// Operator-stamped at Gate 1 — divergence acknowledged and
+    /// accepted into the plan.
+    Accepted,
+    /// Operator-stamped at Gate 1 — divergence rejected; the plan
+    /// must be re-proposed before Gate 1 review.
+    Rejected,
 }
 
 /// One `(source-key, candidate-id)` binding under [`Entry::sources`].
@@ -232,6 +298,29 @@ impl Plan {
         }
         Ok(out)
     }
+
+    /// Computed predicate (RFC-25 §Workflow vocabulary): `true` when
+    /// at least one entry is currently `in-progress`.
+    ///
+    /// "Currently executing" is not stored — it's derived from
+    /// per-entry [`Status`] every time it's read, so race-prone
+    /// duplication between plan-level and per-entry state is
+    /// impossible by construction.
+    #[must_use]
+    pub fn is_executing(&self) -> bool {
+        self.entries.iter().any(|e| e.status == Status::InProgress)
+    }
+
+    /// Computed predicate (RFC-25 §Workflow vocabulary): `true` when
+    /// every entry has reached terminal `done` status.
+    ///
+    /// Empty plans report drained vacuously — there is no work left
+    /// to drain. Like [`Plan::is_executing`], "drained" is derived
+    /// from per-entry [`Status`] at read time and never stored.
+    #[must_use]
+    pub fn is_drained(&self) -> bool {
+        self.entries.iter().all(|e| e.status == Status::Done)
+    }
 }
 
 /// Three-way patch over a nullable field: `Keep` leaves the field
@@ -265,10 +354,9 @@ impl<T> Patch<T> {
 /// Patch applied by [`Plan::amend`] to an existing entry.
 ///
 /// Wholesale-replacement fields are `Option<Vec<...>>`; nullable fields use
-/// the three-way [`Patch`] enum. `status` and `status_reason` are
-/// deliberately absent — status transitions are made via
-/// [`Plan::transition`], never through `amend`, and the reason field
-/// travels with the transition.
+/// the three-way [`Patch`] enum. `status` is deliberately absent —
+/// status transitions are made via [`Plan::transition`], never through
+/// `amend`.
 ///
 /// The absence of a `status` field is a type-system guarantee: `amend`
 /// cannot mutate status.
@@ -287,6 +375,14 @@ pub struct EntryPatch {
     pub description: Patch<String>,
     /// Replace `context` wholesale when `Some`.
     pub context: Option<Vec<String>>,
+    /// Set `divergence` when `Some`. `None` leaves the field
+    /// untouched. The CLI is the only caller that materialises this
+    /// patch (`specify plan amend --divergence`) and refuses to set
+    /// either `Likely` (reserved for `propose`) or the implicit
+    /// `none` value, so only `Accepted` / `Rejected` reach this
+    /// field in practice; the domain enum is widened to all three
+    /// values to keep parser symmetry with [`Entry::divergence`].
+    pub divergence: Option<Divergence>,
 }
 
 /// Severity of a validation finding produced by
@@ -322,27 +418,78 @@ pub struct Finding {
 mod tests {
     use super::*;
 
+    /// Verbatim §The Plan reference fixture, post-RFC-25 collapse.
+    /// All entries use the simplified per-entry `Status` enum
+    /// (`pending | in-progress | done`); v1 has no per-entry
+    /// `blocked`, `failed`, or `skipped` state.
+    const RFC_EXAMPLE_YAML: &str = r"name: platform-v2
+sources:
+  monolith: /path/to/legacy-codebase
+  orders: git@github.com:org/orders-service.git
+  payments: git@github.com:org/payments-service.git
+  frontend: git@github.com:org/web-app.git
+slices:
+  - name: user-registration
+    project: platform
+    sources: [monolith]
+    status: done
+  - name: email-verification
+    project: platform
+    sources: [monolith]
+    depends-on: [user-registration]
+    status: in-progress
+  - name: registration-duplicate-email-crash
+    project: platform
+    description: >
+      Duplicate email submission returns 500 instead of 409.
+      Discovered during email-verification extraction.
+    status: pending
+";
+
     #[test]
-    fn rfc_example_round_trips() {
-        let original: Plan = serde_saphyr::from_str(super::super::test_support::RFC_EXAMPLE_YAML)
-            .expect("parse rfc fixture");
-        let rendered = serde_saphyr::to_string(&original).expect("serialize plan");
-        let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse rendered plan");
+    fn round_trips_rfc_fixture() {
+        let original: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let yaml = serde_saphyr::to_string(&original).expect("serialize plan");
+        let reparsed: Plan = serde_saphyr::from_str(&yaml).expect("reparse plan");
         assert_eq!(original, reparsed, "plan should survive a serialize/parse round-trip");
 
         assert_eq!(original.name, "platform-v2");
         assert_eq!(original.sources.len(), 4);
-        assert_eq!(original.entries.len(), 9);
+        assert_eq!(original.entries.len(), 3);
         assert_eq!(original.entries[0].status, Status::Done);
         assert_eq!(original.entries[1].status, Status::InProgress);
-        assert_eq!(original.entries[7].status, Status::Failed);
-        assert!(original.entries[7].status_reason.is_some());
+        assert_eq!(original.entries[2].status, Status::Pending);
+    }
+
+    #[test]
+    fn lifecycle_defaults_to_pending() {
+        let yaml = "name: foo\nslices: []\n";
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse minimal plan");
+        assert_eq!(
+            plan.lifecycle,
+            Lifecycle::Pending,
+            "missing lifecycle field must default to pending"
+        );
+    }
+
+    #[test]
+    fn lifecycle_round_trips() {
+        let yaml = "name: foo\nlifecycle: reviewed\nslices: []\n";
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse reviewed");
+        assert_eq!(plan.lifecycle, Lifecycle::Reviewed);
+
+        let rendered = serde_saphyr::to_string(&plan).expect("serialize");
+        assert!(
+            rendered.contains("lifecycle: reviewed"),
+            "serialised plan must carry kebab-case lifecycle: reviewed, got:\n{rendered}"
+        );
     }
 
     #[test]
     fn serializes_kebab_case() {
         let plan = Plan {
             name: "demo".to_string(),
+            lifecycle: Lifecycle::Pending,
             sources: BTreeMap::new(),
             entries: vec![Entry {
                 name: "entry-one".to_string(),
@@ -353,7 +500,7 @@ mod tests {
                 sources: vec![],
                 context: vec![],
                 description: None,
-                status_reason: Some("awaiting upstream fix".to_string()),
+                divergence: None,
             }],
         };
         let yaml = serde_saphyr::to_string(&plan).expect("serialize plan");
@@ -362,12 +509,7 @@ mod tests {
             yaml.contains("status: in-progress"),
             "expected kebab-case enum value in-progress in:\n{yaml}"
         );
-        assert!(yaml.contains("status-reason:"), "expected kebab-case status-reason in:\n{yaml}");
         assert!(!yaml.contains("depends_on"), "snake_case depends_on leaked into output:\n{yaml}");
-        assert!(
-            !yaml.contains("status_reason"),
-            "snake_case status_reason leaked into output:\n{yaml}"
-        );
     }
 
     #[test]
@@ -375,38 +517,9 @@ mod tests {
         let yaml = "name: foo\nslices: []\n";
         let plan: Plan = serde_saphyr::from_str(yaml).expect("parse minimal plan");
         assert_eq!(plan.name, "foo");
+        assert_eq!(plan.lifecycle, Lifecycle::Pending);
         assert!(plan.sources.is_empty(), "sources should default to empty map");
         assert!(plan.entries.is_empty(), "slices should be empty");
-    }
-
-    #[test]
-    fn status_reason_round_trips() {
-        let yaml = r"name: demo
-slices:
-  - name: checkout-api
-    sources: [payments]
-    depends-on: [shopping-cart]
-    status: failed
-    status-reason: >
-      Type mismatch between cart line-item schema and payment gateway contract.
-      Needs design revision after shopping-cart specs are updated.
-";
-        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-        let entry = &plan.entries[0];
-        assert_eq!(entry.status, Status::Failed);
-        let reason = entry.status_reason.as_deref().expect("status_reason populated");
-        assert!(
-            reason.contains("Type mismatch"),
-            "status_reason should preserve folded text, got: {reason:?}"
-        );
-
-        let rendered = serde_saphyr::to_string(&plan).expect("serialize");
-        let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
-        assert_eq!(plan, reparsed);
-        assert_eq!(
-            reparsed.entries[0].status_reason, entry.status_reason,
-            "status_reason should be byte-identical after round-trip"
-        );
     }
 
     #[test]
@@ -554,6 +667,7 @@ slices:
         sources.insert("docs".to_string(), "./design-notes".to_string());
         let plan = Plan {
             name: "demo".into(),
+            lifecycle: Lifecycle::Pending,
             sources,
             entries: vec![Entry {
                 name: "add-search-filter".into(),
@@ -570,7 +684,7 @@ slices:
                 ],
                 context: vec![],
                 description: None,
-                status_reason: None,
+                divergence: None,
             }],
         };
 
@@ -596,5 +710,87 @@ slices:
             }
             other => panic!("expected plan-source-key-undefined, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn is_drained_only_when_all_done() {
+        let plan = Plan {
+            name: "demo".into(),
+            lifecycle: Lifecycle::Reviewed,
+            sources: BTreeMap::new(),
+            entries: vec![
+                Entry {
+                    name: "a".into(),
+                    project: Some("default".into()),
+                    target: None,
+                    status: Status::Done,
+                    depends_on: vec![],
+                    sources: vec![],
+                    context: vec![],
+                    description: None,
+                    divergence: None,
+                },
+                Entry {
+                    name: "b".into(),
+                    project: Some("default".into()),
+                    target: None,
+                    status: Status::Done,
+                    depends_on: vec![],
+                    sources: vec![],
+                    context: vec![],
+                    description: None,
+                    divergence: None,
+                },
+            ],
+        };
+        assert!(plan.is_drained(), "all-done plan must report drained");
+        assert!(!plan.is_executing(), "no in-progress entry => not executing");
+    }
+
+    #[test]
+    fn is_executing_when_any_in_progress() {
+        let plan = Plan {
+            name: "demo".into(),
+            lifecycle: Lifecycle::Reviewed,
+            sources: BTreeMap::new(),
+            entries: vec![
+                Entry {
+                    name: "a".into(),
+                    project: Some("default".into()),
+                    target: None,
+                    status: Status::Done,
+                    depends_on: vec![],
+                    sources: vec![],
+                    context: vec![],
+                    description: None,
+                    divergence: None,
+                },
+                Entry {
+                    name: "b".into(),
+                    project: Some("default".into()),
+                    target: None,
+                    status: Status::InProgress,
+                    depends_on: vec![],
+                    sources: vec![],
+                    context: vec![],
+                    description: None,
+                    divergence: None,
+                },
+            ],
+        };
+        assert!(plan.is_executing(), "any in-progress => executing");
+        assert!(!plan.is_drained(), "in-progress entry => not drained");
+    }
+
+    #[test]
+    fn empty_plan_is_drained_vacuously() {
+        let plan = Plan {
+            name: "demo".into(),
+            lifecycle: Lifecycle::Pending,
+            sources: BTreeMap::new(),
+            entries: vec![],
+        };
+        assert!(plan.is_drained(), "empty plan reports drained vacuously");
+        assert!(!plan.is_executing(), "empty plan is not executing");
     }
 }

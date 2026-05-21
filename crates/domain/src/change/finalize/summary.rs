@@ -6,13 +6,11 @@ use crate::change::plan::core::{Plan, Status};
 
 /// Whether a plan-entry status counts as terminal for finalize.
 ///
-/// Per the brief, `done` / `failed` / `dropped` are terminal; the
-/// in-`Plan` representation maps `dropped` to [`Status::Skipped`]
-/// (the latter is what `specify change drop` surfaces back to the
-/// plan).
+/// Post-RFC-25 the only terminal per-entry state is `Done`; v1 has no
+/// per-entry `failed`, `blocked`, or `skipped` state.
 #[must_use]
 pub const fn is_terminal(status: Status) -> bool {
-    matches!(status, Status::Done | Status::Failed | Status::Skipped)
+    matches!(status, Status::Done)
 }
 
 /// Walk the plan and return the names of entries whose status is not a

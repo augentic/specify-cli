@@ -1,4 +1,5 @@
 name: demo
+lifecycle: pending
 sources: {}
 slices:
 - name: user-registration
@@ -7,7 +8,6 @@ slices:
   depends-on: []
   sources: []
   description: null
-  status-reason: null
 - name: registration-duplicate-email-crash
   project: null
   target: contracts@v1
@@ -15,4 +15,3 @@ slices:
   depends-on: []
   sources: []
   description: Clarified scope
-  status-reason: null

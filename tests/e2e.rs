@@ -304,60 +304,6 @@ fn task_mark_is_idempotent() {
 }
 
 // ---------------------------------------------------------------------------
-// 6. adapter resolve — local
-// ---------------------------------------------------------------------------
-
-#[test]
-fn adapter_resolve_local_returns_local() {
-    let project = Project::init().with_schemas();
-    fs::remove_dir_all(project.root().join(".specify/.cache/omnia"))
-        .expect("remove cached adapter");
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "adapter", "resolve", "omnia"])
-        .arg("--project-dir")
-        .arg(project.root())
-        .assert()
-        .success();
-
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["adapter-value"], "omnia");
-    assert_eq!(actual["source"], "local");
-    let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
-    assert!(
-        resolved.ends_with("schemas/omnia"),
-        "resolved_path {resolved} must end with schemas/omnia"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// 7. adapter resolve — cached
-// ---------------------------------------------------------------------------
-
-#[test]
-fn adapter_resolve_returns_cached() {
-    // `init` + cache-only layout (no `schemas/omnia` under the tempdir).
-    let project = Project::init().with_cached_schema();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "adapter", "resolve", "omnia"])
-        .arg("--project-dir")
-        .arg(project.root())
-        .assert()
-        .success();
-
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["source"], "cached");
-    let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
-    assert!(
-        resolved.ends_with(".specify/.cache/omnia"),
-        "resolved_path {resolved} must end with .specify/.cache/omnia"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // 8. slice outcome — round-trip through `outcome set` + `outcome show`
 // ---------------------------------------------------------------------------
 

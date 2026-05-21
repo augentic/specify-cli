@@ -2,10 +2,13 @@
 
 use std::collections::BTreeMap;
 
-use super::model::{Entry, Plan, Status};
+use super::model::{Entry, Lifecycle, Plan, Status};
 
-/// Verbatim reproduction of the `rfc-2-execution.md` §"The Plan"
-/// fixture, used by model, io, validate, and next-selector tests.
+/// Reduced-state reproduction of the `rfc-2-execution.md` §"The Plan"
+/// fixture. Per RFC-25, v1 has no per-entry `failed`, `blocked`, or
+/// `skipped` state — entries either move forward or stay where they
+/// are. The fixture has been mechanically rewritten to use the
+/// surviving three-state enum.
 pub(super) const RFC_EXAMPLE_YAML: &str = r"name: platform-v2
 sources:
   monolith: /path/to/legacy-codebase
@@ -55,10 +58,7 @@ slices:
     project: platform
     sources: [payments]
     depends-on: [shopping-cart]
-    status: failed
-    status-reason: >
-      Type mismatch between cart line-item schema and payment gateway contract.
-      Needs design revision after shopping-cart specs are updated.
+    status: pending
   - name: checkout-ui
     project: platform
     sources: [frontend]
@@ -69,6 +69,7 @@ slices:
 pub(super) fn plan_with_changes(changes: Vec<Entry>) -> Plan {
     Plan {
         name: "test".into(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: changes,
     }
@@ -84,7 +85,7 @@ pub(super) fn change(name: &str, status: Status) -> Entry {
         sources: vec![],
         context: vec![],
         description: None,
-        status_reason: None,
+        divergence: None,
     }
 }
 
@@ -98,6 +99,6 @@ pub(super) fn change_with_deps(name: &str, status: Status, deps: &[&str]) -> Ent
         sources: vec![],
         context: vec![],
         description: None,
-        status_reason: None,
+        divergence: None,
     }
 }

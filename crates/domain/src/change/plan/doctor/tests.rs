@@ -18,7 +18,7 @@ fn change(name: &str, status: Status) -> Entry {
         sources: vec![],
         context: vec![],
         description: None,
-        status_reason: None,
+        divergence: None,
     }
 }
 
@@ -31,6 +31,7 @@ fn change_with_deps(name: &str, status: Status, deps: &[&str]) -> Entry {
 fn plan_with(changes: Vec<Entry>) -> Plan {
     Plan {
         name: "test".into(),
+        lifecycle: crate::change::plan::core::Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: changes,
     }
@@ -43,6 +44,7 @@ fn plan_with_sources(sources: Vec<(&str, &str)>, changes: Vec<Entry>) -> Plan {
     }
     Plan {
         name: "test".into(),
+        lifecycle: crate::change::plan::core::Lifecycle::Pending,
         sources: map,
         entries: changes,
     }
@@ -196,100 +198,6 @@ fn doctor_orphan_source_mixed_references() {
     let count =
         doctor(&plan, None, None, None).into_iter().filter(|d| d.code == ORPHAN_SOURCE).count();
     assert_eq!(count, 1, "only `ghost` should orphan");
-}
-
-// ------- 3. Unreachable entries ------------------------------------
-
-#[test]
-fn doctor_unreachable_single_failed_predecessor() {
-    let plan = plan_with(vec![
-        change("a", Status::Failed),
-        change_with_deps("b", Status::Pending, &["a"]),
-    ]);
-    let hits: Vec<_> =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == UNREACHABLE).collect();
-    assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].entry.as_deref(), Some("b"));
-    match hits[0].data.as_ref().unwrap() {
-        DiagnosticPayload::UnreachableEntry { entry, blocking } => {
-            assert_eq!(entry, "b");
-            assert_eq!(blocking.len(), 1);
-            assert_eq!(blocking[0].name, "a");
-            assert_eq!(blocking[0].status, "failed");
-        }
-        other => panic!("wrong payload: {other:?}"),
-    }
-}
-
-#[test]
-fn doctor_unreachable_transitive_failure() {
-    let plan = plan_with(vec![
-        change("a", Status::Failed),
-        change_with_deps("b", Status::Pending, &["a"]),
-        change_with_deps("c", Status::Pending, &["b"]),
-    ]);
-    let hits: Vec<_> =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == UNREACHABLE).collect();
-    let names: Vec<&str> = hits.iter().filter_map(|d| d.entry.as_deref()).collect();
-    assert_eq!(names, vec!["b", "c"], "both b and c are unreachable, sorted");
-    let c = hits.iter().find(|d| d.entry.as_deref() == Some("c")).unwrap();
-    match c.data.as_ref().unwrap() {
-        DiagnosticPayload::UnreachableEntry { blocking, .. } => {
-            assert_eq!(blocking.len(), 1);
-            assert_eq!(blocking[0].name, "b");
-            assert_eq!(blocking[0].status, "pending");
-        }
-        other => panic!("wrong payload: {other:?}"),
-    }
-}
-
-#[test]
-fn doctor_unreachable_mixed_terminal_predecessors() {
-    let plan = plan_with(vec![
-        change("a", Status::Failed),
-        change("b", Status::Skipped),
-        change_with_deps("c", Status::Pending, &["a", "b"]),
-    ]);
-    let hits: Vec<_> =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == UNREACHABLE).collect();
-    assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].entry.as_deref(), Some("c"));
-    match hits[0].data.as_ref().unwrap() {
-        DiagnosticPayload::UnreachableEntry { blocking, .. } => {
-            let mut names: Vec<&str> = blocking.iter().map(|b| b.name.as_str()).collect();
-            names.sort_unstable();
-            assert_eq!(names, vec!["a", "b"]);
-            let mut statuses: Vec<&str> = blocking.iter().map(|b| b.status.as_str()).collect();
-            statuses.sort_unstable();
-            assert_eq!(statuses, vec!["failed", "skipped"]);
-        }
-        other => panic!("wrong payload: {other:?}"),
-    }
-}
-
-#[test]
-fn doctor_unreachable_skips_cycle_members() {
-    // a-b cycle plus c-failed -> d-pending. Only d should be reported as
-    // unreachable; a/b show up under cycle-in-depends-on.
-    let plan = plan_with(vec![
-        change_with_deps("a", Status::Pending, &["b"]),
-        change_with_deps("b", Status::Pending, &["a"]),
-        change("c", Status::Failed),
-        change_with_deps("d", Status::Pending, &["c"]),
-    ]);
-    let unreach: Vec<_> =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == UNREACHABLE).collect();
-    let names: Vec<&str> = unreach.iter().filter_map(|d| d.entry.as_deref()).collect();
-    assert_eq!(names, vec!["d"], "cycle members must not double-report");
-}
-
-#[test]
-fn doctor_unreachable_quiet_on_healthy_plan() {
-    let plan =
-        plan_with(vec![change("a", Status::Done), change_with_deps("b", Status::Pending, &["a"])]);
-    let hits: Vec<_> =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == UNREACHABLE).collect();
-    assert!(hits.is_empty(), "no unreachable expected, got {hits:#?}");
 }
 
 // ------- 4. Stale workspace clones --------------------------------
@@ -502,7 +410,7 @@ fn doctor_healthy_plan_emits_zero_doctor_diagnostics() {
         ],
     );
     let diagnostics = doctor(&plan, None, None, None);
-    for code in [CYCLE, ORPHAN_SOURCE, STALE_CLONE, UNREACHABLE] {
+    for code in [CYCLE, ORPHAN_SOURCE, STALE_CLONE] {
         assert!(
             !diagnostics.iter().any(|d| d.code == code),
             "healthy plan should not emit {code}: {diagnostics:#?}"
@@ -512,21 +420,16 @@ fn doctor_healthy_plan_emits_zero_doctor_diagnostics() {
 
 #[test]
 fn doctor_includes_validate_findings_unchanged() {
-    // A plan with both an unknown depends-on (validate-only) and a
-    // failed predecessor (doctor-only). Doctor must surface BOTH
-    // diagnostics, with validate's code unchanged.
+    // A plan with an unknown depends-on (validate-only). Doctor must
+    // forward the validate diagnostic with code unchanged.
     let plan = plan_with(vec![
-        change("a", Status::Failed),
+        change("a", Status::Done),
         change_with_deps("b", Status::Pending, &["a", "ghost"]),
     ]);
     let diagnostics = doctor(&plan, None, None, None);
     assert!(
         diagnostics.iter().any(|d| d.code == "unknown-depends-on"),
         "validate's `unknown-depends-on` must pass through doctor unchanged: {diagnostics:#?}"
-    );
-    assert!(
-        diagnostics.iter().any(|d| d.code == UNREACHABLE),
-        "doctor must add the unreachable diagnostic: {diagnostics:#?}"
     );
 }
 

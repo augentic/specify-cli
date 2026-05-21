@@ -38,6 +38,35 @@ impl Plan {
         })
     }
 
+    /// Atomically advance the plan: if there is no active in-progress
+    /// entry, transition the next eligible `Pending` entry to
+    /// `InProgress` and return it; otherwise return the existing
+    /// active entry without writing anything.
+    ///
+    /// This is the **only** writer of per-entry `InProgress` per
+    /// RFC-25 §CLI surface — `plan add` / `amend` write `Pending`
+    /// only, and `plan transition` writes `Done` only.
+    ///
+    /// Returns `None` when the plan is drained (no active and no
+    /// eligible pending entry).
+    ///
+    /// # Errors
+    ///
+    /// Errors when the underlying state transition is illegal —
+    /// in practice unreachable since `next_eligible` filters for
+    /// `Pending` entries and the only legal edge from `Pending` is
+    /// `→ InProgress`.
+    pub fn advance_next(&mut self) -> Result<Option<&Entry>, Error> {
+        if self.is_executing() {
+            return Ok(self.entries.iter().find(|e| e.status == Status::InProgress));
+        }
+        let Some(name) = self.next_eligible().map(|e| e.name.clone()) else {
+            return Ok(None);
+        };
+        self.transition(&name, Status::InProgress)?;
+        Ok(self.entries.iter().find(|e| e.name == name))
+    }
+
     /// Entries in dependency-respecting order. Errors with an
     /// `Error::Diag` describing the cycle when the `depends_on` graph
     /// contains one.
@@ -163,10 +192,13 @@ mod tests {
 
     #[test]
     fn next_eligible_none_when_finished() {
+        // Post-RFC-25 the only terminal per-entry state is `Done`. A
+        // plan whose entries are all `Done` is drained — `next_eligible`
+        // must report nothing.
         let plan = plan_with_changes(vec![
             change("a", Status::Done),
-            change("b", Status::Skipped),
-            change("c", Status::Failed),
+            change("b", Status::Done),
+            change("c", Status::Done),
         ]);
         assert!(plan.next_eligible().is_none());
     }
@@ -189,7 +221,6 @@ mod tests {
         let mut plan: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
         for entry in &mut plan.entries {
             entry.status = Status::Pending;
-            entry.status_reason = None;
         }
 
         let mut traversal = Vec::new();
@@ -314,6 +345,33 @@ mod tests {
     /// `next_eligible` must not depend on `topological_order` succeeding:
     /// even when the plan has a cycle, an in-progress entry short-circuits
     /// selection to `None` without walking the dependency graph.
+    #[test]
+    fn advance_next_writes_in_progress_then_returns_existing_active() {
+        let mut plan = plan_with_changes(vec![
+            change("a", Status::Pending),
+            change_with_deps("b", Status::Pending, &["a"]),
+        ]);
+        // First call transitions `a` to in-progress and returns it.
+        let active = plan.advance_next().expect("advance ok");
+        assert_eq!(active.unwrap().name, "a");
+        assert_eq!(plan.entries[0].status, Status::InProgress);
+        // Subsequent calls report the existing active entry without
+        // moving any other entry.
+        let again = plan.advance_next().expect("advance ok");
+        assert_eq!(again.unwrap().name, "a", "active entry must be returned, not advanced past");
+        assert_eq!(plan.entries[0].status, Status::InProgress);
+        assert_eq!(plan.entries[1].status, Status::Pending);
+    }
+
+    #[test]
+    fn advance_next_reports_drained_when_all_done() {
+        let mut plan =
+            plan_with_changes(vec![change("a", Status::Done), change("b", Status::Done)]);
+        let next = plan.advance_next().expect("advance ok");
+        assert!(next.is_none(), "drained plan must report None");
+        assert!(plan.is_drained());
+    }
+
     #[test]
     fn next_eligible_with_cycle() {
         let plan = plan_with_changes(vec![

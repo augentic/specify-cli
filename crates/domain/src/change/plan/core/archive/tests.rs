@@ -4,12 +4,13 @@ use std::path::{Path, PathBuf};
 use specify_error::Error;
 use tempfile::tempdir;
 
-use super::super::model::{Entry, Plan, Status};
+use super::super::model::{Entry, Lifecycle, Plan, Status};
 use super::super::test_support::change;
 
 fn write_plan(dir: &Path, name: &str, changes: Vec<Entry>) -> PathBuf {
     let plan = Plan {
         name: name.to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: changes,
     };
@@ -57,7 +58,7 @@ fn archive_happy_path() {
     let plan_path = write_plan(
         tmp.path(),
         "release-1",
-        vec![change("a", Status::Done), change("b", Status::Skipped), change("c", Status::Done)],
+        vec![change("a", Status::Done), change("b", Status::Done), change("c", Status::Done)],
     );
     let pre_bytes = std::fs::read(&plan_path).expect("read pre-archive");
 
@@ -120,6 +121,9 @@ fn archive_refuses_pending() {
 
 #[test]
 fn archive_refuses_nonterminal() {
+    // Post-RFC-25, only `Done` is terminal for archive purposes.
+    // `Pending` and `InProgress` block; v1 has no per-entry
+    // `failed`/`blocked`/`skipped` state to cover here.
     let tmp = tempdir().expect("tempdir");
     let archive_dir = tmp.path().join("archive");
     let plan_path = write_plan(
@@ -128,9 +132,7 @@ fn archive_refuses_nonterminal() {
         vec![
             change("a", Status::Done),
             change("b", Status::InProgress),
-            change("c", Status::Blocked),
-            change("d", Status::Failed),
-            change("e", Status::Skipped),
+            change("c", Status::Pending),
         ],
     );
 
@@ -140,9 +142,8 @@ fn archive_refuses_nonterminal() {
         Error::Diag { code, detail } => {
             assert_eq!(code, "plan-has-outstanding-work");
             assert!(
-                detail.contains("\"b\"") && detail.contains("\"c\"") && detail.contains("\"d\""),
-                "detail must list InProgress/Blocked/Failed entries (excluding Done and \
-                 Skipped) in plan list order, got: {detail}"
+                detail.contains("\"b\"") && detail.contains("\"c\""),
+                "detail must list non-Done entries (b, c) in plan list order, got: {detail}"
             );
         }
         other => panic!("expected plan-has-outstanding-work diag, got {other:?}"),
@@ -160,9 +161,7 @@ fn archive_force_succeeds() {
         vec![
             change("a", Status::Done),
             change("b", Status::InProgress),
-            change("c", Status::Blocked),
-            change("d", Status::Failed),
-            change("e", Status::Skipped),
+            change("c", Status::Pending),
         ],
     );
     let pre_bytes = std::fs::read(&plan_path).expect("read pre-archive");
@@ -180,7 +179,7 @@ fn archive_force_succeeds() {
     let statuses: Vec<Status> = archived.entries.iter().map(|c| c.status).collect();
     assert_eq!(
         statuses,
-        vec![Status::Done, Status::InProgress, Status::Blocked, Status::Failed, Status::Skipped,],
+        vec![Status::Done, Status::InProgress, Status::Pending],
         "statuses in archive must not be rewritten"
     );
 }

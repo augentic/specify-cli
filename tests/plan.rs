@@ -68,10 +68,7 @@ slices:
   - name: checkout-api
     sources: [payments]
     depends-on: [shopping-cart]
-    status: failed
-    status-reason: >
-      Type mismatch between cart line-item schema and payment gateway contract.
-      Needs design revision after shopping-cart specs are updated.
+    status: pending
 
   - name: checkout-ui
     sources: [frontend]

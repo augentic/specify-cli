@@ -1282,15 +1282,225 @@ fn phase_outcome_round_trips_serde() {
     }
 }
 
-// ---- specify change is the umbrella for the operator surface ----
+// ---- RFC-25 top-level help surfaces source/target axis verbs ----
 
 #[test]
-fn change_umbrella_is_listed_in_top_level_help() {
+fn top_level_help_lists_source_and_target_axis_verbs() {
     let assert = specify().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(stdout.contains("slice"), "post-RFC-13 --help must list `slice`, got:\n{stdout}");
+    assert!(stdout.contains("slice"), "RFC-25 --help must still list `slice`, got:\n{stdout}");
     assert!(
-        stdout.lines().any(|line| line.trim_start().starts_with("change ")),
-        "post-3.5 --help must list `change` as the umbrella subcommand, got:\n{stdout}"
+        stdout.lines().any(|line| line.trim_start().starts_with("source ")),
+        "RFC-25 --help must list the `source` axis verb, got:\n{stdout}"
     );
+    assert!(
+        stdout.lines().any(|line| line.trim_start().starts_with("target ")),
+        "RFC-25 --help must list the `target` axis verb, got:\n{stdout}"
+    );
+    assert!(
+        !stdout.lines().any(|line| line.trim_start().starts_with("change ")),
+        "RFC-25 --help must NOT list the retired `change` verb, got:\n{stdout}"
+    );
+    assert!(
+        !stdout.lines().any(|line| line.trim_start().starts_with("adapter ")),
+        "RFC-25 --help must NOT list the retired `adapter` verb, got:\n{stdout}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// RFC-25 §Requirement block contract — `slice validate` provenance gate
+// ---------------------------------------------------------------------------
+
+/// Stage a slice on disk and seed `<slice>/specs/login/spec.md`
+/// directly, plus optionally a `plan.yaml` at the project root, so the
+/// provenance gate inside `specify slice validate` has both the spec
+/// file and a plan-level source-bindings context to cross-validate
+/// against. Returns the project handle so the caller can drive
+/// `specify slice validate` on it.
+fn stage_slice_with_spec(spec_md: &str, plan_yaml: Option<&str>) -> Project {
+    let project = Project::init().with_schemas();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    let specs_dir = project.slices_dir().join("my-slice/specs/login");
+    fs::create_dir_all(&specs_dir).expect("mkdir specs/login");
+    fs::write(specs_dir.join("spec.md"), spec_md).expect("write spec.md");
+    if let Some(yaml) = plan_yaml {
+        project.seed_plan(yaml);
+    }
+    project
+}
+
+/// Validate-fail goldens carry a `validation` discriminant; assert
+/// that the wire envelope holds the expected `rule_id` exactly once.
+fn assert_provenance_fail_rule(stderr: &[u8], rule_id: &str) {
+    let value = parse_json(stderr);
+    assert_eq!(value["error"], "validation", "wire envelope must be `validation`");
+    assert_eq!(value["exit-code"], 2);
+    let results = value["results"].as_array().expect("results array");
+    assert!(
+        results.iter().any(|r| r["rule-id"] == rule_id),
+        "expected rule_id `{rule_id}` in results: {results:#?}"
+    );
+}
+
+const PLAN_WITH_LEGACY_MONOLITH: &str = "\
+name: rfc25-prov
+lifecycle: pending
+sources:
+  legacy-monolith: ./legacy
+slices:
+  - name: my-slice
+    status: pending
+    sources:
+      - { key: legacy-monolith, candidate: my-slice }
+";
+
+#[test]
+fn validate_rejects_missing_id_with_exit_two() {
+    let spec = "### Requirement: Missing id\n\n\
+                Sources: [legacy-monolith]\n\
+                Status: agreed\n\n\
+                body\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-id-missing");
+}
+
+#[test]
+fn validate_rejects_malformed_id_with_exit_two() {
+    let spec = "### Requirement: Malformed id\n\n\
+                ID: REQ-1\n\
+                Sources: [legacy-monolith]\n\
+                Status: agreed\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-id-malformed");
+}
+
+#[test]
+fn validate_rejects_missing_sources_with_exit_two() {
+    let spec = "### Requirement: No sources\n\n\
+                ID: REQ-001\n\
+                Status: agreed\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-sources-missing");
+}
+
+#[test]
+fn validate_rejects_missing_status_with_exit_two() {
+    let spec = "### Requirement: No status\n\n\
+                ID: REQ-001\n\
+                Sources: [legacy-monolith]\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-status-missing");
+}
+
+#[test]
+fn validate_rejects_unknown_status_value_with_exit_two() {
+    let spec = "### Requirement: Bogus status\n\n\
+                ID: REQ-001\n\
+                Sources: [legacy-monolith]\n\
+                Status: maybe\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(
+        &assert.get_output().stderr,
+        "spec.requirement-status-unknown-value",
+    );
+}
+
+#[test]
+fn validate_rejects_source_key_not_in_plan_with_exit_two() {
+    let spec = "### Requirement: Stray source key\n\n\
+                ID: REQ-001\n\
+                Sources: [phantom]\n\
+                Status: agreed\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(
+        &assert.get_output().stderr,
+        "spec.requirement-source-key-undefined",
+    );
+}
+
+#[test]
+fn validate_rejects_tag_status_mismatch_with_exit_two() {
+    let spec = "### Requirement: Lying tag [divergence]\n\n\
+                ID: REQ-001\n\
+                Sources: [legacy-monolith]\n\
+                Status: agreed\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(
+        &assert.get_output().stderr,
+        "spec.requirement-tag-status-mismatch",
+    );
+}
+
+#[test]
+fn validate_skips_provenance_when_no_metadata_lines_present() {
+    // Pre-RFC-25 (or pre-synthesis) state. The provenance gate must
+    // not fire and the slice progresses to the existing adapter rule
+    // run. The adapter rules will still surface deferred /
+    // pass-style results — we only assert the provenance rule ids
+    // are NOT present.
+    let spec = "### Requirement: Pre-RFC-25 body\n\n\
+                ID: REQ-001\n\n\
+                body that has no Sources or Status yet\n";
+    let project = stage_slice_with_spec(spec, None);
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    // Whether the run passes or fails (existing adapter rules may
+    // still produce findings on the synthetic slice), no provenance
+    // rule should appear.
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert!(
+                !rule_id.starts_with("spec.requirement-"),
+                "no provenance rule should fire on a pre-RFC-25 spec.md, got: {rule_id}"
+            );
+        }
+    }
 }

@@ -231,7 +231,7 @@ fn init_hub_writes_canonical_on_disk_shape() {
     );
 
     // `change.md` is not scaffolded by hub init; it appears only after
-    // the operator runs `specify change draft <name>`.
+    // the operator runs `/spec:plan <name>` (or `specify plan create <name>`).
 }
 
 #[test]

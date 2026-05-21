@@ -1,20 +1,20 @@
 //! Top-level clap derive surface for the `specify` binary. Owns the
-//! umbrella types ([`Cli`], [`Commands`], [`Format`], [`SourceArg`])
-//! and re-exports the per-verb action enums.
+//! umbrella types ([`Cli`], [`Commands`], [`Format`], [`SourceArg`],
+//! [`SliceSourceArg`]) and re-exports the per-verb action enums.
 
 use std::str::FromStr;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 
-use crate::commands::adapter::cli::AdapterAction;
-use crate::commands::change::cli::ChangeAction;
 use crate::commands::codex::cli::CodexAction;
 use crate::commands::compatibility::cli::CompatibilityAction;
 use crate::commands::context::cli::ContextAction;
 use crate::commands::plan::cli::PlanAction;
 use crate::commands::registry::cli::RegistryAction;
 use crate::commands::slice::cli::SliceAction;
+use crate::commands::source::cli::SourceAction;
+use crate::commands::target::cli::TargetAction;
 use crate::commands::tool::cli::ToolAction;
 use crate::commands::workspace::cli::WorkspaceAction;
 
@@ -77,10 +77,22 @@ pub enum Commands {
         action: ContextAction,
     },
 
-    /// Adapter operations
-    Adapter {
+    /// Source adapter operations (RFC-25). Source adapters provide
+    /// `enumerate` + `extract` capabilities and are resolved against
+    /// `sources/<name>/adapter.yaml` (in-repo) or
+    /// `.specify/.cache/sources/<name>/` (agent cache).
+    Source {
         #[command(subcommand)]
-        action: AdapterAction,
+        action: SourceAction,
+    },
+
+    /// Target adapter operations (RFC-25). Target adapters provide
+    /// `shape` + `build` + `merge` capabilities and are resolved
+    /// against `targets/<name>/adapter.yaml` (in-repo) or
+    /// `.specify/.cache/targets/<name>/` (agent cache).
+    Target {
+        #[command(subcommand)]
+        action: TargetAction,
     },
 
     /// Codex rule catalogue operations
@@ -107,14 +119,8 @@ pub enum Commands {
         action: SliceAction,
     },
 
-    /// Change orchestration — operator brief and finalize.
-    Change {
-        #[command(subcommand)]
-        action: ChangeAction,
-    },
-
     /// Executable plan operations — `plan.yaml` lifecycle and the
-    /// `/change:execute` driver lock.
+    /// `/spec:execute` driver lock.
     Plan {
         #[command(subcommand)]
         action: PlanAction,
@@ -144,7 +150,7 @@ pub enum Commands {
     },
 }
 
-/// Typed `--source <key>=<path-or-url>` CLI value.
+/// Typed `--source <key>=<path-or-url>` CLI value (top-level plan source binding).
 ///
 /// The [`FromStr`] impl returns a `String` error on malformed input so
 /// clap surfaces a standard usage diagnostic (exit code 2). Call sites
@@ -171,5 +177,62 @@ impl FromStr for SourceArg {
             key: k.to_string(),
             value: v.to_string(),
         })
+    }
+}
+
+/// Typed value for the per-slice `--sources` / `--add-source` /
+/// `--remove-source` flags.
+///
+/// Wire forms (RFC-25 §`Slice.sources`):
+///
+/// - `<key>=<candidate-id>` — structured binding; both sides are
+///   non-empty kebab identifiers. Materialises as
+///   [`specify_domain::change::SliceSourceBinding::Structured`].
+/// - `<key>` — bare-string shorthand; sugar for
+///   `{ key: <key>, candidate: <slice.name> }`. Materialises as
+///   [`specify_domain::change::SliceSourceBinding::Bare`].
+///
+/// Malformed inputs (empty key, empty candidate, dangling `=`, more
+/// than one `=`) produce a `FromStr` error that clap surfaces as a
+/// standard usage diagnostic (exit code 2 via `Error::Argument` at
+/// the handler boundary).
+#[derive(Clone, Debug)]
+pub struct SliceSourceArg {
+    pub(crate) key: String,
+    /// `None` when the operator wrote the bare-string shorthand;
+    /// `Some(candidate)` otherwise. The handler downconverts to the
+    /// bare wire form when `candidate == slice.name` so the on-disk
+    /// `plan.yaml` stays minimal.
+    pub(crate) candidate: Option<String>,
+}
+
+impl FromStr for SliceSourceArg {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            return Err("--sources value must be non-empty".to_string());
+        }
+        if let Some((k, v)) = s.split_once('=') {
+            if v.contains('=') {
+                return Err(format!(
+                    "--sources value `{s}` must be <key>=<candidate-id> with at most one `=`"
+                ));
+            }
+            if k.is_empty() || v.is_empty() {
+                return Err(format!(
+                    "--sources key and candidate-id must both be non-empty, got `{s}`"
+                ));
+            }
+            Ok(Self {
+                key: k.to_string(),
+                candidate: Some(v.to_string()),
+            })
+        } else {
+            Ok(Self {
+                key: s.to_string(),
+                candidate: None,
+            })
+        }
     }
 }

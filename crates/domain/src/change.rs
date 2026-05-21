@@ -7,12 +7,12 @@ mod plan;
 
 pub use finalize::summarise;
 pub use plan::core::{
-    Entry, EntryPatch, Finding, Patch, Plan, ResolvedSourceBinding, Severity, SliceSourceBinding,
-    Status,
+    Divergence, Entry, EntryPatch, Finding, Lifecycle, Patch, Plan, ResolvedSourceBinding,
+    Severity, SliceSourceBinding, Status,
 };
 pub use plan::doctor::{
-    BlockingPredecessor, CYCLE, CloneSignature, Diagnostic as PlanDoctorDiagnostic,
-    DiagnosticPayload as PlanDoctorPayload, ORPHAN_SOURCE, STALE_CLONE, StaleReason, UNREACHABLE,
+    CYCLE, CloneSignature, Diagnostic as PlanDoctorDiagnostic,
+    DiagnosticPayload as PlanDoctorPayload, ORPHAN_SOURCE, STALE_CLONE, StaleReason,
     doctor as plan_doctor,
 };
 pub use plan::lock::{Acquired, Released as PlanLockReleased, Stamp, State as PlanLockState};

@@ -92,7 +92,7 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     } else {
         writeln!(
             w,
-            "Next: run `specify change draft <name> [--source <key>=<path-or-url> ...]` to scaffold the change brief and plan, then run `/change:draft` to author it."
+            "Next: run `/spec:plan <name>` (the skill that authors `change.md` + `plan.yaml`), or — for a headless plan — `specify plan create <name>` followed by `specify plan add` and `specify plan transition <name> reviewed`."
         )?;
     }
     Ok(())

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use clap::ValueEnum;
 use serde::Serialize;
-use specify_domain::change::{Entry, Plan, Severity, SliceSourceBinding, Status};
+use specify_domain::change::{Entry, Lifecycle, Plan, Severity, SliceSourceBinding, Status};
 use specify_domain::slice::{LifecycleStatus, SliceMetadata};
 use specify_error::{Error, Result};
 
@@ -15,12 +15,12 @@ use crate::context::Ctx;
 #[serde(rename_all = "kebab-case")]
 struct StatusBody {
     plan: Ref,
+    lifecycle: Lifecycle,
+    drained: bool,
     counts: Counts,
     order: OrderLabel,
     entries: Vec<EntryRow>,
     in_progress: Option<Active>,
-    blocked: Vec<NameReason>,
-    failed: Vec<NameReason>,
     next_eligible: Option<String>,
 }
 
@@ -31,15 +31,14 @@ enum OrderLabel {
     List,
 }
 
+/// Per-entry status counts. Post-RFC-25 only three states ship — the
+/// counts surface mirrors the surviving enum.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Counts {
     pub done: usize,
     pub in_progress: usize,
     pub pending: usize,
-    pub blocked: usize,
-    pub failed: usize,
-    pub skipped: usize,
     pub total: usize,
 }
 
@@ -55,9 +54,6 @@ impl Counts {
             done: counts[&Status::Done],
             in_progress: counts[&Status::InProgress],
             pending: counts[&Status::Pending],
-            blocked: counts[&Status::Blocked],
-            failed: counts[&Status::Failed],
-            skipped: counts[&Status::Skipped],
             total,
         }
     }
@@ -72,19 +68,11 @@ struct Active {
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct NameReason {
-    name: String,
-    reason: Option<String>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
 struct EntryRow {
     name: String,
     status: Status,
     depends_on: Vec<String>,
     sources: Vec<SliceSourceBinding>,
-    status_reason: Option<String>,
     description: Option<String>,
     lifecycle: Option<LifecycleStatus>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -95,11 +83,13 @@ fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()
     let c = &body.counts;
     writeln!(w, "## Change: {}", body.plan.name)?;
     writeln!(w)?;
+    writeln!(w, "Plan lifecycle: {}", body.lifecycle)?;
+    writeln!(w, "Drained: {}", body.drained)?;
     writeln!(w)?;
     writeln!(
         w,
-        "Progress: done {}, in-progress {}, pending {}, blocked {}, failed {}, skipped {} (total {})",
-        c.done, c.in_progress, c.pending, c.blocked, c.failed, c.skipped, c.total,
+        "Progress: done {}, in-progress {}, pending {} (total {})",
+        c.done, c.in_progress, c.pending, c.total,
     )?;
 
     if let Some(a) = &body.in_progress {
@@ -107,24 +97,6 @@ fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()
             a.lifecycle.map_or_else(|| "<no slice dir yet>".to_string(), |l| l.to_string());
         writeln!(w)?;
         writeln!(w, "In progress: {} (lifecycle: {lifecycle_label})", a.name)?;
-    }
-
-    if !body.blocked.is_empty() {
-        writeln!(w)?;
-        writeln!(w, "Blocked:")?;
-        for row in &body.blocked {
-            let reason = row.reason.as_deref().unwrap_or("-");
-            writeln!(w, "  - {} (reason: {reason})", row.name)?;
-        }
-    }
-
-    if !body.failed.is_empty() {
-        writeln!(w)?;
-        writeln!(w, "Failed:")?;
-        for row in &body.failed {
-            let reason = row.reason.as_deref().unwrap_or("-");
-            writeln!(w, "  - {} (reason: {reason})", row.name)?;
-        }
     }
 
     writeln!(w)?;
@@ -174,11 +146,6 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
         })
         .collect();
 
-    let blocked: Vec<NameReason> =
-        plan.entries.iter().filter(|c| c.status == Status::Blocked).map(name_reason).collect();
-    let failed: Vec<NameReason> =
-        plan.entries.iter().filter(|c| c.status == Status::Failed).map(name_reason).collect();
-
     let in_progress = active.map(|a| Active {
         name: a.name.clone(),
         lifecycle: active_lifecycle,
@@ -189,24 +156,17 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
             name: plan.name.clone(),
             path: plan_path.display().to_string(),
         },
+        lifecycle: plan.lifecycle,
+        drained: plan.is_drained(),
         counts,
         order: order_label,
         entries,
         in_progress,
-        blocked,
-        failed,
         next_eligible: plan.next_eligible().map(|e| e.name.clone()),
     };
 
     ctx.write(&body, write_status_text)?;
     Ok(())
-}
-
-fn name_reason(entry: &Entry) -> NameReason {
-    NameReason {
-        name: entry.name.clone(),
-        reason: entry.status_reason.clone(),
-    }
 }
 
 fn entry_row(entry: &Entry, lifecycle: Option<LifecycleStatus>) -> EntryRow {
@@ -215,7 +175,6 @@ fn entry_row(entry: &Entry, lifecycle: Option<LifecycleStatus>) -> EntryRow {
         status: entry.status,
         depends_on: entry.depends_on.clone(),
         sources: entry.sources.clone(),
-        status_reason: entry.status_reason.clone(),
         description: entry.description.clone(),
         lifecycle,
         context: entry.context.clone(),

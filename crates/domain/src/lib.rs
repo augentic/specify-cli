@@ -7,6 +7,7 @@ pub mod change;
 pub mod cmd;
 pub mod config;
 pub mod init;
+pub mod journal;
 pub mod merge;
 pub mod plugin;
 pub mod registry;

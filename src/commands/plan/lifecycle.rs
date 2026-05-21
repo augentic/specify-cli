@@ -4,7 +4,7 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::adapter::ChangeBrief;
 use specify_domain::change::{
-    Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, plan_doctor,
+    Lifecycle, Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, plan_doctor,
 };
 use specify_domain::config::{InitPolicy, with_state};
 use specify_domain::registry::Registry;
@@ -84,83 +84,170 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     }
 }
 
+/// `specify plan next` — return the active in-progress entry, or
+/// transition the next eligible `Pending` entry to `InProgress` and
+/// return it. The only writer of per-entry `in-progress` per
+/// RFC-25 §CLI surface.
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
-    let plan_path = require_file(&ctx.project_dir)?;
-    let plan = Plan::load(&plan_path)?;
     let slices_dir = ctx.layout().slices_dir();
 
-    let results = plan.validate(Some(&slices_dir), None);
-    if results.iter().any(|r| matches!(r.level, Severity::Error)) {
-        return Err(Error::validation_failed(
-            "plan-structural-errors",
-            "plan must be free of structural errors",
-            "run 'specify plan validate' for detail",
-        ));
-    }
-
-    let body = if let Some(active) = plan.entries.iter().find(|c| c.status == Status::InProgress) {
-        NextBody {
-            reason: Some("in-progress".into()),
-            active: Some(active.name.clone()),
-            ..NextBody::default()
-        }
-    } else if let Some(entry) = plan.next_eligible() {
-        NextBody {
-            next: Some(entry.name.clone()),
-            project: entry.project.clone(),
-            target: entry.target.clone(),
-            description: entry.description.clone(),
-            sources: Some(entry.sources.clone()),
-            ..NextBody::default()
-        }
-    } else {
-        let all_terminal =
-            plan.entries.iter().all(|c| matches!(c.status, Status::Done | Status::Skipped));
-        let reason = if all_terminal { "all-done" } else { "stuck" };
-        NextBody {
-            reason: Some(reason.into()),
-            ..NextBody::default()
-        }
-    };
-    ctx.write(&body, write_next_text)?;
-    Ok(())
-}
-
-pub(super) fn transition(
-    ctx: &Ctx, name: String, target: Status, reason: Option<String>,
-) -> Result<()> {
-    let plan_path = ctx.layout().plan_path();
     let body = with_state::<Plan, _, _>(
         ctx.layout(),
         InitPolicy::RequireExisting("plan.yaml"),
         move |plan| {
-            let old_status = plan
+            let validate_results = plan.validate(Some(&slices_dir), None);
+            if validate_results.iter().any(|r| matches!(r.level, Severity::Error)) {
+                return Err(Error::validation_failed(
+                    "plan-structural-errors",
+                    "plan must be free of structural errors",
+                    "run 'specify plan validate' for detail",
+                ));
+            }
+
+            // RFC-25 §CLI surface: "plan next returns the active
+            // in-progress entry before selecting a new pending entry,
+            // and reports drained only when no active or pending
+            // entries remain."
+            let was_executing = plan.is_executing();
+            let advanced = plan.advance_next()?;
+            Ok(match advanced {
+                None => {
+                    let reason = if plan.is_drained() { "drained" } else { "stuck" };
+                    NextBody {
+                        reason: Some(reason.into()),
+                        ..NextBody::default()
+                    }
+                }
+                Some(entry) if was_executing => NextBody {
+                    reason: Some("in-progress".into()),
+                    active: Some(entry.name.clone()),
+                    ..NextBody::default()
+                },
+                Some(entry) => NextBody {
+                    next: Some(entry.name.clone()),
+                    project: entry.project.clone(),
+                    target: entry.target.clone(),
+                    description: entry.description.clone(),
+                    sources: Some(entry.sources.clone()),
+                    ..NextBody::default()
+                },
+            })
+        },
+    )?;
+    ctx.write(&body, write_next_text)?;
+    Ok(())
+}
+
+/// `specify plan transition <name> <target>` — dispatches to either
+/// the plan-level Gate 1 stamp (`<plan-name> reviewed`) or the
+/// per-entry close (`<entry-name> done`). Any other combination is
+/// rejected with `Error::Argument` (exit 2).
+pub(super) fn transition(ctx: &Ctx, name: String, target: String) -> Result<()> {
+    let plan_path = ctx.layout().plan_path();
+    let body = with_state::<Plan, _, _>(
+        ctx.layout(),
+        InitPolicy::RequireExisting("plan.yaml"),
+        move |plan| dispatch_transition(plan, &plan_path, &name, &target),
+    )?;
+    // RFC-25 §Observability: Gate-1 stamp emits a journal event. We
+    // run the emit after `with_state` returns so the plan write and
+    // the journal append don't interleave on failure.
+    if matches!(body.kind, TransitionKind::Plan) {
+        let event = specify_domain::journal::Event::new(
+            Timestamp::now(),
+            specify_domain::journal::EventKind::PlanTransitionReviewed {
+                plan_name: body.name.clone(),
+            },
+        );
+        specify_domain::journal::append(ctx.layout(), &event)?;
+    }
+    ctx.write(&body, write_transition_text)?;
+    Ok(())
+}
+
+fn dispatch_transition(
+    plan: &mut Plan, plan_path: &std::path::Path, name: &str, target: &str,
+) -> Result<TransitionBody> {
+    if name == plan.name {
+        // Plan-level transition: only `reviewed` is legal.
+        return match target {
+            "reviewed" => {
+                let previous = plan.lifecycle;
+                plan.transition_lifecycle(Lifecycle::Reviewed)?;
+                Ok(TransitionBody {
+                    plan: plan_ref(plan, plan_path),
+                    kind: TransitionKind::Plan,
+                    name: plan.name.clone(),
+                    previous: previous.to_string(),
+                    current: plan.lifecycle.to_string(),
+                })
+            }
+            other => Err(plan_target_invalid(other)),
+        };
+    }
+
+    // Per-entry transition: only `done` is legal. `pending` is owned by
+    // `plan add`/`amend`; `in-progress` is owned by `plan next`; and
+    // `blocked`/`failed`/`skipped` are not v1 states.
+    match target {
+        "done" => {
+            let previous = plan
                 .entries
                 .iter()
-                .find(|c| c.name == name)
+                .find(|e| e.name == name)
                 .ok_or_else(|| Error::Diag {
                     code: "plan-entry-not-found",
                     detail: format!("no slice named '{name}' in plan"),
                 })?
                 .status;
-
-            plan.transition(&name, target, reason.as_deref())?;
-
-            let entry =
-                plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
+            plan.transition(name, Status::Done)?;
+            let entry = plan.entries.iter().find(|e| e.name == name).expect("just transitioned");
             Ok(TransitionBody {
-                plan: plan_ref(plan, &plan_path),
-                entry: TransitionRow {
-                    name: entry.name.clone(),
-                    status: entry.status,
-                    status_reason: entry.status_reason.clone(),
-                },
-                previous_status: old_status,
+                plan: plan_ref(plan, plan_path),
+                kind: TransitionKind::Entry,
+                name: entry.name.clone(),
+                previous: previous.to_string(),
+                current: entry.status.to_string(),
             })
+        }
+        other => Err(entry_target_invalid(other)),
+    }
+}
+
+fn plan_target_invalid(target: &str) -> Error {
+    Error::Argument {
+        flag: "<target>",
+        detail: format!(
+            "plan-level transition target must be `reviewed`; got `{target}`. \
+             Run `specify plan transition <plan-name> reviewed` to stamp Gate 1."
+        ),
+    }
+}
+
+fn entry_target_invalid(target: &str) -> Error {
+    Error::Argument {
+        flag: "<target>",
+        detail: match target {
+            "pending" => {
+                "per-entry `pending` is written by `plan add` / `plan amend`, not `plan transition`. \
+                 To clear an entry, drop and re-add it.".to_string()
+            }
+            "in-progress" => {
+                "per-entry `in-progress` is written only by `plan next`; \
+                 `plan transition` cannot move an entry into the active slot."
+                    .to_string()
+            }
+            "blocked" | "failed" | "skipped" => format!(
+                "per-entry `{target}` is not a v1 state — RFC-25 collapsed the per-entry enum to \
+                 `pending | in-progress | done`. Build failures and merge conflicts leave the \
+                 active entry `in-progress`."
+            ),
+            other => format!(
+                "per-entry transition target must be `done`; got `{other}`. \
+                 `done` is stamped by `/spec:merge` (or by hand once the slice is merged)."
+            ),
         },
-    )?;
-    ctx.write(&body, write_transition_text)?;
-    Ok(())
+    }
 }
 
 pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
@@ -230,39 +317,46 @@ fn write_next_text(w: &mut dyn Write, body: &NextBody) -> std::io::Result<()> {
         writeln!(w, "Active change in progress: {active}")
     } else if let Some(name) = &body.next {
         writeln!(w, "{name}")
-    } else if body.reason.as_deref() == Some("all-done") {
-        writeln!(w, "All changes done.")
+    } else if body.reason.as_deref() == Some("drained") {
+        writeln!(w, "Plan drained — no per-entry pending or in-progress remains.")
     } else {
         writeln!(
             w,
-            "No eligible changes \u{2014} remaining entries are blocked, failed, or waiting on unmet dependencies."
+            "No eligible changes \u{2014} remaining entries are waiting on unmet dependencies."
         )
     }
+}
+
+#[derive(Serialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+enum TransitionKind {
+    Plan,
+    Entry,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct TransitionBody {
     plan: Ref,
-    entry: TransitionRow,
-    #[serde(skip)]
-    previous_status: Status,
+    kind: TransitionKind,
+    name: String,
+    previous: String,
+    current: String,
 }
 
 fn write_transition_text(w: &mut dyn Write, body: &TransitionBody) -> std::io::Result<()> {
-    writeln!(
-        w,
-        "Transitioned '{}': {} \u{2192} {}.",
-        body.entry.name, body.previous_status, body.entry.status
-    )
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct TransitionRow {
-    name: String,
-    status: Status,
-    status_reason: Option<String>,
+    match body.kind {
+        TransitionKind::Plan => writeln!(
+            w,
+            "Stamped plan '{}': lifecycle {} \u{2192} {}.",
+            body.name, body.previous, body.current
+        ),
+        TransitionKind::Entry => writeln!(
+            w,
+            "Transitioned '{}': {} \u{2192} {}.",
+            body.name, body.previous, body.current
+        ),
+    }
 }
 
 #[derive(Serialize)]

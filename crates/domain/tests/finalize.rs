@@ -15,7 +15,7 @@ use specify_domain::change::finalize::{
     Inputs, Landing, ProjectResult, Refusal, classify_pr, combine, is_terminal, outstanding, run,
     summarise,
 };
-use specify_domain::change::{Entry, Plan, Status};
+use specify_domain::change::{Entry, Lifecycle, Plan, Status};
 use specify_domain::registry::forge::{PrState, PrView};
 use specify_domain::registry::{Registry, RegistryProject};
 use tempfile::TempDir;
@@ -25,17 +25,15 @@ use crate::common::{MockCmd, RecordedCall, fail_stderr, ok_stdout};
 // ---- pure helpers -----------------------------------------------------
 
 #[test]
-fn terminal_states_accept_done_failed_skipped() {
+fn terminal_states_accept_done_only() {
+    // Post-RFC-25 the only terminal per-entry state is `Done`.
     assert!(is_terminal(Status::Done));
-    assert!(is_terminal(Status::Failed));
-    assert!(is_terminal(Status::Skipped));
 }
 
 #[test]
-fn terminal_states_reject_pending_in_progress_blocked() {
+fn terminal_states_reject_pending_and_in_progress() {
     assert!(!is_terminal(Status::Pending));
     assert!(!is_terminal(Status::InProgress));
-    assert!(!is_terminal(Status::Blocked));
 }
 
 #[test]
@@ -88,13 +86,14 @@ fn combine_clean_passes_through() {
 fn outstanding_lists_in_plan_order() {
     let plan = Plan {
         name: "demo".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![
             entry("a", Status::Done),
             entry("b", Status::Pending),
             entry("c", Status::InProgress),
             entry("d", Status::Done),
-            entry("e", Status::Blocked),
+            entry("e", Status::Pending),
         ],
     };
     assert_eq!(outstanding(&plan), vec!["b", "c", "e"]);
@@ -104,12 +103,9 @@ fn outstanding_lists_in_plan_order() {
 fn outstanding_empty_when_all_terminal() {
     let plan = Plan {
         name: "demo".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
-        entries: vec![
-            entry("a", Status::Done),
-            entry("b", Status::Failed),
-            entry("c", Status::Skipped),
-        ],
+        entries: vec![entry("a", Status::Done), entry("b", Status::Done), entry("c", Status::Done)],
     };
     assert!(outstanding(&plan).is_empty());
 }
@@ -124,7 +120,7 @@ fn entry(name: &str, status: Status) -> Entry {
         sources: Vec::new(),
         context: Vec::new(),
         description: None,
-        status_reason: None,
+        divergence: None,
     }
 }
 
@@ -243,6 +239,7 @@ fn registry_with(names: &[&str]) -> Registry {
 fn plan_named(name: &str) -> Plan {
     Plan {
         name: name.to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: Vec::new(),
     }
@@ -251,6 +248,7 @@ fn plan_named(name: &str) -> Plan {
 fn plan_with_entries(name: &str, entries: Vec<Entry>) -> Plan {
     Plan {
         name: name.to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries,
     }

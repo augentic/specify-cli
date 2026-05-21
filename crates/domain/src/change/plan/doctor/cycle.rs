@@ -1,6 +1,6 @@
 //! Cycle detection for the `cycle-in-depends-on` diagnostic.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use petgraph::algo::tarjan_scc;
 use petgraph::graph::DiGraph;
@@ -48,29 +48,6 @@ pub(super) fn detect(changes: &[Entry]) -> Vec<Diagnostic> {
         });
     }
     out
-}
-
-/// Return the set of entry names that participate in any cycle.
-///
-/// Self-loops are included. Used by the unreachable check to avoid
-/// double-reporting entries that are already surfaced under [`CYCLE`].
-pub(super) fn membership(changes: &[Entry]) -> HashSet<&str> {
-    let (graph, _) = build_graph(changes);
-
-    let mut members: HashSet<&str> = HashSet::new();
-    for scc in tarjan_scc(&graph) {
-        if scc.len() > 1 {
-            for n in scc {
-                members.insert(graph[n]);
-            }
-        } else if scc.len() == 1 {
-            let n = scc[0];
-            if graph.find_edge(n, n).is_some() {
-                members.insert(graph[n]);
-            }
-        }
-    }
-    members
 }
 
 fn build_graph(slices: &[Entry]) -> (DiGraph<&str, ()>, HashMap<&str, petgraph::graph::NodeIndex>) {

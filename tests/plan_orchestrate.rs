@@ -84,18 +84,19 @@ slices:
     status: done
 ";
 
-/// `a` failed, `b` pending depends-on `a`: neither is eligible but
-/// not every entry is terminal, so `next` reports `stuck`.
+/// All entries done — `next` reports `drained` post-RFC-25 (the
+/// previous "stuck" semantics relied on the now-removed `failed`
+/// state). Kept under the historical name for fixture continuity;
+/// the test asserts the new `drained` reason.
 const STUCK_PLAN: &str = "\
 name: demo
 slices:
   - name: a
     project: default
-    status: failed
-    status-reason: boom
+    status: done
   - name: b
     project: default
-    status: pending
+    status: done
     depends-on: [a]
 ";
 
@@ -114,15 +115,6 @@ slices:
     project: default
     status: pending
     depends-on: [b]
-";
-
-const FAILED_WITH_REASON: &str = "\
-name: demo
-slices:
-  - name: a
-    project: default
-    status: failed
-    status-reason: boom
 ";
 
 /// Verbatim RFC-2 §"The Plan" platform-v2 example. Used by the
@@ -188,10 +180,7 @@ slices:
     project: platform
     sources: [payments]
     depends-on: [shopping-cart]
-    status: failed
-    status-reason: >
-      Type mismatch between cart line-item schema and payment gateway contract.
-      Needs design revision after shopping-cart specs are updated.
+    status: pending
 
   - name: checkout-ui
     project: platform
@@ -360,7 +349,7 @@ fn plan_next_all_done_text() {
 
     let text = specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
-    assert_eq!(stdout, "All changes done.\n");
+    assert!(stdout.contains("drained"), "drained text should mention drained, got: {stdout:?}");
 
     let json = specify()
         .current_dir(project.root())
@@ -368,7 +357,7 @@ fn plan_next_all_done_text() {
         .assert()
         .success();
     let actual = parse_stdout(&json.get_output().stdout, project.root());
-    assert_eq!(actual["reason"], "all-done");
+    assert_eq!(actual["reason"], "drained");
     assert_eq!(actual["next"], Value::Null);
     assert_eq!(actual["active"], Value::Null);
     assert_golden("next-all-done.json", actual);
@@ -385,7 +374,10 @@ fn plan_next_stuck_when_deps_unmet() {
         .assert()
         .success();
     let actual = parse_stdout(&json.get_output().stdout, project.root());
-    assert_eq!(actual["reason"], "stuck");
+    assert_eq!(
+        actual["reason"], "drained",
+        "post-RFC-25 the legacy `stuck` fixture is now drained (all-done)"
+    );
     assert_eq!(actual["next"], Value::Null);
     assert_eq!(actual["active"], Value::Null);
     assert_golden("next-stuck.json", actual);
@@ -406,13 +398,14 @@ fn plan_status_renders_counts_and_topo() {
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
     let counts = actual["counts"].as_object().expect("counts object");
-    for key in ["done", "in-progress", "pending", "blocked", "failed", "skipped", "total"] {
+    for key in ["done", "in-progress", "pending", "total"] {
         assert!(counts.contains_key(key), "counts missing key '{key}': {counts:?}");
     }
     assert_eq!(counts["done"], 1);
     assert_eq!(counts["in-progress"], 1);
-    assert_eq!(counts["pending"], 6);
-    assert_eq!(counts["failed"], 1);
+    // `checkout-api` is now `pending` after the RFC-25 collapse — the
+    // legacy `failed` count is gone and the entry rolls into `pending`.
+    assert_eq!(counts["pending"], 7);
     assert_eq!(counts["total"], 9);
 
     assert_eq!(actual["order"], "topological");
@@ -467,9 +460,13 @@ fn plan_status_cycle_falls_back_to_list() {
 }
 
 #[test]
-fn plan_status_surfaces_reason_on_failed() {
+fn plan_status_surfaces_lifecycle_and_drained() {
+    // RFC-25 collapsed the per-entry `failed` state and replaced the
+    // status-side reason surface with the plan-level `lifecycle` +
+    // computed `drained` predicate. The status envelope must now
+    // expose those two fields.
     let project = Project::init();
-    project.seed_plan(FAILED_WITH_REASON);
+    project.seed_plan(ALL_DONE);
 
     let assert = specify()
         .current_dir(project.root())
@@ -477,10 +474,9 @@ fn plan_status_surfaces_reason_on_failed() {
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    let failed = actual["failed"].as_array().expect("failed array");
-    assert_eq!(failed.len(), 1);
-    assert_eq!(failed[0]["name"], "a");
-    assert_eq!(failed[0]["reason"], "boom");
+    assert!(actual.get("lifecycle").is_some(), "status must expose plan-level lifecycle");
+    assert_eq!(actual["lifecycle"], "pending", "default lifecycle is pending");
+    assert_eq!(actual["drained"], true, "all-done plan must report drained");
 }
 
 #[test]
@@ -718,17 +714,22 @@ fn plan_amend_on_missing_entry_fails() {
 
 #[test]
 fn plan_transition_happy_path_text() {
+    // Post-RFC-25 the only legal per-entry transition is
+    // `InProgress -> Done`. We pre-stage `in-progress` via `plan next`
+    // (the only writer of `in-progress`) and then close the entry.
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
+    specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
+
     let assert = specify()
         .current_dir(project.root())
-        .args(["plan", "transition", "foo", "in-progress"])
+        .args(["plan", "transition", "foo", "done"])
         .assert()
         .success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
-    assert!(stdout.contains("pending"), "text output should mention 'pending': {stdout:?}");
     assert!(stdout.contains("in-progress"), "text output should mention 'in-progress': {stdout:?}");
+    assert!(stdout.contains("done"), "text output should mention 'done': {stdout:?}");
 }
 
 #[test]
@@ -743,9 +744,10 @@ fn plan_transition_legal_edge_json() {
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-    assert_eq!(actual["entry"]["name"], "foo");
-    assert_eq!(actual["entry"]["status"], "done");
-    assert_eq!(actual["entry"]["status-reason"], Value::Null);
+    assert_eq!(actual["name"], "foo");
+    assert_eq!(actual["current"], "done");
+    assert_eq!(actual["previous"], "in-progress");
+    assert_eq!(actual["kind"], "entry");
 
     assert_golden("transition-in-progress-to-done.json", actual);
 }
@@ -760,53 +762,90 @@ fn plan_transition_rejects_illegal_edge() {
         .args(["plan", "transition", "foo", "pending"])
         .assert()
         .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
+    let code = assert.get_output().status.code();
+    assert!(
+        code == Some(1) || code == Some(2),
+        "illegal transition should be rejected (exit 1 or 2), got: {code:?}"
+    );
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
     assert!(
-        stderr.to_lowercase().contains("illegal") || stderr.contains("transition"),
-        "stderr should mention illegal transition, got: {stderr:?}"
+        stderr.to_lowercase().contains("transition")
+            || stderr.contains("plan add")
+            || stderr.contains("plan next")
+            || stderr.contains("argument"),
+        "stderr should mention the rejected transition, got: {stderr:?}"
     );
 }
 
 #[test]
-fn plan_transition_pending_to_in_progress_json() {
+fn plan_transition_plan_level_reviewed_json() {
+    // RFC-25 §The plan gate: `specify plan transition <plan-name>
+    // reviewed` is the operator-stamped Gate 1 transition. The plan
+    // name on the wire matches `plan.yaml.name`.
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "transition", "foo", "in-progress"])
+        .args(["--format", "json", "plan", "transition", "demo", "reviewed"])
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["entry"]["status"], "in-progress");
-    assert_eq!(actual["entry"]["status-reason"], Value::Null);
+    assert_eq!(actual["kind"], "plan");
+    assert_eq!(actual["name"], "demo");
+    assert_eq!(actual["previous"], "pending");
+    assert_eq!(actual["current"], "reviewed");
 
-    assert_golden("transition-pending-to-in-progress.json", actual);
+    assert_golden("transition-plan-reviewed.json", actual);
 }
 
 #[test]
-fn plan_transition_reason_on_failed() {
+fn plan_transition_rejects_per_entry_in_progress() {
+    // Per-entry `in-progress` is owned by `plan next`. `plan transition`
+    // must reject the request with an argument-shape error (exit 2).
     let project = Project::init();
-    project.seed_plan(SINGLE_IN_PROGRESS);
+    project.seed_plan(SINGLE_PENDING);
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "transition", "foo", "failed", "--reason", "boom"])
+        .args(["plan", "transition", "foo", "in-progress"])
         .assert()
-        .success();
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["entry"]["status"], "failed");
-    assert_eq!(actual["entry"]["status-reason"], "boom");
-
-    let saved = fs::read_to_string(project.plan_path()).expect("read");
-    assert!(saved.contains("status-reason: boom"), "saved reason missing:\n{saved}");
-
-    assert_golden("transition-in-progress-to-failed-with-reason.json", actual);
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+    assert!(stderr.contains("plan next"), "stderr should point at `plan next`, got: {stderr:?}");
 }
 
 #[test]
-fn plan_transition_rejects_reason_on_in_progress() {
+fn plan_transition_rejects_retired_states() {
+    // `blocked`, `failed`, and `skipped` were retired in RFC-25.
+    // Each must be rejected with the same argument-shape error.
+    let project = Project::init();
+    project.seed_plan(SINGLE_PENDING);
+
+    for retired in ["blocked", "failed", "skipped"] {
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "transition", "foo", retired])
+            .assert()
+            .failure();
+        assert_eq!(
+            assert.get_output().status.code(),
+            Some(2),
+            "retired target `{retired}` must yield exit 2"
+        );
+    }
+}
+
+// Pre-RFC-25 `plan transition <name> failed --reason <text>` retired
+// alongside the per-entry `failed` state — see
+// `plan_transition_rejects_retired_states` above.
+
+#[test]
+fn plan_transition_rejects_unknown_reason_flag() {
+    // `--reason` was retired in RFC-25 (no v1 per-entry state accepts a
+    // reason). Clap surfaces unknown flags as exit 2 with `--reason`
+    // named in stderr.
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
@@ -815,35 +854,13 @@ fn plan_transition_rejects_reason_on_in_progress() {
         .args(["plan", "transition", "foo", "in-progress", "--reason", "x"])
         .assert()
         .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
+    assert_eq!(assert.get_output().status.code(), Some(2));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
     assert!(stderr.contains("--reason"), "stderr should mention '--reason', got: {stderr:?}");
 }
 
-#[test]
-fn plan_transition_clears_reason_on_reentry() {
-    let project = Project::init();
-    project.seed_plan(
-        "\
-name: demo
-slices:
-  - name: foo
-    project: default
-    status: failed
-    status-reason: boom
-",
-    );
-
-    specify()
-        .current_dir(project.root())
-        .args(["plan", "transition", "foo", "pending"])
-        .assert()
-        .success();
-
-    let saved = fs::read_to_string(project.plan_path()).expect("read");
-    assert!(!saved.contains("status-reason: boom"), "status-reason should be cleared:\n{saved}");
-    assert!(saved.contains("status: pending"), "status should be pending:\n{saved}");
-}
+// Re-entry to `pending` retired with the per-entry status purge
+// (RFC-25 collapsed the per-entry enum to `pending | in-progress | done`).
 
 // -- human-driven replay (RFC-2 §"The Loop (Human-Driven)") -----------
 
@@ -874,11 +891,7 @@ slices:
         .assert()
         .success();
 
-    specify()
-        .current_dir(project.root())
-        .args(["plan", "transition", "registration-duplicate-email-crash", "in-progress"])
-        .assert()
-        .success();
+    specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
 
     specify()
         .current_dir(project.root())
@@ -922,46 +935,6 @@ slices:
     );
 }
 
-// -- change draft + plan validate smoke (L3.A) -----------------------
-//
-// `specify change draft` (the merged verb that scaffolds change.md
-// and plan.yaml together) gets its envelope/refusal/source coverage
-// in `tests/change_draft.rs`. The smoke test below confirms that a
-// freshly-scaffolded plan validates cleanly out of the box, and that
-// the JSON envelope produced by the merged verb matches the pinned
-// golden.
-
-#[test]
-fn change_draft_empty_json_matches_golden() {
-    let project = Project::init();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "change", "draft", "my-change"])
-        .assert()
-        .success();
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-
-    assert_eq!(actual["name"], "my-change");
-    let plan_path = actual["plan"].as_str().expect("plan string");
-    assert!(
-        plan_path.ends_with("/plan.yaml"),
-        "plan should end with /plan.yaml at the repo root, got: {plan_path}"
-    );
-    let brief_path = actual["brief"].as_str().expect("brief string");
-    assert!(
-        brief_path.ends_with("/change.md"),
-        "brief should end with /change.md at the repo root, got: {brief_path}"
-    );
-
-    assert!(project.plan_path().exists(), "plan.yaml should be created");
-    let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
-    assert!(saved.contains("name: my-change"), "plan missing name:\n{saved}");
-    assert!(!saved.contains("- name:"), "plan should have no change entries:\n{saved}");
-
-    assert_golden("init-success.json", actual);
-}
-
 #[test]
 fn plan_create_scaffolds_plan_only_json_matches_golden() {
     let project = Project::init();
@@ -1001,10 +974,10 @@ fn plan_create_refuses_to_overwrite_existing_plan() {
 }
 
 #[test]
-fn change_draft_then_validate_passes_clean() {
+fn plan_create_then_validate_passes_clean() {
     let project = Project::init();
 
-    specify().current_dir(project.root()).args(["change", "draft", "fresh"]).assert().success();
+    specify().current_dir(project.root()).args(["plan", "create", "fresh"]).assert().success();
 
     let assert =
         specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
@@ -1499,7 +1472,7 @@ fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["change", "draft", "rfc3a-planning", "--source", "app=."])
+        .args(["plan", "create", "rfc3a-planning", "--source", "app=."])
         .assert()
         .success();
     specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
@@ -1507,13 +1480,11 @@ fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
 
 // ---- specify plan validate health diagnostics (RFC-9 §4B) ----
 //
-// `plan validate` carries the four health diagnostics
-// (`cycle-in-depends-on`, `orphan-source-key`, `stale-workspace-clone`,
-// `unreachable-entry`) alongside its base shape rules. The integration
-// tests below pin the wire-shape skill authors rely on: validate MUST
-// surface every diagnostic class on a synthetic fixture that exercises
-// all four, and the structured `data` payload MUST round-trip through
-// the JSON envelope.
+// `plan validate` carries the three surviving health diagnostics
+// (`cycle-in-depends-on`, `orphan-source-key`,
+// `stale-workspace-clone`) alongside its base shape rules. The
+// `unreachable-entry` diagnostic retired in RFC-25 alongside the
+// per-entry `failed`/`skipped` states it relied on.
 
 fn init_omnia_project(tmp: &TempDir) {
     specify()
@@ -1526,7 +1497,7 @@ fn init_omnia_project(tmp: &TempDir) {
 }
 
 #[test]
-fn plan_validate_reports_all_four_health_diagnostics() {
+fn plan_validate_reports_all_three_health_diagnostics() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1542,23 +1513,15 @@ fn plan_validate_reports_all_four_health_diagnostics() {
              \x20\x20orphaned: /tmp/elsewhere\n\
              slices:\n\
              \x20\x20- name: cyclic-a\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyclic-b]\n\
              \x20\x20- name: cyclic-b\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyclic-a]\n\
-             \x20\x20- name: failed-root\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
-             \x20\x20\x20\x20status: failed\n\
-             \x20\x20\x20\x20status-reason: regression in upstream service\n\
-             \x20\x20- name: unreachable-leaf\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
-             \x20\x20\x20\x20status: pending\n\
-             \x20\x20\x20\x20depends-on: [failed-root]\n\
              \x20\x20- name: orphaned-source-user\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20sources: [monolith]\n",
     )
@@ -1602,17 +1565,15 @@ fn plan_validate_reports_all_four_health_diagnostics() {
     assert!(!results.is_empty(), "validate with broken plan must surface results: {value}");
     let codes: Vec<&str> = results.iter().filter_map(|r| r["code"].as_str()).collect();
 
-    for expected in
-        ["cycle-in-depends-on", "orphan-source-key", "stale-workspace-clone", "unreachable-entry"]
-    {
+    for expected in ["cycle-in-depends-on", "orphan-source-key", "stale-workspace-clone"] {
         assert!(
             codes.contains(&expected),
             "validate must emit `{expected}` for the synthetic fixture; saw: {codes:?}"
         );
     }
 
-    // Exit code must be ValidationFailed (2) because cycle and
-    // unreachable-entry are error-severity.
+    // Exit code must be ValidationFailed (2) because the cycle is
+    // error-severity.
     let code = output.status.code().expect("exit code");
     assert_eq!(code, 2, "error-severity diagnostics must yield exit 2, got {code}");
 }
@@ -1632,11 +1593,11 @@ fn plan_validate_payloads_round_trip_typed() {
              \x20\x20orphan-key: /tmp/somewhere\n\
              slices:\n\
              \x20\x20- name: cyc-a\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyc-b]\n\
              \x20\x20- name: cyc-b\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyc-a]\n",
     )
@@ -1678,7 +1639,7 @@ fn plan_validate_healthy_exits_zero() {
 
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "change", "draft", "demo"])
+        .args(["--format", "json", "plan", "create", "demo"])
         .assert()
         .success();
 
@@ -1694,4 +1655,304 @@ fn plan_validate_healthy_exits_zero() {
         "empty plan must emit zero results: {value}"
     );
     assert_eq!(value["passed"], true, "empty plan must pass: {value}");
+}
+
+// ---- RFC-25 W1.1 — per-slice source binding flag reshape ----
+//
+// The reshape replaces 1.x's bare `--sources <key>` repeater with the
+// `<key>=<candidate-id>` wire form, accepting the bare `<key>`
+// shorthand only as sugar for `{ key, candidate: <slice.name> }`
+// per RFC-25 §`Slice.sources`.
+
+const W11_PLAN: &str = "\
+name: w11
+sources:
+  intent: \"Demo intent value.\"
+  identity-design-notes: ./docs
+slices: []
+";
+
+#[test]
+fn plan_add_structured_sources_round_trips() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "add",
+            "foo",
+            "--target",
+            "omnia",
+            "--sources",
+            "identity-design-notes=user-registration",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("key: identity-design-notes")
+            && saved.contains("candidate: user-registration"),
+        "structured form must round-trip to disk:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_add_bare_source_round_trips_when_slice_name_matches_implied_candidate() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    // Slice name `add-search-filter`; bare `--sources intent` is
+    // sugar for `{ key: intent, candidate: add-search-filter }`.
+    specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "add",
+            "add-search-filter",
+            "--target",
+            "omnia",
+            "--sources",
+            "intent",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    // Bare form must appear on disk as the YAML scalar `intent`,
+    // not the structured `{ key, candidate }` mapping.
+    assert!(
+        saved.contains("  - intent"),
+        "bare shorthand must round-trip to the unquoted scalar form:\n{saved}"
+    );
+    assert!(
+        !saved.contains("candidate: add-search-filter"),
+        "candidate=slice.name must collapse to bare form:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_add_structured_form_preserved_when_candidate_differs_from_slice_name() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "add",
+            "foo",
+            "--target",
+            "omnia",
+            "--sources",
+            "intent=different-candidate",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("candidate: different-candidate"),
+        "structured form must stay structured when candidate != slice.name:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_add_rejects_dangling_equals_in_sources() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "add",
+            "foo",
+            "--target",
+            "omnia",
+            "--sources",
+            "intent=",
+        ])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "malformed --sources must exit 2 (argument error), got {code}");
+}
+
+#[test]
+fn plan_amend_add_source_appends_binding() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia", "--sources", "intent"])
+        .assert()
+        .success();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "amend", "foo", "--add-source", "identity-design-notes=user-registration"])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("key: identity-design-notes"),
+        "amend --add-source must append the binding:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_amend_remove_source_drops_binding() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "add",
+            "foo",
+            "--target",
+            "omnia",
+            "--sources",
+            "intent",
+            "--sources",
+            "identity-design-notes=foo",
+        ])
+        .assert()
+        .success();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "amend", "foo", "--remove-source", "intent"])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(!saved.contains("- intent"), "amend --remove-source must drop the binding:\n{saved}");
+    assert!(saved.contains("identity-design-notes"), "non-targeted bindings must remain:\n{saved}");
+}
+
+#[test]
+fn plan_amend_remove_source_unknown_key_errors() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia", "--sources", "intent"])
+        .assert()
+        .success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "amend", "foo", "--remove-source", "no-such-key"])
+        .assert()
+        .failure();
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "plan-binding-not-found");
+}
+
+#[test]
+fn plan_amend_divergence_accepted_writes_field() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia"])
+        .assert()
+        .success();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "amend", "foo", "--divergence", "accepted"])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("divergence: accepted"),
+        "amend --divergence accepted must write the field:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_amend_divergence_rejected_writes_field() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia"])
+        .assert()
+        .success();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "amend", "foo", "--divergence", "rejected"])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("divergence: rejected"),
+        "amend --divergence rejected must write the field:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_amend_divergence_likely_refused() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia"])
+        .assert()
+        .success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "amend", "foo", "--divergence", "likely"])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "reserved --divergence likely must exit 2 (argument error)");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "argument");
+}
+
+#[test]
+fn plan_amend_divergence_none_refused() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia"])
+        .assert()
+        .success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "amend", "foo", "--divergence", "none"])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "implicit --divergence none must exit 2 (argument error)");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "argument");
 }

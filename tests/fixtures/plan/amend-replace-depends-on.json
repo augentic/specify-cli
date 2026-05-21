@@ -9,8 +9,7 @@
     "name": "foo",
     "project": "default",
     "sources": [],
-    "status": "pending",
-    "status-reason": null
+    "status": "pending"
   },
   "plan": {
     "name": "demo",

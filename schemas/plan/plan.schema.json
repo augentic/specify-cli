@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/plan/plan.schema.json",
   "title": "Specify plan.yaml",
-  "description": "Validates the structure of `plan.yaml` (at the repo root): the change name, the optional named-sources map, and the ordered list of plan slices with their dependencies, status, and (per RFC-25) structured source bindings plus the optional `divergence` enum. Strict schema \u2014 unknown top-level and per-slice fields are rejected.\n\nRFC-25: each slice carries the `target` field (target-adapter identifier \u2014 renamed from `adapter` in W0.2) and an optional `divergence` enum (`likely | accepted | rejected`); `slices[].sources[]` items accept either a bare-string source key (shorthand for `{ key: <key>, candidate: <slice.name> }`) or the structured `{ key, candidate }` object form; the top-level `sources` map accepts either a bare string (1.x backward-compat) or a `{ adapter, path?, value? }` object per source key. Strict `additionalProperties: false` is preserved everywhere except inside the legacy/object source-binding `oneOf` alternates.",
+  "description": "Validates the structure of `plan.yaml` (at the repo root): the change name, the optional plan-level `lifecycle` (`pending | reviewed` per RFC-25 \u00a7Workflow vocabulary), the optional named-sources map, and the ordered list of plan slices with their dependencies, status, and (per RFC-25) structured source bindings plus the optional `divergence` enum. Strict schema \u2014 unknown top-level and per-slice fields are rejected.\n\nRFC-25: each slice carries the `target` field (target-adapter identifier \u2014 renamed from `adapter` in W0.2) and an optional `divergence` enum (`likely | accepted | rejected`); `slices[].sources[]` items accept either a bare-string source key (shorthand for `{ key: <key>, candidate: <slice.name> }`) or the structured `{ key, candidate }` object form; the top-level `sources` map accepts either a bare string (1.x backward-compat) or a `{ adapter, path?, value? }` object per source key. The per-entry status enum is the RFC-25-collapsed `{pending, in-progress, done}` (v1 has no `blocked`/`failed`/`skipped`); the plan-level `lifecycle` enum is the collapsed `{pending, reviewed}` \u2014 `drained` and `currently executing` are computed from per-entry status at read time.",
   "type": "object",
   "required": [
     "name",
@@ -30,6 +30,14 @@
       "items": {
         "$ref": "#/$defs/planSlice"
       }
+    },
+    "lifecycle": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "reviewed"
+      ],
+      "description": "RFC-25 plan-level lifecycle gate. `pending` is the default after `plan create`; `reviewed` is operator-stamped at Gate 1 via `specify plan transition <plan-name> reviewed`. Two stored states only \u2014 `currently executing` and `drained` are computed at read time from per-entry `status`."
     }
   },
   "$defs": {
@@ -126,12 +134,9 @@
           "enum": [
             "pending",
             "in-progress",
-            "done",
-            "blocked",
-            "failed",
-            "skipped"
+            "done"
           ],
-          "description": "Current state in the per-entry status state machine."
+          "description": "Current state in the per-entry status state machine. RFC-25 collapses to three states: `pending` (written by `plan add`/`amend`), `in-progress` (written only by `plan next`), `done` (written by `plan transition <name> done`, stamped by `/spec:merge`). v1 has no per-entry `blocked`, `failed`, or `skipped` state \u2014 build failures and merge conflicts leave the active entry `in-progress`."
         },
         "divergence": {
           "type": "string",
@@ -172,13 +177,6 @@
             "null"
           ],
           "description": "Free-text scoping context. Carries file-path hints and references to prior slice names for delta-target inference."
-        },
-        "status-reason": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Why the slice is `failed`/`blocked`/`skipped`. Overwritten on each status transition; cleared when re-entering `pending`/`in-progress`/`done`."
         }
       }
     }

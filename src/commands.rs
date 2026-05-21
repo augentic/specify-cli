@@ -1,5 +1,3 @@
-pub mod adapter;
-pub mod change;
 pub mod codex;
 pub mod compatibility;
 pub mod context;
@@ -7,7 +5,9 @@ mod init;
 pub mod plan;
 pub mod registry;
 pub mod slice;
+pub mod source;
 mod status;
+pub mod target;
 pub mod tool;
 pub mod workspace;
 
@@ -15,7 +15,8 @@ use clap::CommandFactory;
 use specify_error::Result;
 
 use crate::cli::{Cli, Commands, Format};
-use crate::commands::adapter::cli::AdapterAction;
+use crate::commands::source::cli::SourceAction;
+use crate::commands::target::cli::TargetAction;
 use crate::commands::tool::cli::ToolAction;
 use crate::commands::workspace::cli::WorkspaceAction;
 use crate::context::Ctx;
@@ -34,13 +35,14 @@ pub fn run(cli: Cli) -> Exit {
         }),
         Commands::Status => scoped(format, status::run),
         Commands::Context { action } => scoped(format, |ctx| context::run(ctx, &action)),
-        Commands::Adapter { action } => match action {
-            AdapterAction::Resolve {
-                adapter_value,
-                project_dir,
-            } => dispatch(format, || adapter::resolve(format, adapter_value, &project_dir)),
-            AdapterAction::Pipeline { phase, slice } => {
-                scoped(format, |ctx| adapter::pipeline(ctx, phase, slice.as_deref()))
+        Commands::Source { action } => match action {
+            SourceAction::Resolve { name, project_dir } => {
+                dispatch(format, || source::resolve(format, &name, &project_dir))
+            }
+        },
+        Commands::Target { action } => match action {
+            TargetAction::Resolve { value, project_dir } => {
+                dispatch(format, || target::resolve(format, &value, &project_dir))
             }
         },
         Commands::Codex { action } => scoped(format, |ctx| codex::run(ctx, action)),
@@ -53,7 +55,6 @@ pub fn run(cli: Cli) -> Exit {
             ToolAction::Gc => scoped(format, tool::gc),
         },
         Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
-        Commands::Change { action } => scoped(format, |ctx| change::run(ctx, action)),
         Commands::Plan { action } => scoped(format, |ctx| plan::run(ctx, action)),
         Commands::Registry { action } => scoped(format, |ctx| registry::run(ctx, action)),
         Commands::Completions { shell } => {
@@ -103,9 +104,9 @@ where
     }
 }
 
-/// Run a command that does NOT need project context but may still fail
-/// with an `Error` (e.g. `adapter resolve`). The `Ctx`-bearing peer
-/// is [`scoped`].
+/// Run a command that does NOT need project context but may still
+/// fail with an `Error` (e.g. `source resolve` / `target resolve`).
+/// The `Ctx`-bearing peer is [`scoped`].
 fn dispatch<F>(format: Format, f: F) -> Exit
 where
     F: FnOnce() -> Result<()>,
