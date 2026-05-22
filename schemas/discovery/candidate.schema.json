@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/discovery/candidate.schema.json",
   "title": "Specify discovery candidate",
-  "description": "Validates a single `Candidate` block under `## Candidate inventory` in `discovery.md` per RFC-25 §Discovery handshake. Each block has a kebab-case `id`, a non-empty `sources[]` list of source keys, a one-line `summary`, and an optional `tentative` boolean flag set by `/spec:plan`'s `propose` sub-step when the agent merged the candidate across sources with low confidence.",
+  "description": "Validates a single `Candidate` block under `## Candidate inventory` in `discovery.md` per RFC-25 §Discovery handshake. Each block has a kebab-case `id`, a non-empty `sources[]` list of source keys, a one-line `summary`, an optional `tentative` boolean flag set by `/spec:plan`'s `propose` sub-step when the agent merged the candidate across sources with low confidence, and (RFC-27 §D6) an optional `aliases[]` list of kebab-case aliases. `slices[].sources[].candidate` resolves first against `id`, then against any `aliases[]` entry; aliases are stable across re-enumeration. An alias MUST NOT collide with another candidate's `id` or `aliases[]` in the same `discovery.md` (`discovery-alias-collision` from `specify slice validate`).",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "sources", "summary"],
@@ -26,6 +26,12 @@
     "tentative": {
       "type": "boolean",
       "description": "Optional. Set to `true` by `/spec:plan`'s `propose` sub-step when the cross-source merge that produced this candidate is uncertain; the operator reconciles at Gate 1."
+    },
+    "aliases": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/kebabName" },
+      "description": "RFC-27 §D6 — optional kebab-case aliases for cross-source merge. `slices[].sources[].candidate` resolves a binding's candidate against the candidate's `id` or any `alias`. Authored by the source adapter at `enumerate` time or by `/spec:plan` at `propose` time when merging differently-named candidates across sources. Stable across re-enumeration; operator additions through `specify plan amend --add-alias` survive re-enumeration. Empty `aliases: []` and a missing field are equivalent."
     }
   },
   "$defs": {

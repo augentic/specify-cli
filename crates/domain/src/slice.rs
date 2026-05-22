@@ -4,6 +4,7 @@
 
 pub mod actions;
 pub mod atomic;
+pub mod fusion;
 pub mod lifecycle;
 pub mod metadata;
 pub mod outcome;

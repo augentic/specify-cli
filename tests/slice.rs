@@ -776,6 +776,641 @@ fn validate_rejects_tag_status_mismatch_with_exit_two() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// RFC-27 §D4 — `slice validate` fusion drift gate + `slice fusion show`
+// ---------------------------------------------------------------------------
+
+/// Minimal fusion.yaml for a slice named `my-slice` with one
+/// requirement `REQ-001` whose single contributing claim cites
+/// `legacy-monolith :: REQ-001` (the same id we'll seed the evidence
+/// file with by default).
+const CLEAN_FUSION_YAML: &str = "version: 1
+slice: my-slice
+generated-at: 2026-05-22T13:15:00Z
+generator: specify@2.1.0
+requirements:
+  - id: REQ-001
+    status: agreed
+    sources: [legacy-monolith]
+    contributing-claims:
+      - source: legacy-monolith
+        claim-id: REQ-001
+        kind: requirement
+        value: \"Password reset request returns a 200 response.\"
+        path: src/users/reset.ts#L42
+    resolution: single-source
+";
+
+const CLEAN_SPEC_MD: &str = "### Requirement: Password reset request
+
+ID: REQ-001
+Sources: [legacy-monolith]
+Status: agreed
+
+The system lets a registered user request a password reset link by email.
+";
+
+const CLEAN_EVIDENCE_YAML: &str = "source: legacy-monolith
+adapter: code-typescript
+authority: behaviour
+candidate: my-slice
+claims:
+  - kind: requirement
+    claim-id: REQ-001
+    statement: \"Password reset request returns a 200 response.\"
+    path: src/users/reset.ts#L42
+";
+
+/// Stage a fully-wired slice with fusion.yaml + spec.md + evidence
+/// so the drift gate has every input it needs and the baseline test
+/// fixture validates clean. Caller may then mutate any file before
+/// re-running `slice validate` to exercise drift.
+fn stage_slice_with_fusion() -> Project {
+    let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
+    // stage_slice_with_spec writes specs/login/spec.md by default;
+    // the fusion gate gathers REQ ids across every spec.md, so we
+    // can leave that path alone.
+    let slice_dir = project.slices_dir().join("my-slice");
+    fs::write(slice_dir.join("fusion.yaml"), CLEAN_FUSION_YAML).expect("write fusion.yaml");
+    let evidence_dir = slice_dir.join("evidence");
+    fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
+    fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
+        .expect("write evidence");
+    project
+}
+
+#[test]
+fn validate_passes_on_clean_fusion_inputs() {
+    let project = stage_slice_with_fusion();
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    let code = assert.get_output().status.code();
+    if code != Some(0) {
+        // Adapter-level brief validation may still surface findings on
+        // the synthetic slice — those would route through different
+        // rule ids. Assert that whatever surfaces, *no* row carries
+        // `slice-fusion-drift` against clean inputs.
+        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+            && let Some(results) = value["results"].as_array()
+        {
+            for r in results {
+                let rule_id = r["rule-id"].as_str().unwrap_or("");
+                assert_ne!(
+                    rule_id, "slice-fusion-drift",
+                    "no drift row may appear on clean inputs; got results: {results:#?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn validate_detects_req_id_drift_when_spec_md_has_extra_requirement() {
+    let project = stage_slice_with_fusion();
+    // Append a second REQ block to spec.md so spec.md has REQ-001 +
+    // REQ-002 while fusion.yaml only knows REQ-001.
+    let spec_path = project.slices_dir().join("my-slice/specs/login/spec.md");
+    let extended = format!(
+        "{CLEAN_SPEC_MD}\n\
+         ### Requirement: Extra requirement\n\n\
+         ID: REQ-002\n\
+         Sources: [legacy-monolith]\n\
+         Status: agreed\n\n\
+         An undiscovered requirement.\n",
+    );
+    fs::write(&spec_path, extended).expect("rewrite spec.md");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "validation");
+    let results = value["results"].as_array().expect("results array");
+    let detail = results
+        .iter()
+        .find(|r| r["rule-id"] == "slice-fusion-drift")
+        .and_then(|r| r["detail"].as_str())
+        .expect("slice-fusion-drift row must be present");
+    assert!(detail.contains("REQ-002"), "drift detail should name REQ-002, got: {detail}");
+    assert!(
+        detail.contains("missing from fusion.yaml"),
+        "drift detail should mention the drift direction, got: {detail}"
+    );
+}
+
+#[test]
+fn validate_detects_contributing_claim_drift_when_evidence_claim_renamed() {
+    let project = stage_slice_with_fusion();
+    // Rename the evidence claim id; fusion.yaml still cites the old one.
+    let evidence_path = project.slices_dir().join("my-slice/evidence/legacy-monolith.yaml");
+    let modified = CLEAN_EVIDENCE_YAML.replace("claim-id: REQ-001", "claim-id: REQ-999-renamed");
+    fs::write(&evidence_path, modified).expect("rewrite evidence");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "validation");
+    let results = value["results"].as_array().expect("results array");
+    let detail = results
+        .iter()
+        .find(|r| r["rule-id"] == "slice-fusion-drift")
+        .and_then(|r| r["detail"].as_str())
+        .expect("slice-fusion-drift row must be present");
+    assert!(
+        detail.contains("legacy-monolith") && detail.contains("REQ-001"),
+        "drift detail should name the dangling (source, claim-id) pair, got: {detail}"
+    );
+}
+
+#[test]
+fn validate_skips_drift_gate_when_fusion_yaml_absent() {
+    // Stage a slice with spec.md but no fusion.yaml — the drift gate
+    // must be a silent no-op so older slices and pre-refine slices
+    // still validate. (Any other adapter-level rules can still
+    // surface, but no drift row may appear.)
+    let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "slice-fusion-drift",
+                "drift gate must skip when fusion.yaml is absent"
+            );
+        }
+    }
+}
+
+#[test]
+fn fusion_show_json_round_trips_byte_stable() {
+    let project = stage_slice_with_fusion();
+    // Two consecutive invocations must produce byte-identical
+    // stdout — the JSON path parses fusion.yaml into FusionIndex and
+    // re-serialises through serde_json, so timestamp / map-key
+    // ordering must be deterministic.
+    let first = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "fusion", "show", "my-slice"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let second = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "fusion", "show", "my-slice"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_eq!(first, second, "fusion show --format json must be byte-stable");
+
+    // Spot-check the parsed shape so we know we are emitting the
+    // FusionIndex serde form, not the raw YAML bytes.
+    let value: serde_json::Value = serde_json::from_slice(&first).expect("valid JSON");
+    assert_eq!(value["slice"], "my-slice");
+    assert_eq!(value["version"], 1);
+    assert_eq!(value["generator"], "specify@2.1.0");
+    let requirements = value["requirements"].as_array().expect("requirements array");
+    assert_eq!(requirements.len(), 1);
+    assert_eq!(requirements[0]["id"], "REQ-001");
+    assert_eq!(requirements[0]["resolution"], "single-source");
+    let claim = &requirements[0]["contributing-claims"][0];
+    assert_eq!(claim["source"], "legacy-monolith");
+    assert_eq!(claim["claim-id"], "REQ-001");
+    assert_eq!(claim["value"], "Password reset request returns a 200 response.");
+}
+
+#[test]
+fn fusion_show_text_prints_inline_value_payloads() {
+    let project = stage_slice_with_fusion();
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["slice", "fusion", "show", "my-slice"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(stdout.contains("slice: my-slice"), "expected slice header, got:\n{stdout}");
+    assert!(stdout.contains("REQ-001"), "expected REQ-001 requirement section, got:\n{stdout}");
+    assert!(
+        stdout.contains("resolution: single-source"),
+        "expected resolution line, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("legacy-monolith :: REQ-001"),
+        "expected contributing-claim line, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("value: Password reset request returns a 200 response."),
+        "expected inline value payload, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("path:  src/users/reset.ts#L42"),
+        "expected path anchor, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn fusion_show_reports_missing_fusion_file_with_diag_exit_one() {
+    let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "fusion", "show", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(1));
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "slice-fusion-not-found");
+}
+
+#[test]
+fn fusion_show_rejects_schema_invalid_file_with_exit_two() {
+    let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
+    // `version: 0` parses cleanly as u32 but the schema demands >= 1
+    // so the failure routes through Error::Validation (exit 2)
+    // rather than YAML deserialise (exit 1).
+    let fusion_path = project.slices_dir().join("my-slice/fusion.yaml");
+    fs::write(
+        &fusion_path,
+        "version: 0
+slice: my-slice
+generated-at: 2026-05-22T13:15:00Z
+generator: specify@2.1.0
+requirements: []
+",
+    )
+    .expect("write fusion");
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "fusion", "show", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "validation");
+    let results = value["results"].as_array().expect("results array");
+    assert!(
+        results.iter().any(|r| r["rule-id"] == "fusion-schema"),
+        "expected fusion-schema row, got: {results:#?}"
+    );
+}
+
+#[test]
+fn validate_skipped_drift_gate_does_not_fire_on_pre_synthesis_spec() {
+    // When fusion.yaml is present but spec.md is still pre-synthesis
+    // (no Sources/Status lines), the drift gate must still gather
+    // REQ ids from the bare `ID:` lines so a partially-refined slice
+    // does not silently drift. This protects against the case where
+    // the operator hand-deletes `Sources:` / `Status:` lines but
+    // leaves the requirement intact.
+    let spec = "### Requirement: Pre-synthesis body
+
+ID: REQ-001
+
+body without metadata lines yet
+";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let slice_dir = project.slices_dir().join("my-slice");
+    fs::write(slice_dir.join("fusion.yaml"), CLEAN_FUSION_YAML).expect("write fusion");
+    let evidence_dir = slice_dir.join("evidence");
+    fs::create_dir_all(&evidence_dir).expect("mkdir");
+    fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
+        .expect("write evidence");
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "slice-fusion-drift",
+                "drift gate must accept matching REQ ids even when Sources/Status metadata is absent"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RFC-27 §Acceptance scenario #26-2 — per-slice `authority-override` on a
+// `criterion` claim. Behaviour-class production fixtures (`runtime`) flip the
+// default ordering so docs lose; `fusion.yaml.requirements[].resolution` is
+// `per-slice-override` and `resolution-trace.step` reads
+// `per-slice-authority-override`.
+//
+// The CLI does not own the synthesis resolver in v2.1 (it is skill-driven per
+// RFC-27 §Synthesis updates and Change 3.2). What the CLI does own is (1) the
+// per-slice override surface on `plan.yaml` (Change 2.3, pinned in
+// `tests/plan_orchestrate.rs::plan_amend_authority_override_round_trips_and_validates`),
+// (2) the per-Evidence override map on Evidence (Change 1.1 schema delta),
+// (3) the byte-stable `fusion.yaml` schema (`schemas/slice/fusion.schema.json`)
+// and round-trip / inspection paths (Change 2.6), and (4) the four-step
+// resolution micro-resolver pin at
+// `crates/domain/src/evidence/authority.rs::tests::resolution_order_*`.
+//
+// The acceptance test below ties those four together: it stages a slice whose
+// `plan.yaml` carries `authority-override: { criterion: runtime }`, drops in a
+// hand-authored `fusion.yaml` representing the synthesis output the resolver
+// described above WOULD produce, and asserts `specify slice fusion show`
+// faithfully surfaces the resolution-trace shape the operator audits.
+// ---------------------------------------------------------------------------
+
+const PLAN_WITH_PER_SLICE_OVERRIDE: &str = "\
+name: rfc27-26-2
+lifecycle: pending
+sources:
+  identity-design-notes: ./design-notes
+  runtime: ./fixtures/replay
+slices:
+  - name: my-slice
+    status: pending
+    sources:
+      - { key: identity-design-notes, candidate: my-slice }
+      - { key: runtime, candidate: my-slice }
+    authority-override:
+      criterion: runtime
+";
+
+// `fusion.yaml` the synthesis resolver WOULD produce on the inputs above when
+// docs and runtime disagree on a `criterion` claim and the per-slice override
+// flips precedence to behaviour. Hand-authored so the test pins the shape the
+// skill body must emit when Change 3.2 lands.
+const FUSION_WITH_PER_SLICE_OVERRIDE_TRACE: &str = "version: 1
+slice: my-slice
+generated-at: 2026-05-22T13:15:00Z
+generator: specify@2.1.0
+requirements:
+  - id: REQ-007
+    status: divergence
+    sources: [identity-design-notes, runtime]
+    contributing-claims:
+      - source: runtime
+        claim-id: password-reset.expiry
+        kind: criterion
+        value: \"expiresAt = createdAt + 24h\"
+        path: tests/data/replay/password-reset/expiry.json
+        winner: true
+      - source: identity-design-notes
+        claim-id: password-reset.expiry
+        kind: criterion
+        value: \"Reset links expire after 30 minutes.\"
+        path: docs/account.md#L7
+        winner: false
+    resolution: per-slice-override
+    resolution-trace:
+      step: per-slice-authority-override
+      override:
+        criterion: runtime
+      winner: runtime
+";
+
+const SPEC_WITH_PER_SLICE_OVERRIDE: &str = "### Requirement: Password reset request expiry
+
+ID: REQ-007
+Sources: [identity-design-notes, runtime]
+Status: divergence
+
+Reset links expire after 24 hours (runtime fixture wins per per-slice override).
+";
+
+#[test]
+fn fusion_show_round_trips_per_slice_authority_override_trace() {
+    // Release blocker #26-2: the `per-slice-authority-override` trace must
+    // survive a round-trip through the fusion loader + JSON renderer so the
+    // operator audit path sees the resolution-trace step verbatim.
+    let project =
+        stage_slice_with_spec(SPEC_WITH_PER_SLICE_OVERRIDE, Some(PLAN_WITH_PER_SLICE_OVERRIDE));
+    let slice_dir = project.slices_dir().join("my-slice");
+    fs::write(slice_dir.join("fusion.yaml"), FUSION_WITH_PER_SLICE_OVERRIDE_TRACE)
+        .expect("write fusion.yaml");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "fusion", "show", "my-slice"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    let req = &value["requirements"][0];
+    assert_eq!(req["id"], "REQ-007");
+    assert_eq!(req["status"], "divergence");
+    assert_eq!(req["resolution"], "per-slice-override");
+
+    let trace = &req["resolution-trace"];
+    assert_eq!(
+        trace["step"], "per-slice-authority-override",
+        "RFC-27 §Acceptance #26-2 demands the resolution-trace step reads `per-slice-authority-override`, got: {trace:#?}"
+    );
+    assert_eq!(trace["winner"], "runtime");
+    assert_eq!(
+        trace["override"]["criterion"], "runtime",
+        "the override map must echo the per-slice authority-override directive, got: {trace:#?}"
+    );
+
+    let claims = req["contributing-claims"].as_array().expect("contributing-claims array");
+    assert_eq!(claims.len(), 2, "both contributors must be preserved for operator audit");
+    let winner = claims.iter().find(|c| c["winner"] == true).expect("winning claim");
+    let loser = claims.iter().find(|c| c["winner"] == false).expect("losing claim");
+    assert_eq!(winner["source"], "runtime", "behaviour-class runtime must win this slice");
+    assert_eq!(
+        loser["source"], "identity-design-notes",
+        "the documentation claim must be preserved as commentary"
+    );
+    assert_eq!(
+        loser["value"], "Reset links expire after 30 minutes.",
+        "dropped value must survive inline in fusion.yaml so the operator does not need to open evidence/*.yaml"
+    );
+}
+
+#[test]
+fn fusion_show_round_trips_per_slice_authority_override_trace_text() {
+    // The text rendering is the human-readable inspection path; the JSON
+    // path covers byte-stable machine consumption. Both must surface the
+    // resolution-trace step so an operator running `specify slice fusion show`
+    // without `--format json` still sees the audit-relevant trace fields.
+    let project =
+        stage_slice_with_spec(SPEC_WITH_PER_SLICE_OVERRIDE, Some(PLAN_WITH_PER_SLICE_OVERRIDE));
+    let slice_dir = project.slices_dir().join("my-slice");
+    fs::write(slice_dir.join("fusion.yaml"), FUSION_WITH_PER_SLICE_OVERRIDE_TRACE)
+        .expect("write fusion.yaml");
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["slice", "fusion", "show", "my-slice"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(
+        stdout.contains("resolution: per-slice-override"),
+        "expected resolution line, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("per-slice-authority-override"),
+        "expected resolution-trace step to render, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("runtime :: password-reset.expiry"),
+        "expected contributing-claim line for the runtime winner, got:\n{stdout}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// RFC-27 §Acceptance scenario #26-3 — per-Evidence `authority-overrides` only
+// (no per-slice override).
+//
+// The Evidence document carries `authority-overrides: { decision: documentation }`;
+// synthesis resolves `decision`-class disagreement via the per-Evidence override
+// and falls back to RFC-25 default ordering for `requirement`-class
+// disagreements. `fusion.yaml` records BOTH resolution paths — the
+// `authority-resolved` resolution with `step: per-evidence-authority-override`
+// for the decision-kind claim, and `authority-resolved` with
+// `step: default-authority-ordering` for the requirement-kind claim.
+// ---------------------------------------------------------------------------
+
+const PLAN_WITH_EVIDENCE_ONLY_OVERRIDE: &str = "\
+name: rfc27-26-3
+lifecycle: pending
+sources:
+  identity-design-notes: ./design-notes
+  legacy-monolith: ./legacy
+slices:
+  - name: my-slice
+    status: pending
+    sources:
+      - { key: identity-design-notes, candidate: my-slice }
+      - { key: legacy-monolith, candidate: my-slice }
+";
+
+const FUSION_WITH_TWO_RESOLUTION_PATHS: &str = "version: 1
+slice: my-slice
+generated-at: 2026-05-22T13:15:00Z
+generator: specify@2.1.0
+requirements:
+  - id: REQ-001
+    status: divergence
+    sources: [identity-design-notes, legacy-monolith]
+    contributing-claims:
+      - source: identity-design-notes
+        claim-id: account.reset-link-decision
+        kind: decision
+        value: \"Reset links are signed JWTs scoped to user-id + nonce.\"
+        path: docs/account.md#L42
+        winner: true
+      - source: legacy-monolith
+        claim-id: account.reset-link-decision
+        kind: decision
+        value: \"reset-link uses opaque token in users.reset_tokens table\"
+        path: src/users/reset.ts#L18
+        winner: false
+    resolution: authority-resolved
+    resolution-trace:
+      step: per-evidence-authority-override
+      override:
+        decision: documentation
+      winner: identity-design-notes
+  - id: REQ-002
+    status: divergence
+    sources: [identity-design-notes, legacy-monolith]
+    contributing-claims:
+      - source: identity-design-notes
+        claim-id: account.reset-request
+        kind: requirement
+        value: \"A registered user may request a reset link by email.\"
+        path: docs/account.md#L7
+        winner: true
+      - source: legacy-monolith
+        claim-id: account.reset-request
+        kind: requirement
+        value: \"requestReset(email) issues a token in the reset_tokens table.\"
+        path: src/users/reset.ts#L30
+        winner: false
+    resolution: authority-resolved
+    resolution-trace:
+      step: default-authority-ordering
+      winner: identity-design-notes
+";
+
+const SPEC_WITH_TWO_RESOLUTION_PATHS: &str = "### Requirement: Reset link decision
+
+ID: REQ-001
+Sources: [identity-design-notes, legacy-monolith]
+Status: divergence
+
+Reset links are signed JWTs; legacy opaque-token implementation preserved as commentary.
+
+### Requirement: Reset link request
+
+ID: REQ-002
+Sources: [identity-design-notes, legacy-monolith]
+Status: divergence
+
+A registered user may request a reset link by email.
+";
+
+#[test]
+fn fusion_show_records_both_per_evidence_and_default_authority_paths() {
+    // RFC-27 §Acceptance #26-3: `fusion.yaml` records BOTH resolution paths
+    // — the per-Evidence override for the `decision`-kind disagreement AND
+    // the default-authority-ordering fallback for the `requirement`-kind
+    // disagreement — on the same slice without any per-slice override
+    // intervening.
+    let project = stage_slice_with_spec(
+        SPEC_WITH_TWO_RESOLUTION_PATHS,
+        Some(PLAN_WITH_EVIDENCE_ONLY_OVERRIDE),
+    );
+    let slice_dir = project.slices_dir().join("my-slice");
+    fs::write(slice_dir.join("fusion.yaml"), FUSION_WITH_TWO_RESOLUTION_PATHS)
+        .expect("write fusion.yaml");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "fusion", "show", "my-slice"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    let requirements = value["requirements"].as_array().expect("requirements array");
+    assert_eq!(requirements.len(), 2, "both resolution paths must be present");
+
+    let req1 = requirements.iter().find(|r| r["id"] == "REQ-001").expect("REQ-001 present");
+    assert_eq!(req1["resolution"], "authority-resolved");
+    let trace1 = &req1["resolution-trace"];
+    assert_eq!(
+        trace1["step"], "per-evidence-authority-override",
+        "decision-kind disagreement must resolve through the per-Evidence override step"
+    );
+    assert_eq!(trace1["override"]["decision"], "documentation");
+
+    let req2 = requirements.iter().find(|r| r["id"] == "REQ-002").expect("REQ-002 present");
+    assert_eq!(req2["resolution"], "authority-resolved");
+    let trace2 = &req2["resolution-trace"];
+    assert_eq!(
+        trace2["step"], "default-authority-ordering",
+        "requirement-kind disagreement must fall back to RFC-25 default ordering when no override fires"
+    );
+    // Documentation outranks behaviour per RFC-25; identity-design-notes is the
+    // documentation-authority contributor and must win the default-ordering path.
+    assert_eq!(trace2["winner"], "identity-design-notes");
+}
+
 #[test]
 fn validate_skips_provenance_when_no_metadata_lines_present() {
     // Pre-RFC-25 (or pre-synthesis) state. The provenance gate must

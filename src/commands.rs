@@ -1,6 +1,7 @@
 pub mod codex;
 pub mod compatibility;
 pub mod context;
+pub mod discovery;
 mod init;
 pub mod plan;
 pub mod registry;
@@ -20,7 +21,7 @@ use specify_domain::adapter::{Adapter, Axis};
 use specify_error::Result;
 
 use crate::cli::{Cli, Commands, Format};
-use crate::commands::source::cli::SourceAction;
+use crate::commands::source::cli::{SourceAction, SourceCacheAction};
 use crate::commands::target::cli::TargetAction;
 use crate::commands::tool::cli::ToolAction;
 use crate::commands::workspace::cli::WorkspaceAction;
@@ -41,9 +42,25 @@ pub fn run(cli: Cli) -> Exit {
         Commands::Status => scoped(format, status::run),
         Commands::Context { action } => scoped(format, |ctx| context::run(ctx, &action)),
         Commands::Source { action } => match action {
-            SourceAction::Resolve { name, project_dir } => {
-                dispatch(format, || resolve_adapter(format, Axis::Source, &name, &project_dir))
-            }
+            SourceAction::Resolve {
+                name,
+                project_dir,
+                explain,
+            } => dispatch(format, || {
+                if explain {
+                    source::cache::explain(format, &name, &project_dir)
+                } else {
+                    resolve_adapter(format, Axis::Source, &name, &project_dir)
+                }
+            }),
+            SourceAction::Cache { action } => match action {
+                SourceCacheAction::Lookup { fp } => {
+                    dispatch(format, || source::cache::lookup(format, fp))
+                }
+                SourceCacheAction::Write { fp, payload } => {
+                    dispatch(format, || source::cache::write(format, fp, &payload))
+                }
+            },
         },
         Commands::Target { action } => match action {
             TargetAction::Resolve { value, project_dir } => {
@@ -61,6 +78,7 @@ pub fn run(cli: Cli) -> Exit {
         },
         Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
         Commands::Plan { action } => scoped(format, |ctx| plan::run(ctx, action)),
+        Commands::Discovery { action } => scoped(format, |ctx| discovery::run(ctx, &action)),
         Commands::Registry { action } => scoped(format, |ctx| registry::run(ctx, action)),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();

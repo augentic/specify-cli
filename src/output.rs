@@ -51,6 +51,21 @@ impl From<&Error> for Exit {
     }
 }
 
+// RFC-27 kebab-case error discriminants land through the existing
+// taxonomy per `docs/standards/coding-standards.md` §Errors ("Diag-first
+// error policy") — call sites emit them through
+// [`Error::validation_failed`] (exit code 2) or [`Error::Diag`] (exit
+// code 1) and the mapping above routes them automatically. None
+// promote to typed `Error::*` variants in Phase 1 because no call
+// site destructures the payload yet (the wiring lands in Phase 2):
+//
+// | Discriminant                                    | Exit | Helper                    |
+// |-------------------------------------------------|------|---------------------------|
+// | `slice-authority-override-orphan-source-key`    | 2    | `Error::validation_failed`|
+// | `slice-fusion-drift`                            | 2    | `Error::validation_failed`|
+// | `discovery-alias-collision`                     | 2    | `Error::validation_failed`|
+// | `code-runtime-fixture-format-invalid`           | 1    | `Error::Diag`             |
+
 /// Render `err` as a failure envelope and return the matching exit
 /// code. JSON serialises the body directly; Text writes
 /// `error: {err}` plus any long-form hint for the variant. Both

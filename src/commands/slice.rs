@@ -10,6 +10,7 @@ use specify_domain::slice::LifecycleStatus;
 use specify_error::{Error, Result};
 
 pub mod cli;
+mod fusion;
 mod lifecycle;
 mod list;
 mod merge;
@@ -18,7 +19,7 @@ mod task;
 mod touched;
 mod validate;
 
-use cli::{OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
+use cli::{OutcomeAction, SliceAction, SliceFusionAction, SliceMergeAction, SliceTaskAction};
 pub(super) use list::{StatusEntry, collect_status, list_slice_names};
 
 use crate::context::Ctx;
@@ -65,6 +66,9 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
         SliceAction::Outcome {
             action: OutcomeAction::Show { name },
         } => outcome::show(ctx, name),
+        SliceAction::Fusion {
+            action: SliceFusionAction::Show { name },
+        } => fusion::show(ctx, &name),
         SliceAction::Transition { name, target } => {
             if matches!(target, LifecycleStatus::Merged) {
                 return Err(Error::Argument {

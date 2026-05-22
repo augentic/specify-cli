@@ -141,6 +141,12 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 /// the plan-level Gate 1 stamp (`<plan-name> reviewed`) or the
 /// per-entry close (`<entry-name> done`). Any other combination is
 /// rejected with `Error::Argument` (exit 2).
+///
+/// `<plan-name> reviewed` against an already-reviewed plan is an
+/// idempotent no-op (exit 0, no journal event) per RFC-27 §D7 —
+/// running the explicit transition after `specify plan create
+/// --auto-review` must not double-stamp the lifecycle nor double-
+/// fire `plan.transition.reviewed`.
 pub(super) fn transition(ctx: &Ctx, name: String, target: String) -> Result<()> {
     let plan_path = ctx.layout().plan_path();
     let body = with_state::<Plan, _, _>(
@@ -148,10 +154,12 @@ pub(super) fn transition(ctx: &Ctx, name: String, target: String) -> Result<()> 
         InitPolicy::RequireExisting("plan.yaml"),
         move |plan| dispatch_transition(plan, &plan_path, &name, &target),
     )?;
-    // RFC-25 §Observability: Gate-1 stamp emits a journal event. We
-    // run the emit after `with_state` returns so the plan write and
-    // the journal append don't interleave on failure.
-    if matches!(body.kind, TransitionKind::Plan) {
+    // RFC-25 §Observability: Gate-1 stamp emits a journal event when
+    // the lifecycle actually changed. The same-state no-op path
+    // (already `reviewed`) flags `changed = false` so we skip the
+    // emit — preserves single-emit-per-event for the
+    // `plan.transition.reviewed` line.
+    if matches!(body.kind, TransitionKind::Plan) && body.changed {
         let event = specify_domain::journal::Event::new(
             Timestamp::now(),
             specify_domain::journal::EventKind::PlanTransitionReviewed {
@@ -172,6 +180,21 @@ fn dispatch_transition(
         return match target {
             "reviewed" => {
                 let previous = plan.lifecycle;
+                if matches!(previous, Lifecycle::Reviewed) {
+                    // RFC-27 §D7: `--auto-review` already stamped
+                    // this plan; the explicit transition is the
+                    // operator's belt-and-braces follow-up. No
+                    // disk or journal write — `body.changed` is
+                    // `false` so the caller suppresses the emit.
+                    return Ok(TransitionBody {
+                        plan: plan_ref(plan, plan_path),
+                        kind: TransitionKind::Plan,
+                        name: plan.name.clone(),
+                        previous: previous.to_string(),
+                        current: plan.lifecycle.to_string(),
+                        changed: false,
+                    });
+                }
                 plan.transition_lifecycle(Lifecycle::Reviewed)?;
                 Ok(TransitionBody {
                     plan: plan_ref(plan, plan_path),
@@ -179,6 +202,7 @@ fn dispatch_transition(
                     name: plan.name.clone(),
                     previous: previous.to_string(),
                     current: plan.lifecycle.to_string(),
+                    changed: true,
                 })
             }
             other => Err(plan_target_invalid(other)),
@@ -207,6 +231,7 @@ fn dispatch_transition(
                 name: entry.name.clone(),
                 previous: previous.to_string(),
                 current: entry.status.to_string(),
+                changed: true,
             })
         }
         other => Err(entry_target_invalid(other)),
@@ -341,10 +366,20 @@ struct TransitionBody {
     name: String,
     previous: String,
     current: String,
+    /// `false` when the transition was an idempotent no-op (RFC-27
+    /// §D7 — explicit `reviewed` after `--auto-review`); `true`
+    /// when the lifecycle / status actually moved. The outer
+    /// handler reads this to decide whether to fire the
+    /// `plan.transition.reviewed` journal event.
+    #[serde(skip)]
+    changed: bool,
 }
 
 fn write_transition_text(w: &mut dyn Write, body: &TransitionBody) -> std::io::Result<()> {
     match body.kind {
+        TransitionKind::Plan if !body.changed => {
+            writeln!(w, "Plan '{}' is already at lifecycle: {} (no-op).", body.name, body.current)
+        }
         TransitionKind::Plan => writeln!(
             w,
             "Stamped plan '{}': lifecycle {} \u{2192} {}.",

@@ -15,13 +15,20 @@
 //! so source and target adapters with colliding names disambiguate by axis.
 
 mod brief;
+pub mod cache;
 mod core;
 mod operation;
 
 pub use core::{
-    ADAPTER_FILENAME, Adapter, AdapterLocation, AdapterToolDeclaration, Axis, ResolvedAdapter,
-    cache_dir,
+    ADAPTER_FILENAME, Adapter, AdapterLocation, AdapterToolDeclaration, Axis, CacheMode,
+    ResolvedAdapter, cache_dir,
 };
 
 pub use brief::{Brief, BriefFrontmatter, split_on_closing_delimiter};
+pub use cache::{
+    CacheFingerprint, CacheIndexEntry, CacheLayout, CacheLookup, CacheMissReason,
+    FingerprintRecord, FingerprintSource, FingerprintToolVersion, LookupOutcome, SourceOperation,
+    append_index, lookup as cache_lookup, read_index as cache_read_index, sha256_file,
+    sha256_prefixed, write as cache_write,
+};
 pub use operation::Operation;

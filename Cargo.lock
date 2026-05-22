@@ -4485,6 +4485,7 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
+ "sha2",
  "specify-error",
  "specify-tool",
  "strum 0.28.0",

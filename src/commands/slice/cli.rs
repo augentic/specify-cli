@@ -42,6 +42,15 @@ pub enum SliceAction {
         #[command(subcommand)]
         action: OutcomeAction,
     },
+    /// Reconciliation index (`fusion.yaml`) inspection. Per RFC-27
+    /// §D4 the file lists every `REQ-*` id in `spec.md` and the
+    /// contributing `(source-key, claim-id)` pairs plus the
+    /// authority outcome. Writes belong to `/spec:refine`; this
+    /// verb owns inspection only.
+    Fusion {
+        #[command(subcommand)]
+        action: SliceFusionAction,
+    },
     /// Transition a slice to a new lifecycle status. Note: `merged` is
     /// not a valid target — the only legal writer of `Merged` is
     /// `specify slice merge run`, which performs the spec merge,
@@ -125,6 +134,21 @@ pub enum OutcomeAction {
     /// whether or not an outcome has been stamped.
     Show {
         /// Slice name
+        name: String,
+    },
+}
+
+/// Reconciliation-index (`fusion.yaml`) subcommands grouped under
+/// `slice fusion`. Only `show` lands in 2.6; writes belong to the
+/// `/spec:refine` skill body (Change 3.2).
+#[derive(Subcommand)]
+pub enum SliceFusionAction {
+    /// Render the slice's `fusion.yaml` after schema validation.
+    /// `--format json` re-emits the parsed shape verbatim; `--format
+    /// text` (default) renders one requirement per section with the
+    /// inline `value` payload truncated for terminal display.
+    Show {
+        /// Slice name (under `.specify/slices/`)
         name: String,
     },
 }

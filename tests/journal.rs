@@ -132,6 +132,63 @@ fn plan_amend_divergence_from_none_to_accepted() {
 }
 
 #[test]
+fn plan_amend_divergence_none_to_likely_emits_event() {
+    // RFC-27 §D5: the CLI is the single writer of every variant of
+    // `slices[].divergence`, including `likely`. A `plan amend
+    // --divergence likely` against a slice with no prior divergence
+    // emits one `plan.amend.divergence` event with `from: none, to:
+    // likely`.
+    let project = Project::init();
+    project.seed_plan(TWO_SLICE_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "amend", "checkout", "--divergence", "likely"])
+        .assert()
+        .success();
+
+    let events = read_journal(project.root());
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["event"], "plan.amend.divergence");
+    assert_eq!(events[0]["payload"]["from"], "none");
+    assert_eq!(events[0]["payload"]["to"], "likely");
+}
+
+#[test]
+fn plan_amend_divergence_likely_round_trips_to_yaml() {
+    // RFC-27 §D5: `specify plan amend --divergence likely` is the
+    // bare-skill fallback writer of `slices[].divergence: likely`.
+    // The CLI must persist the field byte-identically to the legacy
+    // skill-written form so existing fixtures keep round-tripping.
+    let project = Project::init();
+    project.seed_plan(
+        "name: demo
+slices:
+  - name: checkout
+    project: default
+    status: pending
+",
+    );
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "amend", "checkout", "--divergence", "likely"])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.root().join("plan.yaml")).expect("read plan");
+    assert!(
+        saved.contains("divergence: likely"),
+        "amend --divergence likely must persist the field byte-identically:\n{saved}"
+    );
+
+    let events = read_journal(project.root());
+    assert_eq!(events.len(), 1, "exactly one journal event per CLI write");
+    assert_eq!(events[0]["event"], "plan.amend.divergence");
+    assert_eq!(events[0]["payload"]["to"], "likely");
+}
+
+#[test]
 fn plan_amend_divergence_from_likely_to_rejected() {
     // RFC-25 subagent note: `propose` writes `divergence: likely` and
     // the operator may transition it to `rejected` at Gate 1.

@@ -47,6 +47,11 @@
       "type": "string",
       "minLength": 1,
       "description": "Optional human-readable, single-sentence summary of the adapter's role."
+    },
+    "cache": {
+      "type": "string",
+      "enum": ["opt-out"],
+      "description": "RFC-27 \u00a7D8 \u2014 optional cache opt-out switch. When set to `opt-out`, the CLI treats every `extract` (and `enumerate`) run for this adapter as a cache miss; the `slice.extract.cache-miss` journal event carries `reason: adapter-opt-out`. Absence (the default) means cache fingerprinting is on. Intended for adapters whose intermediate results are non-deterministic; new values require an RFC update."
     }
   },
   "$defs": {

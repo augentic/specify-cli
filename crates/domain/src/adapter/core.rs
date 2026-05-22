@@ -92,6 +92,23 @@ pub struct Adapter {
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional cache opt-out switch (RFC-27 §D8). Absence means
+    /// cache fingerprinting is on; [`CacheMode::OptOut`] forces every
+    /// `extract` / `enumerate` run for this adapter to a cache miss.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache: Option<CacheMode>,
+}
+
+/// Closed enum for the optional `cache:` field on an adapter manifest
+/// (RFC-27 §D8). Single variant in v1; widened only behind an RFC.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum CacheMode {
+    /// `cache: opt-out` — the CLI bypasses the cache for every run
+    /// of this adapter; the matching `slice.extract.cache-miss`
+    /// journal event carries `reason: adapter-opt-out`.
+    OptOut,
 }
 
 /// A parsed [`Adapter`] paired with the directory it loaded from and
@@ -239,7 +256,12 @@ impl Adapter {
         axis: Axis, name: &str, project_dir: &Path,
     ) -> Result<(PathBuf, AdapterLocation), Error> {
         let cached = cache_dir(project_dir, axis, name);
-        if cached.is_dir() {
+        // The cache root co-tenants with RFC-27 §D8's per-adapter
+        // result cache (`<adapter>/<fingerprint>/…` and `index.jsonl`),
+        // so a bare directory does not imply the manifest itself is
+        // cached. Probe for `adapter.yaml` instead — it is the only
+        // file `cache_adapter` writes at this layer.
+        if cached.join(ADAPTER_FILENAME).is_file() {
             return Ok((cached.clone(), AdapterLocation::Cached(cached)));
         }
         let local = project_dir.join(axis.dir_segment()).join(name);
@@ -327,5 +349,46 @@ mod tests {
             cache_dir(project, Axis::Target, "omnia"),
             project.join(".specify/.cache/targets/omnia")
         );
+    }
+
+    #[test]
+    fn cache_field_defaults_to_none() {
+        let yaml = r"name: documentation
+version: 1
+axis: source
+operations: [enumerate, extract]
+briefs:
+  enumerate: briefs/enumerate.md
+  extract: briefs/extract.md
+";
+        let manifest: Adapter = serde_saphyr::from_str(yaml).expect("parse");
+        assert_eq!(manifest.cache, None, "missing cache field must default to None");
+        let rendered = serde_saphyr::to_string(&manifest).expect("serialise");
+        assert!(
+            !rendered.contains("cache:"),
+            "absent cache field must elide on write, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn cache_opt_out_round_trips() {
+        let yaml = r"name: documentation
+version: 1
+axis: source
+operations: [enumerate, extract]
+briefs:
+  enumerate: briefs/enumerate.md
+  extract: briefs/extract.md
+cache: opt-out
+";
+        let manifest: Adapter = serde_saphyr::from_str(yaml).expect("parse");
+        assert_eq!(manifest.cache, Some(CacheMode::OptOut));
+        let rendered = serde_saphyr::to_string(&manifest).expect("serialise");
+        assert!(
+            rendered.contains("cache: opt-out"),
+            "cache: opt-out must round-trip as kebab-case, got:\n{rendered}"
+        );
+        let reparsed: Adapter = serde_saphyr::from_str(&rendered).expect("reparse");
+        assert_eq!(manifest, reparsed);
     }
 }

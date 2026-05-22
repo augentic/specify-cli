@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use super::model::{Entry, Lifecycle, Plan, Status};
+use super::model::{Entry, Lifecycle, Plan, SliceAuthorityOverride, Status};
 
 /// Reduced-state reproduction of the `rfc-2-execution.md` §"The Plan"
 /// fixture. Per RFC-25, v1 has no per-entry `failed`, `blocked`, or
@@ -86,6 +86,7 @@ pub(super) fn change(name: &str, status: Status) -> Entry {
         context: vec![],
         description: None,
         divergence: None,
+        authority_override: SliceAuthorityOverride::default(),
     }
 }
 
@@ -100,5 +101,6 @@ pub(super) fn change_with_deps(name: &str, status: Status, deps: &[&str]) -> Ent
         context: vec![],
         description: None,
         divergence: None,
+        authority_override: SliceAuthorityOverride::default(),
     }
 }

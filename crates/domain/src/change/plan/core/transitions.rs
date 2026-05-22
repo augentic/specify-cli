@@ -86,4 +86,24 @@ mod tests {
         assert_eq!(code, "plan-lifecycle-transition");
         assert!(detail.contains("Reviewed"), "endpoint in: {detail:?}");
     }
+
+    #[test]
+    fn init_then_reviewed_models_auto_review_at_create() {
+        // RFC-27 §D7: `--auto-review` composes `Plan::init` with
+        // `Plan::transition_lifecycle(Reviewed)` before the single
+        // atomic save. The resulting in-memory plan must carry
+        // `lifecycle: reviewed` so the post-init `Plan::save` writes
+        // `lifecycle: reviewed` directly with no transient `pending`
+        // round trip through disk.
+        let mut plan =
+            Plan::init("fresh", std::collections::BTreeMap::new()).expect("init fresh ok");
+        assert_eq!(plan.lifecycle, Lifecycle::Pending, "fresh init defaults to pending");
+        plan.transition_lifecycle(Lifecycle::Reviewed)
+            .expect("--auto-review composes init + lifecycle stamp");
+        assert_eq!(
+            plan.lifecycle,
+            Lifecycle::Reviewed,
+            "in-memory plan must carry reviewed before save under --auto-review"
+        );
+    }
 }

@@ -75,7 +75,9 @@ impl Plan {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::super::model::{Entry, Lifecycle, Patch, SliceSourceBinding, Status};
+    use super::super::model::{
+        Entry, Lifecycle, Patch, SliceAuthorityOverride, SliceSourceBinding, Status,
+    };
     use super::super::test_support::{change, plan_with_changes};
     use super::*;
 
@@ -107,6 +109,7 @@ mod tests {
             context: vec![],
             description: Some("original".into()),
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }]);
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
@@ -165,6 +168,7 @@ mod tests {
                     context: vec![],
                     description: Some("d".into()),
                     divergence: None,
+                    authority_override: SliceAuthorityOverride::default(),
                 },
                 change("b", Status::Pending),
                 change("x", Status::Pending),
@@ -257,6 +261,7 @@ mod tests {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }]);
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
@@ -304,6 +309,7 @@ mod tests {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }]);
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");

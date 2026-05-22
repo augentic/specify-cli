@@ -201,6 +201,15 @@ impl<'a> Layout<'a> {
     pub fn change_brief_path(&self) -> PathBuf {
         self.project_dir.join("change.md")
     }
+
+    /// Absolute path to `<project_dir>/discovery.md` — the candidate
+    /// inventory written at `/spec:plan`'s `propose` sub-step and
+    /// mutated by `specify plan amend --add-alias` /
+    /// `--remove-alias` (RFC-27 §D6).
+    #[must_use]
+    pub fn discovery_path(&self) -> PathBuf {
+        crate::discovery::discovery_path(self.project_dir)
+    }
 }
 
 /// Detect whether `project_dir` lives below `.specify/workspace/<peer>/`.
@@ -256,6 +265,7 @@ mod tests {
         assert_eq!(layout.registry_path(), PathBuf::from("/a/b/registry.yaml"));
         assert_eq!(layout.plan_path(), PathBuf::from("/a/b/plan.yaml"));
         assert_eq!(layout.change_brief_path(), PathBuf::from("/a/b/change.md"));
+        assert_eq!(layout.discovery_path(), PathBuf::from("/a/b/discovery.md"));
         assert_eq!(layout.cache_dir(), PathBuf::from("/a/b/.specify/.cache"));
         assert_eq!(layout.archive_dir(), PathBuf::from("/a/b/.specify/archive"));
     }

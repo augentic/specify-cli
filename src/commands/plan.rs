@@ -22,7 +22,15 @@ use crate::context::Ctx;
 
 pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
     match action {
-        PlanAction::Create { name, sources } => create::create(ctx, name, sources),
+        PlanAction::Create {
+            name,
+            sources,
+            divergence_likely,
+            auto_review,
+            authority_override,
+        } => {
+            create::create(ctx, name, sources, &divergence_likely, auto_review, &authority_override)
+        }
         PlanAction::Validate => lifecycle::validate(ctx),
         PlanAction::Next => lifecycle::next(ctx),
         PlanAction::Status => status::run(ctx),
@@ -34,7 +42,18 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
             project,
             target,
             context,
-        } => create::add(ctx, name, depends_on, sources, description, project, target, context),
+            authority_override,
+        } => create::add(
+            ctx,
+            &name,
+            depends_on,
+            sources,
+            description,
+            project,
+            target,
+            context,
+            &authority_override,
+        ),
         PlanAction::Amend {
             name,
             depends_on,
@@ -46,6 +65,11 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
             project,
             target,
             context,
+            authority_override,
+            clear_authority_override,
+            clear_authority_overrides,
+            add_alias,
+            remove_alias,
         } => create::amend(
             ctx,
             name,
@@ -58,6 +82,11 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
             project,
             target,
             context,
+            &authority_override,
+            &clear_authority_override,
+            &clear_authority_overrides,
+            &add_alias,
+            &remove_alias,
         ),
         PlanAction::Transition { name, target } => lifecycle::transition(ctx, name, target),
         PlanAction::Archive { force } => lifecycle::archive(ctx, force),

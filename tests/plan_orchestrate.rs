@@ -960,6 +960,29 @@ fn plan_create_scaffolds_plan_only_json_matches_golden() {
 }
 
 #[test]
+fn plan_create_divergence_likely_unknown_slice_refused() {
+    // RFC-27 §D5: `--divergence-likely` on `plan create` must
+    // reference a slice already present in the plan. A fresh
+    // `plan create` scaffolds an empty plan, so any slice name is
+    // unknown and must short-circuit before plan.yaml is written.
+    let project = Project::init();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "create", "fresh", "--divergence-likely", "ghost-slice"])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "unknown --divergence-likely slice must exit 2 (validation_failed)");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "validation");
+    assert!(
+        !project.plan_path().exists(),
+        "plan.yaml must not be written when --divergence-likely fails validation"
+    );
+}
+
+#[test]
 fn plan_create_refuses_to_overwrite_existing_plan() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["plan", "create", "first"]).assert().success();
@@ -987,6 +1010,179 @@ fn plan_create_then_validate_passes_clean() {
         !stdout.contains("ERROR"),
         "freshly-scaffolded plan must pass `specify plan validate` with no errors, got:\n{stdout}"
     );
+}
+
+// -- plan create --auto-review (RFC-27 §D7) ---------------------------
+
+#[test]
+fn plan_create_auto_review_stamps_reviewed_and_emits_journal_event() {
+    // RFC-27 §D7: `--auto-review` is the operator's Gate-1 consent at
+    // create time. The on-disk plan carries `lifecycle: reviewed`
+    // directly (single atomic write — no transient `pending`
+    // observable to readers) and the journal carries exactly one
+    // `plan.transition.reviewed` event matching the post-create stamp.
+    let project = Project::init();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "create", "fresh", "--auto-review"])
+        .assert()
+        .success();
+    let actual = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(actual["name"], "fresh");
+    assert_eq!(actual["lifecycle"], "reviewed");
+
+    let on_disk = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+    assert!(
+        on_disk.contains("lifecycle: reviewed"),
+        "plan.yaml must carry `lifecycle: reviewed` after --auto-review, got:\n{on_disk}"
+    );
+    assert!(
+        !on_disk.contains("lifecycle: pending"),
+        "no transient `lifecycle: pending` must remain on disk, got:\n{on_disk}"
+    );
+
+    let journal = project.root().join(".specify").join("journal.jsonl");
+    let raw = fs::read_to_string(&journal).expect("read journal.jsonl");
+    let lines: Vec<&str> = raw.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "exactly one journal event (plan.transition.reviewed) per --auto-review create, got:\n{raw}"
+    );
+    assert!(
+        lines[0].contains(r#""event":"plan.transition.reviewed""#),
+        "first (and only) line must be plan.transition.reviewed, got:\n{}",
+        lines[0]
+    );
+    assert!(
+        lines[0].contains(r#""plan-name":"fresh""#),
+        "plan-name must serialise kebab-case, got:\n{}",
+        lines[0]
+    );
+}
+
+#[test]
+fn plan_create_auto_review_then_explicit_transition_is_idempotent_noop() {
+    // RFC-27 §D7: running `specify plan transition <name> reviewed`
+    // after a successful `--auto-review` create must be a no-op —
+    // exit 0, no second `plan.transition.reviewed` event, plan.yaml
+    // unchanged.
+    let project = Project::init();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "create", "fresh", "--auto-review"])
+        .assert()
+        .success();
+    let journal = project.root().join(".specify").join("journal.jsonl");
+    let before = fs::read_to_string(&journal).expect("read journal.jsonl");
+    let before_lines = before.lines().filter(|l| !l.is_empty()).count();
+    let plan_before = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "transition", "fresh", "reviewed"])
+        .assert()
+        .success();
+    let body = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(body["kind"], "plan");
+    assert_eq!(
+        body["previous"], "reviewed",
+        "previous lifecycle must already be reviewed (no-op), got:\n{body}"
+    );
+    assert_eq!(body["current"], "reviewed");
+
+    let plan_after = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+    assert_eq!(
+        plan_before, plan_after,
+        "plan.yaml must not change under the idempotent no-op transition"
+    );
+    let after = fs::read_to_string(&journal).expect("read journal.jsonl");
+    let after_lines = after.lines().filter(|l| !l.is_empty()).count();
+    assert_eq!(
+        before_lines, after_lines,
+        "explicit `transition reviewed` after --auto-review must not append a second event"
+    );
+}
+
+#[test]
+fn plan_create_auto_review_invalid_name_refuses_same_as_without_flag() {
+    // RFC-27 §D7: `--auto-review` does NOT bypass validation. An
+    // invalid (non-kebab) name refuses the create with the same
+    // exit code and envelope as the post-create path; no `plan.yaml`
+    // lands on disk and the journal stays untouched.
+    let project = Project::init();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "create", "Bad_Name", "--auto-review"])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 1, "kebab-case violation surfaces via Error::Diag (exit 1)");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "change-name-not-kebab");
+
+    assert!(
+        !project.plan_path().exists(),
+        "plan.yaml must not be written when --auto-review fails validation"
+    );
+    let journal = project.root().join(".specify").join("journal.jsonl");
+    assert!(
+        !journal.exists(),
+        "journal must stay empty when --auto-review validation fails, found: {}",
+        journal.display()
+    );
+}
+
+#[test]
+fn plan_create_auto_review_validation_failure_emits_no_partial_events() {
+    // RFC-27 §D7: validation failure under --auto-review must not
+    // surface a partial-state event sequence — no orphan
+    // `plan.propose.divergence` without the matching
+    // `plan.transition.reviewed`, no half-written plan.yaml. An
+    // unknown `--divergence-likely` slice (the cheapest validation
+    // gate to trip on a fresh plan) must refuse the create and
+    // leave the journal untouched.
+    let project = Project::init();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["plan", "create", "fresh", "--auto-review", "--divergence-likely", "ghost-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+
+    assert!(
+        !project.plan_path().exists(),
+        "plan.yaml must not be written when --auto-review + --divergence-likely fails"
+    );
+    let journal = project.root().join(".specify").join("journal.jsonl");
+    assert!(
+        !journal.exists(),
+        "journal must stay empty on validation failure, found: {}",
+        journal.display()
+    );
+}
+
+#[test]
+fn plan_create_auto_review_then_validate_passes_clean() {
+    // The empty-scaffold + `--auto-review` combination must still
+    // validate cleanly — `--auto-review` is a Gate-1 consent flag,
+    // not a validation bypass, but it also must not introduce any
+    // new validation drift on the empty-scaffold path.
+    let project = Project::init();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "create", "fresh", "--auto-review"])
+        .assert()
+        .success();
+
+    let assert =
+        specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+    assert_eq!(assert.get_output().status.code(), Some(0));
 }
 
 // -- plan archive (L1.K) ----------------------------------------------
@@ -1914,7 +2110,10 @@ fn plan_amend_divergence_rejected_writes_field() {
 }
 
 #[test]
-fn plan_amend_divergence_likely_refused() {
+fn plan_amend_divergence_likely_writes_field() {
+    // RFC-27 §D5: `--divergence likely` is operator-settable from
+    // the CLI; the field is byte-identical to the legacy
+    // skill-written `divergence: likely` line.
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
@@ -1924,15 +2123,17 @@ fn plan_amend_divergence_likely_refused() {
         .assert()
         .success();
 
-    let assert = specify()
+    specify()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "amend", "foo", "--divergence", "likely"])
+        .args(["plan", "amend", "foo", "--divergence", "likely"])
         .assert()
-        .failure();
-    let code = assert.get_output().status.code().expect("exit code");
-    assert_eq!(code, 2, "reserved --divergence likely must exit 2 (argument error)");
-    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
-    assert_eq!(stderr["error"], "argument");
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("divergence: likely"),
+        "amend --divergence likely must write the field:\n{saved}"
+    );
 }
 
 #[test]
@@ -1955,4 +2156,430 @@ fn plan_amend_divergence_none_refused() {
     assert_eq!(code, 2, "implicit --divergence none must exit 2 (argument error)");
     let stderr = parse_stderr(&assert.get_output().stderr, project.root());
     assert_eq!(stderr["error"], "argument");
+}
+
+// -- plan {create,add,amend} --authority-override (RFC-27 §D3) --------
+
+const AUTHORITY_OVERRIDE_PLAN: &str = "\
+name: identity-revamp
+sources:
+  legacy: ./legacy-monolith
+  runtime: ./runtime-fixtures
+slices:
+  - name: identity-user-registration
+    project: default
+    target: omnia
+    status: pending
+    sources:
+      - key: legacy
+        candidate: user-registration
+      - key: runtime
+        candidate: user-registration
+";
+
+fn read_journal_lines(project: &Project) -> Vec<String> {
+    let path = project.root().join(".specify").join("journal.jsonl");
+    if !path.exists() {
+        return Vec::new();
+    }
+    fs::read_to_string(&path)
+        .expect("read journal")
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn plan_amend_authority_override_round_trips_and_validates() {
+    // RFC-27 §D3 happy path: set an override via `amend`, re-read
+    // `plan.yaml` and confirm the field landed under the named
+    // slice; `slice validate` accepts it because `runtime` is in
+    // the slice's `sources[]`.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "requirement=runtime",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("authority-override:"),
+        "plan.yaml must contain authority-override block, got:\n{saved}"
+    );
+    assert!(
+        saved.contains("requirement: runtime"),
+        "plan.yaml must record requirement: runtime, got:\n{saved}"
+    );
+
+    // Plan-level validate passes — orphan check only fires for bad keys.
+    specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+
+    // Journal carries exactly one PlanAmendAuthorityOverride event.
+    let lines = read_journal_lines(&project);
+    assert_eq!(lines.len(), 1, "expected one journal event, got:\n{lines:?}");
+    let line = &lines[0];
+    assert!(line.contains(r#""event":"plan.amend.authority-override""#));
+    assert!(line.contains(r#""action":"set""#));
+    assert!(line.contains(r#""claim-kind":"requirement""#));
+    assert!(line.contains(r#""source-key":"runtime""#));
+    assert!(line.contains(r#""slice-name":"identity-user-registration""#));
+}
+
+#[test]
+fn plan_amend_authority_override_orphan_source_key_refused_by_amend() {
+    // RFC-27 §D3 gate: refuse the `specify plan amend` write when
+    // the authority-override value names a source key not present
+    // in the slice's `sources[]` list (`phantom`). The orphan
+    // check runs in `Plan::validate` (folded in by Change 2.3),
+    // which `mutate_authority_overrides` re-runs after the
+    // override mutations to catch the case where a brand-new
+    // entry would introduce drift.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+    let before = fs::read_to_string(project.plan_path()).expect("read plan");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "requirement=phantom",
+        ])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "orphan source-key must exit 2 (validation_failed)");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    let results = stderr["results"].as_array().expect("results array");
+    assert!(
+        results.iter().any(|r| r["rule-id"] == "slice-authority-override-orphan-source-key"),
+        "expected slice-authority-override-orphan-source-key in results: {results:#?}"
+    );
+
+    let after = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert_eq!(before, after, "plan.yaml must not change on the refused write");
+    assert!(
+        read_journal_lines(&project).is_empty(),
+        "journal must stay empty on the refused write"
+    );
+}
+
+#[test]
+fn slice_validate_surfaces_authority_override_orphan() {
+    // RFC-27 §D3 — `specify slice validate` is the per-slice gate
+    // that mirrors the plan-level check; it runs before refine
+    // synthesises any artifacts so a bad override is caught
+    // before downstream writes. Hand-edit `plan.yaml` to seed an
+    // orphan entry (the only legal path is via the CLI, which
+    // refuses, so we splice the file to exercise the gate without
+    // bypassing the JSON-schema enforcement).
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+    let original = fs::read_to_string(project.plan_path()).expect("read plan");
+    // Splice the orphan override into the first slice. Anchor on
+    // the `status: pending` line so the YAML structure stays
+    // wellformed regardless of source-binding ordering.
+    let needle = "    status: pending\n    sources:";
+    let replacement =
+        "    status: pending\n    authority-override:\n      requirement: phantom\n    sources:";
+    let patched = original.replacen(needle, replacement, 1);
+    assert_ne!(patched, original, "splice precondition: needle present in plan.yaml");
+    fs::write(project.plan_path(), patched.as_bytes()).expect("write patched plan");
+
+    // Create the slice dir so `slice validate` runs to the gate
+    // (other artifacts absent → no spec/evidence findings).
+    let slices_dir =
+        project.root().join(".specify").join("slices").join("identity-user-registration");
+    fs::create_dir_all(&slices_dir).expect("mkdir slice");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "identity-user-registration"])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "slice validate orphan must exit 2 (validation_failed)");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    let results = stderr["results"].as_array().expect("results array");
+    assert!(
+        results.iter().any(|r| r["rule-id"] == "slice-authority-override-orphan-source-key"),
+        "expected orphan finding from slice validate: {results:#?}"
+    );
+}
+
+#[test]
+fn plan_amend_clear_authority_override_removes_only_one_entry() {
+    // RFC-27 §D3: `--clear-authority-override <slice> <kind>` peels
+    // off a single entry; the rest of the map survives. Journal
+    // records the Clear without any spurious Set events for the
+    // surviving entries.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "requirement=runtime",
+            "--authority-override",
+            "identity-user-registration",
+            "criterion=legacy",
+        ])
+        .assert()
+        .success();
+
+    // Wipe the journal so we observe only the second amend's events.
+    fs::write(project.root().join(".specify").join("journal.jsonl"), "").expect("clear journal");
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--clear-authority-override",
+            "identity-user-registration",
+            "requirement",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        !saved.contains("requirement: runtime"),
+        "requirement entry must be cleared, got:\n{saved}"
+    );
+    assert!(
+        saved.contains("criterion: legacy"),
+        "criterion entry must survive the targeted clear, got:\n{saved}"
+    );
+
+    let lines = read_journal_lines(&project);
+    assert_eq!(lines.len(), 1, "expected one Clear event, got:\n{lines:?}");
+    let line = &lines[0];
+    assert!(line.contains(r#""action":"clear""#));
+    assert!(line.contains(r#""claim-kind":"requirement""#));
+}
+
+#[test]
+fn plan_amend_clear_authority_overrides_wipes_whole_map_per_kind_events() {
+    // RFC-27 §D3: `--clear-authority-overrides <slice>` wipes the
+    // entire `authority-override` map for that slice and emits one
+    // Clear event per kind that was present before the wipe.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "requirement=runtime",
+            "--authority-override",
+            "identity-user-registration",
+            "criterion=legacy",
+        ])
+        .assert()
+        .success();
+    fs::write(project.root().join(".specify").join("journal.jsonl"), "").expect("clear journal");
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--clear-authority-overrides",
+            "identity-user-registration",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        !saved.contains("authority-override:"),
+        "authority-override map must elide once empty, got:\n{saved}"
+    );
+
+    let lines = read_journal_lines(&project);
+    assert_eq!(lines.len(), 2, "expected two per-kind Clear events, got:\n{lines:?}");
+    let combined = lines.join("\n");
+    assert!(combined.contains(r#""claim-kind":"requirement""#));
+    assert!(combined.contains(r#""claim-kind":"criterion""#));
+    assert!(
+        lines.iter().all(|l| l.contains(r#""action":"clear""#)),
+        "every emitted event must carry action: clear, got:\n{combined}"
+    );
+}
+
+#[test]
+fn plan_amend_authority_override_set_then_clear_resolves_to_cleared() {
+    // RFC-27 §D3 deterministic-order rule: a same-invocation set +
+    // clear pair on the same `(slice, kind)` resolves to the
+    // cleared state; the journal records the Clear (not the Set).
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "requirement=runtime",
+            "--clear-authority-override",
+            "identity-user-registration",
+            "requirement",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        !saved.contains("requirement: runtime"),
+        "set+clear on same kind must resolve to cleared, got:\n{saved}"
+    );
+    let lines = read_journal_lines(&project);
+    assert_eq!(lines.len(), 1, "expected one Clear event (set was elided), got:\n{lines:?}");
+    assert!(
+        lines[0].contains(r#""action":"clear""#),
+        "the surviving event must be a clear, got:\n{}",
+        lines[0]
+    );
+}
+
+#[test]
+fn plan_add_authority_override_seeds_map_on_new_slice() {
+    // RFC-27 §D3 add path: `plan add --authority-override
+    // <kind>=<key>` pre-seeds the override map at create time. Each
+    // entry fires one PlanAmendAuthorityOverride / `set` event.
+    let project = Project::init();
+    project.seed_plan(
+        "name: identity-revamp\n\
+        sources:\n\
+        \x20\x20legacy: ./legacy\n\
+        \x20\x20runtime: ./runtime\n\
+        slices: []\n",
+    );
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "add",
+            "identity-user-registration",
+            "--target",
+            "omnia",
+            "--sources",
+            "legacy=user-registration",
+            "--sources",
+            "runtime=user-registration",
+            "--authority-override",
+            "requirement=runtime",
+            "--authority-override",
+            "criterion=legacy",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(saved.contains("authority-override:"));
+    assert!(saved.contains("requirement: runtime"));
+    assert!(saved.contains("criterion: legacy"));
+
+    let lines = read_journal_lines(&project);
+    assert_eq!(lines.len(), 2, "one event per seeded kind, got:\n{lines:?}");
+    for line in &lines {
+        assert!(line.contains(r#""action":"set""#));
+        assert!(line.contains(r#""slice-name":"identity-user-registration""#));
+    }
+}
+
+#[test]
+fn plan_amend_authority_override_unknown_slice_refused() {
+    // RFC-27 §D3: unknown `--authority-override <slice>` must
+    // refuse at exit 2 before any plan.yaml write happens. Mirror
+    // the existing `--divergence-likely` guard.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+    let before = fs::read_to_string(project.plan_path()).expect("read plan");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "ghost-slice",
+            "requirement=runtime",
+        ])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "unknown slice must exit 2 (validation_failed)");
+
+    let after = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert_eq!(before, after, "plan.yaml must be unchanged on refusal");
+    assert!(read_journal_lines(&project).is_empty(), "no journal events on the refused write");
+}
+
+#[test]
+fn plan_amend_authority_override_bad_claim_kind_refused_at_parse_time() {
+    // RFC-27 §D3: `<kind>` is validated against the closed
+    // ClaimKind enum at the CLI boundary — clap surfaces a usage
+    // diagnostic (exit 2) before any plan mutation runs.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "bogus-kind=runtime",
+        ])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "invalid kind must exit 2");
+    // The kind enum is enforced inside our argument parser (not by
+    // clap's value_parser), so the error surfaces as a plain
+    // `Error::Argument` whose stderr is human text rather than
+    // JSON. We assert the exit code and the human message body.
+    let stderr_str = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr_str.contains("bogus-kind"),
+        "expected the bad kind name to appear in stderr, got:\n{stderr_str}"
+    );
 }

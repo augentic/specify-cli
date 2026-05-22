@@ -53,6 +53,11 @@
     "description": {
       "type": "string",
       "minLength": 1
+    },
+    "cache": {
+      "type": "string",
+      "enum": ["opt-out"],
+      "description": "RFC-27 \u00a7D8 \u2014 optional cache opt-out switch (mirrors `adapter.schema.json#/properties/cache`). Absence \u2261 cache on; `opt-out` makes every `extract`/`enumerate` run a cache miss with `reason: adapter-opt-out`."
     }
   },
   "$defs": {

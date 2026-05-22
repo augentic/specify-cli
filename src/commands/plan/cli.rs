@@ -4,7 +4,7 @@
 
 use clap::{ArgAction, Subcommand};
 
-use crate::cli::{SliceSourceArg, SourceArg};
+use crate::cli::{AliasAssign, AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
 
 /// Plan-authoring verbs (`specify plan *`).
 #[derive(Subcommand)]
@@ -18,6 +18,45 @@ pub enum PlanAction {
         /// Recorded in the plan's `sources:` map.
         #[arg(long = "source")]
         sources: Vec<SourceArg>,
+        /// Pre-stage `slices[].divergence: likely` on the named slice
+        /// (repeatable; RFC-27 §D5). Each occurrence fires one
+        /// `plan.propose.divergence` journal event. Refuses with
+        /// `plan-divergence-likely-unknown-slice` when the slice is
+        /// not present in the plan; the CLI is the single writer of
+        /// this field — do not edit `plan.yaml` directly.
+        #[arg(long = "divergence-likely", value_name = "SLICE", action = ArgAction::Append)]
+        divergence_likely: Vec<String>,
+        /// Stamp `lifecycle: reviewed` atomically with create
+        /// (RFC-27 §D7). Typing this flag *is* the operator's
+        /// Gate-1 consent — the CLI runs the same validation it
+        /// runs on the post-create path, refuses the create on
+        /// failure regardless of the flag, and on success writes a
+        /// single atomic `plan.yaml` carrying `lifecycle: reviewed`
+        /// plus the matching `plan.transition.reviewed` journal
+        /// event. Valid on any plan shape (empty scaffold,
+        /// single-slice, multi-slice).
+        #[arg(long = "auto-review", action = ArgAction::SetTrue)]
+        auto_review: bool,
+        /// Pre-seed a per-slice `authority-override` entry on a
+        /// named slice (RFC-27 §D3). Each occurrence takes two
+        /// positional values: the slice name and a
+        /// `<claim-kind>=<source-key>` assignment. Repeatable; later
+        /// occurrences override earlier ones on the same
+        /// `(slice, kind)` tuple. The slice MUST already exist in
+        /// the plan being created (unknown names short-circuit with
+        /// `plan-authority-override-unknown-slice`); the source key
+        /// is validated at `specify slice validate` time via the
+        /// orphan-key check. One
+        /// `plan.amend.authority-override` journal event fires per
+        /// resolved entry in the same batched append as
+        /// `--auto-review` / `--divergence-likely`.
+        #[arg(
+            long = "authority-override",
+            value_names = ["SLICE", "KIND=KEY"],
+            num_args = 2,
+            action = ArgAction::Append,
+        )]
+        authority_override: Vec<String>,
     },
     /// Validate plan.yaml (structure + plan/change consistency).
     ///
@@ -58,6 +97,17 @@ pub enum PlanAction {
         /// Baseline paths relevant to this change, relative to `.specify/` (repeatable)
         #[arg(long)]
         context: Vec<String>,
+        /// Set a per-slice `authority-override` entry on the slice
+        /// being added (RFC-27 §D3). Wire form is
+        /// `<claim-kind>=<source-key>`; both sides are kebab-case
+        /// and the kind is checked against the closed [`ClaimKind`]
+        /// enum at parse time. Repeatable; later occurrences win on
+        /// the same `(kind)` key. Orphan source keys are caught by
+        /// `specify slice validate`. One
+        /// `plan.amend.authority-override` event fires per resolved
+        /// entry.
+        #[arg(long = "authority-override", action = ArgAction::Append)]
+        authority_override: Vec<AuthorityOverrideKindAssign>,
     },
     /// Edit non-status fields on an existing plan entry.
     ///
@@ -98,9 +148,13 @@ pub enum PlanAction {
         #[arg(long = "remove-source", action = ArgAction::Append)]
         remove_source: Vec<String>,
         /// Set the slice's `divergence` field (RFC-25 §Plan-time
-        /// fusion). Only `accepted` and `rejected` are accepted on
-        /// the wire; `none` (absent) is the implicit default and
-        /// `likely` is reserved for the `propose` sub-step.
+        /// fusion; RFC-27 §D5). Accepts `likely`, `accepted`, or
+        /// `rejected` — the CLI is the single writer of this field
+        /// across every value of the closed enum, so use
+        /// `specify plan amend <plan> <slice> --divergence likely`
+        /// (or `--divergence accepted|rejected`) instead of editing
+        /// `plan.yaml` by hand. `none` (absent) is the implicit
+        /// default; omit this flag to leave the field unchanged.
         #[arg(long = "divergence")]
         divergence: Option<String>,
         /// Replace description. Pass `--description ""` to clear; omit the flag
@@ -118,6 +172,70 @@ pub enum PlanAction {
         /// flag to leave it unchanged.
         #[arg(long, num_args = 0.., value_delimiter = ',')]
         context: Option<Vec<String>>,
+        /// Set a per-slice `authority-override` entry (RFC-27 §D3).
+        /// Two positional values per occurrence: the slice name and
+        /// a `<claim-kind>=<source-key>` assignment. Repeatable;
+        /// later occurrences override earlier ones on the same
+        /// `(slice, kind)` tuple. If the same `(slice, kind)` also
+        /// appears in `--clear-authority-override`, the clear
+        /// wins (clears apply after sets). Validated against the
+        /// closed [`ClaimKind`] enum at parse time; orphan source
+        /// keys are caught by `specify slice validate`.
+        #[arg(
+            long = "authority-override",
+            value_names = ["SLICE", "KIND=KEY"],
+            num_args = 2,
+            action = ArgAction::Append,
+        )]
+        authority_override: Vec<String>,
+        /// Remove a single `(slice, kind)` entry from the
+        /// per-slice `authority-override` map (RFC-27 §D3). Two
+        /// positional values per occurrence: the slice name and
+        /// the claim kind (closed enum, kebab-case). Repeatable;
+        /// no-op when the entry was already absent. Applied after
+        /// `--authority-override` sets so a same-invocation set +
+        /// clear pair resolves to the cleared state.
+        #[arg(
+            long = "clear-authority-override",
+            value_names = ["SLICE", "KIND"],
+            num_args = 2,
+            action = ArgAction::Append,
+        )]
+        clear_authority_override: Vec<String>,
+        /// Wipe the entire per-slice `authority-override` map on
+        /// the named slice (RFC-27 §D3). Repeatable for multiple
+        /// slices. Applied last, after `--authority-override` sets
+        /// and `--clear-authority-override` clears. One
+        /// `plan.amend.authority-override` event with `action: clear`
+        /// fires per kind that was actually present in the map
+        /// before the wipe (no events when the map was already
+        /// empty).
+        #[arg(
+            long = "clear-authority-overrides",
+            value_name = "SLICE",
+            num_args = 1,
+            action = ArgAction::Append,
+        )]
+        clear_authority_overrides: Vec<String>,
+        /// Append an alias to a candidate in `<project_dir>/discovery.md`
+        /// (RFC-27 §D6). Wire form is `<candidate-id>=<alias>`; both
+        /// sides are kebab-case. Repeatable. Mutates `discovery.md`
+        /// (NOT `plan.yaml`); the whole amend is refused at exit 2
+        /// (`discovery-alias-collision`) when the new alias would
+        /// collide with any other candidate's `id` or `aliases[]` in
+        /// the same `discovery.md`. Operator additions through this
+        /// flag survive re-enumeration so long as the source adapter
+        /// keeps emitting the bearing candidate's `id` (RFC-27 §D6).
+        #[arg(long = "add-alias", action = ArgAction::Append)]
+        add_alias: Vec<AliasAssign>,
+        /// Remove an alias from a candidate in
+        /// `<project_dir>/discovery.md` (RFC-27 §D6). Wire form is
+        /// `<candidate-id>=<alias>`; idempotent (no-op when the
+        /// alias is already absent). Repeatable. The whole amend
+        /// fails at exit 2 (`discovery-candidate-unknown`) when no
+        /// candidate has the named id.
+        #[arg(long = "remove-alias", action = ArgAction::Append)]
+        remove_alias: Vec<AliasAssign>,
     },
     /// Apply a validated status transition.
     ///

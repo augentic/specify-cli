@@ -104,7 +104,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::super::model::{Entry, Lifecycle, Status};
+    use super::super::model::{Entry, Lifecycle, SliceAuthorityOverride, Status};
     use super::super::test_support::RFC_EXAMPLE_YAML;
     use super::*;
 
@@ -161,6 +161,7 @@ mod tests {
                 context: vec![],
                 description: None,
                 divergence: None,
+                authority_override: SliceAuthorityOverride::default(),
             }],
         };
         plan.save(&path).expect("save ok");
@@ -217,6 +218,7 @@ mod tests {
                 context: vec![],
                 description: None,
                 divergence: None,
+                authority_override: SliceAuthorityOverride::default(),
             }],
         };
         plan.save(&path).expect("save ok");
@@ -267,6 +269,7 @@ mod tests {
                 context: vec![],
                 description: None,
                 divergence: None,
+                authority_override: SliceAuthorityOverride::default(),
             }],
         };
         second.save(&path).expect("save second ok");

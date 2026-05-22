@@ -25,7 +25,7 @@ run` WASI passthrough.
 |------|--------------------------|-----------------------------------------------------------------------------------------------|
 | 0    | `EXIT_SUCCESS`           | Command succeeded.                                                                            |
 | 1    | `EXIT_GENERIC_FAILURE`   | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, ...). |
-| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, or a tool request rejected as undeclared.           |
+| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the RFC-27 §D3/D4/D6 kebab discriminants `slice-authority-override-orphan-source-key`, `slice-fusion-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
 ## Atomic writes
@@ -331,6 +331,53 @@ a direct YAML edit (per the W3.2 hand-off). Operators flipping the
 field after Gate 1 review use `accepted | rejected` exclusively.
 Refer to RFC-25 §"Plan-time fusion".
 
+## RFC-27 §D2 — per-kind authority on Evidence
+
+`evidence.schema.json` gains an
+optional `authority-overrides` map keyed by claim kind, valued by
+authority class. The document-level `authority:` field stays
+required; the override applies to all claims of the named kind in
+that Evidence document. Per-claim overrides remain explicitly
+deferred. Synthesis consults the per-kind override first, then the
+document-level `authority:`, then the RFC-25 default ordering — a
+byte-stable three-step fallback chain.
+
+## RFC-27 §D3 — per-slice authority on `plan.yaml`
+
+`plan.yaml.slices[]` gains an
+optional `authority-override` map keyed by claim kind, valued by
+source key. Keys come from the closed claim-kind enum; values MUST
+be source keys present in the slice's own `sources[]` list. Orphan
+keys are rejected by `specify slice validate` with the
+`slice-authority-override-orphan-source-key` kebab discriminant. The
+map is scoped to one slice — plan-wide and project-wide overrides
+are out of scope.
+
+## RFC-27 §D4 — `fusion.yaml` is audit-only
+
+`schemas/slice/fusion.schema.json`
+fixes the closed top-level shape (`version`, `slice`,
+`generated-at`, `generator`, `requirements[]`). `/spec:refine`
+writes the file atomically; downstream verbs read `spec.md` as the
+authoritative artifact and treat `fusion.yaml` as an inspection
+surface. `specify slice validate` enforces id-set parity between
+`spec.md` `REQ-*` ids and `fusion.yaml.requirements[].id` and
+catches contributing-claim → Evidence-claim drift, both via the
+`slice-fusion-drift` discriminant.
+
+## RFC-27 §D8 — cache fingerprint inputs
+
+The closed list of fingerprint
+inputs (`source path canonicalised | adapter name@version | brief
+sha256 | sorted declared-tool versions | candidate id`) lives on
+[`crate::adapter::CacheFingerprint`]. CI that pins the four inputs
+common across runs can re-run any prior `/spec:execute` and expect
+byte-stable cache hits; CI observing any of the five
+`slice.extract.cache-miss` reasons knows exactly which input
+drifted. Adapter authors opt out with `cache: opt-out` on
+`adapter.yaml`; the matching journal event carries `reason:
+adapter-opt-out`.
+
 ## Journal event names
 
 `crates/domain/src/journal.rs` emits a closed taxonomy of RFC-19
@@ -347,6 +394,10 @@ variants are `snake_case` and bridge to the wire via
 | `slice.transition.refined` | `specify slice transition <slice> refined`. |
 | `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
 | `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specify slice validate`, one per requirement-block tag emitted by the synthesis substep. |
+| `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). RFC-27 §D8. |
+| `slice.fusion.written` | `/spec:refine`'s atomic `fusion.yaml` writer (Change 2.6). RFC-27 §D4. |
+| `slice.fixture-replay.completed` | Target adapter's `build` step when it consumes `code-runtime` fixtures; optional in v1. RFC-27 §D1. |
+| `plan.amend.authority-override` | `specify plan create --authority-override`, `specify plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. RFC-27 §D3. |
 
 Events persist as newline-delimited JSON at
 `<project_dir>/.specify/journal.jsonl`. The closed `from` / `to`

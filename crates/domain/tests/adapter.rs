@@ -170,6 +170,70 @@ briefs:
 }
 
 #[test]
+fn resolves_code_runtime_source_adapter_with_tools_array() {
+    // RFC-27 §Acceptance scenario #26-1 (release blocker, D1):
+    // pin the loader against the live `sources/code-runtime/`
+    // adapter shape shipped by the `plg` repo. The manifest carries
+    // a `tools: [{ name: fixture-index }]` declaration and a free-
+    // form `description:` field; both must round-trip through the
+    // axis-aware loader without forcing the operator to bind the
+    // declared WASI tool (the tool itself is a follow-up per RFC-27
+    // §Implementation plan).
+    //
+    // This test is the cli-side complement to the deno harness
+    // assertions in `augentic/specify` at
+    // `tests/cross_repo/sources_test.ts` — the harness pins the
+    // golden-fixture data shape (Evidence + fusion.yaml +
+    // discovery.md) while this test pins the loader behaviour.
+    let (_tmp, project) = local_project();
+    let manifest_dir = project.join("sources/code-runtime");
+    fs::create_dir_all(manifest_dir.join("briefs")).expect("create code-runtime adapter dir");
+    fs::write(
+        manifest_dir.join("adapter.yaml"),
+        r"name: code-runtime
+version: 1
+axis: source
+operations: [enumerate, extract]
+briefs:
+  enumerate: briefs/enumerate.md
+  extract: briefs/extract.md
+tools:
+  - name: fixture-index
+description: >-
+  Runtime-fixture source adapter. Walks a read-only fixture tree under
+  `$SOURCE_DIR` and emits one candidate per observed handler entry point.
+",
+    )
+    .expect("write code-runtime manifest");
+    fs::write(manifest_dir.join("briefs/enumerate.md"), "# enumerate\n")
+        .expect("enumerate brief stub");
+    fs::write(manifest_dir.join("briefs/extract.md"), "# extract\n").expect("extract brief stub");
+
+    let resolved = Adapter::resolve(Axis::Source, "code-runtime", &project)
+        .expect("code-runtime adapter loads via Axis::Source resolver");
+    assert_eq!(resolved.manifest.name, "code-runtime");
+    assert_eq!(resolved.manifest.axis, Axis::Source);
+    assert_eq!(
+        resolved.manifest.operations,
+        vec!["enumerate", "extract"],
+        "code-runtime declares enumerate + extract per RFC-27 §Runtime source adapter"
+    );
+    assert_eq!(
+        resolved.manifest.briefs.get("extract").map(String::as_str),
+        Some("briefs/extract.md")
+    );
+    assert!(
+        matches!(resolved.location, AdapterLocation::Local(_)),
+        "live plg manifest resolves under sources/<name>/ (local axis)"
+    );
+    assert!(
+        resolved.root_dir.ends_with("sources/code-runtime"),
+        "resolver root must land on the plg-tree adapter directory, got: {}",
+        resolved.root_dir.display()
+    );
+}
+
+#[test]
 fn axis_mismatch_reports_dedicated_diagnostic() {
     // Adapter file lives under `sources/<name>/` but declares
     // `axis: target` — should fall through to the source schema and

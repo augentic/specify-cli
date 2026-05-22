@@ -79,6 +79,7 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
+    use super::super::model::SliceAuthorityOverride;
     use super::super::test_support::{change, change_with_deps, plan_with_changes};
     use super::*;
 
@@ -99,6 +100,7 @@ mod tests {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         };
         plan.create(incoming).expect("create ok");
         assert_eq!(plan.entries.len(), 1);
@@ -194,6 +196,7 @@ mod tests {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         };
         let err = plan.create(entry).expect_err("must reject entry without project or target");
         match err {
@@ -222,6 +225,7 @@ mod tests {
             context: vec!["contracts/http/foo.yaml".into()],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         };
         plan.create(entry).expect("create ok");
         assert_eq!(
@@ -244,6 +248,7 @@ mod tests {
             context: vec!["../escape".into()],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         };
         let err = plan.create(entry).expect_err("invalid context path must be rejected");
         match err {

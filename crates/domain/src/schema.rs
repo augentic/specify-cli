@@ -21,6 +21,18 @@ use crate::change::Plan;
 
 const PLAN_JSON_SCHEMA: &str = include_str!("../../../schemas/plan/plan.schema.json");
 const EVIDENCE_JSON_SCHEMA: &str = include_str!("../../../schemas/evidence.schema.json");
+const FUSION_JSON_SCHEMA: &str = include_str!("../../../schemas/slice/fusion.schema.json");
+
+/// Embedded JSON Schema for `fusion.yaml` (RFC-27 §D4).
+///
+/// Exposed as a `&'static str` so domain modules can validate
+/// in-memory `FusionIndex` values (Phase 1) without re-reading the
+/// schema from disk. The fusion validator wiring lands in Change 1.1
+/// alongside the new `slice/fusion.rs` module.
+#[must_use]
+pub const fn fusion_schema_source() -> &'static str {
+    FUSION_JSON_SCHEMA
+}
 
 /// Validate `plan` against the embedded `schemas/plan/plan.schema.json`.
 ///
@@ -218,6 +230,12 @@ mod tests {
     #[test]
     fn evidence_schema_compiles() {
         compile_schema(EVIDENCE_JSON_SCHEMA).expect("evidence schema compiles");
+    }
+
+    /// Embedded fusion schema parses and compiles.
+    #[test]
+    fn fusion_schema_compiles() {
+        compile_schema(FUSION_JSON_SCHEMA).expect("fusion schema compiles");
     }
 
     /// An empty evidence directory (or missing one) passes — empty

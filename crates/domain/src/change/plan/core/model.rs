@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::evidence::ClaimKind;
+
 /// Lifecycle state of a single entry in [`Plan::entries`].
 ///
 /// RFC-25 collapses the per-entry state machine to three states:
@@ -160,6 +162,15 @@ pub struct Entry {
     /// `specify plan amend --divergence`. Advisory metadata in v1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub divergence: Option<Divergence>,
+    /// RFC-27 §D3 — optional per-slice authority override map keyed
+    /// by claim kind, valued by source key. Keys are the closed
+    /// [`ClaimKind`] enum; values MUST be source keys present in
+    /// this slice's own [`Entry::sources`] list — orphan keys are
+    /// rejected by `specify slice validate` with
+    /// `slice-authority-override-orphan-source-key`. Empty map and
+    /// missing field are equivalent.
+    #[serde(default, skip_serializing_if = "SliceAuthorityOverride::is_empty")]
+    pub authority_override: SliceAuthorityOverride,
 }
 
 /// RFC-25 §Plan-time fusion — slice-level fusion-outcome enum.
@@ -173,10 +184,14 @@ pub struct Entry {
 /// four values literally — `Divergence::None` serialises as the
 /// kebab-case `"none"` for that channel.
 ///
-/// `none` and `likely` literals are not accepted on the
-/// `specify plan amend --divergence` CLI flag (`likely` is reserved
-/// for the synthesised `propose` sub-step). The CLI accepts only
-/// `Accepted` and `Rejected` from the operator.
+/// RFC-27 §D5 — the CLI is the single writer of every variant of
+/// this enum on `plan.yaml.slices[].divergence`. `Likely` reaches
+/// disk via `specify plan create --divergence-likely <slice>` (the
+/// post-`propose` staging site) and `specify plan amend --divergence
+/// likely` (the bare-skill fallback); `Accepted` / `Rejected` reach
+/// disk via `specify plan amend --divergence`. `none` is the
+/// implicit-absent default and is never serialised explicitly into
+/// a slice record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -195,6 +210,55 @@ pub enum Divergence {
     /// Operator-stamped at Gate 1 — divergence rejected; the plan
     /// must be re-proposed before Gate 1 review.
     Rejected,
+}
+
+/// RFC-27 §D3 — per-slice authority override map keyed by claim
+/// kind, valued by source key.
+///
+/// The map is scoped to one [`Entry`]; plan-wide and project-wide
+/// overrides are out of scope per RFC-27. Keys reuse the closed
+/// [`ClaimKind`] enum; values are bare source-key strings that MUST
+/// be present in the owning slice's [`Entry::sources`] list —
+/// validation refuses orphan keys with
+/// `slice-authority-override-orphan-source-key`.
+///
+/// `#[serde(transparent)]` over `BTreeMap` so the on-disk shape is
+/// the bare YAML map under `authority-override:`. Empty map and
+/// missing field round-trip identically — both leave the slice's
+/// authority resolution at the RFC-25 default ordering.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct SliceAuthorityOverride {
+    /// Inner map. `BTreeMap` for byte-stable diffs on serialise.
+    pub by_kind: BTreeMap<ClaimKind, String>,
+}
+
+impl SliceAuthorityOverride {
+    /// Build a [`SliceAuthorityOverride`] from an iterator of
+    /// `(kind, source-key)` pairs. Duplicate keys take the last
+    /// value per [`BTreeMap::insert`].
+    #[must_use]
+    pub fn from_pairs<I, S>(pairs: I) -> Self
+    where
+        I: IntoIterator<Item = (ClaimKind, S)>,
+        S: Into<String>,
+    {
+        Self {
+            by_kind: pairs.into_iter().map(|(k, v)| (k, v.into())).collect(),
+        }
+    }
+
+    /// `true` when the override map carries no entries.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.by_kind.is_empty()
+    }
+
+    /// Resolve the source key, if any, pinned for `kind`.
+    #[must_use]
+    pub fn resolve(&self, kind: ClaimKind) -> Option<&str> {
+        self.by_kind.get(&kind).map(String::as_str)
+    }
 }
 
 /// One `(source-key, candidate-id)` binding under [`Entry::sources`].
@@ -335,11 +399,11 @@ pub struct EntryPatch {
     pub context: Option<Vec<String>>,
     /// Set `divergence` when `Some`. `None` leaves the field
     /// untouched. The CLI is the only caller that materialises this
-    /// patch (`specify plan amend --divergence`) and refuses to set
-    /// either `Likely` (reserved for `propose`) or the implicit
-    /// `none` value, so only `Accepted` / `Rejected` reach this
-    /// field in practice; the domain enum is widened to all three
-    /// values to keep parser symmetry with [`Entry::divergence`].
+    /// patch (`specify plan amend --divergence`) — RFC-27 §D5
+    /// widens the accepted operator surface to include `Likely`
+    /// alongside `Accepted` / `Rejected`; the implicit `None` value
+    /// is still rejected at the flag-parser level (omit
+    /// `--divergence` to leave the field alone).
     pub divergence: Option<Divergence>,
 }
 
@@ -459,6 +523,7 @@ slices:
                 context: vec![],
                 description: None,
                 divergence: None,
+                authority_override: SliceAuthorityOverride::default(),
             }],
         };
         let yaml = serde_saphyr::to_string(&plan).expect("serialize plan");
@@ -635,6 +700,7 @@ slices:
                     context: vec![],
                     description: None,
                     divergence: None,
+                    authority_override: SliceAuthorityOverride::default(),
                 },
                 Entry {
                     name: "b".into(),
@@ -646,6 +712,7 @@ slices:
                     context: vec![],
                     description: None,
                     divergence: None,
+                    authority_override: SliceAuthorityOverride::default(),
                 },
             ],
         };
@@ -670,6 +737,7 @@ slices:
                     context: vec![],
                     description: None,
                     divergence: None,
+                    authority_override: SliceAuthorityOverride::default(),
                 },
                 Entry {
                     name: "b".into(),
@@ -681,11 +749,82 @@ slices:
                     context: vec![],
                     description: None,
                     divergence: None,
+                    authority_override: SliceAuthorityOverride::default(),
                 },
             ],
         };
         assert!(plan.is_executing(), "any in-progress => executing");
         assert!(!plan.is_drained(), "in-progress entry => not drained");
+    }
+
+    #[test]
+    fn authority_override_round_trips() {
+        let yaml = r"name: rfc-27
+slices:
+  - name: identity-user-registration
+    target: omnia
+    project: identity-svc
+    status: pending
+    sources:
+      - key: runtime
+        candidate: user-registration
+      - key: legacy-monolith
+        candidate: user-registration
+    authority-override:
+      requirement: runtime
+      criterion: legacy-monolith
+";
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
+        let entry = &plan.entries[0];
+        assert_eq!(entry.authority_override.resolve(ClaimKind::Requirement), Some("runtime"));
+        assert_eq!(entry.authority_override.resolve(ClaimKind::Criterion), Some("legacy-monolith"));
+
+        let rendered = serde_saphyr::to_string(&plan).expect("serialize");
+        assert!(rendered.contains("authority-override:"));
+        assert!(rendered.contains("requirement: runtime"));
+        let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
+        assert_eq!(plan, reparsed);
+    }
+
+    #[test]
+    fn empty_authority_override_elides() {
+        let yaml = r"name: tiny
+slices:
+  - name: x
+    target: omnia
+    status: pending
+";
+        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
+        assert!(plan.entries[0].authority_override.is_empty());
+        let rendered = serde_saphyr::to_string(&plan).expect("serialize");
+        assert!(
+            !rendered.contains("authority-override"),
+            "empty override map must elide on write, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn divergence_likely_round_trips_to_byte_identical_yaml() {
+        // RFC-27 §D5: the CLI is the single writer of every variant
+        // of `slices[].divergence`. The on-disk shape for `Likely`
+        // is one kebab-case line on the slice entry, byte-identical
+        // to the legacy skill-written output we are retiring.
+        let reference = r"name: demo
+slices:
+  - name: checkout
+    project: default
+    status: pending
+    divergence: likely
+";
+        let plan: Plan = serde_saphyr::from_str(reference).expect("parse reference yaml");
+        assert_eq!(plan.entries[0].divergence, Some(Divergence::Likely));
+        let rendered = serde_saphyr::to_string(&plan).expect("serialize");
+        assert!(
+            rendered.contains("divergence: likely"),
+            "Divergence::Likely must serialise as kebab-case `divergence: likely`, got:\n{rendered}"
+        );
+        let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
+        assert_eq!(plan, reparsed, "plan with divergence: likely must round-trip");
     }
 
     #[test]

@@ -2,7 +2,7 @@
 //! accumulate (no check short-circuits another); order is structural
 //! checks first, then consistency checks against the registry.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
 use petgraph::algo::{tarjan_scc, toposort};
@@ -38,6 +38,7 @@ impl Plan {
         results.extend(check_single_in_progress(&self.entries));
         results.extend(missing_project_or_target(&self.entries));
         results.extend(check_context_paths(&self.entries));
+        results.extend(authority_override_orphan_source_keys(&self.entries));
         if let Some(reg) = registry {
             results.extend(check_project_in_registry(&self.entries, reg));
             results.extend(check_project_required_multi_repo(&self.entries, reg));
@@ -231,6 +232,45 @@ fn missing_project_or_target(changes: &[Entry]) -> Vec<Finding> {
                 ),
                 entry: Some(entry.name.clone()),
             });
+        }
+    }
+    out
+}
+
+/// RFC-27 §D3 — refuse orphan per-slice `authority-override` values.
+///
+/// For every slice's override map, every value MUST appear in that
+/// slice's `sources[].key` list; otherwise the operator has named a
+/// source key that does not exist on the slice, and synthesis would
+/// silently fall through to the default authority. Findings sort
+/// deterministically by slice name (declaration order) then by
+/// claim kind (the `BTreeMap` iteration order on
+/// [`super::model::SliceAuthorityOverride::by_kind`]).
+///
+/// Public for the per-slice helper at `specify slice validate` to
+/// surface only the findings relevant to one slice.
+#[must_use]
+pub fn authority_override_orphan_source_keys(changes: &[Entry]) -> Vec<Finding> {
+    let mut out = Vec::new();
+    for entry in changes {
+        if entry.authority_override.is_empty() {
+            continue;
+        }
+        let known: BTreeSet<&str> =
+            entry.sources.iter().map(super::model::SliceSourceBinding::key).collect();
+        for (kind, key) in &entry.authority_override.by_kind {
+            if !known.contains(key.as_str()) {
+                out.push(Finding {
+                    level: Severity::Error,
+                    code: "slice-authority-override-orphan-source-key",
+                    message: format!(
+                        "slice '{}' override for kind '{kind}' references source key '{key}', \
+                         not present in slice sources",
+                        entry.name
+                    ),
+                    entry: Some(entry.name.clone()),
+                });
+            }
         }
     }
     out

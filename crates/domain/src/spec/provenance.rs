@@ -50,6 +50,51 @@ pub struct Requirement {
     /// Source-text span anchored at the heading line; used for
     /// error reporting.
     pub span: Span,
+    /// RFC-27 §D3 — informational trace recording which authority
+    /// override (per-slice, per-Evidence, document default) selected
+    /// the winning source for a `Status: divergence` block.
+    ///
+    /// Default `None`. The parser does **not** populate this field
+    /// today — the authoritative resolution-trace surface is
+    /// [`crate::slice::fusion::ResolutionTrace`] on
+    /// `fusion.yaml.requirements[].resolution-trace`. The field
+    /// exists here so Change 3.2's refine skill (and any future
+    /// in-memory synthesis path that materialises [`Requirement`]
+    /// before writing both `spec.md` and `fusion.yaml`) has a
+    /// per-requirement place to stash the resolution step alongside
+    /// the requirement body without re-loading the fusion index.
+    /// `parse_spec_md` always leaves this `None`; missing trace
+    /// information is never a validation finding.
+    #[doc(hidden)]
+    pub override_trace: Option<OverrideTrace>,
+}
+
+/// Informational resolution trace for divergence requirements.
+///
+/// Attached to a `Requirement` whose `Status` is `divergence`
+/// (RFC-27 §D3). Mirrors [`crate::slice::fusion::ResolutionTrace`]
+/// in spirit but lives on the in-memory `Requirement` so callers
+/// that already have one available (refine-time synthesis) need
+/// not pull the matching `fusion.yaml` row.
+///
+/// Never populated by [`parse_spec_md`]; reserved for downstream
+/// synthesis code paths to set before they write `spec.md` and
+/// `fusion.yaml` together. Provenance validation refuses neither
+/// presence nor absence of this field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OverrideTrace {
+    /// Name of the resolution step that broke the tie. Matches the
+    /// authority-md taxonomy: `per-slice-authority-override`,
+    /// `per-evidence-authority-override`,
+    /// `document-authority-ordering`.
+    pub step: String,
+    /// Source key the step selected as the winner.
+    pub winner: Option<String>,
+    /// Free-form note for human-readable rendering. Refine writes a
+    /// single-line summary here that lines up with the in-body
+    /// `(from <source>; <authority>, <step>)` parenthetical the
+    /// authority.md worked-example pins.
+    pub note: Option<String>,
 }
 
 /// Closed enum for the `Status:` line (RFC-25 §Authority hierarchy).
@@ -529,6 +574,7 @@ impl Block {
                 byte_end,
                 line_start: span_line,
             },
+            override_trace: None,
         }
     }
 }

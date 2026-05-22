@@ -5,7 +5,7 @@ use std::process::Command;
 use tempfile::tempdir;
 
 use super::*;
-use crate::change::plan::core::{Entry, Plan, Status};
+use crate::change::plan::core::{Entry, Plan, SliceAuthorityOverride, Status};
 use crate::registry::{Registry, RegistryProject};
 
 fn change(name: &str, status: Status) -> Entry {
@@ -19,6 +19,7 @@ fn change(name: &str, status: Status) -> Entry {
         context: vec![],
         description: None,
         divergence: None,
+        authority_override: SliceAuthorityOverride::default(),
     }
 }
 

@@ -2,8 +2,11 @@ use std::collections::{BTreeMap, HashSet};
 
 use tempfile::tempdir;
 
-use super::super::model::{Entry, Lifecycle, Plan, Severity, Status};
+use super::super::model::{
+    Entry, Lifecycle, Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, Status,
+};
 use super::super::test_support::{RFC_EXAMPLE_YAML, change, plan_with_changes};
+use crate::evidence::ClaimKind;
 use crate::registry::{Registry, RegistryProject};
 
 #[test]
@@ -186,6 +189,7 @@ fn project_not_in_registry() {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }],
     };
     let registry = Registry {
@@ -218,6 +222,7 @@ fn project_missing_multi_repo() {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }],
     };
     let registry = Registry {
@@ -259,6 +264,7 @@ fn target_only_entry_valid_multi_repo() {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }],
     };
     let registry = Registry {
@@ -303,6 +309,7 @@ fn project_valid_single_repo() {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }],
     };
     let registry = Registry {
@@ -336,6 +343,7 @@ fn project_matches_registry() {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }],
     };
     let registry = Registry {
@@ -377,6 +385,7 @@ fn neither_project_nor_target_error() {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }],
     };
     let results = plan.validate(None, None);
@@ -404,6 +413,7 @@ fn target_only_passes() {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }],
     };
     let results = plan.validate(None, None);
@@ -429,6 +439,7 @@ fn project_and_target_passes() {
             context: vec![],
             description: None,
             divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }],
     };
     let results = plan.validate(None, None);
@@ -464,6 +475,103 @@ fn context_rejects_absolute() {
         .collect();
     assert_eq!(errors.len(), 1, "expected exactly one context-path-invalid error");
     assert!(errors[0].message.contains("/absolute/path"));
+}
+
+#[test]
+fn authority_override_orphan_source_key_rejected() {
+    let mut entry = change("identity-user-registration", Status::Pending);
+    entry.sources = vec![SliceSourceBinding::Bare("legacy".into())];
+    entry.authority_override = SliceAuthorityOverride::from_pairs([
+        (ClaimKind::Requirement, "phantom"),
+        (ClaimKind::Criterion, "legacy"),
+    ]);
+    let mut plan = plan_with_changes(vec![entry]);
+    plan.sources.insert("legacy".into(), "/tmp".into());
+    let hits: Vec<_> = plan
+        .validate(None, None)
+        .into_iter()
+        .filter(|r| r.code == "slice-authority-override-orphan-source-key")
+        .collect();
+    assert_eq!(hits.len(), 1, "expected one orphan finding, got: {hits:#?}");
+    assert_eq!(hits[0].entry.as_deref(), Some("identity-user-registration"));
+    assert!(
+        hits[0].message.contains("requirement") && hits[0].message.contains("phantom"),
+        "message must name kind + bad source key, got: {}",
+        hits[0].message
+    );
+}
+
+#[test]
+fn authority_override_empty_passes() {
+    let mut entry = change("any", Status::Pending);
+    entry.sources = vec![SliceSourceBinding::Bare("legacy".into())];
+    let mut plan = plan_with_changes(vec![entry]);
+    plan.sources.insert("legacy".into(), "/tmp".into());
+    assert!(
+        !plan
+            .validate(None, None)
+            .iter()
+            .any(|r| r.code == "slice-authority-override-orphan-source-key"),
+        "empty override map must not trip orphan check"
+    );
+}
+
+#[test]
+fn authority_override_valid_keys_pass() {
+    let mut entry = change("any", Status::Pending);
+    entry.sources =
+        vec![SliceSourceBinding::Bare("legacy".into()), SliceSourceBinding::Bare("runtime".into())];
+    entry.authority_override = SliceAuthorityOverride::from_pairs([
+        (ClaimKind::Requirement, "runtime"),
+        (ClaimKind::Criterion, "legacy"),
+    ]);
+    let mut plan = plan_with_changes(vec![entry]);
+    plan.sources.insert("legacy".into(), "/tmp/legacy".into());
+    plan.sources.insert("runtime".into(), "/tmp/runtime".into());
+    assert!(
+        !plan
+            .validate(None, None)
+            .iter()
+            .any(|r| r.code == "slice-authority-override-orphan-source-key"),
+        "all-valid overrides must pass"
+    );
+}
+
+#[test]
+fn authority_override_findings_sort_deterministically() {
+    let mut entry = change("identity-user-registration", Status::Pending);
+    entry.sources = vec![SliceSourceBinding::Bare("legacy".into())];
+    // Insert in non-sorted order; BTreeMap iteration sorts by kind.
+    entry.authority_override = SliceAuthorityOverride::from_pairs([
+        (ClaimKind::Requirement, "ghost-a"),
+        (ClaimKind::Criterion, "ghost-b"),
+        (ClaimKind::Decision, "ghost-c"),
+    ]);
+    let mut plan = plan_with_changes(vec![entry]);
+    plan.sources.insert("legacy".into(), "/tmp".into());
+    let codes: Vec<&str> = plan
+        .validate(None, None)
+        .iter()
+        .filter(|r| r.code == "slice-authority-override-orphan-source-key")
+        .map(|r| {
+            // Pull the kind out of the message (between "kind '" and "'").
+            let msg = &r.message;
+            let start = msg.find("kind '").unwrap() + "kind '".len();
+            let end = start + msg[start..].find('\'').unwrap();
+            &msg[start..end]
+        })
+        .map(|s| -> &'static str {
+            match s {
+                "requirement" => "requirement",
+                "criterion" => "criterion",
+                "decision" => "decision",
+                _ => "other",
+            }
+        })
+        .collect();
+    // ClaimKind PartialOrd matches enum declaration order: Intent,
+    // Requirement, Criterion, Decision, …
+    assert_eq!(codes, vec!["requirement", "criterion", "decision"]);
 }
 
 #[test]

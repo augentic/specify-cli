@@ -6,8 +6,10 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use specify_domain::change::Plan;
+use specify_domain::change::{Plan, authority_override_orphan_source_keys};
+use specify_domain::discovery::Discovery;
 use specify_domain::schema::validate_evidence_dir;
+use specify_domain::slice::fusion::{self, FusionIndex};
 use specify_domain::spec::provenance;
 use specify_domain::validate::validate_slice;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
@@ -29,6 +31,21 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // `refining`) is a valid intermediate state and is silently
     // skipped.
     validate_spec_provenance(ctx, &slice_dir, name)?;
+
+    // RFC-27 §D4 — when `fusion.yaml` exists, cross-check it against
+    // `spec.md` REQ ids and per-source evidence claim ids. Absence
+    // of `fusion.yaml` is *not* drift: older slices and pre-refine
+    // slices skip the check silently. The slice-fusion-drift error
+    // body bundles every finding so the operator sees the full
+    // re-refine surface in one pass.
+    //
+    // RFC-27 §D3 — refuse a per-slice `authority-override` map that
+    // names a source key absent from the slice's own `sources[]`
+    // list. Runs before `validate_slice` so the operator sees the
+    // structural issue before adapter rules surface downstream
+    // breakage. Both checks share an error envelope when they
+    // both fire so the operator can see every issue in one pass.
+    validate_pre_adapter_gates(ctx, &slice_dir, name)?;
 
     let report = validate_slice(&slice_dir)?;
     let passed = report.passed;
@@ -58,6 +75,129 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
             format!("slice `{name}` failed validation"),
         ))
     }
+}
+
+/// Bundle the three pre-adapter gates that fire on a single slice:
+///
+/// 1. RFC-27 §D4 — fusion-drift detection between `spec.md`, the
+///    per-slice `fusion.yaml`, and per-source `evidence/<key>.yaml`.
+/// 2. RFC-27 §D3 — orphan source keys on the slice's
+///    `plan.yaml.slices[].authority-override` map.
+/// 3. RFC-27 §D6 — candidate `id` ↔ `aliases[]` collisions in
+///    `<project_dir>/discovery.md`. A discovery-level check (not
+///    per-slice) but evaluated here because `specify slice validate`
+///    is the single CLI surface skills shell out to between
+///    `/spec:refine` and `/spec:build`.
+///
+/// All three checks can fail independently; we collect every finding
+/// into a single [`Error::Validation`] so the operator sees the
+/// full surface in one pass instead of one error per re-run.
+fn validate_pre_adapter_gates(ctx: &Ctx, slice_dir: &Path, name: &str) -> Result<()> {
+    let mut findings: Vec<ValidationSummary> = Vec::new();
+    findings.extend(collect_fusion_drift_findings(slice_dir)?);
+    findings.extend(collect_authority_override_orphan_findings(ctx, name)?);
+    findings.extend(collect_discovery_alias_collision_findings(ctx)?);
+    if findings.is_empty() { Ok(()) } else { Err(Error::Validation { results: findings }) }
+}
+
+/// RFC-27 §D6 alias-collision gate. Loads
+/// `<project_dir>/discovery.md` when present and emits one
+/// `discovery-alias-collision` finding per name that resolves to
+/// more than one candidate. Absent `discovery.md` skips the check
+/// silently — older slices and projects without an authored
+/// inventory remain valid (this is the read-only counterpart to
+/// the per-amend gate in `specify plan amend --add-alias`).
+fn collect_discovery_alias_collision_findings(ctx: &Ctx) -> Result<Vec<ValidationSummary>> {
+    let path = ctx.layout().discovery_path();
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let discovery = Discovery::load(&path)?;
+    Ok(discovery
+        .check_alias_collisions()
+        .iter()
+        .map(specify_domain::discovery::DiscoveryAliasCollision::to_summary)
+        .collect())
+}
+
+/// RFC-27 §D4 drift gate. Loads `<slice>/fusion.yaml` when present,
+/// gathers `REQ-*` ids from every `<slice>/specs/**/*.md` file and
+/// claim ids from every `<slice>/evidence/<source>.yaml` file, and
+/// emits one `slice-fusion-drift` finding per drift entry. The
+/// fusion file's own schema validation runs first
+/// ([`FusionIndex::load`]) so structural errors surface as
+/// `fusion-schema` failures rather than bare drift noise.
+///
+/// Absence of `fusion.yaml` is a legal state — older slices and
+/// `refining` slices that haven't yet been driven through
+/// `/spec:refine` skip the check silently.
+fn collect_fusion_drift_findings(slice_dir: &Path) -> Result<Vec<ValidationSummary>> {
+    let fusion_path = fusion::fusion_path(slice_dir);
+    if !fusion_path.is_file() {
+        return Ok(Vec::new());
+    }
+    let fusion_index = FusionIndex::load(&fusion_path)?;
+    let spec_req_ids = collect_spec_req_ids(slice_dir)?;
+    let evidence = fusion::collect_evidence_claim_ids(slice_dir)?;
+    let drift = fusion_index.detect_drift(&spec_req_ids, &evidence);
+    Ok(drift.into_iter().map(fusion::FusionDrift::into_summary).collect())
+}
+
+/// RFC-27 §D3 orphan-source-key gate. Loads `plan.yaml` (when
+/// present) and reports one finding per `(slice, kind)` pair
+/// whose source-key value is not in the slice's own `sources[]`
+/// list. Absent `plan.yaml` (e.g. ad-hoc slice without a plan)
+/// skips the check silently; the structural issue would already
+/// have surfaced earlier in workflow.
+fn collect_authority_override_orphan_findings(
+    ctx: &Ctx, name: &str,
+) -> Result<Vec<ValidationSummary>> {
+    let plan_path = ctx.layout().plan_path();
+    if !plan_path.exists() {
+        return Ok(Vec::new());
+    }
+    let plan = Plan::load(&plan_path)?;
+    // Filter to the named slice only — `specify slice validate` is
+    // per-slice by definition, and surfacing findings from other
+    // slices would confuse the operator.
+    let slice_entries: Vec<_> = plan.entries.iter().filter(|e| e.name == name).cloned().collect();
+    let findings = authority_override_orphan_source_keys(&slice_entries);
+    Ok(findings
+        .into_iter()
+        .map(|f| ValidationSummary {
+            status: ValidationStatus::Fail,
+            rule_id: f.code.to_string(),
+            rule: "Per-slice `authority-override` source key must appear in the slice's \
+                   `sources[]` list"
+                .to_string(),
+            detail: Some(f.message),
+        })
+        .collect())
+}
+
+/// Gather every `REQ-NNN` id that appears in any `*.md` file under
+/// `<slice>/specs/`. Multiple spec files contribute to one fusion
+/// index per slice, so the drift gate joins all of them.
+fn collect_spec_req_ids(slice_dir: &Path) -> Result<BTreeSet<String>> {
+    let mut ids: BTreeSet<String> = BTreeSet::new();
+    let specs_dir = slice_dir.join("specs");
+    if !specs_dir.is_dir() {
+        return Ok(ids);
+    }
+    for path in collect_spec_files(&specs_dir)? {
+        let text = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
+            op: "read",
+            path: path.clone(),
+            source,
+        })?;
+        let parsed = provenance::parse_spec_md(&text);
+        for req in parsed.requirements {
+            if !req.id.is_empty() {
+                ids.insert(req.id);
+            }
+        }
+    }
+    Ok(ids)
 }
 
 /// Walk `<slice>/specs/**/*.md`, parse the RFC-25 §Requirement block
