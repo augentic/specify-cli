@@ -176,17 +176,11 @@ impl Discovery {
     /// repeat runs produce byte-identical error envelopes.
     #[must_use]
     pub fn check_alias_collisions(&self) -> Vec<DiscoveryAliasCollision> {
-        let mut owners_by_name: BTreeMap<String, Vec<NameOwner>> = BTreeMap::new();
+        let mut owners_by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for candidate in &self.candidates {
-            owners_by_name
-                .entry(candidate.id.clone())
-                .or_default()
-                .push(NameOwner::Id(candidate.id.clone()));
+            owners_by_name.entry(candidate.id.clone()).or_default().push(candidate.id.clone());
             for alias in &candidate.aliases.names {
-                owners_by_name
-                    .entry(alias.clone())
-                    .or_default()
-                    .push(NameOwner::Alias(candidate.id.clone()));
+                owners_by_name.entry(alias.clone()).or_default().push(candidate.id.clone());
             }
         }
 
@@ -195,7 +189,7 @@ impl Discovery {
             if owners.len() <= 1 {
                 continue;
             }
-            let mut bearing: Vec<String> = owners.iter().map(NameOwner::bearing_id).collect();
+            let mut bearing: Vec<String> = owners;
             bearing.sort();
             bearing.dedup();
             findings.push(DiscoveryAliasCollision {
@@ -354,28 +348,6 @@ fn render_candidate(out: &mut String, candidate: &Candidate) {
         && tentative
     {
         out.push_str("- tentative: true\n");
-    }
-}
-
-/// Per-namespace owner used while building the collision table.
-///
-/// Carries only what the collision report needs: the bearing
-/// candidate id, plus a discriminator for whether the name lives on
-/// the candidate's `id` or in its `aliases[]`. The variant is kept
-/// even though the report only emits bearing ids — the
-/// discriminator keeps future per-variant findings (e.g. "self
-/// alias shadows a sibling id") cheap to bolt on.
-#[derive(Debug, Clone)]
-enum NameOwner {
-    Id(String),
-    Alias(String),
-}
-
-impl NameOwner {
-    fn bearing_id(&self) -> String {
-        match self {
-            Self::Id(id) | Self::Alias(id) => id.clone(),
-        }
     }
 }
 

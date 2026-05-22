@@ -218,7 +218,7 @@ pub struct FingerprintToolVersion {
 /// adapter, operation)` — together they let `specify source resolve
 /// --explain` reconstruct the fingerprint chain without re-reading
 /// the underlying `fingerprint.json`. Append-only; writers stream
-/// NDJSON lines per `journal::append` posture.
+/// NDJSON lines per `journal::append_batch` posture.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct CacheIndexEntry {

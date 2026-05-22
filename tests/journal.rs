@@ -2,7 +2,7 @@
 //!
 //! Verifies that each CLI-owned emit site writes the documented wire
 //! shape into `.specify/journal.jsonl` and that the agent-facing
-//! [`specify_domain::journal::append`] helper can be driven directly
+//! [`specify_domain::journal::append_batch`] helper can be driven directly
 //! from a synthesised event. Golden files under
 //! `tests/fixtures/journal/` pin the canonical JSON-line shape; rerun
 //! with `REGENERATE_GOLDENS=1 cargo test --test journal` to refresh.
@@ -389,7 +389,7 @@ fn agent_emit_helper_writes_one_event_per_jsonl_line() {
         ),
     ];
     for event in &events {
-        journal::append(layout, event).expect("append helper succeeds");
+        journal::append_batch(layout, std::slice::from_ref(event)).expect("append helper succeeds");
     }
 
     let raw = fs::read_to_string(journal_path(project.root())).expect("read journal");

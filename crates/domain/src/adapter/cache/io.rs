@@ -13,7 +13,7 @@
 //! Atomic writes mirror [DECISIONS.md §"Atomic writes"]: the cache
 //! directory body uses [`bytes_write`] (tempfile + rename), while the
 //! per-row index appends go through `O_APPEND` exactly like
-//! `journal::append`.
+//! `journal::append_batch`.
 //!
 //! [DECISIONS.md §"Atomic writes"]: ../../../../DECISIONS.md#atomic-writes
 //! [`bytes_write`]: crate::slice::atomic::bytes_write
@@ -261,7 +261,7 @@ pub fn write(
 /// Append one [`CacheIndexEntry`] to
 /// `.specify/.cache/adapters/sources/<adapter>/index.jsonl`.
 ///
-/// Mirrors `journal::append`: the directory is created on first write,
+/// Mirrors `journal::append_batch`: the directory is created on first write,
 /// the row is emitted as a single JSON line followed by `\n`, and the
 /// open uses `O_APPEND` so concurrent writers on a local filesystem
 /// cannot interleave (writes under `PIPE_BUF` are atomic).

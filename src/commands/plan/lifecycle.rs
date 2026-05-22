@@ -166,7 +166,7 @@ pub(super) fn transition(ctx: &Ctx, name: String, target: String) -> Result<()> 
                 plan_name: body.name.clone(),
             },
         );
-        specify_domain::journal::append(ctx.layout(), &event)?;
+        specify_domain::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
     }
     ctx.write(&body, write_transition_text)?;
     Ok(())

@@ -96,7 +96,8 @@ pub fn lookup(format: Format, args: CacheFingerprintArgs) -> Result<()> {
     )?;
     let body = render_lookup(&args, &result);
     let journal_layout = Layout::new(&args.project_dir);
-    journal::append(journal_layout, &journal_event_from_lookup(&args, &result, Timestamp::now()))?;
+    let event = journal_event_from_lookup(&args, &result, Timestamp::now());
+    journal::append_batch(journal_layout, std::slice::from_ref(&event))?;
     output::emit(Box::new(std::io::stdout().lock()), format, &body, write_lookup_text)?;
     Ok(())
 }

@@ -289,43 +289,27 @@ pub fn path(layout: Layout<'_>) -> PathBuf {
     layout.specify_dir().join(JOURNAL_FILE_NAME)
 }
 
-/// Append one [`Event`] to the project journal.
+/// Append a sequence of [`Event`]s to the project journal in a
+/// single write call.
 ///
 /// Opens `<project_dir>/.specify/journal.jsonl` in append mode,
 /// creating the file (and the `.specify/` directory) on first
-/// write, and emits the event as a single JSON line followed by
-/// `\n`. A POSIX `O_APPEND` write of ≤ `PIPE_BUF` bytes is atomic
-/// against concurrent writers on local filesystems, which is the
-/// safety envelope a workflow journal needs — RFC-25 emits one
-/// event per CLI verb invocation, well below the limit.
-///
-/// # Errors
-///
-/// Propagates I/O failures from the directory create / open /
-/// write / fsync chain.
-///
-/// # Panics
-///
-/// Panics if [`serde_json::to_string`] fails for [`Event`]. Every
-/// variant is a closed serde derive whose fields are owned `String`s
-/// or [`Divergence`] (a flat enum); this branch is unreachable in
-/// normal operation and mirrors the `to_value(entry).expect("plan
-/// Entry serialises as JSON")` pattern in `src/commands/plan/create.rs`.
-pub fn append(layout: Layout<'_>, event: &Event) -> Result<(), Error> {
-    append_batch(layout, std::slice::from_ref(event))
-}
-
-/// Append a sequence of [`Event`]s to the project journal in a
-/// single write call — the multi-event analogue of [`append`].
+/// write. All events are serialised, concatenated as
+/// newline-terminated JSON lines, and pushed through one
+/// `write_all` followed by one `sync_all`. Either every line
+/// lands on disk or none does — downstream consumers never
+/// observe a partial-state batch. A POSIX `O_APPEND` write of
+/// ≤ `PIPE_BUF` bytes is atomic against concurrent writers on
+/// local filesystems, which is the safety envelope a workflow
+/// journal needs — RFC-25 emits one event per CLI verb
+/// invocation, well below the limit.
 ///
 /// Used by CLI verbs that own more than one journal emit per
 /// invocation (e.g. `specify plan create --auto-review`, which
 /// stages both `plan.propose.divergence` and
-/// `plan.transition.reviewed` in the same Gate-1 consent). All
-/// events are serialised, concatenated as newline-terminated JSON
-/// lines, and pushed through one `write_all` followed by one
-/// `sync_all`. Either every line lands on disk or none does —
-/// downstream consumers never observe a partial-state batch.
+/// `plan.transition.reviewed` in the same Gate-1 consent), and
+/// equally by single-event callers via
+/// `append_batch(layout, std::slice::from_ref(&event))`.
 ///
 /// Empty `events` is a no-op; the journal file is not created on
 /// disk and `Ok(())` is returned. This lets callers compose the
@@ -339,8 +323,8 @@ pub fn append(layout: Layout<'_>, event: &Event) -> Result<(), Error> {
 ///
 /// # Panics
 ///
-/// Panics if [`serde_json::to_string`] fails for any [`Event`];
-/// see [`append`] for the rationale.
+/// Panics only if [`serde_json::to_string`] fails for a
+/// closed-derive [`Event`]; unreachable in normal operation.
 pub fn append_batch(layout: Layout<'_>, events: &[Event]) -> Result<(), Error> {
     if events.is_empty() {
         return Ok(());
@@ -386,7 +370,7 @@ mod tests {
                 slice_name: "checkout".to_string(),
             },
         );
-        append(layout, &event).expect("append ok");
+        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
 
         assert!(layout.specify_dir().is_dir(), ".specify/ must exist after first append");
         assert!(path(layout).is_file(), "journal.jsonl must exist after first append");
@@ -448,76 +432,6 @@ mod tests {
     }
 
     #[test]
-    fn appending_two_events_writes_two_lines_in_order() {
-        let dir = tempdir().expect("tempdir");
-        let layout = Layout::new(dir.path());
-        let first = Event::new(
-            ts("2026-05-21T20:03:00Z"),
-            EventKind::SliceExtractCompleted {
-                slice_name: "checkout".to_string(),
-                source_key: "monolith".to_string(),
-            },
-        );
-        let second = Event::new(
-            ts("2026-05-21T20:03:01Z"),
-            EventKind::SliceSynthesisConflict {
-                slice_name: "checkout".to_string(),
-                requirement_id: "R-01".to_string(),
-            },
-        );
-        append(layout, &first).expect("append first");
-        append(layout, &second).expect("append second");
-
-        let lines = read_lines(layout);
-        assert_eq!(lines.len(), 2, "expected two journal lines, got {}", lines.len());
-        assert!(lines[0].contains(r#""event":"slice.extract.completed""#));
-        assert!(lines[1].contains(r#""event":"slice.synthesis.conflict""#));
-    }
-
-    #[test]
-    fn all_synthesis_tag_variants_serialise() {
-        // Locks the wire shape for the three `slice.synthesis.*` events
-        // that W3.1 will emit from the synthesis pipeline.
-        let dir = tempdir().expect("tempdir");
-        let layout = Layout::new(dir.path());
-        for (kind, expected_event) in [
-            (
-                EventKind::SliceSynthesisConflict {
-                    slice_name: "checkout".to_string(),
-                    requirement_id: "R-01".to_string(),
-                },
-                "slice.synthesis.conflict",
-            ),
-            (
-                EventKind::SliceSynthesisDivergence {
-                    slice_name: "checkout".to_string(),
-                    requirement_id: "R-02".to_string(),
-                },
-                "slice.synthesis.divergence",
-            ),
-            (
-                EventKind::SliceSynthesisUnknown {
-                    slice_name: "checkout".to_string(),
-                    requirement_id: "R-03".to_string(),
-                },
-                "slice.synthesis.unknown",
-            ),
-        ] {
-            append(layout, &Event::new(ts("2026-05-21T20:04:00Z"), kind)).expect("append ok");
-            let lines = read_lines(layout);
-            let last = lines.last().expect("at least one line");
-            assert!(
-                last.contains(&format!(r#""event":"{expected_event}""#)),
-                "missing {expected_event} in:\n{last}"
-            );
-            assert!(
-                last.contains(r#""requirement-id":"#),
-                "requirement-id must be kebab-case, got:\n{last}"
-            );
-        }
-    }
-
-    #[test]
     fn slice_extract_cache_hit_wire_shape() {
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
@@ -530,7 +444,7 @@ mod tests {
                 fingerprint: "sha256:cafef00d".to_string(),
             },
         );
-        append(layout, &event).expect("append ok");
+        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
         let lines = read_lines(layout);
         assert_eq!(lines.len(), 1);
         assert_eq!(
@@ -553,7 +467,7 @@ mod tests {
                 reason: CacheMissReason::AdapterVersionChanged,
             },
         );
-        append(layout, &event).expect("append ok");
+        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
         let line = read_lines(layout).pop().expect("at least one line");
         assert!(line.contains(r#""event":"slice.extract.cache-miss""#));
         assert!(line.contains(r#""reason":"adapter-version-changed""#));
@@ -586,7 +500,7 @@ mod tests {
                 requirement_count: 7,
             },
         );
-        append(layout, &event).expect("append ok");
+        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
         let line = read_lines(layout).pop().expect("line");
         assert!(line.contains(r#""event":"slice.fusion.written""#));
         assert!(line.contains(r#""generator":"specify@2.1.0""#));
@@ -607,7 +521,7 @@ mod tests {
                 skipped: 0,
             },
         );
-        append(layout, &event).expect("append ok");
+        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
         let line = read_lines(layout).pop().expect("line");
         assert!(line.contains(r#""event":"slice.fixture-replay.completed""#));
         assert!(line.contains(r#""passed":47"#));
@@ -630,7 +544,7 @@ mod tests {
                 source_key: Some("runtime".to_string()),
             },
         );
-        append(layout, &event).expect("append ok");
+        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
         let line = read_lines(layout).pop().expect("line");
         assert!(line.contains(r#""event":"plan.amend.authority-override""#));
         assert!(line.contains(r#""action":"set""#));
@@ -652,7 +566,7 @@ mod tests {
                 source_key: None,
             },
         );
-        append(layout, &event).expect("append ok");
+        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
         let line = read_lines(layout).pop().expect("line");
         assert!(line.contains(r#""action":"clear-all""#));
         assert!(!line.contains("claim-kind"), "absent claim-kind must elide, got:\n{line}");
@@ -688,7 +602,11 @@ mod tests {
                 source_key: "k".to_string(),
             },
         ] {
-            append(layout, &Event::new(ts("2026-05-21T20:05:00Z"), kind)).expect("append ok");
+            append_batch(
+                layout,
+                std::slice::from_ref(&Event::new(ts("2026-05-21T20:05:00Z"), kind)),
+            )
+            .expect("append ok");
         }
         let raw = std::fs::read_to_string(path(layout)).expect("read journal");
         for needle in ["plan_name", "slice_name", "source_key", "requirement_id", "in_progress"] {

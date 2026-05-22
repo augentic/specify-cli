@@ -313,92 +313,6 @@ fn parse_slice_kind_args(
     Ok(out)
 }
 
-/// Apply `--authority-override <slice> <kind>=<key>` pre-seed
-/// entries on `plan` (the `create` path; existing entries are
-/// replaced per `BTreeMap::insert`). Unknown slices short-circuit
-/// with `plan-authority-override-unknown-slice` (`Error::Validation`,
-/// exit 2) — mirrors the `--divergence-likely` unknown-slice gate.
-fn apply_authority_override_assigns(plan: &mut Plan, assigns: &[SliceKindAssign]) -> Result<()> {
-    for SliceKindAssign {
-        slice,
-        kind,
-        source_key,
-    } in assigns
-    {
-        let entry = plan.entries.iter_mut().find(|e| &e.name == slice).ok_or_else(|| {
-            Error::validation_failed(
-                "plan-authority-override-unknown-slice",
-                "--authority-override must reference a slice present in the plan",
-                format!(
-                    "no slice named '{slice}' in plan '{}'; add the slice (e.g. specify plan \
-                     add {slice}) before pre-seeding authority-override",
-                    plan.name
-                ),
-            )
-        })?;
-        entry.authority_override.by_kind.insert(*kind, source_key.clone());
-    }
-    Ok(())
-}
-
-/// Build the `plan.amend.authority-override` journal events that
-/// match the pre-seeded entries on `plan` after
-/// [`apply_authority_override_assigns`]. Order follows the input
-/// vector (operator-issued order); duplicate `(slice, kind)`
-/// pairs collapse to the final value.
-fn set_events(
-    plan_name: &str, assigns: &[SliceKindAssign], now: jiff::Timestamp,
-) -> Vec<journal::Event> {
-    // Resolve duplicates the same way `apply_authority_override_assigns`
-    // does — later occurrences win — so the journal records the
-    // surviving value and emits one event per unique
-    // `(slice, kind)` pair.
-    let mut resolved: BTreeMap<(String, ClaimKind), String> = BTreeMap::new();
-    for SliceKindAssign {
-        slice,
-        kind,
-        source_key,
-    } in assigns
-    {
-        resolved.insert((slice.clone(), *kind), source_key.clone());
-    }
-    resolved
-        .into_iter()
-        .map(|((slice, kind), key)| {
-            journal::Event::new(
-                now,
-                journal::EventKind::PlanAmendAuthorityOverride {
-                    plan_name: plan_name.to_string(),
-                    slice_name: slice,
-                    action: AuthorityOverrideAction::Set,
-                    claim_kind: Some(kind.to_string()),
-                    source_key: Some(key),
-                },
-            )
-        })
-        .collect()
-}
-
-/// Apply the full `--authority-override` / `--clear-authority-override`
-/// / `--clear-authority-overrides` mutation set on `plan` and return
-/// the matching `plan.amend.authority-override` journal events
-/// (RFC-27 §D3). Order is deterministic:
-///
-/// 1. Sets — collapse duplicate `(slice, kind)` pairs to the last
-///    value.
-/// 2. Single-kind clears — remove the entry if present (no-op if
-///    absent).
-/// 3. Whole-map clears — wipe the slice's entire map; emit one
-///    `Clear` event per kind that was present before the wipe.
-///
-/// Set-then-clear on the same `(slice, kind)` resolves to the
-/// cleared state, and the journal records the clear (not the set)
-/// to match the on-disk outcome.
-///
-/// Unknown slice names short-circuit with
-/// `plan-authority-override-unknown-slice` (exit 2). Set events
-/// sort deterministically by `(slice, kind)`; clear events follow
-/// the same sort.
 /// Collapse `--authority-override` repeats: later occurrences win
 /// on the same `(slice, kind)` pair.
 fn dedup_sets(sets: &[SliceKindAssign]) -> BTreeMap<(String, ClaimKind), String> {
@@ -549,6 +463,28 @@ fn emit_override_events(
     events
 }
 
+/// Apply the full `--authority-override` / `--clear-authority-override`
+/// / `--clear-authority-overrides` mutation set on `plan` and return
+/// the matching `plan.amend.authority-override` journal events
+/// (RFC-27 §D3). Order is deterministic:
+///
+/// 1. Sets — collapse duplicate `(slice, kind)` pairs to the last
+///    value.
+/// 2. Single-kind clears — remove the entry if present (no-op if
+///    absent).
+/// 3. Whole-map clears — wipe the slice's entire map; emit one
+///    `Clear` event per kind that was present before the wipe.
+///
+/// Set-then-clear on the same `(slice, kind)` resolves to the
+/// cleared state, and the journal records the clear (not the set)
+/// to match the on-disk outcome.
+///
+/// Unknown slice names short-circuit with
+/// `plan-authority-override-unknown-slice` (exit 2). Set events
+/// sort deterministically by `(slice, kind)`; clear events follow
+/// the same sort. Shared by `plan create` (with empty clears) and
+/// `plan amend`, so both paths emit byte-identical journal events
+/// for the same `(slice, kind)` set.
 fn mutate_authority_overrides(
     plan: &mut Plan, plan_name: &str, sets: &[SliceKindAssign], clears: &[SliceKind],
     clear_all: &[String], now: jiff::Timestamp,
@@ -703,7 +639,16 @@ pub(super) fn create(
 
     let mut plan = Plan::init(&name, source_map)?;
     apply_divergence_likely(&mut plan, divergence_likely)?;
-    apply_authority_override_assigns(&mut plan, &override_assigns)?;
+    // Route `--authority-override` through the shared mutation
+    // helper used by `plan amend` so create and amend produce
+    // byte-identical `plan.amend.authority-override` journal events
+    // and share the unknown-slice gate. Empty `clears` /
+    // `clear_all` slices keep the create path scoped to set-only
+    // semantics.
+    let now = jiff::Timestamp::now();
+    let plan_name = plan.name.clone();
+    let override_events =
+        mutate_authority_overrides(&mut plan, &plan_name, &override_assigns, &[], &[], now)?;
     // Re-run the orphan-source-key gate after the override
     // pre-seeding: `Plan::init` ran no validation against the
     // override map (it didn't exist yet) and `validate_plan` only
@@ -724,14 +669,13 @@ pub(super) fn create(
     // does — `--auto-review`, `--divergence-likely`, and
     // `--authority-override` compose without a partial-state window
     // in the journal.
-    let now = jiff::Timestamp::now();
     let mut events: Vec<journal::Event> = divergence_likely
         .iter()
         .map(|slice| {
             journal::Event::new(
                 now,
                 journal::EventKind::PlanProposeDivergence {
-                    plan_name: plan.name.clone(),
+                    plan_name: plan_name.clone(),
                     slice_name: slice.clone(),
                 },
             )
@@ -741,11 +685,11 @@ pub(super) fn create(
         events.push(journal::Event::new(
             now,
             journal::EventKind::PlanTransitionReviewed {
-                plan_name: plan.name.clone(),
+                plan_name: plan_name.clone(),
             },
         ));
     }
-    events.extend(set_events(&plan.name, &override_assigns, now));
+    events.extend(override_events);
     journal::append_batch(ctx.layout(), &events)?;
 
     ctx.write(

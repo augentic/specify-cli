@@ -149,34 +149,17 @@ pub struct AuthorityOverrides {
 }
 
 impl AuthorityOverrides {
-    /// Build an [`AuthorityOverrides`] from an iterator of
-    /// `(kind, class)` pairs. Duplicate keys take the last value
-    /// per [`BTreeMap::insert`].
-    #[must_use]
-    pub fn from_pairs<I>(pairs: I) -> Self
-    where
-        I: IntoIterator<Item = (ClaimKind, AuthorityClass)>,
-    {
-        Self {
-            by_kind: pairs.into_iter().collect(),
-        }
-    }
-
     /// Lookup the override class for a given claim kind, if any.
     #[must_use]
     pub fn resolve(&self, kind: ClaimKind) -> Option<AuthorityClass> {
         self.by_kind.get(&kind).copied()
     }
-
-    /// `true` when the override map carries no entries.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.by_kind.is_empty()
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
 
     #[test]
@@ -203,10 +186,12 @@ mod tests {
 
     #[test]
     fn overrides_serialise_as_bare_map() {
-        let overrides = AuthorityOverrides::from_pairs([
-            (ClaimKind::Decision, AuthorityClass::Documentation),
-            (ClaimKind::Criterion, AuthorityClass::Behaviour),
-        ]);
+        let overrides = AuthorityOverrides {
+            by_kind: BTreeMap::from([
+                (ClaimKind::Decision, AuthorityClass::Documentation),
+                (ClaimKind::Criterion, AuthorityClass::Behaviour),
+            ]),
+        };
         let json = serde_json::to_string(&overrides).expect("serialise");
         assert_eq!(json, r#"{"criterion":"behaviour","decision":"documentation"}"#);
         let reparsed: AuthorityOverrides = serde_json::from_str(&json).expect("reparse");
@@ -215,8 +200,9 @@ mod tests {
 
     #[test]
     fn overrides_resolve_returns_per_kind_class() {
-        let overrides =
-            AuthorityOverrides::from_pairs([(ClaimKind::Decision, AuthorityClass::Documentation)]);
+        let overrides = AuthorityOverrides {
+            by_kind: BTreeMap::from([(ClaimKind::Decision, AuthorityClass::Documentation)]),
+        };
         assert_eq!(overrides.resolve(ClaimKind::Decision), Some(AuthorityClass::Documentation));
         assert_eq!(overrides.resolve(ClaimKind::Requirement), None);
     }
@@ -256,7 +242,7 @@ mod tests {
         let overrides = AuthorityOverrides::default();
         let json = serde_json::to_string(&overrides).expect("serialise");
         assert_eq!(json, "{}");
-        assert!(overrides.is_empty());
+        assert!(overrides.by_kind.is_empty());
     }
 
     // ------------------------------------------------------------
@@ -391,10 +377,9 @@ mod tests {
             Contributor {
                 source: "runtime",
                 authority: AuthorityClass::Behaviour,
-                overrides: AuthorityOverrides::from_pairs([(
-                    ClaimKind::Criterion,
-                    AuthorityClass::Intent,
-                )]),
+                overrides: AuthorityOverrides {
+                    by_kind: BTreeMap::from([(ClaimKind::Criterion, AuthorityClass::Intent)]),
+                },
             },
         ];
         let resolved = resolve(ClaimKind::Criterion, None, &contributors);
@@ -464,10 +449,9 @@ mod tests {
             Contributor {
                 source: "docs",
                 authority: AuthorityClass::Documentation,
-                overrides: AuthorityOverrides::from_pairs([(
-                    ClaimKind::Criterion,
-                    AuthorityClass::Intent,
-                )]),
+                overrides: AuthorityOverrides {
+                    by_kind: BTreeMap::from([(ClaimKind::Criterion, AuthorityClass::Intent)]),
+                },
             },
             Contributor {
                 source: "runtime",

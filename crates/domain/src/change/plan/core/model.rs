@@ -233,28 +233,6 @@ pub struct SliceAuthorityOverride {
     pub by_kind: BTreeMap<ClaimKind, String>,
 }
 
-impl SliceAuthorityOverride {
-    /// Build a [`SliceAuthorityOverride`] from an iterator of
-    /// `(kind, source-key)` pairs. Duplicate keys take the last
-    /// value per [`BTreeMap::insert`].
-    #[must_use]
-    pub fn from_pairs<I, S>(pairs: I) -> Self
-    where
-        I: IntoIterator<Item = (ClaimKind, S)>,
-        S: Into<String>,
-    {
-        Self {
-            by_kind: pairs.into_iter().map(|(k, v)| (k, v.into())).collect(),
-        }
-    }
-
-    /// Resolve the source key, if any, pinned for `kind`.
-    #[must_use]
-    pub fn resolve(&self, kind: ClaimKind) -> Option<&str> {
-        self.by_kind.get(&kind).map(String::as_str)
-    }
-}
-
 fn slice_authority_override_is_empty(o: &SliceAuthorityOverride) -> bool {
     o.by_kind.is_empty()
 }
@@ -762,8 +740,14 @@ slices:
 ";
         let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
         let entry = &plan.entries[0];
-        assert_eq!(entry.authority_override.resolve(ClaimKind::Requirement), Some("runtime"));
-        assert_eq!(entry.authority_override.resolve(ClaimKind::Criterion), Some("legacy-monolith"));
+        assert_eq!(
+            entry.authority_override.by_kind.get(&ClaimKind::Requirement).map(String::as_str),
+            Some("runtime")
+        );
+        assert_eq!(
+            entry.authority_override.by_kind.get(&ClaimKind::Criterion).map(String::as_str),
+            Some("legacy-monolith")
+        );
 
         let rendered = serde_saphyr::to_string(&plan).expect("serialize");
         assert!(rendered.contains("authority-override:"));

@@ -481,10 +481,12 @@ fn context_rejects_absolute() {
 fn authority_override_orphan_source_key_rejected() {
     let mut entry = change("identity-user-registration", Status::Pending);
     entry.sources = vec![SliceSourceBinding::Bare("legacy".into())];
-    entry.authority_override = SliceAuthorityOverride::from_pairs([
-        (ClaimKind::Requirement, "phantom"),
-        (ClaimKind::Criterion, "legacy"),
-    ]);
+    entry.authority_override = SliceAuthorityOverride {
+        by_kind: BTreeMap::from([
+            (ClaimKind::Requirement, "phantom".to_string()),
+            (ClaimKind::Criterion, "legacy".to_string()),
+        ]),
+    };
     let mut plan = plan_with_changes(vec![entry]);
     plan.sources.insert("legacy".into(), "/tmp".into());
     let hits: Vec<_> = plan
@@ -521,10 +523,12 @@ fn authority_override_valid_keys_pass() {
     let mut entry = change("any", Status::Pending);
     entry.sources =
         vec![SliceSourceBinding::Bare("legacy".into()), SliceSourceBinding::Bare("runtime".into())];
-    entry.authority_override = SliceAuthorityOverride::from_pairs([
-        (ClaimKind::Requirement, "runtime"),
-        (ClaimKind::Criterion, "legacy"),
-    ]);
+    entry.authority_override = SliceAuthorityOverride {
+        by_kind: BTreeMap::from([
+            (ClaimKind::Requirement, "runtime".to_string()),
+            (ClaimKind::Criterion, "legacy".to_string()),
+        ]),
+    };
     let mut plan = plan_with_changes(vec![entry]);
     plan.sources.insert("legacy".into(), "/tmp/legacy".into());
     plan.sources.insert("runtime".into(), "/tmp/runtime".into());
@@ -542,11 +546,13 @@ fn authority_override_findings_sort_deterministically() {
     let mut entry = change("identity-user-registration", Status::Pending);
     entry.sources = vec![SliceSourceBinding::Bare("legacy".into())];
     // Insert in non-sorted order; BTreeMap iteration sorts by kind.
-    entry.authority_override = SliceAuthorityOverride::from_pairs([
-        (ClaimKind::Requirement, "ghost-a"),
-        (ClaimKind::Criterion, "ghost-b"),
-        (ClaimKind::Decision, "ghost-c"),
-    ]);
+    entry.authority_override = SliceAuthorityOverride {
+        by_kind: BTreeMap::from([
+            (ClaimKind::Requirement, "ghost-a".to_string()),
+            (ClaimKind::Criterion, "ghost-b".to_string()),
+            (ClaimKind::Decision, "ghost-c".to_string()),
+        ]),
+    };
     let mut plan = plan_with_changes(vec![entry]);
     plan.sources.insert("legacy".into(), "/tmp".into());
     let codes: Vec<&str> = plan
