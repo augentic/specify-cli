@@ -16,7 +16,7 @@
         "status": "fail"
       },
       {
-        "rule": "Has a Crates/Features section listing at least one entry",
+        "rule": "Has a Crates section listing at least one entry",
         "rule-id": "proposal.crates-listed",
         "status": "pass"
       },
@@ -68,8 +68,8 @@
   },
   "cross-checks": [
     {
-      "detail": "one or more crates/features listed in the proposal have no matching spec file",
-      "rule": "Every crate/feature listed in the proposal has a matching spec file",
+      "detail": "one or more crates listed in the proposal have no matching spec file",
+      "rule": "Every crate listed in the proposal has a matching spec file",
       "rule-id": "cross.proposal-crates-have-specs",
       "status": "fail"
     },

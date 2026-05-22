@@ -36,30 +36,15 @@ const CANONICAL_ARTIFACTS: &[(&str, &str)] = &[
     ("contracts", "contracts/**/*.yaml"),
 ];
 
-fn pass(rule_id: &str, rule: &str) -> ValidationSummary {
+fn summary(
+    status: ValidationStatus, rule_id: impl Into<String>, rule: impl Into<String>,
+    detail: Option<String>,
+) -> ValidationSummary {
     ValidationSummary {
-        status: ValidationStatus::Pass,
+        status,
         rule_id: rule_id.into(),
         rule: rule.into(),
-        detail: None,
-    }
-}
-
-const fn fail(rule_id: String, rule: String, detail: String) -> ValidationSummary {
-    ValidationSummary {
-        status: ValidationStatus::Fail,
-        rule_id,
-        rule,
-        detail: Some(detail),
-    }
-}
-
-fn deferred(rule_id: &str, rule: &str) -> ValidationSummary {
-    ValidationSummary {
-        status: ValidationStatus::Deferred,
-        rule_id: rule_id.into(),
-        rule: rule.into(),
-        detail: Some(DEFERRED_REASON.into()),
+        detail,
     }
 }
 
@@ -71,13 +56,6 @@ fn deferred(rule_id: &str, rule: &str) -> ValidationSummary {
 /// matches are walked. Empty glob results are silently skipped — an
 /// absent `specs/login/spec.md` is not, by itself, a failure.
 ///
-/// `terminology` is hardcoded to `"crate"` — pre-RFC-25 the runner
-/// inferred `"feature"` from a `vectis`-named adapter via the
-/// `PipelineView`, but RFC-25's per-target nuances are now expressed
-/// in target adapter shape briefs and not exposed to the deterministic
-/// runner. Vectis-style validation lives in the target adapter's own
-/// build/merge briefs.
-///
 /// # Errors
 ///
 /// Returns an error if a glob pattern is malformed or a glob traversal
@@ -85,7 +63,6 @@ fn deferred(rule_id: &str, rule: &str) -> ValidationSummary {
 pub fn validate_slice(slice_dir: &Path) -> Result<ValidationReport, Error> {
     let mut brief_results: BTreeMap<String, Vec<ValidationSummary>> = BTreeMap::new();
     let specs_dir = slice_dir.join("specs");
-    let terminology = "crate";
 
     for (brief_id, artifact) in CANONICAL_ARTIFACTS {
         let artifacts = expand_artifact(slice_dir, artifact)?;
@@ -113,13 +90,12 @@ pub fn validate_slice(slice_dir: &Path) -> Result<ValidationReport, Error> {
                 relative_key(slice_dir, &artifact_path)
             };
 
-            let results =
-                run_brief_rules(brief_id, &artifact_path, slice_dir, &specs_dir, terminology);
+            let results = run_brief_rules(brief_id, &artifact_path, slice_dir, &specs_dir);
             brief_results.insert(key, results);
         }
     }
 
-    let cross_checks = run_cross_rules(slice_dir, &specs_dir, terminology);
+    let cross_checks = run_cross_rules(slice_dir, &specs_dir);
 
     let passed = brief_results
         .values()
@@ -185,16 +161,16 @@ fn artifact_missing_result(
     brief_id: &str, artifact_path: &Path, slice_dir: &Path,
 ) -> ValidationSummary {
     let rel = relative_key(slice_dir, artifact_path);
-    fail(
+    summary(
+        ValidationStatus::Fail,
         format!("{brief_id}.artifact-exists"),
         format!("Generated artifact {rel} exists"),
-        format!("artifact `{rel}` not found under slice dir"),
+        Some(format!("artifact `{rel}` not found under slice dir")),
     )
 }
 
 fn run_brief_rules(
     brief_id: &str, artifact_path: &Path, slice_dir: &Path, specs_dir: &Path,
-    terminology: &'static str,
 ) -> Vec<ValidationSummary> {
     let Ok(content) = std::fs::read_to_string(artifact_path) else {
         return vec![artifact_missing_result(brief_id, artifact_path, slice_dir)];
@@ -211,17 +187,25 @@ fn run_brief_rules(
         tasks: tasks.as_ref(),
         slice_dir,
         specs_dir,
-        terminology,
     };
 
     let mut out: Vec<ValidationSummary> = Vec::new();
     for rule in rules_for(brief_id) {
         let result = rule.check.map_or_else(
-            || deferred(rule.id, rule.description),
+            || {
+                summary(
+                    ValidationStatus::Deferred,
+                    rule.id,
+                    rule.description,
+                    Some(DEFERRED_REASON.into()),
+                )
+            },
             |check| match check(&ctx) {
-                RuleOutcome::Pass => pass(rule.id, rule.description),
+                RuleOutcome::Pass => {
+                    summary(ValidationStatus::Pass, rule.id, rule.description, None)
+                }
                 RuleOutcome::Fail { detail } => {
-                    fail(rule.id.into(), rule.description.into(), detail)
+                    summary(ValidationStatus::Fail, rule.id, rule.description, Some(detail))
                 }
             },
         );
@@ -230,22 +214,23 @@ fn run_brief_rules(
     out
 }
 
-fn run_cross_rules(
-    slice_dir: &Path, specs_dir: &Path, terminology: &'static str,
-) -> Vec<ValidationSummary> {
-    let ctx = CrossContext {
-        slice_dir,
-        specs_dir,
-        terminology,
-    };
+fn run_cross_rules(slice_dir: &Path, specs_dir: &Path) -> Vec<ValidationSummary> {
+    let ctx = CrossContext { slice_dir, specs_dir };
     let mut out: Vec<ValidationSummary> = Vec::new();
     for rule in cross_rules() {
         let result = match rule.classification {
-            Classification::Semantic => deferred(rule.id, rule.description),
+            Classification::Semantic => summary(
+                ValidationStatus::Deferred,
+                rule.id,
+                rule.description,
+                Some(DEFERRED_REASON.into()),
+            ),
             Classification::Structural => match (rule.check)(&ctx) {
-                RuleOutcome::Pass => pass(rule.id, rule.description),
+                RuleOutcome::Pass => {
+                    summary(ValidationStatus::Pass, rule.id, rule.description, None)
+                }
                 RuleOutcome::Fail { detail } => {
-                    fail(rule.id.into(), rule.description.into(), detail)
+                    summary(ValidationStatus::Fail, rule.id, rule.description, Some(detail))
                 }
             },
         };

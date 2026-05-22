@@ -232,53 +232,52 @@ fn plan_amend_without_divergence_flag_emits_no_event() {
 // -- slice.transition.refined ----------------------------------------
 
 #[test]
-fn slice_transition_to_defined_does_not_emit_refined_event() {
-    // RFC-25 §Observability emits only on the `refined` target — the
-    // 1.x lifecycle transitions (defined / building / complete) are
-    // not part of the v1 event set.
+fn slice_create_writes_no_refined_journal() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "transition", "checkout", "defined"])
-        .assert()
-        .success();
-
     assert!(
         !journal_path(project.root()).exists(),
-        "non-refined lifecycle transitions must not produce journal events"
+        "slice create must not emit slice.transition.refined"
     );
 }
 
 #[test]
-fn slice_transition_refined_happy_path_via_emit_helper() {
-    // RFC-25 §Observability lists `slice.transition.refined` as the
-    // synthesis-completed signal. The CLI verb
-    // `specify slice transition <name> refined` will emit this event
-    // once the lifecycle gains the `refined` state; until then the
-    // happy-path golden is driven directly via the public emit
-    // helper, which is the same surface W3.1 will call from
-    // `/spec:refine`.
+fn slice_transition_refined_cli_writes_journal() {
     let project = Project::init();
-    let layout = Layout::new(project.root());
-    let fixed: jiff::Timestamp =
-        FIXED_TIMESTAMP.parse().expect("fixed timestamp parses as rfc3339");
-    journal::append(
-        layout,
-        &Event::new(
-            fixed,
-            EventKind::SliceTransitionRefined {
-                slice_name: "checkout".to_string(),
-            },
-        ),
-    )
-    .expect("append helper succeeds");
+    specify().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
+    specify()
+        .current_dir(project.root())
+        .args(["slice", "transition", "checkout", "refined"])
+        .assert()
+        .success();
 
-    let events = read_journal(project.root());
+    let events = normalise_timestamps(read_journal(project.root()));
     assert_eq!(events.len(), 1);
     assert_eq!(events[0]["event"], "slice.transition.refined");
     assert_eq!(events[0]["payload"]["slice-name"], "checkout");
     assert_journal_golden("slice-transition-refined.json", events);
+}
+
+#[test]
+fn slice_transition_to_built_appends_no_refined_event() {
+    let project = Project::init();
+    specify().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
+    specify()
+        .current_dir(project.root())
+        .args(["slice", "transition", "checkout", "refined"])
+        .assert()
+        .success();
+    let before = read_journal(project.root()).len();
+    specify()
+        .current_dir(project.root())
+        .args(["slice", "transition", "checkout", "built"])
+        .assert()
+        .success();
+    assert_eq!(
+        read_journal(project.root()).len(),
+        before,
+        "built transition must not append slice.transition.refined"
+    );
 }
 
 // -- agent-emit helper (slice.synthesis.*, slice.extract.completed,

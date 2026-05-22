@@ -94,18 +94,10 @@ additive (consumers see a new discriminant in the same shape).
 
 CLI **input** flags are a peer wire surface — skill drivers shell out
 through them. The same minor/major rules apply: adding a new optional
-flag is additive, removing or renaming a flag is breaking. Two
-non-additive input changes have shipped under the version reflected
+flag is additive, removing or renaming a flag is breaking. One
+non-additive input change has shipped under the version reflected
 above:
 
-- `slice outcome set <slice> <phase> registry-amendment-required`
-  takes a single `--proposal '<json>'` instead of seven
-  `--proposed-*` flags. Skills build the proposal as a JSON object
-  (`{"proposed-name": ..., "proposed-url": ..., "proposed-adapter":
-  ..., "proposed-description": ..., "rationale": ...}`) and pass it
-  verbatim. The on-disk `outcome.outcome.registry-amendment-required.*`
-  shape and the `outcome.proposal` JSON returned by `slice outcome
-  show` are unchanged.
 - `specify init` enforces the `<adapter>` xor `--hub` invariant
   through clap. The historical post-parse
   `init-requires-adapter-or-hub` envelope is gone on the CLI

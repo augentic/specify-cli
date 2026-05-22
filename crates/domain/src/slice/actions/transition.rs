@@ -6,7 +6,9 @@ use std::path::Path;
 use jiff::Timestamp;
 use specify_error::Error;
 
-use crate::slice::{LifecycleStatus, SliceMetadata};
+use crate::config::Layout;
+use crate::journal::{Event, EventKind, append};
+use crate::slice::{LifecycleStatus, SLICES_DIR_NAME, SliceMetadata};
 
 /// Transition a slice to `target` status and write the matching timestamp.
 ///
@@ -31,22 +33,17 @@ pub fn transition(
     metadata.status = metadata.status.transition(target)?;
     let stamp = now;
     match target {
-        LifecycleStatus::Defining => {
+        LifecycleStatus::Refining => {
             if metadata.created_at.is_none() {
                 metadata.created_at = Some(stamp);
             }
         }
-        LifecycleStatus::Defined => {
+        LifecycleStatus::Refined => {
             if metadata.defined_at.is_none() {
                 metadata.defined_at = Some(stamp);
             }
         }
-        LifecycleStatus::Building => {
-            if metadata.build_started_at.is_none() {
-                metadata.build_started_at = Some(stamp);
-            }
-        }
-        LifecycleStatus::Complete => {
+        LifecycleStatus::Built => {
             if metadata.completed_at.is_none() {
                 metadata.completed_at = Some(stamp);
             }
@@ -63,5 +60,27 @@ pub fn transition(
         }
     }
     metadata.save(slice_dir)?;
+
+    if target == LifecycleStatus::Refined {
+        let slice_name =
+            slice_dir.file_name().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
+        if let Some(project_root) = project_root_from_slice_dir(slice_dir) {
+            append(
+                Layout::new(&project_root),
+                &Event::new(now, EventKind::SliceTransitionRefined { slice_name }),
+            )?;
+        }
+    }
+
     Ok(metadata)
+}
+
+/// Resolve the project root from `<project>/.specify/slices/<name>/`.
+fn project_root_from_slice_dir(slice_path: &Path) -> Option<std::path::PathBuf> {
+    let slices_parent = slice_path.parent()?;
+    if slices_parent.file_name()? != std::ffi::OsStr::new(SLICES_DIR_NAME) {
+        return None;
+    }
+    let specify_dir = slices_parent.parent()?;
+    specify_dir.parent().map(Path::to_path_buf)
 }

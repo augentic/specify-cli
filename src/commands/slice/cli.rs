@@ -2,8 +2,6 @@
 //! The umbrella `cli.rs` re-exports the action enums.
 
 use clap::Subcommand;
-use serde::Deserialize;
-use specify_domain::adapter::Operation;
 use specify_domain::slice::{CreateIfExists, LifecycleStatus};
 
 #[derive(Subcommand)]
@@ -51,7 +49,7 @@ pub enum SliceAction {
     Transition {
         /// Slice name
         name: String,
-        /// Target status (`defined`, `building`, `complete`, `dropped`, or `defining`).
+        /// Target status (`refining`, `refined`, `built`, or `dropped`).
         /// `merged` is reserved for `specify slice merge run` and is
         /// rejected with exit 2 if passed here.
         #[arg(value_enum)]
@@ -123,103 +121,10 @@ pub enum SliceTaskAction {
 /// Operation-outcome subcommands grouped under `slice outcome`.
 #[derive(Subcommand)]
 pub enum OutcomeAction {
-    /// Record the outcome of a target-adapter operation
-    /// (`shape | build | merge`) on `.metadata.yaml`. The outcome kind
-    /// is itself a subcommand so each variant carries only its own flags.
-    Set {
-        /// Slice name
-        name: String,
-        /// Operation this outcome applies to
-        #[arg(value_enum)]
-        phase: Operation,
-        #[command(subcommand)]
-        kind: OutcomeKindAction,
-    },
     /// Read the stamped `.metadata.yaml.outcome` for a slice. Exits 0
     /// whether or not an outcome has been stamped.
     Show {
         /// Slice name
         name: String,
     },
-}
-
-/// Outcome-kind subcommands under `slice outcome set`. Each variant
-/// owns the flags that are valid for it; clap rejects everything else.
-#[derive(Subcommand)]
-pub enum OutcomeKindAction {
-    /// Phase completed successfully.
-    Success {
-        /// Short explanation of what happened.
-        #[arg(long)]
-        summary: String,
-        /// Optional verbatim detail (stderr, log excerpt, ...).
-        #[arg(long)]
-        context: Option<String>,
-    },
-    /// Phase failed.
-    Failure {
-        /// Short explanation of what happened.
-        #[arg(long)]
-        summary: String,
-        /// Optional verbatim detail (stderr, log excerpt, ...).
-        #[arg(long)]
-        context: Option<String>,
-    },
-    /// Phase deferred (needs human input).
-    Deferred {
-        /// Short explanation of what happened.
-        #[arg(long)]
-        summary: String,
-        /// Optional verbatim detail (stderr, ambiguous-requirement text, ...).
-        #[arg(long)]
-        context: Option<String>,
-    },
-    /// Phase blocked on a registry amendment.
-    RegistryAmendmentRequired {
-        /// Short explanation; defaults to `registry-amendment-required: <proposed-name>`.
-        #[arg(long)]
-        summary: Option<String>,
-        /// Optional verbatim detail.
-        #[arg(long)]
-        context: Option<String>,
-        /// Structured proposal payload as a single JSON object.
-        ///
-        /// Required keys: `proposed-name`, `proposed-url`,
-        /// `proposed-adapter`, `rationale`. Optional:
-        /// `proposed-description`. Skill drivers build the JSON object;
-        /// humans never type it. Parsed via `serde_json::from_str` —
-        /// malformed JSON or missing required keys exit `2` with a
-        /// kebab-case `proposal-invalid` diagnostic.
-        #[arg(long, value_parser = parse_proposal)]
-        proposal: RegistryAmendmentProposal,
-    },
-}
-
-/// Structured payload supplied via `--proposal '<json>'`.
-///
-/// Mirrors the on-disk `outcome.outcome.registry-amendment-required.*`
-/// shape one-for-one (kebab-case keys); `lower_kind` lifts it into
-/// `OutcomeKind::RegistryAmendmentRequired` without further validation.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct RegistryAmendmentProposal {
-    /// Proposed kebab-case project name.
-    pub(crate) proposed_name: String,
-    /// Proposed clone URL.
-    pub(crate) proposed_url: String,
-    /// Proposed adapter identifier (e.g. `omnia@v1`).
-    pub(crate) proposed_adapter: String,
-    /// Optional human-readable description of the proposed project.
-    #[serde(default)]
-    pub(crate) proposed_description: Option<String>,
-    /// Rationale prose.
-    pub(crate) rationale: String,
-}
-
-/// `value_parser` for `--proposal <json>`. Maps `serde_json` errors
-/// onto a clap-friendly `String` so the standard parse-error exit path
-/// (exit `2`, plain stderr) handles them — matching every other typed
-/// `value_parser` in the surface.
-fn parse_proposal(raw: &str) -> Result<RegistryAmendmentProposal, String> {
-    serde_json::from_str(raw).map_err(|err| format!("--proposal: {err}"))
 }

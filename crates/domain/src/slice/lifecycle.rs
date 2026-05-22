@@ -1,5 +1,5 @@
 //! Lifecycle state machine for slice progression
-//! (`Defining → Defined → Building → Complete → Merged`).
+//! (`Refining → Refined → Built → Merged`).
 //! [`LifecycleStatus::transition`] is the only sanctioned mutator.
 
 use specify_error::Error;
@@ -21,14 +21,12 @@ use specify_error::Error;
 #[strum(serialize_all = "kebab-case")]
 #[non_exhaustive]
 pub enum LifecycleStatus {
-    /// Slice is being defined (artifacts authored).
-    Defining,
-    /// Definition complete, awaiting build.
-    Defined,
-    /// Build phase in progress.
-    Building,
-    /// Build complete, awaiting merge.
-    Complete,
+    /// Slice directory created; `/spec:refine` extract + synthesis in flight.
+    Refining,
+    /// Canonical artifacts validated; ready for `/spec:build`.
+    Refined,
+    /// Tasks complete; ready for `/spec:merge`.
+    Built,
     /// Specs merged into baseline and slice archived.
     Merged,
     /// Slice discarded without merging.
@@ -36,10 +34,10 @@ pub enum LifecycleStatus {
 }
 
 impl LifecycleStatus {
-    /// The creation edge (`START → Defining`). Called by `init`/`define`.
+    /// The creation edge (`START → Refining`). Called by `slice create`.
     #[must_use]
     pub const fn initial() -> Self {
-        Self::Defining
+        Self::Refining
     }
 
     /// Whether this status is terminal (no further transitions possible).
@@ -51,14 +49,13 @@ impl LifecycleStatus {
     /// Whether `self → target` is a legal edge in the lifecycle state machine.
     #[must_use]
     pub const fn can_transition_to(self, target: Self) -> bool {
-        use LifecycleStatus::{Building, Complete, Defined, Defining, Dropped, Merged};
+        use LifecycleStatus::{Built, Dropped, Merged, Refined, Refining};
         matches!(
             (self, target),
-            (Defining, Defined | Complete)
-                | (Defined, Defining | Building)
-                | (Building, Complete)
-                | (Complete, Merged)
-                | (Defining | Defined | Building | Complete, Dropped)
+            (Refining, Refined)
+                | (Refined, Built)
+                | (Built, Merged)
+                | (Refining | Refined | Built, Dropped)
         )
     }
 
@@ -93,33 +90,27 @@ mod tests {
     fn allowed_edges() -> HashSet<(LifecycleStatus, LifecycleStatus)> {
         use LifecycleStatus::*;
         let mut set = HashSet::new();
-        set.insert((Defining, Defined));
-        set.insert((Defined, Defining));
-        set.insert((Defined, Building));
-        set.insert((Building, Complete));
-        set.insert((Complete, Merged));
-        set.insert((Defining, Complete));
-        // `any non-terminal -> Dropped`
-        set.insert((Defining, Dropped));
-        set.insert((Defined, Dropped));
-        set.insert((Building, Dropped));
-        set.insert((Complete, Dropped));
+        set.insert((Refining, Refined));
+        set.insert((Refined, Built));
+        set.insert((Built, Merged));
+        set.insert((Refining, Dropped));
+        set.insert((Refined, Dropped));
+        set.insert((Built, Dropped));
         set
     }
 
     #[test]
-    fn initial_is_defining() {
-        assert_eq!(LifecycleStatus::initial(), LifecycleStatus::Defining);
+    fn initial_is_refining() {
+        assert_eq!(LifecycleStatus::initial(), LifecycleStatus::Refining);
     }
 
     #[test]
     fn terminal_states_are_terminal() {
         assert!(LifecycleStatus::Merged.is_terminal());
         assert!(LifecycleStatus::Dropped.is_terminal());
-        assert!(!LifecycleStatus::Defining.is_terminal());
-        assert!(!LifecycleStatus::Defined.is_terminal());
-        assert!(!LifecycleStatus::Building.is_terminal());
-        assert!(!LifecycleStatus::Complete.is_terminal());
+        assert!(!LifecycleStatus::Refining.is_terminal());
+        assert!(!LifecycleStatus::Refined.is_terminal());
+        assert!(!LifecycleStatus::Built.is_terminal());
     }
 
     #[test]

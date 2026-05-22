@@ -15,12 +15,11 @@ fn cross_proposal_crates_have_specs(ctx: &CrossContext<'_>) -> RuleOutcome {
             };
         }
     };
-    if primitives::proposal_deliverables_have_specs(&proposal_text, ctx.specs_dir, ctx.terminology)
-    {
+    if primitives::proposal_deliverables_have_specs(&proposal_text, ctx.specs_dir) {
         RuleOutcome::Pass
     } else {
         RuleOutcome::Fail {
-            detail: "one or more crates/features listed in the proposal have no matching spec file"
+            detail: "one or more crates listed in the proposal have no matching spec file"
                 .to_string(),
         }
     }
@@ -115,7 +114,7 @@ fn cross_composition_maps_to_consistent(ctx: &CrossContext<'_>) -> RuleOutcome {
 const CROSS_RULES: &[CrossRule] = &[
     CrossRule {
         id: "cross.proposal-crates-have-specs",
-        description: "Every crate/feature listed in the proposal has a matching spec file",
+        description: "Every crate listed in the proposal has a matching spec file",
         classification: Classification::Structural,
         check: cross_proposal_crates_have_specs,
     },

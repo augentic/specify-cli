@@ -13,6 +13,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
+use std::str::FromStr;
 
 use assert_cmd::Command;
 use serde_json::Value;
@@ -47,6 +48,30 @@ pub fn omnia_schema_dir() -> PathBuf {
 /// binary.
 pub fn specify() -> Command {
     Command::cargo_bin("specify").expect("cargo_bin(specify)")
+}
+
+/// Stamp a phase outcome on `<project>/slices/<name>/.metadata.yaml`
+/// through the domain writer merge uses (`stamp_outcome`).
+///
+/// Integration tests call this instead of the removed
+/// `specify slice outcome set` CLI verb.
+pub fn stamp_slice_outcome(
+    project: &Project, name: &str, phase: specify_domain::adapter::Operation,
+    kind: specify_domain::slice::OutcomeKind, summary: &str, context: Option<&str>,
+) {
+    use jiff::Timestamp;
+    use specify_domain::slice::actions as slice_actions;
+
+    let slice_dir = project.slices_dir().join(name);
+    slice_actions::stamp_outcome(
+        &slice_dir,
+        phase,
+        kind,
+        summary,
+        context,
+        Timestamp::from_str("2026-04-24T12:00:00Z").expect("fixed test timestamp"),
+    )
+    .expect("stamp outcome");
 }
 
 /// Hex-encoded SHA-256 of the bytes at `path`, used by every tool

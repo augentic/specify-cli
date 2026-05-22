@@ -50,21 +50,14 @@ pub struct SliceMetadata {
         with = "specify_error::serde_rfc3339_opt"
     )]
     pub created_at: Option<Timestamp>,
-    /// When the slice entered `Defined`.
+    /// When the slice entered `Refined`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
         with = "specify_error::serde_rfc3339_opt"
     )]
     pub defined_at: Option<Timestamp>,
-    /// When the build phase started.
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        default,
-        with = "specify_error::serde_rfc3339_opt"
-    )]
-    pub build_started_at: Option<Timestamp>,
-    /// When the slice reached `Complete`.
+    /// When the slice reached `Built`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
@@ -92,9 +85,8 @@ pub struct SliceMetadata {
     #[serde(default)]
     pub touched_specs: Vec<TouchedSpec>,
     /// Latest phase outcome. Written atomically by
-    /// `specify slice outcome set` or by `crate::merge::slice::commit` (stamps `Success`
-    /// before the archive move). New stamps overwrite; history lives in
-    /// `.specify/journal.jsonl` (RFC-25 §Observability).
+    /// `crate::merge::slice::commit` (stamps `Success` before the archive move).
+    /// History lives in `.specify/journal.jsonl` (RFC-25 §Observability).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<Outcome>,
 }
@@ -216,10 +208,9 @@ mod tests {
         SliceMetadata {
             version: METADATA_VERSION,
             target: "omnia".to_string(),
-            status: LifecycleStatus::Building,
+            status: LifecycleStatus::Refined,
             created_at: Some(parse_stamp("2024-08-01T10:00:00Z")),
             defined_at: Some(parse_stamp("2024-08-01T12:00:00Z")),
-            build_started_at: Some(parse_stamp("2024-08-02T09:30:00Z")),
             completed_at: Some(parse_stamp("2024-08-03T15:45:00Z")),
             merged_at: None,
             dropped_at: None,
@@ -254,10 +245,9 @@ mod tests {
     #[test]
     fn defaults_version_when_absent() {
         let yaml = r#"target: omnia
-status: complete
+status: built
 created-at: "2024-08-01T10:00:00Z"
 defined-at: "2024-08-01T12:00:00Z"
-build-started-at: "2024-08-02T09:30:00Z"
 completed-at: "2024-08-03T15:45:00Z"
 touched-specs:
   - name: login
@@ -271,7 +261,7 @@ outcome:
         let meta: SliceMetadata =
             serde_saphyr::from_str(yaml).expect("parse legacy v1 metadata file");
         assert_eq!(meta.version, 1, "absent version should default to 1");
-        assert_eq!(meta.status, LifecycleStatus::Complete);
+        assert_eq!(meta.status, LifecycleStatus::Built);
         let stamped = meta.outcome.expect("outcome should round-trip");
         assert_eq!(stamped.phase, Operation::Merge);
         assert_eq!(stamped.kind, OutcomeKind::Success);

@@ -12,7 +12,9 @@
 use std::fs;
 
 mod common;
-use common::{Project, parse_json, specify};
+use common::{Project, parse_json, specify, stamp_slice_outcome};
+use specify_domain::adapter::Operation;
+use specify_domain::slice::OutcomeKind;
 
 // ---------------------------------------------------------------------------
 // slice create
@@ -30,7 +32,7 @@ fn create_writes_dir_and_metadata() {
     let value = parse_json(&assert.get_output().stdout);
     let dir = value["dir"].as_str().expect("dir string");
     assert!(dir.ends_with("/my-slice"), "dir should end with /my-slice, got: {dir}");
-    assert_eq!(value["status"], "defining");
+    assert_eq!(value["status"], "refining");
     let target = value["target"].as_str().expect("target string");
     assert!(target.starts_with("file://"));
     assert!(target.ends_with("/targets/omnia"));
@@ -41,7 +43,7 @@ fn create_writes_dir_and_metadata() {
     assert!(slice_dir.is_dir(), "slice dir must exist");
     assert!(slice_dir.join("specs").is_dir(), "specs/ must exist");
     let meta = fs::read_to_string(slice_dir.join(".metadata.yaml")).expect("read metadata");
-    assert!(meta.contains("status: defining"));
+    assert!(meta.contains("status: refining"));
     assert!(meta.contains("target: file://"));
     assert!(meta.contains("created-at:"));
 }
@@ -101,7 +103,7 @@ fn transition_walks_happy_path() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
-    for target in ["defined", "building", "complete"] {
+    for target in ["refined", "built"] {
         let assert = specify()
             .current_dir(project.root())
             .args(["--format", "json", "slice", "transition", "my-slice", target])
@@ -113,9 +115,8 @@ fn transition_walks_happy_path() {
 
     let meta = fs::read_to_string(project.slices_dir().join("my-slice").join(".metadata.yaml"))
         .expect("read metadata");
-    assert!(meta.contains("status: complete"));
+    assert!(meta.contains("status: built"));
     assert!(meta.contains("defined-at:"));
-    assert!(meta.contains("build-started-at:"));
     assert!(meta.contains("completed-at:"));
 }
 
@@ -123,10 +124,10 @@ fn transition_walks_happy_path() {
 fn transition_rejects_illegal_edge() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
-    // Defining -> Building is not a legal edge.
+    // Refining -> Built is not a legal edge (must pass through refined).
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "transition", "my-slice", "building"])
+        .args(["--format", "json", "slice", "transition", "my-slice", "built"])
         .assert()
         .failure();
     let value = parse_json(&assert.get_output().stderr);
@@ -345,21 +346,12 @@ fn status_by_name_returns_single_entry() {
     let value = parse_json(&assert.get_output().stdout);
     let entry = &value["slice"];
     assert_eq!(entry["name"], "only-slice");
-    assert_eq!(entry["status"], "defining");
+    assert_eq!(entry["status"], "refining");
 }
 
 // ---------------------------------------------------------------------------
-// slice outcome set (L2.A)
+// slice outcome show
 // ---------------------------------------------------------------------------
-
-/// Parse the `.metadata.yaml` for `name` under `project` as a
-/// `serde_json::Value` so tests can assert on the `outcome` subtree
-/// without pulling in the `specify-slice` crate directly.
-fn read_metadata_yaml(project: &Project, name: &str) -> serde_json::Value {
-    let path = project.slices_dir().join(name).join(".metadata.yaml");
-    let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    serde_saphyr::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
-}
 
 /// Naive RFC3339 sanity check sufficient for integration tests: `YYYY-MM-DDT...`.
 fn looks_like_rfc3339(s: &str) -> bool {
@@ -367,240 +359,6 @@ fn looks_like_rfc3339(s: &str) -> bool {
         && s.chars().nth(4) == Some('-')
         && s.chars().nth(7) == Some('-')
         && s.chars().nth(10) == Some('T')
-}
-
-#[test]
-fn phase_outcome_stamps_success_on_shape() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "shape",
-            "success",
-            "--summary",
-            "artifacts generated",
-        ])
-        .assert()
-        .success();
-
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["slice"], "foo");
-    assert_eq!(value["phase"], "shape");
-    assert_eq!(value["outcome"], "success");
-    let at = value["at"].as_str().expect("at is a string");
-    assert!(looks_like_rfc3339(at), "at should be RFC3339, got {at}");
-
-    let meta = read_metadata_yaml(&project, "foo");
-    let outcome = &meta["outcome"];
-    assert_eq!(outcome["phase"].as_str(), Some("shape"));
-    assert_eq!(outcome["outcome"].as_str(), Some("success"));
-    assert_eq!(outcome["summary"].as_str(), Some("artifacts generated"));
-    let at_on_disk = outcome["at"].as_str().expect("at on disk");
-    assert!(looks_like_rfc3339(at_on_disk), "on-disk at should be RFC3339, got {at_on_disk}");
-    assert!(
-        outcome.get("context").is_none_or(serde_json::Value::is_null),
-        "context must be absent when not supplied, got: {outcome:?}"
-    );
-}
-
-#[test]
-fn phase_outcome_stamps_failure_with_context() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    specify()
-        .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "failure",
-            "--summary",
-            "build broke",
-            "--context",
-            "task 3 failed",
-        ])
-        .assert()
-        .success();
-
-    let meta = read_metadata_yaml(&project, "foo");
-    assert_eq!(meta["outcome"]["phase"].as_str(), Some("build"));
-    assert_eq!(meta["outcome"]["outcome"].as_str(), Some("failure"));
-    assert_eq!(meta["outcome"]["context"].as_str(), Some("task 3 failed"));
-}
-
-#[test]
-fn phase_outcome_stamps_deferred_on_build() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "deferred",
-            "--summary",
-            "channel scope unclear",
-        ])
-        .assert()
-        .success();
-
-    let meta = read_metadata_yaml(&project, "foo");
-    assert_eq!(meta["outcome"]["phase"].as_str(), Some("build"));
-    assert_eq!(meta["outcome"]["outcome"].as_str(), Some("deferred"));
-    assert_eq!(meta["outcome"]["summary"].as_str(), Some("channel scope unclear"));
-}
-
-#[test]
-fn phase_outcome_text_output() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "shape", "success", "--summary", "ok"])
-        .assert()
-        .success();
-    let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
-    assert_eq!(stdout.trim_end(), "Stamped outcome 'success' for phase 'shape' on slice 'foo'.");
-}
-
-#[test]
-fn phase_outcome_errors_on_missing_slice() {
-    let project = Project::init();
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "slice",
-            "outcome",
-            "set",
-            "ghost",
-            "shape",
-            "success",
-            "--summary",
-            "x",
-        ])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stderr);
-    let msg = value["message"].as_str().unwrap_or("");
-    assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
-}
-
-#[test]
-fn phase_outcome_writes_trailing_newline() {
-    // Atomicity is an OS-level guarantee (NamedTempFile + rename) so it
-    // is not directly unit-testable. Instead assert the saved file
-    // shape: trailing newline, mirroring the Plan::save atomic-save
-    // tests.
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "shape", "success", "--summary", "ok"])
-        .assert()
-        .success();
-
-    let path = project.slices_dir().join("foo").join(".metadata.yaml");
-    let bytes = fs::read(&path).expect("read metadata");
-    assert!(!bytes.is_empty(), "metadata should not be empty");
-    assert_eq!(
-        *bytes.last().unwrap(),
-        b'\n',
-        "metadata must end with a trailing newline after atomic stamp"
-    );
-}
-
-#[test]
-fn phase_outcome_overwrites_previous() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "shape", "success", "--summary", "defined"])
-        .assert()
-        .success();
-
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "failure",
-            "--summary",
-            "broke",
-            "--context",
-            "stderr blob",
-        ])
-        .assert()
-        .success();
-
-    let meta = read_metadata_yaml(&project, "foo");
-    let outcome = &meta["outcome"];
-    assert_eq!(outcome["phase"].as_str(), Some("build"));
-    assert_eq!(outcome["outcome"].as_str(), Some("failure"));
-    assert_eq!(outcome["summary"].as_str(), Some("broke"));
-    assert_eq!(outcome["context"].as_str(), Some("stderr blob"));
-
-    // Document that outcome is a single field, not a list: the raw
-    // YAML text must contain exactly one top-level `outcome:` key.
-    let path = project.slices_dir().join("foo").join(".metadata.yaml");
-    let text = fs::read_to_string(&path).expect("read metadata");
-    let outcome_lines = text.lines().filter(|l| l.starts_with("outcome:")).count();
-    assert_eq!(
-        outcome_lines, 1,
-        "expected exactly one top-level `outcome:` key, got {outcome_lines} in:\n{text}"
-    );
-}
-
-#[test]
-fn phase_outcome_preserves_metadata_fields() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let meta_before = read_metadata_yaml(&project, "foo");
-    let created_at_before =
-        meta_before["created-at"].as_str().expect("created-at populated after create").to_string();
-    let status_before =
-        meta_before["status"].as_str().expect("status populated after create").to_string();
-    let target_before =
-        meta_before["target"].as_str().expect("target populated after create").to_string();
-
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "shape", "success", "--summary", "ok"])
-        .assert()
-        .success();
-
-    let meta_after = read_metadata_yaml(&project, "foo");
-    assert_eq!(meta_after["created-at"].as_str(), Some(created_at_before.as_str()));
-    assert_eq!(meta_after["status"].as_str(), Some(status_before.as_str()));
-    assert_eq!(meta_after["target"].as_str(), Some(target_before.as_str()));
-    assert!(meta_after["outcome"].is_object(), "outcome should now be present");
 }
 
 #[test]
@@ -612,7 +370,7 @@ fn metadata_without_outcome_still_parses() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let slice_dir = tmp.path();
     let yaml = r#"target: omnia
-status: defining
+status: refining
 created-at: "2024-08-01T10:00:00Z"
 "#;
     fs::write(slice_dir.join(".metadata.yaml"), yaml).expect("write metadata");
@@ -623,30 +381,18 @@ created-at: "2024-08-01T10:00:00Z"
     );
 }
 
-// ---------------------------------------------------------------------------
-// slice outcome show (read verb symmetric with `outcome set`)
-// ---------------------------------------------------------------------------
-
 #[test]
 fn outcome_returns_stamped_as_json() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "success",
-            "--summary",
-            "5/5 tasks",
-            "--context",
-            "trailing newline",
-        ])
-        .assert()
-        .success();
+    stamp_slice_outcome(
+        &project,
+        "foo",
+        Operation::Build,
+        OutcomeKind::Success,
+        "5/5 tasks",
+        Some("trailing newline"),
+    );
 
     let assert = specify()
         .current_dir(project.root())
@@ -690,11 +436,7 @@ fn outcome_emits_null_when_unstamped() {
 fn outcome_null_context_when_unstamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "shape", "success", "--summary", "ok"])
-        .assert()
-        .success();
+    stamp_slice_outcome(&project, "foo", Operation::Shape, OutcomeKind::Success, "ok", None);
 
     let assert = specify()
         .current_dir(project.root())
@@ -715,11 +457,7 @@ fn outcome_null_context_when_unstamped() {
 fn outcome_text_output_stamped() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "build", "success", "--summary", "5/5 tasks"])
-        .assert()
-        .success();
+    stamp_slice_outcome(&project, "foo", Operation::Build, OutcomeKind::Success, "5/5 tasks", None);
 
     let assert = specify()
         .current_dir(project.root())
@@ -762,20 +500,14 @@ fn outcome_errors_on_missing_slice() {
 fn outcome_falls_back_to_archive() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "bar"]).assert().success();
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "bar",
-            "merge",
-            "success",
-            "--summary",
-            "Merged 2 spec(s) into baseline",
-        ])
-        .assert()
-        .success();
+    stamp_slice_outcome(
+        &project,
+        "bar",
+        Operation::Merge,
+        OutcomeKind::Success,
+        "Merged 2 spec(s) into baseline",
+        None,
+    );
 
     // Simulate the archive move that `specify merge` performs.
     let slices_dir = project.root().join(".specify/slices");
@@ -831,181 +563,6 @@ fn outcome_archive_picks_most_recent() {
         value["outcome"]["summary"].as_str(),
         Some("latest run"),
         "should pick the most recent archive entry"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// slice outcome set — registry-amendment-required (RFC-9 §2B)
-// ---------------------------------------------------------------------------
-
-/// Stamping the new outcome variant writes the structured proposal
-/// payload to `.metadata.yaml` under `outcome.outcome.registry-amendment-required.*`
-/// (kebab-case external-tag form). Round-trips through the writer.
-#[test]
-fn outcome_registry_amendment_writes_payload() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let proposal = serde_json::json!({
-        "proposed-name": "alpha-gateway",
-        "proposed-url": "git@github.com:augentic/alpha-gateway.git",
-        "proposed-adapter": "omnia@v1",
-        "proposed-description": "Gateway for alpha adapter.",
-        "rationale": "build discovered tangled code requiring a split",
-    })
-    .to_string();
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "registry-amendment-required",
-            "--proposal",
-            &proposal,
-        ])
-        .assert()
-        .success();
-
-    let path = project.slices_dir().join("foo").join(".metadata.yaml");
-    let raw = fs::read_to_string(&path).expect("read metadata");
-    assert!(
-        raw.contains("registry-amendment-required:"),
-        "outcome should use external-tag form, got:\n{raw}"
-    );
-    assert!(
-        raw.contains("proposed-name: alpha-gateway"),
-        "proposal fields should be kebab-case, got:\n{raw}"
-    );
-    assert!(
-        raw.contains("proposed-url: \"git@github.com:augentic/alpha-gateway.git\"")
-            || raw.contains("proposed-url: git@github.com:augentic/alpha-gateway.git"),
-        "proposed-url should round-trip the verbatim URL, got:\n{raw}"
-    );
-    assert!(
-        raw.contains("proposed-adapter: \"omnia@v1\"")
-            || raw.contains("proposed-adapter: omnia@v1"),
-        "proposed-schema should round-trip, got:\n{raw}"
-    );
-    assert!(raw.contains("rationale:"), "rationale should be emitted, got:\n{raw}");
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "foo"])
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    let outcome = &value["outcome"];
-    let payload = &outcome["outcome"]["registry-amendment-required"];
-    assert!(payload.is_object(), "expected externally-tagged variant, got: {outcome}");
-    assert_eq!(payload["proposed-name"].as_str(), Some("alpha-gateway"));
-    assert_eq!(payload["proposed-url"].as_str(), Some("git@github.com:augentic/alpha-gateway.git"),);
-    assert_eq!(payload["proposed-adapter"].as_str(), Some("omnia@v1"));
-    assert_eq!(payload["proposed-description"].as_str(), Some("Gateway for alpha adapter."));
-    assert_eq!(
-        payload["rationale"].as_str(),
-        Some("build discovered tangled code requiring a split"),
-    );
-    assert_eq!(
-        outcome["summary"].as_str(),
-        Some("registry-amendment-required: alpha-gateway"),
-        "missing --summary should default to `registry-amendment-required: <name>`",
-    );
-}
-
-/// Missing required keys in the `--proposal` JSON object surface as a
-/// clap parse error (exit `2`).
-#[test]
-fn outcome_registry_amendment_missing_keys() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let proposal = serde_json::json!({
-        "proposed-name": "alpha-gateway",
-        "proposed-url": "git@github.com:augentic/alpha-gateway.git",
-    })
-    .to_string();
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "registry-amendment-required",
-            "--proposal",
-            &proposal,
-        ])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(
-        stderr.contains("--proposal") && stderr.contains("missing field"),
-        "expected clap parse-error naming --proposal and the missing field, got: {stderr}",
-    );
-}
-
-/// Malformed JSON on `--proposal` is rejected at parse time (exit `2`).
-#[test]
-fn outcome_registry_amendment_malformed_json() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "registry-amendment-required",
-            "--proposal",
-            "not-json",
-        ])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(
-        stderr.contains("--proposal"),
-        "expected clap parse-error naming --proposal, got: {stderr}",
-    );
-}
-
-/// Supplying `--proposal` with an outcome other than
-/// `registry-amendment-required` is rejected — the flag is
-/// outcome-scoped, and silently dropping it would mask author intent.
-#[test]
-fn outcome_proposal_flag_rejected_otherwise() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "success",
-            "--summary",
-            "ok",
-            "--proposal",
-            "{}",
-        ])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(
-        stderr.contains("--proposal") || stderr.contains("unexpected argument"),
-        "expected clap diagnostic naming the offending flag, got: {stderr}",
     );
 }
 

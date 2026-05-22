@@ -304,35 +304,25 @@ fn task_mark_is_idempotent() {
 }
 
 // ---------------------------------------------------------------------------
-// 8. slice outcome — round-trip through `outcome set` + `outcome show`
+// 8. slice outcome show
 // ---------------------------------------------------------------------------
 
-/// End-to-end round-trip for the `slice outcome` read verb added in
-/// RFC-2 §1.1 (renamed from `change outcome` in RFC-13 chunk 3.2):
-/// stamp an outcome with `slice outcome set`, read it back with
-/// `slice outcome show --format json`, and assert the full JSON
-/// shape. Also covers the unstamped case where `outcome` must be `null`.
+/// End-to-end read path for `slice outcome show --format json` after a
+/// domain `stamp_outcome` write. Also covers the unstamped case where
+/// `outcome` must be `null`.
 #[test]
 fn phase_outcome_round_trip_via_slice() {
     let project = Project::init();
 
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "success",
-            "--summary",
-            "5/5 tasks",
-            "--context",
-            "trailing newline",
-        ])
-        .assert()
-        .success();
+    common::stamp_slice_outcome(
+        &project,
+        "foo",
+        specify_domain::adapter::Operation::Build,
+        specify_domain::slice::OutcomeKind::Success,
+        "5/5 tasks",
+        Some("trailing newline"),
+    );
 
     let assert = specify()
         .current_dir(project.root())

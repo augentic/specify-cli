@@ -62,10 +62,9 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             SliceTaskAction::Progress { name } => task::progress(ctx, &name),
             SliceTaskAction::Mark { name, task_number } => task::mark(ctx, &name, task_number),
         },
-        SliceAction::Outcome { action } => match action {
-            OutcomeAction::Set { name, phase, kind } => outcome::set(ctx, name, phase, kind),
-            OutcomeAction::Show { name } => outcome::show(ctx, name),
-        },
+        SliceAction::Outcome {
+            action: OutcomeAction::Show { name },
+        } => outcome::show(ctx, name),
         SliceAction::Transition { name, target } => {
             if matches!(target, LifecycleStatus::Merged) {
                 return Err(Error::Argument {

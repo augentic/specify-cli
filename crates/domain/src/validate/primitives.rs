@@ -137,30 +137,19 @@ pub(super) fn tasks_grouped_under_headings(tasks: &Progress) -> bool {
     tasks.tasks.iter().all(|t| !t.group.is_empty())
 }
 
-/// Return `true` iff every crate/feature entry listed under the
-/// proposal's `## Crates` (or `## Features`) section has a matching
-/// `specs/<name>/spec.md` on disk. If no deliverable section is present,
-/// or the section is empty, returns `true` — the sibling
+/// Return `true` iff every crate entry listed under the proposal's
+/// `## Crates` section has a matching `specs/<name>/spec.md` on disk.
+/// If the section is absent or empty, returns `true` — the sibling
 /// `has-content-after-heading` rule is responsible for that case.
-pub(super) fn proposal_deliverables_have_specs(
-    proposal: &str, specs_dir: &Path, term: &str,
-) -> bool {
-    let headings: Vec<&str> = match term {
-        "crate" => vec!["## Crates"],
-        "feature" => vec!["## Features"],
-        _ => vec!["## Crates", "## Features"],
-    };
-
-    for heading in headings {
-        let entries = extract_deliverables(proposal, heading);
-        if entries.is_empty() {
-            continue;
-        }
-        for name in entries {
-            let spec_path = specs_dir.join(&name).join("spec.md");
-            if !spec_path.exists() {
-                return false;
-            }
+pub(super) fn proposal_deliverables_have_specs(proposal: &str, specs_dir: &Path) -> bool {
+    let entries = extract_deliverables(proposal, "## Crates");
+    if entries.is_empty() {
+        return true;
+    }
+    for name in entries {
+        let spec_path = specs_dir.join(&name).join("spec.md");
+        if !spec_path.exists() {
+            return false;
         }
     }
     true
@@ -342,14 +331,14 @@ mod tests {
         fs::write(specs.join("login").join("spec.md"), "# Login\n").unwrap();
 
         let ok_proposal = "## Crates\n\n- login\n";
-        assert!(proposal_deliverables_have_specs(ok_proposal, &specs, "crate"));
+        assert!(proposal_deliverables_have_specs(ok_proposal, &specs));
 
         let missing = "## Crates\n\n- login\n- missing\n";
-        assert!(!proposal_deliverables_have_specs(missing, &specs, "crate"));
+        assert!(!proposal_deliverables_have_specs(missing, &specs));
 
         // Absent section → true (the has-content rule handles this case).
         let absent = "## Why\n\nbecause\n";
-        assert!(proposal_deliverables_have_specs(absent, &specs, "crate"));
+        assert!(proposal_deliverables_have_specs(absent, &specs));
     }
 
     #[test]
@@ -359,7 +348,7 @@ mod tests {
         fs::create_dir_all(specs.join("user-auth")).unwrap();
         fs::write(specs.join("user-auth").join("spec.md"), "# Login\n").unwrap();
         let proposal = "## Crates\n\n### New Crates\n\n- `user-auth`\n";
-        assert!(proposal_deliverables_have_specs(proposal, &specs, "crate"));
+        assert!(proposal_deliverables_have_specs(proposal, &specs));
     }
 
     #[test]

@@ -97,8 +97,6 @@ pub struct BriefContext<'a> {
     pub slice_dir: &'a Path,
     /// Absolute path to the specs directory.
     pub specs_dir: &'a Path,
-    /// Schema-inferred terminology (e.g. `"crate"` or `"feature"`).
-    pub terminology: &'a str,
 }
 
 /// A rule that spans multiple briefs.
@@ -121,8 +119,6 @@ pub struct CrossContext<'a> {
     pub slice_dir: &'a Path,
     /// Absolute path to the specs directory.
     pub specs_dir: &'a Path,
-    /// Schema-inferred terminology (e.g. `"crate"` or `"feature"`).
-    pub terminology: &'a str,
 }
 
 #[cfg(test)]

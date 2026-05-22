@@ -134,10 +134,9 @@ pub fn create(
     let metadata = SliceMetadata {
         version: crate::slice::METADATA_VERSION,
         target: target.to_string(),
-        status: LifecycleStatus::Defining,
+        status: LifecycleStatus::Refining,
         created_at: Some(now),
         defined_at: None,
-        build_started_at: None,
         completed_at: None,
         merged_at: None,
         dropped_at: None,

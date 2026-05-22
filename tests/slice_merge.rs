@@ -68,14 +68,14 @@ fn preview_reports_operations() {
 }
 
 #[test]
-fn preview_doesnt_require_complete_status() {
+fn preview_doesnt_require_built_status() {
     let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
-    // Downgrade status to `building` — `slice merge run` refuses this but
+    // Downgrade status to `refined` — `slice merge run` refuses this but
     // `slice merge preview` must accept it.
     let metadata_path = slice_dir.join(".metadata.yaml");
     let original = fs::read_to_string(&metadata_path).unwrap();
-    let downgraded = original.replace("status: complete", "status: building");
+    let downgraded = original.replace("status: built", "status: refined");
     fs::write(&metadata_path, downgraded).unwrap();
 
     specify()
@@ -139,7 +139,7 @@ fn conflict_check_flags_modified_newer() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "target: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: modified\n",
+        "target: omnia\nstatus: built\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: modified\n",
     )
     .unwrap();
 
@@ -171,7 +171,7 @@ fn conflict_check_no_drift_when_older() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "target: omnia\nstatus: complete\ndefined-at: \"2099-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "target: omnia\nstatus: built\ndefined-at: \"2099-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 
@@ -207,7 +207,7 @@ fn conflict_check_detects_drift_when_newer() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "target: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "target: omnia\nstatus: built\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 
@@ -243,7 +243,7 @@ fn conflict_check_no_drift_for_new_files() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "target: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "target: omnia\nstatus: built\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 
@@ -273,7 +273,7 @@ fn conflict_check_no_drift_without_contracts() {
     let metadata_path = slice_dir.join(".metadata.yaml");
     fs::write(
         &metadata_path,
-        "target: omnia\nstatus: complete\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
+        "target: omnia\nstatus: built\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
     )
     .unwrap();
 
