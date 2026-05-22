@@ -1,38 +1,11 @@
 # Core Assembly Template Manifest
 
-Source-of-truth mapping for the chunk-3a templates. The Rust template engine
-arriving in chunk 5 reads this list (or an equivalent embedded copy) to know
-which template file goes to which on-disk path, and which placeholders /
-capability markers it must process.
+Human reference for the core assembly templates. The canonical source-to-target
+registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.core`); `wasi-tools/vectis/build.rs` validates that manifest and emits the embedded `registry.rs` consumed by `specify tool run vectis -- scaffold core`.
 
-## Path mapping
-
-| Source (this dir)              | Target (rendered project)        |
-| ------------------------------ | -------------------------------- |
-| `workspace-cargo.toml`         | `Cargo.toml`                     |
-| `clippy.toml`                  | `clippy.toml`                    |
-| `rust-toolchain.toml`          | `rust-toolchain.toml`            |
-| `gitignore`                    | `.gitignore`                     |
-| `shared-cargo.toml`            | `shared/Cargo.toml`              |
-| `lib.rs`                       | `shared/src/lib.rs`              |
-| `app.rs`                       | `shared/src/app.rs`              |
-| `ffi.rs`                       | `shared/src/ffi.rs`              |
-| `codegen.rs`                   | `shared/src/bin/codegen.rs`      |
-| `deny.toml`                    | `deny.toml`                      |
-| `supply-chain-config.toml`     | `supply-chain/config.toml`       |
-| `supply-chain-audits.toml`     | `supply-chain/audits.toml`       |
-| `supply-chain-imports.lock`    | `supply-chain/imports.lock`      |
+Source filenames are flat under `templates/vectis/core/`. Nested target paths (e.g. `shared/src/bin/codegen.rs`) are declared in `manifest.yaml`, not mirrored in this directory layout. The `gitignore` source has no leading dot because shipping a literal `.gitignore` inside the `templates/` tree would be silently honoured by git tools that walk the repo; the engine renames it on write.
 
 Total: 13 files (matches RFC § File Manifests § Core Assembly).
-
-Source filenames are flat -- no nested directories under `templates/vectis/core/`.
-Nested target paths (e.g. `shared/src/bin/codegen.rs`) are produced by the
-template engine, never by the on-disk layout of the templates directory. This
-keeps `include_str!` paths short and avoids a duplicate folder hierarchy.
-
-The `gitignore` source has no leading dot because shipping a literal `.gitignore`
-inside the `templates/` tree would be silently honoured by every git tool that
-walks the repo. The engine renames it on write.
 
 ## Placeholder reference
 
@@ -104,13 +77,4 @@ Notes for chunk 5/6:
 
 ## Self-check
 
-This manifest must list every file in `templates/vectis/core/`. CI can enforce
-this trivially:
-
-```bash
-diff \
-  <(ls templates/vectis/core | grep -v '^MANIFEST.md$' | sort) \
-  <(awk -F'`' '/^\| `[a-z]/ { print $2 }' templates/vectis/core/MANIFEST.md | sort)
-```
-
-Run the diff after adding or renaming a template file.
+Orphan detection and file-count parity (13 files) run in `wasi-tools/vectis/build.rs` when the crate builds. After adding or renaming a template file, update [`../manifest.yaml`](../manifest.yaml) in the same change.

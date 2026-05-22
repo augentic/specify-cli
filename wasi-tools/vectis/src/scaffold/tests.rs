@@ -6,15 +6,15 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
-use super::templates::{android, core, ios};
+use super::templates::registry::{android, core, ios};
 use super::*;
 
 const CORE_RENDER_ONLY_SHA256: &str =
-    "675f182ec847e4f4238cf5619b9635b323366df617f9b70619edeacc4033bdc7";
+    "3db14983887828dff03d604ad449f1eb098e1008db4b83df525af6cbb64abeff";
 const IOS_RENDER_ONLY_SHA256: &str =
     "74b2d27baa9ce536abe1d59d7bf75117757bb470faa73502ea28d3316c3a9699";
 const ANDROID_RENDER_ONLY_SHA256: &str =
-    "3557768fcb9aa9e65bdacee242976573dd1d202e4471afd607c721b676520a77";
+    "f35e8f62519b1d285e03d5a6f7d82b19c83072c8ff6a85ead8b7780e1e59192e";
 
 fn versions() -> Versions {
     Versions::embedded().expect("embedded versions parse")
@@ -53,7 +53,7 @@ fn golden_hashes_match_current_render_only_output() {
 #[test]
 fn core_plan_preserves_template_order_and_substitutions() {
     let plan = plan_core("Counter", "com.example.counter", &[], &versions()).unwrap();
-    assert_eq!(plan.files.len(), core::TEMPLATES.len());
+    assert_eq!(plan.files.len(), core::ENTRIES.len());
     assert_eq!(plan.files[0].relative_path, "Cargo.toml");
     assert_eq!(plan.files[8].relative_path, "shared/src/bin/codegen.rs");
 
@@ -71,7 +71,7 @@ fn core_plan_preserves_template_order_and_substitutions() {
 fn ios_plan_substitutes_paths_and_cap_blocks() {
     let caps = parse_caps(Some("http")).unwrap();
     let plan = plan_ios("Counter", "com.vectis.counter", &caps, &versions()).unwrap();
-    assert_eq!(plan.files.len(), ios::TEMPLATES.len());
+    assert_eq!(plan.files.len(), ios::ENTRIES.len());
     assert!(plan.files.iter().any(|file| file.relative_path == "iOS/Counter/CounterApp.swift"));
 
     let core_swift =
@@ -84,7 +84,7 @@ fn ios_plan_substitutes_paths_and_cap_blocks() {
 #[test]
 fn android_plan_skips_network_config_without_http_or_sse() {
     let plan = plan_android("Counter", "com.vectis.counter", &[], &versions()).unwrap();
-    assert_eq!(plan.files.len(), android::TEMPLATES.len() - 1);
+    assert_eq!(plan.files.len(), android::ENTRIES.len() - 1);
     assert!(
         !plan.files.iter().any(|file| file.relative_path.ends_with("network_security_config.xml"))
     );
@@ -101,7 +101,7 @@ fn android_plan_skips_network_config_without_http_or_sse() {
 fn android_plan_writes_network_config_when_http_enabled() {
     let caps = parse_caps(Some("http")).unwrap();
     let plan = plan_android("Counter", "com.vectis.counter", &caps, &versions()).unwrap();
-    assert_eq!(plan.files.len(), android::TEMPLATES.len());
+    assert_eq!(plan.files.len(), android::ENTRIES.len());
     assert!(
         plan.files.iter().any(|file| file.relative_path.ends_with("network_security_config.xml"))
     );

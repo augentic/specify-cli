@@ -1,59 +1,13 @@
 # Android Assembly Template Manifest
 
-Source-of-truth mapping for the chunk-3c templates. The Rust template engine
-arriving in chunk 8 reads this list (or an equivalent embedded copy) to know
-which template file goes to which on-disk path, and which placeholders /
-capability markers it must process.
+Human reference for the Android assembly templates. The canonical source-to-target
+registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.android`); `wasi-tools/vectis/build.rs` validates that manifest and emits the embedded `registry.rs` consumed by `specify tool run vectis -- scaffold android`.
 
-## Path mapping
-
-Source filenames are flat -- no nested directories under
-`templates/vectis/android/`. Nested target paths (especially the
-`Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/...` segment) are produced
-by the template engine, never by the on-disk layout of the templates directory.
-This keeps `include_str!` paths short and matches the convention established
-in `templates/vectis/{core,ios}/MANIFEST.md`.
-
-| Source (this dir)              | Target (rendered project)                                                           |
-| ------------------------------ | ----------------------------------------------------------------------------------- |
-| `Makefile`                     | `Android/Makefile`                                                                  |
-| `gitignore`                    | `Android/.gitignore`                                                                |
-| `root-build.gradle.kts`        | `Android/build.gradle.kts`                                                          |
-| `settings.gradle.kts`          | `Android/settings.gradle.kts`                                                       |
-| `gradle.properties`            | `Android/gradle.properties`                                                         |
-| `libs.versions.toml`           | `Android/gradle/libs.versions.toml`                                                 |
-| `app-build.gradle.kts`         | `Android/app/build.gradle.kts`                                                      |
-| `shared-build.gradle.kts`      | `Android/shared/build.gradle.kts`                                                   |
-| `AndroidManifest.xml`          | `Android/app/src/main/AndroidManifest.xml`                                          |
-| `themes.xml`                   | `Android/app/src/main/res/values/themes.xml`                                        |
-| `network-security-config.xml`  | `Android/app/src/main/res/xml/network_security_config.xml` (only when `http`/`sse`) |
-| `Application.kt`               | `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/__APP_NAME__Application.kt`     |
-| `MainActivity.kt`              | `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/MainActivity.kt`                |
-| `Core.kt`                      | `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/core/Core.kt`                   |
-| `LoadingScreen.kt`             | `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/ui/screens/LoadingScreen.kt`    |
-| `HomeScreen.kt`                | `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/ui/screens/HomeScreen.kt`       |
-| `Color.kt`                     | `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/ui/theme/Color.kt`              |
-| `Theme.kt`                     | `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/ui/theme/Theme.kt`              |
-| `Type.kt`                      | `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/ui/theme/Type.kt`               |
+Source filenames are flat under `templates/vectis/android/`. Nested target paths (especially `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/...`) are declared in `manifest.yaml`. The `__APP_NAME__` and `__ANDROID_PACKAGE_PATH__` segments in target paths are substituted when writing each file. `__ANDROID_PACKAGE_PATH__` is derived by replacing `.` with `/` in `__ANDROID_PACKAGE__` at file-write time; it does not appear in file contents.
 
 Total: 19 files (matches RFC § File Manifests § Android Assembly).
 
-The `__APP_NAME__` and `__ANDROID_PACKAGE_PATH__` segments in target paths are
-substituted by the engine when writing each file, the same as inside file
-contents. Path-segment substitution applies to both directory and file-name
-positions (e.g. `__APP_NAME__Application.kt` becomes `CounterApplication.kt`).
-
-`__ANDROID_PACKAGE_PATH__` is **derived**, not supplied -- the engine in
-chunk 8 computes it by replacing `.` with `/` in `__ANDROID_PACKAGE__` at
-file-write time. It does not appear in the placeholder substitution table the
-engine carries in memory; it only ever appears in target-path strings.
-
-The Gradle wrapper files (`gradlew`, `gradlew.bat`,
-`gradle/wrapper/gradle-wrapper.jar`, `gradle/wrapper/gradle-wrapper.properties`)
-are intentionally **not** templates. They are produced by chunk 8 invoking
-`gradle wrapper --gradle-version <pin>` after the Gradle config files exist.
-The same applies to `local.properties` (per-developer; carries `sdk.dir` from
-`$ANDROID_HOME`).
+The Gradle wrapper files (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar`, `gradle/wrapper/gradle-wrapper.properties`) are intentionally **not** templates. They are produced by the host verify pipeline invoking `gradle wrapper --gradle-version <pin>` after the Gradle config files exist. The same applies to `local.properties` (per-developer; carries `sdk.dir` from `$ANDROID_HOME`).
 
 ## Placeholder reference
 
@@ -210,17 +164,4 @@ landed during verification:
 
 ## Self-check
 
-This manifest must list every file in `templates/vectis/android/`. CI can
-enforce this trivially -- restrict the awk match to backtick-wrapped tokens
-that look like file names so cap names (`http`, `kv`, ...) and placeholder
-identifiers (`__APP_NAME__`, ...) from other tables don't pollute the
-comparison:
-
-```bash
-diff \
-  <(command ls -1 templates/vectis/android | grep -v '^MANIFEST.md$' | sort) \
-  <(awk -F'`' '/^\| `[A-Za-z][A-Za-z._-]*`/ { print $2 }' templates/vectis/android/MANIFEST.md \
-      | grep -E '\.[A-Za-z]+$|^Makefile$|^gitignore$' | sort -u)
-```
-
-Run the diff after adding or renaming a template file.
+Orphan detection and file-count parity (19 files) run in `wasi-tools/vectis/build.rs` when the crate builds. After adding or renaming a template file, update [`../manifest.yaml`](../manifest.yaml) in the same change.

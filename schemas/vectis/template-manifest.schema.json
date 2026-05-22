@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/augentic/specify-cli/schemas/vectis/template-manifest.schema.json",
+  "title": "Vectis template manifest",
+  "description": "Validates `templates/vectis/manifest.yaml`: the single source of truth for Vectis scaffold source-to-target mappings consumed by `wasi-tools/vectis/build.rs`.",
+  "type": "object",
+  "required": ["schema-version", "assemblies"],
+  "additionalProperties": false,
+  "properties": {
+    "schema-version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Manifest schema version. Bump on breaking wire changes."
+    },
+    "assemblies": {
+      "type": "object",
+      "required": ["core", "ios", "android"],
+      "additionalProperties": false,
+      "properties": {
+        "core": { "$ref": "#/$defs/assembly" },
+        "ios": { "$ref": "#/$defs/assembly" },
+        "android": { "$ref": "#/$defs/assembly" }
+      }
+    }
+  },
+  "$defs": {
+    "assembly": {
+      "type": "object",
+      "required": ["path-mode", "files"],
+      "additionalProperties": false,
+      "properties": {
+        "path-mode": {
+          "type": "string",
+          "enum": ["content-only", "app-name", "android-package"],
+          "description": "How target paths are substituted before write."
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/file-entry" }
+        }
+      }
+    },
+    "file-entry": {
+      "type": "object",
+      "required": ["source", "target"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Basename under `templates/vectis/<assembly>/`."
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative path under `PROJECT_DIR` after substitution."
+        },
+        "include-when": {
+          "type": "object",
+          "required": ["any-of"],
+          "additionalProperties": false,
+          "properties": {
+            "any-of": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "enum": ["http", "kv", "time", "platform", "sse"]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
