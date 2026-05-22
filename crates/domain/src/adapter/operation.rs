@@ -10,7 +10,7 @@ use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
 /// Target-adapter operation. Matches the closed `operations[]` set
-/// for target adapters declared in `targets/<name>/adapter.yaml`.
+/// for target adapters declared in `adapters/targets/<name>/adapter.yaml`.
 ///
 /// Wire format is kebab-case (`shape | build | merge`), persisted in
 /// slice outcome metadata. Pre-RFC-25 outcome stamps used the legacy

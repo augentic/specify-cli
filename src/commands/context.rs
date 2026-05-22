@@ -93,7 +93,7 @@ mod tests {
     use crate::cli::Format;
 
     fn write_minimal_adapter(project_dir: &Path) {
-        let adapter_dir = project_dir.join("targets").join("mini");
+        let adapter_dir = project_dir.join("adapters").join("targets").join("mini");
         let briefs_dir = adapter_dir.join("briefs");
         fs::create_dir_all(&briefs_dir).expect("create adapter dirs");
         fs::write(
@@ -172,10 +172,10 @@ mod tests {
                 ".specify/slices/alpha/.metadata.yaml",
                 ".specify/slices/zeta/.metadata.yaml",
                 "registry.yaml",
-                "targets/mini/adapter.yaml",
-                "targets/mini/briefs/build.md",
-                "targets/mini/briefs/merge.md",
-                "targets/mini/briefs/shape.md",
+                "adapters/targets/mini/adapter.yaml",
+                "adapters/targets/mini/briefs/build.md",
+                "adapters/targets/mini/briefs/merge.md",
+                "adapters/targets/mini/briefs/shape.md",
             ]
         );
     }

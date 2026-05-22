@@ -2,8 +2,8 @@
 //! `.specify/.cache/.cache-meta.yaml` representation.
 //!
 //! `cache_adapter` copies a resolved source into
-//! `.specify/.cache/targets/<name>/`, mirrors the bundled `default`
-//! sibling under the same `targets/` axis, and stamps `cache-meta.yaml`
+//! `.specify/.cache/adapters/targets/<name>/`, mirrors the bundled `default`
+//! sibling under the same `adapters/targets/` axis, and stamps `cache-meta.yaml`
 //! with the resolved URI. The agent owns writes to the cache; the CLI
 //! reads `.cache-meta.yaml` (via [`CacheMeta::load`]) only to decide
 //! whether the cache matches `.specify/project.yaml:adapter`.

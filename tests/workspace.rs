@@ -428,7 +428,7 @@ fn rfc3a_c35_workspace_sync_two_local_symlink_peers() {
     specify()
         .current_dir(&root)
         .args(["init"])
-        .arg(repo_root().join("targets").join("omnia"))
+        .arg(repo_root().join("adapters").join("targets").join("omnia"))
         .args(["--name", "rfc3a-ws"])
         .assert()
         .success();

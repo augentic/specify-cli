@@ -121,7 +121,7 @@ mod tests {
     }
 
     fn omnia_target_dir() -> PathBuf {
-        repo_root().join("targets").join("omnia")
+        repo_root().join("adapters").join("targets").join("omnia")
     }
 
     fn base_opts<'a>(project_dir: &'a Path, target_dir: &'a Path) -> InitOptions<'a> {
@@ -170,7 +170,7 @@ mod tests {
         assert_eq!(cfg.name, "demo");
         let cap = cfg.adapter.as_deref().expect("adapter set on regular init");
         assert!(cap.starts_with("file://"), "adapter: {cap}");
-        assert!(cap.ends_with("/targets/omnia"), "adapter: {cap}");
+        assert!(cap.ends_with("/adapters/targets/omnia"), "adapter: {cap}");
         assert!(!cfg.hub, "regular init must not set hub");
         assert_eq!(cfg.specify_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
         let mut rule_keys: Vec<_> = cfg.rules.keys().cloned().collect();

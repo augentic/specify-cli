@@ -12,9 +12,12 @@ use crate::schema::validate_value;
 ///
 /// Source and target adapters share the `adapter.yaml` filename per
 /// RFC-25 §Adapter implementation shape; the directory's axis (under
-/// `sources/` or `targets/`) and the manifest's `axis:` field
-/// disambiguate.
+/// `adapters/sources/` or `adapters/targets/`) and the manifest's
+/// `axis:` field disambiguate.
 pub const ADAPTER_FILENAME: &str = "adapter.yaml";
+
+/// Parent directory for in-repo adapter trees.
+pub const ADAPTERS_DIR: &str = "adapters";
 
 const ADAPTER_JSON_SCHEMA: &str = include_str!("../../../../schemas/adapter.schema.json");
 const SOURCE_JSON_SCHEMA: &str = include_str!("../../../../schemas/source.schema.json");
@@ -36,8 +39,8 @@ pub enum Axis {
 }
 
 impl Axis {
-    /// Directory segment under `<project_dir>` and `.specify/.cache/`
-    /// — `"sources"` for source adapters, `"targets"` for target adapters.
+    /// Axis segment under [`ADAPTERS_DIR`] — `"sources"` for source
+    /// adapters, `"targets"` for target adapters.
     #[must_use]
     pub const fn dir_segment(self) -> &'static str {
         match self {
@@ -45,6 +48,12 @@ impl Axis {
             Self::Target => "targets",
         }
     }
+}
+
+/// `<project_dir>/adapters/{sources,targets}/` for the given axis.
+#[must_use]
+pub fn adapter_axis_dir(project_dir: &Path, axis: Axis) -> PathBuf {
+    project_dir.join(ADAPTERS_DIR).join(axis.dir_segment())
 }
 
 /// One declared WASI tool inside an adapter manifest.
@@ -66,8 +75,8 @@ pub struct AdapterToolDeclaration {
 
 /// In-memory representation of an adapter manifest.
 ///
-/// Loaded from `sources/<name>/adapter.yaml` or
-/// `targets/<name>/adapter.yaml`; the shape is the union of
+/// Loaded from `adapters/sources/<name>/adapter.yaml` or
+/// `adapters/targets/<name>/adapter.yaml`; the shape is the union of
 /// `schemas/source.schema.json` and `schemas/target.schema.json`, with
 /// the axis-specific refinements (closed operation sets, axis literal)
 /// enforced by [`Adapter::resolve`] via the matching schema.
@@ -119,17 +128,19 @@ pub struct ResolvedAdapter {
     pub manifest: Adapter,
     /// Filesystem directory the manifest was loaded from.
     pub root_dir: PathBuf,
-    /// Whether the manifest came from `.specify/.cache/{axis}/<name>/`
-    /// or from `<project_dir>/{axis}/<name>/`.
+    /// Whether the manifest came from
+    /// `.specify/.cache/adapters/{axis}/<name>/` or from
+    /// `<project_dir>/adapters/{axis}/<name>/`.
     pub location: AdapterLocation,
 }
 
 /// Where an adapter manifest was located on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdapterLocation {
-    /// Resolved from `<project_dir>/{axis}/<name>/`.
+    /// Resolved from `<project_dir>/adapters/{axis}/<name>/`.
     Local(PathBuf),
-    /// Resolved from `<project_dir>/.specify/.cache/{axis}/<name>/`.
+    /// Resolved from
+    /// `<project_dir>/.specify/.cache/adapters/{axis}/<name>/`.
     Cached(PathBuf),
 }
 
@@ -152,12 +163,18 @@ impl AdapterLocation {
     }
 }
 
-/// `.specify/.cache/{sources,targets}/<name>/` for a given axis and name.
+/// `.specify/.cache/adapters/{sources,targets}/<name>/` for a given axis
+/// and name.
 ///
 /// Path-only helper — the directory may or may not exist on disk.
 #[must_use]
 pub fn cache_dir(project_dir: &Path, axis: Axis, name: &str) -> PathBuf {
-    project_dir.join(".specify").join(".cache").join(axis.dir_segment()).join(name)
+    project_dir
+        .join(".specify")
+        .join(".cache")
+        .join(ADAPTERS_DIR)
+        .join(axis.dir_segment())
+        .join(name)
 }
 
 impl Adapter {
@@ -165,9 +182,9 @@ impl Adapter {
     ///
     /// Probe order, per RFC-25 §Resolver and cache:
     ///
-    /// 1. `<project_dir>/.specify/.cache/{axis}/<name>/adapter.yaml`
+    /// 1. `<project_dir>/.specify/.cache/adapters/{axis}/<name>/adapter.yaml`
     ///    (agent-populated cache).
-    /// 2. `<project_dir>/{axis}/<name>/adapter.yaml` (in-repo).
+    /// 2. `<project_dir>/adapters/{axis}/<name>/adapter.yaml` (in-repo).
     ///
     /// Returns the parsed manifest, the directory it came from, and an
     /// [`AdapterLocation`] tag for downstream renderers. The loader is
@@ -264,7 +281,7 @@ impl Adapter {
         if cached.join(ADAPTER_FILENAME).is_file() {
             return Ok((cached.clone(), AdapterLocation::Cached(cached)));
         }
-        let local = project_dir.join(axis.dir_segment()).join(name);
+        let local = adapter_axis_dir(project_dir, axis).join(name);
         if local.is_dir() {
             return Ok((local.clone(), AdapterLocation::Local(local)));
         }
@@ -343,11 +360,11 @@ mod tests {
         let project = Path::new("/proj");
         assert_eq!(
             cache_dir(project, Axis::Source, "documentation"),
-            project.join(".specify/.cache/sources/documentation")
+            project.join(".specify/.cache/adapters/sources/documentation")
         );
         assert_eq!(
             cache_dir(project, Axis::Target, "omnia"),
-            project.join(".specify/.cache/targets/omnia")
+            project.join(".specify/.cache/adapters/targets/omnia")
         );
     }
 

@@ -54,7 +54,7 @@ pub enum Commands {
     /// invariant is violated.
     Init {
         /// Adapter identifier or URL (e.g. `omnia`,
-        /// `https://github.com/<owner>/<repo>/adapters/<name>`).
+        /// `https://github.com/<owner>/<repo>/adapters/targets/<name>`).
         /// Required unless `--hub` is set; mutually exclusive with `--hub`.
         #[arg(conflicts_with = "hub", required_unless_present = "hub")]
         adapter: Option<String>,
@@ -81,8 +81,8 @@ pub enum Commands {
 
     /// Source adapter operations (RFC-25). Source adapters provide
     /// `enumerate` + `extract` capabilities and are resolved against
-    /// `sources/<name>/adapter.yaml` (in-repo) or
-    /// `.specify/.cache/sources/<name>/` (agent cache).
+    /// `adapters/sources/<name>/adapter.yaml` (in-repo) or
+    /// `.specify/.cache/adapters/sources/<name>/` (agent cache).
     Source {
         #[command(subcommand)]
         action: SourceAction,
@@ -90,8 +90,8 @@ pub enum Commands {
 
     /// Target adapter operations (RFC-25). Target adapters provide
     /// `shape` + `build` + `merge` capabilities and are resolved
-    /// against `targets/<name>/adapter.yaml` (in-repo) or
-    /// `.specify/.cache/targets/<name>/` (agent cache).
+    /// against `adapters/targets/<name>/adapter.yaml` (in-repo) or
+    /// `.specify/.cache/adapters/targets/<name>/` (agent cache).
     Target {
         #[command(subcommand)]
         action: TargetAction,

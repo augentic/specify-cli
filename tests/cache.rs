@@ -13,7 +13,7 @@ mod common;
 use common::{Project, parse_stdout, specify};
 
 fn stage_source(project: &Project, name: &str, manifest: &str) {
-    let adapter_dir = project.root().join("sources").join(name);
+    let adapter_dir = project.root().join("adapters").join("sources").join(name);
     let briefs_dir = adapter_dir.join("briefs");
     fs::create_dir_all(&briefs_dir).expect("mkdir source fixture");
     fs::write(adapter_dir.join("adapter.yaml"), manifest).expect("write adapter.yaml");
@@ -39,7 +39,7 @@ fn read_index_lines(project_root: &Path, adapter: &str) -> Vec<String> {
     let path = project_root
         .join(".specify")
         .join(".cache")
-        .join("sources")
+        .join("adapters").join("sources")
         .join(adapter)
         .join("index.jsonl");
     let raw = fs::read_to_string(&path)
@@ -217,7 +217,7 @@ fn opt_out_misses_with_adapter_opt_out_reason() {
         .root()
         .join(".specify")
         .join(".cache")
-        .join("sources")
+        .join("adapters").join("sources")
         .join("code-typescript")
         .join(bare_digest);
     assert!(

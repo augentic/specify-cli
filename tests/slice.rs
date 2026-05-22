@@ -35,7 +35,7 @@ fn create_writes_dir_and_metadata() {
     assert_eq!(value["status"], "refining");
     let target = value["target"].as_str().expect("target string");
     assert!(target.starts_with("file://"));
-    assert!(target.ends_with("/targets/omnia"));
+    assert!(target.ends_with("/adapters/targets/omnia"));
     assert_eq!(value["created"], true);
     assert_eq!(value["restarted"], false);
 

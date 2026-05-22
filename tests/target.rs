@@ -29,17 +29,17 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
 }
 
 fn stage_target_fixture(project: &Project, name: &str) {
-    let src = plugin_fixtures_root().join("targets").join(name);
-    let dst = project.root().join("targets").join(name);
+    let src = plugin_fixtures_root().join("adapters").join("targets").join(name);
+    let dst = project.root().join("adapters").join("targets").join(name);
     copy_dir_recursive(&src, &dst);
 }
 
 #[test]
 fn target_resolve_local_returns_resolved_manifest() {
     let project = Project::init();
-    // `Project::init()` seeds `.specify/.cache/targets/omnia/`; remove
+    // `Project::init()` seeds `.specify/.cache/adapters/targets/omnia/`; remove
     // it so the local probe wins for this test.
-    let cached = project.root().join(".specify/.cache/targets/omnia");
+    let cached = project.root().join(".specify/.cache/adapters/targets/omnia");
     if cached.exists() {
         fs::remove_dir_all(&cached).expect("clear cached omnia");
     }
@@ -62,7 +62,7 @@ fn target_resolve_local_returns_resolved_manifest() {
     assert_eq!(ops, vec!["shape", "build", "merge"]);
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
-        resolved.ends_with("targets/omnia"),
+        resolved.ends_with("adapters/targets/omnia"),
         "resolved-path {resolved} must end with targets/omnia"
     );
 }

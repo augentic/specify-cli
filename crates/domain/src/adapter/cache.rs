@@ -1,5 +1,5 @@
 //! RFC-27 §D8 cache fingerprint inputs, the per-write index entry
-//! persisted at `.specify/.cache/sources/<adapter>/index.jsonl`, and
+//! persisted at `.specify/.cache/adapters/sources/<adapter>/index.jsonl`, and
 //! the lookup / write helpers the source-resolution code path uses.
 //!
 //! Types follow the rest of the workspace's posture —
@@ -210,7 +210,7 @@ pub struct FingerprintToolVersion {
     pub version: Option<String>,
 }
 
-/// One row appended to `.specify/.cache/sources/<adapter>/index.jsonl`
+/// One row appended to `.specify/.cache/adapters/sources/<adapter>/index.jsonl`
 /// on every cache write (RFC-27 §D8).
 ///
 /// The slot is `(timestamp, fingerprint-sha256, slice, source-key,

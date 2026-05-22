@@ -102,7 +102,7 @@ impl Project {
             .assert()
             .success();
         assert!(
-            root.join(".specify/.cache/targets/default/adapter.yaml").is_file(),
+            root.join(".specify/.cache/adapters/targets/default/adapter.yaml").is_file(),
             "init should cache sibling default adapter for codex resolution"
         );
 
@@ -115,7 +115,7 @@ impl Project {
 }
 
 fn write_adapter(project_dir: &std::path::Path, name: &str, version: u32) -> PathBuf {
-    write_adapter_under(&project_dir.join("targets"), name, version)
+    write_adapter_under(&project_dir.join("adapters").join("targets"), name, version)
 }
 
 fn write_adapter_under(parent_dir: &std::path::Path, name: &str, version: u32) -> PathBuf {
@@ -230,8 +230,8 @@ fn help_lists_subcommands() {
 #[test]
 fn export_json_includes_rules_and_paths() {
     let project = Project::new();
-    let default_root = project.root().join("targets/default");
-    let project_root = project.root().join("targets/project");
+    let default_root = project.root().join("adapters").join("targets").join("default");
+    let project_root = project.root().join("adapters").join("targets").join("project");
     write_rule(&default_root, "default.md", "UNI-001");
     write_rule(&project_root, "project.md", "OMNIA-001");
 
@@ -249,7 +249,7 @@ fn export_json_includes_rules_and_paths() {
     assert_eq!(rules[0]["name"], "default");
     assert_eq!(rules[0]["version"], 1);
     assert!(
-        rules[0]["source-path"].as_str().unwrap().ends_with("targets/default/codex/default.md")
+        rules[0]["source-path"].as_str().unwrap().ends_with("adapters/targets/default/codex/default.md")
     );
     assert!(rules[0]["body"].as_str().unwrap().contains("## Rule"));
 }
@@ -278,7 +278,7 @@ fn export_json_resolves_cache_and_overlay() {
         rules[0]["source-path"]
             .as_str()
             .unwrap()
-            .ends_with(".specify/.cache/targets/default/codex/001.md"),
+            .ends_with(".specify/.cache/adapters/targets/default/codex/001.md"),
         "default rule should come from the init-populated default cache: {}",
         rules[0]["source-path"]
     );
@@ -290,7 +290,7 @@ fn export_json_resolves_cache_and_overlay() {
         rules[2]["source-path"]
             .as_str()
             .unwrap()
-            .ends_with(".specify/.cache/targets/project/codex/project.md"),
+            .ends_with(".specify/.cache/adapters/targets/project/codex/project.md"),
         "project rule should come from the init-populated project cache: {}",
         rules[2]["source-path"]
     );
@@ -308,7 +308,7 @@ fn export_json_resolves_cache_and_overlay() {
 #[test]
 fn export_invalid_rule_exits_two() {
     let project = Project::new();
-    let default_root = project.root().join("targets/default");
+    let default_root = project.root().join("adapters").join("targets/default");
     write_rule(&default_root, "default.md", "UNI-001");
     write_rule_with_body(
         project.root(),
@@ -335,8 +335,8 @@ fn export_invalid_rule_exits_two() {
 #[test]
 fn export_duplicate_ids_exits_two() {
     let project = Project::new();
-    let default_root = project.root().join("targets/default");
-    let project_root = project.root().join("targets/project");
+    let default_root = project.root().join("adapters").join("targets").join("default");
+    let project_root = project.root().join("adapters").join("targets").join("project");
     write_rule(&default_root, "default.md", "UNI-001");
     write_rule(&project_root, "project.md", "OMNIA-001");
     write_rule(project.root(), "repo.md", "OMNIA-001");

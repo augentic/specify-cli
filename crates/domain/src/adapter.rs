@@ -9,10 +9,11 @@
 //! `schemas/source.schema.json` / `schemas/target.schema.json`.
 //!
 //! Resolution is path-agnostic: the loader probes
-//! `<project_dir>/.specify/.cache/{sources,targets}/<name>/` first
-//! (agent-populated cache) and then `<project_dir>/{sources,targets}/<name>/`
-//! (in-repo). The cache layout matches RFC-25 §Resolver and cache verbatim
-//! so source and target adapters with colliding names disambiguate by axis.
+//! `<project_dir>/.specify/.cache/adapters/{sources,targets}/<name>/` first
+//! (agent-populated cache) and then
+//! `<project_dir>/adapters/{sources,targets}/<name>/` (in-repo). The cache
+//! layout mirrors the in-repo adapter tree so source and target adapters
+//! with colliding names disambiguate by axis.
 
 mod brief;
 pub mod cache;
@@ -20,8 +21,8 @@ mod core;
 mod operation;
 
 pub use core::{
-    ADAPTER_FILENAME, Adapter, AdapterLocation, AdapterToolDeclaration, Axis, CacheMode,
-    ResolvedAdapter, cache_dir,
+    ADAPTER_FILENAME, ADAPTERS_DIR, Adapter, AdapterLocation, AdapterToolDeclaration, Axis,
+    CacheMode, ResolvedAdapter, adapter_axis_dir, cache_dir,
 };
 
 pub use brief::{Brief, BriefFrontmatter, split_on_closing_delimiter};

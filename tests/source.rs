@@ -30,8 +30,8 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
 }
 
 fn stage_source_fixture(project: &Project, name: &str) {
-    let src = plugin_fixtures_root().join("sources").join(name);
-    let dst = project.root().join("sources").join(name);
+    let src = plugin_fixtures_root().join("adapters").join("sources").join(name);
+    let dst = project.root().join("adapters").join("sources").join(name);
     copy_dir_recursive(&src, &dst);
 }
 
@@ -57,7 +57,7 @@ fn source_resolve_local_returns_resolved_manifest() {
     assert_eq!(ops, vec!["enumerate", "extract"]);
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
-        resolved.ends_with("sources/code-typescript"),
+        resolved.ends_with("adapters/sources/code-typescript"),
         "resolved-path {resolved} must end with sources/code-typescript"
     );
 }

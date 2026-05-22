@@ -6,8 +6,8 @@
 //!   distinct manifests even when the directory names collide.
 //! - cache-vs-local probe order — the agent-populated cache wins.
 //! - cache placement — a load of `(source, …)` populates
-//!   `.specify/.cache/sources/<name>/`; `(target, …)` mirrors under
-//!   `targets/`.
+//!   `.specify/.cache/adapters/sources/<name>/`; `(target, …)` mirrors under
+//!   `adapters/targets/`.
 //! - schema validation — both the shared shape and the axis-specific
 //!   refinements (axis literal, closed `operations[]`) reject hand-rolled
 //!   inputs.
@@ -51,7 +51,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
 fn resolves_source_adapter_from_local_directory() {
     let (_tmp, project) = local_project();
     let resolved = Adapter::resolve(Axis::Source, "code-typescript", &project)
-        .expect("resolve source adapter from sources/<name>/adapter.yaml");
+        .expect("resolve source adapter from adapters/sources/<name>/adapter.yaml");
     assert_eq!(resolved.manifest.name, "code-typescript");
     assert_eq!(resolved.manifest.axis, Axis::Source);
     assert_eq!(resolved.manifest.operations, vec!["enumerate", "extract"]);
@@ -60,23 +60,23 @@ fn resolves_source_adapter_from_local_directory() {
         Some("briefs/extract.md")
     );
     assert!(matches!(resolved.location, AdapterLocation::Local(_)));
-    assert!(resolved.root_dir.ends_with("sources/code-typescript"));
+    assert!(resolved.root_dir.ends_with("adapters/sources/code-typescript"));
 }
 
 #[test]
 fn resolves_target_adapter_from_local_directory() {
     let (_tmp, project) = local_project();
     let resolved = Adapter::resolve(Axis::Target, "omnia", &project)
-        .expect("resolve target adapter from targets/<name>/adapter.yaml");
+        .expect("resolve target adapter from adapters/targets/<name>/adapter.yaml");
     assert_eq!(resolved.manifest.name, "omnia");
     assert_eq!(resolved.manifest.axis, Axis::Target);
     assert_eq!(resolved.manifest.operations, vec!["shape", "build", "merge"]);
-    assert!(resolved.root_dir.ends_with("targets/omnia"));
+    assert!(resolved.root_dir.ends_with("adapters/targets/omnia"));
 }
 
 #[test]
 fn axis_disambiguates_colliding_names() {
-    // Both `sources/foo/` and `targets/foo/` exist in the fixture; the
+    // Both `adapters/sources/foo/` and `adapters/targets/foo/` exist in the fixture; the
     // axis argument is the only thing that distinguishes them.
     let (_tmp, project) = local_project();
     let source = Adapter::resolve(Axis::Source, "foo", &project).expect("source/foo resolves");
@@ -84,8 +84,8 @@ fn axis_disambiguates_colliding_names() {
     assert_eq!(source.manifest.axis, Axis::Source);
     assert_eq!(target.manifest.axis, Axis::Target);
     assert_ne!(source.root_dir, target.root_dir);
-    assert!(source.root_dir.ends_with("sources/foo"));
-    assert!(target.root_dir.ends_with("targets/foo"));
+    assert!(source.root_dir.ends_with("adapters/sources/foo"));
+    assert!(target.root_dir.ends_with("adapters/targets/foo"));
 }
 
 #[test]
@@ -93,20 +93,20 @@ fn cache_dir_resolves_under_axis_segment() {
     let project = Path::new("/proj");
     assert_eq!(
         cache_dir(project, Axis::Source, "documentation"),
-        project.join(".specify/.cache/sources/documentation"),
-        "per-axis cache root for source adapters lives under .specify/.cache/sources/",
+        project.join(".specify/.cache/adapters/sources/documentation"),
+        "per-axis cache root for source adapters lives under .specify/.cache/adapters/sources/",
     );
     assert_eq!(
         cache_dir(project, Axis::Target, "omnia"),
-        project.join(".specify/.cache/targets/omnia"),
-        "per-axis cache root for target adapters lives under .specify/.cache/targets/",
+        project.join(".specify/.cache/adapters/targets/omnia"),
+        "per-axis cache root for target adapters lives under .specify/.cache/adapters/targets/",
     );
 }
 
 #[test]
 fn cache_directory_wins_over_local_when_both_exist() {
-    // Stage a manifest under `.specify/.cache/sources/code-typescript/`
-    // alongside the in-tree `sources/code-typescript/`; assert the
+    // Stage a manifest under `.specify/.cache/adapters/sources/code-typescript/`
+    // alongside the in-tree `adapters/sources/code-typescript/`; assert the
     // cached copy wins per RFC-25 §Resolver and cache.
     let (_tmp, project) = local_project();
     let cached_root = cache_dir(&project, Axis::Source, "code-typescript");
@@ -144,7 +144,7 @@ fn schema_violations_reject_at_load_time() {
     // Source-axis adapter with the wrong operation set — `shape` is not
     // a source operation.
     let (_tmp, project) = local_project();
-    let bad_root = project.join("sources/wrong-ops");
+    let bad_root = project.join("adapters").join("sources").join("wrong-ops");
     fs::create_dir_all(&bad_root).expect("create bad source dir");
     fs::write(
         bad_root.join("adapter.yaml"),
@@ -172,7 +172,7 @@ briefs:
 #[test]
 fn resolves_code_runtime_source_adapter_with_tools_array() {
     // RFC-27 §Acceptance scenario #26-1 (release blocker, D1):
-    // pin the loader against the live `sources/code-runtime/`
+    // pin the loader against the live `adapters/sources/code-runtime/`
     // adapter shape shipped by the `plg` repo. The manifest carries
     // a `tools: [{ name: fixture-index }]` declaration and a free-
     // form `description:` field; both must round-trip through the
@@ -186,7 +186,7 @@ fn resolves_code_runtime_source_adapter_with_tools_array() {
     // golden-fixture data shape (Evidence + fusion.yaml +
     // discovery.md) while this test pins the loader behaviour.
     let (_tmp, project) = local_project();
-    let manifest_dir = project.join("sources/code-runtime");
+    let manifest_dir = project.join("adapters").join("sources").join("code-runtime");
     fs::create_dir_all(manifest_dir.join("briefs")).expect("create code-runtime adapter dir");
     fs::write(
         manifest_dir.join("adapter.yaml"),
@@ -224,10 +224,10 @@ description: >-
     );
     assert!(
         matches!(resolved.location, AdapterLocation::Local(_)),
-        "live plg manifest resolves under sources/<name>/ (local axis)"
+        "live plg manifest resolves under adapters/sources/<name>/ (local axis)"
     );
     assert!(
-        resolved.root_dir.ends_with("sources/code-runtime"),
+        resolved.root_dir.ends_with("adapters/sources/code-runtime"),
         "resolver root must land on the plg-tree adapter directory, got: {}",
         resolved.root_dir.display()
     );
@@ -235,11 +235,11 @@ description: >-
 
 #[test]
 fn axis_mismatch_reports_dedicated_diagnostic() {
-    // Adapter file lives under `sources/<name>/` but declares
+    // Adapter file lives under `adapters/sources/<name>/` but declares
     // `axis: target` — should fall through to the source schema and
     // ultimately the axis-mismatch check.
     let (_tmp, project) = local_project();
-    let bad_root = project.join("sources/mislabeled");
+    let bad_root = project.join("adapters").join("sources").join("mislabeled");
     fs::create_dir_all(&bad_root).expect("create dir");
     fs::write(
         bad_root.join("adapter.yaml"),

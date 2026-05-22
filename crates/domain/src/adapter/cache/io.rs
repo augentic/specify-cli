@@ -3,7 +3,7 @@
 //! Cache directory layout (RFC-27 §D8):
 //!
 //! ```text
-//! .specify/.cache/sources/<adapter>/
+//! .specify/.cache/adapters/sources/<adapter>/
 //!     <fingerprint>/
 //!         evidence.yaml      # or candidate-set.md for enumerate
 //!         fingerprint.json   # full input record for audit
@@ -49,31 +49,31 @@ impl<'a> CacheLayout<'a> {
         Self { project_dir, adapter }
     }
 
-    /// `.specify/.cache/sources/<adapter>/`.
+    /// `.specify/.cache/adapters/sources/<adapter>/`.
     #[must_use]
     pub fn adapter_dir(&self) -> PathBuf {
-        self.project_dir.join(".specify").join(".cache").join("sources").join(self.adapter)
+        self.project_dir.join(".specify").join(".cache").join("adapters").join("sources").join(self.adapter)
     }
 
-    /// `.specify/.cache/sources/<adapter>/<fingerprint-sha256>/`.
+    /// `.specify/.cache/adapters/sources/<adapter>/<fingerprint-sha256>/`.
     #[must_use]
     pub fn fingerprint_dir(&self, digest: &str) -> PathBuf {
         self.adapter_dir().join(digest_dir_name(digest))
     }
 
-    /// `.specify/.cache/sources/<adapter>/<fp>/fingerprint.json`.
+    /// `.specify/.cache/adapters/sources/<adapter>/<fp>/fingerprint.json`.
     #[must_use]
     pub fn fingerprint_record_path(&self, digest: &str) -> PathBuf {
         self.fingerprint_dir(digest).join(FINGERPRINT_RECORD_NAME)
     }
 
-    /// `.specify/.cache/sources/<adapter>/<fp>/<artifact-name>`.
+    /// `.specify/.cache/adapters/sources/<adapter>/<fp>/<artifact-name>`.
     #[must_use]
     pub fn artifact_path(&self, digest: &str, artifact_name: &str) -> PathBuf {
         self.fingerprint_dir(digest).join(artifact_name)
     }
 
-    /// `.specify/.cache/sources/<adapter>/index.jsonl`.
+    /// `.specify/.cache/adapters/sources/<adapter>/index.jsonl`.
     #[must_use]
     pub fn index_path(&self) -> PathBuf {
         self.adapter_dir().join(INDEX_FILE_NAME)
@@ -129,7 +129,7 @@ pub enum LookupOutcome {
 pub struct CacheLookup {
     /// sha256 hex digest of the current inputs.
     pub digest: String,
-    /// `.specify/.cache/sources/<adapter>/<fp>/` regardless of hit /
+    /// `.specify/.cache/adapters/sources/<adapter>/<fp>/` regardless of hit /
     /// miss. Operators see the path even on a miss so they know where
     /// the upcoming write will land.
     pub cache_dir: PathBuf,
@@ -254,7 +254,7 @@ pub fn write(
 }
 
 /// Append one [`CacheIndexEntry`] to
-/// `.specify/.cache/sources/<adapter>/index.jsonl`.
+/// `.specify/.cache/adapters/sources/<adapter>/index.jsonl`.
 ///
 /// Mirrors `journal::append`: the directory is created on first write,
 /// the row is emitted as a single JSON line followed by `\n`, and the

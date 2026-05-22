@@ -57,7 +57,7 @@ impl ToolFixtures {
         }
         copy_dir(
             &root.join("tools-test-adp"),
-            &root.join("tools-test-project-adp/targets/tools-test-adp"),
+            &root.join("tools-test-project-adp/adapters/targets/tools-test-adp"),
         );
         Self { _tmp: tmp, root }
     }
@@ -71,7 +71,7 @@ impl ToolFixtures {
     }
 
     fn adapter(&self) -> PathBuf {
-        self.cap_project().join("targets/tools-test-adp")
+        self.cap_project().join("adapters").join("targets").join("tools-test-adp")
     }
 
     fn project_wasm(&self, name: &str) -> PathBuf {

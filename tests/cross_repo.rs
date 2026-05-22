@@ -272,7 +272,7 @@ struct FixtureProject {
 
 impl FixtureProject {
     fn new(envs: &TestEnv, name: &'static str, adapter: &'static str) -> Self {
-        let source = envs.path().join("sources").join(name);
+        let source = envs.path().join("adapters").join("sources").join(name);
         let remote = envs.remotes_dir().join(format!("{name}.git"));
         fs::create_dir_all(source.join(".specify")).expect("mkdir project specify");
         run_git(&source, &["init", "-b", "main"], envs);

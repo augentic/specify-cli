@@ -21,4 +21,4 @@ This directory contains JSON Schemas and bundled workflow fixtures used by the `
 
 ## Bundled workflow schema
 
-The published Specify workflow target adapters live in `augentic/specify` under `targets/omnia`, `targets/vectis`, and `targets/contracts`. The CLI carries a minimal [`targets/omnia/`](../targets/omnia) RFC-25 fixture for its own integration tests.
+The published Specify workflow target adapters live in `augentic/specify` under `adapters/targets/omnia`, `adapters/targets/vectis`, and `adapters/targets/contracts`. The CLI carries a minimal [`adapters/targets/omnia/`](../adapters/targets/omnia) RFC-25 fixture for its own integration tests.

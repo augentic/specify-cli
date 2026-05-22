@@ -22,7 +22,7 @@ impl ContractToolFixture {
     fn new() -> Self {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
-        let adapter = project.join("targets/contracts");
+        let adapter = project.join("adapters").join("targets/contracts");
         let briefs = adapter.join("briefs");
         fs::create_dir_all(project.join(".specify")).expect("create .specify");
         fs::create_dir_all(project.join("contracts/http")).expect("create contracts");

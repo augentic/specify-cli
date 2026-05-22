@@ -10,13 +10,13 @@ use specify_domain::adapter::SourceOperation;
 pub enum SourceAction {
     /// Resolve a source-adapter manifest by kebab name.
     ///
-    /// Probe order: `.specify/.cache/sources/<name>/adapter.yaml`
-    /// (agent-populated cache), then `<project-dir>/sources/<name>/adapter.yaml`
+    /// Probe order: `.specify/.cache/adapters/sources/<name>/adapter.yaml`
+    /// (agent-populated cache), then `<project-dir>/adapters/sources/<name>/adapter.yaml`
     /// (in-repo). Emits the resolved directory path plus the
     /// manifest's declared operations.
     ///
     /// `--explain` switches the output to the RFC-27 §D8 fingerprint
-    /// chain read from `.specify/.cache/sources/<name>/index.jsonl`
+    /// chain read from `.specify/.cache/adapters/sources/<name>/index.jsonl`
     /// instead of the manifest summary.
     Resolve {
         /// Kebab-case source-adapter name (e.g. `intent`,
@@ -27,7 +27,7 @@ pub enum SourceAction {
         #[arg(long, default_value = ".")]
         project_dir: PathBuf,
         /// Print the fingerprint chain from
-        /// `.specify/.cache/sources/<name>/index.jsonl` instead of the
+        /// `.specify/.cache/adapters/sources/<name>/index.jsonl` instead of the
         /// manifest summary.
         #[arg(long)]
         explain: bool,
@@ -72,7 +72,7 @@ pub enum SourceCacheAction {
 #[derive(clap::Args, Clone)]
 pub struct CacheFingerprintArgs {
     /// Kebab-case source-adapter name (positional; matches the
-    /// directory under `sources/` or `.specify/.cache/sources/`).
+    /// directory under `adapters/sources/` or `.specify/.cache/adapters/sources/`).
     pub adapter: String,
     /// Project directory containing `.specify/` (defaults to the
     /// current directory).

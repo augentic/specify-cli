@@ -322,14 +322,14 @@ mod tests {
     #[test]
     fn adapter_name_from_value_handles_common_shapes() {
         assert_eq!(adapter_name_from_value("omnia"), "omnia");
-        assert_eq!(adapter_name_from_value("file:///abs/targets/omnia"), "omnia");
-        assert_eq!(adapter_name_from_value("file:///abs/targets/omnia/"), "omnia");
+        assert_eq!(adapter_name_from_value("file:///abs/adapters/targets/omnia"), "omnia");
+        assert_eq!(adapter_name_from_value("file:///abs/adapters/targets/omnia/"), "omnia");
         assert_eq!(
-            adapter_name_from_value("https://github.com/augentic/specify/targets/omnia"),
+            adapter_name_from_value("https://github.com/augentic/specify/adapters/targets/omnia"),
             "omnia"
         );
         assert_eq!(
-            adapter_name_from_value("https://github.com/augentic/specify/targets/omnia@v1"),
+            adapter_name_from_value("https://github.com/augentic/specify/adapters/targets/omnia@v1"),
             "omnia"
         );
         assert_eq!(adapter_name_from_value("/abs/targets/omnia"), "omnia");
