@@ -1,8 +1,6 @@
-use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::Path;
 
-use clap::ValueEnum;
 use serde::Serialize;
 use specify_domain::change::{Entry, Lifecycle, Plan, Severity, SliceSourceBinding, Status};
 use specify_domain::slice::{LifecycleStatus, SliceMetadata};
@@ -44,18 +42,20 @@ pub struct Counts {
 
 impl Counts {
     pub fn from_entries(entries: &[Entry]) -> Self {
-        let mut counts: BTreeMap<Status, usize> =
-            Status::value_variants().iter().map(|&s| (s, 0)).collect();
-        for entry in entries {
-            *counts.get_mut(&entry.status).expect("ALL covers status") += 1;
+        let mut c = Self {
+            done: 0,
+            in_progress: 0,
+            pending: 0,
+            total: entries.len(),
+        };
+        for e in entries {
+            match e.status {
+                Status::Done => c.done += 1,
+                Status::InProgress => c.in_progress += 1,
+                Status::Pending => c.pending += 1,
+            }
         }
-        let total: usize = counts.values().sum();
-        Self {
-            done: counts[&Status::Done],
-            in_progress: counts[&Status::InProgress],
-            pending: counts[&Status::Pending],
-            total,
-        }
+        c
     }
 }
 

@@ -17,12 +17,12 @@ use crate::cmd::CmdRunner;
 ///
 /// Surfaces forge errors verbatim as `Error::Diag` so the caller can
 /// chain them into per-project `PushResult.error`.
-pub(in crate::registry::workspace) fn repo_exists<R: CmdRunner>(
-    runner: &R, slug: &str,
+pub(in crate::registry::workspace) fn repo_exists(
+    runner: CmdRunner<'_>, slug: &str,
 ) -> Result<bool, Error> {
     let mut cmd = Command::new("gh");
     cmd.args(["repo", "view", slug, "--json", "name"]);
-    let output = runner.run(&mut cmd).map_err(|err| Error::Diag {
+    let output = runner(&mut cmd).map_err(|err| Error::Diag {
         code: "workspace-gh-spawn-failed",
         detail: format!("failed to spawn `gh repo view`: {err}"),
     })?;
@@ -48,12 +48,12 @@ pub(in crate::registry::workspace) fn repo_exists<R: CmdRunner>(
 ///
 /// Returns `Error::Diag` when `gh repo create` fails for any reason —
 /// already-exists, permission denied, network, etc.
-pub(in crate::registry::workspace) fn create_repo<R: CmdRunner>(
-    runner: &R, slug: &str, project_path: &Path,
+pub(in crate::registry::workspace) fn create_repo(
+    runner: CmdRunner<'_>, slug: &str, project_path: &Path,
 ) -> Result<(), Error> {
     let mut cmd = Command::new("gh");
     cmd.args(["repo", "create", slug, "--private", "--source", "."]).current_dir(project_path);
-    let output = runner.run(&mut cmd).map_err(|err| Error::Diag {
+    let output = runner(&mut cmd).map_err(|err| Error::Diag {
         code: "workspace-gh-spawn-failed",
         detail: format!("failed to spawn `gh repo create`: {err}"),
     })?;
@@ -80,8 +80,9 @@ pub(in crate::registry::workspace) fn create_repo<R: CmdRunner>(
 /// Returns `Error::Diag` for any failure in the underlying `gh pr list`
 /// / `gh pr edit` / `gh pr create` flow, including the case where
 /// `gh pr create` returns no PR number on success.
-pub(in crate::registry::workspace) fn ensure_pull_request<R: CmdRunner>(
-    runner: &R, project_path: &Path, branch_name: &str, base_branch: &str, change_name: &str,
+pub(in crate::registry::workspace) fn ensure_pull_request(
+    runner: CmdRunner<'_>, project_path: &Path, branch_name: &str, base_branch: &str,
+    change_name: &str,
 ) -> Result<u64, Error> {
     let existing = github_pr_for_branch(runner, project_path, branch_name)?;
     if let Some(number) = existing {
@@ -89,7 +90,7 @@ pub(in crate::registry::workspace) fn ensure_pull_request<R: CmdRunner>(
         edit_cmd
             .args(["pr", "edit", &number.to_string(), "--base", base_branch])
             .current_dir(project_path);
-        let edit = runner.run(&mut edit_cmd).map_err(|err| Error::Diag {
+        let edit = runner(&mut edit_cmd).map_err(|err| Error::Diag {
             code: "workspace-gh-spawn-failed",
             detail: format!("failed to spawn `gh pr edit`: {err}"),
         })?;
@@ -125,7 +126,7 @@ pub(in crate::registry::workspace) fn ensure_pull_request<R: CmdRunner>(
             &pr_body,
         ])
         .current_dir(project_path);
-    let create = runner.run(&mut create_cmd).map_err(|err| Error::Diag {
+    let create = runner(&mut create_cmd).map_err(|err| Error::Diag {
         code: "workspace-gh-spawn-failed",
         detail: format!("failed to spawn `gh pr create`: {err}"),
     })?;
@@ -147,8 +148,8 @@ pub(in crate::registry::workspace) fn ensure_pull_request<R: CmdRunner>(
     })
 }
 
-fn github_pr_for_branch<R: CmdRunner>(
-    runner: &R, project_path: &Path, branch_name: &str,
+fn github_pr_for_branch(
+    runner: CmdRunner<'_>, project_path: &Path, branch_name: &str,
 ) -> Result<Option<u64>, Error> {
     let mut cmd = Command::new("gh");
     cmd.args([
@@ -164,7 +165,7 @@ fn github_pr_for_branch<R: CmdRunner>(
         "1",
     ])
     .current_dir(project_path);
-    let output = runner.run(&mut cmd).map_err(|err| Error::Diag {
+    let output = runner(&mut cmd).map_err(|err| Error::Diag {
         code: "workspace-gh-spawn-failed",
         detail: format!("failed to spawn `gh pr list`: {err}"),
     })?;

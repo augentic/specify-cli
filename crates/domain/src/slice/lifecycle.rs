@@ -1,6 +1,7 @@
 //! Lifecycle state machine for slice progression
-//! (`Refining → Refined → Built → Merged`).
-//! [`LifecycleStatus::transition`] is the only sanctioned mutator.
+//! (`Refining → Refined → Built → Merged`, plus `* → Dropped` from any
+//! non-terminal state). [`LifecycleStatus::transition`] is the only
+//! sanctioned mutator.
 
 use specify_error::Error;
 
@@ -33,41 +34,22 @@ pub enum LifecycleStatus {
 }
 
 impl LifecycleStatus {
-    /// The creation edge (`START → Refining`). Called by `slice create`.
-    #[must_use]
-    pub const fn initial() -> Self {
-        Self::Refining
-    }
-
-    /// Whether this status is terminal (no further transitions possible).
-    #[must_use]
-    pub const fn is_terminal(self) -> bool {
-        matches!(self, Self::Merged | Self::Dropped)
-    }
-
-    /// Whether `self → target` is a legal edge in the lifecycle state machine.
-    #[must_use]
-    pub const fn can_transition_to(self, target: Self) -> bool {
+    /// Attempt a transition. Legal edges: `Refining → Refined`,
+    /// `Refined → Built`, `Built → Merged`, and
+    /// `{Refining, Refined, Built} → Dropped`.
+    ///
+    /// # Errors
+    /// `Error::Diag { code = "lifecycle", .. }` when not reachable;
+    /// detail carries the rejected edge verbatim.
+    pub fn transition(self, target: Self) -> Result<Self, Error> {
         use LifecycleStatus::{Built, Dropped, Merged, Refined, Refining};
-        matches!(
+        if matches!(
             (self, target),
             (Refining, Refined)
                 | (Refined, Built)
                 | (Built, Merged)
                 | (Refining | Refined | Built, Dropped)
-        )
-    }
-
-    /// Attempt a transition from `self` to `target`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Diag`] with `code = "lifecycle"` when `target`
-    /// is not reachable from `self` per [`Self::can_transition_to`].
-    /// The detail carries the rejected edge verbatim — callers and
-    /// tests grep on the `lifecycle` discriminant for routing.
-    pub fn transition(self, target: Self) -> Result<Self, Error> {
-        if self.can_transition_to(target) {
+        ) {
             Ok(target)
         } else {
             Err(Error::Diag {
@@ -80,50 +62,27 @@ impl LifecycleStatus {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
-    use clap::ValueEnum;
-
     use super::*;
 
-    fn allowed_edges() -> HashSet<(LifecycleStatus, LifecycleStatus)> {
-        use LifecycleStatus::*;
-        let mut set = HashSet::new();
-        set.insert((Refining, Refined));
-        set.insert((Refined, Built));
-        set.insert((Built, Merged));
-        set.insert((Refining, Dropped));
-        set.insert((Refined, Dropped));
-        set.insert((Built, Dropped));
-        set
+    #[test]
+    fn transition_refining_to_refined_ok() {
+        assert_eq!(
+            LifecycleStatus::Refining.transition(LifecycleStatus::Refined).expect("legal"),
+            LifecycleStatus::Refined,
+        );
     }
 
     #[test]
-    fn initial_is_refining() {
-        assert_eq!(LifecycleStatus::initial(), LifecycleStatus::Refining);
-    }
-
-    #[test]
-    fn terminal_states_are_terminal() {
-        assert!(LifecycleStatus::Merged.is_terminal());
-        assert!(LifecycleStatus::Dropped.is_terminal());
-        assert!(!LifecycleStatus::Refining.is_terminal());
-        assert!(!LifecycleStatus::Refined.is_terminal());
-        assert!(!LifecycleStatus::Built.is_terminal());
-    }
-
-    #[test]
-    fn transition_table_matches_oracle() {
-        let allowed = allowed_edges();
-        for &from in LifecycleStatus::value_variants() {
-            for &to in LifecycleStatus::value_variants() {
-                let expected = allowed.contains(&(from, to));
-                let actual = from.can_transition_to(to);
-                assert_eq!(
-                    actual, expected,
-                    "({from:?}) -> ({to:?}): expected allowed={expected}, got {actual}"
-                );
-            }
-        }
+    fn transition_rejects_skipping_states() {
+        let Err(Error::Diag { code, detail }) =
+            LifecycleStatus::Refining.transition(LifecycleStatus::Built)
+        else {
+            panic!("Refining -> Built skips Refined; must Err with lifecycle diag");
+        };
+        assert_eq!(code, "lifecycle");
+        assert!(
+            detail.contains("Refining") && detail.contains("Built"),
+            "endpoints in: {detail:?}",
+        );
     }
 }

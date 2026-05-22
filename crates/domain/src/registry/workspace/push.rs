@@ -14,7 +14,7 @@ use self::remote::{
 };
 use super::git::{self, git_output_ok, git_status_porcelain, git_stdout_trimmed};
 use super::workspace_base;
-use crate::cmd::{CmdRunner, RealCmd};
+use crate::cmd::{CmdRunner, real_cmd};
 use crate::registry::Registry;
 use crate::registry::catalog::RegistryProject;
 use crate::registry::forge::project_path;
@@ -109,7 +109,7 @@ pub fn push_projects(
 ) -> Result<Vec<PushResult>, Error> {
     let branch_name = format!("specify/{change_name}");
     let workspace_base = workspace_base(project_dir);
-    let runner = RealCmd;
+    let runner: CmdRunner<'_> = &real_cmd;
 
     let mut results = Vec::new();
 
@@ -121,7 +121,7 @@ pub fn push_projects(
             &branch_name,
             change_name,
             dry_run,
-            &runner,
+            runner,
         );
         results.push(result);
     }
@@ -161,9 +161,9 @@ fn push_result(
     clippy::too_many_lines,
     reason = "Per-project push driver inlines the dirty/clone/branch/push pipeline so each step's failure mode stays local."
 )]
-pub(in crate::registry::workspace) fn push_single_project<R: CmdRunner>(
+pub(in crate::registry::workspace) fn push_single_project(
     project_dir: &Path, workspace_base: &Path, rp: &RegistryProject, branch_name: &str,
-    change_name: &str, dry_run: bool, runner: &R,
+    change_name: &str, dry_run: bool, runner: CmdRunner<'_>,
 ) -> PushResult {
     let project_path = project_path(project_dir, workspace_base, rp);
 

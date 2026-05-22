@@ -1,7 +1,8 @@
 //! Shared test helpers for `specify-domain` integration tests.
 //!
-//! Centralises [`MockCmd`], a [`CmdRunner`] double that records every
-//! invocation and lets each test register a single dispatch closure.
+//! Centralises [`MockCmd`], a recorder that captures every invocation
+//! and dispatches the response through a per-test closure. Pass it to
+//! domain code as `&|cmd| mock.run(cmd)`.
 
 #![expect(
     dead_code,
@@ -9,15 +10,13 @@
 )]
 #![expect(
     clippy::unnecessary_wraps,
-    reason = "mock dispatch closures share a Result<Output> signature for parity with the real CmdRunner trait"
+    reason = "mock dispatch closures share a Result<Output> signature for parity with real_cmd"
 )]
 
 use std::cell::RefCell;
 use std::io;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Output};
-
-use specify_domain::cmd::CmdRunner;
 
 /// One recorded invocation captured by [`MockCmd`].
 #[derive(Debug, Clone)]
@@ -29,8 +28,7 @@ pub struct RecordedCall {
 
 type Handler = Box<dyn FnMut(&RecordedCall) -> io::Result<Output>>;
 
-/// In-process [`CmdRunner`] that records every call and delegates the
-/// response to `handler`.
+/// In-process command recorder that delegates dispatch to `handler`.
 #[expect(
     clippy::partial_pub_fields,
     reason = "tests inspect `calls` directly; `handler` is an implementation detail of the closure dispatch"
@@ -51,10 +49,11 @@ impl MockCmd {
             calls: RefCell::new(Vec::new()),
         }
     }
-}
 
-impl CmdRunner for MockCmd {
-    fn run(&self, cmd: &mut Command) -> io::Result<Output> {
+    /// Record `cmd` and dispatch through the handler. Pass this method
+    /// to domain code via `&|cmd| mock.run(cmd)`; the `&mut Command`
+    /// expected by `CmdRunner` reborrows to `&Command` at the call.
+    pub fn run(&self, cmd: &Command) -> io::Result<Output> {
         let recorded = RecordedCall {
             program: cmd.get_program().to_string_lossy().into_owned(),
             args: cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect(),

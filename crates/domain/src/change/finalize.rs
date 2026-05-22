@@ -230,7 +230,7 @@ pub enum PlanLoad {
 ///
 /// Returns [`Refusal`] for whole-run refusals. Per-project
 /// failures live in [`Outcome::projects`] and never bubble up.
-pub fn run<R: CmdRunner>(inputs: Inputs<'_>, runner: &R) -> Result<Outcome, Refusal> {
+pub fn run(inputs: Inputs<'_>, runner: CmdRunner<'_>) -> Result<Outcome, Refusal> {
     // Refuse if any plan entry is still in a non-terminal state.
     let outstanding = outstanding(inputs.plan);
     if !outstanding.is_empty() {

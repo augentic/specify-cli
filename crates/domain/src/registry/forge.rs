@@ -52,8 +52,8 @@ pub enum PrState {
 ///
 /// Returns the underlying `gh` stderr (or a parse-error message) verbatim
 /// when the shell-out fails or when its JSON cannot be decoded.
-pub fn pr_view_for_branch<R: CmdRunner>(
-    runner: &R, project_path: &Path, branch: &str,
+pub fn pr_view_for_branch(
+    runner: CmdRunner<'_>, project_path: &Path, branch: &str,
 ) -> Result<Option<PrView>, String> {
     let mut list_cmd = Command::new("gh");
     list_cmd
@@ -62,7 +62,7 @@ pub fn pr_view_for_branch<R: CmdRunner>(
         ])
         .current_dir(project_path);
     let list =
-        runner.run(&mut list_cmd).map_err(|err| format!("failed to spawn `gh pr list`: {err}"))?;
+        runner(&mut list_cmd).map_err(|err| format!("failed to spawn `gh pr list`: {err}"))?;
     if !list.status.success() {
         let stderr = String::from_utf8_lossy(&list.stderr);
         return Err(format!("gh pr list failed: {stderr}"));
@@ -82,7 +82,7 @@ pub fn pr_view_for_branch<R: CmdRunner>(
         .args(["pr", "view", &number.to_string(), "--json", "state,merged,headRefName,number,url"])
         .current_dir(project_path);
     let view =
-        runner.run(&mut view_cmd).map_err(|err| format!("failed to spawn `gh pr view`: {err}"))?;
+        runner(&mut view_cmd).map_err(|err| format!("failed to spawn `gh pr view`: {err}"))?;
     if !view.status.success() {
         let stderr = String::from_utf8_lossy(&view.stderr);
         return Err(format!("gh pr view failed: {stderr}"));
