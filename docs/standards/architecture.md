@@ -4,7 +4,7 @@ Workspace shape, crate dependency direction, the WASI carve-out, the `Layout<'a>
 
 ## Workspace layout
 
-Binary crate (`name = "specify"`) at the repo root. `src/main.rs` is a thin `ExitCode` shim around `specify::run` defined in `src/lib.rs`; hosting the dispatch and command modules in a library lets workspace tooling (`xtask gen-man`) consume `specify::command()` (the `clap::Command` tree) without spawning the binary. New tooling that needs the command tree goes through `xtask`, not a parallel facade. Workspace member crates live under `crates/`; the dependency direction is leaf → root:
+Binary crate (`name = "specify"`) at the repo root. `src/main.rs` is a thin `ExitCode` shim around `specify::run` defined in `src/lib.rs`; hosting the dispatch and command modules in a library keeps the binary entry point minimal and supports doc tests. Workspace member crates live under `crates/`; the dependency direction is leaf → root:
 
 ```text
 specify-error                    # leaf — thiserror + serde-saphyr only
@@ -21,7 +21,7 @@ Every crate uses the shared `[workspace.package]` (`edition = "2024"`, `rust-ver
 
 **New workspace crates** are an exception, not the default. See [DECISIONS.md §"New workspace crates"](../../DECISIONS.md#new-workspace-crates) for the bar a new crate must clear.
 
-The root `specify` crate has both `src/lib.rs` (the dispatcher) and `src/main.rs` (a thin `ExitCode` shim). New tooling that wants the clap command tree calls `specify::command()` through `xtask`; do **not** add a parallel binary or re-export.
+The root `specify` crate has both `src/lib.rs` (the dispatcher) and `src/main.rs` (a thin `ExitCode` shim). Clap introspection for shell completions lives in `commands.rs` via `Cli::command()`.
 
 ## RFC-25 domain modules
 

@@ -43,11 +43,7 @@ members = [
     "crates/error",
     "crates/domain",
     "crates/tool",
-    "xtask",
 ]
-
-# `xtask` is a workspace-internal task runner (`cargo run -p xtask -- ...`)
-# rather than a library or published binary.
 
 [workspace.package]
 authors = ["Augentic"]
