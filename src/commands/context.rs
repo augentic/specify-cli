@@ -93,19 +93,21 @@ mod tests {
     use crate::cli::Format;
 
     fn write_minimal_adapter(project_dir: &Path) {
-        let adapter_dir = project_dir.join("schemas").join("mini");
+        let adapter_dir = project_dir.join("targets").join("mini");
         let briefs_dir = adapter_dir.join("briefs");
         fs::create_dir_all(&briefs_dir).expect("create adapter dirs");
         fs::write(
             adapter_dir.join("adapter.yaml"),
-            "name: mini\nversion: 1\ndescription: Mini adapter\npipeline:\n  define:\n    - id: proposal\n      brief: briefs/proposal.md\n  build: []\n  merge: []\n",
+            "name: mini\nversion: 1\naxis: target\noperations: [shape, build, merge]\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Mini adapter\n",
         )
         .expect("write adapter");
-        fs::write(
-            briefs_dir.join("proposal.md"),
-            "---\nid: proposal\ndescription: Draft the proposal\ngenerates: proposal.md\n---\n",
-        )
-        .expect("write brief");
+        for op in ["shape", "build", "merge"] {
+            fs::write(
+                briefs_dir.join(format!("{op}.md")),
+                format!("---\nid: {op}\ndescription: {op} brief\n---\n"),
+            )
+            .expect("write brief");
+        }
     }
 
     fn sample_config() -> ProjectConfig {
@@ -170,8 +172,10 @@ mod tests {
                 ".specify/slices/alpha/.metadata.yaml",
                 ".specify/slices/zeta/.metadata.yaml",
                 "registry.yaml",
-                "schemas/mini/adapter.yaml",
-                "schemas/mini/briefs/proposal.md",
+                "targets/mini/adapter.yaml",
+                "targets/mini/briefs/build.md",
+                "targets/mini/briefs/merge.md",
+                "targets/mini/briefs/shape.md",
             ]
         );
     }

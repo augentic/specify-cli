@@ -33,7 +33,7 @@ fn create_writes_dir_and_metadata() {
     assert_eq!(value["status"], "defining");
     let target = value["target"].as_str().expect("target string");
     assert!(target.starts_with("file://"));
-    assert!(target.ends_with("/schemas/omnia"));
+    assert!(target.ends_with("/targets/omnia"));
     assert_eq!(value["created"], true);
     assert_eq!(value["restarted"], false);
 
@@ -370,7 +370,7 @@ fn looks_like_rfc3339(s: &str) -> bool {
 }
 
 #[test]
-fn phase_outcome_stamps_success_on_define() {
+fn phase_outcome_stamps_success_on_shape() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
 
@@ -383,7 +383,7 @@ fn phase_outcome_stamps_success_on_define() {
             "outcome",
             "set",
             "foo",
-            "define",
+            "shape",
             "success",
             "--summary",
             "artifacts generated",
@@ -393,14 +393,14 @@ fn phase_outcome_stamps_success_on_define() {
 
     let value = parse_json(&assert.get_output().stdout);
     assert_eq!(value["slice"], "foo");
-    assert_eq!(value["phase"], "define");
+    assert_eq!(value["phase"], "shape");
     assert_eq!(value["outcome"], "success");
     let at = value["at"].as_str().expect("at is a string");
     assert!(looks_like_rfc3339(at), "at should be RFC3339, got {at}");
 
     let meta = read_metadata_yaml(&project, "foo");
     let outcome = &meta["outcome"];
-    assert_eq!(outcome["phase"].as_str(), Some("define"));
+    assert_eq!(outcome["phase"].as_str(), Some("shape"));
     assert_eq!(outcome["outcome"].as_str(), Some("success"));
     assert_eq!(outcome["summary"].as_str(), Some("artifacts generated"));
     let at_on_disk = outcome["at"].as_str().expect("at on disk");
@@ -474,11 +474,11 @@ fn phase_outcome_text_output() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
+        .args(["slice", "outcome", "set", "foo", "shape", "success", "--summary", "ok"])
         .assert()
         .success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
-    assert_eq!(stdout.trim_end(), "Stamped outcome 'success' for phase 'define' on slice 'foo'.");
+    assert_eq!(stdout.trim_end(), "Stamped outcome 'success' for phase 'shape' on slice 'foo'.");
 }
 
 #[test]
@@ -493,7 +493,7 @@ fn phase_outcome_errors_on_missing_slice() {
             "outcome",
             "set",
             "ghost",
-            "define",
+            "shape",
             "success",
             "--summary",
             "x",
@@ -517,7 +517,7 @@ fn phase_outcome_writes_trailing_newline() {
 
     specify()
         .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
+        .args(["slice", "outcome", "set", "foo", "shape", "success", "--summary", "ok"])
         .assert()
         .success();
 
@@ -538,7 +538,7 @@ fn phase_outcome_overwrites_previous() {
 
     specify()
         .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "define", "success", "--summary", "defined"])
+        .args(["slice", "outcome", "set", "foo", "shape", "success", "--summary", "defined"])
         .assert()
         .success();
 
@@ -592,7 +592,7 @@ fn phase_outcome_preserves_metadata_fields() {
 
     specify()
         .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
+        .args(["slice", "outcome", "set", "foo", "shape", "success", "--summary", "ok"])
         .assert()
         .success();
 
@@ -692,7 +692,7 @@ fn outcome_null_context_when_unstamped() {
     specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
     specify()
         .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
+        .args(["slice", "outcome", "set", "foo", "shape", "success", "--summary", "ok"])
         .assert()
         .success();
 
@@ -1016,7 +1016,7 @@ fn phase_outcome_round_trips_serde() {
     // `#[non_exhaustive]` boundary on `Outcome`; round-trip through
     // YAML instead so the wire shape is what's exercised.
     for kind in ["success", "failure", "deferred"] {
-        for phase in ["define", "build", "merge"] {
+        for phase in ["shape", "build", "merge"] {
             let yaml = format!(
                 "phase: {phase}\noutcome: {kind}\nat: \"2024-08-01T10:00:00Z\"\nsummary: some summary\n"
             );

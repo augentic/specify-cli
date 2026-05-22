@@ -9,13 +9,22 @@ use std::path::PathBuf;
 use jiff::Timestamp;
 use specify_error::Error;
 
-use crate::adapter::{CacheMeta, PipelineView};
+use crate::adapter::{Adapter, Axis};
+use crate::codex::adapter_name_from_value;
 use crate::config::{Layout, ProjectConfig};
-use crate::init::cache::cache_adapter;
+use crate::init::cache::{CacheMeta, cache_adapter};
 use crate::init::{
     InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
     upsert_gitignore,
 };
+
+/// RFC-25 canonical refine-time artifact set. Hardcoded because target
+/// adapters no longer enumerate per-define-brief artifacts via
+/// `pipeline.define[]`; refine synthesises the canonical set directly
+/// (see `DECISIONS.md` §"Adapter loader axis routing"). The exact
+/// scaffold keys mirror the validation registry namespaces in
+/// [`crate::validate::registry::rules_for`].
+const SCAFFOLDED_RULE_KEYS: &[&str] = &["proposal", "specs", "design", "tasks"];
 
 #[expect(
     clippy::needless_pass_by_value,
@@ -49,10 +58,11 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
     }
 
     let adapter_value = cache_adapter(adapter, opts.project_dir, now)?;
-    let view = PipelineView::load(&adapter_value, opts.project_dir)?;
-    let adapter_name = view.adapter.manifest.name.clone();
+    let adapter_name_in_value = adapter_name_from_value(&adapter_value).to_string();
+    let resolved = Adapter::resolve(Axis::Target, &adapter_name_in_value, opts.project_dir)?;
+    let adapter_name = resolved.manifest.name;
     let scaffolded_rule_keys: Vec<String> =
-        view.adapter.manifest.pipeline.define.iter().map(|entry| entry.id.clone()).collect();
+        SCAFFOLDED_RULE_KEYS.iter().map(|key| (*key).to_string()).collect();
 
     let specify_version = resolve_version(opts.project_dir, opts.version_mode)?;
 
@@ -98,8 +108,8 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use crate::adapter::CacheMeta;
     use crate::config::{Layout, ProjectConfig};
+    use crate::init::cache::CacheMeta;
     use crate::init::{InitOptions, VersionMode, fixed_now, init};
 
     fn repo_root() -> PathBuf {
@@ -110,14 +120,14 @@ mod tests {
             .to_path_buf()
     }
 
-    fn omnia_schema_dir() -> PathBuf {
-        repo_root().join("schemas").join("omnia")
+    fn omnia_target_dir() -> PathBuf {
+        repo_root().join("targets").join("omnia")
     }
 
-    fn base_opts<'a>(project_dir: &'a Path, schema_dir: &'a Path) -> InitOptions<'a> {
+    fn base_opts<'a>(project_dir: &'a Path, target_dir: &'a Path) -> InitOptions<'a> {
         InitOptions {
             project_dir,
-            adapter: Some(schema_dir.to_str().expect("schema path utf8")),
+            adapter: Some(target_dir.to_str().expect("target path utf8")),
             name: Some("demo"),
             domain: None,
             version_mode: VersionMode::WriteCurrent,
@@ -128,8 +138,8 @@ mod tests {
     #[test]
     fn init_creates_specify_tree() {
         let tmp = tempdir().unwrap();
-        let schema_dir = omnia_schema_dir();
-        let result = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
+        let target_dir = omnia_target_dir();
+        let result = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
         for sub in
             [".specify", ".specify/slices", ".specify/specs", ".specify/archive", ".specify/.cache"]
@@ -160,7 +170,7 @@ mod tests {
         assert_eq!(cfg.name, "demo");
         let cap = cfg.adapter.as_deref().expect("adapter set on regular init");
         assert!(cap.starts_with("file://"), "adapter: {cap}");
-        assert!(cap.ends_with("/schemas/omnia"), "adapter: {cap}");
+        assert!(cap.ends_with("/targets/omnia"), "adapter: {cap}");
         assert!(!cfg.hub, "regular init must not set hub");
         assert_eq!(cfg.specify_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
         let mut rule_keys: Vec<_> = cfg.rules.keys().cloned().collect();
@@ -174,11 +184,11 @@ mod tests {
     #[test]
     fn reinit_idempotent() {
         let tmp = tempdir().unwrap();
-        let schema_dir = omnia_schema_dir();
-        let first = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("first init");
+        let target_dir = omnia_target_dir();
+        let first = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("first init");
         let config = fs::read(&first.config_path).expect("read first config");
 
-        let second = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("second init");
+        let second = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("second init");
         assert!(second.directories_created.is_empty());
 
         let reread = fs::read(&second.config_path).expect("read second config");
@@ -188,15 +198,15 @@ mod tests {
     #[test]
     fn gitignore_missing_existing_duplicate() {
         let tmp = tempdir().unwrap();
-        let schema_dir = omnia_schema_dir();
+        let target_dir = omnia_target_dir();
         let gitignore = tmp.path().join(".gitignore");
 
-        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
+        init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
         let text = fs::read_to_string(&gitignore).expect("read gitignore");
         assert!(text.contains(".specify/.cache/"));
         assert!(text.contains(".specify/workspace/"));
 
-        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("re-init ok");
+        init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("re-init ok");
         let text = fs::read_to_string(&gitignore).expect("reread gitignore");
         let occurrences = text.matches(".specify/.cache/").count();
         assert_eq!(occurrences, 1);
@@ -206,10 +216,10 @@ mod tests {
     #[test]
     fn gitignore_appends_to_existing() {
         let tmp = tempdir().unwrap();
-        let schema_dir = omnia_schema_dir();
+        let target_dir = omnia_target_dir();
         fs::write(tmp.path().join(".gitignore"), "target/\n").expect("seed gitignore");
 
-        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
+        init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
         let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read gitignore");
         assert!(text.contains("target/"));
@@ -222,14 +232,14 @@ mod tests {
     #[test]
     fn gitignore_existing_entry_noop() {
         let tmp = tempdir().unwrap();
-        let schema_dir = omnia_schema_dir();
+        let target_dir = omnia_target_dir();
         fs::write(
             tmp.path().join(".gitignore"),
             "target/\n.specify/.cache/\n.specify/workspace/\n",
         )
         .expect("seed gitignore");
 
-        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
+        init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
         let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
         assert_eq!(text.matches(".specify/.cache/").count(), 1);
@@ -239,11 +249,11 @@ mod tests {
     #[test]
     fn gitignore_appends_workspace_only() {
         let tmp = tempdir().unwrap();
-        let schema_dir = omnia_schema_dir();
+        let target_dir = omnia_target_dir();
         fs::write(tmp.path().join(".gitignore"), "target/\n.specify/.cache/\n")
             .expect("seed gitignore");
 
-        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
+        init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
         let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
         assert_eq!(text.matches(".specify/.cache/").count(), 1);
@@ -253,21 +263,24 @@ mod tests {
     #[test]
     fn cache_present_matches_cache_meta() {
         let tmp = tempdir().unwrap();
-        let schema_dir = omnia_schema_dir();
-        let result = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
+        let target_dir = omnia_target_dir();
+        let result = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
         assert!(result.cache_present);
 
         let cache_meta = CacheMeta::path(tmp.path());
-        let meta = CacheMeta::load(tmp.path()).expect("load cache meta").expect("cache meta");
-        assert!(meta.schema_url.starts_with("file://"));
-        assert!(cache_meta.is_file());
+        assert!(cache_meta.is_file(), "expected cache-meta yaml at {}", cache_meta.display());
+        let yaml = fs::read_to_string(&cache_meta).expect("read cache meta");
+        assert!(
+            yaml.lines().any(|line| line.starts_with("schema_url:") && line.contains("file://")),
+            "expected schema_url to start with file:// in cache-meta:\n{yaml}",
+        );
     }
 
     #[test]
     fn preserve_mode_keeps_existing_pinned_version() {
         let tmp = tempdir().unwrap();
-        let schema_dir = omnia_schema_dir();
-        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("fresh init");
+        let target_dir = omnia_target_dir();
+        init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("fresh init");
 
         // Manually edit the pinned version to an older one; Preserve
         // should keep it on re-init.
@@ -282,7 +295,7 @@ mod tests {
         let result = init(
             InitOptions {
                 version_mode: VersionMode::Preserve,
-                ..base_opts(tmp.path(), &schema_dir)
+                ..base_opts(tmp.path(), &target_dir)
             },
             fixed_now(),
         )
@@ -293,8 +306,8 @@ mod tests {
     #[test]
     fn init_writes_default_wasm_pkg_config() {
         let tmp = tempdir().unwrap();
-        let schema_dir = omnia_schema_dir();
-        let result = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("init ok");
+        let target_dir = omnia_target_dir();
+        let result = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
         assert!(result.wasm_pkg_config_written, "fresh init must write the file");
         let path = tmp.path().join(".specify/wasm-pkg.toml");
@@ -310,15 +323,15 @@ mod tests {
     #[test]
     fn reinit_preserves_operator_edited_wasm_pkg_config() {
         let tmp = tempdir().unwrap();
-        let schema_dir = omnia_schema_dir();
-        init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("first init");
+        let target_dir = omnia_target_dir();
+        init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("first init");
 
         let path = tmp.path().join(".specify/wasm-pkg.toml");
         let edited =
             "[namespace_registries]\nspecify = \"mirror.internal\"\nacme = \"acme.example.com\"\n";
         fs::write(&path, edited).expect("operator edit");
 
-        let result = init(base_opts(tmp.path(), &schema_dir), fixed_now()).expect("re-init");
+        let result = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("re-init");
         assert!(!result.wasm_pkg_config_written, "re-init must not report writing the file");
         let contents = fs::read_to_string(&path).expect("read after re-init");
         assert_eq!(contents, edited, "operator edits must be preserved byte-for-byte");
@@ -329,12 +342,12 @@ mod tests {
         let tmp = tempdir().unwrap();
         let project = tmp.path().join("my-project");
         fs::create_dir_all(&project).expect("create project dir");
-        let schema_dir = omnia_schema_dir();
+        let target_dir = omnia_target_dir();
 
         let result = init(
             InitOptions {
                 project_dir: &project,
-                adapter: Some(schema_dir.to_str().expect("schema path utf8")),
+                adapter: Some(target_dir.to_str().expect("target path utf8")),
                 name: None,
                 domain: None,
                 version_mode: VersionMode::WriteCurrent,

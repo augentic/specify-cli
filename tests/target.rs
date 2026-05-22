@@ -1,8 +1,8 @@
 //! Integration tests for `specify target resolve`.
 //!
 //! Mirrors the RFC-25 target-adapter loader exposed by
-//! `crates/domain/src/plugin/`. The CLI verb is a thin
-//! `Plugin::resolve(Axis::Target, …)` wrapper.
+//! `crates/domain/src/adapter/`. The CLI verb is a thin
+//! `Adapter::resolve(Axis::Target, …)` wrapper.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -37,6 +37,12 @@ fn stage_target_fixture(project: &Project, name: &str) {
 #[test]
 fn target_resolve_local_returns_resolved_manifest() {
     let project = Project::init();
+    // `Project::init()` seeds `.specify/.cache/targets/omnia/`; remove
+    // it so the local probe wins for this test.
+    let cached = project.root().join(".specify/.cache/targets/omnia");
+    if cached.exists() {
+        fs::remove_dir_all(&cached).expect("clear cached omnia");
+    }
     stage_target_fixture(&project, "omnia");
 
     let assert = specify()

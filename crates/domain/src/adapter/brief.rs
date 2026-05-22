@@ -1,6 +1,9 @@
 //! Brief frontmatter + body parsing for `---`-delimited markdown.
-//! Cross-brief invariants (ids matching the pipeline, `needs` /
-//! `tracks` dependencies) live in `pipeline.rs`.
+//!
+//! RFC-25 briefs carry only `id` and `description` — the legacy
+//! 1.x cross-brief contract (`generates`, `needs`, `tracks`) was
+//! retired with the move to operation-keyed `briefs.<op>` (see
+//! `Adapter` in `crates/domain/src/adapter/core.rs`).
 
 use std::path::{Path, PathBuf};
 
@@ -9,20 +12,12 @@ use specify_error::Error;
 
 /// Parsed frontmatter of a brief markdown file.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct BriefFrontmatter {
-    /// Brief identifier matching the pipeline entry `id`.
+    /// Brief identifier matching the adapter manifest's `briefs.<id>` key.
     pub id: String,
     /// Human-readable description of this brief's purpose.
     pub description: String,
-    /// Artifact filename or glob this brief produces, if any.
-    #[serde(default)]
-    pub generates: Option<String>,
-    /// IDs of briefs that must complete before this one.
-    #[serde(default)]
-    pub needs: Vec<String>,
-    /// ID of the brief this one tracks for completion.
-    #[serde(default)]
-    pub tracks: Option<String>,
 }
 
 /// A parsed brief: the path it was loaded from, its frontmatter, and the
@@ -95,7 +90,8 @@ impl Brief {
 
 /// Given the text *after* the leading `---\n`, split it into
 /// `(frontmatter, body)` at the first closing `---` on its own line.
-pub(super) fn split_on_closing_delimiter(after_open: &str) -> Option<(&str, &str)> {
+#[must_use]
+pub fn split_on_closing_delimiter(after_open: &str) -> Option<(&str, &str)> {
     let mut offset = 0;
     for line in after_open.split_inclusive('\n') {
         let trimmed = line.trim_end_matches(['\n', '\r']);

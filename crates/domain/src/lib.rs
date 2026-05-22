@@ -5,11 +5,11 @@
 pub mod adapter;
 pub mod change;
 pub mod cmd;
+pub mod codex;
 pub mod config;
 pub mod init;
 pub mod journal;
 pub mod merge;
-pub mod plugin;
 pub mod registry;
 pub mod schema;
 pub mod slice;

@@ -10,9 +10,10 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use regex::Regex;
+use specify_domain::adapter::Operation;
 use specify_domain::merge::{ArtifactClass, MergeStrategy, OpaqueAction, slice};
 use specify_domain::slice::{
-    LifecycleStatus, METADATA_VERSION, Outcome, OutcomeKind, Phase, SLICES_DIR_NAME, SliceMetadata,
+    LifecycleStatus, METADATA_VERSION, Outcome, OutcomeKind, SLICES_DIR_NAME, SliceMetadata,
 };
 use specify_error::Error;
 
@@ -159,7 +160,7 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     // RFC-13 Phase 2.8 the summary is generic — it lists each
     // contributing class name and entry count.
     let outcome = new_meta.outcome.expect("expected outcome to be stamped by slice::commit");
-    assert_eq!(outcome.phase, Phase::Merge);
+    assert_eq!(outcome.phase, Operation::Merge);
     assert_eq!(outcome.kind, OutcomeKind::Success);
     assert!(outcome.summary.contains("2 specs"), "unexpected summary: {}", outcome.summary);
 }

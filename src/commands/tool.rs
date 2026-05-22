@@ -11,17 +11,17 @@ mod run;
 mod show;
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 
 pub(super) use fetch::run as fetch;
 pub(super) use gc::run as gc;
 pub(super) use list::run as list;
 pub(super) use run::run;
 pub(super) use show::run as show;
-use specify_domain::adapter::{ADAPTER_FILENAME, Adapter, ResolvedAdapter};
+use specify_domain::adapter::{Adapter, Axis, ResolvedAdapter};
+use specify_domain::codex::adapter_name_from_value;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
-use specify_tool::manifest::{Axis, Tool, ToolManifest, ToolScope};
+use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolManifest, ToolScope};
 
 use self::dto::{CacheKey, Inventory, ScopedTool, WarningRow, warning_row};
 use crate::context::Ctx;
@@ -37,13 +37,13 @@ fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let plugin = resolve_project_adapter(ctx)?;
     let plugin_tools = if let Some(plugin) = plugin {
         let plugin_scope = ToolScope::Plugin {
-            axis: Axis::Target,
+            axis: ToolAxis::Target,
             plugin_slug: plugin.manifest.name.clone(),
             capability_dir: plugin.root_dir.clone(),
         };
         scopes.push(plugin_scope.clone());
         let sidecar_tools =
-            load::plugin_sidecar(&plugin.root_dir, &plugin.manifest.name, Axis::Target)?;
+            load::plugin_sidecar(&plugin.root_dir, &plugin.manifest.name, ToolAxis::Target)?;
         let tools: Vec<Tool> = sidecar_tools.iter().map(|(_, tool)| tool.clone()).collect();
         validate_manifest_tools(&tools, &plugin_scope)?;
         sidecar_tools
@@ -63,19 +63,8 @@ fn resolve_project_adapter(ctx: &Ctx) -> Result<Option<ResolvedAdapter>> {
     let Some(value) = ctx.config.adapter.as_deref() else {
         return Ok(None);
     };
-    let (root_dir, _) = Adapter::locate(value, &ctx.project_dir)?;
-    enforce_adapter_filename(&root_dir)?;
-    Adapter::resolve(value, &ctx.project_dir).map(Some)
-}
-
-fn enforce_adapter_filename(dir: &Path) -> Result<()> {
-    if dir.join(ADAPTER_FILENAME).is_file() {
-        return Ok(());
-    }
-    Err(Error::Diag {
-        code: "adapter-manifest-missing",
-        detail: format!("no `adapter.yaml` at {}", dir.display()),
-    })
+    let name = adapter_name_from_value(value);
+    Adapter::resolve(Axis::Target, name, &ctx.project_dir).map(Some)
 }
 
 fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {

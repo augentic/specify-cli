@@ -57,7 +57,7 @@ impl ToolFixtures {
         }
         copy_dir(
             &root.join("tools-test-adp"),
-            &root.join("tools-test-project-adp/schemas/tools-test-adp"),
+            &root.join("tools-test-project-adp/targets/tools-test-adp"),
         );
         Self { _tmp: tmp, root }
     }
@@ -71,7 +71,7 @@ impl ToolFixtures {
     }
 
     fn adapter(&self) -> PathBuf {
-        self.cap_project().join("schemas/tools-test-adp")
+        self.cap_project().join("targets/tools-test-adp")
     }
 
     fn project_wasm(&self, name: &str) -> PathBuf {
@@ -524,7 +524,7 @@ fn adapter_non_zero_exit_caches_by_scope() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(7));
-    assert!(cache.join("plugin--target--tools-test-adp/exit-seven/0.1.0/module.wasm").is_file());
+    assert!(cache.join("adapter--target--tools-test-adp/exit-seven/0.1.0/module.wasm").is_file());
 }
 
 #[test]

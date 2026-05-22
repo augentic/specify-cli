@@ -8,8 +8,8 @@ use std::path::PathBuf;
 
 use specify_error::{Error, is_kebab};
 
-use crate::adapter::CacheMeta;
 use crate::config::{Layout, ProjectConfig};
+use crate::init::cache::CacheMeta;
 use crate::init::{
     InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
     upsert_gitignore,

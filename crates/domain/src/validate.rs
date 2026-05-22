@@ -13,7 +13,6 @@ use std::path::Path;
 
 use specify_error::ValidationSummary;
 
-use crate::adapter::PipelineView;
 use crate::spec::ParsedSpec;
 use crate::task::Progress;
 
@@ -122,9 +121,7 @@ pub struct CrossContext<'a> {
     pub slice_dir: &'a Path,
     /// Absolute path to the specs directory.
     pub specs_dir: &'a Path,
-    /// Resolved pipeline for the slice.
-    pub pipeline: &'a PipelineView,
-    /// Schema-inferred terminology.
+    /// Schema-inferred terminology (e.g. `"crate"` or `"feature"`).
     pub terminology: &'a str,
 }
 

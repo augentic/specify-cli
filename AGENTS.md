@@ -15,8 +15,9 @@ specify (root crate)             # wires every workspace crate above into the CL
 
 Modules of note inside `specify-domain` (RFC-25 reshapes from Wave 0):
 
-- `crates/domain/src/plugin/` — axis-aware loader (`Axis::Source` / `Axis::Target`). Replaces the pre-RFC-25 `crate::adapter` shared-shape loader; the remaining `crate::adapter` surface keeps narrower concerns (`Brief`, `CodexProvenance`, `PipelineView`, `CacheMeta`).
-- `crates/domain/src/schema.rs` — JSON Schemas (`plan.yaml`, per-source `Evidence`, plugin/source/target manifests) embedded via `include_str!` and validated through `jsonschema::Validator`.
+- `crates/domain/src/adapter/` — axis-aware adapter loader (`Axis::Source` / `Axis::Target`). The single `Adapter::resolve(axis, name, project_dir)` entry point loads source or target manifests and is the only manifest loader after the F9 collapse (the legacy axis-agnostic `crate::adapter` shape and `PipelineView` were retired).
+- `crates/domain/src/codex.rs` + `crates/domain/src/codex/` — `CodexRule`, `CodexResolver`, `ResolvedCodex`, `CodexProvenance`. Project-aware codex rule catalog routed through `Adapter::resolve(Axis::Target, …)` for the foundational `default` adapter and the project's declared adapter.
+- `crates/domain/src/schema.rs` — JSON Schemas (`plan.yaml`, per-source `Evidence`, adapter/source/target manifests) embedded via `include_str!` and validated through `jsonschema::Validator`.
 - `crates/domain/src/spec/provenance.rs` — `spec.md` requirement-block parser (`ID:` / `Sources:` / `Status:` lines, closed `RequirementStatus` enum, inline `[…]` tag coherence).
 - `crates/domain/src/journal.rs` — RFC-19 newline-delimited JSON event log at `<project_dir>/.specify/journal.jsonl`; closed `Event` / `EventKind` taxonomy with kebab-case wire ids and `snake_case` Rust variants joined by `#[serde(rename = "…")]`.
 
@@ -44,7 +45,7 @@ See [DECISIONS.md §"Exit codes"](./DECISIONS.md#exit-codes) for the long-form r
 | `Ctx`, `Out`/`Render`/`emit`, exit-code mapping, dispatcher contract | [`docs/standards/handler-shape.md`](./docs/standards/handler-shape.md) |
 | Workspace layout, WASI carve-outs, `Layout<'a>`, time injection, `ureq` hardening, atomic-write rationale, RFC-25 domain modules, supply chain | [`docs/standards/architecture.md`](./docs/standards/architecture.md) |
 | `cargo nextest`, integration-first policy, golden files, `REGENERATE_GOLDENS` | [`docs/standards/testing.md`](./docs/standards/testing.md) |
-| Standing architectural decisions (error layering, exit codes, atomic writes, YAML library, wire compatibility, RFC-25 type renames, plan lifecycle, plugin loader, journal events) | [`DECISIONS.md`](./DECISIONS.md) |
+| Standing architectural decisions (error layering, exit codes, atomic writes, YAML library, wire compatibility, RFC-25 type renames, plan lifecycle, adapter loader, journal events) | [`DECISIONS.md`](./DECISIONS.md) |
 
 External references:
 
@@ -52,7 +53,7 @@ External references:
 - [Parent repo `rfcs/rfc-25-workflow.md`](https://github.com/augentic/specify/blob/main/rfcs/rfc-25-workflow.md) — the active workflow contract. Ships as Specify 2.0 and supersedes the archived RFC-20 (survey) and RFC-23 (change-lifecycle). Defines the `source` / `target` / `plugin` / `axis` vocabulary, the kebab-case wire format, the `Source` / `Candidate` / `Evidence` / `Slice` implementation types, writer ownership, the CLI surface this binary commits to, and the plan-lock contract.
 - [Parent repo `rfcs/`](https://github.com/augentic/specify/tree/main/rfcs) — full active + archived RFC index.
 - [`docs/release.md`](./docs/release.md) — tagging and crates.io publish pipeline.
-- [`schemas/`](./schemas/) — JSON Schema files distributed with the binary (including the RFC-25 `plugin.schema.json`, `source.schema.json`, `target.schema.json`, `evidence.schema.json`, `discovery/candidate.schema.json`, and the refined `plan/plan.schema.json`).
+- [`schemas/`](./schemas/) — JSON Schema files distributed with the binary (including the RFC-25 `adapter.schema.json`, `source.schema.json`, `target.schema.json`, `evidence.schema.json`, `discovery/candidate.schema.json`, and the refined `plan/plan.schema.json`).
 
 ## Quick toolchain
 
@@ -82,5 +83,5 @@ scripts/build-vectis-local.sh    # build wasi-tools/vectis with sha256 sidecars 
 2. For any Rust change, consult [`docs/standards/`](./docs/standards/) — at minimum the doc that matches the area you are editing, plus [`style.md`](./docs/standards/style.md) for cross-cutting rules.
 3. Run `cargo make ci` before committing. If it cannot run, say exactly why and which checks were run instead.
 4. When you remove a symbol, `rg <SymbolName> -- AGENTS.md DECISIONS.md docs/` and update every hit in the same PR.
-5. If you touch `Slice.target`, `SliceSourceBinding`, `Plan::resolve_sources`, `Divergence`, `crates/domain/src/spec/provenance.rs`, `crates/domain/src/plugin/`, `crates/domain/src/journal.rs`, `crates/domain/src/schema.rs`, the `$CAPABILITY_DIR` env var, or the `plugin--<axis>--<slug>` tool cache scope: `rg <symbol>` across both this repo *and* the parent [`augentic/specify`](https://github.com/augentic/specify) plugin repo, and update every hit in the same PR (RFC-25 §"Note to the implementing agent" applies — the workflow contract spans both repos).
+5. If you touch `Slice.target`, `SliceSourceBinding`, `Plan::resolve_sources`, `Divergence`, `crates/domain/src/spec/provenance.rs`, `crates/domain/src/adapter/`, `crates/domain/src/journal.rs`, `crates/domain/src/schema.rs`, the `$CAPABILITY_DIR` env var, or the `adapter--<axis>--<slug>` tool cache scope: `rg <symbol>` across both this repo *and* the parent [`augentic/specify`](https://github.com/augentic/specify) plugin repo, and update every hit in the same PR (RFC-25 §"Note to the implementing agent" applies — the workflow contract spans both repos).
 6. A fresh contributor should be able to reach any rule from this spine in three hops or fewer. If you find yourself adding prose here that isn't navigational, it belongs in one of the standards docs.

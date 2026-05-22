@@ -1,22 +1,19 @@
 //! `slice task progress | mark` — task list operations for a slice.
-//! Also exposes `resolve_tasks_path_for` for the `specify status`
-//! dashboard's task-count read.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use specify_domain::adapter::{Brief, PipelineView};
 use specify_domain::slice::SliceMetadata;
 use specify_domain::slice::atomic::bytes_write;
 use specify_domain::task::{Task, mark_complete, parse_tasks};
-use specify_error::{Error, Result};
+use specify_error::Result;
 
 use crate::context::Ctx;
 
 pub(super) fn progress(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
-    let tasks_path = resolve_tasks_path(&ctx.project_dir, &slice_dir)?;
+    let tasks_path = resolve_tasks_path(&slice_dir)?;
     let content = std::fs::read_to_string(&tasks_path)?;
     let progress = parse_tasks(&content);
 
@@ -52,7 +49,7 @@ fn write_progress_text(w: &mut dyn Write, body: &ProgressBody) -> std::io::Resul
 
 pub(super) fn mark(ctx: &Ctx, name: &str, task_number: String) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
-    let tasks_path = resolve_tasks_path(&ctx.project_dir, &slice_dir)?;
+    let tasks_path = resolve_tasks_path(&slice_dir)?;
     let original = std::fs::read_to_string(&tasks_path)?;
     let updated = mark_complete(&original, &task_number)?;
     let idempotent = updated == original;
@@ -89,53 +86,11 @@ fn write_mark_text(w: &mut dyn Write, body: &MarkBody) -> std::io::Result<()> {
 
 /// Resolve the `tasks.md` path for a slice.
 ///
-/// Walks the pipeline view to find the `build` brief's `tracks` value
-/// (the id of the tasks brief), then uses that brief's `generates`
-/// field as the relative path under `slice_dir`. This lets the CLI
-/// honour schemas that rename `tasks.md` or nest it elsewhere.
-fn resolve_tasks_path(project_dir: &Path, slice_dir: &Path) -> Result<PathBuf> {
-    let metadata = SliceMetadata::load(slice_dir)?;
-    resolve_tasks_path_for(slice_dir, &metadata.target, Some(project_dir))
-}
-
-pub(super) fn resolve_tasks_path_for(
-    slice_dir: &Path, target_value: &str, project_hint: Option<&Path>,
-) -> Result<PathBuf> {
-    let project_dir = match project_hint {
-        Some(p) => p.to_path_buf(),
-        None => slice_dir
-            .parent()
-            .and_then(Path::parent)
-            .and_then(Path::parent)
-            .map(Path::to_path_buf)
-            .ok_or_else(|| Error::Diag {
-                code: "slice-tasks-path-no-project-root",
-                detail: format!(
-                    "cannot resolve project root from slice dir {}",
-                    slice_dir.display(),
-                ),
-            })?,
-    };
-    let pipeline = PipelineView::load(target_value, &project_dir)?;
-    let build_brief = pipeline.brief("build").ok_or_else(|| Error::Diag {
-        code: "slice-tasks-build-brief-missing",
-        detail: "target has no `build` brief".to_string(),
-    })?;
-    let tracks_id = build_brief.frontmatter.tracks.as_deref().ok_or_else(|| Error::Diag {
-        code: "slice-tasks-build-tracks-missing",
-        detail: "`build` brief has no `tracks` field".to_string(),
-    })?;
-    let tracked = pipeline.brief(tracks_id).ok_or_else(|| Error::Diag {
-        code: "slice-tasks-tracked-brief-missing",
-        detail: format!("`build.tracks = {tracks_id}` but no such brief exists"),
-    })?;
-    let generates = brief_generates(tracked)?;
-    Ok(slice_dir.join(generates))
-}
-
-fn brief_generates(brief: &Brief) -> Result<&str> {
-    brief.frontmatter.generates.as_deref().ok_or_else(|| Error::Diag {
-        code: "slice-tasks-brief-generates-missing",
-        detail: format!("brief `{}` has no `generates` field", brief.frontmatter.id),
-    })
+/// RFC-25 pins the per-slice tasks artifact to `<slice_dir>/tasks.md`;
+/// the pre-RFC-25 `pipeline.build` brief's `tracks` indirection is
+/// gone. Verbs that need the tasks path during slice-state mutation
+/// can stat the file themselves before mutating.
+fn resolve_tasks_path(slice_dir: &Path) -> Result<PathBuf> {
+    let _metadata = SliceMetadata::load(slice_dir)?; // surface the standard "not a slice" error
+    Ok(slice_dir.join("tasks.md"))
 }

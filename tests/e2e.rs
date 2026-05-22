@@ -170,11 +170,11 @@ fn workspace_merge_excludes_generated() {
     specify()
         .current_dir(&project_root)
         .args(["init"])
-        .arg(repo_root().join("schemas").join("omnia"))
+        .arg(repo_root().join("targets").join("omnia"))
         .args(["--name", "orders"])
         .assert()
         .success();
-    copy_dir(&repo_root().join("schemas/omnia"), &project_root.join("schemas/omnia"));
+    copy_dir(&repo_root().join("targets/omnia"), &project_root.join("targets/omnia"));
 
     run_git(&project_root, &["init"]);
     run_git(&project_root, &["add", "."]);

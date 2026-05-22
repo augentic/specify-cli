@@ -3,7 +3,7 @@
 
 use clap::Subcommand;
 use serde::Deserialize;
-use specify_domain::adapter::Phase;
+use specify_domain::adapter::Operation;
 use specify_domain::slice::{CreateIfExists, LifecycleStatus};
 
 #[derive(Subcommand)]
@@ -39,7 +39,7 @@ pub enum SliceAction {
         #[command(subcommand)]
         action: SliceTaskAction,
     },
-    /// Phase-outcome bookkeeping on `.metadata.yaml`
+    /// Operation-outcome bookkeeping on `.metadata.yaml`
     Outcome {
         #[command(subcommand)]
         action: OutcomeAction,
@@ -120,18 +120,18 @@ pub enum SliceTaskAction {
     },
 }
 
-/// Phase-outcome subcommands grouped under `slice outcome`.
+/// Operation-outcome subcommands grouped under `slice outcome`.
 #[derive(Subcommand)]
 pub enum OutcomeAction {
-    /// Record the outcome of a phase (define|build|merge) on `.metadata.yaml`.
-    /// The outcome kind is itself a subcommand so each variant carries
-    /// only its own flags.
+    /// Record the outcome of a target-adapter operation
+    /// (`shape | build | merge`) on `.metadata.yaml`. The outcome kind
+    /// is itself a subcommand so each variant carries only its own flags.
     Set {
         /// Slice name
         name: String,
-        /// Phase this outcome applies to
+        /// Operation this outcome applies to
         #[arg(value_enum)]
-        phase: Phase,
+        phase: Operation,
         #[command(subcommand)]
         kind: OutcomeKindAction,
     },

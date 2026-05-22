@@ -86,7 +86,7 @@ fn scope_segment_formats_and_rejects_empty_names() {
     assert_eq!(scope_segment(&project_scope()).expect("project segment"), "project--demo");
     assert_eq!(
         scope_segment(&plugin_target_scope()).expect("plugin segment"),
-        "plugin--target--contracts"
+        "adapter--target--contracts"
     );
     let empty = ToolScope::Project {
         project_name: String::new(),

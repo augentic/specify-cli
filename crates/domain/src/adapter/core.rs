@@ -1,4 +1,4 @@
-//! `Plugin`, `Axis`, `ResolvedPlugin`, and the axis-aware loader.
+//! `Adapter`, `Axis`, `ResolvedAdapter`, and the axis-aware loader.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ use specify_error::{Error, ValidationStatus};
 
 use crate::schema::validate_value;
 
-/// Filename of a plugin manifest.
+/// Filename of an adapter manifest.
 ///
 /// Source and target adapters share the `adapter.yaml` filename per
 /// RFC-25 §Adapter implementation shape; the directory's axis (under
@@ -16,11 +16,11 @@ use crate::schema::validate_value;
 /// disambiguate.
 pub const ADAPTER_FILENAME: &str = "adapter.yaml";
 
-const PLUGIN_JSON_SCHEMA: &str = include_str!("../../../../schemas/plugin.schema.json");
+const ADAPTER_JSON_SCHEMA: &str = include_str!("../../../../schemas/adapter.schema.json");
 const SOURCE_JSON_SCHEMA: &str = include_str!("../../../../schemas/source.schema.json");
 const TARGET_JSON_SCHEMA: &str = include_str!("../../../../schemas/target.schema.json");
 
-/// Axis discriminator for a plugin manifest.
+/// Axis discriminator for an adapter manifest.
 ///
 /// Source vs target — see RFC-25 §Adapter axis.
 #[derive(
@@ -47,13 +47,13 @@ impl Axis {
     }
 }
 
-/// One declared WASI tool inside a plugin manifest.
+/// One declared WASI tool inside an adapter manifest.
 ///
-/// Decoupled from [`specify_tool::manifest::Tool`] so plugin loading
+/// Decoupled from [`specify_tool::manifest::Tool`] so adapter loading
 /// does not pull in the WASI runtime surface; sidecar `tools.yaml`
 /// continues to be the authoritative source for tool resolution.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct PluginToolDeclaration {
+pub struct AdapterToolDeclaration {
     /// Kebab-case tool name.
     pub name: String,
     /// Optional semver or `sha256:<digest>` version pin.
@@ -64,16 +64,16 @@ pub struct PluginToolDeclaration {
     pub permissions: Vec<String>,
 }
 
-/// In-memory representation of a plugin manifest.
+/// In-memory representation of an adapter manifest.
 ///
 /// Loaded from `sources/<name>/adapter.yaml` or
 /// `targets/<name>/adapter.yaml`; the shape is the union of
 /// `schemas/source.schema.json` and `schemas/target.schema.json`, with
 /// the axis-specific refinements (closed operation sets, axis literal)
-/// enforced by [`Plugin::resolve`] via the matching schema.
+/// enforced by [`Adapter::resolve`] via the matching schema.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct Plugin {
+pub struct Adapter {
     /// Kebab-case adapter name; must match the directory under
     /// `<axis-dir>/<name>/`.
     pub name: String,
@@ -88,36 +88,36 @@ pub struct Plugin {
     pub briefs: BTreeMap<String, String>,
     /// Optional declared WASI tools per RFC-15.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<PluginToolDeclaration>,
+    pub tools: Vec<AdapterToolDeclaration>,
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 
-/// A parsed [`Plugin`] paired with the directory it loaded from and
+/// A parsed [`Adapter`] paired with the directory it loaded from and
 /// where it was located (in-repo vs. agent-populated cache).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedPlugin {
+pub struct ResolvedAdapter {
     /// Parsed manifest.
-    pub manifest: Plugin,
+    pub manifest: Adapter,
     /// Filesystem directory the manifest was loaded from.
     pub root_dir: PathBuf,
     /// Whether the manifest came from `.specify/.cache/{axis}/<name>/`
     /// or from `<project_dir>/{axis}/<name>/`.
-    pub location: PluginLocation,
+    pub location: AdapterLocation,
 }
 
-/// Where a plugin manifest was located on disk.
+/// Where an adapter manifest was located on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum PluginLocation {
+pub enum AdapterLocation {
     /// Resolved from `<project_dir>/{axis}/<name>/`.
     Local(PathBuf),
     /// Resolved from `<project_dir>/.specify/.cache/{axis}/<name>/`.
     Cached(PathBuf),
 }
 
-impl PluginLocation {
+impl AdapterLocation {
     /// Kebab-case label for JSON envelopes (`"local"` / `"cached"`).
     #[must_use]
     pub const fn label(&self) -> &'static str {
@@ -144,8 +144,8 @@ pub fn cache_dir(project_dir: &Path, axis: Axis, name: &str) -> PathBuf {
     project_dir.join(".specify").join(".cache").join(axis.dir_segment()).join(name)
 }
 
-impl Plugin {
-    /// Resolve a plugin by axis and kebab-case name.
+impl Adapter {
+    /// Resolve an adapter by axis and kebab-case name.
     ///
     /// Probe order, per RFC-25 §Resolver and cache:
     ///
@@ -153,56 +153,56 @@ impl Plugin {
     ///    (agent-populated cache).
     /// 2. `<project_dir>/{axis}/<name>/adapter.yaml` (in-repo).
     ///
-    /// Returns the parsed manifest, the directory it came from, and a
-    /// [`PluginLocation`] tag for downstream renderers. The loader is
+    /// Returns the parsed manifest, the directory it came from, and an
+    /// [`AdapterLocation`] tag for downstream renderers. The loader is
     /// path-agnostic: tests pass a temp `project_dir` containing the
     /// fixtures.
     ///
     /// # Errors
     ///
     /// Returns `Error::Diag` with one of the following codes:
-    /// - `plugin-not-found` — neither cache nor local directory exists.
-    /// - `plugin-manifest-missing` — directory exists but no `adapter.yaml`.
-    /// - `plugin-manifest-read-failed` — manifest exists but cannot be read.
-    /// - `plugin-manifest-malformed` — manifest parses as something
-    ///   other than the [`Plugin`] shape.
-    /// - `plugin-axis-mismatch` — manifest's `axis:` does not match the
+    /// - `adapter-not-found` — neither cache nor local directory exists.
+    /// - `adapter-manifest-missing` — directory exists but no `adapter.yaml`.
+    /// - `adapter-manifest-read-failed` — manifest exists but cannot be read.
+    /// - `adapter-manifest-malformed` — manifest parses as something
+    ///   other than the [`Adapter`] shape.
+    /// - `adapter-axis-mismatch` — manifest's `axis:` does not match the
     ///   requested axis.
-    /// - `plugin-name-mismatch` — manifest's `name:` does not match the
+    /// - `adapter-name-mismatch` — manifest's `name:` does not match the
     ///   requested name.
-    /// - `plugin-schema-violation` — manifest fails the
+    /// - `adapter-schema-violation` — manifest fails the
     ///   axis-specific JSON Schema.
-    pub fn resolve(axis: Axis, name: &str, project_dir: &Path) -> Result<ResolvedPlugin, Error> {
+    pub fn resolve(axis: Axis, name: &str, project_dir: &Path) -> Result<ResolvedAdapter, Error> {
         let (root_dir, location) = Self::locate(axis, name, project_dir)?;
         let manifest_path = root_dir.join(ADAPTER_FILENAME);
         if !manifest_path.is_file() {
             return Err(Error::Diag {
-                code: "plugin-manifest-missing",
+                code: "adapter-manifest-missing",
                 detail: format!("no `adapter.yaml` at {}", root_dir.display()),
             });
         }
         let raw = std::fs::read_to_string(&manifest_path).map_err(|err| Error::Diag {
-            code: "plugin-manifest-read-failed",
-            detail: format!("failed to read plugin manifest {}: {err}", manifest_path.display()),
+            code: "adapter-manifest-read-failed",
+            detail: format!("failed to read adapter manifest {}: {err}", manifest_path.display()),
         })?;
 
         // Validate against the schema first so a more specific error
         // bubbles up than serde's free-form parse failure.
         let raw_value: serde_json::Value =
             serde_saphyr::from_str(&raw).map_err(|err| Error::Diag {
-                code: "plugin-manifest-malformed",
+                code: "adapter-manifest-malformed",
                 detail: format!("failed to parse {}: {err}", manifest_path.display()),
             })?;
         validate_schema(axis, &manifest_path, &raw_value)?;
 
         let manifest: Self = serde_saphyr::from_str(&raw).map_err(|err| Error::Diag {
-            code: "plugin-manifest-malformed",
+            code: "adapter-manifest-malformed",
             detail: format!("failed to deserialize {}: {err}", manifest_path.display()),
         })?;
 
         if manifest.axis != axis {
             return Err(Error::Diag {
-                code: "plugin-axis-mismatch",
+                code: "adapter-axis-mismatch",
                 detail: format!(
                     "{} declares axis `{}`, but resolver was asked for axis `{axis}`",
                     manifest_path.display(),
@@ -212,7 +212,7 @@ impl Plugin {
         }
         if manifest.name != name {
             return Err(Error::Diag {
-                code: "plugin-name-mismatch",
+                code: "adapter-name-mismatch",
                 detail: format!(
                     "{} declares name `{}` but lives under `{name}/`",
                     manifest_path.display(),
@@ -221,7 +221,7 @@ impl Plugin {
             });
         }
 
-        Ok(ResolvedPlugin {
+        Ok(ResolvedAdapter {
             manifest,
             root_dir,
             location,
@@ -229,28 +229,28 @@ impl Plugin {
     }
 
     /// Locate the directory `(axis, name)` resolves to without reading
-    /// the manifest. Mirrors [`Plugin::resolve`]'s probe order
+    /// the manifest. Mirrors [`Adapter::resolve`]'s probe order
     /// (cache → local).
     ///
     /// # Errors
     ///
-    /// Returns the same `plugin-not-found` diagnostic [`Plugin::resolve`]
+    /// Returns the same `adapter-not-found` diagnostic [`Adapter::resolve`]
     /// would.
     pub fn locate(
         axis: Axis, name: &str, project_dir: &Path,
-    ) -> Result<(PathBuf, PluginLocation), Error> {
+    ) -> Result<(PathBuf, AdapterLocation), Error> {
         let cached = cache_dir(project_dir, axis, name);
         if cached.is_dir() {
-            return Ok((cached.clone(), PluginLocation::Cached(cached)));
+            return Ok((cached.clone(), AdapterLocation::Cached(cached)));
         }
         let local = project_dir.join(axis.dir_segment()).join(name);
         if local.is_dir() {
-            return Ok((local.clone(), PluginLocation::Local(local)));
+            return Ok((local.clone(), AdapterLocation::Local(local)));
         }
         Err(Error::Diag {
-            code: "plugin-not-found",
+            code: "adapter-not-found",
             detail: format!(
-                "plugin `{name}` (axis `{axis}`) not found at {} or {}",
+                "adapter `{name}` (axis `{axis}`) not found at {} or {}",
                 cached.display(),
                 local.display()
             ),
@@ -258,7 +258,7 @@ impl Plugin {
     }
 
     /// Resolve the manifest's brief path for `operation` against
-    /// [`ResolvedPlugin::root_dir`]. Returns `None` when the operation
+    /// [`ResolvedAdapter::root_dir`]. Returns `None` when the operation
     /// is not declared by this manifest.
     #[must_use]
     pub fn brief_path(&self, root_dir: &Path, operation: &str) -> Option<PathBuf> {
@@ -266,9 +266,9 @@ impl Plugin {
     }
 }
 
-impl ResolvedPlugin {
-    /// Convenience accessor combining [`Plugin::brief_path`] and the
-    /// resolved [`ResolvedPlugin::root_dir`].
+impl ResolvedAdapter {
+    /// Convenience accessor combining [`Adapter::brief_path`] and the
+    /// resolved [`ResolvedAdapter::root_dir`].
     #[must_use]
     pub fn brief_path(&self, operation: &str) -> Option<PathBuf> {
         self.manifest.brief_path(&self.root_dir, operation)
@@ -279,7 +279,7 @@ fn validate_schema(
     axis: Axis, manifest_path: &Path, instance: &serde_json::Value,
 ) -> Result<(), Error> {
     // Shape gate first — catches violations both schemas share.
-    run_schema(PLUGIN_JSON_SCHEMA, manifest_path, instance, "plugin")?;
+    run_schema(ADAPTER_JSON_SCHEMA, manifest_path, instance, "adapter")?;
     // Axis-specific refinement (operation set + axis literal).
     let (schema, label) = match axis {
         Axis::Source => (SOURCE_JSON_SCHEMA, "source"),
@@ -292,10 +292,10 @@ fn run_schema(
     schema_source: &str, manifest_path: &Path, instance: &serde_json::Value, label: &str,
 ) -> Result<(), Error> {
     let rule = format!("{} conforms to embedded {label} schema", manifest_path.display());
-    for summary in validate_value(instance, schema_source, "plugin-schema-violation", &rule) {
+    for summary in validate_value(instance, schema_source, "adapter-schema-violation", &rule) {
         if summary.status == ValidationStatus::Fail {
             return Err(Error::Diag {
-                code: "plugin-schema-violation",
+                code: "adapter-schema-violation",
                 detail: format!(
                     "{} violates {label} schema: {}",
                     manifest_path.display(),

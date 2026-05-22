@@ -13,7 +13,6 @@ use super::slice::{StatusEntry, collect_status, list_slice_names};
 use crate::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
-    let pipeline = ctx.load_pipeline()?;
     let slices_dir = ctx.slices_dir();
 
     let registry = Registry::load(&ctx.project_dir)?;
@@ -23,7 +22,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let mut entries = Vec::with_capacity(names.len());
     for name in names {
         let dir = slices_dir.join(&name);
-        entries.push(collect_status(&dir, &name, &pipeline, &ctx.project_dir)?);
+        entries.push(collect_status(&dir, &name)?);
     }
 
     let body = DashboardBody {

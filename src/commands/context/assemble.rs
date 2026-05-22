@@ -6,7 +6,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use specify_domain::adapter::{ADAPTER_FILENAME, PipelineView};
+use specify_domain::adapter::{ADAPTER_FILENAME, ResolvedAdapter};
 use specify_domain::config::{Layout, ProjectConfig};
 use specify_domain::registry::Registry;
 use specify_domain::slice::SliceMetadata;
@@ -31,9 +31,9 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
     let adapter = if ctx.config.hub {
         None
     } else {
-        let pipeline = ctx.load_pipeline()?;
-        collect_adapter_inputs(&mut collector, &pipeline)?;
-        Some(adapter_summary(&pipeline))
+        let resolved = ctx.resolve_target_adapter()?;
+        collect_adapter_inputs(&mut collector, &resolved)?;
+        Some(adapter_summary(&resolved))
     };
     let detection = if ctx.config.hub {
         detect::Detection::default()
@@ -67,26 +67,30 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
 }
 
 fn collect_adapter_inputs(
-    collector: &mut fingerprint::InputCollector, pipeline: &PipelineView,
+    collector: &mut fingerprint::InputCollector, adapter: &ResolvedAdapter,
 ) -> Result<()> {
-    let manifest = pipeline.adapter.root_dir.join(ADAPTER_FILENAME);
+    let manifest = adapter.root_dir.join(ADAPTER_FILENAME);
     if manifest.is_file() {
         collector.add_file(&manifest)?;
     }
-    for (_phase, brief) in &pipeline.briefs {
-        collector.add_file(&brief.path)?;
+    for relative in adapter.manifest.briefs.values() {
+        let brief_path = adapter.root_dir.join(relative);
+        if brief_path.is_file() {
+            collector.add_file(&brief_path)?;
+        }
     }
     Ok(())
 }
 
-fn adapter_summary(pipeline: &PipelineView) -> render::Adapter {
-    let mut briefs: Vec<render::Brief> = pipeline
+fn adapter_summary(adapter: &ResolvedAdapter) -> render::Adapter {
+    let mut briefs: Vec<render::Brief> = adapter
+        .manifest
         .briefs
-        .iter()
-        .map(|(phase, brief)| render::Brief {
-            phase: phase.to_string(),
-            id: brief.frontmatter.id.clone(),
-            description: brief.frontmatter.description.clone(),
+        .keys()
+        .map(|operation| render::Brief {
+            phase: operation.clone(),
+            id: operation.clone(),
+            description: String::new(),
         })
         .collect();
     briefs.sort_by(|left, right| {
@@ -98,9 +102,9 @@ fn adapter_summary(pipeline: &PipelineView) -> render::Adapter {
     });
 
     render::Adapter {
-        name: pipeline.adapter.manifest.name.clone(),
-        version: pipeline.adapter.manifest.version,
-        description: pipeline.adapter.manifest.description.clone(),
+        name: adapter.manifest.name.clone(),
+        version: adapter.manifest.version,
+        description: adapter.manifest.description.clone().unwrap_or_default(),
         briefs,
     }
 }

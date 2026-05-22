@@ -21,7 +21,7 @@
     "scope": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(project|plugin--(source|target))--[^/\\\\]+$"
+      "pattern": "^(project|adapter--(source|target))--[^/\\\\]+$"
     },
     "tool-name": {
       "type": "string",

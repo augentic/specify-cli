@@ -25,7 +25,7 @@
         "status": "deferred"
       }
     ],
-    "specs": [
+    "specs/login/spec.md": [
       {
         "rule": "Every requirement has at least one scenario",
         "rule-id": "specs.requirements-have-scenarios",

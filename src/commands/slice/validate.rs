@@ -30,8 +30,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // skipped.
     validate_spec_provenance(ctx, &slice_dir, name)?;
 
-    let pipeline = ctx.load_pipeline()?;
-    let report = validate_slice(&slice_dir, &pipeline)?;
+    let report = validate_slice(&slice_dir)?;
     let passed = report.passed;
 
     ctx.write(&report, |w, _| {

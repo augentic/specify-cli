@@ -5,7 +5,7 @@ use std::path::Path;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::adapter::Phase;
+use specify_domain::adapter::Operation;
 use specify_domain::config::Layout;
 use specify_domain::slice::{Outcome, OutcomeKind, SliceMetadata, actions as slice_actions};
 use specify_error::{Error, Result};
@@ -13,7 +13,9 @@ use specify_error::{Error, Result};
 use super::cli::{OutcomeKindAction, RegistryAmendmentProposal};
 use crate::context::Ctx;
 
-pub(super) fn set(ctx: &Ctx, name: String, phase: Phase, kind: OutcomeKindAction) -> Result<()> {
+pub(super) fn set(
+    ctx: &Ctx, name: String, phase: Operation, kind: OutcomeKindAction,
+) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
     if !slice_dir.is_dir() || !SliceMetadata::path(&slice_dir).exists() {
         return Err(Error::Diag {

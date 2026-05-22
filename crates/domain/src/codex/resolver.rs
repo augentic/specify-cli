@@ -10,8 +10,8 @@ use std::path::{Component, Path, PathBuf};
 use serde::Serialize;
 use specify_error::{Error, ValidationStatus, ValidationSummary};
 
-use crate::adapter::adapter::Adapter;
-use crate::adapter::codex::CodexRule;
+use crate::adapter::{Adapter, Axis, ResolvedAdapter};
+use crate::codex::rule::CodexRule;
 
 /// Foundational adapter name resolved before the project adapter.
 pub const DEFAULT_CODEX_ADAPTER: &str = "default";
@@ -41,7 +41,7 @@ pub struct ResolvedCodexRule {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum CodexProvenance {
-    /// Rule came from a adapter's `codex/` tree.
+    /// Rule came from a target adapter's `codex/` tree.
     Adapter {
         /// Adapter manifest name.
         name: String,
@@ -77,6 +77,12 @@ pub struct CodexResolver {
 
 impl ResolvedCodex {
     /// Resolve the active codex for `project_dir`.
+    ///
+    /// `project_adapter` is the value from `project.yaml.adapter` —
+    /// either a kebab adapter name or a `file://` / `https://` URI
+    /// whose last path component is the kebab name. The resolver
+    /// extracts the name and routes through
+    /// [`Adapter::resolve`] with [`Axis::Target`].
     ///
     /// # Errors
     ///
@@ -131,8 +137,9 @@ impl CodexResolver {
         let default_root = default.root_dir.clone();
         let mut rules = load_adapter_rules(&default)?;
 
-        if let Some(adapter) = self.project_adapter.as_deref() {
-            let project = Adapter::resolve(adapter, &self.project_dir)?;
+        if let Some(adapter_value) = self.project_adapter.as_deref() {
+            let name = adapter_name_from_value(adapter_value);
+            let project = Adapter::resolve(Axis::Target, name, &self.project_dir)?;
             if project.root_dir != default_root {
                 rules.extend(load_adapter_rules(&project)?);
             }
@@ -166,8 +173,33 @@ impl fmt::Display for CodexProvenance {
     }
 }
 
-fn resolve_default(project_dir: &Path) -> Result<crate::adapter::adapter::ResolvedAdapter, Error> {
-    match Adapter::resolve(DEFAULT_CODEX_ADAPTER, project_dir) {
+/// Extract the kebab-case adapter name from a `project.yaml.adapter`
+/// value. Accepts:
+///
+/// - bare kebab names (`omnia`) — returned unchanged,
+/// - `file://` URIs — last path component,
+/// - `https://...` URIs — last path component (suffix `@ref` stripped),
+/// - bare local paths — last path component.
+#[must_use]
+pub fn adapter_name_from_value(value: &str) -> &str {
+    let stripped = strip_ref_suffix(value);
+    let stripped = stripped.strip_prefix("file://").unwrap_or(stripped);
+    let stripped = stripped.strip_suffix('/').unwrap_or(stripped);
+    stripped.rsplit('/').next().unwrap_or(stripped)
+}
+
+fn strip_ref_suffix(value: &str) -> &str {
+    let last_slash = value.rfind('/').unwrap_or(0);
+    if let Some(at) = value.rfind('@')
+        && at > last_slash
+    {
+        return &value[..at];
+    }
+    value
+}
+
+fn resolve_default(project_dir: &Path) -> Result<ResolvedAdapter, Error> {
+    match Adapter::resolve(Axis::Target, DEFAULT_CODEX_ADAPTER, project_dir) {
         Ok(adapter) => Ok(adapter),
         Err(err @ Error::Diag { .. }) => {
             let detail = err.to_string();
@@ -183,9 +215,7 @@ fn resolve_default(project_dir: &Path) -> Result<crate::adapter::adapter::Resolv
     }
 }
 
-fn load_adapter_rules(
-    adapter: &crate::adapter::adapter::ResolvedAdapter,
-) -> Result<Vec<ResolvedCodexRule>, Error> {
+fn load_adapter_rules(adapter: &ResolvedAdapter) -> Result<Vec<ResolvedCodexRule>, Error> {
     let provenance = CodexProvenance::Adapter {
         name: adapter.manifest.name.clone(),
         version: adapter.manifest.version,
@@ -283,4 +313,25 @@ fn reject_duplicate_ids(rules: &[ResolvedCodexRule]) -> Result<(), Error> {
     }
 
     if failures.is_empty() { Ok(()) } else { Err(Error::Validation { results: failures }) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adapter_name_from_value_handles_common_shapes() {
+        assert_eq!(adapter_name_from_value("omnia"), "omnia");
+        assert_eq!(adapter_name_from_value("file:///abs/targets/omnia"), "omnia");
+        assert_eq!(adapter_name_from_value("file:///abs/targets/omnia/"), "omnia");
+        assert_eq!(
+            adapter_name_from_value("https://github.com/augentic/specify/targets/omnia"),
+            "omnia"
+        );
+        assert_eq!(
+            adapter_name_from_value("https://github.com/augentic/specify/targets/omnia@v1"),
+            "omnia"
+        );
+        assert_eq!(adapter_name_from_value("/abs/targets/omnia"), "omnia");
+    }
 }

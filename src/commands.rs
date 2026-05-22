@@ -16,7 +16,7 @@ use std::path::Path;
 
 use clap::CommandFactory;
 use serde::Serialize;
-use specify_domain::plugin::{Axis, Plugin};
+use specify_domain::adapter::{Adapter, Axis};
 use specify_error::Result;
 
 use crate::cli::{Cli, Commands, Format};
@@ -42,12 +42,12 @@ pub fn run(cli: Cli) -> Exit {
         Commands::Context { action } => scoped(format, |ctx| context::run(ctx, &action)),
         Commands::Source { action } => match action {
             SourceAction::Resolve { name, project_dir } => {
-                dispatch(format, || resolve_plugin(format, Axis::Source, &name, &project_dir))
+                dispatch(format, || resolve_adapter(format, Axis::Source, &name, &project_dir))
             }
         },
         Commands::Target { action } => match action {
             TargetAction::Resolve { value, project_dir } => {
-                dispatch(format, || resolve_plugin(format, Axis::Target, &value, &project_dir))
+                dispatch(format, || resolve_adapter(format, Axis::Target, &value, &project_dir))
             }
         },
         Commands::Codex { action } => scoped(format, |ctx| codex::run(ctx, action)),
@@ -164,7 +164,7 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
 
 /// Resolve a source- or target-adapter manifest by kebab name and emit
 /// the wire-stable [`ResolveBody`] envelope. Probe order matches
-/// [`Plugin::resolve`]: agent-populated cache at
+/// [`Adapter::resolve`]: agent-populated cache at
 /// `<project_dir>/.specify/.cache/{sources,targets}/<name>/` first, then
 /// the in-repo `<project_dir>/{sources,targets}/<name>/`.
 ///
@@ -172,13 +172,13 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
 /// `<name>@<version>`; the `@version` suffix is treated as an opaque
 /// identifier and stripped to leave the kebab name for the lookup
 /// (RFC-25 §CLI surface).
-fn resolve_plugin(format: Format, axis: Axis, value: &str, project_dir: &Path) -> Result<()> {
+fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) -> Result<()> {
     let name = if matches!(axis, Axis::Target) {
         value.split_once('@').map_or(value, |(n, _)| n)
     } else {
         value
     };
-    let resolved = Plugin::resolve(axis, name, project_dir)?;
+    let resolved = Adapter::resolve(axis, name, project_dir)?;
     let body = ResolveBody {
         axis: axis.dir_segment(),
         name: resolved.manifest.name.clone(),

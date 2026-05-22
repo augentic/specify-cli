@@ -10,7 +10,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
-use crate::adapter::Phase;
+use crate::adapter::Operation;
 use crate::slice::OutcomeKind;
 
 /// Basename of the slice working directory under `.specify/`.
@@ -99,15 +99,15 @@ pub struct SliceMetadata {
     pub outcome: Option<Outcome>,
 }
 
-/// Result of a phase run (define | build | merge) as recorded in
-/// `.metadata.yaml`. Read by `/change:execute` on phase return to
-/// decide the next plan transition.
+/// Result of a target-adapter operation (shape | build | merge) as
+/// recorded in `.metadata.yaml`. Read by `/spec:execute` on phase
+/// return to decide the next plan transition.
 #[non_exhaustive]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Outcome {
-    /// Which phase produced this outcome.
-    pub phase: Phase,
+    /// Which target-adapter operation produced this outcome.
+    pub phase: Operation,
     /// Success, failure, or deferred classification. The wire field
     /// name stays `outcome` for back-compat with existing
     /// `.metadata.yaml` files and skill JSON consumers; the Rust name
@@ -273,7 +273,7 @@ outcome:
         assert_eq!(meta.version, 1, "absent version should default to 1");
         assert_eq!(meta.status, LifecycleStatus::Complete);
         let stamped = meta.outcome.expect("outcome should round-trip");
-        assert_eq!(stamped.phase, Phase::Merge);
+        assert_eq!(stamped.phase, Operation::Merge);
         assert_eq!(stamped.kind, OutcomeKind::Success);
     }
 }

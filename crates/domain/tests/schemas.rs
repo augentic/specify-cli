@@ -1,5 +1,5 @@
 //! Golden tests for the RFC-25 JSON Schemas shipped under
-//! `cli/schemas/`: `plugin.schema.json`, `source.schema.json`,
+//! `cli/schemas/`: `adapter.schema.json`, `source.schema.json`,
 //! `target.schema.json`, `evidence.schema.json`, and
 //! `discovery/candidate.schema.json`. Each schema gets a "valid"
 //! fixture that must validate cleanly plus a small set of "invalid"
@@ -44,7 +44,7 @@ fn assert_invalid(validator: &Validator, instance: &JsonValue, ctx: &str) {
     assert!(count > 0, "{ctx}: schema should reject the fixture but did not");
 }
 
-// --- plugin.schema.json --------------------------------------------
+// --- adapter.schema.json --------------------------------------------
 
 const PLUGIN_VALID_SOURCE: &str = r"
 name: code-typescript
@@ -108,14 +108,14 @@ briefs:
 
 #[test]
 fn plugin_accepts_source_and_target_shapes() {
-    let v = load("plugin.schema.json");
+    let v = load("adapter.schema.json");
     assert_valid(&v, &yaml(PLUGIN_VALID_SOURCE), "plugin/source");
     assert_valid(&v, &yaml(PLUGIN_VALID_TARGET), "plugin/target");
 }
 
 #[test]
 fn plugin_rejects_axis_violations_and_bad_primitives() {
-    let v = load("plugin.schema.json");
+    let v = load("adapter.schema.json");
     assert_invalid(&v, &yaml(PLUGIN_INVALID_NO_AXIS), "plugin/no-axis");
     assert_invalid(&v, &yaml(PLUGIN_INVALID_BAD_AXIS), "plugin/bad-axis");
     assert_invalid(&v, &yaml(PLUGIN_INVALID_NAME_NOT_KEBAB), "plugin/name-not-kebab");

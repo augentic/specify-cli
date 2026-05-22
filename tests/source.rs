@@ -74,6 +74,6 @@ fn source_resolve_missing_emits_not_found() {
         .assert()
         .failure();
     let stderr = parse_stderr(&assert.get_output().stderr, project.root());
-    assert_eq!(stderr["error"], "plugin-not-found");
+    assert_eq!(stderr["error"], "adapter-not-found");
     assert_eq!(stderr["exit-code"], 1);
 }

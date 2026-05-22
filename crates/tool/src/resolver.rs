@@ -287,7 +287,7 @@ mod tests {
         assert_ne!(project_resolved.bytes_path, adapter_resolved.bytes_path);
         assert!(project_resolved.bytes_path.to_string_lossy().contains("project--demo"));
         assert!(
-            adapter_resolved.bytes_path.to_string_lossy().contains("plugin--target--contracts")
+            adapter_resolved.bytes_path.to_string_lossy().contains("adapter--target--contracts")
         );
     }
 

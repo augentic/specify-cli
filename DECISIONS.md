@@ -250,26 +250,33 @@ crate project-scope and adapter-scope tool declarations.
   `merge-mtime-out-of-range` whose `detail` carries the underlying
   `jiff` error.
 
-## RFC-25 type rename: `Target*` is the output role, `Plugin` is the shared shape
+## RFC-25 type rename: `Target*` is the output role, `Adapter` is the shared shape
 
 Wave 0.2 (`cli/W0.2`) renamed `Adapter*` → `Target*` for the output-role
 domain types (`Target`, the `Slice.target` field, the
 `init-requires-target-or-workspace` / `slice-create-target-missing` /
 `plan.entry-needs-project-or-target` error discriminants, plus every
 fixture, JSON envelope, and call site). Wave 0.3 (`cli/W0.3`) moved the
-shared manifest *shape* into the new `crates/domain/src/plugin/`
-loader so source and target adapters share one loader keyed by an
-explicit `axis: source | target`. The legacy `crates/domain/src/adapter/`
-module survives as a narrower home for `Brief`, `CodexProvenance`,
-`CacheMeta`, and `PipelineView` — concepts that are
-not part of the RFC-25 wire contract — but no new code should load a
-manifest through it. Per RFC-25 §"Note to the implementing agent",
+shared manifest *shape* into a new axis-aware loader. The F9 collapse
+then retired the legacy axis-agnostic `crate::adapter` module
+(`Adapter` / `Pipeline` / `PipelineEntry` / `PipelineView` / `Phase` /
+`AdapterSource` / `ResolvedAdapter` / the legacy `adapter.schema.json`)
+and renamed the axis-aware loader back into `crates/domain/src/adapter/`
+under the cleaner `Adapter` / `Axis` / `ResolvedAdapter` /
+`AdapterLocation` type names. `Brief` and `BriefFrontmatter` now live
+under `crates/domain/src/adapter/brief.rs` (with `needs:` / `tracks:` /
+`generates:` retired — RFC-25 briefs only carry `id` and `description`),
+`CacheMeta` was rehomed inside `crates/domain/src/init/cache.rs`, and
+`CodexRule` / `CodexResolver` / `ResolvedCodex` moved into a new
+`crates/domain/src/codex/` module. The `Phase` enum was replaced by
+`Operation { Shape, Build, Merge }` on the slice-metadata wire (`phase:
+shape | build | merge`). Per RFC-25 §"Note to the implementing agent",
 touching any of these symbols requires a cross-repo `rg` sweep against
 `augentic/specify-cli` and `augentic/specify` in the same PR.
 
-## Plugin loader axis routing
+## Adapter loader axis routing
 
-`specify_domain::plugin::Plugin::resolve(axis, name, project_dir)` is
+`specify_domain::adapter::Adapter::resolve(axis, name, project_dir)` is
 the single entry point for loading a source or target adapter manifest.
 Probe order is path-agnostic and matches RFC-25 §"Resolver and cache"
 verbatim:

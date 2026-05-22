@@ -1,70 +1,79 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/adapter.schema.json",
-  "title": "Specify adapter.yaml",
-  "description": "Validates the structure of a Specify adapter manifest. The manifest is the declarative surface the core loads before running the slice loop. Defined by RFC-13 §Adapter manifest and protocol; the field set is closed (additionalProperties: false) so the dropped fields domain, extends, and pipeline.plan are actively rejected rather than tolerated.",
+  "title": "Specify adapter manifest",
+  "description": "Shared shape for source and target adapter manifests (`adapter.yaml`) per RFC-25 §Adapter implementation shape. Carries the kebab-case `name`, integer `version`, the `axis` discriminator (`source` or `target`), the closed list of `operations`, the `briefs.<operation>` map of relative brief paths, and an optional `tools[]` declaration. Source and target schemas refine this shape with axis-specific `operations` and `briefs` constraints.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "version", "description", "pipeline"],
+  "required": ["name", "version", "axis", "operations", "briefs"],
   "properties": {
     "name": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9-]*$",
-      "description": "Adapter identifier in kebab-case (e.g. omnia, contracts, vectis). Must match the directory name under adapters/."
+      "$ref": "#/$defs/kebabName",
+      "description": "Adapter identifier in kebab-case. Must match the directory name under sources/ or targets/."
     },
     "version": {
       "type": "integer",
       "minimum": 1,
-      "description": "Major adapter version. Increments when the adapter ships breaking pipeline or contract changes."
+      "description": "Major adapter version. Increments when the adapter ships breaking operation or contract changes."
+    },
+    "axis": {
+      "type": "string",
+      "enum": ["source", "target"],
+      "description": "Adapter role. `source` adapters enumerate candidates and extract evidence; `target` adapters supply `shape`, `build`, and `merge` briefs."
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Closed list of operations this adapter declares. Source adapters: `enumerate`, `extract`. Target adapters: `shape`, `build`, `merge`."
+    },
+    "briefs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*://).+$"
+      },
+      "description": "Map from operation name (matching an `operations[]` entry) to a relative path to the brief markdown file. Absolute paths and URIs are rejected."
+    },
+    "tools": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/toolDeclaration" },
+      "description": "Optional WASI tool declarations per RFC-15. Tools resolve into `.specify/.cache/{sources,targets}/<name>/`."
     },
     "description": {
       "type": "string",
       "minLength": 1,
-      "description": "Human-readable, single-sentence summary of the adapter's outcome domain."
-    },
-    "pipeline": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["define", "build", "merge"],
-      "description": "Ordered briefs the core renders for each fixed slice phase. RFC-13 deliberately forbids a `plan` entry here: planning is platform-component territory and is owned by `specify change`.",
-      "properties": {
-        "define": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/pipelineEntry" },
-          "description": "Ordered briefs for the define phase. At least one brief is required."
-        },
-        "build": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/pipelineEntry" },
-          "description": "Ordered briefs for the build phase. At least one brief is required."
-        },
-        "merge": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/pipelineEntry" },
-          "description": "Ordered briefs for the merge phase. At least one brief is required."
-        }
-      }
+      "description": "Optional human-readable, single-sentence summary of the adapter's role."
     }
   },
   "$defs": {
-    "pipelineEntry": {
+    "kebabName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Kebab-case identifier: lowercase letters and digits grouped by single internal hyphens; no leading, trailing, or consecutive hyphens."
+    },
+    "toolDeclaration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "brief"],
+      "required": ["name"],
       "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9-]*$",
-          "description": "Brief identifier in kebab-case. Must be unique within the manifest and must match the brief file's frontmatter id."
+        "name": {
+          "$ref": "#/$defs/kebabName",
+          "description": "WASI tool identifier; resolves under `.specify/.cache/{sources,targets}/<adapter>/<name>/`."
         },
-        "brief": {
+        "version": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*://).+$",
-          "description": "Path to the brief markdown file, relative to the adapter manifest. Must not be an absolute path or a URI."
+          "description": "Tool version pin (semver or sha256:<digest>)."
+        },
+        "permissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Optional permission grants (e.g. `read:source-dir`)."
         }
       }
     }

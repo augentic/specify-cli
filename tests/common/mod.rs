@@ -40,7 +40,7 @@ pub fn repo_root() -> PathBuf {
 /// Convenience pointer to the in-repo Omnia adapter fixture used as
 /// the canonical positional argument for `specify init`.
 pub fn omnia_schema_dir() -> PathBuf {
-    repo_root().join("schemas").join("omnia")
+    repo_root().join("targets").join("omnia")
 }
 
 /// Build a fresh `assert_cmd::Command` for the locally-built `specify`
@@ -250,7 +250,7 @@ pub struct Project {
 }
 
 impl Project {
-    /// Build a fresh tempdir and run `specify init <repo>/schemas/omnia`
+    /// Build a fresh tempdir and run `specify init <repo>/targets/omnia`
     /// with a default `--name`. The resulting project sits at the
     /// tempdir root.
     pub fn init() -> Self {
@@ -259,7 +259,7 @@ impl Project {
         specify()
             .current_dir(&root)
             .args(["init"])
-            .arg(repo_root().join("schemas").join("omnia"))
+            .arg(repo_root().join("targets").join("omnia"))
             .args(["--name", "test-proj"])
             .assert()
             .success();
@@ -267,37 +267,40 @@ impl Project {
     }
 
     /// Initialise a project backed by a local fixture adapter dir.
-    /// The fixture is mirrored into `<tmp>/schemas/<name>/` so that
+    /// The fixture is mirrored into `<tmp>/targets/<name>/` so that
     /// subsequent `specify` invocations resolve it via the usual
-    /// `schemas/<name>/` probe.
+    /// `targets/<name>/` probe.
     pub fn init_from_fixture(name: &str, fixture_dir: &Path) -> Self {
         let tmp = tempdir().expect("tempdir");
         let root = tmp.path().to_path_buf();
-        copy_dir(fixture_dir, &root.join("schemas").join(name));
+        copy_dir(fixture_dir, &root.join("targets").join(name));
         specify()
             .current_dir(&root)
             .args(["init"])
-            .arg(root.join("schemas").join(name))
+            .arg(root.join("targets").join(name))
             .args(["--name", "test-proj"])
             .assert()
             .success();
         Self { _tmp: tmp, root }
     }
 
-    /// Mirror the in-repo `schemas/omnia` tree into the project so any
-    /// subcommand that loads a `PipelineView` can resolve the schema
-    /// from the project's own `schemas/` dir.
+    /// Mirror the in-repo `targets/omnia` tree into the project so any
+    /// subcommand that resolves the target adapter can find it under
+    /// the project's own `targets/` dir.
     #[must_use]
     pub fn with_schemas(self) -> Self {
-        copy_dir(&repo_root().join("schemas/omnia"), &self.root.join("schemas/omnia"));
+        copy_dir(&repo_root().join("targets/omnia"), &self.root.join("targets/omnia"));
         self
     }
 
-    /// Populate the schema cache instead of the local `schemas/` tree so
-    /// `Adapter::resolve` picks the `AdapterSource::Cached` branch.
+    /// Populate the cache instead of the local `targets/` tree so
+    /// `Adapter::resolve` picks the `AdapterLocation::Cached` branch.
     #[must_use]
     pub fn with_cached_schema(self) -> Self {
-        copy_dir(&repo_root().join("schemas/omnia"), &self.root.join(".specify/.cache/omnia"));
+        copy_dir(
+            &repo_root().join("targets/omnia"),
+            &self.root.join(".specify/.cache/targets/omnia"),
+        );
         self
     }
 

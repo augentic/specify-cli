@@ -1,9 +1,8 @@
 //! Golden JSON tests for `validate_slice`.
 //!
 //! Each test stages a fixture slice under a tempdir in the expected
-//! layout (`<project>/.specify/slices/<name>/` + a copy of
-//! `schemas/omnia/` under `<project>/schemas/omnia/`), runs
-//! `validate_slice`, serialises the report via its `Serialize` derive,
+//! layout (`<project>/.specify/slices/<name>/`), runs `validate_slice`,
+//! serialises the report via its `Serialize` derive,
 //! and compares the pretty-printed JSON against a checked-in golden
 //! file.
 //!
@@ -15,7 +14,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_domain::adapter::PipelineView;
 use specify_domain::slice::SLICES_DIR_NAME;
 use specify_domain::validate::validate_slice;
 use tempfile::TempDir;
@@ -42,12 +40,10 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
     }
 }
 
-/// Stage a fixture + schema into a tempdir and return
-/// `(tempdir_guard, slice_dir, pipeline_view)`.
-fn stage_fixture(fixture_name: &str) -> (TempDir, PathBuf, PipelineView) {
+/// Stage a fixture into a tempdir and return `(tempdir_guard, slice_dir)`.
+fn stage_fixture(fixture_name: &str) -> (TempDir, PathBuf) {
     let repo = repo_root();
     let fixture_src = repo.join("crates/domain/tests/fixtures").join(fixture_name);
-    let schema_src = repo.join("schemas/omnia");
 
     let tempdir = tempfile::tempdir().unwrap();
     let project_dir = tempdir.path().to_path_buf();
@@ -55,12 +51,7 @@ fn stage_fixture(fixture_name: &str) -> (TempDir, PathBuf, PipelineView) {
     let slice_dir = project_dir.join(".specify").join(SLICES_DIR_NAME).join(fixture_name);
     copy_dir_recursive(&fixture_src, &slice_dir);
 
-    let schema_dst = project_dir.join("schemas").join("omnia");
-    copy_dir_recursive(&schema_src, &schema_dst);
-
-    let pipeline = PipelineView::load("omnia", &project_dir).expect("pipeline loads");
-
-    (tempdir, slice_dir, pipeline)
+    (tempdir, slice_dir)
 }
 
 fn golden_path(fixture_name: &str) -> PathBuf {
@@ -68,8 +59,8 @@ fn golden_path(fixture_name: &str) -> PathBuf {
 }
 
 fn run_fixture_and_diff(fixture_name: &str, expected_passed: bool) {
-    let (_guard, slice_dir, pipeline) = stage_fixture(fixture_name);
-    let report = validate_slice(&slice_dir, &pipeline).expect("validate_slice ok");
+    let (_guard, slice_dir) = stage_fixture(fixture_name);
+    let report = validate_slice(&slice_dir).expect("validate_slice ok");
     assert_eq!(
         report.passed, expected_passed,
         "report.passed mismatch for `{fixture_name}`: {report:#?}"

@@ -3,7 +3,7 @@ pub mod cli;
 use std::io::Write;
 
 use serde::Serialize;
-use specify_domain::adapter::{CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule};
+use specify_domain::codex::{CodexProvenance, CodexSeverity, ResolvedCodex, ResolvedCodexRule};
 use specify_error::{Error, Result, ValidationSummary};
 
 use self::cli::CodexAction;

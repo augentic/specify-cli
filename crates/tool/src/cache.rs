@@ -90,7 +90,7 @@ pub fn scope_segment(scope: &ToolScope) -> Result<String, ToolError> {
             axis, plugin_slug, ..
         } => {
             validate_segment("plugin slug", plugin_slug)?;
-            Ok(format!("plugin--{axis}--{plugin_slug}"))
+            Ok(format!("adapter--{axis}--{plugin_slug}"))
         }
     }
 }

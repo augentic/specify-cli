@@ -7,12 +7,15 @@ use std::io::Write;
 use std::path::Path;
 
 use serde::Serialize;
-use specify_domain::adapter::{Phase, PipelineView};
 use specify_domain::slice::{LifecycleStatus, SliceMetadata};
 use specify_domain::task::parse_tasks;
 use specify_error::Result;
 
 use crate::context::Ctx;
+
+/// RFC-25 canonical refine-time artifacts probed for slice completion.
+/// Mirrors [`specify_domain::validate::validate_slice`]'s artifact set.
+const CANONICAL_ARTIFACTS: &[&str] = &["proposal.md", "spec.md", "design.md", "tasks.md"];
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -31,31 +34,22 @@ pub(in crate::commands) struct TaskCounts {
     pub complete: usize,
 }
 
-pub(in crate::commands) fn collect_status(
-    slice_dir: &Path, name: &str, pipeline: &PipelineView, project_dir: &Path,
-) -> Result<StatusEntry> {
+pub(in crate::commands) fn collect_status(slice_dir: &Path, name: &str) -> Result<StatusEntry> {
     let metadata = SliceMetadata::load(slice_dir)?;
 
-    // Delegate per-brief artifact completion to `PipelineView` so every
-    // consumer agrees on what "complete" means.
-    let artifacts = pipeline.completion_for(Phase::Define, slice_dir);
+    let artifacts = canonical_artifact_completion(slice_dir);
 
-    let tasks =
-        match super::task::resolve_tasks_path_for(slice_dir, &metadata.target, Some(project_dir)) {
-            Ok(path) => {
-                if path.is_file() {
-                    let content = std::fs::read_to_string(&path)?;
-                    let progress = parse_tasks(&content);
-                    Some(TaskCounts {
-                        total: progress.total,
-                        complete: progress.complete,
-                    })
-                } else {
-                    None
-                }
-            }
-            Err(_) => None,
-        };
+    let tasks_path = slice_dir.join("tasks.md");
+    let tasks = if tasks_path.is_file() {
+        let content = std::fs::read_to_string(&tasks_path)?;
+        let progress = parse_tasks(&content);
+        Some(TaskCounts {
+            total: progress.total,
+            complete: progress.complete,
+        })
+    } else {
+        None
+    };
 
     Ok(StatusEntry {
         name: name.to_string(),
@@ -64,6 +58,13 @@ pub(in crate::commands) fn collect_status(
         tasks,
         artifacts,
     })
+}
+
+fn canonical_artifact_completion(slice_dir: &Path) -> BTreeMap<String, bool> {
+    CANONICAL_ARTIFACTS
+        .iter()
+        .map(|artifact| ((*artifact).to_string(), slice_dir.join(artifact).is_file()))
+        .collect()
 }
 
 pub(in crate::commands) fn list_slice_names(slices_dir: &Path) -> Result<Vec<String>> {
@@ -89,9 +90,8 @@ pub(in crate::commands) fn list_slice_names(slices_dir: &Path) -> Result<Vec<Str
 }
 
 pub(super) fn status_one(ctx: &Ctx, name: &str) -> Result<()> {
-    let pipeline = ctx.load_pipeline()?;
     let slice_dir = ctx.slices_dir().join(name);
-    let entry = collect_status(&slice_dir, name, &pipeline, &ctx.project_dir)?;
+    let entry = collect_status(&slice_dir, name)?;
 
     ctx.write(&StatusBody { slice: &entry }, write_status_text)?;
     Ok(())

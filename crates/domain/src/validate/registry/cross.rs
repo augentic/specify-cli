@@ -3,13 +3,10 @@
 use crate::validate::{Classification, CrossContext, CrossRule, RuleOutcome, primitives};
 
 fn cross_proposal_crates_have_specs(ctx: &CrossContext<'_>) -> RuleOutcome {
-    let Some(proposal_brief) = ctx.pipeline.brief("proposal") else {
+    let proposal_path = ctx.slice_dir.join("proposal.md");
+    if !proposal_path.is_file() {
         return RuleOutcome::Pass;
-    };
-    let Some(generates) = proposal_brief.frontmatter.generates.as_deref() else {
-        return RuleOutcome::Pass;
-    };
-    let proposal_path = ctx.slice_dir.join(generates);
+    }
     let proposal_text = match std::fs::read_to_string(&proposal_path) {
         Ok(t) => t,
         Err(err) => {
@@ -30,13 +27,10 @@ fn cross_proposal_crates_have_specs(ctx: &CrossContext<'_>) -> RuleOutcome {
 }
 
 fn cross_design_references_valid(ctx: &CrossContext<'_>) -> RuleOutcome {
-    let Some(design_brief) = ctx.pipeline.brief("design") else {
+    let design_path = ctx.slice_dir.join("design.md");
+    if !design_path.is_file() {
         return RuleOutcome::Pass;
-    };
-    let Some(generates) = design_brief.frontmatter.generates.as_deref() else {
-        return RuleOutcome::Pass;
-    };
-    let design_path = ctx.slice_dir.join(generates);
+    }
     let design_text = match std::fs::read_to_string(&design_path) {
         Ok(t) => t,
         Err(err) => {
