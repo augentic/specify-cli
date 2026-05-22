@@ -169,7 +169,7 @@ pub struct Entry {
     /// rejected by `specify slice validate` with
     /// `slice-authority-override-orphan-source-key`. Empty map and
     /// missing field are equivalent.
-    #[serde(default, skip_serializing_if = "SliceAuthorityOverride::is_empty")]
+    #[serde(default, skip_serializing_if = "slice_authority_override_is_empty")]
     pub authority_override: SliceAuthorityOverride,
 }
 
@@ -248,17 +248,15 @@ impl SliceAuthorityOverride {
         }
     }
 
-    /// `true` when the override map carries no entries.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.by_kind.is_empty()
-    }
-
     /// Resolve the source key, if any, pinned for `kind`.
     #[must_use]
     pub fn resolve(&self, kind: ClaimKind) -> Option<&str> {
         self.by_kind.get(&kind).map(String::as_str)
     }
+}
+
+fn slice_authority_override_is_empty(o: &SliceAuthorityOverride) -> bool {
+    o.by_kind.is_empty()
 }
 
 /// One `(source-key, candidate-id)` binding under [`Entry::sources`].
@@ -305,18 +303,6 @@ impl SliceSourceBinding {
             Self::Bare(_) => slice_name,
             Self::Structured { candidate, .. } => candidate.as_str(),
         }
-    }
-}
-
-impl From<&str> for SliceSourceBinding {
-    fn from(value: &str) -> Self {
-        Self::Bare(value.to_string())
-    }
-}
-
-impl From<String> for SliceSourceBinding {
-    fn from(value: String) -> Self {
-        Self::Bare(value)
     }
 }
 
@@ -795,7 +781,7 @@ slices:
     status: pending
 ";
         let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-        assert!(plan.entries[0].authority_override.is_empty());
+        assert!(plan.entries[0].authority_override.by_kind.is_empty());
         let rendered = serde_saphyr::to_string(&plan).expect("serialize");
         assert!(
             !rendered.contains("authority-override"),

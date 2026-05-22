@@ -171,11 +171,11 @@ mod tests {
                 ".specify/project.yaml",
                 ".specify/slices/alpha/.metadata.yaml",
                 ".specify/slices/zeta/.metadata.yaml",
-                "registry.yaml",
                 "adapters/targets/mini/adapter.yaml",
                 "adapters/targets/mini/briefs/build.md",
                 "adapters/targets/mini/briefs/merge.md",
                 "adapters/targets/mini/briefs/shape.md",
+                "registry.yaml",
             ]
         );
     }

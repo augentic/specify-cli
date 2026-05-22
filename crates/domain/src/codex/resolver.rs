@@ -329,7 +329,9 @@ mod tests {
             "omnia"
         );
         assert_eq!(
-            adapter_name_from_value("https://github.com/augentic/specify/adapters/targets/omnia@v1"),
+            adapter_name_from_value(
+                "https://github.com/augentic/specify/adapters/targets/omnia@v1"
+            ),
             "omnia"
         );
         assert_eq!(adapter_name_from_value("/abs/targets/omnia"), "omnia");

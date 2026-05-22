@@ -253,7 +253,7 @@ fn missing_project_or_target(changes: &[Entry]) -> Vec<Finding> {
 pub fn authority_override_orphan_source_keys(changes: &[Entry]) -> Vec<Finding> {
     let mut out = Vec::new();
     for entry in changes {
-        if entry.authority_override.is_empty() {
+        if entry.authority_override.by_kind.is_empty() {
             continue;
         }
         let known: BTreeSet<&str> =

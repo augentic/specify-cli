@@ -55,7 +55,7 @@ fn write_show_text(w: &mut dyn Write, index: &FusionIndex) -> std::io::Result<()
     for req in &index.requirements {
         writeln!(w)?;
         writeln!(w, "{}", req.id)?;
-        writeln!(w, "  status: {}", req.status)?;
+        writeln!(w, "  status: {}", req.status.as_str())?;
         writeln!(w, "  resolution: {}", req.resolution)?;
         if !req.sources.is_empty() {
             writeln!(w, "  sources: [{}]", req.sources.join(", "))?;

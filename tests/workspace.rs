@@ -10,7 +10,7 @@ use std::fs;
 use tempfile::tempdir;
 
 mod common;
-use common::{Project, init_hub, parse_stdout, repo_root, run_git, specify};
+use common::{Project, init_hub, omnia_schema_dir, parse_stdout, run_git, specify};
 
 #[test]
 fn workspace_help_lists_active_subcommands() {
@@ -428,7 +428,7 @@ fn rfc3a_c35_workspace_sync_two_local_symlink_peers() {
     specify()
         .current_dir(&root)
         .args(["init"])
-        .arg(repo_root().join("adapters").join("targets").join("omnia"))
+        .arg(omnia_schema_dir())
         .args(["--name", "rfc3a-ws"])
         .assert()
         .success();

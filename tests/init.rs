@@ -66,7 +66,12 @@ fn init_github_directory_uri_succeeds() {
     let tmp = tempdir().unwrap();
     specify()
         .current_dir(tmp.path())
-        .args(["init", "https://github.com/augentic/specify/adapters/targets/omnia", "--name", "demo"])
+        .args([
+            "init",
+            "https://github.com/augentic/specify/adapters/targets/omnia",
+            "--name",
+            "demo",
+        ])
         .assert()
         .success();
 }

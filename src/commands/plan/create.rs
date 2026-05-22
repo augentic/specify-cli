@@ -18,17 +18,6 @@ use super::{Ref, check_project, plan_ref};
 use crate::cli::{AliasAssign, AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
 use crate::context::Ctx;
 
-/// Convert a CLI-supplied optional string to a [`Patch<String>`]: an
-/// absent flag leaves the field unchanged, an empty value clears it,
-/// any other value replaces it.
-fn cli_patch(value: Option<String>) -> Patch<String> {
-    match value {
-        None => Patch::Keep,
-        Some(s) if s.is_empty() => Patch::Clear,
-        Some(s) => Patch::Set(s),
-    }
-}
-
 /// Validate `--source key=value` arguments and collapse them into the
 /// `BTreeMap` shape `Plan::init` expects. Refuses duplicate keys with
 /// the stable `plan-source-duplicate-key` diagnostic.
@@ -942,9 +931,21 @@ pub(super) fn amend(
             let patch = EntryPatch {
                 depends_on: depends_on.clone(),
                 sources: sources_replace,
-                project: cli_patch(project.clone()),
-                target: cli_patch(target.clone()),
-                description: cli_patch(description.clone()),
+                project: match project.clone() {
+                    None => Patch::Keep,
+                    Some(s) if s.is_empty() => Patch::Clear,
+                    Some(s) => Patch::Set(s),
+                },
+                target: match target.clone() {
+                    None => Patch::Keep,
+                    Some(s) if s.is_empty() => Patch::Clear,
+                    Some(s) => Patch::Set(s),
+                },
+                description: match description.clone() {
+                    None => Patch::Keep,
+                    Some(s) if s.is_empty() => Patch::Clear,
+                    Some(s) => Patch::Set(s),
+                },
                 context: context.clone(),
                 divergence,
             };

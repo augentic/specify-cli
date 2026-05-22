@@ -41,7 +41,7 @@ pub fn repo_root() -> PathBuf {
 /// Convenience pointer to the in-repo Omnia adapter fixture used as
 /// the canonical positional argument for `specify init`.
 pub fn omnia_schema_dir() -> PathBuf {
-    repo_root().join("adapters").join("targets").join("omnia")
+    repo_root().join("tests").join("fixtures").join("adapters").join("targets").join("omnia")
 }
 
 /// Build a fresh `assert_cmd::Command` for the locally-built `specify`
@@ -284,7 +284,7 @@ impl Project {
         specify()
             .current_dir(&root)
             .args(["init"])
-            .arg(repo_root().join("adapters").join("targets").join("omnia"))
+            .arg(omnia_schema_dir())
             .args(["--name", "test-proj"])
             .assert()
             .success();
@@ -314,10 +314,7 @@ impl Project {
     /// the project's own `adapters/targets/` dir.
     #[must_use]
     pub fn with_schemas(self) -> Self {
-        copy_dir(
-            &repo_root().join("adapters").join("targets").join("omnia"),
-            &self.root.join("adapters").join("targets").join("omnia"),
-        );
+        copy_dir(&omnia_schema_dir(), &self.root.join("adapters").join("targets").join("omnia"));
         self
     }
 
@@ -325,10 +322,7 @@ impl Project {
     /// `Adapter::resolve` picks the `AdapterLocation::Cached` branch.
     #[must_use]
     pub fn with_cached_schema(self) -> Self {
-        copy_dir(
-            &repo_root().join("adapters").join("targets").join("omnia"),
-            &self.root.join(".specify/.cache/adapters/targets/omnia"),
-        );
+        copy_dir(&omnia_schema_dir(), &self.root.join(".specify/.cache/adapters/targets/omnia"));
         self
     }
 

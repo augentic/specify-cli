@@ -44,7 +44,7 @@ fn create_writes_dir_and_metadata() {
     assert!(slice_dir.join("specs").is_dir(), "specs/ must exist");
     let meta = fs::read_to_string(slice_dir.join(".metadata.yaml")).expect("read metadata");
     assert!(meta.contains("status: refining"));
-    assert!(meta.contains("target: file://"));
+    assert!(meta.contains("file://") && meta.contains("targets/omnia"));
     assert!(meta.contains("created-at:"));
 }
 

@@ -20,7 +20,8 @@ use serde_json::Value;
 
 mod common;
 use common::{
-    GIT_ENV, Project, assert_golden_at, copy_dir, parse_stdout, repo_root, run_git, specify,
+    GIT_ENV, Project, assert_golden_at, copy_dir, omnia_schema_dir, parse_stdout, repo_root,
+    run_git, specify,
 };
 use tempfile::tempdir;
 
@@ -170,14 +171,11 @@ fn workspace_merge_excludes_generated() {
     specify()
         .current_dir(&project_root)
         .args(["init"])
-        .arg(repo_root().join("adapters").join("targets").join("omnia"))
+        .arg(omnia_schema_dir())
         .args(["--name", "orders"])
         .assert()
         .success();
-    copy_dir(
-        &repo_root().join("adapters").join("targets").join("omnia"),
-        &project_root.join("adapters").join("targets").join("omnia"),
-    );
+    copy_dir(&omnia_schema_dir(), &project_root.join("adapters").join("targets").join("omnia"));
 
     run_git(&project_root, &["init"]);
     run_git(&project_root, &["add", "."]);

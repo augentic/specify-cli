@@ -164,7 +164,7 @@ mod tests {
                     target: None,
                     status: Status::Pending,
                     depends_on: vec![],
-                    sources: vec!["a".into()],
+                    sources: vec![SliceSourceBinding::Bare("a".into())],
                     context: vec![],
                     description: Some("d".into()),
                     divergence: None,

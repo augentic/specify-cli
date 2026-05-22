@@ -74,7 +74,7 @@ fn unknown_depends_on_error() {
 #[test]
 fn unknown_source_error() {
     let mut a = change("a", Status::Pending);
-    a.sources = vec!["monolith".into()];
+    a.sources = vec![SliceSourceBinding::Bare("monolith".into())];
     let plan = plan_with_changes(vec![a]);
     let results = plan.validate(None, None);
     let hits: Vec<_> = results.iter().filter(|r| r.code == "unknown-source").collect();
@@ -159,7 +159,7 @@ fn no_slices_dir_skips_consistency() {
 fn no_short_circuit() {
     let mut a = change("foo", Status::Pending);
     a.depends_on = vec!["missing".into()];
-    a.sources = vec!["ghost-source".into()];
+    a.sources = vec![SliceSourceBinding::Bare("ghost-source".into())];
     let b = change("foo", Status::Pending);
     let plan = plan_with_changes(vec![a, b]);
     let results = plan.validate(None, None);

@@ -249,7 +249,10 @@ fn export_json_includes_rules_and_paths() {
     assert_eq!(rules[0]["name"], "default");
     assert_eq!(rules[0]["version"], 1);
     assert!(
-        rules[0]["source-path"].as_str().unwrap().ends_with("adapters/targets/default/codex/default.md")
+        rules[0]["source-path"]
+            .as_str()
+            .unwrap()
+            .ends_with("adapters/targets/default/codex/default.md")
     );
     assert!(rules[0]["body"].as_str().unwrap().contains("## Rule"));
 }

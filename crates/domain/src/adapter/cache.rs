@@ -1,6 +1,7 @@
-//! RFC-27 §D8 cache fingerprint inputs, the per-write index entry
-//! persisted at `.specify/.cache/adapters/sources/<adapter>/index.jsonl`, and
-//! the lookup / write helpers the source-resolution code path uses.
+//! RFC-27 §D8 cache fingerprint inputs and the per-write index entry
+//! persisted at `.specify/.cache/adapters/sources/<adapter>/index.jsonl`.
+//!
+//! Lookup / write helpers the source-resolution code path uses.
 //!
 //! Types follow the rest of the workspace's posture —
 //! `#[serde(deny_unknown_fields)]`, kebab-case wire ids, atomic writes

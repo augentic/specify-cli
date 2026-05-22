@@ -288,3 +288,15 @@ fn req_id_shape_predicate() {
     assert!(!is_valid_req_id("REQ-00A"));
     assert!(!is_valid_req_id(""));
 }
+
+#[test]
+fn requirement_status_round_trips_kebab_case() {
+    for (variant, wire) in [
+        (RequirementStatus::Agreed, "agreed"),
+        (RequirementStatus::Unknown, "unknown"),
+        (RequirementStatus::Conflict, "conflict"),
+        (RequirementStatus::Divergence, "divergence"),
+    ] {
+        assert_eq!(serde_json::to_string(&variant).expect("serialise"), format!("\"{wire}\""));
+    }
+}

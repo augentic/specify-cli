@@ -60,8 +60,7 @@ pub struct FusionRequirement {
     /// Requirement id matching a `REQ-NNN` heading in `spec.md`.
     pub id: String,
     /// Mirrors the `Status:` line on the matching `spec.md` block.
-    /// Closed enum from [`RequirementStatus`].
-    pub status: FusionStatus,
+    pub status: RequirementStatus,
     /// Source keys cited on the matching `spec.md` `Sources:` line.
     /// Empty when `status` is `unknown` and `resolution` is
     /// `unknown-no-evidence`.
@@ -78,49 +77,6 @@ pub struct FusionRequirement {
     /// [`FusionResolution::PerSliceOverride`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolution_trace: Option<ResolutionTrace>,
-}
-
-/// Closed requirement-status enum mirrored from
-/// [`RequirementStatus`].
-///
-/// Carried separately on the wire so the fusion schema's
-/// `requirementStatus` `$def` stays byte-identical with this Rust
-/// enum without forcing [`RequirementStatus`] (which has callers in
-/// the spec parser) to derive serde.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
-#[serde(rename_all = "kebab-case")]
-#[strum(serialize_all = "kebab-case")]
-pub enum FusionStatus {
-    /// One source or single-value cross-source agreement.
-    Agreed,
-    /// No contributing evidence.
-    Unknown,
-    /// Tied top-authority disagreement; operator must reconcile.
-    Conflict,
-    /// Authority-resolved disagreement; loser preserved as commentary.
-    Divergence,
-}
-
-impl From<RequirementStatus> for FusionStatus {
-    fn from(value: RequirementStatus) -> Self {
-        match value {
-            RequirementStatus::Agreed => Self::Agreed,
-            RequirementStatus::Unknown => Self::Unknown,
-            RequirementStatus::Conflict => Self::Conflict,
-            RequirementStatus::Divergence => Self::Divergence,
-        }
-    }
-}
-
-impl From<FusionStatus> for RequirementStatus {
-    fn from(value: FusionStatus) -> Self {
-        match value {
-            FusionStatus::Agreed => Self::Agreed,
-            FusionStatus::Unknown => Self::Unknown,
-            FusionStatus::Conflict => Self::Conflict,
-            FusionStatus::Divergence => Self::Divergence,
-        }
-    }
 }
 
 /// One contributing-claim entry under
@@ -171,10 +127,10 @@ pub enum FusionResolution {
     /// Per-slice `authority-override` map picked the winner.
     PerSliceOverride,
     /// No contributing claims (paired with
-    /// [`FusionStatus::Unknown`]).
+    /// [`RequirementStatus::Unknown`]).
     UnknownNoEvidence,
     /// Same-authority disagreement with no override (paired with
-    /// [`FusionStatus::Conflict`]).
+    /// [`RequirementStatus::Conflict`]).
     TiedConflict,
 }
 
@@ -551,7 +507,7 @@ mod tests {
             requirements: vec![
                 FusionRequirement {
                     id: "REQ-001".to_string(),
-                    status: FusionStatus::Agreed,
+                    status: RequirementStatus::Agreed,
                     sources: vec!["identity-design-notes".to_string(), "runtime".to_string()],
                     contributing_claims: vec![
                         ContributingClaim {
@@ -576,7 +532,7 @@ mod tests {
                 },
                 FusionRequirement {
                     id: "REQ-007".to_string(),
-                    status: FusionStatus::Divergence,
+                    status: RequirementStatus::Divergence,
                     sources: vec![
                         "identity-design-notes".to_string(),
                         "legacy-monolith".to_string(),
@@ -629,18 +585,6 @@ mod tests {
     }
 
     #[test]
-    fn fusion_status_round_trips_kebab_case() {
-        for (variant, wire) in [
-            (FusionStatus::Agreed, "agreed"),
-            (FusionStatus::Unknown, "unknown"),
-            (FusionStatus::Conflict, "conflict"),
-            (FusionStatus::Divergence, "divergence"),
-        ] {
-            assert_eq!(serde_json::to_string(&variant).expect("serialise"), format!("\"{wire}\""));
-        }
-    }
-
-    #[test]
     fn fusion_resolution_round_trips_kebab_case() {
         for (variant, wire) in [
             (FusionResolution::SingleSource, "single-source"),
@@ -666,20 +610,6 @@ rogue: true
         let err = serde_saphyr::from_str::<FusionIndex>(yaml)
             .expect_err("deny_unknown_fields must reject rogue");
         assert!(err.to_string().contains("rogue"), "expected error to name rogue, got: {err}");
-    }
-
-    #[test]
-    fn requirement_status_round_trip_via_from_into() {
-        for status in [
-            RequirementStatus::Agreed,
-            RequirementStatus::Unknown,
-            RequirementStatus::Conflict,
-            RequirementStatus::Divergence,
-        ] {
-            let fusion: FusionStatus = status.into();
-            let round_tripped: RequirementStatus = fusion.into();
-            assert_eq!(status, round_tripped);
-        }
     }
 
     #[test]
@@ -858,7 +788,7 @@ rogue: true
         // Add a third requirement that has no matching spec entry → extra drift.
         index.requirements.push(FusionRequirement {
             id: "REQ-999".to_string(),
-            status: FusionStatus::Agreed,
+            status: RequirementStatus::Agreed,
             sources: vec!["runtime".to_string()],
             contributing_claims: vec![ContributingClaim {
                 source: "runtime".to_string(),

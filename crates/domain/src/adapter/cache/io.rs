@@ -52,7 +52,12 @@ impl<'a> CacheLayout<'a> {
     /// `.specify/.cache/adapters/sources/<adapter>/`.
     #[must_use]
     pub fn adapter_dir(&self) -> PathBuf {
-        self.project_dir.join(".specify").join(".cache").join("adapters").join("sources").join(self.adapter)
+        self.project_dir
+            .join(".specify")
+            .join(".cache")
+            .join("adapters")
+            .join("sources")
+            .join(self.adapter)
     }
 
     /// `.specify/.cache/adapters/sources/<adapter>/<fingerprint-sha256>/`.

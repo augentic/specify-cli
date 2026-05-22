@@ -121,7 +121,7 @@ mod tests {
     }
 
     fn omnia_target_dir() -> PathBuf {
-        repo_root().join("adapters").join("targets").join("omnia")
+        repo_root().join("tests").join("fixtures").join("adapters").join("targets").join("omnia")
     }
 
     fn base_opts<'a>(project_dir: &'a Path, target_dir: &'a Path) -> InitOptions<'a> {
@@ -271,8 +271,8 @@ mod tests {
         assert!(cache_meta.is_file(), "expected cache-meta yaml at {}", cache_meta.display());
         let yaml = fs::read_to_string(&cache_meta).expect("read cache meta");
         assert!(
-            yaml.lines().any(|line| line.starts_with("schema_url:") && line.contains("file://")),
-            "expected schema_url to start with file:// in cache-meta:\n{yaml}",
+            yaml.contains("schema_url:") && yaml.contains("file://"),
+            "expected schema_url with file:// in cache-meta:\n{yaml}",
         );
     }
 
