@@ -6,10 +6,9 @@ use serde::{Deserialize, Serialize};
 
 /// Phase outcome reported to `/change:execute`. Unit variants serialise
 /// as `outcome: success` etc.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, strum::Display)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
-#[non_exhaustive]
 pub enum Kind {
     /// Phase completed successfully.
     Success,

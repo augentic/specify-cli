@@ -11,7 +11,6 @@ use crate::validation::{Status as ValidationStatus, Summary as ValidationSummary
 /// Variants carry enough context for the CLI to assign exit codes and
 /// choose an output format without string-parsing.
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
 pub enum Error {
     /// The `.specify/project.yaml` file is missing.
     #[error("not initialized: .specify/project.yaml not found")]

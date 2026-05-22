@@ -57,7 +57,6 @@ impl Event {
 /// can filter on without parsing the payload first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", content = "payload")]
-#[non_exhaustive]
 pub enum EventKind {
     /// Gate 1 cleared — `specify plan transition <plan-name> reviewed`.
     #[serde(rename = "plan.transition.reviewed", rename_all = "kebab-case")]

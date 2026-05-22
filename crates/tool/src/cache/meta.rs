@@ -135,9 +135,6 @@ fn validate_sidecar_schema(path: &Path, sidecar: &Sidecar) -> Result<(), ToolErr
                 return sidecar_schema_error(path, format!("{field} must not be empty"));
             }
         }
-        if package.oci_reference.as_deref().is_some_and(str::is_empty) {
-            return sidecar_schema_error(path, "package.oci-reference must not be empty");
-        }
     }
     Ok(())
 }

@@ -109,7 +109,6 @@ pub struct ResolvedAdapter {
 
 /// Where an adapter manifest was located on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum AdapterLocation {
     /// Resolved from `<project_dir>/{axis}/<name>/`.
     Local(PathBuf),

@@ -19,7 +19,6 @@ use specify_error::Error;
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
-#[non_exhaustive]
 pub enum LifecycleStatus {
     /// Slice directory created; `/spec:refine` extract + synthesis in flight.
     Refining,

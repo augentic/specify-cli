@@ -131,9 +131,6 @@ pub(super) fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Re
     }
     if let Some(package) = &row.package {
         writeln!(w, "package: {}@{} ({})", package.name, package.version, package.registry)?;
-        if let Some(reference) = &package.oci_reference {
-            writeln!(w, "oci: {reference}")?;
-        }
     }
     writeln!(w, "permissions:")?;
     writeln!(w, "  read: {}", format_permission_list(&row.permissions.read))?;

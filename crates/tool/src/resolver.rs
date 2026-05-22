@@ -318,10 +318,6 @@ mod tests {
                     name: request.name_ref(),
                     version: request.version.clone(),
                     registry: "augentic.io".to_string(),
-                    oci_reference: Some(format!(
-                        "ghcr.io/augentic/specify/{}:{}",
-                        request.name, request.version
-                    )),
                 }),
             })
         });
@@ -341,10 +337,8 @@ mod tests {
         assert_eq!(sidecar.source, "specify:contract@1.0.0");
         let sidecar_package = sidecar.package.as_ref().expect("sidecar package");
         assert_eq!(sidecar_package.name.as_str(), "specify:contract");
-        assert_eq!(
-            sidecar_package.oci_reference.as_deref(),
-            Some("ghcr.io/augentic/specify/contract:1.0.0")
-        );
+        assert_eq!(sidecar_package.version.as_str(), "1.0.0");
+        assert_eq!(sidecar_package.registry.as_str(), "augentic.io");
 
         resolve_with(&scope, &declared, fixed_now(), &project_dir, &client)
             .expect("package cache hit resolves");

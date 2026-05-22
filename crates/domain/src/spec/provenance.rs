@@ -12,7 +12,6 @@
 //! operator sees every problem in one pass.
 
 use std::collections::BTreeSet;
-use std::fmt::Write as _;
 
 use specify_error::{ValidationStatus, ValidationSummary};
 
@@ -340,39 +339,6 @@ pub fn validate(parsed: &ParsedSpec, source_keys: &BTreeSet<String>) -> Vec<Find
         check_status(req, &mut findings);
     }
     findings
-}
-
-/// Render a parsed [`Requirement`] back to canonical spec-md form.
-///
-/// Used by tests to assert the round-trip property and by future
-/// synthesis callers that want a single source of truth for the
-/// rendered shape.
-#[must_use]
-pub fn render(req: &Requirement) -> String {
-    let mut out = String::new();
-    let _ = write!(out, "### Requirement: {}", req.name);
-    if let Some(tag) = req.tag {
-        let _ = write!(out, " [{}]", tag.as_str());
-    }
-    out.push('\n');
-    out.push('\n');
-    if !req.id.is_empty() {
-        let _ = writeln!(out, "ID: {}", req.id);
-    }
-    if !req.sources_line_absent {
-        let _ = writeln!(out, "Sources: [{}]", req.sources.join(", "));
-    }
-    if let Some(raw) = &req.status_raw {
-        let _ = writeln!(out, "Status: {raw}");
-    }
-    if !req.body.is_empty() {
-        out.push('\n');
-        out.push_str(&req.body);
-        if !req.body.ends_with('\n') {
-            out.push('\n');
-        }
-    }
-    out
 }
 
 // ---------------------------------------------------------------------------

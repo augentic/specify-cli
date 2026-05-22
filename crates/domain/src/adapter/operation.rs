@@ -21,7 +21,6 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
-#[non_exhaustive]
 pub enum Operation {
     /// Shape — synthesis-time guidance read by core during `/spec:refine`.
     Shape,

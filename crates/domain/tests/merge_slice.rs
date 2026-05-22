@@ -13,7 +13,7 @@ use regex::Regex;
 use specify_domain::adapter::Operation;
 use specify_domain::merge::{ArtifactClass, MergeStrategy, OpaqueAction, slice};
 use specify_domain::slice::{
-    LifecycleStatus, METADATA_VERSION, Outcome, OutcomeKind, SLICES_DIR_NAME, SliceMetadata,
+    LifecycleStatus, Outcome, OutcomeKind, SLICES_DIR_NAME, SliceMetadata,
 };
 use specify_error::Error;
 
@@ -89,7 +89,6 @@ fn build_project() -> Project {
         .expect("write oauth delta");
 
     let metadata = SliceMetadata {
-        version: METADATA_VERSION,
         target: "omnia".to_string(),
         status: LifecycleStatus::Built,
         created_at: Some(parse_stamp("2024-08-01T10:00:00Z")),

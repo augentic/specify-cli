@@ -18,7 +18,6 @@ use std::path::PathBuf;
 /// with a kebab-case `code` carried at the constructor site (see the
 /// `sidecar_*` / `network_*` helpers below).
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
 #[expect(missing_docs, reason = "field names are self-evident; variant docs carry the contract")]
 pub enum ToolError {
     /// Catch-all diagnostic. The `code` becomes the `error` field of the

@@ -16,24 +16,10 @@ use crate::slice::OutcomeKind;
 /// Basename of the slice working directory under `.specify/`.
 pub const SLICES_DIR_NAME: &str = "slices";
 
-/// On-disk schema version stamped into new `.metadata.yaml` files.
-/// Informational only — readers dispatch on the `outcome` discriminant,
-/// not the version number. Pre-v2 files default to `1`.
-pub const METADATA_VERSION: u32 = 2;
-
-const fn default_version() -> u32 {
-    1
-}
-
 /// On-disk representation of `<slice_dir>/.metadata.yaml`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct SliceMetadata {
-    /// On-disk schema version. Defaults to `1` for pre-v2 archives;
-    /// current writers stamp [`METADATA_VERSION`]. Readers dispatch on
-    /// the outcome discriminant, not this field.
-    #[serde(default = "default_version")]
-    pub version: u32,
     /// Target-adapter identifier (e.g. `omnia@v1`).
     ///
     /// Renamed from `adapter` in RFC-25 W0.2 — the on-disk and
@@ -94,7 +80,6 @@ pub struct SliceMetadata {
 /// Result of a target-adapter operation (shape | build | merge) as
 /// recorded in `.metadata.yaml`. Read by `/spec:execute` on phase
 /// return to decide the next plan transition.
-#[non_exhaustive]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Outcome {
@@ -135,7 +120,6 @@ pub struct TouchedSpec {
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
-#[non_exhaustive]
 pub enum SpecKind {
     /// A brand-new spec not yet in the baseline.
     New,
@@ -198,7 +182,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::slice::{LifecycleStatus, OutcomeKind};
+    use crate::slice::LifecycleStatus;
 
     fn parse_stamp(raw: &str) -> Timestamp {
         raw.parse().expect("valid rfc3339 timestamp in test fixture")
@@ -206,7 +190,6 @@ mod tests {
 
     fn sample() -> SliceMetadata {
         SliceMetadata {
-            version: METADATA_VERSION,
             target: "omnia".to_string(),
             status: LifecycleStatus::Refined,
             created_at: Some(parse_stamp("2024-08-01T10:00:00Z")),
@@ -236,34 +219,5 @@ mod tests {
         meta.save(dir.path()).expect("save ok");
         let loaded = SliceMetadata::load(dir.path()).expect("load ok");
         assert_eq!(loaded, meta);
-    }
-
-    /// Back-compat invariant: the implicit pre-v2 metadata schema
-    /// (no `version:` field, closed `OutcomeKind`) must round-trip
-    /// through the current reader, and the absent version resolves to
-    /// `1`.
-    #[test]
-    fn defaults_version_when_absent() {
-        let yaml = r#"target: omnia
-status: built
-created-at: "2024-08-01T10:00:00Z"
-defined-at: "2024-08-01T12:00:00Z"
-completed-at: "2024-08-03T15:45:00Z"
-touched-specs:
-  - name: login
-    type: modified
-outcome:
-  phase: merge
-  outcome: success
-  at: "2024-08-03T15:45:00Z"
-  summary: "Baseline updated."
-"#;
-        let meta: SliceMetadata =
-            serde_saphyr::from_str(yaml).expect("parse legacy v1 metadata file");
-        assert_eq!(meta.version, 1, "absent version should default to 1");
-        assert_eq!(meta.status, LifecycleStatus::Built);
-        let stamped = meta.outcome.expect("outcome should round-trip");
-        assert_eq!(stamped.phase, Operation::Merge);
-        assert_eq!(stamped.kind, OutcomeKind::Success);
     }
 }

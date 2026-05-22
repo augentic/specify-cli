@@ -5,7 +5,6 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use specify_error::Error;
 
 /// Lifecycle state of a single entry in [`Plan::entries`].
 ///
@@ -36,7 +35,6 @@ use specify_error::Error;
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
-#[non_exhaustive]
 pub enum Status {
     /// Not yet started.
     Pending,
@@ -71,7 +69,6 @@ pub enum Status {
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
-#[non_exhaustive]
 pub enum Lifecycle {
     /// Default after `plan create`; awaits operator review at Gate 1.
     #[default]
@@ -145,9 +142,7 @@ pub struct Entry {
     /// `discovery.md` that contributed to the slice. The bare-string
     /// shorthand `<key>` is accepted on the wire as sugar for
     /// `{ key: <key>, candidate: <slice.name> }`; in memory we
-    /// preserve the on-disk form via [`SliceSourceBinding`], and
-    /// [`Plan::resolve_sources`] normalises both shapes for
-    /// downstream extract.
+    /// preserve the on-disk form via [`SliceSourceBinding`].
     #[serde(default)]
     pub sources: Vec<SliceSourceBinding>,
     /// Baseline paths relevant to this change, relative to `.specify/`.
@@ -185,7 +180,6 @@ pub struct Entry {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
-#[non_exhaustive]
 pub enum Divergence {
     /// No divergence — the implicit default for slice records (absent
     /// on disk) and the explicit first value of the journal
@@ -212,9 +206,9 @@ pub enum Divergence {
 ///   the degenerate `intent` case (`sources: [intent]`); or
 /// - a structured `{ key, candidate }` object.
 ///
-/// Both shapes round-trip byte-identically through serde; downstream
-/// code that wants normalised `(key, candidate)` pairs reaches for
-/// [`Plan::resolve_sources`].
+/// Both shapes round-trip byte-identically through serde. Callers can
+/// use [`SliceSourceBinding::key`] and [`SliceSourceBinding::candidate`]
+/// when they need explicit `(key, candidate)` pairs.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum SliceSourceBinding {
@@ -262,56 +256,7 @@ impl From<String> for SliceSourceBinding {
     }
 }
 
-/// One `(source-key, candidate-id, plan-level-binding-value)` triple
-/// returned by [`Plan::resolve_sources`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedSourceBinding {
-    /// Source key, matches a top-level [`Plan::sources`] entry.
-    pub key: String,
-    /// Candidate id from `discovery.md`. For the bare-string
-    /// shorthand this is the owning slice's name (RFC-25
-    /// §`Slice.sources`).
-    pub candidate: String,
-    /// The plan-level source value (currently a bare string —
-    /// W0.3 widens this to a structured `{ adapter, path?, value? }`).
-    pub binding: String,
-}
-
 impl Plan {
-    /// Resolve `slice.sources` against [`Plan::sources`], normalising
-    /// the bare-string shorthand into explicit `(key, candidate)`
-    /// pairs per RFC-25 §`Slice.sources`.
-    ///
-    /// The returned vector preserves declaration order — `/spec:refine`
-    /// runs `extract` serially in this order, per RFC-25 §Execution
-    /// model.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Diag`] with code `plan-source-key-undefined`
-    /// when a slice references a key that is not declared under
-    /// [`Plan::sources`].
-    pub fn resolve_sources(&self, slice: &Entry) -> Result<Vec<ResolvedSourceBinding>, Error> {
-        let mut out = Vec::with_capacity(slice.sources.len());
-        for binding in &slice.sources {
-            let key = binding.key().to_string();
-            let candidate = binding.candidate(&slice.name).to_string();
-            let value = self.sources.get(&key).cloned().ok_or_else(|| Error::Diag {
-                code: "plan-source-key-undefined",
-                detail: format!(
-                    "slice `{}` references source key `{key}`, which is not declared under plan.sources",
-                    slice.name
-                ),
-            })?;
-            out.push(ResolvedSourceBinding {
-                key,
-                candidate,
-                binding: value,
-            });
-        }
-        Ok(out)
-    }
-
     /// Computed predicate (RFC-25 §Workflow vocabulary): `true` when
     /// at least one entry is currently `in-progress`.
     ///
@@ -671,58 +616,6 @@ slices:
         };
         assert_eq!(structured.key(), "docs");
         assert_eq!(structured.candidate("ignored-slice-name"), "user-reg");
-    }
-
-    #[test]
-    fn resolve_sources_normalises_and_rejects_unknown_keys() {
-        let mut sources = BTreeMap::new();
-        sources.insert("intent".to_string(), "do the thing".to_string());
-        sources.insert("docs".to_string(), "./design-notes".to_string());
-        let plan = Plan {
-            name: "demo".into(),
-            lifecycle: Lifecycle::Pending,
-            sources,
-            entries: vec![Entry {
-                name: "add-search-filter".into(),
-                project: None,
-                target: Some("omnia".into()),
-                status: Status::Pending,
-                depends_on: vec![],
-                sources: vec![
-                    SliceSourceBinding::Bare("intent".into()),
-                    SliceSourceBinding::Structured {
-                        key: "docs".into(),
-                        candidate: "search-filter".into(),
-                    },
-                ],
-                context: vec![],
-                description: None,
-                divergence: None,
-            }],
-        };
-
-        let resolved = plan.resolve_sources(&plan.entries[0]).expect("resolve ok");
-        assert_eq!(resolved.len(), 2);
-        assert_eq!(resolved[0].key, "intent");
-        assert_eq!(
-            resolved[0].candidate, "add-search-filter",
-            "bare shorthand resolves candidate to slice.name"
-        );
-        assert_eq!(resolved[0].binding, "do the thing");
-        assert_eq!(resolved[1].key, "docs");
-        assert_eq!(resolved[1].candidate, "search-filter");
-        assert_eq!(resolved[1].binding, "./design-notes");
-
-        let mut broken = plan.entries[0].clone();
-        broken.sources.push(SliceSourceBinding::Bare("nope".into()));
-        let err = plan.resolve_sources(&broken).expect_err("unknown key must error");
-        match err {
-            Error::Diag { code, detail } => {
-                assert_eq!(code, "plan-source-key-undefined");
-                assert!(detail.contains("nope"), "detail should mention key: {detail}");
-            }
-            other => panic!("expected plan-source-key-undefined, got {other:?}"),
-        }
     }
 
     #[test]

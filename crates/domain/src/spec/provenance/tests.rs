@@ -100,43 +100,6 @@ fn parses_multi_block_document() {
 }
 
 // ---------------------------------------------------------------------------
-// Round-trip property
-// ---------------------------------------------------------------------------
-
-#[test]
-fn divergence_block_round_trips() {
-    let parsed = parse_spec_md(fixture!("divergence.md"));
-    let req = &parsed.requirements[0];
-    let rendered = render(req);
-    let reparsed = parse_spec_md(&rendered);
-    assert_eq!(reparsed.requirements.len(), 1);
-    let again = &reparsed.requirements[0];
-    assert_eq!(again.id, req.id);
-    assert_eq!(again.name, req.name);
-    assert_eq!(again.tag, req.tag);
-    assert_eq!(again.status, req.status);
-    assert_eq!(again.sources, req.sources);
-    assert_eq!(again.body, req.body);
-    assert_eq!(render(again), rendered, "render is idempotent");
-}
-
-#[test]
-fn single_source_block_round_trips() {
-    let parsed = parse_spec_md(fixture!("single-source.md"));
-    let rendered = render(&parsed.requirements[0]);
-    let reparsed = parse_spec_md(&rendered);
-    // Span byte offsets differ once we re-render the block in
-    // isolation; compare the metadata fields only.
-    let a = &parsed.requirements[0];
-    let b = &reparsed.requirements[0];
-    assert_eq!(a.id, b.id);
-    assert_eq!(a.sources, b.sources);
-    assert_eq!(a.status, b.status);
-    assert_eq!(a.tag, b.tag);
-    assert_eq!(a.body, b.body);
-}
-
-// ---------------------------------------------------------------------------
 // Validation failure modes
 // ---------------------------------------------------------------------------
 

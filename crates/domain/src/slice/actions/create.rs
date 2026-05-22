@@ -12,7 +12,6 @@ use crate::slice::{LifecycleStatus, SliceMetadata};
 /// What to do when [`create`] finds an existing directory at the
 /// target path.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, clap::ValueEnum)]
-#[non_exhaustive]
 pub enum CreateIfExists {
     /// Refuse when the directory exists (default).
     Fail,
@@ -132,7 +131,6 @@ pub fn create(
 
     std::fs::create_dir_all(slice_dir.join("specs"))?;
     let metadata = SliceMetadata {
-        version: crate::slice::METADATA_VERSION,
         target: target.to_string(),
         status: LifecycleStatus::Refining,
         created_at: Some(now),
