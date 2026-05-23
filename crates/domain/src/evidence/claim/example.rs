@@ -2,7 +2,7 @@
 //!
 //! Runtime captures join the closed `claimKind` enum as
 //! `example`. The body carries `claim-id`, optional `path`, a
-//! required `fixture-digest: sha256:<hex>`, and the open `input` /
+//! required `replay-digest: sha256:<hex>`, and the open `input` /
 //! `output` JSON-shaped blocks the adapter records from the
 //! captured request/response. Bodies larger than 64 `KiB` are stored
 //! at `path` with only the digest inline — the cap lives in the
@@ -17,7 +17,7 @@ use serde_json::Value as JsonValue;
 /// open per-kind body posture — the adapter records whatever the
 /// captured scenario carried (HTTP method/route/body, message topic /
 /// payload shape, scheduled-job arguments). Downstream code consults
-/// `fixture_digest` for cache fingerprinting and `path` for the
+/// `replay_digest` for cache fingerprinting and `path` for the
 /// on-disk location of the full body.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -34,7 +34,7 @@ pub struct ExampleClaim {
     pub path: Option<String>,
     /// `sha256:<hex>` digest of the capture bytes. The cache layer
     /// (RFC-27 §D8) keys against this value.
-    pub fixture_digest: String,
+    pub replay_digest: String,
     /// Optional inline input payload — typically the captured request.
     /// Shape is open per the schema's per-kind body posture.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -75,7 +75,7 @@ mod tests {
             kind: ExampleKind::Example,
             claim_id: "users.register.happy-path".to_string(),
             path: Some("tests/data/replays/users-register/happy.json".to_string()),
-            fixture_digest: "sha256:7a2b".to_string(),
+            replay_digest: "sha256:7a2b".to_string(),
             input: Some(json!({
                 "method": "POST",
                 "route": "/users",
@@ -96,7 +96,7 @@ mod tests {
         let yaml = serde_saphyr::to_string(&claim).expect("serialise");
         assert!(yaml.contains("kind: example"));
         assert!(yaml.contains("claim-id: users.register.happy-path"));
-        assert!(yaml.contains("fixture-digest:"));
+        assert!(yaml.contains("replay-digest:"));
         let reparsed: ExampleClaim = serde_saphyr::from_str(&yaml).expect("reparse");
         assert_eq!(claim, reparsed);
     }
@@ -107,7 +107,7 @@ mod tests {
             kind: ExampleKind::Example,
             claim_id: "users.register.minimal".to_string(),
             path: None,
-            fixture_digest: "sha256:deadbeef".to_string(),
+            replay_digest: "sha256:deadbeef".to_string(),
             input: None,
             output: None,
             statement: None,
@@ -123,7 +123,7 @@ mod tests {
         let raw = r#"{
             "kind": "example",
             "claim-id": "x",
-            "fixture-digest": "sha256:a",
+            "replay-digest": "sha256:a",
             "rogue": true
         }"#;
         let err =

@@ -191,15 +191,15 @@ pub enum EventKind {
         /// Count of `requirements[]` rows written.
         requirement_count: usize,
     },
-    /// RFC-27 §D1 — target's `build` finished fixture replay.
-    /// Payload mirrors the `fixture-replay:` block written into the
+    /// RFC-27 §D1 — target's `build` finished replay.
+    /// Payload mirrors the `replay:` block written into the
     /// slice's `.metadata.yaml`. Optional in v1 (targets that have
     /// not implemented the hook do not emit this event).
-    #[serde(rename = "slice.fixture-replay.completed", rename_all = "kebab-case")]
-    SliceFixtureReplayCompleted {
+    #[serde(rename = "slice.replay.completed", rename_all = "kebab-case")]
+    SliceReplayCompleted {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: String,
-        /// Fixture-runner identity (e.g. `omnia-target@1.4 (cargo nextest)`).
+        /// Replay-runner identity (e.g. `omnia-target@1.4 (cargo nextest)`).
         runner: String,
         /// Number of replay scenarios that passed.
         passed: usize,
@@ -510,7 +510,7 @@ mod tests {
         let layout = Layout::new(dir.path());
         let event = Event::new(
             test_timestamp("2026-05-22T13:18:42Z"),
-            EventKind::SliceFixtureReplayCompleted {
+            EventKind::SliceReplayCompleted {
                 slice_name: "identity-user-registration".to_string(),
                 runner: "omnia-target@1.4 (cargo nextest)".to_string(),
                 passed: 47,
@@ -520,7 +520,7 @@ mod tests {
         );
         append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
         let line = read_lines(layout).pop().expect("line");
-        assert!(line.contains(r#""event":"slice.fixture-replay.completed""#));
+        assert!(line.contains(r#""event":"slice.replay.completed""#));
         assert!(line.contains(r#""passed":47"#));
         assert!(line.contains(r#""failed":0"#));
         assert!(line.contains(r#""skipped":0"#));

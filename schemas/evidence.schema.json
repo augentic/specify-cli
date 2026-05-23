@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/evidence.schema.json",
   "title": "Specify source-adapter Evidence",
-  "description": "Validates a single source-adapter `Evidence` document per RFC-25 §Source adapter contract — the per-source result of `extract`, persisted under `.specify/slices/<slice>/evidence/<source-key>.yaml`. Top-level fields: `source` (kebab-case source key), `adapter` (kebab-case adapter id), `authority` (closed enum `intent | documentation | behaviour`), `candidate` (kebab-case candidate id from `discovery.md`), `claims[]`, and (RFC-27 §D2) the optional `authority-overrides` map keyed by claim kind whose values resolve a per-kind authority class for this Evidence document. Each claim carries a closed `kind` from {intent, requirement, criterion, decision, section, diagram, contract, example, excerpt, type, call, region, container, leaf} — `region`/`container`/`leaf` are the spatial kinds co-introduced with the `screenshots` source adapter (RFC-25 §W2.4); `example` (RFC-27 §D1) is the runtime capture kind emitted by the `captures` source adapter and carries open per-kind body fields `fixture-digest` (`sha256:<hex>`), `input`, and `output`. `claim-id` is required on `requirement`, `criterion`, and `example` kinds and optional on others; `path` matches the grammar `<path>` | `<path>#L<n>` | `<path>#L<start>-L<end>`. Per-kind body fields (`statement`, `criterion`, `decision`, `fixture-digest`, `input`, `output`, etc.) are intentionally open.",
+  "description": "Validates a single source-adapter `Evidence` document per RFC-25 §Source adapter contract — the per-source result of `extract`, persisted under `.specify/slices/<slice>/evidence/<source-key>.yaml`. Top-level fields: `source` (kebab-case source key), `adapter` (kebab-case adapter id), `authority` (closed enum `intent | documentation | behaviour`), `candidate` (kebab-case candidate id from `discovery.md`), `claims[]`, and (RFC-27 §D2) the optional `authority-overrides` map keyed by claim kind whose values resolve a per-kind authority class for this Evidence document. Each claim carries a closed `kind` from {intent, requirement, criterion, decision, section, diagram, contract, example, excerpt, type, call, region, container, leaf} — `region`/`container`/`leaf` are the spatial kinds co-introduced with the `screenshots` source adapter (RFC-25 §W2.4); `example` (RFC-27 §D1) is the runtime capture kind emitted by the `captures` source adapter and carries open per-kind body fields `replay-digest` (`sha256:<hex>`), `input`, and `output`. `claim-id` is required on `requirement`, `criterion`, and `example` kinds and optional on others; `path` matches the grammar `<path>` | `<path>#L<n>` | `<path>#L<start>-L<end>`. Per-kind body fields (`statement`, `criterion`, `decision`, `replay-digest`, `input`, `output`, etc.) are intentionally open.",
   "type": "object",
   "additionalProperties": true,
   "required": ["source", "adapter", "authority", "candidate", "claims"],
@@ -63,7 +63,7 @@
         "container",
         "leaf"
       ],
-      "description": "Closed claim-kind enum. New kinds require an RFC update. `example` (RFC-27 §D1) is the runtime capture kind emitted by `captures` and carries open `fixture-digest` / `input` / `output` body fields."
+      "description": "Closed claim-kind enum. New kinds require an RFC update. `example` (RFC-27 §D1) is the runtime capture kind emitted by `captures` and carries open `replay-digest` / `input` / `output` body fields."
     },
     "claimPath": {
       "type": "string",
@@ -79,7 +79,7 @@
         "claim-id": {
           "type": "string",
           "minLength": 1,
-          "description": "Stable claim identifier. Required when `kind` is `requirement` or `criterion`; optional on other kinds."
+          "description": "Stable claim identifier. Required when `kind` is `requirement`, `criterion`, or `example`; optional on other kinds."
         },
         "path": { "$ref": "#/$defs/claimPath" }
       },

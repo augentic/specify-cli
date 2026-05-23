@@ -239,7 +239,7 @@ fn resolves_captures_source_adapter_with_tools_array() {
     // RFC-27 §Acceptance scenario #26-1 (release blocker, D1):
     // pin the loader against the live `adapters/sources/captures/`
     // adapter shape shipped by the `plg` repo. The manifest carries
-    // a `tools: [{ name: fixture-index }]` declaration and a free-
+    // a `tools: [{ name: replay-index }]` declaration and a free-
     // form `description:` field; both must round-trip through the
     // axis-aware loader without forcing the operator to bind the
     // declared WASI tool (the tool itself is a follow-up per RFC-27
@@ -262,7 +262,7 @@ briefs:
   enumerate: briefs/enumerate.md
   extract: briefs/extract.md
 tools:
-  - name: fixture-index
+  - name: replay-index
     version: 0.1.0
 description: >-
   Runtime capture source adapter. Walks a read-only capture tree under
