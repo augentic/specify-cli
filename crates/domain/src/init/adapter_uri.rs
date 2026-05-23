@@ -162,6 +162,31 @@ fn adapter_name_from_dir(path: &Path) -> Result<String, Error> {
     })
 }
 
+/// Extract the kebab-case adapter name from a `project.yaml.adapter`
+/// value. Accepts:
+///
+/// - bare kebab names (`omnia`) — returned unchanged,
+/// - `file://` URIs — last path component,
+/// - `https://...` URIs — last path component (suffix `@ref` stripped),
+/// - bare local paths — last path component.
+#[must_use]
+pub fn adapter_name_from_value(value: &str) -> &str {
+    let stripped = strip_at_ref_suffix(value);
+    let stripped = stripped.strip_prefix("file://").unwrap_or(stripped);
+    let stripped = stripped.strip_suffix('/').unwrap_or(stripped);
+    stripped.rsplit('/').next().unwrap_or(stripped)
+}
+
+fn strip_at_ref_suffix(value: &str) -> &str {
+    let last_slash = value.rfind('/').unwrap_or(0);
+    if let Some(at) = value.rfind('@')
+        && at > last_slash
+    {
+        return &value[..at];
+    }
+    value
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,5 +224,23 @@ mod tests {
         assert_eq!(parsed.checkout_ref.as_deref(), Some("main"));
         assert_eq!(parsed.adapter_path, "schemas/omnia");
         assert_eq!(parsed.adapter_name, "omnia");
+    }
+
+    #[test]
+    fn adapter_name_from_value_handles_common_shapes() {
+        assert_eq!(adapter_name_from_value("omnia"), "omnia");
+        assert_eq!(adapter_name_from_value("file:///abs/adapters/targets/omnia"), "omnia");
+        assert_eq!(adapter_name_from_value("file:///abs/adapters/targets/omnia/"), "omnia");
+        assert_eq!(
+            adapter_name_from_value("https://github.com/augentic/specify/adapters/targets/omnia"),
+            "omnia"
+        );
+        assert_eq!(
+            adapter_name_from_value(
+                "https://github.com/augentic/specify/adapters/targets/omnia@v1"
+            ),
+            "omnia"
+        );
+        assert_eq!(adapter_name_from_value("/abs/targets/omnia"), "omnia");
     }
 }

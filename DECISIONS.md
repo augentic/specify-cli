@@ -280,9 +280,8 @@ through `briefs.<op>` on the adapter manifest and the CLI never reads
 their bodies, so the parser was dead code. The plugin repo's
 [`docs/standards/skill-authoring.md`](https://github.com/augentic/specify/blob/main/docs/standards/skill-authoring.md)
 §"Brief authoring" now requires briefs carry no YAML frontmatter at
-all. `CacheMeta` was rehomed inside `crates/domain/src/init/cache.rs`, and
-`CodexRule` / `CodexResolver` / `ResolvedCodex` moved into a new
-`crates/domain/src/codex/` module. The `Phase` enum was replaced by
+all. `CacheMeta` was rehomed inside `crates/domain/src/init/cache.rs`.
+The `Phase` enum was replaced by
 `Operation { Shape, Build, Merge }` on the slice-metadata wire (`phase:
 shape | build | merge`). Per RFC-25 §"Note to the implementing agent",
 touching any of these symbols requires a cross-repo `rg` sweep against

@@ -11,6 +11,7 @@ mod regular;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub use adapter_uri::adapter_name_from_value;
 use jiff::Timestamp;
 use specify_error::Error;
 use specify_tool::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};

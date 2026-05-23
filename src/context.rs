@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use specify_domain::adapter::{ResolvedTargetAdapter, TargetAdapter};
-use specify_domain::codex::adapter_name_from_value;
 use specify_domain::config::{Layout, ProjectConfig};
+use specify_domain::init::adapter_name_from_value;
 use specify_error::Error;
 
 use crate::cli::Format;

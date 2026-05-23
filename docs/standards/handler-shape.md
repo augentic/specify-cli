@@ -31,7 +31,7 @@ Success bodies leave handlers via `ctx.write(&body, write_text)?;`. `Ctx::write`
 
 Handlers never pick a stdout/stderr sink directly — `Ctx::write` (the success path), `output::report` (the failure path), and the free `output::emit` (the rare format-only path) are the sink-bearing entry points. Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run` and the unified `commands::resolve_adapter` shared by `source resolve` / `target resolve` (the two RFC-25 adapter-resolve verbs) — receive a bare `Format` and call `output::emit(Box::new(std::io::stdout().lock()), format, &body, write_text)?;` directly because `Ctx::write` is not available.
 
-For the full DTO and dispatch rules see [coding-standards.md §"Format dispatch"](./coding-standards.md#format-dispatch), [§"One emit path"](./coding-standards.md#one-emit-path), and [§"DTOs"](./coding-standards.md#dtos). The canonical pattern is [`src/commands/codex.rs`](../../src/commands/codex.rs).
+For the full DTO and dispatch rules see [coding-standards.md §"Format dispatch"](./coding-standards.md#format-dispatch), [§"One emit path"](./coding-standards.md#one-emit-path), and [§"DTOs"](./coding-standards.md#dtos).
 
 ## Exit codes
 

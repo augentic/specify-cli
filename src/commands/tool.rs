@@ -14,7 +14,7 @@ pub(super) use fetch::run as fetch;
 pub(super) use gc::run as gc;
 pub(super) use run::run;
 use specify_domain::adapter::{ResolvedTargetAdapter, TargetAdapter};
-use specify_domain::codex::adapter_name_from_value;
+use specify_domain::init::adapter_name_from_value;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
 use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolManifest, ToolScope};

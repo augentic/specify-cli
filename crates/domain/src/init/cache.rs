@@ -2,10 +2,9 @@
 //! `.specify/.cache/.cache-meta.yaml` representation.
 //!
 //! `cache_adapter` copies a resolved source into the manifest cache at
-//! `.specify/.cache/manifests/targets/<name>/`, mirrors the bundled
-//! `default` sibling under the same `manifests/targets/` axis, and
-//! stamps `cache-meta.yaml` with the resolved URI. The agent owns
-//! writes to the manifest cache; the CLI reads `.cache-meta.yaml` (via
+//! `.specify/.cache/manifests/targets/<name>/` and stamps
+//! `cache-meta.yaml` with the resolved URI. The agent owns writes to
+//! the manifest cache; the CLI reads `.cache-meta.yaml` (via
 //! [`CacheMeta::load`]) only to decide whether the cache matches
 //! `.specify/project.yaml:adapter`. The RFC-27 §D8 extraction cache at
 //! `.specify/.cache/extractions/<adapter>/` lives in a sibling tree and
@@ -19,8 +18,7 @@ use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
 use crate::adapter::{Axis, cache_dir as adapter_cache_dir, check_axis_unique_for_name};
-use crate::codex::DEFAULT_CODEX_ADAPTER;
-use crate::init::adapter_uri::{AdapterUri, ensure_adapter_dir};
+use crate::init::adapter_uri::AdapterUri;
 
 /// On-disk metadata describing the contents of `.specify/.cache/`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -63,28 +61,9 @@ pub(super) fn cache_adapter(
     check_axis_unique_for_name(Axis::Target, &source.adapter_name, project_dir)?;
     let target = adapter_cache_dir(project_dir, Axis::Target, &source.adapter_name);
     refresh_cached_adapter(&source.source_dir, &target)?;
-    cache_sibling_default_adapter(&source.source_dir, project_dir)?;
     write_cache_meta(project_dir, &source.adapter_value, now)?;
 
     Ok(source.adapter_value)
-}
-
-fn cache_sibling_default_adapter(source_dir: &Path, project_dir: &Path) -> Result<(), Error> {
-    if source_dir.file_name().and_then(|name| name.to_str()) == Some(DEFAULT_CODEX_ADAPTER) {
-        return Ok(());
-    }
-
-    let Some(parent) = source_dir.parent() else {
-        return Ok(());
-    };
-    let default_source = parent.join(DEFAULT_CODEX_ADAPTER);
-    if !default_source.is_dir() {
-        return Ok(());
-    }
-
-    ensure_adapter_dir(&default_source, DEFAULT_CODEX_ADAPTER)?;
-    let default_target = adapter_cache_dir(project_dir, Axis::Target, DEFAULT_CODEX_ADAPTER);
-    refresh_cached_adapter(&default_source, &default_target)
 }
 
 fn refresh_cached_adapter(source: &Path, target: &Path) -> Result<(), Error> {

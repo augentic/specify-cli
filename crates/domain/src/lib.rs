@@ -5,7 +5,6 @@
 pub mod adapter;
 pub mod change;
 pub mod cmd;
-pub mod codex;
 pub mod config;
 pub mod discovery;
 pub mod evidence;

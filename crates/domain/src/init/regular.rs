@@ -10,8 +10,8 @@ use jiff::Timestamp;
 use specify_error::Error;
 
 use crate::adapter::TargetAdapter;
-use crate::codex::adapter_name_from_value;
 use crate::config::{Layout, ProjectConfig};
+use crate::init::adapter_uri::adapter_name_from_value;
 use crate::init::cache::{CacheMeta, cache_adapter};
 use crate::init::{
     InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
